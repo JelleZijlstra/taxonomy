@@ -1,0 +1,15 @@
+This project is to contain a set of programs that can be used to maintain my
+personal taxonomic database of mammals. Currently, this database lives in a set
+of spreadsheets, which makes it convenient to make small edits but hard to
+make, large script-driven changes.
+
+The intended structure of this application is as follows:
+- A MySQL database with two tables (taxon and name) to serve as the persistent
+  data store.
+- A Python web application, written using the Pyramid framework, to serve the
+  taxonomic data to a web interface and allow edits.
+- A JavaScript application that allows viewing and editing on a web page.
+- A PHP server (part of the separate EHPHP project) that can be used by this
+  application to retrieve information from my bibliographic database program.
+- A set of scripts in Python to import data from the existing spreadsheets
+  into the database.
