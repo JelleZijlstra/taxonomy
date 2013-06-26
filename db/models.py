@@ -14,7 +14,7 @@ class Taxon(BaseModel):
     data = TextField(null=True)
     rank = IntegerField()
     valid_name = CharField()
-    parent = ForeignKeyField('self', related_name='children')
+    parent = ForeignKeyField('self', related_name='children', null=True, db_column='parent_id')
 
     class Meta:
         db_table = 'taxon'
@@ -30,7 +30,7 @@ class Name(BaseModel):
     other_comments = TextField(null=True)
     page_described = CharField(null=True)
     status = IntegerField()
-    taxon = ForeignKeyField(Taxon, related_name='names')
+    taxon = ForeignKeyField(Taxon, related_name='names', db_column='taxon_id')
     taxonomy_comments = TextField(null=True)
     type = ForeignKeyField('self', null=True, db_column='type_id')
     year = CharField(null=True)

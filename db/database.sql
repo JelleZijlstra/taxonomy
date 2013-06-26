@@ -6,7 +6,7 @@ USE `taxonomy`;
 DROP TABLE IF EXISTS `taxon`;
 CREATE TABLE `taxon` (
 	`id` INT UNSIGNED AUTO_INCREMENT,
-	`parent` INT UNSIGNED NOT NULL,
+	`parent_id` INT UNSIGNED DEFAULT NULL,
 	`valid_name` VARCHAR(512) NOT NULL, -- Current valid name
 	`rank` INT NOT NULL, -- See constants.py
 	`comments` VARCHAR(65535) DEFAULT NULL,
