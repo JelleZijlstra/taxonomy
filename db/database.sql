@@ -1,13 +1,14 @@
 --
 -- TAXONOMY
 --
+USE `taxonomy`;
 
 DROP TABLE IF EXISTS `taxon`;
 CREATE TABLE `taxon` (
 	`id` INT UNSIGNED AUTO_INCREMENT,
+	`parent` INT UNSIGNED NOT NULL,
 	`valid_name` VARCHAR(512) NOT NULL, -- Current valid name
 	`rank` INT NOT NULL, -- See constants.py
-	`name_id` INT UNSIGNED NOT NULL, -- Id of name that this taxon is based on
 	`comments` VARCHAR(65535) DEFAULT NULL,
 	`data` TEXT DEFAULT NULL, -- Arbitrary data in JSON form
 	PRIMARY KEY(`id`),
