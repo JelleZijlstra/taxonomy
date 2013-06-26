@@ -17,11 +17,11 @@ CREATE TABLE `taxon` (
 DROP TABLE IF EXISTS `name`;
 CREATE TABLE `name` (
 	`id` INT UNSIGNED AUTO_INCREMENT,
-	`taxon_id` INT UNSIGNED, -- Name of valid taxon this belongs to
+	`taxon_id` INT UNSIGNED NOT NULL, -- Name of valid taxon this belongs to
 	`group` INT NOT NULL, -- Species, genus, family, or higher
 	`status` INT NOT NULL, -- Valid, synonym, or species inquirenda
 	`original_name` VARCHAR(512) DEFAULT NULL,
-	`base_name` VARCHAR(512) DEFAULT NULL,
+	`base_name` VARCHAR(512) NOT NULL,
 	`authority` VARCHAR(1024) DEFAULT NULL,
 	`year` VARCHAR(255) DEFAULT NULL,
 	`page_described` VARCHAR(255) DEFAULT NULL,
