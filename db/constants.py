@@ -19,7 +19,10 @@ SUPERORDER = 70
 INFRACLASS = 90
 SUBCLASS = 95
 CLASS = 100
-ROOT = 105
+ROOT = 200
+# unranked groups of any kind
+UNRANKED = 205
+INFORMAL = 210
 
 # Nomenclatural group that the taxon belongs to
 GROUP_SPECIES = 0
@@ -31,3 +34,8 @@ GROUP_HIGH = 3
 STATUS_VALID = 0
 STATUS_SYNONYM = 1
 STATUS_DUBIOUS = 2 # nomen dubium, species inquirenda, etcetera
+
+# Age classes
+AGE_EXTANT = 0
+AGE_HOLOCENE = 1
+AGE_FOSSIL = 2

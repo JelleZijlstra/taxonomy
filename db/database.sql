@@ -11,6 +11,8 @@ CREATE TABLE `taxon` (
 	`rank` INT NOT NULL, -- See constants.py
 	`comments` VARCHAR(65535) DEFAULT NULL,
 	`data` TEXT DEFAULT NULL, -- Arbitrary data in JSON form
+	`age` INT DEFAULT 0 NOT NULL, -- Age class (e, h, extant)
+	`is_page_root` BOOL DEFAULT FALSE,
 	PRIMARY KEY(`id`),
 	INDEX(`valid_name`)
 ) ENGINE=INNODB DEFAULT CHARSET=utf8;
