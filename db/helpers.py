@@ -5,7 +5,7 @@ from constants import *
 SPECIES_RANKS = [SUBSPECIES, SPECIES, SPECIES_GROUP]
 GENUS_RANKS = [SUBGENUS, GENUS]
 FAMILY_RANKS = [SUBTRIBE, TRIBE, SUBFAMILY, FAMILY, SUPERFAMILY]
-HIGH_RANKS = [PARVORDER, INFRAORDER, SUBORDER, ORDER, SUPERORDER, INFRACLASS, SUBCLASS, CLASS, UNRANKED]
+HIGH_RANKS = [PARVORDER, INFRAORDER, SUBORDER, ORDER, SUPERORDER, SUBCOHORT, COHORT, SUPERCOHORT, INFRACLASS, SUBCLASS, CLASS, UNRANKED]
 
 def group_of_rank(rank):
 	if rank in SPECIES_RANKS:
@@ -35,6 +35,9 @@ rank_names = {
 	SUBORDER: 'suborder',
 	ORDER: 'order',
 	SUPERORDER: 'superorder',
+	SUBCOHORT: 'subcohort',
+	COHORT: 'cohort',
+	SUPERCOHORT: 'supercohort',
 	INFRACLASS: 'infraclass',
 	SUBCLASS: 'subclass',
 	CLASS: 'class',
@@ -63,6 +66,15 @@ status_names = {
 
 def string_of_status(status):
 	return status_names[status]
+
+age_names = {
+	AGE_EXTANT: '',
+	AGE_HOLOCENE: 'h',
+	AGE_FOSSIL: 'e',
+}
+
+def string_of_age(age):
+	return age_names[age]
 
 def dict_of_name(name):
 	result = {
@@ -96,6 +108,8 @@ def tree_of_taxon(taxon, include_root=False):
 		'comments': taxon.comments,
 		'names': [],
 		'children': [],
+		'age_numeric': taxon.age,
+		'age': string_of_age(taxon.age)
 	}
 	if include_root or not taxon.is_page_root:
 		for name in taxon.names:
