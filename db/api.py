@@ -1,4 +1,5 @@
 from pyramid.response import Response
+import pyramid.security
 import json
 
 import helpers
@@ -44,6 +45,8 @@ def perform_edit(edit):
 		raise ApiError("Invalid kind: " + kind)
 
 def api(request):
+	if pyramid.security.authenticated_userid(request) == None:
+		return serve_error("Not logged in")
 	action = request.matchdict['action']
 	if action == 'view':
 		try:
