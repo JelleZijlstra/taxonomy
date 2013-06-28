@@ -19,7 +19,7 @@ def api(request):
 			return serve_error("Required parameter not given: taxon")
 		try:
 			taxon_obj = models.Taxon.filter(models.Taxon.valid_name == taxon)[0]
-		except KeyError:
+		except IndexError:
 			return serve_error("Unrecognized taxon: " + taxon)
 		return serve_ok(helpers.tree_of_taxon(taxon_obj, include_root=True))
 	else:
