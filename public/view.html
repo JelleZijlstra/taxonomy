@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>View a taxon</title>
+	<link rel="stylesheet" type="text/css" href="css/taxonomy.css">
+	<script type="text/javascript" src="//ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+	<script type="text/javascript" src="js/taxonomy.js"></script>
+	<script type="text/javascript">
+		var show_taxon = function(taxon) {
+			taxonomy.call_api('view', {taxon: taxon}, function(data) {
+				var $result = $("#result-area");
+				$result.empty();
+				taxonomy.render_taxonomy(data, $result);
+			});
+		};
+		$(function() {
+			$("#input-taxon-submit").click(function() {
+				var taxon = $("#input-taxon-field").val();
+				show_taxon(taxon);
+				return false;
+			});
+			var hash = window.location.hash;
+			if(hash.length > 1) {
+				show_taxon(hash.substr(1));
+			} else {
+				// default example taxon
+				show_taxon('Gondwanatheria');
+			}
+		});
+	</script>
+</head>
+<body>
+<h1>Taxon view page</h1>
+<div id="input-taxon">
+<form>
+	<p>Taxon to view: <input type="text" name="taxon" id="input-taxon-field"></p>
+	<p><input type="submit" name="submit" id="input-taxon-submit" value="Submit"></p>
+</form>
+</div>
+<h2>Result</h2>
+<div id="result-area"></div>
+</body>
+</html>

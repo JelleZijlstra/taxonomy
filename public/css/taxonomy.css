@@ -1,0 +1,162 @@
+.taxonomy-table, .names-table {
+	table-layout: fixed;
+}
+
+.taxonomy-table td {
+	overflow: scroll;
+	padding: 0;
+	margin: 0;
+	white-space: nowrap;
+	table-layout: fixed;
+/*	display: inline-block;
+*/}
+
+.rank-class {
+	font-size: 250%;
+}
+
+.rank-subclass {
+	font-size: 230%;
+	font-weight: bold;
+}
+
+.rank-infraclass {
+	font-size: 220%;
+}
+
+.rank-supercohort {
+	font-size: 200%;
+	font-weight: bold;
+}
+
+.rank-cohort {
+	font-size: 190%;
+}
+
+.rank-superorder {
+	font-size: 170%;
+	font-weight: bold;
+}
+
+.rank-order {
+	font-size: 170%;
+}
+
+.rank-suborder {
+	font-size: 150%;
+}
+
+.rank-infraorder {
+	font-size: 140%;
+	font-weight: bold;
+}
+
+.rank-parvorder {
+	font-size: 130%;
+	font-weight: bold;
+}
+
+.rank-superfamily {
+	font-size: 125%;
+}
+
+.rank-family {
+	font-size: 120%;
+}
+
+.rank-subfamily {
+	font-size: 120%;
+	font-style: italic;
+}
+
+.rank-tribe {
+	font-size: 100%;
+	font-weight: bold;
+	font-style: italic;
+}
+
+.rank-subtribe {
+	font-size: 100%;
+	font-weight: bold;
+	font-style: italic;
+}
+
+.rank-genus {
+	font-size: 100%;
+	font-weight: bold;
+}
+
+.rank-subgenus {
+	font-size: 100%;
+	font-style: italic;
+}
+
+.rank-species_group {
+	font-size: 100%;
+	font-style: italic;
+}
+
+.rank-species {
+	font-size: 100%;
+}
+
+.rank-subspecies {
+	font-size: 80%;
+	font-style: italic;
+}
+
+.taxon-rank {
+	width: 5%;
+}
+.taxon-age {
+	width: 1%;
+}
+.taxon-valid_name {
+	width: 15%;
+}
+.taxon-comments {
+	width: 5%;
+}
+.taxon-names {
+	width: 75%;
+}
+
+.name-group {
+	width: 2%;
+}
+.name-original_name {
+	width: 18%;
+}
+.name-base_name {
+	width: 8%;
+}
+.name-authority {
+	width: 16%;
+}
+.name-year {
+	width: 3%;
+}
+.name-page_described {
+	width: 3%;
+}
+.name-original_citation {
+	width: 10%;
+}
+.name-nomenclature_comments {
+	width: 15%;
+}
+.name-taxonomy_comments {
+	width: 15%;
+}
+.name-other_comments {
+	width: 15%;
+}
+
+.status-synonym {
+	font-size: 65%;
+	font-weight: normal;
+	font-style: normal;
+}
+
+
+
