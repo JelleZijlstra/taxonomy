@@ -17,6 +17,7 @@ class Taxon(BaseModel):
     valid_name = CharField()
     parent = ForeignKeyField('self', related_name='children', null=True, db_column='parent_id')
     is_page_root = BooleanField(default=False)
+    age = IntegerField()
 
     class Meta:
         db_table = 'taxon'

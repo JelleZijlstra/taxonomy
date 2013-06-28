@@ -8,6 +8,7 @@ import argparse
 import codecs
 import csv
 import json
+import sys
 import traceback
 
 def create_root():
@@ -19,6 +20,7 @@ HT_RANKS = {
 	'Infraclassis': INFRACLASS,
 	'Supracohors': SUPERCOHORT,
 	'Supercohors': SUPERCOHORT,
+	'Supercohort': SUPERCOHORT,
 	'Cohors': COHORT,
 	'Subcohors': SUBCOHORT,
 	'Superordo': SUPERORDER,
@@ -27,6 +29,7 @@ HT_RANKS = {
 	'Subordo': SUBORDER,
 	'Suborder': SUBORDER,
 	'Infraordo': INFRAORDER,
+	'Infraorder': INFRAORDER,
 	'Parvordo': PARVORDER,
 	'Superfamilia': SUPERFAMILY,
 	'Suprafamilia': SUPERFAMILY,
@@ -100,7 +103,7 @@ def parse_row(row):
 			result['kind'] = 'synHT'
 	elif result['kind'] == 'si':
 		result['status'] = STATUS_DUBIOUS
-	elif result['kind'] == 'nHT':
+	elif result['kind'] in ('nHT', 'nsgen'):
 		# dealt with at higher level
 		pass
 	else:
@@ -111,7 +114,7 @@ def parse_row(row):
 	elif result['age'] == 'h':
 		result['age'] = AGE_HOLOCENE
 	elif result['age'] == 'e':
-		result['age'] == AGE_FOSSIL
+		result['age'] = AGE_FOSSIL
 	else:
 		raise Exception("Unknown age group: " + result['age'] + result)
 	return result
@@ -139,6 +142,7 @@ def read_file(filename):
 		current_valid = None
 		# whether current taxon should be marked as root of a page
 		is_page_root = True
+		error_occurred = False
 		for row in reader:
 			try:
 				# ignore blank rows
@@ -152,6 +156,9 @@ def read_file(filename):
 						continue
 					else:
 						raise Exception("Unrecognized nHT: " + str(data))
+				# nsgen is i.s., just ignore
+				if data['kind'] == 'nsgen':
+					continue
 
 				if data['status'] == STATUS_VALID:
 					# get stuff off the stack
@@ -160,7 +167,7 @@ def read_file(filename):
 					while rank >= stack[-1].rank:
 						stack.pop()
 					# create new Taxon
-					current_valid = Taxon.create(valid_name=data['valid_name'],
+					current_valid = Taxon.create(valid_name=data['valid_name'], age=data['age'],
 						rank=data['rank'], parent=stack[-1], is_page_root=is_page_root)
 					if is_page_root:
 						is_page_root = False
@@ -193,8 +200,9 @@ def read_file(filename):
 				Name.create(**data)
 			except Exception, e:
 				print traceback.format_exc(e)
+				error_occurred = True
 				# ignore error and happily go on with the next
-
+	return not error_occurred
 
 if __name__ == '__main__':
 	parser = argparse.ArgumentParser(description='Import a CSV spreadsheet file into the database')
@@ -208,4 +216,9 @@ if __name__ == '__main__':
 		if args.root:
 			create_root()
 
-		read_file(args.inputfile)
+		result = read_file(args.inputfile)
+
+	if result:
+		sys.exit(0)
+	else:
+		sys.exit(1)
