@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
 from constants import *
 import helpers
 import models
@@ -8,6 +9,7 @@ import argparse
 import codecs
 import csv
 import json
+import re
 import sys
 import traceback
 
@@ -34,10 +36,15 @@ HT_RANKS = {
 	'Superfamilia': SUPERFAMILY,
 	'Suprafamilia': SUPERFAMILY,
 	'Superfamily': SUPERFAMILY,
+	'Clade': 43, # Hack to allow for Eumuroida and Spalacodonta
 	'Familia': FAMILY,
+	'Family': FAMILY,
 	'Subfamilia': SUBFAMILY,
+	'Subfamily': SUBFAMILY,
 	'Tribus': TRIBE,
 	'Subtribus': SUBTRIBE,
+	'Subtribe': SUBTRIBE,
+	'Division': DIVISION,
 }
 
 KIND_RANKS = {
@@ -50,6 +57,8 @@ KIND_RANKS = {
 
 def parse_row(row):
 	'''Parse a row list into an associative array, then do some further magic with rank'''
+	# get rid of curly quotes
+	row = [cell.replace('“', '"').replace('”', '"').strip() for cell in row]
 	row = [None if cell == '' else cell for cell in row]
 	result = {
 		'kind': row[8].strip(),
@@ -81,13 +90,49 @@ def parse_row(row):
 		},
 	}
 	# random data in some files
-	if len(row) == 35:
+	if len(row) == 34:
+		# Perissodactyla
+		result['data']['column_AH'] = row[33]
+	elif len(row) == 35:
+		# Eutheria
 		result['data']['column_AH'] = row[33]
 		result['data']['column_AI'] = row[34]
+	elif len(row) == 36:
+		# Cetartiodactyla
+		result['data']['column_AH'] = row[33]
+		result['data']['column_AI'] = row[34]
+		result['data']['column_AJ'] = row[35]
 	elif len(row) > 33:
 		raise Exception("Missing data: " + str(row[33:]))
+
+	# deal with bad data
+	if ' /' in result['valid_name']:
+		names = result['valid_name'].split(' /')
+		result['valid_name'] = names[0]
+		result['additional_synonyms'] = names[1:]
+	if result['base_name'] == None:
+		if result['original_name'] == None:
+			result['base_name'] = result['valid_name']
+		else:
+			result['base_name'] = result['original_name']
+	result['base_name'] = result['base_name'].split()[-1].replace('(', '').replace(')', '')
+
+	# validate name
+	# complicated regex to allow for weird stuff in informal name
+	regex = r"^([a-zA-Z \(\)\.\"]|\"[a-zA-Z \(\)\-]+\")+$"
+	if not re.match(regex, result['valid_name']):
+		raise Exception("Invalid name: " + result['valid_name'])
+
+	# get rid of explicit i.s.
+	result['valid_name'] = result['valid_name'].replace(' ( i.s.)', '')
+
+	# translate textual classes into the numeric constants used internally
 	if result['kind'] == 'HT':
-		rank, valid_name = result['valid_name'].split(' ', 1)
+		if 'Division' in result['valid_name']:
+			rank = 'Division'
+			valid_name = result['valid_name']
+		else:
+			rank, valid_name = result['valid_name'].split(' ', 1)
 		if rank not in HT_RANKS:
 			raise Exception("Unknown HT rank: " + rank + str(result))
 		result['rank'] = HT_RANKS[rank]
@@ -119,7 +164,7 @@ def parse_row(row):
 		raise Exception("Unknown age group: " + result['age'] + result)
 	return result
 
-ignored_nHT = ['"Paracimexomys group"']
+ignored_nHT = ['Paracimexomys group', 'Extinct genera of uncertain or basal placement']
 
 # from http://stackoverflow.com/questions/904041/reading-a-utf8-csv-file-with-python
 def unicode_csv_reader(utf8_data, **kwargs):
@@ -198,6 +243,11 @@ def read_file(filename):
 				del data['kind']
 				data['data'] = json.dumps(data['data'])
 				Name.create(**data)
+				if 'additional_synonyms' in data:
+					group = helpers.group_of_rank(current_valid.rank)
+					for synonym in data['additional_synonyms']:
+						Name.create(taxon=current_valid, base_name=synonym, group=group, status=STATUS_SYNONYM)
+
 			except Exception, e:
 				print traceback.format_exc(e)
 				error_occurred = True

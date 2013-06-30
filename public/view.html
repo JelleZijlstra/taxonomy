@@ -3,8 +3,14 @@
 <head>
 	<title>View a taxon</title>
 	<link rel="stylesheet" type="text/css" href="css/taxonomy.css">
+	<link rel="stylesheet" type="text/css" href="//code.jquery.com/ui/1.9.2/themes/base/jquery-ui.css" />
+	<link rel="stylesheet" type="text/css" href="plugins/jquery.contextMenu.css">
 	<script type="text/javascript" src="//ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+	<script type="text/javascript" src="//code.jquery.com/ui/1.9.2/jquery-ui.js"></script>
+	<script type="text/javascript" src="plugins/jquery.contextMenu.js"></script>
+	<script type="text/javascript" src="js/constants.js"></script>
 	<script type="text/javascript" src="js/taxonomy.js"></script>
+	<script type="text/javascript" src="js/uitools.js"></script>
 	<script type="text/javascript">
 		var show_taxon = function(taxon) {
 			taxonomy.call_api('view', {taxon: taxon}, function(data) {
@@ -26,6 +32,7 @@
 				// default example taxon
 				show_taxon('Gondwanatheria');
 			}
+			$("#save-button").click(taxonomy.save_now);
 		});
 	</script>
 </head>
@@ -37,6 +44,7 @@
 	<p><input type="submit" name="submit" id="input-taxon-submit" value="Submit"></p>
 </form>
 </div>
+<button id="save-button">Save now</button>
 <h2>Result</h2>
 <div id="result-area"></div>
 </body>

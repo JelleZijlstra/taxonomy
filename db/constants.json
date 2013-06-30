@@ -1,0 +1,53 @@
+// This file contains comments with //; it should be run through a preprocessor
+// that strips them to produce valid JSON.
+{
+	"rank": [
+		// Use large increments to allow for interpolating ranks later
+		{"constant": "SUBSPECIES", "value": 0, "name": "subspecies", "abbreviation": "ssp"},
+		{"constant": "SPECIES", "value": 5, "name": "species", "abbreviation": "sp"},
+		{"constant": "SPECIES_GROUP", "value": 10, "name": "species group", "abbreviation": "spg"},
+		{"constant": "SUBGENUS", "value": 15, "name": "subgenus", "abbreviation": "sgen"},
+		{"constant": "GENUS", "value": 20, "name": "genus", "abbreviation": "gen"},
+		{"constant": "DIVISION", "value": 22, "name": "division", "abbreviation": "div"},
+		{"constant": "SUBTRIBE", "value": 25, "name": "subtribe", "abbreviation": "str"},
+		{"constant": "TRIBE", "value": 30, "name": "tribe", "abbreviation": "tr"},
+		{"constant": "SUBFAMILY", "value": 35, "name": "subfamily", "abbreviation": "sfam"},
+		{"constant": "FAMILY", "value": 40, "name": "family", "abbreviation": "fam"},
+		{"constant": "SUPERFAMILY", "value": 45, "name": "superfamily", "abbreviation": "spfam"},
+		{"constant": "PARVORDER", "value": 50, "name": "parvorder", "abbreviation": "pord"},
+		{"constant": "INFRAORDER", "value": 55, "name": "infraorder", "abbreviation": "iord"},
+		{"constant": "SUBORDER", "value": 60, "name": "suborder", "abbreviation": "sord"},
+		{"constant": "ORDER", "value": 65, "name": "order", "abbreviation": "ord"},
+		{"constant": "SUPERORDER", "value": 70, "name": "superorder", "abbreviation": "spord"},
+		{"constant": "SUBCOHORT", "value": 75, "name": "subcohort", "abbreviation": "scoh"},
+		{"constant": "COHORT", "value": 80, "name": "cohort", "abbreviation": "coh"},
+		{"constant": "SUPERCOHORT", "value": 85, "name": "supercohort", "abbreviation": "spcoh"},
+		{"constant": "INFRACLASS", "value": 90, "name": "infraclass", "abbreviation": "icl"},
+		{"constant": "SUBCLASS", "value": 95, "name": "subclass", "abbreviation": "scl"},
+		{"constant": "CLASS", "value": 100, "name": "class", "abbreviation": "cl"},
+		{"constant": "ROOT", "value": 200, "name": "root", "abbreviation": "rt"},
+		// unranked groups of any kind
+		{"constant": "UNRANKED", "value": 205, "name": "unranked", "abbreviation": "unr"},
+		{"constant": "INFORMAL", "value": 210, "name": "informal", "abbreviation": "inf"}
+	],
+	"group": [
+		// Nomenclatural group that the taxon belongs to
+		{"constant": "GROUP_SPECIES", "value": 0, "name": "species", "abbreviation": "s"},
+		{"constant": "GROUP_GENUS", "value": 1, "name": "genus", "abbreviation": "g"},
+		{"constant": "GROUP_FAMILY", "value": 2, "name": "family", "abbreviation": "f"},
+		{"constant": "GROUP_HIGH", "value": 3, "name": "higher taxon", "abbreviation": "h"}
+	],
+	"status": [
+		// Status of a name
+		{"constant": "STATUS_VALID", "value": 0, "name": "valid", "abbreviation": "v"},
+		{"constant": "STATUS_SYNONYM", "value": 1, "name": "synonym", "abbreviation": "s"},
+		// nomen dubium, species inquirenda, etcetera
+		{"constant": "STATUS_DUBIOUS", "value": 2, "name": "dubious", "abbreviation": "d"}
+	],
+	"age": [
+		// Age classes
+		{"constant": "AGE_EXTANT", "value": 0, "name": "extant", "abbreviation": ""},
+		{"constant": "AGE_HOLOCENE", "value": 1, "name": "Holocene", "abbreviation": "h"},
+		{"constant": "AGE_FOSSIL", "value": 2, "name": "fossil", "abbreviation": "e"}
+	]
+}

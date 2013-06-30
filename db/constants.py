@@ -1,44 +1,34 @@
-'''Constants used in database'''
+'''Script to generate Python functions and constants from the constants.json file.
+This performs some slightly evil manipulation of the module namespace.'''
 
-# Use large increments to allow for interpolating ranks later
-SUBSPECIES = 0
-SPECIES = 5
-SPECIES_GROUP = 10
-SUBGENUS = 15
-GENUS = 20
-SUBTRIBE = 25
-TRIBE = 30
-SUBFAMILY = 35
-FAMILY = 40
-SUPERFAMILY = 45
-PARVORDER = 50
-INFRAORDER = 55
-SUBORDER = 60
-ORDER = 65
-SUPERORDER = 70
-SUBCOHORT = 75
-COHORT = 80
-SUPERCOHORT = 85
-INFRACLASS = 90
-SUBCLASS = 95
-CLASS = 100
-ROOT = 200
-# unranked groups of any kind
-UNRANKED = 205
-INFORMAL = 210
+import json
+import os.path
+import re
+import sys
 
-# Nomenclatural group that the taxon belongs to
-GROUP_SPECIES = 0
-GROUP_GENUS = 1
-GROUP_FAMILY = 2
-GROUP_HIGH = 3
+def _strip_comments(json):
+	return re.sub(r'//[^\n]*', '', json)
 
-# Status of a name
-STATUS_VALID = 0
-STATUS_SYNONYM = 1
-STATUS_DUBIOUS = 2 # nomen dubium, species inquirenda, etcetera
+def _my_dir():
+	return os.path.dirname(__file__)
 
-# Age classes
-AGE_EXTANT = 0
-AGE_HOLOCENE = 1
-AGE_FOSSIL = 2
+def _build():
+	json_str = _strip_comments(open(_my_dir() + "/constants.json", "r").read())
+	data = json.loads(json_str)
+	constant_lookup = {}
+	ns = sys.modules[__name__]
+	for key in data:
+		constant_lookup[key] = {}
+		for entry in data[key]:
+			setattr(ns, entry["constant"], entry["value"])
+			constant_lookup[key][entry["value"]] = entry
+		# Some trickery to capture the key variable
+		def set_key(key):
+			setattr(ns, "string_of_" + key, lambda c: constant_lookup[key][c]["name"])
+		set_key(key)
+
+	with open(_my_dir() + "/../public/js/constants.js", "w") as js_file:
+		js_file.write("var constants = ")
+		js_file.write(json_str)
+
+_build()

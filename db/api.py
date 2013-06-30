@@ -39,12 +39,15 @@ def perform_edit(edit):
 		for key in data:
 			# I suppose some validation would be useful here
 			setattr(obj, key, data[key])
+		obj.save()
 	elif kind == 'create':
 		model.create(**data)
 	else:
 		raise ApiError("Invalid kind: " + kind)
 
 def api(request):
+	# Very primitive authorization, but can't be bothered to figure out how
+	# the full Pyramid system works.
 	if pyramid.security.authenticated_userid(request) == None:
 		return serve_error("Not logged in")
 	action = request.matchdict['action']

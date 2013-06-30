@@ -1,15 +1,32 @@
 .taxonomy-table, .names-table {
-	table-layout: fixed;
+	border-collapse: collapse;
 }
 
-.taxonomy-table td {
+.taxonomy-cell {
 	overflow: scroll;
 	padding: 0;
-	margin: 0;
+	margin-right: 5px;
+	margin-left: 0em;
+	margin-top: 0em;
+	margin-bottom: 0em;
 	white-space: nowrap;
-	table-layout: fixed;
-/*	display: inline-block;
-*/}
+	display: table-cell;
+	border: solid 1px gainsboro;
+}
+
+.taxonomy-cell:focus {
+	overflow: visible;
+	white-space: normal;
+}
+
+.row-taxon-outer {
+	display: table;
+}
+
+.row-taxon {
+	min-width: 100%;
+	display: table-row;
+}
 
 .rank-class {
 	font-size: 250%;
@@ -106,50 +123,65 @@
 }
 
 .taxon-rank {
-	width: 5%;
+	min-width: 35px;
+	max-width: 35px;
 }
 .taxon-age {
-	width: 1%;
+	min-width: 10px;
+	max-width: 10px;
 }
 .taxon-valid_name {
-	width: 15%;
+	min-width: 200px;
+	max-width: 200px;
 }
 .taxon-comments {
-	width: 5%;
+	min-width: 50px;
+	max-width: 50px;
 }
 .taxon-names {
-	width: 75%;
+	min-width: 1000px;
+	max-width: 1000px;
 }
 
 .name-group {
-	width: 2%;
+	min-width: 20px;
+	max-width: 20px;
 }
 .name-original_name {
-	width: 18%;
+	min-width: 200px;
+	max-width: 200px;
 }
 .name-base_name {
-	width: 8%;
+	min-width: 100px;
+	max-width: 100px;
 }
 .name-authority {
-	width: 16%;
+	min-width: 250px;
+	max-width: 250px;
 }
 .name-year {
-	width: 3%;
+	min-width: 50px;
+	max-width: 50px;
 }
 .name-page_described {
-	width: 3%;
+	min-width: 30px;
+	max-width: 30px;
 }
 .name-original_citation {
-	width: 10%;
+	min-width: 100px;
+	max-width: 100px;
 }
 .name-nomenclature_comments {
-	width: 15%;
+	min-width: 100px;
+	max-width: 100px;
 }
 .name-taxonomy_comments {
-	width: 15%;
+	min-width: 100px;
+	max-width: 100px;
 }
 .name-other_comments {
-	width: 15%;
+	min-width: 100px;
+	max-width: 100px;
 }
 
 .status-synonym {
