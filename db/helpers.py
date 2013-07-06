@@ -1,5 +1,7 @@
 '''Helper functions'''
 
+from operator import itemgetter
+
 from constants import *
 
 SPECIES_RANKS = [SUBSPECIES, SPECIES, SPECIES_GROUP]
@@ -59,6 +61,8 @@ def tree_of_taxon(taxon, include_root=False):
 	if include_root or not taxon.is_page_root:
 		for name in taxon.names:
 			result['names'].append(dict_of_name(name))
+		result['names'].sort(key=itemgetter('status_numeric', 'base_name'))
 		for child in taxon.children:
 			result['children'].append(tree_of_taxon(child))
+		result['children'].sort(key=itemgetter('rank_numeric', 'valid_name'))
 	return result
