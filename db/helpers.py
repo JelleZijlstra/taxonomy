@@ -1,6 +1,7 @@
 '''Helper functions'''
 
 from operator import itemgetter
+import re
 
 from constants import *
 
@@ -21,11 +22,55 @@ def group_of_rank(rank):
 	else:
 		raise Exception("Unrecognized rank: " + str(rank))
 
+SUFFIXES = {
+	SUBTRIBE: 'ina',
+	TRIBE: 'ini',
+	SUBFAMILY: 'inae',
+	FAMILY: 'idae',
+	SUPERFAMILY: 'oidea'
+}
+
+def suffix_of_rank(rank):
+	return SUFFIXES[rank]
+
+def strip_rank(name, rank):
+	suffix = suffix_of_rank(rank)
+	def strip_of_suffix(name, suffix):
+		if re.search(suffix + "$", name):
+			return re.sub(suffix + "$", "", name)
+		else:
+			return None
+	res = strip_of_suffix(name, suffix)
+	if res is None:
+		print("Warning: Cannot find suffix -" + suffix + " on name " + name)
+		# Loop over other possibilities
+		for rank in SUFFIXES:
+			res = strip_of_suffix(name, SUFFIXES[rank])
+			if res is not None:
+				return res
+		return name
+	else:
+		return res
+
+def spg_of_species(species):
+	'''Returns a species group name from a species name'''
+	return re.sub(r" ([a-z]+)$", r" (\1)", species)
+
+def species_of_subspecies(ssp):
+	return re.sub(r" ([a-z]+)$", r"", ssp)
+
+def is_nominate_subspecies(ssp):
+	parts = re.sub(r' \(([A-Za-z"\- ]+)\)', '', ssp).split(' ')
+	if len(parts) != 3:
+		print parts
+		raise Exception("Invalid subspecies name: " + ssp)
+	return parts[1] == parts[2]
+
 def dict_of_name(name):
 	result = {
 		'id': name.id,
 		'authority': name.authority,
-		'base_name': name.base_name,
+		'root_name': name.root_name,
 		'group_numeric': name.group,
 		'group': string_of_group(name.group),
 		'nomenclature_comments': name.nomenclature_comments,
@@ -43,7 +88,7 @@ def dict_of_name(name):
 		if name.type.original_name is not None:
 			result['type']['name'] = name.type.original_name
 		else:
-			result['type']['name'] = name.type.base_name
+			result['type']['name'] = name.type.root_name
 	return result
 
 def tree_of_taxon(taxon, include_root=False):
@@ -61,7 +106,7 @@ def tree_of_taxon(taxon, include_root=False):
 	if include_root or not taxon.is_page_root:
 		for name in taxon.names:
 			result['names'].append(dict_of_name(name))
-		result['names'].sort(key=itemgetter('status_numeric', 'base_name'))
+		result['names'].sort(key=itemgetter('status_numeric', 'root_name'))
 		for child in taxon.children:
 			result['children'].append(tree_of_taxon(child))
 		result['children'].sort(key=itemgetter('rank_numeric', 'valid_name'))

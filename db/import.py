@@ -16,6 +16,13 @@ import traceback
 def create_root():
 	Taxon.create(rank=ROOT, valid_name='root')
 
+def remove_null(dict):
+	out = {}
+	for k, v in dict.items():
+		if v is not None:
+			out[k] = v
+	return out
+
 HT_RANKS = {
 	'Classis': CLASS,
 	'Subclassis': SUBCLASS,
@@ -55,6 +62,13 @@ KIND_RANKS = {
 	'ssp': SUBSPECIES
 }
 
+def detect_super(name, rank):
+	'''Find a taxon named name of rank rank'''
+	try:
+		return Taxon.get(Taxon.valid_name == name, Taxon.rank == rank).base_name
+	except Taxon.DoesNotExist:
+		return None
+
 def parse_row(row):
 	'''Parse a row list into an associative array, then do some further magic with rank'''
 	# get rid of curly quotes
@@ -65,7 +79,7 @@ def parse_row(row):
 		'age': row[9],
 		'valid_name': row[14],
 		'original_name': row[15],
-		'base_name': row[16],
+		'root_name': row[16],
 		'authority': row[17],
 		'year': row[19],
 		'page_described': row[20],
@@ -110,21 +124,30 @@ def parse_row(row):
 		names = result['valid_name'].split(' /')
 		result['valid_name'] = names[0]
 		result['additional_synonyms'] = names[1:]
-	if result['base_name'] == None:
+	if result['root_name'] == None:
 		if result['original_name'] == None:
-			result['base_name'] = result['valid_name']
+			result['root_name'] = result['valid_name']
 		else:
-			result['base_name'] = result['original_name']
-	result['base_name'] = result['base_name'].split()[-1].replace('(', '').replace(')', '')
+			result['root_name'] = result['original_name']
+	result['root_name'] = result['root_name'].split()[-1].replace('(', '').replace(')', '')
 
 	# validate name
 	# complicated regex to allow for weird stuff in informal name
 	regex = r"^([a-zA-Z \(\)\.\"]|\"[a-zA-Z \(\)\-]+\")+$"
-	if not re.match(regex, result['valid_name']):
-		raise Exception("Invalid name: " + result['valid_name'])
+	valid_name = result['valid_name']
+	if not re.match(regex, valid_name):
+		raise Exception("Invalid name: " + valid_name)
 
 	# get rid of explicit i.s.
-	result['valid_name'] = result['valid_name'].replace(' ( i.s.)', '')
+	valid_name = valid_name.replace(' ( i.s.)', '')
+
+	# get rid of explicit subgenus
+	valid_name = re.sub(r' (\([A-Za-z" \-]+\) )+', ' ', valid_name)
+
+	# subgenus name should just be the subgenus
+	valid_name = re.sub(r'^.*\(([A-Z][A-Za-z" \-]+)\)$', r'\1', valid_name)
+
+	result['valid_name'] = valid_name
 
 	# translate textual classes into the numeric constants used internally
 	if result['kind'] == 'HT':
@@ -240,13 +263,49 @@ def read_file(filename):
 							valid_name = data['valid_name']
 						if valid_name != current_valid.valid_name:
 							raise Exception("Valid name of synonym does not match: " + data['valid_name'] + " and " + current_valid.valid_name)
+				# shorten root name for family-group names
+				if data['group'] == GROUP_FAMILY:
+					data['root_name'] = helpers.strip_rank(data['root_name'], current_valid.rank)
 				del data['kind']
-				data['data'] = json.dumps(data['data'])
-				Name.create(**data)
+				data['data'] = json.dumps(remove_null(data['data']))
+
+				# Detect whether a name object is already present (Principle of Coordination)
+				nm = None
+				if data['status'] == STATUS_VALID:
+					root_name = data['root_name']
+					if current_valid.rank == FAMILY:
+						nm = detect_super(root_name + 'oidea', SUPERFAMILY)
+					elif current_valid.rank == SUBFAMILY:
+						nm = detect_super(root_name + 'idae', FAMILY)
+					elif current_valid.rank == TRIBE:
+						nm = detect_super(root_name + 'inae', SUBFAMILY)
+					elif current_valid.rank == SUBTRIBE:
+						nm = detect_super(root_name + 'ini', TRIBE)
+					elif current_valid.rank == SUBGENUS:
+						nm = detect_super(root_name, GENUS)
+					elif current_valid.rank == SPECIES:
+						spg_name = helpers.spg_of_species(current_valid.valid_name)
+						nm = detect_super(spg_name, SPECIES_GROUP)
+					elif current_valid.rank == SUBSPECIES and helpers.is_nominate_subspecies(current_valid.valid_name):
+						sp_name = helpers.species_of_subspecies(current_valid.valid_name)
+						nm = detect_super(sp_name, SPECIES)
+					if nm is not None:
+						del data['taxon']
+						nm.add_additional_data(data)
+						# nm's Taxon should be the lowest-ranking one
+						nm.taxon = current_valid
+
+				# create a new Name if none was found
+				if nm is None:
+					nm = Name.create(**data)
+
+				# set base_name field
+				if data['status'] == STATUS_VALID:
+					current_valid.base_name = nm
 				if 'additional_synonyms' in data:
 					group = helpers.group_of_rank(current_valid.rank)
 					for synonym in data['additional_synonyms']:
-						Name.create(taxon=current_valid, base_name=synonym, group=group, status=STATUS_SYNONYM)
+						Name.create(taxon=current_valid, root_name=synonym, group=group, status=STATUS_SYNONYM)
 
 			except Exception, e:
 				print traceback.format_exc(e)

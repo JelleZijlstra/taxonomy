@@ -21,6 +21,18 @@ var taxonomy = (function($) {
 		}
 	};
 
+	// Count the number of times that substr occurs in str
+	var count_substr = function(str, substr) {
+		// http://stackoverflow.com/questions/881085/count-the-number-of-occurences-of-a-character-in-a-string-in-javascript
+		var regex = new RegExp(substr, "g");
+		var match = str.match(regex);
+		if(match) {
+			return match.length;
+		} else {
+			return 0;
+		}
+	};
+
 	var group_of_rank = function(rank) {
 		switch(rank) {
 			case dfs.SUBSPECIES: case dfs.SPECIES: case dfs.SPECIES_GROUP:
@@ -33,6 +45,14 @@ var taxonomy = (function($) {
 				return dfs.GROUP_HIGH;
 		}
 	}
+
+
+	var get_id = function(elt, table) {
+		return $(elt).closest('.row-' + table).attr('data-id');
+	};
+	var get_numeric = function($row, table, attr) {
+		return parseInt($row.find('.' + table + '-' + attr).attr('data-value'), 10);
+	};
 
 	var call_api = function(method, params, success) {
 		$.post('/api/' + method, params, function(data) {
@@ -65,9 +85,29 @@ var taxonomy = (function($) {
 		row.append($("<div>").text("+").addClass(prefix + '-options').addClass('taxonomy-cell'));
 	};
 
-	var render_taxon = function(taxon, place) {
+	var add_name = function(list, name) {
+		var row = $("<div>").addClass("row-name").addClass("status-" + name.status)
+			.attr('data-id', name.id);
+		add_cell_options(row, 'name');
+		add_cell_constant(row, name, 'status', 'name');
+		add_cell_constant(row, name, 'group', 'name');
+		['original_name', 'root_name', 'authority', 'year', 'page_described',
+			'original_citation', 'nomenclature_comments', 'taxonomy_comments',
+			'other_comments'].forEach(function(attr) {
+			add_cell_attr(row, name, attr, 'name');
+		});
+		// TODO: types
+		list.append(row);
+		return row;
+	};
+	var add_new_name = function(list, name) {
+		var row = add_name(list, name);
+		reload_editing(row);
+	};
+
+	var render_taxon = function(taxon, place, before) {
 		var div = $("<div>").addClass("container-taxon").attr('data-id', taxon.id);
-		var row = $("<div>").addClass("row-taxon").addClass("rank-" + taxon.rank).attr('data-id', taxon.id);
+		var row = $("<div>").addClass("row-taxon").addClass("rank-" + taxon.rank.replace(' ', '_')).attr('data-id', taxon.id);
 		add_cell_options(row, 'taxon');
 		add_cell_constant(row, taxon, 'rank', 'taxon');
 		add_cell_constant(row, taxon, 'age', 'taxon');
@@ -75,17 +115,7 @@ var taxonomy = (function($) {
 		add_cell_attr(row, taxon, 'comments', 'taxon');
 		var names = $("<div>").addClass("names-table");
 		taxon.names.forEach(function(name) {
-			var row = $("<div>").addClass("row-name").addClass("status-" + name.status)
-				.attr('data-id', name.id);
-			add_cell_options(row, 'name');
-			add_cell_constant(row, name, 'group', 'name');
-			['original_name', 'base_name', 'authority', 'year', 'page_described',
-				'original_citation', 'nomenclature_comments', 'taxonomy_comments',
-				'other_comments'].forEach(function(attr) {
-				add_cell_attr(row, name, attr, 'name');
-			});
-			// TODO: types
-			names.append(row);
+			add_name(names, name);
 		});
 		row.append($("<div>").append(names).addClass('taxon-names'));
 		div.append($("<div>").addClass('row-taxon-outer').append(row));
@@ -94,15 +124,17 @@ var taxonomy = (function($) {
 			render_taxon(child, children);
 		});
 		div.append(children);
-		place.append(div);
+		if(before) {
+			place.before(div);
+		} else {
+			place.append(div);
+		}
+		return div;
 	};
-
-	var get_id = function(elt, table) {
-		return $(elt).closest('.row-' + table).attr('data-id');
+	var render_new_taxon = function(taxon, place, before) {
+		var div = render_taxon(taxon, place, before);
+		reload_editing(div);
 	};
-	var get_numeric = function($row, table, attr) {
-		return parseInt($row.find('.' + table + '-' + attr).attr('data-value'), 10);
-	}
 
 	var make_text_editable = function(place, field, table) {
 		place.find('.' + table + '-' + field).attr('contenteditable', 'true').attr('spellcheck', 'false').blur(function() {
@@ -158,7 +190,7 @@ var taxonomy = (function($) {
 			callback: function(data) {
 				// determine data
 				var valid_name = data.valid_name;
-				var base_name = valid_name.replace(/^.* /, '');
+				var root_name = valid_name.replace(/^.* /, '');
 				// guess rank
 				var rank = parent_rank - 5;
 				if(parent_rank === dfs.SUBGENUS) {
@@ -185,9 +217,15 @@ var taxonomy = (function($) {
 						rank = dfs.SUBTRIBE;
 					}
 				}
+				var spaces = count_substr(valid_name, " ");
+				if(spaces === 2) {
+					rank = dfs.SUBSPECIES;
+				} else if(spaces === 1) {
+					rank = dfs.SPECIES;
+				}
 				var paras = {
 					valid_name: valid_name,
-					base_name: base_name,
+					root_name: root_name,
 					group: group_of_rank(rank),
 					rank: rank,
 					age: get_numeric($row, 'taxon', 'age'),
@@ -196,23 +234,73 @@ var taxonomy = (function($) {
 				changes.push({'kind': 'create_pair', 'data': paras});
 				save_now(function(results) {
 					var txn = array_find(results, function(val) {
+						console.log(val);
 						return val.kind === 'create_pair' && val.valid_name === valid_name;
+					}).taxon;
+					console.log(txn);
+
+					// find right place to insert
+					var children = $place.find('.children-taxon');
+					var place = null;
+					children.children().each(function() {
+						var child_rank = $(this).find('.taxon-rank').first().attr('data-value');
+						if(child_rank < rank) {
+							return true;
+						} else if(child_rank > rank) {
+							place = $(this);
+							return false;
+						} else {
+							var child_name = $(this).find('.taxon-valid_name').first().text();
+							if(valid_name <= child_name) {
+								place = $(this);
+								return false;
+							} else {
+								return true;
+							}
+						}
 					});
-					
+					if(place == null) {
+						render_new_taxon(txn, children);
+					} else {
+						render_new_taxon(txn, place, true);
+					}
+				});
+			}
+		});
+	};
+	var add_synonym = function(id, $row) {
+		var valid_name = $row.find('.taxon-valid_name').text();
+		var name_row = $row.find('.row-name').first();
+		uiTools.ask({
+			title: 'Add new synonym',
+			text: 'Valid name: ' + valid_name,
+			fields: [
+				{"name": "root_name", "type": "text", "label": "Root name"}
+			],
+			callback: function(data) {
+				var root_name = data.root_name;
+				var nm_data = {
+					root_name: root_name,
+					group: get_numeric(name_row, 'name', 'group'),
+					status: dfs.STATUS_SYNONYM,
+					taxon: id,
+				};
+				changes.push({kind: 'create', data: nm_data, table: 'name'});
+				save_now(function(data) {
+					var nm_obj = array_find(data, function(entry) {
+						return entry.kind === 'create' && entry.root_name === root_name;
+					}).name;
+					add_new_name($row.find('.names-table'), nm_obj);
 				});
 			}
 		});
 	};
 
-	var render_taxonomy = function(taxon, place) {
-		var table = $("<div>").addClass('taxonomy-table');
-		render_taxon(taxon, table);
-
-		// turn on editing
+	var reload_editing = function(table) {
 		make_text_editable(table, 'valid_name', 'taxon');
 		make_text_editable(table, 'comments', 'taxon');
 		make_text_editable(table, 'original_name', 'name');
-		make_text_editable(table, 'base_name', 'name');
+		make_text_editable(table, 'root_name', 'name');
 		make_text_editable(table, 'authority', 'name');
 		make_text_editable(table, 'year', 'name');
 		make_text_editable(table, 'page_described', 'name');
@@ -220,9 +308,18 @@ var taxonomy = (function($) {
 		make_text_editable(table, 'nomenclature_comments', 'name');
 		make_text_editable(table, 'taxonomy_comments', 'name');
 		make_text_editable(table, 'other_comments', 'name');
+	};
+
+	var render_taxonomy = function(taxon, place) {
+		var table = $("<div>").addClass('taxonomy-table');
+		render_taxon(taxon, table);
+
+		// turn on editing
+		reload_editing(table);
 		make_dropdown_editable('rank', 'taxon');
 		make_dropdown_editable('age', 'taxon');
 		make_dropdown_editable('group', 'name');
+		make_dropdown_editable('status', 'name');
 
 		// options for taxon
 		$.contextMenu({
@@ -236,7 +333,14 @@ var taxonomy = (function($) {
 						var id = get_id(this, 'taxon');
 						add_child(id, $(this).closest('.container-taxon'));
 					},
-				}
+				},
+				'add synonym': {
+					name: 'add synonym',
+					callback: function() {
+						var id = get_id(this, 'taxon');
+						add_synonym(id, $(this).closest('.row-taxon'));
+					}
+				},
 			}
 		});
 
@@ -259,6 +363,10 @@ var taxonomy = (function($) {
 
 	// save every five minutes
 	window.setInterval(save_now, 300000);
+
+	$(window).bind('unload', function() { console.log("I was called"); save_now(); });
+	window.onbeforeunload = function() { console.log("I was called"); save_now(); };
+	window.addEventListener('unload', function() { console.log("I was called"); save_now(); });
 
 	return {
 		call_api: call_api,

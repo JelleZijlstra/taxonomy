@@ -86,32 +86,13 @@ var uiTools = {
 		var items = {};
 		paras.options.forEach(function(option) {
 			items[option] = {name: option};
-		})
+		});
 		$.contextMenu({
 			selector: paras.selector,
 			trigger: 'left',
 			items: items,
 			callback: paras.callback
 		});
-		// var $elt = paras.element;
-		// $elt.attr('contenteditable', 'false');
-		// $elt.html($("<div>").html(paras.text).click(function() {
-		// 	var $ul = $("<ul>").addClass("ui-menu").addClass("ui-widget")
-		// 		.addClass("ui-widget-content").addClass("ui-corner-all")
-		// 		.attr('role', 'menu');
-		// 	$ul.css({
-		// 		'height': $elt.height() + 'px',
-		// 		'width': $elt.width() + 'px',
-		// 		'position': 'absolute',
-		// 	});
-		// 	paras.options.forEach(function(option) {
-		// 		var $li = $("<li>").addClass('ui-menu-item').html(option).click(function() {
-		// 			paras.callback(option, $elt);
-		// 		});
-		// 		$ul.append($li);
-		// 	});
-		// 	$elt.append($ul);
-		// }));
 	},
 	/*
 	 * Close any open dialogs created by uiTools.

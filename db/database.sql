@@ -12,6 +12,7 @@ CREATE TABLE `taxon` (
 	`comments` VARCHAR(65535) DEFAULT NULL,
 	`data` TEXT DEFAULT NULL, -- Arbitrary data in JSON form
 	`age` INT DEFAULT 0 NOT NULL, -- Age class (e, h, extant)
+	`base_name_id` INT UNSIGNED DEFAULT NULL, -- Name that this taxon is based on
 	`is_page_root` BOOL DEFAULT FALSE,
 	PRIMARY KEY(`id`),
 	INDEX(`valid_name`)
@@ -24,7 +25,7 @@ CREATE TABLE `name` (
 	`group` INT NOT NULL, -- Species, genus, family, or higher
 	`status` INT NOT NULL, -- Valid, synonym, or species inquirenda
 	`original_name` VARCHAR(512) DEFAULT NULL,
-	`base_name` VARCHAR(512) NOT NULL,
+	`root_name` VARCHAR(512) NOT NULL,
 	`authority` VARCHAR(1024) DEFAULT NULL,
 	`year` VARCHAR(255) DEFAULT NULL,
 	`page_described` VARCHAR(255) DEFAULT NULL,
@@ -36,6 +37,6 @@ CREATE TABLE `name` (
 	`data` TEXT DEFAULT NULL, -- Arbitrary data in JSON form
 	PRIMARY KEY(`id`),
 	INDEX(`original_name`),
-	INDEX(`base_name`),
+	INDEX(`root_name`),
 	INDEX(`taxon_id`)
 ) ENGINE=INNODB DEFAULT CHARSET=utf8;

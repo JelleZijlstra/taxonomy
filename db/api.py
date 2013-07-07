@@ -29,7 +29,7 @@ def perform_edit(edit):
 		txn = models.Taxon.create(valid_name=data['valid_name'],
 			rank=data['rank'], parent=data['parent'], age=data['age'])
 		nm = models.Name.create(status=STATUS_VALID, taxon=txn,
-			base_name=data['base_name'], group=data['group'])
+			root_name=data['root_name'], group=data['group'])
 		return [{
 			'kind': 'create_pair',
 			'valid_name': data['valid_name'],
@@ -54,8 +54,12 @@ def perform_edit(edit):
 		obj.save()
 		return []
 	elif kind == 'create':
-		model.create(**data)
-		return []
+		mdl = model.create(**data)
+		if table == 'taxon':
+			data = {'kind': 'create', 'valid_name': data['valid_name'], 'taxon': helpers.tree_of_taxon(mdl) }
+		else:
+			data = {'kind': 'create', 'root_name': data['root_name'], 'name': helpers.dict_of_name(mdl) }
+		return [data]
 	else:
 		raise ApiError("Invalid kind: " + kind)
 

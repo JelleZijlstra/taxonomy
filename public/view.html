@@ -32,7 +32,7 @@
 				// default example taxon
 				show_taxon('Gondwanatheria');
 			}
-			$("#save-button").click(taxonomy.save_now);
+			$("#save-button").click(function() { taxonomy.save_now(); });
 		});
 	</script>
 </head>

@@ -151,7 +151,7 @@
 	max-width: 1000px;
 }
 
-.name-group {
+.name-group, .name-status {
 	min-width: 20px;
 	max-width: 20px;
 }
@@ -159,7 +159,7 @@
 	min-width: 200px;
 	max-width: 200px;
 }
-.name-base_name {
+.name-root_name {
 	min-width: 100px;
 	max-width: 100px;
 }
