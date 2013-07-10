@@ -295,6 +295,39 @@ var taxonomy = (function($) {
 			}
 		});
 	};
+	var change_parent = function(id, $place) {
+		var my_name = $place.find('.taxon-valid_name').first().text();
+		get_name({
+			table: 'taxon',
+			text: 'Give new parent for: ' + my_name,
+			success: function(new_parent) {
+				var $np = $(".container-taxon[data-id=" + new_parent.id + "]");
+				$np.find(".children-taxon").first().append($place);
+				changes.push({kind: 'update', id: id, data: {parent: new_parent.id}, table: 'taxon'})
+			}
+		});
+	};
+
+	var get_name = function(paras) {
+		uiTools.ask({
+			title: 'Enter a name',
+			text: paras.text,
+			fields: [
+				{name: "name", type: "text", text: "Name"},
+				{name: "id", type: "hidden", text: ""},
+			],
+			callback: function(data) {
+				var name = data.name;
+				call_api('find_taxon', {valid_name: name}, function(data) {
+					if(data.length === 0) {
+						// invalid taxon
+					} else {
+						paras.success(data[0]);
+					}
+				})
+			},
+		});
+	};
 
 	var reload_editing = function(table) {
 		make_text_editable(table, 'valid_name', 'taxon');
@@ -341,6 +374,12 @@ var taxonomy = (function($) {
 						add_synonym(id, $(this).closest('.row-taxon'));
 					}
 				},
+				'change parent': {
+					name: 'change parent',
+					callback: function() {
+						change_parent(get_id(this, 'taxon'), $(this).closest('.container-taxon'));
+					}
+				}
 			}
 		});
 
