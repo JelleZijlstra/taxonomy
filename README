@@ -13,3 +13,9 @@ The intended structure of this application is as follows:
   application to retrieve information from my bibliographic database program.
 - A set of scripts in Python to import data from the existing spreadsheets
   into the database.
+
+Dependencies:
+- MySQL
+- peewee (ORM)
+- unoconv (conversion script)
+- odfpy (ODS manipulation)
