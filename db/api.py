@@ -79,6 +79,14 @@ def api(request):
 		except IndexError:
 			return serve_error("Unrecognized taxon: " + taxon)
 		return serve_ok(helpers.tree_of_taxon(taxon_obj, include_root=True))
+	elif action == 'find_taxon':
+		try:
+			valid_name = request.params['valid_name']
+		except KeyError:
+			return serve_error("Required parameter not provided: valid_name")
+		results = models.Taxon.filter(models.Taxon.valid_name == valid_name)
+		objs = [helpers.dict_of_taxon(txn) for txn in results]
+		return serve_ok(objs)
 	elif action == 'edit':
 		try:
 			changes = json.loads(request.params['changes'])
