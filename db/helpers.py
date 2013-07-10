@@ -91,8 +91,8 @@ def dict_of_name(name):
 			result['type']['name'] = name.type.root_name
 	return result
 
-def tree_of_taxon(taxon, include_root=False):
-	result = {
+def dict_of_taxon(taxon):
+	return {
 		'id': taxon.id,
 		'valid_name': taxon.valid_name,
 		'rank_numeric': taxon.rank,
@@ -103,6 +103,9 @@ def tree_of_taxon(taxon, include_root=False):
 		'age_numeric': taxon.age,
 		'age': string_of_age(taxon.age)
 	}
+
+def tree_of_taxon(taxon, include_root=False):
+	result = dict_of_taxon(taxon)
 	if include_root or not taxon.is_page_root:
 		for name in taxon.names:
 			result['names'].append(dict_of_name(name))
