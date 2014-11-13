@@ -9,6 +9,7 @@
 		{"constant": "SUBGENUS", "value": 15, "name": "subgenus", "abbreviation": "sgen"},
 		{"constant": "GENUS", "value": 20, "name": "genus", "abbreviation": "gen"},
 		{"constant": "DIVISION", "value": 22, "name": "division", "abbreviation": "div"},
+		{"constant": "INFRATRIBE", "value": 24, "name": "infratribe", "abbreviation": "itr"},
 		{"constant": "SUBTRIBE", "value": 25, "name": "subtribe", "abbreviation": "str"},
 		{"constant": "TRIBE", "value": 30, "name": "tribe", "abbreviation": "tr"},
 		{"constant": "SUBFAMILY", "value": 35, "name": "subfamily", "abbreviation": "sfam"},
@@ -42,7 +43,10 @@
 		{"constant": "STATUS_VALID", "value": 0, "name": "valid", "abbreviation": "v"},
 		{"constant": "STATUS_SYNONYM", "value": 1, "name": "synonym", "abbreviation": "s"},
 		// nomen dubium, species inquirenda, etcetera
-		{"constant": "STATUS_DUBIOUS", "value": 2, "name": "dubious", "abbreviation": "d"}
+		{"constant": "STATUS_DUBIOUS", "value": 2, "name": "dubious", "abbreviation": "d"},
+		// alternatives
+		{"constant": "STATUS_DUBIOUS", "value": 2, "name": "dubious", "abbreviation": "u"},
+		{"constant": "STATUS_SYNONYM", "value": 1, "name": "synonym", "abbreviation": "y"}
 	],
 	"age": [
 		// Age classes

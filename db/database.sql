@@ -15,7 +15,8 @@ CREATE TABLE `taxon` (
 	`base_name_id` INT UNSIGNED DEFAULT NULL, -- Name that this taxon is based on
 	`is_page_root` BOOL DEFAULT FALSE,
 	PRIMARY KEY(`id`),
-	INDEX(`valid_name`)
+	INDEX(`valid_name`),
+	INDEX(`base_name_id`)
 ) ENGINE=INNODB DEFAULT CHARSET=utf8;
 
 DROP TABLE IF EXISTS `name`;
@@ -30,6 +31,8 @@ CREATE TABLE `name` (
 	`year` VARCHAR(255) DEFAULT NULL,
 	`page_described` VARCHAR(255) DEFAULT NULL,
 	`original_citation` VARCHAR(512) DEFAULT NULL,
+	`verbatim_type` VARCHAR(1024) DEFAULT NULL,
+	`verbatim_citation` VARCHAR(1024) DEFAULT NULL,
 	`type_id` INT UNSIGNED DEFAULT NULL, -- ID of type genus/species for family, genus group
 	`nomenclature_comments` VARCHAR(65535) DEFAULT NULL,
 	`taxonomy_comments` VARCHAR(65535) DEFAULT NULL,

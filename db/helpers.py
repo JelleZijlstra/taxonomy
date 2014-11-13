@@ -2,27 +2,29 @@
 
 from operator import itemgetter
 import re
+import json
 
 from constants import *
 
 SPECIES_RANKS = [SUBSPECIES, SPECIES, SPECIES_GROUP]
 GENUS_RANKS = [SUBGENUS, GENUS]
 FAMILY_RANKS = [SUBTRIBE, TRIBE, SUBFAMILY, FAMILY, SUPERFAMILY]
-HIGH_RANKS = [43, DIVISION, PARVORDER, INFRAORDER, SUBORDER, ORDER, SUPERORDER, SUBCOHORT, COHORT, SUPERCOHORT, INFRACLASS, SUBCLASS, CLASS, UNRANKED]
+HIGH_RANKS = [ROOT, 43, DIVISION, PARVORDER, INFRAORDER, SUBORDER, ORDER, SUPERORDER, SUBCOHORT, COHORT, SUPERCOHORT, INFRACLASS, SUBCLASS, CLASS, UNRANKED]
 
 def group_of_rank(rank):
 	if rank in SPECIES_RANKS:
 		return GROUP_SPECIES
 	elif rank in GENUS_RANKS:
 		return GROUP_GENUS
-	elif rank in FAMILY_RANKS:
+	elif rank in FAMILY_RANKS or rank == 34 or rank == 24:
 		return GROUP_FAMILY
-	elif rank in HIGH_RANKS:
+	elif rank in HIGH_RANKS or rank > SUPERFAMILY:
 		return GROUP_HIGH
 	else:
 		raise Exception("Unrecognized rank: " + str(rank))
 
 SUFFIXES = {
+	INFRATRIBE: 'ita',
 	SUBTRIBE: 'ina',
 	TRIBE: 'ini',
 	SUBFAMILY: 'inae',
@@ -33,16 +35,78 @@ SUFFIXES = {
 def suffix_of_rank(rank):
 	return SUFFIXES[rank]
 
-def strip_rank(name, rank):
-	suffix = suffix_of_rank(rank)
+_RANKS = {
+	'root': ROOT,
+	'Unnamed rank': ROOT,
+	'Classis': CLASS,
+	'Class': CLASS,
+	'Subclassis': SUBCLASS,
+	'Subclass': SUBCLASS,
+	'Infraclassis': INFRACLASS,
+	'Infraclass': INFRACLASS,
+	'Superlegion': 89,
+	'Legion': 88,
+	'Sublegion': 87,
+	'Supracohors': SUPERCOHORT,
+	'Supercohors': SUPERCOHORT,
+	'Supercohort': SUPERCOHORT,
+	'Cohors': COHORT,
+	'Cohort': COHORT,
+	'Subcohors': SUBCOHORT,
+	'Magnorder': 72,
+	'Grandorder': 71,
+	'Superordo': SUPERORDER,
+	'Supraordo': SUPERORDER,
+	'Superorder': SUPERORDER,
+	'Mirorder': 69,
+	'Ordo': ORDER,
+	'Order': ORDER,
+	'Subordo': SUBORDER,
+	'Suborder': SUBORDER,
+	'Infraordo': INFRAORDER,
+	'Infraorder': INFRAORDER,
+	'Parvordo': PARVORDER,
+	'Parvorder': PARVORDER,
+	'Superfamilia': SUPERFAMILY,
+	'Suprafamilia': SUPERFAMILY,
+	'Superfamily': SUPERFAMILY,
+	'Clade': 43, # Hack to allow for Eumuroida and Spalacodonta
+	'Familia': FAMILY,
+	'Family': FAMILY,
+	'Subfamilia': SUBFAMILY,
+	'Subfamily': SUBFAMILY,
+	'Infrafamily': 34,
+	'Tribus': TRIBE,
+	'Tribe': TRIBE,
+	'Subtribus': SUBTRIBE,
+	'Subtribe': SUBTRIBE,
+	'Infratribe': INFRATRIBE,
+	'Division': DIVISION,
+	'Genus': GENUS,
+	'Subgenus': SUBGENUS,
+}
+
+def rank_of_string(s):
+	try:
+		return _RANKS[s]
+	except KeyError:
+		raise Exception("Unknown rank: " + s)
+
+def strip_rank(name, rank, quiet=False):
 	def strip_of_suffix(name, suffix):
 		if re.search(suffix + "$", name):
 			return re.sub(suffix + "$", "", name)
 		else:
 			return None
-	res = strip_of_suffix(name, suffix)
+
+	try:
+		suffix = suffix_of_rank(rank)
+		res = strip_of_suffix(name, suffix)
+	except KeyError:
+		res = None
 	if res is None:
-		print("Warning: Cannot find suffix -" + suffix + " on name " + name)
+		if not quiet:
+			print("Warning: Cannot find suffix -" + suffix + " on name " + name)
 		# Loop over other possibilities
 		for rank in SUFFIXES:
 			res = strip_of_suffix(name, SUFFIXES[rank])
@@ -60,7 +124,7 @@ def species_of_subspecies(ssp):
 	return re.sub(r" ([a-z]+)$", r"", ssp)
 
 def is_nominate_subspecies(ssp):
-	parts = re.sub(r' \(([A-Za-z"\- ]+)\)', '', ssp).split(' ')
+	parts = re.sub(r' \(([A-Za-z"\-\. ]+)\)', '', ssp).split(' ')
 	if len(parts) != 3:
 		print parts
 		raise Exception("Invalid subspecies name: " + ssp)
@@ -114,3 +178,20 @@ def tree_of_taxon(taxon, include_root=False):
 			result['children'].append(tree_of_taxon(child))
 		result['children'].sort(key=itemgetter('rank_numeric', 'valid_name'))
 	return result
+
+def remove_null(dict):
+	out = {}
+	for k, v in dict.items():
+		if v is not None:
+			out[k] = v
+	return out
+
+def fix_data(data):
+	if data:
+		data = json.dumps(remove_null(json.loads(data)))
+		if data == '{}':
+			return None
+		else:
+			return data
+	else:
+		return None

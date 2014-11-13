@@ -6,6 +6,8 @@ import os.path
 import re
 import sys
 
+abbreviations = {}
+
 def _strip_comments(json):
 	return re.sub(r'//[^\n]*', '', json)
 
@@ -19,12 +21,16 @@ def _build():
 	ns = sys.modules[__name__]
 	for key in data:
 		constant_lookup[key] = {}
+		abbreviations[key] = {}
 		for entry in data[key]:
 			setattr(ns, entry["constant"], entry["value"])
 			constant_lookup[key][entry["value"]] = entry
+			abbreviations[key][entry["abbreviation"]] = entry["value"]
 		# Some trickery to capture the key variable
 		def set_key(key):
 			setattr(ns, "string_of_" + key, lambda c: constant_lookup[key][c]["name"])
+			setattr(ns, key + "_of_abbrev", lambda a: abbreviations[key][a])
+			setattr(ns, "abbrev_of_" + key, lambda c: constant_lookup[key][c]["abbreviation"])
 		set_key(key)
 
 	with open(_my_dir() + "/../public/js/constants.js", "w") as js_file:

@@ -14,7 +14,7 @@ import sys
 import traceback
 
 def create_root():
-	Taxon.create(rank=ROOT, valid_name='root')
+	Taxon.create(rank=ROOT, valid_name='root', is_page_root=True)
 
 def remove_null(dict):
 	out = {}
@@ -22,37 +22,6 @@ def remove_null(dict):
 		if v is not None:
 			out[k] = v
 	return out
-
-HT_RANKS = {
-	'Classis': CLASS,
-	'Subclassis': SUBCLASS,
-	'Infraclassis': INFRACLASS,
-	'Supracohors': SUPERCOHORT,
-	'Supercohors': SUPERCOHORT,
-	'Supercohort': SUPERCOHORT,
-	'Cohors': COHORT,
-	'Subcohors': SUBCOHORT,
-	'Superordo': SUPERORDER,
-	'Supraordo': SUPERORDER,
-	'Ordo': ORDER,
-	'Subordo': SUBORDER,
-	'Suborder': SUBORDER,
-	'Infraordo': INFRAORDER,
-	'Infraorder': INFRAORDER,
-	'Parvordo': PARVORDER,
-	'Superfamilia': SUPERFAMILY,
-	'Suprafamilia': SUPERFAMILY,
-	'Superfamily': SUPERFAMILY,
-	'Clade': 43, # Hack to allow for Eumuroida and Spalacodonta
-	'Familia': FAMILY,
-	'Family': FAMILY,
-	'Subfamilia': SUBFAMILY,
-	'Subfamily': SUBFAMILY,
-	'Tribus': TRIBE,
-	'Subtribus': SUBTRIBE,
-	'Subtribe': SUBTRIBE,
-	'Division': DIVISION,
-}
 
 KIND_RANKS = {
 	'gen': GENUS,
@@ -84,16 +53,16 @@ def parse_row(row):
 		'year': row[19],
 		'page_described': row[20],
 		'other_comments': row[30],
+		'verbatim_type': row[21],
+		'verbatim_citation': row[24],
 		'data': {
 			'column_K': row[10],
 			'column_L': row[11],
 			'column_M': row[12],
 			'column_N': row[13],
 			'parentheses': row[18],
-			'type': row[21],
 			'type_specimen': row[22],
 			'distribution': row[23],
-			'reference': row[24],
 			'original_name_Y': row[25],
 			'etymology': row[26],
 			'karyo_2n': row[27],
@@ -156,9 +125,7 @@ def parse_row(row):
 			valid_name = result['valid_name']
 		else:
 			rank, valid_name = result['valid_name'].split(' ', 1)
-		if rank not in HT_RANKS:
-			raise Exception("Unknown HT rank: " + rank + str(result))
-		result['rank'] = HT_RANKS[rank]
+		result['rank'] = db.helpers.string_of_rank(rank)
 		result['valid_name'] = valid_name
 		result['status'] = STATUS_VALID
 	elif result['kind'] in KIND_RANKS:
@@ -200,12 +167,14 @@ def read_file(filename):
 		reader = csv.reader(file)
 		first_line = reader.next()
 
+		# maintain stack of taxa that are parents of the current taxon
+		stack = []
 		# name of parent of root taxon should be in cell A1
 		root_name = first_line[0]
-		root_parent = Taxon.filter(Taxon.valid_name == root_name)[0]
+		if root_name != '':
+			root_parent = Taxon.filter(Taxon.valid_name == root_name)[0]
+			stack.append(root_parent)
 
-		# maintain stack of taxa that are parents of the current taxon
-		stack = [root_parent]
 		# current valid taxon (for synonyms)
 		current_valid = None
 		# whether current taxon should be marked as root of a page
@@ -231,12 +200,16 @@ def read_file(filename):
 				if data['status'] == STATUS_VALID:
 					# get stuff off the stack
 					rank = data['rank']
-					# TODO: make this somehow unranked-clade-aware
-					while rank >= stack[-1].rank:
-						stack.pop()
-					# create new Taxon
-					current_valid = Taxon.create(valid_name=data['valid_name'], age=data['age'],
-						rank=data['rank'], parent=stack[-1], is_page_root=is_page_root)
+					if rank == ROOT:
+						current_valid = Taxon.create(valid_name=data['valid_name'], age=data['age'],
+							rank=data['rank'], is_page_root=True)
+					else:
+						# TODO: make this somehow unranked-clade-aware
+						while rank >= stack[-1].rank:
+							stack.pop()
+						# create new Taxon
+						current_valid = Taxon.create(valid_name=data['valid_name'], age=data['age'],
+							rank=data['rank'], parent=stack[-1], is_page_root=is_page_root)
 					if is_page_root:
 						is_page_root = False
 					stack.append(current_valid)
