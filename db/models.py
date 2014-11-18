@@ -11,8 +11,12 @@ from . import settings
 database = MySQLDatabase(settings.DATABASE, user=settings.USER, passwd=settings.PASSWD, charset='utf8')
 
 class BaseModel(Model):
-    class Meta:
+    class Meta(object):
         database = database
+
+    def __repr__(self):
+        return "%s(%r)" % (self.__class__.__name__, self.__dict__)
+
 
 class Taxon(BaseModel):
     rank = IntegerField()
@@ -24,7 +28,7 @@ class Taxon(BaseModel):
     is_page_root = BooleanField(default=False)
     base_name_id = IntegerField(null=True)
 
-    class Meta:
+    class Meta(object):
         db_table = 'taxon'
 
     def group(self):
@@ -95,8 +99,6 @@ class Taxon(BaseModel):
     def __str__(self):
         return self.valid_name
 
-    def __repr__(self):
-        return "Taxon(%r)" % self.__dict__
 
 class Name(BaseModel):
     root_name = CharField()
@@ -116,7 +118,7 @@ class Name(BaseModel):
     verbatim_citation = CharField(null=True)
     year = CharField(null=True)
 
-    class Meta:
+    class Meta(object):
         db_table = 'name'
 
     def add_additional_data(self, new_data):
@@ -148,19 +150,29 @@ class Name(BaseModel):
         out += " (= " + self.taxon.valid_name + ")"
         return out
 
+    def __str__(self):
+        return self.description()
+
+    def __repr__(self):
+        return str(self)
+
     @classmethod
-    def find_name(cls, name, rank, authority=None, year=None):
+    def find_name(cls, name, rank=None, authority=None, year=None):
         '''Find a Name object corresponding to the given information'''
-        group = helpers.group_of_rank(rank)
-        if group == constants.GROUP_FAMILY:
-            root_name = helpers.strip_rank(name, rank, quiet=True)
+        if rank is None:
+            group = None
+            initial_lst = cls.select().where(cls.root_name == name)
         else:
-            root_name = name
-        initial_lst = cls.select().where(cls.root_name == root_name, cls.group == group)
+            group = helpers.group_of_rank(rank)
+            if group == constants.GROUP_FAMILY:
+                root_name = helpers.strip_rank(name, rank, quiet=True)
+            else:
+                root_name = name
+            initial_lst = cls.select().where(cls.root_name == root_name, cls.group == group)
         for nm in initial_lst:
-            if authority and nm.authority and nm.authority != authority:
+            if authority is not None and nm.authority and nm.authority != authority:
                 continue
-            if year and nm.year and nm.year != year:
+            if year is not None and nm.year and nm.year != year:
                 continue
             if group == constants.GROUP_FAMILY:
                 if nm.original_name and nm.original_name != name and initial_lst.count() > 1:
