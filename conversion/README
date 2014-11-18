@@ -2,3 +2,5 @@ Tools for converting the database in and out of MySQL.
 
 Workflow:
 - Convert spreadsheets to CSV files with convert.sh (or convert_one.sh for single files)
+- Import the spreadsheets into the database with reimport.sh
+- Export back to spreadsheets with export.py
