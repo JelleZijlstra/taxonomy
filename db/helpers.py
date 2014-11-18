@@ -4,7 +4,7 @@ from operator import itemgetter
 import re
 import json
 
-from constants import *
+from .constants import *
 
 SPECIES_RANKS = [SUBSPECIES, SPECIES, SPECIES_GROUP]
 GENUS_RANKS = [SUBGENUS, GENUS]
@@ -126,7 +126,7 @@ def species_of_subspecies(ssp):
 def is_nominate_subspecies(ssp):
 	parts = re.sub(r' \(([A-Za-z"\-\. ]+)\)', '', ssp).split(' ')
 	if len(parts) != 3:
-		print parts
+		print(parts)
 		raise Exception("Invalid subspecies name: " + ssp)
 	return parts[1] == parts[2]
 

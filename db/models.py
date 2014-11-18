@@ -4,9 +4,9 @@ from peewee import *
 import json
 import operator
 
-import constants
-import helpers
-import settings
+from . import constants
+from . import helpers
+from . import settings
 
 database = MySQLDatabase(settings.DATABASE, user=settings.USER, passwd=settings.PASSWD, charset='utf8')
 
