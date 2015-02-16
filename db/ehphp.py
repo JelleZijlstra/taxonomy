@@ -13,4 +13,7 @@ def call_ehphp(cmd, args):
 		'format': 'json',
 	}
 	req = requests.post(URL, data=params)
-	return req.json()
+	try:
+		return req.json()
+	except ValueError:  # invalid JSON
+		raise Exception(req.read())

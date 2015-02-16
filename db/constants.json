@@ -26,6 +26,16 @@
 		{"constant": "INFRACLASS", "value": 90, "name": "infraclass", "abbreviation": "icl"},
 		{"constant": "SUBCLASS", "value": 95, "name": "subclass", "abbreviation": "scl"},
 		{"constant": "CLASS", "value": 100, "name": "class", "abbreviation": "cl"},
+		{"constant": "SUPERCLASS", "value": 105, "name": "superclass", "abbreviation": "spcl"},
+		{"constant": "INFRAPHYLUM", "value": 110, "name": "infraphylum", "abbreviation": "iphy"},
+		{"constant": "SUBPHYLUM", "value": 115, "name": "subphylum", "abbreviation": "sphy"},
+		{"constant": "PHYLUM", "value": 120, "name": "phylum", "abbreviation": "phy"},
+		{"constant": "SUPERPHYLUM", "value": 125, "name": "superphylum", "abbreviation": "spphy"},
+		{"constant": "INFRAKINGDOM", "value": 130, "name": "infrakingdom", "abbreviation": "iki"},
+		{"constant": "SUBKINGDOM", "value": 135, "name": "subkingdom", "abbreviation": "ski"},
+		{"constant": "KINGDOM", "value": 140, "name": "kingdom", "abbreviation": "ki"},
+		{"constant": "SUPERKINGDOM", "value": 145, "name": "superkingdom", "abbreviation": "spki"},
+		{"constant": "DOMAIN", "value": 150, "name": "domain", "abbreviation": "dom"},
 		{"constant": "ROOT", "value": 200, "name": "root", "abbreviation": "rt"},
 		// unranked groups of any kind
 		{"constant": "UNRANKED", "value": 205, "name": "unranked", "abbreviation": "unr"},
@@ -52,6 +62,7 @@
 		// Age classes
 		{"constant": "AGE_EXTANT", "value": 0, "name": "extant", "abbreviation": ""},
 		{"constant": "AGE_HOLOCENE", "value": 1, "name": "Holocene", "abbreviation": "h"},
-		{"constant": "AGE_FOSSIL", "value": 2, "name": "fossil", "abbreviation": "e"}
+		{"constant": "AGE_FOSSIL", "value": 2, "name": "fossil", "abbreviation": "e"},
+		{"constant": "AGE_ICHNO", "value": 3, "name": "ichnotaxon", "abbreviation": "i"}
 	]
 }

@@ -91,7 +91,8 @@ def parse_row(row):
 	if result['age'] is None:
 		result['age'] = AGE_EXTANT
 	else:
-		result['age'] = abbreviations['age'][result['age']]
+		# it's hard to convince LibreOffice not to convert "i" into "I", so just accept both here
+		result['age'] = abbreviations['age'][result['age'].lower()]
 
 	return result
 

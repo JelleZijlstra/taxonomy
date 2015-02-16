@@ -7,7 +7,7 @@ DROP TABLE IF EXISTS `taxon`;
 CREATE TABLE `taxon` (
 	`id` INT UNSIGNED AUTO_INCREMENT,
 	`parent_id` INT UNSIGNED DEFAULT NULL,
-	`valid_name` VARCHAR(512) NOT NULL, -- Current valid name
+	`valid_name` VARCHAR(512) DEFAULT NULL, -- Current valid name
 	`rank` INT NOT NULL, -- See constants.py
 	`comments` VARCHAR(65535) DEFAULT NULL,
 	`data` TEXT DEFAULT NULL, -- Arbitrary data in JSON form
