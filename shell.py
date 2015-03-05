@@ -1,4 +1,6 @@
 import db.constants
+import db.definition
+import db.detection
 import db.helpers
 import db.models
 from db.models import Name, Taxon
@@ -18,12 +20,31 @@ class _ShellNamespace(dict):
             # make names accessible
             return taxon(key)
 
+    def keys(self):
+        keys = set(super(_ShellNamespace, self).keys())
+        keys |= set(dir(__builtins__))
+        if not hasattr(self, '_names'):
+            self._names = set(taxon.valid_name.replace(' ', '_') for taxon in Taxon.select(Taxon.valid_name))
+        return keys | self._names
+
+    def __delitem__(self, key):
+        if super(_ShellNamespace, self).__contains__(key):
+            super(_ShellNamespace, self).__delitem__(key)
+
+    def clear_cache(self):
+        del self._names
+
 
 ns = _ShellNamespace({
     'Taxon': Taxon,
     'Name': Name,
     'constants': db.constants,
     'helpers': db.helpers,
+    'definition': db.definition,
+    'Branch': db.definition.Branch,
+    'Node': db.definition.Node,
+    'Apomorphy': db.definition.Apomorphy,
+    'Other': db.definition.Other,
 })
 ns.update(db.constants.__dict__)
 
@@ -40,6 +61,16 @@ def command(fn):
     return wrapper
 
 
+# Shell internal commands
+
+@command
+def clear_cache():
+    """Clears the autocomplete cache."""
+    ns.clear_cache()
+
+
+# Lookup
+
 @command
 def taxon(name):
     """Finds a taxon with the given name."""
@@ -55,6 +86,8 @@ def n(name):
     """Finds names with the given root name or original name."""
     return list(Name.filter((Name.root_name == name) | (Name.original_name == name)))
 
+
+# Maintenance
 
 @command
 def add_original_names():
@@ -85,10 +118,15 @@ def add_page_described():
 
 @command
 def add_types():
-    for name in Name.filter(Name.original_citation != None, Name.year > '1930').order_by(Name.original_citation):
+    for name in Name.filter(Name.original_citation != None, Name.type >> None, Name.year > '1930', Name.group == db.constants.GROUP_GENUS).order_by(Name.original_citation):
+        name.taxon.display(full=True, max_depth=1)
         message = 'Name %s is missing type, but has original citation {%s}' % \
             (name.description(), name.original_citation)
-        print(message)
+        verbatim_type = getinput.get_line(
+            message, handlers={'o': lambda _: name.open_description()}, should_stop=lambda line: line == 's'
+        )
+        if verbatim_type is not None:
+            name.detect_and_set_type(verbatim_type, verbose=True)
 
 
 @command
@@ -99,6 +137,116 @@ def find_rank_mismatch():
             print("Group mismatch for %s: rank %s but group %s" % \
                 (taxon, db.constants.string_of_rank(taxon.rank), db.constants.string_of_group(taxon.base_name.group)))
 
+
+@command
+def detect_types(max_count=None, verbose=False):
+    """Converts verbatim_types into references to the actual names."""
+    count = 0
+    successful_count = 0
+    group = (db.constants.GROUP_FAMILY, db.constants.GROUP_GENUS)
+    for name in Name.filter(Name.verbatim_type != None, Name.type >> None, Name.group << group).limit(max_count):
+        count += 1
+        if name.detect_and_set_type(verbatim_type=name.verbatim_type, verbose=verbose):
+            successful_count += 1
+    print("Success: %d/%d" % (successful_count, count))
+
+
+@command
+def detect_types_from_root_names(max_count=None):
+    """Detects types for family-group names on the basis of the root_name."""
+    def detect_from_root_name(name, root_name):
+        candidates = Name.filter(Name.group == db.constants.GROUP_GENUS, (Name.stem == root_name) | (Name.stem == root_name + 'i'))
+        candidates = list(filter(lambda c: c.taxon.is_child_of(name.taxon), candidates))
+        if len(candidates) == 1:
+            print("Detected type for name %s: %s" % (name, candidates[0]))
+            name.type = candidates[0]
+            name.save()
+            return True
+        else:
+            return False
+
+    count = 0
+    successful_count = 0
+    for name in Name.filter(Name.group == db.constants.GROUP_FAMILY, Name.type >> None).limit(max_count):
+        if name.is_unavailable():
+            continue
+        count += 1
+        if detect_from_root_name(name, name.root_name):
+            successful_count += 1
+        else:
+            for stripped in db.helpers.name_with_suffixes_removed(name.root_name):
+                if detect_from_root_name(name, stripped):
+                    successful_count += 1
+                    break
+            else:
+                print("Could not detect type for name %s (root_name = %s)" % (name, name.root_name))
+    print("Success: %d/%d" % (successful_count, count))
+
+
+@command
+def endswith(end):
+    return list(Name.filter(Name.group == db.constants.GROUP_GENUS, Name.root_name % ('%%%s' % end)))
+
+
+@command
+def detect_stems():
+    for name in Name.filter(Name.group == db.constants.GROUP_GENUS, Name.stem >> None):
+        inferred = db.detection.detect_stem_and_gender(name.root_name)
+        if inferred is None:
+            continue
+        if not inferred.confident:
+            print('%s: stem %s, gender %s' % (name.description(), inferred.stem, inferred.gender))
+            if not getinput.yes_no('Is this correct? '):
+                continue
+        print("Inferred stem and gender for %s: %s, %s" % (name, inferred.stem, inferred.gender))
+        name.stem = inferred.stem
+        name.gender = inferred.gender
+        name.save()
+
+
+@command
+def root_name_mismatch():
+    for name in Name.filter(Name.group == db.constants.GROUP_FAMILY, ~(Name.type >> None)):
+        if name.is_unavailable():
+            continue
+        stem_name = name.type.stem
+        if stem_name is None:
+            continue
+        if name.root_name == stem_name:
+            continue
+        for stripped in db.helpers.name_with_suffixes_removed(name.root_name):
+            if stripped == stem_name or stripped + 'i' == stem_name:
+                print('Autocorrecting root name: %s -> %s' % (name.root_name, stem_name))
+                name.root_name = stem_name
+                name.save()
+                break
+        if name.root_name != stem_name:
+            print('Stem mismatch for %s: %s vs. %s' % (name, name.root_name, stem_name))
+
+
+@command
+def stem_statistics():
+    stem = Name.filter(Name.group == db.constants.GROUP_GENUS, ~(Name.stem >> None)).count()
+    gender = Name.filter(Name.group == db.constants.GROUP_GENUS, ~(Name.gender >> None)).count()
+    total = Name.filter(Name.group == db.constants.GROUP_GENUS).count()
+    print("Genus-group names:")
+    print("stem: %s/%s (%.02f%%)" % (stem, total, stem / total * 100))
+    print("gender: %s/%s (%.02f%%)" % (gender, total, gender / total * 100))
+    print("Family-group names:")
+    total = Name.filter(Name.group == db.constants.GROUP_FAMILY).count()
+    typ = Name.filter(Name.group == db.constants.GROUP_FAMILY, ~(Name.type >> None)).count()
+    print("type: %s/%s (%.02f%%)" % (typ, total, typ / total * 100))
+
+
+@command
+def name_mismatches():
+    for taxon in Taxon.select():
+        computed = taxon.compute_valid_name()
+        if taxon.valid_name != computed:
+            print("Mismatch for %s: %s vs. %s" % (taxon, taxon.valid_name, computed))
+
+
+# Statistics
 
 @command
 def print_percentages():
@@ -136,26 +284,8 @@ def print_percentages():
 
 
 @command
-def detect_types(max_count=None):
-    """Converts verbatim_types into references to the actual names."""
-    count = 0
-    successful_count = 0
-    for name in Name.filter(Name.verbatim_type != None):
-        if name.group in (db.constants.GROUP_HIGH, db.constants.GROUP_SPECIES):
-            continue
-        if max_count is not None and count >= max_count:
-            break
-        count += 1
-        candidates = name.detect_type()
-        if candidates is None or len(candidates) == 0:
-            print("Verbatim type %s for name %s could not be recognized" % (name.verbatim_type, name))
-        elif len(candidates) == 1:
-            successful_count += 1
-            name.type = candidates[0]
-            name.save()
-        else:
-            print("Verbatim type %s for name %s yielded multiple possible names: %s" % (name.verbatim_type, name, candidates))
-    print("Success: %d/%d" % (successful_count, count))
+def bad_base_names():
+    return  list(Taxon.raw('SELECT * FROM taxon WHERE base_name_id NOT IN (SELECT id FROM name)'))
 
 
 def run_shell():

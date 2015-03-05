@@ -36,6 +36,12 @@ SUFFIXES = {
     SUPERFAMILY: 'oidea'
 }
 
+def name_with_suffixes_removed(name):
+    suffixes = list(SUFFIXES.values()) + ['ida', 'oidae', 'i', 'a']
+    for suffix in suffixes:
+        if name.endswith(suffix):
+            yield re.sub(r'%s$' % suffix, '', name)
+
 def suffix_of_rank(rank):
     return SUFFIXES[rank]
 
@@ -208,3 +214,40 @@ def fix_data(data):
             return data
     else:
         return None
+
+
+def convert_gender(name, gender):
+    name = _canonicalize_gender(name)
+    if gender == Gender.masculine:
+        return name
+    elif gender == Gender.feminine:
+        # TODO this will fail occasionally
+        if name.endswith('us'):
+            return re.sub(r'us$', 'a', name)
+        elif name.endswith('er'):
+            return name + 'a'
+        else:
+            return name
+    elif gender == Gender.neuter:
+        # should really only be ensis but let's be broader
+        if name.endswith('is'):
+            return re.sub(r'is$', 'e', name)
+        elif name.endswith('us'):
+            return re.sub(r'us$', 'um', name)
+        else:
+            return name
+
+
+def _canonicalize_gender(name):
+    if name.endswith('e'):
+        return re.sub(r'e$', 'is', name)
+    elif name.endswith('era'):
+        return name[:-1]
+    elif name.endswith('a'):
+        # TODO this will have a boatload of false positives
+        return re.sub(r'a$', 'us', name)
+    elif name.endswith('um'):
+        # TODO this will have a boatload of false positives
+        return re.sub(r'um$', 'us', name)
+    else:
+        return name

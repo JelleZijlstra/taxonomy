@@ -38,6 +38,9 @@ CREATE TABLE `name` (
 	`taxonomy_comments` VARCHAR(65535) DEFAULT NULL,
 	`other_comments` VARCHAR(65535) DEFAULT NULL,
 	`data` TEXT DEFAULT NULL, -- Arbitrary data in JSON form
+	`stem` VARCHAR(512) DEFAULT NULL,
+	`gender` TINYINT UNSIGNED DEFAULT NULL,
+	`definition` VARCHAR(1024) DEFAULT NULL,
 	PRIMARY KEY(`id`),
 	INDEX(`original_name`),
 	INDEX(`root_name`),

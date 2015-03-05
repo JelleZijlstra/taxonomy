@@ -1,12 +1,20 @@
 '''Script to generate Python functions and constants from the constants.json file.
 This performs some slightly evil manipulation of the module namespace.'''
 
+import enum
 import json
 import os.path
 import re
 import sys
 
 abbreviations = {}
+
+
+class Gender(enum.IntEnum):
+	masculine = 0
+	feminine = 1
+	neuter = 2
+
 
 def _strip_comments(json):
 	return re.sub(r'//[^\n]*', '', json)

@@ -15,6 +15,7 @@ import warnings
 # warnings.filterwarnings('error')
 
 from . import constants
+from . import definition
 from . import ehphp
 from . import helpers
 from . import settings
@@ -235,6 +236,34 @@ class Taxon(BaseModel):
         self.save()
         return result
 
+    def from_paper(self, rank, name, paper, page_described=None, **override_kwargs):
+        authority, year = ehphp.call_ehphp('taxonomicAuthority', [paper])
+        result = self.add(
+            rank=rank, name=name, original_citation=paper, page_described=page_described,
+            original_name=name, authority=authority, year=year, parent=self,
+        )
+        result.s(**override_kwargs)
+        return result
+
+    def add_nominate(self):
+        if self.rank == constants.SPECIES:
+            rank = constants.SUBSPECIES
+        elif self.rank == constants.GENUS:
+            rank = constants.SUBGENUS
+        elif self.rank == constants.TRIBE:
+            rank = constants.SUBTRIBE
+        elif self.rank == constants.SUBFAMILY:
+            rank = constants.TRIBE
+        elif self.rank == constants.FAMILY:
+            rank = constants.FAMILY
+        else:
+            assert False, 'Cannot add nominate subtaxon of %s of rank %s' % (self, helpers.string_of_rank(self.rank))
+
+        taxon = Taxon.create(age=self.age, rank=rank, parent=self)
+        taxon.base_name = self.base_name
+        taxon.recompute_name()
+        return taxon
+
     def syn(self, name=None, **kwargs):
         """Find a synonym matching the given arguments."""
         if name is not None:
@@ -276,6 +305,13 @@ class Taxon(BaseModel):
                     species = self.parent_of_rank(constants.SPECIES)
                     return '%s %s %s' % (genus.base_name.root_name, species.base_name.root_name, name.root_name)
 
+    def recompute_name(self):
+        new_name = self.compute_valid_name()
+        if new_name != self.valid_name:
+            print('Changing valid name: %s -> %s' % (self.valid_name, new_name))
+            self.valid_name = new_name
+            self.save()
+
     def synonymize(self, to_taxon):
         if self.comments is not None:
             print("Warning: removing comments: %s" % self.comments)
@@ -287,6 +323,23 @@ class Taxon(BaseModel):
         for name in self.names:
             name.taxon = to_taxon
         self.delete_instance()
+
+    def make_species_group(self):
+        if self.parent.rank == constants.SPECIES_GROUP:
+            parent = self.parent.parent
+        else:
+            parent = self.parent
+        new_taxon = Taxon.create(rank=constants.SPECIES_GROUP, age=self.age, parent=parent)
+        new_taxon.base_name = self.base_name
+        new_taxon.recompute_name()
+        self.parent = new_taxon
+        self.save()
+        return new_taxon
+
+    def run_on_self_and_children(self, callback):
+        callback(self)
+        for child in self.children:
+            child.run_on_self_and_children(callback)
 
     def remove(self):
         if self.children.count() != 0:
@@ -313,6 +366,16 @@ class Taxon(BaseModel):
         else:
             raise Name.DoesNotExist("Candidates: {}".format(candidates))
 
+    def __dir__(self):
+        result = set(super(Model, self).__dir__())
+        names = self.sorted_names()
+        result |= set(name.original_name for name in names)
+        result |= set(name.root_name for name in names)
+        result = [name for name in result if name is not None and ' ' not in name]
+        return result
+
+definition.taxon_cls = Taxon
+
 
 class Name(BaseModel):
     root_name = CharField()
@@ -326,11 +389,26 @@ class Name(BaseModel):
     original_name = CharField(null=True)
     other_comments = TextField(null=True)
     page_described = CharField(null=True)
+    stem = CharField(null=True)
+    gender = IntegerField()
     taxonomy_comments = TextField(null=True)
     type = ForeignKeyField('self', null=True, db_column='type_id')
     verbatim_type = CharField(null=True)
     verbatim_citation = CharField(null=True)
     year = CharField(null=True)
+    _definition = CharField(null=True, db_column='definition')
+
+    @property
+    def definition(self):
+        data = self._definition
+        if data is None:
+            return None
+        else:
+            return definition.Definition.unserialize(data)
+
+    @definition.setter
+    def definition(self, definition):
+        self._definition = definition.serialize()
 
     class Meta(object):
         db_table = 'name'
@@ -364,6 +442,11 @@ class Name(BaseModel):
         out += " (= %s)" % self.taxon.valid_name
         return out
 
+    def is_unavailable(self):
+        # TODO: generalize this
+        return self.nomenclature_comments is not None and \
+            'Unavailable because not based on a generic name.' in self.nomenclature_comments
+
     def display(self, full=False, depth=0):
         if self.original_name is None:
             out = self.root_name
@@ -380,8 +463,15 @@ class Name(BaseModel):
         if self.type is not None:
             out += ' (type: %s)' % self.type
         out += ' (%s)' % (constants.string_of_status(self.status))
-        if full and self.original_name is not None:
-            out += ' (root: %s)' % self.root_name
+        if full and (self.original_name is not None or self.stem is not None or self.gender is not None):
+            parts = []
+            if self.original_name is not None:
+                parts.append('root: %s' % self.root_name)
+            if self.stem is not None:
+                parts.append('stem: %s' % self.stem)
+            if self.gender is not None:
+                parts.append(constants.Gender(self.gender).name)
+            out += ' (%s)' % '; '.join(parts)
         if self.is_well_known():
             intro_line = getinput.green(out)
         else:
@@ -407,6 +497,8 @@ class Name(BaseModel):
         if self.authority is None or self.year is None or self.page_described is None or self.original_citation is None or self.original_name is None:
             return False
         elif self.group in (constants.GROUP_FAMILY, constants.GROUP_GENUS) and self.type is None:
+            return False
+        elif self.group == constants.GROUP_GENUS and (self.stem is None or self.gender is None):
             return False
         else:
             return True
@@ -458,7 +550,66 @@ class Name(BaseModel):
     def __repr__(self):
         return self.description()
 
-    def detect_type(self):
+    def detect_and_set_type(self, verbatim_type=None, verbose=False):
+        if verbatim_type is None:
+            verbatim_type = self.verbatim_type
+        if verbose:
+            print('=== Detecting type for %s from %s' % (self, verbatim_type))
+        candidates = self.detect_type(verbatim_type=verbatim_type, verbose=verbose)
+        if candidates is None or len(candidates) == 0:
+            print("Verbatim type %s for name %s could not be recognized" % (verbatim_type, self))
+            return False
+        elif len(candidates) == 1:
+            if verbose:
+                print('Detected type: %s' % candidates[0])
+            self.type = candidates[0]
+            self.save()
+            return True
+        else:
+            print("Verbatim type %s for name %s yielded multiple possible names: %s" % (verbatim_type, self, candidates))
+            return False
+
+    def detect_type(self, verbatim_type=None, verbose=False):
+        def cleanup(name):
+            return re.sub(r'\s+', ' ', name.strip().rstrip('.').replace('<i>', '').replace('</i>', ''))
+
+        steps = [
+            lambda verbatim: verbatim,
+            lambda verbatim: re.sub(r'\([^)]+\)', '', verbatim),
+            lambda verbatim: re.sub(r'=.*$', '', verbatim),
+            lambda verbatim: re.sub(r'\(.*$', '', verbatim),
+            lambda verbatim: re.sub(r'\[.*$', '', verbatim),
+            lambda verbatim: re.sub(r',.*$', '', verbatim),
+            lambda verbatim: self._split_authority(verbatim)[0],
+            lambda verbatim: verbatim.split()[1] if ' ' in verbatim else verbatim,
+            lambda verbatim: helpers.convert_gender(verbatim, constants.Gender.masculine),
+            lambda verbatim: helpers.convert_gender(verbatim, constants.Gender.feminine),
+            lambda verbatim: helpers.convert_gender(verbatim, constants.Gender.neuter),
+        ]
+        if verbatim_type is None:
+            verbatim_type = self.verbatim_type
+        candidates = None
+        for step in steps:
+            new_verbatim = cleanup(step(verbatim_type))
+            if verbatim_type != new_verbatim or candidates is None:
+                if verbose:
+                    print('Trying verbatim type: %s' % new_verbatim)
+                verbatim_type = new_verbatim
+                candidates = self.detect_type_from_verbatim_type(verbatim_type)
+                if len(candidates) > 0:
+                    return candidates
+        return []
+
+    def _split_authority(self, verbatim_type):
+        # if there is an uppercase letter following an all-lowercase word (the species name),
+        # the authority is included
+        find_authority = re.match(r'^(.* [a-z]+) ([A-Z+].+)$', verbatim_type)
+        if find_authority:
+            return find_authority.group(1), find_authority.group(2)
+        else:
+            return verbatim_type, None
+
+    def detect_type_from_verbatim_type(self, verbatim_type):
         def _filter_by_authority(candidates, authority):
             if authority is None:
                 return candidates
@@ -478,26 +629,25 @@ class Name(BaseModel):
 
         parent = self.taxon
         if self.group == constants.GROUP_FAMILY:
-            verbatim = self.verbatim_type.split(maxsplit=1)
+            verbatim = verbatim_type.split(maxsplit=1)
             if len(verbatim) == 1:
                 type_name, authority = verbatim, None
             else:
                 type_name, authority = verbatim
             return _filter_by_authority(parent.find_names(verbatim[0], group=constants.GROUP_GENUS), authority)
         else:
-            # if there is an uppercase letter following an all-lowercase word (the species name),
-            # the authority is included
-            find_authority = re.match(r'^(.* [a-z]+) ([A-Z+].+)$', self.verbatim_type)
-            if find_authority:
-                type_name, authority = find_authority.group(1), find_authority.group(2)
-            else:
-                type_name, authority = self.verbatim_type, None
-            find_abbrev = re.match(r'^[A-Z]\. ([a-z]+)$', type_name)
-            if find_abbrev:
-                root_name = find_abbrev.group(1)
+            type_name, authority = self._split_authority(verbatim_type)
+            if ' ' not in type_name:
+                root_name = type_name
                 candidates = Name.filter(Name.root_name == root_name, Name.group == constants.GROUP_SPECIES)
+                find_abbrev = False
             else:
-                candidates = Name.filter(Name.original_name == type_name, Name.group == constants.GROUP_SPECIES)
+                find_abbrev = re.match(r'^[A-Z]\. ([a-z]+)$', type_name)
+                if find_abbrev:
+                    root_name = find_abbrev.group(1)
+                    candidates = Name.filter(Name.root_name == root_name, Name.group == constants.GROUP_SPECIES)
+                else:
+                    candidates = Name.filter(Name.original_name == type_name, Name.group == constants.GROUP_SPECIES)
             # filter by authority first because it's cheaper
             candidates = _filter_by_authority(candidates, authority)
             candidates = [candidate for candidate in candidates if candidate.taxon.is_child_of(parent)]
