@@ -7,6 +7,9 @@ PORT = 3001
 URL = "http://localhost:" + str(PORT) + "/"
 
 def call_ehphp(cmd, args):
+	if isinstance(args, list):
+		args = dict(enumerate(args))
+	args['includeMySQL'] = True
 	params = {
 		'command': cmd,
 		'arguments': json.dumps(args),
