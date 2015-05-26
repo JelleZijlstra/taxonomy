@@ -1,5 +1,8 @@
 '''Script to generate a .py file from the constants.json file'''
 
+import re
+
+
 def strip_comments(json):
 	return re.sub(json, r'//.*$', '')
 

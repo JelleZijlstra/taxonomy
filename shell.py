@@ -9,7 +9,6 @@ import getinput
 import collections
 import functools
 import IPython
-import re
 
 
 class _ShellNamespace(dict):
@@ -162,8 +161,9 @@ def find_rank_mismatch():
     for taxon in Taxon.select():
         expected_group = db.helpers.group_of_rank(taxon.rank)
         if expected_group != taxon.base_name.group:
-            print("Group mismatch for %s: rank %s but group %s" % \
-                (taxon, db.constants.string_of_rank(taxon.rank), db.constants.string_of_group(taxon.base_name.group)))
+            rank = db.constants.string_of_rank(taxon.rank)
+            group = db.constants.string_of_group(taxon.base_name.group)
+            print("Group mismatch for %s: rank %s but group %s" % (taxon, rank, group))
 
 
 @command

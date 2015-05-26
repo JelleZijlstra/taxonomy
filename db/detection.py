@@ -13,6 +13,7 @@ Gender = constants.Gender
 
 detection_result = collections.namedtuple('detection_result', ['stem', 'gender', 'confident'])
 
+
 def _rep(pattern, replacement):
 	return lambda name: re.sub(r'%s$' % pattern, replacement, name)
 
@@ -35,7 +36,7 @@ _endings = [
 	('cheirus', 'us', Gender.masculine, True),
 	('eres', 'es', Gender.masculine, True),  # e.g. Loncheres, which can be both masculine and feminine but should probably be treated as masculine
 	('chirus', 'us', Gender.masculine, True),
-	('cho', 'o',  Gender.masculine, True),
+	('cho', 'o', Gender.masculine, True),
 	('choerus', 'us', Gender.masculine, True),
 	('chus', 'us', Gender.masculine, True),
 	('ceros', _rep('s', 't'), Gender.masculine, True),

@@ -10,10 +10,6 @@ import operator
 import peewee
 import re
 import sys
-import traceback
-import warnings
-
-# warnings.filterwarnings('error')
 
 from . import constants
 from . import definition

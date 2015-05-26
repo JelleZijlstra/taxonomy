@@ -136,8 +136,10 @@ class OccurrenceStatus(enum.IntEnum):
 def _strip_comments(json):
 	return re.sub(r'//[^\n]*', '', json)
 
+
 def _my_dir():
 	return os.path.dirname(__file__)
+
 
 def _build():
 	json_str = _strip_comments(open(_my_dir() + "/constants.json", "r").read())
@@ -151,6 +153,7 @@ def _build():
 			setattr(ns, entry["constant"], entry["value"])
 			constant_lookup[key][entry["value"]] = entry
 			abbreviations[key][entry["abbreviation"]] = entry["value"]
+
 		# Some trickery to capture the key variable
 		def set_key(key):
 			setattr(ns, "string_of_" + key, lambda c: constant_lookup[key][c]["name"])

@@ -13,8 +13,10 @@ import re
 import sys
 import traceback
 
+
 def create_root():
 	Taxon.create(rank=ROOT, valid_name='root', is_page_root=True)
+
 
 def remove_null(dict):
 	out = {}
@@ -31,12 +33,14 @@ KIND_RANKS = {
 	'ssp': SUBSPECIES
 }
 
+
 def detect_super(name, rank):
 	'''Find a taxon named name of rank rank'''
 	try:
 		return Taxon.get(Taxon.valid_name == name, Taxon.rank == rank).base_name
 	except Taxon.DoesNotExist:
 		return None
+
 
 def parse_row(row):
 	'''Parse a row list into an associative array, then do some further magic with rank'''
@@ -93,8 +97,8 @@ def parse_row(row):
 		names = result['valid_name'].split(' /')
 		result['valid_name'] = names[0]
 		result['additional_synonyms'] = names[1:]
-	if result['root_name'] == None:
-		if result['original_name'] == None:
+	if result['root_name'] is None:
+		if result['original_name'] is None:
 			result['root_name'] = result['valid_name']
 		else:
 			result['root_name'] = result['original_name']
@@ -144,7 +148,7 @@ def parse_row(row):
 	else:
 		raise Exception("Unknown kind: " + result['kind'] + str(result))
 	# translate age
-	if result['age'] == None:
+	if result['age'] is None:
 		result['age'] = AGE_EXTANT
 	elif result['age'] == 'h':
 		result['age'] = AGE_HOLOCENE
@@ -156,11 +160,13 @@ def parse_row(row):
 
 ignored_nHT = ['Paracimexomys group', 'Extinct genera of uncertain or basal placement']
 
+
 # from http://stackoverflow.com/questions/904041/reading-a-utf8-csv-file-with-python
 def unicode_csv_reader(utf8_data, **kwargs):
-    csv_reader = csv.reader(utf8_data, **kwargs)
-    for row in csv_reader:
-        yield [unicode(cell, 'utf-8') for cell in row]
+	csv_reader = csv.reader(utf8_data, **kwargs)
+	for row in csv_reader:
+		yield [unicode(cell, 'utf-8') for cell in row]
+
 
 def read_file(filename):
 	with codecs.open(filename, mode='r') as file:
@@ -201,15 +207,19 @@ def read_file(filename):
 					# get stuff off the stack
 					rank = data['rank']
 					if rank == ROOT:
-						current_valid = Taxon.create(valid_name=data['valid_name'], age=data['age'],
-							rank=data['rank'], is_page_root=True)
+						current_valid = Taxon.create(
+							valid_name=data['valid_name'], age=data['age'],
+							rank=data['rank'], is_page_root=True
+						)
 					else:
 						# TODO: make this somehow unranked-clade-aware
 						while rank >= stack[-1].rank:
 							stack.pop()
 						# create new Taxon
-						current_valid = Taxon.create(valid_name=data['valid_name'], age=data['age'],
-							rank=data['rank'], parent=stack[-1], is_page_root=is_page_root)
+						current_valid = Taxon.create(
+							valid_name=data['valid_name'], age=data['age'],
+							rank=data['rank'], parent=stack[-1], is_page_root=is_page_root
+						)
 					if is_page_root:
 						is_page_root = False
 					stack.append(current_valid)
@@ -280,8 +290,8 @@ def read_file(filename):
 					for synonym in data['additional_synonyms']:
 						Name.create(taxon=current_valid, root_name=synonym, group=group, status=STATUS_SYNONYM)
 
-			except Exception, e:
-				print traceback.format_exc(e)
+			except Exception:
+				traceback.print_exc()
 				error_occurred = True
 				# ignore error and happily go on with the next
 	return not error_occurred
@@ -290,8 +300,10 @@ if __name__ == '__main__':
 	parser = argparse.ArgumentParser(description='Import a CSV spreadsheet file into the database')
 
 	parser.add_argument('--inputfile', '-f', help="Input file")
-	parser.add_argument('--root', '-r', default=False, action='store_true',
-		help="If set to true, the root taxon is created")
+	parser.add_argument(
+		'--root', '-r', default=False, action='store_true',
+		help="If set to true, the root taxon is created"
+	)
 	args = parser.parse_args()
 
 	with models.database.transaction():

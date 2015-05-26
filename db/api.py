@@ -2,18 +2,22 @@ from pyramid.response import Response
 import pyramid.security
 import json
 
-from constants import *
-import helpers
-import models
+from . import constants
+from . import helpers
+from . import models
+
 
 class ApiError(Exception):
 	pass
 
+
 def serve_error(err):
 	return Response(json.dumps({"status": "error", "message": err}))
 
+
 def serve_ok(contents):
 	return Response(json.dumps({"status": "ok", "response": contents}))
+
 
 def get_para(dict, name):
 	try:
@@ -21,15 +25,20 @@ def get_para(dict, name):
 	except KeyError:
 		raise ApiError("Required parameter not provided: " + name)
 
+
 def perform_edit(edit):
 	kind = get_para(edit, 'kind')
 	data = get_para(edit, 'data')
 	if kind == 'create_pair':
 		# create a taxon-name pair
-		txn = models.Taxon.create(valid_name=data['valid_name'],
-			rank=data['rank'], parent=data['parent'], age=data['age'])
-		nm = models.Name.create(status=STATUS_VALID, taxon=txn,
-			root_name=data['root_name'], group=data['group'])
+		txn = models.Taxon.create(
+			valid_name=data['valid_name'],
+			rank=data['rank'], parent=data['parent'], age=data['age']
+		)
+		models.Name.create(
+			status=constants.STATUS_VALID, taxon=txn,
+			root_name=data['root_name'], group=data['group']
+		)
 		return [{
 			'kind': 'create_pair',
 			'valid_name': data['valid_name'],
@@ -56,17 +65,18 @@ def perform_edit(edit):
 	elif kind == 'create':
 		mdl = model.create(**data)
 		if table == 'taxon':
-			data = {'kind': 'create', 'valid_name': data['valid_name'], 'taxon': helpers.tree_of_taxon(mdl) }
+			data = {'kind': 'create', 'valid_name': data['valid_name'], 'taxon': helpers.tree_of_taxon(mdl)}
 		else:
-			data = {'kind': 'create', 'root_name': data['root_name'], 'name': helpers.dict_of_name(mdl) }
+			data = {'kind': 'create', 'root_name': data['root_name'], 'name': helpers.dict_of_name(mdl)}
 		return [data]
 	else:
 		raise ApiError("Invalid kind: " + kind)
 
+
 def api(request):
 	# Very primitive authorization, but can't be bothered to figure out how
 	# the full Pyramid system works.
-	if pyramid.security.authenticated_userid(request) == None:
+	if pyramid.security.authenticated_userid(request) is None:
 		return serve_error("Not logged in")
 	action = request.matchdict['action']
 	if action == 'view':
@@ -90,13 +100,13 @@ def api(request):
 	elif action == 'edit':
 		try:
 			changes = json.loads(request.params['changes'])
-		except:
+		except Exception:
 			return serve_error("Required parameter not given or invalid JSON: changes")
 		returns = []
 		for change in changes:
 			try:
 				returns += perform_edit(change)
-			except ApiError, e:
+			except ApiError as e:
 				return serve_error(str(e))
 		return serve_ok(returns)
 	else:
