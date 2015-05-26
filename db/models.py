@@ -505,8 +505,28 @@ class Taxon(BaseModel):
             percentage = counts[attribute] * 100.0 / total
             print("%s: %s (%.2f%%)" % (attribute, counts[attribute], percentage))
 
-    def at(self, loc):
-        return self.occurrences.filter(Occurrence.location == loc).get()
+    class _OccurrenceGetter(object):
+        """For easily accessing occurrences of a taxon.
+
+        This is exposed at taxon.at. You can access taxa as either taxon.at.Locality_Name or taxon.at(L.Locality_Name).
+
+        """
+        def __init__(self, instance=None):
+            self.instance = instance
+
+        def __get__(self, instance, instance_type):
+            return self.__class__(instance)
+
+        def __getattr__(self, loc_name):
+            return self(Location.get(Location.name == loc_name.replace('_', ' ')))
+
+        def __call__(self, loc):
+            return self.instance.occurrences.filter(Occurrence.location == loc).get()
+
+        def __dir__(self):
+            return [o.location.name.replace(' ', '_') for o in self.instance.occurrences]
+
+    at = _OccurrenceGetter()
 
     def __str__(self):
         return self.valid_name
