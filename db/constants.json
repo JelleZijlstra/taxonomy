@@ -52,8 +52,10 @@
 		// Status of a name
 		{"constant": "STATUS_VALID", "value": 0, "name": "valid", "abbreviation": "v"},
 		{"constant": "STATUS_SYNONYM", "value": 1, "name": "synonym", "abbreviation": "s"},
-		// nomen dubium, species inquirenda, etcetera
+		// synonyms of uncertain identity
 		{"constant": "STATUS_DUBIOUS", "value": 2, "name": "dubious", "abbreviation": "d"},
+		// names treated like valid names but that do not represent definable taxa
+		{"constant": "STATUS_NOMEN_DUBIUM", "value": 3, "name": "nomen_dubium", "abbreviation": "n"},
 		// alternatives
 		{"constant": "STATUS_DUBIOUS", "value": 2, "name": "dubious", "abbreviation": "u"},
 		{"constant": "STATUS_SYNONYM", "value": 1, "name": "synonym", "abbreviation": "y"}

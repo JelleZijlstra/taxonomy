@@ -35,9 +35,30 @@ class _ShellNamespace(dict):
         del self._names
 
 
+class _NameGetter(object):
+    def __init__(self, cls, field):
+        self.cls = cls
+        self.field = field
+        self.field_obj = getattr(cls, field)
+        self._data = None
+
+    def __dir__(self):
+        result = set(super().__dir__())
+        if self._data is None:
+            self._data = set(getattr(o, self.field).replace(' ', '_') for o in self.cls.select(self.field_obj))
+        return result | self._data
+
+    def __getattr__(self, name):
+        return self.cls.filter(self.field_obj == name.replace('_', ' ')).get()
+
+    def __call__(self, name):
+        return self.__getattr__(name)
+
+    def clear_cache(self):
+        self._data = None
+
+
 ns = _ShellNamespace({
-    'Taxon': Taxon,
-    'Name': Name,
     'constants': db.constants,
     'helpers': db.helpers,
     'definition': db.definition,
@@ -45,8 +66,15 @@ ns = _ShellNamespace({
     'Node': db.definition.Node,
     'Apomorphy': db.definition.Apomorphy,
     'Other': db.definition.Other,
+    'N': _NameGetter(Name, 'root_name'),
+    'L': _NameGetter(db.models.Location, 'name'),
+    'P': _NameGetter(db.models.Period, 'name'),
+    'R': _NameGetter(db.models.Region, 'name'),
 })
 ns.update(db.constants.__dict__)
+
+for model in db.models.BaseModel.__subclasses__():
+    ns[model.__name__] = model
 
 
 def command(fn):
@@ -167,7 +195,7 @@ def detect_types_from_root_names(max_count=None):
 
     count = 0
     successful_count = 0
-    for name in Name.filter(Name.group == db.constants.GROUP_FAMILY, Name.type >> None).limit(max_count):
+    for name in Name.filter(Name.group == db.constants.GROUP_FAMILY, Name.type >> None).order_by(Name.id.desc()).limit(max_count):
         if name.is_unavailable():
             continue
         count += 1
@@ -239,11 +267,15 @@ def stem_statistics():
 
 
 @command
-def name_mismatches():
+def name_mismatches(max_count=None):
+    count = 0
     for taxon in Taxon.select():
         computed = taxon.compute_valid_name()
         if taxon.valid_name != computed:
-            print("Mismatch for %s: %s vs. %s" % (taxon, taxon.valid_name, computed))
+            print("Mismatch for %s: %s (actual) vs. %s (computed)" % (taxon, taxon.valid_name, computed))
+            count += 1
+            if max_count is not None and count == max_count:
+                return
 
 
 # Statistics
@@ -285,11 +317,28 @@ def print_percentages():
 
 @command
 def bad_base_names():
-    return  list(Taxon.raw('SELECT * FROM taxon WHERE base_name_id NOT IN (SELECT id FROM name)'))
+    return list(Taxon.raw('SELECT * FROM taxon WHERE base_name_id IS NULL OR base_name_id NOT IN (SELECT id FROM name)'))
+
+
+@command
+def bad_taxa():
+    return list(Name.raw('SELECT * FROM name WHERE taxon_id IS NULL or taxon_id NOT IN (SELECT id FROM taxon)'))
+
+
+@command
+def fossilize(taxon, to_status=db.constants.AGE_FOSSIL, from_status=db.constants.AGE_EXTANT):
+    if taxon.age != from_status:
+        return
+    taxon.age = to_status
+    taxon.save()
+    for child in taxon.children:
+        fossilize(child, to_status=to_status, from_status=from_status)
 
 
 def run_shell():
-    IPython.start_ipython(user_ns=ns)
+    config = IPython.config.loader.Config()
+    config.InteractiveShellEmbed.confirm_exit = False
+    IPython.start_ipython(config=config, user_ns=ns)
 
 
 if __name__ == '__main__':

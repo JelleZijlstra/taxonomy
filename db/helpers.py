@@ -37,7 +37,7 @@ SUFFIXES = {
 }
 
 def name_with_suffixes_removed(name):
-    suffixes = list(SUFFIXES.values()) + ['ida', 'oidae', 'i', 'a']
+    suffixes = list(SUFFIXES.values()) + ['ida', 'oidae', 'ides', 'i', 'a', 'ae']
     for suffix in suffixes:
         if name.endswith(suffix):
             yield re.sub(r'%s$' % suffix, '', name)

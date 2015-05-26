@@ -46,3 +46,59 @@ CREATE TABLE `name` (
 	INDEX(`root_name`),
 	INDEX(`taxon_id`)
 ) ENGINE=INNODB DEFAULT CHARSET=utf8;
+
+CREATE TABLE `region` (
+	`id` INT UNSIGNED AUTO_INCREMENT,
+	`name` VARCHAR(255) NOT NULL,
+	`comment` VARCHAR(65535) DEFAULT NULL,
+	`parent_id` INT UNSIGNED,
+	`kind` INT UNSIGNED,  # continent, country, subnational
+	PRIMARY KEY(`id`),
+	INDEX(`name`),
+	UNIQUE KEY(`name`)
+) ENGINE=INNODB DEFAULT CHARSET=utf8;
+
+CREATE TABLE `period` (
+	`id` INT UNSIGNED AUTO_INCREMENT,
+	`name` VARCHAR(255) NOT NULL,
+	`parent_id` INT UNSIGNED,
+	`prev_id` INT UNSIGNED,
+	`next_id` INT UNSIGNED, -- should remove
+	`min_age` INT UNSIGNED,
+	`max_age` INT UNSIGNED,
+	`system` INT UNSIGNED,
+	`comment` VARCHAR(65535) DEFAULT NULL,
+	`min_period_id` INT UNSIGNED DEFAULT NULL,
+	`max_period_id` INT UNSIGNED DEFAULT NULL,
+	PRIMARY KEY(`id`),
+	INDEX(`name`),
+	UNIQUE KEY(`name`)
+) ENGINE=INNODB DEFAULT CHARSET=utf8;
+
+CREATE TABLE `location` (
+	`id` INT UNSIGNED AUTO_INCREMENT,
+	`name` VARCHAR(255) NOT NULL,
+	`min_period_id` INT UNSIGNED DEFAULT NULL,
+	`max_period_id` INT UNSIGNED DEFAULT NULL,
+	`min_age` INT UNSIGNED DEFAULT NULL,
+	`max_age` INT UNSIGNED DEFAULT NULL,
+	`region_id` INT UNSIGNED NOT NULL,
+	`comment` VARCHAR(65535) DEFAULT NULL,
+	`stratigraphic_unit_id` INT UNSIGNED DEFAULT NULL,
+	PRIMARY KEY(`id`),
+	INDEX(`name`),
+	UNIQUE KEY(`name`)
+) ENGINE=INNODB DEFAULT CHARSET=utf8;
+
+CREATE TABLE `occurrence` (
+	`id` INT UNSIGNED AUTO_INCREMENT,
+	`taxon_id` INT UNSIGNED,
+	`location_id` INT UNSIGNED,
+	`comment` VARCHAR(65535) DEFAULT NULL,
+	`source` VARCHAR(1023),
+	`status` INT UNSIGNED,
+	PRIMARY KEY(`id`),
+	INDEX(`taxon_id`),
+	INDEX(`location_id`),
+	UNIQUE KEY(`taxon_id`, `location_id`)
+) ENGINE=INNODB DEFAULT CHARSET=utf8;
