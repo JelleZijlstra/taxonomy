@@ -4,6 +4,7 @@ from peewee import (
     MySQLDatabase, Model, IntegerField, CharField, ForeignKeyField, TextField, BooleanField
 )
 import collections
+import events
 import getinput
 import json
 import operator
@@ -22,8 +23,23 @@ database.get_conn().ping(True)
 
 
 class BaseModel(Model):
+    creation_event = None
+    save_event = None
+
     class Meta(object):
         database = database
+
+    @classmethod
+    def create(cls, *args, **kwargs):
+        result = super().create(*args, **kwargs)
+        if cls.creation_event is not None:
+            cls.creation_event.trigger(result)
+        return result
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        if self.save_event is not None:
+            self.save_event.trigger(self)
 
     def dump_data(self):
         return "%s(%r)" % (self.__class__.__name__, self.__dict__)
@@ -95,6 +111,9 @@ class EnumField(IntegerField):
 
 
 class Taxon(BaseModel):
+    creation_event = events.on_new_taxon
+    save_event = events.on_taxon_save
+
     rank = EnumField(constants.Rank)
     valid_name = CharField(default='')
     age = EnumField(constants.Age)
@@ -445,6 +464,7 @@ class Taxon(BaseModel):
             print("Warning: removing comments: %s" % self.comments)
         if self.data is not None:
             print("Warning: removing data: %s" % self.data)
+        assert self != to_taxon, 'Cannot synonymize %s with itself' % self
         for child in self.children:
             child.parent = to_taxon
         self.base_name.status = constants.STATUS_SYNONYM
@@ -552,6 +572,9 @@ definition.taxon_cls = Taxon
 
 
 class Name(BaseModel):
+    creation_event = events.on_new_name
+    save_event = events.on_name_save
+
     root_name = CharField()
     group = EnumField(constants.Group)
     status = EnumField(constants.Status)

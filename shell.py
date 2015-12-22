@@ -6,6 +6,7 @@ import db.detection
 import db.helpers
 import db.models
 from db.models import Name, Taxon
+import events
 import getinput
 
 import collections
@@ -35,6 +36,10 @@ class _ShellNamespace(dict):
     def clear_cache(self):
         del self._names
 
+    def add_name(self, taxon):
+        if hasattr(self, '_names'):
+            self._names.add(taxon.valid_name.replace(' ', '_'))
+
 
 class _NameGetter(object):
     def __init__(self, cls, field):
@@ -58,6 +63,10 @@ class _NameGetter(object):
     def clear_cache(self):
         self._data = None
 
+    def add_name(self, nam):
+        if self._data is not None:
+            self._data.add(getattr(o, self.field).replace(' ', '_'))
+
 
 ns = _ShellNamespace({
     'constants': db.constants,
@@ -76,6 +85,10 @@ ns.update(db.constants.__dict__)
 
 for model in db.models.BaseModel.__subclasses__():
     ns[model.__name__] = model
+
+events.on_new_taxon.on(ns.add_name)
+events.on_taxon_save.on(ns.add_name)
+events.on_name_save.on(ns['N'].add_name)
 
 
 def command(fn):
