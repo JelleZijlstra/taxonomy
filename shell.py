@@ -280,6 +280,15 @@ def name_mismatches(max_count=None):
                 return
 
 
+@command
+def authorless_names(root_taxon):
+    for nam in root_taxon.names:
+        if nam.authority is None:
+            print(nam)
+    for child in root_taxon.children:
+        authorless_names(child)
+
+
 # Statistics
 
 @command
