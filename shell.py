@@ -1,3 +1,5 @@
+#!/usr/bin/env python3.4
+
 import db.constants
 import db.definition
 import db.detection
