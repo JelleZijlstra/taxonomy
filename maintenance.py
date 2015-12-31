@@ -23,16 +23,16 @@ def check_refs():
 		# if there is an original_citation, check whether it is valid
 		if name.original_citation:
 			if not cite_exists(name.original_citation):
-				print "Name:", name.description()
-				print "Warning: invalid original citation:", name.original_citation
+				print("Name:", name.description())
+				print("Warning: invalid original citation:", name.original_citation)
 		elif name.verbatim_citation and may_be_citation(name.verbatim_citation):
 			if cite_exists(name.verbatim_citation):
 				name.original_citation = name.verbatim_citation
 				name.verbatim_citation = None
 				name.save()
 			elif must_be_citation(name.verbatim_citation):
-				print "Name:", name.description()
-				print "Warning: invalid citation:", name.verbatim_citation
+				print("Name:", name.description())
+				print("Warning: invalid citation:", name.verbatim_citation)
 
 def dup_taxa():
 	counts = collections.defaultdict(int)
@@ -42,7 +42,7 @@ def dup_taxa():
 		counts[txn.valid_name] += 1
 	for name in counts:
 		if counts[name] > 1:
-			print "Duplicate:", name, counts[name]
+			print("Duplicate:", name, counts[name])
 
 def dup_genus():
 	counts = collections.defaultdict(int)
@@ -51,12 +51,12 @@ def dup_genus():
 		counts[full_name] += 1
 	for full_name in counts:
 		if counts[full_name] > 1:
-			print "Duplicate:", full_name, counts[full_name]
+			print("Duplicate:", full_name, counts[full_name])
 
 def should_have_original():
 	for name in Name.select():
 		if name.original_citation and not name.original_name:
-			print "Should have original name:", name.description()
+			print("Should have original name:", name.description())
 
 scripts = {
 	'check_refs': check_refs,
@@ -67,6 +67,6 @@ scripts = {
 
 if __name__ == '__main__':
 	if len(sys.argv) != 2:
-		print argv[0] + ": error: no argument given"
+		print(sys.argv[0] + ": error: no argument given")
 	script = scripts[sys.argv[1]]
 	script()
