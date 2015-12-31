@@ -37,9 +37,10 @@ class BaseModel(Model):
         return result
 
     def save(self, *args, **kwargs):
-        super().save(*args, **kwargs)
+        result = super().save(*args, **kwargs)
         if self.save_event is not None:
             self.save_event.trigger(self)
+        return result
 
     def dump_data(self):
         return "%s(%r)" % (self.__class__.__name__, self.__dict__)
@@ -60,6 +61,7 @@ class BaseModel(Model):
 
         """
         for name, value in kwargs.items():
+            assert hasattr(self, name), 'Invalid attribute %s' % name
             setattr(self, name, value)
         self.save()
 
@@ -190,7 +192,7 @@ class Taxon(BaseModel):
     def parent_of_rank(self, rank, original_taxon=None):
         if original_taxon is None:
             original_taxon = self
-        if self.rank > rank:
+        if self.rank > rank and self.rank != constants.UNRANKED:
             raise ValueError("%s (id = %s) has no ancestor of rank %s" % (original_taxon, original_taxon.id, constants.string_of_rank(rank)))
         elif self.rank == rank:
             return self
@@ -364,23 +366,23 @@ class Taxon(BaseModel):
             print("DUPLICATE OCCURRENCE")
             return self.at(location)
 
-    def syn_from_paper(self, name, paper, page_described=None, status=constants.STATUS_SYNONYM, group=None, **kwargs):
+    def syn_from_paper(self, name, paper, page_described=None, status=constants.STATUS_SYNONYM, group=None, age=None, **kwargs):
         authority, year = ehphp.call_ehphp('taxonomicAuthority', [paper])
         result = self.add_syn(
             root_name=name, authority=authority, year=year, original_citation=paper,
-            page_described=page_described, original_name=name, status=status,
+            page_described=page_described, original_name=name, status=status, age=age,
         )
         if group is not None:
             kwargs['group'] = group
         result.s(**kwargs)
         return result
 
-    def from_paper(self, rank, name, paper, page_described=None, status=constants.STATUS_VALID, comments=None, **override_kwargs):
+    def from_paper(self, rank, name, paper, page_described=None, status=constants.STATUS_VALID, comments=None, age=None, **override_kwargs):
         authority, year = ehphp.call_ehphp('taxonomicAuthority', [paper])
         result = self.add(
             rank=rank, name=name, original_citation=paper, page_described=page_described,
             original_name=name, authority=authority, year=year, parent=self, status=status,
-            comments=comments,
+            comments=comments, age=age
         )
         result.base_name.s(**override_kwargs)
         return result
@@ -467,12 +469,15 @@ class Taxon(BaseModel):
         assert self != to_taxon, 'Cannot synonymize %s with itself' % self
         for child in self.children:
             child.parent = to_taxon
-        self.base_name.status = constants.STATUS_SYNONYM
+        nam = self.base_name
+        nam.status = constants.STATUS_SYNONYM
+        nam.save()
         for name in self.names:
             name.taxon = to_taxon
             name.save()
         to_taxon.base_name.status = constants.STATUS_VALID
         self.delete_instance()
+        return Name.get(Name.id == nam.id)
 
     def make_species_group(self):
         if self.parent.rank == constants.SPECIES_GROUP:
