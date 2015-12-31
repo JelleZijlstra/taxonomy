@@ -109,6 +109,7 @@ ns = _ShellNamespace({
     'L': _NameGetter(db.models.Location, 'name'),
     'P': _NameGetter(db.models.Period, 'name'),
     'R': _NameGetter(db.models.Region, 'name'),
+    'O': _NameGetter(Name, 'original_name'),
 })
 ns.update(db.constants.__dict__)
 
