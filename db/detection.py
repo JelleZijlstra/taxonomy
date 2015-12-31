@@ -152,6 +152,8 @@ _endings = [
 	('tipus', _rep('us', 'od'), Gender.masculine, True),
 	('triton', '', Gender.masculine, True),
 	('urus', 'us', Gender.masculine, True),
+	('ophis', 's', Gender.masculine, True),
+	('raco', lambda n: n + 'n', Gender.masculine, True),
 	('uus', 'us', Gender.masculine, True),
 	('rvus', 'us', Gender.masculine, True),
 	('umys', 's', Gender.masculine, True),
@@ -160,6 +162,11 @@ _endings = [
 	('xus', 'us', Gender.masculine, True),
 	('yus', 'us', Gender.masculine, True),
 	('lerix', _rep('x', 'c'), Gender.masculine, True),
+	('eviathan', '', Gender.masculine, True),
+	('ator', '', Gender.masculine, True),
+	('aiman', '', Gender.masculine, True),  # Caiman
+	('rhys', 's', Gender.masculine, True),  # Hesperhys
+	('ipus', _rep('us', 'od'), Gender.masculine, True),
 
 	('ala', 'a', Gender.feminine, True),
 	('ana', 'a', Gender.feminine, True),
@@ -224,6 +231,8 @@ _endings = [
 	('zoa', 'a', Gender.feminine, True),
 	('iza', 'a', Gender.feminine, True),
 	('meles', 'es', Gender.feminine, True),
+	('ama', 'a', Gender.feminine, True),
+	('elys', 's', Gender.feminine, True),
 
 	('erpeton', lambda n: n + 't', Gender.neuter, True),
 	('ceras', _rep('s', 't'), Gender.neuter, True),
@@ -239,6 +248,7 @@ _endings = [
 	('tum', 'um', Gender.neuter, True),
 	('izon', lambda n: n + 't', Gender.neuter, True),
 	('yum', 'um', Gender.neuter, True),
+	('nion', 'on', Gender.neuter, True),
 ]
 
 # To discuss:
