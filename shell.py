@@ -12,6 +12,23 @@ import getinput
 import collections
 import functools
 import IPython
+import re
+
+
+# Encode and decode names so they can be used as identifiers. Spaces are replaced with underscores
+# and any non-alphabetical characters are replaced with the character's ASCII code surrounded by
+# underscores. TODO: we shouldn't replace accented characters like í, which are allowed in Python
+# identifiers
+_encode_re = re.compile(r'[^A-Za-z ]')
+_decode_re = re.compile(r'_(\d+)_')
+
+
+def _encode_name(name):
+    return _encode_re.sub(lambda m: '_%d_' % ord(m.group()), name).replace(' ', '_')
+
+
+def _decode_name(name):
+    return _decode_re.sub(lambda m: chr(int(m.group(1))), name).replace('_', ' ')
 
 
 class _ShellNamespace(dict):
@@ -26,7 +43,11 @@ class _ShellNamespace(dict):
         keys = set(super(_ShellNamespace, self).keys())
         keys |= set(dir(__builtins__))
         if not hasattr(self, '_names'):
-            self._names = set(taxon.valid_name.replace(' ', '_') for taxon in Taxon.select(Taxon.valid_name))
+            self._names = set(
+                _encode_name(taxon.valid_name)
+                for taxon in Taxon.select(Taxon.valid_name)
+                if taxon.valid_name is not None
+            )
         return keys | self._names
 
     def __delitem__(self, key):
@@ -37,7 +58,7 @@ class _ShellNamespace(dict):
         del self._names
 
     def add_name(self, taxon):
-        if hasattr(self, '_names'):
+        if hasattr(self, '_names') and taxon.valid_name is not None:
             self._names.add(taxon.valid_name.replace(' ', '_'))
 
 
@@ -51,11 +72,13 @@ class _NameGetter(object):
     def __dir__(self):
         result = set(super().__dir__())
         if self._data is None:
-            self._data = set(getattr(o, self.field).replace(' ', '_') for o in self.cls.select(self.field_obj))
+            self._data = set()
+            for obj in self.cls.select(self.field_obj):
+                self._add_obj(obj)
         return result | self._data
 
     def __getattr__(self, name):
-        return self.cls.filter(self.field_obj == name.replace('_', ' ')).get()
+        return self.cls.filter(self.field_obj == _decode_name(name)).get()
 
     def __call__(self, name):
         return self.__getattr__(name)
@@ -65,7 +88,13 @@ class _NameGetter(object):
 
     def add_name(self, nam):
         if self._data is not None:
-            self._data.add(getattr(o, self.field).replace(' ', '_'))
+            self._add_obj(nam)
+
+    def _add_obj(self, obj):
+        val = getattr(obj, self.field)
+        if val is None:
+            return
+        self._data.add(_encode_name(val))
 
 
 ns = _ShellNamespace({
