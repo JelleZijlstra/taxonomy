@@ -133,6 +133,17 @@ def command(fn):
     return wrapper
 
 
+def generator_command(fn):
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        try:
+            return list(fn(*args, **kwargs))
+        except getinput.StopException:
+            return None
+    ns[fn.__name__] = wrapper
+    return wrapper
+
+
 # Shell internal commands
 
 @command
@@ -201,7 +212,7 @@ def add_types():
             name.detect_and_set_type(verbatim_type, verbose=True)
 
 
-@command
+@generator_command
 def find_rank_mismatch():
     for taxon in Taxon.select():
         expected_group = db.helpers.group_of_rank(taxon.rank)
@@ -209,6 +220,7 @@ def find_rank_mismatch():
             rank = db.constants.string_of_rank(taxon.rank)
             group = db.constants.string_of_group(taxon.base_name.group)
             print("Group mismatch for %s: rank %s but group %s" % (taxon, rank, group))
+            yield taxon
 
 
 @command
@@ -277,7 +289,7 @@ def detect_stems():
         name.save()
 
 
-@command
+@generator_command
 def root_name_mismatch():
     for name in Name.filter(Name.group == db.constants.GROUP_FAMILY, ~(Name.type >> None)):
         if name.is_unavailable():
@@ -295,6 +307,48 @@ def root_name_mismatch():
                 break
         if name.root_name != stem_name:
             print('Stem mismatch for %s: %s vs. %s' % (name, name.root_name, stem_name))
+            yield name
+
+
+def _duplicate_finder(fn):
+    @generator_command
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        for dups_dict in fn(*args, **kwargs):
+            for key, entries_list in dups_dict.items():
+                if len(entries_list) > 1:
+                    print("Duplicate:", key, len(entries_list))
+                    yield entries_list
+    return wrapper
+
+
+@_duplicate_finder
+def dup_taxa():
+    taxa = collections.defaultdict(list)
+    for txn in Taxon.select():
+        if txn.rank == db.constants.SUBGENUS and len(taxa[txn.valid_name]) > 0:
+            continue
+        taxa[txn.valid_name].append(txn)
+    return [taxa]
+
+
+@_duplicate_finder
+def dup_genus():
+    names = collections.defaultdict(list)
+    for name in Name.filter(Name.group == db.constants.GROUP_GENUS):
+        full_name = "%s %s, %s" % (name.root_name, name.authority, name.year)
+        names[full_name].append(name)
+    return [names]
+
+
+@_duplicate_finder
+def dup_names():
+    original_year = collections.defaultdict(list)
+    for name in Name.select():
+        if name.original_name is not None and name.year is not None:
+            original_year[(name.original_name, name.year)].append(name)
+    return [original_year]
+
 
 
 @command
@@ -311,25 +365,35 @@ def stem_statistics():
     print("type: %s/%s (%.02f%%)" % (typ, total, typ / total * 100))
 
 
-@command
-def name_mismatches(max_count=None):
+@generator_command
+def name_mismatches(max_count=None, correct=False, correct_undoubted=True):
     count = 0
     for taxon in Taxon.select():
         computed = taxon.compute_valid_name()
-        if taxon.valid_name != computed:
+        if computed is not None and taxon.valid_name != computed:
             print("Mismatch for %s: %s (actual) vs. %s (computed)" % (taxon, taxon.valid_name, computed))
+            yield taxon
             count += 1
+            # for species-group taxa with a known genus parent, the computed valid name is almost
+            # always right (the mismatch will usually happen after a change in genus classification)
+            # one area that isn't well-covered yet is autocorrecting gender endings
+            if correct_undoubted and taxon.base_name.group == db.constants.GROUP_SPECIES and \
+                    taxon.has_parent_of_rank(db.constants.GENUS):
+                taxon.recompute_name()
+            elif correct:
+                taxon.recompute_name()
             if max_count is not None and count == max_count:
                 return
 
 
-@command
-def authorless_names(root_taxon):
+@generator_command
+def authorless_names(root_taxon, attribute='authority'):
     for nam in root_taxon.names:
-        if nam.authority is None:
+        if getattr(nam, attribute) is None:
             print(nam)
+            yield nam
     for child in root_taxon.children:
-        authorless_names(child)
+        yield from authorless_names(child, attribute=attribute)
 
 
 # Statistics
@@ -369,14 +433,24 @@ def print_percentages():
             print("%s: %s (%.2f%%)" % (attribute, data[attribute], percentage))
 
 
-@command
+@generator_command
 def bad_base_names():
-    return list(Taxon.raw('SELECT * FROM taxon WHERE base_name_id IS NULL OR base_name_id NOT IN (SELECT id FROM name)'))
+    return Taxon.raw('SELECT * FROM taxon WHERE base_name_id IS NULL OR base_name_id NOT IN (SELECT id FROM name)')
 
 
-@command
+@generator_command
 def bad_taxa():
-    return list(Name.raw('SELECT * FROM name WHERE taxon_id IS NULL or taxon_id NOT IN (SELECT id FROM taxon)'))
+    return Name.raw('SELECT * FROM name WHERE taxon_id IS NULL or taxon_id NOT IN (SELECT id FROM taxon)')
+
+
+@generator_command
+def parentless_taxa():
+    return Taxon.filter(Taxon.parent == None)
+
+
+@generator_command
+def childless_taxa():
+    return Taxon.raw('SELECT * FROM taxon WHERE rank > 5 AND id NOT IN (SELECT parent_id FROM taxon WHERE parent_id IS NOT NULL)')
 
 
 @command

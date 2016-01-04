@@ -84,6 +84,21 @@ class BaseModel(Model):
     def __repr__(self):
         return '%s(%s)' % (self.__class__.__name__, ', '.join('%s=%s' % (field, getattr(self, field)) for field in self.fields()))
 
+    def _merge_fields(self, into, exclude=set()):
+        for field in self.fields():
+            if field in exclude:
+                continue
+            my_data = getattr(self, field)
+            into_data = getattr(into, field)
+            if my_data is None:
+                pass
+            elif into_data is None:
+                print('setting %s: %s' % (field, my_data))
+                setattr(into, field, my_data)
+            elif my_data != into_data:
+                print('warning: dropping %s: %s' % (field, my_data))
+        into.save()
+
 
 class _EnumFieldDescriptor(peewee.FieldDescriptor):
     def __init__(self, field, enum):
@@ -162,6 +177,13 @@ class Taxon(BaseModel):
     def root_name(self):
         return self.valid_name.split(' ')[-1]
 
+    def all_data(self):
+        self.full_data()
+        self.base_name.full_data()
+        print(self.sorted_names())
+        print(self.sorted_children())
+        print(self.sorted_occurrences())
+
     def full_name(self):
         if self.rank == constants.SUBGENUS:
             return self.parent.valid_name + ' (' + self.valid_name + ')'
@@ -198,6 +220,14 @@ class Taxon(BaseModel):
             return self
         else:
             return self.parent.parent_of_rank(rank, original_taxon=original_taxon)
+
+    def has_parent_of_rank(self, rank):
+        try:
+            self.parent_of_rank(rank)
+        except ValueError:
+            return False
+        else:
+            return True
 
     def is_child_of(self, taxon):
         if self == taxon:
@@ -442,8 +472,10 @@ class Taxon(BaseModel):
             except ValueError:
                 # if there is no genus, just use the original name
                 # this may be one case where we can't rely on the computed valid name
-                assert self.rank == constants.SPECIES
-                return None
+                assert self.rank == constants.SPECIES, 'Taxon %s should have a genus parent' % self
+                # default to the original name for now. This isn't ideal because sometimes the original name
+                # contains misspellings, but we don't really have a place to store that information better.
+                return name.original_name
             else:
                 if self.rank == constants.SPECIES_GROUP:
                     return '%s (%s)' % (genus.base_name.root_name, name.root_name)
@@ -460,6 +492,19 @@ class Taxon(BaseModel):
             print('Changing valid name: %s -> %s' % (self.valid_name, new_name))
             self.valid_name = new_name
             self.save()
+
+    def merge(self, into):
+        for child in self.children:
+            child.parent = into
+            child.save()
+        for nam in self.names:
+            if nam != self.base_name:
+                nam.taxon = into
+                nam.save()
+
+        self._merge_fields(into, exclude={'id', '_base_name_id'})
+        self.base_name.merge(into.base_name, allow_valid=True)
+        self.remove()
 
     def synonymize(self, to_taxon):
         if self.comments is not None:
@@ -506,7 +551,7 @@ class Taxon(BaseModel):
         self.delete_instance()
 
     def all_names(self):
-        names = set(self.sorted_names())
+        names = set(self.names)
         for child in self.children:
             names |= child.all_names()
         return names
@@ -739,6 +784,13 @@ class Name(BaseModel):
         self.status = status
         self.save()
         return new_taxon
+
+    def merge(self, into, allow_valid=False):
+        if not allow_valid:
+            assert self.status in (constants.STATUS_SYNONYM, constants.STATUS_DUBIOUS), \
+                'Can only merge synonymous names (not %s)' % self
+        self._merge_fields(into, exclude={'id'})
+        self.remove()
 
     def open_description(self):
         if self.original_citation is None:

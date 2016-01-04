@@ -34,35 +34,8 @@ def check_refs():
 				print("Name:", name.description())
 				print("Warning: invalid citation:", name.verbatim_citation)
 
-def dup_taxa():
-	counts = collections.defaultdict(int)
-	for txn in Taxon.select():
-		if txn.rank == SUBGENUS and counts[txn.valid_name] > 0:
-			continue
-		counts[txn.valid_name] += 1
-	for name in counts:
-		if counts[name] > 1:
-			print("Duplicate:", name, counts[name])
-
-def dup_genus():
-	counts = collections.defaultdict(int)
-	for name in Name.select().where(Name.group == GROUP_GENUS):
-		full_name = "%s %s, %s" % (name.root_name, name.authority, name.year)
-		counts[full_name] += 1
-	for full_name in counts:
-		if counts[full_name] > 1:
-			print("Duplicate:", full_name, counts[full_name])
-
-def should_have_original():
-	for name in Name.select():
-		if name.original_citation and not name.original_name:
-			print("Should have original name:", name.description())
-
 scripts = {
 	'check_refs': check_refs,
-	'dup_taxa': dup_taxa,
-	'dup_genus': dup_genus,
-	'should_have_original': should_have_original,
 }
 
 if __name__ == '__main__':
