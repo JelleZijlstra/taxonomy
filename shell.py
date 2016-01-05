@@ -164,10 +164,15 @@ def taxon(name):
         raise LookupError(name)
 
 
-@command
+@generator_command
 def n(name):
     """Finds names with the given root name or original name."""
-    return list(Name.filter((Name.root_name == name) | (Name.original_name == name)))
+    return Name.filter((Name.root_name % name) | (Name.original_name % name))
+
+
+@generator_command
+def h(authority, year):
+    return Name.filter(Name.authority % '%{}%'.format(authority), Name.year == year)
 
 
 # Maintenance
@@ -190,13 +195,17 @@ def add_original_names():
 
 @command
 def add_page_described():
-    for name in Name.filter(Name.original_citation != None, Name.page_described >> None, Name.year != 'in press').order_by(Name.original_citation):
+    for name in Name.filter(Name.original_citation != None, Name.page_described >> None, Name.year != 'in press').order_by(Name.original_citation, Name.original_name):
+        if name.year == '2015':
+            continue  # recent JVP papers don't have page numbers
         message = 'Name %s is missing page described, but has original citation {%s}' % \
             (name.description(), name.original_citation)
-        name.page_described = getinput.get_line(
+        page = getinput.get_line(
             message, handlers={'o': lambda _: name.open_description()}, should_stop=lambda line: line == 's'
         )
-        name.save()
+        if page:
+            name.page_described = page
+            name.save()
 
 
 @command
