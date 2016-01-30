@@ -177,35 +177,54 @@ def h(authority, year):
 
 # Maintenance
 
-@command
-def add_original_names():
-    for name in Name.select():
-        if name.original_citation and not name.original_name:
-            message = u'Name {} is missing an original name, but has original citation {{{}}}:{}'.format(
-                name.description(), name.original_citation, name.page_described)
-            name.original_name = getinput.get_line(
-                message, handlers={'o': lambda _: name.open_description()}
-            )
-            if not name.page_described:
-                name.page_described = getinput.get_line(
-                    'Enter page described', handlers={'o': lambda _: name.open_description()}, should_stop=lambda line: line == 's'
+
+def _add_missing_data(attribute):
+    def decorator(fn):
+        @functools.wraps(fn)
+        def wrapper(*args, **kwargs):
+            for nam, message in fn(*args, **kwargs):
+                value = getinput.get_line(
+                    message, handlers={'o': lambda _: nam.open_description()}
                 )
-            name.save()
+                if value:
+                    setattr(nam, attribute, value)
+                    nam.save()
+        return wrapper
+    return decorator
 
 
 @command
+@_add_missing_data('authority')
+def fix_bad_ampersands():
+    for name in Name.filter(Name.authority % '%&%&%'):
+        yield name, u'Name {} has bad authority format'.format(name.description())
+
+
+@command
+@_add_missing_data('authority')
+def fix_et_al():
+    for name in Name.filter(Name.authority % '%et al%', Name.original_citation != None).order_by((Name.original_name, Name.root_name)):
+        yield name, u'Name {} uses et al.'.format(name.description())
+
+
+@command
+@_add_missing_data('original_name')
+def add_original_names():
+    for name in Name.filter(Name.original_citation != None, Name.original_name >> None).order_by(Name.original_name):
+        message = u'Name {} is missing an original name, but has original citation {{{}}}:{}'.format(
+            name.description(), name.original_citation, name.page_described)
+        yield name, message
+
+
+@command
+@_add_missing_data('page_described')
 def add_page_described():
     for name in Name.filter(Name.original_citation != None, Name.page_described >> None, Name.year != 'in press').order_by(Name.original_citation, Name.original_name):
-        if name.year == '2015':
+        if name.year in ('2015', '2016'):
             continue  # recent JVP papers don't have page numbers
         message = 'Name %s is missing page described, but has original citation {%s}' % \
             (name.description(), name.original_citation)
-        page = getinput.get_line(
-            message, handlers={'o': lambda _: name.open_description()}, should_stop=lambda line: line == 's'
-        )
-        if page:
-            name.page_described = page
-            name.save()
+        yield name, message
 
 
 @command
@@ -217,7 +236,7 @@ def add_types():
         verbatim_type = getinput.get_line(
             message, handlers={'o': lambda _: name.open_description()}, should_stop=lambda line: line == 's'
         )
-        if verbatim_type is not None:
+        if verbatim_type:
             name.detect_and_set_type(verbatim_type, verbose=True)
 
 
@@ -431,8 +450,12 @@ def print_percentages():
             if getattr(name, attribute) is not None:
                 counts_of_parent[parent_id][attribute] += 1
 
-    for parent_id, data in counts_of_parent.items():
-        parent = Taxon.filter(Taxon.id == parent_id)[0]
+    parents = [
+        (Taxon.filter(Taxon.id == parent_id)[0], data)
+        for parent_id, data in counts_of_parent.items()
+    ]
+
+    for parent, data in sorted(parents, key=lambda i: i[0].valid_name):
         print("FILE", parent)
         total = data['total']
         del data['total']
