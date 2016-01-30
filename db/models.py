@@ -834,7 +834,7 @@ class Name(BaseModel):
     def __repr__(self):
         return self.description()
 
-    def set_paper(self, paper, page_described=None, original_name=None, **kwargs):
+    def set_paper(self, paper, page_described=None, original_name=None, force=False, **kwargs):
         authority, year = ehphp.call_ehphp('taxonomicAuthority', [paper])
         if original_name is None and self.status == constants.STATUS_VALID:
             original_name = self.taxon.valid_name
@@ -847,8 +847,10 @@ class Name(BaseModel):
                 continue
             current_value = getattr(self, label)
             if current_value is not None:
-                if current_value != value:
+                if current_value != value and current_value != str(value):
                     print('Warning: %s does not match (given as %s, paper has %s)' % (label, current_value, value))
+                    if force:
+                        setattr(self, label, value)
             else:
                 setattr(self, label, value)
         self.s(**kwargs)
