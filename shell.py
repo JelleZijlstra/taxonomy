@@ -12,6 +12,7 @@ import getinput
 import collections
 import functools
 import IPython
+import os.path
 import re
 
 
@@ -105,6 +106,7 @@ ns = _ShellNamespace({
     'Node': db.definition.Node,
     'Apomorphy': db.definition.Apomorphy,
     'Other': db.definition.Other,
+    'db': db,
     'N': _NameGetter(Name, 'root_name'),
     'L': _NameGetter(db.models.Location, 'name'),
     'P': _NameGetter(db.models.Period, 'name'),
@@ -498,7 +500,8 @@ def fossilize(taxon, to_status=db.constants.AGE_FOSSIL, from_status=db.constants
 def run_shell():
     config = IPython.config.loader.Config()
     config.InteractiveShellEmbed.confirm_exit = False
-    IPython.start_ipython(config=config, user_ns=ns)
+    lib_file = os.path.join(os.path.dirname(__file__), 'lib.py')
+    IPython.start_ipython(argv=[lib_file, '-i'], config=config, user_ns=ns)
 
 
 if __name__ == '__main__':
