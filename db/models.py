@@ -570,10 +570,13 @@ class Taxon(BaseModel):
                     counts[attribute] += 1
 
         total = len(names)
+        output = {'total': total}
         print("Total names:", total)
         for attribute in attributes:
             percentage = counts[attribute] * 100.0 / total
             print("%s: %s (%.2f%%)" % (attribute, counts[attribute], percentage))
+            output[attribute] = percentage
+        return output
 
     class _OccurrenceGetter(object):
         """For easily accessing occurrences of a taxon.
