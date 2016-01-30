@@ -272,7 +272,9 @@ class Taxon(BaseModel):
                 taxon = taxon.parent
         return result
 
-    def display(self, full=False, max_depth=None, file=sys.stdout, depth=0, exclude=set()):
+    def display(self, full=False, max_depth=None, file=sys.stdout, depth=0, exclude=set(), exclude_fn=None, name_exclude_fn=None, show_occurrences=True):
+        if exclude_fn is not None and exclude_fn(self):
+            return
         file.write(' ' * (4 * depth))
         file.write('%s %s (%s)\n' % (constants.string_of_rank(self.rank), self.full_name(), constants.string_of_age(self.age)))
         if full:
@@ -286,16 +288,18 @@ class Taxon(BaseModel):
                     file.write(' ' * ((depth + 1) * 4))
                     file.write('%s: %s\n' % (key, value))
         for name in self.sorted_names():
-            file.write(name.display(depth=depth + 1, full=full))
-        for occurrence in self.sorted_occurrences():
-            file.write(' ' * ((depth + 1) * 4))
-            file.write('%s\n' % (occurrence if full else occurrence.location))
+            if name_exclude_fn is None or not name_exclude_fn(name):
+                file.write(name.display(depth=depth + 1, full=full))
+        if show_occurrences:
+            for occurrence in self.sorted_occurrences():
+                file.write(' ' * ((depth + 1) * 4))
+                file.write('%s\n' % (occurrence if full else occurrence.location))
         if self in exclude:
             return
         if max_depth is None or max_depth > 0:
             new_max_depth = None if max_depth is None else max_depth - 1
             for child in self.sorted_children():
-                child.display(file=file, depth=depth + 1, max_depth=new_max_depth, full=full, exclude=exclude)
+                child.display(file=file, depth=depth + 1, max_depth=new_max_depth, full=full, exclude=exclude, exclude_fn=exclude_fn, name_exclude_fn=name_exclude_fn, show_occurrences=show_occurrences)
 
     def display_parents(self, max_depth=None, file=sys.stdout):
         if max_depth == 0:
