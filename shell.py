@@ -121,6 +121,9 @@ for model in db.models.BaseModel.__subclasses__():
 events.on_new_taxon.on(ns.add_name)
 events.on_taxon_save.on(ns.add_name)
 events.on_name_save.on(ns['N'].add_name)
+events.on_name_save.on(ns['O'].add_name)
+events.on_locality_save.on(ns['L'].add_name)
+events.on_period_save.on(ns['P'].add_name)
 
 
 def command(fn):
@@ -426,6 +429,55 @@ def authorless_names(root_taxon, attribute='authority'):
         yield from authorless_names(child, attribute=attribute)
 
 
+@command
+def labeled_authorless_names():
+    nams = Name.filter(Name.authority >> None)
+    nams = [{'name': nam} for nam in nams]
+    for nam in nams:
+        try:
+            order = nam['name'].taxon.parent_of_rank(db.constants.ORDER)
+        except ValueError:
+            order = None
+        nam['order'] = order
+        try:
+            family = nam['name'].taxon.parent_of_rank(db.constants.FAMILY)
+        except ValueError:
+            family = None
+        nam['family'] = family
+        nam['is_mammal'] = nam['name'].taxon.is_child_of(Mammalia)
+    return nams
+
+
+@command
+def correct_type_taxon(max_count=None, dry_run=True, only_if_child=True):
+    count = 0
+    for nam in Name.select().where(Name.group << (db.constants.GROUP_GENUS, db.constants.GROUP_FAMILY)):
+        if nam.type is None:
+            continue
+        if nam.taxon == nam.type.taxon:
+            continue
+        expected_taxon = nam.type.taxon.parent
+        while expected_taxon.base_name.group != nam.group and expected_taxon != nam.taxon:
+            expected_taxon = expected_taxon.parent
+            if expected_taxon is None:
+                break
+        if expected_taxon is None:
+            continue
+        if nam.taxon != expected_taxon:
+            count += 1
+            print('changing taxon of %s from %s to %s' % (nam, nam.taxon, expected_taxon))
+            if not dry_run:
+                if only_if_child:
+                    if not expected_taxon.is_child_of(nam.taxon):
+                        print('dropping non-parent: %s' % nam)
+                        continue
+                nam.taxon = expected_taxon
+                nam.save()
+            if max_count is not None and count > max_count:
+                return
+
+
+
 # Statistics
 
 @command
@@ -475,6 +527,11 @@ def bad_base_names():
 @generator_command
 def bad_taxa():
     return Name.raw('SELECT * FROM name WHERE taxon_id IS NULL or taxon_id NOT IN (SELECT id FROM taxon)')
+
+
+@generator_command
+def bad_parents():
+    return Name.raw('SELECT * FROM name WHERE parent_id NOT IN (SELECT id FROM taxon)')
 
 
 @generator_command

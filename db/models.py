@@ -11,6 +11,7 @@ import operator
 import peewee
 import re
 import sys
+import traceback
 
 from . import constants
 from . import definition
@@ -47,9 +48,13 @@ class BaseModel(Model):
 
     def full_data(self):
         for field in sorted(self.fields()):
-            value = getattr(self, field)
-            if value is not None:
-                print("{}: {}".format(field, value))
+            try:
+                value = getattr(self, field)
+                if value is not None:
+                    print("{}: {}".format(field, value))
+            except Exception:
+                traceback.print_exc()
+                print('{}: could not get value'.format(field))
 
     def s(self, **kwargs):
         """Set attributes on the object.
@@ -518,12 +523,26 @@ class Taxon(BaseModel):
         assert self != to_taxon, 'Cannot synonymize %s with itself' % self
         for child in self.children:
             child.parent = to_taxon
+            child.save()
         nam = self.base_name
         nam.status = constants.STATUS_SYNONYM
         nam.save()
         for name in self.names:
             name.taxon = to_taxon
             name.save()
+        for occ in self.occurrences:
+            occ.taxon = to_taxon
+            comment = occ.comment
+            try:
+                occ.add_comment('Previously under _%s_.' % self.name)
+                occ.save()
+            except peewee.IntegrityError:
+                print('dropping duplicate occurrence %s' % occ)
+                existing = to_taxon.at(occ.location)
+                additional_comment = 'Also under _%s_ with source {%s}.' % (self.name, occ.source)
+                if comment is not None:
+                    additional_comment += ' ' + comment
+                existing.add_comment(additional_comment)
         to_taxon.base_name.status = constants.STATUS_VALID
         self.delete_instance()
         return Name.get(Name.id == nam.id)
@@ -989,6 +1008,8 @@ class Name(BaseModel):
 
 
 class Period(BaseModel):
+    save_event = events.on_period_save
+
     name = CharField()
     parent = ForeignKeyField('self', related_name='children', db_column='parent_id', null=True)
     prev = ForeignKeyField('self', related_name='next_foreign', db_column='prev_id', null=True)
@@ -1047,7 +1068,7 @@ class Period(BaseModel):
             period.display(full=full, depth=depth + 1, file=file)
 
     def make_locality(self, region):
-        return Location.make(self.name, self, region)
+        return Location.make(self.name, region, self)
 
     def __repr__(self):
         properties = {}
@@ -1093,6 +1114,8 @@ class Region(BaseModel):
 
 
 class Location(BaseModel):
+    save_event = events.on_locality_save
+
     name = CharField()
     min_period = ForeignKeyField(Period, related_name='locations_min', db_column='min_period_id', null=True)
     max_period = ForeignKeyField(Period, related_name='locations_max', db_column='max_period_id', null=True)
@@ -1169,6 +1192,13 @@ class Occurrence(BaseModel):
     comment = CharField()
     status = EnumField(constants.OccurrenceStatus, default=constants.OccurrenceStatus.valid)
     source = CharField()
+
+    def add_comment(self, new_comment):
+        if self.comment is None:
+            self.comment = new_comment
+        else:
+            self.comment += ' ' + new_comment
+        self.save()
 
     def __repr__(self):
         out = '%s in %s (%s%s)' % (self.taxon, self.location, self.source, '; ' + self.comment if self.comment else '')

@@ -7,5 +7,5 @@ echo "Starting MySQL server..."
 sudo /opt/local/lib/mysql5/bin/mysqld_safe &
 
 echo "Starting EHPHP server..."
-sudo php /Users/jellezijlstra/Dropbox/git/web/server.php 3001 &
+sudo php55 /Users/jellezijlstra/Dropbox/git/web/server.php 3001 &
 

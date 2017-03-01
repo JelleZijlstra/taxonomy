@@ -11,6 +11,9 @@ import sys
 def cite_exists(cite):
 	return call_ehphp('exists', {'0': cite})
 
+def get_target(cite):
+	return call_ehphp('getTarget', {'0': cite})
+
 def may_be_citation(cite):
 	'''Checks whether a citation may be a catalog ID'''
 	return '.' not in cite or re.search(r"\.[a-z]+$", cite)
@@ -34,8 +37,21 @@ def check_refs():
 				print("Name:", name.description())
 				print("Warning: invalid citation:", name.verbatim_citation)
 
+def resolve_redirects():
+	for name in Name.select():
+		if name.original_citation:
+			target = get_target(name.original_citation)
+			if target is not None:
+				if target != name.original_citation:
+					print('Fixing redirect for %s: %s -> %s' % (name, name.original_citation, target))
+					name.original_citation = target
+					name.save()
+			else:
+				print('WARNING: citation for %s does not exist: %s' % (name, name.original_citation))
+
 scripts = {
 	'check_refs': check_refs,
+	'resolve_redirects': resolve_redirects,
 }
 
 if __name__ == '__main__':
