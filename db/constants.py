@@ -161,8 +161,4 @@ def _build():
 			setattr(ns, "abbrev_of_" + key, lambda c: constant_lookup[key][c]["abbreviation"])
 		set_key(key)
 
-	with open(_my_dir() + "/../public/js/constants.js", "w") as js_file:
-		js_file.write("var constants = ")
-		js_file.write(json_str)
-
 _build()
