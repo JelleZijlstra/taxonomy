@@ -4,8 +4,6 @@ from peewee import (
     MySQLDatabase, Model, IntegerField, CharField, ForeignKeyField, TextField, BooleanField
 )
 import collections
-import events
-import getinput
 import json
 import operator
 import peewee
@@ -18,6 +16,9 @@ from . import definition
 from . import ehphp
 from . import helpers
 from . import settings
+
+from .. import events
+from .. import getinput
 
 database = MySQLDatabase(settings.DATABASE, user=settings.USER, passwd=settings.PASSWD, charset='utf8')
 database.get_conn().ping(True)

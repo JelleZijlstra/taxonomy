@@ -1,7 +1,7 @@
 '''Maintenance scripts'''
 
-from db.ehphp import call_ehphp
-from db.models import Name
+from .db.ehphp import call_ehphp
+from .db.models import Name
 
 import re
 import sys

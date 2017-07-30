@@ -1,13 +1,7 @@
-#!/usr/bin/env python3.4
-
-import db.constants
-import db.definition
-import db.detection
-import db.helpers
-import db.models
-from db.models import Name, Taxon
-import events
-import getinput
+from . import db
+from .db.models import Name, Taxon
+from . import events
+from . import getinput
 
 import collections
 import functools
