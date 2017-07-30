@@ -208,7 +208,7 @@ def fix_bad_ampersands():
 @command
 @_add_missing_data('authority')
 def fix_et_al():
-    for name in Name.filter(Name.authority % '%et al%', Name.original_citation != None).order_by((Name.original_name, Name.root_name)):
+    for name in Name.filter(Name.authority % '%et al%', Name.original_citation != None).order_by(Name.original_name, Name.root_name):
         yield name, u'Name {} uses et al.'.format(name.description())
 
 
@@ -531,7 +531,7 @@ def bad_taxa():
 
 @generator_command
 def bad_parents():
-    return Name.raw('SELECT * FROM name WHERE parent_id NOT IN (SELECT id FROM taxon)')
+    return Name.raw('SELECT * FROM taxon WHERE parent_id NOT IN (SELECT id FROM taxon)')
 
 
 @generator_command
@@ -545,13 +545,14 @@ def childless_taxa():
 
 
 @command
-def fossilize(taxon, to_status=db.constants.AGE_FOSSIL, from_status=db.constants.AGE_EXTANT):
-    if taxon.age != from_status:
-        return
-    taxon.age = to_status
-    taxon.save()
-    for child in taxon.children:
-        fossilize(child, to_status=to_status, from_status=from_status)
+def fossilize(*taxa, to_status=db.constants.AGE_FOSSIL, from_status=db.constants.AGE_EXTANT):
+    for taxon in taxa:
+        if taxon.age != from_status:
+            return
+        taxon.age = to_status
+        taxon.save()
+        for child in taxon.children:
+            fossilize(child, to_status=to_status, from_status=from_status)
 
 
 def run_shell():
