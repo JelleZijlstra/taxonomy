@@ -1,10 +1,10 @@
 '''Maintenance scripts'''
 
-from .db.ehphp import call_ehphp
-from .db.models import Name
-
 import re
 import sys
+
+from .db.ehphp import call_ehphp
+from .db.models import Name
 
 def cite_exists(cite):
     return call_ehphp('exists', {'0': cite})
@@ -41,11 +41,13 @@ def resolve_redirects():
             target = get_target(name.original_citation)
             if target is not None:
                 if target != name.original_citation:
-                    print('Fixing redirect for %s: %s -> %s' % (name, name.original_citation, target))
+                    print('Fixing redirect for %s: %s -> %s' %
+                          (name, name.original_citation, target))
                     name.original_citation = target
                     name.save()
             else:
-                print('WARNING: citation for %s does not exist: %s' % (name, name.original_citation))
+                print('WARNING: citation for %s does not exist: %s' %
+                      (name, name.original_citation))
 
 scripts = {
     'check_refs': check_refs,

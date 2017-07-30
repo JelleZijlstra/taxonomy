@@ -1,5 +1,4 @@
-# coding: utf-8
-__doc__ = """
+"""
 
 Module for fragile detection logic (e.g., stem/gender detection for genera).
 

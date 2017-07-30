@@ -1,13 +1,15 @@
+"""Events used to broadcast updates in the database."""
+
 class Event(object):
-	def __init__(self):
-		self.handlers = []
+    def __init__(self):
+        self.handlers = []
 
-	def on(self, callback):
-		self.handlers.append(callback)
+    def on(self, callback):
+        self.handlers.append(callback)
 
-	def trigger(self, args):
-		for handler in self.handlers:
-			handler(args)
+    def trigger(self, args):
+        for handler in self.handlers:
+            handler(args)
 
 
 on_new_taxon = Event()

@@ -196,21 +196,22 @@ def _add_missing_data(attribute):
 @_add_missing_data('authority')
 def fix_bad_ampersands():
     for name in Name.filter(Name.authority % '%&%&%'):
-        yield name, u'Name {} has bad authority format'.format(name.description())
+        yield name, 'Name {} has bad authority format'.format(name.description())
 
 
 @command
 @_add_missing_data('authority')
 def fix_et_al():
-    for name in Name.filter(Name.authority % '%et al%', Name.original_citation != None).order_by(Name.original_name, Name.root_name):
-        yield name, u'Name {} uses et al.'.format(name.description())
+    for name in (Name.filter(Name.authority % '%et al%', Name.original_citation != None)
+                     .order_by(Name.original_name, Name.root_name)):
+        yield name, 'Name {} uses et al.'.format(name.description())
 
 
 @command
 @_add_missing_data('original_name')
 def add_original_names():
     for name in Name.filter(Name.original_citation != None, Name.original_name >> None).order_by(Name.original_name):
-        message = u'Name {} is missing an original name, but has original citation {{{}}}:{}'.format(
+        message = 'Name {} is missing an original name, but has original citation {{{}}}:{}'.format(
             name.description(), name.original_citation, name.page_described)
         yield name, message
 
