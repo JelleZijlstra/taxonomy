@@ -21,7 +21,7 @@ from . import definition
 from .definition import Definition
 from . import ehphp
 from . import helpers
-from . import settings
+from . import settings  # type: ignore
 
 database = MySQLDatabase(settings.DATABASE, user=settings.USER, passwd=settings.PASSWD, charset='utf8')
 database.get_conn().ping(True)
@@ -665,7 +665,7 @@ class Taxon(BaseModel):
         result |= set(name.root_name for name in names)
         return [name for name in result if name is not None and ' ' not in name]
 
-definition.taxon_cls = Taxon  # type: ignore
+definition.taxon_cls = Taxon
 
 
 class Name(BaseModel):
@@ -1212,7 +1212,9 @@ class Location(BaseModel):
     def make_local_unit(self, name: Optional[str] = None, parent: Optional[Period] = None) -> Period:
         if name is None:
             name = self.name
-        period = Period.make(name, constants.PeriodSystem.local_unit, parent=parent, min_age=self.min_age, max_age=self.max_age, min_period=self.min_period, max_period=self.max_period)
+        period = Period.make(name, constants.PeriodSystem.local_unit,  # type: ignore
+                             parent=parent, min_age=self.min_age, max_age=self.max_age,
+                             min_period=self.min_period, max_period=self.max_period)
         self.min_period = self.max_period = period
         self.save()
         return period

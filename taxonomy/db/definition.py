@@ -8,7 +8,7 @@ Generally follows Article 9 of the PhyloCode: http://www.ohio.edu/phylocode/art9
 
 import json
 import enum
-from typing import Iterable, Union, TYPE_CHECKING
+from typing import Any, Iterable, List, Union, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .models import Taxon
@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 _Taxon = Union[int, 'Taxon']
 
 # to work around circular imports
-taxon_cls = None
+taxon_cls = None  # type: Any
 
 
 class DefinitionType(enum.Enum):
@@ -29,7 +29,7 @@ class DefinitionType(enum.Enum):
 class Definition:
     def __init__(self, typ: DefinitionType, arguments: Iterable[Union[str, _Taxon]]) -> None:
         self.type = typ
-        self.arguments = list(arguments)
+        self.arguments = list(arguments)  # type: List[Any]
 
     def serialize(self) -> str:
         arguments = [
@@ -49,8 +49,8 @@ class Definition:
 
 class Node(Definition):
     """The most recent common ancestor of the argument taxa."""
-    def __init__(self, *anchors: _Taxon) -> None:
-        anchors = list(map(_make_anchor, anchors))
+    def __init__(self, *raw_anchors: _Taxon) -> None:
+        anchors = list(map(_make_anchor, raw_anchors))
         assert len(anchors) >= 2, \
             "Node-based definitions need at least two anchors (got %s)." % anchors
         super().__init__(DefinitionType.node, anchors)
@@ -105,4 +105,4 @@ def _make_anchor(argument: _Taxon) -> 'Taxon':
     if isinstance(argument, int):
         argument = taxon_cls.get(taxon_cls.id == argument)
     assert isinstance(argument, taxon_cls), "Expected a Taxon but got %s" % argument
-    return argument
+    return argument  # type: ignore
