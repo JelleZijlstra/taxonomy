@@ -255,8 +255,8 @@ def find_rank_mismatch() -> Iterable[Taxon]:
     for taxon in Taxon.select():
         expected_group = helpers.group_of_rank(taxon.rank)
         if expected_group != taxon.base_name.group:
-            rank = constants.string_of_rank(taxon.rank)
-            group = constants.string_of_group(taxon.base_name.group)
+            rank = taxon.rank.name
+            group = taxon.base_name.group.name
             print("Group mismatch for %s: rank %s but group %s" % (taxon, rank, group))
             yield taxon
 

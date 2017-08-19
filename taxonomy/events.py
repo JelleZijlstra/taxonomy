@@ -3,12 +3,12 @@
 from typing import Callable, Generic, List, TypeVar, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .db.models import Taxon, Name, Period, Locality
+    from .db.models import Taxon, Name, Period, Location
 
 T = TypeVar('T')
 
 class Event(Generic[T]):
-    def __init__(self):
+    def __init__(self) -> None:
         self.handlers = []  # type: List[Callable[[T], object]]
 
     def on(self, callback: Callable[[T], object]) -> None:

@@ -107,7 +107,7 @@ def suffix_of_rank(rank: Rank) -> str:
 
 def rank_of_string(s: str) -> Rank:
     try:
-        return _RANKS[s]
+        return _RANKS[s]  # type: ignore
     except KeyError:
         raise ValueError("Unknown rank: " + s)
 
@@ -122,7 +122,7 @@ def root_name_of_name(s: str, rank: Rank) -> str:
 
 
 def strip_rank(name: str, rank: Rank, quiet: bool=False) -> str:
-    def strip_of_suffix(name, suffix):
+    def strip_of_suffix(name: str, suffix: str) -> Optional[str]:
         if re.search(suffix + "$", name):
             return re.sub(suffix + "$", "", name)
         else:
@@ -168,15 +168,15 @@ def dict_of_name(name: Name) -> Dict[str, Any]:
         'id': name.id,
         'authority': name.authority,
         'root_name': name.root_name,
-        'group_numeric': name.group,
-        'group': constants.string_of_group(name.group),
+        'group_numeric': name.group.value,
+        'group': name.group.name,
         'nomenclature_comments': name.nomenclature_comments,
         'original_citation': name.original_citation,
         'original_name': name.original_name,
         'other_comments': name.other_comments,
         'page_described': name.page_described,
-        'status_numeric': name.status,
-        'status': constants.string_of_status(name.status),
+        'status_numeric': name.status.value,
+        'status': name.status.name,
         'taxonomy_comments': name.taxonomy_comments,
         'year': name.year
     }
@@ -193,13 +193,13 @@ def dict_of_taxon(taxon: Taxon) -> Dict[str, Any]:
     return {
         'id': taxon.id,
         'valid_name': taxon.valid_name,
-        'rank_numeric': taxon.rank,
-        'rank': constants.string_of_rank(taxon.rank),
+        'rank_numeric': taxon.rank.value,
+        'rank': taxon.rank.name,
         'comments': taxon.comments,
         'names': [],
         'children': [],
-        'age_numeric': taxon.age,
-        'age': constants.string_of_age(taxon.age)
+        'age_numeric': taxon.age.value,
+        'age': taxon.age.name,
     }
 
 

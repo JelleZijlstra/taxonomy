@@ -18,6 +18,7 @@ from .. import getinput
 from . import constants
 from .constants import Age, Group, OccurrenceStatus, Rank, Status
 from . import definition
+from .definition import Definition
 from . import ehphp
 from . import helpers
 from . import settings
@@ -140,6 +141,28 @@ class EnumField(IntegerField):
         setattr(model_class, name, _EnumFieldDescriptor(self, self.enum))
 
 
+class _OccurrenceGetter(object):
+    """For easily accessing occurrences of a taxon.
+
+    This is exposed at taxon.at. You can access taxa as either taxon.at.Locality_Name or taxon.at(L.Locality_Name).
+
+    """
+    def __init__(self, instance: Any = None) -> None:
+        self.instance = instance
+
+    def __get__(self, instance: Any, instance_type: Any) -> '_OccurrenceGetter':
+        return self.__class__(instance)
+
+    def __getattr__(self, loc_name: str) -> 'Occurrence':
+        return self(Location.get(Location.name == loc_name.replace('_', ' ')))
+
+    def __call__(self, loc: 'Location') -> 'Occurrence':
+        return self.instance.occurrences.filter(Occurrence.location == loc).get()
+
+    def __dir__(self) -> List[str]:
+        return [o.location.name.replace(' ', '_') for o in self.instance.occurrences]
+
+
 class Taxon(BaseModel):
     creation_event = events.on_new_taxon
     save_event = events.on_taxon_save
@@ -159,11 +182,11 @@ class Taxon(BaseModel):
     name = property(lambda self: self.base_name)
 
     @property
-    def base_name(self) -> Optional['Name']:
+    def base_name(self) -> 'Name':
         try:
             return Name.get(Name.id == self._base_name_id)
         except Name.DoesNotExist:
-            return None
+            return None  # type: ignore  # too annoying to actually deal with this
 
     @base_name.setter
     def base_name(self, value: 'Name') -> None:
@@ -175,7 +198,7 @@ class Taxon(BaseModel):
         return helpers.group_of_rank(self.rank)
 
     def sorted_names(self, exclude_valid: bool = False) -> List['Name']:
-        names = self.names
+        names = self.names  # type: Iterable[Name]
         if exclude_valid:
             names = filter(lambda name: name.status != Status.valid, names)
         return sorted(names, key=operator.attrgetter('status', 'root_name'))
@@ -228,7 +251,7 @@ class Taxon(BaseModel):
         if original_taxon is None:
             original_taxon = self
         if self.rank > rank and self.rank != Rank.unranked:
-            raise ValueError("%s (id = %s) has no ancestor of rank %s" % (original_taxon, original_taxon.id, constants.string_of_rank(rank)))
+            raise ValueError("%s (id = %s) has no ancestor of rank %s" % (original_taxon, original_taxon.id, rank.name))
         elif self.rank == rank:
             return self
         else:
@@ -259,7 +282,7 @@ class Taxon(BaseModel):
             else:
                 return []
         else:
-            out = []
+            out = []  # type: List[Taxon]
             for child in self.children:
                 out += child.children_of_rank(rank, age=age)
             return out
@@ -291,7 +314,7 @@ class Taxon(BaseModel):
         if exclude_fn is not None and exclude_fn(self):
             return
         file.write(' ' * (4 * depth))
-        file.write('%s %s (%s)\n' % (constants.string_of_rank(self.rank), self.full_name(), constants.string_of_age(self.age)))
+        file.write('%s %s (%s)\n' % (self.rank.name, self.full_name(), self.age.name))
         if full:
             data = {
                 'comments': self.comments,
@@ -324,7 +347,7 @@ class Taxon(BaseModel):
         if self.parent is not None:
             self.parent.display_parents(max_depth=max_depth, file=file)
 
-        file.write('%s %s (%s)\n' % (constants.string_of_rank(self.rank), self.full_name(), constants.string_of_age(self.age)))
+        file.write('%s %s (%s)\n' % (self.rank.name, self.full_name(), self.age.name))
         file.write(self.base_name.display(depth=1))
 
     def ranked_parents(self) -> Tuple[Optional['Taxon'], Optional['Taxon']]:
@@ -364,15 +387,15 @@ class Taxon(BaseModel):
         kwargs['root_name'] = helpers.root_name_of_name(name, rank)
         if 'status' not in kwargs:
             kwargs['status'] = Status.valid
-        name = Name.create(taxon=taxon, **kwargs)
+        name_obj = Name.create(taxon=taxon, **kwargs)
         if authority is not None:
-            name.authority = authority
+            name_obj.authority = authority
         if year is not None:
-            name.year = year
-        name.save()
-        taxon.base_name = name
+            name_obj.year = year
+        name_obj.save()
+        taxon.base_name = name_obj
         if type:
-            self.base_name.type = name
+            self.base_name.type = name_obj
             self.save()
         taxon.save()
         return taxon
@@ -454,13 +477,13 @@ class Taxon(BaseModel):
         elif self.rank == Rank.tribe:
             rank = Rank.subtribe
         elif self.rank == Rank.subfamily:
-            rank = constants.tribe
+            rank = Rank.tribe
         elif self.rank == Rank.family:
             rank = Rank.subfamily
         elif self.rank == Rank.superfamily:
             rank = Rank.family
         else:
-            assert False, 'Cannot add nominate subtaxon of %s of rank %s' % (self, helpers.string_of_rank(self.rank))
+            assert False, 'Cannot add nominate subtaxon of %s of rank %s' % (self, self.rank.name)
 
         taxon = Taxon.create(age=self.age, rank=rank, parent=self)
         taxon.base_name = self.base_name
@@ -511,7 +534,7 @@ class Taxon(BaseModel):
                 elif self.rank == Rank.species:
                     return '%s %s' % (genus.base_name.root_name, name.root_name)
                 else:
-                    assert self.rank == Rank.subspecies, "Unexpected rank %s" % constants.string_of_rank(self.rank)
+                    assert self.rank == Rank.subspecies, "Unexpected rank %s" % self.rank.name
                     species = self.parent_of_rank(Rank.species)
                     return '%s %s %s' % (genus.base_name.root_name, species.base_name.root_name, name.root_name)
 
@@ -594,7 +617,7 @@ class Taxon(BaseModel):
         self.delete_instance()
 
     def all_names(self) -> Set['Name']:
-        names = set(self.names)
+        names = set(self.names)  # type: Set[Name]
         for child in self.children:
             names |= child.all_names()
         return names
@@ -602,41 +625,20 @@ class Taxon(BaseModel):
     def stats(self) -> Dict[str, float]:
         attributes = ['original_name', 'original_citation', 'page_described', 'authority', 'year']
         names = self.all_names()
-        counts = collections.defaultdict(int)
+        counts = collections.defaultdict(int)  # type: Dict[str, int]
         for name in names:
             for attribute in attributes:
                 if getattr(name, attribute) is not None:
                     counts[attribute] += 1
 
         total = len(names)
-        output = {'total': total}
+        output = {'total': total}  # type: Dict[str, float]
         print("Total names:", total)
         for attribute in attributes:
             percentage = counts[attribute] * 100.0 / total
             print("%s: %s (%.2f%%)" % (attribute, counts[attribute], percentage))
             output[attribute] = percentage
         return output
-
-    class _OccurrenceGetter(object):
-        """For easily accessing occurrences of a taxon.
-
-        This is exposed at taxon.at. You can access taxa as either taxon.at.Locality_Name or taxon.at(L.Locality_Name).
-
-        """
-        def __init__(self, instance: Any = None) -> None:
-            self.instance = instance
-
-        def __get__(self, instance: Any, instance_type: Any) -> '_OccurrenceGetter':
-            return self.__class__(instance)
-
-        def __getattr__(self, loc_name: str) -> 'Occurrence':
-            return self(Location.get(Location.name == loc_name.replace('_', ' ')))
-
-        def __call__(self, loc: 'Location') -> 'Occurrence':
-            return self.instance.occurrences.filter(Occurrence.location == loc).get()
-
-        def __dir__(self) -> List[str]:
-            return [o.location.name.replace(' ', '_') for o in self.instance.occurrences]
 
     at = _OccurrenceGetter()
 
@@ -661,10 +663,9 @@ class Taxon(BaseModel):
         names = self.sorted_names()
         result |= set(name.original_name for name in names)
         result |= set(name.root_name for name in names)
-        result = [name for name in result if name is not None and ' ' not in name]
-        return result
+        return [name for name in result if name is not None and ' ' not in name]
 
-definition.taxon_cls = Taxon
+definition.taxon_cls = Taxon  # type: ignore
 
 
 class Name(BaseModel):
@@ -692,15 +693,15 @@ class Name(BaseModel):
     _definition = CharField(null=True, db_column='definition')
 
     @property
-    def definition(self) -> Optional[definition.Definition]:
+    def definition(self) -> Optional[Definition]:
         data = self._definition
         if data is None:
             return None
         else:
-            return definition.Definition.unserialize(data)
+            return Definition.unserialize(data)
 
     @definition.setter
-    def definition(self, definition: definition.Definition) -> None:
+    def definition(self, definition: Definition) -> None:
         self._definition = definition.serialize()
 
     class Meta(object):
@@ -717,7 +718,7 @@ class Name(BaseModel):
 
     def add_data(self, field: str, value: Any) -> None:
         if self.data is None or self.data == '':
-            data = {}
+            data = {}  # type: Dict[str, Any]
         else:
             data = json.loads(self.data)
         data[field] = value
@@ -740,7 +741,7 @@ class Name(BaseModel):
         return self.nomenclature_comments is not None and \
             'Unavailable because not based on a generic name.' in self.nomenclature_comments
 
-    def display(self, full: bool = False, depth: int = 0) -> None:
+    def display(self, full: bool = False, depth: int = 0) -> str:
         if self.original_name is None:
             out = self.root_name
         else:
@@ -755,7 +756,7 @@ class Name(BaseModel):
             out += ' {%s}' % self.original_citation
         if self.type is not None:
             out += ' (type: %s)' % self.type
-        out += ' (%s)' % (constants.string_of_status(self.status))
+        out += ' (%s)' % self.status.name
         if full and (self.original_name is not None or self.stem is not None or self.gender is not None or self.definition is not None):
             parts = []
             if self.original_name is not None:
@@ -828,7 +829,7 @@ class Name(BaseModel):
         new_taxon.valid_name = new_taxon.compute_valid_name()
         new_taxon.save()
         self.taxon = new_taxon
-        self.status = status
+        self.status = status  # type: ignore
         self.save()
         return new_taxon
 
@@ -956,7 +957,7 @@ class Name(BaseModel):
             return verbatim_type, None
 
     def detect_type_from_verbatim_type(self, verbatim_type: str) -> List['Name']:
-        def _filter_by_authority(candidates: List['Name'], authority: str) -> List['Name']:
+        def _filter_by_authority(candidates: List['Name'], authority: Optional[str]) -> List['Name']:
             if authority is None:
                 return candidates
             split = re.split(r', (?=\d)', authority, maxsplit=1)
@@ -977,7 +978,7 @@ class Name(BaseModel):
         if self.group == Group.family:
             verbatim = verbatim_type.split(maxsplit=1)
             if len(verbatim) == 1:
-                type_name, authority = verbatim, None
+                type_name, authority = verbatim[0], None
             else:
                 type_name, authority = verbatim
             return _filter_by_authority(parent.find_names(verbatim[0], group=Group.genus), authority)
@@ -1076,7 +1077,7 @@ class Period(BaseModel):
 
     @classmethod
     def make_stratigraphy(cls, name: str, kind: constants.PeriodSystem, period: Optional['Period'] = None,
-                          parent: Optional['Parent'] = None, **kwargs: Any) -> 'Period':
+                          parent: Optional['Period'] = None, **kwargs: Any) -> 'Period':
         if period is not None:
             kwargs['max_period'] = kwargs['min_period'] = period
         period = cls.create(name=name, system=kind.value, parent=parent, **kwargs)

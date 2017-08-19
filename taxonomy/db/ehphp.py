@@ -21,4 +21,4 @@ def call_ehphp(cmd: str, args: Any) -> Any:
     try:
         return req.json()
     except ValueError:  # invalid JSON
-        raise Exception(req.read())
+        raise Exception(req.text)

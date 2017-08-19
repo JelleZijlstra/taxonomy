@@ -27,10 +27,11 @@ def green(text: str) -> str:
 
 
 def get_line(prompt: str, validate: Optional[Callable[[str], bool]] = None,
-             handlers: Mapping[str, Callable[[str], bool]] = None, should_stop: Callable[[str], bool] = lambda _: False) -> Optional[str]:
+             handlers: Mapping[str, Callable[[str], bool]] = {},
+             should_stop: Callable[[str], bool] = lambda _: False) -> Optional[str]:
     class CmdLoop(cmd.Cmd):
-        def default(self, line: str) -> None:
-            return
+        def default(self, line: str) -> bool:
+            return False
 
         def postcmd(self, stop: object, line: str) -> bool:
             if line == 'EOF':
@@ -63,4 +64,4 @@ def yes_no(prompt: str) -> bool:
     positive = {'y', 'yes'}
     negative = {'n', 'no'}
     result = get_line(prompt, validate=lambda line: line.lower() in positive | negative)
-    return result.lower() in positive
+    return result is not None and result.lower() in positive
