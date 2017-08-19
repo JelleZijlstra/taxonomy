@@ -1,13 +1,6 @@
-'''Script to generate Python functions and constants from the constants.json file.
-This performs some slightly evil manipulation of the module namespace.'''
+"""Enums for various fields."""
 
 import enum
-import json
-import os.path
-import re
-import sys
-
-abbreviations = {}
 
 
 class Gender(enum.IntEnum):
@@ -131,34 +124,3 @@ class OccurrenceStatus(enum.IntEnum):
     extirpated = 4  # occurred during the Holocene but now extirpated
     vagrant = 5  # occasionally occurs but not a normal component of the fauna
     classification_dubious = 6  # dubious that the species is correctly classified
-
-
-def _strip_comments(json: str) -> str:
-    return re.sub(r'//[^\n]*', '', json)
-
-
-def _my_dir() -> str:
-    return os.path.dirname(__file__)
-
-
-def _build() -> None:
-    json_str = _strip_comments(open(_my_dir() + "/constants.json", "r").read())
-    data = json.loads(json_str)
-    constant_lookup = {}
-    ns = sys.modules[__name__]
-    for key in data:
-        constant_lookup[key] = {}
-        abbreviations[key] = {}
-        for entry in data[key]:
-            setattr(ns, entry["constant"], entry["value"])
-            constant_lookup[key][entry["value"]] = entry
-            abbreviations[key][entry["abbreviation"]] = entry["value"]
-
-        # Some trickery to capture the key variable
-        def set_key(key):
-            setattr(ns, "string_of_" + key, lambda c: constant_lookup[key][c]["name"])
-            setattr(ns, key + "_of_abbrev", lambda a: abbreviations[key][a])
-            setattr(ns, "abbrev_of_" + key, lambda c: constant_lookup[key][c]["abbreviation"])
-        set_key(key)
-
-_build()
