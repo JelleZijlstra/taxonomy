@@ -2,12 +2,13 @@
 
 import requests
 import json
+from typing import Any
 
 PORT = 3001
 URL = "http://localhost:" + str(PORT) + "/"
 
 
-def call_ehphp(cmd, args):
+def call_ehphp(cmd: str, args: Any) -> Any:
     if isinstance(args, list):
         args = dict(enumerate(args))
     args['includeMySQL'] = True

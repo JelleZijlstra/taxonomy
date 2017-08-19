@@ -6,6 +6,7 @@ Module for fragile detection logic (e.g., stem/gender detection for genera).
 
 import collections
 import re
+from typing import Optional
 
 from . import constants
 
@@ -14,7 +15,7 @@ Gender = constants.Gender
 detection_result = collections.namedtuple('detection_result', ['stem', 'gender', 'confident'])
 
 
-def _rep(pattern, replacement):
+def _rep(pattern: str, replacement: str) -> str:
     return lambda name: re.sub(r'%s$' % pattern, replacement, name)
 
 _endings = [
@@ -261,12 +262,12 @@ _endings = [
 # -eles names: Proteles, Perameles feminine, Ateles, Brachyteles, Meles masculine
 
 
-def _remove_ending(name, end):
+def _remove_ending(name: str, end: str) -> str:
     assert name.endswith(end)
     return re.sub(r'%s$' % end, '', name)
 
 
-def detect_stem_and_gender(name):
+def detect_stem_and_gender(name: str) -> Optional[detection_result]:
     for ending, to_stem, gender, confidence in _endings:
         if name.lower().endswith(ending):
             if callable(to_stem):

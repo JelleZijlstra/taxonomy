@@ -3,128 +3,133 @@
 from operator import itemgetter
 import re
 import json
+from typing import Any, Dict, Mapping, Iterable, Optional, TypeVar, TYPE_CHECKING
 
 from . import constants
+from .constants import Group, Rank
 
-SPECIES_RANKS = [constants.SUBSPECIES, constants.SPECIES, constants.SPECIES_GROUP]
-GENUS_RANKS = [constants.SUBGENUS, constants.GENUS]
-FAMILY_RANKS = [constants.SUBTRIBE, constants.TRIBE, constants.SUBFAMILY, constants.FAMILY, constants.SUPERFAMILY]
+if TYPE_CHECKING:
+    from .models import Name, Taxon
+
+SPECIES_RANKS = [Rank.subspecies, Rank.species, Rank.species_group]
+GENUS_RANKS = [Rank.subgenus, Rank.genus]
+FAMILY_RANKS = [Rank.infratribe, Rank.subtribe, Rank.tribe, Rank.subfamily, Rank.family, Rank.superfamily]
 HIGH_RANKS = [
-    constants.ROOT, 43, constants.DIVISION, constants.PARVORDER, constants.INFRAORDER, constants.SUBORDER,
-    constants.ORDER, constants.SUPERORDER, constants.SUBCOHORT, constants.COHORT, constants.SUPERCOHORT,
-    constants.INFRACLASS, constants.SUBCLASS, constants.CLASS, constants.SUPERCLASS, constants.INFRAPHYLUM,
-    constants.SUBPHYLUM, constants.PHYLUM, constants.SUPERPHYLUM, constants.INFRAKINGDOM, constants.SUBKINGDOM,
-    constants.KINGDOM, constants.SUPERKINGDOM, constants.DOMAIN, constants.UNRANKED
+    Rank.root, 43, Rank.division, Rank.parvorder, Rank.infraorder, Rank.suborder,
+    Rank.order, Rank.superorder, Rank.subcohort, Rank.cohort, Rank.supercohort,
+    Rank.infraclass, Rank.subclass, Rank.class_, Rank.superclass, Rank.infraphylum,
+    Rank.subphylum, Rank.phylum, Rank.superphylum, Rank.infrakingdom, Rank.subkingdom,
+    Rank.kingdom, Rank.superkingdom, Rank.domain, Rank.unranked,
 ]
 SUFFIXES = {
-    constants.INFRATRIBE: 'ita',
-    constants.SUBTRIBE: 'ina',
-    constants.TRIBE: 'ini',
-    constants.SUBFAMILY: 'inae',
-    constants.FAMILY: 'idae',
-    constants.SUPERFAMILY: 'oidea'
+    Rank.infratribe: 'ita',
+    Rank.subtribe: 'ina',
+    Rank.tribe: 'ini',
+    Rank.subfamily: 'inae',
+    Rank.family: 'idae',
+    Rank.superfamily: 'oidea'
 }
 _RANKS = {
-    'root': constants.ROOT,
-    'Unnamed rank': constants.ROOT,
-    'Classis': constants.CLASS,
-    'Class': constants.CLASS,
-    'Subclassis': constants.SUBCLASS,
-    'Subclass': constants.SUBCLASS,
-    'Infraclassis': constants.INFRACLASS,
-    'Infraclass': constants.INFRACLASS,
+    'root': Rank.root,
+    'Unnamed rank': Rank.root,
+    'Classis': Rank.class_,
+    'Class': Rank.class_,
+    'Subclassis': Rank.subclass,
+    'Subclass': Rank.subclass,
+    'Infraclassis': Rank.infraclass,
+    'Infraclass': Rank.infraclass,
     'Superlegion': 89,
     'Legion': 88,
     'Sublegion': 87,
-    'Supracohors': constants.SUPERCOHORT,
-    'Supercohors': constants.SUPERCOHORT,
-    'Supercohort': constants.SUPERCOHORT,
-    'Cohors': constants.COHORT,
-    'Cohort': constants.COHORT,
-    'Subcohors': constants.SUBCOHORT,
+    'Supracohors': Rank.supercohort,
+    'Supercohors': Rank.supercohort,
+    'Supercohort': Rank.supercohort,
+    'Cohors': Rank.cohort,
+    'Cohort': Rank.cohort,
+    'Subcohors': Rank.subcohort,
     'Magnorder': 72,
     'Grandorder': 71,
-    'Superordo': constants.SUPERORDER,
-    'Supraordo': constants.SUPERORDER,
-    'Superorder': constants.SUPERORDER,
+    'Superordo': Rank.superorder,
+    'Supraordo': Rank.superorder,
+    'Superorder': Rank.superorder,
     'Mirorder': 69,
-    'Ordo': constants.ORDER,
-    'Order': constants.ORDER,
-    'Subordo': constants.SUBORDER,
-    'Suborder': constants.SUBORDER,
-    'Infraordo': constants.INFRAORDER,
-    'Infraorder': constants.INFRAORDER,
-    'Parvordo': constants.PARVORDER,
-    'Parvorder': constants.PARVORDER,
-    'Superfamilia': constants.SUPERFAMILY,
-    'Suprafamilia': constants.SUPERFAMILY,
-    'Superfamily': constants.SUPERFAMILY,
+    'Ordo': Rank.order,
+    'Order': Rank.order,
+    'Subordo': Rank.suborder,
+    'Suborder': Rank.suborder,
+    'Infraordo': Rank.infraorder,
+    'Infraorder': Rank.infraorder,
+    'Parvordo': Rank.parvorder,
+    'Parvorder': Rank.parvorder,
+    'Superfamilia': Rank.superfamily,
+    'Suprafamilia': Rank.superfamily,
+    'Superfamily': Rank.superfamily,
     'Clade': 43,  # Hack to allow for Eumuroida and Spalacodonta
-    'Familia': constants.FAMILY,
-    'Family': constants.FAMILY,
-    'Subfamilia': constants.SUBFAMILY,
-    'Subfamily': constants.SUBFAMILY,
+    'Familia': Rank.family,
+    'Family': Rank.family,
+    'Subfamilia': Rank.subfamily,
+    'Subfamily': Rank.subfamily,
     'Infrafamily': 34,
-    'Tribus': constants.TRIBE,
-    'Tribe': constants.TRIBE,
-    'Subtribus': constants.SUBTRIBE,
-    'Subtribe': constants.SUBTRIBE,
-    'Infratribe': constants.INFRATRIBE,
-    'Division': constants.DIVISION,
-    'Genus': constants.GENUS,
-    'Subgenus': constants.SUBGENUS,
+    'Tribus': Rank.tribe,
+    'Tribe': Rank.tribe,
+    'Subtribus': Rank.subtribe,
+    'Subtribe': Rank.subtribe,
+    'Infratribe': Rank.infratribe,
+    'Division': Rank.division,
+    'Genus': Rank.genus,
+    'Subgenus': Rank.subgenus,
 }
 
 
-def group_of_rank(rank):
+def group_of_rank(rank: Rank) -> Group:
     if rank in SPECIES_RANKS:
-        return constants.GROUP_SPECIES
+        return Group.species
     elif rank in GENUS_RANKS:
-        return constants.GROUP_GENUS
+        return Group.genus
     elif rank in FAMILY_RANKS or rank == 34 or rank == 24:
-        return constants.GROUP_FAMILY
-    elif rank in HIGH_RANKS or rank > constants.SUPERFAMILY:
-        return constants.GROUP_HIGH
+        return Group.family
+    elif rank in HIGH_RANKS or rank > Rank.superfamily:
+        return Group.high
     else:
-        raise Exception("Unrecognized rank: " + str(rank))
+        raise ValueError("Unrecognized rank: " + str(rank))
 
 
-def name_with_suffixes_removed(name):
+def name_with_suffixes_removed(name: str) -> Iterable[str]:
     suffixes = list(SUFFIXES.values()) + ['ida', 'oidae', 'ides', 'i', 'a', 'ae']
     for suffix in suffixes:
         if name.endswith(suffix):
             yield re.sub(r'%s$' % suffix, '', name)
 
 
-def suffix_of_rank(rank):
+def suffix_of_rank(rank: Rank) -> str:
     return SUFFIXES[rank]
 
 
-def rank_of_string(s):
+def rank_of_string(s: str) -> Rank:
     try:
         return _RANKS[s]
     except KeyError:
-        raise Exception("Unknown rank: " + s)
+        raise ValueError("Unknown rank: " + s)
 
 
-def root_name_of_name(s, rank):
-    if rank == constants.SPECIES or rank == constants.SUBSPECIES:
+def root_name_of_name(s: str, rank: Rank) -> str:
+    if rank == Rank.species or rank == Rank.subspecies:
         return s.split()[-1]
-    elif group_of_rank(rank) == constants.GROUP_FAMILY:
+    elif group_of_rank(rank) == Group.family:
         return strip_rank(s, rank)
     else:
         return s
 
 
-def strip_rank(name, rank, quiet=False):
+def strip_rank(name: str, rank: Rank, quiet: bool=False) -> str:
     def strip_of_suffix(name, suffix):
         if re.search(suffix + "$", name):
             return re.sub(suffix + "$", "", name)
         else:
             return None
 
+    suffix = suffix_of_rank(rank)
     try:
-        suffix = suffix_of_rank(rank)
         res = strip_of_suffix(name, suffix)
     except KeyError:
         res = None
@@ -141,16 +146,16 @@ def strip_rank(name, rank, quiet=False):
         return res
 
 
-def spg_of_species(species):
+def spg_of_species(species: str) -> str:
     '''Returns a species group name from a species name'''
     return re.sub(r" ([a-z]+)$", r" (\1)", species)
 
 
-def species_of_subspecies(ssp):
+def species_of_subspecies(ssp: str) -> str:
     return re.sub(r" ([a-z]+)$", r"", ssp)
 
 
-def is_nominate_subspecies(ssp):
+def is_nominate_subspecies(ssp: str) -> bool:
     parts = re.sub(r' \(([A-Za-z"\-\. ]+)\)', '', ssp).split(' ')
     if len(parts) != 3:
         print(parts)
@@ -158,7 +163,7 @@ def is_nominate_subspecies(ssp):
     return parts[1] == parts[2]
 
 
-def dict_of_name(name):
+def dict_of_name(name: Name) -> Dict[str, Any]:
     result = {
         'id': name.id,
         'authority': name.authority,
@@ -184,7 +189,7 @@ def dict_of_name(name):
     return result
 
 
-def dict_of_taxon(taxon):
+def dict_of_taxon(taxon: Taxon) -> Dict[str, Any]:
     return {
         'id': taxon.id,
         'valid_name': taxon.valid_name,
@@ -198,7 +203,7 @@ def dict_of_taxon(taxon):
     }
 
 
-def tree_of_taxon(taxon, include_root=False):
+def tree_of_taxon(taxon: Taxon, include_root: bool=False) -> Dict[str, Any]:
     result = dict_of_taxon(taxon)
     if include_root or not taxon.is_page_root:
         for name in taxon.names:
@@ -210,15 +215,19 @@ def tree_of_taxon(taxon, include_root=False):
     return result
 
 
-def remove_null(dict):
+_T1 = TypeVar('_T1')
+_T2 = TypeVar('_T2')
+
+
+def remove_null(d: Mapping[_T1, Optional[_T2]]) -> Dict[_T1, _T2]:
     out = {}
-    for k, v in dict.items():
+    for k, v in d.items():
         if v is not None:
             out[k] = v
     return out
 
 
-def fix_data(data):
+def fix_data(data: str) -> Optional[str]:
     if data:
         data = json.dumps(remove_null(json.loads(data)))
         if data == '{}':
@@ -229,7 +238,7 @@ def fix_data(data):
         return None
 
 
-def convert_gender(name, gender):
+def convert_gender(name: str, gender: constants.Gender) -> str:
     name = _canonicalize_gender(name)
     if gender == constants.Gender.masculine:
         return name
@@ -249,9 +258,11 @@ def convert_gender(name, gender):
             return re.sub(r'us$', 'um', name)
         else:
             return name
+    else:
+        raise ValueError('unknown gender {}'.format(gender))
 
 
-def _canonicalize_gender(name):
+def _canonicalize_gender(name: str) -> str:
     if name.endswith('e'):
         return re.sub(r'e$', 'is', name)
     elif name.endswith('era'):

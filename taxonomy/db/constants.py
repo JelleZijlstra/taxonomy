@@ -103,21 +103,21 @@ class PeriodSystem(enum.IntEnum):
     supergroup = 24
     other_stratigraphy = 25
 
-    def is_stratigraphy(self):
+    def is_stratigraphy(self) -> bool:
         return self in {
             PeriodSystem.bed, PeriodSystem.member, PeriodSystem.formation, PeriodSystem.group, PeriodSystem.supergroup,
             PeriodSystem.other_stratigraphy,
         }
 
-    def is_chronology(self):
+    def is_chronology(self) -> bool:
         return self.is_biochronology() or self.is_geochronology() or self == PeriodSystem.local_unit
 
-    def is_biochronology(self):
+    def is_biochronology(self) -> bool:
         return self in {
             PeriodSystem.mn_zone, PeriodSystem.mp_zone, PeriodSystem.nalma, PeriodSystem.salma, PeriodSystem.alma,
         }
 
-    def is_geochronology(self):
+    def is_geochronology(self) -> bool:
         return self in {
             PeriodSystem.age, PeriodSystem.epoch, PeriodSystem.period, PeriodSystem.era, PeriodSystem.eon,
         }
@@ -133,15 +133,15 @@ class OccurrenceStatus(enum.IntEnum):
     classification_dubious = 6  # dubious that the species is correctly classified
 
 
-def _strip_comments(json):
+def _strip_comments(json: str) -> str:
     return re.sub(r'//[^\n]*', '', json)
 
 
-def _my_dir():
+def _my_dir() -> str:
     return os.path.dirname(__file__)
 
 
-def _build():
+def _build() -> None:
     json_str = _strip_comments(open(_my_dir() + "/constants.json", "r").read())
     data = json.loads(json_str)
     constant_lookup = {}

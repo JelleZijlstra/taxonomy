@@ -1,9 +1,11 @@
 import collections
+import enum
 import json
 import operator
 import re
 import sys
 import traceback
+from typing import Any, Callable, Container, Dict, Generic, IO, Iterable, List, Optional, Set, Tuple, Type, TypeVar, Union
 
 from peewee import (
     MySQLDatabase, Model, IntegerField, CharField, ForeignKeyField, TextField, BooleanField
@@ -14,6 +16,7 @@ from .. import events
 from .. import getinput
 
 from . import constants
+from .constants import Age, Group, OccurrenceStatus, Rank, Status
 from . import definition
 from . import ehphp
 from . import helpers
@@ -23,30 +26,33 @@ database = MySQLDatabase(settings.DATABASE, user=settings.USER, passwd=settings.
 database.get_conn().ping(True)
 
 
+ModelT = TypeVar('ModelT', bound='BaseModel')
+
+
 class BaseModel(Model):
-    creation_event = None
-    save_event = None
+    creation_event = None  # type: events.Event[Any]
+    save_event = None  # type: events.Event[Any]
 
     class Meta(object):
         database = database
 
     @classmethod
-    def create(cls, *args, **kwargs):
+    def create(cls: Type[ModelT], *args: Any, **kwargs: Any) -> ModelT:
         result = super().create(*args, **kwargs)
         if cls.creation_event is not None:
             cls.creation_event.trigger(result)
         return result
 
-    def save(self, *args, **kwargs):
+    def save(self, *args: Any, **kwargs: Any) -> None:
         result = super().save(*args, **kwargs)
         if self.save_event is not None:
             self.save_event.trigger(self)
         return result
 
-    def dump_data(self):
+    def dump_data(self) -> str:
         return "%s(%r)" % (self.__class__.__name__, self.__dict__)
 
-    def full_data(self):
+    def full_data(self) -> None:
         for field in sorted(self.fields()):
             try:
                 value = getattr(self, field)
@@ -56,7 +62,7 @@ class BaseModel(Model):
                 traceback.print_exc()
                 print('{}: could not get value'.format(field))
 
-    def s(self, **kwargs):
+    def s(self, **kwargs: Any) -> None:
         """Set attributes on the object.
 
         Use this in the shell instead of directly assigning properties because that does
@@ -70,10 +76,10 @@ class BaseModel(Model):
             setattr(self, name, value)
         self.save()
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         return self.id
 
-    def __del__(self):
+    def __del__(self) -> None:
         if self.is_dirty():
             try:
                 self.save()
@@ -81,15 +87,15 @@ class BaseModel(Model):
                 pass
 
     @classmethod
-    def fields(cls):
+    def fields(cls) -> Iterable[peewee.Field]:
         for field in dir(cls):
             if isinstance(getattr(cls, field), peewee.Field):
                 yield field
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return '%s(%s)' % (self.__class__.__name__, ', '.join('%s=%s' % (field, getattr(self, field)) for field in self.fields()))
 
-    def _merge_fields(self, into, exclude=set()):
+    def _merge_fields(self: ModelT, into: ModelT, exclude: Container[peewee.Field] = set()) -> None:
         for field in self.fields():
             if field in exclude:
                 continue
@@ -104,30 +110,32 @@ class BaseModel(Model):
                 print('warning: dropping %s: %s' % (field, my_data))
         into.save()
 
+EnumT = TypeVar('EnumT', bound=enum.Enum)
 
-class _EnumFieldDescriptor(peewee.FieldDescriptor):
-    def __init__(self, field, enum):
+
+class _EnumFieldDescriptor(peewee.FieldDescriptor, Generic[EnumT]):
+    def __init__(self, field: peewee.Field, enum: Type[EnumT]) -> None:
         super().__init__(field)
         self.enum = enum
 
-    def __get__(self, instance, instance_type=None):
+    def __get__(self, instance: Any, instance_type: Any = None) -> EnumT:
         value = super().__get__(instance, instance_type=instance_type)
         if isinstance(value, int):
             value = self.enum(value)
         return value
 
-    def __set__(self, instance, value):
+    def __set__(self, instance: Any, value: Union[int, EnumT]) -> None:
         if isinstance(value, self.enum):
             value = value.value
         super().__set__(instance, value)
 
 
 class EnumField(IntegerField):
-    def __init__(self, enum, **kwargs):
+    def __init__(self, enum: Type[enum.Enum], **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.enum = enum
 
-    def add_to_class(self, model_class, name):
+    def add_to_class(self, model_class: Type[BaseModel], name: str) -> None:
         super().add_to_class(model_class, name)
         setattr(model_class, name, _EnumFieldDescriptor(self, self.enum))
 
@@ -136,9 +144,9 @@ class Taxon(BaseModel):
     creation_event = events.on_new_taxon
     save_event = events.on_taxon_save
 
-    rank = EnumField(constants.Rank)
+    rank = EnumField(Rank)
     valid_name = CharField(default='')
-    age = EnumField(constants.Age)
+    age = EnumField(Age)
     parent = ForeignKeyField('self', related_name='children', null=True, db_column='parent_id')
     comments = TextField(null=True)
     data = TextField(null=True)
@@ -151,82 +159,82 @@ class Taxon(BaseModel):
     name = property(lambda self: self.base_name)
 
     @property
-    def base_name(self):
+    def base_name(self) -> Optional['Name']:
         try:
             return Name.get(Name.id == self._base_name_id)
         except Name.DoesNotExist:
             return None
 
     @base_name.setter
-    def base_name(self, value):
+    def base_name(self, value: 'Name') -> None:
         self._base_name_id = value.id
         Taxon.update(_base_name_id=value.id).where(Taxon.id == self.id).execute()
         self.save()
 
-    def group(self):
+    def group(self) -> Group:
         return helpers.group_of_rank(self.rank)
 
-    def sorted_names(self, exclude_valid=False):
+    def sorted_names(self, exclude_valid: bool = False) -> List['Name']:
         names = self.names
         if exclude_valid:
-            names = filter(lambda name: name.status != constants.STATUS_VALID, names)
+            names = filter(lambda name: name.status != Status.valid, names)
         return sorted(names, key=operator.attrgetter('status', 'root_name'))
 
-    def sorted_children(self):
+    def sorted_children(self) -> List['Taxon']:
         children = self.children
         return sorted(children, key=operator.attrgetter('rank', 'valid_name'))
 
-    def sorted_occurrences(self):
+    def sorted_occurrences(self) -> List['Occurrence']:
         return sorted(self.occurrences, key=lambda o: o.location.name)
 
-    def root_name(self):
+    def root_name(self) -> str:
         return self.valid_name.split(' ')[-1]
 
-    def all_data(self):
+    def all_data(self) -> None:
         self.full_data()
         self.base_name.full_data()
         print(self.sorted_names())
         print(self.sorted_children())
         print(self.sorted_occurrences())
 
-    def full_name(self):
-        if self.rank == constants.SUBGENUS:
+    def full_name(self) -> str:
+        if self.rank == Rank.subgenus:
             return self.parent.valid_name + ' (' + self.valid_name + ')'
-        if self.rank == constants.SPECIES_GROUP:
+        if self.rank == Rank.species_group:
             return self.parent.full_name() + ' (' + self.base_name.root_name + ')'
-        elif self.rank == constants.SPECIES:
-            if self.parent.rank > constants.GENUS:
+        elif self.rank == Rank.species:
+            if self.parent.rank > Rank.genus:
                 return self.valid_name
             parent_name = self.parent.full_name()
             if self.parent.needs_is():
                 parent_name += " (?)"
             return parent_name + " " + self.base_name.root_name
-        elif self.rank == constants.SUBSPECIES:
+        elif self.rank == Rank.subspecies:
             return self.parent.full_name() + " " + self.base_name.root_name
         else:
             return self.valid_name
 
-    def needs_is(self):
+    def needs_is(self) -> bool:
         if not hasattr(self, '_needs_is'):
-            if self.rank == constants.SUBGENUS:
-                self._needs_is = Taxon.select().where(Taxon.parent == self, Taxon.rank == constants.SPECIES_GROUP).count() > 0
-            elif self.rank == constants.GENUS:
-                self._needs_is = Taxon.select().where(Taxon.parent == self, (Taxon.rank == constants.SUBGENUS) | (Taxon.rank == constants.SPECIES_GROUP)).count() > 0
+            if self.rank == Rank.subgenus:
+                self._needs_is = Taxon.select().where(Taxon.parent == self, Taxon.rank == Rank.species_group).count() > 0
+            elif self.rank == Rank.genus:
+                self._needs_is = Taxon.select().where(Taxon.parent == self, (Taxon.rank == Rank.subgenus) | (Taxon.rank == Rank.species_group)).count() > 0
             else:
                 self._needs_is = False
         return self._needs_is
 
-    def parent_of_rank(self, rank, original_taxon=None):
+    def parent_of_rank(self, rank: Rank, original_taxon: Optional['Taxon'] = None) -> 'Taxon':
         if original_taxon is None:
             original_taxon = self
-        if self.rank > rank and self.rank != constants.UNRANKED:
+        if self.rank > rank and self.rank != Rank.unranked:
             raise ValueError("%s (id = %s) has no ancestor of rank %s" % (original_taxon, original_taxon.id, constants.string_of_rank(rank)))
         elif self.rank == rank:
             return self
         else:
             return self.parent.parent_of_rank(rank, original_taxon=original_taxon)
 
-    def has_parent_of_rank(self, rank):
+    def has_parent_of_rank(self, rank: Rank) -> bool:
         try:
             self.parent_of_rank(rank)
         except ValueError:
@@ -234,7 +242,7 @@ class Taxon(BaseModel):
         else:
             return True
 
-    def is_child_of(self, taxon):
+    def is_child_of(self, taxon: 'Taxon') -> bool:
         if self == taxon:
             return True
         elif self.parent is None:
@@ -242,7 +250,7 @@ class Taxon(BaseModel):
         else:
             return self.parent.is_child_of(taxon)
 
-    def children_of_rank(self, rank, age=None):
+    def children_of_rank(self, rank: Rank, age: Optional[Age] = None) -> List['Taxon']:
         if self.rank < rank:
             return []
         elif self.rank == rank:
@@ -256,7 +264,7 @@ class Taxon(BaseModel):
                 out += child.children_of_rank(rank, age=age)
             return out
 
-    def find_names(self, root_name, group=None, fuzzy=True):
+    def find_names(self, root_name: str, group: Optional[Group] = None, fuzzy: bool = True) -> List['Taxon']:
         """Find instances of the given root_name within the given container taxon."""
         if fuzzy:
             query = Name.root_name % root_name
@@ -277,7 +285,9 @@ class Taxon(BaseModel):
                 taxon = taxon.parent
         return result
 
-    def display(self, full=False, max_depth=None, file=sys.stdout, depth=0, exclude=set(), exclude_fn=None, name_exclude_fn=None, show_occurrences=True):
+    def display(self, full: bool = False, max_depth: Optional[int] = None, file: IO[str] = sys.stdout,
+                depth: int = 0, exclude: Container['Taxon'] = set(), exclude_fn: Optional[Callable[['Taxon'], bool]] = None,
+                name_exclude_fn: Optional[Callable[['Name'], bool]] = None, show_occurrences: bool = True) -> None:
         if exclude_fn is not None and exclude_fn(self):
             return
         file.write(' ' * (4 * depth))
@@ -306,7 +316,7 @@ class Taxon(BaseModel):
             for child in self.sorted_children():
                 child.display(file=file, depth=depth + 1, max_depth=new_max_depth, full=full, exclude=exclude, exclude_fn=exclude_fn, name_exclude_fn=name_exclude_fn, show_occurrences=show_occurrences)
 
-    def display_parents(self, max_depth=None, file=sys.stdout):
+    def display_parents(self, max_depth: Optional[int] = None, file: IO[str] = sys.stdout) -> None:
         if max_depth == 0:
             return
         if max_depth is not None:
@@ -317,7 +327,7 @@ class Taxon(BaseModel):
         file.write('%s %s (%s)\n' % (constants.string_of_rank(self.rank), self.full_name(), constants.string_of_age(self.age)))
         file.write(self.base_name.display(depth=1))
 
-    def ranked_parents(self):
+    def ranked_parents(self) -> Tuple[Optional['Taxon'], Optional['Taxon']]:
         """Returns the order-level and family-level parents of the taxon.
 
         The family-level parents is the one parent of family rank. The order-level parent
@@ -330,29 +340,30 @@ class Taxon(BaseModel):
         current_parent = self
         while current_parent is not None:
             parent_rank = current_parent.rank
-            if parent_rank == constants.FAMILY:
+            if parent_rank == Rank.family:
                 family_rank = current_parent
-            if helpers.group_of_rank(parent_rank) == constants.GROUP_FAMILY:
+            if helpers.group_of_rank(parent_rank) == Group.family:
                 order_rank = None
-            if parent_rank == constants.ORDER:
+            if parent_rank == Rank.order:
                 order_rank = current_parent
                 break
-            if parent_rank == constants.UNRANKED and order_rank is None:
+            if parent_rank == Rank.unranked and order_rank is None:
                 order_rank = current_parent
-            if parent_rank > constants.ORDER and parent_rank != constants.UNRANKED:
+            if parent_rank > Rank.order and parent_rank != Rank.unranked:
                 break
 
             current_parent = current_parent.parent
         return order_rank, family_rank
 
-    def add(self, rank, name, authority=None, year=None, age=None, type=False, comments=None, **kwargs):
+    def add(self, rank: Rank, name: str, authority: Optional[str] = None, year: Union[None, str, int] = None,
+            age: Optional[Age] = None, set_type: bool = False, comments: Optional[str] = None, **kwargs: Any) -> 'Taxon':
         if age is None:
             age = self.age
         taxon = Taxon.create(valid_name=name, age=age, rank=rank, parent=self, comments=comments)
         kwargs['group'] = helpers.group_of_rank(rank)
         kwargs['root_name'] = helpers.root_name_of_name(name, rank)
         if 'status' not in kwargs:
-            kwargs['status'] = constants.STATUS_VALID
+            kwargs['status'] = Status.valid
         name = Name.create(taxon=taxon, **kwargs)
         if authority is not None:
             name.authority = authority
@@ -366,7 +377,10 @@ class Taxon(BaseModel):
         taxon.save()
         return taxon
 
-    def add_syn(self, root_name, authority=None, year=None, original_name=None, original_citation=None, page_described=None, status=constants.STATUS_SYNONYM, **kwargs):
+    def add_syn(self, root_name: str, authority: Optional[str] = None, year: Union[None, int, str] = None,
+                original_name: Optional[str] = None, original_citation: Optional[str] = None,
+                page_described: Union[None, int, str] = None, status: Status = Status.synonym,
+                **kwargs: Any) -> 'Name':
         kwargs['root_name'] = root_name
         kwargs['authority'] = authority
         kwargs['year'] = year
@@ -380,13 +394,14 @@ class Taxon(BaseModel):
             kwargs['group'] = self.base_name.group
         return Name.create(**kwargs)
 
-    def add_type_identical(self, name, page_described=None, locality=None, **kwargs):
+    def add_type_identical(self, name: str, page_described: Union[None, int, str] = None, locality: Optional['Location'] = None,
+                           **kwargs: Any) -> 'Taxon':
         """Convenience method to add a type species described in the same paper as the genus."""
-        assert self.rank == constants.GENUS
+        assert self.rank == Rank.genus
         assert self.base_name.type is None
         full_name = '%s %s' % (self.valid_name, name)
         result = self.add(
-            constants.SPECIES, full_name, type=True, authority=self.base_name.authority, year=self.base_name.year,
+            Rank.species, full_name, type=True, authority=self.base_name.authority, year=self.base_name.year,
             original_citation=self.base_name.original_citation, original_name=full_name, page_described=page_described,
             status=self.base_name.status)
         self.base_name.type = result.base_name
@@ -396,7 +411,8 @@ class Taxon(BaseModel):
         result.base_name.s(**kwargs)
         return result
 
-    def add_occurrence(self, location, paper=None, comment=None, status=constants.OccurrenceStatus.valid):
+    def add_occurrence(self, location: 'Location', paper: Optional[str] = None, comment: Optional[str] = None,
+                       status: OccurrenceStatus = OccurrenceStatus.valid) -> 'Occurrence':
         if paper is None:
             paper = self.base_name.original_citation
         try:
@@ -405,7 +421,9 @@ class Taxon(BaseModel):
             print("DUPLICATE OCCURRENCE")
             return self.at(location)
 
-    def syn_from_paper(self, name, paper, page_described=None, status=constants.STATUS_SYNONYM, group=None, age=None, **kwargs):
+    def syn_from_paper(self, name: str, paper: str, page_described: Union[None, int, str] = None,
+                       status: Status = Status.synonym, group: Optional[Group] = None,
+                       age: Optional[Age] = None, **kwargs: Any) -> 'Name':
         authority, year = ehphp.call_ehphp('taxonomicAuthority', [paper])
         result = self.add_syn(
             root_name=name, authority=authority, year=year, original_citation=paper,
@@ -416,7 +434,9 @@ class Taxon(BaseModel):
         result.s(**kwargs)
         return result
 
-    def from_paper(self, rank, name, paper, page_described=None, status=constants.STATUS_VALID, comments=None, age=None, **override_kwargs):
+    def from_paper(self, rank: Rank, name: str, paper: str, page_described: Union[None, int, str] = None,
+                   status: Status = Status.valid, comments: Optional[str] = None,
+                   age: Optional[Age] = None, **override_kwargs: Any) -> 'Taxon':
         authority, year = ehphp.call_ehphp('taxonomicAuthority', [paper])
         result = self.add(
             rank=rank, name=name, original_citation=paper, page_described=page_described,
@@ -426,19 +446,19 @@ class Taxon(BaseModel):
         result.base_name.s(**override_kwargs)
         return result
 
-    def add_nominate(self):
-        if self.rank == constants.SPECIES:
-            rank = constants.SUBSPECIES
-        elif self.rank == constants.GENUS:
-            rank = constants.SUBGENUS
-        elif self.rank == constants.TRIBE:
-            rank = constants.SUBTRIBE
-        elif self.rank == constants.SUBFAMILY:
-            rank = constants.TRIBE
-        elif self.rank == constants.FAMILY:
-            rank = constants.SUBFAMILY
-        elif self.rank == constants.SUPERFAMILY:
-            rank = constants.FAMILY
+    def add_nominate(self) -> 'Taxon':
+        if self.rank == Rank.species:
+            rank = Rank.subspecies
+        elif self.rank == Rank.genus:
+            rank = Rank.subgenus
+        elif self.rank == Rank.tribe:
+            rank = Rank.subtribe
+        elif self.rank == Rank.subfamily:
+            rank = constants.tribe
+        elif self.rank == Rank.family:
+            rank = Rank.subfamily
+        elif self.rank == Rank.superfamily:
+            rank = Rank.family
         else:
             assert False, 'Cannot add nominate subtaxon of %s of rank %s' % (self, helpers.string_of_rank(self.rank))
 
@@ -448,7 +468,7 @@ class Taxon(BaseModel):
         taxon.recompute_name()
         return taxon
 
-    def syn(self, name=None, **kwargs):
+    def syn(self, name: Optional[str] = None, **kwargs: Any) -> Optional['Name']:
         """Find a synonym matching the given arguments."""
         if name is not None:
             kwargs['root_name'] = name
@@ -461,48 +481,48 @@ class Taxon(BaseModel):
         else:
             return None
 
-    def open_description(self):
+    def open_description(self) -> bool:
         return self.base_name.open_description()
 
-    def compute_valid_name(self):
+    def compute_valid_name(self) -> str:
         name = self.base_name
         if name is None:
             raise Name.DoesNotExist("Taxon with id %d has an invalid base_name" % self.id)
-        if self.rank == constants.DIVISION:
+        if self.rank == Rank.division:
             return '%s Division' % name.root_name
-        elif name.group in (constants.GROUP_GENUS, constants.GROUP_HIGH):
+        elif name.group in (Group.genus, Group.high):
             return name.root_name
-        elif name.group == constants.GROUP_FAMILY:
+        elif name.group == Group.family:
             return name.root_name + helpers.suffix_of_rank(self.rank)
         else:
-            assert name.group == constants.GROUP_SPECIES
+            assert name.group == Group.species
             try:
-                genus = self.parent_of_rank(constants.GENUS)
+                genus = self.parent_of_rank(Rank.genus)
             except ValueError:
                 # if there is no genus, just use the original name
                 # this may be one case where we can't rely on the computed valid name
-                assert self.rank == constants.SPECIES, 'Taxon %s should have a genus parent' % self
+                assert self.rank == Rank.species, 'Taxon %s should have a genus parent' % self
                 # default to the original name for now. This isn't ideal because sometimes the original name
                 # contains misspellings, but we don't really have a place to store that information better.
                 return name.original_name
             else:
-                if self.rank == constants.SPECIES_GROUP:
+                if self.rank == Rank.species_group:
                     return '%s (%s)' % (genus.base_name.root_name, name.root_name)
-                elif self.rank == constants.SPECIES:
+                elif self.rank == Rank.species:
                     return '%s %s' % (genus.base_name.root_name, name.root_name)
                 else:
-                    assert self.rank == constants.SUBSPECIES, "Unexpected rank %s" % constants.string_of_rank(self.rank)
-                    species = self.parent_of_rank(constants.SPECIES)
+                    assert self.rank == Rank.subspecies, "Unexpected rank %s" % constants.string_of_rank(self.rank)
+                    species = self.parent_of_rank(Rank.species)
                     return '%s %s %s' % (genus.base_name.root_name, species.base_name.root_name, name.root_name)
 
-    def recompute_name(self):
+    def recompute_name(self) -> None:
         new_name = self.compute_valid_name()
         if new_name != self.valid_name and new_name is not None:
             print('Changing valid name: %s -> %s' % (self.valid_name, new_name))
             self.valid_name = new_name
             self.save()
 
-    def merge(self, into):
+    def merge(self, into: 'Taxon') -> None:
         for child in self.children:
             child.parent = into
             child.save()
@@ -515,7 +535,7 @@ class Taxon(BaseModel):
         self.base_name.merge(into.base_name, allow_valid=True)
         self.remove()
 
-    def synonymize(self, to_taxon):
+    def synonymize(self, to_taxon: 'Taxon') -> 'Name':
         if self.comments is not None:
             print("Warning: removing comments: %s" % self.comments)
         if self.data is not None:
@@ -525,7 +545,7 @@ class Taxon(BaseModel):
             child.parent = to_taxon
             child.save()
         nam = self.base_name
-        nam.status = constants.STATUS_SYNONYM
+        nam.status = Status.synonym
         nam.save()
         for name in self.names:
             name.taxon = to_taxon
@@ -543,28 +563,28 @@ class Taxon(BaseModel):
                 if comment is not None:
                     additional_comment += ' ' + comment
                 existing.add_comment(additional_comment)
-        to_taxon.base_name.status = constants.STATUS_VALID
+        to_taxon.base_name.status = Status.valid
         self.delete_instance()
         return Name.get(Name.id == nam.id)
 
-    def make_species_group(self):
-        if self.parent.rank == constants.SPECIES_GROUP:
+    def make_species_group(self) -> 'Taxon':
+        if self.parent.rank == Rank.species_group:
             parent = self.parent.parent
         else:
             parent = self.parent
-        new_taxon = Taxon.create(rank=constants.SPECIES_GROUP, age=self.age, parent=parent)
+        new_taxon = Taxon.create(rank=Rank.species_group, age=self.age, parent=parent)
         new_taxon.base_name = self.base_name
         new_taxon.recompute_name()
         self.parent = new_taxon
         self.save()
         return new_taxon
 
-    def run_on_self_and_children(self, callback):
+    def run_on_self_and_children(self, callback: Callable[['Taxon'], object]) -> None:
         callback(self)
         for child in self.children:
             child.run_on_self_and_children(callback)
 
-    def remove(self):
+    def remove(self) -> None:
         if self.children.count() != 0:
             print('Cannot remove %s since it has unremoved children' % self)
             return
@@ -573,13 +593,13 @@ class Taxon(BaseModel):
             name.remove()
         self.delete_instance()
 
-    def all_names(self):
+    def all_names(self) -> Set['Name']:
         names = set(self.names)
         for child in self.children:
             names |= child.all_names()
         return names
 
-    def stats(self):
+    def stats(self) -> Dict[str, float]:
         attributes = ['original_name', 'original_citation', 'page_described', 'authority', 'year']
         names = self.all_names()
         counts = collections.defaultdict(int)
@@ -603,30 +623,30 @@ class Taxon(BaseModel):
         This is exposed at taxon.at. You can access taxa as either taxon.at.Locality_Name or taxon.at(L.Locality_Name).
 
         """
-        def __init__(self, instance=None):
+        def __init__(self, instance: Any = None) -> None:
             self.instance = instance
 
-        def __get__(self, instance, instance_type):
+        def __get__(self, instance: Any, instance_type: Any) -> '_OccurrenceGetter':
             return self.__class__(instance)
 
-        def __getattr__(self, loc_name):
+        def __getattr__(self, loc_name: str) -> 'Occurrence':
             return self(Location.get(Location.name == loc_name.replace('_', ' ')))
 
-        def __call__(self, loc):
+        def __call__(self, loc: 'Location') -> 'Occurrence':
             return self.instance.occurrences.filter(Occurrence.location == loc).get()
 
-        def __dir__(self):
+        def __dir__(self) -> List[str]:
             return [o.location.name.replace(' ', '_') for o in self.instance.occurrences]
 
     at = _OccurrenceGetter()
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.valid_name
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return str(self)
 
-    def __getattr__(self, attr):
+    def __getattr__(self, attr: str) -> 'Name':
         """Returns a name belonging to this taxon with the given root_name or original_name."""
         candidates = [name for name in self.sorted_names() if name.root_name == attr or name.original_name == attr]
         if len(candidates) == 1:
@@ -636,8 +656,8 @@ class Taxon(BaseModel):
         else:
             raise Name.DoesNotExist("Candidates: {}".format(candidates))
 
-    def __dir__(self):
-        result = set(super(Model, self).__dir__())
+    def __dir__(self) -> List[str]:
+        result = set(super().__dir__())
         names = self.sorted_names()
         result |= set(name.original_name for name in names)
         result |= set(name.root_name for name in names)
@@ -652,8 +672,8 @@ class Name(BaseModel):
     save_event = events.on_name_save
 
     root_name = CharField()
-    group = EnumField(constants.Group)
-    status = EnumField(constants.Status)
+    group = EnumField(Group)
+    status = EnumField(Status)
     taxon = ForeignKeyField(Taxon, related_name='names', db_column='taxon_id')
     authority = CharField(null=True)
     data = TextField(null=True)
@@ -672,7 +692,7 @@ class Name(BaseModel):
     _definition = CharField(null=True, db_column='definition')
 
     @property
-    def definition(self):
+    def definition(self) -> Optional[definition.Definition]:
         data = self._definition
         if data is None:
             return None
@@ -680,13 +700,13 @@ class Name(BaseModel):
             return definition.Definition.unserialize(data)
 
     @definition.setter
-    def definition(self, definition):
+    def definition(self, definition: definition.Definition) -> None:
         self._definition = definition.serialize()
 
     class Meta(object):
         db_table = 'name'
 
-    def add_additional_data(self, new_data):
+    def add_additional_data(self, new_data: str) -> None:
         '''Add data to the "additional" field within the "data" field'''
         data = json.loads(self.data)
         if 'additional' not in data:
@@ -695,7 +715,7 @@ class Name(BaseModel):
         self.data = json.dumps(data)
         self.save()
 
-    def add_data(self, field, value):
+    def add_data(self, field: str, value: Any) -> None:
         if self.data is None or self.data == '':
             data = {}
         else:
@@ -703,7 +723,7 @@ class Name(BaseModel):
         data[field] = value
         self.data = json.dumps(data)
 
-    def description(self):
+    def description(self) -> str:
         if self.original_name:
             out = self.original_name
         else:
@@ -715,12 +735,12 @@ class Name(BaseModel):
         out += " (= %s)" % self.taxon.valid_name
         return out
 
-    def is_unavailable(self):
+    def is_unavailable(self) -> bool:
         # TODO: generalize this
         return self.nomenclature_comments is not None and \
             'Unavailable because not based on a generic name.' in self.nomenclature_comments
 
-    def display(self, full=False, depth=0):
+    def display(self, full: bool = False, depth: int = 0) -> None:
         if self.original_name is None:
             out = self.root_name
         else:
@@ -767,34 +787,35 @@ class Name(BaseModel):
             ])
         return result
 
-    def is_well_known(self):
+    def is_well_known(self) -> bool:
         """Returns whether all necessary attributes of the name have been filled in."""
         if self.authority is None or self.year is None or self.page_described is None or self.original_citation is None or self.original_name is None:
             return False
-        elif self.group in (constants.GROUP_FAMILY, constants.GROUP_GENUS) and self.type is None:
+        elif self.group in (Group.family, Group.genus) and self.type is None:
             return False
-        elif self.group == constants.GROUP_GENUS and (self.stem is None or self.gender is None):
+        elif self.group == Group.genus and (self.stem is None or self.gender is None):
             return False
         else:
             return True
 
-    def validate(self, status=constants.STATUS_VALID, parent=None, new_rank=None):
-        assert self.status not in (constants.STATUS_VALID, constants.STATUS_NOMEN_DUBIUM)
+    def validate(self, status: Status = Status.valid, parent: Optional[Taxon] = None,
+                 new_rank: Optional[Rank] = None) -> Taxon:
+        assert self.status not in (Status.valid, Status.nomen_dubium)
         old_taxon = self.taxon
         parent_group = helpers.group_of_rank(old_taxon.rank)
-        if self.group == constants.GROUP_SPECIES and parent_group != constants.GROUP_SPECIES:
+        if self.group == Group.species and parent_group != Group.species:
             if new_rank is None:
-                new_rank = constants.SPECIES
+                new_rank = Rank.species
             if parent is None:
                 parent = old_taxon
-        elif self.group == constants.GROUP_GENUS and parent_group != constants.GROUP_GENUS:
+        elif self.group == Group.genus and parent_group != Group.genus:
             if new_rank is None:
-                new_rank = constants.GENUS
+                new_rank = Rank.genus
             if parent is None:
                 parent = old_taxon
-        elif self.group == constants.GROUP_FAMILY and parent_group != constants.GROUP_FAMILY:
+        elif self.group == Group.family and parent_group != Group.family:
             if new_rank is None:
-                new_rank = constants.FAMILY
+                new_rank = Rank.family
             if parent is None:
                 parent = old_taxon
         else:
@@ -811,32 +832,32 @@ class Name(BaseModel):
         self.save()
         return new_taxon
 
-    def merge(self, into, allow_valid=False):
+    def merge(self, into: 'Name', allow_valid: bool = False) -> None:
         if not allow_valid:
-            assert self.status in (constants.STATUS_SYNONYM, constants.STATUS_DUBIOUS), \
+            assert self.status in (Status.synonym, Status.dubious), \
                 'Can only merge synonymous names (not %s)' % self
         self._merge_fields(into, exclude={'id'})
         self.remove()
 
-    def open_description(self):
+    def open_description(self) -> bool:
         if self.original_citation is None:
             print("%s: original citation unknown" % self.description())
         else:
             ehphp.call_ehphp('openf', [self.original_citation])
-
-    def remove(self):
-        print("Deleting name: " + self.description())
-        self.delete_instance()
         return True
 
-    def original_valid(self):
+    def remove(self) -> None:
+        print("Deleting name: " + self.description())
+        self.delete_instance()
+
+    def original_valid(self) -> None:
         assert self.original_name is None
-        assert self.status == constants.STATUS_VALID
+        assert self.status == Status.valid
         self.original_name = self.taxon.valid_name
 
-    def compute_gender(self):
-        assert self.group == constants.GROUP_SPECIES, 'Cannot compute gender outside the species group'
-        genus = self.taxon.parent_of_rank(constants.GENUS)
+    def compute_gender(self) -> None:
+        assert self.group == Group.species, 'Cannot compute gender outside the species group'
+        genus = self.taxon.parent_of_rank(Rank.genus)
         gender = genus.base_name.gender
         if gender is None:
             print('Parent genus %s does not have gender set' % genus)
@@ -847,15 +868,16 @@ class Name(BaseModel):
             self.root_name = computed
             self.save()
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.description()
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return self.description()
 
-    def set_paper(self, paper, page_described=None, original_name=None, force=False, **kwargs):
+    def set_paper(self, paper: str, page_described: Union[None, int, str] = None, original_name: Optional[int] = None,
+                  force: bool = False, **kwargs: Any) -> None:
         authority, year = ehphp.call_ehphp('taxonomicAuthority', [paper])
-        if original_name is None and self.status == constants.STATUS_VALID:
+        if original_name is None and self.status == Status.valid:
             original_name = self.taxon.valid_name
         attributes = [
             ('authority', authority), ('year', year), ('original_citation', paper),
@@ -874,7 +896,7 @@ class Name(BaseModel):
                 setattr(self, label, value)
         self.s(**kwargs)
 
-    def detect_and_set_type(self, verbatim_type=None, verbose=False):
+    def detect_and_set_type(self, verbatim_type: Optional[str] = None, verbose: bool = False) -> bool:
         if verbatim_type is None:
             verbatim_type = self.verbatim_type
         if verbose:
@@ -893,8 +915,8 @@ class Name(BaseModel):
             print("Verbatim type %s for name %s yielded multiple possible names: %s" % (verbatim_type, self, candidates))
             return False
 
-    def detect_type(self, verbatim_type=None, verbose=False):
-        def cleanup(name):
+    def detect_type(self, verbatim_type: Optional[str] = None, verbose: bool = False) -> List['Name']:
+        def cleanup(name: str) -> str:
             return re.sub(r'\s+', ' ', name.strip().rstrip('.').replace('<i>', '').replace('</i>', ''))
 
         steps = [
@@ -924,7 +946,7 @@ class Name(BaseModel):
                     return candidates
         return []
 
-    def _split_authority(self, verbatim_type):
+    def _split_authority(self, verbatim_type: str) -> Tuple[str, Optional[str]]:
         # if there is an uppercase letter following an all-lowercase word (the species name),
         # the authority is included
         find_authority = re.match(r'^(.* [a-z]+) ([A-Z+].+)$', verbatim_type)
@@ -933,8 +955,8 @@ class Name(BaseModel):
         else:
             return verbatim_type, None
 
-    def detect_type_from_verbatim_type(self, verbatim_type):
-        def _filter_by_authority(candidates, authority):
+    def detect_type_from_verbatim_type(self, verbatim_type: str) -> List['Name']:
+        def _filter_by_authority(candidates: List['Name'], authority: str) -> List['Name']:
             if authority is None:
                 return candidates
             split = re.split(r', (?=\d)', authority, maxsplit=1)
@@ -952,45 +974,47 @@ class Name(BaseModel):
             return result
 
         parent = self.taxon
-        if self.group == constants.GROUP_FAMILY:
+        if self.group == Group.family:
             verbatim = verbatim_type.split(maxsplit=1)
             if len(verbatim) == 1:
                 type_name, authority = verbatim, None
             else:
                 type_name, authority = verbatim
-            return _filter_by_authority(parent.find_names(verbatim[0], group=constants.GROUP_GENUS), authority)
+            return _filter_by_authority(parent.find_names(verbatim[0], group=Group.genus), authority)
         else:
             type_name, authority = self._split_authority(verbatim_type)
             if ' ' not in type_name:
                 root_name = type_name
-                candidates = Name.filter(Name.root_name == root_name, Name.group == constants.GROUP_SPECIES)
+                candidates = Name.filter(Name.root_name == root_name, Name.group == Group.species)
                 find_abbrev = False
             else:
-                find_abbrev = re.match(r'^[A-Z]\. ([a-z]+)$', type_name)
+                match = re.match(r'^[A-Z]\. ([a-z]+)$', type_name)
+                find_abbrev = bool(match)
                 if find_abbrev:
-                    root_name = find_abbrev.group(1)
-                    candidates = Name.filter(Name.root_name == root_name, Name.group == constants.GROUP_SPECIES)
+                    root_name = match.group(1)
+                    candidates = Name.filter(Name.root_name == root_name, Name.group == Group.species)
                 else:
-                    candidates = Name.filter(Name.original_name == type_name, Name.group == constants.GROUP_SPECIES)
+                    candidates = Name.filter(Name.original_name == type_name, Name.group == Group.species)
             # filter by authority first because it's cheaper
             candidates = _filter_by_authority(candidates, authority)
             candidates = [candidate for candidate in candidates if candidate.taxon.is_child_of(parent)]
             # if we failed to find using the original_name, try the valid_name
             if not candidates and not find_abbrev:
-                candidates = Name.filter(Name.status == constants.STATUS_VALID).join(Taxon).where(Taxon.valid_name == type_name)
+                candidates = Name.filter(Name.status == Status.valid).join(Taxon).where(Taxon.valid_name == type_name)
                 candidates = _filter_by_authority(candidates, authority)
                 candidates = [candidate for candidate in candidates if candidate.taxon.is_child_of(parent)]
             return candidates
 
     @classmethod
-    def find_name(cls, name, rank=None, authority=None, year=None):
+    def find_name(cls, name: str, rank: Optional[Rank] = None, authority: Optional[str] = None,
+                  year: Union[None, int, str] = None) -> 'Name':
         '''Find a Name object corresponding to the given information'''
         if rank is None:
             group = None
             initial_lst = cls.select().where(cls.root_name == name)
         else:
             group = helpers.group_of_rank(rank)
-            if group == constants.GROUP_FAMILY:
+            if group == Group.family:
                 root_name = helpers.strip_rank(name, rank, quiet=True)
             else:
                 root_name = name
@@ -1000,11 +1024,14 @@ class Name(BaseModel):
                 continue
             if year is not None and nm.year and nm.year != year:
                 continue
-            if group == constants.GROUP_FAMILY:
+            if group == Group.family:
                 if nm.original_name and nm.original_name != name and initial_lst.count() > 1:
                     continue
             return nm
         raise cls.DoesNotExist
+
+
+T = TypeVar('T')
 
 
 class Period(BaseModel):
@@ -1022,21 +1049,23 @@ class Period(BaseModel):
     comment = CharField()
 
     @staticmethod
-    def _filter_none(seq):
+    def _filter_none(seq: Iterable[Optional[T]]) -> Iterable[T]:
         return (elt for elt in seq if elt is not None)
 
-    def get_min_age(self):
+    def get_min_age(self) -> Optional[int]:
         if self.min_age is not None:
             return self.min_age
         return min(self._filter_none(child.get_min_age() for child in self.children), default=None)
 
-    def get_max_age(self):
+    def get_max_age(self) -> Optional[int]:
         if self.max_age is not None:
             return self.max_age
         return max(self._filter_none(child.get_max_age() for child in self.children), default=None)
 
     @classmethod
-    def make(cls, name, system, parent=None, next=None, min_age=None, max_age=None, **kwargs):
+    def make(cls, name: str, system: constants.PeriodSystem, parent: Optional['Period'] = None,
+             next: Optional['Period'] = None, min_age: Optional[int] = None, max_age: Optional[int] = None,
+             **kwargs: Any) -> 'Period':
         if max_age is None and next is not None:
             max_age = next.min_age
         period = cls.create(name=name, system=system.value, parent=parent, next=next, min_age=min_age, max_age=max_age, **kwargs)
@@ -1046,7 +1075,8 @@ class Period(BaseModel):
         return period
 
     @classmethod
-    def make_stratigraphy(cls, name, kind, period=None, parent=None, **kwargs):
+    def make_stratigraphy(cls, name: str, kind: constants.PeriodSystem, period: Optional['Period'] = None,
+                          parent: Optional['Parent'] = None, **kwargs: Any) -> 'Period':
         if period is not None:
             kwargs['max_period'] = kwargs['min_period'] = period
         period = cls.create(name=name, system=kind.value, parent=parent, **kwargs)
@@ -1056,7 +1086,7 @@ class Period(BaseModel):
             next.save()
         return period
 
-    def display(self, full=False, depth=0, file=sys.stdout):
+    def display(self, full: bool = False, depth: int = 0, file: IO[str] = sys.stdout) -> None:
         file.write('%s%s\n' % (' ' * (depth + 4), repr(self)))
         for location in Location.filter(Location.max_period == self, Location.min_period == self):
             location.display(full=full, depth=depth + 2, file=file)
@@ -1067,10 +1097,10 @@ class Period(BaseModel):
         for period in Period.filter(Period.max_period == self, Period.min_period == self):
             period.display(full=full, depth=depth + 1, file=file)
 
-    def make_locality(self, region):
+    def make_locality(self, region: 'Region') -> 'Location':
         return Location.make(self.name, region, self)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         properties = {}
         for field in self.fields():
             if field == 'name':
@@ -1091,19 +1121,19 @@ class Region(BaseModel):
     kind = EnumField(constants.RegionKind)
 
     @classmethod
-    def make(cls, name, kind, parent=None):
+    def make(cls, name: str, kind: constants.RegionKind, parent: Optional['Region'] = None) -> 'Region':
         region = cls.create(name=name, kind=kind, parent=parent)
         Location.make(name=name, period=Period.filter(Period.name == 'Recent').get(), region=region)
         return region
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         out = self.name
         if self.parent:
             out += ', %s' % self.parent.name
         out += ' (%s)' % self.kind
         return out
 
-    def display(self, full=False, depth=0, file=sys.stdout):
+    def display(self, full: bool = False, depth: int = 0, file: IO[str] = sys.stdout) -> None:
         file.write('%s%s\n' % (' ' * (depth + 4), repr(self)))
         if self.comment:
             file.write('%sComment: %s\n' % (' ' * (depth + 12), self.comment))
@@ -1126,13 +1156,14 @@ class Location(BaseModel):
     comment = CharField()
 
     @classmethod
-    def make(cls, name, region, period, comment=None, stratigraphic_unit=None):
+    def make(cls, name: str, region: Region, period: Period, comment: Optional[str] = None,
+             stratigraphic_unit: Optional[Period] = None) -> 'Location':
         return cls.create(
             name=name, min_period=period, max_period=period, region=region, comment=comment,
             stratigraphic_unit=stratigraphic_unit
         )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         age_str = ''
         if self.stratigraphic_unit is not None:
             age_str += self.stratigraphic_unit.name
@@ -1146,7 +1177,7 @@ class Location(BaseModel):
             age_str += '; %s–%s' % (self.max_age, self.min_age)
         return '%s (%s), %s' % (self.name, age_str, self.region.name)
 
-    def display(self, full=False, depth=0, file=sys.stdout):
+    def display(self, full: bool = False, depth: int = 0, file: IO[str] = sys.stdout) -> None:
         file.write('%s%s\n' % (' ' * (depth + 4), repr(self)))
         if self.comment:
             file.write('%sComment: %s\n' % (' ' * (depth + 12), self.comment))
@@ -1156,7 +1187,7 @@ class Location(BaseModel):
             for occurrence in sorted(self.taxa, key=lambda occ: occ.taxon.valid_name):
                 file.write('%s%s\n' % (' ' * (depth + 8), occurrence))
 
-    def display_organized(self, depth=0, file=sys.stdout):
+    def display_organized(self, depth: int = 0, file: IO[str] = sys.stdout) -> None:
         taxa = sorted(
             ((occ, occ.taxon.ranked_parents()) for occ in self.taxa),
             key=lambda pair: (
@@ -1177,7 +1208,7 @@ class Location(BaseModel):
                     file.write('%s%s\n' % (' ' * (depth + 12), family))
             file.write('%s%s\n' % (' ' * (depth + 16), occ))
 
-    def make_local_unit(self, name=None, parent=None):
+    def make_local_unit(self, name: Optional[str] = None, parent: Optional[Period] = None) -> Period:
         if name is None:
             name = self.name
         period = Period.make(name, constants.PeriodSystem.local_unit, parent=parent, min_age=self.min_age, max_age=self.max_age, min_period=self.min_period, max_period=self.max_period)
@@ -1190,18 +1221,18 @@ class Occurrence(BaseModel):
     taxon = ForeignKeyField(Taxon, related_name='occurrences', db_column='taxon_id')
     location = ForeignKeyField(Location, related_name='taxa', db_column='location_id')
     comment = CharField()
-    status = EnumField(constants.OccurrenceStatus, default=constants.OccurrenceStatus.valid)
+    status = EnumField(OccurrenceStatus, default=OccurrenceStatus.valid)
     source = CharField()
 
-    def add_comment(self, new_comment):
+    def add_comment(self, new_comment: str) -> None:
         if self.comment is None:
             self.comment = new_comment
         else:
             self.comment += ' ' + new_comment
         self.save()
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         out = '%s in %s (%s%s)' % (self.taxon, self.location, self.source, '; ' + self.comment if self.comment else '')
-        if self.status != constants.OccurrenceStatus.valid:
+        if self.status != OccurrenceStatus.valid:
             out = '[%s] %s' % (self.status.name.upper(), out)
         return out

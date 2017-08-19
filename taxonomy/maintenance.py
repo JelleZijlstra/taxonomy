@@ -6,20 +6,25 @@ import sys
 from .db.ehphp import call_ehphp
 from .db.models import Name
 
-def cite_exists(cite):
+
+def cite_exists(cite: str) -> bool:
     return call_ehphp('exists', {'0': cite})
 
-def get_target(cite):
+
+def get_target(cite: str) -> str:
     return call_ehphp('getTarget', {'0': cite})
 
-def may_be_citation(cite):
+
+def may_be_citation(cite: str) -> bool:
     '''Checks whether a citation may be a catalog ID'''
-    return '.' not in cite or re.search(r"\.[a-z]+$", cite)
+    return '.' not in cite or bool(re.search(r"\.[a-z]+$", cite))
 
-def must_be_citation(cite):
-    return re.search(r"\.[a-z]+$", cite)
 
-def check_refs():
+def must_be_citation(cite: str) -> bool:
+    return bool(re.search(r"\.[a-z]+$", cite))
+
+
+def check_refs() -> None:
     for name in Name.select():
         # if there is an original_citation, check whether it is valid
         if name.original_citation:
@@ -35,7 +40,8 @@ def check_refs():
                 print("Name:", name.description())
                 print("Warning: invalid citation:", name.verbatim_citation)
 
-def resolve_redirects():
+
+def resolve_redirects() -> None:
     for name in Name.select():
         if name.original_citation:
             target = get_target(name.original_citation)
@@ -48,6 +54,7 @@ def resolve_redirects():
             else:
                 print('WARNING: citation for %s does not exist: %s' %
                       (name, name.original_citation))
+
 
 scripts = {
     'check_refs': check_refs,
