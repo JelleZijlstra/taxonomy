@@ -3,3 +3,4 @@ taxonomy/db/settings.py
 .DS_Store
 *.sublime-*
 __pycache__/
+.mypy_cache/
