@@ -675,6 +675,194 @@ class Taxon(BaseModel):
 definition.taxon_cls = Taxon
 
 
+T = TypeVar('T')
+
+
+class Period(BaseModel):
+    save_event = events.on_period_save
+
+    name = CharField()
+    parent = ForeignKeyField('self', related_name='children', db_column='parent_id', null=True)
+    prev = ForeignKeyField('self', related_name='next_foreign', db_column='prev_id', null=True)
+    next = ForeignKeyField('self', related_name='prev_foreign', db_column='next_id', null=True)
+    min_age = IntegerField(null=True)
+    max_age = IntegerField(null=True)
+    min_period = ForeignKeyField('self', related_name='children_min', db_column='min_period_id', null=True)
+    max_period = ForeignKeyField('self', related_name='children_max', db_column='max_period_id', null=True)
+    system = EnumField(constants.PeriodSystem)
+    comment = CharField()
+
+    @staticmethod
+    def _filter_none(seq: Iterable[Optional[T]]) -> Iterable[T]:
+        return (elt for elt in seq if elt is not None)
+
+    def get_min_age(self) -> Optional[int]:
+        if self.min_age is not None:
+            return self.min_age
+        return min(self._filter_none(child.get_min_age() for child in self.children), default=None)
+
+    def get_max_age(self) -> Optional[int]:
+        if self.max_age is not None:
+            return self.max_age
+        return max(self._filter_none(child.get_max_age() for child in self.children), default=None)
+
+    @classmethod
+    def make(cls, name: str, system: constants.PeriodSystem, parent: Optional['Period'] = None,
+             next: Optional['Period'] = None, min_age: Optional[int] = None, max_age: Optional[int] = None,
+             **kwargs: Any) -> 'Period':
+        if max_age is None and next is not None:
+            max_age = next.min_age
+        period = cls.create(name=name, system=system.value, parent=parent, next=next, min_age=min_age, max_age=max_age, **kwargs)
+        if next is not None:
+            next.prev = period
+            next.save()
+        return period
+
+    @classmethod
+    def make_stratigraphy(cls, name: str, kind: constants.PeriodSystem, period: Optional['Period'] = None,
+                          parent: Optional['Period'] = None, **kwargs: Any) -> 'Period':
+        if period is not None:
+            kwargs['max_period'] = kwargs['min_period'] = period
+        period = cls.create(name=name, system=kind.value, parent=parent, **kwargs)
+        if 'next' in kwargs:
+            next = kwargs['next']
+            next.prev = period
+            next.save()
+        return period
+
+    def display(self, full: bool = False, depth: int = 0, file: IO[str] = sys.stdout) -> None:
+        file.write('%s%s\n' % (' ' * (depth + 4), repr(self)))
+        for location in Location.filter(Location.max_period == self, Location.min_period == self):
+            location.display(full=full, depth=depth + 2, file=file)
+        for location in self.locations_stratigraphy:
+            location.display(full=full, depth=depth + 2, file=file)
+        for period in self.children:
+            period.display(full=full, depth=depth + 1, file=file)
+        for period in Period.filter(Period.max_period == self, Period.min_period == self):
+            period.display(full=full, depth=depth + 1, file=file)
+
+    def make_locality(self, region: 'Region') -> 'Location':
+        return Location.make(self.name, region, self)
+
+    def __repr__(self) -> str:
+        properties = {}
+        for field in self.fields():
+            if field == 'name':
+                continue
+            value = getattr(self, field)
+            if value is None:
+                continue
+            if isinstance(value, Period):
+                value = value.name
+            properties[field] = value
+        return '%s (%s)' % (self.name, ', '.join('%s=%s' % item for item in properties.items()))
+
+
+class Region(BaseModel):
+    name = CharField()
+    comment = CharField(null=True)
+    parent = ForeignKeyField('self', related_name='children', db_column='parent_id', null=True)
+    kind = EnumField(constants.RegionKind)
+
+    @classmethod
+    def make(cls, name: str, kind: constants.RegionKind, parent: Optional['Region'] = None) -> 'Region':
+        region = cls.create(name=name, kind=kind, parent=parent)
+        Location.make(name=name, period=Period.filter(Period.name == 'Recent').get(), region=region)
+        return region
+
+    def __repr__(self) -> str:
+        out = self.name
+        if self.parent:
+            out += ', %s' % self.parent.name
+        out += ' (%s)' % self.kind
+        return out
+
+    def display(self, full: bool = False, depth: int = 0, file: IO[str] = sys.stdout) -> None:
+        file.write('%s%s\n' % (' ' * (depth + 4), repr(self)))
+        if self.comment:
+            file.write('%sComment: %s\n' % (' ' * (depth + 12), self.comment))
+        for location in self.locations:
+            location.display(full=full, depth=depth + 4, file=file)
+        for child in self.children:
+            child.display(full=full, depth=depth + 4, file=file)
+
+
+class Location(BaseModel):
+    save_event = events.on_locality_save
+
+    name = CharField()
+    min_period = ForeignKeyField(Period, related_name='locations_min', db_column='min_period_id', null=True)
+    max_period = ForeignKeyField(Period, related_name='locations_max', db_column='max_period_id', null=True)
+    min_age = IntegerField(null=True)
+    max_age = IntegerField(null=True)
+    stratigraphic_unit = ForeignKeyField(Period, related_name='locations_stratigraphy', db_column='stratigraphic_unit_id', null=True)
+    region = ForeignKeyField(Region, related_name='locations', db_column='region_id')
+    comment = CharField()
+
+    @classmethod
+    def make(cls, name: str, region: Region, period: Period, comment: Optional[str] = None,
+             stratigraphic_unit: Optional[Period] = None) -> 'Location':
+        return cls.create(
+            name=name, min_period=period, max_period=period, region=region, comment=comment,
+            stratigraphic_unit=stratigraphic_unit
+        )
+
+    def __repr__(self) -> str:
+        age_str = ''
+        if self.stratigraphic_unit is not None:
+            age_str += self.stratigraphic_unit.name
+        if self.max_period is not None:
+            if self.stratigraphic_unit is not None:
+                age_str += '; '
+            age_str += self.max_period.name
+            if self.min_period != self.max_period:
+                age_str += '–%s' % self.min_period.name
+        if self.min_age is not None and self.max_age is not None:
+            age_str += '; %s–%s' % (self.max_age, self.min_age)
+        return '%s (%s), %s' % (self.name, age_str, self.region.name)
+
+    def display(self, full: bool = False, depth: int = 0, file: IO[str] = sys.stdout) -> None:
+        file.write('%s%s\n' % (' ' * (depth + 4), repr(self)))
+        if self.comment:
+            file.write('%sComment: %s\n' % (' ' * (depth + 12), self.comment))
+        if full:
+            self.display_organized(depth=depth, file=file)
+        else:
+            for occurrence in sorted(self.taxa, key=lambda occ: occ.taxon.valid_name):
+                file.write('%s%s\n' % (' ' * (depth + 8), occurrence))
+
+    def display_organized(self, depth: int = 0, file: IO[str] = sys.stdout) -> None:
+        taxa = sorted(
+            ((occ, occ.taxon.ranked_parents()) for occ in self.taxa),
+            key=lambda pair: (
+                '' if pair[1][0] is None else pair[1][0].valid_name,
+                '' if pair[1][1] is None else pair[1][1].valid_name,
+                pair[0].taxon.valid_name
+            ))
+        current_order = None
+        current_family = None
+        for occ, (order, family) in taxa:
+            if order != current_order:
+                current_order = order
+                if order is not None:
+                    file.write('%s%s\n' % (' ' * (depth + 8), order))
+            if family != current_family:
+                current_family = family
+                if family is not None:
+                    file.write('%s%s\n' % (' ' * (depth + 12), family))
+            file.write('%s%s\n' % (' ' * (depth + 16), occ))
+
+    def make_local_unit(self, name: Optional[str] = None, parent: Optional[Period] = None) -> Period:
+        if name is None:
+            name = self.name
+        period = Period.make(name, constants.PeriodSystem.local_unit,  # type: ignore
+                             parent=parent, min_age=self.min_age, max_age=self.max_age,
+                             min_period=self.min_period, max_period=self.max_period)
+        self.min_period = self.max_period = period
+        self.save()
+        return period
+
+
 class Name(BaseModel):
     creation_event = events.on_new_name
     save_event = events.on_name_save
@@ -698,6 +886,9 @@ class Name(BaseModel):
     verbatim_citation = CharField(null=True)
     year = CharField(null=True)
     _definition = CharField(null=True, db_column='definition')
+    type_locality = ForeignKeyField(Location, related_name='type_localities', db_column='type_locality_id')
+    type_locality_description = TextField(null=True)
+    type_specimen = CharField(null=True)
 
     @property
     def definition(self) -> Optional[Definition]:
@@ -1037,194 +1228,6 @@ class Name(BaseModel):
                     continue
             return nm
         raise cls.DoesNotExist
-
-
-T = TypeVar('T')
-
-
-class Period(BaseModel):
-    save_event = events.on_period_save
-
-    name = CharField()
-    parent = ForeignKeyField('self', related_name='children', db_column='parent_id', null=True)
-    prev = ForeignKeyField('self', related_name='next_foreign', db_column='prev_id', null=True)
-    next = ForeignKeyField('self', related_name='prev_foreign', db_column='next_id', null=True)
-    min_age = IntegerField(null=True)
-    max_age = IntegerField(null=True)
-    min_period = ForeignKeyField('self', related_name='children_min', db_column='min_period_id', null=True)
-    max_period = ForeignKeyField('self', related_name='children_max', db_column='max_period_id', null=True)
-    system = EnumField(constants.PeriodSystem)
-    comment = CharField()
-
-    @staticmethod
-    def _filter_none(seq: Iterable[Optional[T]]) -> Iterable[T]:
-        return (elt for elt in seq if elt is not None)
-
-    def get_min_age(self) -> Optional[int]:
-        if self.min_age is not None:
-            return self.min_age
-        return min(self._filter_none(child.get_min_age() for child in self.children), default=None)
-
-    def get_max_age(self) -> Optional[int]:
-        if self.max_age is not None:
-            return self.max_age
-        return max(self._filter_none(child.get_max_age() for child in self.children), default=None)
-
-    @classmethod
-    def make(cls, name: str, system: constants.PeriodSystem, parent: Optional['Period'] = None,
-             next: Optional['Period'] = None, min_age: Optional[int] = None, max_age: Optional[int] = None,
-             **kwargs: Any) -> 'Period':
-        if max_age is None and next is not None:
-            max_age = next.min_age
-        period = cls.create(name=name, system=system.value, parent=parent, next=next, min_age=min_age, max_age=max_age, **kwargs)
-        if next is not None:
-            next.prev = period
-            next.save()
-        return period
-
-    @classmethod
-    def make_stratigraphy(cls, name: str, kind: constants.PeriodSystem, period: Optional['Period'] = None,
-                          parent: Optional['Period'] = None, **kwargs: Any) -> 'Period':
-        if period is not None:
-            kwargs['max_period'] = kwargs['min_period'] = period
-        period = cls.create(name=name, system=kind.value, parent=parent, **kwargs)
-        if 'next' in kwargs:
-            next = kwargs['next']
-            next.prev = period
-            next.save()
-        return period
-
-    def display(self, full: bool = False, depth: int = 0, file: IO[str] = sys.stdout) -> None:
-        file.write('%s%s\n' % (' ' * (depth + 4), repr(self)))
-        for location in Location.filter(Location.max_period == self, Location.min_period == self):
-            location.display(full=full, depth=depth + 2, file=file)
-        for location in self.locations_stratigraphy:
-            location.display(full=full, depth=depth + 2, file=file)
-        for period in self.children:
-            period.display(full=full, depth=depth + 1, file=file)
-        for period in Period.filter(Period.max_period == self, Period.min_period == self):
-            period.display(full=full, depth=depth + 1, file=file)
-
-    def make_locality(self, region: 'Region') -> 'Location':
-        return Location.make(self.name, region, self)
-
-    def __repr__(self) -> str:
-        properties = {}
-        for field in self.fields():
-            if field == 'name':
-                continue
-            value = getattr(self, field)
-            if value is None:
-                continue
-            if isinstance(value, Period):
-                value = value.name
-            properties[field] = value
-        return '%s (%s)' % (self.name, ', '.join('%s=%s' % item for item in properties.items()))
-
-
-class Region(BaseModel):
-    name = CharField()
-    comment = CharField(null=True)
-    parent = ForeignKeyField('self', related_name='children', db_column='parent_id', null=True)
-    kind = EnumField(constants.RegionKind)
-
-    @classmethod
-    def make(cls, name: str, kind: constants.RegionKind, parent: Optional['Region'] = None) -> 'Region':
-        region = cls.create(name=name, kind=kind, parent=parent)
-        Location.make(name=name, period=Period.filter(Period.name == 'Recent').get(), region=region)
-        return region
-
-    def __repr__(self) -> str:
-        out = self.name
-        if self.parent:
-            out += ', %s' % self.parent.name
-        out += ' (%s)' % self.kind
-        return out
-
-    def display(self, full: bool = False, depth: int = 0, file: IO[str] = sys.stdout) -> None:
-        file.write('%s%s\n' % (' ' * (depth + 4), repr(self)))
-        if self.comment:
-            file.write('%sComment: %s\n' % (' ' * (depth + 12), self.comment))
-        for location in self.locations:
-            location.display(full=full, depth=depth + 4, file=file)
-        for child in self.children:
-            child.display(full=full, depth=depth + 4, file=file)
-
-
-class Location(BaseModel):
-    save_event = events.on_locality_save
-
-    name = CharField()
-    min_period = ForeignKeyField(Period, related_name='locations_min', db_column='min_period_id', null=True)
-    max_period = ForeignKeyField(Period, related_name='locations_max', db_column='max_period_id', null=True)
-    min_age = IntegerField(null=True)
-    max_age = IntegerField(null=True)
-    stratigraphic_unit = ForeignKeyField(Period, related_name='locations_stratigraphy', db_column='stratigraphic_unit_id', null=True)
-    region = ForeignKeyField(Region, related_name='locations', db_column='region_id')
-    comment = CharField()
-
-    @classmethod
-    def make(cls, name: str, region: Region, period: Period, comment: Optional[str] = None,
-             stratigraphic_unit: Optional[Period] = None) -> 'Location':
-        return cls.create(
-            name=name, min_period=period, max_period=period, region=region, comment=comment,
-            stratigraphic_unit=stratigraphic_unit
-        )
-
-    def __repr__(self) -> str:
-        age_str = ''
-        if self.stratigraphic_unit is not None:
-            age_str += self.stratigraphic_unit.name
-        if self.max_period is not None:
-            if self.stratigraphic_unit is not None:
-                age_str += '; '
-            age_str += self.max_period.name
-            if self.min_period != self.max_period:
-                age_str += '–%s' % self.min_period.name
-        if self.min_age is not None and self.max_age is not None:
-            age_str += '; %s–%s' % (self.max_age, self.min_age)
-        return '%s (%s), %s' % (self.name, age_str, self.region.name)
-
-    def display(self, full: bool = False, depth: int = 0, file: IO[str] = sys.stdout) -> None:
-        file.write('%s%s\n' % (' ' * (depth + 4), repr(self)))
-        if self.comment:
-            file.write('%sComment: %s\n' % (' ' * (depth + 12), self.comment))
-        if full:
-            self.display_organized(depth=depth, file=file)
-        else:
-            for occurrence in sorted(self.taxa, key=lambda occ: occ.taxon.valid_name):
-                file.write('%s%s\n' % (' ' * (depth + 8), occurrence))
-
-    def display_organized(self, depth: int = 0, file: IO[str] = sys.stdout) -> None:
-        taxa = sorted(
-            ((occ, occ.taxon.ranked_parents()) for occ in self.taxa),
-            key=lambda pair: (
-                '' if pair[1][0] is None else pair[1][0].valid_name,
-                '' if pair[1][1] is None else pair[1][1].valid_name,
-                pair[0].taxon.valid_name
-            ))
-        current_order = None
-        current_family = None
-        for occ, (order, family) in taxa:
-            if order != current_order:
-                current_order = order
-                if order is not None:
-                    file.write('%s%s\n' % (' ' * (depth + 8), order))
-            if family != current_family:
-                current_family = family
-                if family is not None:
-                    file.write('%s%s\n' % (' ' * (depth + 12), family))
-            file.write('%s%s\n' % (' ' * (depth + 16), occ))
-
-    def make_local_unit(self, name: Optional[str] = None, parent: Optional[Period] = None) -> Period:
-        if name is None:
-            name = self.name
-        period = Period.make(name, constants.PeriodSystem.local_unit,  # type: ignore
-                             parent=parent, min_age=self.min_age, max_age=self.max_age,
-                             min_period=self.min_period, max_period=self.max_period)
-        self.min_period = self.max_period = period
-        self.save()
-        return period
 
 
 class Occurrence(BaseModel):
