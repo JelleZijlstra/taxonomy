@@ -400,7 +400,7 @@ class Taxon(BaseModel):
             name_obj.year = year
         name_obj.save()
         taxon.base_name = name_obj
-        if type:
+        if set_type:
             self.base_name.type = name_obj
             self.save()
         taxon.save()
