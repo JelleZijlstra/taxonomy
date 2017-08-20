@@ -4,3 +4,4 @@ taxonomy/db/settings.py
 *.sublime-*
 __pycache__/
 .mypy_cache/
+.venv/

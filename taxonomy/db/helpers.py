@@ -163,7 +163,7 @@ def is_nominate_subspecies(ssp: str) -> bool:
     return parts[1] == parts[2]
 
 
-def dict_of_name(name: Name) -> Dict[str, Any]:
+def dict_of_name(name: 'Name') -> Dict[str, Any]:
     result = {
         'id': name.id,
         'authority': name.authority,
@@ -189,7 +189,7 @@ def dict_of_name(name: Name) -> Dict[str, Any]:
     return result
 
 
-def dict_of_taxon(taxon: Taxon) -> Dict[str, Any]:
+def dict_of_taxon(taxon: 'Taxon') -> Dict[str, Any]:
     return {
         'id': taxon.id,
         'valid_name': taxon.valid_name,
@@ -203,7 +203,7 @@ def dict_of_taxon(taxon: Taxon) -> Dict[str, Any]:
     }
 
 
-def tree_of_taxon(taxon: Taxon, include_root: bool=False) -> Dict[str, Any]:
+def tree_of_taxon(taxon: 'Taxon', include_root: bool=False) -> Dict[str, Any]:
     result = dict_of_taxon(taxon)
     if include_root or not taxon.is_page_root:
         for name in taxon.names:

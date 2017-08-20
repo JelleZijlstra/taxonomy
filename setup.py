@@ -19,6 +19,7 @@ setup(
         'IPython==2.3.1',
         'PyMySQL==0.6.3',
         'requests==2.5.1',
+        'typing==3.6.2',
     ],
     classifiers=[
         'Development Status :: 2 - Pre-Alpha',
