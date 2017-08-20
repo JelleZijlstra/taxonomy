@@ -19,10 +19,25 @@ class Age(enum.IntEnum):
 class Status(enum.IntEnum):
     valid = 0
     synonym = 1
-    # treated as synonyms but of uncertain identity
+    # Treated as synonyms, but of uncertain identity. This status is being deprecated.
     dubious = 2
-    # names treated like valid names but that do not represent definable taxa
+    # Names that have been shown to be based on unidentifiable material. This status should be used
+    # if somebody who has studied the name has made the explicit assessment that it cannot be
+    # identified to species (or higher) level.
     nomen_dubium = 3
+    # Names that have not been explicitly shown to be invalid, but that seem to be of doubtful
+    # validity based on a literature review. This status should generally be used for old taxa
+    # that are not or only cursorily listed in recent literature on the group. For example,
+    # _Galerix magnus_ was named by Pomel (1848) and practically never again discussed in the
+    # literature until Zijlstra & Flynn (2015). It should have been tagged as "species inquirenda"
+    # until the comments by Zijlstra & Flynn (2015) moved it to "nomen_dubium" status.
+    # The distinction drawn here between nomen dubium and species inquirenda is to my knowledge
+    # original. The motivation is that for old names like _Galerix magnus_ that have never been
+    # explicitly synonymized, it is misleading to list them as valid species, but it is also not
+    # justified to list them as synonyms or nomina dubia when no specialist in the group has made
+    # that assessment.
+    # All biodiversity estimates should omit nomina dubia and species inquirendae.
+    species_inquirenda = 4
 
 
 class Group(enum.IntEnum):

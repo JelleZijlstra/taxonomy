@@ -999,7 +999,7 @@ class Name(BaseModel):
 
     def validate(self, status: Status = Status.valid, parent: Optional[Taxon] = None,
                  new_rank: Optional[Rank] = None) -> Taxon:
-        assert self.status not in (Status.valid, Status.nomen_dubium)
+        assert self.status not in (Status.valid, Status.nomen_dubium, Status.species_inquirenda)
         old_taxon = self.taxon
         parent_group = helpers.group_of_rank(old_taxon.rank)
         if self.group == Group.species and parent_group != Group.species:
