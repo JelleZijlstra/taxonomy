@@ -7,6 +7,7 @@ if TYPE_CHECKING:
 
 T = TypeVar('T')
 
+
 class Event(Generic[T]):
     def __init__(self) -> None:
         self.handlers = []  # type: List[Callable[[T], object]]

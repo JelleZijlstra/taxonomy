@@ -7,7 +7,7 @@ from .db.models import Location, Name, Occurrence, Period, Taxon
 
 def occ(t: Taxon, loc: Location, source: Optional[str] = None, replace_source: bool = False, **kwargs: Any) -> Occurrence:
     if source is None:
-        source = s  # type: ignore
+        source = s  # type: ignore  # noqa
     try:
         o = t.at(loc)
     except Occurrence.DoesNotExist:

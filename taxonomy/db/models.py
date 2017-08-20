@@ -111,6 +111,7 @@ class BaseModel(Model):
                 print('warning: dropping %s: %s' % (field, my_data))
         into.save()
 
+
 EnumT = TypeVar('EnumT', bound=enum.Enum)
 
 
@@ -242,7 +243,10 @@ class Taxon(BaseModel):
             if self.rank == Rank.subgenus:
                 self._needs_is = Taxon.select().where(Taxon.parent == self, Taxon.rank == Rank.species_group).count() > 0
             elif self.rank == Rank.genus:
-                self._needs_is = Taxon.select().where(Taxon.parent == self, (Taxon.rank == Rank.subgenus) | (Taxon.rank == Rank.species_group)).count() > 0
+                self._needs_is = Taxon.select().where(
+                    Taxon.parent == self,
+                    (Taxon.rank == Rank.subgenus) | (Taxon.rank == Rank.species_group)
+                ).count() > 0
             else:
                 self._needs_is = False
         return self._needs_is
@@ -337,7 +341,9 @@ class Taxon(BaseModel):
         if max_depth is None or max_depth > 0:
             new_max_depth = None if max_depth is None else max_depth - 1
             for child in self.sorted_children():
-                child.display(file=file, depth=depth + 1, max_depth=new_max_depth, full=full, exclude=exclude, exclude_fn=exclude_fn, name_exclude_fn=name_exclude_fn, show_occurrences=show_occurrences)
+                child.display(file=file, depth=depth + 1, max_depth=new_max_depth, full=full,
+                              exclude=exclude, exclude_fn=exclude_fn, name_exclude_fn=name_exclude_fn,
+                              show_occurrences=show_occurrences)
 
     def display_parents(self, max_depth: Optional[int] = None, file: IO[str] = sys.stdout) -> None:
         if max_depth == 0:
@@ -664,6 +670,7 @@ class Taxon(BaseModel):
         result |= set(name.original_name for name in names)
         result |= set(name.root_name for name in names)
         return [name for name in result if name is not None and ' ' not in name]
+
 
 definition.taxon_cls = Taxon
 

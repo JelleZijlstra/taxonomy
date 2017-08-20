@@ -18,6 +18,7 @@ detection_result = collections.namedtuple('detection_result', ['stem', 'gender',
 def _rep(pattern: str, replacement: str) -> Callable[[str], str]:
     return lambda name: re.sub(r'%s$' % pattern, replacement, name)
 
+
 _endings = [
     ('arctos', 'os', Gender.masculine, True),
     ('apis', 'is', Gender.masculine, True),
@@ -143,7 +144,8 @@ _endings = [
     ('rsus', 'us', Gender.masculine, True),
     ('smus', 'us', Gender.masculine, True),
     ('rhysis', 'is', Gender.masculine, True),
-    ('stachys', 's', Gender.masculine, True),  # http://en.wiktionary.org/wiki/%CF%83%CF%84%CE%AC%CF%87%CF%85%CF%82, but the plant genus name _Stachys_ is treated as feminine
+    # http://en.wiktionary.org/wiki/%CF%83%CF%84%CE%AC%CF%87%CF%85%CF%82, but the plant genus name _Stachys_ is treated as feminine
+    ('stachys', 's', Gender.masculine, True),
     ('sorex', _rep('ex', 'ic'), Gender.masculine, True),
     ('ssus', 'us', Gender.masculine, True),
     ('stomus', 'us', Gender.masculine, True),
@@ -209,7 +211,8 @@ _endings = [
     ('otoma', 'a', Gender.feminine, True),
     ('pa', 'a', Gender.feminine, True),
     ('ona', 'a', Gender.feminine, True),
-    ('ops', 's', Gender.feminine, True),  # http://www.perseus.tufts.edu/hopper/text?doc=Perseus%3Atext%3A1999.04.0057%3Aentry%3Do)%2Fy2 but frequently treated as masculine
+    # http://www.perseus.tufts.edu/hopper/text?doc=Perseus%3Atext%3A1999.04.0057%3Aentry%3Do)%2Fy2 but frequently treated as masculine
+    ('ops', 's', Gender.feminine, True),
     ('ora', 'a', Gender.feminine, True),
     ('lpes', 'es', Gender.feminine, True),  # Vulpes
     ('oryctes', 'es', Gender.feminine, True),

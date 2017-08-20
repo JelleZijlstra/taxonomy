@@ -60,6 +60,7 @@ class _ShellNamespace(dict):  # type: ignore
         if hasattr(self, '_names') and taxon.valid_name is not None:
             self._names.add(taxon.valid_name.replace(' ', '_'))
 
+
 ModelT = TypeVar('ModelT', bound=models.BaseModel)
 
 
@@ -212,7 +213,7 @@ def fix_bad_ampersands() -> Iterable[Tuple[Name, str]]:
 @command
 @_add_missing_data('authority')
 def fix_et_al() -> Iterable[Tuple[Name, str]]:
-    for name in (Name.filter(Name.authority % '%et al%', Name.original_citation != None)
+    for name in (Name.filter(Name.authority % '%et al%', Name.original_citation != None)  # noqa: E711
                      .order_by(Name.original_name, Name.root_name)):
         yield name, 'Name {} uses et al.'.format(name.description())
 
@@ -220,7 +221,7 @@ def fix_et_al() -> Iterable[Tuple[Name, str]]:
 @command
 @_add_missing_data('original_name')
 def add_original_names() -> Iterable[Tuple[Name, str]]:
-    for name in Name.filter(Name.original_citation != None, Name.original_name >> None).order_by(Name.original_name):
+    for name in Name.filter(Name.original_citation != None, Name.original_name >> None).order_by(Name.original_name):  # noqa: E711
         message = 'Name {} is missing an original name, but has original citation {{{}}}:{}'.format(
             name.description(), name.original_citation, name.page_described)
         yield name, message
@@ -229,7 +230,8 @@ def add_original_names() -> Iterable[Tuple[Name, str]]:
 @command
 @_add_missing_data('page_described')
 def add_page_described() -> Iterable[Tuple[Name, str]]:
-    for name in Name.filter(Name.original_citation != None, Name.page_described >> None, Name.year != 'in press').order_by(Name.original_citation, Name.original_name):
+    for name in Name.filter(Name.original_citation != None, Name.page_described >> None,  # noqa: E711
+                            Name.year != 'in press').order_by(Name.original_citation, Name.original_name):
         if name.year in ('2015', '2016'):
             continue  # recent JVP papers don't have page numbers
         message = 'Name %s is missing page described, but has original citation {%s}' % \
@@ -239,7 +241,8 @@ def add_page_described() -> Iterable[Tuple[Name, str]]:
 
 @command
 def add_types() -> None:
-    for name in Name.filter(Name.original_citation != None, Name.type >> None, Name.year > '1930', Name.group == Group.genus).order_by(Name.original_citation):
+    for name in Name.filter(Name.original_citation != None, Name.type >> None, Name.year > '1930',  # noqa: E711
+                            Name.group == Group.genus).order_by(Name.original_citation):
         name.taxon.display(full=True, max_depth=1)
         message = 'Name %s is missing type, but has original citation {%s}' % \
             (name.description(), name.original_citation)
@@ -267,7 +270,7 @@ def detect_types(max_count: Optional[int] = None, verbose: bool = False) -> None
     count = 0
     successful_count = 0
     group = (Group.family, Group.genus)
-    for name in Name.filter(Name.verbatim_type != None, Name.type >> None, Name.group << group).limit(max_count):
+    for name in Name.filter(Name.verbatim_type != None, Name.type >> None, Name.group << group).limit(max_count):  # noqa: E711
         count += 1
         if name.detect_and_set_type(verbatim_type=name.verbatim_type, verbose=verbose):
             successful_count += 1
@@ -540,7 +543,7 @@ def bad_parents() -> Iterable[Name]:
 
 @generator_command
 def parentless_taxa() -> Iterable[Taxon]:
-    return Taxon.filter(Taxon.parent == None)
+    return Taxon.filter(Taxon.parent == None)  # noqa: E711
 
 
 @generator_command

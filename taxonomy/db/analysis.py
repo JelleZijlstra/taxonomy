@@ -25,7 +25,7 @@ class _SuffixTree(object):
         last, rest = name[0], name[1:]
         self.dictionary[last]._add(rest)
 
-    def display(self, max_depth: int = 1, depth: int = 0, most_common: Optional[int] = None ) -> None:
+    def display(self, max_depth: int = 1, depth: int = 0, most_common: Optional[int] = None) -> None:
         print(self.count)
         if max_depth == 0:
             return
