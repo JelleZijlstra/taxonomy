@@ -430,7 +430,7 @@ class Taxon(BaseModel):
         assert self.base_name.type is None
         full_name = '%s %s' % (self.valid_name, name)
         result = self.add(
-            Rank.species, full_name, type=True, authority=self.base_name.authority, year=self.base_name.year,
+            Rank.species, full_name, set_type=True, authority=self.base_name.authority, year=self.base_name.year,
             original_citation=self.base_name.original_citation, original_name=full_name, page_described=page_described,
             status=self.base_name.status)
         self.base_name.type = result.base_name
@@ -886,7 +886,7 @@ class Name(BaseModel):
     verbatim_citation = CharField(null=True)
     year = CharField(null=True)
     _definition = CharField(null=True, db_column='definition')
-    type_locality = ForeignKeyField(Location, related_name='type_localities', db_column='type_locality_id')
+    type_locality = ForeignKeyField(Location, related_name='type_localities', db_column='type_locality_id', null=True)
     type_locality_description = TextField(null=True)
     type_specimen = CharField(null=True)
 
