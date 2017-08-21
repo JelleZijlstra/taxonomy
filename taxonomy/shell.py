@@ -10,6 +10,7 @@ import IPython
 import os.path
 import re
 from typing import cast, Any, Callable, Dict, Generic, Iterable, List, Mapping, Optional, Sequence, Set, Tuple, Type, TypeVar
+from traitlets.config.loader import Config
 
 T = TypeVar('T')
 
@@ -563,8 +564,9 @@ def fossilize(*taxa: Taxon, to_status: Age = Age.fossil, from_status: Age = Age.
 
 
 def run_shell() -> None:
-    config = IPython.config.loader.Config()
-    config.InteractiveShellEmbed.confirm_exit = False
+    config = Config()
+    config.InteractiveShell.confirm_exit = False
+    config.TerminalIPythonApp.display_banner = False
     lib_file = os.path.join(os.path.dirname(__file__), 'lib.py')
     IPython.start_ipython(argv=[lib_file, '-i'], config=config, user_ns=ns)
 
