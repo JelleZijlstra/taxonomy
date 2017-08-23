@@ -8,11 +8,11 @@ from .db.models import Name
 
 
 def cite_exists(cite: str) -> bool:
-    return call_ehphp('exists', {'0': cite})
+    return call_ehphp('exists', {'files': [cite]})[0]
 
 
 def get_target(cite: str) -> str:
-    return call_ehphp('getTarget', {'0': cite})
+    return call_ehphp('getTarget', {'files': [cite]})[0]
 
 
 def may_be_citation(cite: str) -> bool:

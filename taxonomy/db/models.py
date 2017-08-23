@@ -453,7 +453,7 @@ class Taxon(BaseModel):
     def syn_from_paper(self, name: str, paper: str, page_described: Union[None, int, str] = None,
                        status: Status = Status.synonym, group: Optional[Group] = None,
                        age: Optional[Age] = None, **kwargs: Any) -> 'Name':
-        authority, year = ehphp.call_ehphp('taxonomicAuthority', [paper])
+        authority, year = ehphp.call_ehphp('taxonomicAuthority', [paper])[0]
         result = self.add_syn(
             root_name=name, authority=authority, year=year, original_citation=paper,
             page_described=page_described, original_name=name, status=status, age=age,
@@ -466,7 +466,7 @@ class Taxon(BaseModel):
     def from_paper(self, rank: Rank, name: str, paper: str, page_described: Union[None, int, str] = None,
                    status: Status = Status.valid, comments: Optional[str] = None,
                    age: Optional[Age] = None, **override_kwargs: Any) -> 'Taxon':
-        authority, year = ehphp.call_ehphp('taxonomicAuthority', [paper])
+        authority, year = ehphp.call_ehphp('taxonomicAuthority', [paper])[0]
         result = self.add(
             rank=rank, name=name, original_citation=paper, page_described=page_described,
             original_name=name, authority=authority, year=year, parent=self, status=status,
@@ -978,6 +978,9 @@ class Name(BaseModel):
                 'taxonomy_comments': self.taxonomy_comments,
                 'verbatim_type': self.verbatim_type,
                 'verbatim_citation': self.verbatim_citation,
+                'type_specimen': self.type_specimen,
+                'type_locality': self.type_locality,
+                'type_locality_description': self.type_locality_description,
             }
             result = ''.join([result] + [
                 ' ' * ((depth + 2) * 4) + '%s: %s\n' % (key, value)
@@ -1075,7 +1078,7 @@ class Name(BaseModel):
 
     def set_paper(self, paper: str, page_described: Union[None, int, str] = None, original_name: Optional[int] = None,
                   force: bool = False, **kwargs: Any) -> None:
-        authority, year = ehphp.call_ehphp('taxonomicAuthority', [paper])
+        authority, year = ehphp.call_ehphp('taxonomicAuthority', [paper])[0]
         if original_name is None and self.status == Status.valid:
             original_name = self.taxon.valid_name
         attributes = [

@@ -5,12 +5,12 @@ import json
 from typing import Any
 
 PORT = 3001
-URL = "http://localhost:" + str(PORT) + "/"
+URL = "http://localhost:" + str(PORT) + "/api"
 
 
 def call_ehphp(cmd: str, args: Any) -> Any:
     if isinstance(args, list):
-        args = dict(enumerate(args))
+        args = {'files': args}
     args['includeMySQL'] = True
     params = {
         'command': cmd,
