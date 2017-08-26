@@ -7,5 +7,5 @@ echo "Starting MySQL server..."
 sudo /opt/local/lib/mysql5/bin/mysqld_safe &
 
 echo "Starting EHPHP server..."
-sudo php55 /Users/jellezijlstra/Dropbox/git/web/server.php 3001 &
-
+cd /Users/jellezijlstra/Dropbox/git/pycatalog
+.venv/bin/python -m catalog.csv_article_list --server --config-file catalog.ini &
