@@ -227,7 +227,8 @@ class Taxon(BaseModel):
         if self.rank == Rank.species_group:
             return self.parent.full_name() + ' (' + self.base_name.root_name + ')'
         elif self.rank == Rank.species:
-            if self.parent.rank > Rank.genus:
+            # For nomina dubia and species inquirendae, retain the name as given.
+            if self.parent.rank > Rank.genus or self.base_name.status != Status.valid:
                 return self.valid_name
             parent_name = self.parent.full_name()
             if self.parent.needs_is():
