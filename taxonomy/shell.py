@@ -9,7 +9,7 @@ import functools
 import IPython
 import os.path
 import re
-from typing import cast, Any, Callable, Dict, Generic, Iterable, List, Mapping, Optional, Sequence, Set, Tuple, Type, TypeVar
+from typing import cast, Any, Callable, Dict, Generic, Iterable, List, Mapping, NamedTuple, Optional, Sequence, Set, Tuple, Type, TypeVar
 from traitlets.config.loader import Config
 
 T = TypeVar('T')
@@ -443,24 +443,30 @@ def authorless_names(root_taxon: Taxon, attribute: str = 'authority') -> Iterabl
         yield from authorless_names(child, attribute=attribute)  # type: ignore
 
 
+class LabeledName(NamedTuple):
+    name: Name
+    order: Optional[Taxon]
+    family: Optional[Taxon]
+    is_mammal: bool
+
+
+def label_name(name: Name) -> LabeledName:
+    try:
+        order = name.taxon.parent_of_rank(Rank.order)
+    except ValueError:
+        order = None
+    try:
+        family = name.taxon.parent_of_rank(Rank.family)
+    except ValueError:
+        family = None
+    is_mammal = name.taxon.is_child_of(Taxon('Mammalia'))
+    return LabeledName(name, order, family, is_mammal)
+
+
 @command
-def labeled_authorless_names() -> List[Dict[str, Any]]:
-    nams = Name.filter(Name.authority >> None)
-    nams = [{'name': nam} for nam in nams]
-    Mammalia = taxon('Mammalia')
-    for nam in nams:
-        try:
-            order = nam['name'].taxon.parent_of_rank(Rank.order)
-        except ValueError:
-            order = None
-        nam['order'] = order
-        try:
-            family = nam['name'].taxon.parent_of_rank(Rank.family)
-        except ValueError:
-            family = None
-        nam['family'] = family
-        nam['is_mammal'] = nam['name'].taxon.is_child_of(Mammalia)
-    return nams
+def labeled_authorless_names(attribute: str = 'authority') -> List[LabeledName]:
+    nams = Name.filter(getattr(name, attribute) >> None)
+    return [label_name(name) for name in nams]
 
 
 @command
@@ -556,6 +562,11 @@ def parentless_taxa() -> Iterable[Taxon]:
 @generator_command
 def childless_taxa() -> Iterable[Taxon]:
     return Taxon.raw('SELECT * FROM taxon WHERE rank > 5 AND id NOT IN (SELECT parent_id FROM taxon WHERE parent_id IS NOT NULL)')
+
+
+@generator_command
+def labeled_childless_taxa() -> Iterable[LabeledName]:
+    return [label_name(taxon.base_name) for taxon in childless_taxa()]
 
 
 @command
