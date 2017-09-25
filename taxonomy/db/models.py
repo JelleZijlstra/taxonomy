@@ -531,7 +531,8 @@ class Taxon(BaseModel):
             except ValueError:
                 # if there is no genus, just use the original name
                 # this may be one case where we can't rely on the computed valid name
-                assert self.rank == Rank.species, 'Taxon %s should have a genus parent' % self
+                assert self.rank in (Rank.species, Rank.subspecies), \
+                    'Taxon %s should have a genus parent' % self
                 # default to the original name for now. This isn't ideal because sometimes the original name
                 # contains misspellings, but we don't really have a place to store that information better.
                 return name.original_name
