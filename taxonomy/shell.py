@@ -1,6 +1,6 @@
 from .db import constants, definition, detection, helpers, models
 from .db.constants import Group, Rank
-from .db.models import Age, Name, Taxon
+from .db.models import Age, Name, Taxon, database
 from . import events
 from . import getinput
 
@@ -101,6 +101,11 @@ class _NameGetter(Generic[ModelT]):
         self._data.add(_encode_name(val))
 
 
+def _reconnect() -> None:
+    database.close()
+    database.connect()
+
+
 ns = _ShellNamespace({
     'constants': constants,
     'helpers': helpers,
@@ -114,6 +119,7 @@ ns = _ShellNamespace({
     'P': _NameGetter(models.Period, 'name'),
     'R': _NameGetter(models.Region, 'name'),
     'O': _NameGetter(Name, 'original_name'),
+    'reconnect': _reconnect,
 })
 ns.update(constants.__dict__)
 
