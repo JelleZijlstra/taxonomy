@@ -599,11 +599,14 @@ class Taxon(BaseModel):
         return Name.get(Name.id == nam.id)
 
     def make_species_group(self) -> 'Taxon':
-        if self.parent.rank == Rank.species_group:
+        return self.make_parent_of_rank(Rank.species_group)
+
+    def make_parent_of_rank(self, rank: Rank) -> 'Taxon':
+        if self.parent.rank == rank:
             parent = self.parent.parent
         else:
             parent = self.parent
-        new_taxon = Taxon.create(rank=Rank.species_group, age=self.age, parent=parent)
+        new_taxon = Taxon.create(rank=rank, age=self.age, parent=parent)
         new_taxon.base_name = self.base_name
         new_taxon.recompute_name()
         self.parent = new_taxon
