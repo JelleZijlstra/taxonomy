@@ -510,15 +510,21 @@ def print_percentages() -> None:
     parent_of_taxon = {}  # type: Dict[int, int]
 
     def _find_parent(taxon: Taxon) -> int:
-        if taxon.is_page_root:
-            return taxon.id
-        elif taxon.id in parent_of_taxon:
+        if taxon.id in parent_of_taxon:
             return parent_of_taxon[taxon.id]
         else:
-            return _find_parent(taxon.parent)
+            if taxon.is_page_root:
+                result = taxon.id
+            else:
+                result = _find_parent(taxon.parent)
+            # cache the parent taxon too
+            parent_of_taxon[taxon.id] = result
+            return result
 
     for taxon in Taxon.select():
-        parent_of_taxon[taxon.id] = _find_parent(taxon)
+        _find_parent(taxon)
+
+    print('Finished collecting parents for taxa')
 
     counts_of_parent = collections.defaultdict(lambda: collections.defaultdict(int))  # type: Dict[int, Dict[str, int]]
     for name in Name.select():
@@ -527,6 +533,8 @@ def print_percentages() -> None:
         for attribute in attributes:
             if getattr(name, attribute) is not None:
                 counts_of_parent[parent_id][attribute] += 1
+
+    print('Finished collecting statistics on names')
 
     parents = [
         (Taxon.filter(Taxon.id == parent_id)[0], data)
