@@ -3,7 +3,6 @@
 --
 USE `taxonomy`;
 
-DROP TABLE IF EXISTS `taxon`;
 CREATE TABLE `taxon` (
 	`id` INT UNSIGNED AUTO_INCREMENT,
 	`parent_id` INT UNSIGNED DEFAULT NULL,
@@ -19,7 +18,6 @@ CREATE TABLE `taxon` (
 	INDEX(`base_name_id`)
 ) ENGINE=INNODB DEFAULT CHARSET=utf8;
 
-DROP TABLE IF EXISTS `name`;
 CREATE TABLE `name` (
 	`id` INT UNSIGNED AUTO_INCREMENT,
 	`taxon_id` INT UNSIGNED NOT NULL, -- Name of valid taxon this belongs to
