@@ -313,9 +313,14 @@ class Taxon(BaseModel):
                 taxon = taxon.parent
         return result
 
+    def display_extant(self) -> None:
+        self.display(exclude_fn=lambda t: t.age != Age.extant, name_exclude_fn=lambda n: n.status == Status.synonym)
+
     def display(self, full: bool = False, max_depth: Optional[int] = None, file: IO[str] = sys.stdout,
                 depth: int = 0, exclude: Container['Taxon'] = set(), exclude_fn: Optional[Callable[['Taxon'], bool]] = None,
-                name_exclude_fn: Optional[Callable[['Name'], bool]] = None, show_occurrences: bool = True) -> None:
+                name_exclude_fn: Optional[Callable[['Name'], bool]] = None, show_occurrences: Optional[bool] = None) -> None:
+        if show_occurrences is None:
+            show_occurrences = full
         if exclude_fn is not None and exclude_fn(self):
             return
         file.write(' ' * (4 * depth))
