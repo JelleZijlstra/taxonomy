@@ -154,7 +154,7 @@ class _OccurrenceGetter(object):
     def __get__(self, instance: Any, instance_type: Any) -> '_OccurrenceGetter':
         return self.__class__(instance)
 
-    def __getattr__(self, loc_name: str) -> 'Occurrence':
+    def __getattr__(self, loc_name: str) -> 'Occurrence':  # type: ignore
         return self(Location.get(Location.name == loc_name.replace('_', ' ')))
 
     def __call__(self, loc: 'Location') -> 'Occurrence':

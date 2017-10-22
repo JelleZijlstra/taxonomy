@@ -73,7 +73,7 @@ class _NameGetter(Generic[ModelT]):
         self._data = None  # type: Optional[Set[str]]
 
     def __dir__(self) -> Set[str]:
-        result = set(super().__dir__())  # type: ignore
+        result = set(super().__dir__())
         if self._data is None:
             self._data = set()
             for obj in self.cls.select(self.field_obj):
@@ -149,13 +149,13 @@ def command(fn: CallableT) -> CallableT:
     return cast(CallableT, wrapper)
 
 
-def generator_command(fn: Callable[..., Iterable[T]]) -> Callable[..., Optional[List[T]]]:
+def generator_command(fn: Callable[..., Iterable[T]]) -> Callable[..., List[T]]:
     @functools.wraps(fn)
     def wrapper(*args: Any, **kwargs: Any) -> Optional[List[T]]:
         try:
             return list(fn(*args, **kwargs))
         except getinput.StopException:
-            return None
+            return []
     ns[fn.__name__] = wrapper
     return wrapper
 
@@ -440,7 +440,7 @@ def authorless_names(root_taxon: Taxon, attribute: str = 'authority') -> Iterabl
             print(nam)
             yield nam
     for child in root_taxon.children:
-        yield from authorless_names(child, attribute=attribute)  # type: ignore
+        yield from authorless_names(child, attribute=attribute)
 
 yearless_names = functools.partial(authorless_names, attribute='year')
 
@@ -513,6 +513,7 @@ def print_percentages() -> None:
         if taxon.id in parent_of_taxon:
             return parent_of_taxon[taxon.id]
         else:
+            result: int
             if taxon.is_page_root:
                 result = taxon.id
             else:
