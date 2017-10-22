@@ -13,7 +13,8 @@ if TYPE_CHECKING:
 
 SPECIES_RANKS = [Rank.subspecies, Rank.species, Rank.species_group]
 GENUS_RANKS = [Rank.subgenus, Rank.genus]
-FAMILY_RANKS = [Rank.infratribe, Rank.subtribe, Rank.tribe, Rank.subfamily, Rank.family, Rank.superfamily]
+FAMILY_RANKS = [Rank.infratribe, Rank.subtribe, Rank.tribe, Rank.subfamily, Rank.family, Rank.superfamily,
+                Rank.hyperfamily]
 HIGH_RANKS = [
     Rank.root, 43, Rank.division, Rank.parvorder, Rank.infraorder, Rank.suborder,
     Rank.order, Rank.superorder, Rank.subcohort, Rank.cohort, Rank.supercohort,
@@ -27,7 +28,8 @@ SUFFIXES = {
     Rank.tribe: 'ini',
     Rank.subfamily: 'inae',
     Rank.family: 'idae',
-    Rank.superfamily: 'oidea'
+    Rank.superfamily: 'oidea',
+    Rank.hyperfamily: 'oides',
 }
 _RANKS = {
     'root': Rank.root,
@@ -88,7 +90,7 @@ def group_of_rank(rank: Rank) -> Group:
         return Group.genus
     elif rank in FAMILY_RANKS or rank == 34 or rank == 24:
         return Group.family
-    elif rank in HIGH_RANKS or rank > Rank.superfamily:
+    elif rank in HIGH_RANKS or rank > Rank.hyperfamily:
         return Group.high
     else:
         raise ValueError("Unrecognized rank: " + str(rank))

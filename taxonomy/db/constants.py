@@ -60,6 +60,7 @@ class Rank(enum.IntEnum):
     subfamily = 35
     family = 40
     superfamily = 45
+    hyperfamily = 47
     parvorder = 50
     infraorder = 55
     suborder = 60
