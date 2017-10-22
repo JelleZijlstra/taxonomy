@@ -442,12 +442,15 @@ def authorless_names(root_taxon: Taxon, attribute: str = 'authority') -> Iterabl
     for child in root_taxon.children:
         yield from authorless_names(child, attribute=attribute)  # type: ignore
 
+yearless_names = functools.partial(authorless_names, attribute='year')
+
 
 class LabeledName(NamedTuple):
     name: Name
     order: Optional[Taxon]
     family: Optional[Taxon]
     is_mammal: bool
+    is_doubtful: bool
 
 
 def label_name(name: Name) -> LabeledName:
@@ -459,13 +462,14 @@ def label_name(name: Name) -> LabeledName:
         family = name.taxon.parent_of_rank(Rank.family)
     except ValueError:
         family = None
-    is_mammal = name.taxon.is_child_of(Taxon('Mammalia'))
-    return LabeledName(name, order, family, is_mammal)
+    is_mammal = name.taxon.is_child_of(taxon('Mammalia'))
+    is_doubtful = name.taxon.is_child_of(taxon('Doubtful'))
+    return LabeledName(name, order, family, is_mammal, is_doubtful)
 
 
 @command
 def labeled_authorless_names(attribute: str = 'authority') -> List[LabeledName]:
-    nams = Name.filter(getattr(name, attribute) >> None)
+    nams = Name.filter(getattr(Name, attribute) >> None)
     return [label_name(name) for name in nams]
 
 
