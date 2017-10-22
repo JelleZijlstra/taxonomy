@@ -803,6 +803,8 @@ class Location(BaseModel):
     stratigraphic_unit = ForeignKeyField(Period, related_name='locations_stratigraphy', db_column='stratigraphic_unit_id', null=True)
     region = ForeignKeyField(Region, related_name='locations', db_column='region_id')
     comment = CharField()
+    latitude = CharField()
+    longitude = CharField()
 
     @classmethod
     def make(cls, name: str, region: Region, period: Period, comment: Optional[str] = None,

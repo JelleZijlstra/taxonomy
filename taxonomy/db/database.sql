@@ -86,6 +86,8 @@ CREATE TABLE `location` (
 	`region_id` INT UNSIGNED NOT NULL,
 	`comment` VARCHAR(65535) DEFAULT NULL,
 	`stratigraphic_unit_id` INT UNSIGNED DEFAULT NULL,
+	`latitude` VARCHAR(255) DEFAULT NULL,
+	`longitude` VARCHAR(255) DEFAULT NULL,
 	PRIMARY KEY(`id`),
 	INDEX(`name`),
 	UNIQUE KEY(`name`)
