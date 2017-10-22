@@ -585,7 +585,7 @@ def labeled_childless_taxa() -> Iterable[LabeledName]:
 def fossilize(*taxa: Taxon, to_status: Age = Age.fossil, from_status: Age = Age.extant) -> None:
     for taxon in taxa:
         if taxon.age != from_status:
-            return
+            continue
         taxon.age = to_status  # type: ignore
         taxon.save()
         for child in taxon.children:
