@@ -19,12 +19,12 @@ T = TypeVar('T')
 # and any non-alphabetical characters are replaced with the character's ASCII code surrounded by
 # underscores. TODO: we shouldn't replace accented characters like í, which are allowed in Python
 # identifiers
-_encode_re = re.compile(r'[^A-Za-z ]')
-_decode_re = re.compile(r'_(\d+)_')
+_encode_re = re.compile(r'[^A-Za-z0-9 ]')
+_decode_re = re.compile(r'__(\d+)_')
 
 
 def _encode_name(name: str) -> str:
-    return _encode_re.sub(lambda m: '_%d_' % ord(m.group()), name).replace(' ', '_')
+    return _encode_re.sub(lambda m: '__%d_' % ord(m.group()), name).replace(' ', '_')
 
 
 def _decode_name(name: str) -> str:
