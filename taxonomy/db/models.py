@@ -94,7 +94,11 @@ class BaseModel(Model):
                 yield field
 
     def __repr__(self) -> str:
-        return '%s(%s)' % (self.__class__.__name__, ', '.join('%s=%s' % (field, getattr(self, field)) for field in self.fields()))
+        return '%s(%s)' % (self.__class__.__name__, ', '.join(
+            '%s=%s' % (field, getattr(self, field))
+            for field in self.fields()
+            if getattr(self, field) is not None
+        ))
 
     def _merge_fields(self: ModelT, into: ModelT, exclude: Container[peewee.Field] = set()) -> None:
         for field in self.fields():
