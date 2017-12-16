@@ -8,7 +8,8 @@ import traceback
 from typing import Any, Callable, Container, Dict, Generic, IO, Iterable, List, Optional, Set, Tuple, Type, TypeVar, Union
 
 from peewee import (
-    MySQLDatabase, Model, IntegerField, CharField, ForeignKeyField, TextField, BooleanField
+    MySQLDatabase, Model, IntegerField, CharField, ForeignKeyField, TextField, BooleanField,
+    SqliteDatabase
 )
 import peewee
 
@@ -23,8 +24,11 @@ from . import ehphp
 from . import helpers
 from . import settings  # type: ignore
 
-database = MySQLDatabase(settings.DATABASE, user=settings.USER, passwd=settings.PASSWD, charset='utf8')
-database.get_conn().ping(True)
+if settings.use_sqlite:
+    database = SqliteDatabase(settings.database_file)
+else:
+    database = MySQLDatabase(settings.DATABASE, user=settings.USER, passwd=settings.PASSWD, charset='utf8')
+    database.get_conn().ping(True)
 
 
 ModelT = TypeVar('ModelT', bound='BaseModel')
