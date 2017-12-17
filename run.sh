@@ -4,8 +4,8 @@
 sudo echo > /dev/null
 
 echo "Starting MySQL server..."
-sudo /opt/local/lib/mysql5/bin/mysqld_safe &
+mysql.server start
 
 echo "Starting EHPHP server..."
-cd /Users/jellezijlstra/Dropbox/git/pycatalog
+cd /Users/jelle/Dropbox/git/pycatalog
 .venv/bin/python -m catalog.csv_article_list --server --config-file catalog.ini &
