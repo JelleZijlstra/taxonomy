@@ -17,7 +17,7 @@ from .. import events
 from .. import getinput
 
 from . import constants
-from .constants import Age, Group, OccurrenceStatus, Rank, Status
+from .constants import Age, Group, NomenclatureStatus, OccurrenceStatus, Rank, Status
 from . import definition
 from .definition import Definition
 from . import ehphp
@@ -909,6 +909,7 @@ class Name(BaseModel):
     type_locality = ForeignKeyField(Location, related_name='type_localities', db_column='type_locality_id', null=True)
     type_locality_description = TextField(null=True)
     type_specimen = CharField(null=True)
+    nomenclature_status = EnumField(NomenclatureStatus)
 
     @property
     def definition(self) -> Optional[Definition]:

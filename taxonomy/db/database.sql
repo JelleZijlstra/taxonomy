@@ -42,6 +42,7 @@ CREATE TABLE `name` (
 	`type_locality_id` int(10) UNSIGNED DEFAULT NULL,
 	`type_locality_description` MEDIUMTEXT,
 	`type_specimen` varchar(1024) DEFAULT NULL,
+	`nomenclature_status` INT NOT NULL DEFAULT 1, -- available or not
 	PRIMARY KEY(`id`),
 	INDEX(`original_name`),
 	INDEX(`root_name`),

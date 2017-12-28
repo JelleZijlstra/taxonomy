@@ -40,6 +40,17 @@ class Status(enum.IntEnum):
     species_inquirenda = 4
 
 
+class NomenclatureStatus(enum.IntEnum):
+    available = 1
+    nomen_nudum = 2
+    suppressed = 3  # by the Commission
+    not_based_on_a_generic_name = 4  # for family-group names
+    infrasubspecific = 5  # for species-group names
+    unpublished = 6  # e.g., published in a thesis
+    incorrect_subsequent_spelling = 7
+    unjustified_emendation = 8
+
+
 class Group(enum.IntEnum):
     species = 0
     genus = 1
