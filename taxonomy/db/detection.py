@@ -173,6 +173,7 @@ _endings = [
     ('aiman', '', Gender.masculine, True),  # Caiman
     ('rhys', 's', Gender.masculine, True),  # Hesperhys
     ('ipus', _rep('us', 'od'), Gender.masculine, True),
+    ('titan', '', Gender.masculine, True),
 
     ('ala', 'a', Gender.feminine, True),
     ('ampsa', 'a', Gender.feminine, True),

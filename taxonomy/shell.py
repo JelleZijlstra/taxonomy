@@ -296,6 +296,8 @@ def detect_types_from_root_names(max_count: Optional[int] = None) -> None:
             name.save()
             return True
         else:
+            if candidates:
+                print(f'found multiple candidates for {name} using root {root_name}: {candidates}')
             return False
 
     count = 0
@@ -434,13 +436,15 @@ def name_mismatches(max_count: Optional[int] = None, correct: bool = False, corr
 
 
 @generator_command
-def authorless_names(root_taxon: Taxon, attribute: str = 'authority') -> Iterable[Name]:
+def authorless_names(root_taxon: Taxon, attribute: str = 'authority',
+                     predicate: Optional[Callable[[Name], bool]] = None) -> Iterable[Name]:
     for nam in root_taxon.names:
-        if getattr(nam, attribute) is None:
-            print(nam)
-            yield nam
+        if (not predicate) or predicate(nam):
+            if getattr(nam, attribute) is None:
+                print(nam)
+                yield nam
     for child in root_taxon.children:
-        yield from authorless_names(child, attribute=attribute)
+        yield from authorless_names(child, attribute=attribute, predicate=predicate)
 
 yearless_names = functools.partial(authorless_names, attribute='year')
 
