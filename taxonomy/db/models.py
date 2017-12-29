@@ -650,18 +650,39 @@ class Taxon(BaseModel):
         attributes = ['original_name', 'original_citation', 'page_described', 'authority', 'year']
         names = self.all_names()
         counts = collections.defaultdict(int)  # type: Dict[str, int]
+        counts_by_group = collections.defaultdict(int)  # type: Dict[Group, int]
+        family_types = genus_types = genus_stems = 0
         for name in names:
+            counts_by_group[name.group] += 1
             for attribute in attributes:
                 if getattr(name, attribute) is not None:
                     counts[attribute] += 1
+            if name.group == Group.family:
+                if name.type is not None or name.nomenclature_status != NomenclatureStatus.available:
+                    family_types += 1
+            elif name.group == Group.genus:
+                if name.type is not None or name.nomenclature_status != NomenclatureStatus.available:
+                    genus_types += 1
+                if name.stem is not None:
+                    genus_stems += 1
 
         total = len(names)
         output = {'total': total}  # type: Dict[str, float]
-        print("Total names:", total)
+        by_group = ', '.join(f'{v.name}: {counts_by_group[v]}' for v in reversed(Group))
+        print(f'Total names: {total} ({by_group})')
+
+        def print_percentage(num: int, total: int, label: str) -> float:
+            if total == 0 or num == total:
+                return 100.0
+            percentage = num * 100.0 / total
+            print("%s: %s (%.2f%%)" % (label, num, percentage))
+            return percentage
+
         for attribute in attributes:
-            percentage = counts[attribute] * 100.0 / total
-            print("%s: %s (%.2f%%)" % (attribute, counts[attribute], percentage))
-            output[attribute] = percentage
+            output[attribute] = print_percentage(counts[attribute], total, attribute)
+        print_percentage(family_types, counts_by_group[Group.family], 'family-group types')
+        print_percentage(genus_types, counts_by_group[Group.genus], 'genus-group types')
+        print_percentage(genus_stems, counts_by_group[Group.genus], 'genus-group stems')
         return output
 
     at = _OccurrenceGetter()
@@ -956,9 +977,7 @@ class Name(BaseModel):
         return out
 
     def is_unavailable(self) -> bool:
-        # TODO: generalize this
-        return self.nomenclature_comments is not None and \
-            'Unavailable because not based on a generic name.' in self.nomenclature_comments
+        return self.nomenclature_status != NomenclatureStatus.available
 
     def display(self, full: bool = False, depth: int = 0) -> str:
         if self.original_name is None:
@@ -1014,10 +1033,13 @@ class Name(BaseModel):
         """Returns whether all necessary attributes of the name have been filled in."""
         if self.authority is None or self.year is None or self.page_described is None or self.original_citation is None or self.original_name is None:
             return False
-        elif self.group in (Group.family, Group.genus) and self.type is None:
+        elif self.group in (Group.family, Group.genus) and not self.is_unavailable() and self.type is None:
             return False
-        elif self.group == Group.genus and (self.stem is None or self.gender is None):
-            return False
+        elif self.group == Group.genus:
+            if self.stem is None:
+                return False
+            else:
+                return self.is_unavailable() or self.gender is None
         else:
             return True
 
