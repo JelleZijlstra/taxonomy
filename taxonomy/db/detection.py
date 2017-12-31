@@ -2,6 +2,22 @@
 
 Module for fragile detection logic (e.g., stem/gender detection for genera).
 
+Relevant ICZN provisions about gender:
+- Article 31.2: defines which names are and are not declined
+- Article 30: defines the gender of names. Some relevant provisions:
+  - Normally based on Greek or Latin dictionary gender
+  - If a name is Latinized from Greek with a different suffix, the gender appropriate to the suffix
+    applies (30.1.3)
+  - -cola and similar common-gender names are masculine unless explicitly treated as feminine
+    (30.1.4.2)
+  - -ops is always masculine (30.1.4.3)
+  - names from modern European languages with gender take gender from the language (30.2.1)
+  - otherwise, names take gender expressly specified (30.2.2) or implicit in species name endings (30.2.3)
+  - otherwise, feminine if ending in -a, neuter with -um, -on, -u, masculine with -us (30.2.4)
+
+See also Article 29 on stems. Notable there is that generally, whoever makes the first family-group name
+gets to choose the stem.
+
 """
 
 import collections
@@ -30,10 +46,10 @@ _endings = [
     ('c', '', Gender.masculine, True),  # Tenrec
     ('amys', 's', Gender.masculine, True),
     ('anger', '', Gender.masculine, True),  # Phalanger
-    ('aroo', 'oo', Gender.masculine, True),  # Based on Nambaroo novus and some others
+    ('aroo', 'oo', Gender.masculine, True),  # Based on Nambaroo novus and some others (and Art. 30.2.4)
     ('atus', 'us', Gender.masculine, True),
     ('ates', 'es', Gender.masculine, True),
-    ('baatar', '', Gender.masculine, True),  # masculine on the evidence of _Gobibaatar parvus_
+    ('baatar', '', Gender.masculine, True),  # masculine on the evidence of _Gobibaatar parvus_ (and Art. 30.2.4)
     ('ber', _rep('er', 'r'), Gender.masculine, True),  # Coluber, Fiber
     ('bitis', 'is', Gender.masculine, True),  # Cobitis, some fish
     ('cheirus', 'us', Gender.masculine, True),
@@ -170,10 +186,11 @@ _endings = [
     ('lerix', _rep('x', 'c'), Gender.masculine, True),
     ('eviathan', '', Gender.masculine, True),
     ('ator', '', Gender.masculine, True),
-    ('aiman', '', Gender.masculine, True),  # Caiman
+    ('aiman', '', Gender.masculine, True),  # Caiman (Art. 30.2.4)
     ('rhys', 's', Gender.masculine, True),  # Hesperhys
     ('ipus', _rep('us', 'od'), Gender.masculine, True),
     ('titan', '', Gender.masculine, True),
+    ('ops', 's', Gender.masculine, True),  # Art. 30.1.4.3
 
     ('ala', 'a', Gender.feminine, True),
     ('ampsa', 'a', Gender.feminine, True),
@@ -212,8 +229,6 @@ _endings = [
     ('otoma', 'a', Gender.feminine, True),
     ('pa', 'a', Gender.feminine, True),
     ('ona', 'a', Gender.feminine, True),
-    # http://www.perseus.tufts.edu/hopper/text?doc=Perseus%3Atext%3A1999.04.0057%3Aentry%3Do)%2Fy2 but frequently treated as masculine
-    ('ops', 's', Gender.feminine, True),
     ('ora', 'a', Gender.feminine, True),
     ('lpes', 'es', Gender.feminine, True),  # Vulpes
     ('oryctes', 'es', Gender.feminine, True),

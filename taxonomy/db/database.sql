@@ -43,6 +43,7 @@ CREATE TABLE `name` (
 	`type_locality_description` MEDIUMTEXT,
 	`type_specimen` varchar(1024) DEFAULT NULL,
 	`nomenclature_status` INT NOT NULL DEFAULT 1, -- available or not
+	`name_complex_id` INT UNSIGNED DEFAULT NULL,
 	PRIMARY KEY(`id`),
 	INDEX(`original_name`),
 	INDEX(`root_name`),
@@ -106,3 +107,41 @@ CREATE TABLE `occurrence` (
 	INDEX(`location_id`),
 	UNIQUE KEY(`taxon_id`, `location_id`)
 ) ENGINE=INNODB DEFAULT CHARSET=utf8;
+
+CREATE TABLE `name_complex` (
+	`id` integer primary key,
+	`label` varchar(255),
+	`stem` varchar(255) default NULL,
+	`source_language` integer,
+	`code_article` integer,
+	`gender` integer,
+	`comment` varchar(65535),
+	`stem_remove` varchar(255) default NULL,
+	`stem_add` varchar(255) default NULL
+);
+
+CREATE TABLE `name_ending` (
+	`id` integer primary key,
+	'name_complex_id' integer,
+	`ending` varchar(255),
+	`comment` varchar(65535)
+);
+
+CREATE TABLE `species_name_complex` (
+	`id` integer primary key,
+	`label` varchar(255),
+	`stem` varchar(255) default NULL,
+	`kind` integer,
+	`comment` varchar(65535),
+	`masculine_ending` varchar(255) default NULL,
+	`feminine_ending` varchar(255) default NULL,
+	`neuter_ending` varchar(255) default NULL
+);
+
+CREATE TABLE `species_name_ending` (
+	`id` integer primary key,
+	'name_complex_id' integer,
+	`ending` varchar(255),
+	`comment` varchar(65535),
+	`full_name_only` integer default 0,
+);

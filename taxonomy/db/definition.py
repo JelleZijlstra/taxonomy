@@ -105,4 +105,4 @@ def _make_anchor(argument: _Taxon) -> 'Taxon':
     if isinstance(argument, int):
         argument = taxon_cls.get(taxon_cls.id == argument)
     assert isinstance(argument, taxon_cls), "Expected a Taxon but got %s" % argument
-    return argument  # type: ignore
+    return argument

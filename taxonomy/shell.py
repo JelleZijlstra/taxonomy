@@ -9,8 +9,10 @@ import functools
 import IPython
 import os.path
 import re
-from typing import cast, Any, Callable, Dict, Generic, Iterable, List, Mapping, NamedTuple, Optional, Sequence, Set, Tuple, Type, TypeVar
+import requests
+from typing import cast, Any, Callable, Counter, Dict, Generic, Iterable, Iterator, List, Mapping, NamedTuple, Optional, Sequence, Set, Tuple, Type, TypeVar
 from traitlets.config.loader import Config
+import unidecode
 
 T = TypeVar('T')
 
@@ -20,7 +22,7 @@ T = TypeVar('T')
 # underscores. TODO: we shouldn't replace accented characters like í, which are allowed in Python
 # identifiers
 _encode_re = re.compile(r'[^A-Za-z0-9 ]')
-_decode_re = re.compile(r'__(\d+)_')
+_decode_re = re.compile(r'  (\d+) ')
 
 
 def _encode_name(name: str) -> str:
@@ -28,7 +30,7 @@ def _encode_name(name: str) -> str:
 
 
 def _decode_name(name: str) -> str:
-    return _decode_re.sub(lambda m: chr(int(m.group(1))), name).replace('_', ' ')
+    return _decode_re.sub(lambda m: chr(int(m.group(1))), name.replace('_', ' '))
 
 
 class _ShellNamespace(dict):  # type: ignore
@@ -119,6 +121,8 @@ ns = _ShellNamespace({
     'P': _NameGetter(models.Period, 'name'),
     'R': _NameGetter(models.Region, 'name'),
     'O': _NameGetter(Name, 'original_name'),
+    'NC': _NameGetter(models.NameComplex, 'label'),
+    'SC': _NameGetter(models.SpeciesNameComplex, 'label'),
     'reconnect': _reconnect,
 })
 ns.update(constants.__dict__)
@@ -339,6 +343,186 @@ def detect_stems() -> None:
         name.save()
 
 
+@command
+def detect_complexes() -> None:
+    endings = list(models.NameEnding.select())
+    for name in Name.filter(Name.group == Group.genus, Name._name_complex_id >> None):
+        inferred = find_ending(name, endings)
+        if inferred is None:
+            continue
+        stem = inferred.get_stem_from_name(name.root_name)
+        if name.stem is not None and name.stem != stem:
+            print(f'ignoring {inferred} for {name} because {inferred.stem} != {stem}')
+            continue
+        if name.gender is not None and name.gender != inferred.gender:
+            print(f'ignoring {inferred} for {name} because {inferred.gender} != {name.gender}')
+            continue
+        print(f'Inferred stem and complex for {name}: {stem}, {inferred}')
+        name.stem = stem
+        name.gender = inferred.gender
+        name.name_complex = inferred
+        name.save()
+
+
+@command
+def detect_species_name_complexes(dry_run: bool = False) -> None:
+    endings_tree: SuffixTree[models.SpeciesNameEnding] = SuffixTree()
+    full_names: Dict[str, models.SpeciesNameComplex] = {}
+    for ending in models.SpeciesNameEnding.select():
+        for form in ending.name_complex.get_forms(ending.ending):
+            if ending.full_name_only:
+                full_names[form] = ending.name_complex
+            else:
+                endings_tree.add(form, ending)
+    for snc in models.SpeciesNameComplex.filter(models.SpeciesNameComplex.kind == constants.SpeciesNameKind.adjective):
+        for form in snc.get_forms(snc.stem):
+            full_names[form] = snc
+    success = 0
+    total = 0
+    for name in Name.filter(Name.group == Group.species, Name._name_complex_id >> None):
+        total += 1
+        if name.root_name in full_names:
+            inferred = full_names[name.root_name]
+        else:
+            endings = endings_tree.lookup(name.root_name)
+            try:
+                inferred = max(endings, key=lambda e: -len(e.ending)).name_complex
+            except ValueError:
+                continue
+        print(f'inferred complex for {name}: {inferred}')
+        success += 1
+        if not dry_run:
+            name.name_complex = inferred
+            name.save()
+    print(f'{success}/{total} inferred')
+
+
+class SuffixTree(Generic[T]):
+    def __init__(self) -> None:
+        self.children: Dict[str, SuffixTree[T]] = collections.defaultdict(SuffixTree)
+        self.values: List[T] = []
+
+    def add(self, key: str, value: T) -> None:
+        self._add(iter(reversed(key)), value)
+
+    def lookup(self, key: str) -> Iterable[T]:
+        yield from self._lookup(iter(reversed(key)))
+
+    def _add(self, key: Iterator[str], value: T) -> None:
+        try:
+            char = next(key)
+        except StopIteration:
+            self.values.append(value)
+        else:
+            self.children[char]._add(key, value)
+
+    def _lookup(self, key: Iterator[str]) -> Iterable[T]:
+        yield from self.values
+        try:
+            char = next(key)
+        except StopIteration:
+            pass
+        else:
+            if char in self.children:
+                yield from self.children[char]._lookup(key)
+
+
+@command
+def find_patronyms(dry_run: bool = True, min_length: int = 4) -> Dict[str, int]:
+    """Finds names based on patronyms of authors in the database."""
+    authors = set()
+    species_name_to_names: Dict[str, List[Name]] = collections.defaultdict(list)
+    for name in Name.select():
+        if name.authority:
+            for author in name.get_authors():
+                author = re.sub(r'^([A-Z]\.)+ ', '', author)
+                author = unidecode.unidecode(author.replace('-', '').replace(' ', '').replace("'", '')).lower()
+                authors.add(author)
+        if name.group == Group.species:
+            species_name_to_names[name.root_name].append(name)
+    masculine = models.SpeciesNameComplex.of_kind(constants.SpeciesNameKind.patronym_masculine)
+    feminine = models.SpeciesNameComplex.of_kind(constants.SpeciesNameKind.patronym_feminine)
+    latinized = models.SpeciesNameComplex.of_kind(constants.SpeciesNameKind.patronym_latin)
+    count = 0
+    names_applied: Counter[str] = Counter()
+    for author in authors:
+        masculine_name = author + 'i'
+        feminine_name = author + 'ae'
+        latinized_name = author + 'ii'
+        for snc, name in [(masculine, masculine_name), (feminine, feminine_name), (latinized, latinized_name)]:
+            for nam in species_name_to_names[name]:
+                if nam.name_complex is None:
+                    print(f'set {nam} to {snc} patronym')
+                    count += 1
+                    names_applied[name] += 1
+                    if not dry_run and len(author) >= min_length:
+                        sne = snc.make_ending(name, full_name_only=True)
+                elif nam.name_complex != snc:
+                    print(f'{nam} has {nam.name_complex} but expected {snc}')
+    print(f'applied {count} names')
+    if not dry_run:
+        detect_species_name_complexes()
+    return names_applied
+
+
+@command
+def find_first_declension_adjectives(dry_run: bool = True) -> Dict[str, int]:
+    adjectives = get_pages_in_wiki_category('en.wiktionary.org', 'Latin first and second declension adjectives')
+    species_name_to_names: Dict[str, List[Name]] = collections.defaultdict(list)
+    for name in Name.filter(Name.group == Group.species, Name._name_complex_id >> None):
+        species_name_to_names[name.root_name].append(name)
+    count = 0
+    names_applied: Counter[str] = Counter()
+    for adjective in adjectives:
+        if not adjective.endswith('us'):
+            print('ignoring', adjective)
+            continue
+        for form in (adjective, adjective[:-2] + 'a', adjective[:-2] + 'um'):
+            if form in species_name_to_names:
+                print(f'apply {form} to {species_name_to_names[form]}')
+                count += len(species_name_to_names[form])
+                names_applied[adjective] += len(species_name_to_names[form])
+                if not dry_run:
+                    snc = models.SpeciesNameComplex.first_declension(adjective, auto_apply=False)
+                    snc.make_ending(adjective, full_name_only=len(adjective) < 6)
+    print(f'applied {count} names')
+    if not dry_run:
+        detect_species_name_complexes()
+    return names_applied
+
+
+@command
+def get_pages_in_wiki_category(domain: str, category_name: str) -> Iterable[str]:
+    cmcontinue = None
+    url = f'https://{domain}/w/api.php'
+    while True:
+        params = {
+            'action': 'query',
+            'list': 'categorymembers',
+            'cmtitle': f'Category:{category_name}',
+            'cmlimit': 'max',
+            'format': 'json',
+        }
+        if cmcontinue:
+            params['cmcontinue'] = cmcontinue
+        json = requests.get(url, params).json()
+        for entry in json['query']['categorymembers']:
+            if entry['ns'] == 0:
+                yield entry['title']
+        if 'continue' in json:
+            cmcontinue = json['continue']['cmcontinue']
+        else:
+            break
+
+
+def find_ending(name: Name, endings: Iterable[models.NameEnding]) -> Optional[models.NameComplex]:
+    for ending in endings:
+        if name.root_name.endswith(ending.ending):
+            return ending.name_complex
+    else:
+        return None
+
+
 @generator_command
 def root_name_mismatch() -> Iterable[Name]:
     for name in Name.filter(Name.group == Group.family, ~(Name.type >> None)):
@@ -447,6 +631,11 @@ def authorless_names(root_taxon: Taxon, attribute: str = 'authority',
         yield from authorless_names(child, attribute=attribute, predicate=predicate)
 
 yearless_names = functools.partial(authorless_names, attribute='year')
+
+
+@generator_command
+def complexless_genera(root_taxon: Taxon) -> Iterable[Name]:
+    return authorless_names(root_taxon, 'name_complex', predicate=lambda n: n.group == Group.genus)
 
 
 class LabeledName(NamedTuple):

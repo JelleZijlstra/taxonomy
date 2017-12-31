@@ -19,6 +19,7 @@ setup(
         'IPython',
         'PyMySQL',
         'requests',
+        'unidecode',
     ],
     classifiers=[
         'Development Status :: 2 - Pre-Alpha',

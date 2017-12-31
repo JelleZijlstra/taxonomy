@@ -17,12 +17,12 @@ from .. import events
 from .. import getinput
 
 from . import constants
-from .constants import Age, Group, NomenclatureStatus, OccurrenceStatus, Rank, Status
+from .constants import Age, Gender, GenderArticle, Group, NomenclatureStatus, OccurrenceStatus, Rank, SourceLanguage, SpeciesNameKind, Status
 from . import definition
 from .definition import Definition
 from . import ehphp
 from . import helpers
-from . import settings  # type: ignore
+from . import settings
 
 if settings.use_sqlite:
     database = SqliteDatabase(settings.database_file)
@@ -162,7 +162,7 @@ class _OccurrenceGetter(object):
     def __get__(self, instance: Any, instance_type: Any) -> '_OccurrenceGetter':
         return self.__class__(instance)
 
-    def __getattr__(self, loc_name: str) -> 'Occurrence':  # type: ignore
+    def __getattr__(self, loc_name: str) -> 'Occurrence':
         return self(Location.get(Location.name == loc_name.replace('_', ' ')))
 
     def __call__(self, loc: 'Location') -> 'Occurrence':
@@ -651,7 +651,7 @@ class Taxon(BaseModel):
         names = self.all_names()
         counts = collections.defaultdict(int)  # type: Dict[str, int]
         counts_by_group = collections.defaultdict(int)  # type: Dict[Group, int]
-        family_types = genus_types = genus_stems = 0
+        family_types = genus_types = genus_stems = genus_name_complex = 0
         for name in names:
             counts_by_group[name.group] += 1
             for attribute in attributes:
@@ -665,10 +665,12 @@ class Taxon(BaseModel):
                     genus_types += 1
                 if name.stem is not None:
                     genus_stems += 1
+                if name.name_complex is not None:
+                    genus_name_complex += 1
 
         total = len(names)
         output = {'total': total}  # type: Dict[str, float]
-        by_group = ', '.join(f'{v.name}: {counts_by_group[v]}' for v in reversed(Group))
+        by_group = ', '.join(f'{v.name}: {counts_by_group[v]}' for v in reversed(Group))  # type: ignore
         print(f'Total names: {total} ({by_group})')
 
         def print_percentage(num: int, total: int, label: str) -> float:
@@ -683,6 +685,7 @@ class Taxon(BaseModel):
         print_percentage(family_types, counts_by_group[Group.family], 'family-group types')
         print_percentage(genus_types, counts_by_group[Group.genus], 'genus-group types')
         print_percentage(genus_stems, counts_by_group[Group.genus], 'genus-group stems')
+        print_percentage(genus_name_complex, counts_by_group[Group.genus], 'genus name complex')
         return output
 
     at = _OccurrenceGetter()
@@ -904,6 +907,344 @@ class Location(BaseModel):
         return period
 
 
+class SpeciesNameComplex(BaseModel):
+    """Groups of species-group names of the same derivation or nature.
+
+    See ICZN Articles 11.9.1 and 31.
+
+    """
+    label = CharField()
+    stem = CharField()
+    kind = EnumField(SpeciesNameKind)
+    masculine_ending = CharField()
+    feminine_ending = CharField()
+    neuter_ending = CharField()
+    comment = CharField()
+
+    class Meta(object):
+        db_table = 'species_name_complex'
+
+    def self_apply(self, dry_run: bool = True) -> List['Name']:
+        return self.apply_to_ending(self.label, dry_run=dry_run)
+
+    def apply_to_ending(self, ending: str, dry_run: bool = True) -> List['Name']:
+        """Adds the name complex to all names with a specific ending."""
+        names = [
+            name for name in Name.filter(Name.group == Group.species, Name._name_complex_id >> None,
+                                         Name.root_name % f'*{ending}')
+            if name.root_name.endswith(ending)
+        ]
+        print(f'found {len(names)} names with -{ending} to apply {self}')
+        for name in names:
+            print(name)
+            if not dry_run:
+                name.name_complex = self
+                name.save()
+        if not dry_run:
+            saved_endings = list(self.endings)
+            if not any(e.ending == ending for e in saved_endings):
+                print(f'saving ending {ending}')
+                self.make_ending(ending)
+        return names
+
+    def get_stem_from_name(self, name: str) -> str:
+        """Applies the group to a genus name to get the name's stem."""
+        if self.masculine_ending == self.feminine_ending == self.neuter_ending == '':
+            return name
+        for ending in (self.masculine_ending, self.feminine_ending, self.neuter_ending):
+            if ending != '' and name.endswith(ending):
+                return name[:-len(ending)]
+        else:
+            raise ValueError('could not extract stem from {name}')
+
+    def get_forms(self, name: str) -> Iterable[str]:
+        if self.kind == SpeciesNameKind.adjective:
+            stem = self.get_stem_from_name(name)
+            for ending in (self.masculine_ending, self.feminine_ending, self.neuter_ending):
+                yield stem + ending
+        else:
+            yield name
+
+    def get_names(self) -> List[Name]:
+        return list(Name.filter(Name._name_complex_id == self.id, Name.group == Group.species))
+
+    def make_ending(self, ending: str, comment: Optional[str] = '', full_name_only: bool = False) -> 'SpeciesNameEnding':
+        return SpeciesNameEnding.get_or_create(name_complex=self, ending=ending, comment=comment, full_name_only=full_name_only)
+
+    def remove(self) -> None:
+        for nam in self.get_names():
+            print('removing name complex from', nam)
+            nam.name_complex = None
+            nam.save()
+        for ending in self.endings:
+            print('removing ending', ending)
+            ending.delete_instance()
+        print('removing complex', self)
+        self.delete_instance()
+
+    @classmethod
+    def make(cls, label: str, *, stem: Optional[str] = None, kind: SpeciesNameKind, comment: Optional[str] = None,
+             masculine_ending: str = '', feminine_ending: str = '', neuter_ending: str = '') -> 'SpeciesNameComplex':
+        return cls.create(
+            label=label, stem=stem, kind=kind, comment=comment, masculine_ending=masculine_ending,
+            feminine_ending=feminine_ending, neuter_ending=neuter_ending,
+        )
+
+    @classmethod
+    def _get_or_create(cls, label: str, *, stem: Optional[str] = None, kind: SpeciesNameKind, comment: Optional[str] = None,
+                       masculine_ending: str = '', feminine_ending: str = '', neuter_ending: str = '') -> 'SpeciesNameComplex':
+        try:
+            return cls.get(cls.label == label, cls.stem == stem, cls.kind == kind)
+        except peewee.DoesNotExist:
+            print('creating new name complex with label', label)
+            return cls.make(label=label, stem=stem, kind=kind, comment=comment, masculine_ending=masculine_ending,
+                            feminine_ending=feminine_ending, neuter_ending=neuter_ending)
+
+    @classmethod
+    def by_label(cls, label: str) -> 'SpeciesNameComplex':
+        complexes = list(cls.filter(cls.label == label))
+        if len(complexes) == 1:
+            return complexes[0]
+        else:
+            raise ValueError('found {complexes} with label {label}')
+
+    @classmethod
+    def of_kind(cls, kind: SpeciesNameKind) -> 'SpeciesNameComplex':
+        """Indeclinable name of a particular kind."""
+        return cls._get_or_create(kind.name, kind=kind)
+
+    @classmethod
+    def ambiguous(cls, stem: str, comment: Optional[str] = None) -> 'SpeciesNameComplex':
+        """For groups of names that are ambiguously nouns in apposition (Art. 31.2.2)."""
+        return cls._get_or_create(stem, stem=stem, kind=SpeciesNameKind.ambiguous_noun, comment=comment)
+
+    @classmethod
+    def adjective(cls, stem: str, comment: Optional[str], masculine_ending: str, feminine_ending: str, neuter_ending: str,
+                  auto_apply: bool = False) -> 'SpeciesNameComplex':
+        """Name based on a Latin adjective."""
+        snc = cls._get_or_create(
+            stem, stem=stem, kind=SpeciesNameKind.adjective, comment=comment,
+            masculine_ending=masculine_ending, feminine_ending=feminine_ending, neuter_ending=neuter_ending,
+        )
+        if auto_apply:
+            snc.self_apply(dry_run=False)
+        return snc
+
+    @classmethod
+    def first_declension(cls, stem: str, auto_apply: bool = True, comment: Optional[str] = None) -> 'SpeciesNameComplex':
+        return cls.adjective(stem, comment, 'us', 'a', 'um', auto_apply=auto_apply)
+
+    @classmethod
+    def third_declension(cls, stem: str, auto_apply: bool = True, comment: Optional[str] = None) -> 'SpeciesNameComplex':
+        return cls.adjective(stem, comment, 'is', 'is', 'e', auto_apply=auto_apply)
+
+    @classmethod
+    def invariant(cls, stem: str, auto_apply: bool = True, comment: Optional[str] = None) -> 'SpeciesNameComplex':
+        return cls.adjective(stem, comment, '', '', '', auto_apply=auto_apply)
+
+
+class NameComplex(BaseModel):
+    """Group of genus-group names with the same derivation."""
+    label = CharField()
+    stem = CharField()
+    source_language = EnumField(SourceLanguage)
+    code_article = EnumField(GenderArticle)
+    gender = EnumField(Gender)
+    comment = CharField()
+    stem_remove = CharField()
+    stem_add = CharField()
+
+    class Meta(object):
+        db_table = 'name_complex'
+
+    def self_apply(self, dry_run: bool = True) -> List['Name']:
+        return self.apply_to_ending(self.label, dry_run=dry_run)
+
+    def apply_to_ending(self, ending: str, dry_run: bool = True) -> List['Name']:
+        """Adds the name complex to all names with a specific ending."""
+        names = [
+            name for name in Name.filter(Name.group == Group.genus, Name._name_complex_id >> None,
+                                         Name.root_name % f'*{ending}')
+            if name.root_name.endswith(ending)
+        ]
+        print(f'found {len(names)} names with -{ending} to apply {self}')
+        output = []
+        for name in names:
+            if name.gender is not None and name.gender != self.gender:
+                print(f'ignoring {name} because its gender {name.gender} does not match')
+                output.append(name)
+            else:
+                print(name)
+                if not dry_run:
+                    name.name_complex = self
+                    name.save()
+        if not dry_run:
+            saved_endings = list(self.endings)
+            if not any(e.ending == ending for e in saved_endings):
+                print(f'saving ending {ending}')
+                self.make_ending(ending)
+        return output
+
+    def get_stem_from_name(self, name: str) -> str:
+        """Applies the group to a genus name to get the name's stem."""
+        if self.stem_remove:
+            if not name.endswith(self.stem_remove):
+                raise ValueError(f'{name} does not end with {self.stem_remove}')
+            name = name[:-len(self.stem_remove)]
+        return name + self.stem_add
+
+    def make_ending(self, ending: str, comment: Optional[str] = '') -> 'NameEnding':
+        return NameEnding.create(name_complex=self, ending=ending, comment=comment)
+
+    def get_names(self) -> List[Name]:
+        return list(Name.filter(Name._name_complex_id == self.id, Name.group == Group.genus))
+
+    @classmethod
+    def make(cls, label: str, *, stem: Optional[str] = None, source_language: SourceLanguage = SourceLanguage.other,
+             code_article: GenderArticle, gender: Gender, comment: Optional[str] = None,
+             stem_remove: str = '', stem_add: str = '') -> 'NameComplex':
+        return cls.create(
+            label=label, stem=stem, source_language=source_language, code_article=code_article,
+            gender=gender, comment=comment, stem_remove=stem_remove, stem_add=stem_add,
+        )
+
+    @classmethod
+    def _get_or_create(cls, label: str, *, stem: Optional[str] = None, source_language: SourceLanguage,
+                       code_article: GenderArticle, gender: Gender, comment: Optional[str] = None,
+                       stem_remove: str = '', stem_add: str = '') -> 'NameComplex':
+        try:
+            return cls.get(
+                cls.label == label, cls.source_language == source_language, cls.code_article == code_article,
+                cls.gender == gender,
+            )
+        except peewee.DoesNotExist:
+            print('creating new name complex with label', label)
+            return cls.make(label=label, stem=stem, source_language=source_language, code_article=code_article,
+                            gender=gender, comment=comment, stem_remove=stem_remove, stem_add=stem_add)
+
+    @classmethod
+    def by_label(cls, label: str) -> 'NameComplex':
+        complexes = list(cls.filter(cls.label == label))
+        if len(complexes) == 1:
+            return complexes[0]
+        else:
+            raise ValueError('found {complexes} with label {label}')
+
+    @classmethod
+    def latin_stem(cls, stem: str, gender: Gender, comment: Optional[str] = None,
+                   stem_remove: str = '', stem_add: str = '') -> 'NameComplex':
+        """Name based on a word found in a Latin dictionary with a specific gender."""
+        return cls._get_or_create(stem, stem=stem, gender=gender, comment=comment, source_language=SourceLanguage.latin,
+                                  code_article=GenderArticle.art30_1_1, stem_remove=stem_remove, stem_add=stem_add)
+
+    @classmethod
+    def greek_stem(cls, stem: str, gender: Gender, comment: Optional[str] = None,
+                   stem_remove: str = '', stem_add: str = '') -> 'NameComplex':
+        """Name based on a word found in a Greek dictionary with a specific gender."""
+        return cls._get_or_create(stem, stem=stem, gender=gender, comment=comment, source_language=SourceLanguage.greek,
+                                  code_article=GenderArticle.art30_1_2, stem_remove=stem_remove, stem_add=stem_add)
+
+    @classmethod
+    def latinized_greek(cls, stem: str, gender: Gender, comment: Optional[str] = None,
+                        stem_remove: str = '', stem_add: str = '') -> 'NameComplex':
+        """Name based on a word found in a Greek dictionary, but with a changed suffix."""
+        return cls._get_or_create(stem, stem=stem, gender=gender, comment=comment, source_language=SourceLanguage.greek,
+                                  code_article=GenderArticle.art30_1_3, stem_remove=stem_remove, stem_add=stem_add)
+
+    @classmethod
+    def common_gender(cls, stem: str, gender: Gender = Gender.masculine, comment: Optional[str] = None,
+                      stem_remove: str = '', stem_add: str = '') -> 'NameComplex':
+        """Name of common gender in Latin, which defaults to masculine."""
+        return cls._get_or_create(stem, stem=stem, gender=gender, comment=comment, source_language=SourceLanguage.latin,
+                                  code_article=GenderArticle.art30_1_4_2, stem_remove=stem_remove, stem_add=stem_add)
+
+    @classmethod
+    def latin_changed_ending(cls, stem: str, gender: Gender, comment: Optional[str] = None,
+                             stem_remove: str = '', stem_add: str = '') -> 'NameComplex':
+        """Based on a Latin word with a changed ending. Comment must specify the original word."""
+        return cls._get_or_create(stem, stem=stem, gender=gender, comment=comment, source_language=SourceLanguage.latin,
+                                  code_article=GenderArticle.art30_1_4_5, stem_remove=stem_remove, stem_add=stem_add)
+
+    @classmethod
+    def expressly_specified(cls, gender: Gender, stem_remove: str = '', stem_add: str = '') -> 'NameComplex':
+        """Gender expressly specified by the author."""
+        label = cls._make_label(f'expressly_specified_{gender.name}', stem_remove, stem_add)
+        return cls._get_or_create(label, source_language=SourceLanguage.other,
+                                  gender=gender, code_article=GenderArticle.art30_2_2,
+                                  stem_remove=stem_remove, stem_add=stem_add)
+
+    @classmethod
+    def indicated(cls, gender: Gender, stem_remove: str = '', stem_add: str = '') -> 'NameComplex':
+        """Gender indicated by an adjectival species name."""
+        label = cls._make_label(f'indicated_{gender.name}', stem_remove, stem_add)
+        return cls._get_or_create(label, source_language=SourceLanguage.other,
+                                  gender=gender, code_article=GenderArticle.art30_2_3,
+                                  stem_remove=stem_remove, stem_add=stem_add)
+
+    @classmethod
+    def defaulted_masculine(cls, stem_remove: str = '', stem_add: str = '') -> 'NameComplex':
+        """Defaulted to masculine as a non-Western name."""
+        label = cls._make_label('defaulted_masculine', stem_remove, stem_add)
+        return cls._get_or_create(label, source_language=SourceLanguage.other,
+                                  gender=Gender.masculine, code_article=GenderArticle.art30_2_4,
+                                  stem_remove=stem_remove, stem_add=stem_add)
+
+    @classmethod
+    def defaulted(cls, gender: Gender, ending: str, stem_remove: str = '',
+                  stem_add: str = '') -> 'NameComplex':
+        """Defaulted to feminine or neuter as a non-Western name with a specific ending."""
+        if gender == Gender.masculine:
+            assert False, 'use defaulted_masculine instead'
+        elif gender == Gender.feminine:
+            assert ending == 'a', 'only -a endings default to feminine'
+        elif gender == Gender.neuter:
+            assert ending in ('um', 'on', 'u'), 'only -um, -on, and -u endings default to neuter'
+        label = cls._make_label(f'defaulted_{gender.name}_{ending}', stem_remove, stem_add)
+        return cls._get_or_create(label, source_language=SourceLanguage.other,
+                                  gender=gender, code_article=GenderArticle.art30_2_4,
+                                  stem_remove=stem_remove, stem_add=stem_add)
+
+    @staticmethod
+    def _make_label(base_label: str, stem_remove: str, stem_add: str) -> str:
+        if stem_remove or stem_add:
+            base_label += '_stem'
+        if stem_remove:
+            base_label += f'_{stem_remove}'
+        if stem_add:
+            base_label += f'_{stem_add}'
+        return base_label
+
+
+class NameEnding(BaseModel):
+    """Name ending that is mapped to a NameComplex."""
+    name_complex = ForeignKeyField(NameComplex, related_name='endings', db_column='name_complex_id')
+    ending = CharField()
+    comment = CharField()
+
+    class Meta(object):
+        db_table = 'name_ending'
+
+
+class SpeciesNameEnding(BaseModel):
+    """Name ending that is mapped to a SpeciesNameComplex."""
+    name_complex = ForeignKeyField(SpeciesNameComplex, related_name='endings', db_column='name_complex_id')
+    ending = CharField()
+    comment = CharField()
+    full_name_only = BooleanField(default=False)
+
+    class Meta(object):
+        db_table = 'species_name_ending'
+
+    @classmethod
+    def get_or_create(cls, name_complex: SpeciesNameComplex, ending: str, comment: Optional[str] = None,
+                      full_name_only: bool = False) -> 'SpeciesNameEnding':
+        try:
+            return cls.get(cls.name_complex == name_complex, cls.ending == ending, cls.full_name_only == full_name_only)
+        except peewee.DoesNotExist:
+            print('creating new name ending', ending, ' for ', name_complex)
+            return cls.create(name_complex=name_complex, ending=ending, comment=comment, full_name_only=full_name_only)
+
+
 class Name(BaseModel):
     creation_event = events.on_new_name
     save_event = events.on_name_save
@@ -920,7 +1261,7 @@ class Name(BaseModel):
     other_comments = TextField(null=True)
     page_described = CharField(null=True)
     stem = CharField(null=True)
-    gender = EnumField(constants.Gender)
+    gender = EnumField(Gender)
     taxonomy_comments = TextField(null=True)
     type = ForeignKeyField('self', null=True, db_column='type_id')
     verbatim_type = CharField(null=True)
@@ -931,6 +1272,33 @@ class Name(BaseModel):
     type_locality_description = TextField(null=True)
     type_specimen = CharField(null=True)
     nomenclature_status = EnumField(NomenclatureStatus)
+    _name_complex_id = IntegerField(null=True, db_column='name_complex_id')
+
+    @property
+    def name_complex(self) -> Union[None, NameComplex, SpeciesNameComplex]:
+        if self._name_complex_id is None:
+            return None
+        if self.group == Group.species:
+            return SpeciesNameComplex.get(id=self._name_complex_id)
+        elif self.group == Group.genus:
+            return NameComplex.get(id=self._name_complex_id)
+        else:
+            raise TypeError(f'{self} cannot have a name complex')
+
+    @name_complex.setter
+    def name_complex(self, nc: Union[None, NameComplex, SpeciesNameComplex]) -> None:
+        if nc is not None:
+            if self.group == Group.species:
+                if not isinstance(nc, SpeciesNameComplex):
+                    raise TypeError(f'{nc} must be a SpeciesNameComplex')
+            elif self.group == Group.genus:
+                if not isinstance(nc, NameComplex):
+                    raise TypeError(f'{nc} must be a NameComplex')
+            else:
+                raise TypeError(f'cannot set name_complex')
+            self._name_complex_id = nc.id
+        else:
+            self._name_complex_id = None
 
     @property
     def definition(self) -> Optional[Definition]:
@@ -979,6 +1347,9 @@ class Name(BaseModel):
     def is_unavailable(self) -> bool:
         return self.nomenclature_status != NomenclatureStatus.available
 
+    def get_authors(self) -> List[str]:
+        return re.split(r', | & ', re.sub(r'et al\.$', '', self.authority))
+
     def display(self, full: bool = False, depth: int = 0) -> str:
         if self.original_name is None:
             out = self.root_name
@@ -1002,7 +1373,7 @@ class Name(BaseModel):
             if self.stem is not None:
                 parts.append('stem: %s' % self.stem)
             if self.gender is not None:
-                parts.append(constants.Gender(self.gender).name)
+                parts.append(Gender(self.gender).name)
             if self.definition is not None:
                 parts.append(str(self.definition))
             out += ' (%s)' % '; '.join(parts)
@@ -1036,10 +1407,10 @@ class Name(BaseModel):
         elif self.group in (Group.family, Group.genus) and not self.is_unavailable() and self.type is None:
             return False
         elif self.group == Group.genus:
-            if self.stem is None:
+            if self.stem is None or self.gender is None or self.name_complex is None:
                 return False
             else:
-                return self.is_unavailable() or self.gender is None
+                return self.is_unavailable() or self.type is not None
         else:
             return True
 
@@ -1173,9 +1544,9 @@ class Name(BaseModel):
             lambda verbatim: re.sub(r',.*$', '', verbatim),
             lambda verbatim: self._split_authority(verbatim)[0],
             lambda verbatim: verbatim.split()[1] if ' ' in verbatim else verbatim,
-            lambda verbatim: helpers.convert_gender(verbatim, constants.Gender.masculine),
-            lambda verbatim: helpers.convert_gender(verbatim, constants.Gender.feminine),
-            lambda verbatim: helpers.convert_gender(verbatim, constants.Gender.neuter),
+            lambda verbatim: helpers.convert_gender(verbatim, Gender.masculine),
+            lambda verbatim: helpers.convert_gender(verbatim, Gender.feminine),
+            lambda verbatim: helpers.convert_gender(verbatim, Gender.neuter),
         ]
         if verbatim_type is None:
             verbatim_type = self.verbatim_type

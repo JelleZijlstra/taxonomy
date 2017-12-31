@@ -151,3 +151,52 @@ class OccurrenceStatus(enum.IntEnum):
     extirpated = 4  # occurred during the Holocene but now extirpated
     vagrant = 5  # occasionally occurs but not a normal component of the fauna
     classification_dubious = 6  # dubious that the species is correctly classified
+
+
+class SourceLanguage(enum.IntEnum):
+    latin = 1
+    greek = 2
+
+    # This is for names based on indigenous languages, which are now common. Ideally the exact language
+    # should be specified, but often the etymology is not specific or language names are poorly established.
+    other = 3
+
+    english = 4
+    french = 5
+    german = 6
+    spanish = 7
+    portuguese = 8
+    russian = 9
+    arabic = 10
+    chinese = 11
+    mongolian = 12
+
+
+class GenderArticle(enum.IntEnum):
+    art30_1_1 = 1  # Latin dictionary word
+    art30_1_2 = 2  # Greek dictionary word
+    art30_1_3 = 3  # Greek with Latinized ending
+    art30_1_4_2 = 4  # common gender, defaulting to masculine
+    art30_1_4_3 = 5  # -ops is masculine
+    art30_1_4_4 = 6  # -ites, -oides, -ides, -odes, or -istes defaults to masculine
+    art30_1_4_5 = 7  # Latin with adjusted ending
+    art30_2_1 = 8  # gendered word from modern European language
+    art30_2_2 = 9  # expressly specified
+    art30_2_3 = 10  # indicated by adjectival species name
+    art30_2_4 = 11  # default if unspecified and non-Western
+
+
+class SpeciesNameKind(enum.IntEnum):
+    adjective = 1  # Latin adjective, Art. 11.9.1.1
+    noun_in_apposition = 2  # Art 11.9.1.2
+    genitive = 3  # genitive Latin noun, Art 11.9.1.3
+    genitive_adjective = 4  # adjective used as a noun, Art. 11.9.1.4 (probably very rare in mammals)
+    non_latin = 5  # not a Latin word, treated as indeclinable (cf. Art. 31.2.3)
+    ambiguous_noun = 6  # noun in apposition under Art. 31.2.2
+
+    # Article 31.1.2 patronyms
+    patronym_masculine = 7  # -i patronym
+    patronym_feminine = 8 # -ae patronym
+    patronym_masculine_plural = 9  # -orum patronym
+    patronym_feminine_plural = 10  # -arum patronym
+    patronym_latin = 11  # patronym formed from a Latin name (Art. 31.1.1)
