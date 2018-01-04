@@ -119,6 +119,15 @@ class BaseModel(Model):
                 print('warning: dropping %s: %s' % (field, my_data))
         into.save()
 
+    @classmethod
+    def mlist(cls, attribute: str) -> Dict[Any, int]:
+        sql = f'''
+            SELECT {attribute}, COUNT(*)
+            FROM {cls._meta.db_table}
+            GROUP BY {attribute}
+        '''
+        return dict(database.execute_sql(sql))
+
 
 EnumT = TypeVar('EnumT', bound=enum.Enum)
 
