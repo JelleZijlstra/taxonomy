@@ -651,7 +651,7 @@ class Taxon(BaseModel):
         names = self.all_names()
         counts = collections.defaultdict(int)  # type: Dict[str, int]
         counts_by_group = collections.defaultdict(int)  # type: Dict[Group, int]
-        family_types = genus_types = genus_stems = genus_name_complex = 0
+        family_types = genus_types = genus_stems = genus_name_complex = species_name_complex = 0
         for name in names:
             counts_by_group[name.group] += 1
             for attribute in attributes:
@@ -667,6 +667,9 @@ class Taxon(BaseModel):
                     genus_stems += 1
                 if name.name_complex is not None:
                     genus_name_complex += 1
+            elif name.group == Group.species:
+                if name.name_complex is not None:
+                    species_name_complex += 1
 
         total = len(names)
         output = {'total': total}  # type: Dict[str, float]
@@ -686,6 +689,7 @@ class Taxon(BaseModel):
         print_percentage(genus_types, counts_by_group[Group.genus], 'genus-group types')
         print_percentage(genus_stems, counts_by_group[Group.genus], 'genus-group stems')
         print_percentage(genus_name_complex, counts_by_group[Group.genus], 'genus name complex')
+        print_percentage(species_name_complex, counts_by_group[Group.species], 'species name complex')
         return output
 
     at = _OccurrenceGetter()
@@ -965,7 +969,7 @@ class SpeciesNameComplex(BaseModel):
         else:
             yield name
 
-    def get_names(self) -> List[Name]:
+    def get_names(self) -> List['Name']:
         return list(Name.filter(Name._name_complex_id == self.id, Name.group == Group.species))
 
     def make_ending(self, ending: str, comment: Optional[str] = '', full_name_only: bool = False) -> 'SpeciesNameEnding':
@@ -1096,7 +1100,7 @@ class NameComplex(BaseModel):
     def make_ending(self, ending: str, comment: Optional[str] = '') -> 'NameEnding':
         return NameEnding.create(name_complex=self, ending=ending, comment=comment)
 
-    def get_names(self) -> List[Name]:
+    def get_names(self) -> List['Name']:
         return list(Name.filter(Name._name_complex_id == self.id, Name.group == Group.genus))
 
     @classmethod
@@ -1150,6 +1154,13 @@ class NameComplex(BaseModel):
         """Name based on a word found in a Greek dictionary, but with a changed suffix."""
         return cls._get_or_create(stem, stem=stem, gender=gender, comment=comment, source_language=SourceLanguage.greek,
                                   code_article=GenderArticle.art30_1_3, stem_remove=stem_remove, stem_add=stem_add)
+
+    @classmethod
+    def bad_transliteration(cls, stem: str, gender: Gender, comment: Optional[str] = None,
+                            stem_remove: str = '', stem_add: str = '') -> 'NameComplex':
+        """Name based on a Greek word, but with incorrect transliteration."""
+        return cls._get_or_create(stem, stem=stem, gender=gender, comment=comment, source_language=SourceLanguage.greek,
+                                  code_article=GenderArticle.bad_transliteration, stem_remove=stem_remove, stem_add=stem_add)
 
     @classmethod
     def common_gender(cls, stem: str, gender: Gender = Gender.masculine, comment: Optional[str] = None,

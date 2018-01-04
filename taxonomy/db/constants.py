@@ -42,13 +42,38 @@ class Status(enum.IntEnum):
 
 class NomenclatureStatus(enum.IntEnum):
     available = 1
-    nomen_nudum = 2
+    nomen_nudum = 2  # Art. 12.1 (before 1931), 13.1 (after 1930)
     suppressed = 3  # by the Commission
-    not_based_on_a_generic_name = 4  # for family-group names
-    infrasubspecific = 5  # for species-group names
-    unpublished = 6  # e.g., published in a thesis
+    not_based_on_a_generic_name = 4  # for family-group names (cf. Art. 11.7)
+    infrasubspecific = 5  # for species-group names (Art. 1.3.4; but see 45.6.4.1)
+    unpublished = 6  # e.g., published in a thesis; see Art. 8
     incorrect_subsequent_spelling = 7
-    unjustified_emendation = 8
+    unjustified_emendation = 8  # such names are available (Art. 19.1, 33)
+    before_1758 = 9  # Art. 3.2: names published before 1758 are unavailable
+    hypothetical_concept = 10  # Art 1.3.1
+    teratological = 11  # Art 1.3.2: "teratological specimens as such"
+    hybrid_as_such = 12  # Art. 1.3.3: "hybrid specimens as such" (cf. Art. 17.2)
+    informal = 13  # Art. 1.3.5: "as means of temporary reference"
+    work_of_extant = 14  # Art. 1.3.6: "after 1930, for the work of extant animals"; 13.6.2
+    zoological_formula = 15  # Art. 1.3.7: names like Herrera's "MamXus"
+    unlisted = 16  # Art. 10.7: name not in a Part of the "List of Available Names in Zoology"
+    not_latin_alphabet = 17  # Art. 11.2: names must be in the Latin alphabet
+    inconsistently_binominal = 18  # Art. 11.4: author must consistently use binominal nomenclature
+    not_used_as_valid = 19  # Art. 11.5, 11.6
+    not_used_as_genus_plural = 20  # Art. 11.7.1.2
+    based_on_a_suppressed_name = 21  # Art. 11.7.1.5
+    not_published_with_a_generic_name = 22  # Art. 11.9.3
+    multiple_words = 23  # Art. 11.9.4
+    no_type_specified = 24  # Art. 13.3: genus-group name after 1930 (but not ichnotaxa); Art. 16.2 for family-group names after 1999; Art. 16.4 for species-group names after 1999
+    anonymous_authorship = 25  # Art. 14: anonymously published names are unavailable after 1950
+    conditional = 26  # Art. 15
+    variety_or_form = 27  # Art. 15.2: after 1960, "variety" or "form" excludes the name (cf. infrasubspecific)
+    not_explicitly_new = 28  # Art. 16: names published after 1999 must be explicitly new
+    mandatory_change = 29  # indicates the original name was incorrect original spelling [Art. 34]
+    ites_name = 30  # Art. 20: names in -ites, -ytes, -ithes for fossils may not be available
+    hybrid_name = 31  # names based on hybrids are available, but do not compete in priority (Art. 23.8)
+    art_13_nomen_oblitum = 32  # Art. 23.12: name rejected under Art. 23b in the 1961-1973 Code
+    assumed_incorrect = 33  # probably an ISS (7), but may be UE (8)
 
 
 class Group(enum.IntEnum):
@@ -184,6 +209,11 @@ class GenderArticle(enum.IntEnum):
     art30_2_2 = 9  # expressly specified
     art30_2_3 = 10  # indicated by adjectival species name
     art30_2_4 = 11  # default if unspecified and non-Western
+    # Names that are incorrectly transliterated from Greek, but that don't fall under Art. 30.1.3
+    # (for example, -merix instead of -meryx). The Code doesn't provide explicit guidance for such
+    # names, but I interpret them as having the gender of their Greek root. The question is usually
+    # academic because these names tend to be incorrect subsequent spellings.
+    bad_transliteration = 12
 
 
 class SpeciesNameKind(enum.IntEnum):
@@ -200,3 +230,22 @@ class SpeciesNameKind(enum.IntEnum):
     patronym_masculine_plural = 9  # -orum patronym
     patronym_feminine_plural = 10  # -arum patronym
     patronym_latin = 11  # patronym formed from a Latin name (Art. 31.1.1)
+
+
+class TypeSpeciesDesignation(enum.IntEnum):
+    # in order, Art. 68.1
+    original_designation = 1  # Art. 68.2. Before 1931, "gen. n., sp. n." indicates an original designation. Also for species named typus, typic-.
+    monotypy = 2  # Art. 68.3
+    absolute_tautonymy = 3  # Art. 68.4
+    linnaean_tautonymy = 4  # Art. 68.5
+    subsequent_monotypy = 5  # Art. 69.3, only for genera originally without species
+    subsequent_designation = 6  # Art. 69.1
+    implicit = 7  # names of nomina nova and emendeations have the same type, Art. 67.8, 69.2.3
+    misidentification = 8  # if the type was misidentified, you can do whatever you want (Art. 70.3)
+
+
+class SpeciesGroupType(enum.IntEnum):
+    holotype = 1
+    lectotype = 2
+    neotype = 3
+    syntypes = 4
