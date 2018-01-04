@@ -249,3 +249,4 @@ class SpeciesGroupType(enum.IntEnum):
     lectotype = 2
     neotype = 3
     syntypes = 4
+    nonexistent = 5  # no type has been designated
