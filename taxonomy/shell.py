@@ -787,6 +787,35 @@ def fossilize(*taxa: Taxon, to_status: Age = Age.fossil, from_status: Age = Age.
             fossilize(child, to_status=to_status, from_status=from_status)
 
 
+@command
+def clean_up_verbatim(dry_run: bool = True) -> None:
+    famgen_type_count = species_type_count = citation_count = 0
+    for nam in Name.filter(Name.group << (Group.family, Group.genus), Name.verbatim_type != None, Name.type != None):
+        print(f'{nam}: {nam.type}, {nam.verbatim_type}')
+        famgen_type_count += 1
+        if not dry_run:
+            nam.add_data('verbatim_type', nam.verbatim_type)
+            nam.verbatim_type = None
+            nam.save()
+    for nam in Name.filter(Name.group == Group.species, Name.verbatim_type != None, Name.type_specimen != None):
+        print(f'{nam}: {nam.type_specimen}, {nam.verbatim_type}')
+        species_type_count += 1
+        if not dry_run:
+            nam.add_data('verbatim_type', nam.verbatim_type)
+            nam.verbatim_type = None
+            nam.save()
+    for nam in Name.filter(Name.verbatim_citation != None, Name.original_citation != None):
+        print(f'{nam}: {nam.original_citation}, {nam.verbatim_citation}')
+        citation_count += 1
+        if not dry_run:
+            nam.add_data('verbatim_citation', nam.verbatim_citation)
+            nam.verbatim_citation = None
+            nam.save()
+    print(f'Family/genera type count: {famgen_type_count}')
+    print(f'Species type count: {species_type_count}')
+    print(f'Citation count: {citation_count}')
+
+
 def run_shell() -> None:
     config = Config()
     config.InteractiveShell.confirm_exit = False

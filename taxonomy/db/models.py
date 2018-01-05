@@ -1411,6 +1411,8 @@ class Name(BaseModel):
             data = {}  # type: Dict[str, Any]
         else:
             data = json.loads(self.data)
+        if field in data:
+            raise ValueError(f'{field} is already in {data}')
         data[field] = value
         self.data = json.dumps(data)
 
