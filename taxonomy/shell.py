@@ -123,6 +123,7 @@ ns = _ShellNamespace({
     'O': _NameGetter(Name, 'original_name'),
     'NC': _NameGetter(models.NameComplex, 'label'),
     'SC': _NameGetter(models.SpeciesNameComplex, 'label'),
+    'C': _NameGetter(models.Collection, 'label'),
     'reconnect': _reconnect,
 })
 ns.update(constants.__dict__)

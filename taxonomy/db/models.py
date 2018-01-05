@@ -1265,34 +1265,70 @@ class SpeciesNameEnding(BaseModel):
             return cls.create(name_complex=name_complex, ending=ending, comment=comment, full_name_only=full_name_only)
 
 
+class Collection(BaseModel):
+    label = CharField()
+    name = CharField()
+    location = ForeignKeyField(Region, related_name='collections', db_column='location_id')
+    comment = CharField(null=True)
+
+    @classmethod
+    def by_label(cls, label: str) -> 'Collection':
+        collections = list(cls.filter(cls.label == label))
+        if len(collections) == 1:
+            return collections[0]
+        else:
+            raise ValueError('found {collections} with label {label}')
+
+    @classmethod
+    def get_or_create(cls, label: str, name: str, location: Region, comment: Optional[str] = None) -> 'Collection':
+        try:
+            return cls.by_label(label)
+        except ValueError:
+            return cls.create(label=label, name=name, location=location, comment=comment)
+
+
 class Name(BaseModel):
     creation_event = events.on_new_name
     save_event = events.on_name_save
 
-    root_name = CharField()
+    # Basic data
     group = EnumField(Group)
+    root_name = CharField()
     status = EnumField(Status)
     taxon = ForeignKeyField(Taxon, related_name='names', db_column='taxon_id')
-    authority = CharField(null=True)
-    data = TextField(null=True)
-    nomenclature_comments = TextField(null=True)
-    original_citation = CharField(null=True)
     original_name = CharField(null=True)
-    other_comments = TextField(null=True)  # deprecated
+    nomenclature_status = EnumField(NomenclatureStatus)
+
+    # Citation and authority
+    authority = CharField(null=True)
+    original_citation = CharField(null=True)
     page_described = CharField(null=True)
-    stem = CharField(null=True)  # redundant with name complex?
-    gender = EnumField(Gender)  # for genus group; redundant with name complex
-    taxonomy_comments = TextField(null=True)
-    type = ForeignKeyField('self', null=True, db_column='type_id')  # for family and genus group
-    verbatim_type = CharField(null=True)  # deprecated
     verbatim_citation = CharField(null=True)
     year = CharField(null=True)  # redundant with data for the publication itself
-    _definition = CharField(null=True, db_column='definition')
+
+    # Gender and stem
+    stem = CharField(null=True)  # redundant with name complex?
+    gender = EnumField(Gender)  # for genus group; redundant with name complex
+    _name_complex_id = IntegerField(null=True, db_column='name_complex_id')
+
+    # Types
+    type = ForeignKeyField('self', null=True, db_column='type_id')  # for family and genus group
+    verbatim_type = CharField(null=True)  # deprecated
     type_locality = ForeignKeyField(Location, related_name='type_localities', db_column='type_locality_id', null=True)
     type_locality_description = TextField(null=True)
     type_specimen = CharField(null=True)
-    nomenclature_status = EnumField(NomenclatureStatus)
-    _name_complex_id = IntegerField(null=True, db_column='name_complex_id')
+    collection = ForeignKeyField(Collection, null=True, db_column='collection_id')
+    type_description = TextField(null=True)
+    type_specimen_source = CharField(null=True)
+
+    # Miscellaneous data
+    data = TextField(null=True)
+    nomenclature_comments = TextField(null=True)
+    other_comments = TextField(null=True)  # deprecated
+    taxonomy_comments = TextField(null=True)
+    _definition = CharField(null=True, db_column='definition')
+
+    # To add: tag field, an ADT serialized as JSON representing: PreoccupiedBy(name), NomenNovumFor(name), UnjustifiedEmendationOf(Name), JustifiedE(name), ISS(Name), PartiallySuppressedBy(Opinion), FullySuppressedBy(Opinion)
 
     class Meta(object):
         db_table = 'name'

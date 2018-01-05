@@ -44,6 +44,9 @@ CREATE TABLE `name` (
 	`type_specimen` varchar(1024) DEFAULT NULL,
 	`nomenclature_status` INT NOT NULL DEFAULT 1, -- available or not
 	`name_complex_id` INT UNSIGNED DEFAULT NULL,
+	`collection_id` integer default null,
+	`type_description` varchar(65535) default null,
+	`type_specimen_source` varchar(512) default null,
 	PRIMARY KEY(`id`),
 	INDEX(`original_name`),
 	INDEX(`root_name`),
@@ -144,4 +147,12 @@ CREATE TABLE `species_name_ending` (
 	`ending` varchar(255),
 	`comment` varchar(65535),
 	`full_name_only` integer default 0,
+);
+
+CREATE TABLE `collection` (
+	`id` integer primary key,
+	`label` varchar(255),
+	`name` varchar(255),
+	`location_id` integer,
+	`comment` varchar(65535)
 );
