@@ -1278,21 +1278,24 @@ class Name(BaseModel):
     nomenclature_comments = TextField(null=True)
     original_citation = CharField(null=True)
     original_name = CharField(null=True)
-    other_comments = TextField(null=True)
+    other_comments = TextField(null=True)  # deprecated
     page_described = CharField(null=True)
-    stem = CharField(null=True)
-    gender = EnumField(Gender)
+    stem = CharField(null=True)  # redundant with name complex?
+    gender = EnumField(Gender)  # for genus group; redundant with name complex
     taxonomy_comments = TextField(null=True)
-    type = ForeignKeyField('self', null=True, db_column='type_id')
-    verbatim_type = CharField(null=True)
+    type = ForeignKeyField('self', null=True, db_column='type_id')  # for family and genus group
+    verbatim_type = CharField(null=True)  # deprecated
     verbatim_citation = CharField(null=True)
-    year = CharField(null=True)
+    year = CharField(null=True)  # redundant with data for the publication itself
     _definition = CharField(null=True, db_column='definition')
     type_locality = ForeignKeyField(Location, related_name='type_localities', db_column='type_locality_id', null=True)
     type_locality_description = TextField(null=True)
     type_specimen = CharField(null=True)
     nomenclature_status = EnumField(NomenclatureStatus)
     _name_complex_id = IntegerField(null=True, db_column='name_complex_id')
+
+    class Meta(object):
+        db_table = 'name'
 
     @property
     def name_complex(self) -> Union[None, NameComplex, SpeciesNameComplex]:
@@ -1330,10 +1333,10 @@ class Name(BaseModel):
 
     @definition.setter
     def definition(self, definition: Definition) -> None:
-        self._definition = definition.serialize()
-
-    class Meta(object):
-        db_table = 'name'
+        if definition is None:
+            self._definition = None
+        else:
+            self._definition = definition.serialize()
 
     def add_additional_data(self, new_data: str) -> None:
         '''Add data to the "additional" field within the "data" field'''
@@ -1435,31 +1438,31 @@ class Name(BaseModel):
             return True
 
     def validate(self, status: Status = Status.valid, parent: Optional[Taxon] = None,
-                 new_rank: Optional[Rank] = None) -> Taxon:
+                 rank: Optional[Rank] = None) -> Taxon:
         assert self.status not in (Status.valid, Status.nomen_dubium, Status.species_inquirenda)
         old_taxon = self.taxon
         parent_group = helpers.group_of_rank(old_taxon.rank)
         if self.group == Group.species and parent_group != Group.species:
-            if new_rank is None:
-                new_rank = Rank.species
+            if rank is None:
+                rank = Rank.species
             if parent is None:
                 parent = old_taxon
         elif self.group == Group.genus and parent_group != Group.genus:
-            if new_rank is None:
-                new_rank = Rank.genus
+            if rank is None:
+                rank = Rank.genus
             if parent is None:
                 parent = old_taxon
         elif self.group == Group.family and parent_group != Group.family:
-            if new_rank is None:
-                new_rank = Rank.family
+            if rank is None:
+                rank = Rank.family
             if parent is None:
                 parent = old_taxon
         else:
-            if new_rank is None:
-                new_rank = old_taxon.rank
+            if rank is None:
+                rank = old_taxon.rank
             if parent is None:
                 parent = old_taxon.parent
-        new_taxon = Taxon.create(rank=new_rank, parent=parent, age=old_taxon.age, valid_name='')
+        new_taxon = Taxon.create(rank=rank, parent=parent, age=old_taxon.age, valid_name='')
         new_taxon.base_name = self
         new_taxon.valid_name = new_taxon.compute_valid_name()
         new_taxon.save()
@@ -1471,7 +1474,7 @@ class Name(BaseModel):
     def merge(self, into: 'Name', allow_valid: bool = False) -> None:
         if not allow_valid:
             assert self.status in (Status.synonym, Status.dubious), \
-                'Can only merge synonymous names (not %s)' % self
+                f'Can only merge synonymous names (not {self})'
         self._merge_fields(into, exclude={'id'})
         self.remove()
 
@@ -1644,7 +1647,7 @@ class Name(BaseModel):
     @classmethod
     def find_name(cls, name: str, rank: Optional[Rank] = None, authority: Optional[str] = None,
                   year: Union[None, int, str] = None) -> 'Name':
-        '''Find a Name object corresponding to the given information'''
+        """Find a Name object corresponding to the given information."""
         if rank is None:
             group = None
             initial_lst = cls.select().where(cls.root_name == name)
