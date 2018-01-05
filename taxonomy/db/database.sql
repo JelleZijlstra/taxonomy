@@ -47,6 +47,10 @@ CREATE TABLE `name` (
 	`collection_id` integer default null,
 	`type_description` varchar(65535) default null,
 	`type_specimen_source` varchar(512) default null,
+	`type_kind` integer default null, -- don't want it, drop this once I figure out the SQLite syntax
+	`tags` varchar(65535) default null,
+	`genus_type_kind` integer default null,
+	`species_type_kind` integer default null,
 	PRIMARY KEY(`id`),
 	INDEX(`original_name`),
 	INDEX(`root_name`),

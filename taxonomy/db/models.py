@@ -13,6 +13,7 @@ from peewee import (
 )
 import peewee
 
+from .. import adt
 from .. import events
 from .. import getinput
 
@@ -127,6 +128,13 @@ class BaseModel(Model):
             GROUP BY {attribute}
         '''
         return dict(database.execute_sql(sql))
+
+    def serialize(self):
+        return self.id
+
+    @classmethod
+    def unserialize(cls, data):
+        return cls.get(id=data)
 
 
 EnumT = TypeVar('EnumT', bound=enum.Enum)
@@ -1320,6 +1328,8 @@ class Name(BaseModel):
     collection = ForeignKeyField(Collection, null=True, db_column='collection_id')
     type_description = TextField(null=True)
     type_specimen_source = CharField(null=True)
+    genus_type_kind = EnumField(constants.TypeSpeciesDesignation, null=True)
+    species_type_kind = EnumField(constants.SpeciesGroupType, null=True)
 
     # Miscellaneous data
     data = TextField(null=True)
@@ -1327,6 +1337,7 @@ class Name(BaseModel):
     other_comments = TextField(null=True)  # deprecated
     taxonomy_comments = TextField(null=True)
     _definition = CharField(null=True, db_column='definition')
+    _tags = CharField(null=True, db_column='tags')
 
     # To add: tag field, an ADT serialized as JSON representing: PreoccupiedBy(name), NomenNovumFor(name), UnjustifiedEmendationOf(Name), JustifiedE(name), ISS(Name), PartiallySuppressedBy(Opinion), FullySuppressedBy(Opinion)
 
@@ -1373,6 +1384,18 @@ class Name(BaseModel):
             self._definition = None
         else:
             self._definition = definition.serialize()
+
+    @property
+    def tags(self) -> List['Tag']:
+        tags = self._tags
+        if tags is None:
+            return []
+        else:
+            return [Tag.unserialize(val) for val in json.loads(tags)]
+
+    @tags.setter
+    def tags(self, value: List['Tag']) -> None:
+        self._tags = json.dumps([val.serialize() for val in value])
 
     def add_additional_data(self, new_data: str) -> None:
         '''Add data to the "additional" field within the "data" field'''
@@ -1725,3 +1748,16 @@ class Occurrence(BaseModel):
         if self.status != OccurrenceStatus.valid:
             out = '[%s] %s' % (self.status.name.upper(), out)
         return out
+
+
+class Tag(adt.ADT):
+    PreoccupiedBy(name=Name, comment=str, tag=1)
+    UnjustifiedEmendationOf(name=Name, comment=str, tag=2)
+    JustifiedEmendationOf(name=Name, comment=str, tag=3)
+    IncorrectSubsequentSpellingOf(name=Name, comment=str, tag=4)
+    NomenNovumFor(name=Name, comment=str, tag=5)
+    VariantOf(name=Name, comment=str, tag=6)  # If we don't know which of 2-4 to use
+    PartiallySuppressedBy(opinion=str, comment=str, tag=7)  # "opinion" is a reference to an Article containing an ICZN Opinion
+    FullySuppressedBy(opinion=str, comment=str, tag=8)
+    TakesPriorityOf(name=Name, comment=str, tag=9)
+    NomenOblitum(name=Name, comment=str, tag=10)  # ICZN Art. 23.9. The reference is to the nomen protectum relative to which precedence is reversed.

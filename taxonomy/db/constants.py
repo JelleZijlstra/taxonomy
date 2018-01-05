@@ -245,8 +245,8 @@ class TypeSpeciesDesignation(enum.IntEnum):
 
 
 class SpeciesGroupType(enum.IntEnum):
-    holotype = 1
-    lectotype = 2
-    neotype = 3
-    syntypes = 4
-    nonexistent = 5  # no type has been designated
+    holotype = 101
+    lectotype = 102
+    neotype = 103
+    syntypes = 104
+    nonexistent = 105  # no type has been designated
