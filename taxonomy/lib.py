@@ -2,7 +2,7 @@ import peewee
 from typing import Any, Iterable, List, Optional, Tuple
 
 from taxonomy.db.constants import Age, Rank
-from taxonomy.db.models import Location, Name, Occurrence, Period, Taxon
+from taxonomy.db.models import Collection, Location, Name, Occurrence, Period, Taxon
 
 
 def occ(t: Taxon, loc: Location, source: Optional[str] = None, replace_source: bool = False, **kwargs: Any) -> Occurrence:
@@ -38,6 +38,16 @@ def biggest_localities(limit: int = 50) -> List[Tuple[Location, int]]:
     return list(reversed([(t, t.num_occurrences) for t in query]))
 
 
+def most_type_localities(limit: int = 50) -> List[Tuple[Location, int]]:
+    query = Location \
+        .select(Location, peewee.fn.Count(Name.id).alias('num_occurrences')) \
+        .join(Name, peewee.JOIN_LEFT_OUTER) \
+        .group_by(Location.id) \
+        .order_by(peewee.fn.Count(Name.id).desc()) \
+        .limit(limit)
+    return list(reversed([(t, t.num_occurrences) for t in query]))
+
+
 def biggest_ranges(limit: int = 50) -> List[Tuple[Taxon, int]]:
     query = Taxon \
         .select(Taxon, peewee.fn.Count(Occurrence.id).alias('num_occurrences')) \
@@ -46,6 +56,16 @@ def biggest_ranges(limit: int = 50) -> List[Tuple[Taxon, int]]:
         .order_by(peewee.fn.Count(Occurrence.id).desc()) \
         .limit(limit)
     return list(reversed([(t, t.num_occurrences) for t in query]))
+
+
+def most_type_specimens(limit: int = 50) -> List[Tuple[Collection, int]]:
+    query = Collection \
+        .select(Collection, peewee.fn.Count(Name.id).alias('num_types')) \
+        .join(Name, peewee.JOIN_LEFT_OUTER) \
+        .group_by(Collection.id) \
+        .order_by(peewee.fn.Count(Name.id).desc()) \
+        .limit(limit)
+    return list(reversed([(t, t.num_types) for t in query]))
 
 
 def mocc(t: Taxon, locs: Iterable[Location], source: Optional[str] = None, replace_source: bool = False, **kwargs: Any) -> None:

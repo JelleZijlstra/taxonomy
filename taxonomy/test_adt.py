@@ -8,10 +8,10 @@ NODE = 2
 
 
 class Tree(ADT):
-    Leaf(tag=LEAF)
-    Node(left=Tree, right=Tree, tag=NODE)
+    Leaf(tag=LEAF)  # type: ignore
+    Node(left=Tree, right=Tree, tag=NODE)  # type: ignore
 
-    def __repr__(self) -> None:
+    def __repr__(self) -> str:
         if self is Tree.Leaf:
             return 'Leaf'
         elif isinstance(self, Tree.Node):

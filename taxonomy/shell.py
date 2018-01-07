@@ -1,4 +1,4 @@
-from .db import constants, definition, detection, helpers, models
+from .db import constants, definition, detection, ehphp, helpers, models
 from .db.constants import Group, Rank
 from .db.models import Age, Name, Taxon, database
 from . import events
@@ -17,22 +17,6 @@ import unidecode
 T = TypeVar('T')
 
 
-# Encode and decode names so they can be used as identifiers. Spaces are replaced with underscores
-# and any non-alphabetical characters are replaced with the character's ASCII code surrounded by
-# underscores. TODO: we shouldn't replace accented characters like í, which are allowed in Python
-# identifiers
-_encode_re = re.compile(r'[^A-Za-z0-9 ]')
-_decode_re = re.compile(r'  (\d+) ')
-
-
-def _encode_name(name: str) -> str:
-    return _encode_re.sub(lambda m: '__%d_' % ord(m.group()), name).replace(' ', '_')
-
-
-def _decode_name(name: str) -> str:
-    return _decode_re.sub(lambda m: chr(int(m.group(1))), name.replace('_', ' '))
-
-
 class _ShellNamespace(dict):  # type: ignore
     def __missing__(self, key: str) -> object:
         try:
@@ -46,7 +30,7 @@ class _ShellNamespace(dict):  # type: ignore
         keys |= set(dir(__builtins__))
         if not hasattr(self, '_names'):
             self._names = set(
-                _encode_name(taxon.valid_name)
+                getinput.encode_name(taxon.valid_name)
                 for taxon in Taxon.select(Taxon.valid_name)
                 if taxon.valid_name is not None
             )
@@ -64,45 +48,6 @@ class _ShellNamespace(dict):  # type: ignore
             self._names.add(taxon.valid_name.replace(' ', '_'))
 
 
-ModelT = TypeVar('ModelT', bound=models.BaseModel)
-
-
-class _NameGetter(Generic[ModelT]):
-    def __init__(self, cls: Type[ModelT], field: str) -> None:
-        self.cls = cls
-        self.field = field
-        self.field_obj = getattr(cls, field)
-        self._data = None  # type: Optional[Set[str]]
-
-    def __dir__(self) -> Set[str]:
-        result = set(super().__dir__())
-        if self._data is None:
-            self._data = set()
-            for obj in self.cls.select(self.field_obj):
-                self._add_obj(obj)
-        return result | self._data
-
-    def __getattr__(self, name: str) -> ModelT:
-        return self.cls.filter(self.field_obj == _decode_name(name)).get()
-
-    def __call__(self, name: str) -> ModelT:
-        return self.__getattr__(name)
-
-    def clear_cache(self) -> None:
-        self._data = None
-
-    def add_name(self, nam: ModelT) -> None:
-        if self._data is not None:
-            self._add_obj(nam)
-
-    def _add_obj(self, obj: ModelT) -> None:
-        assert self._data is not None
-        val = getattr(obj, self.field)
-        if val is None:
-            return
-        self._data.add(_encode_name(val))
-
-
 def _reconnect() -> None:
     database.close()
     database.connect()
@@ -116,27 +61,20 @@ ns = _ShellNamespace({
     'Node': definition.Node,
     'Apomorphy': definition.Apomorphy,
     'Other': definition.Other,
-    'N': _NameGetter(Name, 'root_name'),
-    'L': _NameGetter(models.Location, 'name'),
-    'P': _NameGetter(models.Period, 'name'),
-    'R': _NameGetter(models.Region, 'name'),
-    'O': _NameGetter(Name, 'original_name'),
-    'NC': _NameGetter(models.NameComplex, 'label'),
-    'SC': _NameGetter(models.SpeciesNameComplex, 'label'),
-    'C': _NameGetter(models.Collection, 'label'),
+    'N': Name.getter('root_name'),
+    'L': models.Location.getter('name'),
+    'P': models.Period.getter('name'),
+    'R': models.Region.getter('name'),
+    'O': Name.getter('original_name'),
+    'NC': models.NameComplex.getter('label'),
+    'SC': models.SpeciesNameComplex.getter('label'),
+    'C': models.Collection.getter('label'),
     'reconnect': _reconnect,
 })
 ns.update(constants.__dict__)
 
 for model in models.BaseModel.__subclasses__():
     ns[model.__name__] = model
-
-events.on_new_taxon.on(ns.add_name)
-events.on_taxon_save.on(ns.add_name)
-events.on_name_save.on(ns['N'].add_name)
-events.on_name_save.on(ns['O'].add_name)
-events.on_locality_save.on(ns['L'].add_name)
-events.on_period_save.on(ns['P'].add_name)
 
 
 CallableT = TypeVar('CallableT', bound=Callable[..., Any])
@@ -814,6 +752,24 @@ def clean_up_verbatim(dry_run: bool = True) -> None:
     print(f'Family/genera type count: {famgen_type_count}')
     print(f'Species type count: {species_type_count}')
     print(f'Citation count: {citation_count}')
+
+
+@command
+def fill_data_from_paper(paper: Optional[str] = None) -> None:
+    if paper is None:
+        paper = models.BaseModel.get_value_for_article_field('paper')
+    assert paper is not None, 'paper needs to be specified'
+    models.fill_data_from_paper(paper)
+
+
+@command
+def fill_type_locality(extant_only: bool = True) -> None:
+    for nam in Name.filter(Name.type_locality_description != None, Name.type_locality >> None):
+        if extant_only and nam.taxon.age != Age.extant:
+            continue
+        print(nam)
+        print(nam.type_locality_description)
+        nam.fill_field('type_locality')
 
 
 def run_shell() -> None:

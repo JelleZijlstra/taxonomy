@@ -1,7 +1,7 @@
 import builtins
 import collections.abc
 import sys
-from typing import Any, Iterable, Type
+from typing import Any, Dict, Iterable, Iterator, List, MutableMapping, Type, TypeVar, TYPE_CHECKING
 
 
 class _ADTMember:
@@ -18,12 +18,12 @@ class _ADTMember:
         return f'<_ADTMember: name={self.name}, called={self.called}>'
 
 
-class _ADTNamespace(collections.MutableMapping):
-    def __init__(self, globals) -> None:
+class _ADTNamespace(MutableMapping[str, Any]):
+    def __init__(self, globals: Dict[str, Any]) -> None:
         self._globals = globals
-        self._mapping = {}
+        self._mapping: Dict[str, _ADTMember] = {}
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: str) -> Any:
         if key in self._mapping:
             return self._mapping[key]
         elif key in self._globals:
@@ -34,19 +34,19 @@ class _ADTNamespace(collections.MutableMapping):
         self._mapping[key] = member
         return member
 
-    def __contains__(self, key):
+    def __contains__(self, key: object) -> bool:
         return key in self._mapping
 
-    def __setitem__(self, key, value):
+    def __setitem__(self, key: str, value: Any) -> None:
         self._mapping[key] = value
 
-    def __delitem__(self, key):
+    def __delitem__(self, key: str) -> None:
         del self._mapping[key]
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[str]:
         return iter(self._mapping)
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self._mapping)
 
 
@@ -61,10 +61,10 @@ def _adt_member_eq(self: Any, other: Any) -> Any:
 
 class _ADTMeta(type):
     @classmethod
-    def __prepare__(cls, name, bases):
+    def __prepare__(cls, name: str, bases: Any) -> _ADTNamespace:
         return _ADTNamespace(sys._getframe(1).f_globals)
 
-    def __new__(cls, name, bases, ns):
+    def __new__(cls, name: str, bases: Any, ns: Any) -> Type[Any]:
         if '_is_member' in ns and ns['_is_member']:
             return super().__new__(cls, name, bases, ns)
         members = {}
@@ -73,7 +73,7 @@ class _ADTMeta(type):
                 members[key] = value
                 del ns[key]
         new_cls = super().__new__(cls, name, bases, dict(ns.items()))
-        new_cls._tag_to_member = {}
+        new_cls._tag_to_member = {}  # type: ignore
         if name in members and not members[name].called:
             del members[name]
             has_self_cls = True
@@ -83,7 +83,7 @@ class _ADTMeta(type):
             if not member.called:
                 raise TypeError(f'incomplete member {member}')
             has_args = bool(member.kwargs)
-            attrs = {}
+            attrs: Dict[str, Type[Any]] = {}
             member_ns = {
                 '_attributes': attrs,
                 '_tag': member.tag,
@@ -103,7 +103,7 @@ class _ADTMeta(type):
                         raise TypeError(f'unsupported type {value}')
                 lines = ''.join(f'    self.{attr} = {attr}\n' for attr in member.kwargs.keys())
                 code = f'def __init__(self, {", ".join(member.kwargs.keys())}):\n{lines}'
-                new_ns = {}
+                new_ns: Dict[str, Any] = {}
                 exec(code, {}, new_ns)
                 member_ns['__init__'] = new_ns['__init__']
             member_cls = type(member.name, (new_cls,), member_ns)
@@ -111,15 +111,30 @@ class _ADTMeta(type):
                 cls_obj = member_cls
                 member_cls = cls_obj()
 
-                def __init__(self) -> None:
+                def __init__(self: object) -> None:
                     raise TypeError(f'cannot instantiate {member_cls}')
-                cls_obj.__init__ = __init__
-            new_cls._tag_to_member[member.tag] = member_cls
+                cls_obj.__init__ = __init__  # type: ignore
+            new_cls._tag_to_member[member.tag] = member_cls  # type: ignore
             setattr(new_cls, member.name, member_cls)
         return new_cls
 
 
-class ADT(metaclass=_ADTMeta):
+_ADTT = TypeVar('_ADTT', bound='ADT')
+
+if TYPE_CHECKING:
+    class _ADTBase(Any):
+        pass
+else:
+    class _ADTBase:
+        pass
+
+
+class ADT(_ADTBase, metaclass=_ADTMeta):
+    _attributes: Dict[str, Type[Any]]
+    _has_args: bool
+    _tag: int
+    _tag_to_member: Dict[int, Type[Any]]
+
     def _get_attributes(self) -> Iterable[Any]:
         for attr in self._attributes.keys():
             yield getattr(self, attr)
@@ -137,19 +152,19 @@ class ADT(metaclass=_ADTMeta):
             return [self._tag]
 
     @classmethod
-    def unserialize(cls, value):
+    def unserialize(cls: Type[_ADTT], value: List[Any]) -> _ADTT:
         tag = value[0]
         member_cls = cls._tag_to_member[tag]
         if member_cls._has_args:
             args = []
-            for value, serialized in zip(member_cls._attributes.values(), value[1:]):
+            for val, serialized in zip(member_cls._attributes.values(), value[1:]):
                 if hasattr(value, 'unserialize'):
-                    args.append(value.unserialize(serialized))
+                    args.append(val.unserialize(serialized))
                 else:
                     args.append(serialized)
             return member_cls(*args)
         else:
-            return member_cls
+            return member_cls  # type: ignore
 
     def __repr__(self) -> str:
         member_name = type(self).__name__
