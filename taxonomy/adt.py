@@ -1,5 +1,6 @@
 import builtins
 import collections.abc
+import enum
 import sys
 from typing import Any, Dict, Iterable, Iterator, List, MutableMapping, Type, TypeVar, TYPE_CHECKING
 
@@ -30,6 +31,8 @@ class _ADTNamespace(MutableMapping[str, Any]):
             return self._globals[key]
         elif hasattr(builtins, key):
             return getattr(builtins, key)
+        elif key.startswith('__'):
+            raise KeyError(key)
         member = _ADTMember(key)
         self._mapping[key] = member
         return member
@@ -95,6 +98,8 @@ class _ADTMeta(type):
                 for key, value in member.kwargs.items():
                     if value in (int, str, float, bool, list):
                         attrs[key] = value
+                    elif isinstance(value, type) and issubclass(value, enum.IntEnum):
+                        attrs[key] = value
                     elif isinstance(value, type) and hasattr(value, 'serialize') and hasattr(value, 'unserialize'):
                         attrs[key] = value
                     elif has_self_cls and isinstance(value, _ADTMember) and value.name == name:
@@ -145,6 +150,8 @@ class ADT(_ADTBase, metaclass=_ADTMeta):
             for value in self._get_attributes():
                 if hasattr(value, 'serialize'):
                     args.append(value.serialize())
+                elif isinstance(value, enum.IntEnum):
+                    args.append(value.value)
                 else:
                     args.append(value)
             return [self._tag, *args]
@@ -157,9 +164,11 @@ class ADT(_ADTBase, metaclass=_ADTMeta):
         member_cls = cls._tag_to_member[tag]
         if member_cls._has_args:
             args = []
-            for val, serialized in zip(member_cls._attributes.values(), value[1:]):
-                if hasattr(value, 'unserialize'):
-                    args.append(val.unserialize(serialized))
+            for arg_type, serialized in zip(member_cls._attributes.values(), value[1:]):
+                if hasattr(arg_type, 'unserialize'):
+                    args.append(arg_type.unserialize(serialized))
+                elif isinstance(arg_type, type) and issubclass(arg_type, enum.IntEnum):
+                    args.append(arg_type(serialized))
                 else:
                     args.append(serialized)
             return member_cls(*args)
