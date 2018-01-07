@@ -4,6 +4,7 @@ import json
 import operator
 import re
 import sys
+import time
 import traceback
 from typing import Any, Callable, Container, Dict, Generic, IO, Iterable, List, Optional, Set, Tuple, Type, TypeVar, Union
 
@@ -1771,6 +1772,10 @@ class Name(BaseModel):
         data[field] = value
         self.data = json.dumps(data)
 
+    def add_comment(self, kind: Optional[constants.CommentKind] = None, text: Optional[str] = None,
+                    source: Optional[str] = None) -> 'NameComment':
+        return NameComment.create_interactively(name=self, kind=kind, text=text, source=source)
+
     def description(self) -> str:
         if self.original_name:
             out = self.original_name
@@ -2130,6 +2135,34 @@ class Occurrence(BaseModel):
         if self.status != OccurrenceStatus.valid:
             out = '[%s] %s' % (self.status.name.upper(), out)
         return out
+
+
+class NameComment(BaseModel):
+    name = ForeignKeyField(Name, related_name='comments', db_column='name_id')
+    kind = EnumField(constants.CommentKind)
+    date = IntegerField()
+    text = TextField()
+    source = CharField()
+
+    @classmethod
+    def make(cls, name: Name, kind: constants.CommentKind, text: str, source: Optional[str] = None) -> 'NameComment':
+        return cls.create(name=Name, kind=kind, text=text, date=int(time.time()), source=source)
+
+    @classmethod
+    def create_interactively(cls, name: Optional[Name] = None, kind: Optional[constants.CommentKind] = None,
+                             text: Optional[str] = None, source: Optional[str] = None) -> 'NameComment':
+        if name is None:
+            name = cls.get_value_for_foreign_key_field_on_class('name')
+        assert name is not None
+        if kind is None:
+            kind = getinput.get_enum_member(constants.CommentKind, prompt='kind> ')  # type: ignore
+        assert isinstance(kind, constants.CommentKind)
+        if text is None:
+            text = getinput.get_line(prompt='text> ')
+        assert text is not None
+        if source is None:
+            source = cls.get_value_for_article_field('source')
+        return cls.make(name=name, kind=kind, text=text, source=source)
 
 
 class Tag(adt.ADT):

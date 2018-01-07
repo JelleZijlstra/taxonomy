@@ -161,3 +161,12 @@ CREATE TABLE `collection` (
 	`location_id` integer,
 	`comment` varchar(65535)
 );
+
+CREATE TABLE `name_comment` (
+	`id` integer primary key,
+	`name_id` integer not null,
+	`kind` integer,
+	`date` integer,
+	`text` text,
+	`source` varchar(512)
+);

@@ -279,3 +279,14 @@ class Organ(enum.IntEnum):
 class AltitudeUnit(enum.IntEnum):
     m = 1
     ft = 2
+
+
+class CommentKind(enum.IntEnum):
+    taxonomy = 1
+    nomenclature = 2
+    type_locality = 3
+    type_specimen = 4
+    availability = 5
+    distribution = 6
+    etymology = 7
+    other = 8
