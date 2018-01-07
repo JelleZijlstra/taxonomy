@@ -1777,6 +1777,12 @@ class Name(BaseModel):
         data[field] = value
         self.data = json.dumps(data)
 
+    def add_tag(self, tag: adt.ADT) -> None:
+        if self.tags is None:
+            self.tags = [tag]
+        else:
+            self.tags = self.tags + (tag,)
+
     def add_comment(self, kind: Optional[constants.CommentKind] = None, text: Optional[str] = None,
                     source: Optional[str] = None) -> 'NameComment':
         return NameComment.create_interactively(name=self, kind=kind, text=text, source=source)
@@ -1795,6 +1801,13 @@ class Name(BaseModel):
 
     def is_unavailable(self) -> bool:
         return self.nomenclature_status != NomenclatureStatus.available
+
+    def make_variant(self, status: NomenclatureStatus, of_name: 'Name', comment: Optional[str] = None) -> None:
+        if self.nomenclature_status != NomenclatureStatus.available:
+            raise ValueError(f'{self} is {self.nomenclature_status.name}')
+        self.add_tag(STATUS_TO_TAG[status](name=of_name, comment=comment))
+        self.nomenclature_status = status  # type: ignore
+        self.save()
 
     def get_authors(self) -> List[str]:
         return re.split(r', | & ', re.sub(r'et al\.$', '', self.authority))
@@ -1874,17 +1887,18 @@ class Name(BaseModel):
         if self.group in (Group.genus, Group.species):
             yield 'name_complex'
 
-        if self.group in (Group.family, Group.genus) and not self.is_unavailable():
-            yield 'type'
-        if self.group == Group.species:
-            yield 'type_locality'
-            yield 'type_specimen'
-            yield 'collection'
-            yield 'type_specimen_source'
-            yield 'species_type_kind'
-            yield 'type_tags'
-        if self.group == Group.genus:
-            yield 'genus_type_kind'
+        if self.nomenclature_status.requires_type():
+            if self.group in (Group.family, Group.genus):
+                yield 'type'
+            if self.group == Group.species:
+                yield 'type_locality'
+                yield 'type_specimen'
+                yield 'collection'
+                yield 'type_specimen_source'
+                yield 'species_type_kind'
+                yield 'type_tags'
+            if self.group == Group.genus:
+                yield 'genus_type_kind'
 
     def validate(self, status: Status = Status.valid, parent: Optional[Taxon] = None,
                  rank: Optional[Rank] = None) -> Taxon:
@@ -2171,7 +2185,7 @@ class NameComment(BaseModel):
 class Tag(adt.ADT):
     PreoccupiedBy(name=Name, comment=str, tag=1)  # type: ignore
     UnjustifiedEmendationOf(name=Name, comment=str, tag=2)  # type: ignore
-    JustifiedEmendationOf(name=Name, comment=str, tag=3)  # type: ignore
+    JustifiedEmendationOf(name=Name, comment=str, tag=3)  # type: ignore  # or mandatory change
     IncorrectSubsequentSpellingOf(name=Name, comment=str, tag=4)  # type: ignore
     NomenNovumFor(name=Name, comment=str, tag=5)  # type: ignore
     VariantOf(name=Name, comment=str, tag=6)  # type: ignore  # If we don't know which of 2-4 to use
@@ -2179,6 +2193,15 @@ class Tag(adt.ADT):
     FullySuppressedBy(opinion=str, comment=str, tag=8)  # type: ignore
     TakesPriorityOf(name=Name, comment=str, tag=9)  # type: ignore
     NomenOblitum(name=Name, comment=str, tag=10)  # type: ignore  # ICZN Art. 23.9. The reference is to the nomen protectum relative to which precedence is reversed.
+    MandatoryChangeOf(name=Name, comment=str, tag=11)  # type: ignore
+
+STATUS_TO_TAG = {
+    NomenclatureStatus.unjustified_emendation: Tag.UnjustifiedEmendationOf,
+    NomenclatureStatus.justified_emendation: Tag.JustifiedEmendationOf,
+    NomenclatureStatus.incorrect_subsequent_spelling: Tag.IncorrectSubsequentSpellingOf,
+    NomenclatureStatus.assumed_incorrect: Tag.VariantOf,
+    NomenclatureStatus.mandatory_change: Tag.MandatoryChangeOf,
+}
 
 
 class TypeTag(adt.ADT):

@@ -69,11 +69,19 @@ class NomenclatureStatus(enum.IntEnum):
     conditional = 26  # Art. 15
     variety_or_form = 27  # Art. 15.2: after 1960, "variety" or "form" excludes the name (cf. infrasubspecific)
     not_explicitly_new = 28  # Art. 16: names published after 1999 must be explicitly new
-    mandatory_change = 29  # indicates the original name was incorrect original spelling [Art. 34]
+    mandatory_change = 29  # Art. 34: rank change for family-group name and gender agreement for species-group name
     ites_name = 30  # Art. 20: names in -ites, -ytes, -ithes for fossils may not be available
     hybrid_name = 31  # names based on hybrids are available, but do not compete in priority (Art. 23.8)
     art_13_nomen_oblitum = 32  # Art. 23.12: name rejected under Art. 23b in the 1961-1973 Code
     assumed_incorrect = 33  # probably an ISS (7), but may be UE (8)
+    justified_emendation = 34  # Art. 32.5: correction of incorrect original spellings
+
+    def requires_type(self) -> bool:
+        return self in {
+            NomenclatureStatus.available,
+            NomenclatureStatus.hybrid_name,
+            NomenclatureStatus.art_13_nomen_oblitum
+        }
 
 
 class Group(enum.IntEnum):
