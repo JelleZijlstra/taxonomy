@@ -51,6 +51,7 @@ CREATE TABLE `name` (
 	`tags` varchar(65535) default null,
 	`genus_type_kind` integer default null,
 	`species_type_kind` integer default null,
+	`type_tags` text default null,
 	PRIMARY KEY(`id`),
 	INDEX(`original_name`),
 	INDEX(`root_name`),

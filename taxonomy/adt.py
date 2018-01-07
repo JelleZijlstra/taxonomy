@@ -4,6 +4,8 @@ import enum
 import sys
 from typing import Any, Dict, Iterable, Iterator, List, MutableMapping, Type, TypeVar, TYPE_CHECKING
 
+BASIC_TYPES = (int, str, float, bool, list)
+
 
 class _ADTMember:
     def __init__(self, name: str) -> None:
@@ -75,7 +77,7 @@ class _ADTMeta(type):
             if isinstance(value, _ADTMember):
                 members[key] = value
                 del ns[key]
-        new_cls = super().__new__(cls, name, bases, dict(ns.items()))
+        new_cls = super().__new__(cls, name, bases, dict(ns.items(), _members=tuple(members.keys())))
         new_cls._tag_to_member = {}  # type: ignore
         if name in members and not members[name].called:
             del members[name]
@@ -96,7 +98,7 @@ class _ADTMeta(type):
             }
             if has_args:
                 for key, value in member.kwargs.items():
-                    if value in (int, str, float, bool, list):
+                    if value in BASIC_TYPES:
                         attrs[key] = value
                     elif isinstance(value, type) and issubclass(value, enum.IntEnum):
                         attrs[key] = value

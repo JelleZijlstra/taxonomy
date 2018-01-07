@@ -1,6 +1,6 @@
 from .db import constants, definition, detection, ehphp, helpers, models
-from .db.constants import Group, Rank
-from .db.models import Age, Name, Taxon, database
+from .db.constants import Age, Group, Rank
+from .db.models import Name, Taxon, database
 from . import events
 from . import getinput
 
@@ -144,7 +144,7 @@ def _add_missing_data(attribute: str) -> Callable[[_MissingDataProducer], Callab
         def wrapper(*args: Any, **kwargs: Any) -> None:
             for nam, message in fn(*args, **kwargs):
                 value = getinput.get_line(
-                    message, handlers={'o': lambda _: bool(nam.open_description())}
+                    message + '> ', handlers={'o': lambda _: bool(nam.open_description())}
                 )
                 if value:
                     setattr(nam, attribute, value)
@@ -197,7 +197,7 @@ def add_types() -> None:
         message = 'Name %s is missing type, but has original citation {%s}' % \
             (name.description(), name.original_citation)
         verbatim_type = getinput.get_line(
-            message, handlers={'o': lambda _: name.open_description()}, should_stop=lambda line: line == 's'
+            message + '> ', handlers={'o': lambda _: name.open_description()}, should_stop=lambda line: line == 's'
         )
         if verbatim_type:
             name.detect_and_set_type(verbatim_type, verbose=True)
@@ -763,10 +763,17 @@ def fill_data_from_paper(paper: Optional[str] = None) -> None:
 
 
 @command
-def fill_type_locality(extant_only: bool = True) -> None:
+def fill_type_locality(extant_only: bool = True, start_at: Optional[Name] = None) -> None:
+    started = start_at is None
     for nam in Name.filter(Name.type_locality_description != None, Name.type_locality >> None):
         if extant_only and nam.taxon.age != Age.extant:
             continue
+        if not started:
+            assert start_at is not None
+            if nam.id == start_at.id:
+                started = True
+            else:
+                continue
         print(nam)
         print(nam.type_locality_description)
         nam.fill_field('type_locality')

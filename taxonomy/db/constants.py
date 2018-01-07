@@ -127,6 +127,7 @@ class RegionKind(enum.IntEnum):
     continent = 0
     country = 1
     subnational = 2
+    planet = 3
 
 
 class PeriodSystem(enum.IntEnum):
@@ -250,3 +251,31 @@ class SpeciesGroupType(enum.IntEnum):
     neotype = 103
     syntypes = 104
     nonexistent = 105  # no type has been designated
+
+
+class SpecimenGender(enum.IntEnum):
+    male = 1
+    female = 2
+    hermaphrodite = 3
+    unknown = 4
+
+
+class SpecimenAge(enum.IntEnum):
+    embryo = 1
+    juvenile = 2
+    subadult = 3
+    adult = 4
+
+
+class Organ(enum.IntEnum):
+    # parts of specimens that are commonly preserved
+    skin = 1
+    skull = 2
+    postcranial_skeleton = 3
+    mandible = 4
+    tooth = 5
+
+
+class AltitudeUnit(enum.IntEnum):
+    m = 1
+    ft = 2

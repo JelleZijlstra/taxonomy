@@ -18,7 +18,7 @@ from .. import events
 from .. import getinput
 
 from . import constants
-from .constants import Age, Gender, GenderArticle, Group, NomenclatureStatus, OccurrenceStatus, Rank, SourceLanguage, SpeciesNameKind, Status
+from .constants import GenderArticle, Group, NomenclatureStatus, OccurrenceStatus, Rank, SourceLanguage, SpeciesNameKind, Status
 from . import definition
 from .definition import Definition
 from . import ehphp
@@ -53,6 +53,7 @@ class _FieldEditor(object):
 
 
 class BaseModel(Model):
+    label_field: str
     creation_event: events.Event[Any]
     save_event: events.Event[Any]
 
@@ -64,13 +65,13 @@ class BaseModel(Model):
     @classmethod
     def create(cls: Type[ModelT], *args: Any, **kwargs: Any) -> ModelT:
         result = super().create(*args, **kwargs)
-        if cls.creation_event is not None:
+        if hasattr(cls, 'creation_event'):
             cls.creation_event.trigger(result)
         return result
 
     def save(self, *args: Any, **kwargs: Any) -> None:
         result = super().save(*args, **kwargs)
-        if self.save_event is not None:
+        if hasattr(self, 'save_event'):
             self.save_event.trigger(self)
         return result
 
@@ -175,31 +176,37 @@ class BaseModel(Model):
         field_obj = getattr(type(self), field)
         prompt = f'{field}> '
         current_value = getattr(self, field)
-        if isinstance(field_obj, CharField):
+        if isinstance(field_obj, ForeignKeyField):
+            return self.get_value_for_foreign_key_field(field)
+        elif isinstance(field_obj, ADTField):
+            return getinput.get_adt_list(field_obj.get_adt(), existing=current_value)
+        elif isinstance(field_obj, CharField):
             default = '' if current_value is None else current_value
             return self.getter(field).get_one_key(prompt, default=default) or None
         elif isinstance(field_obj, TextField):
-            return getinput.get_line(prompt) or None
+            default = '' if current_value is None else current_value
+            return getinput.get_line(prompt, default=default, mouse_support=True) or None
         elif isinstance(field_obj, EnumField):
             return getinput.get_enum_member(field_obj.enum, prompt=prompt)
         else:
             raise ValueError(f"don't know how to fill {field}")
 
-    def get_value_for_foreign_key_field(self, field: str, foreign_field: str) -> Any:
+    def get_value_for_foreign_key_field(self, field: str) -> Any:
         current_val = getattr(self, field)
-        return self.get_value_for_foreign_key_field_on_class(field, foreign_field, current_val)
+        return self.get_value_for_foreign_key_field_on_class(field, current_val)
 
     @classmethod
-    def get_value_for_foreign_key_field_on_class(cls, field: str, foreign_field: str, current_val: Optional[Any] = None) -> Any:
+    def get_value_for_foreign_key_field_on_class(cls, field: str, current_val: Optional[Any] = None) -> Any:
         field_obj = getattr(cls, field)
+        foreign_cls = field_obj.rel_model
         if current_val is None:
             default = ''
         else:
-            default = getattr(current_val, foreign_field)
-        getter = field_obj.rel_model.getter(foreign_field)
+            default = getattr(current_val, foreign_cls.label_field)
+        getter = foreign_cls.getter(foreign_cls.label_field)
         value = getter.get_one_key(f'{field}> ', default=default)
         if value == 'n':
-            return field_obj.rel_model.create_interactively()
+            return foreign_cls.create_interactively()
         elif value is None:
             return None
         else:
@@ -229,7 +236,6 @@ class BaseModel(Model):
         obj = cls.create()
         obj.fill_required_fields()
         return obj
-
 
 
 EnumT = TypeVar('EnumT', bound=enum.Enum)
@@ -262,6 +268,40 @@ class EnumField(IntegerField):
         setattr(model_class, name, _EnumFieldDescriptor(self, self.enum))
 
 
+class _ADTDescriptor(peewee.FieldDescriptor):
+    def __init__(self, field: peewee.Field, adt: Any) -> None:
+        super().__init__(field)
+        self.adt = adt
+
+    def __get__(self, instance: Any, instance_type: Any = None) -> EnumT:
+        value = super().__get__(instance, instance_type=instance_type)
+        if isinstance(value, str):
+            if not isinstance(self.adt, type):
+                self.adt = self.adt()
+            value = tuple(self.adt.unserialize(val) for val in json.loads(value))
+        return value
+
+    def __set__(self, instance: Any, value: Any) -> None:
+        if isinstance(value, tuple):
+            value = list(value)
+        if isinstance(value, list):
+            value = json.dumps([val.serialize() for val in value])
+        super().__set__(instance, value)
+
+
+class ADTField(TextField):
+    def __init__(self, adt: Callable[[], Type[Any]], **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self.adt = adt
+
+    def add_to_class(self, model_class: Type[BaseModel], name: str) -> None:
+        super().add_to_class(model_class, name)
+        setattr(model_class, name, _ADTDescriptor(self, self.adt))
+
+    def get_adt(self) -> Type[Any]:
+        return self.adt()
+
+
 class _NameGetter(Generic[ModelT]):
     def __init__(self, cls: Type[ModelT], field: str) -> None:
         self.cls = cls
@@ -269,9 +309,9 @@ class _NameGetter(Generic[ModelT]):
         self.field_obj = getattr(cls, field)
         self._data: Optional[Set[str]] = None
         self._encoded_data: Optional[Set[str]] = None
-        if cls.creation_event is not None:
+        if hasattr(cls, 'creation_event'):
             cls.creation_event.on(self.add_name)
-        if cls.save_event is not None:
+        if hasattr(cls, 'save_event'):
             cls.save_event.on(self.add_name)
 
     def __dir__(self) -> Set[str]:
@@ -352,10 +392,11 @@ class _OccurrenceGetter(object):
 class Taxon(BaseModel):
     creation_event = events.Event['Taxon']()
     save_event = events.Event['Taxon']()
+    label_field = 'valid_name'
 
     rank = EnumField(Rank)
     valid_name = CharField(default='')
-    age = EnumField(Age)
+    age = EnumField(constants.Age)
     parent = ForeignKeyField('self', related_name='children', null=True, db_column='parent_id')
     comments = TextField(null=True)
     data = TextField(null=True)
@@ -463,7 +504,7 @@ class Taxon(BaseModel):
         else:
             return self.parent.is_child_of(taxon)
 
-    def children_of_rank(self, rank: Rank, age: Optional[Age] = None) -> List['Taxon']:
+    def children_of_rank(self, rank: Rank, age: Optional[constants.Age] = None) -> List['Taxon']:
         if self.rank < rank:
             return []
         elif self.rank == rank:
@@ -499,7 +540,7 @@ class Taxon(BaseModel):
         return result
 
     def display_extant(self) -> None:
-        self.display(exclude_fn=lambda t: t.age != Age.extant, name_exclude_fn=lambda n: n.status == Status.synonym)
+        self.display(exclude_fn=lambda t: t.age != constants.Age.extant, name_exclude_fn=lambda n: n.status == Status.synonym)
 
     def display(self, full: bool = False, max_depth: Optional[int] = None, file: IO[str] = sys.stdout,
                 depth: int = 0, exclude: Container['Taxon'] = set(), exclude_fn: Optional[Callable[['Taxon'], bool]] = None,
@@ -576,7 +617,7 @@ class Taxon(BaseModel):
         return order_rank, family_rank
 
     def add(self, rank: Rank, name: str, authority: Optional[str] = None, year: Union[None, str, int] = None,
-            age: Optional[Age] = None, set_type: bool = False, comments: Optional[str] = None, **kwargs: Any) -> 'Taxon':
+            age: Optional[constants.Age] = None, set_type: bool = False, comments: Optional[str] = None, **kwargs: Any) -> 'Taxon':
         if age is None:
             age = self.age
         taxon = Taxon.create(valid_name=name, age=age, rank=rank, parent=self, comments=comments)
@@ -643,7 +684,7 @@ class Taxon(BaseModel):
 
     def syn_from_paper(self, name: str, paper: str, page_described: Union[None, int, str] = None,
                        status: Status = Status.synonym, group: Optional[Group] = None,
-                       age: Optional[Age] = None, **kwargs: Any) -> 'Name':
+                       age: Optional[constants.Age] = None, **kwargs: Any) -> 'Name':
         authority, year = ehphp.call_ehphp('taxonomicAuthority', [paper])[0]
         result = self.add_syn(
             root_name=name, authority=authority, year=year, original_citation=paper,
@@ -656,7 +697,7 @@ class Taxon(BaseModel):
 
     def from_paper(self, rank: Rank, name: str, paper: str, page_described: Union[None, int, str] = None,
                    status: Status = Status.valid, comments: Optional[str] = None,
-                   age: Optional[Age] = None, **override_kwargs: Any) -> 'Taxon':
+                   age: Optional[constants.Age] = None, **override_kwargs: Any) -> 'Taxon':
         authority, year = ehphp.call_ehphp('taxonomicAuthority', [paper])[0]
         result = self.add(
             rank=rank, name=name, original_citation=paper, page_described=page_described,
@@ -934,6 +975,7 @@ T = TypeVar('T')
 class Period(BaseModel):
     creation_event = events.Event['Period']()
     save_event = events.Event['Period']()
+    label_field = 'name'
 
     name = CharField()
     parent = ForeignKeyField('self', related_name='children', db_column='parent_id', null=True)
@@ -1013,6 +1055,8 @@ class Period(BaseModel):
 
 
 class Region(BaseModel):
+    label_field = 'name'
+
     name = CharField()
     comment = CharField(null=True)
     parent = ForeignKeyField('self', related_name='children', db_column='parent_id', null=True)
@@ -1044,6 +1088,7 @@ class Region(BaseModel):
 class Location(BaseModel):
     creation_event = events.Event['Location']()
     save_event = events.Event['Location']()
+    label_field = 'name'
 
     name = CharField()
     min_period = ForeignKeyField(Period, related_name='locations_min', db_column='min_period_id', null=True)
@@ -1068,8 +1113,8 @@ class Location(BaseModel):
     def create_interactively(cls) -> 'Location':
         name = getinput.get_line('name> ')
         assert name is not None
-        region = cls.get_value_for_foreign_key_field_on_class('region', 'name')
-        period = cls.get_value_for_foreign_key_field_on_class('min_period', 'name')
+        region = cls.get_value_for_foreign_key_field_on_class('region')
+        period = cls.get_value_for_foreign_key_field_on_class('min_period')
         comment = getinput.get_line('comment> ')
         return cls.make(name=name, region=region, period=period, comment=comment)
 
@@ -1137,6 +1182,7 @@ class SpeciesNameComplex(BaseModel):
     """
     creation_event = events.Event['SpeciesNameComplex']()
     save_event = events.Event['SpeciesNameComplex']()
+    label_field = 'label'
 
     label = CharField()
     stem = CharField()
@@ -1288,17 +1334,17 @@ class SpeciesNameComplex(BaseModel):
             return getattr(cls, kind)(stem=stem, comment=comment)
 
 
-
 class NameComplex(BaseModel):
     """Group of genus-group names with the same derivation."""
     creation_event = events.Event['NameComplex']()
     save_event = events.Event['NameComplex']()
+    label_field = 'label'
 
     label = CharField()
     stem = CharField()
     source_language = EnumField(SourceLanguage)
     code_article = EnumField(GenderArticle)
-    gender = EnumField(Gender)
+    gender = EnumField(constants.Gender)
     comment = CharField()
     stem_remove = CharField()
     stem_add = CharField()
@@ -1350,7 +1396,7 @@ class NameComplex(BaseModel):
 
     @classmethod
     def make(cls, label: str, *, stem: Optional[str] = None, source_language: SourceLanguage = SourceLanguage.other,
-             code_article: GenderArticle, gender: Gender, comment: Optional[str] = None,
+             code_article: GenderArticle, gender: constants.Gender, comment: Optional[str] = None,
              stem_remove: str = '', stem_add: str = '') -> 'NameComplex':
         return cls.create(
             label=label, stem=stem, source_language=source_language, code_article=code_article,
@@ -1359,7 +1405,7 @@ class NameComplex(BaseModel):
 
     @classmethod
     def _get_or_create(cls, label: str, *, stem: Optional[str] = None, source_language: SourceLanguage,
-                       code_article: GenderArticle, gender: Gender, comment: Optional[str] = None,
+                       code_article: GenderArticle, gender: constants.Gender, comment: Optional[str] = None,
                        stem_remove: str = '', stem_add: str = '') -> 'NameComplex':
         try:
             return cls.get(
@@ -1380,49 +1426,49 @@ class NameComplex(BaseModel):
             raise ValueError('found {complexes} with label {label}')
 
     @classmethod
-    def latin_stem(cls, stem: str, gender: Gender, comment: Optional[str] = None,
+    def latin_stem(cls, stem: str, gender: constants.Gender, comment: Optional[str] = None,
                    stem_remove: str = '', stem_add: str = '') -> 'NameComplex':
         """Name based on a word found in a Latin dictionary with a specific gender."""
         return cls._get_or_create(stem, stem=stem, gender=gender, comment=comment, source_language=SourceLanguage.latin,
                                   code_article=GenderArticle.art30_1_1, stem_remove=stem_remove, stem_add=stem_add)
 
     @classmethod
-    def greek_stem(cls, stem: str, gender: Gender, comment: Optional[str] = None,
+    def greek_stem(cls, stem: str, gender: constants.Gender, comment: Optional[str] = None,
                    stem_remove: str = '', stem_add: str = '') -> 'NameComplex':
         """Name based on a word found in a Greek dictionary with a specific gender."""
         return cls._get_or_create(stem, stem=stem, gender=gender, comment=comment, source_language=SourceLanguage.greek,
                                   code_article=GenderArticle.art30_1_2, stem_remove=stem_remove, stem_add=stem_add)
 
     @classmethod
-    def latinized_greek(cls, stem: str, gender: Gender, comment: Optional[str] = None,
+    def latinized_greek(cls, stem: str, gender: constants.Gender, comment: Optional[str] = None,
                         stem_remove: str = '', stem_add: str = '') -> 'NameComplex':
         """Name based on a word found in a Greek dictionary, but with a changed suffix."""
         return cls._get_or_create(stem, stem=stem, gender=gender, comment=comment, source_language=SourceLanguage.greek,
                                   code_article=GenderArticle.art30_1_3, stem_remove=stem_remove, stem_add=stem_add)
 
     @classmethod
-    def bad_transliteration(cls, stem: str, gender: Gender, comment: Optional[str] = None,
+    def bad_transliteration(cls, stem: str, gender: constants.Gender, comment: Optional[str] = None,
                             stem_remove: str = '', stem_add: str = '') -> 'NameComplex':
         """Name based on a Greek word, but with incorrect transliteration."""
         return cls._get_or_create(stem, stem=stem, gender=gender, comment=comment, source_language=SourceLanguage.greek,
                                   code_article=GenderArticle.bad_transliteration, stem_remove=stem_remove, stem_add=stem_add)
 
     @classmethod
-    def common_gender(cls, stem: str, gender: Gender = Gender.masculine, comment: Optional[str] = None,
+    def common_gender(cls, stem: str, gender: constants.Gender = constants.Gender.masculine, comment: Optional[str] = None,
                       stem_remove: str = '', stem_add: str = '') -> 'NameComplex':
         """Name of common gender in Latin, which defaults to masculine."""
         return cls._get_or_create(stem, stem=stem, gender=gender, comment=comment, source_language=SourceLanguage.latin,
                                   code_article=GenderArticle.art30_1_4_2, stem_remove=stem_remove, stem_add=stem_add)
 
     @classmethod
-    def latin_changed_ending(cls, stem: str, gender: Gender, comment: Optional[str] = None,
+    def latin_changed_ending(cls, stem: str, gender: constants.Gender, comment: Optional[str] = None,
                              stem_remove: str = '', stem_add: str = '') -> 'NameComplex':
         """Based on a Latin word with a changed ending. Comment must specify the original word."""
         return cls._get_or_create(stem, stem=stem, gender=gender, comment=comment, source_language=SourceLanguage.latin,
                                   code_article=GenderArticle.art30_1_4_5, stem_remove=stem_remove, stem_add=stem_add)
 
     @classmethod
-    def expressly_specified(cls, gender: Gender, stem_remove: str = '', stem_add: str = '') -> 'NameComplex':
+    def expressly_specified(cls, gender: constants.Gender, stem_remove: str = '', stem_add: str = '') -> 'NameComplex':
         """Gender expressly specified by the author."""
         label = cls._make_label(f'expressly_specified_{gender.name}', stem_remove, stem_add)
         return cls._get_or_create(label, source_language=SourceLanguage.other,
@@ -1430,7 +1476,7 @@ class NameComplex(BaseModel):
                                   stem_remove=stem_remove, stem_add=stem_add)
 
     @classmethod
-    def indicated(cls, gender: Gender, stem_remove: str = '', stem_add: str = '') -> 'NameComplex':
+    def indicated(cls, gender: constants.Gender, stem_remove: str = '', stem_add: str = '') -> 'NameComplex':
         """Gender indicated by an adjectival species name."""
         label = cls._make_label(f'indicated_{gender.name}', stem_remove, stem_add)
         return cls._get_or_create(label, source_language=SourceLanguage.other,
@@ -1442,18 +1488,18 @@ class NameComplex(BaseModel):
         """Defaulted to masculine as a non-Western name."""
         label = cls._make_label('defaulted_masculine', stem_remove, stem_add)
         return cls._get_or_create(label, source_language=SourceLanguage.other,
-                                  gender=Gender.masculine, code_article=GenderArticle.art30_2_4,
+                                  gender=constants.Gender.masculine, code_article=GenderArticle.art30_2_4,
                                   stem_remove=stem_remove, stem_add=stem_add)
 
     @classmethod
-    def defaulted(cls, gender: Gender, ending: str, stem_remove: str = '',
+    def defaulted(cls, gender: constants.Gender, ending: str, stem_remove: str = '',
                   stem_add: str = '') -> 'NameComplex':
         """Defaulted to feminine or neuter as a non-Western name with a specific ending."""
-        if gender == Gender.masculine:
+        if gender == constants.Gender.masculine:
             assert False, 'use defaulted_masculine instead'
-        elif gender == Gender.feminine:
+        elif gender == constants.Gender.feminine:
             assert ending == 'a', 'only -a endings default to feminine'
-        elif gender == Gender.neuter:
+        elif gender == constants.Gender.neuter:
             assert ending in ('um', 'on', 'u'), 'only -um, -on, and -u endings default to neuter'
         label = cls._make_label(f'defaulted_{gender.name}_{ending}', stem_remove, stem_add)
         return cls._get_or_create(label, source_language=SourceLanguage.other,
@@ -1482,13 +1528,13 @@ class NameComplex(BaseModel):
         if kind in ('latin_stem', 'greek_stem', 'latinized_greek', 'bad_transliteration',
                     'common_gender', 'latin_changed_ending'):
             stem = getinput.get_line('stem> ')
-            gender = getinput.get_enum_member(Gender, 'gender> ')
+            gender = getinput.get_enum_member(constants.Gender, 'gender> ')
             comment = getinput.get_line('comment> ')
             stem_remove = getinput.get_line('stem_remove> ')
             stem_add = getinput.get_line('stem_add> ')
             return method(stem=stem, gender=gender, comment=comment, stem_remove=stem_remove, stem_add=stem_add)
         elif kind in ('expressly_specified', 'indicated'):
-            gender = getinput.get_enum_member(Gender, 'gender> ')
+            gender = getinput.get_enum_member(constants.Gender, 'gender> ')
             stem_remove = getinput.get_line('stem_remove> ')
             stem_add = getinput.get_line('stem_add> ')
             return method(gender=gender, stem_remove=stem_remove, stem_add=stem_add)
@@ -1497,7 +1543,7 @@ class NameComplex(BaseModel):
             stem_add = getinput.get_line('stem_add> ')
             return method(stem_remove=stem_remove, stem_add=stem_add)
         elif kind == 'defaulted':
-            gender = getinput.get_enum_member(Gender, 'gender> ')
+            gender = getinput.get_enum_member(constants.Gender, 'gender> ')
             ending = getinput.get_line('ending> ')
             stem_remove = getinput.get_line('stem_remove> ')
             stem_add = getinput.get_line('stem_add> ')
@@ -1508,6 +1554,8 @@ class NameComplex(BaseModel):
 
 class NameEnding(BaseModel):
     """Name ending that is mapped to a NameComplex."""
+    label_field = 'ending'
+
     name_complex = ForeignKeyField(NameComplex, related_name='endings', db_column='name_complex_id')
     ending = CharField()
     comment = CharField()
@@ -1518,6 +1566,8 @@ class NameEnding(BaseModel):
 
 class SpeciesNameEnding(BaseModel):
     """Name ending that is mapped to a SpeciesNameComplex."""
+    label_field = 'ending'
+
     name_complex = ForeignKeyField(SpeciesNameComplex, related_name='endings', db_column='name_complex_id')
     ending = CharField()
     comment = CharField()
@@ -1539,6 +1589,7 @@ class SpeciesNameEnding(BaseModel):
 class Collection(BaseModel):
     creation_event = events.Event['Collection']()
     save_event = events.Event['Collection']()
+    label_field = 'label'
 
     label = CharField()
     name = CharField()
@@ -1563,17 +1614,11 @@ class Collection(BaseModel):
         except ValueError:
             return cls.create(label=label, name=name, location=location, comment=comment)
 
-    def get_value_for_field(self, field: str) -> Any:
-        if field == 'location':
-            return self.get_value_for_foreign_key_field('location', 'name')
-        else:
-            return super().get_value_for_field(field)
-
     @classmethod
     def create_interactively(cls: Type[ModelT]) -> ModelT:
         label = getinput.get_line('label> ')
         name = getinput.get_line('name> ')
-        location = cls.get_value_for_foreign_key_field_on_class('location', 'name')
+        location = cls.get_value_for_foreign_key_field_on_class('location')
         obj = cls.create(label=label, name=name, location=location)
         obj.fill_required_fields()
         return obj
@@ -1582,6 +1627,7 @@ class Collection(BaseModel):
 class Name(BaseModel):
     creation_event = events.Event['Name']()
     save_event = events.Event['Name']()
+    label_field = 'original_name'
 
     # Basic data
     group = EnumField(Group)
@@ -1600,7 +1646,7 @@ class Name(BaseModel):
 
     # Gender and stem
     stem = CharField(null=True)  # redundant with name complex?
-    gender = EnumField(Gender)  # for genus group; redundant with name complex
+    gender = EnumField(constants.Gender)  # for genus group; redundant with name complex
     _name_complex_id = IntegerField(null=True, db_column='name_complex_id')
 
     # Types
@@ -1614,6 +1660,7 @@ class Name(BaseModel):
     type_specimen_source = CharField(null=True)
     genus_type_kind = EnumField(constants.TypeSpeciesDesignation, null=True)
     species_type_kind = EnumField(constants.SpeciesGroupType, null=True)
+    type_tags = ADTField(lambda: TypeTag, null=True)
 
     # Miscellaneous data
     data = TextField(null=True)
@@ -1621,9 +1668,7 @@ class Name(BaseModel):
     other_comments = TextField(null=True)  # deprecated
     taxonomy_comments = TextField(null=True)
     _definition = CharField(null=True, db_column='definition')
-    _tags = CharField(null=True, db_column='tags')
-
-    # To add: tag field, an ADT serialized as JSON representing: PreoccupiedBy(name), NomenNovumFor(name), UnjustifiedEmendationOf(Name), JustifiedE(name), ISS(Name), PartiallySuppressedBy(Opinion), FullySuppressedBy(Opinion)
+    tags = ADTField(lambda: Tag, null=True)
 
     class Meta(object):
         db_table = 'name'
@@ -1669,27 +1714,19 @@ class Name(BaseModel):
         else:
             self._definition = definition.serialize()
 
-    @property
-    def tags(self) -> List['Tag']:
-        tags = self._tags
-        if tags is None:
-            return []
-        else:
-            return [Tag.unserialize(val) for val in json.loads(tags)]
-
-    @tags.setter
-    def tags(self, value: List['Tag']) -> None:
-        self._tags = json.dumps([val.serialize() for val in value])
-
     def get_value_for_field(self, field: str) -> Any:
-        if field in ('original_citation', 'type_specimen_source'):
+        if field == 'type_tags':
+            if self.type_locality_description is not None:
+                print(self.type_locality_description)
+            if self.type_description is not None:
+                print(self.type_description)
+            if self.type_locality is not None:
+                print(self.type_locality)
+            return super().get_value_for_field(field)
+        elif field in ('original_citation', 'type_specimen_source'):
             return self.get_value_for_article_field(field)
-        elif field == 'collection':
-            return self.get_value_for_foreign_key_field('collection', 'label')
-        elif field == 'type_locality':
-            return self.get_value_for_foreign_key_field('type_locality', 'name')
         elif field == 'type':
-            typ = self.get_value_for_foreign_key_field('type', 'original_name')
+            typ = self.get_value_for_foreign_key_field('type')
             print(f'type: {typ}')
             if getinput.yes_no('Is this correct? '):
                 return typ
@@ -1775,7 +1812,7 @@ class Name(BaseModel):
             if self.stem is not None:
                 parts.append('stem: %s' % self.stem)
             if self.gender is not None:
-                parts.append(Gender(self.gender).name)
+                parts.append(constants.Gender(self.gender).name)
             if self.definition is not None:
                 parts.append(str(self.definition))
             out += ' (%s)' % '; '.join(parts)
@@ -1837,6 +1874,7 @@ class Name(BaseModel):
             yield 'type_description'
             yield 'type_specimen_source'
             yield 'species_type_kind'
+            yield 'type_tags'
         if self.group == Group.genus:
             yield 'genus_type_kind'
 
@@ -1970,9 +2008,9 @@ class Name(BaseModel):
             lambda verbatim: re.sub(r',.*$', '', verbatim),
             lambda verbatim: self._split_authority(verbatim)[0],
             lambda verbatim: verbatim.split()[1] if ' ' in verbatim else verbatim,
-            lambda verbatim: helpers.convert_gender(verbatim, Gender.masculine),
-            lambda verbatim: helpers.convert_gender(verbatim, Gender.feminine),
-            lambda verbatim: helpers.convert_gender(verbatim, Gender.neuter),
+            lambda verbatim: helpers.convert_gender(verbatim, constants.Gender.masculine),
+            lambda verbatim: helpers.convert_gender(verbatim, constants.Gender.feminine),
+            lambda verbatim: helpers.convert_gender(verbatim, constants.Gender.neuter),
         ]
         if verbatim_type is None:
             verbatim_type = self.verbatim_type
@@ -2105,3 +2143,17 @@ class Tag(adt.ADT):
     FullySuppressedBy(opinion=str, comment=str, tag=8)  # type: ignore
     TakesPriorityOf(name=Name, comment=str, tag=9)  # type: ignore
     NomenOblitum(name=Name, comment=str, tag=10)  # type: ignore  # ICZN Art. 23.9. The reference is to the nomen protectum relative to which precedence is reversed.
+
+
+class TypeTag(adt.ADT):
+    Collector(name=str, tag=1)  # type: ignore
+    Date(date=str, tag=2)  # type: ignore
+    Gender(gender=constants.SpecimenGender, tag=3)  # type: ignore
+    Age(age=constants.SpecimenAge, tag=4)  # type: ignore
+    Organ(organ=constants.Organ, detail=str, condition=str, tag=5)  # type: ignore
+    Altitude(altitude=str, unit=constants.AltitudeUnit, tag=6)  # type: ignore
+    Coordinates(latitude=str, longitude=str, tag=7)  # type: ignore
+    LocationDetail(text=str, tag=8)  # type: ignore
+    StratigraphyDetail(text=str, tag=9)  # type: ignore
+    Habitat(text=str, tag=10)  # type: ignore
+    Host(name=str, tag=11)  # type: ignore

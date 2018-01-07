@@ -3,7 +3,9 @@ import enum
 import prompt_toolkit
 import re
 import subprocess
-from typing import Callable, Iterable, Mapping, Optional, Sequence, Type
+from typing import Callable, Iterable, List, Mapping, Optional, Sequence, Tuple, Type
+
+from . import adt
 
 
 RED = 31
@@ -32,42 +34,30 @@ def green(text: str) -> str:
 
 def get_line(prompt: str, validate: Optional[Callable[[str], bool]] = None,
              handlers: Mapping[str, Callable[[str], bool]] = {},
-             should_stop: Callable[[str], bool] = lambda _: False) -> Optional[str]:
-    class CmdLoop(cmd.Cmd):
-        def default(self, line: str) -> bool:
-            return False
-
-        def postcmd(self, stop: object, line: str) -> bool:
-            if line == 'EOF':
-                raise StopException()
-            elif line in handlers:
-                return False
-            elif should_stop(line):
-                self.result = None
-                return True
-            elif validate is None or validate(line):
-                self.result = line
-                return True
-            else:
-                print('Invalid input')
-                return False
-
-    if handlers is not None:
-        for key, fn in handlers.items():
-            def make_handler(fn: Callable[[str], bool]) -> Callable[[object, str], bool]:
-                return lambda self, line: fn(line)
-            setattr(CmdLoop, 'do_%s' % key, make_handler(fn))
-
-    loop = CmdLoop()
-    loop.prompt = '> '
-    loop.cmdloop(prompt)
-    return loop.result
+             should_stop: Callable[[str], bool] = lambda _: False,
+             allow_none: bool = True, mouse_support: bool = False,
+             default: str = '') -> Optional[str]:
+    while True:
+        try:
+            line = prompt_toolkit.prompt(message=prompt, default=default, mouse_support=mouse_support)
+        except EOFError:
+            raise StopException()
+        if line in handlers:
+            handlers[line](line)
+            continue
+        if should_stop(line):
+            return None
+        if validate is not None and not validate(line):
+            continue
+        if not allow_none and line == '':
+            continue
+        return line
 
 
 def yes_no(prompt: str) -> bool:
     positive = {'y', 'yes'}
     negative = {'n', 'no'}
-    result = get_line(prompt, validate=lambda line: line.lower() in positive | negative)
+    result = get_line(prompt + '> ', validate=lambda line: line.lower() in positive | negative)
     return result is not None and result.lower() in positive
 
 
@@ -102,6 +92,35 @@ def get_enum_member(enum_cls: Type[enum.Enum], prompt: str = '> ', default: Opti
     if choice == '':
         return None
     return enum_cls[choice]
+
+
+def get_adt_list(adt_cls: Type[adt.ADT], existing: Optional[Iterable[adt.ADT]] = None) -> Tuple[adt.ADT, ...]:
+    out: List[adt.ADT] = []
+    if existing is not None:
+        out += existing
+        print(f'existing: {existing}')
+    name_to_cls = {}
+    for member_name in adt_cls._members:
+        name_to_cls[member_name.lower()] = getattr(adt_cls, member_name)
+    print(f'options: {", ".join(name_to_cls.keys())}')
+    while True:
+        member = get_with_completion(name_to_cls.keys(), message=f'{adt_cls.__name__}> ')
+        if member == 'p':
+            print(f'current: {out}')
+            continue
+        elif member == '':
+            print(f'new tags: {out}')
+            return tuple(out)
+        member_cls = name_to_cls[member]
+        args = {}
+        for arg_name, typ in member_cls._attributes.items():
+            if isinstance(typ, type) and issubclass(typ, enum.IntEnum):
+                args[arg_name] = get_enum_member(typ, prompt=f'{arg_name}> ')
+            elif typ in adt.BASIC_TYPES:
+                args[arg_name] = typ(get_line(f'{arg_name}> '))
+            else:
+                assert False, f'do not know how to fill {arg_name} of type {typ}'
+        out.append(member_cls(**args))
 
 
 def add_to_clipboard(data: str) -> None:
