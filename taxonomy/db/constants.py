@@ -274,6 +274,8 @@ class Organ(enum.IntEnum):
     postcranial_skeleton = 3
     mandible = 4
     tooth = 5
+    in_alcohol = 6
+    other = 7
 
 
 class AltitudeUnit(enum.IntEnum):

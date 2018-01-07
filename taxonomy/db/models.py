@@ -214,9 +214,9 @@ class BaseModel(Model):
             return getter(value)
 
     @staticmethod
-    def get_value_for_article_field(field: str) -> Optional[str]:
+    def get_value_for_article_field(field: str, default: Optional[str] = None) -> Optional[str]:
         names = ehphp.call_ehphp('get_all', {})
-        return getinput.get_with_completion(names, f'{field}> ') or None
+        return getinput.get_with_completion(names, f'{field}> ', default=default or '') or None
 
     def fill_field(self, field: str) -> None:
         setattr(self, field, self.get_value_for_field(field))
@@ -286,7 +286,10 @@ class _ADTDescriptor(peewee.FieldDescriptor):
         if isinstance(value, tuple):
             value = list(value)
         if isinstance(value, list):
-            value = json.dumps([val.serialize() for val in value])
+            if value:
+                value = json.dumps([val.serialize() for val in value])
+            else:
+                value = None
         super().__set__(instance, value)
 
 
@@ -350,7 +353,7 @@ class _NameGetter(Generic[ModelT]):
         key = getinput.get_with_completion(self._data, prompt, default=default)
         if key == '':
             return None
-        return getinput.decode_name(key)
+        return key
 
     def get_one(self, prompt: str = '> ', default: str = '') -> Optional[ModelT]:
         self._warm_cache()
@@ -358,7 +361,7 @@ class _NameGetter(Generic[ModelT]):
         key = getinput.get_with_completion(self._data, prompt, default=default)
         if key == '':
             return None
-        return getattr(self, key)
+        return getattr(self, getinput.encode_name(key))
 
     def _warm_cache(self) -> None:
         if self._data is None:
@@ -1724,8 +1727,10 @@ class Name(BaseModel):
             if self.type_locality is not None:
                 print(self.type_locality)
             return super().get_value_for_field(field)
-        elif field in ('original_citation', 'type_specimen_source'):
+        elif field == 'original_citation':
             return self.get_value_for_article_field(field)
+        elif field == 'type_specimen_source':
+            return self.get_value_for_article_field(field, default=self.original_citation)
         elif field == 'type':
             typ = self.get_value_for_foreign_key_field('type')
             print(f'type: {typ}')
@@ -1873,10 +1878,8 @@ class Name(BaseModel):
             yield 'type'
         if self.group == Group.species:
             yield 'type_locality'
-            yield 'type_locality_description'
             yield 'type_specimen'
             yield 'collection'
-            yield 'type_description'
             yield 'type_specimen_source'
             yield 'species_type_kind'
             yield 'type_tags'
@@ -2190,3 +2193,4 @@ class TypeTag(adt.ADT):
     StratigraphyDetail(text=str, tag=9)  # type: ignore
     Habitat(text=str, tag=10)  # type: ignore
     Host(name=str, tag=11)  # type: ignore
+    SpecimenNotes(text=str, tag=12)  # type: ignore
