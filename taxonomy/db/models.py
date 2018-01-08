@@ -1881,10 +1881,11 @@ class Name(BaseModel):
                 parts.append('root: %s' % self.root_name)
             if self.name_complex is not None:
                 parts.append(f'name complex: {self.name_complex}')
-            if self.stem is not None:
-                parts.append('stem: %s' % self.stem)
-            if self.gender is not None:
-                parts.append(constants.Gender(self.gender).name)
+            else:
+                if self.stem is not None:
+                    parts.append('stem: %s' % self.stem)
+                if self.gender is not None:
+                    parts.append(constants.Gender(self.gender).name)
             if self.definition is not None:
                 parts.append(str(self.definition))
             out += ' (%s)' % '; '.join(parts)
