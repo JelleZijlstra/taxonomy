@@ -70,6 +70,8 @@ ns = _ShellNamespace({
     'SC': models.SpeciesNameComplex.getter('label'),
     'C': models.Collection.getter('label'),
     'reconnect': _reconnect,
+    'Tag': models.Tag,
+    'TypeTag': models.TypeTag,
 })
 ns.update(constants.__dict__)
 
