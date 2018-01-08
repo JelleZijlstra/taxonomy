@@ -189,6 +189,13 @@ class BaseModel(Model):
             return getinput.get_line(prompt, default=default, mouse_support=True) or None
         elif isinstance(field_obj, EnumField):
             return getinput.get_enum_member(field_obj.enum, prompt=prompt)
+        elif isinstance(field_obj, IntegerField):
+            default = '' if current_value is None else current_value
+            result = getinput.get_line(prompt, default=default, mouse_support=True)
+            if result == '' or result is None:
+                return None
+            else:
+                return int(result)
         else:
             raise ValueError(f"don't know how to fill {field}")
 
@@ -207,7 +214,9 @@ class BaseModel(Model):
         getter = foreign_cls.getter(foreign_cls.label_field)
         value = getter.get_one_key(f'{field}> ', default=default)
         if value == 'n':
-            return foreign_cls.create_interactively()
+            result = foreign_cls.create_interactively()
+            print(f'created new {foreign_cls} {result}')
+            return result
         elif value is None:
             return None
         else:
@@ -1019,6 +1028,15 @@ class Period(BaseModel):
         return period
 
     @classmethod
+    def create_interactively(cls) -> 'Period':
+        print('creating Periods interactively only allows stratigraphic units')
+        name = getinput.get_line('name> ')
+        kind = getinput.get_enum_member(constants.PeriodSystem, 'kind> ')
+        result = cls.make_stratigraphy(name, kind)
+        result.fill_required_fields()
+        return result
+
+    @classmethod
     def make_stratigraphy(cls, name: str, kind: constants.PeriodSystem, period: Optional['Period'] = None,
                           parent: Optional['Period'] = None, **kwargs: Any) -> 'Period':
         if period is not None:
@@ -1104,6 +1122,9 @@ class Location(BaseModel):
     comment = CharField()
     latitude = CharField()
     longitude = CharField()
+    location_detail = TextField()
+    age_detail = TextField()
+    source = TextField()
 
     @classmethod
     def make(cls, name: str, region: Region, period: Period, comment: Optional[str] = None,
@@ -1120,7 +1141,15 @@ class Location(BaseModel):
         region = cls.get_value_for_foreign_key_field_on_class('region')
         period = cls.get_value_for_foreign_key_field_on_class('min_period')
         comment = getinput.get_line('comment> ')
-        return cls.make(name=name, region=region, period=period, comment=comment)
+        result = cls.make(name=name, region=region, period=period, comment=comment)
+        result.fill_required_fields()
+        return result
+
+    def get_value_for_field(self, field: str) -> Any:
+        if field == 'source':
+            return self.get_value_for_article_field(field)
+        else:
+            return super().get_value_for_field(field)
 
     def __repr__(self) -> str:
         age_str = ''

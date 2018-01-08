@@ -98,6 +98,9 @@ CREATE TABLE `location` (
 	`stratigraphic_unit_id` INT UNSIGNED DEFAULT NULL,
 	`latitude` VARCHAR(255) DEFAULT NULL,
 	`longitude` VARCHAR(255) DEFAULT NULL,
+	`location_detail` text,
+	`age_detail` text,
+	`source` varchar(255) default null,
 	PRIMARY KEY(`id`),
 	INDEX(`name`),
 	UNIQUE KEY(`name`)
