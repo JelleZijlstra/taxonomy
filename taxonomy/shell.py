@@ -758,6 +758,15 @@ def clean_up_verbatim(dry_run: bool = True) -> None:
 
 
 @command
+def set_empty_to_none(model: Type[models.BaseModel], field: str, dry_run: bool = False) -> None:
+    for obj in model.filter(getattr(model, field) == ''):
+        print(f'{obj}: set {field} to None')
+        if not dry_run:
+            setattr(obj, field, None)
+            obj.save()
+
+
+@command
 def fill_data_from_paper(paper: Optional[str] = None) -> None:
     if paper is None:
         paper = models.BaseModel.get_value_for_article_field('paper')
