@@ -1850,6 +1850,14 @@ class Name(BaseModel):
         self.nomenclature_status = status  # type: ignore
         self.save()
 
+    def preoccupied_by(self, name: 'Name', comment: Optional[str] = None) -> None:
+        self.add_tag(Tag.PreoccupiedBy(name, comment))
+        if self.nomenclature_status == NomenclatureStatus.available:
+            self.nomenclature_status = NomenclatureStatus.preoccupied
+        else:
+            print(f'not changing status because it is {self.nomenclature_status}')
+        self.save()
+
     def get_authors(self) -> List[str]:
         return re.split(r', | & ', re.sub(r'et al\.$', '', self.authority))
 
@@ -2223,9 +2231,12 @@ class NameComment(BaseModel):
     text = TextField()
     source = CharField()
 
+    class Meta:
+        db_table = 'name_comment'
+
     @classmethod
     def make(cls, name: Name, kind: constants.CommentKind, text: str, source: Optional[str] = None) -> 'NameComment':
-        return cls.create(name=Name, kind=kind, text=text, date=int(time.time()), source=source)
+        return cls.create(name=name, kind=kind, text=text, date=int(time.time()), source=source)
 
     @classmethod
     def create_interactively(cls, name: Optional[Name] = None, kind: Optional[constants.CommentKind] = None,

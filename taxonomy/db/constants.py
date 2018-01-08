@@ -78,12 +78,14 @@ class NomenclatureStatus(enum.IntEnum):
     art_13_nomen_oblitum = 32  # Art. 23.12: name rejected under Art. 23b in the 1961-1973 Code
     assumed_incorrect = 33  # probably an ISS (7), but may be UE (8)
     justified_emendation = 34  # Art. 32.5: correction of incorrect original spellings
+    preoccupied = 35  # junior homonym (still available)
 
     def requires_type(self) -> bool:
         return self in {
             NomenclatureStatus.available,
             NomenclatureStatus.hybrid_name,
-            NomenclatureStatus.art_13_nomen_oblitum
+            NomenclatureStatus.art_13_nomen_oblitum,
+            NomenclatureStatus.preoccupied,
         }
 
 

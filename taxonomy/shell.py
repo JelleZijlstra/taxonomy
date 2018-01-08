@@ -474,6 +474,9 @@ def root_name_mismatch() -> Iterable[Name]:
             continue
         if name.root_name == stem_name:
             continue
+        if name.root_name + 'id' == stem_name:
+            # The Code allows eliding -id- from the stem.
+            continue
         for stripped in helpers.name_with_suffixes_removed(name.root_name):
             if stripped == stem_name or stripped + 'i' == stem_name:
                 print('Autocorrecting root name: %s -> %s' % (name.root_name, stem_name))
@@ -503,6 +506,8 @@ def dup_taxa() -> List[Dict[str, List[Taxon]]]:
     for txn in Taxon.select():
         if txn.rank == Rank.subgenus and len(taxa[txn.valid_name]) > 0:
             continue
+        if txn.base_name.nomenclature_status == constants.NomenclatureStatus.preoccupied:
+            continue
         taxa[txn.valid_name].append(txn)
     return [taxa]
 
@@ -519,9 +524,8 @@ def dup_genus() -> List[Dict[str, List[Name]]]:
 @_duplicate_finder
 def dup_names() -> List[Dict[Tuple[str, str], List[Name]]]:
     original_year = collections.defaultdict(list)  # type: Dict[Tuple[str, str], List[Name]]
-    for name in Name.select():
-        if name.original_name is not None and name.year is not None:
-            original_year[(name.original_name, name.year)].append(name)
+    for name in Name.filter(Name.original_name != None, Name.year != None):
+        original_year[(name.original_name, name.year, name.nomenclature_status)].append(name)
     return [original_year]
 
 
@@ -604,7 +608,7 @@ def label_name(name: Name) -> LabeledName:
 @command
 def labeled_authorless_names(attribute: str = 'authority') -> List[LabeledName]:
     nams = Name.filter(getattr(Name, attribute) >> None)
-    return [label_name(name) for name in nams]
+    return [label_name(name) for name in nams if 'authority' in name.get_required_fields()]
 
 
 @command
@@ -704,7 +708,7 @@ def bad_parents() -> Iterable[Name]:
 
 @generator_command
 def parentless_taxa() -> Iterable[Taxon]:
-    return Taxon.filter(Taxon.parent == None)  # noqa: E711
+    return (t for t in Taxon.filter(Taxon.parent >> None) if t.id != 1)  # exclude root
 
 
 @generator_command
@@ -729,7 +733,7 @@ def fossilize(*taxa: Taxon, to_status: Age = Age.fossil, from_status: Age = Age.
 
 
 @command
-def clean_up_verbatim(dry_run: bool = True) -> None:
+def clean_up_verbatim(dry_run: bool = False) -> None:
     famgen_type_count = species_type_count = citation_count = 0
     for nam in Name.filter(Name.group << (Group.family, Group.genus), Name.verbatim_type != None, Name.type != None):
         print(f'{nam}: {nam.type}, {nam.verbatim_type}')
@@ -789,6 +793,35 @@ def fill_type_locality(extant_only: bool = True, start_at: Optional[Name] = None
         print(nam)
         print(nam.type_locality_description)
         nam.fill_field('type_locality')
+
+
+@command
+def run_maintenance() -> Dict[Any, Any]:
+    """Runs maintenance checks that are expected to pass for the entire database."""
+    fns = [
+        lambda: set_empty_to_none(Name, 'type_locality_description'),
+        lambda: set_empty_to_none(Name, 'type_description'),
+        clean_up_verbatim,
+        parentless_taxa,
+        bad_parents,
+        bad_taxa,
+        bad_base_names,
+        correct_type_taxon,
+        labeled_authorless_names,
+        root_name_mismatch,
+    ]
+    fns_to_add = [
+        dup_names,
+        dup_genus,
+        dup_taxa,
+    ]
+    out = {}
+    for fn in fns:
+        print(f'calling {fn}')
+        result = fn()
+        if result:
+            out[fn] = result
+    return out
 
 
 def run_shell() -> None:
