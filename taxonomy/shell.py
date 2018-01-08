@@ -608,11 +608,10 @@ def labeled_authorless_names(attribute: str = 'authority') -> List[LabeledName]:
 
 
 @command
-def correct_type_taxon(max_count: Optional[int] = None, dry_run: bool = True, only_if_child: bool = True) -> None:
+def correct_type_taxon(max_count: Optional[int] = None, dry_run: bool = True, only_if_child: bool = True) -> List[Name]:
     count = 0
-    for nam in Name.select().where(Name.group << (Group.genus, Group.family)):
-        if nam.type is None:
-            continue
+    out = []
+    for nam in Name.filter(Name.group << (Group.genus, Group.family), Name.type != None):
         if nam.taxon == nam.type.taxon:
             continue
         expected_taxon = nam.type.taxon.parent
@@ -624,16 +623,18 @@ def correct_type_taxon(max_count: Optional[int] = None, dry_run: bool = True, on
             continue
         if nam.taxon != expected_taxon:
             count += 1
-            print('changing taxon of %s from %s to %s' % (nam, nam.taxon, expected_taxon))
+            print(f'maybe changing taxon of {nam} from {nam.taxon} to {expected_taxon}')
             if not dry_run:
                 if only_if_child:
                     if not expected_taxon.is_child_of(nam.taxon):
-                        print('dropping non-parent: %s' % nam)
+                        print(f'skipping non-parent: {nam}')
+                        out.append(nam)
                         continue
                 nam.taxon = expected_taxon
                 nam.save()
             if max_count is not None and count > max_count:
-                return
+                break
+    return out
 
 
 # Statistics
