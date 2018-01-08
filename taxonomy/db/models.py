@@ -46,11 +46,14 @@ class _FieldEditor(object):
         return self.__class__(instance)
 
     def __getattr__(self, field: str) -> None:
-        self.instance.fill_field(field)
+        if field == 'all':
+            self.instance.fill_required_fields()
+        else:
+            self.instance.fill_field(field)
         return None
 
     def __dir__(self) -> List[str]:
-        return sorted(self.instance._meta.fields.keys())
+        return ['all'] + sorted(self.instance._meta.fields.keys())
 
 
 class BaseModel(Model):
@@ -1868,10 +1871,13 @@ class Name(BaseModel):
             if self.definition is not None:
                 parts.append(str(self.definition))
             out += ' (%s)' % '; '.join(parts)
-        if self.is_well_known():
-            intro_line = getinput.green(out)
-        else:
+        knowledge_level = self.knowledge_level()
+        if knowledge_level == 0:
             intro_line = getinput.red(out)
+        elif knowledge_level == 1:
+            intro_line = getinput.blue(out)
+        else:
+            intro_line = getinput.green(out)
         result = ' ' * ((depth + 1) * 4) + intro_line + '\n'
         if full:
             data = {
@@ -1891,21 +1897,26 @@ class Name(BaseModel):
             ])
         return result
 
-    def is_well_known(self) -> bool:
+    def knowledge_level(self, verbose: bool = False) -> bool:
         """Returns whether all necessary attributes of the name have been filled in."""
-        if self.authority is None or self.year is None or self.page_described is None or self.original_citation is None or self.original_name is None:
-            return False
-        elif self.group in (Group.family, Group.genus) and not self.is_unavailable() and self.type is None:
-            return False
-        elif self.group == Group.genus:
-            if self.stem is None or self.gender is None or self.name_complex is None:
-                return False
-            else:
-                return self.is_unavailable() or self.type is not None
+        required_fields = set(self.get_required_fields())
+        if 'original_citation' in required_fields and self.original_citation is None:
+            if verbose:
+                print('0 because no original citation')
+            return 0
+        for field in required_fields:
+            if getattr(self, field) is None:
+                if verbose:
+                    print(f'1 because {field} is missing')
+                return 1
         else:
-            return True
+            if verbose:
+                print('2 because all fields are set')
+            return 2
 
     def get_required_fields(self) -> Iterable[str]:
+        if self.status == Status.spurious or self.nomenclature_status == NomenclatureStatus.informal:
+            return
         yield 'original_name'
 
         yield 'authority'

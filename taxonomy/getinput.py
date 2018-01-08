@@ -10,6 +10,7 @@ from . import adt
 
 RED = 31
 GREEN = 32
+BLUE = 34
 
 
 class StopException(Exception):
@@ -30,6 +31,10 @@ def red(text: str) -> str:
 
 def green(text: str) -> str:
     return _colored_text(text, GREEN)
+
+
+def blue(text: str) -> str:
+    return _colored_text(text, BLUE)
 
 
 def get_line(prompt: str, validate: Optional[Callable[[str], bool]] = None,

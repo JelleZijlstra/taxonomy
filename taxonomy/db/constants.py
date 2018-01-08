@@ -38,6 +38,9 @@ class Status(enum.IntEnum):
     # that assessment.
     # All biodiversity estimates should omit nomina dubia and species inquirendae.
     species_inquirenda = 4
+    # Never published or used in a published work. I keep these in the database only in case I was
+    # wrong and they are real names.
+    spurious = 5
 
 
 class NomenclatureStatus(enum.IntEnum):
