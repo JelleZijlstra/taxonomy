@@ -1262,13 +1262,16 @@ class SpeciesNameComplex(BaseModel):
 
     def get_stem_from_name(self, name: str) -> str:
         """Applies the group to a genus name to get the name's stem."""
-        if self.masculine_ending == self.feminine_ending == self.neuter_ending == '':
-            return name
+        assert self.stem.endswith(self.masculine_ending)
+        stem = self.stem[:-len(self.masculine_ending)]
         for ending in (self.masculine_ending, self.feminine_ending, self.neuter_ending):
-            if ending != '' and name.endswith(ending):
-                return name[:-len(ending)]
+            if name.endswith(stem + ending):
+                if ending == '':
+                    return name
+                else:
+                    return name[:-len(ending)]
         else:
-            raise ValueError('could not extract stem from {name}')
+            raise ValueError(f'could not extract stem from {name} using {self}')
 
     def get_forms(self, name: str) -> Iterable[str]:
         if self.kind == SpeciesNameKind.adjective:
@@ -1388,8 +1391,8 @@ class NameComplex(BaseModel):
     code_article = EnumField(GenderArticle)
     gender = EnumField(constants.Gender)
     comment = CharField()
-    stem_remove = CharField()
-    stem_add = CharField()
+    stem_remove = CharField(null=False)
+    stem_add = CharField(null=False)
 
     class Meta(object):
         db_table = 'name_complex'
@@ -1825,8 +1828,8 @@ class Name(BaseModel):
             self.tags = self.tags + (tag,)
 
     def add_comment(self, kind: Optional[constants.CommentKind] = None, text: Optional[str] = None,
-                    source: Optional[str] = None) -> 'NameComment':
-        return NameComment.create_interactively(name=self, kind=kind, text=text, source=source)
+                    source: Optional[str] = None, page: Optional[str] = None) -> 'NameComment':
+        return NameComment.create_interactively(name=self, kind=kind, text=text, source=source, page=page)
 
     def description(self) -> str:
         if self.original_name:
@@ -2230,17 +2233,18 @@ class NameComment(BaseModel):
     date = IntegerField()
     text = TextField()
     source = CharField()
+    page = TextField()
 
     class Meta:
         db_table = 'name_comment'
 
     @classmethod
-    def make(cls, name: Name, kind: constants.CommentKind, text: str, source: Optional[str] = None) -> 'NameComment':
+    def make(cls, name: Name, kind: constants.CommentKind, text: str, source: Optional[str] = None, page: Optional[str] = None) -> 'NameComment':
         return cls.create(name=name, kind=kind, text=text, date=int(time.time()), source=source)
 
     @classmethod
     def create_interactively(cls, name: Optional[Name] = None, kind: Optional[constants.CommentKind] = None,
-                             text: Optional[str] = None, source: Optional[str] = None) -> 'NameComment':
+                             text: Optional[str] = None, source: Optional[str] = None, page: Optional[str] = None) -> 'NameComment':
         if name is None:
             name = cls.get_value_for_foreign_key_field_on_class('name')
         assert name is not None
@@ -2252,6 +2256,8 @@ class NameComment(BaseModel):
         assert text is not None
         if source is None:
             source = cls.get_value_for_article_field('source')
+            if page is None:
+                page = getinput.get_line(prompt='page> ')
         return cls.make(name=name, kind=kind, text=text, source=source)
 
 

@@ -171,5 +171,6 @@ CREATE TABLE `name_comment` (
 	`kind` integer,
 	`date` integer,
 	`text` text,
-	`source` varchar(512)
+	`source` varchar(512),
+	`page` varchar(512)
 );

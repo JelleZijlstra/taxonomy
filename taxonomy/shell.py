@@ -195,14 +195,11 @@ def add_page_described() -> Iterable[Tuple[Name, str]]:
 def add_types() -> None:
     for name in Name.filter(Name.original_citation != None, Name.type >> None, Name.year > '1930',  # noqa: E711
                             Name.group == Group.genus).order_by(Name.original_citation):
+        if 'type' not in name.get_required_fields():
+            continue
         name.taxon.display(full=True, max_depth=1)
-        message = 'Name %s is missing type, but has original citation {%s}' % \
-            (name.description(), name.original_citation)
-        verbatim_type = getinput.get_line(
-            message + '> ', handlers={'o': lambda _: name.open_description()}, should_stop=lambda line: line == 's'
-        )
-        if verbatim_type:
-            name.detect_and_set_type(verbatim_type, verbose=True)
+        print(f'Name {name} is missing type, but has original citation {name.original_citation}')
+        models.fill_data_from_paper(name.original_citation)
 
 
 @generator_command
@@ -796,6 +793,11 @@ def fill_type_locality(extant_only: bool = True, start_at: Optional[Name] = None
 
 
 @command
+def most_common_comments(field: str = 'other_comments') -> Counter[str]:
+    return Counter(getattr(nam, field) for nam in Name.filter(getattr(Name, field) != None))
+
+
+@command
 def run_maintenance() -> Dict[Any, Any]:
     """Runs maintenance checks that are expected to pass for the entire database."""
     fns = [
@@ -809,6 +811,9 @@ def run_maintenance() -> Dict[Any, Any]:
         correct_type_taxon,
         labeled_authorless_names,
         root_name_mismatch,
+        detect_complexes,
+        detect_species_name_complexes,
+        find_rank_mismatch,
     ]
     fns_to_add = [
         dup_names,
