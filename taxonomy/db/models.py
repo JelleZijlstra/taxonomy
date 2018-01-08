@@ -1231,6 +1231,12 @@ class SpeciesNameComplex(BaseModel):
     class Meta(object):
         db_table = 'species_name_complex'
 
+    def __repr__(self) -> str:
+        if any(ending != '' for ending in (self.masculine_ending, self.feminine_ending, self.neuter_ending)):
+            return f'{self.label} ({self.kind.name}, -{self.masculine_ending}, -{self.feminine_ending}, -{self.neuter_ending})'
+        else:
+            return f'{self.label} ({self.kind.name})'
+
     def self_apply(self, dry_run: bool = True) -> List['Name']:
         return self.apply_to_ending(self.label, dry_run=dry_run)
 
@@ -1387,6 +1393,9 @@ class NameComplex(BaseModel):
 
     class Meta(object):
         db_table = 'name_complex'
+
+    def __repr__(self) -> str:
+        return f'{self.label} ({self.code_article.name}, {self.gender.name}, -{self.stem_remove or ""}+{self.stem_add or ""})'
 
     def self_apply(self, dry_run: bool = True) -> List['Name']:
         return self.apply_to_ending(self.label, dry_run=dry_run)
@@ -1859,11 +1868,19 @@ class Name(BaseModel):
             out += ' {%s}' % self.original_citation
         if self.type is not None:
             out += ' (type: %s)' % self.type
-        out += ' (%s)' % self.status.name
+        statuses = []
+        if self.status != Status.valid:
+            statuses.append(self.status)
+        if self.nomenclature_status != NomenclatureStatus.available:
+            statuses.append(self.nomenclature_status)
+        if statuses:
+            out += f' ({", ".join(status.name for status in statuses)})'
         if full and (self.original_name is not None or self.stem is not None or self.gender is not None or self.definition is not None):
             parts = []
             if self.original_name is not None:
                 parts.append('root: %s' % self.root_name)
+            if self.name_complex is not None:
+                parts.append(f'name complex: {self.name_complex}')
             if self.stem is not None:
                 parts.append('stem: %s' % self.stem)
             if self.gender is not None:
@@ -1887,8 +1904,12 @@ class Name(BaseModel):
                 'verbatim_type': self.verbatim_type,
                 'verbatim_citation': self.verbatim_citation,
                 'type_specimen': self.type_specimen,
+                'collection': self.collection,
                 'type_locality': self.type_locality,
                 'type_locality_description': self.type_locality_description,
+                'type_description': self.type_description,
+                'type_tags': self.type_tags,
+                'tags': self.tags,
             }
             result = ''.join([result] + [
                 ' ' * ((depth + 2) * 4) + '%s: %s\n' % (key, value)
