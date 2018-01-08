@@ -797,6 +797,19 @@ def most_common_comments(field: str = 'other_comments') -> Counter[str]:
     return Counter(getattr(nam, field) for nam in Name.filter(getattr(Name, field) != None))
 
 
+@generator_command
+def check_year() -> Iterable[Name]:
+    single_year = re.compile(r'^\d{4}$')
+    multi_year = re.compile(r'^\d{4}-\d{4}$')
+    for nam in Name.filter(Name.year != None, Name.year != 'in press'):
+        if single_year.match(nam.year):
+            continue
+        if multi_year.match(nam.year):
+            continue
+        print(f'{nam} has invalid year {nam.year!r}')
+        yield nam
+
+
 @command
 def run_maintenance() -> Dict[Any, Any]:
     """Runs maintenance checks that are expected to pass for the entire database."""
@@ -814,6 +827,7 @@ def run_maintenance() -> Dict[Any, Any]:
         detect_complexes,
         detect_species_name_complexes,
         find_rank_mismatch,
+        check_year,
     ]
     fns_to_add = [
         dup_names,
