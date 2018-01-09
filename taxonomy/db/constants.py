@@ -1,6 +1,7 @@
 """Enums for various fields."""
 
 import enum
+from typing import List
 
 
 class Gender(enum.IntEnum):
@@ -46,7 +47,7 @@ class Status(enum.IntEnum):
 class NomenclatureStatus(enum.IntEnum):
     available = 1
     nomen_nudum = 2  # Art. 12.1 (before 1931), 13.1 (after 1930)
-    suppressed = 3  # by the Commission
+    fully_suppressed = 3  # by the Commission
     not_based_on_a_generic_name = 4  # for family-group names (cf. Art. 11.7)
     infrasubspecific = 5  # for species-group names (Art. 1.3.4; but see 45.6.4.1)
     unpublished = 6  # e.g., published in a thesis; see Art. 8
@@ -76,18 +77,68 @@ class NomenclatureStatus(enum.IntEnum):
     ites_name = 30  # Art. 20: names in -ites, -ytes, -ithes for fossils may not be available
     hybrid_name = 31  # names based on hybrids are available, but do not compete in priority (Art. 23.8)
     art_13_nomen_oblitum = 32  # Art. 23.12: name rejected under Art. 23b in the 1961-1973 Code
-    assumed_incorrect = 33  # probably an ISS (7), but may be UE (8)
+    variant = 33  # probably an ISS (7), but may be UE (8)
     justified_emendation = 34  # Art. 32.5: correction of incorrect original spellings
     preoccupied = 35  # junior homonym (still available)
     based_on_homonym = 39  # Art. 39: family-group names based on junior homonyms must be replaced
+    partially_suppressed = 40  # suppressed for Priority but not Homonymy
 
     def requires_type(self) -> bool:
+        """Whether a name of this status should have a type designated."""
         return self in {
             NomenclatureStatus.available,
             NomenclatureStatus.hybrid_name,
             NomenclatureStatus.art_13_nomen_oblitum,
             NomenclatureStatus.preoccupied,
         }
+
+    def can_preoccupy(self) -> bool:
+        """Whether a name of this type can preoccupy another name."""
+        return self in {
+            NomenclatureStatus.available,
+            NomenclatureStatus.unjustified_emendation,
+            NomenclatureStatus.hybrid_name,
+            NomenclatureStatus.variant,
+            NomenclatureStatus.justified_emendation,
+            NomenclatureStatus.preoccupied,
+            NomenclatureStatus.partially_suppressed,
+        }
+
+    @classmethod
+    def hierarchy(cls) -> List[List['NomenclatureStatus']]:
+        """Hierarchy of the severity of various problems with a name.
+
+        Listed from most to least severe. If multiple conditions apply to a name (e.g., it is both
+        an infrasubspecific name and published in an inconsistently binominal work), the most severe
+        defect should be used in the nomenclature_status field.
+
+        """
+        return [
+            # The Commission's word is final.
+            [cls.fully_suppressed, cls.partially_suppressed],
+            # The Commission's implicit word.
+            [cls.unlisted],
+            # If the work is invalid, we don't need to worry about the exact status of names.
+            [cls.unpublished, cls.before_1758, cls.inconsistently_binominal],
+            # Clear problems with the name itself.
+            [cls.not_based_on_a_generic_name, cls.infrasubspecific, cls.hypothetical_concept,
+             cls.teratological, cls.hybrid_as_such, cls.informal,
+             cls.work_of_extant, cls.zoological_formula, cls.not_latin_alphabet,
+             cls.not_used_as_valid, cls.not_used_as_genus_plural, cls.not_published_with_a_generic_name,
+             cls.multiple_words, cls.no_type_specified, cls.anonymous_authorship,
+             cls.conditional, cls.variety_or_form, cls.not_explicitly_new,
+             cls.ites_name, cls.based_on_homonym, cls.based_on_a_suppressed_name],
+            # Spelling issues that produce unavailable names.
+            [cls.incorrect_subsequent_spelling],
+            [cls.nomen_nudum],
+            [cls.preoccupied],
+            # From here on, names are available.
+            [cls.unjustified_emendation, cls.justified_emendation, cls.mandatory_change, cls.art_13_nomen_oblitum],
+            # Should be replaced with ISS or UE if possible.
+            [cls.variant],
+            [cls.hybrid_name],
+            [cls.available],
+        ]
 
 
 class Group(enum.IntEnum):

@@ -2401,7 +2401,7 @@ STATUS_TO_TAG = {
     NomenclatureStatus.unjustified_emendation: Tag.UnjustifiedEmendationOf,
     NomenclatureStatus.justified_emendation: Tag.JustifiedEmendationOf,
     NomenclatureStatus.incorrect_subsequent_spelling: Tag.IncorrectSubsequentSpellingOf,
-    NomenclatureStatus.assumed_incorrect: Tag.VariantOf,
+    NomenclatureStatus.variant: Tag.VariantOf,
     NomenclatureStatus.mandatory_change: Tag.MandatoryChangeOf,
 }
 

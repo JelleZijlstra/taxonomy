@@ -1,6 +1,6 @@
 from .db import constants, definition, detection, ehphp, helpers, models
-from .db.constants import Age, Group, Rank
-from .db.models import Name, Taxon, database
+from .db.constants import Age, Group, NomenclatureStatus, Rank
+from .db.models import Name, Taxon, Tag, database
 from . import events
 from . import getinput
 
@@ -821,6 +821,68 @@ def check_expected_base_name() -> Iterable[Taxon]:
             yield txn
 
 
+@generator_command
+def check_tags(dry_run: bool = True) -> Iterable[Tuple[Name, str]]:
+    """Looks at all tags set on names and applies related changes."""
+    status_to_priority = {}
+    for priority, statuses in enumerate(NomenclatureStatus.hierarchy()):
+        for status in statuses:
+            status_to_priority[status] = priority
+    preoccupied_priority = status_to_priority[NomenclatureStatus.preoccupied]
+
+    def maybe_adjust_status(nam: Name, status: NomenclatureStatus, tag: object) -> None:
+        current_priority = status_to_priority[nam.nomenclature_status]
+        new_priority = status_to_priority[status]
+        if current_priority > new_priority:
+            comment = f'Status automatically changed from {nam.nomenclature_status.name} to {status.name} because of {tag}'
+            print(f'changing status of {nam} and adding comment {comment!r}')
+            if not dry_run:
+                nam.add_comment(constants.CommentKind.nomenclature, comment, '')
+                nam.nomenclature_status = status  # type: ignore
+                nam.save()
+
+    for nam in Name.filter(Name.tags != None):
+        for tag in nam.tags:
+            if isinstance(tag, Tag.PreoccupiedBy):
+                maybe_adjust_status(nam, NomenclatureStatus.preoccupied, tag)
+                if nam.group != tag.name.group:
+                    print(f'{nam} is of a different group than supposed senior name {tag.name}')
+                    yield nam, 'homonym of different group'
+                if nam.effective_year() < tag.name.effective_year():
+                    print(f'{nam} predates supposed senior name {tag.name}')
+                    yield nam, 'antedates homonym'
+                # TODO apply this check to species too by handling gender endings correctly.
+                if nam.group != Group.species:
+                    if nam.root_name != tag.name.root_name:
+                        print(f'{nam} has a different root name than supposed senior name {tag.name}')
+                        yield nam, 'differently-named homonym'
+            elif isinstance(tag, (Tag.UnjustifiedEmendationOf, Tag.IncorrectSubsequentSpellingOf, Tag.VariantOf,
+                                Tag.NomenNovumFor, Tag.JustifiedEmendationOf)):
+                if isinstance(tag, Tag.UnjustifiedEmendationOf):
+                    maybe_adjust_status(nam, NomenclatureStatus.unjustified_emendation, tag)
+                elif isinstance(tag, Tag.IncorrectSubsequentSpellingOf):
+                    maybe_adjust_status(nam, NomenclatureStatus.incorrect_subsequent_spelling, tag)
+                elif isinstance(tag, Tag.VariantOf):
+                    maybe_adjust_status(nam, NomenclatureStatus.variant, tag)
+                elif isinstance(tag, Tag.JustifiedEmendationOf):
+                    maybe_adjust_status(nam, NomenclatureStatus.justified_emendation, tag)
+                if nam.effective_year() < tag.name.effective_year():
+                    print(f'{nam} predates supposed original name {tag.name}')
+                    yield nam, 'antedates original name'
+                if nam.taxon != tag.name.taxon:
+                    print(f'{nam} is not assigned to the same name as {tag.name}')
+                    yield nam, 'not synonym of original name'
+            elif isinstance(tag, Tag.PartiallySuppressedBy):
+                maybe_adjust_status(nam, NomenclatureStatus.partially_suppressed, tag)
+            elif isinstance(tag, Tag.FullySuppressedBy):
+                maybe_adjust_status(nam, NomenclatureStatus.partially_suppressed, tag)
+            elif isinstance(tag, Tag.Conserved):
+                if nam.nomenclature_status != NomenclatureStatus.available:
+                    print(f'{nam} is on the Official List, but is not marked as available.')
+                    yield nam
+            # haven't handled TakesPriorityOf, NomenOblitum, MandatoryChangeOf
+
+
 @command
 def run_maintenance() -> Dict[Any, Any]:
     """Runs maintenance checks that are expected to pass for the entire database."""
@@ -839,6 +901,7 @@ def run_maintenance() -> Dict[Any, Any]:
         detect_species_name_complexes,
         find_rank_mismatch,
         check_year,
+        check_tags,
     ]
     fns_to_add = [
         dup_names,
