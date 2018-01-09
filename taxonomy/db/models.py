@@ -603,7 +603,7 @@ class Taxon(BaseModel):
             self.parent.display_parents(max_depth=max_depth, file=file)
 
         file.write('%s %s (%s)\n' % (self.rank.name, self.full_name(), self.age.name))
-        file.write(self.base_name.display(depth=1))
+        file.write(self.base_name.get_description(depth=1))
 
     def ranked_parents(self) -> Tuple[Optional['Taxon'], Optional['Taxon']]:
         """Returns the order-level and family-level parents of the taxon.
@@ -1074,7 +1074,9 @@ class Period(BaseModel):
     def create_interactively(cls) -> 'Period':
         print('creating Periods interactively only allows stratigraphic units')
         name = getinput.get_line('name> ')
+        assert name is not None
         kind = getinput.get_enum_member(constants.PeriodSystem, 'kind> ')
+        assert isinstance(kind, constants.PeriodSystem)
         result = cls.make_stratigraphy(name, kind)
         result.fill_required_fields()
         return result
@@ -1896,7 +1898,7 @@ class Name(BaseModel):
     def preoccupied_by(self, name: 'Name', comment: Optional[str] = None) -> None:
         self.add_tag(Tag.PreoccupiedBy(name, comment))
         if self.nomenclature_status == NomenclatureStatus.available:
-            self.nomenclature_status = NomenclatureStatus.preoccupied
+            self.nomenclature_status = NomenclatureStatus.preoccupied  # type: ignore
         else:
             print(f'not changing status because it is {self.nomenclature_status}')
         self.save()
@@ -1997,7 +1999,7 @@ class Name(BaseModel):
     def display(self, full: bool = True) -> None:
         print(self.get_description(full=full))
 
-    def knowledge_level(self, verbose: bool = False) -> bool:
+    def knowledge_level(self, verbose: bool = False) -> int:
         """Returns whether all necessary attributes of the name have been filled in."""
         required_fields = set(self.get_required_fields())
         if 'original_citation' in required_fields and self.original_citation is None:

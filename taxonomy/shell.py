@@ -512,7 +512,7 @@ def dup_taxa() -> List[Dict[str, List[Taxon]]]:
 
 @_duplicate_finder
 def dup_genus() -> List[Dict[str, List[Name]]]:
-    names = collections.defaultdict(list)  # type: Dict[str, List[Name]]
+    names: Dict[str, List[Name]] = collections.defaultdict(list)
     for name in Name.filter(Name.group == Group.genus):
         full_name = "%s %s, %s" % (name.root_name, name.authority, name.year)
         names[full_name].append(name)
@@ -520,8 +520,8 @@ def dup_genus() -> List[Dict[str, List[Name]]]:
 
 
 @_duplicate_finder
-def dup_names() -> List[Dict[Tuple[str, str], List[Name]]]:
-    original_year = collections.defaultdict(list)  # type: Dict[Tuple[str, str], List[Name]]
+def dup_names() -> List[Dict[Tuple[str, str, constants.NomenclatureStatus], List[Name]]]:
+    original_year: Dict[Tuple[str, str, constants.NomenclatureStatus], List[Name]] = collections.defaultdict(list)
     for name in Name.filter(Name.original_name != None, Name.year != None):
         original_year[(name.original_name, name.year, name.nomenclature_status)].append(name)
     return [original_year]
@@ -821,7 +821,7 @@ def check_expected_base_name() -> Iterable[Taxon]:
 @command
 def run_maintenance() -> Dict[Any, Any]:
     """Runs maintenance checks that are expected to pass for the entire database."""
-    fns = [
+    fns: List[Callable[..., Any]] = [
         lambda: set_empty_to_none(Name, 'type_locality_description'),
         lambda: set_empty_to_none(Name, 'type_description'),
         clean_up_verbatim,
