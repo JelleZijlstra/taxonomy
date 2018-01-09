@@ -2419,7 +2419,7 @@ class TypeTag(adt.ADT):
     Habitat(text=str, tag=10)  # type: ignore
     Host(name=str, tag=11)  # type: ignore
     SpecimenNotes(text=str, tag=12)  # type: ignore
-    TypeDesignation(article=str, type=Name, comment=str, tag=13)  # type: ignore  # subsequent designation of the type (for a genus)
+    TypeDesignation(source=str, type=Name, comment=str, tag=13)  # type: ignore  # subsequent designation of the type (for a genus)
     CommissionTypeDesignation(opinion=str, type=Name, tag=14)  # type: ignore  # like the above, but by the Commission (and therefore trumping everything else)
-    LectotypeDesignation(article=str, lectotype=str, valid=bool, comment=str, tag=15)  # type: ignore
-    NeotypeDesignation(article=str, neotype=str, valid=bool, comment=str, tag=16)  # type: ignore
+    LectotypeDesignation(source=str, lectotype=str, valid=bool, comment=str, tag=15)  # type: ignore
+    NeotypeDesignation(source=str, neotype=str, valid=bool, comment=str, tag=16)  # type: ignore

@@ -1,6 +1,6 @@
 from .db import constants, definition, detection, ehphp, helpers, models
 from .db.constants import Age, Group, NomenclatureStatus, Rank
-from .db.models import Name, Taxon, Tag, database
+from .db.models import Name, Taxon, Tag, TypeTag, database
 from . import events
 from . import getinput
 
@@ -879,8 +879,47 @@ def check_tags(dry_run: bool = True) -> Iterable[Tuple[Name, str]]:
             elif isinstance(tag, Tag.Conserved):
                 if nam.nomenclature_status != NomenclatureStatus.available:
                     print(f'{nam} is on the Official List, but is not marked as available.')
-                    yield nam
+                    yield nam, 'unavailable listed name'
             # haven't handled TakesPriorityOf, NomenOblitum, MandatoryChangeOf
+
+
+@generator_command
+def check_type_tags(dry_run: bool = True) -> Iterable[Tuple[Name, str]]:
+    for nam in Name.filter(Name.type_tags != None):
+        for tag in nam.type_tags:
+            if isinstance(tag, TypeTag.CommissionTypeDesignation):
+                if nam.type != tag.type:
+                    print(f'{nam} has {nam.type} as its type, but the Commission has designated {tag.type}')
+                    if not dry_run:
+                        nam.type = tag.type
+                        nam.save()
+                if nam.genus_type_kind != constants.TypeSpeciesDesignation.designated_by_the_commission:
+                    print(f'{nam} has {nam.genus_type_kind}, but its type was set by the Commission')
+                    if not dry_run:
+                        nam.genus_type_kind = constants.TypeSpeciesDesignation.designated_by_the_commission
+                        nam.save()
+            # TODO: for lectotype and subsequent designations, ensure the earliest valid one is used.
+    for nam in Name.filter(Name.genus_type_kind == constants.TypeSpeciesDesignation.subsequent_designation):
+        for tag in (nam.type_tags or ()):
+            if isinstance(tag, TypeTag.TypeDesignation) and tag.type == nam.type:
+                break
+        else:
+            print(f'{nam} is missing a reference for its type designation')
+            yield nam, 'missing type designation reference'
+    for nam in Name.filter(Name.species_type_kind == constants.SpeciesGroupType.lectotype):
+        for tag in (nam.type_tags or ()):
+            if isinstance(tag, TypeTag.LectotypeDesignation) and tag.lectotype == nam.type_specimen:
+                break
+        else:
+            print(f'{nam} is missing a reference for its lectotype designation')
+            yield nam, 'missing lectotype designation reference'
+    for nam in Name.filter(Name.species_type_kind == constants.SpeciesGroupType.neotype):
+        for tag in (nam.type_tags or ()):
+            if isinstance(tag, TypeTag.NeotypeDesignation) and tag.neotype == nam.type_specimen:
+                break
+        else:
+            print(f'{nam} is missing a reference for its neotype designation')
+            yield nam, 'missing neotype designation reference'
 
 
 @command
@@ -902,6 +941,7 @@ def run_maintenance() -> Dict[Any, Any]:
         find_rank_mismatch,
         check_year,
         check_tags,
+        check_type_tags,
     ]
     fns_to_add = [
         dup_names,
