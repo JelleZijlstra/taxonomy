@@ -1,5 +1,6 @@
 import cmd
 import enum
+import functools
 import prompt_toolkit
 import re
 import subprocess
@@ -41,10 +42,13 @@ def get_line(prompt: str, validate: Optional[Callable[[str], bool]] = None,
              handlers: Mapping[str, Callable[[str], bool]] = {},
              should_stop: Callable[[str], bool] = lambda _: False,
              allow_none: bool = True, mouse_support: bool = False,
-             default: str = '') -> Optional[str]:
+             default: str = '', history_key: Optional[object] = None) -> Optional[str]:
+    if history_key is None:
+        history_key = prompt
+    history = _get_history(history_key)
     while True:
         try:
-            line = prompt_toolkit.prompt(message=prompt, default=default, mouse_support=mouse_support)
+            line = prompt_toolkit.prompt(message=prompt, default=default, mouse_support=mouse_support, history=history)
         except EOFError:
             raise StopException()
         if line in handlers:
@@ -79,11 +83,14 @@ class _Completer(prompt_toolkit.completion.Completer):
                 yield prompt_toolkit.completion.Completion(string[len(text):])
 
 
-def get_with_completion(options: Iterable[str], message: str = '> ', *, default: str = '') -> str:
+def get_with_completion(options: Iterable[str], message: str = '> ', *, default: str = '', history_key: Optional[object] = None) -> str:
+    if history_key is None:
+        history_key = (tuple(options), message)
     return prompt_toolkit.prompt(
         completer=_Completer(options),
         message=message,
         default=default,
+        history=_get_history(history_key),
     )
 
 
@@ -93,7 +100,7 @@ def get_enum_member(enum_cls: Type[enum.Enum], prompt: str = '> ', default: Opti
     else:
         default_str = default.name
     options = [v.name for v in enum_cls]
-    choice = get_with_completion(options, prompt, default=default_str)
+    choice = get_with_completion(options, prompt, default=default_str, history_key=enum_cls)
     if choice == '':
         return None
     return enum_cls[choice]
@@ -109,7 +116,7 @@ def get_adt_list(adt_cls: Type[adt.ADT], existing: Optional[Iterable[adt.ADT]] =
         name_to_cls[member_name.lower()] = getattr(adt_cls, member_name)
     print(f'options: {", ".join(name_to_cls.keys())}')
     while True:
-        member = get_with_completion(name_to_cls.keys(), message=f'{adt_cls.__name__}> ')
+        member = get_with_completion(name_to_cls.keys(), message=f'{adt_cls.__name__}> ', history_key=adt_cls)
         if member == 'p':
             print(f'current: {out}')
             continue
@@ -130,6 +137,13 @@ def get_adt_list(adt_cls: Type[adt.ADT], existing: Optional[Iterable[adt.ADT]] =
 
 def add_to_clipboard(data: str) -> None:
     subprocess.run(['pbcopy'], check=True, input=data.encode('utf-8'))
+
+
+@functools.lru_cache(maxsize=None)
+def _get_history(key: object) -> prompt_toolkit.history.InMemoryHistory:
+    history = prompt_toolkit.history.InMemoryHistory()
+    history.append('')
+    return history
 
 
 # Encode and decode names so they can be used as identifiers. Spaces are replaced with underscores
