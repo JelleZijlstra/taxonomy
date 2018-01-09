@@ -83,14 +83,22 @@ class _Completer(prompt_toolkit.completion.Completer):
                 yield prompt_toolkit.completion.Completion(string[len(text):])
 
 
-def get_with_completion(options: Iterable[str], message: str = '> ', *, default: str = '', history_key: Optional[object] = None) -> str:
+def get_with_completion(options: Iterable[str], message: str = '> ', *, default: str = '',
+                        history_key: Optional[object] = None, disallow_other: bool = False,
+                        allow_empty: bool = True) -> str:
     if history_key is None:
         history_key = (tuple(options), message)
+    validator: Optional[prompt_toolkit.validation.Validator]
+    if disallow_other:
+        validator = _FixedValidator([*options, ''] if allow_empty else options)
+    else:
+        validator = None
     return prompt_toolkit.prompt(
         completer=_Completer(options),
         message=message,
         default=default,
         history=_get_history(history_key),
+        validator=validator,
     )
 
 
@@ -100,7 +108,7 @@ def get_enum_member(enum_cls: Type[enum.Enum], prompt: str = '> ', default: Opti
     else:
         default_str = default.name
     options = [v.name for v in enum_cls]
-    choice = get_with_completion(options, prompt, default=default_str, history_key=enum_cls)
+    choice = get_with_completion(options, prompt, default=default_str, history_key=enum_cls, disallow_other=True)
     if choice == '':
         return None
     return enum_cls[choice]
@@ -116,7 +124,9 @@ def get_adt_list(adt_cls: Type[adt.ADT], existing: Optional[Iterable[adt.ADT]] =
         name_to_cls[member_name.lower()] = getattr(adt_cls, member_name)
     print(f'options: {", ".join(name_to_cls.keys())}')
     while True:
-        member = get_with_completion(name_to_cls.keys(), message=f'{adt_cls.__name__}> ', history_key=adt_cls)
+        options = [*name_to_cls.keys(), 'p']
+        member = get_with_completion(options, message=f'{adt_cls.__name__}> ', history_key=adt_cls,
+                                     disallow_other=True)
         if member == 'p':
             print(f'current: {out}')
             continue
@@ -144,6 +154,16 @@ def _get_history(key: object) -> prompt_toolkit.history.InMemoryHistory:
     history = prompt_toolkit.history.InMemoryHistory()
     history.append('')
     return history
+
+
+class _FixedValidator(prompt_toolkit.validation.Validator):
+    """Validator that only allows a fixed set of strings."""
+    def __init__(self, options: Iterable[str]) -> None:
+        self.options = set(options)
+
+    def validate(self, obj: prompt_toolkit.document.Document) -> None:
+        if obj.text not in self.options:
+            raise prompt_toolkit.validation.ValidationError
 
 
 # Encode and decode names so they can be used as identifiers. Spaces are replaced with underscores
