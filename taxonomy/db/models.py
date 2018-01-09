@@ -61,6 +61,7 @@ class BaseModel(Model):
     label_field: str
     creation_event: events.Event[Any]
     save_event: events.Event[Any]
+    field_defaults: Dict[str, Any] = {}
 
     class Meta(object):
         database = database
@@ -192,7 +193,10 @@ class BaseModel(Model):
             default = '' if current_value is None else current_value
             return getinput.get_line(prompt, default=default, mouse_support=True) or None
         elif isinstance(field_obj, EnumField):
-            return getinput.get_enum_member(field_obj.enum, prompt=prompt)
+            default = current_value
+            if default is None and field in self.field_defaults:
+                default = self.field_defaults[field]
+            return getinput.get_enum_member(field_obj.enum, prompt=prompt, default=default)
         elif isinstance(field_obj, IntegerField):
             default = '' if current_value is None else current_value
             result = getinput.get_line(prompt, default=default, mouse_support=True)
@@ -338,10 +342,15 @@ class _NameGetter(Generic[ModelT]):
         return result | self._encoded_data
 
     def __getattr__(self, name: str) -> ModelT:
-        return self.cls.filter(self.field_obj == getinput.decode_name(name)).get()
+        return self.cls.get(self.field_obj == getinput.decode_name(name))
 
     def __call__(self, name: str) -> ModelT:
-        return self.__getattr__(name)
+        return self.cls.get(self.field_obj == name)
+
+    def __contains__(self, name: str) -> bool:
+        self._warm_cache()
+        assert self._data is not None
+        return name in self._data
 
     def clear_cache(self) -> None:
         self._data = None
@@ -1718,6 +1727,12 @@ class Name(BaseModel):
     creation_event = events.Event['Name']()
     save_event = events.Event['Name']()
     label_field = 'original_name'
+    field_default = {
+        'genus_type_kind': constants.TypeSpeciesDesignation.original_designation,
+        'species_type_kind': constants.SpeciesGroupType.holotype,
+        'nomenclature_status': NomenclatureStatus.available,
+        'status': Status.valid,
+    }
 
     # Basic data
     group = EnumField(Group)
@@ -1805,7 +1820,15 @@ class Name(BaseModel):
             self._definition = definition.serialize()
 
     def get_value_for_field(self, field: str) -> Any:
-        if field == 'type_tags':
+        if field == 'collection' and self.collection is None and self.type_specimen is not None:
+            coll_name = self.type_specimen.split()[0]
+            getter = Collection.getter('label')
+            if coll_name in getter:
+                coll = getter(coll_name)
+                print(f'inferred collection to be {coll} from {self.type_specimen}')
+                return coll
+            return super().get_value_for_field(field)
+        elif field == 'type_tags':
             if self.type_locality_description is not None:
                 print(self.type_locality_description)
             if self.type_description is not None:
