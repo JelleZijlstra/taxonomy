@@ -4,7 +4,7 @@ import functools
 import prompt_toolkit
 import re
 import subprocess
-from typing import Callable, Iterable, List, Mapping, Optional, Sequence, Tuple, Type
+from typing import overload, Callable, Iterable, List, Mapping, Optional, Sequence, Tuple, Type, TypeVar
 
 from . import adt
 
@@ -101,14 +101,24 @@ def get_with_completion(options: Iterable[str], message: str = '> ', *, default:
         validator=validator,
     )
 
+EnumT = TypeVar('EnumT', bound=enum.Enum)
 
-def get_enum_member(enum_cls: Type[enum.Enum], prompt: str = '> ', default: Optional[enum.Enum] = None) -> Optional[enum.Enum]:
+# return type is not Optional; this is not strictly true because the user could pass in
+# allow_empty=True, but it is good enough until we have literal types.
+@overload
+def get_enum_member(enum_cls: Type[EnumT], prompt: str = '> ', *, default: Optional[EnumT] = None, allow_empty: bool = True) -> EnumT: ...
+@overload
+def get_enum_member(enum_cls: Type[EnumT], prompt: str = '> ', *, default: Optional[EnumT] = None) -> Optional[EnumT]: ...
+
+def get_enum_member(enum_cls: Type[EnumT], prompt: str = '> ', *, default: Optional[EnumT] = None,
+                    allow_empty: bool = True) -> Optional[EnumT]:
     if default is None:
         default_str = ''
     else:
         default_str = default.name
     options = [v.name for v in enum_cls]
-    choice = get_with_completion(options, prompt, default=default_str, history_key=enum_cls, disallow_other=True)
+    choice = get_with_completion(options, prompt, default=default_str, history_key=enum_cls, disallow_other=True,
+                                 allow_empty=allow_empty)
     if choice == '':
         return None
     return enum_cls[choice]
@@ -137,7 +147,7 @@ def get_adt_list(adt_cls: Type[adt.ADT], existing: Optional[Iterable[adt.ADT]] =
         args = {}
         for arg_name, typ in member_cls._attributes.items():
             if isinstance(typ, type) and issubclass(typ, enum.IntEnum):
-                args[arg_name] = get_enum_member(typ, prompt=f'{arg_name}> ')
+                args[arg_name] = get_enum_member(typ, prompt=f'{arg_name}> ')  # type: ignore
             elif typ in adt.BASIC_TYPES:
                 args[arg_name] = typ(get_line(f'{arg_name}> '))
             else:

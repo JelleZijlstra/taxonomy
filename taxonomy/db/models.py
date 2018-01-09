@@ -1084,8 +1084,7 @@ class Period(BaseModel):
         print('creating Periods interactively only allows stratigraphic units')
         name = getinput.get_line('name> ')
         assert name is not None
-        kind = getinput.get_enum_member(constants.PeriodSystem, 'kind> ')
-        assert isinstance(kind, constants.PeriodSystem)
+        kind = getinput.get_enum_member(constants.PeriodSystem, 'kind> ', allow_empty=False)
         result = cls.make_stratigraphy(name, kind)
         result.fill_required_fields()
         return result
@@ -2341,8 +2340,7 @@ class NameComment(BaseModel):
             name = cls.get_value_for_foreign_key_field_on_class('name')
         assert name is not None
         if kind is None:
-            kind = getinput.get_enum_member(constants.CommentKind, prompt='kind> ')  # type: ignore
-        assert isinstance(kind, constants.CommentKind)
+            kind = getinput.get_enum_member(constants.CommentKind, prompt='kind> ', allow_empty=False)
         if text is None:
             text = getinput.get_line(prompt='text> ')
         assert text is not None
