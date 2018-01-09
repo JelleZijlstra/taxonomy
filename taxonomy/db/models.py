@@ -1,4 +1,5 @@
 import collections
+import datetime
 import enum
 import json
 import operator
@@ -579,7 +580,7 @@ class Taxon(BaseModel):
                     file.write('%s: %s\n' % (key, value))
         for name in self.sorted_names():
             if name_exclude_fn is None or not name_exclude_fn(name):
-                file.write(name.display(depth=depth + 1, full=full))
+                file.write(name.get_description(depth=depth + 1, full=full))
         if show_occurrences:
             for occurrence in self.sorted_occurrences():
                 file.write(' ' * ((depth + 1) * 4))
@@ -792,6 +793,45 @@ class Taxon(BaseModel):
                     assert self.rank == Rank.subspecies, "Unexpected rank %s" % self.rank.name
                     species = self.parent_of_rank(Rank.species)
                     return '%s %s %s' % (genus.base_name.root_name, species.base_name.root_name, name.root_name)
+
+    def expected_base_name(self) -> Optional['Name']:
+        """Finds the name that is expected to be the base name for this name."""
+        if self.base_name.nomenclature_status == NomenclatureStatus.informal:
+            return self.base_name
+        names = set(self.names)
+        if self.base_name.taxon != self:
+            names |= set(self.base_name.taxon.names)
+        group = self.base_name.group
+        available_names = {
+            nam for nam in names
+            if nam.nomenclature_status == NomenclatureStatus.available and nam.group == group
+        }
+        if available_names:
+            names = available_names
+        if not names:
+            return None
+        names_and_years = sorted([(nam, nam.effective_year()) for nam in names], key=lambda pair: pair[1])
+        selected_pair = names_and_years[0]
+        if selected_pair[0] != self.base_name:
+            possible = {nam for nam, year in names_and_years if year == selected_pair[1]}
+            if self.base_name in possible:
+                # If there are multiple names from the same year, assume we got the priority right
+                return self.base_name
+        return selected_pair[0]
+
+    def check_expected_base_name(self) -> bool:
+        expected = self.expected_base_name()
+        if expected != self.base_name:
+            print(f'{self}: expected {expected} but have {self.base_name}')
+            return False
+        else:
+            return True
+
+    def check_base_names(self) -> Iterable['Taxon']:
+        if not self.check_expected_base_name():
+            yield self
+        for child in self.children:
+            yield from child.check_base_names()
 
     def recompute_name(self) -> None:
         new_name = self.compute_valid_name()
@@ -1861,10 +1901,31 @@ class Name(BaseModel):
             print(f'not changing status because it is {self.nomenclature_status}')
         self.save()
 
+    def conserve(self, opinion: str, comment: Optional[str] = None) -> None:
+        self.add_tag(Tag.Conserved(opinion, comment))
+
     def get_authors(self) -> List[str]:
         return re.split(r', | & ', re.sub(r'et al\.$', '', self.authority))
 
-    def display(self, full: bool = False, depth: int = 0) -> str:
+    def effective_year(self) -> int:
+        """Returns the effective year of validity for this name.
+
+        Defaults to the year after the current year if the year is unknown or invalid.
+
+        """
+        if self.year is None:
+            return datetime.datetime.now().year + 1
+        if self.year == 'in press':
+            return datetime.datetime.now().year
+        else:
+            year_str = self.year[-4:]
+            try:
+                return int(year_str)
+            except ValueError:
+                # invalid year
+                return datetime.datetime.now().year + 1
+
+    def get_description(self, full: bool = False, depth: int = 0) -> str:
         if self.original_name is None:
             out = self.root_name
         else:
@@ -1927,8 +1988,14 @@ class Name(BaseModel):
                 ' ' * ((depth + 2) * 4) + '%s: %s\n' % (key, value)
                 for key, value in data.items()
                 if value
+            ] + [
+                ' ' * ((depth + 2) * 4) + comment.get_description()
+                for comment in self.comments
             ])
         return result
+
+    def display(self, full: bool = True) -> None:
+        print(self.get_description(full=full))
 
     def knowledge_level(self, verbose: bool = False) -> bool:
         """Returns whether all necessary attributes of the name have been filled in."""
@@ -2260,6 +2327,15 @@ class NameComment(BaseModel):
                 page = getinput.get_line(prompt='page> ')
         return cls.make(name=name, kind=kind, text=text, source=source)
 
+    def get_description(self) -> str:
+        components = [
+            self.kind.name,
+            datetime.datetime.fromtimestamp(self.date).strftime('%b %d, %Y %H:%M:%S'),
+        ]
+        if self.source:
+            components.append(f'{{{self.source}}}:{self.page}' if self.page else f'{{{self.source}}}')
+        return f'{self.text} ({"; ".join(components)})'
+
 
 class Tag(adt.ADT):
     PreoccupiedBy(name=Name, comment=str, tag=1)  # type: ignore
@@ -2273,6 +2349,8 @@ class Tag(adt.ADT):
     TakesPriorityOf(name=Name, comment=str, tag=9)  # type: ignore
     NomenOblitum(name=Name, comment=str, tag=10)  # type: ignore  # ICZN Art. 23.9. The reference is to the nomen protectum relative to which precedence is reversed.
     MandatoryChangeOf(name=Name, comment=str, tag=11)  # type: ignore
+    Conserved(opinion=str, comment=str, tag=12)  # type: ignore  # Conserved by placement on the Official List.
+
 
 STATUS_TO_TAG = {
     NomenclatureStatus.unjustified_emendation: Tag.UnjustifiedEmendationOf,
@@ -2296,3 +2374,7 @@ class TypeTag(adt.ADT):
     Habitat(text=str, tag=10)  # type: ignore
     Host(name=str, tag=11)  # type: ignore
     SpecimenNotes(text=str, tag=12)  # type: ignore
+    TypeDesignation(article=str, type=Name, comment=str, tag=13)  # type: ignore  # subsequent designation of the type (for a genus)
+    CommissionTypeDesignation(opinion=str, type=Name, tag=14)  # type: ignore  # like the above, but by the Commission (and therefore trumping everything else)
+    LectotypeDesignation(article=str, lectotype=str, valid=bool, comment=str, tag=15)  # type: ignore
+    NeotypeDesignation(article=str, neotype=str, valid=bool, comment=str, tag=16)  # type: ignore

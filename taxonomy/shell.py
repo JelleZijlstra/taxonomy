@@ -5,6 +5,7 @@ from . import events
 from . import getinput
 
 import collections
+import datetime
 import functools
 import IPython
 import os.path
@@ -808,6 +809,13 @@ def check_year() -> Iterable[Name]:
             continue
         print(f'{nam} has invalid year {nam.year!r}')
         yield nam
+
+
+@generator_command
+def check_expected_base_name() -> Iterable[Taxon]:
+    for txn in Taxon.filter(Taxon.rank <= Rank.superfamily):
+        if not txn.check_expected_base_name():
+            yield txn
 
 
 @command

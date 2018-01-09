@@ -64,7 +64,7 @@ class NomenclatureStatus(enum.IntEnum):
     inconsistently_binominal = 18  # Art. 11.4: author must consistently use binominal nomenclature
     not_used_as_valid = 19  # Art. 11.5, 11.6
     not_used_as_genus_plural = 20  # Art. 11.7.1.2
-    based_on_a_suppressed_name = 21  # Art. 11.7.1.5
+    based_on_a_suppressed_name = 21  # Art. 11.7.1.5, 39
     not_published_with_a_generic_name = 22  # Art. 11.9.3
     multiple_words = 23  # Art. 11.9.4
     no_type_specified = 24  # Art. 13.3: genus-group name after 1930 (but not ichnotaxa); Art. 16.2 for family-group names after 1999; Art. 16.4 for species-group names after 1999
@@ -79,6 +79,7 @@ class NomenclatureStatus(enum.IntEnum):
     assumed_incorrect = 33  # probably an ISS (7), but may be UE (8)
     justified_emendation = 34  # Art. 32.5: correction of incorrect original spellings
     preoccupied = 35  # junior homonym (still available)
+    based_on_homonym = 39  # Art. 39: family-group names based on junior homonyms must be replaced
 
     def requires_type(self) -> bool:
         return self in {
@@ -254,8 +255,9 @@ class TypeSpeciesDesignation(enum.IntEnum):
     linnaean_tautonymy = 4  # Art. 68.5
     subsequent_monotypy = 5  # Art. 69.3, only for genera originally without species
     subsequent_designation = 6  # Art. 69.1
-    implicit = 7  # names of nomina nova and emendeations have the same type, Art. 67.8, 69.2.3
+    implicit = 7  # names of nomina nova and emendations have the same type, Art. 67.8, 69.2.3
     misidentification = 8  # if the type was misidentified, you can do whatever you want (Art. 70.3)
+    designated_by_the_commission = 9  # type explicitly designated by the Commission
 
 
 class SpeciesGroupType(enum.IntEnum):
