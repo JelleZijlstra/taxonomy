@@ -149,7 +149,7 @@ def get_adt_list(adt_cls: Type[adt.ADT], existing: Optional[Iterable[adt.ADT]] =
             if isinstance(typ, type) and issubclass(typ, enum.IntEnum):
                 args[arg_name] = get_enum_member(typ, prompt=f'{arg_name}> ')  # type: ignore
             elif typ in adt.BASIC_TYPES:
-                args[arg_name] = typ(get_line(f'{arg_name}> '))
+                args[arg_name] = typ(get_line(f'{arg_name}> ', history_key=(member_cls, arg_name)))
             else:
                 assert False, f'do not know how to fill {arg_name} of type {typ}'
         out.append(member_cls(**args))
