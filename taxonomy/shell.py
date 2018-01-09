@@ -751,7 +751,10 @@ def clean_up_verbatim(dry_run: bool = False) -> None:
         print(f'{nam}: {nam.original_citation}, {nam.verbatim_citation}')
         citation_count += 1
         if not dry_run:
-            nam.add_data('verbatim_citation', nam.verbatim_citation)
+            try:
+                nam.add_data('verbatim_citation', nam.verbatim_citation)
+            except ValueError:
+                print(f'dropping verbatim_citation for {nam}')
             nam.verbatim_citation = None
             nam.save()
     print(f'Family/genera type count: {famgen_type_count}')
