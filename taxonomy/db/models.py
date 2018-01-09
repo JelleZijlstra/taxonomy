@@ -457,8 +457,7 @@ class Taxon(BaseModel):
         return sorted(names, key=operator.attrgetter('status', 'root_name'))
 
     def sorted_children(self) -> List['Taxon']:
-        children = self.children
-        return sorted(children, key=operator.attrgetter('rank', 'valid_name'))
+        return sorted(self.children, key=operator.attrgetter('rank', 'valid_name'))
 
     def sorted_occurrences(self) -> List['Occurrence']:
         return sorted(self.occurrences, key=lambda o: o.location.name)
@@ -539,7 +538,7 @@ class Taxon(BaseModel):
             else:
                 return []
         else:
-            out = []  # type: List[Taxon]
+            out: List[Taxon] = []
             for child in self.children:
                 out += child.children_of_rank(rank, age=age)
             return out
@@ -547,9 +546,9 @@ class Taxon(BaseModel):
     def find_names(self, root_name: str, group: Optional[Group] = None, fuzzy: bool = True) -> List['Taxon']:
         """Find instances of the given root_name within the given container taxon."""
         if fuzzy:
-            query = Name.root_name % root_name
+            query = Name.root_name % root_name  # LIKE
         else:
-            query = Name.root_name == root_name  # LIKE
+            query = Name.root_name == root_name
         candidates = Name.filter(query)
 
         result = []
@@ -617,7 +616,7 @@ class Taxon(BaseModel):
     def ranked_parents(self) -> Tuple[Optional['Taxon'], Optional['Taxon']]:
         """Returns the order-level and family-level parents of the taxon.
 
-        The family-level parents is the one parent of family rank. The order-level parent
+        The family-level parent is the one parent of family rank. The order-level parent
         is of rank order if there is one, and otherwise the first unranked taxon above the
         highest-ranked family-group taxon.
 
@@ -642,8 +641,8 @@ class Taxon(BaseModel):
             current_parent = current_parent.parent
         return order_rank, family_rank
 
-    def add(self, rank: Rank, name: str, authority: Optional[str] = None, year: Union[None, str, int] = None,
-            age: Optional[constants.Age] = None, set_type: bool = False, comments: Optional[str] = None, **kwargs: Any) -> 'Taxon':
+    def add_static(self, rank: Rank, name: str, authority: Optional[str] = None, year: Union[None, str, int] = None,
+                   age: Optional[constants.Age] = None, set_type: bool = False, comments: Optional[str] = None, **kwargs: Any) -> 'Taxon':
         if age is None:
             age = self.age
         taxon = Taxon.create(valid_name=name, age=age, rank=rank, parent=self, comments=comments)
@@ -664,6 +663,20 @@ class Taxon(BaseModel):
         taxon.save()
         return taxon
 
+    def add(self) -> 'Taxon':
+        rank = getinput.get_enum_member(Rank, default=Rank.genus if self.rank > Rank.genus else Rank.species)
+        name = getinput.get_line('name> ', allow_none=False)
+        assert name is not None
+        age = getinput.get_enum_member(constants.Age, default=self.age)
+        status = getinput.get_enum_member(Status, default=Status.valid)
+        taxon = Taxon.create(valid_name=name, age=age, rank=rank, parent=self)
+        name_obj = Name.create(taxon=taxon, group=helpers.group_of_rank(rank), root_name=helpers.root_name_of_name(name, rank),
+                               status=status)
+        taxon.base_name = name_obj
+        taxon.save()
+        name_obj.fill_required_fields()
+        return taxon
+
     def add_syn(self, root_name: str, authority: Optional[str] = None, year: Union[None, int, str] = None,
                 original_name: Optional[str] = None, original_citation: Optional[str] = None,
                 page_described: Union[None, int, str] = None, status: Status = Status.synonym,
@@ -679,7 +692,9 @@ class Taxon(BaseModel):
         kwargs['taxon'] = self
         if 'group' not in kwargs:
             kwargs['group'] = self.base_name.group
-        return Name.create(**kwargs)
+        name = Name.create(**kwargs)
+        name.fill_required_fields()
+        return name
 
     def add_type_identical(self, name: str, page_described: Union[None, int, str] = None, locality: Optional['Location'] = None,
                            **kwargs: Any) -> 'Taxon':
@@ -687,7 +702,7 @@ class Taxon(BaseModel):
         assert self.rank == Rank.genus
         assert self.base_name.type is None
         full_name = '%s %s' % (self.valid_name, name)
-        result = self.add(
+        result = self.add_static(
             Rank.species, full_name, set_type=True, authority=self.base_name.authority, year=self.base_name.year,
             original_citation=self.base_name.original_citation, original_name=full_name, page_described=page_described,
             status=self.base_name.status)
@@ -696,6 +711,8 @@ class Taxon(BaseModel):
         if locality is not None:
             result.add_occurrence(locality)
         result.base_name.s(**kwargs)
+        if self.base_name.original_citation is not None:
+            result.base_name.fill_required_fields()
         return result
 
     def add_occurrence(self, location: 'Location', paper: Optional[str] = None, comment: Optional[str] = None,
@@ -719,18 +736,20 @@ class Taxon(BaseModel):
         if group is not None:
             kwargs['group'] = group
         result.s(**kwargs)
+        result.fill_required_fields()
         return result
 
     def from_paper(self, rank: Rank, name: str, paper: str, page_described: Union[None, int, str] = None,
                    status: Status = Status.valid, comments: Optional[str] = None,
                    age: Optional[constants.Age] = None, **override_kwargs: Any) -> 'Taxon':
         authority, year = ehphp.call_ehphp('taxonomicAuthority', [paper])[0]
-        result = self.add(
+        result = self.add_static(
             rank=rank, name=name, original_citation=paper, page_described=page_described,
             original_name=name, authority=authority, year=year, parent=self, status=status,
             comments=comments, age=age
         )
         result.base_name.s(**override_kwargs)
+        result.base_name.fill_required_fields()
         return result
 
     def add_nominate(self) -> 'Taxon':
@@ -2161,6 +2180,8 @@ class Name(BaseModel):
             else:
                 setattr(self, label, value)
         self.s(**kwargs)
+        self.fill_required_fields()
+        self.save()
 
     def detect_and_set_type(self, verbatim_type: Optional[str] = None, verbose: bool = False) -> bool:
         if verbatim_type is None:
