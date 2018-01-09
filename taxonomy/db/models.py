@@ -366,6 +366,7 @@ class _NameGetter(Generic[ModelT]):
         val = getattr(obj, self.field)
         if val is None:
             return
+        val = str(val)
         self._data.add(val)
         self._encoded_data.add(getinput.encode_name(val))
 
@@ -1745,7 +1746,7 @@ class Name(BaseModel):
     creation_event = events.Event['Name']()
     save_event = events.Event['Name']()
     label_field = 'original_name'
-    field_default = {
+    field_defaults = {
         'genus_type_kind': constants.TypeSpeciesDesignation.original_designation,
         'species_type_kind': constants.SpeciesGroupType.holotype,
         'nomenclature_status': NomenclatureStatus.available,
