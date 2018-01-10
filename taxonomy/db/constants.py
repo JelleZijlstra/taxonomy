@@ -82,6 +82,7 @@ class NomenclatureStatus(enum.IntEnum):
     preoccupied = 35  # junior homonym (still available)
     based_on_homonym = 39  # Art. 39: family-group names based on junior homonyms must be replaced
     partially_suppressed = 40  # suppressed for Priority but not Homonymy
+    nomen_novum = 41  # Nomen novum or substitution for another name. Such names are available, but using a different status makes it easier to keep track of their types.
 
     def requires_type(self) -> bool:
         """Whether a name of this status should have a type designated."""
@@ -102,6 +103,7 @@ class NomenclatureStatus(enum.IntEnum):
             NomenclatureStatus.justified_emendation,
             NomenclatureStatus.preoccupied,
             NomenclatureStatus.partially_suppressed,
+            NomenclatureStatus.nomen_novum,
         }
 
     @classmethod
@@ -137,6 +139,7 @@ class NomenclatureStatus(enum.IntEnum):
             # Should be replaced with ISS or UE if possible.
             [cls.variant],
             [cls.hybrid_name],
+            [cls.nomen_novum],
             [cls.available],
         ]
 

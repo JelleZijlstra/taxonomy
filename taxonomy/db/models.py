@@ -1928,7 +1928,7 @@ class Name(BaseModel):
         return out
 
     def is_unavailable(self) -> bool:
-        return self.nomenclature_status != NomenclatureStatus.available
+        return not self.nomenclature_status.can_preoccupy()
 
     def make_variant(self, status: NomenclatureStatus, of_name: 'Name', comment: Optional[str] = None) -> None:
         if self.nomenclature_status != NomenclatureStatus.available:
@@ -2403,6 +2403,7 @@ STATUS_TO_TAG = {
     NomenclatureStatus.incorrect_subsequent_spelling: Tag.IncorrectSubsequentSpellingOf,
     NomenclatureStatus.variant: Tag.VariantOf,
     NomenclatureStatus.mandatory_change: Tag.MandatoryChangeOf,
+    NomenclatureStatus.nomen_novum: Tag.NomenNovumFor,
 }
 
 

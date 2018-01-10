@@ -865,8 +865,10 @@ def check_tags(dry_run: bool = True) -> Iterable[Tuple[Name, str]]:
                 nam.nomenclature_status = status  # type: ignore
                 nam.save()
 
+    names_by_tag: Dict[Type[Any], Set[Name]] = collections.defaultdict(set)
     for nam in Name.filter(Name.tags != None):
         for tag in nam.tags:
+            names_by_tag[type(tag)].add(nam)
             if isinstance(tag, Tag.PreoccupiedBy):
                 maybe_adjust_status(nam, NomenclatureStatus.preoccupied, tag)
                 if nam.group != tag.name.group:
@@ -881,15 +883,10 @@ def check_tags(dry_run: bool = True) -> Iterable[Tuple[Name, str]]:
                         print(f'{nam} has a different root name than supposed senior name {tag.name}')
                         yield nam, 'differently-named homonym'
             elif isinstance(tag, (Tag.UnjustifiedEmendationOf, Tag.IncorrectSubsequentSpellingOf, Tag.VariantOf,
-                                Tag.NomenNovumFor, Tag.JustifiedEmendationOf)):
-                if isinstance(tag, Tag.UnjustifiedEmendationOf):
-                    maybe_adjust_status(nam, NomenclatureStatus.unjustified_emendation, tag)
-                elif isinstance(tag, Tag.IncorrectSubsequentSpellingOf):
-                    maybe_adjust_status(nam, NomenclatureStatus.incorrect_subsequent_spelling, tag)
-                elif isinstance(tag, Tag.VariantOf):
-                    maybe_adjust_status(nam, NomenclatureStatus.variant, tag)
-                elif isinstance(tag, Tag.JustifiedEmendationOf):
-                    maybe_adjust_status(nam, NomenclatureStatus.justified_emendation, tag)
+                                  Tag.NomenNovumFor, Tag.JustifiedEmendationOf)):
+                for status, tag_cls in models.STATUS_TO_TAG.items():
+                    if isinstance(tag, tag_cls):
+                        maybe_adjust_status(nam, status, tag)
                 if nam.effective_year() < tag.name.effective_year():
                     print(f'{nam} predates supposed original name {tag.name}')
                     yield nam, 'antedates original name'
@@ -905,6 +902,12 @@ def check_tags(dry_run: bool = True) -> Iterable[Tuple[Name, str]]:
                     print(f'{nam} is on the Official List, but is not marked as available.')
                     yield nam, 'unavailable listed name'
             # haven't handled TakesPriorityOf, NomenOblitum, MandatoryChangeOf
+
+    for status, tag_cls in models.STATUS_TO_TAG.items():
+        tagged_names = names_by_tag[tag_cls]
+        for nam in Name.filter(Name.nomenclature_status == status):
+            if nam not in tagged_names:
+                yield nam, f'has status {status.name} but no corresponding tag'
 
 
 @generator_command
