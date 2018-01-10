@@ -4,7 +4,7 @@ import functools
 import prompt_toolkit
 import re
 import subprocess
-from typing import overload, Callable, Iterable, List, Mapping, Optional, Sequence, Tuple, Type, TypeVar
+from typing import overload, Any, Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple, Type, TypeVar
 
 from . import adt
 
@@ -63,10 +63,11 @@ def get_line(prompt: str, validate: Optional[Callable[[str], bool]] = None,
         return line
 
 
-def yes_no(prompt: str) -> bool:
+def yes_no(prompt: str, default: Optional[bool] = None) -> bool:
     positive = {'y', 'yes'}
     negative = {'n', 'no'}
-    result = get_line(prompt + '> ', validate=lambda line: line.lower() in positive | negative)
+    default_str = 'y' if default is True else ('n' if default is False else '')
+    result = get_line(prompt + '> ', validate=lambda line: line.lower() in positive | negative, default=default_str)
     return result is not None and result.lower() in positive
 
 
@@ -128,31 +129,46 @@ def get_adt_list(adt_cls: Type[adt.ADT], existing: Optional[Iterable[adt.ADT]] =
     out: List[adt.ADT] = []
     if existing is not None:
         out += existing
-        print(f'existing: {existing}')
+        print(f'existing: {_stringify_adt_with_indexes(out)}')
     name_to_cls = {}
     for member_name in adt_cls._members:
         name_to_cls[member_name.lower()] = getattr(adt_cls, member_name)
     print(f'options: {", ".join(name_to_cls.keys())}')
     while True:
-        options = [*name_to_cls.keys(), 'p']
+        options = [*name_to_cls.keys(), 'p', *map(str, range(len(out)))]
         member = get_with_completion(options, message=f'{adt_cls.__name__}> ', history_key=adt_cls,
                                      disallow_other=True)
         if member == 'p':
-            print(f'current: {out}')
+            print(f'current: {_stringify_adt_with_indexes(out)}')
             continue
         elif member == '':
             print(f'new tags: {out}')
             return tuple(out)
-        member_cls = name_to_cls[member]
-        args = {}
-        for arg_name, typ in member_cls._attributes.items():
-            if isinstance(typ, type) and issubclass(typ, enum.IntEnum):
-                args[arg_name] = get_enum_member(typ, prompt=f'{arg_name}> ')  # type: ignore
-            elif typ in adt.BASIC_TYPES:
-                args[arg_name] = typ(get_line(f'{arg_name}> ', history_key=(member_cls, arg_name)))
-            else:
-                assert False, f'do not know how to fill {arg_name} of type {typ}'
-        out.append(member_cls(**args))
+        elif member.isnumeric():
+            index = int(member)
+            existing_member = out[index]
+            out[index] = _get_adt_member(type(existing_member), existing=existing_member)
+        else:
+            out.append(_get_adt_member(name_to_cls[member]))
+
+
+def _get_adt_member(member_cls: Type[adt.ADT], existing: Optional[adt.ADT] = None) -> adt.ADT:
+    args: Dict[str, Any] = {}
+    for arg_name, typ in member_cls._attributes.items():
+        existing_value = getattr(existing, arg_name, None)
+        if isinstance(typ, type) and issubclass(typ, enum.IntEnum):
+            args[arg_name] = get_enum_member(typ, prompt=f'{arg_name}> ', default=existing_value, allow_empty=False)
+        elif typ is bool:
+            args[arg_name] = yes_no(f'{arg_name}> ', default=existing_value)
+        elif typ in adt.BASIC_TYPES:
+            args[arg_name] = typ(get_line(f'{arg_name}> ', history_key=(member_cls, arg_name), default=existing_value or ''))
+        else:
+            assert False, f'do not know how to fill {arg_name} of type {typ}'
+    return member_cls(**args)
+
+
+def _stringify_adt_with_indexes(adt: Iterable[adt.ADT]) -> str:
+    return ', '.join(f'{i}: {tag}' for i, tag in enumerate(adt))
 
 
 def add_to_clipboard(data: str) -> None:
