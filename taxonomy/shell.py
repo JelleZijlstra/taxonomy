@@ -709,6 +709,30 @@ def parentless_taxa() -> Iterable[Taxon]:
     return (t for t in Taxon.filter(Taxon.parent >> None) if t.id != 1)  # exclude root
 
 
+ATTRIBUTES_BY_GROUP = {
+    'stem': (Group.genus,),
+    'gender': (Group.genus,),
+    '_name_complex_id': (Group.genus, Group.species),
+    'type': (Group.family, Group.genus),
+    'type_locality': (Group.species,),
+    'type_locality_description': (Group.species,),
+    'type_specimen': (Group.species,),
+    'collection': (Group.species,),
+    'type_description': (Group.species,),
+    'type_specimen_source': (Group.species,),
+    'genus_type_kind': (Group.genus,),
+    'species_type_kind': (Group.species,),
+    'type_tags': (Group.genus, Group.species),
+}
+
+
+@generator_command
+def disallowed_attribute() -> Iterable[Tuple[Name, str]]:
+    for field, groups in ATTRIBUTES_BY_GROUP.items():
+        for nam in Name.filter(getattr(Name, field) != None, ~(Name.group << groups)):
+            yield nam, field
+
+
 @generator_command
 def childless_taxa() -> Iterable[Taxon]:
     return Taxon.raw('SELECT * FROM taxon WHERE rank > 5 AND id NOT IN (SELECT parent_id FROM taxon WHERE parent_id IS NOT NULL)')
@@ -942,6 +966,7 @@ def run_maintenance() -> Dict[Any, Any]:
         check_year,
         check_tags,
         check_type_tags,
+        disallowed_attribute,
     ]
     fns_to_add = [
         dup_names,
