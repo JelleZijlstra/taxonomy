@@ -672,7 +672,7 @@ class Taxon(BaseModel):
         status = getinput.get_enum_member(Status, default=Status.valid)
         taxon = Taxon.create(valid_name=name, age=age, rank=rank, parent=self)
         name_obj = Name.create(taxon=taxon, group=helpers.group_of_rank(rank), root_name=helpers.root_name_of_name(name, rank),
-                               status=status)
+                               status=status, nomenclature_status=NomenclatureStatus.available)
         taxon.base_name = name_obj
         taxon.save()
         name_obj.fill_required_fields()
@@ -681,7 +681,8 @@ class Taxon(BaseModel):
     def add_syn(self, root_name: str, authority: Optional[str] = None, year: Union[None, int, str] = None,
                 original_name: Optional[str] = None, original_citation: Optional[str] = None,
                 page_described: Union[None, int, str] = None, status: Status = Status.synonym,
-                **kwargs: Any) -> 'Name':
+                nomenclature_status: NomenclatureStatus = NomenclatureStatus.available,
+                interactive: bool = True, **kwargs: Any) -> 'Name':
         kwargs['root_name'] = root_name
         kwargs['authority'] = authority
         kwargs['year'] = year
@@ -691,10 +692,12 @@ class Taxon(BaseModel):
         kwargs['page_described'] = page_described
         kwargs['status'] = status
         kwargs['taxon'] = self
+        kwargs['nomenclature_status'] = nomenclature_status
         if 'group' not in kwargs:
             kwargs['group'] = self.base_name.group
         name = Name.create(**kwargs)
-        name.fill_required_fields()
+        if interactive:
+            name.fill_required_fields()
         return name
 
     def add_type_identical(self, name: str, page_described: Union[None, int, str] = None, locality: Optional['Location'] = None,
@@ -728,16 +731,18 @@ class Taxon(BaseModel):
 
     def syn_from_paper(self, name: str, paper: str, page_described: Union[None, int, str] = None,
                        status: Status = Status.synonym, group: Optional[Group] = None,
-                       age: Optional[constants.Age] = None, **kwargs: Any) -> 'Name':
+                       age: Optional[constants.Age] = None, interactive: bool = True, **kwargs: Any) -> 'Name':
         authority, year = ehphp.call_ehphp('taxonomicAuthority', [paper])[0]
         result = self.add_syn(
             root_name=name, authority=authority, year=year, original_citation=paper,
             page_described=page_described, original_name=name, status=status, age=age,
+            interactive=False,
         )
         if group is not None:
             kwargs['group'] = group
         result.s(**kwargs)
-        result.fill_required_fields()
+        if interactive:
+            result.fill_required_fields()
         return result
 
     def from_paper(self, rank: Rank, name: str, paper: str, page_described: Union[None, int, str] = None,
@@ -1759,7 +1764,7 @@ class Name(BaseModel):
     status = EnumField(Status)
     taxon = ForeignKeyField(Taxon, related_name='names', db_column='taxon_id')
     original_name = CharField(null=True)
-    nomenclature_status = EnumField(NomenclatureStatus)
+    nomenclature_status = EnumField(NomenclatureStatus, default=NomenclatureStatus.available)
 
     # Citation and authority
     authority = CharField(null=True)
@@ -1936,6 +1941,21 @@ class Name(BaseModel):
         self.add_tag(STATUS_TO_TAG[status](name=of_name, comment=comment))
         self.nomenclature_status = status  # type: ignore
         self.save()
+
+    def add_variant(self, root_name: str, status: NomenclatureStatus = NomenclatureStatus.variant,
+                    paper: Optional[str] = None) -> 'Name':
+        if paper is not None:
+            nam = self.taxon.syn_from_paper(root_name, paper, interactive=False)
+            nam.original_name = None
+            nam.nomenclature_status = status
+            nam.save()
+        else:
+            nam = self.taxon.add_syn(root_name, nomenclature_status=status)
+        tag_cls = STATUS_TO_TAG[status]
+        nam.add_tag(tag_cls(self, ''))
+        nam.save()
+        nam.fill_required_fields()
+        return nam
 
     def preoccupied_by(self, name: 'Name', comment: Optional[str] = None) -> None:
         self.add_tag(Tag.PreoccupiedBy(name, comment))
@@ -2415,7 +2435,7 @@ class TypeTag(adt.ADT):
     Organ(organ=constants.Organ, detail=str, condition=str, tag=5)  # type: ignore
     Altitude(altitude=str, unit=constants.AltitudeUnit, tag=6)  # type: ignore
     Coordinates(latitude=str, longitude=str, tag=7)  # type: ignore
-    LocationDetail(text=str, tag=8)  # type: ignore
+    TypeLocality(text=str, tag=8)  # type: ignore  # type locality directly from original description
     StratigraphyDetail(text=str, tag=9)  # type: ignore
     Habitat(text=str, tag=10)  # type: ignore
     Host(name=str, tag=11)  # type: ignore
@@ -2424,3 +2444,6 @@ class TypeTag(adt.ADT):
     CommissionTypeDesignation(opinion=str, type=Name, tag=14)  # type: ignore  # like the above, but by the Commission (and therefore trumping everything else)
     LectotypeDesignation(source=str, lectotype=str, valid=bool, comment=str, tag=15)  # type: ignore
     NeotypeDesignation(source=str, neotype=str, valid=bool, comment=str, tag=16)  # type: ignore
+    SpecimenDetail(text=str, source=str, tag=17)  # type: ignore  # more information on the specimen
+    LocationDetail(text=str, source=str, tag=18)  # type: ignore  # phrasing of the type locality in a particular source
+

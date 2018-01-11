@@ -361,3 +361,4 @@ class CommentKind(enum.IntEnum):
     distribution = 6
     etymology = 7
     other = 8
+    structured_quote = 9
