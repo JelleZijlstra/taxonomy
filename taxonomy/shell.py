@@ -73,6 +73,8 @@ ns = _ShellNamespace({
     'reconnect': _reconnect,
     'Tag': models.Tag,
     'TypeTag': models.TypeTag,
+    'Counter': collections.Counter,
+    'defaultdict': collections.defaultdict,
 })
 ns.update(constants.__dict__)
 
