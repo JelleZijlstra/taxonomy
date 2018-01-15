@@ -56,12 +56,38 @@ class _ADTNamespace(MutableMapping[str, Any]):
 
 
 def _adt_member_eq(self: Any, other: Any) -> Any:
-    if not isinstance(other, type(self)):
+    if not isinstance(other, self._adt_cls):
         return NotImplemented
+    if not isinstance(other, type(self)):
+        return False
     for attr in self._attributes.keys():
         if getattr(self, attr) != getattr(other, attr):
             return False
     return True
+
+
+def _none_safe_lt(left: Any, right: Any) -> bool:
+    if left is None:
+        return right is not None
+    elif right is None:
+        return False
+    else:
+        return left < right
+
+
+def _adt_member_lt(self: Any, other: Any) -> Any:
+    if not isinstance(other, self._adt_cls):
+        return NotImplemented
+    if not isinstance(other, type(self)):
+        return type(self).__name__ < type(other).__name__
+    for attr in self._attributes.keys():
+        if _none_safe_lt(getattr(self, attr), getattr(other, attr)):
+            return True
+    return False
+
+
+def _adt_member_hash(self: Any) -> int:
+    return hash((type(self), tuple(getattr(self, attr) for attr in self._attributes)))
 
 
 class _ADTMeta(type):
@@ -94,7 +120,10 @@ class _ADTMeta(type):
                 '_tag': member.tag,
                 '_has_args': has_args,
                 '_is_member': True,
+                '_adt_cls': new_cls,
                 '__eq__': _adt_member_eq,
+                '__lt__': _adt_member_lt,
+                '__hash__': _adt_member_hash,
             }
             if has_args:
                 for key, value in member.kwargs.items():
