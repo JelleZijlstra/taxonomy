@@ -786,6 +786,25 @@ def clean_up_verbatim(dry_run: bool = False) -> None:
 
 
 @command
+def clean_up_type_locality_description(dry_run: bool = True) -> None:
+    count = removed = 0
+    for nam in Name.filter(Name.type_locality_description != None, Name.type_tags != None):
+        tags = [tag for tag in nam.type_tags if isinstance(tag, TypeTag.LocationDetail)]
+        if not tags:
+            continue
+        print('----------------')
+        print(nam)
+        for tag in tags:
+            print(tag)
+        if dry_run:
+            print(nam.type_locality_description)
+        else:
+            nam.fill_field('type_tags')
+            nam.type_locality_description = None
+            nam.save()
+
+
+@command
 def set_empty_to_none(model: Type[models.BaseModel], field: str, dry_run: bool = False) -> None:
     for obj in model.filter(getattr(model, field) == ''):
         print(f'{obj}: set {field} to None')
@@ -895,7 +914,7 @@ def check_tags(dry_run: bool = True) -> Iterable[Tuple[Name, str]]:
             elif isinstance(tag, Tag.PartiallySuppressedBy):
                 maybe_adjust_status(nam, NomenclatureStatus.partially_suppressed, tag)
             elif isinstance(tag, Tag.FullySuppressedBy):
-                maybe_adjust_status(nam, NomenclatureStatus.partially_suppressed, tag)
+                maybe_adjust_status(nam, NomenclatureStatus.fully_suppressed, tag)
             elif isinstance(tag, Tag.Conserved):
                 if nam.nomenclature_status != NomenclatureStatus.available:
                     print(f'{nam} is on the Official List, but is not marked as available.')
@@ -949,6 +968,32 @@ def check_type_tags(dry_run: bool = True) -> Iterable[Tuple[Name, str]]:
 
 
 @command
+def move_to_lowest_rank(dry_run: bool = False) -> Iterable[Tuple[Name, str]]:
+    for nam in Name.select():
+        query = Taxon.filter(Taxon._base_name_id == nam)
+        if query.count() < 2:
+            continue
+        if nam.group == Group.high:
+            yield nam, 'high-group names cannot be the base name of multiple taxa'
+            continue
+        lowest, *ts = sorted(query, key=lambda t: t.rank)
+        last_seen = lowest
+        for t in ts:
+            while last_seen is not None and last_seen != t:
+                last_seen = last_seen.parent
+            if last_seen is None:
+                yield nam, f'taxon {t} is not a parent of {lowest}'
+                break
+        if last_seen is None:
+            continue
+        if nam.taxon != lowest:
+            print(f'changing taxon of {nam} to {lowest}')
+            if not dry_run:
+                nam.taxon = lowest
+                nam.save()
+
+
+@command
 def run_maintenance() -> Dict[Any, Any]:
     """Runs maintenance checks that are expected to pass for the entire database."""
     fns: List[Callable[..., Any]] = [
@@ -968,6 +1013,7 @@ def run_maintenance() -> Dict[Any, Any]:
         check_tags,
         check_type_tags,
         disallowed_attribute,
+        move_to_lowest_rank,
     ]
     fns_to_add = [
         dup_names,
