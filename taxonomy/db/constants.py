@@ -73,7 +73,7 @@ class NomenclatureStatus(enum.IntEnum):
     conditional = 26  # Art. 15
     variety_or_form = 27  # Art. 15.2: after 1960, "variety" or "form" excludes the name (cf. infrasubspecific)
     not_explicitly_new = 28  # Art. 16: names published after 1999 must be explicitly new
-    mandatory_change = 29  # Art. 34: rank change for family-group name and gender agreement for species-group name
+    mandatory_change = 29  # Art. 34: rank change for family-group name and gender agreement for species-group name (first one moved to reranking)
     ites_name = 30  # Art. 20: names in -ites, -ytes, -ithes for fossils may not be available
     hybrid_name = 31  # names based on hybrids are available, but do not compete in priority (Art. 23.8)
     art_13_nomen_oblitum = 32  # Art. 23.12: name rejected under Art. 23b in the 1961-1973 Code
@@ -83,6 +83,9 @@ class NomenclatureStatus(enum.IntEnum):
     based_on_homonym = 39  # Art. 39: family-group names based on junior homonyms must be replaced
     partially_suppressed = 40  # suppressed for Priority but not Homonymy
     nomen_novum = 41  # Nomen novum or substitution for another name. Such names are available, but using a different status makes it easier to keep track of their types.
+    incorrect_original_spelling = 42  # if there are multiple variants in the original description
+    type_not_treated_as_valid = 43  # Art. 11.7.1.1: genus name must be treated as valid
+    reranking = 44  # subset of mandatory change: family-group name changed to a new rank
 
     def requires_type(self) -> bool:
         """Whether a name of this status should have a type designated."""
@@ -91,6 +94,7 @@ class NomenclatureStatus(enum.IntEnum):
             NomenclatureStatus.hybrid_name,
             NomenclatureStatus.art_13_nomen_oblitum,
             NomenclatureStatus.preoccupied,
+            NomenclatureStatus.reranking,
         }
 
     def can_preoccupy(self) -> bool:
@@ -334,6 +338,7 @@ class SpecimenAge(enum.IntEnum):
     juvenile = 2
     subadult = 3
     adult = 4
+    larva = 5
 
 
 class Organ(enum.IntEnum):
@@ -362,3 +367,8 @@ class CommentKind(enum.IntEnum):
     etymology = 7
     other = 8
     structured_quote = 9
+    type_species = 10
+    homonymy = 11
+    spelling = 12
+    authorship = 13
+    automatic_change = 14

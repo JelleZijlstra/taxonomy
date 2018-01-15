@@ -861,7 +861,7 @@ def check_tags(dry_run: bool = True) -> Iterable[Tuple[Name, str]]:
             comment = f'Status automatically changed from {nam.nomenclature_status.name} to {status.name} because of {tag}'
             print(f'changing status of {nam} and adding comment {comment!r}')
             if not dry_run:
-                nam.add_comment(constants.CommentKind.nomenclature, comment, '')
+                nam.add_comment(constants.CommentKind.automatic_change, comment, '')
                 nam.nomenclature_status = status  # type: ignore
                 nam.save()
 

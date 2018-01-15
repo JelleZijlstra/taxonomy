@@ -1184,6 +1184,10 @@ class Region(BaseModel):
         for child in self.children:
             child.display(full=full, depth=depth + 4, file=file)
 
+    def get_location(self) -> 'Location':
+        """Returns the corresponding Recent Location."""
+        return Location.get(region=self, name=self.name)
+
 
 class Location(BaseModel):
     creation_event = events.Event['Location']()
@@ -1584,6 +1588,18 @@ class NameComplex(BaseModel):
                                   code_article=GenderArticle.art30_1_4_2, stem_remove=stem_remove, stem_add=stem_add)
 
     @classmethod
+    def oides_name(cls, stem: str, gender: constants.Gender = constants.Gender.masculine, comment: Optional[str] = None) -> 'NameComplex':
+        """Names ending in -oides and a few other endings default to masculine unless the author treated it otherwise."""
+        if stem not in ('ites', 'oides', 'ides', 'odes', 'istes'):
+            raise ValueError('Art. 30.1.4.4 only applies to a limited set of stems')
+        if gender != constants.Gender.masculine:
+            label = f'{stem}_{gender.name}'
+        else:
+            label = stem
+        return cls._get_or_create(label, stem=stem, gender=gender, comment=comment, source_language=SourceLanguage.greek,
+                                  code_article=GenderArticle.art30_1_4_4, stem_remove='es', stem_add='')
+
+    @classmethod
     def latin_changed_ending(cls, stem: str, gender: constants.Gender, comment: Optional[str] = None,
                              stem_remove: str = '', stem_add: str = '') -> 'NameComplex':
         """Based on a Latin word with a changed ending. Comment must specify the original word."""
@@ -1916,6 +1932,20 @@ class Name(BaseModel):
         else:
             self.tags = self.tags + (tag,)
 
+    def add_type_tag(self, tag: adt.ADT) -> None:
+        if self.type_tags is None:
+            self.type_tags = [tag]
+        else:
+            self.type_tags = self.type_tags + (tag,)
+
+    def has_type_tag(self, tag_cls: Type[adt.ADT]) -> bool:
+        if self.type_tags is None:
+            return False
+        for tag in self.type_tags:
+            if isinstance(tag, tag_cls):
+                return True
+        return False
+
     def add_comment(self, kind: Optional[constants.CommentKind] = None, text: Optional[str] = None,
                     source: Optional[str] = None, page: Optional[str] = None) -> 'NameComment':
         return NameComment.create_interactively(name=self, kind=kind, text=text, source=source, page=page)
@@ -1943,15 +1973,17 @@ class Name(BaseModel):
         self.save()
 
     def add_variant(self, root_name: str, status: NomenclatureStatus = NomenclatureStatus.variant,
-                    paper: Optional[str] = None) -> 'Name':
+                    paper: Optional[str] = None, page_described: Optional[str] = None,
+                    original_name: Optional[str] = None) -> 'Name':
         if paper is not None:
             nam = self.taxon.syn_from_paper(root_name, paper, interactive=False)
-            nam.original_name = None
+            nam.original_name = original_name
             nam.nomenclature_status = status
             nam.save()
         else:
-            nam = self.taxon.add_syn(root_name, nomenclature_status=status)
+            nam = self.taxon.add_syn(root_name, nomenclature_status=status, original_name=original_name)
         tag_cls = STATUS_TO_TAG[status]
+        nam.page_described = page_described
         nam.add_tag(tag_cls(self, ''))
         nam.save()
         nam.fill_required_fields()
@@ -2040,20 +2072,28 @@ class Name(BaseModel):
                 'taxonomy_comments': self.taxonomy_comments,
                 'verbatim_type': self.verbatim_type,
                 'verbatim_citation': self.verbatim_citation,
-                'type_specimen': self.type_specimen,
-                'collection': self.collection,
                 'type_locality': self.type_locality,
                 'type_locality_description': self.type_locality_description,
-                'type_description': self.type_description,
-                'type_tags': self.type_tags,
-                'tags': self.tags,
+                'type_tags': sorted(self.type_tags) if self.type_tags else None,
+                'tags': sorted(self.tags) if self.tags else None,
             }
+            type_info = []
+            if self.species_type_kind is not None:
+                type_info.append(self.species_type_kind.name)
+            if self.type_specimen is not None:
+                type_info.append(self.type_specimen)
+            if self.collection is not None:
+                type_info.append(f'in {self.collection}')
+            if self.type_description is not None:
+                type_info.append(self.type_description)
+            if type_info:
+                data['type'] = '; '.join(type_info)
             result = ''.join([result] + [
                 ' ' * ((depth + 2) * 4) + '%s: %s\n' % (key, value)
                 for key, value in data.items()
                 if value
             ] + [
-                ' ' * ((depth + 2) * 4) + comment.get_description()
+                ' ' * ((depth + 2) * 4) + comment.get_description() + '\n'
                 for comment in self.comments
             ])
         return result
@@ -2088,7 +2128,7 @@ class Name(BaseModel):
         yield 'page_described'
         yield 'original_citation'
 
-        if self.group in (Group.genus, Group.species):
+        if self.group in (Group.genus, Group.species) and self.nomenclature_status != NomenclatureStatus.incorrect_subsequent_spelling:
             yield 'name_complex'
 
         if self.nomenclature_status.requires_type():
@@ -2096,7 +2136,9 @@ class Name(BaseModel):
                 yield 'type'
             if self.group == Group.species:
                 yield 'type_locality'
-                yield 'type_specimen'
+                # 75 is a special Collection that indicates there is no preserved specimen.
+                if self.collection is None or (self.collection.id != 75):
+                    yield 'type_specimen'
                 yield 'collection'
                 yield 'type_specimen_source'
                 yield 'species_type_kind'
@@ -2373,7 +2415,7 @@ class NameComment(BaseModel):
 
     @classmethod
     def make(cls, name: Name, kind: constants.CommentKind, text: str, source: Optional[str] = None, page: Optional[str] = None) -> 'NameComment':
-        return cls.create(name=name, kind=kind, text=text, date=int(time.time()), source=source)
+        return cls.create(name=name, kind=kind, text=text, date=int(time.time()), source=source, page=page)
 
     @classmethod
     def create_interactively(cls, name: Optional[Name] = None, kind: Optional[constants.CommentKind] = None,
@@ -2390,7 +2432,7 @@ class NameComment(BaseModel):
             source = cls.get_value_for_article_field('source')
             if page is None:
                 page = getinput.get_line(prompt='page> ')
-        return cls.make(name=name, kind=kind, text=text, source=source)
+        return cls.make(name=name, kind=kind, text=text, source=source, page=page)
 
     def get_description(self) -> str:
         components = [
@@ -2415,6 +2457,8 @@ class Tag(adt.ADT):
     NomenOblitum(name=Name, comment=str, tag=10)  # type: ignore  # ICZN Art. 23.9. The reference is to the nomen protectum relative to which precedence is reversed.
     MandatoryChangeOf(name=Name, comment=str, tag=11)  # type: ignore
     Conserved(opinion=str, comment=str, tag=12)  # type: ignore  # Conserved by placement on the Official List.
+    IncorrectOriginalSpellingOf(name=Name, comment=str, tag=13)  # type: ignore
+    SelectionOfSpelling(source=str, comment=str, tag=14)  # type: ignore  # selection as the correct original spelling
 
 
 STATUS_TO_TAG = {
@@ -2424,6 +2468,7 @@ STATUS_TO_TAG = {
     NomenclatureStatus.variant: Tag.VariantOf,
     NomenclatureStatus.mandatory_change: Tag.MandatoryChangeOf,
     NomenclatureStatus.nomen_novum: Tag.NomenNovumFor,
+    NomenclatureStatus.incorrect_original_spelling: Tag.IncorrectOriginalSpellingOf,
 }
 
 

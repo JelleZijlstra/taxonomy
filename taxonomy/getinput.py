@@ -135,7 +135,7 @@ def get_adt_list(adt_cls: Type[adt.ADT], existing: Optional[Iterable[adt.ADT]] =
         name_to_cls[member_name.lower()] = getattr(adt_cls, member_name)
     print(f'options: {", ".join(name_to_cls.keys())}')
     while True:
-        options = [*name_to_cls.keys(), 'p', *map(str, range(len(out)))]
+        options = [*name_to_cls.keys(), 'p', *map(str, range(len(out))), *[f'r{i}' for i in range(len(out))]]
         member = get_with_completion(options, message=f'{adt_cls.__name__}> ', history_key=adt_cls,
                                      disallow_other=True)
         if member == 'p':
@@ -148,6 +148,10 @@ def get_adt_list(adt_cls: Type[adt.ADT], existing: Optional[Iterable[adt.ADT]] =
             index = int(member)
             existing_member = out[index]
             out[index] = _get_adt_member(type(existing_member), existing=existing_member)
+        elif member.startswith('r') and member[1:].isnumeric():
+            index = int(member[1:])
+            print('removing member:', out[index])
+            del out[index]
         else:
             out.append(_get_adt_member(name_to_cls[member]))
 
