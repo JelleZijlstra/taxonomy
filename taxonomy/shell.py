@@ -718,7 +718,6 @@ ATTRIBUTES_BY_GROUP = {
     'type_locality_description': (Group.species,),
     'type_specimen': (Group.species,),
     'collection': (Group.species,),
-    'type_description': (Group.species,),
     'type_specimen_source': (Group.species,),
     'genus_type_kind': (Group.genus,),
     'species_type_kind': (Group.species,),
@@ -954,7 +953,6 @@ def run_maintenance() -> Dict[Any, Any]:
     """Runs maintenance checks that are expected to pass for the entire database."""
     fns: List[Callable[..., Any]] = [
         lambda: set_empty_to_none(Name, 'type_locality_description'),
-        lambda: set_empty_to_none(Name, 'type_description'),
         clean_up_verbatim,
         parentless_taxa,
         bad_parents,

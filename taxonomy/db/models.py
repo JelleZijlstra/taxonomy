@@ -1801,7 +1801,6 @@ class Name(BaseModel):
     type_locality_description = TextField(null=True)
     type_specimen = CharField(null=True)
     collection = ForeignKeyField(Collection, null=True, db_column='collection_id')
-    type_description = TextField(null=True)
     type_specimen_source = CharField(null=True)
     genus_type_kind = EnumField(constants.TypeSpeciesDesignation, null=True)
     species_type_kind = EnumField(constants.SpeciesGroupType, null=True)
@@ -1871,8 +1870,6 @@ class Name(BaseModel):
         elif field == 'type_tags':
             if self.type_locality_description is not None:
                 print(self.type_locality_description)
-            if self.type_description is not None:
-                print(self.type_description)
             if self.type_locality is not None:
                 print(self.type_locality)
             return super().get_value_for_field(field)
@@ -2084,8 +2081,6 @@ class Name(BaseModel):
                 type_info.append(self.type_specimen)
             if self.collection is not None:
                 type_info.append(f'in {self.collection}')
-            if self.type_description is not None:
-                type_info.append(self.type_description)
             if type_info:
                 data['type'] = '; '.join(type_info)
             result = ''.join([result] + [
