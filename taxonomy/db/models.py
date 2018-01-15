@@ -425,7 +425,6 @@ class Taxon(BaseModel):
     valid_name = CharField(default='')
     age = EnumField(constants.Age)
     parent = ForeignKeyField('self', related_name='children', null=True, db_column='parent_id')
-    comments = TextField(null=True)
     data = TextField(null=True)
     is_page_root = BooleanField(default=False)
     _base_name_id = IntegerField(null=True, db_column='base_name_id')
@@ -579,7 +578,6 @@ class Taxon(BaseModel):
         file.write('%s %s (%s)\n' % (self.rank.name, self.full_name(), self.age.name))
         if full:
             data = {
-                'comments': self.comments,
                 'data': self.data,
                 'is_page_root': self.is_page_root,
             }
@@ -643,10 +641,10 @@ class Taxon(BaseModel):
         return order_rank, family_rank
 
     def add_static(self, rank: Rank, name: str, authority: Optional[str] = None, year: Union[None, str, int] = None,
-                   age: Optional[constants.Age] = None, set_type: bool = False, comments: Optional[str] = None, **kwargs: Any) -> 'Taxon':
+                   age: Optional[constants.Age] = None, set_type: bool = False, **kwargs: Any) -> 'Taxon':
         if age is None:
             age = self.age
-        taxon = Taxon.create(valid_name=name, age=age, rank=rank, parent=self, comments=comments)
+        taxon = Taxon.create(valid_name=name, age=age, rank=rank, parent=self)
         kwargs['group'] = helpers.group_of_rank(rank)
         kwargs['root_name'] = helpers.root_name_of_name(name, rank)
         if 'status' not in kwargs:
@@ -746,13 +744,12 @@ class Taxon(BaseModel):
         return result
 
     def from_paper(self, rank: Rank, name: str, paper: str, page_described: Union[None, int, str] = None,
-                   status: Status = Status.valid, comments: Optional[str] = None,
-                   age: Optional[constants.Age] = None, **override_kwargs: Any) -> 'Taxon':
+                   status: Status = Status.valid, age: Optional[constants.Age] = None,
+                   **override_kwargs: Any) -> 'Taxon':
         authority, year = ehphp.call_ehphp('taxonomicAuthority', [paper])[0]
         result = self.add_static(
             rank=rank, name=name, original_citation=paper, page_described=page_described,
-            original_name=name, authority=authority, year=year, parent=self, status=status,
-            comments=comments, age=age
+            original_name=name, authority=authority, year=year, parent=self, status=status, age=age
         )
         result.base_name.s(**override_kwargs)
         result.base_name.fill_required_fields()
@@ -888,8 +885,6 @@ class Taxon(BaseModel):
         self.remove()
 
     def synonymize(self, to_taxon: 'Taxon') -> 'Name':
-        if self.comments is not None:
-            print("Warning: removing comments: %s" % self.comments)
         if self.data is not None:
             print("Warning: removing data: %s" % self.data)
         assert self != to_taxon, 'Cannot synonymize %s with itself' % self

@@ -197,7 +197,6 @@ def dict_of_taxon(taxon: 'Taxon') -> Dict[str, Any]:
         'valid_name': taxon.valid_name,
         'rank_numeric': taxon.rank.value,
         'rank': taxon.rank.name,
-        'comments': taxon.comments,
         'names': [],
         'children': [],
         'age_numeric': taxon.age.value,
