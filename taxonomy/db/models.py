@@ -1790,12 +1790,12 @@ class Name(BaseModel):
     _name_complex_id = IntegerField(null=True, db_column='name_complex_id')
 
     # Types
-    type = ForeignKeyField('self', null=True, db_column='type_id')  # for family and genus group
+    type = ForeignKeyField('self', null=True, db_column='type_id', related_name='typified_names')  # for family and genus group
     verbatim_type = CharField(null=True)  # deprecated
     type_locality = ForeignKeyField(Location, related_name='type_localities', db_column='type_locality_id', null=True)
     type_locality_description = TextField(null=True)
     type_specimen = CharField(null=True)
-    collection = ForeignKeyField(Collection, null=True, db_column='collection_id')
+    collection = ForeignKeyField(Collection, null=True, db_column='collection_id', related_name='type_specimens')
     type_specimen_source = CharField(null=True)
     genus_type_kind = EnumField(constants.TypeSpeciesDesignation, null=True)
     species_type_kind = EnumField(constants.SpeciesGroupType, null=True)
