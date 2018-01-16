@@ -575,7 +575,7 @@ class Taxon(BaseModel):
         if exclude_fn is not None and exclude_fn(self):
             return
         file.write(' ' * (4 * depth))
-        file.write('%s %s (%s)\n' % (self.rank.name, self.full_name(), self.age.name))
+        file.write(f'{self.rank.name} {self.age.get_symbol()}{self.full_name()}\n')
         if full:
             data = {
                 'data': self.data,

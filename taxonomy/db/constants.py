@@ -16,6 +16,14 @@ class Age(enum.IntEnum):
     fossil = 2
     ichno = 3
 
+    def get_symbol(self) -> str:
+        return {
+            self.extant: '',
+            self.holocene: '☠',
+            self.fossil: '†',
+            self.ichno: '👣',
+        }[self]
+
 
 class Status(enum.IntEnum):
     valid = 0
