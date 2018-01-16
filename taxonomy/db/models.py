@@ -2470,11 +2470,11 @@ class TypeTag(adt.ADT):
     Organ(organ=constants.Organ, detail=str, condition=str, tag=5)  # type: ignore
     Altitude(altitude=str, unit=constants.AltitudeUnit, tag=6)  # type: ignore
     Coordinates(latitude=str, longitude=str, tag=7)  # type: ignore
-    TypeLocality(text=str, tag=8)  # type: ignore  # type locality directly from original description
+    TypeLocality(text=str, tag=8)  # type: ignore  # Authoritative description for a disputed type locality. Should be rarely used.
     StratigraphyDetail(text=str, tag=9)  # type: ignore
     Habitat(text=str, tag=10)  # type: ignore
     Host(name=str, tag=11)  # type: ignore
-    SpecimenNotes(text=str, tag=12)  # type: ignore
+    # 12 is unused
     TypeDesignation(source=str, type=Name, comment=str, tag=13)  # type: ignore  # subsequent designation of the type (for a genus)
     CommissionTypeDesignation(opinion=str, type=Name, tag=14)  # type: ignore  # like the above, but by the Commission (and therefore trumping everything else)
     LectotypeDesignation(source=str, lectotype=str, valid=bool, comment=str, tag=15)  # type: ignore
