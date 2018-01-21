@@ -1666,24 +1666,28 @@ class NameComplex(BaseModel):
             comment = getinput.get_line('comment> ')
             stem_remove = getinput.get_line('stem_remove> ')
             stem_add = getinput.get_line('stem_add> ')
-            return method(stem=stem, gender=gender, comment=comment, stem_remove=stem_remove, stem_add=stem_add)
+            nc = method(stem=stem, gender=gender, comment=comment, stem_remove=stem_remove, stem_add=stem_add)
+            nc.self_apply()
+            if getinput.yes_no('self-apply?'):
+                nc.self_apply(dry_run=False)
         elif kind in ('expressly_specified', 'indicated'):
             gender = getinput.get_enum_member(constants.Gender, 'gender> ')
             stem_remove = getinput.get_line('stem_remove> ')
             stem_add = getinput.get_line('stem_add> ')
-            return method(gender=gender, stem_remove=stem_remove, stem_add=stem_add)
+            nc = method(gender=gender, stem_remove=stem_remove, stem_add=stem_add)
         elif kind == 'defaulted_masculine':
             stem_remove = getinput.get_line('stem_remove> ')
             stem_add = getinput.get_line('stem_add> ')
-            return method(stem_remove=stem_remove, stem_add=stem_add)
+            nc = method(stem_remove=stem_remove, stem_add=stem_add)
         elif kind == 'defaulted':
             gender = getinput.get_enum_member(constants.Gender, 'gender> ')
             ending = getinput.get_line('ending> ')
             stem_remove = getinput.get_line('stem_remove> ')
             stem_add = getinput.get_line('stem_add> ')
-            return method(gender=gender, ending=ending, stem_remove=stem_remove, stem_add=stem_add)
+            nc = method(gender=gender, ending=ending, stem_remove=stem_remove, stem_add=stem_add)
         else:
             assert False, f'bad kind {kind}'
+        return nc
 
 
 class NameEnding(BaseModel):
