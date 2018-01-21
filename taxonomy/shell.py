@@ -711,6 +711,16 @@ def parentless_taxa() -> Iterable[Taxon]:
     return (t for t in Taxon.filter(Taxon.parent >> None) if t.id != 1)  # exclude root
 
 
+@generator_command
+def bad_occurrences() -> Iterable[models.Occurrence]:
+    return models.Occurrence.raw('SELECT * FROM occurrence WHERE taxon_id NOT IN (SELECT id FROM taxon)')
+
+
+@generator_command
+def bad_types() -> Iterable[Name]:
+    return Name.raw('SELECT * FROM name WHERE type_id IS NOT NULL AND type_id NOT IN (SELECT id FROM name)')
+
+
 ATTRIBUTES_BY_GROUP = {
     'stem': (Group.genus,),
     'gender': (Group.genus,),
@@ -1005,6 +1015,8 @@ def run_maintenance() -> Dict[Any, Any]:
         bad_parents,
         bad_taxa,
         bad_base_names,
+        bad_occurrences,
+        bad_types,
         correct_type_taxon,
         labeled_authorless_names,
         root_name_mismatch,
