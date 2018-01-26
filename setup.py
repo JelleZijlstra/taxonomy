@@ -20,6 +20,11 @@ setup(
         'PyMySQL',
         'requests',
         'unidecode',
+        'python-levenshtein',
+        'mypy',
+        'flake8',
+        'pylint',
+        'pytest',
     ],
     classifiers=[
         'Development Status :: 2 - Pre-Alpha',

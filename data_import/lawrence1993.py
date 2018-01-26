@@ -80,8 +80,8 @@ def find_name(original_name: str, authority: str) -> Optional[models.Name]:
     matches = [
         name
         for name in models.Name.filter(models.Name.original_name != None, models.Name.authority == authority)
-        if Levenshtein.distance(original_name, name.original_name) < 3
-        or REMOVE_PARENS.sub('', original_name) == REMOVE_PARENS.sub('', name.original_name)
+        if Levenshtein.distance(original_name, name.original_name) < 3 or
+        REMOVE_PARENS.sub('', original_name) == REMOVE_PARENS.sub('', name.original_name)
     ]
     if len(matches) == 1:
         return matches[0]
@@ -503,7 +503,7 @@ def write_to_db(dry_run: bool = True) -> None:
         nam = name['name_obj']
         print(f'--- processing {nam} ---')
         pages = '-'.join(map(str, name['pages']))
-        for attr in ('type_locality',): # ('type_tags', 'collection', 'type_specimen', 'species_type_kind', 'holotype', 'verbatim_citation', 'original_name', 'type_specimen_source'):
+        for attr in ('type_locality',):  # ('type_tags', 'collection', 'type_specimen', 'species_type_kind', 'holotype', 'verbatim_citation', 'original_name', 'type_specimen_source'):
             if attr not in name or name[attr] is None:
                 continue
             current_value = getattr(nam, attr)
@@ -557,7 +557,7 @@ def write_to_db(dry_run: bool = True) -> None:
                 setattr(nam, attr, new_value)
 
         if not dry_run:
-            #nam.add_comment(constants.CommentKind.structured_quote, json.dumps(name['raw_text']), SOURCE, pages)
+            nam.add_comment(constants.CommentKind.structured_quote, json.dumps(name['raw_text']), SOURCE, pages)
             nam.save()
 
     for nam, current, new in name_discrepancies:

@@ -102,7 +102,9 @@ def get_with_completion(options: Iterable[str], message: str = '> ', *, default:
         validator=validator,
     )
 
+
 EnumT = TypeVar('EnumT', bound=enum.Enum)
+
 
 # return type is not Optional; this is not strictly true because the user could pass in
 # allow_empty=True, but it is good enough until we have literal types.

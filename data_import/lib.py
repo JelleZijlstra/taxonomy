@@ -52,6 +52,7 @@ REMOVE_PARENS = re.compile(r' \([A-Z][a-z]+\)')
 
 DataT = Iterable[Dict[str, Any]]
 
+
 class Source(NamedTuple):
     inputfile: str
     source: str
@@ -332,8 +333,8 @@ def find_name(original_name: str, authority: str) -> Optional[models.Name]:
     matches = [
         name
         for name in models.Name.filter(models.Name.original_name != None, models.Name.authority == authority)
-        if Levenshtein.distance(original_name, name.original_name) < 3
-        or REMOVE_PARENS.sub('', original_name) == REMOVE_PARENS.sub('', name.original_name)
+        if Levenshtein.distance(original_name, name.original_name) < 3 or
+        REMOVE_PARENS.sub('', original_name) == REMOVE_PARENS.sub('', name.original_name)
     ]
     if len(matches) == 1:
         return matches[0]
@@ -354,7 +355,7 @@ def find_name(original_name: str, authority: str) -> Optional[models.Name]:
 def build_original_name_map() -> Tuple[Dict[str, List[Tuple[models.Name, models.Taxon]]], Dict[models.Taxon, Set[str]]]:
     root_name_to_names: Dict[str, List[Tuple[models.Name, models.Taxon]]] = defaultdict(list)
     genus_to_orig_genera: Dict[models.Taxon, Set[str]] = defaultdict(set)
-    return root_name_to_names, genus_to_orig_genera
+    # return root_name_to_names, genus_to_orig_genera
     for nam in models.Name.filter(models.Name.group == constants.Group.species):
         try:
             genus = nam.taxon.parent_of_rank(constants.Rank.genus)
@@ -454,11 +455,11 @@ def write_to_db(names: DataT, source: Source, dry_run: bool = True) -> None:
                     print(f'value for {attr} differs: (new) {new_value} vs. (current) {current_value}')
                 if attr == 'type_tags':
                     new_tags = set(new_value) - set(current_value)
-                    existing_types = {type(tag) for tag in current_value}
+                    existing_types = tuple({type(tag) for tag in current_value})
                     tags_of_new_types = {
                         tag for tag in new_tags
                         # Always add LocationDetail tags, because it has a source field and it's OK to have multiple tags
-                        if type(tag) not in existing_types or isinstance(tag, (TypeTag.LocationDetail, TypeTag.SpecimenDetail))
+                        if (not isinstance(tag, existing_types)) or isinstance(tag, (TypeTag.LocationDetail, TypeTag.SpecimenDetail))
                     }
                     print(f'adding tags: {tags_of_new_types}')
                     if not dry_run:
