@@ -811,7 +811,10 @@ def clean_up_type_locality_description(dry_run: bool = True) -> None:
         if dry_run:
             print(nam.type_locality_description)
         else:
-            nam.fill_field('type_tags')
+            if nam.type_locality_description.rstrip('.') in {t.text for t in tags}:
+                print('automatically emptying data')
+            else:
+                nam.fill_field('type_tags')
             nam.type_locality_description = None
             nam.save()
 
@@ -826,11 +829,11 @@ def set_empty_to_none(model: Type[models.BaseModel], field: str, dry_run: bool =
 
 
 @command
-def fill_data_from_paper(paper: Optional[str] = None) -> None:
+def fill_data_from_paper(paper: Optional[str] = None, always_edit_tags: bool = False) -> None:
     if paper is None:
         paper = models.BaseModel.get_value_for_article_field('paper')
     assert paper is not None, 'paper needs to be specified'
-    models.fill_data_from_paper(paper)
+    models.fill_data_from_paper(paper, always_edit_tags=always_edit_tags)
 
 
 @command
@@ -979,7 +982,7 @@ def check_type_tags(dry_run: bool = True) -> Iterable[Tuple[Name, str]]:
             yield nam, 'missing neotype designation reference'
 
 
-@command
+@generator_command
 def move_to_lowest_rank(dry_run: bool = False) -> Iterable[Tuple[Name, str]]:
     for nam in Name.select():
         query = Taxon.filter(Taxon._base_name_id == nam)

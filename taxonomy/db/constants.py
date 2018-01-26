@@ -228,6 +228,7 @@ class PeriodSystem(enum.IntEnum):
     group = 23
     supergroup = 24
     other_stratigraphy = 25
+    elma = 26  # European Land Mammal Age (Cenozoic)
 
     def is_stratigraphy(self) -> bool:
         return self in {
@@ -241,6 +242,7 @@ class PeriodSystem(enum.IntEnum):
     def is_biochronology(self) -> bool:
         return self in {
             PeriodSystem.mn_zone, PeriodSystem.mp_zone, PeriodSystem.nalma, PeriodSystem.salma, PeriodSystem.alma,
+            PeriodSystem.elma,
         }
 
     def is_geochronology(self) -> bool:

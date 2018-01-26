@@ -1030,7 +1030,7 @@ class Taxon(BaseModel):
         return [name for name in result if name is not None and ' ' not in name]
 
 
-def fill_data_from_paper(paper: str) -> None:
+def fill_data_from_paper(paper: str, always_edit_tags: bool = False) -> None:
     opened = False
 
     def sort_key(nam: Name) -> Tuple[str, int]:
@@ -1049,6 +1049,8 @@ def fill_data_from_paper(paper: str) -> None:
                 opened = True
             print(nam, 'described at', nam.page_described)
             nam.fill_required_fields()
+        elif always_edit_tags:
+            nam.fill_field('type_tags')
 
 
 definition.taxon_cls = Taxon
@@ -1879,7 +1881,9 @@ class Name(BaseModel):
         elif field == 'type':
             typ = self.get_value_for_foreign_key_field('type')
             print(f'type: {typ}')
-            if getinput.yes_no('Is this correct? '):
+            if typ is None:
+                return None
+            elif getinput.yes_no('Is this correct? '):
                 return typ
             else:
                 raise EOFError

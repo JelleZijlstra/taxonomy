@@ -165,6 +165,12 @@ def is_nominate_subspecies(ssp: str) -> bool:
     return parts[1] == parts[2]
 
 
+def genus_name_of_name(name: str) -> str:
+    if name.lower().startswith('cf. '):
+        return name.split()[1]
+    return name.split()[0].replace('?', '')
+
+
 def dict_of_name(name: 'Name') -> Dict[str, Any]:
     result = {
         'id': name.id,
