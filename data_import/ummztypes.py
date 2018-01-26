@@ -1,28 +1,24 @@
 import re
-from typing import Iterable, List, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from taxonomy.db import constants, models
 
 from . import lib
 from .lib import DataT
 
-FILE_PATH = lib.DATA_DIR / 'ummztypes-layout.txt'
-SOURCE = 'UMMZ-types.pdf'
-
-
-def get_text() -> Iterable[str]:
-    with FILE_PATH.open() as f:
-        yield from f
+SOURCE = lib.Source('ummztypes-layout.txt', 'UMMZ-types.pdf')
 
 
 def extract_names(pages: Iterable[Tuple[int, List[str]]]) -> DataT:
     """Extracts names from the text, as dictionaries."""
-    current_name = None
-    current_label = None
-    current_lines = []
+    current_name: Optional[Dict[str, Any]] = None
+    current_label: Optional[str] = None
+    current_lines: List[str] = []
 
     def start_label(label: str, line: str) -> None:
         nonlocal current_label, current_lines
+        assert current_name is not None
+        assert current_label is not None
         assert current_label not in current_name, f'duplicate label {current_label} in {current_name}'
         current_name[current_label] = current_lines
         current_label = label
@@ -45,6 +41,7 @@ def extract_names(pages: Iterable[Tuple[int, List[str]]]) -> DataT:
                 if ' ' in first_word:
                     # new name
                     if current_name is not None:
+                        assert current_label is not None
                         current_name[current_label] = current_lines
                         yield current_name
                     current_name = {'pages': [page]}
@@ -52,7 +49,9 @@ def extract_names(pages: Iterable[Tuple[int, List[str]]]) -> DataT:
                     current_lines = [line]
                 else:
                     start_label(first_word, line)
-    current_name[current_label] = current_lines
+    assert current_label is not None
+    assert current_name is not None
+    current_name[current_label] = lines
     yield current_name
 
 
@@ -106,7 +105,7 @@ def translate_to_db(names: DataT) -> DataT:
             name['collection'] = ummz
             name['type_specimen_source'] = SOURCE
             name['species_type_kind'] = constants.SpeciesGroupType.holotype
-        type_tags = []
+        type_tags: List[models.TypeTag] = []
         if 'gender_age' in name:
             type_tags += lib.extract_gender_age(name['gender_age'])
         if 'body_parts' in name:
@@ -137,8 +136,8 @@ def associate_names(names: DataT) -> DataT:
     yield from lib.associate_names(names, {'Murie': 'A. Murie'})
 
 
-def main():
-    lines = get_text()
+def main() -> DataT:
+    lines = lib.get_text(SOURCE)
     pages = lib.extract_pages(lines)
     names = extract_names(pages)
     names = lib.clean_text(names)

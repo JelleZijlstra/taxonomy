@@ -1,11 +1,11 @@
-from collections import Counter, defaultdict
+from collections import defaultdict
 import enum
 import functools
 import json
 import Levenshtein
 from pathlib import Path
 import re
-from typing import Any, Dict, Iterable, List, Mapping, NamedTuple, Optional, Sequence, Set, Tuple, Type
+from typing import Any, Counter, Dict, Iterable, List, Mapping, NamedTuple, Optional, Sequence, Set, Tuple, Type
 import unidecode
 
 from taxonomy.db import constants, helpers, models
@@ -81,6 +81,7 @@ def extract_pages(lines: Iterable[str]) -> Iterable[Tuple[int, List[str]]]:
         else:
             current_lines.append(line)
     # last page
+    assert current_page is not None
     yield current_page, current_lines
 
 
@@ -128,7 +129,7 @@ def translate_to_db(names: DataT, collection_name: str, source: Source) -> DataT
         if 'species_type_kind' in name:
             name['collection'] = ummz
             name['type_specimen_source'] = source.source
-        type_tags = []
+        type_tags: List[models.TypeTag] = []
         if 'gender_age' in name:
             type_tags += extract_gender_age(name['gender_age'])
         if 'body_parts' in name:
@@ -279,10 +280,11 @@ def get_region_from_name(raw_names: Sequence[str]) -> Optional[models.Region]:
 
 
 def extract_region(components: Sequence[Sequence[str]]) -> Optional[models.Location]:
-    region = get_region_from_name(components[0])
-    if region is None:
+    possible_region = get_region_from_name(components[0])
+    if possible_region is None:
         # print(f'could not extract region from {components}')
         return None
+    region = possible_region
     if region.children.count() > 0:
         for name in get_possible_names(components[1]):
             name = NAME_SYNONYMS.get(name, name)
@@ -349,7 +351,7 @@ def find_name(original_name: str, authority: str) -> Optional[models.Name]:
 
 
 @functools.lru_cache()
-def build_original_name_map() -> Tuple[Dict[str, List[models.Taxon]], Dict[models.Taxon, Set[str]]]:
+def build_original_name_map() -> Tuple[Dict[str, List[Tuple[models.Name, models.Taxon]]], Dict[models.Taxon, Set[str]]]:
     root_name_to_names: Dict[str, List[Tuple[models.Name, models.Taxon]]] = defaultdict(list)
     genus_to_orig_genera: Dict[models.Taxon, Set[str]] = defaultdict(set)
     return root_name_to_names, genus_to_orig_genera
@@ -496,6 +498,10 @@ def write_to_db(names: DataT, source: Source, dry_run: bool = True) -> None:
                 setattr(nam, attr, new_value)
 
         if not dry_run:
+            if len(name['pages']) == 1:
+                pages = str(name['pages'][0])
+            else:
+                pages = f'{name["pages"][0]}-{name["pages"][-1]}'
             nam.add_comment(constants.CommentKind.structured_quote, json.dumps(name['raw_text']), source.source, pages)
             nam.save()
 
@@ -513,13 +519,13 @@ def write_to_db(names: DataT, source: Source, dry_run: bool = True) -> None:
 
 
 def print_counts(names: DataT, field: str) -> None:
-    counts = Counter(name[field] for name in names if field in name)
+    counts: Counter[Any] = Counter(name[field] for name in names if field in name)
     for value, count in counts.most_common():
         print(count, value)
 
 
 def print_counts_if_no_tag(names: DataT, field: str, tag_cls: TypeTag) -> None:
-    counts = Counter()
+    counts: Counter[Any] = Counter()
     for name in names:
         if field in name and ('type_tags' not in name or not any(isinstance(tag, tag_cls) for tag in name['type_tags'])):
             counts[name[field]] += 1
@@ -528,7 +534,7 @@ def print_counts_if_no_tag(names: DataT, field: str, tag_cls: TypeTag) -> None:
 
 
 def print_field_counts(names: DataT) -> None:
-    counts = Counter()
+    counts: Counter[str] = Counter()
     for name in names:
         for field, value in name.items():
             counts[field] += 1

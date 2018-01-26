@@ -11,13 +11,15 @@ import enum
 import Levenshtein
 from pathlib import Path
 import re
-from typing import Any, Counter, Dict, List, Iterable, Optional, Tuple, Type
+from typing import Any, Counter, Dict, List, Iterable, Optional, Tuple, Type, Union
 import unidecode
 
 from taxonomy.db import constants, helpers, models
 from taxonomy.db.constants import Organ
 from taxonomy.db.models import TypeTag
 from taxonomy import getinput
+
+from . import lib
 
 # Generally useful functions that should perhaps be generalized to other data imports later.
 DATA_DIR = Path(__file__).parent / 'data'
@@ -59,13 +61,6 @@ NAME_SYNONYMS = {
 DataT = Iterable[Dict[str, Any]]
 
 
-def genus_of_name(name: models.Name) -> Optional[models.Taxon]:
-    try:
-        return name.taxon.parent_of_rank(constants.Rank.genus)
-    except ValueError:
-        return None
-
-
 def find_name(original_name: str, authority: str) -> Optional[models.Name]:
     try:
         return models.Name.get(models.Name.original_name == original_name, models.Name.authority == authority)
@@ -78,7 +73,7 @@ def find_name(original_name: str, authority: str) -> Optional[models.Name]:
             possible_genus_names.append(match.group(1))
         for genus in possible_genus_names:
             names = models.Name.filter(models.Name.root_name == root_name, models.Name.authority == authority)
-            names = [name for name in names if genus_of_name(name).valid_name == genus]
+            names = [name for name in names if lib.genus_name_of_name(name) == genus]
             if len(names) == 1:
                 return names[0]
     # fuzzy match
@@ -146,7 +141,7 @@ def name_variants(original_name: str, authority: str) -> Iterable[Tuple[str, str
             yield original_name.replace(used, correct), authority
 
 
-def extract_altitude(text: str) -> Optional[Tuple[str, str]]:
+def extract_altitude(text: str) -> Optional[Tuple[str, constants.AltitudeUnit]]:
     # Try feet first because feet are often given with a conversion into meters, and we
     # want the original measurement.
     match = re.search(r'(\d+(-\d+)?) ft', text)
@@ -174,20 +169,20 @@ def extract_geographical_components(text: str) -> List[Tuple[str, ...]]:
     text = re.sub(r'([A-Z])\(([a-z]+)\)', r'\1\2', text)
     parts = re.split(r'[():,;\.]+', text)
     parts = list(filter(None, (part.strip() for part in parts)))
-    out = []
+    out: List[Union[str, Tuple[Any, str]]] = []
     for part in parts:
         if part.startswith('=') and out:
             out[-1] = (out[-1], part[1:].strip())
         else:
             out.append(part)
-    return [(p,) if isinstance(p, str) else p for p in out]
+    return [(p,) if isinstance(p, str) else p for p in out]  # type: ignore
 
 
 test_case = 'Congo (= Zaire): (Haut Zaire); Niapu. November 24, 1913.'
 assert extract_geographical_components(test_case) == [('Congo', 'Zaire'), ('Haut Zaire',), ('Niapu',), ('November 24',), ('1913',)], extract_geographical_components(test_case)
 
 
-def get_possible_names(names):
+def get_possible_names(names: Iterable[str]) -> Iterable[str]:
     for name in names:
         yield name
         yield NAME_SYNONYMS.get(name, name)
@@ -204,8 +199,8 @@ def get_possible_names(names):
             yield without_diacritics
 
 
-def get_region_from_name(raw_name: str) -> Optional[models.Region]:
-    for name in get_possible_names(raw_name):
+def get_region_from_name(raw_names: Iterable[str]) -> Optional[models.Region]:
+    for name in get_possible_names(raw_names):
         name = NAME_SYNONYMS.get(name, name)
         try:
             return models.Region.get(models.Region.name == name)
@@ -216,10 +211,11 @@ def get_region_from_name(raw_name: str) -> Optional[models.Region]:
 
 def extract_region(text: str) -> Optional[models.Location]:
     components = extract_geographical_components(text)
-    region = get_region_from_name(components[0])
-    if region is None:
+    possible_region = get_region_from_name(components[0])
+    if possible_region is None:
         # print(f'could not extract region from {components}')
         return None
+    region = possible_region
     if region.children.count() > 0:
         for name in get_possible_names(components[1]):
             name = NAME_SYNONYMS.get(name, name)
@@ -256,9 +252,9 @@ def enum_has_member(enum_cls: Type[enum.Enum], member: str) -> bool:
         return True
 
 
-def extract_type_specimen(text: str) -> str:
+def extract_type_specimen(text: str) -> Dict[str, Any]:
     sentences = text.split('.')
-    out = {}
+    out: Dict[str, Any] = {}
     out['type_specimen'] = f'AMNH {sentences[0]}'
     organs = sentences[1].strip().lower()
     if organs in ('skin and skull', 'skin and cranium'):
@@ -348,6 +344,7 @@ def extract_pages() -> Iterable[Tuple[int, List[str]]]:
             else:
                 current_lines.append(line)
         # last page
+        assert current_page is not None
         yield current_page, current_lines
 
 
@@ -372,12 +369,14 @@ def align_columns() -> Iterable[Tuple[int, List[str]]]:
 
 def extract_names() -> Iterable[Dict[str, Any]]:
     """Extracts names from the text, as dictionaries."""
-    current_name = None
-    current_label = None
-    current_lines = []
+    current_name: Optional[Dict[str, Any]] = None
+    current_label: Optional[str] = None
+    current_lines: List[str] = []
 
     def start_label(label: str, line: str) -> None:
         nonlocal current_label, current_lines
+        assert current_name is not None
+        assert current_label is not None
         assert current_label not in current_name, f'duplicate label {current_label} in {current_name}'
         current_name[current_label] = current_lines
         current_label = label
@@ -412,6 +411,8 @@ def extract_names() -> Iterable[Dict[str, Any]]:
                     current_lines.append(line)
             elif current_label == 'verbatim_citation':
                 start_label('synonymy', line)
+    assert current_name is not None
+    assert current_label is not None
     current_name[current_label] = lines
     yield current_name
 

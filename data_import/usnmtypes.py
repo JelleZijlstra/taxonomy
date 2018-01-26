@@ -1,6 +1,6 @@
 import re
 import sys
-from typing import Iterable, List, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from taxonomy.db import constants, models
 
@@ -11,16 +11,18 @@ from .lib import DataT
 def extract_names(pages: Iterable[Tuple[int, List[str]]]) -> DataT:
     """Extracts names from the text, as dictionaries."""
     found_first = False
-    current_name = None
-    current_label = None
-    current_lines = []
+    current_name: Optional[Dict[str, Any]] = None
+    current_label: Optional[str] = None
+    current_lines: List[str] = []
     in_headings = True
 
     def start_label(label: str, line: str) -> None:
         nonlocal current_label, current_lines
+        assert current_name is not None
+        assert current_label is not None
         if label in current_name:
             if label == 'Syntype':
-                label = ('Syntype', line)
+                label = f'Syntype {line}'
             assert label not in current_name, f'duplicate label {label} in {current_name}'
         current_name[current_label] = current_lines
         current_label = label
@@ -59,6 +61,7 @@ def extract_names(pages: Iterable[Tuple[int, List[str]]]) -> DataT:
             elif current_label not in ('name', 'verbatim_citation', 'comments') and ':' not in line:
                 # new name
                 if current_name is not None:
+                    assert current_label is not None
                     current_name[current_label] = current_lines
                     assert 'Type Locality' in current_name or 'Holotype' in current_name, current_name
                     yield current_name
@@ -75,6 +78,8 @@ def extract_names(pages: Iterable[Tuple[int, List[str]]]) -> DataT:
                 start_label('synonymy', line)
             else:
                 assert False, line
+    assert current_label is not None
+    assert current_name is not None
     current_name[current_label] = lines
     yield current_name
 
@@ -132,7 +137,7 @@ def translate_type_localities(names: DataT) -> DataT:
         yield name
 
 
-def main():
+def main() -> DataT:
     if len(sys.argv) > 1 and sys.argv[1] == 'ahm':
         source = lib.Source('usnmtypesahm-layout.txt', 'Anomaluromorpha, Hystricomorpha, Myomorpha-USNM types.pdf')
     else:

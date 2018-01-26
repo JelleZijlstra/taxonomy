@@ -1,7 +1,6 @@
-from collections import Counter
 import json
 import re
-from typing import Any, Dict, Iterable, List, Tuple
+from typing import Any, Counter, Dict, Iterable, List, Optional, Tuple
 
 from taxonomy.db import constants, helpers, models
 from taxonomy import getinput
@@ -37,12 +36,13 @@ def extract_pages(lines: Iterable[str]) -> Iterable[Tuple[int, List[str]]]:
         else:
             current_lines.append(line)
     # last page
+    assert current_page is not None
     yield current_page, current_lines
 
 
 def extract_names(pages: Iterable[Tuple[int, List[str]]]) -> Iterable[Dict[str, Any]]:
-    current_name = None
-    current_lines = []
+    current_name: Optional[Dict[str, Any]] = None
+    current_lines: List[str] = []
 
     for page, lines in pages:
         if current_name is not None:
@@ -64,6 +64,7 @@ def extract_names(pages: Iterable[Tuple[int, List[str]]]) -> Iterable[Dict[str, 
                 current_name = {'pages': [page]}
                 current_lines = [line]
 
+    assert current_name is not None
     current_name['lines'] = current_lines
     yield current_name
 
@@ -241,7 +242,7 @@ def write_to_db(names: DataT, dry_run: bool = True) -> None:
         print(f'{attr}: {value}')
 
 
-def main():
+def main() -> None:
     lines = get_text()
     pages = extract_pages(lines)
     names = extract_names(pages)
