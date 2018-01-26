@@ -1,8 +1,10 @@
-import peewee
 from typing import Any, Iterable, List, Optional, Tuple
 
+import peewee
+
 from taxonomy.db.constants import Age, Rank
-from taxonomy.db.models import Collection, Location, Name, Occurrence, Period, Taxon
+from taxonomy.db.models import (Collection, Location, Name, Occurrence, Period,
+                                Taxon)
 
 
 def occ(t: Taxon, loc: Location, source: Optional[str] = None, replace_source: bool = False, **kwargs: Any) -> Occurrence:

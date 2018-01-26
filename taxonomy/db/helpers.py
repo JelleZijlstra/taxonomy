@@ -1,9 +1,10 @@
 '''Helper functions'''
 
-from operator import itemgetter
-import re
 import json
-from typing import Any, Dict, Mapping, Iterable, Optional, TypeVar, TYPE_CHECKING
+import re
+from operator import itemgetter
+from typing import (TYPE_CHECKING, Any, Dict, Iterable, Mapping, Optional,
+                    TypeVar)
 
 from . import constants
 from .constants import Group, Rank

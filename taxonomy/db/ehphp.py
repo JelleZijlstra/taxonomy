@@ -1,8 +1,9 @@
 '''Interfacing with the EHPHP server'''
 
-import requests
 import json
 from typing import Any
+
+import requests
 
 PORT = 3001
 URL = "http://localhost:" + str(PORT) + "/api"

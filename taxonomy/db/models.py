@@ -7,25 +7,19 @@ import re
 import sys
 import time
 import traceback
-from typing import Any, Callable, Container, Dict, Generic, IO, Iterable, List, Optional, Set, Tuple, Type, TypeVar, Union
+from typing import (IO, Any, Callable, Container, Dict, Generic, Iterable,
+                    List, Optional, Set, Tuple, Type, TypeVar, Union)
 
-from peewee import (
-    MySQLDatabase, Model, IntegerField, CharField, ForeignKeyField, TextField, BooleanField,
-    SqliteDatabase
-)
 import peewee
+from peewee import (BooleanField, CharField, ForeignKeyField, IntegerField,
+                    Model, MySQLDatabase, SqliteDatabase, TextField)
 
-from .. import adt
-from .. import events
-from .. import getinput
-
-from . import constants
-from .constants import GenderArticle, Group, NomenclatureStatus, OccurrenceStatus, Rank, SourceLanguage, SpeciesNameKind, Status
-from . import definition
+from . import constants, definition, ehphp, helpers, settings
+from .. import adt, events, getinput
+from .constants import (GenderArticle, Group, NomenclatureStatus,
+                        OccurrenceStatus, Rank, SourceLanguage,
+                        SpeciesNameKind, Status)
 from .definition import Definition
-from . import ehphp
-from . import helpers
-from . import settings
 
 if settings.use_sqlite:
     database = SqliteDatabase(settings.database_file)
@@ -2489,4 +2483,3 @@ class TypeTag(adt.ADT):
     NeotypeDesignation(source=str, neotype=str, valid=bool, comment=str, tag=16)  # type: ignore
     SpecimenDetail(text=str, source=str, tag=17)  # type: ignore  # more information on the specimen
     LocationDetail(text=str, source=str, tag=18)  # type: ignore  # phrasing of the type locality in a particular source
-

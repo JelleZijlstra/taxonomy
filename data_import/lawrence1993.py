@@ -8,16 +8,18 @@ the paper.
 
 """
 import enum
-import Levenshtein
-from pathlib import Path
 import re
-from typing import Any, Counter, Dict, List, Iterable, Optional, Tuple, Type, Union
+from pathlib import Path
+from typing import (Any, Counter, Dict, Iterable, List, Optional, Tuple, Type,
+                    Union)
+
+import Levenshtein
 import unidecode
 
+from taxonomy import getinput
 from taxonomy.db import constants, helpers, models
 from taxonomy.db.constants import Organ
 from taxonomy.db.models import TypeTag
-from taxonomy import getinput
 
 from . import lib
 

@@ -7,8 +7,7 @@ Module for high-level analysis of the database.
 import collections
 from typing import Dict, Iterable, Optional, Sequence
 
-from . import constants
-from . import models
+from . import constants, models
 
 
 class _SuffixTree(object):

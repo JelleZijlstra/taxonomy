@@ -1,13 +1,14 @@
 import cmd
 import enum
 import functools
-import prompt_toolkit
 import re
 import subprocess
-from typing import overload, Any, Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple, Type, TypeVar
+from typing import (Any, Callable, Dict, Iterable, List, Mapping, Optional,
+                    Sequence, Tuple, Type, TypeVar, overload)
+
+import prompt_toolkit
 
 from . import adt
-
 
 RED = 31
 GREEN = 32

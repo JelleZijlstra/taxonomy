@@ -1,6 +1,6 @@
 """Events used to broadcast updates in the database."""
 
-from typing import Callable, Generic, List, TypeVar, TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable, Generic, List, TypeVar
 
 T = TypeVar('T')
 

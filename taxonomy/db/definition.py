@@ -6,9 +6,9 @@ Generally follows Article 9 of the PhyloCode: http://www.ohio.edu/phylocode/art9
 
 """
 
-import json
 import enum
-from typing import Any, Iterable, List, Union, TYPE_CHECKING
+import json
+from typing import TYPE_CHECKING, Any, Iterable, List, Union
 
 if TYPE_CHECKING:
     from .models import Taxon

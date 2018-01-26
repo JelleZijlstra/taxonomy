@@ -2,8 +2,8 @@ import json
 import re
 from typing import Any, Counter, Dict, Iterable, List, Optional, Tuple
 
-from taxonomy.db import constants, helpers, models
 from taxonomy import getinput
+from taxonomy.db import constants, helpers, models
 
 from . import lawrence1993
 from .lawrence1993 import DataT

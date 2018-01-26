@@ -2,7 +2,8 @@ import builtins
 import collections.abc
 import enum
 import sys
-from typing import Any, Dict, Iterable, Iterator, List, MutableMapping, Type, TypeVar, TYPE_CHECKING
+from typing import (TYPE_CHECKING, Any, Dict, Iterable, Iterator, List,
+                    MutableMapping, Type, TypeVar)
 
 BASIC_TYPES = (int, str, float, bool, list)
 

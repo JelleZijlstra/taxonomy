@@ -1,16 +1,18 @@
-from collections import defaultdict
 import enum
 import functools
 import json
-import Levenshtein
-from pathlib import Path
 import re
-from typing import Any, Counter, Dict, Iterable, List, Mapping, NamedTuple, Optional, Sequence, Set, Tuple, Type
+from collections import defaultdict
+from pathlib import Path
+from typing import (Any, Counter, Dict, Iterable, List, Mapping, NamedTuple,
+                    Optional, Sequence, Set, Tuple, Type)
+
+import Levenshtein
 import unidecode
 
+from taxonomy import getinput
 from taxonomy.db import constants, helpers, models
 from taxonomy.db.models import TypeTag
-from taxonomy import getinput
 
 DATA_DIR = Path(__file__).parent / 'data'
 NAME_SYNONYMS = {

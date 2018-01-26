@@ -3,7 +3,6 @@ import unittest
 
 from .adt import ADT
 
-
 LEAF = 1
 NODE = 2
 TAG = 3

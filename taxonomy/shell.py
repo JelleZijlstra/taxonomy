@@ -1,19 +1,21 @@
-from .db import constants, definition, detection, ehphp, helpers, models
-from .db.constants import Age, Group, NomenclatureStatus, Rank
-from .db.models import Name, Taxon, Tag, TypeTag, database
-from . import events
-from . import getinput
-
 import collections
 import datetime
 import functools
-import IPython
 import os.path
 import re
+from typing import (Any, Callable, Counter, Dict, Generic, Iterable, Iterator,
+                    List, Mapping, NamedTuple, Optional, Sequence, Set, Tuple,
+                    Type, TypeVar, cast)
+
+import IPython
 import requests
-from typing import cast, Any, Callable, Counter, Dict, Generic, Iterable, Iterator, List, Mapping, NamedTuple, Optional, Sequence, Set, Tuple, Type, TypeVar
-from traitlets.config.loader import Config
 import unidecode
+from traitlets.config.loader import Config
+
+from . import events, getinput
+from .db import constants, definition, detection, ehphp, helpers, models
+from .db.constants import Age, Group, NomenclatureStatus, Rank
+from .db.models import Name, Tag, Taxon, TypeTag, database
 
 T = TypeVar('T')
 
