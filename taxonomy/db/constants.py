@@ -141,13 +141,14 @@ class NomenclatureStatus(enum.IntEnum):
              cls.not_used_as_valid, cls.not_used_as_genus_plural, cls.not_published_with_a_generic_name,
              cls.multiple_words, cls.no_type_specified, cls.anonymous_authorship,
              cls.conditional, cls.variety_or_form, cls.not_explicitly_new,
-             cls.ites_name, cls.based_on_homonym, cls.based_on_a_suppressed_name],
+             cls.ites_name, cls.based_on_homonym, cls.based_on_a_suppressed_name,
+             cls.type_not_treated_as_valid],
             # Spelling issues that produce unavailable names.
-            [cls.incorrect_subsequent_spelling],
+            [cls.incorrect_subsequent_spelling, cls.incorrect_original_spelling],
             [cls.nomen_nudum],
             [cls.preoccupied],
             # From here on, names are available.
-            [cls.unjustified_emendation, cls.justified_emendation, cls.mandatory_change, cls.art_13_nomen_oblitum],
+            [cls.unjustified_emendation, cls.justified_emendation, cls.mandatory_change, cls.art_13_nomen_oblitum, cls.reranking],
             # Should be replaced with ISS or UE if possible.
             [cls.variant],
             [cls.hybrid_name],
