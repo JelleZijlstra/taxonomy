@@ -10,7 +10,7 @@ from . import constants
 from .constants import Group, Rank
 
 if TYPE_CHECKING:
-    from .models import Name, Taxon
+    from .models import Name, Taxon  # noqa
 
 SPECIES_RANKS = [Rank.subspecies, Rank.species, Rank.species_group]
 GENUS_RANKS = [Rank.subgenus, Rank.genus]
@@ -124,7 +124,7 @@ def root_name_of_name(s: str, rank: Rank) -> str:
         return s
 
 
-def strip_rank(name: str, rank: Rank, quiet: bool=False) -> str:
+def strip_rank(name: str, rank: Rank, quiet: bool = False) -> str:
     def strip_of_suffix(name: str, suffix: str) -> Optional[str]:
         if re.search(suffix + "$", name):
             return re.sub(suffix + "$", "", name)
@@ -211,7 +211,7 @@ def dict_of_taxon(taxon: 'Taxon') -> Dict[str, Any]:
     }
 
 
-def tree_of_taxon(taxon: 'Taxon', include_root: bool=False) -> Dict[str, Any]:
+def tree_of_taxon(taxon: 'Taxon', include_root: bool = False) -> Dict[str, Any]:
     result = dict_of_taxon(taxon)
     if include_root or not taxon.is_page_root:
         for name in taxon.names:

@@ -504,7 +504,7 @@ def _duplicate_finder(fn: Callable[..., Iterable[Mapping[Any, Sequence[T]]]]) ->
 
 @_duplicate_finder
 def dup_taxa() -> List[Dict[str, List[Taxon]]]:
-    taxa = collections.defaultdict(list)  # type: Dict[str, List[Taxon]]
+    taxa: Dict[str, List[Taxon]] = collections.defaultdict(list)
     for txn in Taxon.select():
         if txn.rank == Rank.subgenus and len(taxa[txn.valid_name]) > 0:
             continue
@@ -648,7 +648,7 @@ def correct_type_taxon(max_count: Optional[int] = None, dry_run: bool = True, on
 @command
 def print_percentages() -> None:
     attributes = ['original_name', 'original_citation', 'page_described', 'authority', 'year']
-    parent_of_taxon = {}  # type: Dict[int, int]
+    parent_of_taxon: Dict[int, int] = {}
 
     def _find_parent(taxon: Taxon) -> int:
         if taxon.id in parent_of_taxon:
@@ -668,7 +668,7 @@ def print_percentages() -> None:
 
     print('Finished collecting parents for taxa')
 
-    counts_of_parent = collections.defaultdict(lambda: collections.defaultdict(int))  # type: Dict[int, Dict[str, int]]
+    counts_of_parent: Dict[int, Dict[str, int]] = collections.defaultdict(lambda: collections.defaultdict(int))
     for name in Name.select():
         parent_id = parent_of_taxon[name.taxon.id]
         counts_of_parent[parent_id]['total'] += 1

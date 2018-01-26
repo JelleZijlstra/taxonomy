@@ -2,7 +2,7 @@ import re
 import sys
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-from taxonomy.db import constants, models
+from taxonomy.db import constants
 
 from . import lib
 from .lib import DataT

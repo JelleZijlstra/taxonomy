@@ -35,7 +35,7 @@ def _rep(pattern: str, replacement: str) -> Callable[[str], str]:
     return lambda name: re.sub(r'%s$' % pattern, replacement, name)
 
 
-_endings = [
+_endings: List[Tuple[str, Union[str, Callable[[str], str]], Gender, bool]] = [
     ('arctos', 'os', Gender.masculine, True),
     ('apis', 'is', Gender.masculine, True),
     ('apus', _rep('us', 'od'), Gender.masculine, True),
@@ -275,7 +275,7 @@ _endings = [
     ('izon', lambda n: n + 't', Gender.neuter, True),
     ('yum', 'um', Gender.neuter, True),
     ('nion', 'on', Gender.neuter, True),
-]  # type: List[Tuple[str, Union[str, Callable[[str], str]], Gender, bool]]
+]
 
 # To discuss:
 # -eles names: Proteles, Perameles feminine, Ateles, Brachyteles, Meles masculine

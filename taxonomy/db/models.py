@@ -445,7 +445,7 @@ class Taxon(BaseModel):
         return helpers.group_of_rank(self.rank)
 
     def sorted_names(self, exclude_valid: bool = False) -> List['Name']:
-        names = self.names  # type: Iterable[Name]
+        names: Iterable[Name] = self.names
         if exclude_valid:
             names = filter(lambda name: name.status != Status.valid, names)
         return sorted(names, key=operator.attrgetter('status', 'root_name'))
@@ -938,18 +938,16 @@ class Taxon(BaseModel):
         self.delete_instance()
 
     def all_names(self) -> Set['Name']:
-        names = set(self.names)  # type: Set[Name]
+        names: Set['Name'] = set(self.names)
         for child in self.children:
             names |= child.all_names()
         return names
 
     def stats(self) -> Dict[str, float]:
-        attributes = ['original_name', 'original_citation', 'page_described', 'authority', 'year']
         names = self.all_names()
         counts: Dict[str, int] = collections.defaultdict(int)
         required_counts: Dict[str, int] = collections.defaultdict(int)
         counts_by_group: Dict[str, int] = collections.defaultdict(int)
-        family_types = genus_types = genus_stems = genus_name_complex = species_name_complex = 0
         for name in names:
             counts_by_group[name.group] += 1
             for field in name.get_required_fields():
@@ -958,8 +956,8 @@ class Taxon(BaseModel):
                     counts[field] += 1
 
         total = len(names)
-        output = {'total': total}  # type: Dict[str, float]
-        by_group = ', '.join(f'{v.name}: {counts_by_group[v]}' for v in reversed(Group))  # type: ignore
+        output: Dict[str, float] = {'total': total}
+        by_group = ', '.join(f'{v.name}: {counts_by_group[v]}' for v in reversed(Group))  # type: ignore  # noqa
         print(f'Total names: {total} ({by_group})')
 
         def print_percentage(num: int, total: int, label: str) -> float:
@@ -1011,10 +1009,10 @@ class Taxon(BaseModel):
         candidates = [name for name in self.sorted_names() if name.root_name == attr or name.original_name == attr]
         if len(candidates) == 1:
             return candidates[0]
-        elif len(candidates) == 0:
+        elif not candidates:
             raise AttributeError(attr)
         else:
-            raise Name.DoesNotExist("Candidates: {}".format(candidates))
+            raise Name.DoesNotExist(f'Candidates: {candidates}')
 
     def __dir__(self) -> List[str]:
         result = set(super().__dir__())
@@ -1912,7 +1910,7 @@ class Name(BaseModel):
 
     def add_data(self, field: str, value: Any) -> None:
         if self.data is None or self.data == '':
-            data = {}  # type: Dict[str, Any]
+            data: Dict[str, Any] = {}
         else:
             data = json.loads(self.data)
         if field in data:

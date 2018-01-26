@@ -1,10 +1,9 @@
-import cmd
 import enum
 import functools
 import re
 import subprocess
 from typing import (Any, Callable, Dict, Iterable, List, Mapping, Optional,
-                    Sequence, Tuple, Type, TypeVar, overload)
+                    Tuple, Type, TypeVar, overload)
 
 import prompt_toolkit
 
@@ -110,9 +109,9 @@ EnumT = TypeVar('EnumT', bound=enum.Enum)
 # return type is not Optional; this is not strictly true because the user could pass in
 # allow_empty=True, but it is good enough until we have literal types.
 @overload
-def get_enum_member(enum_cls: Type[EnumT], prompt: str = '> ', *, default: Optional[EnumT] = None, allow_empty: bool = True) -> EnumT: ...
+def get_enum_member(enum_cls: Type[EnumT], prompt: str = '> ', *, default: Optional[EnumT] = None, allow_empty: bool = True) -> EnumT: ...  # noqa
 @overload
-def get_enum_member(enum_cls: Type[EnumT], prompt: str = '> ', *, default: Optional[EnumT] = None) -> Optional[EnumT]: ...
+def get_enum_member(enum_cls: Type[EnumT], prompt: str = '> ', *, default: Optional[EnumT] = None) -> Optional[EnumT]: ...  # noqa
 
 def get_enum_member(enum_cls: Type[EnumT], prompt: str = '> ', *, default: Optional[EnumT] = None,
                     allow_empty: bool = True) -> Optional[EnumT]:

@@ -11,12 +11,12 @@ import json
 from typing import TYPE_CHECKING, Any, Iterable, List, Union
 
 if TYPE_CHECKING:
-    from .models import Taxon
+    from .models import Taxon  # noqa
 
 _Taxon = Union[int, 'Taxon']
 
 # to work around circular imports
-taxon_cls = None  # type: Any
+taxon_cls: Any = None
 
 
 class DefinitionType(enum.Enum):
@@ -29,7 +29,7 @@ class DefinitionType(enum.Enum):
 class Definition:
     def __init__(self, typ: DefinitionType, arguments: Iterable[Union[str, _Taxon]]) -> None:
         self.type = typ
-        self.arguments = list(arguments)  # type: List[Any]
+        self.arguments: List[Any] = list(arguments)
 
     def serialize(self) -> str:
         arguments = [

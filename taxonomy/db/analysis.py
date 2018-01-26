@@ -12,14 +12,14 @@ from . import constants, models
 
 class _SuffixTree(object):
     def __init__(self, names: Iterable[str] = ()) -> None:
-        self.dictionary = collections.defaultdict(_SuffixTree)  # type: Dict[str, _SuffixTree]
+        self.dictionary: Dict[str, _SuffixTree] = collections.defaultdict(_SuffixTree)
         self.count = 0
         for name in names:
             self._add(list(reversed(name)))
 
     def _add(self, name: Sequence[str]) -> None:
         self.count += 1
-        if len(name) == 0:
+        if not name:
             return
         last, rest = name[0], name[1:]
         self.dictionary[last]._add(rest)
