@@ -310,7 +310,7 @@ class SpeciesNameKind(enum.IntEnum):
 
     # Article 31.1.2 patronyms
     patronym_masculine = 7  # -i patronym
-    patronym_feminine = 8 # -ae patronym
+    patronym_feminine = 8  # -ae patronym
     patronym_masculine_plural = 9  # -orum patronym
     patronym_feminine_plural = 10  # -arum patronym
     patronym_latin = 11  # patronym formed from a Latin name (Art. 31.1.1)

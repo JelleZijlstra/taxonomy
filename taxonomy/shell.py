@@ -575,6 +575,7 @@ def authorless_names(root_taxon: Taxon, attribute: str = 'authority',
     for child in root_taxon.children:
         yield from authorless_names(child, attribute=attribute, predicate=predicate)
 
+
 yearless_names = functools.partial(authorless_names, attribute='year')
 
 
@@ -600,8 +601,8 @@ def label_name(name: Name) -> LabeledName:
         family = name.taxon.parent_of_rank(Rank.family)
     except ValueError:
         family = None
-    is_mammal = name.taxon.is_child_of(taxon('Mammalia'))
-    is_doubtful = name.taxon.is_child_of(taxon('Doubtful'))
+    is_mammal = name.taxon.is_child_of(taxon_of_name('Mammalia'))
+    is_doubtful = name.taxon.is_child_of(taxon_of_name('Doubtful'))
     return LabeledName(name, order, family, is_mammal, is_doubtful)
 
 

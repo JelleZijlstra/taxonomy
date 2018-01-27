@@ -109,11 +109,11 @@ EnumT = TypeVar('EnumT', bound=enum.Enum)
 # return type is not Optional; this is not strictly true because the user could pass in
 # allow_empty=True, but it is good enough until we have literal types.
 @overload
-def get_enum_member(enum_cls: Type[EnumT], prompt: str = '> ', *, default: Optional[EnumT] = None, allow_empty: bool = True) -> EnumT: ...  # pylint: disable=all
-@overload
-def get_enum_member(enum_cls: Type[EnumT], prompt: str = '> ', *, default: Optional[EnumT] = None) -> Optional[EnumT]: ...  # pylint: disable=all
+def get_enum_member(enum_cls: Type[EnumT], prompt: str = '> ', *, default: Optional[EnumT] = None, allow_empty: bool = True) -> EnumT: ...  # noqa  # pylint: disable=all
+@overload  # noqa
+def get_enum_member(enum_cls: Type[EnumT], prompt: str = '> ', *, default: Optional[EnumT] = None) -> Optional[EnumT]: ...  # noqa  # pylint: disable=all
 
-def get_enum_member(enum_cls: Type[EnumT], prompt: str = '> ', *, default: Optional[EnumT] = None,  # pylint: disable=function-redefined
+def get_enum_member(enum_cls: Type[EnumT], prompt: str = '> ', *, default: Optional[EnumT] = None,  # noqa  # pylint: disable=function-redefined
                     allow_empty: bool = True) -> Optional[EnumT]:
     if default is None:
         default_str = ''

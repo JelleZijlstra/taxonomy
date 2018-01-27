@@ -64,6 +64,8 @@ def _descriptor_set(self: peewee.FieldDescriptor, instance: Model, value: Any) -
     if getattr(instance, '_is_prepared', False):
         print(f'saving {instance} to set {self.att_name} to {value}')
         instance.save()
+
+
 peewee.FieldDescriptor.__set__ = _descriptor_set
 
 
@@ -210,7 +212,7 @@ class BaseModel(Model):
             default = current_value
             if default is None and field in self.field_defaults:
                 default = self.field_defaults[field]
-            return getinput.get_enum_member(field_obj.enum, prompt=prompt, default=default)
+            return getinput.get_enum_member(field_obj.enum_cls, prompt=prompt, default=default)
         elif isinstance(field_obj, IntegerField):
             default = '' if current_value is None else current_value
             result = getinput.get_line(prompt, default=default, mouse_support=True)
@@ -1195,6 +1197,12 @@ class Region(BaseModel):
     def get_location(self) -> 'Location':
         """Returns the corresponding Recent Location."""
         return Location.get(region=self, name=self.name)
+
+    def all_parents(self) -> Iterable['Region']:
+        """Returns all parent regions of this region."""
+        if self.parent is not None:
+            yield self.parent
+            yield from self.parent.all_parents()
 
 
 class Location(BaseModel):
