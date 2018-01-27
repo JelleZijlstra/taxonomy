@@ -10,7 +10,7 @@ from . import constants
 from .constants import Group, Rank
 
 if TYPE_CHECKING:
-    from .models import Name, Taxon  # noqa
+    from .models import Name, Taxon  # pylint: disable=unused-import
 
 SPECIES_RANKS = [Rank.subspecies, Rank.species, Rank.species_group]
 GENUS_RANKS = [Rank.subgenus, Rank.genus]
@@ -131,17 +131,16 @@ def strip_rank(name: str, rank: Rank, quiet: bool = False) -> str:
         else:
             return None
 
-    suffix = suffix_of_rank(rank)
+    expected_suffix = suffix_of_rank(rank)
     try:
-        res = strip_of_suffix(name, suffix)
+        res = strip_of_suffix(name, expected_suffix)
     except KeyError:
         res = None
     if res is None:
         if not quiet:
-            print("Warning: Cannot find suffix -" + suffix + " on name " + name)
-        # Loop over other possibilities
-        for rank in SUFFIXES:
-            res = strip_of_suffix(name, SUFFIXES[rank])
+            print(f'Warning: Cannot find suffix -{expected_suffix} on name {name}')
+        for suffix in SUFFIXES.values():
+            res = strip_of_suffix(name, suffix)
             if res is not None:
                 return res
         return name

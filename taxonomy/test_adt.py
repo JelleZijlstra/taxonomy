@@ -1,5 +1,4 @@
 import enum
-import unittest
 
 from .adt import ADT
 
@@ -29,13 +28,13 @@ class Tree(ADT):
             assert False, f'incorrect node {self}'
 
 
-class TestADT(unittest.TestCase):
-    def test_repr(self) -> None:
-        assert repr(Tree.Leaf) == 'Leaf'
-        assert repr(Tree.Node(Tree.Leaf, Tree.Leaf)) == 'Node(Leaf, Leaf)'
-        assert repr(Tree.Tag(SomeEnum.foo)) == 'Tag(SomeEnum(1))'
+def test_repr() -> None:
+    assert repr(Tree.Leaf) == 'Leaf'
+    assert repr(Tree.Node(Tree.Leaf, Tree.Leaf)) == 'Node(Leaf, Leaf)'
+    assert repr(Tree.Tag(SomeEnum.foo)) == 'Tag(SomeEnum(1))'
 
-    def test_serialize(self) -> None:
-        assert Tree.unserialize(Tree.Leaf.serialize()) is Tree.Leaf
-        assert Tree.unserialize(Tree.Node(Tree.Leaf, Tree.Leaf).serialize()) == Tree.Node(Tree.Leaf, Tree.Leaf)
-        assert Tree.unserialize(Tree.Tag(SomeEnum.foo).serialize()) == Tree.Tag(SomeEnum.foo)
+
+def test_serialize() -> None:
+    assert Tree.unserialize(Tree.Leaf.serialize()) is Tree.Leaf
+    assert Tree.unserialize(Tree.Node(Tree.Leaf, Tree.Leaf).serialize()) == Tree.Node(Tree.Leaf, Tree.Leaf)
+    assert Tree.unserialize(Tree.Tag(SomeEnum.foo).serialize()) == Tree.Tag(SomeEnum.foo)

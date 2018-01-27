@@ -8,6 +8,7 @@ the paper.
 
 """
 import enum
+import json
 import re
 from pathlib import Path
 from typing import (Any, Counter, Dict, Iterable, List, Optional, Tuple, Type,
@@ -30,35 +31,6 @@ DMY = re.compile(f'\\d+\\s+({"|".join(MONTHS)}),?\\s+\\d{{4}}')  # 10 January 20
 MDY = re.compile(f'({"|".join(MONTHS)})\\s+\\d+,\\s+\\d{{4}}')  # January 10, 2018
 MY = re.compile(f'({"|".join(MONTHS)})\\s+\\d{{4}}')  # January 2018
 REMOVE_PARENS = re.compile(r' \([A-Z][a-z]+\)')
-NAME_SYNONYMS = {
-    "Costa 'Rica": 'Costa Rica',
-    'Bahama Islands': 'Bahamas',
-    'British Guiana': 'Guyana',
-    'Burma': 'Myanmar',
-    'Cape York': 'Queensland',
-    'Celebes': 'Sulawesi',
-    'French Congo': 'Rep Congo',
-    'Fukien': 'Fujian',
-    'Hainan Island': 'Hainan',
-    'Irian Jaya': 'Western New Guinea',
-    'Kazakstan': 'Kazakhstan',
-    'Matto Grosso do Sul': 'Mato Grosso do Sul',
-    'Matto Grosso': 'Mato Grosso',
-    'Netherlands New Guinea': 'Western New Guinea',
-    'Newfoundland': 'Newfoundland and Labrador',
-    'Nicaraugua': 'Nicaragua',
-    'Northwest Territory': 'Northwest Territories',
-    'Philippine Islands': 'Philippines',
-    'Russian Federation': 'Russia',
-    'Shensi': 'Shaanxi',
-    'Siam': 'Thailand',
-    'Sulawesi Selatan': 'Sulawesi',
-    'Timor Island': 'West Timor',
-    'Vera Cruz': 'Veracruz',
-    'Zaire': 'DR Congo',
-    'Baja California [Sur]': 'Baja California Sur',
-    'Estado de México': 'Mexico State',
-}
 
 DataT = Iterable[Dict[str, Any]]
 
@@ -162,8 +134,7 @@ def extract_date(text: str) -> Optional[str]:
         match = rgx.search(text)
         if match:
             return match.group()
-    else:
-        return None
+    return None
 
 
 def extract_geographical_components(text: str) -> List[Tuple[str, ...]]:
@@ -187,15 +158,15 @@ assert extract_geographical_components(test_case) == [('Congo', 'Zaire'), ('Haut
 def get_possible_names(names: Iterable[str]) -> Iterable[str]:
     for name in names:
         yield name
-        yield NAME_SYNONYMS.get(name, name)
+        yield lib.NAME_SYNONYMS.get(name, name)
         if name.endswith(' Island'):
             fixed = name[:-len(' Island')]
             yield fixed
-            yield NAME_SYNONYMS.get(fixed, fixed)
+            yield lib.NAME_SYNONYMS.get(fixed, fixed)
         without_direction = re.sub(r'^(North|South|West|East)(west|east)?(ern)? ', '', name)
         if without_direction != name:
             yield without_direction
-            yield NAME_SYNONYMS.get(without_direction, without_direction)
+            yield lib.NAME_SYNONYMS.get(without_direction, without_direction)
         without_diacritics = unidecode.unidecode(name)
         if name != without_diacritics:
             yield without_diacritics
@@ -203,7 +174,7 @@ def get_possible_names(names: Iterable[str]) -> Iterable[str]:
 
 def get_region_from_name(raw_names: Iterable[str]) -> Optional[models.Region]:
     for name in get_possible_names(raw_names):
-        name = NAME_SYNONYMS.get(name, name)
+        name = lib.NAME_SYNONYMS.get(name, name)
         try:
             return models.Region.get(models.Region.name == name)
         except models.Region.DoesNotExist:
@@ -220,7 +191,7 @@ def extract_region(text: str) -> Optional[models.Location]:
     region = possible_region
     if region.children.count() > 0:
         for name in get_possible_names(components[1]):
-            name = NAME_SYNONYMS.get(name, name)
+            name = lib.NAME_SYNONYMS.get(name, name)
             try:
                 region = region.children.filter(models.Region.name == name).get()
                 break
@@ -415,7 +386,7 @@ def extract_names() -> Iterable[Dict[str, Any]]:
                 start_label('synonymy', line)
     assert current_name is not None
     assert current_label is not None
-    current_name[current_label] = lines
+    current_name[current_label] = current_lines
     yield current_name
 
 
@@ -519,8 +490,8 @@ def write_to_db(dry_run: bool = True) -> None:
                     print(f'value for {attr} differs: (new) {new_value} vs. (current) {current_value}')
                 if attr == 'type_tags':
                     new_tags = set(new_value) - set(current_value)
-                    existing_types = {type(tag) for tag in current_value}
-                    tags_of_new_types = {tag for tag in new_tags if type(tag) not in existing_types}
+                    existing_types = tuple({type(tag) for tag in current_value})
+                    tags_of_new_types = {tag for tag in new_tags if not isinstance(tag, existing_types)}
                     print(f'adding tags: {tags_of_new_types}')
                     if not dry_run:
                         nam.type_tags = sorted(nam.type_tags + tuple(tags_of_new_types))

@@ -109,11 +109,11 @@ EnumT = TypeVar('EnumT', bound=enum.Enum)
 # return type is not Optional; this is not strictly true because the user could pass in
 # allow_empty=True, but it is good enough until we have literal types.
 @overload
-def get_enum_member(enum_cls: Type[EnumT], prompt: str = '> ', *, default: Optional[EnumT] = None, allow_empty: bool = True) -> EnumT: ...  # noqa
+def get_enum_member(enum_cls: Type[EnumT], prompt: str = '> ', *, default: Optional[EnumT] = None, allow_empty: bool = True) -> EnumT: ...  # pylint: disable=all
 @overload
-def get_enum_member(enum_cls: Type[EnumT], prompt: str = '> ', *, default: Optional[EnumT] = None) -> Optional[EnumT]: ...  # noqa
+def get_enum_member(enum_cls: Type[EnumT], prompt: str = '> ', *, default: Optional[EnumT] = None) -> Optional[EnumT]: ...  # pylint: disable=all
 
-def get_enum_member(enum_cls: Type[EnumT], prompt: str = '> ', *, default: Optional[EnumT] = None,
+def get_enum_member(enum_cls: Type[EnumT], prompt: str = '> ', *, default: Optional[EnumT] = None,  # pylint: disable=function-redefined
                     allow_empty: bool = True) -> Optional[EnumT]:
     if default is None:
         default_str = ''
@@ -173,8 +173,8 @@ def _get_adt_member(member_cls: Type[adt.ADT], existing: Optional[adt.ADT] = Non
     return member_cls(**args)
 
 
-def _stringify_adt_with_indexes(adt: Iterable[adt.ADT]) -> str:
-    return ', '.join(f'{i}: {tag}' for i, tag in enumerate(adt))
+def _stringify_adt_with_indexes(adts: Iterable[adt.ADT]) -> str:
+    return ', '.join(f'{i}: {tag}' for i, tag in enumerate(adts))
 
 
 def add_to_clipboard(data: str) -> None:
@@ -182,7 +182,7 @@ def add_to_clipboard(data: str) -> None:
 
 
 @functools.lru_cache(maxsize=None)
-def _get_history(key: object) -> prompt_toolkit.history.InMemoryHistory:
+def _get_history(key: object) -> prompt_toolkit.history.InMemoryHistory:  # pylint: disable=unused-argument
     history = prompt_toolkit.history.InMemoryHistory()
     history.append('')
     return history
@@ -193,8 +193,8 @@ class _FixedValidator(prompt_toolkit.validation.Validator):
     def __init__(self, options: Iterable[str]) -> None:
         self.options = set(options)
 
-    def validate(self, obj: prompt_toolkit.document.Document) -> None:
-        if obj.text not in self.options:
+    def validate(self, document: prompt_toolkit.document.Document) -> None:
+        if document.text not in self.options:
             raise prompt_toolkit.validation.ValidationError
 
 

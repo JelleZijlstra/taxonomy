@@ -126,6 +126,14 @@ def clean_text(names: DataT) -> DataT:
         yield new_name
 
 
+def clean_text_simple(names: DataT) -> DataT:
+    for name in names:
+        yield {
+            'text': ' '.join(line.strip() for line in name['lines']),
+            'pages': name['pages'],
+        }
+
+
 def translate_to_db(names: DataT, collection_name: str, source: Source) -> DataT:
     ummz = models.Collection.by_label(collection_name)
     for name in names:

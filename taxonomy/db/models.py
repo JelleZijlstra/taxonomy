@@ -106,7 +106,7 @@ class BaseModel(Model):
                     value = value.name
                 if value is not None:
                     print(f'{field}: {value}')
-            except Exception:
+            except Exception:  # pylint: disable=broad-except
                 traceback.print_exc()
                 print(f'{field}: could not get value')
 
@@ -274,43 +274,43 @@ EnumT = TypeVar('EnumT', bound=enum.Enum)
 
 
 class _EnumFieldDescriptor(peewee.FieldDescriptor, Generic[EnumT]):
-    def __init__(self, field: peewee.Field, enum: Type[EnumT]) -> None:
+    def __init__(self, field: peewee.Field, enum_cls: Type[EnumT]) -> None:
         super().__init__(field)
-        self.enum = enum
+        self.enum_cls = enum_cls
 
     def __get__(self, instance: Any, instance_type: Any = None) -> EnumT:
         value = super().__get__(instance, instance_type=instance_type)
         if isinstance(value, int):
-            value = self.enum(value)
+            value = self.enum_cls(value)
         return value
 
     def __set__(self, instance: Any, value: Union[int, EnumT]) -> None:
-        if isinstance(value, self.enum):
+        if isinstance(value, self.enum_cls):
             value = value.value
         super().__set__(instance, value)
 
 
 class EnumField(IntegerField):
-    def __init__(self, enum: Type[enum.Enum], **kwargs: Any) -> None:
+    def __init__(self, enum_cls: Type[enum.Enum], **kwargs: Any) -> None:
         super().__init__(**kwargs)
-        self.enum = enum
+        self.enum_cls = enum_cls
 
     def add_to_class(self, model_class: Type[BaseModel], name: str) -> None:
         super().add_to_class(model_class, name)
-        setattr(model_class, name, _EnumFieldDescriptor(self, self.enum))
+        setattr(model_class, name, _EnumFieldDescriptor(self, self.enum_cls))
 
 
 class _ADTDescriptor(peewee.FieldDescriptor):
-    def __init__(self, field: peewee.Field, adt: Any) -> None:
+    def __init__(self, field: peewee.Field, adt_cls: Any) -> None:
         super().__init__(field)
-        self.adt = adt
+        self.adt_cls = adt_cls
 
     def __get__(self, instance: Any, instance_type: Any = None) -> EnumT:
         value = super().__get__(instance, instance_type=instance_type)
         if isinstance(value, str):
-            if not isinstance(self.adt, type):
-                self.adt = self.adt()
-            value = tuple(self.adt.unserialize(val) for val in json.loads(value))
+            if not isinstance(self.adt_cls, type):
+                self.adt_cls = self.adt_cls()
+            value = tuple(self.adt_cls.unserialize(val) for val in json.loads(value))
         return value
 
     def __set__(self, instance: Any, value: Any) -> None:
@@ -325,16 +325,16 @@ class _ADTDescriptor(peewee.FieldDescriptor):
 
 
 class ADTField(TextField):
-    def __init__(self, adt: Callable[[], Type[Any]], **kwargs: Any) -> None:
+    def __init__(self, adt_cls: Callable[[], Type[Any]], **kwargs: Any) -> None:
         super().__init__(**kwargs)
-        self.adt = adt
+        self.adt_cls = adt_cls
 
     def add_to_class(self, model_class: Type[BaseModel], name: str) -> None:
         super().add_to_class(model_class, name)
-        setattr(model_class, name, _ADTDescriptor(self, self.adt))
+        setattr(model_class, name, _ADTDescriptor(self, self.adt_cls))
 
     def get_adt(self) -> Type[Any]:
-        return self.adt()
+        return self.adt_cls()
 
 
 class _NameGetter(Generic[ModelT]):
@@ -801,8 +801,7 @@ class Taxon(BaseModel):
                     break
             else:
                 return candidate
-        else:
-            return None
+        return None
 
     def open_description(self) -> bool:
         return self.base_name.open_description()
@@ -977,7 +976,7 @@ class Taxon(BaseModel):
 
         total = len(names)
         output: Dict[str, float] = {'total': total}
-        by_group = ', '.join(f'{v.name}: {counts_by_group[v]}' for v in reversed(Group))  # type: ignore  # noqa
+        by_group = ', '.join(f'{v.name}: {counts_by_group[v]}' for v in reversed(Group))  # type: ignore
         print(f'Total names: {total} ({by_group})')
 
         def print_percentage(num: int, total: int, label: str) -> float:
@@ -1103,7 +1102,7 @@ class Period(BaseModel):
 
     @classmethod
     def make(cls, name: str, system: constants.PeriodSystem, parent: Optional['Period'] = None,
-             next: Optional['Period'] = None, min_age: Optional[int] = None, max_age: Optional[int] = None,
+             next: Optional['Period'] = None, min_age: Optional[int] = None, max_age: Optional[int] = None,  # pylint: disable=redefined-builtin
              **kwargs: Any) -> 'Period':
         if max_age is None and next is not None:
             max_age = next.min_age
@@ -1130,9 +1129,9 @@ class Period(BaseModel):
             kwargs['max_period'] = kwargs['min_period'] = period
         period = cls.create(name=name, system=kind.value, parent=parent, **kwargs)
         if 'next' in kwargs:
-            next = kwargs['next']
-            next.prev = period
-            next.save()
+            next_period = kwargs['next']
+            next_period.prev = period
+            next_period.save()
         return period
 
     def display(self, full: bool = False, depth: int = 0, file: IO[str] = sys.stdout) -> None:
@@ -1358,8 +1357,7 @@ class SpeciesNameComplex(BaseModel):
                     return name
                 else:
                     return name[:-len(ending)]
-        else:
-            raise ValueError(f'could not extract stem from {name} using {self}')
+        raise ValueError(f'could not extract stem from {name} using {self}')
 
     def get_forms(self, name: str) -> Iterable[str]:
         if self.kind == SpeciesNameKind.adjective:
@@ -1753,11 +1751,11 @@ class Collection(BaseModel):
 
     @classmethod
     def by_label(cls, label: str) -> 'Collection':
-        collections = list(cls.filter(cls.label == label))
-        if len(collections) == 1:
-            return collections[0]
+        colls = list(cls.filter(cls.label == label))
+        if len(colls) == 1:
+            return colls[0]
         else:
-            raise ValueError('found {collections} with label {label}')
+            raise ValueError('found {colls} with label {label}')
 
     @classmethod
     def get_or_create(cls, label: str, name: str, location: Region, comment: Optional[str] = None) -> 'Collection':
@@ -1865,11 +1863,11 @@ class Name(BaseModel):
             return Definition.unserialize(data)
 
     @definition.setter
-    def definition(self, definition: Definition) -> None:
-        if definition is None:
+    def definition(self, defn: Definition) -> None:
+        if defn is None:
             self._definition = None
         else:
-            self._definition = definition.serialize()
+            self._definition = defn.serialize()
 
     def get_value_for_field(self, field: str) -> Any:
         if field == 'collection' and self.collection is None and self.type_specimen is not None:
@@ -1909,15 +1907,16 @@ class Name(BaseModel):
         else:
             return super().get_value_for_field(field)
 
-    def get_name_complex(self, cls: Type[BaseModel]) -> Optional[BaseModel]:
-        getter = cls.getter('label')
+    @staticmethod
+    def get_name_complex(model_cls: Type[BaseModel]) -> Optional[BaseModel]:
+        getter = model_cls.getter('label')
         value = getter.get_one_key('name_complex> ')
         if value is None:
             return None
         elif value == 'n':
-            return cls.create_interactively()
+            return model_cls.create_interactively()
         else:
-            return cls.by_label(value)
+            return model_cls.by_label(value)
 
     def add_additional_data(self, new_data: str) -> None:
         '''Add data to the "additional" field within the "data" field'''
@@ -2123,10 +2122,9 @@ class Name(BaseModel):
                 if verbose:
                     print(f'1 because {field} is missing')
                 return 1
-        else:
-            if verbose:
-                print('2 because all fields are set')
-            return 2
+        if verbose:
+            print('2 because all fields are set')
+        return 2
 
     def get_required_fields(self) -> Iterable[str]:
         if self.status == Status.spurious or self.nomenclature_status == NomenclatureStatus.informal:
@@ -2262,7 +2260,7 @@ class Name(BaseModel):
         if verbose:
             print('=== Detecting type for %s from %s' % (self, verbatim_type))
         candidates = self.detect_type(verbatim_type=verbatim_type, verbose=verbose)
-        if candidates is None or len(candidates) == 0:
+        if candidates is None or not candidates:
             print("Verbatim type %s for name %s could not be recognized" % (verbatim_type, self))
             return False
         elif len(candidates) == 1:
@@ -2302,11 +2300,12 @@ class Name(BaseModel):
                     print('Trying verbatim type: %s' % new_verbatim)
                 verbatim_type = new_verbatim
                 candidates = self.detect_type_from_verbatim_type(verbatim_type)
-                if len(candidates) > 0:
+                if candidates:
                     return candidates
         return []
 
-    def _split_authority(self, verbatim_type: str) -> Tuple[str, Optional[str]]:
+    @staticmethod
+    def _split_authority(verbatim_type: str) -> Tuple[str, Optional[str]]:
         # if there is an uppercase letter following an all-lowercase word (the species name),
         # the authority is included
         find_authority = re.match(r'^(.* [a-z]+) ([A-Z+].+)$', verbatim_type)
@@ -2326,7 +2325,7 @@ class Name(BaseModel):
                 author, year = split
             result = []
             for candidate in candidates:
-                if candidate.authority != authority:
+                if candidate.authority != author:
                     continue
                 if year is not None and candidate.year != year:
                     continue

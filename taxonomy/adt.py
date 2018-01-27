@@ -1,5 +1,4 @@
 import builtins
-import collections.abc
 import enum
 import sys
 from typing import (TYPE_CHECKING, Any, Dict, Iterable, Iterator, List,
@@ -23,8 +22,8 @@ class _ADTMember:
 
 
 class _ADTNamespace(MutableMapping[str, Any]):
-    def __init__(self, globals: Dict[str, Any]) -> None:
-        self._globals = globals
+    def __init__(self, globals_dict: Dict[str, Any]) -> None:
+        self._globals = globals_dict
         self._mapping: Dict[str, _ADTMember] = {}
 
     def __getitem__(self, key: str) -> Any:
@@ -93,18 +92,18 @@ def _adt_member_hash(self: Any) -> int:
 
 class _ADTMeta(type):
     @classmethod
-    def __prepare__(cls, name: str, bases: Any) -> _ADTNamespace:
+    def __prepare__(mcs, name: str, bases: Any) -> _ADTNamespace:  # pylint: disable=unused-argument
         return _ADTNamespace(sys._getframe(1).f_globals)
 
-    def __new__(cls, name: str, bases: Any, ns: Any) -> Type[Any]:
+    def __new__(mcs, name: str, bases: Any, ns: Any) -> Type[Any]:
         if '_is_member' in ns and ns['_is_member']:
-            return super().__new__(cls, name, bases, ns)
+            return super().__new__(mcs, name, bases, ns)
         members = {}
         for key, value in list(ns.items()):
             if isinstance(value, _ADTMember):
                 members[key] = value
                 del ns[key]
-        new_cls = super().__new__(cls, name, bases, dict(ns.items(), _members=tuple(members.keys())))
+        new_cls = super().__new__(mcs, name, bases, dict(ns.items(), _members=tuple(members.keys())))
         new_cls._tag_to_member = {}  # type: ignore
         if name in members and not members[name].called:
             del members[name]
@@ -148,9 +147,11 @@ class _ADTMeta(type):
                 cls_obj = member_cls
                 member_cls = cls_obj()
 
-                def __init__(self: object) -> None:
-                    raise TypeError(f'cannot instantiate {member_cls}')
-                cls_obj.__init__ = __init__  # type: ignore
+                def make_init(member_cls: object) -> Callable[[object], None]:
+                    def __init__(self: object) -> None:  # pylint: disable=unused-argument
+                        raise TypeError(f'cannot instantiate {member_cls}')
+                    return __init__
+                cls_obj.__init__ = make_init(member_cls)  # type: ignore
             new_cls._tag_to_member[member.tag] = member_cls  # type: ignore
             setattr(new_cls, member.name, member_cls)
         return new_cls

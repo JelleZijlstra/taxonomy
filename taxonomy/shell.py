@@ -1,5 +1,4 @@
 import collections
-import datetime
 import functools
 import os.path
 import re
@@ -12,8 +11,8 @@ import requests
 import unidecode
 from traitlets.config.loader import Config
 
-from . import events, getinput
-from .db import constants, definition, detection, ehphp, helpers, models
+from . import getinput
+from .db import constants, definition, detection, helpers, models
 from .db.constants import Age, Group, NomenclatureStatus, Rank
 from .db.models import Name, Tag, Taxon, TypeTag, database
 
@@ -26,7 +25,7 @@ class _ShellNamespace(dict):  # type: ignore
             return getattr(__builtins__, key)
         except AttributeError:
             # make names accessible
-            return taxon(key)
+            return taxon_of_name(key)
 
     def keys(self) -> Set[str]:  # type: ignore
         keys = set(super().keys())
@@ -121,7 +120,7 @@ def clear_cache() -> None:
 # Lookup
 
 @command
-def taxon(name: str) -> Taxon:
+def taxon_of_name(name: str) -> Taxon:
     """Finds a taxon with the given name."""
     name = name.replace('_', ' ')
     try:
@@ -151,7 +150,7 @@ def _add_missing_data(attribute: str) -> Callable[[_MissingDataProducer], Callab
         def wrapper(*args: Any, **kwargs: Any) -> None:
             for nam, message in fn(*args, **kwargs):
                 value = getinput.get_line(
-                    message + '> ', handlers={'o': lambda _: bool(nam.open_description())}
+                    message + '> ', handlers={'o': lambda _: bool(nam.open_description())}  # pylint: disable=cell-var-from-loop
                 )
                 if value:
                     setattr(nam, attribute, value)
@@ -399,7 +398,7 @@ def find_patronyms(dry_run: bool = True, min_length: int = 4) -> Dict[str, int]:
                     count += 1
                     names_applied[name] += 1
                     if not dry_run and len(author) >= min_length:
-                        sne = snc.make_ending(name, full_name_only=True)
+                        snc.make_ending(name, full_name_only=True)
                 elif nam.name_complex != snc:
                     print(f'{nam} has {nam.name_complex} but expected {snc}')
     print(f'applied {count} names')
@@ -462,8 +461,7 @@ def find_ending(name: Name, endings: Iterable[models.NameEnding]) -> Optional[mo
     for ending in endings:
         if name.root_name.endswith(ending.ending):
             return ending.name_complex
-    else:
-        return None
+    return None
 
 
 @generator_command
@@ -506,7 +504,7 @@ def _duplicate_finder(fn: Callable[..., Iterable[Mapping[Any, Sequence[T]]]]) ->
 def dup_taxa() -> List[Dict[str, List[Taxon]]]:
     taxa: Dict[str, List[Taxon]] = collections.defaultdict(list)
     for txn in Taxon.select():
-        if txn.rank == Rank.subgenus and len(taxa[txn.valid_name]) > 0:
+        if txn.rank == Rank.subgenus and taxa[txn.valid_name]:
             continue
         if txn.base_name.nomenclature_status == constants.NomenclatureStatus.preoccupied:
             continue
@@ -803,6 +801,7 @@ def clean_up_verbatim(dry_run: bool = False) -> None:
 def clean_up_type_locality_description(dry_run: bool = True) -> None:
     count = removed = 0
     for nam in Name.filter(Name.type_locality_description != None, Name.type_tags != None):
+        count += 1
         tags = [tag for tag in nam.type_tags if isinstance(tag, TypeTag.LocationDetail)]
         if not tags:
             continue
@@ -813,17 +812,19 @@ def clean_up_type_locality_description(dry_run: bool = True) -> None:
         if dry_run:
             print(nam.type_locality_description)
         else:
+            removed += 1
             if nam.type_locality_description.rstrip('.') in {t.text for t in tags}:
                 print('automatically emptying data')
             else:
                 nam.fill_field('type_tags')
             nam.type_locality_description = None
             nam.save()
+    print(f'removed: {removed}/{count}')
 
 
 @command
-def set_empty_to_none(model: Type[models.BaseModel], field: str, dry_run: bool = False) -> None:
-    for obj in model.filter(getattr(model, field) == ''):
+def set_empty_to_none(model_cls: Type[models.BaseModel], field: str, dry_run: bool = False) -> None:
+    for obj in model_cls.filter(getattr(model_cls, field) == ''):
         print(f'{obj}: set {field} to None')
         if not dry_run:
             setattr(obj, field, None)
@@ -887,7 +888,6 @@ def check_tags(dry_run: bool = True) -> Iterable[Tuple[Name, str]]:
     for priority, statuses in enumerate(NomenclatureStatus.hierarchy()):
         for status in statuses:
             status_to_priority[status] = priority
-    preoccupied_priority = status_to_priority[NomenclatureStatus.preoccupied]
 
     def maybe_adjust_status(nam: Name, status: NomenclatureStatus, tag: object) -> None:
         current_priority = status_to_priority[nam.nomenclature_status]
@@ -1033,11 +1033,9 @@ def run_maintenance() -> Dict[Any, Any]:
         check_type_tags,
         disallowed_attribute,
         move_to_lowest_rank,
-    ]
-    fns_to_add = [
-        dup_names,
-        dup_genus,
-        dup_taxa,
+        # dup_names,
+        # dup_genus,
+        # dup_taxa,
     ]
     out = {}
     for fn in fns:

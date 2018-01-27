@@ -80,7 +80,7 @@ def extract_names(pages: Iterable[Tuple[int, List[str]]]) -> DataT:
                 assert False, line
     assert current_label is not None
     assert current_name is not None
-    current_name[current_label] = lines
+    current_name[current_label] = current_lines
     yield current_name
 
 
@@ -133,7 +133,7 @@ def translate_type_localities(names: DataT) -> DataT:
                 name['type_locality'] = type_loc
             else:
                 print('could not extract type locality from', name['loc'])
-                pass
+                # pass
         yield name
 
 
@@ -166,5 +166,5 @@ def main() -> DataT:
 
 
 if __name__ == '__main__':
-    for name in main():
+    for _ in main():
         pass

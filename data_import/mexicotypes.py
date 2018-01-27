@@ -5,39 +5,16 @@ from typing import Any, Counter, Dict, Iterable, List, Optional, Tuple
 from taxonomy import getinput
 from taxonomy.db import constants, helpers, models
 
-from . import lawrence1993
-from .lawrence1993 import DataT
+from . import lawrence1993, lib
+from .lib import DataT
 
-FILE_PATH = lawrence1993.DATA_DIR / 'mexicotypes-layout.txt'
+FILE_PATH = lib.DATA_DIR / 'mexicotypes-layout.txt'
 SOURCE = 'Mexico-type localities.pdf'
 
 
 def get_text() -> Iterable[str]:
     with FILE_PATH.open() as f:
         yield from f
-
-
-def extract_pages(lines: Iterable[str]) -> Iterable[Tuple[int, List[str]]]:
-    """Split the text into pages."""
-    current_page = None
-    current_lines = []
-    for line in lines:
-        if line.startswith('\x0c'):
-            if current_page is not None:
-                yield current_page, current_lines
-                current_lines = []
-            line = line[1:].strip()
-            if re.search(r'^\d+ ', line):
-                # page number on the left
-                current_page = int(line.split()[0])
-            else:
-                # or the right
-                current_page = int(line.split()[-1])
-        else:
-            current_lines.append(line)
-    # last page
-    assert current_page is not None
-    yield current_page, current_lines
 
 
 def extract_names(pages: Iterable[Tuple[int, List[str]]]) -> Iterable[Dict[str, Any]]:
@@ -67,14 +44,6 @@ def extract_names(pages: Iterable[Tuple[int, List[str]]]) -> Iterable[Dict[str, 
     assert current_name is not None
     current_name['lines'] = current_lines
     yield current_name
-
-
-def clean_text(names: DataT) -> DataT:
-    for name in names:
-        yield {
-            'text': ' '.join(line.strip() for line in name['lines']),
-            'pages': name['pages'],
-        }
 
 
 def split_text(names: DataT) -> DataT:
@@ -244,9 +213,9 @@ def write_to_db(names: DataT, dry_run: bool = True) -> None:
 
 def main() -> None:
     lines = get_text()
-    pages = extract_pages(lines)
+    pages = lib.extract_pages(lines)
     names = extract_names(pages)
-    names = clean_text(names)
+    names = lib.clean_text_simple(names)
     names = split_text(names)
     names = split_fields(names)
     names = associate_names(names)

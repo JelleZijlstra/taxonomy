@@ -51,16 +51,8 @@ def extract_names(pages: Iterable[Tuple[int, List[str]]]) -> DataT:
                     start_label(first_word, line)
     assert current_label is not None
     assert current_name is not None
-    current_name[current_label] = lines
+    current_name[current_label] = current_lines
     yield current_name
-
-
-def clean_text(names: DataT) -> DataT:
-    for name in names:
-        yield {
-            'text': ' '.join(line.strip() for line in name['lines']),
-            'pages': name['pages'],
-        }
 
 
 def split_fields(names: DataT) -> DataT:
@@ -140,7 +132,7 @@ def main() -> DataT:
     lines = lib.get_text(SOURCE)
     pages = lib.extract_pages(lines)
     names = extract_names(pages)
-    names = lib.clean_text(names)
+    names = lib.clean_text_simple(names)
     names = split_fields(names)
     names = translate_to_db(names)
     names = associate_names(names)
@@ -149,5 +141,5 @@ def main() -> DataT:
 
 
 if __name__ == '__main__':
-    for name in main():
+    for _ in main():
         pass  #print(name)
