@@ -51,6 +51,22 @@ class _FieldEditor(object):
         return ['all'] + sorted(self.instance._meta.fields.keys())
 
 
+def _descriptor_set(self: peewee.FieldDescriptor, instance: Model, value: Any) -> None:
+    """Monkeypatch the __set__ method on peewee descriptors to always save immediately.
+
+    This is useful for us because in interactive use, it is easy to forget to call .save(), and
+    we are not concerned about the performance implications of saving often.
+
+    """
+    instance._data[self.att_name] = value
+    instance._dirty.add(self.att_name)
+    # Otherwise this gets called in the constructor.
+    if getattr(instance, '_is_prepared', False):
+        print(f'saving {instance} to set {self.att_name} to {value}')
+        instance.save()
+peewee.FieldDescriptor.__set__ = _descriptor_set
+
+
 class BaseModel(Model):
     label_field: str
     creation_event: events.Event[Any]
@@ -68,6 +84,10 @@ class BaseModel(Model):
         if hasattr(cls, 'creation_event'):
             cls.creation_event.trigger(result)
         return result
+
+    def prepared(self) -> None:
+        super().prepared()
+        self._is_prepared = True
 
     def save(self, *args: Any, **kwargs: Any) -> None:
         result = super().save(*args, **kwargs)
