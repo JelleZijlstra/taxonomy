@@ -350,33 +350,38 @@ def find_name(original_name: str, authority: str) -> Optional[models.Name]:
         return matches[0]
 
     # Find names without an original name in similar genera.
-    root_name_to_names, genus_to_orig_genera = build_original_name_map()
-    if root_name in root_name_to_names:
-        matches = []
-        for nam, genus in root_name_to_names[root_name]:
-            if genus_name in genus_to_orig_genera[genus]:
-                matches.append(nam)
-        if len(matches) == 1:
-            return matches[0]
+    name_genus_pairs, genus_to_orig_genera = build_original_name_map(root_name)
+    matches = []
+    for nam, genus in name_genus_pairs:
+        if genus_name in genus_to_orig_genera[genus]:
+            matches.append(nam)
+    if len(matches) == 1:
+        return matches[0]
     return None
 
 
-@functools.lru_cache()
-def build_original_name_map() -> Tuple[Dict[str, List[Tuple[models.Name, models.Taxon]]], Dict[models.Taxon, Set[str]]]:
-    root_name_to_names: Dict[str, List[Tuple[models.Name, models.Taxon]]] = defaultdict(list)
-    genus_to_orig_genera: Dict[models.Taxon, Set[str]] = defaultdict(set)
-    # return root_name_to_names, genus_to_orig_genera
-    for nam in models.Name.filter(models.Name.group == constants.Group.species):
+@functools.lru_cache(maxsize=1024)
+def build_original_name_map(root_name: str) -> Tuple[List[Tuple[models.Name, models.Taxon]], Dict[models.Taxon, Set[str]]]:
+    nams: List[Tuple[models.Name, models.Taxon]] = []
+    genus_to_orig_genera: Dict[models.Taxon, Set[str]] = {}
+    for nam in models.Name.filter(models.Name.group == constants.Group.species, models.Name.original_name >> None, models.Name.root_name == root_name):
         try:
             genus = nam.taxon.parent_of_rank(constants.Rank.genus)
         except ValueError:
             continue
-        if nam.original_name is None:
-            root_name_to_names[nam.root_name].append((nam, genus))
-        else:
-            genus_name = helpers.genus_name_of_name(nam.original_name)
-            genus_to_orig_genera[genus].add(genus_name)
-    return root_name_to_names, genus_to_orig_genera
+        nams.append((nam, genus))
+        if genus not in genus_to_orig_genera:
+            genus_to_orig_genera[genus] = get_original_genera_of_genus(genus)
+    return nams, genus_to_orig_genera
+
+
+@functools.lru_cache(maxsize=1024)
+def get_original_genera_of_genus(genus: models.Taxon) -> Set[str]:
+    return {
+        helpers.genus_name_of_name(nam.original_name)
+        for nam in genus.all_names()
+        if nam.group == constants.Group.species and nam.original_name is not None
+    }
 
 
 def name_variants(original_name: str, authority: str) -> Iterable[Tuple[str, str]]:
@@ -420,7 +425,13 @@ def name_variants(original_name: str, authority: str) -> Iterable[Tuple[str, str
 def associate_names(names: DataT, author_fixes: Mapping[str, str] = {}, original_name_fixes: Mapping[str, str] = {}) -> DataT:
     total = 0
     found = 0
+    found_first = False
     for name in names:
+        if not found_first:
+            if name['original_name'] == 'Pteropus niadicus':
+                found_first = True
+            else:
+                continue
         name_obj = None
         total += 1
         if ' and ' in name['authority']:
@@ -448,7 +459,7 @@ def write_to_db(names: DataT, source: Source, dry_run: bool = True) -> None:
     num_changed: Counter[str] = Counter()
     for name in names:
         nam = name['name_obj']
-        print(f'--- processing {nam} ---')
+        print(f'--- processing {nam} ({name["pages"]}) ---')
         for attr in ('type_locality', 'type_tags', 'collection', 'type_specimen', 'species_type_kind', 'verbatim_citation', 'original_name', 'type_specimen_source'):
             if attr not in name or name[attr] is None:
                 continue
@@ -459,10 +470,10 @@ def write_to_db(names: DataT, source: Source, dry_run: bool = True) -> None:
             if current_value == new_value:
                 continue
             elif current_value is not None:
-                if attr == 'verbatim_citation':
-                    new_value = f'{current_value} [From {{{source.source}}}: {new_value}]'
-                else:
-                    print(f'value for {attr} differs: (new) {new_value} vs. (current) {current_value}')
+                if attr == 'type_locality':
+                    # if the new TL is a parent of the current, ignore it
+                    if new_value.region in current_value.region.all_parents():
+                        continue
                 if attr == 'type_tags':
                     new_tags = set(new_value) - set(current_value)
                     existing_types = tuple({type(tag) for tag in current_value})
@@ -471,6 +482,8 @@ def write_to_db(names: DataT, source: Source, dry_run: bool = True) -> None:
                         # Always add LocationDetail tags, because it has a source field and it's OK to have multiple tags
                         if (not isinstance(tag, existing_types)) or isinstance(tag, (TypeTag.LocationDetail, TypeTag.SpecimenDetail))
                     }
+                    if not tags_of_new_types:
+                        continue
                     print(f'adding tags: {tags_of_new_types}')
                     if not dry_run:
                         nam.type_tags = sorted(nam.type_tags + tuple(tags_of_new_types))
@@ -480,7 +493,13 @@ def write_to_db(names: DataT, source: Source, dry_run: bool = True) -> None:
                         if not dry_run:
                             nam.fill_field('type_tags')
                     continue
-                elif attr == 'type_specimen_source':
+
+                if attr == 'verbatim_citation':
+                    new_value = f'{current_value} [From {{{source.source}}}: {new_value}]'
+                else:
+                    print(f'value for {attr} differs: (new) {new_value} vs. (current) {current_value}')
+
+                if attr == 'type_specimen_source':
                     nam.display(full=True)
                     if not dry_run:
                         should_replace = getinput.yes_no('Replace type_specimen_source? ')
@@ -504,17 +523,26 @@ def write_to_db(names: DataT, source: Source, dry_run: bool = True) -> None:
                                 continue
                     name_discrepancies.append((nam, current_value, new_value))
                     continue
+                elif attr != 'verbatim_citation':
+                    if not dry_run:
+                        nam.display()
+                        nam.fill_field(attr)
+                    continue
             num_changed[attr] += 1
             if not dry_run:
                 setattr(nam, attr, new_value)
 
         if not dry_run:
+            if 'species_type_kind' not in name or name['species_type_kind'] != constants.SpeciesGroupType.holotype:
+                print(f'{nam} does not have a holotype: {name}')
+                nam.fill_field('type_tags')
+
             if len(name['pages']) == 1:
                 pages = str(name['pages'][0])
             else:
                 pages = f'{name["pages"][0]}-{name["pages"][-1]}'
-            nam.add_comment(constants.CommentKind.structured_quote, json.dumps(name['raw_text']), source.source, pages)
-            nam.save()
+            if nam.comments.filter(models.NameComment.source == source.source).count() == 0:
+                nam.add_comment(constants.CommentKind.structured_quote, json.dumps(name['raw_text']), source.source, pages)
 
     for nam, current, new in name_discrepancies:
         print('----------')

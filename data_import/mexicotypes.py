@@ -219,7 +219,7 @@ def main() -> None:
     names = split_text(names)
     names = split_fields(names)
     names = associate_names(names)
-    #yield from names
+    # yield from names
     write_to_db(names, dry_run=False)
 
 

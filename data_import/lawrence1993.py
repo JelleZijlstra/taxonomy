@@ -408,6 +408,7 @@ def clean_text() -> Iterable[Dict[str, Any]]:
 
 # next: change data into a format resembling what we want in the DB.
 
+
 def extract_data() -> Iterable[Dict[str, Any]]:
     """Extract raw data into a format closer to what the DB wants."""
     for name in clean_text():

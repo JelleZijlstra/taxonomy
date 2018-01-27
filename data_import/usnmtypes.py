@@ -53,12 +53,12 @@ def extract_names(pages: Iterable[Tuple[int, List[str]]]) -> DataT:
             elif line.startswith('This specimen'):
                 start_label('comments', line)
             elif line.startswith('Secondary junior') or line.startswith('Primary junior'):
-                start_label('comments', line)
+                start_label('homonymy', line)
             elif re.match(r'^[A-Z][A-Z a-z]+: ', line):
                 start_label(line.split(':')[0], line)
             elif line.startswith('USNM'):
                 start_label(line.split('.')[0], line)
-            elif current_label not in ('name', 'verbatim_citation', 'comments') and ':' not in line:
+            elif current_label not in ('name', 'verbatim_citation', 'homonymy') and ':' not in line:
                 # new name
                 if current_name is not None:
                     assert current_label is not None
@@ -74,10 +74,10 @@ def extract_names(pages: Iterable[Tuple[int, List[str]]]) -> DataT:
                 else:
                     # probably continuation of the author
                     current_lines.append(line)
-            elif current_label == 'verbatim_citation' or current_label == 'comments':
+            elif current_label == 'verbatim_citation' or current_label == 'homonymy':
                 start_label('synonymy', line)
             else:
-                assert False, line
+                assert False, f'{line!r} with label {current_label}'
     assert current_label is not None
     assert current_name is not None
     current_name[current_label] = current_lines
@@ -87,7 +87,7 @@ def extract_names(pages: Iterable[Tuple[int, List[str]]]) -> DataT:
 def split_fields(names: DataT) -> DataT:
     tried = succeeded = 0
     for name in names:
-        name['raw_name'] = dict(name)
+        name['raw_text'] = dict(name)
         name.update(lib.extract_name_and_author(name['name']))
         if 'Type Locality' in name:
             name['loc'] = name['Type Locality']
@@ -132,8 +132,8 @@ def translate_type_localities(names: DataT) -> DataT:
             if type_loc is not None:
                 name['type_locality'] = type_loc
             else:
-                print('could not extract type locality from', name['loc'])
-                # pass
+                # print('could not extract type locality from', name['loc'])
+                pass
         yield name
 
 
@@ -159,12 +159,12 @@ def main() -> DataT:
     }, {
         'Tana tana besara': 'Tupaia tana besara',
     })
-    names = list(names)
-    #lib.print_counts(names, 'original_name')
-    lib.print_field_counts(names)
+    # lib.write_to_db(names, source, dry_run=False)
+    # lib.print_counts(names, 'original_name')
+    # lib.print_field_counts(names)
     return names
 
 
 if __name__ == '__main__':
     for _ in main():
-        pass
+        print(_)

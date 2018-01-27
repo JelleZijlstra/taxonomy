@@ -142,4 +142,4 @@ def main() -> DataT:
 
 if __name__ == '__main__':
     for _ in main():
-        pass  #print(name)
+        pass  # print(name)
