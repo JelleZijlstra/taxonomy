@@ -1,5 +1,6 @@
 '''Helper functions'''
 
+import datetime
 import json
 import re
 from operator import itemgetter
@@ -282,3 +283,45 @@ def _canonicalize_gender(name: str) -> str:
         return re.sub(r'um$', 'us', name)
     else:
         return name
+
+
+def standardize_date(date: str) -> str:
+    """Fixes the format of date fields."""
+    if re.match(r'^\d{4}$', date):
+        # year
+        return date
+    match = re.match(r'^in (\d{4})$', date)
+    if match:
+        return match.group(1)
+    date_month_formats = [
+        '%b %Y',  # Feb 1992
+        '%b. %Y',  # Feb. 1992
+        '%b, %Y',  # Feb, 1992
+        '%B %Y',  # February 1992
+        '%B, %Y',  # February, 1992
+    ]
+    for fmt in date_month_formats:
+        try:
+            dt = datetime.datetime.strptime(date, fmt)
+        except ValueError:
+            pass
+        else:
+            return dt.strftime('%B %Y')
+    dmy_formats = [
+        '%d %B %Y',  # 24 February 1992
+        '%d %b %Y',  # 24 Feb 1992
+        '%d %bt. %Y',  # 24 Sept. 1992
+        '%d %b%Y',  # 24 Feb1992
+        '%d %b. %Y',  # 24 Feb. 1992
+        '%B %d, %Y',  # February 24, 1992
+        '%b %d, %Y',  # Feb 24, 1992
+        '%b. %d, %Y',  # Feb. 24, 1992
+    ]
+    for fmt in dmy_formats:
+        try:
+            dt = datetime.datetime.strptime(date, fmt)
+        except ValueError:
+            pass
+        else:
+            return dt.strftime('%-d %B %Y')
+    raise ValueError(date)

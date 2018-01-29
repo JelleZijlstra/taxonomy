@@ -949,19 +949,40 @@ def check_tags(dry_run: bool = True) -> Iterable[Tuple[Name, str]]:
 @generator_command
 def check_type_tags(dry_run: bool = True) -> Iterable[Tuple[Name, str]]:
     for nam in Name.filter(Name.type_tags != None):
-        for tag in nam.type_tags:
+        tags = []
+        original_tags = list(nam.type_tags)
+        for tag in original_tags:
             if isinstance(tag, TypeTag.CommissionTypeDesignation):
                 if nam.type != tag.type:
                     print(f'{nam} has {nam.type} as its type, but the Commission has designated {tag.type}')
                     if not dry_run:
                         nam.type = tag.type
-                        nam.save()
                 if nam.genus_type_kind != constants.TypeSpeciesDesignation.designated_by_the_commission:
                     print(f'{nam} has {nam.genus_type_kind}, but its type was set by the Commission')
                     if not dry_run:
                         nam.genus_type_kind = constants.TypeSpeciesDesignation.designated_by_the_commission
-                        nam.save()
+            if isinstance(tag, TypeTag.Date):
+                date = tag.date
+                if date in ('unknown date', 'on unknown date', 'on an unknown date'):
+                    continue
+                date = re.sub(r'\]', '', date)
+                date = re.sub(r'\[[A-Z a-n]+: ', '', date)
+                date = re.sub(r', not [\dA-Za-z]+( [A-Z][a-z][a-z])? as( given)? in original description(, ?|$)', '', date)
+                try:
+                    date = helpers.standardize_date(date)
+                except ValueError:
+                    print(f'{nam} has date {tag.date}, which cannot be parsed')
+                    yield nam, 'unparseable date'
+                tags.append(TypeTag.Date(date))
+            else:
+                tags.append(tag)
             # TODO: for lectotype and subsequent designations, ensure the earliest valid one is used.
+        tags = sorted(tags)
+        if not dry_run and tags != original_tags:
+            print('changing tags')
+            print(original_tags)
+            print(tags)
+            nam.type_tags = tags
     for nam in Name.filter(Name.genus_type_kind == constants.TypeSpeciesDesignation.subsequent_designation):
         for tag in (nam.type_tags or ()):
             if isinstance(tag, TypeTag.TypeDesignation) and tag.type == nam.type:
