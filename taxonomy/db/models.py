@@ -2040,7 +2040,7 @@ class Name(BaseModel):
                 # invalid year
                 return datetime.datetime.now().year + 1
 
-    def get_description(self, full: bool = False, depth: int = 0) -> str:
+    def get_description(self, full: bool = False, depth: int = 0, include_data: bool = False) -> str:
         if self.original_name is None:
             out = self.root_name
         else:
@@ -2096,6 +2096,8 @@ class Name(BaseModel):
                 'type_tags': sorted(self.type_tags) if self.type_tags else None,
                 'tags': sorted(self.tags) if self.tags else None,
             }
+            if include_data:
+                data['data'] = self.data
             type_info = []
             if self.species_type_kind is not None:
                 type_info.append(self.species_type_kind.name)
@@ -2103,6 +2105,8 @@ class Name(BaseModel):
                 type_info.append(self.type_specimen)
             if self.collection is not None:
                 type_info.append(f'in {self.collection}')
+            if self.type_specimen_source is not None:
+                type_info.append(f'{{{self.type_specimen_source}}}')
             if type_info:
                 data['type'] = '; '.join(type_info)
             result = ''.join([result] + [
@@ -2112,11 +2116,12 @@ class Name(BaseModel):
             ] + [
                 ' ' * ((depth + 2) * 4) + comment.get_description() + '\n'
                 for comment in self.comments
+                if include_data or comment.kind != CommentKind.structured_quote
             ])
         return result
 
-    def display(self, full: bool = True) -> None:
-        print(self.get_description(full=full))
+    def display(self, full: bool = True, include_data: bool = False) -> None:
+        print(self.get_description(full=full, include_data=include_data))
 
     def knowledge_level(self, verbose: bool = False) -> int:
         """Returns whether all necessary attributes of the name have been filled in."""
