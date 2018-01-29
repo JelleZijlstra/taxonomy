@@ -49,8 +49,14 @@ NAME_SYNONYMS = {
     'Lesser Antilles': 'North America',
     'West Indies': 'North America',
     'Federated States of Micronesia': 'Micronesia',
+    'Marocco': 'Morocco',
+    'Tchad': 'Chad',
 }
 REMOVE_PARENS = re.compile(r' \([A-Z][a-z]+\)')
+LATLONG = re.compile(r'''
+    (?P<latitude>\d+°(\s\d+')?\s[NS]),\s
+    (?P<longitude>\d+°(\s\d+')?\s[EW])
+''', re.VERBOSE)
 
 DataT = Iterable[Dict[str, Any]]
 
@@ -150,7 +156,11 @@ def translate_to_db(names: DataT, collection_name: str, source: Source) -> DataT
             else:
                 type_tags.append(models.TypeTag.SpecimenDetail(name['body_parts'], source.source))
         if 'loc' in name:
-            type_tags.append(models.TypeTag.LocationDetail(name['loc'], source.source))
+            text = name['loc']
+            type_tags.append(models.TypeTag.LocationDetail(text, source.source))
+            match = LATLONG.search(text)
+            if match:
+                type_tags.append(models.TypeTag.Coordinates(match.group('latitude'), match.group('longitude')))
         if 'collector' in name:
             type_tags.append(models.TypeTag.Collector(name['collector']))
         if 'date' in name:
@@ -296,7 +306,7 @@ def extract_region(components: Sequence[Sequence[str]]) -> Optional[models.Locat
         # print(f'could not extract region from {components}')
         return None
     region = possible_region
-    if region.children.count() > 0:
+    if len(components) > 1 and region.children.count() > 0:
         for name in get_possible_names(components[1]):
             name = NAME_SYNONYMS.get(name, name)
             try:
@@ -422,13 +432,14 @@ def name_variants(original_name: str, authority: str) -> Iterable[Tuple[str, str
         yield original_name, 'Linnaeus'
 
 
-def associate_names(names: DataT, author_fixes: Mapping[str, str] = {}, original_name_fixes: Mapping[str, str] = {}) -> DataT:
+def associate_names(names: DataT, author_fixes: Mapping[str, str] = {}, original_name_fixes: Mapping[str, str] = {},
+                    start_at: Optional[str] = None) -> DataT:
     total = 0
     found = 0
-    found_first = False
+    found_first = start_at is None
     for name in names:
         if not found_first:
-            if name['original_name'] == 'Pteropus niadicus':
+            if name['original_name'] == start_at:
                 found_first = True
             else:
                 continue
@@ -454,12 +465,12 @@ def associate_names(names: DataT, author_fixes: Mapping[str, str] = {}, original
     print(f'found: {found}/{total}')
 
 
-def write_to_db(names: DataT, source: Source, dry_run: bool = True) -> None:
+def write_to_db(names: DataT, source: Source, dry_run: bool = True, edit_if_no_holotype: bool = True) -> None:
     name_discrepancies = []
     num_changed: Counter[str] = Counter()
     for name in names:
         nam = name['name_obj']
-        print(f'--- processing {nam} ({name["pages"]}) ---')
+        print(f'--- processing {nam} ({name["pages"] if "pages" in name else ""}) ---')
         for attr in ('type_locality', 'type_tags', 'collection', 'type_specimen', 'species_type_kind', 'verbatim_citation', 'original_name', 'type_specimen_source'):
             if attr not in name or name[attr] is None:
                 continue
@@ -515,8 +526,12 @@ def write_to_db(names: DataT, source: Source, dry_run: bool = True) -> None:
                             if not dry_run:
                                 nam.open_description()
                                 if getinput.yes_no(f'Is the original spelling {nam.original_name} correct? '):
+                                    if 'pages' in name:
+                                        page_described = name['pages'][0]
+                                    else:
+                                        page_described = None
                                     nam.add_variant(new_root_name, constants.NomenclatureStatus.incorrect_subsequent_spelling,
-                                                    paper=source.source, page_described=name['pages'][0], original_name=new_value)
+                                                    paper=source.source, page_described=None, original_name=new_value)
                                     continue
                         else:
                             if existing.original_citation == source.source:
@@ -532,15 +547,17 @@ def write_to_db(names: DataT, source: Source, dry_run: bool = True) -> None:
             if not dry_run:
                 setattr(nam, attr, new_value)
 
+        if 'pages' not in name:
+            pages = ''
+        elif len(name['pages']) == 1:
+            pages = str(name['pages'][0])
+        else:
+            pages = f'{name["pages"][0]}-{name["pages"][-1]}'
         if not dry_run:
-            if 'species_type_kind' not in name or name['species_type_kind'] != constants.SpeciesGroupType.holotype:
+            if edit_if_no_holotype and ('species_type_kind' not in name or name['species_type_kind'] != constants.SpeciesGroupType.holotype):
                 print(f'{nam} does not have a holotype: {name}')
                 nam.fill_field('type_tags')
 
-            if len(name['pages']) == 1:
-                pages = str(name['pages'][0])
-            else:
-                pages = f'{name["pages"][0]}-{name["pages"][-1]}'
             if nam.comments.filter(models.NameComment.source == source.source).count() == 0:
                 nam.add_comment(constants.CommentKind.structured_quote, json.dumps(name['raw_text']), source.source, pages)
 

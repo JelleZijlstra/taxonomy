@@ -37,7 +37,7 @@ def extract_names(pages: Iterable[Tuple[int, List[str]]]) -> DataT:
                     found_first = True
                 continue
             # ignore family/genus headers
-            if re.match(r'^\s*(Genus|Family|Subfamily|Order) [A-Z][a-zA-Z]+ [a-zA-Z\.’, \-]+(, \d{4})?$', line):
+            if re.match(r'^\s*(Genus|Family|Subfamily|Suborder|Order) [A-Z][a-zA-Z]+ [a-zA-Z\.’, \-]+(, \d{4})?$', line):
                 in_headings = True
                 continue
             # ignore blank lines
@@ -156,12 +156,14 @@ def main() -> DataT:
         'Tavares, Gardner, Ramirez-Chaves & Velazco': 'Tavares, Gardner, Ramírez-Chaves & Velazco',
         'Miller & Allen': 'Miller & G.M. Allen',
         'Robinson & Lyon': 'W. Robinson & Lyon',
+        'Goldman & Gardner': 'Goldman & M.C. Gardner',
     }, {
         'Tana tana besara': 'Tupaia tana besara',
-    })
-    # lib.write_to_db(names, source, dry_run=False)
+        'Arvicola (Pitymys) pinetorum quasiater': 'Arvicola (Pitymys) pinetorum var. quasiater',
+    }, start_at='Epimys norvegicus socer')
+    lib.write_to_db(names, source, dry_run=False)
     # lib.print_counts(names, 'original_name')
-    # lib.print_field_counts(names)
+    lib.print_field_counts(names)
     return names
 
 
