@@ -7,6 +7,17 @@ from taxonomy.db import constants
 from . import lib
 from .lib import DataT
 
+CS_RGX = re.compile(r'''
+    ^(?P<number>[\d/]+)\.\s
+    ((?P<body_parts>[^\.]+)\.\s(?P<gender_age>[^\.]+)\.\s)?
+    (?P<loc>.+)\.\s
+    (Collected|Received|Leg\.\s\(Collected\))
+    (
+        \s(?P<date>.*)\sby\s(?P<collector>.*)\.\s(Original\s[Nn]umbers?.+|No\soriginal\snumber.*)
+        |.*
+    )\.$
+''', re.VERBOSE)
+
 
 def extract_names(pages: Iterable[Tuple[int, List[str]]]) -> DataT:
     """Extracts names from the text, as dictionaries."""
@@ -50,12 +61,16 @@ def extract_names(pages: Iterable[Tuple[int, List[str]]]) -> DataT:
                     in_headings = False
             if line.startswith(' '):
                 current_lines.append(line)
-            elif line.startswith('This specimen'):
+            elif line.startswith(('This specimen', 'Type ', 'No type', 'There are', 'No additional', 'All ', 'Subspecies of ', 'Neotype designated ', 'Padre Island')):
                 start_label('comments', line)
             elif line.startswith('Secondary junior') or line.startswith('Primary junior'):
                 start_label('homonymy', line)
-            elif re.match(r'^[A-Z][A-Z a-z]+: ', line):
+            elif re.match(r'^[A-Z][A-Z a-z-]+: ', line):
                 start_label(line.split(':')[0], line)
+            elif line.startswith('Lectotype as designated'):
+                start_label('Lectotype', line)
+            elif re.match(r'^[\d/]+\. ', line):
+                start_label(line.split('.')[0], line)
             elif line.startswith('USNM'):
                 start_label(line.split('.')[0], line)
             elif current_label not in ('name', 'verbatim_citation', 'homonymy') and ':' not in line:
@@ -63,7 +78,7 @@ def extract_names(pages: Iterable[Tuple[int, List[str]]]) -> DataT:
                 if current_name is not None:
                     assert current_label is not None
                     current_name[current_label] = current_lines
-                    assert 'Type Locality' in current_name or 'Holotype' in current_name, current_name
+                    assert any(field in current_name for field in ('Holotype', 'Type Locality', 'Lectotype', 'Syntypes', 'No name-bearing status', 'Neotype')), current_name
                     yield current_name
                 current_name = {'pages': [page]}
                 current_label = 'name'
@@ -95,15 +110,32 @@ def split_fields(names: DataT) -> DataT:
             if field in name:
                 tried += 1
                 name['species_type_kind'] = constants.SpeciesGroupType[field.lower()]
-                data = name[field]
-                match = re.match(r'^(USNM [\d/]+)\. ([^\.]+)\. ([^\.]+)\. (Collected|Leg\. \(Collected\)) (.*) by (.*)\. (Original [Nn]umbers? .+|No original number.*)\.$', data)
+                raw_data = data = name[field]
+                # TODO handle field starting with "Lectotype as designated by ..."
+                match = re.match(r'^(USNM [\d/]+)\. ([^\.]+)\. ([^\.]+)\. (Collected|Received|Leg\. \(Collected\)) (.*) by (.*)\. (Original [Nn]umbers? .+|No original number.*)\.$', data)
                 if match is None:
-                    # print(f'failed to match {data!r}')
-                    match = re.match(r'^((USNM |ANSP )?[\d/]+)', data)
-                    if not match:
-                        print(f'failed to match {data} at all')
+                    data = re.sub(r'\[[^\]]+?: ([^\]]+)\]', r'\1', data)
+                    data = re.sub(r'\[([\d/]+)\]', r'\1', data)
+                    data = re.sub(r'\[([\d/]+\. [A-Za-z ,\.]+)\]', r'\1', data)
+                    match = CS_RGX.match(data)
+                    if match:
+                        succeeded += 1
+                        name['type_specimen'] = f'USNM {match.group("number")}'
+                        for field in ('body_parts', 'gender_age', 'loc', 'date', 'collector'):
+                            group = match.group(field)
+                            if group:
+                                name[field] = group
                     else:
-                        name['type_specimen'] = match.group(1)
+                        # print(f'failed to match {data!r}')
+                        match = re.match(r'^((USNM |ANSP )?[\d/]+)', data)
+                        if not match:
+                            match = re.match(r'^([\d/]+)', data)
+                            if match:
+                                name['type_specimen'] = match.group(1)
+                            else:
+                                print(f'failed to match {data!r} at all')
+                        else:
+                            name['type_specimen'] = match.group(1)
                 else:
                     succeeded += 1
                     name['type_specimen'] = match.group(1)
@@ -111,7 +143,7 @@ def split_fields(names: DataT) -> DataT:
                     name['gender_age'] = match.group(3)
                     name['date'] = match.group(5)
                     name['collector'] = match.group(6)
-                name['specimen_detail'] = data
+                name['specimen_detail'] = raw_data
                 break
         yield name
     print(f'succeeded in splitting field: {succeeded}/{tried}')
@@ -138,9 +170,14 @@ def translate_type_localities(names: DataT) -> DataT:
 
 
 def main() -> DataT:
-    if len(sys.argv) > 1 and sys.argv[1] == 'ahm':
+    if len(sys.argv) > 1 and sys.argv[1] == 'cpac':
+        source = lib.Source('usnmcpac-layout.txt', 'Ferungulata-USNM types.pdf')
+    elif len(sys.argv) > 1 and sys.argv[1] == 'cs':
+        source = lib.Source('usnmcs-layout.txt', 'Castorimorpha, Sciuromorpha-USNM types.pdf')
+    elif len(sys.argv) > 1 and sys.argv[1] == 'ahm':
         source = lib.Source('usnmtypesahm-layout.txt', 'Anomaluromorpha, Hystricomorpha, Myomorpha-USNM types.pdf')
     else:
+        assert len(sys.argv) == 1
         source = lib.Source('usnmtypes-layout.txt', 'USNM-types (Fisher & Ludwig 2015).pdf')
 
     lines = lib.get_text(source)
@@ -149,22 +186,28 @@ def main() -> DataT:
     names = extract_names(pages)
     names = lib.clean_text(names)
     names = split_fields(names)
-    names = translate_to_db(names, source)
-    names = translate_type_localities(names)
-    names = lib.associate_names(names, {
-        'Deleuil & Labbe': 'Deleuil & Labbé',
-        'Tavares, Gardner, Ramirez-Chaves & Velazco': 'Tavares, Gardner, Ramírez-Chaves & Velazco',
-        'Miller & Allen': 'Miller & G.M. Allen',
-        'Robinson & Lyon': 'W. Robinson & Lyon',
-        'Goldman & Gardner': 'Goldman & M.C. Gardner',
-    }, {
-        'Tana tana besara': 'Tupaia tana besara',
-        'Arvicola (Pitymys) pinetorum quasiater': 'Arvicola (Pitymys) pinetorum var. quasiater',
-    }, start_at='Epimys norvegicus socer')
-    lib.write_to_db(names, source, dry_run=False)
+    # names = translate_to_db(names, source)
+    # names = translate_type_localities(names)
+    # names = lib.associate_names(names, {
+    #     'Deleuil & Labbe': 'Deleuil & Labbé',
+    #     'Tavares, Gardner, Ramirez-Chaves & Velazco': 'Tavares, Gardner, Ramírez-Chaves & Velazco',
+    #     'Miller & Allen': 'Miller & G.M. Allen',
+    #     'Robinson & Lyon': 'W. Robinson & Lyon',
+    #     'Goldman & Gardner': 'Goldman & M.C. Gardner',
+    #     'Miller.': 'Miller',
+    #     'Anderson & Gutierrez': 'Anderson & Gutiérrez',
+    # }, {
+    #     'Tana tana besara': 'Tupaia tana besara',
+    #     'Arvicola (Pitymys) pinetorum quasiater': 'Arvicola (Pitymys) pinetorum var. quasiater',
+    #     'Tamias asiaticus borealis': 'Tamias asiaticus, var. borealis',
+    #     'Tamias quadrivittatus pallidus': 'Tamias quadrivittatus, var. pallidus',
+    #     'Citellus washingtoni washingtoni': 'Citellus washingtoni',
+    # })
+    # lib.write_to_db(names, source, dry_run=False)
     # lib.print_counts(names, 'original_name')
-    lib.print_field_counts(names)
-    return names
+    # lib.print_field_counts(names)
+    list(names)
+    return []
 
 
 if __name__ == '__main__':

@@ -141,10 +141,10 @@ def clean_text_simple(names: DataT) -> DataT:
 
 
 def translate_to_db(names: DataT, collection_name: str, source: Source) -> DataT:
-    ummz = models.Collection.by_label(collection_name)
+    coll = models.Collection.by_label(collection_name)
     for name in names:
         if 'species_type_kind' in name:
-            name['collection'] = ummz
+            name['collection'] = coll
             name['type_specimen_source'] = source.source
         type_tags: List[models.TypeTag] = []
         if 'gender_age' in name:
@@ -164,7 +164,17 @@ def translate_to_db(names: DataT, collection_name: str, source: Source) -> DataT
         if 'collector' in name:
             type_tags.append(models.TypeTag.Collector(name['collector']))
         if 'date' in name:
-            type_tags.append(models.TypeTag.Date(name['date']))
+            date = name['date']
+            try:
+                date = helpers.standardize_date(date)
+            except ValueError:
+                if 'specimen_detail' in name and date in name['specimen_detail']:
+                    pass  # it will be included elsewhere
+                else:
+                    type_tags.append(models.TypeTag.SpecimenDetail(f'Collected: "{date}"', source.source))
+            else:
+                if date is not None:
+                    type_tags.append(models.TypeTag.Date(date))
         if 'specimen_detail' in name:
             type_tags.append(models.TypeTag.SpecimenDetail(name['specimen_detail'], source.source))
 
@@ -531,7 +541,7 @@ def write_to_db(names: DataT, source: Source, dry_run: bool = True, edit_if_no_h
                                     else:
                                         page_described = None
                                     nam.add_variant(new_root_name, constants.NomenclatureStatus.incorrect_subsequent_spelling,
-                                                    paper=source.source, page_described=None, original_name=new_value)
+                                                    paper=source.source, page_described=page_described, original_name=new_value)
                                     continue
                         else:
                             if existing.original_citation == source.source:
@@ -563,7 +573,7 @@ def write_to_db(names: DataT, source: Source, dry_run: bool = True, edit_if_no_h
 
     for nam, current, new in name_discrepancies:
         print('----------')
-        print(f'discrepancy for {nam}')
+        print(f'discrepancy for {nam} (p. {nam.page_described})')
         print(f'current: {current}')
         print(f'new: {new}')
         if not dry_run:

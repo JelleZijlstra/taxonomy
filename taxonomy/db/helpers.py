@@ -285,8 +285,13 @@ def _canonicalize_gender(name: str) -> str:
         return name
 
 
-def standardize_date(date: str) -> str:
+def standardize_date(date: str) -> Optional[str]:
     """Fixes the format of date fields."""
+    if date in ('unknown date', 'on unknown date', 'on an unknown date'):
+        return None
+    date = re.sub(r'\]', '', date)
+    date = re.sub(r'\[[A-Z a-n]+: ', '', date)
+    date = re.sub(r', not [\dA-Za-z]+( [A-Z][a-z][a-z])? as( given)? in original description(, ?|$)', '', date)
     if re.match(r'^\d{4}$', date):
         # year
         return date
