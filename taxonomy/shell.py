@@ -799,7 +799,7 @@ def clean_up_verbatim(dry_run: bool = False) -> None:
 
 
 @command
-def clean_up_type_locality_description(dry_run: bool = True) -> None:
+def clean_up_type_locality_description(dry_run: bool = False) -> None:
     count = removed = 0
     for nam in Name.filter(Name.type_locality_description != None, Name.type_tags != None):
         count += 1
@@ -810,16 +810,12 @@ def clean_up_type_locality_description(dry_run: bool = True) -> None:
         print(nam)
         for tag in tags:
             print(tag)
-        if dry_run:
-            print(nam.type_locality_description)
-        else:
+        print(nam.type_locality_description)
+        if not dry_run:
             removed += 1
-            if nam.type_locality_description.rstrip('.') in {t.text for t in tags}:
-                print('automatically emptying data')
-            else:
-                nam.fill_field('type_tags')
+            print('automatically emptying data')
+            nam.add_data('type_locality_description', nam.type_locality_description)
             nam.type_locality_description = None
-            nam.save()
     print(f'removed: {removed}/{count}')
 
 
@@ -854,6 +850,31 @@ def fill_type_locality(extant_only: bool = True, start_at: Optional[Name] = None
                 continue
         print(nam)
         print(nam.type_locality_description)
+        nam.fill_field('type_locality')
+
+
+@command
+def fill_type_locality_from_location_detail() -> None:
+    for nam in Name.filter(Name.type_tags != None, Name.type_locality >> None):
+        tags = [tag for tag in nam.type_tags if isinstance(tag, TypeTag.LocationDetail)]
+        if not tags:
+            continue
+        print(nam)
+        for tag in tags:
+            print(tag)
+        nam.fill_field('type_locality')
+
+
+@command
+def more_precise_type_localities(loc: models.Location) -> None:
+    for nam in loc.type_localities:
+        if not nam.type_tags:
+            continue
+        print('-------------------------')
+        print(nam)
+        for tag in nam.type_tags:
+            if isinstance(tag, models.TypeTag.LocationDetail):
+                print(tag)
         nam.fill_field('type_locality')
 
 
@@ -947,7 +968,7 @@ def check_tags(dry_run: bool = True) -> Iterable[Tuple[Name, str]]:
 
 
 @generator_command
-def check_type_tags(dry_run: bool = True) -> Iterable[Tuple[Name, str]]:
+def check_type_tags(dry_run: bool = False) -> Iterable[Tuple[Name, str]]:
     for nam in Name.filter(Name.type_tags != None):
         tags = []
         original_tags = list(nam.type_tags)
@@ -963,16 +984,13 @@ def check_type_tags(dry_run: bool = True) -> Iterable[Tuple[Name, str]]:
                         nam.genus_type_kind = constants.TypeSpeciesDesignation.designated_by_the_commission
             if isinstance(tag, TypeTag.Date):
                 date = tag.date
-                if date in ('unknown date', 'on unknown date', 'on an unknown date'):
-                    continue
-                date = re.sub(r'\]', '', date)
-                date = re.sub(r'\[[A-Z a-n]+: ', '', date)
-                date = re.sub(r', not [\dA-Za-z]+( [A-Z][a-z][a-z])? as( given)? in original description(, ?|$)', '', date)
                 try:
                     date = helpers.standardize_date(date)
                 except ValueError:
                     print(f'{nam} has date {tag.date}, which cannot be parsed')
                     yield nam, 'unparseable date'
+                if date is None:
+                    continue
                 tags.append(TypeTag.Date(date))
             else:
                 tags.append(tag)
@@ -1038,6 +1056,7 @@ def run_maintenance() -> Dict[Any, Any]:
     fns: List[Callable[..., Any]] = [
         lambda: set_empty_to_none(Name, 'type_locality_description'),
         clean_up_verbatim,
+        clean_up_type_locality_description,
         parentless_taxa,
         bad_parents,
         bad_taxa,
