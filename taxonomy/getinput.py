@@ -174,7 +174,7 @@ def _get_adt_member(member_cls: Type[adt.ADT], existing: Optional[adt.ADT] = Non
 
 
 def _stringify_adt_with_indexes(adts: Iterable[adt.ADT]) -> str:
-    return ', '.join(f'{i}: {tag}' for i, tag in enumerate(adts))
+    return '\n'.join(f'{i}: {tag}' for i, tag in enumerate(adts))
 
 
 def add_to_clipboard(data: str) -> None:
