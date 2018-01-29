@@ -1,5 +1,6 @@
 import builtins
 import enum
+import functools
 import sys
 from typing import (TYPE_CHECKING, Any, Callable, Dict, Iterable, Iterator, List,
                     MutableMapping, Type, TypeVar)
@@ -142,7 +143,7 @@ class _ADTMeta(type):
                 new_ns: Dict[str, Any] = {}
                 exec(code, {}, new_ns)
                 member_ns['__init__'] = new_ns['__init__']
-            member_cls = type(member.name, (new_cls,), member_ns)
+            member_cls = functools.total_ordering(type(member.name, (new_cls,), member_ns))
             if not has_args:
                 cls_obj = member_cls
                 member_cls = cls_obj()
