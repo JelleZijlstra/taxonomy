@@ -645,6 +645,31 @@ def correct_type_taxon(max_count: Optional[int] = None, dry_run: bool = False, o
 # Statistics
 
 @command
+def type_locality_tree() -> None:
+    earth = models.Region.get(name='Earth')
+    _, lines = _tl_count(earth)
+    for line in lines:
+        print(line)
+
+
+def _tl_count(region: models.Region) -> Tuple[int, List[str]]:
+    print(f'processing {region}')
+    count = 0
+    lines = []
+    for loc in region.locations.order_by(models.Location.name):
+        tl_count = loc.type_localities.count()
+        if tl_count:
+            count += tl_count
+            lines.append(f'{tl_count} - {loc.name}')
+    for child in region.children.order_by(models.Region.name):
+        child_count, child_lines = _tl_count(child)
+        count += child_count
+        lines += child_lines
+    line = f'{count} - {region.name}'
+    return count, [line, *['    ' + l for l in lines]]
+
+
+@command
 def print_percentages() -> None:
     attributes = ['original_name', 'original_citation', 'page_described', 'authority', 'year']
     parent_of_taxon: Dict[int, int] = {}
