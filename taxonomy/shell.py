@@ -126,7 +126,7 @@ def taxon_of_name(name: str) -> Taxon:
     try:
         return Taxon.filter(Taxon.valid_name == name)[0]
     except IndexError:
-        raise LookupError(name)
+        raise LookupError(name) from None
 
 
 @generator_command
