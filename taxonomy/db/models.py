@@ -1913,7 +1913,10 @@ class Name(BaseModel):
             if self.group == Group.genus:
                 return self.get_name_complex(NameComplex)
             elif self.group == Group.species:
-                return self.get_name_complex(SpeciesNameComplex)
+                value = self.get_name_complex(SpeciesNameComplex)
+                if value is not None and value.kind.is_single_complex():
+                    value.apply_to_ending(self.root_name, interactive=True)
+                return value
             else:
                 raise TypeError('cannot have name complex')
         else:

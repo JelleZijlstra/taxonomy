@@ -316,6 +316,12 @@ class SpeciesNameKind(enum.IntEnum):
     patronym_feminine_plural = 10  # -arum patronym
     patronym_latin = 11  # patronym formed from a Latin name (Art. 31.1.1)
 
+    def is_single_complex(self) -> bool:
+        return self not in {
+            SpeciesNameKind.adjective,
+            SpeciesNameKind.ambiguous_noun,
+        }
+
 
 class TypeSpeciesDesignation(enum.IntEnum):
     # in order, Art. 68.1
