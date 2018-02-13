@@ -748,14 +748,13 @@ class Taxon(BaseModel):
             print("DUPLICATE OCCURRENCE")
             return self.at(location)
 
-    def syn_from_paper(self, name: str, paper: str, page_described: Union[None, int, str] = None,
+    def syn_from_paper(self, root_name: str, paper: str, page_described: Union[None, int, str] = None,
                        status: Status = Status.synonym, group: Optional[Group] = None,
                        age: Optional[constants.Age] = None, interactive: bool = True, **kwargs: Any) -> 'Name':
         authority, year = ehphp.call_ehphp('taxonomicAuthority', [paper])[0]
         result = self.add_syn(
-            root_name=name, authority=authority, year=year, original_citation=paper,
-            page_described=page_described, original_name=name, status=status, age=age,
-            interactive=False,
+            root_name=root_name, authority=authority, year=year, original_citation=paper,
+            page_described=page_described, status=status, age=age, interactive=False,
         )
         if group is not None:
             kwargs['group'] = group
