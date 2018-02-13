@@ -613,7 +613,7 @@ def labeled_authorless_names(attribute: str = 'authority') -> List[LabeledName]:
 
 
 @command
-def correct_type_taxon(max_count: Optional[int] = None, dry_run: bool = True, only_if_child: bool = True) -> List[Name]:
+def correct_type_taxon(max_count: Optional[int] = None, dry_run: bool = False, only_if_child: bool = True) -> List[Name]:
     count = 0
     out = []
     for nam in Name.filter(Name.group << (Group.genus, Group.family), Name.type != None):
