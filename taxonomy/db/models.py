@@ -992,8 +992,8 @@ class Taxon(BaseModel):
             print("%s: %s of %s (%.2f%%)" % (label, num, total, percentage))
             return percentage
 
-        for attribute, count in sorted(counts.items(), key=lambda i: (i[1], i[0])):
-            output[attribute] = print_percentage(count, required_counts[attribute], attribute)
+        for attribute, count in sorted(required_counts.items(), key=lambda i: (counts[i[0]], i[0])):
+            output[attribute] = print_percentage(counts[attribute], count, attribute)
         return output
 
     def fill_data_for_names(self, only_with_original: bool = True, min_year: Optional[int] = None) -> None:
