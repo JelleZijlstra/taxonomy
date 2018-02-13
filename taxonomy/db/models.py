@@ -2488,6 +2488,7 @@ class Tag(adt.ADT):
     Conserved(opinion=str, comment=str, tag=12)  # type: ignore  # Conserved by placement on the Official List.
     IncorrectOriginalSpellingOf(name=Name, comment=str, tag=13)  # type: ignore
     SelectionOfSpelling(source=str, comment=str, tag=14)  # type: ignore  # selection as the correct original spelling
+    SubsequentUsageOf(name=Name, comment=str, tag=15)  # type: ignore
 
 
 STATUS_TO_TAG = {
@@ -2498,6 +2499,7 @@ STATUS_TO_TAG = {
     NomenclatureStatus.mandatory_change: Tag.MandatoryChangeOf,
     NomenclatureStatus.nomen_novum: Tag.NomenNovumFor,
     NomenclatureStatus.incorrect_original_spelling: Tag.IncorrectOriginalSpellingOf,
+    NomenclatureStatus.subsequent_usage: Tag.SubsequentUsageOf,
 }
 
 

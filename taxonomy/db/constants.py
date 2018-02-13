@@ -94,6 +94,7 @@ class NomenclatureStatus(enum.IntEnum):
     incorrect_original_spelling = 42  # if there are multiple variants in the original description
     type_not_treated_as_valid = 43  # Art. 11.7.1.1: genus name must be treated as valid
     reranking = 44  # subset of mandatory change: family-group name changed to a new rank
+    subsequent_usage = 45  # usage of a name (e.g., a misidentification) that does not create a new name
 
     def requires_type(self) -> bool:
         """Whether a name of this status should have a type designated."""
@@ -142,7 +143,7 @@ class NomenclatureStatus(enum.IntEnum):
              cls.multiple_words, cls.no_type_specified, cls.anonymous_authorship,
              cls.conditional, cls.variety_or_form, cls.not_explicitly_new,
              cls.ites_name, cls.based_on_homonym, cls.based_on_a_suppressed_name,
-             cls.type_not_treated_as_valid],
+             cls.type_not_treated_as_valid, cls.subsequent_usage],
             # Spelling issues that produce unavailable names.
             [cls.incorrect_subsequent_spelling, cls.incorrect_original_spelling],
             [cls.nomen_nudum],
