@@ -2162,6 +2162,8 @@ class Name(BaseModel):
         yield 'year'
         yield 'page_described'
         yield 'original_citation'
+        if self.original_citation is None:
+            yield 'verbatim_citation'
 
         if self.group in (Group.genus, Group.species) and self.nomenclature_status != NomenclatureStatus.incorrect_subsequent_spelling:
             yield 'name_complex'
@@ -2175,10 +2177,11 @@ class Name(BaseModel):
                 if self.collection is None or (self.collection.id != 75):
                     yield 'type_specimen'
                 yield 'collection'
-                yield 'type_specimen_source'
-                yield 'species_type_kind'
+                if self.type_specimen is not None or self.collection is not None:
+                    yield 'type_specimen_source'
+                    yield 'species_type_kind'
                 yield 'type_tags'
-            if self.group == Group.genus:
+            if self.group == Group.genus and self.type is not None:
                 yield 'genus_type_kind'
 
     def validate(self, status: Status = Status.valid, parent: Optional[Taxon] = None,
