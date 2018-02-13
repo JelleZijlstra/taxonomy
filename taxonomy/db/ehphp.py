@@ -9,6 +9,10 @@ PORT = 3001
 URL = "http://localhost:" + str(PORT) + "/api"
 
 
+class EHPHPError(Exception):
+    pass
+
+
 def call_ehphp(cmd: str, args: Any) -> Any:
     if isinstance(args, list):
         args = {'files': args}
@@ -22,4 +26,4 @@ def call_ehphp(cmd: str, args: Any) -> Any:
     try:
         return req.json()
     except ValueError:  # invalid JSON
-        raise Exception(req.text)
+        raise EHPHPError(req.text)

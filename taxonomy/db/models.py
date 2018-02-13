@@ -1335,7 +1335,7 @@ class SpeciesNameComplex(BaseModel):
     def self_apply(self, dry_run: bool = True) -> List['Name']:
         return self.apply_to_ending(self.label, dry_run=dry_run)
 
-    def apply_to_ending(self, ending: str, dry_run: bool = True) -> List['Name']:
+    def apply_to_ending(self, ending: str, dry_run: bool = True, interactive: bool = False, full_name_only: bool = True) -> List['Name']:
         """Adds the name complex to all names with a specific ending."""
         names = [
             name for name in Name.filter(Name.group == Group.species, Name._name_complex_id >> None,
@@ -1347,12 +1347,16 @@ class SpeciesNameComplex(BaseModel):
             print(name)
             if not dry_run:
                 name.name_complex = self
-                name.save()
+        if interactive:
+            if getinput.yes_no('apply?'):
+                for name in names:
+                    name.name_complex = self
+                dry_run = False
         if not dry_run:
             saved_endings = list(self.endings)
             if not any(e.ending == ending for e in saved_endings):
                 print(f'saving ending {ending}')
-                self.make_ending(ending)
+                self.make_ending(ending, full_name_only=full_name_only)
         return names
 
     def get_stem_from_name(self, name: str) -> str:
@@ -2212,7 +2216,10 @@ class Name(BaseModel):
         if self.original_citation is None:
             print("%s: original citation unknown" % self.description())
         else:
-            ehphp.call_ehphp('openf', [self.original_citation])
+            try:
+                ehphp.call_ehphp('openf', [self.original_citation])
+            except ehphp.EHPHPError:
+                pass
         return True
 
     def remove(self) -> None:
