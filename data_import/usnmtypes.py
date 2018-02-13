@@ -32,7 +32,7 @@ def extract_names(pages: Iterable[Tuple[int, List[str]]]) -> DataT:
         assert current_name is not None
         assert current_label is not None
         if label in current_name:
-            if label == 'Syntype':
+            if label in ('Syntype', 'Type Locality'):
                 label = f'Syntype {line}'
             assert label not in current_name, f'duplicate label {label} in {current_name}'
         current_name[current_label] = current_lines
@@ -44,7 +44,7 @@ def extract_names(pages: Iterable[Tuple[int, List[str]]]) -> DataT:
             current_name['pages'].append(page)
         for line in lines:
             if not found_first:
-                if line.strip() == 'TYPE SPECIMENS':
+                if line.strip() in ('TYPE SPECIMENS', 'SPECIMENS'):
                     found_first = True
                 continue
             # ignore family/genus headers
@@ -61,14 +61,16 @@ def extract_names(pages: Iterable[Tuple[int, List[str]]]) -> DataT:
                     in_headings = False
             if line.startswith(' '):
                 current_lines.append(line)
-            elif line.startswith(('This specimen', 'Type ', 'No type', 'There are', 'No additional', 'All ', 'Subspecies of ', 'Neotype designated ', 'Padre Island')):
-                start_label('comments', line)
-            elif line.startswith('Secondary junior') or line.startswith('Primary junior'):
-                start_label('homonymy', line)
             elif re.match(r'^[A-Z][A-Z a-z-]+: ', line):
                 start_label(line.split(':')[0], line)
             elif line.startswith('Lectotype as designated'):
                 start_label('Lectotype', line)
+            elif line.startswith('Neotype as designated'):
+                start_label('Neotype', line)
+            elif line.startswith(('This specimen', 'Type ', 'No type', 'There are', 'No additional', 'All ', 'Subspecies of ', 'Neotype designated ', 'Padre Island')):
+                start_label('comments', line)
+            elif line.startswith(('Secondary junior', 'Primary junior', 'Junior primary')):
+                start_label('homonymy', line)
             elif re.match(r'^[\d/]+\. ', line):
                 start_label(line.split('.')[0], line)
             elif line.startswith('USNM'):
@@ -78,7 +80,7 @@ def extract_names(pages: Iterable[Tuple[int, List[str]]]) -> DataT:
                 if current_name is not None:
                     assert current_label is not None
                     current_name[current_label] = current_lines
-                    assert any(field in current_name for field in ('Holotype', 'Type Locality', 'Lectotype', 'Syntypes', 'No name-bearing status', 'Neotype')), current_name
+                    assert any(field in current_name for field in ('Holotype', 'Type Locality', 'Lectotype', 'Syntype', 'Syntypes', 'No name-bearing status', 'Neotype')), current_name
                     yield current_name
                 current_name = {'pages': [page]}
                 current_label = 'name'
@@ -89,7 +91,7 @@ def extract_names(pages: Iterable[Tuple[int, List[str]]]) -> DataT:
                 else:
                     # probably continuation of the author
                     current_lines.append(line)
-            elif current_label == 'verbatim_citation' or current_label == 'homonymy':
+            elif current_label == 'verbatim_citation' or current_label == 'homonymy' or line.startswith('= '):
                 start_label('synonymy', line)
             else:
                 assert False, f'{line!r} with label {current_label}'
@@ -111,6 +113,7 @@ def split_fields(names: DataT) -> DataT:
                 tried += 1
                 name['species_type_kind'] = constants.SpeciesGroupType[field.lower()]
                 raw_data = data = name[field]
+                data = re.sub(r'^as designated.*?: ', '', data)
                 # TODO handle field starting with "Lectotype as designated by ..."
                 match = re.match(r'^(USNM [\d/]+)\. ([^\.]+)\. ([^\.]+)\. (Collected|Received|Leg\. \(Collected\)) (.*) by (.*)\. (Original [Nn]umbers? .+|No original number.*)\.$', data)
                 if match is None:
@@ -186,28 +189,31 @@ def main() -> DataT:
     names = extract_names(pages)
     names = lib.clean_text(names)
     names = split_fields(names)
-    # names = translate_to_db(names, source)
-    # names = translate_type_localities(names)
-    # names = lib.associate_names(names, {
-    #     'Deleuil & Labbe': 'Deleuil & Labbé',
-    #     'Tavares, Gardner, Ramirez-Chaves & Velazco': 'Tavares, Gardner, Ramírez-Chaves & Velazco',
-    #     'Miller & Allen': 'Miller & G.M. Allen',
-    #     'Robinson & Lyon': 'W. Robinson & Lyon',
-    #     'Goldman & Gardner': 'Goldman & M.C. Gardner',
-    #     'Miller.': 'Miller',
-    #     'Anderson & Gutierrez': 'Anderson & Gutiérrez',
-    # }, {
-    #     'Tana tana besara': 'Tupaia tana besara',
-    #     'Arvicola (Pitymys) pinetorum quasiater': 'Arvicola (Pitymys) pinetorum var. quasiater',
-    #     'Tamias asiaticus borealis': 'Tamias asiaticus, var. borealis',
-    #     'Tamias quadrivittatus pallidus': 'Tamias quadrivittatus, var. pallidus',
-    #     'Citellus washingtoni washingtoni': 'Citellus washingtoni',
-    # })
-    # lib.write_to_db(names, source, dry_run=False)
+    names = translate_to_db(names, source)
+    names = translate_type_localities(names)
+    names = lib.associate_names(names, {
+        'Deleuil & Labbe': 'Deleuil & Labbé',
+        'Tavares, Gardner, Ramirez-Chaves & Velazco': 'Tavares, Gardner, Ramírez-Chaves & Velazco',
+        'Miller & Allen': 'Miller & G.M. Allen',
+        'Robinson & Lyon': 'W. Robinson & Lyon',
+        'Goldman & Gardner': 'Goldman & M.C. Gardner',
+        'Miller.': 'Miller',
+        'Anderson & Gutierrez': 'Anderson & Gutiérrez',
+        'Garcia-Perea': 'García-Perea',
+        'Dalebout, Mead, Baker, Baker & van Helden': 'Dalebout, Mead, Baker, Baker & Van Helden',
+        'Wilson Wilson et al.': 'Wilson',
+    }, {
+        'Tana tana besara': 'Tupaia tana besara',
+        'Arvicola (Pitymys) pinetorum quasiater': 'Arvicola (Pitymys) pinetorum var. quasiater',
+        'Tamias asiaticus borealis': 'Tamias asiaticus, var. borealis',
+        'Tamias quadrivittatus pallidus': 'Tamias quadrivittatus, var. pallidus',
+        'Citellus washingtoni washingtoni': 'Citellus washingtoni',
+    })
+    lib.write_to_db(names, source, dry_run=False)
     # lib.print_counts(names, 'original_name')
     # lib.print_field_counts(names)
     list(names)
-    return []
+    return names
 
 
 if __name__ == '__main__':
