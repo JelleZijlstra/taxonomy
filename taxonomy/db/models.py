@@ -129,6 +129,11 @@ class BaseModel(Model):
     def __hash__(self) -> int:
         return self.id
 
+    def __lt__(self, other: object) -> bool:
+        if not isinstance(other, type(self)):
+            return NotImplemented
+        return self.id < other.id
+
     def __del__(self) -> None:
         if self.is_dirty():
             try:
