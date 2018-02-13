@@ -2102,9 +2102,7 @@ class Name(BaseModel):
                 'taxonomy_comments': self.taxonomy_comments,
                 'verbatim_type': self.verbatim_type,
                 'verbatim_citation': self.verbatim_citation,
-                'type_locality': self.type_locality,
                 'type_locality_description': self.type_locality_description,
-                'type_tags': sorted(self.type_tags) if self.type_tags else None,
                 'tags': sorted(self.tags) if self.tags else None,
             }
             if include_data:
@@ -2118,6 +2116,8 @@ class Name(BaseModel):
                 type_info.append(f'in {self.collection}')
             if self.type_specimen_source is not None:
                 type_info.append(f'{{{self.type_specimen_source}}}')
+            if self.type_locality is not None:
+                type_info.append(f'from {self.type_locality.name}')
             if type_info:
                 data['type'] = '; '.join(type_info)
             result = ''.join([result] + [
@@ -2125,9 +2125,12 @@ class Name(BaseModel):
                 for key, value in data.items()
                 if value
             ] + [
+                ' ' * ((depth + 2) * 4) + str(tag) + '\n'
+                for tag in (self.type_tags or [])
+            ] + [
                 ' ' * ((depth + 2) * 4) + comment.get_description() + '\n'
                 for comment in self.comments
-                if include_data or comment.kind != CommentKind.structured_quote
+                if include_data or comment.kind != constants.CommentKind.structured_quote
             ])
         return result
 
