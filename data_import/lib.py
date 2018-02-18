@@ -67,11 +67,25 @@ NAME_SYNONYMS = {
     'Trobriand Islands': 'Papua New Guinea',
     "D'Entrecasteaux Archipelago": 'Papua New Guinea',
     'Waigeu': 'Waigeo',
+    'Maldive Islands': 'Maldives',
+    'U.S.A.': 'United States',
+    'Tanganyika Territory': 'Tanzania',
+    'Tanganyika Territoiy': 'Tanzania',
+    'Anglo-Egyptian Sudan': 'Africa',
+    'Malagasy Republic': 'Madagascar',
+    'British East Africa': 'Kenya',
+    'Belgian Congo': 'DR Congo',
+    'Nyasaland': 'Malawi',
+    'Cameroun': 'Cameroon',
+    'Cameroons': 'Cameroon',
+    'Asia Minor': 'Turkey',
+    'British Honduras': 'Belize',
+    'Anglo- Egyptian Sudan': 'Africa',
 }
 REMOVE_PARENS = re.compile(r' \([A-Z][a-z]+\)')
 LATLONG = re.compile(r'''
-    (?P<latitude>\d+°(\s\d+')?\s[NS]),\s
-    (?P<longitude>\d+°(\s\d+')?\s[EW])
+    (?P<latitude>\d+°\s*(\d+')?\s*[NS])[,\s\[\]]+
+    (long\.\s)?(?P<longitude>\d+°\s*(\d+')?\s*[EW])
 ''', re.VERBOSE)
 
 DataT = Iterable[Dict[str, Any]]
@@ -110,6 +124,14 @@ def extract_pages(lines: Iterable[str]) -> Iterable[Tuple[int, List[str]]]:
     yield current_page, current_lines
 
 
+def validate_pages(pages: Iterable[Tuple[int, List[str]]]):
+    current_page: Optional[int] = None
+    for page, _ in pages:
+        if current_page is not None:
+            assert page == current_page + 1, f'missing {current_page + 1}'
+        current_page = page
+
+
 def align_columns(pages: Iterable[Tuple[int, List[str]]]) -> Iterable[Tuple[int, List[str]]]:
     """Rearrange the text to separate the two columns on each page."""
     for page, lines in pages:
@@ -140,7 +162,7 @@ def clean_text(names: DataT) -> DataT:
                 text = '\n'.join(value)
                 text = text.replace(' \xad ', '')
                 text = text.replace('\xad', '')
-                text = re.sub(r'-\n+ *', '', text)
+                text = re.sub(r'- *\n+ *', '', text)
                 text = re.sub(r'\s+', ' ', text)
                 if isinstance(key, str):
                     text = re.sub(r'^\s*' + key + r'[-:\. ]+', '', text)
@@ -156,7 +178,7 @@ def clean_text_simple(names: DataT) -> DataT:
         }
 
 
-def translate_to_db(names: DataT, collection_name: str, source: Source) -> DataT:
+def translate_to_db(names: DataT, collection_name: str, source: Source, verbose: bool = False) -> DataT:
     coll = models.Collection.by_label(collection_name)
     for name in names:
         if 'authority' in name and ' and ' in name['authority']:
@@ -165,13 +187,19 @@ def translate_to_db(names: DataT, collection_name: str, source: Source) -> DataT
             name['collection'] = coll
             name['type_specimen_source'] = source.source
         type_tags: List[models.TypeTag] = []
-        if 'gender_age' in name:
-            type_tags += extract_gender_age(name['gender_age'])
+        for field in ('age_gender', 'gender_age'):
+            if field in name:
+                gender_age = extract_gender_age(name[field])
+                type_tags += gender_age
+                if not gender_age:
+                    print(f'failed to parse gender age {name[field]!r}')
         if 'body_parts' in name:
             body_parts = extract_body_parts(name['body_parts'])
             if body_parts:
                 type_tags += body_parts
             else:
+                if verbose:
+                    print(f'failed to parse body parts {name["body_parts"]!r}')
                 type_tags.append(models.TypeTag.SpecimenDetail(name['body_parts'], source.source))
         if 'loc' in name:
             text = name['loc']
@@ -204,7 +232,10 @@ def translate_to_db(names: DataT, collection_name: str, source: Source) -> DataT
 def translate_type_locality(names: DataT, start_at_end: bool = False) -> DataT:
     for name in names:
         if 'loc' in name:
-            parts = [[re.sub(r' \([^\(]+\)$', '', part)] for part in name['loc'].split(', ')]
+            loc = name['loc']
+            loc = re.sub(r'[ \[]lat\. .*$', '', loc)
+            loc = re.sub(r'[\.,;:\[ ]+$', '', loc)
+            parts = [[re.sub(r' \([^\(]+\)$', '', part)] for part in loc.split(', ')]
             if start_at_end:
                 parts = list(reversed(parts))
             type_loc = extract_region(parts)
@@ -282,7 +313,8 @@ SKELETON = TypeTag.Organ(constants.Organ.postcranial_skeleton, '', '')
 
 def extract_body_parts(organs: str) -> List[TypeTag]:
     organs = organs.lower().replace('[', '').replace(']', '')
-    if organs in ('skin and skull', 'skin and cranium', 'study skin and skull') or '(skin and skull)' in organs:
+    organs = re.sub(r'sk..?ll', 'skull', organs).replace('skufl', 'skull')
+    if organs in ('skin and skull', 'skin and cranium', 'study skin and skull', 'skull and skin', 'mounted skin and skull', 'skull and head skin') or '(skin and skull)' in organs:
         tags = [SKIN, SKULL]
     elif organs == 'skin and skeleton':
         tags = [SKIN, SKULL, SKELETON]
@@ -300,6 +332,14 @@ def extract_body_parts(organs: str) -> List[TypeTag]:
         tags = [SKULL]
     elif organs.startswith('skin only'):
         tags = [SKIN]
+    elif organs == 'skin':
+        tags = [SKIN]
+    elif organs in ('skull', 'cranium'):
+        tags = [SKULL]
+    elif organs == 'skull and postcranial skeleton':
+        tags = [SKULL, SKELETON]
+    elif 'mandible' in organs or 'ramus' in organs:
+        tags = [TypeTag.Organ(constants.Organ.mandible, organs, '')]
     else:
         tags = []
     return tags
@@ -445,6 +485,9 @@ def get_original_genera_of_genus(genus: models.Taxon) -> Set[str]:
 def name_variants(original_name: str, authority: str) -> Iterable[Tuple[str, str]]:
     yield original_name, authority
     original_authority = authority
+    unspaced = re.sub(r'([A-Z]\.) (?=[A-Z]\.)', r'\1', authority).strip()
+    if original_authority != unspaced:
+        yield original_name, unspaced
     authority = re.sub(r'([A-Z]\.)+ ', '', authority).strip()
     if authority != original_authority:
         yield original_name, authority
@@ -456,6 +499,7 @@ def name_variants(original_name: str, authority: str) -> Iterable[Tuple[str, str
     if authority.startswith('Allen'):
         yield original_name, 'J.A. ' + authority
         yield original_name, 'J.A. ' + authority + ' & Chapman'
+        yield original_name, 'G.M. ' + authority
     if authority.startswith('Anthony'):
         yield original_name, 'H.E. ' + authority
     if authority == 'Andersen':
@@ -491,6 +535,8 @@ def name_variants(original_name: str, authority: str) -> Iterable[Tuple[str, str
         yield original_name, 'Mjöberg'
     if authority == 'Forster':
         yield original_name, 'Förster'
+    if authority == 'Rummler':
+        yield original_name, 'Rümmler'
     if authority in ('Müller & Schlegel', 'Schlegel & Müller'):
         # many names that were previously attributed to M & S were earlier described by M alone
         yield original_name, 'Müller'
