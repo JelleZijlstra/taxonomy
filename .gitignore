@@ -5,3 +5,6 @@ taxonomy/db/settings.py
 __pycache__/
 .mypy_cache/
 .venv/
+.cache/
+.tox/
+data_import/data/
