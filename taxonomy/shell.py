@@ -1008,7 +1008,7 @@ def check_type_tags(dry_run: bool = False) -> Iterable[Tuple[Name, str]]:
                     print(f'{nam} has {nam.genus_type_kind}, but its type was set by the Commission')
                     if not dry_run:
                         nam.genus_type_kind = constants.TypeSpeciesDesignation.designated_by_the_commission
-            if isinstance(tag, TypeTag.Date):
+            elif isinstance(tag, TypeTag.Date):
                 date = tag.date
                 try:
                     date = helpers.standardize_date(date)
@@ -1018,17 +1018,17 @@ def check_type_tags(dry_run: bool = False) -> Iterable[Tuple[Name, str]]:
                 if date is None:
                     continue
                 tags.append(TypeTag.Date(date))
-            if isinstance(tag, TypeTag.SpecimenDetail):
+            elif isinstance(tag, TypeTag.SpecimenDetail):
                 if tag.source and tag.source not in all_sources:
                     print(f'{nam} uses non-existent source {tag.source} in SpecimenDetail')
                     yield nam, f'non-existent source {tag.source} (SpecimenDetail)'
                 tags.append(tag)
-            if isinstance(tag, TypeTag.Altitude):
+            elif isinstance(tag, TypeTag.Altitude):
                 if not re.match(r'^-?\d+([\-\.]\d+)?$', tag.altitude) or tag.altitude == '000':
                     print(f'{nam} has altitude {tag}, which cannot be parsed')
                     yield nam, f'bad altitude tag {tag}'
                 tags.append(tag)
-            if isinstance(tag, TypeTag.LocationDetail):
+            elif isinstance(tag, TypeTag.LocationDetail):
                 if tag.source and tag.source not in all_sources:
                     print(f'{nam} uses non-existent source {tag.source} in LocationDetail')
                     yield nam, f'non-existent source {tag.source} (LocationDetail)'
@@ -1037,10 +1037,24 @@ def check_type_tags(dry_run: bool = False) -> Iterable[Tuple[Name, str]]:
                     tags.append(TypeTag.Coordinates(coords[0], coords[1]))
                     print(f'{nam}: adding coordinates {tags[-1]} extracted from {tag.text!r}')
                 tags.append(tag)
+            elif isinstance(tag, TypeTag.Coordinates):
+                try:
+                    lat = helpers.standardize_coordinates(tag.latitude, is_latitude=True)
+                except helpers.InvalidCoordinates as e:
+                    print(f'{nam} has invalid latitude {tag.latitude}: {e}')
+                    yield nam, f'invalid latitude {tag.latitude}'
+                    lat = tag.latitude
+                try:
+                    longitude = helpers.standardize_coordinates(tag.longitude, is_latitude=False)
+                except helpers.InvalidCoordinates as e:
+                    print(f'{nam} has invalid longitude {tag.longitude}: {e}')
+                    yield nam, f'invalid longitude {tag.longitude}'
+                    longitude = tag.longitude
+                tags.append(TypeTag.Coordinates(lat, longitude))
             else:
                 tags.append(tag)
             # TODO: for lectotype and subsequent designations, ensure the earliest valid one is used.
-        tags = sorted(tags)
+        tags = sorted(set(tags))
         if not dry_run and tags != original_tags:
             print('changing tags')
             print(original_tags)

@@ -336,10 +336,70 @@ def standardize_date(date: str) -> Optional[str]:
     raise ValueError(date)
 
 
+COORDINATE_RGX = re.compile(r'''
+    ^(?P<degrees>\d+(\.\d+)?)°
+    ((?P<minutes>\d+(\.\d+)?)'
+    ((?P<seconds>\d+(\.\d+)?)")?)?
+    (?P<direction>[NSWE])$
+''', re.VERBOSE)
+
+
+class InvalidCoordinates(Exception):
+    pass
+
+
+def standardize_coordinates(text: str, *, is_latitude: bool) -> str:
+    text = re.sub(r'\s', '', text)
+    text = text.replace('·', '.')
+    text = re.sub(r'[\*◦]', '°', text)
+    text = re.sub(r'[`ʹ’‘′ ́]', "'", text)
+    text = re.sub(r"(''|”)", '"', text)
+
+    match = COORDINATE_RGX.match(text)
+    if not match:
+        raise InvalidCoordinates(f'could not match {text!r}')
+
+    degrees = match.group('degrees')
+    minutes = match.group('minutes')
+    seconds = match.group('seconds')
+    direction = match.group('direction')
+
+    if '.' in degrees and minutes:
+        raise InvalidCoordinates(f'fractional degrees when minutes are given')
+    if float(degrees) > (90 if is_latitude else 180):
+        raise InvalidCoordinates(f'invalid degree {degrees}')
+
+    if minutes:
+        if '.' in minutes and seconds:
+            raise InvalidCoordinates(f'fractional degrees when minutes are given')
+        if float(minutes) > 60:
+            raise InvalidCoordinates(f'invalid minutes {minutes}')
+
+    if seconds:
+        if float(seconds) > 60:
+            raise InvalidCoordinates(f'invalid seconds {seconds}')
+
+    if is_latitude:
+        if direction not in ('N', 'S'):
+            raise InvalidCoordinates(f'invalid latitude {direction}')
+    else:
+        if direction not in ('W', 'E'):
+            raise InvalidCoordinates(f'invalid longitude {direction}')
+    return text
+
+
 def extract_coordinates(text: str) -> Optional[Tuple[str, str]]:
     """Attempts to extract latitude and longitude from a location description."""
     match = LATLONG.search(text)
     if match:
-        return match.group('latitude'), match.group('longitude')
+        try:
+            latitude = standardize_coordinates(match.group('latitude'), is_latitude=True)
+        except InvalidCoordinates:
+            return None
+        try:
+            longitude = standardize_coordinates(match.group('longitude'), is_latitude=False)
+        except InvalidCoordinates:
+            return None
+        return latitude, longitude
     else:
         return None
