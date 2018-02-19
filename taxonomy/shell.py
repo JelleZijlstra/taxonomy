@@ -12,7 +12,7 @@ import unidecode
 from traitlets.config.loader import Config
 
 from . import getinput
-from .db import constants, definition, detection, helpers, models
+from .db import constants, definition, detection, ehphp, helpers, models
 from .db.constants import Age, Group, NomenclatureStatus, Rank
 from .db.models import Name, Tag, Taxon, TypeTag, database
 
@@ -994,6 +994,7 @@ def check_tags(dry_run: bool = True) -> Iterable[Tuple[Name, str]]:
 
 @generator_command
 def check_type_tags(dry_run: bool = False) -> Iterable[Tuple[Name, str]]:
+    all_sources = ehphp.call_ehphp('get_all', {})
     for nam in Name.filter(Name.type_tags != None):
         tags = []
         original_tags = list(nam.type_tags)
@@ -1017,6 +1018,25 @@ def check_type_tags(dry_run: bool = False) -> Iterable[Tuple[Name, str]]:
                 if date is None:
                     continue
                 tags.append(TypeTag.Date(date))
+            if isinstance(tag, TypeTag.SpecimenDetail):
+                if tag.source and tag.source not in all_sources:
+                    print(f'{nam} uses non-existent source {tag.source} in SpecimenDetail')
+                    yield nam, f'non-existent source {tag.source} (SpecimenDetail)'
+                tags.append(tag)
+            if isinstance(tag, TypeTag.Altitude):
+                if not re.match(r'^-?\d+([\-\.]\d+)?$', tag.altitude) or tag.altitude == '000':
+                    print(f'{nam} has altitude {tag}, which cannot be parsed')
+                    yield nam, f'bad altitude tag {tag}'
+                tags.append(tag)
+            if isinstance(tag, TypeTag.LocationDetail):
+                if tag.source and tag.source not in all_sources:
+                    print(f'{nam} uses non-existent source {tag.source} in LocationDetail')
+                    yield nam, f'non-existent source {tag.source} (LocationDetail)'
+                coords = helpers.extract_coordinates(tag.text)
+                if coords and not any(isinstance(t, TypeTag.Coordinates) for t in original_tags):
+                    tags.append(TypeTag.Coordinates(coords[0], coords[1]))
+                    print(f'{nam}: adding coordinates {tags[-1]} extracted from {tag.text!r}')
+                tags.append(tag)
             else:
                 tags.append(tag)
             # TODO: for lectotype and subsequent designations, ensure the earliest valid one is used.
@@ -1034,6 +1054,8 @@ def check_type_tags(dry_run: bool = False) -> Iterable[Tuple[Name, str]]:
             print(f'{nam} is missing a reference for its type designation')
             yield nam, 'missing type designation reference'
     for nam in Name.filter(Name.species_type_kind == constants.SpeciesGroupType.lectotype):
+        if nam.collection and nam.collection.name == 'lost':
+            continue
         for tag in (nam.type_tags or ()):
             if isinstance(tag, TypeTag.LectotypeDesignation) and tag.lectotype == nam.type_specimen:
                 break

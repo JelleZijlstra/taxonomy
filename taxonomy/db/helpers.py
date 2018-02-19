@@ -4,7 +4,7 @@ import datetime
 import json
 import re
 from operator import itemgetter
-from typing import (TYPE_CHECKING, Any, Dict, Iterable, Mapping, Optional,
+from typing import (TYPE_CHECKING, Any, Dict, Iterable, Mapping, Optional, Tuple,
                     TypeVar)
 
 from . import constants
@@ -83,6 +83,10 @@ _RANKS = {
     'Genus': Rank.genus,
     'Subgenus': Rank.subgenus,
 }
+LATLONG = re.compile(r'''
+    (?P<latitude>\d+(\.\d+)?\s*[°*]\s*(\d+(\.\d+)?\s*')?\s*[NS])[,\s\[\]]+
+    (long\.\s)?(?P<longitude>\d+(\.\d+)?\s*[°*]\s*(\d+(\.\d+)?\s*')?\s*[EW])
+''', re.VERBOSE)
 
 
 def group_of_rank(rank: Rank) -> Group:
@@ -330,3 +334,12 @@ def standardize_date(date: str) -> Optional[str]:
         else:
             return dt.strftime('%-d %B %Y')
     raise ValueError(date)
+
+
+def extract_coordinates(text: str) -> Optional[Tuple[str, str]]:
+    """Attempts to extract latitude and longitude from a location description."""
+    match = LATLONG.search(text)
+    if match:
+        return match.group('latitude'), match.group('longitude')
+    else:
+        return None

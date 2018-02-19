@@ -83,10 +83,6 @@ NAME_SYNONYMS = {
     'Anglo- Egyptian Sudan': 'Africa',
 }
 REMOVE_PARENS = re.compile(r' \([A-Z][a-z]+\)')
-LATLONG = re.compile(r'''
-    (?P<latitude>\d+°\s*(\d+')?\s*[NS])[,\s\[\]]+
-    (long\.\s)?(?P<longitude>\d+°\s*(\d+')?\s*[EW])
-''', re.VERBOSE)
 
 DataT = Iterable[Dict[str, Any]]
 
@@ -204,9 +200,9 @@ def translate_to_db(names: DataT, collection_name: str, source: Source, verbose:
         if 'loc' in name:
             text = name['loc']
             type_tags.append(models.TypeTag.LocationDetail(text, source.source))
-            match = LATLONG.search(text)
-            if match:
-                type_tags.append(models.TypeTag.Coordinates(match.group('latitude'), match.group('longitude')))
+            coords = helpers.extract_coordinates(text)
+            if coords:
+                type_tags.append(models.TypeTag.Coordinates(coords[0], coords[1]))
         if 'collector' in name:
             type_tags.append(models.TypeTag.Collector(name['collector']))
         if 'date' in name:
