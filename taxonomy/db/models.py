@@ -2023,19 +2023,19 @@ class Name(BaseModel):
 
     def add_variant(self, root_name: str, status: NomenclatureStatus = NomenclatureStatus.variant,
                     paper: Optional[str] = None, page_described: Optional[str] = None,
-                    original_name: Optional[str] = None) -> 'Name':
+                    original_name: Optional[str] = None, *, interactive: bool = True) -> 'Name':
         if paper is not None:
             nam = self.taxon.syn_from_paper(root_name, paper, interactive=False)
             nam.original_name = original_name
             nam.nomenclature_status = status
-            nam.save()
         else:
-            nam = self.taxon.add_syn(root_name, nomenclature_status=status, original_name=original_name)
+            nam = self.taxon.add_syn(root_name, nomenclature_status=status, original_name=original_name,
+                                     interactive=False)
         tag_cls = STATUS_TO_TAG[status]
         nam.page_described = page_described
         nam.add_tag(tag_cls(self, ''))
-        nam.save()
-        nam.fill_required_fields()
+        if interactive:
+            nam.fill_required_fields()
         return nam
 
     def preoccupied_by(self, name: 'Name', comment: Optional[str] = None) -> None:
@@ -2532,6 +2532,7 @@ STATUS_TO_TAG = {
     NomenclatureStatus.nomen_novum: Tag.NomenNovumFor,
     NomenclatureStatus.incorrect_original_spelling: Tag.IncorrectOriginalSpellingOf,
     NomenclatureStatus.subsequent_usage: Tag.SubsequentUsageOf,
+    NomenclatureStatus.preoccupied: Tag.PreoccupiedBy,
 }
 
 
