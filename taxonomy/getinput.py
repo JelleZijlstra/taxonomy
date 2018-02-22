@@ -128,7 +128,7 @@ def get_enum_member(enum_cls: Type[EnumT], prompt: str = '> ', *, default: Optio
 
 
 T = TypeVar('T')
-Completer = Callable[[str, Optional[T]], T]
+Completer = Callable[[str, T], T]
 CompleterMap = Mapping[Tuple[Type[adt.ADT], str], Completer[Any]]
 
 

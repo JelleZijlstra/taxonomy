@@ -1,4 +1,4 @@
-"""TODO:
+r"""TODO:
 
 - For pages, look for lines that either are just \d+ or that are \s{a lot}\d+$
 - Look for lines that start with "\d{4}\. ". Extract name, author, year, verbatim_cit, type loc, "Range: ".
@@ -28,7 +28,7 @@ NAME_RGX = re.compile(r'''
 def extract_pages(lines: Iterable[str]) -> Iterable[Tuple[int, List[str]]]:
     """Split the text into pages."""
     current_page = None
-    current_lines = []
+    current_lines: List[str] = []
     for line in lines:
         if line.startswith('\x0c'):
             last_line = current_lines.pop().strip()
@@ -51,8 +51,8 @@ def extract_pages(lines: Iterable[str]) -> Iterable[Tuple[int, List[str]]]:
 
 
 def extract_names(pages: Iterable[Tuple[int, List[str]]]) -> DataT:
-    current_lines = []
-    current_pages = []
+    current_lines: List[str] = []
+    current_pages: List[int] = []
     for page, lines in pages:
         if current_pages:
             current_pages.append(page)
@@ -154,8 +154,9 @@ def main() -> DataT:
         'Babirussa frosti': 'Babirussa babyrussa frosti',
         'Lemur spectrum': 'Simia spectrum',
     }
-    names = lib.associate_types(names, author_fixes, original_name_fixes)
-    names = lib.associate_names(names, author_fixes, original_name_fixes, start_at='Babirusa celebensis')
+    config = lib.NameConfig(author_fixes, original_name_fixes)
+    names = lib.associate_types(names, config)
+    names = lib.associate_names(names, config, start_at='Babirusa celebensis')
     lib.write_to_db(names, SOURCE, dry_run=False, edit_if_no_holotype=False)
     # lib.print_counts(names, 'type_locality')
     lib.print_field_counts(names)

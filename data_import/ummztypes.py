@@ -125,7 +125,7 @@ def translate_to_db(names: DataT) -> DataT:
 
 
 def associate_names(names: DataT) -> DataT:
-    yield from lib.associate_names(names, {'Murie': 'A. Murie'})
+    yield from lib.associate_names(names, lib.NameConfig({'Murie': 'A. Murie'}))
 
 
 def main() -> DataT:

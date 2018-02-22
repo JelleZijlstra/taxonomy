@@ -1,9 +1,8 @@
 import itertools
 import re
-from typing import Any, Counter, Dict, Iterable, List, Optional, Tuple
+from typing import Dict, Iterable, List, Tuple
 
-from taxonomy import getinput
-from taxonomy.db import constants, helpers, models
+from taxonomy.db import constants
 
 from . import lib
 from .lib import DataT
@@ -13,8 +12,8 @@ RefsDictT = Dict[Tuple[str, str], str]
 
 
 def extract_names(pages: Iterable[Tuple[int, List[str]]]) -> DataT:
-    current_lines = []
-    current_pages = []
+    current_lines: List[str] = []
+    current_pages: List[int] = []
     in_synonymy = False
     found_references = False
     last_author = ''
@@ -107,7 +106,7 @@ def split_text(names: DataT) -> DataT:
             name['has_colon'] = True
         else:
             name.update(split_name_authority(name_authority, try_harder=True))
-        if '"' in name['original_name'] or 'sp.' in name['original_name'] or 'species' in name['original_name'] or 'var. γ' in name['original_name'] or 'Var. a.' in name['original_name'] or 'spec.' in name['original_name']:
+        if any(s in name['original_name'] for s in ('"', 'sp.', 'species', 'var. γ', 'Var. a.', 'spec.')):
             name['is_informal'] = True
         yield name
 
@@ -133,11 +132,9 @@ def split_name_authority(name_authority: str, *, try_harder: bool = False, quiet
         match = re.match(rgx, name_authority)
         if match:
             return match.groupdict()
-            break
-    else:
-        if not quiet:
-            print(name_authority)
-        return {}
+    if not quiet:
+        print(name_authority)
+    return {}
 
 
 def split_fields(names: DataT, refs_dict: RefsDictT) -> DataT:
@@ -151,7 +148,9 @@ def split_fields(names: DataT, refs_dict: RefsDictT) -> DataT:
                 continue
             if text == 'nomen nudum':
                 name['nomenclature_status'] = constants.NomenclatureStatus.nomen_nudum
-            match = re.search(r'(preoccupied by|incorrect subsequent spelling( of)?(, but not)?|unjustified emendation of|replacement name for) ([^;\d=]+?)(, \d{4}|;|$| \(preoccupied\)|, on the assumption)', text)
+            match = re.search(r'(preoccupied by|incorrect subsequent spelling( of)?(, but not)?|'
+                              r'unjustified emendation of|replacement name for) '
+                              r'([^;\d=]+?)(, \d{4}|;|$| \(preoccupied\)|, on the assumption)', text)
             if match:
                 name['variant_kind'] = {
                     'preoccupied by': constants.NomenclatureStatus.preoccupied,
@@ -212,7 +211,7 @@ def main() -> None:
     pages = lib.align_columns(pages)
     names_refs = extract_names(pages)
     names_refs = lib.clean_text(names_refs)
-    names = list(itertools.takewhile(lambda n: n['t'] == 1, names_refs))
+    names: DataT = list(itertools.takewhile(lambda n: n['t'] == 1, names_refs))
     refs = names_refs
     refs_dict = build_refs_dict(refs)
     names = split_text(names)

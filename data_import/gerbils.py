@@ -1,8 +1,5 @@
 import re
-import sys
-from typing import Any, Dict, Iterable, List, Optional, Tuple
-
-from taxonomy.db import constants
+from typing import Iterable
 
 from . import lib
 from .lib import DataT
@@ -50,7 +47,6 @@ def translate_type_localities(names: DataT) -> DataT:
                 name['type_locality'] = type_loc
             else:
                 print('could not extract type locality from', text)
-                pass
         yield name
 
 
@@ -59,14 +55,14 @@ def main() -> DataT:
     names = split_fields(lines)
     names = translate_to_db(names, SOURCE)
     names = translate_type_localities(names)
-    names = lib.associate_names(names, {
+    names = lib.associate_names(names, lib.NameConfig({
         'De Winton': 'de Winton',
         'von Lehmann': 'Lehmann',
         'Cockrum, Vaughn & Vaughn': 'Cockrum, Vaughan & Vaughan',
     }, {
         'Dipodillus campestris rozsikae': 'Dipodillus campestris roszikae',
         'Dipodillus watersi': 'Gerbillus (Dipodillus) watersi',
-    })
+    }))
     lib.write_to_db(names, SOURCE, dry_run=False, edit_if_no_holotype=False)
     # lib.print_counts(names, 'original_name')
     # lib.print_field_counts(names)

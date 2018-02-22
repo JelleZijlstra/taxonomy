@@ -124,10 +124,10 @@ def split_fields(names: DataT) -> DataT:
                     if match:
                         succeeded += 1
                         name['type_specimen'] = f'USNM {match.group("number")}'
-                        for field in ('body_parts', 'gender_age', 'loc', 'date', 'collector'):
-                            group = match.group(field)
+                        for group_name in ('body_parts', 'gender_age', 'loc', 'date', 'collector'):
+                            group = match.group(group_name)
                             if group:
-                                name[field] = group
+                                name[group_name] = group
                     else:
                         # print(f'failed to match {data!r}')
                         match = re.match(r'^((USNM |ANSP )?[\d/]+)', data)
@@ -191,7 +191,7 @@ def main() -> DataT:
     names = split_fields(names)
     names = translate_to_db(names, source)
     names = translate_type_localities(names)
-    names = lib.associate_names(names, {
+    config = lib.NameConfig({
         'Deleuil & Labbe': 'Deleuil & Labbé',
         'Tavares, Gardner, Ramirez-Chaves & Velazco': 'Tavares, Gardner, Ramírez-Chaves & Velazco',
         'Miller & Allen': 'Miller & G.M. Allen',
@@ -209,6 +209,7 @@ def main() -> DataT:
         'Tamias quadrivittatus pallidus': 'Tamias quadrivittatus, var. pallidus',
         'Citellus washingtoni washingtoni': 'Citellus washingtoni',
     })
+    names = lib.associate_names(names, config)
     lib.write_to_db(names, source, dry_run=False)
     # lib.print_counts(names, 'original_name')
     # lib.print_field_counts(names)

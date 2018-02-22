@@ -1002,7 +1002,7 @@ def check_tags(dry_run: bool = True) -> Iterable[Tuple[Name, str]]:
 def check_type_tags(dry_run: bool = False) -> Iterable[Tuple[Name, str]]:
     all_sources = ehphp.call_ehphp('get_all', {})
     for nam in Name.filter(Name.type_tags != None):
-        tags = []
+        tags: List[TypeTag] = []
         original_tags = list(nam.type_tags)
         for tag in original_tags:
             if isinstance(tag, TypeTag.CommissionTypeDesignation):

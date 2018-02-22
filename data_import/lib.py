@@ -98,7 +98,7 @@ class Source(NamedTuple):
 class NameConfig(NamedTuple):
     original_name_fixes: Mapping[str, str] = {}
     authority_fixes: Mapping[str, str] = {}
-    ignored_names: Set[Tuple[str, str]] = {}
+    ignored_names: Set[Tuple[str, str]] = set()
 
 
 def get_text(source: Source) -> Iterable[str]:
@@ -129,7 +129,7 @@ def extract_pages(lines: Iterable[str]) -> Iterable[Tuple[int, List[str]]]:
     yield current_page, current_lines
 
 
-def validate_pages(pages: Iterable[Tuple[int, List[str]]]):
+def validate_pages(pages: Iterable[Tuple[int, List[str]]]) -> None:
     current_page: Optional[int] = None
     for page, _ in pages:
         if current_page is not None:

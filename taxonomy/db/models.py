@@ -229,7 +229,7 @@ class BaseModel(Model):
         else:
             raise ValueError(f"don't know how to fill {field}")
 
-    def get_completers_for_adt_field(self, field: str) -> getinput.CompleterMap:
+    def get_completers_for_adt_field(self, field: str) -> getinput.CompleterMap:  # pylint: disable=unused-argument,no-self-use
         return {}
 
     def get_value_for_foreign_key_field(self, field: str) -> Any:
@@ -1941,9 +1941,11 @@ class Name(BaseModel):
                 (TypeTag.SpecimenDetail, 'source'): self._completer_for_source_field,
                 (TypeTag.LocationDetail, 'source'): self._completer_for_source_field,
             }
+        else:
+            return {}
 
     def _completer_for_source_field(self, prompt: str, default: str) -> str:
-        return self.get_value_for_article_field(prompt[:-2], default=default)
+        return self.get_value_for_article_field(prompt[:-2], default=default) or ''
 
     @staticmethod
     def get_name_complex(model_cls: Type[BaseModel]) -> Optional[BaseModel]:

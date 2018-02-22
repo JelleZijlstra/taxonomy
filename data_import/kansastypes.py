@@ -90,12 +90,12 @@ def split_fields(names: DataT) -> DataT:
 
 
 def associate_names(names: DataT) -> DataT:
-    yield from lib.associate_names(names, {
+    yield from lib.associate_names(names, lib.NameConfig({
         'Murie': 'A. Murie',
         'Villa-R. & Hall': 'Villa & Hall',
         'Anderson': 'S. Anderson',
         'Schanz': 'Schantz',
-    })
+    }))
 
 
 def main() -> DataT:

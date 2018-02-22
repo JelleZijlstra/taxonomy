@@ -1,7 +1,7 @@
 import re
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-from taxonomy.db import constants, models
+from taxonomy.db import constants
 
 from . import lib
 from .lib import DataT
@@ -31,7 +31,7 @@ LATLONG_RGX = re.compile(r'''
 def extract_pages(lines: Iterable[str]) -> Iterable[Tuple[int, List[str]]]:
     """Split the text into pages."""
     current_page = None
-    current_lines = []
+    current_lines: List[str] = []
     for line in lines:
         match = re.search(r'^(\d+) SAN DIEGO SOCIETY OF NATURAL HISTORY', line, re.IGNORECASE)
         if match:
@@ -93,7 +93,7 @@ def extract_names(pages: Iterable[Tuple[int, List[str]]]) -> DataT:
                     elif current_label not in ('Remarks', 'Type locality'):
                         is_new_name = False
                     else:
-                        is_new_name = line.lstrip()[0].isupper() and re.search(r'[a-z\)] [a-z]', line)
+                        is_new_name = line.lstrip()[0].isupper() and bool(re.search(r'[a-z\)] [a-z]', line))
                     if is_new_name:
                         if current_name is not None:
                             assert current_label is not None
@@ -140,11 +140,11 @@ def split_fields(names: DataT) -> DataT:
 
 
 def associate_names(names: DataT) -> DataT:
-    yield from lib.associate_names(names, {
+    yield from lib.associate_names(names, lib.NameConfig({
         'Savage & Wyman': 'Savage',
     }, {
         'Hesperomys sonoriensis nebrascensis': 'Hesperomys sonoriensis var. nebrascensis',
-    })
+    }))
 
 
 def main() -> DataT:
