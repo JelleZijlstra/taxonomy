@@ -770,6 +770,12 @@ def disallowed_attribute() -> Iterable[Tuple[Name, str]]:
             yield nam, field
 
 
+@command
+def autoset_original_name() -> None:
+    for nam in Name.filter(Name.original_name >> None, Name.group << (Group.genus, Group.high)):
+        nam.original_name = nam.root_name
+
+
 @generator_command
 def childless_taxa() -> Iterable[Taxon]:
     return Taxon.raw('SELECT * FROM taxon WHERE rank > 5 AND id NOT IN (SELECT parent_id FROM taxon WHERE parent_id IS NOT NULL)')
@@ -1135,6 +1141,7 @@ def run_maintenance() -> Dict[Any, Any]:
         check_type_tags,
         disallowed_attribute,
         move_to_lowest_rank,
+        autoset_original_name,
         # dup_names,
         # dup_genus,
         # dup_taxa,
