@@ -2,10 +2,10 @@ import enum
 import functools
 import json
 import re
-from collections import defaultdict
 from pathlib import Path
 from typing import (Any, Counter, Dict, Iterable, List, Mapping, NamedTuple,
                     Optional, Sequence, Set, Tuple, Type)
+import unicodedata
 
 import Levenshtein
 import unidecode
@@ -81,6 +81,9 @@ NAME_SYNONYMS = {
     'Asia Minor': 'Turkey',
     'British Honduras': 'Belize',
     'Anglo- Egyptian Sudan': 'Africa',
+    'Surinam': 'Suriname',
+    'Chili': 'Chile',
+    'Brésil': 'Brazil',
 }
 REMOVE_PARENS = re.compile(r' \([A-Z][a-z]+\)')
 
@@ -90,6 +93,12 @@ DataT = Iterable[Dict[str, Any]]
 class Source(NamedTuple):
     inputfile: str
     source: str
+
+
+class NameConfig(NamedTuple):
+    original_name_fixes: Mapping[str, str] = {}
+    authority_fixes: Mapping[str, str] = {}
+    ignored_names: Set[Tuple[str, str]] = {}
 
 
 def get_text(source: Source) -> Iterable[str]:
@@ -131,6 +140,8 @@ def validate_pages(pages: Iterable[Tuple[int, List[str]]]):
 def align_columns(pages: Iterable[Tuple[int, List[str]]]) -> Iterable[Tuple[int, List[str]]]:
     """Rearrange the text to separate the two columns on each page."""
     for page, lines in pages:
+        if not lines:
+            continue
         # find a position that is blank in every line
         max_len = max(len(line) for line in lines)
         best_blank = -1
@@ -138,7 +149,7 @@ def align_columns(pages: Iterable[Tuple[int, List[str]]]) -> Iterable[Tuple[int,
             if not all(len(line) <= i or line[i] == ' ' for line in lines):
                 continue
             num_lines = len([line for line in lines if len(line) > i])
-            if num_lines < 10:
+            if num_lines < 8:
                 continue
             best_blank = i
         assert best_blank != -1, f'failed to find split for {page}'
@@ -152,12 +163,15 @@ def clean_text(names: DataT) -> DataT:
     for name in names:
         new_name = {}
         for key, value in name.items():
-            if key == 'pages':
+            if key == 'pages' or not isinstance(value, list):
                 new_name[key] = value
             else:
                 text = '\n'.join(value)
+                text = unicodedata.normalize('NFC', text)
                 text = text.replace(' \xad ', '')
                 text = text.replace('\xad', '')
+                text = text.replace('’', "'")
+                text = re.sub(r'[“”]', '"', text)
                 text = re.sub(r'- *\n+ *', '', text)
                 text = re.sub(r'\s+', ' ', text)
                 if isinstance(key, str):
@@ -225,10 +239,11 @@ def translate_to_db(names: DataT, collection_name: str, source: Source, verbose:
         yield name
 
 
-def translate_type_locality(names: DataT, start_at_end: bool = False) -> DataT:
+def translate_type_locality(names: DataT, start_at_end: bool = False, quiet: bool = False) -> DataT:
     for name in names:
         if 'loc' in name:
             loc = name['loc']
+            loc = loc.replace('"', '')
             loc = re.sub(r'[ \[]lat\. .*$', '', loc)
             loc = re.sub(r'[\.,;:\[ ]+$', '', loc)
             parts = [[re.sub(r' \([^\(]+\)$', '', part)] for part in loc.split(', ')]
@@ -237,7 +252,7 @@ def translate_type_locality(names: DataT, start_at_end: bool = False) -> DataT:
             type_loc = extract_region(parts)
             if type_loc is not None:
                 name['type_locality'] = type_loc
-            else:
+            elif not quiet:
                 print('could not extract type locality from', name['loc'])
         yield name
 
@@ -254,7 +269,7 @@ def extract_name_and_author(text: str) -> Dict[str, str]:
         return {'original_name': 'Sus oi', 'authority': 'Miller'}
     text = re.sub(r' \[sic\.?\]', '', text)
     text = re.sub(r'\[([A-Za-z]+)\]\.?', r'\1', text)
-    text = text.replace('\xad', '').replace('œ', 'oe')
+    text = text.replace('\xad', '').replace('œ', 'oe').replace('æ', 'ae')
     match = AUTHOR_NAME_RGX.match(text)
     assert match, f'failed to match {text!r}'
     authority = match.group('authority').replace(', and ', ' & ').replace(' and ', ' & ').replace(', in', '')
@@ -479,12 +494,19 @@ def get_original_genera_of_genus(genus: models.Taxon) -> Set[str]:
 
 
 def name_variants(original_name: str, authority: str) -> Iterable[Tuple[str, str]]:
+    authority = authority.replace(' and ', ' & ')
     yield original_name, authority
     original_authority = authority
+    if 'œ' in original_name:
+        original_name = original_name.replace('œ', 'oe')
+        yield original_name, authority
+    if 'æ' in original_name:
+        original_name = original_name.replace('æ', 'ae')
+        yield original_name, authority
     unspaced = re.sub(r'([A-Z]\.) (?=[A-Z]\.)', r'\1', authority).strip()
     if original_authority != unspaced:
         yield original_name, unspaced
-    authority = re.sub(r'([A-Z]\.)+ ', '', authority).strip()
+    authority = re.sub(r'([A-ZÉ]\.)+ ', '', authority).strip()
     if authority != original_authority:
         yield original_name, authority
     if ' in ' in authority:
@@ -518,9 +540,13 @@ def name_variants(original_name: str, authority: str) -> Iterable[Tuple[str, str
         yield original_name.replace('ue', 'ü'), authority
     if authority in ('Wied', 'Wied-Neuwied'):
         yield original_name, 'Wied-Neuwied'
-    if authority == 'Geoffroy':
+    if authority in ('Geoffroy', 'Geoffroy St.-Hilaire'):
         yield original_name, 'É. Geoffroy Saint-Hilaire'
         yield original_name, 'I. Geoffroy Saint-Hilaire'
+    if authority == 'Milne-Edwards':
+        yield original_name, 'A. Milne-Edwards'
+    if authority == 'Gervais':
+        yield original_name, 'P. Gervais'
     if authority == 'Schwartz':
         yield original_name, 'Schwarz'
     if authority == 'Fischer':
@@ -533,24 +559,45 @@ def name_variants(original_name: str, authority: str) -> Iterable[Tuple[str, str
         yield original_name, 'Förster'
     if authority == 'Rummler':
         yield original_name, 'Rümmler'
+    if authority == 'Wied-Neuwied':
+        yield original_name, 'Wied'
     if authority in ('Müller & Schlegel', 'Schlegel & Müller'):
         # many names that were previously attributed to M & S were earlier described by M alone
         yield original_name, 'Müller'
 
 
-def associate_types(names: DataT, author_fixes: Mapping[str, str] = {}, original_name_fixes: Mapping[str, str] = {}) -> DataT:
+def associate_types(names: DataT, name_config: NameConfig = NameConfig()) -> DataT:
+    success = tried = 0
     for name in names:
         if 'type_name' in name and 'type_authority' in name:
-            typ = identify_name(name['type_name'], name['type_authority'], author_fixes, original_name_fixes)
+            tried += 1
+            typ = identify_name(name['type_name'], name['type_authority'], name_config)
             if typ:
+                success += 1
                 name['type'] = typ
         yield name
+    print(f'types success: {success}/{tried}')
 
 
-def identify_name(orig_name: str, author: str, author_fixes: Mapping[str, str] = {}, original_name_fixes: Mapping[str, str] = {}) -> Optional[models.Name]:
+def associate_variants(names: DataT, name_config: NameConfig = NameConfig()) -> DataT:
+    success = tried = 0
+    for name in names:
+        if 'variant_name' in name and 'variant_authority' in name:
+            tried += 1
+            typ = identify_name(name['variant_name'], name['variant_authority'], name_config)
+            if typ:
+                success += 1
+                name['variant_target'] = typ
+        yield name
+    print(f'variants success: {success}/{tried}')
+
+
+def identify_name(orig_name: str, author: str, name_config: NameConfig = NameConfig(), *, quiet: bool = False) -> Optional[models.Name]:
+    if (orig_name, author) in name_config.ignored_names:
+        return None
     name_obj = None
-    author = author_fixes.get(author, author)
-    orig_name = original_name_fixes.get(orig_name, orig_name)
+    author = name_config.authority_fixes.get(author, author)
+    orig_name = name_config.original_name_fixes.get(orig_name, orig_name)
 
     for original_name, authority in name_variants(orig_name, author.strip()):
         name_obj = find_name(original_name, authority)
@@ -559,14 +606,15 @@ def identify_name(orig_name: str, author: str, author_fixes: Mapping[str, str] =
     if name_obj:
         return name_obj
     else:
-        print(f'could not find name {orig_name} -- {author} (tried variants {list(name_variants(orig_name, author))})')
+        if not quiet:
+            print(f'could not find name {orig_name} -- {author} (tried variants {list(name_variants(orig_name, author))})')
         return None
 
 
-def associate_names(names: DataT, author_fixes: Mapping[str, str] = {}, original_name_fixes: Mapping[str, str] = {},
-                    start_at: Optional[str] = None) -> DataT:
+def associate_names(names: DataT, name_config: NameConfig = NameConfig(), start_at: Optional[str] = None) -> DataT:
     total = 0
     found = 0
+    ignored = 0
     found_first = start_at is None
     for name in names:
         if not found_first:
@@ -576,12 +624,33 @@ def associate_names(names: DataT, author_fixes: Mapping[str, str] = {}, original
                 continue
         total += 1
         if 'original_name' in name and 'authority' in name:
-            name_obj = identify_name(name['original_name'], name['authority'], author_fixes, original_name_fixes)
+            name['authority'] = name['authority'].replace(' and ', ' & ').replace(', & ', ' & ')
+            quiet = 'variant_target' in name
+            name_obj = identify_name(name['original_name'], name['authority'], name_config, quiet=quiet)
             if name_obj:
                 found += 1
                 name['name_obj'] = name_obj
+            elif quiet:
+                ignored += 1
+            elif (name['original_name'], name['authority']) not in name_config.ignored_names:
+                print(name['raw_text'])
+                # for key, value in name.items():
+                #     print(f'{key}: {value!r}')
         yield name
-    print(f'found: {found}/{total}')
+    print(f'found: {found + ignored}/{total} (ignored: {ignored})')
+
+
+def maybe_add_iss(name: Dict[str, Any]) -> Optional[models.Name]:
+    if 'variant_target' not in name:
+        return None
+    root_name = helpers.root_name_of_name(name['original_name'], constants.Rank.species)
+    year = re.sub(r'[a-z]', '', name['year'])
+    nam = name['variant_target'].add_variant(root_name, name['variant_kind'], interactive=False)
+    nam.authority = name['authority']
+    nam.year = year
+    print('added incorrect subsequent spelling')
+    nam.display()
+    return nam
 
 
 def write_to_db(names: DataT, source: Source, dry_run: bool = True, edit_if_no_holotype: bool = True) -> None:
@@ -589,10 +658,34 @@ def write_to_db(names: DataT, source: Source, dry_run: bool = True, edit_if_no_h
     num_changed: Counter[str] = Counter()
     for name in names:
         if 'name_obj' not in name:
-            continue
+            if dry_run:
+                continue
+            else:
+                new_name = maybe_add_iss(name)
+                if new_name:
+                    name['name_obj'] = new_name
+                else:
+                    continue
         nam = name['name_obj']
-        print(f'--- processing {nam} ({name["pages"] if "pages" in name else ""}) ---')
-        for attr in ('type_locality', 'type_tags', 'collection', 'type_specimen', 'species_type_kind', 'verbatim_citation', 'original_name', 'type_specimen_source', 'type'):
+        if 'pages' not in name:
+            pages = ''
+        elif len(name['pages']) == 1:
+            pages = str(name['pages'][0])
+        else:
+            pages = f'{name["pages"][0]}-{name["pages"][-1]}'
+
+        print(f'--- processing {nam} ({pages}) ---')
+
+        if 'variant_target' in name:
+            if nam.nomenclature_status != name['variant_kind'] and not dry_run:
+                comment = f'See {{{source.source}}} p. {pages}'
+                if nam.nomenclature_status == constants.NomenclatureStatus.available:
+                    nam.make_variant(name['variant_kind'], name['variant_target'], comment)
+                else:
+                    nam.add_tag(models.STATUS_TO_TAG[name['variant_kind']](name=name['variant_target'], comment=comment))
+
+        for attr in ('type_locality', 'type_tags', 'collection', 'type_specimen', 'species_type_kind', 'verbatim_citation',
+                     'original_name', 'type_specimen_source', 'type', 'nomenclature_status', 'genus_type_kind', 'page_described'):
             if attr not in name or name[attr] is None:
                 continue
             if attr == 'verbatim_citation' and nam.original_citation is not None:
@@ -661,7 +754,7 @@ def write_to_db(names: DataT, source: Source, dry_run: bool = True, edit_if_no_h
                                 continue
                     name_discrepancies.append((nam, current_value, new_value))
                     continue
-                elif attr != 'verbatim_citation':
+                elif attr != 'verbatim_citation' and not (attr == 'nomenclature_status' and current_value == constants.NomenclatureStatus.available):
                     if not dry_run:
                         nam.display()
                         nam.fill_field(attr)
@@ -670,12 +763,6 @@ def write_to_db(names: DataT, source: Source, dry_run: bool = True, edit_if_no_h
             if not dry_run:
                 setattr(nam, attr, new_value)
 
-        if 'pages' not in name:
-            pages = ''
-        elif len(name['pages']) == 1:
-            pages = str(name['pages'][0])
-        else:
-            pages = f'{name["pages"][0]}-{name["pages"][-1]}'
         if not dry_run:
             if edit_if_no_holotype and ('species_type_kind' not in name or name['species_type_kind'] != constants.SpeciesGroupType.holotype):
                 print(f'{nam} does not have a holotype: {name}')
