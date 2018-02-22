@@ -206,7 +206,8 @@ class BaseModel(Model):
         if isinstance(field_obj, ForeignKeyField):
             return self.get_value_for_foreign_key_field(field)
         elif isinstance(field_obj, ADTField):
-            return getinput.get_adt_list(field_obj.get_adt(), existing=current_value)
+            return getinput.get_adt_list(field_obj.get_adt(), existing=current_value,
+                                         completers=self.get_completers_for_adt_field(field))
         elif isinstance(field_obj, CharField):
             default = '' if current_value is None else current_value
             return self.getter(field).get_one_key(prompt, default=default) or None
@@ -227,6 +228,9 @@ class BaseModel(Model):
                 return int(result)
         else:
             raise ValueError(f"don't know how to fill {field}")
+
+    def get_completers_for_adt_field(self, field: str) -> getinput.CompleterMap:
+        return {}
 
     def get_value_for_foreign_key_field(self, field: str) -> Any:
         current_val = getattr(self, field)
@@ -1925,6 +1929,21 @@ class Name(BaseModel):
                 raise TypeError('cannot have name complex')
         else:
             return super().get_value_for_field(field)
+
+    def get_completers_for_adt_field(self, field: str) -> getinput.CompleterMap:
+        if field == 'type_tags':
+            return {
+                (TypeTag.TypeDesignation, 'source'): self._completer_for_source_field,
+                (TypeTag.TypeDesignation, 'name'): lambda p, d: Name.getter(Name.original_name).get_one_key(p, default=d),
+                (TypeTag.CommissionTypeDesignation, 'opinion'): self._completer_for_source_field,
+                (TypeTag.LectotypeDesignation, 'source'): self._completer_for_source_field,
+                (TypeTag.NeotypeDesignation, 'source'): self._completer_for_source_field,
+                (TypeTag.SpecimenDetail, 'source'): self._completer_for_source_field,
+                (TypeTag.LocationDetail, 'source'): self._completer_for_source_field,
+            }
+
+    def _completer_for_source_field(self, prompt: str, default: str) -> str:
+        return self.get_value_for_article_field(prompt[:-2], default=default)
 
     @staticmethod
     def get_name_complex(model_cls: Type[BaseModel]) -> Optional[BaseModel]:

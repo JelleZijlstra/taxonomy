@@ -127,7 +127,13 @@ def get_enum_member(enum_cls: Type[EnumT], prompt: str = '> ', *, default: Optio
     return enum_cls[choice]
 
 
-def get_adt_list(adt_cls: Type[adt.ADT], existing: Optional[Iterable[adt.ADT]] = None) -> Tuple[adt.ADT, ...]:
+T = TypeVar('T')
+Completer = Callable[[str, Optional[T]], T]
+CompleterMap = Mapping[Tuple[Type[adt.ADT], str], Completer[Any]]
+
+
+def get_adt_list(adt_cls: Type[adt.ADT], existing: Optional[Iterable[adt.ADT]] = None,
+                 completers: CompleterMap = {}) -> Tuple[adt.ADT, ...]:
     out: List[adt.ADT] = []
     if existing is not None:
         out += existing
@@ -149,20 +155,23 @@ def get_adt_list(adt_cls: Type[adt.ADT], existing: Optional[Iterable[adt.ADT]] =
         elif member.isnumeric():
             index = int(member)
             existing_member = out[index]
-            out[index] = _get_adt_member(type(existing_member), existing=existing_member)
+            out[index] = _get_adt_member(type(existing_member), existing=existing_member, completers=completers)
         elif member.startswith('r') and member[1:].isnumeric():
             index = int(member[1:])
             print('removing member:', out[index])
             del out[index]
         else:
-            out.append(_get_adt_member(name_to_cls[member]))
+            out.append(_get_adt_member(name_to_cls[member], completers=completers))
 
 
-def _get_adt_member(member_cls: Type[adt.ADT], existing: Optional[adt.ADT] = None) -> adt.ADT:
+def _get_adt_member(member_cls: Type[adt.ADT], existing: Optional[adt.ADT] = None,
+                    completers: CompleterMap = {}) -> adt.ADT:
     args: Dict[str, Any] = {}
     for arg_name, typ in member_cls._attributes.items():
         existing_value = getattr(existing, arg_name, None)
-        if isinstance(typ, type) and issubclass(typ, enum.IntEnum):
+        if (member_cls, arg_name) in completers:
+            args[arg_name] = completers[(member_cls, arg_name)](f'{arg_name}> ', existing_value)
+        elif isinstance(typ, type) and issubclass(typ, enum.IntEnum):
             args[arg_name] = get_enum_member(typ, prompt=f'{arg_name}> ', default=existing_value, allow_empty=False)
         elif typ is bool:
             args[arg_name] = yes_no(f'{arg_name}> ', default=existing_value)
