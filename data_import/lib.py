@@ -84,6 +84,8 @@ NAME_SYNONYMS = {
     'Surinam': 'Suriname',
     'Chili': 'Chile',
     'Brésil': 'Brazil',
+    'USA': 'United States',
+    'UK': 'United Kingdom',
 }
 REMOVE_PARENS = re.compile(r' \([A-Z][a-z]+\)')
 
@@ -101,8 +103,8 @@ class NameConfig(NamedTuple):
     ignored_names: Set[Tuple[str, str]] = set()
 
 
-def get_text(source: Source) -> Iterable[str]:
-    with (DATA_DIR / source.inputfile).open() as f:
+def get_text(source: Source, encoding: str = 'utf-8') -> Iterable[str]:
+    with (DATA_DIR / source.inputfile).open(encoding=encoding) as f:
         yield from f
 
 
@@ -116,12 +118,15 @@ def extract_pages(lines: Iterable[str]) -> Iterable[Tuple[int, List[str]]]:
                 yield current_page, current_lines
                 current_lines = []
             line = line[1:].strip()
-            if re.search(r'^\d+ ', line):
-                # page number on the left
-                current_page = int(line.split()[0])
-            else:
-                # or the right
-                current_page = int(line.split()[-1])
+            try:
+                if re.search(r'^\d+ ', line):
+                    # page number on the left
+                    current_page = int(line.split()[0])
+                else:
+                    # or the right
+                    current_page = int(line.split()[-1])
+            except ValueError as e:
+                raise ValueError(f'failure extracting from {line!r} while on {current_page}') from e
         else:
             current_lines.append(line)
     # last page
@@ -419,12 +424,17 @@ def genus_of_name(name: models.Name) -> Optional[models.Taxon]:
         return None
 
 
-def find_name(original_name: str, authority: str) -> Optional[models.Name]:
+def find_name(original_name: str, authority: str, max_distance: int = 3) -> Optional[models.Name]:
     # Exact match
     try:
         return models.Name.get(models.Name.original_name == original_name, models.Name.authority == authority)
     except models.Name.DoesNotExist:
         pass
+
+    if original_name.islower() and ' ' not in original_name:
+        candidates = models.Name.filter(models.Name.root_name == original_name, models.Name.authority == authority)
+        if candidates.count() == 1:
+            return candidates.get()
 
     # Names without original names, but in the same genus or subgenus
     root_name = original_name.split()[-1]
@@ -452,7 +462,7 @@ def find_name(original_name: str, authority: str) -> Optional[models.Name]:
     matches = [
         name
         for name in models.Name.filter(models.Name.original_name != None, models.Name.authority == authority)
-        if Levenshtein.distance(original_name, name.original_name) < 3 or
+        if Levenshtein.distance(original_name, name.original_name) < max_distance or
         REMOVE_PARENS.sub('', original_name) == REMOVE_PARENS.sub('', name.original_name)
     ]
     if len(matches) == 1:
@@ -520,8 +530,24 @@ def name_variants(original_name: str, authority: str) -> Iterable[Tuple[str, str
         yield original_name, 'G.M. ' + authority
     if authority.startswith('Anthony'):
         yield original_name, 'H.E. ' + authority
+    if authority == 'Winton':
+        yield original_name, 'de Winton'
     if authority == 'Andersen':
         yield original_name, 'K. Andersen'
+    if authority == 'Wagner':
+        yield original_name, 'J.A. Wagner'
+    if authority == 'Shaw':
+        yield original_name, 'G. Shaw'
+    if authority == 'Thomas':
+        yield original_name, 'O. Thomas'
+    if authority == 'Gervais & Ameghino':
+        yield original_name, 'H. Gervais & F. Ameghino'
+    if authority == 'Ameghino':
+        yield original_name, 'F. Ameghino'
+    if authority == 'Gray':
+        yield original_name, 'J.E. Gray'
+    if authority == 'Peters':
+        yield original_name, 'W. Peters'
     if authority == 'Gray':
         yield original_name, 'J.E. Gray'
     if authority == 'Bonaparte':
@@ -557,10 +583,16 @@ def name_variants(original_name: str, authority: str) -> Iterable[Tuple[str, str
         yield original_name, 'Mjöberg'
     if authority == 'Forster':
         yield original_name, 'Förster'
+    if authority == 'Forster & Rothschild':
+        yield original_name, 'Förster & Rothschild'
     if authority == 'Rummler':
         yield original_name, 'Rümmler'
     if authority == 'Wied-Neuwied':
         yield original_name, 'Wied'
+    if authority == 'Blainville':
+        yield original_name, 'de Blainville'
+    if authority == 'Peron & Lesueur':
+        authority = 'Péron & Lesueur'
     if authority in ('Müller & Schlegel', 'Schlegel & Müller'):
         # many names that were previously attributed to M & S were earlier described by M alone
         yield original_name, 'Müller'
@@ -592,48 +624,98 @@ def associate_variants(names: DataT, name_config: NameConfig = NameConfig()) -> 
     print(f'variants success: {success}/{tried}')
 
 
-def identify_name(orig_name: str, author: str, name_config: NameConfig = NameConfig(), *, quiet: bool = False) -> Optional[models.Name]:
+def identify_name(orig_name: str, author: str, name_config: NameConfig = NameConfig(), *,
+                  quiet: bool = False, max_distance: int = 3, use_taxon_match: bool = False) -> Optional[models.Name]:
     if (orig_name, author) in name_config.ignored_names:
         return None
+    if use_taxon_match:
+        taxon_matches = models.Taxon.filter(models.Taxon.valid_name == orig_name)
+        if taxon_matches.count() == 1:
+            return taxon_matches.get().base_name
+
     name_obj = None
     author = name_config.authority_fixes.get(author, author)
     orig_name = name_config.original_name_fixes.get(orig_name, orig_name)
 
     for original_name, authority in name_variants(orig_name, author.strip()):
-        name_obj = find_name(original_name, authority)
+        name_obj = find_name(original_name, authority, max_distance=max_distance)
         if name_obj is not None:
             break
     if name_obj:
         return name_obj
     else:
-        if not quiet:
+        if not quiet and orig_name not in name_config.ignored_names:
             print(f'could not find name {orig_name} -- {author} (tried variants {list(name_variants(orig_name, author))})')
         return None
 
 
-def associate_names(names: DataT, name_config: NameConfig = NameConfig(), start_at: Optional[str] = None) -> DataT:
+def manually_associate_name(name: Dict[str, Any]) -> Optional[models.Name]:
+    print(name['valid_name'], name['authority'])
+
+    getter = models.Taxon.getter('valid_name')
+    while True:
+        valid_name = getter.get_one_key('valid_name> ')
+        if not valid_name:
+            break
+        try:
+            txn = models.Taxon.get(models.Taxon.valid_name == valid_name)
+        except models.Taxon.DoesNotExist:
+            print(f'invalid name {valid_name!r}')
+            continue
+        else:
+            txn.display()
+            if getinput.yes_no('Is this correct?'):
+                return txn.base_name
+
+    getter = models.Name.getter('original_name')
+    while True:
+        original_name = getter.get_one_key('original_name> ')
+        if not original_name:
+            break
+        try:
+            name_obj = models.Name.get(models.Name.original_name == original_name)
+        except models.Name.DoesNotExist:
+            print(f'invalid name {original_name!r}')
+            continue
+        else:
+            name_obj.display()
+            if getinput.yes_no('Is this correct?'):
+                return name_obj
+    return None
+
+
+def associate_names(names: DataT, name_config: NameConfig = NameConfig(), start_at: Optional[str] = None,
+                    name_field: str = 'original_name', quiet: bool = False, try_manual: bool = False,
+                    max_distance: int = 3, use_taxon_match: bool = False) -> DataT:
     total = 0
     found = 0
     ignored = 0
     found_first = start_at is None
     for name in names:
         if not found_first:
-            if 'original_name' in name and name['original_name'] == start_at:
+            if name_field in name and name[name_field] == start_at:
                 found_first = True
             else:
                 continue
         total += 1
-        if 'original_name' in name and 'authority' in name:
+        if name_field in name and 'authority' in name:
             name['authority'] = name['authority'].replace(' and ', ' & ').replace(', & ', ' & ')
-            quiet = 'variant_target' in name
-            name_obj = identify_name(name['original_name'], name['authority'], name_config, quiet=quiet)
+            name_quiet = 'variant_target' in name
+            name_obj = identify_name(name[name_field], name['authority'], name_config,
+                                     quiet=quiet or name_quiet, max_distance=max_distance,
+                                     use_taxon_match=use_taxon_match)
             if name_obj:
                 found += 1
                 name['name_obj'] = name_obj
-            elif quiet:
+            elif name_quiet:
                 ignored += 1
-            elif (name['original_name'], name['authority']) not in name_config.ignored_names:
-                print(name['raw_text'])
+            elif (name[name_field], name['authority']) not in name_config.ignored_names:
+                if try_manual:
+                    name_obj = manually_associate_name(name)
+                    if name_obj is not None:
+                        name['name_obj'] = name_obj
+                if not quiet and 'name_obj' not in name:
+                    print(name['raw_text'])
                 # for key, value in name.items():
                 #     print(f'{key}: {value!r}')
         yield name
@@ -684,8 +766,9 @@ def write_to_db(names: DataT, source: Source, dry_run: bool = True, edit_if_no_h
                 else:
                     nam.add_tag(models.STATUS_TO_TAG[name['variant_kind']](name=name['variant_target'], comment=comment))
 
-        for attr in ('type_locality', 'type_tags', 'collection', 'type_specimen', 'species_type_kind', 'verbatim_citation',
-                     'original_name', 'type_specimen_source', 'type', 'nomenclature_status', 'genus_type_kind', 'page_described'):
+        for attr in ('type_tags', 'type_locality', 'collection', 'type_specimen', 'species_type_kind', 'verbatim_citation',
+                     'original_name', 'type_specimen_source', 'type', 'nomenclature_status', 'genus_type_kind', 'page_described',
+                     'verbatim_type', 'authority', 'year'):
             if attr not in name or name[attr] is None:
                 continue
             if attr == 'verbatim_citation' and nam.original_citation is not None:
@@ -757,6 +840,7 @@ def write_to_db(names: DataT, source: Source, dry_run: bool = True, edit_if_no_h
                 elif attr != 'verbatim_citation' and not (attr == 'nomenclature_status' and current_value == constants.NomenclatureStatus.available):
                     if not dry_run:
                         nam.display()
+                        nam.open_description()
                         nam.fill_field(attr)
                     continue
             num_changed[attr] += 1
