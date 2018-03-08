@@ -2,6 +2,7 @@ import collections
 import functools
 import os.path
 import re
+import sys
 from typing import (Any, Callable, Counter, Dict, Generic, Iterable, Iterator,
                     List, Mapping, NamedTuple, Optional, Sequence, Set, Tuple,
                     Type, TypeVar, cast)
@@ -543,6 +544,32 @@ def stem_statistics() -> None:
     print("type: %s/%s (%.02f%%)" % (typ, total, typ / total * 100))
 
 
+class ScoreHolder:
+    def __init__(self, data: Dict[Taxon, Dict[str, Any]]) -> None:
+        self.data = data
+
+    def by_field(self, field: str, min_count: int = 0) -> None:
+        items = ((key, value) for key, value in self.data.items() if value['total'] > min_count)
+        items = sorted(items, key=lambda pair: (pair[1].get(field, 0), pair[1]['total']))
+        for taxon, data in items:
+            print(f'{taxon} {data.get(field, 0):.2f} {data["total"]} {data["score"]:.2f}')
+
+
+@command
+def get_scores(rank: Rank, within_taxon: Optional[Taxon] = None, age: Optional[constants.Age] = None) -> ScoreHolder:
+    data = {}
+    if within_taxon is not None:
+        taxa = within_taxon.children_of_rank(rank)
+    else:
+        taxa = Taxon.filter(Taxon.rank == rank)
+    for taxon in taxa:
+        if age is not None and taxon.age > age:
+            continue
+        print('---', taxon, '---')
+        data[taxon] = taxon.stats(age=age)
+    return ScoreHolder(data)
+
+
 @generator_command
 def name_mismatches(max_count: Optional[int] = None, correct: bool = False, correct_undoubted: bool = True) -> Iterable[Taxon]:
     count = 0
@@ -795,6 +822,15 @@ def fossilize(*taxa: Taxon, to_status: Age = Age.fossil, from_status: Age = Age.
         taxon.save()
         for child in taxon.children:
             fossilize(child, to_status=to_status, from_status=from_status)
+
+
+@generator_command
+def check_age_parents() -> None:
+    """Extant taxa should not have fossil parents."""
+    for taxon in Taxon.select():
+        if taxon.parent is not None and taxon.age < taxon.parent.age:
+            print(f'{taxon} is {taxon.age}, but its parent {taxon.parent} is {taxon.parent.age}')
+            yield taxon
 
 
 @command
@@ -1117,6 +1153,138 @@ def move_to_lowest_rank(dry_run: bool = False) -> Iterable[Tuple[Name, str]]:
                 nam.save()
 
 
+AUTHOR_SYNONYMS = {
+    'Milne Edwards': 'Milne-Edwards',
+    'Geoffroy': 'Geoffroy Saint-Hilaire',
+    'E. Geoffroy': 'É. Geoffroy Saint-Hilaire',
+    'E. Geoffroy Saint-Hilaire': 'É. Geoffroy Saint-Hilaire',
+    'É. Geoffroy': 'É. Geoffroy Saint-Hilaire',
+    'I. Geoffroy': 'I. Geoffroy Saint-Hilaire',
+    'Blainville': 'de Blainville',
+    'De Winton': 'de Winton',
+    'Lacepede': 'Lacépède',
+    'de Selys-Longchamps': 'de Sélys Longchamps',
+    'Petenyi': 'Petényi',
+    'LeConte': 'Le Conte',
+}
+AMBIGUOUS_AUTHORS = {
+    'Allen',
+    'Peters',
+    'Thomas',
+    'Geoffroy Saint-Hilaire',
+    'Cuvier',
+    'Howell',
+    'Smith',
+    'Grandidier',
+    'Ameghino',
+    'Major',
+    'Petter',
+    'Verheyen',
+    'Gervais',
+    'Andersen',
+    'Gray',
+    'Owen',
+    'Martin',
+    'Russell',
+    'Leakey',
+    'Anderson',
+    'Bryant',
+}
+
+
+def _names_with_author(author: str) -> Iterable[Name]:
+    for nam in Name.filter(Name.authority % f'*{author}*'):
+        authors = nam.get_authors()
+        if author in authors:
+            yield nam
+
+
+def _replace_author(name: Name, bad: str, good: str, dry_run: bool = True) -> None:
+    authors = name.get_authors()
+    orig_authors = list(authors)
+    index = authors.index(bad)
+    assert index != -1, f'cannot find {bad} in {name}'
+    if authors.count(bad) != 1:
+        print(f'there are multiple authors; please edit manually ({bad} -> {good})')
+        if not dry_run:
+            authors = getinput.get_line(prompt='> ', default=name.authority)
+            print(f'change author for {name}: {name.authority} -> {authors}')
+            name.authority = authors
+        return
+    authors[index] = good
+    print(f'change author for {name}: {orig_authors} -> {authors}')
+    if not dry_run:
+        name.set_authors(authors)
+
+
+@command
+def apply_author_synonyms(dry_run: bool = False) -> None:
+    for bad, good in AUTHOR_SYNONYMS.items():
+        for nam in _names_with_author(bad):
+            _replace_author(nam, bad, good, dry_run=dry_run)
+
+
+def _get_new_author(nams: List[Name], citation: str, author: str) -> Optional[str]:
+    authors = ehphp.call_ehphp('getField', {'field': 'authors', 'files': [citation]})[0]
+    if ';' not in authors and ', ' in authors:
+        last, initials = authors.split(', ')
+        if last == author:
+            return f'{initials} {last}'
+    nams[0].open_description()
+    sys.stdout.flush()
+    return Name.getter('authority').get_one_key('author> ')
+
+
+@command
+def disambiguate_authors(dry_run: bool = False) -> None:
+    for author in sorted(AMBIGUOUS_AUTHORS):
+        print(f'--- {author} ---')
+        nams = list(_names_with_author(author))
+        by_citation: Dict[Optional[str], List[Name]] = collections.defaultdict(list)
+        for nam in nams:
+            by_citation[nam.original_citation].append(nam)
+        for citation, nams in by_citation.items():
+            if citation is None:
+                print(f'skipping {len(nams)} names without citation')
+                continue
+            print(f'--- {citation} ---')
+            print(f'author for names: {nams}')
+            new_author = _get_new_author(nams, citation, author)
+            if new_author:
+                for nam in nams:
+                    _replace_author(nam, author, new_author, dry_run=dry_run)
+
+
+@generator_command
+def validate_authors(dry_run: bool = False) -> None:
+    for nam in Name.filter(Name.authority.contains('[')):
+        print(f'{nam}: invalid authors')
+        yield nam
+
+    for nam in Name.filter(Name.authority % '*. *'):
+        authority = re.sub(r'([A-Z]\.) (?=[A-Z]\.)', r'\1', nam.authority)
+        if authority != nam.authority:
+            print(f'{nam}: {nam.authority} -> {authority}')
+            if not dry_run:
+                nam.authority = authority
+
+
+@command
+def initials_report() -> None:
+    data: Dict[str, Dict[str, List[Name]]] = collections.defaultdict(lambda: collections.defaultdict(list))
+    for nam in Name.filter(Name.authority % '*.*'):
+        authors = nam.get_authors()
+        for author in authors:
+            if '. ' in author:
+                initials, last = author.rsplit('. ', maxsplit=1)
+                data[last][f'{initials}.'].append(nam)
+
+    for last_name, by_initial in sorted(data.items()):
+        print(f'--- {last_name} ---')
+        for initials, names in sorted(by_initial.items()):
+            print(f'{initials} -- {len(names)}')
+
+
 @command
 def run_maintenance() -> Dict[Any, Any]:
     """Runs maintenance checks that are expected to pass for the entire database."""
@@ -1142,6 +1310,10 @@ def run_maintenance() -> Dict[Any, Any]:
         disallowed_attribute,
         move_to_lowest_rank,
         autoset_original_name,
+        apply_author_synonyms,
+        disambiguate_authors,
+        validate_authors,
+        check_age_parents,
         # dup_names,
         # dup_genus,
         # dup_taxa,

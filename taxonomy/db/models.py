@@ -4,6 +4,7 @@ import enum
 import json
 import operator
 import re
+import statistics
 import sys
 import time
 import traceback
@@ -742,6 +743,14 @@ class Taxon(BaseModel):
             result.base_name.fill_required_fields()
         return result
 
+    def switch_basename(self, name: 'Name') -> None:
+        assert name.taxon == self, f'{name} is not a synonym of {self}'
+        old_base = self.base_name
+        name.status = Status.valid
+        old_base.status = Status.synonym
+        self.base_name = name
+        self.recompute_name()
+
     def add_occurrence(self, location: 'Location', paper: Optional[str] = None, comment: Optional[str] = None,
                        status: OccurrenceStatus = OccurrenceStatus.valid) -> 'Occurrence':
         if paper is None:
@@ -966,14 +975,30 @@ class Taxon(BaseModel):
             name.remove()
         self.delete_instance()
 
-    def all_names(self) -> Set['Name']:
-        names: Set['Name'] = set(self.names)
+    def all_names(self, age: Optional[constants.Age] = None) -> Set['Name']:
+        names: Set['Name']
+        if age is not None:
+            if self.age > age:
+                return set()
+            elif self.age == age:
+                names = set(self.names)
+            else:
+                names = set()
+        else:
+            names = set(self.names)
         for child in self.children:
-            names |= child.all_names()
+            names |= child.all_names(age=age)
         return names
 
-    def stats(self) -> Dict[str, float]:
-        names = self.all_names()
+    def names_missing_field(self, field: str) -> Set['Name']:
+        return {
+            name
+            for name in self.all_names()
+            if field in name.get_empty_required_fields()
+        }
+
+    def stats(self, age: Optional[constants.Age] = None) -> Dict[str, float]:
+        names = self.all_names(age=age)
         counts: Dict[str, int] = collections.defaultdict(int)
         required_counts: Dict[str, int] = collections.defaultdict(int)
         counts_by_group: Dict[str, int] = collections.defaultdict(int)
@@ -996,8 +1021,16 @@ class Taxon(BaseModel):
             print("%s: %s of %s (%.2f%%)" % (label, num, total, percentage))
             return percentage
 
+        percentages = []
         for attribute, count in sorted(required_counts.items(), key=lambda i: (counts[i[0]], i[0])):
-            output[attribute] = print_percentage(counts[attribute], count, attribute)
+            percentage = print_percentage(counts[attribute], count, attribute)
+            output[attribute] = percentage
+            percentages.append(percentage)
+        if percentages:
+            output['score'] = statistics.mean(percentages)
+        else:
+            output['score'] = 0.0
+        print(f'Overall score: {output["score"]:.2f}')
         return output
 
     def fill_data_for_names(self, only_with_original: bool = True, min_year: Optional[int] = None) -> None:
@@ -1024,6 +1057,12 @@ class Taxon(BaseModel):
                 if not should_include(nam):
                     print(nam)
                     nam.fill_required_fields()
+
+    def fill_field(self, field: str) -> None:
+        for name in self.all_names():
+            if field in name.get_empty_required_fields():
+                name.display()
+                name.fill_field(field)
 
     at = _OccurrenceGetter()
 
@@ -1947,6 +1986,15 @@ class Name(BaseModel):
     def _completer_for_source_field(self, prompt: str, default: str) -> str:
         return self.get_value_for_article_field(prompt[:-2], default=default) or ''
 
+    def get_empty_required_fields(self) -> Iterable[str]:
+        fields = []
+        for field in super().get_empty_required_fields():
+            fields.append(field)
+            yield field
+        if fields and self.group == Group.species and 'type_tags' not in fields:
+            # Always make the user edit type_tags if some other field was unfilled.
+            yield 'type_tags'
+
     @staticmethod
     def get_name_complex(model_cls: Type[BaseModel]) -> Optional[BaseModel]:
         getter = model_cls.getter('label')
@@ -2016,6 +2064,23 @@ class Name(BaseModel):
     def is_unavailable(self) -> bool:
         return not self.nomenclature_status.can_preoccupy()
 
+    def numeric_page_described(self) -> int:
+        if self.page_described is None:
+            return 0
+        match = re.match(r'^(\d+)', self.page_described)
+        if match:
+            return int(match.group(1))
+        else:
+            return 0
+
+    def numeric_year(self) -> int:
+        if self.year is None:
+            return 0
+        elif '-' in self.year:
+            return int(self.year.split('-')[-1])
+        else:
+            return int(self.year)
+
     def make_variant(self, status: NomenclatureStatus, of_name: 'Name', comment: Optional[str] = None) -> None:
         if self.nomenclature_status != NomenclatureStatus.available:
             raise ValueError(f'{self} is {self.nomenclature_status.name}')
@@ -2053,6 +2118,12 @@ class Name(BaseModel):
 
     def get_authors(self) -> List[str]:
         return re.split(r', | & ', re.sub(r'et al\.$', '', self.authority))
+
+    def set_authors(self, authors: List[str]) -> None:
+        if len(authors) > 1:
+            self.authority = ' & '.join([', '.join(authors[:-1]), authors[-1]])
+        else:
+            self.authority = authors[0]
 
     def effective_year(self) -> int:
         """Returns the effective year of validity for this name.
