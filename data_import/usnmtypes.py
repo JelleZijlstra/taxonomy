@@ -7,6 +7,7 @@ from taxonomy.db import constants
 from . import lib
 from .lib import DataT
 
+
 CS_RGX = re.compile(r'''
     ^(?P<number>[\d/]+)\.\s
     ((?P<body_parts>[^\.]+)\.\s(?P<gender_age>[^\.]+)\.\s)?
@@ -162,7 +163,7 @@ def translate_type_localities(names: DataT) -> DataT:
             text = name['loc'].rstrip('.')
             text = re.sub(r'\[.*?: ([^\]]+)\]', r'\1', text)
             text = text.replace('[', '').replace(']', '')
-            parts = [list(filter(None, re.split(r'[()]', part))) for part in text.split(', ')]
+            parts = [list(filter(None, re.split(r'[()]', part))) for part in text.split(', ')]  # type: ignore  # mypy bug?
             type_loc = lib.extract_region(list(reversed(parts)))
             if type_loc is not None:
                 name['type_locality'] = type_loc

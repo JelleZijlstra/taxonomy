@@ -2,15 +2,15 @@ import enum
 import functools
 import json
 import re
-from pathlib import Path
-from typing import (Any, Counter, Dict, Iterable, List, Mapping, NamedTuple,
-                    Optional, Sequence, Set, Tuple, Type)
 import unicodedata
+from pathlib import Path
+from typing import (Any, Container, Counter, Dict, Iterable, List, Mapping,
+                    NamedTuple, Optional, Sequence, Set, Tuple, Type)
 
 import Levenshtein
 import unidecode
 
-from taxonomy import getinput
+from taxonomy import getinput, shell
 from taxonomy.db import constants, helpers, models
 from taxonomy.db.models import TypeTag
 
@@ -45,9 +45,8 @@ NAME_SYNONYMS = {
     'Estado de México': 'Mexico State',
     'Panama Canal Zone': 'Panama',
     'Labrador': 'Newfoundland and Labrador',
-    'Greater Antilles': 'North America',
-    'Lesser Antilles': 'North America',
-    'West Indies': 'North America',
+    'Greater Antilles': 'West Indies',
+    'Lesser Antilles': 'West Indies',
     'Federated States of Micronesia': 'Micronesia',
     'Marocco': 'Morocco',
     'Tchad': 'Chad',
@@ -86,10 +85,26 @@ NAME_SYNONYMS = {
     'Brésil': 'Brazil',
     'USA': 'United States',
     'UK': 'United Kingdom',
+    'Calif': 'California',
+    'Wyo': 'Wyoming',
+    'Fla': 'Florida',
+    'Kenya Colony': 'Kenya',
+    'British Nigeria': 'Africa',
+    'Cameroon Mandate': 'Cameroon',
+    'Dutch New Guinea': 'Western New Guinea',
+    'French Indo-China': 'Southeast Asia',
+    'Tonkin': 'Vietnam',
+    'British West Indies': 'West Indies',
+    'NSW': 'New South Wales',
+    'Kenia': 'Kenya',
+    'former Yugoslavia': 'Europe',
+    'Republic of the Philippines': 'Philippines',
+    'Republic of the Congo': 'Rep Congo',
 }
 REMOVE_PARENS = re.compile(r' \([A-Z][a-z]+\)')
 
 DataT = Iterable[Dict[str, Any]]
+PagesT = Iterable[Tuple[int, List[str]]]
 
 
 class Source(NamedTuple):
@@ -103,12 +118,23 @@ class NameConfig(NamedTuple):
     ignored_names: Set[Tuple[str, str]] = set()
 
 
+def initial_count(s: str, char: str) -> int:
+    """Return the number of occurrences of char at the beginning of s."""
+    count = 0
+    for c in s:
+        if c == char:
+            count += 1
+        else:
+            break
+    return count
+
+
 def get_text(source: Source, encoding: str = 'utf-8') -> Iterable[str]:
     with (DATA_DIR / source.inputfile).open(encoding=encoding) as f:
         yield from f
 
 
-def extract_pages(lines: Iterable[str]) -> Iterable[Tuple[int, List[str]]]:
+def extract_pages(lines: Iterable[str]) -> PagesT:
     """Split the text into pages."""
     current_page = None
     current_lines = []
@@ -134,18 +160,26 @@ def extract_pages(lines: Iterable[str]) -> Iterable[Tuple[int, List[str]]]:
     yield current_page, current_lines
 
 
-def validate_pages(pages: Iterable[Tuple[int, List[str]]]) -> None:
+def validate_pages(pages: PagesT, verbose: bool = True, check: bool = True) -> PagesT:
     current_page: Optional[int] = None
-    for page, _ in pages:
+    for page, lines in pages:
+        if verbose:
+            print(f'got page {page}')
         if current_page is not None:
-            assert page == current_page + 1, f'missing {current_page + 1}'
+            if page != current_page + 1:
+                message = f'missing {current_page + 1}'
+                if check:
+                    assert False, message
+                else:
+                    print('---', message, '---')
         current_page = page
+        yield page, lines
 
 
-def align_columns(pages: Iterable[Tuple[int, List[str]]]) -> Iterable[Tuple[int, List[str]]]:
+def align_columns(pages: PagesT, single_column_pages: Container[int] = frozenset()) -> PagesT:
     """Rearrange the text to separate the two columns on each page."""
     for page, lines in pages:
-        if not lines:
+        if not any(line.rstrip() for line in lines):
             continue
         # find a position that is blank in every line
         max_len = max(len(line) for line in lines)
@@ -154,35 +188,50 @@ def align_columns(pages: Iterable[Tuple[int, List[str]]]) -> Iterable[Tuple[int,
             if not all(len(line) <= i or line[i] == ' ' for line in lines):
                 continue
             num_lines = len([line for line in lines if len(line) > i])
-            if num_lines < 8:
+            if num_lines < 5:
                 continue
             best_blank = i
-        assert best_blank != -1, f'failed to find split for {page}'
-        first_column = [line[:best_blank].rstrip() for line in lines]
-        second_column = [line[best_blank + 1:].rstrip() for line in lines]
-        yield page, first_column + second_column
+        if best_blank == -1:
+            if page in single_column_pages:
+                yield page, [line.rstrip() for line in lines]
+            else:
+                assert False, f'failed to find split for {page}'
+        else:
+            first_column = [line[:best_blank].rstrip() for line in lines]
+            second_column = [line[best_blank + 1:].rstrip() for line in lines]
+            num_lines = len(second_column)
+            while len([line for line in second_column if line.startswith(' ')]) > num_lines / 2:
+                second_column = [line[1:] if line.startswith(' ') else line for line in second_column]
+            yield page, first_column + second_column
 
 
-def clean_text(names: DataT) -> DataT:
+def clean_text(names: DataT, clean_labels: bool = True) -> DataT:
     """Puts each field into a single line and undoes line breaks within words."""
     for name in names:
         new_name = {}
         for key, value in name.items():
             if key == 'pages' or not isinstance(value, list):
                 new_name[key] = value
+            elif key == 'names':
+                new_name[key] = [clean_line_list(name) for name in value]
             else:
-                text = '\n'.join(value)
-                text = unicodedata.normalize('NFC', text)
-                text = text.replace(' \xad ', '')
-                text = text.replace('\xad', '')
-                text = text.replace('’', "'")
-                text = re.sub(r'[“”]', '"', text)
-                text = re.sub(r'- *\n+ *', '', text)
-                text = re.sub(r'\s+', ' ', text)
-                if isinstance(key, str):
-                    text = re.sub(r'^\s*' + key + r'[-:\. ]+', '', text)
+                text = clean_line_list(value)
+                if clean_labels and isinstance(key, str):
+                    text = re.sub(r'^\s*' + re.escape(key) + r'[-:\. ]+', '', text)
                 new_name[key] = text.strip()
         yield new_name
+
+
+def clean_line_list(lines: Iterable[str]) -> str:
+    text = '\n'.join(lines)
+    text = unicodedata.normalize('NFC', text)
+    text = text.replace(' \xad ', '')
+    text = text.replace('\xad', '')
+    text = text.replace('’', "'")
+    text = re.sub(r'[“”]', '"', text)
+    text = re.sub(r'- *\n+ *', '', text)
+    text = re.sub(r'\s+', ' ', text)
+    return text.strip()
 
 
 def clean_text_simple(names: DataT) -> DataT:
@@ -193,20 +242,66 @@ def clean_text_simple(names: DataT) -> DataT:
         }
 
 
-def translate_to_db(names: DataT, collection_name: str, source: Source, verbose: bool = False) -> DataT:
-    coll = models.Collection.by_label(collection_name)
+def split_name_authority(name_authority: str, *, try_harder: bool = False, quiet: bool = False) -> Dict[str, str]:
+    name_authority = re.sub(r'([A-Za-z][a-z]*)\[([a-z?]+( \([A-Z][a-z]+\))?)\]\.', r'\1\2', name_authority)
+    name_authority = re.sub(r'([A-Z][a-z]*)\[([a-z]+)\]', r'\1\2', name_authority)
+    name_authority = re.sub(r'^\[([A-Z][a-z]+)\]', r'\1', name_authority)
+    name_authority = re.sub(r'\[\([A-Z][a-z]+\)\] ', r'', name_authority)
+    name_authority = re.sub(r'^\[[A-Z][a-z]+ \(\]([A-Z][a-z]+)\[\)\]', r'\1', name_authority)
+    name_authority = re.sub(r'\b([a-z])\[([a-z]+)\](?= )', r'\1\2', name_authority)
+    name_authority = name_authority.replace('(sic)', '')
+    name_authority = re.sub(r'\s+', ' ', name_authority)
+    regexes = [
+        # Lets us manually put | in to separate original name and authority in hard cases
+        r'^(?P<original_name>[^\|]+) \| (?P<authority>.*)$',
+        r'^(?P<original_name>[A-ZÑ][a-zëöiï]+) (?P<authority>(d\')?[A-ZÁ][a-zA-Z\-âöáéüšñ\.èç]+)$',
+        (
+            r'^(?P<original_name>(\? )?[A-ZÑ][a-zëöiï]+\??( \([A-Z][a-z]+\.?\??\))?((,? var\.| \(\?\)| \?)? [a-z]{3,}(-[a-z]{3,})?){1,2}) '
+            r'(?P<authority>de Beaux|de Winton|de Beerst|von Bloeker|(d\'|de la )?[A-ZÁ][a-zA-Z\-âöüášéèíñç\.,\'& ]+)( \(ex [^\)]+\))?$'
+        ),
+        r'^(?P<original_name>(\? )?.*?) (?P<authority>[A-ZÉ]\.[\- ].*)$',
+        r'^(?P<original_name>(\? )?[A-ZÑ][a-zëöíï]+) (?P<authority>(d\'|de la )?[A-ZÁ][a-zA-Z\-öáéšíñ\., ]+ (and|&) [A-ZÁ][a-zA-Z\-âöüáéèíñç]+)$',
+        r'^(?P<original_name>[A-Z][a-z]+) (?P<authority>Hamilton Smith|Von Dueben)$',
+    ]
+    if try_harder:
+        regexes += [
+            r'^(?P<original_name>[a-z]+) (?P<authority>[A-Z].*? and [A-Z].*)$',
+            r'^(?P<original_name>.* [a-zë\-]+) (?P<authority>[A-ZÁÉ].*)$',
+            r'^(?P<original_name>.*) (?P<authority>[^ ]+)$',
+        ]
+    for rgx in regexes:
+        match = re.match(rgx, name_authority)
+        if match:
+            return match.groupdict()
+    if not quiet:
+        print(name_authority)
+    return {}
+
+
+def translate_to_db(names: DataT, collection_name: Optional[str] = None, source: Optional[Source] = None, verbose: bool = False) -> DataT:
+    coll: Optional[models.Collection]
+    if collection_name is not None:
+        coll = models.Collection.by_label(collection_name)
+    else:
+        coll = None
     for name in names:
+        if 'orig_name_author' in name and 'original_name' not in name and 'authority' not in name:
+            name.update(split_name_authority(name['orig_name_author'], quiet=not verbose))
+        if 'authority' in name:
+            name['authority'] = unspace_initials(name['authority'])
         if 'authority' in name and ' and ' in name['authority']:
             name['authority'] = name['authority'].replace(' and ', ' & ')
         if 'species_type_kind' in name:
-            name['collection'] = coll
-            name['type_specimen_source'] = source.source
-        type_tags: List[models.TypeTag] = []
+            if coll is not None and 'collection' not in name:
+                name['collection'] = coll
+            if source is not None and 'type_specimen_source' not in name:
+                name['type_specimen_source'] = source.source
+        type_tags: List[models.TypeTag] = name.get('type_tags', [])
         for field in ('age_gender', 'gender_age'):
             if field in name:
                 gender_age = extract_gender_age(name[field])
                 type_tags += gender_age
-                if not gender_age:
+                if verbose and not gender_age:
                     print(f'failed to parse gender age {name[field]!r}')
         if 'body_parts' in name:
             body_parts = extract_body_parts(name['body_parts'])
@@ -215,28 +310,42 @@ def translate_to_db(names: DataT, collection_name: str, source: Source, verbose:
             else:
                 if verbose:
                     print(f'failed to parse body parts {name["body_parts"]!r}')
+                assert source is not None, f'missing source (at {name})'
                 type_tags.append(models.TypeTag.SpecimenDetail(name['body_parts'], source.source))
         if 'loc' in name:
             text = name['loc']
+            assert source is not None, f'missing source (at {name})'
             type_tags.append(models.TypeTag.LocationDetail(text, source.source))
             coords = helpers.extract_coordinates(text)
             if coords:
                 type_tags.append(models.TypeTag.Coordinates(coords[0], coords[1]))
         if 'collector' in name:
             type_tags.append(models.TypeTag.Collector(name['collector']))
+        if 'altitude' in name:
+            match = re.match(r'^(\d[\d\-,]*) +(feet|m|meters)$', name['altitude'])
+            if match:
+                altitude = match.group(1).replace(',', '')
+                unit = constants.AltitudeUnit.ft if match.group(2) == 'feet' else constants.AltitudeUnit.m
+                type_tags.append(models.TypeTag.Altitude(altitude, unit))
+            elif verbose:
+                print(f'failed to match altitude {name["altitude"]!r}')
         if 'date' in name:
             date = name['date']
             try:
                 date = helpers.standardize_date(date)
             except ValueError:
+                if verbose:
+                    print(f'failed to parse date {date!r}')
                 if 'specimen_detail' in name and date in name['specimen_detail']:
                     pass  # it will be included elsewhere
                 else:
+                    assert source is not None, f'missing source (at {name})'
                     type_tags.append(models.TypeTag.SpecimenDetail(f'Collected: "{date}"', source.source))
             else:
                 if date is not None:
                     type_tags.append(models.TypeTag.Date(date))
         if 'specimen_detail' in name:
+            assert source is not None, f'missing source (at {name})'
             type_tags.append(models.TypeTag.SpecimenDetail(name['specimen_detail'], source.source))
 
         if type_tags:
@@ -249,6 +358,7 @@ def translate_type_locality(names: DataT, start_at_end: bool = False, quiet: boo
         if 'loc' in name:
             loc = name['loc']
             loc = loc.replace('"', '')
+            loc = re.sub(r'\. Altitude, .*$', '', loc)
             loc = re.sub(r'[ \[]lat\. .*$', '', loc)
             loc = re.sub(r'[\.,;:\[ ]+$', '', loc)
             parts = [[re.sub(r' \([^\(]+\)$', '', part)] for part in loc.split(', ')]
@@ -293,13 +403,13 @@ def enum_has_member(enum_cls: Type[enum.Enum], member: str) -> bool:
 
 def extract_gender_age(text: str) -> List[TypeTag]:
     text = re.sub(r'\[.*?: ([^\]]+)\]', r'\1', text)
-    text = text.strip().lower()
+    text = text.strip().lower().replace('macho', 'male').replace('hembra', 'female')
     out = []
     if enum_has_member(constants.SpecimenAge, text):
         out.append(TypeTag.Age(constants.SpecimenAge[text]))
     elif enum_has_member(constants.SpecimenGender, text):
         out.append(TypeTag.Gender(constants.SpecimenGender[text]))
-    elif text == 'unsexed adult' or text == 'adult, sex not given' or text == 'adult, sex unknown' or text == 'adult unsexed':
+    elif text == 'unsexed adult' or text == 'adult, sex not given' or text == 'adult, sex unknown' or text == 'adult unsexed' or text == 'adult (not sexed)':
         out.append(TypeTag.Age(constants.SpecimenAge.adult))
         out.append(TypeTag.Gender(constants.SpecimenGender.unknown))
     elif text.endswith(', age not given'):
@@ -329,8 +439,9 @@ SKELETON = TypeTag.Organ(constants.Organ.postcranial_skeleton, '', '')
 
 def extract_body_parts(organs: str) -> List[TypeTag]:
     organs = organs.lower().replace('[', '').replace(']', '')
-    organs = re.sub(r'sk..?ll', 'skull', organs).replace('skufl', 'skull')
-    if organs in ('skin and skull', 'skin and cranium', 'study skin and skull', 'skull and skin', 'mounted skin and skull', 'skull and head skin') or '(skin and skull)' in organs:
+    organs = re.sub(r'sk..?ll', 'skull', organs).replace('skufl', 'skull').strip()
+    if organs in ('skin and skull', 'skin and cranium', 'study skin and skull', 'skull and skin', 'mounted skin and skull',
+                  'skull and head skin', 'mounted skin, skull separate') or '(skin and skull)' in organs:
         tags = [SKIN, SKULL]
     elif organs == 'skin and skeleton':
         tags = [SKIN, SKULL, SKELETON]
@@ -344,11 +455,11 @@ def extract_body_parts(organs: str) -> List[TypeTag]:
         tags = [IN_ALCOHOL]
         if 'skull' in organs:
             tags.append(SKULL)
-    elif organs.startswith(('skull only', 'cranium only')):
+    elif organs.startswith(('skull only', 'cranium only')) or organs == 'skull without skin':
         tags = [SKULL]
-    elif organs.startswith('skin only'):
+    elif organs.startswith('skin only') or organs == 'skin without skull':
         tags = [SKIN]
-    elif organs == 'skin':
+    elif organs in ('skin', 'mounted skin, skull inside'):
         tags = [SKIN]
     elif organs in ('skull', 'cranium'):
         tags = [SKULL]
@@ -433,8 +544,13 @@ def find_name(original_name: str, authority: str, max_distance: int = 3) -> Opti
 
     if original_name.islower() and ' ' not in original_name:
         candidates = models.Name.filter(models.Name.root_name == original_name, models.Name.authority == authority)
-        if candidates.count() == 1:
+        count = candidates.count()
+        if count == 1:
             return candidates.get()
+        elif count > 1:
+            available_names = candidates.filter(models.Name.nomenclature_status == constants.NomenclatureStatus.available)
+            if available_names.count() == 1:
+                return available_names.get()
 
     # Names without original names, but in the same genus or subgenus
     root_name = original_name.split()[-1]
@@ -503,6 +619,10 @@ def get_original_genera_of_genus(genus: models.Taxon) -> Set[str]:
     }
 
 
+def unspace_initials(authority: str) -> str:
+    return re.sub(r'([A-Z]\.) (?=[A-Z]\.)', r'\1', authority).strip()
+
+
 def name_variants(original_name: str, authority: str) -> Iterable[Tuple[str, str]]:
     authority = authority.replace(' and ', ' & ')
     yield original_name, authority
@@ -513,9 +633,11 @@ def name_variants(original_name: str, authority: str) -> Iterable[Tuple[str, str
     if 'æ' in original_name:
         original_name = original_name.replace('æ', 'ae')
         yield original_name, authority
-    unspaced = re.sub(r'([A-Z]\.) (?=[A-Z]\.)', r'\1', authority).strip()
+    unspaced = unspace_initials(authority)
     if original_authority != unspaced:
         yield original_name, unspaced
+    if authority.endswith('f'):
+        yield original_name, authority[:-1]
     authority = re.sub(r'([A-ZÉ]\.)+ ', '', authority).strip()
     if authority != original_authority:
         yield original_name, authority
@@ -598,12 +720,12 @@ def name_variants(original_name: str, authority: str) -> Iterable[Tuple[str, str
         yield original_name, 'Müller'
 
 
-def associate_types(names: DataT, name_config: NameConfig = NameConfig()) -> DataT:
+def associate_types(names: DataT, name_config: NameConfig = NameConfig(), quiet: bool = False) -> DataT:
     success = tried = 0
     for name in names:
         if 'type_name' in name and 'type_authority' in name:
             tried += 1
-            typ = identify_name(name['type_name'], name['type_authority'], name_config)
+            typ = identify_name(name['type_name'], name['type_authority'], name_config, quiet=quiet)
             if typ:
                 success += 1
                 name['type'] = typ
@@ -611,12 +733,12 @@ def associate_types(names: DataT, name_config: NameConfig = NameConfig()) -> Dat
     print(f'types success: {success}/{tried}')
 
 
-def associate_variants(names: DataT, name_config: NameConfig = NameConfig()) -> DataT:
+def associate_variants(names: DataT, name_config: NameConfig = NameConfig(), quiet: bool = False) -> DataT:
     success = tried = 0
     for name in names:
         if 'variant_name' in name and 'variant_authority' in name:
             tried += 1
-            typ = identify_name(name['variant_name'], name['variant_authority'], name_config)
+            typ = identify_name(name['variant_name'], name['variant_authority'], name_config, quiet=quiet)
             if typ:
                 success += 1
                 name['variant_target'] = typ
@@ -626,6 +748,7 @@ def associate_variants(names: DataT, name_config: NameConfig = NameConfig()) -> 
 
 def identify_name(orig_name: str, author: str, name_config: NameConfig = NameConfig(), *,
                   quiet: bool = False, max_distance: int = 3, use_taxon_match: bool = False) -> Optional[models.Name]:
+    author = author.replace(' and ', ' & ').replace(', & ', ' & ')
     if (orig_name, author) in name_config.ignored_names:
         return None
     if use_taxon_match:
@@ -644,13 +767,13 @@ def identify_name(orig_name: str, author: str, name_config: NameConfig = NameCon
     if name_obj:
         return name_obj
     else:
-        if not quiet and orig_name not in name_config.ignored_names:
+        if not quiet and (orig_name, author) not in name_config.ignored_names:
             print(f'could not find name {orig_name} -- {author} (tried variants {list(name_variants(orig_name, author))})')
         return None
 
 
 def manually_associate_name(name: Dict[str, Any]) -> Optional[models.Name]:
-    print(name['valid_name'], name['authority'])
+    print(name['raw_text'])
 
     getter = models.Taxon.getter('valid_name')
     while True:
@@ -714,6 +837,13 @@ def associate_names(names: DataT, name_config: NameConfig = NameConfig(), start_
                     name_obj = manually_associate_name(name)
                     if name_obj is not None:
                         name['name_obj'] = name_obj
+                    else:
+                        del shell.ns['nam']
+                        print('== Starting a shell; set the name in the variable "nam" ==')
+                        shell.run_shell()
+                        if 'nam' in shell.ns:
+                            print(f'Using name {shell.ns["nam"]}')
+                            name['name_obj'] = shell.ns['nam']
                 if not quiet and 'name_obj' not in name:
                     print(name['raw_text'])
                 # for key, value in name.items():
@@ -735,10 +865,10 @@ def maybe_add_iss(name: Dict[str, Any]) -> Optional[models.Name]:
     return nam
 
 
-def write_to_db(names: DataT, source: Source, dry_run: bool = True, edit_if_no_holotype: bool = True) -> None:
-    name_discrepancies = []
+def write_to_db(names: DataT, source: Source, dry_run: bool = True, edit_if_no_holotype: bool = True,
+                always_edit: bool = False) -> None:
     num_changed: Counter[str] = Counter()
-    for name in names:
+    for i, name in enumerate(names):
         if 'name_obj' not in name:
             if dry_run:
                 continue
@@ -756,7 +886,7 @@ def write_to_db(names: DataT, source: Source, dry_run: bool = True, edit_if_no_h
         else:
             pages = f'{name["pages"][0]}-{name["pages"][-1]}'
 
-        print(f'--- processing {nam} ({pages}) ---')
+        print(f'--- processing {nam} (i={i}; p. {pages}) ---')
 
         if 'variant_target' in name:
             if nam.nomenclature_status != name['variant_kind'] and not dry_run:
@@ -801,19 +931,28 @@ def write_to_db(names: DataT, source: Source, dry_run: bool = True, edit_if_no_h
                         if not dry_run:
                             nam.fill_field('type_tags')
                     continue
+                elif attr == 'authority':
+                    # If the names just differ in the addition of initials, ignore the difference. But don't do this if both
+                    # have different initials; then we should review manually.
+                    new_no_initials = re.sub(r'^([A-Z]\.)+ ', '', new_value)
+                    if new_no_initials == current_value:
+                        continue
+                    current_no_initials = re.sub(r'^([A-Z]\.)+ ', '', current_value)
+                    if current_no_initials == new_value:
+                        continue
 
-                if attr == 'verbatim_citation':
+                    # don't task (this is for northamerica.py)
+                    if new_value == current_value + 'f':
+                        continue
+
+                if attr in ('verbatim_citation', 'verbatim_type'):
+                    if new_value in current_value:
+                        continue
                     new_value = f'{current_value} [From {{{source.source}}}: {new_value}]'
                 else:
                     print(f'value for {attr} differs: (new) {new_value} vs. (current) {current_value}')
 
-                if attr == 'type_specimen_source':
-                    nam.display(full=True)
-                    if not dry_run:
-                        should_replace = getinput.yes_no('Replace type_specimen_source? ')
-                        if not should_replace:
-                            continue
-                elif attr == 'original_name':
+                if attr == 'original_name':
                     new_root_name = helpers.root_name_of_name(new_value, constants.Rank.species)
                     if helpers.root_name_of_name(nam.original_name, constants.Rank.species).lower() != new_root_name.lower():
                         if not dry_run and not getinput.yes_no(f'Is the source\'s spelling {new_value} correct?'):
@@ -835,9 +974,15 @@ def write_to_db(names: DataT, source: Source, dry_run: bool = True, edit_if_no_h
                         else:
                             if existing.original_citation == source.source:
                                 continue
-                    name_discrepancies.append((nam, current_value, new_value))
+
+                if attr == 'type_specimen_source':
+                    nam.display()
+                    if not dry_run:
+                        should_replace = getinput.yes_no('Replace type_specimen_source? ')
+                        if not should_replace:
+                            continue
                     continue
-                elif attr != 'verbatim_citation' and not (attr == 'nomenclature_status' and current_value == constants.NomenclatureStatus.available):
+                elif attr not in ('verbatim_citation', 'verbatim_type') and not (attr == 'nomenclature_status' and current_value == constants.NomenclatureStatus.available):
                     if not dry_run:
                         nam.display()
                         nam.open_description()
@@ -848,21 +993,23 @@ def write_to_db(names: DataT, source: Source, dry_run: bool = True, edit_if_no_h
                 setattr(nam, attr, new_value)
 
         if not dry_run:
-            if edit_if_no_holotype and ('species_type_kind' not in name or name['species_type_kind'] != constants.SpeciesGroupType.holotype):
+            should_edit = False
+            if edit_if_no_holotype and ('species_type_kind' not in name or 'type_specimen' not in name or name['species_type_kind'] != constants.SpeciesGroupType.holotype):
                 print(f'{nam} does not have a holotype: {name}')
-                nam.fill_field('type_tags')
+                should_edit = True
+            if always_edit:
+                should_edit = True
+
+            if should_edit:
+                nam.display()
+                empty_fields = list(nam.get_empty_required_fields())
+                if empty_fields:
+                    nam.fill_required_fields()
+                else:
+                    nam.fill_field('type_tags')
 
             if nam.comments.filter(models.NameComment.source == source.source).count() == 0:
                 nam.add_comment(constants.CommentKind.structured_quote, json.dumps(name['raw_text']), source.source, pages)
-
-    for nam, current, new in name_discrepancies:
-        print('----------')
-        print(f'discrepancy for {nam} (p. {nam.page_described})')
-        print(f'current: {current}')
-        print(f'new: {new}')
-        if not dry_run:
-            nam.open_description()
-            getinput.get_line('press enter to continue> ')
 
     for attr, value in num_changed.most_common():
         print(f'{attr}: {value}')
@@ -895,3 +1042,10 @@ def print_field_counts(names: DataT) -> None:
 
     for value, count in counts.most_common():
         print(count, value)
+
+
+def print_if_missing_field(names: DataT, field: str) -> DataT:
+    for name in names:
+        if field not in name:
+            print(name)
+        yield name

@@ -730,6 +730,8 @@ class Taxon(BaseModel):
         assert self.rank == Rank.genus
         assert self.base_name.type is None
         full_name = '%s %s' % (self.valid_name, name)
+        if isinstance(page_described, int):
+            page_described = str(page_described)
         result = self.add_static(
             Rank.species, full_name, set_type=True, authority=self.base_name.authority, year=self.base_name.year,
             original_citation=self.base_name.original_citation, original_name=full_name, page_described=page_described,
@@ -740,6 +742,7 @@ class Taxon(BaseModel):
             result.add_occurrence(locality)
         result.base_name.s(**kwargs)
         if self.base_name.original_citation is not None:
+            self.fill_required_fields()
             result.base_name.fill_required_fields()
         return result
 
@@ -990,11 +993,11 @@ class Taxon(BaseModel):
             names |= child.all_names(age=age)
         return names
 
-    def names_missing_field(self, field: str) -> Set['Name']:
+    def names_missing_field(self, field: str, age: Optional[constants.Age] = None) -> Set['Name']:
         return {
             name
-            for name in self.all_names()
-            if field in name.get_empty_required_fields()
+            for name in self.all_names(age=age)
+            if getattr(name, field) is None and field in name.get_empty_required_fields()
         }
 
     def stats(self, age: Optional[constants.Age] = None) -> Dict[str, float]:
@@ -1033,9 +1036,10 @@ class Taxon(BaseModel):
         print(f'Overall score: {output["score"]:.2f}')
         return output
 
-    def fill_data_for_names(self, only_with_original: bool = True, min_year: Optional[int] = None) -> None:
+    def fill_data_for_names(self, only_with_original: bool = True, min_year: Optional[int] = None,
+                            age: Optional[constants.Age] = None) -> None:
         """Calls fill_required_fields() for all names in this taxon."""
-        all_names = self.all_names()
+        all_names = self.all_names(age=age)
 
         def should_include(nam: Name) -> bool:
             if nam.original_citation is None:
@@ -1053,7 +1057,7 @@ class Taxon(BaseModel):
         for citation in citations:
             fill_data_from_paper(citation)
         if not only_with_original:
-            for nam in self.all_names():
+            for nam in self.all_names(age=age):
                 if not should_include(nam):
                     print(nam)
                     nam.fill_required_fields()
@@ -1814,7 +1818,7 @@ class Collection(BaseModel):
         if len(colls) == 1:
             return colls[0]
         else:
-            raise ValueError('found {colls} with label {label}')
+            raise ValueError(f'found {colls} with label {label}')
 
     @classmethod
     def get_or_create(cls, label: str, name: str, location: Region, comment: Optional[str] = None) -> 'Collection':
@@ -2015,13 +2019,20 @@ class Name(BaseModel):
         self.data = json.dumps(data)
         self.save()
 
-    def add_data(self, field: str, value: Any) -> None:
+    def add_data(self, field: str, value: Any, concat_duplicate: bool = False) -> None:
         if self.data is None or self.data == '':
             data: Dict[str, Any] = {}
         else:
             data = json.loads(self.data)
         if field in data:
-            raise ValueError(f'{field} is already in {data}')
+            if concat_duplicate:
+                existing = data[field]
+                if isinstance(existing, list):
+                    value = existing + [value]
+                else:
+                    value = [existing, value]
+            else:
+                raise ValueError(f'{field} is already in {data}')
         data[field] = value
         self.data = json.dumps(data)
 
@@ -2157,7 +2168,8 @@ class Name(BaseModel):
         if self.original_citation is not None:
             out += ' {%s}' % self.original_citation
         if self.type is not None:
-            out += ' (type: %s)' % self.type
+            kind = f'; {self.genus_type_kind.name}' if self.genus_type_kind else ''
+            out += f' (type: {self.type}{kind})'
         statuses = []
         if self.status != Status.valid:
             statuses.append(self.status)
@@ -2474,7 +2486,7 @@ class Name(BaseModel):
             else:
                 match = re.match(r'^[A-Z]\. ([a-z]+)$', type_name)
                 find_abbrev = bool(match)
-                if find_abbrev:
+                if match:
                     root_name = match.group(1)
                     candidates = Name.filter(Name.root_name == root_name, Name.group == Group.species)
                 else:

@@ -550,8 +550,8 @@ class ScoreHolder:
 
     def by_field(self, field: str, min_count: int = 0) -> None:
         items = ((key, value) for key, value in self.data.items() if value['total'] > min_count)
-        items = sorted(items, key=lambda pair: (pair[1].get(field, 0), pair[1]['total']))
-        for taxon, data in items:
+        sorted_items = sorted(items, key=lambda pair: (pair[1].get(field, 0), pair[1]['total']))
+        for taxon, data in sorted_items:
             print(f'{taxon} {data.get(field, 0):.2f} {data["total"]} {data["score"]:.2f}')
 
 
@@ -825,7 +825,7 @@ def fossilize(*taxa: Taxon, to_status: Age = Age.fossil, from_status: Age = Age.
 
 
 @generator_command
-def check_age_parents() -> None:
+def check_age_parents() -> Iterable[Taxon]:
     """Extant taxa should not have fossil parents."""
     for taxon in Taxon.select():
         if taxon.parent is not None and taxon.age < taxon.parent.age:
@@ -840,24 +840,21 @@ def clean_up_verbatim(dry_run: bool = False) -> None:
         print(f'{nam}: {nam.type}, {nam.verbatim_type}')
         famgen_type_count += 1
         if not dry_run:
-            nam.add_data('verbatim_type', nam.verbatim_type)
+            nam.add_data('verbatim_type', nam.verbatim_type, concat_duplicate=True)
             nam.verbatim_type = None
             nam.save()
     for nam in Name.filter(Name.group == Group.species, Name.verbatim_type != None, Name.type_specimen != None):
         print(f'{nam}: {nam.type_specimen}, {nam.verbatim_type}')
         species_type_count += 1
         if not dry_run:
-            nam.add_data('verbatim_type', nam.verbatim_type)
+            nam.add_data('verbatim_type', nam.verbatim_type, concat_duplicate=True)
             nam.verbatim_type = None
             nam.save()
     for nam in Name.filter(Name.verbatim_citation != None, Name.original_citation != None):
         print(f'{nam}: {nam.original_citation}, {nam.verbatim_citation}')
         citation_count += 1
         if not dry_run:
-            try:
-                nam.add_data('verbatim_citation', nam.verbatim_citation)
-            except ValueError:
-                print(f'dropping verbatim_citation for {nam}')
+            nam.add_data('verbatim_citation', nam.verbatim_citation, concat_duplicate=True)
             nam.verbatim_citation = None
             nam.save()
     print(f'Family/genera type count: {famgen_type_count}')
@@ -920,16 +917,24 @@ def fill_type_locality(extant_only: bool = True, start_at: Optional[Name] = None
         nam.fill_field('type_locality')
 
 
-@command
-def fill_type_locality_from_location_detail() -> None:
+def names_with_location_detail_without_type_loc() -> Iterable[Name]:
     for nam in Name.filter(Name.type_tags != None, Name.type_locality >> None):
         tags = [tag for tag in nam.type_tags if isinstance(tag, TypeTag.LocationDetail)]
         if not tags:
             continue
-        print(nam)
+        nam.display()
         for tag in tags:
             print(tag)
+        yield nam
+
+
+@command
+def fill_type_locality_from_location_detail() -> None:
+    for nam in names_with_location_detail_without_type_loc():
         nam.fill_field('type_locality')
+        if nam.type_locality is None:
+            if getinput.yes_no('Remove LocationDetail? '):
+                nam.type_tags = [tag for tag in nam.type_tags if not isinstance(tag, TypeTag.LocationDetail)]  # type: ignore
 
 
 @command
@@ -943,6 +948,16 @@ def more_precise_type_localities(loc: models.Location) -> None:
             if isinstance(tag, models.TypeTag.LocationDetail):
                 print(tag)
         nam.fill_field('type_locality')
+
+
+@generator_command
+def type_locality_without_detail() -> Iterable[Name]:
+    # All type localities should be supported by a LocationDetail tag. However, we probably shouldn't
+    # worry about this until coverage of extant type localities is more comprehensive.
+    for nam in Name.filter(Name.type_locality != None):
+        if not nam.type_tags or not any(isinstance(tag, models.TypeTag.LocationDetail) for tag in nam.type_tags):
+            print(f'{nam} has a type locality but no location detail')
+            yield nam
 
 
 @command
@@ -1166,6 +1181,12 @@ AUTHOR_SYNONYMS = {
     'de Selys-Longchamps': 'de Sélys Longchamps',
     'Petenyi': 'Petényi',
     'LeConte': 'Le Conte',
+    'Leconte': 'Le Conte',
+    'J. Gray': 'J.E. Gray',
+    'du Chaillu': 'Du Chaillu',
+    'DuChaillu': 'Du Chaillu',
+    'Souef': 'Le Souef',
+    'Le Soeuf': 'Le Souef',
 }
 AMBIGUOUS_AUTHORS = {
     'Allen',
@@ -1207,9 +1228,9 @@ def _replace_author(name: Name, bad: str, good: str, dry_run: bool = True) -> No
     if authors.count(bad) != 1:
         print(f'there are multiple authors; please edit manually ({bad} -> {good})')
         if not dry_run:
-            authors = getinput.get_line(prompt='> ', default=name.authority)
-            print(f'change author for {name}: {name.authority} -> {authors}')
-            name.authority = authors
+            new_authors = getinput.get_line(prompt='> ', default=name.authority)
+            print(f'change author for {name}: {name.authority} -> {new_authors}')
+            name.authority = new_authors
         return
     authors[index] = good
     print(f'change author for {name}: {orig_authors} -> {authors}')
@@ -1256,7 +1277,7 @@ def disambiguate_authors(dry_run: bool = False) -> None:
 
 
 @generator_command
-def validate_authors(dry_run: bool = False) -> None:
+def validate_authors(dry_run: bool = False) -> Iterable[Name]:
     for nam in Name.filter(Name.authority.contains('[')):
         print(f'{nam}: invalid authors')
         yield nam

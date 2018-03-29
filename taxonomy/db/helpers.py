@@ -308,6 +308,7 @@ def standardize_date(date: str) -> Optional[str]:
         '%b, %Y',  # Feb, 1992
         '%B %Y',  # February 1992
         '%B, %Y',  # February, 1992
+        '%bt %Y',  # Sept 1992
     ]
     for fmt in date_month_formats:
         try:
@@ -320,11 +321,13 @@ def standardize_date(date: str) -> Optional[str]:
         '%d %B %Y',  # 24 February 1992
         '%d %b %Y',  # 24 Feb 1992
         '%d %bt. %Y',  # 24 Sept. 1992
+        '%d %bt %Y',  # 24 Sept 1992
         '%d %b%Y',  # 24 Feb1992
         '%d %b. %Y',  # 24 Feb. 1992
         '%B %d, %Y',  # February 24, 1992
         '%b %d, %Y',  # Feb 24, 1992
         '%b. %d, %Y',  # Feb. 24, 1992
+        '%d.%m.%Y',  # 24.02.1992
     ]
     for fmt in dmy_formats:
         try:
@@ -403,3 +406,17 @@ def extract_coordinates(text: str) -> Optional[Tuple[str, str]]:
         return latitude, longitude
     else:
         return None
+
+
+def clean_text(text: str) -> str:
+    text = text.replace('a ́', 'á')
+    text = text.replace('e ́', 'é')
+    text = text.replace('i ́', 'í')
+    text = text.replace('o ́', 'ó')
+    text = text.replace('u ́', 'ú')
+    text = text.replace(' ́ı', 'í')
+    text = text.replace('a ̃', 'ã')
+    text = text.replace('‘‘', '"')
+    text = text.replace('’’', '"')
+    text = re.sub(r'(?<=[a-z])- (?=[a-z])', '', text)
+    return text

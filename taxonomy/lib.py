@@ -1,9 +1,9 @@
-from typing import Any, Iterable, List, Optional, Tuple
+from typing import Any, Iterable, List, Optional, Tuple, Type
 
 import peewee
 
 from taxonomy.db.constants import Age, Rank
-from taxonomy.db.models import (Collection, Location, Name, Occurrence, Period,
+from taxonomy.db.models import (BaseModel, Collection, Location, Name, Occurrence, Period,
                                 Taxon)
 
 
@@ -113,3 +113,8 @@ def h(author: str, year: str, uncited: bool = False) -> List[Name]:
     if uncited:
         query = query.filter(Name.original_citation >> None)
     return list(query)
+
+
+def count_field(model: Type[BaseModel], field: str) -> List[Tuple[Any, int]]:
+    field_obj = getattr(model, field)
+    return [(getattr(t, field), t.num) for t in model.select(field_obj, peewee.fn.Count().alias('num')).group_by(field_obj).order_by(peewee.fn.Count().desc())]

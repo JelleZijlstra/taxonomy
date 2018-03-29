@@ -57,8 +57,8 @@ def translate_to_db(names: DataT) -> DataT:
 
 def main(argv: List[str]) -> DataT:
     lines = lib.get_text(SOURCE)
-    names = csv.DictReader(lines)
-    names = translate_to_db(names)
+    reader = csv.DictReader(lines)
+    names = translate_to_db(reader)
     names = lib.translate_to_db(names, 'USNM', SOURCE)
     names = lib.translate_type_locality(names, quiet=True)
     names = lib.associate_names(names, lib.NameConfig({
