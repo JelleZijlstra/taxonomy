@@ -1,3 +1,19 @@
+"""
+
+Shell commands, functions that can be called directly from the shell.
+
+This is mostly used for functions that check certain invariants in the database.
+
+Possible ones to add:
+- The valid name for a taxon should always be the oldest name that does not have some sort of
+  nomenclatural trouble (preoccupied, unavailable, etc.).
+- The root name should match the last part of the corrected original name, unless there is a
+  justified emendation.
+- Emendations and subsequent spellings should be synonyms of the name they are based on.
+- Nomina nova and similar should not themselves have a type locality.
+
+"""
+
 import collections
 import functools
 import os.path
@@ -145,30 +161,26 @@ def h(authority: str, year: str) -> Iterable[Name]:
 _MissingDataProducer = Callable[..., Iterable[Tuple[Name, str]]]
 
 
-def _add_missing_data(attribute: str) -> Callable[[_MissingDataProducer], Callable[..., None]]:
-    def decorator(fn: _MissingDataProducer) -> Callable[..., None]:
-        @functools.wraps(fn)
-        def wrapper(*args: Any, **kwargs: Any) -> None:
-            for nam, message in fn(*args, **kwargs):
-                value = getinput.get_line(
-                    message + '> ', handlers={'o': lambda _: bool(nam.open_description())}  # pylint: disable=cell-var-from-loop
-                )
-                if value:
-                    setattr(nam, attribute, value)
-                    nam.save()
-        return wrapper
-    return decorator
+def _add_missing_data(fn: _MissingDataProducer) -> Callable[..., None]:
+    @functools.wraps(fn)
+    def wrapper(*args: Any, **kwargs: Any) -> None:
+        for nam, message in fn(*args, **kwargs):
+            print(message)
+            nam.open_description()
+            nam.display()
+            nam.fill_required_fields()
+    return wrapper
 
 
 @command
-@_add_missing_data('authority')
+@_add_missing_data
 def fix_bad_ampersands() -> Iterable[Tuple[Name, str]]:
     for name in Name.filter(Name.authority % '%&%&%'):
         yield name, 'Name {} has bad authority format'.format(name.description())
 
 
 @command
-@_add_missing_data('authority')
+@_add_missing_data
 def fix_et_al() -> Iterable[Tuple[Name, str]]:
     for name in (Name.filter(Name.authority % '%et al%', Name.original_citation != None)  # noqa: E711
                      .order_by(Name.original_name, Name.root_name)):
@@ -176,7 +188,7 @@ def fix_et_al() -> Iterable[Tuple[Name, str]]:
 
 
 @command
-@_add_missing_data('original_name')
+@_add_missing_data
 def add_original_names() -> Iterable[Tuple[Name, str]]:
     for name in Name.filter(Name.original_citation != None, Name.original_name >> None).order_by(Name.original_name):  # noqa: E711
         message = 'Name {} is missing an original name, but has original citation {{{}}}:{}'.format(
@@ -185,7 +197,7 @@ def add_original_names() -> Iterable[Tuple[Name, str]]:
 
 
 @command
-@_add_missing_data('page_described')
+@_add_missing_data
 def add_page_described() -> Iterable[Tuple[Name, str]]:
     for name in Name.filter(Name.original_citation != None, Name.page_described >> None,  # noqa: E711
                             Name.year != 'in press').order_by(Name.original_citation, Name.original_name):
@@ -194,6 +206,26 @@ def add_page_described() -> Iterable[Tuple[Name, str]]:
         message = 'Name %s is missing page described, but has original citation {%s}' % \
             (name.description(), name.original_citation)
         yield name, message
+
+
+@command
+def make_pleistocene_localities(dry_run: bool = False) -> None:
+    pleistocene = models.Period.get(models.Period.name == 'Pleistocene')
+    for region in models.Region.select():
+        name = f'{region.name} Pleistocene'
+        try:
+            loc = models.Location.get(models.Location.name == name)
+        except models.Location.DoesNotExist:
+            print(f'creating location {name}')
+            if dry_run:
+                continue
+            else:
+                loc = models.Location.make(name=name, region=region, period=pleistocene)
+        if not loc.comment:
+            comment = f'Undifferentiated Pleistocene localities in {region.name}'
+            print(f'setting comment on {loc} to {comment}')
+            if not dry_run:
+                loc.comment = comment
 
 
 @command
@@ -216,6 +248,26 @@ def find_rank_mismatch() -> Iterable[Taxon]:
             group = taxon.base_name.group.name
             print("Group mismatch for %s: rank %s but group %s" % (taxon, rank, group))
             yield taxon
+
+
+@generator_command
+def detect_corrected_original_names(dry_run: bool = True, interactive: bool = False, ignore_failure: bool = False) -> Iterable[Name]:
+    total = successful = 0
+    for nam in Name.filter(Name.original_name != None, Name.corrected_original_name == None, Name.group << (Group.genus, Group.species)):  # pylint: disable=singleton-comparison
+        total += 1
+        inferred = nam.infer_corrected_original_name()
+        if inferred:
+            successful += 1
+            print(f'{nam}: inferred corrected_original_name to be {inferred!r} from {nam.original_name!r}')
+            if not dry_run:
+                nam.corrected_original_name = inferred
+        elif not ignore_failure:
+            print(f'{nam}: could not infer corrected original name from {nam.original_name!r}')
+            if interactive:
+                nam.display()
+                nam.fill_field('corrected_original_name')
+            yield nam
+    print(f'Success: {successful}/{total}')
 
 
 @command
@@ -550,9 +602,9 @@ class ScoreHolder:
 
     def by_field(self, field: str, min_count: int = 0) -> None:
         items = ((key, value) for key, value in self.data.items() if value['total'] > min_count)
-        sorted_items = sorted(items, key=lambda pair: (pair[1].get(field, 0), pair[1]['total']))
+        sorted_items = sorted(items, key=lambda pair: (pair[1].get(field, 100), pair[1]['total']))
         for taxon, data in sorted_items:
-            print(f'{taxon} {data.get(field, 0):.2f} {data["total"]} {data["score"]:.2f}')
+            print(f'{taxon} {data.get(field, 100):.2f} {data["total"]} {data["score"]:.2f}')
 
 
 @command
@@ -1187,6 +1239,13 @@ AUTHOR_SYNONYMS = {
     'DuChaillu': 'Du Chaillu',
     'Souef': 'Le Souef',
     'Le Soeuf': 'Le Souef',
+    'Lonnberg': 'Lönnberg',
+    'Gunther': 'Günther',
+    'Hamilton Smith': 'C.E.H. Smith',
+    'Hamilton-Smith': 'C.E.H. Smith',
+    'H. Smith': 'C.E.H. Smith',
+    'C.H. Smith': 'C.E.H. Smith',
+    'Severtzow': 'Severtzov',
 }
 AMBIGUOUS_AUTHORS = {
     'Allen',

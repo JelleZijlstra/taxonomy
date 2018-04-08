@@ -120,6 +120,18 @@ class NomenclatureStatus(enum.IntEnum):
             NomenclatureStatus.nomen_novum,
         }
 
+    def requires_name_complex(self) -> bool:
+        return self not in {
+            NomenclatureStatus.nomen_nudum,
+            NomenclatureStatus.incorrect_subsequent_spelling,
+            NomenclatureStatus.incorrect_original_spelling,
+            NomenclatureStatus.inconsistently_binominal,
+            NomenclatureStatus.not_latin_alphabet,
+            NomenclatureStatus.not_intended_as_a_scientific_name,
+            NomenclatureStatus.zoological_formula,
+            NomenclatureStatus.informal,
+        }
+
     @classmethod
     def hierarchy(cls) -> List[List['NomenclatureStatus']]:
         """Hierarchy of the severity of various problems with a name.

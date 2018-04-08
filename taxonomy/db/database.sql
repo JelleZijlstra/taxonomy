@@ -24,6 +24,7 @@ CREATE TABLE `name` (
 	`group` INT NOT NULL, -- Species, genus, family, or higher
 	`status` INT NOT NULL, -- Valid, synonym, or species inquirenda
 	`original_name` VARCHAR(512) DEFAULT NULL,
+	`corrected_original_name` VARCHAR(512) DEFAULT NULL,
 	`root_name` VARCHAR(512) NOT NULL,
 	`authority` VARCHAR(1024) DEFAULT NULL,
 	`year` VARCHAR(255) DEFAULT NULL,

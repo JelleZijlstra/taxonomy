@@ -667,7 +667,7 @@ class Taxon(BaseModel):
         return order_rank, family_rank
 
     def add_static(self, rank: Rank, name: str, authority: Optional[str] = None, year: Union[None, str, int] = None,
-                   age: Optional[constants.Age] = None, set_type: bool = False, **kwargs: Any) -> 'Taxon':
+                   age: Optional[constants.Age] = None, **kwargs: Any) -> 'Taxon':
         if age is None:
             age = self.age
         taxon = Taxon.create(valid_name=name, age=age, rank=rank, parent=self)
@@ -682,9 +682,6 @@ class Taxon(BaseModel):
             name_obj.year = year
         name_obj.save()
         taxon.base_name = name_obj
-        if set_type:
-            self.base_name.type = name_obj
-            self.save()
         taxon.save()
         return taxon
 
@@ -733,16 +730,16 @@ class Taxon(BaseModel):
         if isinstance(page_described, int):
             page_described = str(page_described)
         result = self.add_static(
-            Rank.species, full_name, set_type=True, authority=self.base_name.authority, year=self.base_name.year,
+            Rank.species, full_name, authority=self.base_name.authority, year=self.base_name.year,
             original_citation=self.base_name.original_citation, original_name=full_name, page_described=page_described,
             status=self.base_name.status)
         self.base_name.type = result.base_name
-        self.save()
+        self.base_name.save()
         if locality is not None:
             result.add_occurrence(locality)
         result.base_name.s(**kwargs)
         if self.base_name.original_citation is not None:
-            self.fill_required_fields()
+            self.base_name.fill_required_fields()
             result.base_name.fill_required_fields()
         return result
 
@@ -1854,6 +1851,12 @@ class Name(BaseModel):
     status = EnumField(Status)
     taxon = ForeignKeyField(Taxon, related_name='names', db_column='taxon_id')
     original_name = CharField(null=True)
+    # Original name, with corrections for issues like capitalization and diacritics. Should not correct incorrect original spellings
+    # for other reasons (e.g., prevailing usage). Consider a case where Gray (1825) names _Mus Somebodyi_, then Gray (1827) spells it
+    # _Mus Somebodii_ and all subsequent authors follow this usage, rendering it a justified emendation. In this case, the 1825 name
+    # should have original_name _Mus Somebodyi_, corrected original name _Mus somebodyi_, and root name _somebodii_. The 1827 name
+    # should be listed as a justified emendation.
+    corrected_original_name = CharField(null=True)
     nomenclature_status = EnumField(NomenclatureStatus, default=NomenclatureStatus.available)
 
     # Citation and authority
@@ -1932,6 +1935,34 @@ class Name(BaseModel):
         else:
             self._definition = defn.serialize()
 
+    def infer_corrected_original_name(self) -> Optional[str]:
+        if not self.original_name or self.group not in (Group.genus, Group.species):
+            return None
+        original_name = (self.original_name.replace('(?)', '').replace('?', '').replace('æ', 'ae').replace('ë', 'e').replace('í', 'i')
+                                           .replace('ï', 'i').replace('á', 'a').replace('"', '').replace("'", '').replace('ř', 'r')
+                                           .replace('é', 'e').replace('š', 's').replace('á', 'a').replace('ć', 'c'))
+        original_name = re.sub(r'\s+', ' ', original_name).strip()
+        original_name = re.sub(r'([a-z]{2})-([a-z]{2})', r'\1\2', original_name)
+        if self.group == Group.genus:
+            if re.match(r'^[A-Z][a-z]+$', original_name):
+                return original_name
+            match = re.match(r'^[A-Z][a-z]+ \(([A-Z][a-z]+)\)$', original_name)
+            if match:
+                return match.group(1)
+        elif self.group == Group.species:
+            if re.match(r'^[A-Z][a-z]+( [a-z]+){1,2}$', original_name):
+                return original_name
+            if re.match(r'^[A-Z][a-z]+ [A-Z][a-z]+$', original_name):
+                genus, species = original_name.split()
+                return f'{genus} {species.lower()}'
+            match = re.match(r'^(?P<genus>[A-Z][a-z]+)( \([A-Z][a-z]+\))? (?P<species>[A-Z]?[a-z]+)((,? var\.)? (?P<subspecies>[A-Z]?[a-z]+))?$', original_name)
+            if match:
+                name = f'{match.group("genus")} {match.group("species").lower()}'
+                if match.group('subspecies'):
+                    name += ' ' + match.group('subspecies').lower()
+                return name
+        return None
+
     def get_value_for_field(self, field: str) -> Any:
         if field == 'collection' and self.collection is None and self.type_specimen is not None:
             coll_name = self.type_specimen.split()[0]
@@ -1941,6 +1972,13 @@ class Name(BaseModel):
                 print(f'inferred collection to be {coll} from {self.type_specimen}')
                 return coll
             return super().get_value_for_field(field)
+        elif field == 'corrected_original_name':
+            inferred = self.infer_corrected_original_name()
+            if inferred is not None:
+                print(f'inferred corrected_original_name to be {inferred!r} from {self.original_name!r}')
+                return inferred
+            else:
+                return super().get_value_for_field(field)
         elif field == 'type_tags':
             if self.type_locality_description is not None:
                 print(self.type_locality_description)
@@ -1974,18 +2012,20 @@ class Name(BaseModel):
             return super().get_value_for_field(field)
 
     def get_completers_for_adt_field(self, field: str) -> getinput.CompleterMap:
-        if field == 'type_tags':
-            return {
-                (TypeTag.TypeDesignation, 'source'): self._completer_for_source_field,
-                (TypeTag.TypeDesignation, 'name'): lambda p, d: Name.getter(Name.original_name).get_one_key(p, default=d),
-                (TypeTag.CommissionTypeDesignation, 'opinion'): self._completer_for_source_field,
-                (TypeTag.LectotypeDesignation, 'source'): self._completer_for_source_field,
-                (TypeTag.NeotypeDesignation, 'source'): self._completer_for_source_field,
-                (TypeTag.SpecimenDetail, 'source'): self._completer_for_source_field,
-                (TypeTag.LocationDetail, 'source'): self._completer_for_source_field,
-            }
-        else:
-            return {}
+        def original_name_completer(p: str, d: Optional[str]) -> Optional[Name]:
+            return Name.getter('original_name').get_one(p, default=d or '')
+
+        for field_name, tag_cls in [('type_tags', TypeTag), ('tags', Tag)]:
+            if field == field_name:
+                completers: Dict[Tuple[Type[adt.ADT], str], getinput.Completer[Any]] = {}
+                for tag in tag_cls._tag_to_member.values():  # type: ignore
+                    for attribute, typ in tag._attributes.items():
+                        if typ is Name:
+                            completers[(tag, attribute)] = original_name_completer
+                        elif typ is str and attribute in ('source', 'opinion'):
+                            completers[(tag, attribute)] = self._completer_for_source_field
+                return completers
+        return {}
 
     def _completer_for_source_field(self, prompt: str, default: str) -> str:
         return self.get_value_for_article_field(prompt[:-2], default=default) or ''
@@ -2154,7 +2194,7 @@ class Name(BaseModel):
                 # invalid year
                 return datetime.datetime.now().year + 1
 
-    def get_description(self, full: bool = False, depth: int = 0, include_data: bool = False) -> str:
+    def get_description(self, full: bool = False, depth: int = 0, include_data: bool = False, include_taxon: bool = False) -> str:
         if self.original_name is None:
             out = self.root_name
         else:
@@ -2180,7 +2220,9 @@ class Name(BaseModel):
         if full and (self.original_name is not None or self.stem is not None or self.gender is not None or self.definition is not None):
             parts = []
             if self.original_name is not None:
-                parts.append('root: %s' % self.root_name)
+                parts.append(f'root: {self.root_name}')
+            if self.corrected_original_name is not None and self.corrected_original_name != self.original_name:
+                parts.append(f'corrected: {self.corrected_original_name}')
             if self.name_complex is not None:
                 parts.append(f'name complex: {self.name_complex}')
             else:
@@ -2191,6 +2233,8 @@ class Name(BaseModel):
             if self.definition is not None:
                 parts.append(str(self.definition))
             out += ' (%s)' % '; '.join(parts)
+        if include_taxon:
+            out += f' (={self.taxon})'
         knowledge_level = self.knowledge_level()
         if knowledge_level == 0:
             intro_line = getinput.red(out)
@@ -2239,7 +2283,7 @@ class Name(BaseModel):
         return result
 
     def display(self, full: bool = True, include_data: bool = False) -> None:
-        print(self.get_description(full=full, include_data=include_data))
+        print(self.get_description(full=full, include_data=include_data, include_taxon=True))
 
     def knowledge_level(self, verbose: bool = False) -> int:
         """Returns whether all necessary attributes of the name have been filled in."""
@@ -2261,6 +2305,8 @@ class Name(BaseModel):
         if self.status == Status.spurious or self.nomenclature_status == NomenclatureStatus.informal:
             return
         yield 'original_name'
+        if self.group in (Group.genus, Group.species):
+            yield 'corrected_original_name'
 
         yield 'authority'
         yield 'year'
@@ -2269,7 +2315,7 @@ class Name(BaseModel):
         if self.original_citation is None:
             yield 'verbatim_citation'
 
-        if self.group in (Group.genus, Group.species) and self.nomenclature_status != NomenclatureStatus.incorrect_subsequent_spelling:
+        if self.group in (Group.genus, Group.species) and self.nomenclature_status.requires_name_complex():
             yield 'name_complex'
 
         if self.nomenclature_status.requires_type():
@@ -2285,8 +2331,14 @@ class Name(BaseModel):
                     yield 'type_specimen_source'
                     yield 'species_type_kind'
                 yield 'type_tags'
-            if self.group == Group.genus and self.type is not None:
-                yield 'genus_type_kind'
+            if self.group == Group.genus:
+                if self.type is not None:
+                    yield 'genus_type_kind'
+                if self.original_citation is not None and (self.type is None or
+                                                           self.genus_type_kind is None or
+                                                           self.genus_type_kind == constants.TypeSpeciesDesignation.subsequent_designation):
+                    # for originally included species
+                    yield 'type_tags'
 
     def validate(self, status: Status = Status.valid, parent: Optional[Taxon] = None,
                  rank: Optional[Rank] = None) -> Taxon:
@@ -2606,6 +2658,7 @@ class Tag(adt.ADT):
     IncorrectOriginalSpellingOf(name=Name, comment=str, tag=13)  # type: ignore
     SelectionOfSpelling(source=str, comment=str, tag=14)  # type: ignore  # selection as the correct original spelling
     SubsequentUsageOf(name=Name, comment=str, tag=15)  # type: ignore
+    SelectionOfPriority(over=Name, source=str, comment=str, tag=16)  # type: ignore
 
 
 STATUS_TO_TAG = {
@@ -2640,3 +2693,4 @@ class TypeTag(adt.ADT):
     NeotypeDesignation(source=str, neotype=str, valid=bool, comment=str, tag=16)  # type: ignore
     SpecimenDetail(text=str, source=str, tag=17)  # type: ignore  # more information on the specimen
     LocationDetail(text=str, source=str, tag=18)  # type: ignore  # phrasing of the type locality in a particular source
+    IncludedSpecies(name=Name, comment=str, tag=19)  # type: ignore  # an originally included species in a genus without an original type designation
