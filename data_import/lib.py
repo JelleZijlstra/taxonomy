@@ -100,6 +100,121 @@ NAME_SYNONYMS = {
     'former Yugoslavia': 'Europe',
     'Republic of the Philippines': 'Philippines',
     'Republic of the Congo': 'Rep Congo',
+    'Malacca': 'Peninsular Malaysia',
+    'Malay Peninsula': 'Peninsular Malaysia',
+    'Selangor': 'Peninsular Malaysia',
+    'Perak': 'Peninsular Malaysia',
+    'Pahang': 'Peninsular Malaysia',
+    'Tioman': 'Peninsular Malaysia',
+    'Penang': 'Peninsular Malaysia',
+    'East Perhentian': 'Peninsular Malaysia',
+    'Great Redang': 'Peninsular Malaysia',
+    'Aor': 'Peninsular Malaysia',
+    'Tenasserim': 'Myanmar',
+    'Pemanggil': 'Peninsular Malaysia',
+    'Terutau': 'Thailand',  # Ko Tarutao
+    'British North Borneo': 'Sabah',
+    'Lingga': 'Riau Islands',
+    'Banka': 'Bangka-Belitung',
+    'Billiton': 'Bangka-Belitung',
+    'Bintang': 'Riau Islands',
+    'Bunguran': 'Riau Islands',
+    'Subi': 'Riau Islands',
+    'Sinkep': 'Riau Islands',
+    'Batam': 'Riau Islands',
+    'Mapor': 'Riau Islands',
+    'Karimon': 'Riau Islands',
+    'Riabu': 'Riau Islands',
+    'Jimaja': 'Riau Islands',
+    'Singkep': 'Riau Islands',
+    'Kundur': 'Riau Islands',
+    'Sugi Bawa': 'Riau Islands',
+    'Sugi': 'Riau Islands',
+    'Bulan': 'Riau Islands',
+    'North Pagi': 'North Pagai',
+    'Siantan': 'Riau Islands',
+    'Sirhassen': 'Riau Islands',
+    'Laut': 'Riau Islands',
+    'Tana Masa': 'Batu Islands',
+    'Tana Bala': 'Batu Islands',
+    'Pinie': 'Batu Islands',
+    'Panebangan': 'Kalimantan',
+    'Karimata': 'Kalimantan',
+    'Lamukotan': 'Kalimantan',
+    'Tuangku': 'Banyak Islands',
+    'Bangkaru': 'Banyak Islands',
+    'Junk Seylon': 'Thailand',  # Phuket
+    'Koh Pipidon': 'Thailand',
+    'Banguey': 'Sabah',  # Banggi
+    'Simalur': 'Simeulue',
+    'Mansalar': 'Sumatra',
+    'Engano': 'Enggano',
+    'Peninsular Siam': 'Thailand',
+    'Koh Samui': 'Thailand',
+    'Koh (Island) Samui': 'Thailand',
+    'Koh Pennan': 'Thailand',
+    'Koh (Island) Pennan': 'Thailand',
+    'Telibon': 'Thailand',
+    'Rawi': 'Thailand',
+    'Adang': 'Thailand',
+    'Langkawi': 'Peninsular Malaysia',
+    'Dayang Bunting': 'Peninsular Malaysia',
+    'Pegu': 'Myanmar',
+    'Nicobar Islands': 'Andamans and Nicobars',
+    'Mergui Archipelago': 'Myanmar',
+    'Kangean': 'Kangean Islands',
+    'South Pagi': 'South Pagai',
+    'Bengal': 'South Asia',
+    'Babi': 'Simeulue',
+    'Mallewalle': 'Sabah',
+    'Balambangan': 'Sabah',
+    'Sebuko': 'Kalimantan',
+    'Maratua': 'Kalimantan',
+    'Chombol': 'Riau Islands',
+    'Jarak': 'Peninsular Malaysia',
+    'Johore': 'Peninsular Malaysia',
+    'Rumbia': 'Peninsular Malaysia',
+    'Tinggi': 'Peninsular Malaysia',
+    'Lasia': 'Simeulue',
+    'Datu': 'Kalimantan',
+    'Pipidon': 'Thailand',
+    'Mt. Kinabalu': 'Sabah',
+    'Serutu': 'Kalimantan',  # Karimata islands
+    'Mata Siri': 'Kalimantan',  # Matasiri, Laut Kecil Islands, South Kalimantan
+    'Southern Rhodesia': 'Zimbabwe',
+    'Transvaal': 'South Africa',
+    'Abyssinia': 'Ethiopia',
+    'Orange Free State': 'South Africa',
+    'Cape Colony': 'South Africa',
+    'Natal': 'South Africa',
+    'Cape of Good Hope': 'South Africa',
+    'Southwest Africa': 'Namibia',
+    'Dahomey': 'Benin',
+    'Congo Belge': 'DR Congo',
+    'Bechuanaland': 'Botswana',
+    'Gaboon': 'Gabon',
+    'Gold Coast': 'Ghana',
+    'Somaliland': 'Somalia',
+    'Lado Enclave': 'Africa',  # TODO
+    'British Somaliland': 'Somalia',
+    'Fernando Po': 'Bioko',
+    'Northern Rhodesia': 'Zambia',
+    'Kordofan': 'Sudan',
+    'Island of Fernando Po': 'Bioko',
+    'AngloEgyptian Sudan': 'Sudan',
+    'Italian Somaliland': 'Somalia',
+    'Tripoli': 'Libya',
+    'Zanzibar': 'Tanzania',
+    'Sennaar': 'Sudan',
+    'Tunis': 'Tunisia',
+    'Spanish Guinea': 'Rio Muni',
+    'Portuguese Guinea': 'Guinea-Bissau',
+    'Ivory Coast': "Cote d'Ivoire",
+    'Darfur': 'Sudan',
+    'Cape Province': 'South Africa',
+    'Shoa': 'Ethiopia',
+    'French Gambia': 'Senegal',
+    'Portuguese East Africa': 'Mozambique',
 }
 REMOVE_PARENS = re.compile(r' \([A-Z][a-z]+\)')
 
@@ -127,6 +242,11 @@ def initial_count(s: str, char: str) -> int:
         else:
             break
     return count
+
+
+def dedent_lines(lines: List[str]) -> List[str]:
+    dedent_by = min((initial_count(line, ' ') for line in lines if line.rstrip()), default=0)
+    return [line[dedent_by:] for line in lines]
 
 
 def get_text(source: Source, encoding: str = 'utf-8') -> Iterable[str]:
@@ -254,13 +374,13 @@ def split_name_authority(name_authority: str, *, try_harder: bool = False, quiet
     regexes = [
         # Lets us manually put | in to separate original name and authority in hard cases
         r'^(?P<original_name>[^\|]+) \| (?P<authority>.*)$',
-        r'^(?P<original_name>[A-ZÑ][a-zëöiï]+) (?P<authority>(d\')?[A-ZÁ][a-zA-Z\-âöáéüšñ\.èç]+)$',
+        r'^(?P<original_name>[A-ZÑ][a-zëöiïü]+) (?P<authority>(d\')?[A-ZÁ][a-zA-Z\-âöáéüšñ\.èç]+)$',
         (
-            r'^(?P<original_name>(\? )?[A-ZÑ][a-zëöiï]+\??( \([A-Z][a-z]+\.?\??\))?((,? var\.| \(\?\)| \?)? [a-z]{3,}(-[a-z]{3,})?){1,2}) '
-            r'(?P<authority>de Beaux|de Winton|de Beerst|von Bloeker|(d\'|de la )?[A-ZÁ][a-zA-Z\-âöüášéèíñç\.,\'& ]+)( \(ex [^\)]+\))?$'
+            r'^(?P<original_name>(\? )?[A-ZÑ][a-zëöiïü]+\??( \([A-Z][a-z]+\.?\??\))?((,? var\.| \(\?\)| \?)? [a-z]{3,}(-[a-z]{3,})?){1,2}) '
+            r'(?P<authority>de Beaux|de Blainville|de Winton|de Beerst|von Bloeker|(d\'|de la )?[A-ZÁ][a-zA-Z\-âöüášéèíñç\.,\'& ]+)( \(ex [^\)]+\))?$'
         ),
         r'^(?P<original_name>(\? )?.*?) (?P<authority>[A-ZÉ]\.[\- ].*)$',
-        r'^(?P<original_name>(\? )?[A-ZÑ][a-zëöíï]+) (?P<authority>(d\'|de la )?[A-ZÁ][a-zA-Z\-öáéšíñ\., ]+ (and|&) [A-ZÁ][a-zA-Z\-âöüáéèíñç]+)$',
+        r'^(?P<original_name>(\? )?[A-ZÑ][a-zëöíïü]+) (?P<authority>(d\'|de la )?[A-ZÁ][a-zA-Z\-öáéšíñ\., ]+ (and|&) [A-ZÁ][a-zA-Z\-âöüáéèíñç]+)$',
         r'^(?P<original_name>[A-Z][a-z]+) (?P<authority>Hamilton Smith|Von Dueben)$',
     ]
     if try_harder:
@@ -357,7 +477,8 @@ def translate_type_locality(names: DataT, start_at_end: bool = False, quiet: boo
     for name in names:
         if 'loc' in name:
             loc = name['loc']
-            loc = loc.replace('"', '')
+            loc = loc.replace('"', '').rstrip('.')
+            loc = re.sub(r', \d[,\d]+ ft$', '', loc)
             loc = re.sub(r'\. Altitude, .*$', '', loc)
             loc = re.sub(r'[ \[]lat\. .*$', '', loc)
             loc = re.sub(r'[\.,;:\[ ]+$', '', loc)
@@ -585,7 +706,7 @@ def find_name(original_name: str, authority: str, max_distance: int = 3) -> Opti
         return matches[0]
 
     # Find names without an original name in similar genera.
-    name_genus_pairs, genus_to_orig_genera = build_original_name_map(root_name)
+    name_genus_pairs, genus_to_orig_genera = build_original_name_map(root_name, authority)
     matches = []
     for nam, genus in name_genus_pairs:
         if genus_name in genus_to_orig_genera[genus]:
@@ -596,10 +717,11 @@ def find_name(original_name: str, authority: str, max_distance: int = 3) -> Opti
 
 
 @functools.lru_cache(maxsize=1024)
-def build_original_name_map(root_name: str) -> Tuple[List[Tuple[models.Name, models.Taxon]], Dict[models.Taxon, Set[str]]]:
+def build_original_name_map(root_name: str, authority: str) -> Tuple[List[Tuple[models.Name, models.Taxon]], Dict[models.Taxon, Set[str]]]:
     nams: List[Tuple[models.Name, models.Taxon]] = []
     genus_to_orig_genera: Dict[models.Taxon, Set[str]] = {}
-    for nam in models.Name.filter(models.Name.group == constants.Group.species, models.Name.original_name >> None, models.Name.root_name == root_name):
+    for nam in models.Name.filter(models.Name.group == constants.Group.species, models.Name.original_name >> None,
+                                  models.Name.root_name == root_name, models.Name.authority == authority):
         try:
             genus = nam.taxon.parent_of_rank(constants.Rank.genus)
         except ValueError:
@@ -676,6 +798,10 @@ def name_variants(original_name: str, authority: str) -> Iterable[Tuple[str, str
         yield original_name, 'C.L. Bonaparte'
     if authority == 'Cuvier':
         yield original_name, 'F. Cuvier'
+    if authority.startswith('Thomas'):
+        yield original_name, 'O. ' + authority
+    if authority.startswith('Andersen'):
+        yield original_name, 'K. ' + authority
     if authority == 'Major':
         yield original_name, 'Forsyth Major'
     if authority.startswith('Bailey'):
@@ -746,6 +872,17 @@ def associate_variants(names: DataT, name_config: NameConfig = NameConfig(), qui
     print(f'variants success: {success}/{tried}')
 
 
+def fix_author(author: str, name_config: NameConfig) -> str:
+    author = author.replace(' and ', ' & ').replace(', & ', ' & ')
+    authors = re.split(r', | & ', author)
+    authors = [name_config.authority_fixes.get(author, author) for author in authors]
+    authors = [shell.AUTHOR_SYNONYMS.get(author, author) for author in authors]
+    if len(authors) > 1:
+        return ' & '.join([', '.join(authors[:-1]), authors[-1]])
+    else:
+        return authors[0]
+
+
 def identify_name(orig_name: str, author: str, name_config: NameConfig = NameConfig(), *,
                   quiet: bool = False, max_distance: int = 3, use_taxon_match: bool = False) -> Optional[models.Name]:
     author = author.replace(' and ', ' & ').replace(', & ', ' & ')
@@ -757,7 +894,7 @@ def identify_name(orig_name: str, author: str, name_config: NameConfig = NameCon
             return taxon_matches.get().base_name
 
     name_obj = None
-    author = name_config.authority_fixes.get(author, author)
+    author = fix_author(author, name_config)
     orig_name = name_config.original_name_fixes.get(orig_name, orig_name)
 
     for original_name, authority in name_variants(orig_name, author.strip()):
@@ -822,8 +959,8 @@ def associate_names(names: DataT, name_config: NameConfig = NameConfig(), start_
                 continue
         total += 1
         if name_field in name and 'authority' in name:
-            name['authority'] = name['authority'].replace(' and ', ' & ').replace(', & ', ' & ')
-            name_quiet = 'variant_target' in name
+            name['authority'] = fix_author(name['authority'], name_config)
+            name_quiet = 'variant_target' in name or 'name_quiet' in name
             name_obj = identify_name(name[name_field], name['authority'], name_config,
                                      quiet=quiet or name_quiet, max_distance=max_distance,
                                      use_taxon_match=use_taxon_match)
@@ -866,7 +1003,7 @@ def maybe_add_iss(name: Dict[str, Any]) -> Optional[models.Name]:
 
 
 def write_to_db(names: DataT, source: Source, dry_run: bool = True, edit_if_no_holotype: bool = True,
-                always_edit: bool = False) -> None:
+                always_edit: bool = False) -> DataT:
     num_changed: Counter[str] = Counter()
     for i, name in enumerate(names):
         if 'name_obj' not in name:
@@ -887,6 +1024,7 @@ def write_to_db(names: DataT, source: Source, dry_run: bool = True, edit_if_no_h
             pages = f'{name["pages"][0]}-{name["pages"][-1]}'
 
         print(f'--- processing {nam} (i={i}; p. {pages}) ---')
+        yield name
 
         if 'variant_target' in name:
             if nam.nomenclature_status != name['variant_kind'] and not dry_run:
@@ -900,8 +1038,6 @@ def write_to_db(names: DataT, source: Source, dry_run: bool = True, edit_if_no_h
                      'original_name', 'type_specimen_source', 'type', 'nomenclature_status', 'genus_type_kind', 'page_described',
                      'verbatim_type', 'authority', 'year'):
             if attr not in name or name[attr] is None:
-                continue
-            if attr == 'verbatim_citation' and nam.original_citation is not None:
                 continue
             current_value = getattr(nam, attr)
             new_value = name[attr]
