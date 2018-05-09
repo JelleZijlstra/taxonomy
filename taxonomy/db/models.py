@@ -4,7 +4,6 @@ import enum
 import json
 import operator
 import re
-import statistics
 import sys
 import time
 import traceback
@@ -1021,25 +1020,29 @@ class Taxon(BaseModel):
             print("%s: %s of %s (%.2f%%)" % (label, num, total, percentage))
             return percentage
 
-        percentages = []
+        overall_count = 0
+        overall_required = 0
         for attribute, count in sorted(required_counts.items(), key=lambda i: (counts[i[0]], i[0])):
             percentage = print_percentage(counts[attribute], count, attribute)
             output[attribute] = percentage
-            percentages.append(percentage)
-        if percentages:
-            output['score'] = statistics.mean(percentages)
+            overall_required += count
+            overall_count += counts[attribute]
+        if overall_required:
+            output['score'] = overall_count / overall_required * 100
         else:
             output['score'] = 0.0
         print(f'Overall score: {output["score"]:.2f}')
         return output
 
     def fill_data_for_names(self, only_with_original: bool = True, min_year: Optional[int] = None,
-                            age: Optional[constants.Age] = None) -> None:
+                            age: Optional[constants.Age] = None, field: Optional[str] = None) -> None:
         """Calls fill_required_fields() for all names in this taxon."""
         all_names = self.all_names(age=age)
 
         def should_include(nam: Name) -> bool:
             if nam.original_citation is None:
+                return False
+            if field is not None and field not in nam.get_empty_required_fields():
                 return False
             if min_year is not None:
                 try:
@@ -2096,6 +2099,10 @@ class Name(BaseModel):
                 return True
         return False
 
+    def add_included(self, species: 'Name', comment: str = '') -> None:
+        assert isinstance(species, Name)
+        self.add_type_tag(TypeTag.IncludedSpecies(species, comment))
+
     def add_comment(self, kind: Optional[constants.CommentKind] = None, text: Optional[str] = None,
                     source: Optional[str] = None, page: Optional[str] = None) -> 'NameComment':
         return NameComment.create_interactively(name=self, kind=kind, text=text, source=source, page=page)
@@ -2171,10 +2178,7 @@ class Name(BaseModel):
         return re.split(r', | & ', re.sub(r'et al\.$', '', self.authority))
 
     def set_authors(self, authors: List[str]) -> None:
-        if len(authors) > 1:
-            self.authority = ' & '.join([', '.join(authors[:-1]), authors[-1]])
-        else:
-            self.authority = authors[0]
+        self.authority = helpers.unsplit_authors(authors)
 
     def effective_year(self) -> int:
         """Returns the effective year of validity for this name.
@@ -2305,7 +2309,8 @@ class Name(BaseModel):
         if self.status == Status.spurious or self.nomenclature_status == NomenclatureStatus.informal:
             return
         yield 'original_name'
-        if self.group in (Group.genus, Group.species):
+        if self.group in (Group.genus, Group.species) and self.original_name is not None and \
+                self.nomenclature_status != NomenclatureStatus.not_published_with_a_generic_name:
             yield 'corrected_original_name'
 
         yield 'authority'
@@ -2659,6 +2664,7 @@ class Tag(adt.ADT):
     SelectionOfSpelling(source=str, comment=str, tag=14)  # type: ignore  # selection as the correct original spelling
     SubsequentUsageOf(name=Name, comment=str, tag=15)  # type: ignore
     SelectionOfPriority(over=Name, source=str, comment=str, tag=16)  # type: ignore
+    ReversalOfPriority(over=Name, opinion=str, comment=str, tag=17)  # type: ignore  # Priority reversed by ICZN opinion
 
 
 STATUS_TO_TAG = {

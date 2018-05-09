@@ -330,6 +330,8 @@ class SpeciesNameKind(enum.IntEnum):
     patronym_feminine_plural = 10  # -arum patronym
     patronym_latin = 11  # patronym formed from a Latin name (Art. 31.1.1)
 
+    unknown = 12  # no etymology given and no etymology apparent; treated as invariant by default
+
     def is_single_complex(self) -> bool:
         return self not in {
             SpeciesNameKind.adjective,
@@ -355,7 +357,7 @@ class SpeciesGroupType(enum.IntEnum):
     lectotype = 102
     neotype = 103
     syntypes = 104
-    nonexistent = 105  # no type has been designated
+    nonexistent = 105  # no type has been designated; unknown whether there was a holotype or syntype
 
 
 class SpecimenGender(enum.IntEnum):

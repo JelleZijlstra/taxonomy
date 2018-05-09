@@ -1,10 +1,12 @@
 '''Helper functions'''
 
+from contextlib import contextmanager
 import datetime
 import json
 import re
 from operator import itemgetter
-from typing import (TYPE_CHECKING, Any, Dict, Iterable, Mapping, Optional, Tuple,
+import time
+from typing import (TYPE_CHECKING, Any, Dict, Iterable, Iterator, Mapping, Optional, Sequence, Tuple,
                     TypeVar)
 
 from . import constants
@@ -420,3 +422,29 @@ def clean_text(text: str) -> str:
     text = text.replace('’’', '"')
     text = re.sub(r'(?<=[a-z])- (?=[a-z])', '', text)
     return text
+
+
+def unsplit_authors(authors: Sequence[str]) -> str:
+    if len(authors) > 1:
+        return ' & '.join([', '.join(authors[:-1]), authors[-1]])
+    else:
+        return authors[0]
+
+
+class TimeHolder:
+    def __init__(self, label: str) -> None:
+        self.label = label
+        self.time: float = 0.0
+
+
+@contextmanager
+def timer(label: str) -> Iterator[TimeHolder]:
+    th = TimeHolder(label)
+    start_time = time.time()
+    try:
+        yield th
+    finally:
+        end_time = time.time()
+        taken = end_time - start_time
+        print(f'{label} took {taken:.03f} s')
+        th.time = taken

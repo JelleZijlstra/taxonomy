@@ -118,3 +118,10 @@ def h(author: str, year: str, uncited: bool = False) -> List[Name]:
 def count_field(model: Type[BaseModel], field: str) -> List[Tuple[Any, int]]:
     field_obj = getattr(model, field)
     return [(getattr(t, field), t.num) for t in model.select(field_obj, peewee.fn.Count().alias('num')).group_by(field_obj).order_by(peewee.fn.Count().desc())]
+
+
+def locless_names(genus: Taxon, attribute: str = 'type_locality', age: Optional[Age] = Age.extant) -> List[Name]:
+    nams = list(genus.names_missing_field(attribute, age=age))
+    for nam in nams:
+        nam.display()
+    return nams

@@ -251,9 +251,11 @@ def find_rank_mismatch() -> Iterable[Taxon]:
 
 
 @generator_command
-def detect_corrected_original_names(dry_run: bool = True, interactive: bool = False, ignore_failure: bool = False) -> Iterable[Name]:
+def detect_corrected_original_names(dry_run: bool = False, interactive: bool = False, ignore_failure: bool = False) -> Iterable[Name]:
     total = successful = 0
     for nam in Name.filter(Name.original_name != None, Name.corrected_original_name == None, Name.group << (Group.genus, Group.species)):  # pylint: disable=singleton-comparison
+        if 'corrected_original_name' not in nam.get_required_fields():
+            continue
         total += 1
         inferred = nam.infer_corrected_original_name()
         if inferred:
@@ -517,6 +519,28 @@ def find_ending(name: Name, endings: Iterable[models.NameEnding]) -> Optional[mo
     return None
 
 
+@command
+def generate_word_list() -> Set[str]:
+    strings = set()
+    for nam in Name.select():
+        for attr in ('original_name', 'root_name', 'authority', 'verbatim_citation'):
+            value = getattr(nam, attr)
+            if value is not None:
+                strings.add(value)
+        if nam.type_tags:
+            for tag in nam.type_tags:
+                if isinstance(tag, TypeTag.LocationDetail):
+                    strings.add(tag.text)
+
+    print(f'Got {len(strings)} strings')
+    words = set()
+    for string in strings:
+        for word in re.findall(r'[a-zA-Z\-]+', string):
+            words.add(word)
+    print(f'Got {len(words)} words')
+    return words
+
+
 @generator_command
 def root_name_mismatch() -> Iterable[Name]:
     for name in Name.filter(Name.group == Group.family, ~(Name.type >> None)):
@@ -695,6 +719,7 @@ def labeled_authorless_names(attribute: str = 'authority') -> List[LabeledName]:
 def correct_type_taxon(max_count: Optional[int] = None, dry_run: bool = False, only_if_child: bool = True) -> List[Name]:
     count = 0
     out = []
+    doubtful = taxon_of_name('Doubtful')
     for nam in Name.filter(Name.group << (Group.genus, Group.family), Name.type != None):
         if nam.taxon == nam.type.taxon:
             continue
@@ -704,6 +729,8 @@ def correct_type_taxon(max_count: Optional[int] = None, dry_run: bool = False, o
             if expected_taxon is None:
                 break
         if expected_taxon is None:
+            continue
+        if nam.taxon == doubtful:
             continue
         if nam.taxon != expected_taxon:
             count += 1
@@ -969,8 +996,15 @@ def fill_type_locality(extant_only: bool = True, start_at: Optional[Name] = None
         nam.fill_field('type_locality')
 
 
-def names_with_location_detail_without_type_loc() -> Iterable[Name]:
-    for nam in Name.filter(Name.type_tags != None, Name.type_locality >> None):
+def names_with_location_detail_without_type_loc(taxon: Optional[Taxon] = None) -> Iterable[Name]:
+    if taxon is None:
+        nams = Name.filter(Name.type_tags != None, Name.type_locality >> None)
+    else:
+        nams = [
+            nam for nam in taxon.all_names()
+            if nam.type_tags is not None and nam.type_locality is None
+        ]
+    for nam in nams:
         tags = [tag for tag in nam.type_tags if isinstance(tag, TypeTag.LocationDetail)]
         if not tags:
             continue
@@ -981,8 +1015,8 @@ def names_with_location_detail_without_type_loc() -> Iterable[Name]:
 
 
 @command
-def fill_type_locality_from_location_detail() -> None:
-    for nam in names_with_location_detail_without_type_loc():
+def fill_type_locality_from_location_detail(taxon: Optional[Taxon] = None) -> None:
+    for nam in names_with_location_detail_without_type_loc(taxon):
         nam.fill_field('type_locality')
         if nam.type_locality is None:
             if getinput.yes_no('Remove LocationDetail? '):
@@ -1058,7 +1092,12 @@ def check_tags(dry_run: bool = True) -> Iterable[Tuple[Name, str]]:
 
     names_by_tag: Dict[Type[Any], Set[Name]] = collections.defaultdict(set)
     for nam in Name.filter(Name.tags != None):
-        for tag in nam.tags:
+        try:
+            tags = nam.tags
+        except Exception:
+            yield nam, 'could not deserialize tags'
+            continue
+        for tag in tags:
             names_by_tag[type(tag)].add(nam)
             if isinstance(tag, Tag.PreoccupiedBy):
                 maybe_adjust_status(nam, NomenclatureStatus.preoccupied, tag)
@@ -1228,6 +1267,7 @@ AUTHOR_SYNONYMS = {
     'É. Geoffroy': 'É. Geoffroy Saint-Hilaire',
     'I. Geoffroy': 'I. Geoffroy Saint-Hilaire',
     'Blainville': 'de Blainville',
+    'Winton': 'de Winton',
     'De Winton': 'de Winton',
     'Lacepede': 'Lacépède',
     'de Selys-Longchamps': 'de Sélys Longchamps',
@@ -1245,7 +1285,20 @@ AUTHOR_SYNONYMS = {
     'Hamilton-Smith': 'C.E.H. Smith',
     'H. Smith': 'C.E.H. Smith',
     'C.H. Smith': 'C.E.H. Smith',
+    'C. Hamilton Smith': 'C.E.H. Smith',
     'Severtzow': 'Severtzov',
+    'De Beaux': 'de Beaux',
+    'C.F. Major': 'Forsyth Major',
+    'Major': 'Forsyth Major',
+    'De Muizon': 'de Muizon',
+    'St Leger': 'St. Leger',
+    'Ehik': 'Éhik',
+    'Crawford Cabral': 'Crawford-Cabral',
+    'Prigogone': 'Prigogine',
+    'Von Lehmann': 'Lehmann',
+    'Wied': 'Wied-Neuwied',
+    'Peron': 'Péron',
+    'Von Dueben': 'von Dueben',
 }
 AMBIGUOUS_AUTHORS = {
     'Allen',
@@ -1366,9 +1419,9 @@ def initials_report() -> None:
 
 
 @command
-def run_maintenance() -> Dict[Any, Any]:
+def run_maintenance(skip_slow: bool = True) -> Dict[Any, Any]:
     """Runs maintenance checks that are expected to pass for the entire database."""
-    fns: List[Callable[..., Any]] = [
+    fns: List[Callable[[], Any]] = [
         lambda: set_empty_to_none(Name, 'type_locality_description'),
         clean_up_verbatim,
         clean_up_type_locality_description,
@@ -1378,33 +1431,64 @@ def run_maintenance() -> Dict[Any, Any]:
         bad_base_names,
         bad_occurrences,
         bad_types,
-        correct_type_taxon,
         labeled_authorless_names,
         root_name_mismatch,
         detect_complexes,
         detect_species_name_complexes,
-        find_rank_mismatch,
         check_year,
-        check_tags,
-        check_type_tags,
         disallowed_attribute,
-        move_to_lowest_rank,
         autoset_original_name,
         apply_author_synonyms,
         disambiguate_authors,
         validate_authors,
-        check_age_parents,
+        detect_corrected_original_names,
         # dup_names,
         # dup_genus,
         # dup_taxa,
     ]
+    # these each take >60 s
+    slow: List[Callable[[], Any]] = [
+        correct_type_taxon,
+        find_rank_mismatch,
+        move_to_lowest_rank,
+        check_tags,  # except for this one at 27 s
+        check_type_tags,
+        check_age_parents,
+    ]
+    if not skip_slow:
+        fns += slow
     out = {}
+    timings = []
     for fn in fns:
         print(f'calling {fn}')
-        result = fn()
+        with helpers.timer(str(fn)) as th:
+            result = fn()
+        timings.append((fn, th.time))
         if result:
             out[fn] = result
+
+    for fn, time in sorted(timings, key=lambda pair: pair[1], reverse=True):
+        print(time, fn)
     return out
+
+
+@command
+def names_of_authority(author: str, year: int, edit: bool = False) -> List[Name]:
+    query = Name.filter(Name.authority.contains(author), Name.year == year, Name.original_citation >> None)
+
+    def sort_key(nam: Name) -> int:
+        try:
+            return int(nam.page_described)
+        except (TypeError, ValueError):
+            return -1
+
+    nams = sorted(query, key=sort_key)
+    print(f'{len(nams)} names')
+    for nam in nams:
+        nam.display()
+        if edit:
+            nam.fill_required_fields()
+    return nams
 
 
 def run_shell() -> None:
