@@ -1,5 +1,6 @@
 import re
-from typing import Any, Dict, List, Optional
+from enum import Enum
+from typing import Any, Dict, List, Optional, Tuple, Type
 
 from taxonomy.db import constants, models
 
@@ -100,11 +101,12 @@ def split_fields(names: DataT, verbose: bool = False) -> DataT:
                     part = re.sub(r'[\(\[].*$', '', part.lower()).strip()
                     if not part:
                         continue
-                    for enum, tag in (
+                    enums: List[Tuple[Type[Enum], models.TypeTag]] = [
                         (constants.SpecimenGender, models.TypeTag.Gender),
                         (constants.SpecimenAge, models.TypeTag.Age),
                         (constants.Organ, models.TypeTag.Organ),
-                    ):
+                    ]
+                    for enum, tag in enums:
                         if lib.enum_has_member(enum, part):
                             enum_member: Any = enum[part]
                             if enum is constants.Organ:

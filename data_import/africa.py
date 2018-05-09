@@ -81,8 +81,8 @@ def main() -> DataT:
     names = translate_rest(names)
     names = lib.translate_to_db(names, 'USNM', SOURCE, verbose=True)
     names = lib.translate_type_locality(names, start_at_end=True, quiet=True)
-    names = lib.associate_names(names)
-    # names = lib.write_to_db(names, SOURCE, dry_run=True, edit_if_no_holotype=False)
+    names = lib.associate_names(names, try_manual=True, start_at='Adenota mengesi')
+    names = lib.write_to_db(names, SOURCE, dry_run=False, edit_if_no_holotype=False)
     # for text in sorted(name['rest'] for name in names if 'rest' in name):
     #     print(text)
     # places = Counter()
@@ -96,9 +96,9 @@ def main() -> DataT:
     # for place, count in places.most_common():
     #     print(count, place)
     authors: Counter[str] = Counter()
-    for name in names:
-        if 'name_obj' not in name and 'authority' in name:
-            authors[name['authority']] += 1
+    # for name in names:
+    #     if 'name_obj' not in name and 'authority' in name:
+    #         authors[name['authority']] += 1
     for author, count in authors.most_common():
         print(count, author)
     lib.print_field_counts(names)

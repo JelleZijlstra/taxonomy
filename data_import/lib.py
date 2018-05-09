@@ -1,5 +1,7 @@
+from collections import defaultdict
 import enum
 import functools
+import itertools
 import json
 import re
 import unicodedata
@@ -215,6 +217,9 @@ NAME_SYNONYMS = {
     'Shoa': 'Ethiopia',
     'French Gambia': 'Senegal',
     'Portuguese East Africa': 'Mozambique',
+    'RDCongo': 'DR Congo',
+    'Yukon Territory': 'Yukon',
+    'NWT': 'Northwest Territories',
 }
 REMOVE_PARENS = re.compile(r' \([A-Z][a-z]+\)')
 
@@ -331,19 +336,25 @@ def clean_text(names: DataT, clean_labels: bool = True) -> DataT:
         new_name = {}
         for key, value in name.items():
             if key == 'pages' or not isinstance(value, list):
+                if isinstance(value, str):
+                    value = clean_string(value)
                 new_name[key] = value
             elif key == 'names':
                 new_name[key] = [clean_line_list(name) for name in value]
             else:
                 text = clean_line_list(value)
                 if clean_labels and isinstance(key, str):
-                    text = re.sub(r'^\s*' + re.escape(key) + r'[-:\. ]+', '', text)
+                    text = re.sub(r'^\s*' + re.escape(key) + r'[\-—:\. ]+', '', text)
                 new_name[key] = text.strip()
         yield new_name
 
 
 def clean_line_list(lines: Iterable[str]) -> str:
     text = '\n'.join(lines)
+    return clean_string(text)
+
+
+def clean_string(text: str) -> str:
     text = unicodedata.normalize('NFC', text)
     text = text.replace(' \xad ', '')
     text = text.replace('\xad', '')
@@ -405,6 +416,12 @@ def translate_to_db(names: DataT, collection_name: Optional[str] = None, source:
     else:
         coll = None
     for name in names:
+        if 'taxon_name' in name:
+            try:
+                name['taxon'] = models.Taxon.get(models.Taxon.valid_name == name['taxon_name'])
+            except models.Taxon.DoesNotExist:
+                if verbose:
+                    print(f'failed to find taxon {name["taxon_name"]}')
         if 'orig_name_author' in name and 'original_name' not in name and 'authority' not in name:
             name.update(split_name_authority(name['orig_name_author'], quiet=not verbose))
         if 'authority' in name:
@@ -417,7 +434,7 @@ def translate_to_db(names: DataT, collection_name: Optional[str] = None, source:
             if source is not None and 'type_specimen_source' not in name:
                 name['type_specimen_source'] = source.source
         type_tags: List[models.TypeTag] = name.get('type_tags', [])
-        for field in ('age_gender', 'gender_age'):
+        for field in ('age_gender', 'gender_age', 'gender'):
             if field in name:
                 gender_age = extract_gender_age(name[field])
                 type_tags += gender_age
@@ -467,6 +484,8 @@ def translate_to_db(names: DataT, collection_name: Optional[str] = None, source:
         if 'specimen_detail' in name:
             assert source is not None, f'missing source (at {name})'
             type_tags.append(models.TypeTag.SpecimenDetail(name['specimen_detail'], source.source))
+        if 'original_name' in name:
+            name['original_name'] = re.sub(r'\[([a-z]+)\]\.', r'\1', name['original_name'])
 
         if type_tags:
             name['type_tags'] = type_tags
@@ -478,6 +497,7 @@ def translate_type_locality(names: DataT, start_at_end: bool = False, quiet: boo
         if 'loc' in name:
             loc = name['loc']
             loc = loc.replace('"', '').rstrip('.')
+            loc = re.sub(r', \d[\.\d –\-NWSE]+$', '', loc)
             loc = re.sub(r', \d[,\d]+ ft$', '', loc)
             loc = re.sub(r'\. Altitude, .*$', '', loc)
             loc = re.sub(r'[ \[]lat\. .*$', '', loc)
@@ -489,7 +509,7 @@ def translate_type_locality(names: DataT, start_at_end: bool = False, quiet: boo
             if type_loc is not None:
                 name['type_locality'] = type_loc
             elif not quiet:
-                print('could not extract type locality from', name['loc'])
+                print('could not extract type locality from', loc)
         yield name
 
 
@@ -522,6 +542,19 @@ def enum_has_member(enum_cls: Type[enum.Enum], member: str) -> bool:
         return True
 
 
+def extract_species_type_kind(text: str) -> Optional[constants.SpeciesGroupType]:
+    text = text.lower()
+    if enum_has_member(constants.SpeciesGroupType, text):
+        return constants.SpeciesGroupType[text]
+    elif text == 'syntype':
+        return constants.SpeciesGroupType.syntypes
+    elif text in ('paralectotype', 'paralectotypes'):
+        # If there is a paralectotype, there must also be a lectotype
+        return constants.SpeciesGroupType.lectotype
+    else:
+        return None
+
+
 def extract_gender_age(text: str) -> List[TypeTag]:
     text = re.sub(r'\[.*?: ([^\]]+)\]', r'\1', text)
     text = text.strip().lower().replace('macho', 'male').replace('hembra', 'female')
@@ -549,6 +582,10 @@ def extract_gender_age(text: str) -> List[TypeTag]:
             out.append(TypeTag.Age(constants.SpecimenAge.adult))
         if enum_has_member(constants.SpecimenGender, gender):
             out.append(TypeTag.Gender(constants.SpecimenGender[gender]))
+    elif text == 'f':
+        out.append(TypeTag.Gender(constants.SpecimenGender.female))
+    elif text == 'm':
+        out.append(TypeTag.Gender(constants.SpecimenGender.male))
     return out
 
 
@@ -562,7 +599,7 @@ def extract_body_parts(organs: str) -> List[TypeTag]:
     organs = organs.lower().replace('[', '').replace(']', '')
     organs = re.sub(r'sk..?ll', 'skull', organs).replace('skufl', 'skull').strip()
     if organs in ('skin and skull', 'skin and cranium', 'study skin and skull', 'skull and skin', 'mounted skin and skull',
-                  'skull and head skin', 'mounted skin, skull separate') or '(skin and skull)' in organs:
+                  'skull and head skin', 'mounted skin, skull separate', 'tanned (flat) skin and skull') or '(skin and skull)' in organs:
         tags = [SKIN, SKULL]
     elif organs == 'skin and skeleton':
         tags = [SKIN, SKULL, SKELETON]
@@ -767,64 +804,12 @@ def name_variants(original_name: str, authority: str) -> Iterable[Tuple[str, str
         authority = re.sub(r',? in .*$', '', authority)
         yield original_name, authority
         yield original_name, re.sub(r'^.* in ', '', original_authority)
-    # This should be generalized (initials are in the DB but not the source)
-    if authority.startswith('Allen'):
-        yield original_name, 'J.A. ' + authority
-        yield original_name, 'J.A. ' + authority + ' & Chapman'
-        yield original_name, 'G.M. ' + authority
-    if authority.startswith('Anthony'):
-        yield original_name, 'H.E. ' + authority
-    if authority == 'Winton':
-        yield original_name, 'de Winton'
-    if authority == 'Andersen':
-        yield original_name, 'K. Andersen'
-    if authority == 'Wagner':
-        yield original_name, 'J.A. Wagner'
-    if authority == 'Shaw':
-        yield original_name, 'G. Shaw'
-    if authority == 'Thomas':
-        yield original_name, 'O. Thomas'
-    if authority == 'Gervais & Ameghino':
-        yield original_name, 'H. Gervais & F. Ameghino'
-    if authority == 'Ameghino':
-        yield original_name, 'F. Ameghino'
-    if authority == 'Gray':
-        yield original_name, 'J.E. Gray'
-    if authority == 'Peters':
-        yield original_name, 'W. Peters'
-    if authority == 'Gray':
-        yield original_name, 'J.E. Gray'
-    if authority == 'Bonaparte':
-        yield original_name, 'C.L. Bonaparte'
-    if authority == 'Cuvier':
-        yield original_name, 'F. Cuvier'
-    if authority.startswith('Thomas'):
-        yield original_name, 'O. ' + authority
-    if authority.startswith('Andersen'):
-        yield original_name, 'K. ' + authority
-    if authority == 'Major':
-        yield original_name, 'Forsyth Major'
-    if authority.startswith('Bailey'):
-        yield original_name, 'V. Bailey'
-    if authority.startswith('Howell'):
-        yield original_name, 'A.H. Howell'
     if authority == 'Hill':
         yield original_name, 'J. Eric Hill'
     if 'ue' in original_name:
         yield original_name.replace('ue', 'ü'), authority
-    if authority in ('Wied', 'Wied-Neuwied'):
-        yield original_name, 'Wied-Neuwied'
-    if authority in ('Geoffroy', 'Geoffroy St.-Hilaire'):
-        yield original_name, 'É. Geoffroy Saint-Hilaire'
-        yield original_name, 'I. Geoffroy Saint-Hilaire'
-    if authority == 'Milne-Edwards':
-        yield original_name, 'A. Milne-Edwards'
-    if authority == 'Gervais':
-        yield original_name, 'P. Gervais'
     if authority == 'Schwartz':
         yield original_name, 'Schwarz'
-    if authority == 'Fischer':
-        yield original_name, 'J.B. Fischer'
     if authority == 'Linné':
         yield original_name, 'Linnaeus'
     if authority == 'Mjoberg':
@@ -835,15 +820,25 @@ def name_variants(original_name: str, authority: str) -> Iterable[Tuple[str, str
         yield original_name, 'Förster & Rothschild'
     if authority == 'Rummler':
         yield original_name, 'Rümmler'
-    if authority == 'Wied-Neuwied':
-        yield original_name, 'Wied'
-    if authority == 'Blainville':
-        yield original_name, 'de Blainville'
-    if authority == 'Peron & Lesueur':
-        authority = 'Péron & Lesueur'
     if authority in ('Müller & Schlegel', 'Schlegel & Müller'):
         # many names that were previously attributed to M & S were earlier described by M alone
         yield original_name, 'Müller'
+    parts = re.split(r', | & ', authority)
+    initials_map = get_initials_map()
+    options = [initials_map.get(name, set()) | {name} for name in parts]
+    for authors_list in itertools.product(*options):
+        yield original_name, helpers.unsplit_authors(authors_list)
+
+
+@functools.lru_cache()
+def get_initials_map() -> Dict[str, Set[str]]:
+    result: Dict[str, Set[str]] = defaultdict(set)
+    for nam in models.Name.filter(models.Name.authority.contains('. ')):
+        for author in nam.get_authors():
+            if '. ' in author:
+                uninitialed = re.sub(r'([A-ZÉ]\.)+ ', '', author).strip()
+                result[uninitialed].add(author)
+    return dict(result)
 
 
 def associate_types(names: DataT, name_config: NameConfig = NameConfig(), quiet: bool = False) -> DataT:
@@ -1036,7 +1031,7 @@ def write_to_db(names: DataT, source: Source, dry_run: bool = True, edit_if_no_h
 
         for attr in ('type_tags', 'type_locality', 'collection', 'type_specimen', 'species_type_kind', 'verbatim_citation',
                      'original_name', 'type_specimen_source', 'type', 'nomenclature_status', 'genus_type_kind', 'page_described',
-                     'verbatim_type', 'authority', 'year'):
+                     'verbatim_type', 'authority', 'year', 'taxon'):
             if attr not in name or name[attr] is None:
                 continue
             current_value = getattr(nam, attr)
@@ -1077,8 +1072,12 @@ def write_to_db(names: DataT, source: Source, dry_run: bool = True, edit_if_no_h
                     if current_no_initials == new_value:
                         continue
 
-                    # don't task (this is for northamerica.py)
+                    # don't ask (this is for northamerica.py)
                     if new_value == current_value + 'f':
+                        continue
+
+                if attr == 'taxon':
+                    if new_value.is_child_of(current_value) or current_value.is_child_of(new_value):
                         continue
 
                 if attr in ('verbatim_citation', 'verbatim_type'):
@@ -1086,9 +1085,12 @@ def write_to_db(names: DataT, source: Source, dry_run: bool = True, edit_if_no_h
                         continue
                     new_value = f'{current_value} [From {{{source.source}}}: {new_value}]'
                 else:
+                    print('---')
                     print(f'value for {attr} differs: (new) {new_value} vs. (current) {current_value}')
 
                 if attr == 'original_name':
+                    if new_value == nam.corrected_original_name:
+                        continue
                     new_root_name = helpers.root_name_of_name(new_value, constants.Rank.species)
                     if helpers.root_name_of_name(nam.original_name, constants.Rank.species).lower() != new_root_name.lower():
                         if not dry_run and not getinput.yes_no(f'Is the source\'s spelling {new_value} correct?'):
