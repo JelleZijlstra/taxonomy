@@ -15,7 +15,7 @@ setup(
     license='MIT',
     packages=['taxonomy'],
     install_requires=[
-        'peewee',
+        'peewee==2.10.2',
         'IPython',
         'PyMySQL',
         'requests',
