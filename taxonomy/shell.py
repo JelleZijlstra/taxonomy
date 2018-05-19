@@ -253,7 +253,7 @@ def find_rank_mismatch() -> Iterable[Taxon]:
 @generator_command
 def detect_corrected_original_names(dry_run: bool = False, interactive: bool = False, ignore_failure: bool = False) -> Iterable[Name]:
     total = successful = 0
-    for nam in Name.filter(Name.original_name != None, Name.corrected_original_name == None, Name.group << (Group.genus, Group.species)):  # pylint: disable=singleton-comparison
+    for nam in Name.filter(Name.original_name != None, Name.corrected_original_name == None, Name.group << (Group.genus, Group.species)):
         if 'corrected_original_name' not in nam.get_required_fields():
             continue
         total += 1

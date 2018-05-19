@@ -23,7 +23,6 @@ setup(
         'python-levenshtein',
         'mypy',
         'flake8',
-        'pylint',
         'pytest',
     ],
     classifiers=[

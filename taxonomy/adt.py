@@ -93,7 +93,7 @@ def _adt_member_hash(self: Any) -> int:
 
 class _ADTMeta(type):
     @classmethod
-    def __prepare__(mcs, name: str, bases: Any) -> _ADTNamespace:  # pylint: disable=unused-argument
+    def __prepare__(mcs, name: str, bases: Any) -> _ADTNamespace:
         return _ADTNamespace(sys._getframe(1).f_globals)
 
     def __new__(mcs, name: str, bases: Any, ns: Any) -> Type[Any]:
@@ -149,7 +149,7 @@ class _ADTMeta(type):
                 member_cls = cls_obj()
 
                 def make_init(member_cls: object) -> Callable[[object], None]:
-                    def __init__(self: object) -> None:  # pylint: disable=unused-argument
+                    def __init__(self: object) -> None:
                         raise TypeError(f'cannot instantiate {member_cls}')
                     return __init__
                 cls_obj.__init__ = make_init(member_cls)  # type: ignore

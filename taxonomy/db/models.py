@@ -108,7 +108,7 @@ class BaseModel(Model):
                     value = value.name
                 if value is not None:
                     print(f'{field}: {value}')
-            except Exception:  # pylint: disable=broad-except
+            except Exception:
                 traceback.print_exc()
                 print(f'{field}: could not get value')
 
@@ -229,7 +229,7 @@ class BaseModel(Model):
         else:
             raise ValueError(f"don't know how to fill {field}")
 
-    def get_completers_for_adt_field(self, field: str) -> getinput.CompleterMap:  # pylint: disable=unused-argument,no-self-use
+    def get_completers_for_adt_field(self, field: str) -> getinput.CompleterMap:
         return {}
 
     def get_value_for_foreign_key_field(self, field: str) -> Any:
@@ -1155,7 +1155,7 @@ class Period(BaseModel):
 
     @classmethod
     def make(cls, name: str, system: constants.PeriodSystem, parent: Optional['Period'] = None,
-             next: Optional['Period'] = None, min_age: Optional[int] = None, max_age: Optional[int] = None,  # pylint: disable=redefined-builtin
+             next: Optional['Period'] = None, min_age: Optional[int] = None, max_age: Optional[int] = None,
              **kwargs: Any) -> 'Period':
         if max_age is None and next is not None:
             max_age = next.min_age
