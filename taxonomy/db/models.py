@@ -249,6 +249,7 @@ class BaseModel(Model):
                 field_obj.get_adt(),
                 existing=current_value,
                 completers=self.get_completers_for_adt_field(field),
+                callbacks={"edit": self.fill_field},
             )
         elif isinstance(field_obj, CharField):
             default = "" if current_value is None else current_value

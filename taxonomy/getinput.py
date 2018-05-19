@@ -189,12 +189,14 @@ def get_enum_member(  # noqa
 T = TypeVar("T")
 Completer = Callable[[str, T], T]
 CompleterMap = Mapping[Tuple[Type[adt.ADT], str], Completer[Any]]
+CallbackMap = Mapping[str, Callable[[str], object]]
 
 
 def get_adt_list(
     adt_cls: Type[adt.ADT],
     existing: Optional[Iterable[adt.ADT]] = None,
     completers: CompleterMap = {},
+    callbacks: CallbackMap = {},
 ) -> Tuple[adt.ADT, ...]:
     out: List[adt.ADT] = []
     if existing is not None:
@@ -215,7 +217,7 @@ def get_adt_list(
             options,
             message=f"{adt_cls.__name__}> ",
             history_key=adt_cls,
-            disallow_other=True,
+            disallow_other=not callbacks,
         )
         if member == "p":
             print(f"current: {_stringify_adt_with_indexes(out)}")
@@ -233,8 +235,16 @@ def get_adt_list(
             index = int(member[1:])
             print("removing member:", out[index])
             del out[index]
-        else:
+        elif member in name_to_cls:
             out.append(_get_adt_member(name_to_cls[member], completers=completers))
+        elif " " in member:
+            command, argument = member.split(" ", maxsplit=1)
+            if command in callbacks:
+                callbacks[command](argument)
+            else:
+                print(f"unrecognized command: {command}")
+        else:
+            print(f"unrecognized command: {command}")
 
 
 def _get_adt_member(
