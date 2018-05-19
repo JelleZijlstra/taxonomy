@@ -215,8 +215,8 @@ def translate_type_localities(names: DataT) -> DataT:
             text = re.sub(r"\[.*?: ([^\]]+)\]", r"\1", text)
             text = text.replace("[", "").replace("]", "")
             parts = [
-                list(filter(None, re.split(r"[()]", part))) for part in text.split(", ")
-            ]  # type: ignore  # mypy bug?
+                list(filter(None, re.split(r"[()]", part))) for part in text.split(", ")  # type: ignore  # mypy bug?
+            ]
             type_loc = lib.extract_region(list(reversed(parts)))
             if type_loc is not None:
                 name["type_locality"] = type_loc
