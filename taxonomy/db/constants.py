@@ -17,12 +17,9 @@ class Age(enum.IntEnum):
     ichno = 3
 
     def get_symbol(self) -> str:
-        return {
-            self.extant: '',
-            self.holocene: '☠',
-            self.fossil: '†',
-            self.ichno: '👣',
-        }[self]
+        return {self.extant: "", self.holocene: "☠", self.fossil: "†", self.ichno: "👣"}[
+            self
+        ]
 
 
 class Status(enum.IntEnum):
@@ -66,35 +63,67 @@ class NomenclatureStatus(enum.IntEnum):
     teratological = 11  # Art 1.3.2: "teratological specimens as such"
     hybrid_as_such = 12  # Art. 1.3.3: "hybrid specimens as such" (cf. Art. 17.2)
     informal = 13  # Art. 1.3.5: "as means of temporary reference"
-    work_of_extant = 14  # Art. 1.3.6: "after 1930, for the work of extant animals"; 13.6.2
+    work_of_extant = (
+        14
+    )  # Art. 1.3.6: "after 1930, for the work of extant animals"; 13.6.2
     zoological_formula = 15  # Art. 1.3.7: names like Herrera's "MamXus"
-    unlisted = 16  # Art. 10.7: name not in a Part of the "List of Available Names in Zoology"
+    unlisted = (
+        16
+    )  # Art. 10.7: name not in a Part of the "List of Available Names in Zoology"
     not_latin_alphabet = 17  # Art. 11.2: names must be in the Latin alphabet
-    inconsistently_binominal = 18  # Art. 11.4: author must consistently use binominal nomenclature
+    inconsistently_binominal = (
+        18
+    )  # Art. 11.4: author must consistently use binominal nomenclature
     not_used_as_valid = 19  # Art. 11.5, 11.6
     not_used_as_genus_plural = 20  # Art. 11.7.1.2
     based_on_a_suppressed_name = 21  # Art. 11.7.1.5, 39
     not_published_with_a_generic_name = 22  # Art. 11.9.3
     multiple_words = 23  # Art. 11.9.4
-    no_type_specified = 24  # Art. 13.3: genus-group name after 1930 (but not ichnotaxa); Art. 16.2 for family-group names after 1999; Art. 16.4 for species-group names after 1999
-    anonymous_authorship = 25  # Art. 14: anonymously published names are unavailable after 1950
+    no_type_specified = (
+        24
+    )  # Art. 13.3: genus-group name after 1930 (but not ichnotaxa); Art. 16.2 for family-group names after 1999; Art. 16.4 for species-group names after 1999
+    anonymous_authorship = (
+        25
+    )  # Art. 14: anonymously published names are unavailable after 1950
     conditional = 26  # Art. 15
-    variety_or_form = 27  # Art. 15.2: after 1960, "variety" or "form" excludes the name (cf. infrasubspecific)
-    not_explicitly_new = 28  # Art. 16: names published after 1999 must be explicitly new
-    mandatory_change = 29  # Art. 34: rank change for family-group name and gender agreement for species-group name (first one moved to reranking)
-    ites_name = 30  # Art. 20: names in -ites, -ytes, -ithes for fossils may not be available
-    hybrid_name = 31  # names based on hybrids are available, but do not compete in priority (Art. 23.8)
-    art_13_nomen_oblitum = 32  # Art. 23.12: name rejected under Art. 23b in the 1961-1973 Code
+    variety_or_form = (
+        27
+    )  # Art. 15.2: after 1960, "variety" or "form" excludes the name (cf. infrasubspecific)
+    not_explicitly_new = (
+        28
+    )  # Art. 16: names published after 1999 must be explicitly new
+    mandatory_change = (
+        29
+    )  # Art. 34: rank change for family-group name and gender agreement for species-group name (first one moved to reranking)
+    ites_name = (
+        30
+    )  # Art. 20: names in -ites, -ytes, -ithes for fossils may not be available
+    hybrid_name = (
+        31
+    )  # names based on hybrids are available, but do not compete in priority (Art. 23.8)
+    art_13_nomen_oblitum = (
+        32
+    )  # Art. 23.12: name rejected under Art. 23b in the 1961-1973 Code
     variant = 33  # probably an ISS (7), but may be UE (8)
     justified_emendation = 34  # Art. 32.5: correction of incorrect original spellings
     preoccupied = 35  # junior homonym (still available)
-    based_on_homonym = 39  # Art. 39: family-group names based on junior homonyms must be replaced
+    based_on_homonym = (
+        39
+    )  # Art. 39: family-group names based on junior homonyms must be replaced
     partially_suppressed = 40  # suppressed for Priority but not Homonymy
-    nomen_novum = 41  # Nomen novum or substitution for another name. Such names are available, but using a different status makes it easier to keep track of their types.
-    incorrect_original_spelling = 42  # if there are multiple variants in the original description
+    nomen_novum = (
+        41
+    )  # Nomen novum or substitution for another name. Such names are available, but using a different status makes it easier to keep track of their types.
+    incorrect_original_spelling = (
+        42
+    )  # if there are multiple variants in the original description
     type_not_treated_as_valid = 43  # Art. 11.7.1.1: genus name must be treated as valid
-    reranking = 44  # subset of mandatory change: family-group name changed to a new rank
-    subsequent_usage = 45  # usage of a name (e.g., a misidentification) that does not create a new name
+    reranking = (
+        44
+    )  # subset of mandatory change: family-group name changed to a new rank
+    subsequent_usage = (
+        45
+    )  # usage of a name (e.g., a misidentification) that does not create a new name
     not_intended_as_a_scientific_name = 46  # e.g., a vernacular name
 
     def requires_type(self) -> bool:
@@ -133,7 +162,7 @@ class NomenclatureStatus(enum.IntEnum):
         }
 
     @classmethod
-    def hierarchy(cls) -> List[List['NomenclatureStatus']]:
+    def hierarchy(cls) -> List[List["NomenclatureStatus"]]:
         """Hierarchy of the severity of various problems with a name.
 
         Listed from most to least severe. If multiple conditions apply to a name (e.g., it is both
@@ -149,20 +178,44 @@ class NomenclatureStatus(enum.IntEnum):
             # If the work is invalid, we don't need to worry about the exact status of names.
             [cls.unpublished, cls.before_1758, cls.inconsistently_binominal],
             # Clear problems with the name itself.
-            [cls.not_based_on_a_generic_name, cls.infrasubspecific, cls.hypothetical_concept,
-             cls.teratological, cls.hybrid_as_such, cls.informal,
-             cls.work_of_extant, cls.zoological_formula, cls.not_latin_alphabet,
-             cls.not_used_as_valid, cls.not_used_as_genus_plural, cls.not_published_with_a_generic_name,
-             cls.multiple_words, cls.no_type_specified, cls.anonymous_authorship,
-             cls.conditional, cls.variety_or_form, cls.not_explicitly_new,
-             cls.ites_name, cls.based_on_homonym, cls.based_on_a_suppressed_name,
-             cls.type_not_treated_as_valid, cls.subsequent_usage, cls.not_intended_as_a_scientific_name],
+            [
+                cls.not_based_on_a_generic_name,
+                cls.infrasubspecific,
+                cls.hypothetical_concept,
+                cls.teratological,
+                cls.hybrid_as_such,
+                cls.informal,
+                cls.work_of_extant,
+                cls.zoological_formula,
+                cls.not_latin_alphabet,
+                cls.not_used_as_valid,
+                cls.not_used_as_genus_plural,
+                cls.not_published_with_a_generic_name,
+                cls.multiple_words,
+                cls.no_type_specified,
+                cls.anonymous_authorship,
+                cls.conditional,
+                cls.variety_or_form,
+                cls.not_explicitly_new,
+                cls.ites_name,
+                cls.based_on_homonym,
+                cls.based_on_a_suppressed_name,
+                cls.type_not_treated_as_valid,
+                cls.subsequent_usage,
+                cls.not_intended_as_a_scientific_name,
+            ],
             # Spelling issues that produce unavailable names.
             [cls.incorrect_subsequent_spelling, cls.incorrect_original_spelling],
             [cls.nomen_nudum],
             [cls.preoccupied],
             # From here on, names are available.
-            [cls.unjustified_emendation, cls.justified_emendation, cls.mandatory_change, cls.art_13_nomen_oblitum, cls.reranking],
+            [
+                cls.unjustified_emendation,
+                cls.justified_emendation,
+                cls.mandatory_change,
+                cls.art_13_nomen_oblitum,
+                cls.reranking,
+            ],
             # Should be replaced with ISS or UE if possible.
             [cls.variant],
             [cls.hybrid_name],
@@ -248,22 +301,38 @@ class PeriodSystem(enum.IntEnum):
 
     def is_stratigraphy(self) -> bool:
         return self in {
-            PeriodSystem.bed, PeriodSystem.member, PeriodSystem.formation, PeriodSystem.group, PeriodSystem.supergroup,
+            PeriodSystem.bed,
+            PeriodSystem.member,
+            PeriodSystem.formation,
+            PeriodSystem.group,
+            PeriodSystem.supergroup,
             PeriodSystem.other_stratigraphy,
         }
 
     def is_chronology(self) -> bool:
-        return self.is_biochronology() or self.is_geochronology() or self == PeriodSystem.local_unit
+        return (
+            self.is_biochronology()
+            or self.is_geochronology()
+            or self == PeriodSystem.local_unit
+        )
 
     def is_biochronology(self) -> bool:
         return self in {
-            PeriodSystem.mn_zone, PeriodSystem.mp_zone, PeriodSystem.nalma, PeriodSystem.salma, PeriodSystem.alma,
+            PeriodSystem.mn_zone,
+            PeriodSystem.mp_zone,
+            PeriodSystem.nalma,
+            PeriodSystem.salma,
+            PeriodSystem.alma,
             PeriodSystem.elma,
         }
 
     def is_geochronology(self) -> bool:
         return self in {
-            PeriodSystem.age, PeriodSystem.epoch, PeriodSystem.period, PeriodSystem.era, PeriodSystem.eon,
+            PeriodSystem.age,
+            PeriodSystem.epoch,
+            PeriodSystem.period,
+            PeriodSystem.era,
+            PeriodSystem.eon,
         }
 
 
@@ -319,7 +388,9 @@ class SpeciesNameKind(enum.IntEnum):
     adjective = 1  # Latin adjective, Art. 11.9.1.1
     noun_in_apposition = 2  # Art 11.9.1.2
     genitive = 3  # genitive Latin noun, Art 11.9.1.3
-    genitive_adjective = 4  # adjective used as a noun, Art. 11.9.1.4 (probably very rare in mammals)
+    genitive_adjective = (
+        4
+    )  # adjective used as a noun, Art. 11.9.1.4 (probably very rare in mammals)
     non_latin = 5  # not a Latin word, treated as indeclinable (cf. Art. 31.2.3)
     ambiguous_noun = 6  # noun in apposition under Art. 31.2.2
 
@@ -330,25 +401,30 @@ class SpeciesNameKind(enum.IntEnum):
     patronym_feminine_plural = 10  # -arum patronym
     patronym_latin = 11  # patronym formed from a Latin name (Art. 31.1.1)
 
-    unknown = 12  # no etymology given and no etymology apparent; treated as invariant by default
+    unknown = (
+        12
+    )  # no etymology given and no etymology apparent; treated as invariant by default
 
     def is_single_complex(self) -> bool:
-        return self not in {
-            SpeciesNameKind.adjective,
-            SpeciesNameKind.ambiguous_noun,
-        }
+        return self not in {SpeciesNameKind.adjective, SpeciesNameKind.ambiguous_noun}
 
 
 class TypeSpeciesDesignation(enum.IntEnum):
     # in order, Art. 68.1
-    original_designation = 1  # Art. 68.2. Before 1931, "gen. n., sp. n." indicates an original designation. Also for species named typus, typic-.
+    original_designation = (
+        1
+    )  # Art. 68.2. Before 1931, "gen. n., sp. n." indicates an original designation. Also for species named typus, typic-.
     monotypy = 2  # Art. 68.3
     absolute_tautonymy = 3  # Art. 68.4
     linnaean_tautonymy = 4  # Art. 68.5
     subsequent_monotypy = 5  # Art. 69.3, only for genera originally without species
     subsequent_designation = 6  # Art. 69.1
-    implicit = 7  # names of nomina nova and emendations have the same type, Art. 67.8, 69.2.3
-    misidentification = 8  # if the type was misidentified, you can do whatever you want (Art. 70.3)
+    implicit = (
+        7
+    )  # names of nomina nova and emendations have the same type, Art. 67.8, 69.2.3
+    misidentification = (
+        8
+    )  # if the type was misidentified, you can do whatever you want (Art. 70.3)
     designated_by_the_commission = 9  # type explicitly designated by the Commission
 
 
@@ -357,7 +433,9 @@ class SpeciesGroupType(enum.IntEnum):
     lectotype = 102
     neotype = 103
     syntypes = 104
-    nonexistent = 105  # no type has been designated; unknown whether there was a holotype or syntype
+    nonexistent = (
+        105
+    )  # no type has been designated; unknown whether there was a holotype or syntype
 
 
 class SpecimenGender(enum.IntEnum):

@@ -1,4 +1,4 @@
-'''Maintenance scripts'''
+"""Maintenance scripts"""
 
 import re
 import sys
@@ -8,16 +8,16 @@ from .db.models import Name
 
 
 def cite_exists(cite: str) -> bool:
-    return call_ehphp('exists', {'files': [cite]})[0]
+    return call_ehphp("exists", {"files": [cite]})[0]
 
 
 def get_target(cite: str) -> str:
-    return call_ehphp('getTarget', {'files': [cite]})[0]
+    return call_ehphp("getTarget", {"files": [cite]})[0]
 
 
 def may_be_citation(cite: str) -> bool:
-    '''Checks whether a citation may be a catalog ID'''
-    return '.' not in cite or bool(re.search(r"\.[a-z]+$", cite))
+    """Checks whether a citation may be a catalog ID"""
+    return "." not in cite or bool(re.search(r"\.[a-z]+$", cite))
 
 
 def must_be_citation(cite: str) -> bool:
@@ -47,21 +47,22 @@ def resolve_redirects() -> None:
             target = get_target(name.original_citation)
             if target is not None:
                 if target != name.original_citation:
-                    print('Fixing redirect for %s: %s -> %s' %
-                          (name, name.original_citation, target))
+                    print(
+                        "Fixing redirect for %s: %s -> %s"
+                        % (name, name.original_citation, target)
+                    )
                     name.original_citation = target
                     name.save()
             else:
-                print('WARNING: citation for %s does not exist: %s' %
-                      (name, name.original_citation))
+                print(
+                    "WARNING: citation for %s does not exist: %s"
+                    % (name, name.original_citation)
+                )
 
 
-scripts = {
-    'check_refs': check_refs,
-    'resolve_redirects': resolve_redirects,
-}
+scripts = {"check_refs": check_refs, "resolve_redirects": resolve_redirects}
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     if len(sys.argv) != 2:
         print(sys.argv[0] + ": error: no argument given")
     script = scripts[sys.argv[1]]

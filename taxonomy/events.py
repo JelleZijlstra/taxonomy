@@ -2,10 +2,11 @@
 
 from typing import Callable, Generic, List, TypeVar
 
-T = TypeVar('T')
+T = TypeVar("T")
 
 
 class Event(Generic[T]):
+
     def __init__(self) -> None:
         self.handlers: List[Callable[[T], object]] = []
 

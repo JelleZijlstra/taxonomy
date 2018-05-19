@@ -1,4 +1,4 @@
-'''Helper functions'''
+"""Helper functions"""
 
 from contextlib import contextmanager
 import datetime
@@ -6,8 +6,18 @@ import json
 import re
 from operator import itemgetter
 import time
-from typing import (TYPE_CHECKING, Any, Dict, Iterable, Iterator, Mapping, Optional, Sequence, Tuple,
-                    TypeVar)
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    Iterable,
+    Iterator,
+    Mapping,
+    Optional,
+    Sequence,
+    Tuple,
+    TypeVar,
+)
 
 from . import constants
 from .constants import Group, Rank
@@ -17,78 +27,108 @@ if TYPE_CHECKING:
 
 SPECIES_RANKS = [Rank.subspecies, Rank.species, Rank.species_group]
 GENUS_RANKS = [Rank.subgenus, Rank.genus]
-FAMILY_RANKS = [Rank.infratribe, Rank.subtribe, Rank.tribe, Rank.subfamily, Rank.family, Rank.superfamily,
-                Rank.hyperfamily]
+FAMILY_RANKS = [
+    Rank.infratribe,
+    Rank.subtribe,
+    Rank.tribe,
+    Rank.subfamily,
+    Rank.family,
+    Rank.superfamily,
+    Rank.hyperfamily,
+]
 HIGH_RANKS = [
-    Rank.root, 43, Rank.division, Rank.parvorder, Rank.infraorder, Rank.suborder,
-    Rank.order, Rank.superorder, Rank.subcohort, Rank.cohort, Rank.supercohort,
-    Rank.infraclass, Rank.subclass, Rank.class_, Rank.superclass, Rank.infraphylum,
-    Rank.subphylum, Rank.phylum, Rank.superphylum, Rank.infrakingdom, Rank.subkingdom,
-    Rank.kingdom, Rank.superkingdom, Rank.domain, Rank.unranked,
+    Rank.root,
+    43,
+    Rank.division,
+    Rank.parvorder,
+    Rank.infraorder,
+    Rank.suborder,
+    Rank.order,
+    Rank.superorder,
+    Rank.subcohort,
+    Rank.cohort,
+    Rank.supercohort,
+    Rank.infraclass,
+    Rank.subclass,
+    Rank.class_,
+    Rank.superclass,
+    Rank.infraphylum,
+    Rank.subphylum,
+    Rank.phylum,
+    Rank.superphylum,
+    Rank.infrakingdom,
+    Rank.subkingdom,
+    Rank.kingdom,
+    Rank.superkingdom,
+    Rank.domain,
+    Rank.unranked,
 ]
 SUFFIXES = {
-    Rank.infratribe: 'ita',
-    Rank.subtribe: 'ina',
-    Rank.tribe: 'ini',
-    Rank.subfamily: 'inae',
-    Rank.family: 'idae',
-    Rank.superfamily: 'oidea',
-    Rank.hyperfamily: 'oides',
+    Rank.infratribe: "ita",
+    Rank.subtribe: "ina",
+    Rank.tribe: "ini",
+    Rank.subfamily: "inae",
+    Rank.family: "idae",
+    Rank.superfamily: "oidea",
+    Rank.hyperfamily: "oides",
 }
 _RANKS = {
-    'root': Rank.root,
-    'Unnamed rank': Rank.root,
-    'Classis': Rank.class_,
-    'Class': Rank.class_,
-    'Subclassis': Rank.subclass,
-    'Subclass': Rank.subclass,
-    'Infraclassis': Rank.infraclass,
-    'Infraclass': Rank.infraclass,
-    'Superlegion': 89,
-    'Legion': 88,
-    'Sublegion': 87,
-    'Supracohors': Rank.supercohort,
-    'Supercohors': Rank.supercohort,
-    'Supercohort': Rank.supercohort,
-    'Cohors': Rank.cohort,
-    'Cohort': Rank.cohort,
-    'Subcohors': Rank.subcohort,
-    'Magnorder': 72,
-    'Grandorder': 71,
-    'Superordo': Rank.superorder,
-    'Supraordo': Rank.superorder,
-    'Superorder': Rank.superorder,
-    'Mirorder': 69,
-    'Ordo': Rank.order,
-    'Order': Rank.order,
-    'Subordo': Rank.suborder,
-    'Suborder': Rank.suborder,
-    'Infraordo': Rank.infraorder,
-    'Infraorder': Rank.infraorder,
-    'Parvordo': Rank.parvorder,
-    'Parvorder': Rank.parvorder,
-    'Superfamilia': Rank.superfamily,
-    'Suprafamilia': Rank.superfamily,
-    'Superfamily': Rank.superfamily,
-    'Clade': 43,  # Hack to allow for Eumuroida and Spalacodonta
-    'Familia': Rank.family,
-    'Family': Rank.family,
-    'Subfamilia': Rank.subfamily,
-    'Subfamily': Rank.subfamily,
-    'Infrafamily': 34,
-    'Tribus': Rank.tribe,
-    'Tribe': Rank.tribe,
-    'Subtribus': Rank.subtribe,
-    'Subtribe': Rank.subtribe,
-    'Infratribe': Rank.infratribe,
-    'Division': Rank.division,
-    'Genus': Rank.genus,
-    'Subgenus': Rank.subgenus,
+    "root": Rank.root,
+    "Unnamed rank": Rank.root,
+    "Classis": Rank.class_,
+    "Class": Rank.class_,
+    "Subclassis": Rank.subclass,
+    "Subclass": Rank.subclass,
+    "Infraclassis": Rank.infraclass,
+    "Infraclass": Rank.infraclass,
+    "Superlegion": 89,
+    "Legion": 88,
+    "Sublegion": 87,
+    "Supracohors": Rank.supercohort,
+    "Supercohors": Rank.supercohort,
+    "Supercohort": Rank.supercohort,
+    "Cohors": Rank.cohort,
+    "Cohort": Rank.cohort,
+    "Subcohors": Rank.subcohort,
+    "Magnorder": 72,
+    "Grandorder": 71,
+    "Superordo": Rank.superorder,
+    "Supraordo": Rank.superorder,
+    "Superorder": Rank.superorder,
+    "Mirorder": 69,
+    "Ordo": Rank.order,
+    "Order": Rank.order,
+    "Subordo": Rank.suborder,
+    "Suborder": Rank.suborder,
+    "Infraordo": Rank.infraorder,
+    "Infraorder": Rank.infraorder,
+    "Parvordo": Rank.parvorder,
+    "Parvorder": Rank.parvorder,
+    "Superfamilia": Rank.superfamily,
+    "Suprafamilia": Rank.superfamily,
+    "Superfamily": Rank.superfamily,
+    "Clade": 43,  # Hack to allow for Eumuroida and Spalacodonta
+    "Familia": Rank.family,
+    "Family": Rank.family,
+    "Subfamilia": Rank.subfamily,
+    "Subfamily": Rank.subfamily,
+    "Infrafamily": 34,
+    "Tribus": Rank.tribe,
+    "Tribe": Rank.tribe,
+    "Subtribus": Rank.subtribe,
+    "Subtribe": Rank.subtribe,
+    "Infratribe": Rank.infratribe,
+    "Division": Rank.division,
+    "Genus": Rank.genus,
+    "Subgenus": Rank.subgenus,
 }
-LATLONG = re.compile(r'''
+LATLONG = re.compile(
+    r"""
     (?P<latitude>\d+(\.\d+)?\s*[°*]\s*(\d+(\.\d+)?\s*')?\s*[NS])[,\s\[\]]+
     (long\.\s)?(?P<longitude>\d+(\.\d+)?\s*[°*]\s*(\d+(\.\d+)?\s*')?\s*[EW])
-''', re.VERBOSE)
+""",
+    re.VERBOSE,
+)
 
 
 def group_of_rank(rank: Rank) -> Group:
@@ -105,10 +145,10 @@ def group_of_rank(rank: Rank) -> Group:
 
 
 def name_with_suffixes_removed(name: str) -> Iterable[str]:
-    suffixes = list(SUFFIXES.values()) + ['ida', 'oidae', 'ides', 'i', 'a', 'ae', 'ia']
+    suffixes = list(SUFFIXES.values()) + ["ida", "oidae", "ides", "i", "a", "ae", "ia"]
     for suffix in suffixes:
         if name.endswith(suffix):
-            yield re.sub(r'%s$' % suffix, '', name)
+            yield re.sub(r"%s$" % suffix, "", name)
 
 
 def suffix_of_rank(rank: Rank) -> str:
@@ -132,6 +172,7 @@ def root_name_of_name(s: str, rank: Rank) -> str:
 
 
 def strip_rank(name: str, rank: Rank, quiet: bool = False) -> str:
+
     def strip_of_suffix(name: str, suffix: str) -> Optional[str]:
         if re.search(suffix + "$", name):
             return re.sub(suffix + "$", "", name)
@@ -145,7 +186,7 @@ def strip_rank(name: str, rank: Rank, quiet: bool = False) -> str:
         res = None
     if res is None:
         if not quiet:
-            print(f'Warning: Cannot find suffix -{expected_suffix} on name {name}')
+            print(f"Warning: Cannot find suffix -{expected_suffix} on name {name}")
         for suffix in SUFFIXES.values():
             res = strip_of_suffix(name, suffix)
             if res is not None:
@@ -156,7 +197,7 @@ def strip_rank(name: str, rank: Rank, quiet: bool = False) -> str:
 
 
 def spg_of_species(species: str) -> str:
-    '''Returns a species group name from a species name'''
+    """Returns a species group name from a species name"""
     return re.sub(r" ([a-z]+)$", r" (\1)", species)
 
 
@@ -165,7 +206,7 @@ def species_of_subspecies(ssp: str) -> str:
 
 
 def is_nominate_subspecies(ssp: str) -> bool:
-    parts = re.sub(r' \(([A-Za-z"\-\. ]+)\)', '', ssp).split(' ')
+    parts = re.sub(r' \(([A-Za-z"\-\. ]+)\)', "", ssp).split(" ")
     if len(parts) != 3:
         print(parts)
         raise Exception("Invalid subspecies name: " + ssp)
@@ -173,64 +214,64 @@ def is_nominate_subspecies(ssp: str) -> bool:
 
 
 def genus_name_of_name(name: str) -> str:
-    if name.lower().startswith('cf. '):
+    if name.lower().startswith("cf. "):
         return name.split()[1]
-    return name.split()[0].replace('?', '')
+    return name.split()[0].replace("?", "")
 
 
-def dict_of_name(name: 'Name') -> Dict[str, Any]:
+def dict_of_name(name: "Name") -> Dict[str, Any]:
     result = {
-        'id': name.id,
-        'authority': name.authority,
-        'root_name': name.root_name,
-        'group_numeric': name.group.value,
-        'group': name.group.name,
-        'nomenclature_comments': name.nomenclature_comments,
-        'original_citation': name.original_citation,
-        'original_name': name.original_name,
-        'other_comments': name.other_comments,
-        'page_described': name.page_described,
-        'status_numeric': name.status.value,
-        'status': name.status.name,
-        'taxonomy_comments': name.taxonomy_comments,
-        'year': name.year
+        "id": name.id,
+        "authority": name.authority,
+        "root_name": name.root_name,
+        "group_numeric": name.group.value,
+        "group": name.group.name,
+        "nomenclature_comments": name.nomenclature_comments,
+        "original_citation": name.original_citation,
+        "original_name": name.original_name,
+        "other_comments": name.other_comments,
+        "page_described": name.page_described,
+        "status_numeric": name.status.value,
+        "status": name.status.name,
+        "taxonomy_comments": name.taxonomy_comments,
+        "year": name.year,
     }
     if name.type is not None:
-        result['type'] = {'id': name.type.id}
+        result["type"] = {"id": name.type.id}
         if name.type.original_name is not None:
-            result['type']['name'] = name.type.original_name
+            result["type"]["name"] = name.type.original_name
         else:
-            result['type']['name'] = name.type.root_name
+            result["type"]["name"] = name.type.root_name
     return result
 
 
-def dict_of_taxon(taxon: 'Taxon') -> Dict[str, Any]:
+def dict_of_taxon(taxon: "Taxon") -> Dict[str, Any]:
     return {
-        'id': taxon.id,
-        'valid_name': taxon.valid_name,
-        'rank_numeric': taxon.rank.value,
-        'rank': taxon.rank.name,
-        'names': [],
-        'children': [],
-        'age_numeric': taxon.age.value,
-        'age': taxon.age.name,
+        "id": taxon.id,
+        "valid_name": taxon.valid_name,
+        "rank_numeric": taxon.rank.value,
+        "rank": taxon.rank.name,
+        "names": [],
+        "children": [],
+        "age_numeric": taxon.age.value,
+        "age": taxon.age.name,
     }
 
 
-def tree_of_taxon(taxon: 'Taxon', include_root: bool = False) -> Dict[str, Any]:
+def tree_of_taxon(taxon: "Taxon", include_root: bool = False) -> Dict[str, Any]:
     result = dict_of_taxon(taxon)
     if include_root or not taxon.is_page_root:
         for name in taxon.names:
-            result['names'].append(dict_of_name(name))
-        result['names'].sort(key=itemgetter('status_numeric', 'root_name'))
+            result["names"].append(dict_of_name(name))
+        result["names"].sort(key=itemgetter("status_numeric", "root_name"))
         for child in taxon.children:
-            result['children'].append(tree_of_taxon(child))
-        result['children'].sort(key=itemgetter('rank_numeric', 'valid_name'))
+            result["children"].append(tree_of_taxon(child))
+        result["children"].sort(key=itemgetter("rank_numeric", "valid_name"))
     return result
 
 
-_T1 = TypeVar('_T1')
-_T2 = TypeVar('_T2')
+_T1 = TypeVar("_T1")
+_T2 = TypeVar("_T2")
 
 
 def remove_null(d: Mapping[_T1, Optional[_T2]]) -> Dict[_T1, _T2]:
@@ -244,7 +285,7 @@ def remove_null(d: Mapping[_T1, Optional[_T2]]) -> Dict[_T1, _T2]:
 def fix_data(data: str) -> Optional[str]:
     if data:
         data = json.dumps(remove_null(json.loads(data)))
-        if data == '{}':
+        if data == "{}":
             return None
         else:
             return data
@@ -258,59 +299,63 @@ def convert_gender(name: str, gender: constants.Gender) -> str:
         return name
     elif gender == constants.Gender.feminine:
         # TODO this will fail occasionally
-        if name.endswith('us'):
-            return re.sub(r'us$', 'a', name)
-        elif name.endswith('er'):
-            return name + 'a'
+        if name.endswith("us"):
+            return re.sub(r"us$", "a", name)
+        elif name.endswith("er"):
+            return name + "a"
         else:
             return name
     elif gender == constants.Gender.neuter:
         # should really only be ensis but let's be broader
-        if name.endswith('is'):
-            return re.sub(r'is$', 'e', name)
-        elif name.endswith('us'):
-            return re.sub(r'us$', 'um', name)
+        if name.endswith("is"):
+            return re.sub(r"is$", "e", name)
+        elif name.endswith("us"):
+            return re.sub(r"us$", "um", name)
         else:
             return name
     else:
-        raise ValueError('unknown gender {}'.format(gender))
+        raise ValueError("unknown gender {}".format(gender))
 
 
 def _canonicalize_gender(name: str) -> str:
-    if name.endswith('e'):
-        return re.sub(r'e$', 'is', name)
-    elif name.endswith('era'):
+    if name.endswith("e"):
+        return re.sub(r"e$", "is", name)
+    elif name.endswith("era"):
         return name[:-1]
-    elif name.endswith('a'):
+    elif name.endswith("a"):
         # TODO this will have a boatload of false positives
-        return re.sub(r'a$', 'us', name)
-    elif name.endswith('um'):
+        return re.sub(r"a$", "us", name)
+    elif name.endswith("um"):
         # TODO this will have a boatload of false positives
-        return re.sub(r'um$', 'us', name)
+        return re.sub(r"um$", "us", name)
     else:
         return name
 
 
 def standardize_date(date: str) -> Optional[str]:
     """Fixes the format of date fields."""
-    if date in ('unknown date', 'on unknown date', 'on an unknown date'):
+    if date in ("unknown date", "on unknown date", "on an unknown date"):
         return None
-    date = re.sub(r'\]', '', date)
-    date = re.sub(r'\[[A-Z a-n]+: ', '', date)
-    date = re.sub(r', not [\dA-Za-z]+( [A-Z][a-z][a-z])? as( given)? in original description(, ?|$)', '', date)
-    if re.match(r'^\d{4}$', date):
+    date = re.sub(r"\]", "", date)
+    date = re.sub(r"\[[A-Z a-n]+: ", "", date)
+    date = re.sub(
+        r", not [\dA-Za-z]+( [A-Z][a-z][a-z])? as( given)? in original description(, ?|$)",
+        "",
+        date,
+    )
+    if re.match(r"^\d{4}$", date):
         # year
         return date
-    match = re.match(r'^in (\d{4})$', date)
+    match = re.match(r"^in (\d{4})$", date)
     if match:
         return match.group(1)
     date_month_formats = [
-        '%b %Y',  # Feb 1992
-        '%b. %Y',  # Feb. 1992
-        '%b, %Y',  # Feb, 1992
-        '%B %Y',  # February 1992
-        '%B, %Y',  # February, 1992
-        '%bt %Y',  # Sept 1992
+        "%b %Y",  # Feb 1992
+        "%b. %Y",  # Feb. 1992
+        "%b, %Y",  # Feb, 1992
+        "%B %Y",  # February 1992
+        "%B, %Y",  # February, 1992
+        "%bt %Y",  # Sept 1992
     ]
     for fmt in date_month_formats:
         try:
@@ -318,18 +363,18 @@ def standardize_date(date: str) -> Optional[str]:
         except ValueError:
             pass
         else:
-            return dt.strftime('%B %Y')
+            return dt.strftime("%B %Y")
     dmy_formats = [
-        '%d %B %Y',  # 24 February 1992
-        '%d %b %Y',  # 24 Feb 1992
-        '%d %bt. %Y',  # 24 Sept. 1992
-        '%d %bt %Y',  # 24 Sept 1992
-        '%d %b%Y',  # 24 Feb1992
-        '%d %b. %Y',  # 24 Feb. 1992
-        '%B %d, %Y',  # February 24, 1992
-        '%b %d, %Y',  # Feb 24, 1992
-        '%b. %d, %Y',  # Feb. 24, 1992
-        '%d.%m.%Y',  # 24.02.1992
+        "%d %B %Y",  # 24 February 1992
+        "%d %b %Y",  # 24 Feb 1992
+        "%d %bt. %Y",  # 24 Sept. 1992
+        "%d %bt %Y",  # 24 Sept 1992
+        "%d %b%Y",  # 24 Feb1992
+        "%d %b. %Y",  # 24 Feb. 1992
+        "%B %d, %Y",  # February 24, 1992
+        "%b %d, %Y",  # Feb 24, 1992
+        "%b. %d, %Y",  # Feb. 24, 1992
+        "%d.%m.%Y",  # 24.02.1992
     ]
     for fmt in dmy_formats:
         try:
@@ -337,16 +382,19 @@ def standardize_date(date: str) -> Optional[str]:
         except ValueError:
             pass
         else:
-            return dt.strftime('%-d %B %Y')
+            return dt.strftime("%-d %B %Y")
     raise ValueError(date)
 
 
-COORDINATE_RGX = re.compile(r'''
+COORDINATE_RGX = re.compile(
+    r"""
     ^(?P<degrees>\d+(\.\d+)?)°
     ((?P<minutes>\d+(\.\d+)?)'
     ((?P<seconds>\d+(\.\d+)?)")?)?
     (?P<direction>[NSWE])$
-''', re.VERBOSE)
+""",
+    re.VERBOSE,
+)
 
 
 class InvalidCoordinates(Exception):
@@ -354,42 +402,42 @@ class InvalidCoordinates(Exception):
 
 
 def standardize_coordinates(text: str, *, is_latitude: bool) -> str:
-    text = re.sub(r'\s', '', text)
-    text = text.replace('·', '.')
-    text = re.sub(r'[\*◦]', '°', text)
-    text = re.sub(r'[`ʹ’‘′ ́]', "'", text)
+    text = re.sub(r"\s", "", text)
+    text = text.replace("·", ".")
+    text = re.sub(r"[\*◦]", "°", text)
+    text = re.sub(r"[`ʹ’‘′ ́]", "'", text)
     text = re.sub(r"(''|”)", '"', text)
 
     match = COORDINATE_RGX.match(text)
     if not match:
-        raise InvalidCoordinates(f'could not match {text!r}')
+        raise InvalidCoordinates(f"could not match {text!r}")
 
-    degrees = match.group('degrees')
-    minutes = match.group('minutes')
-    seconds = match.group('seconds')
-    direction = match.group('direction')
+    degrees = match.group("degrees")
+    minutes = match.group("minutes")
+    seconds = match.group("seconds")
+    direction = match.group("direction")
 
-    if '.' in degrees and minutes:
-        raise InvalidCoordinates(f'fractional degrees when minutes are given')
+    if "." in degrees and minutes:
+        raise InvalidCoordinates(f"fractional degrees when minutes are given")
     if float(degrees) > (90 if is_latitude else 180):
-        raise InvalidCoordinates(f'invalid degree {degrees}')
+        raise InvalidCoordinates(f"invalid degree {degrees}")
 
     if minutes:
-        if '.' in minutes and seconds:
-            raise InvalidCoordinates(f'fractional degrees when minutes are given')
+        if "." in minutes and seconds:
+            raise InvalidCoordinates(f"fractional degrees when minutes are given")
         if float(minutes) > 60:
-            raise InvalidCoordinates(f'invalid minutes {minutes}')
+            raise InvalidCoordinates(f"invalid minutes {minutes}")
 
     if seconds:
         if float(seconds) > 60:
-            raise InvalidCoordinates(f'invalid seconds {seconds}')
+            raise InvalidCoordinates(f"invalid seconds {seconds}")
 
     if is_latitude:
-        if direction not in ('N', 'S'):
-            raise InvalidCoordinates(f'invalid latitude {direction}')
+        if direction not in ("N", "S"):
+            raise InvalidCoordinates(f"invalid latitude {direction}")
     else:
-        if direction not in ('W', 'E'):
-            raise InvalidCoordinates(f'invalid longitude {direction}')
+        if direction not in ("W", "E"):
+            raise InvalidCoordinates(f"invalid longitude {direction}")
     return text
 
 
@@ -398,11 +446,15 @@ def extract_coordinates(text: str) -> Optional[Tuple[str, str]]:
     match = LATLONG.search(text)
     if match:
         try:
-            latitude = standardize_coordinates(match.group('latitude'), is_latitude=True)
+            latitude = standardize_coordinates(
+                match.group("latitude"), is_latitude=True
+            )
         except InvalidCoordinates:
             return None
         try:
-            longitude = standardize_coordinates(match.group('longitude'), is_latitude=False)
+            longitude = standardize_coordinates(
+                match.group("longitude"), is_latitude=False
+            )
         except InvalidCoordinates:
             return None
         return latitude, longitude
@@ -411,27 +463,28 @@ def extract_coordinates(text: str) -> Optional[Tuple[str, str]]:
 
 
 def clean_text(text: str) -> str:
-    text = text.replace('a ́', 'á')
-    text = text.replace('e ́', 'é')
-    text = text.replace('i ́', 'í')
-    text = text.replace('o ́', 'ó')
-    text = text.replace('u ́', 'ú')
-    text = text.replace(' ́ı', 'í')
-    text = text.replace('a ̃', 'ã')
-    text = text.replace('‘‘', '"')
-    text = text.replace('’’', '"')
-    text = re.sub(r'(?<=[a-z])- (?=[a-z])', '', text)
+    text = text.replace("a ́", "á")
+    text = text.replace("e ́", "é")
+    text = text.replace("i ́", "í")
+    text = text.replace("o ́", "ó")
+    text = text.replace("u ́", "ú")
+    text = text.replace(" ́ı", "í")
+    text = text.replace("a ̃", "ã")
+    text = text.replace("‘‘", '"')
+    text = text.replace("’’", '"')
+    text = re.sub(r"(?<=[a-z])- (?=[a-z])", "", text)
     return text
 
 
 def unsplit_authors(authors: Sequence[str]) -> str:
     if len(authors) > 1:
-        return ' & '.join([', '.join(authors[:-1]), authors[-1]])
+        return " & ".join([", ".join(authors[:-1]), authors[-1]])
     else:
         return authors[0]
 
 
 class TimeHolder:
+
     def __init__(self, label: str) -> None:
         self.label = label
         self.time: float = 0.0
@@ -446,5 +499,5 @@ def timer(label: str) -> Iterator[TimeHolder]:
     finally:
         end_time = time.time()
         taken = end_time - start_time
-        print(f'{label} took {taken:.03f} s')
+        print(f"{label} took {taken:.03f} s")
         th.time = taken
