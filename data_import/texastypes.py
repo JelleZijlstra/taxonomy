@@ -6,11 +6,14 @@ from taxonomy.db import constants, models
 from . import lib
 from .lib import DataT, PagesT
 
-SOURCE = lib.Source('texastypes.txt', 'TTU, TCWC-types.pdf')
-NAME_LINE_RGX = re.compile(r'''
+SOURCE = lib.Source("texastypes.txt", "TTU, TCWC-types.pdf")
+NAME_LINE_RGX = re.compile(
+    r"""
     ^(?P<age_gender>[^,]+),\s(?P<body_parts>.+?),\s(?P<type_specimen>(TTU|TCWC)\s\d+),\s
     from\s(?P<loc>[^;]+);\sobtained\s[io]n\s(?P<date>.*?)\sby\s(?P<collector>.*),\s(original\sno|prepared\sby).*$
-''', re.VERBOSE)
+""",
+    re.VERBOSE,
+)
 
 
 def extract_names(pages: PagesT) -> DataT:
@@ -20,8 +23,8 @@ def extract_names(pages: PagesT) -> DataT:
 
     def start_label(label: str, line: str) -> None:
         nonlocal current_label, current_lines
-        assert current_name, f'cannot start {label} with {line!r} on an empty name'
-        assert label not in current_name, f'duplicate label {label} for {current_name}'
+        assert current_name, f"cannot start {label} with {line!r} on an empty name"
+        assert label not in current_name, f"duplicate label {label} for {current_name}"
         current_label = label
         current_lines = [line]
         current_name[label] = current_lines
@@ -32,37 +35,40 @@ def extract_names(pages: PagesT) -> DataT:
             if not line:
                 current_label = None
                 continue
-            if re.match(r'^ {8,}[A-Za-z\^]+$', line):
+            if re.match(r"^ {8,}[A-Za-z\^]+$", line):
                 continue
-            if current_label is None and not line.startswith(' ') and (not current_name or 'verbatim_citation' in current_name):
+            if (
+                current_label is None
+                and not line.startswith(" ")
+                and (not current_name or "verbatim_citation" in current_name)
+            ):
                 # new name
                 if current_name:
                     yield current_name
-                current_name = {
-                    'pages': [page],
-                    'orig_name_author': line,
-                }
-            elif not line.startswith(' '):
+                current_name = {"pages": [page], "orig_name_author": line}
+            elif not line.startswith(" "):
                 if current_label:
                     current_lines.append(line)
                 else:
-                    start_label('verbatim_citation', line)
+                    start_label("verbatim_citation", line)
             else:
-                match = re.match(r'^ +([A-Z][a-z]+)\. ?—', line)
-                assert match, f'failed to match {line}'
+                match = re.match(r"^ +([A-Z][a-z]+)\. ?—", line)
+                assert match, f"failed to match {line}"
                 start_label(match.group(1), line)
     yield current_name
 
 
 def split_fields(names: DataT) -> DataT:
     for name in names:
-        name['raw_text'] = dict(name)
-        match = NAME_LINE_RGX.match(name['Holotype'])
+        name["raw_text"] = dict(name)
+        match = NAME_LINE_RGX.match(name["Holotype"])
         assert match, f'failed to match {name["Holotype"]}'
         name.update(match.groupdict())
-        name['species_type_kind'] = constants.SpeciesGroupType.holotype
-        name['collection'] = models.Collection.by_label(name['type_specimen'].split()[0])
-        name['specimen_detail'] = name['Holotype']
+        name["species_type_kind"] = constants.SpeciesGroupType.holotype
+        name["collection"] = models.Collection.by_label(
+            name["type_specimen"].split()[0]
+        )
+        name["specimen_detail"] = name["Holotype"]
 
         yield name
 
@@ -82,6 +88,6 @@ def main() -> DataT:
     return names
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     for p in main():
         print(p)

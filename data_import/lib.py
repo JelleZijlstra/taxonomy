@@ -6,8 +6,21 @@ import json
 import re
 import unicodedata
 from pathlib import Path
-from typing import (Any, Container, Counter, Dict, Iterable, List, Mapping,
-                    NamedTuple, Optional, Sequence, Set, Tuple, Type)
+from typing import (
+    Any,
+    Container,
+    Counter,
+    Dict,
+    Iterable,
+    List,
+    Mapping,
+    NamedTuple,
+    Optional,
+    Sequence,
+    Set,
+    Tuple,
+    Type,
+)
 
 import Levenshtein
 import unidecode
@@ -16,212 +29,212 @@ from taxonomy import getinput, shell
 from taxonomy.db import constants, helpers, models
 from taxonomy.db.models import TypeTag
 
-DATA_DIR = Path(__file__).parent / 'data'
+DATA_DIR = Path(__file__).parent / "data"
 NAME_SYNONYMS = {
-    "Costa 'Rica": 'Costa Rica',
-    'Bahama Islands': 'Bahamas',
-    'British Guiana': 'Guyana',
-    'Burma': 'Myanmar',
-    'Cape York': 'Queensland',
-    'Celebes': 'Sulawesi',
-    'French Congo': 'Rep Congo',
-    'Fukien': 'Fujian',
-    'Hainan Island': 'Hainan',
-    'Irian Jaya': 'Western New Guinea',
-    'Kazakstan': 'Kazakhstan',
-    'Matto Grosso do Sul': 'Mato Grosso do Sul',
-    'Matto Grosso': 'Mato Grosso',
-    'Netherlands New Guinea': 'Western New Guinea',
-    'Newfoundland': 'Newfoundland and Labrador',
-    'Nicaraugua': 'Nicaragua',
-    'Northwest Territory': 'Northwest Territories',
-    'Philippine Islands': 'Philippines',
-    'Russian Federation': 'Russia',
-    'Shensi': 'Shaanxi',
-    'Siam': 'Thailand',
-    'Sulawesi Selatan': 'Sulawesi',
-    'Timor Island': 'West Timor',
-    'Vera Cruz': 'Veracruz',
-    'Zaire': 'DR Congo',
-    'Baja California [Sur]': 'Baja California Sur',
-    'Estado de México': 'Mexico State',
-    'Panama Canal Zone': 'Panama',
-    'Labrador': 'Newfoundland and Labrador',
-    'Greater Antilles': 'West Indies',
-    'Lesser Antilles': 'West Indies',
-    'Federated States of Micronesia': 'Micronesia',
-    'Marocco': 'Morocco',
-    'Tchad': 'Chad',
-    'New Britain': 'Papua New Guinea',
-    'Bismarck Archipelago': 'Papua New Guinea',
-    'Kei Islands': 'Kai Islands',
-    'North-East New Guinea': 'Papua New Guinea',
-    'Papua': 'New Guinea',
-    'Batchian': 'Batjan',
-    'Ceram': 'Seram',
-    'Amboina': 'Ambon',
-    'Banda Islands': 'Moluccas',
-    'Sicily': 'Italy',
-    'Malay States': 'Peninsular Malaysia',
-    'New Ireland': 'Papua New Guinea',
-    'Admiralty Islands': 'Papua New Guinea',
-    'Trobriand Islands': 'Papua New Guinea',
-    "D'Entrecasteaux Archipelago": 'Papua New Guinea',
-    'Waigeu': 'Waigeo',
-    'Maldive Islands': 'Maldives',
-    'U.S.A.': 'United States',
-    'Tanganyika Territory': 'Tanzania',
-    'Tanganyika Territoiy': 'Tanzania',
-    'Anglo-Egyptian Sudan': 'Africa',
-    'Malagasy Republic': 'Madagascar',
-    'British East Africa': 'Kenya',
-    'Belgian Congo': 'DR Congo',
-    'Nyasaland': 'Malawi',
-    'Cameroun': 'Cameroon',
-    'Cameroons': 'Cameroon',
-    'Asia Minor': 'Turkey',
-    'British Honduras': 'Belize',
-    'Anglo- Egyptian Sudan': 'Africa',
-    'Surinam': 'Suriname',
-    'Chili': 'Chile',
-    'Brésil': 'Brazil',
-    'USA': 'United States',
-    'UK': 'United Kingdom',
-    'Calif': 'California',
-    'Wyo': 'Wyoming',
-    'Fla': 'Florida',
-    'Kenya Colony': 'Kenya',
-    'British Nigeria': 'Africa',
-    'Cameroon Mandate': 'Cameroon',
-    'Dutch New Guinea': 'Western New Guinea',
-    'French Indo-China': 'Southeast Asia',
-    'Tonkin': 'Vietnam',
-    'British West Indies': 'West Indies',
-    'NSW': 'New South Wales',
-    'Kenia': 'Kenya',
-    'former Yugoslavia': 'Europe',
-    'Republic of the Philippines': 'Philippines',
-    'Republic of the Congo': 'Rep Congo',
-    'Malacca': 'Peninsular Malaysia',
-    'Malay Peninsula': 'Peninsular Malaysia',
-    'Selangor': 'Peninsular Malaysia',
-    'Perak': 'Peninsular Malaysia',
-    'Pahang': 'Peninsular Malaysia',
-    'Tioman': 'Peninsular Malaysia',
-    'Penang': 'Peninsular Malaysia',
-    'East Perhentian': 'Peninsular Malaysia',
-    'Great Redang': 'Peninsular Malaysia',
-    'Aor': 'Peninsular Malaysia',
-    'Tenasserim': 'Myanmar',
-    'Pemanggil': 'Peninsular Malaysia',
-    'Terutau': 'Thailand',  # Ko Tarutao
-    'British North Borneo': 'Sabah',
-    'Lingga': 'Riau Islands',
-    'Banka': 'Bangka-Belitung',
-    'Billiton': 'Bangka-Belitung',
-    'Bintang': 'Riau Islands',
-    'Bunguran': 'Riau Islands',
-    'Subi': 'Riau Islands',
-    'Sinkep': 'Riau Islands',
-    'Batam': 'Riau Islands',
-    'Mapor': 'Riau Islands',
-    'Karimon': 'Riau Islands',
-    'Riabu': 'Riau Islands',
-    'Jimaja': 'Riau Islands',
-    'Singkep': 'Riau Islands',
-    'Kundur': 'Riau Islands',
-    'Sugi Bawa': 'Riau Islands',
-    'Sugi': 'Riau Islands',
-    'Bulan': 'Riau Islands',
-    'North Pagi': 'North Pagai',
-    'Siantan': 'Riau Islands',
-    'Sirhassen': 'Riau Islands',
-    'Laut': 'Riau Islands',
-    'Tana Masa': 'Batu Islands',
-    'Tana Bala': 'Batu Islands',
-    'Pinie': 'Batu Islands',
-    'Panebangan': 'Kalimantan',
-    'Karimata': 'Kalimantan',
-    'Lamukotan': 'Kalimantan',
-    'Tuangku': 'Banyak Islands',
-    'Bangkaru': 'Banyak Islands',
-    'Junk Seylon': 'Thailand',  # Phuket
-    'Koh Pipidon': 'Thailand',
-    'Banguey': 'Sabah',  # Banggi
-    'Simalur': 'Simeulue',
-    'Mansalar': 'Sumatra',
-    'Engano': 'Enggano',
-    'Peninsular Siam': 'Thailand',
-    'Koh Samui': 'Thailand',
-    'Koh (Island) Samui': 'Thailand',
-    'Koh Pennan': 'Thailand',
-    'Koh (Island) Pennan': 'Thailand',
-    'Telibon': 'Thailand',
-    'Rawi': 'Thailand',
-    'Adang': 'Thailand',
-    'Langkawi': 'Peninsular Malaysia',
-    'Dayang Bunting': 'Peninsular Malaysia',
-    'Pegu': 'Myanmar',
-    'Nicobar Islands': 'Andamans and Nicobars',
-    'Mergui Archipelago': 'Myanmar',
-    'Kangean': 'Kangean Islands',
-    'South Pagi': 'South Pagai',
-    'Bengal': 'South Asia',
-    'Babi': 'Simeulue',
-    'Mallewalle': 'Sabah',
-    'Balambangan': 'Sabah',
-    'Sebuko': 'Kalimantan',
-    'Maratua': 'Kalimantan',
-    'Chombol': 'Riau Islands',
-    'Jarak': 'Peninsular Malaysia',
-    'Johore': 'Peninsular Malaysia',
-    'Rumbia': 'Peninsular Malaysia',
-    'Tinggi': 'Peninsular Malaysia',
-    'Lasia': 'Simeulue',
-    'Datu': 'Kalimantan',
-    'Pipidon': 'Thailand',
-    'Mt. Kinabalu': 'Sabah',
-    'Serutu': 'Kalimantan',  # Karimata islands
-    'Mata Siri': 'Kalimantan',  # Matasiri, Laut Kecil Islands, South Kalimantan
-    'Southern Rhodesia': 'Zimbabwe',
-    'Transvaal': 'South Africa',
-    'Abyssinia': 'Ethiopia',
-    'Orange Free State': 'South Africa',
-    'Cape Colony': 'South Africa',
-    'Natal': 'South Africa',
-    'Cape of Good Hope': 'South Africa',
-    'Southwest Africa': 'Namibia',
-    'Dahomey': 'Benin',
-    'Congo Belge': 'DR Congo',
-    'Bechuanaland': 'Botswana',
-    'Gaboon': 'Gabon',
-    'Gold Coast': 'Ghana',
-    'Somaliland': 'Somalia',
-    'Lado Enclave': 'Africa',  # TODO
-    'British Somaliland': 'Somalia',
-    'Fernando Po': 'Bioko',
-    'Northern Rhodesia': 'Zambia',
-    'Kordofan': 'Sudan',
-    'Island of Fernando Po': 'Bioko',
-    'AngloEgyptian Sudan': 'Sudan',
-    'Italian Somaliland': 'Somalia',
-    'Tripoli': 'Libya',
-    'Zanzibar': 'Tanzania',
-    'Sennaar': 'Sudan',
-    'Tunis': 'Tunisia',
-    'Spanish Guinea': 'Rio Muni',
-    'Portuguese Guinea': 'Guinea-Bissau',
-    'Ivory Coast': "Cote d'Ivoire",
-    'Darfur': 'Sudan',
-    'Cape Province': 'South Africa',
-    'Shoa': 'Ethiopia',
-    'French Gambia': 'Senegal',
-    'Portuguese East Africa': 'Mozambique',
-    'RDCongo': 'DR Congo',
-    'Yukon Territory': 'Yukon',
-    'NWT': 'Northwest Territories',
+    "Costa 'Rica": "Costa Rica",
+    "Bahama Islands": "Bahamas",
+    "British Guiana": "Guyana",
+    "Burma": "Myanmar",
+    "Cape York": "Queensland",
+    "Celebes": "Sulawesi",
+    "French Congo": "Rep Congo",
+    "Fukien": "Fujian",
+    "Hainan Island": "Hainan",
+    "Irian Jaya": "Western New Guinea",
+    "Kazakstan": "Kazakhstan",
+    "Matto Grosso do Sul": "Mato Grosso do Sul",
+    "Matto Grosso": "Mato Grosso",
+    "Netherlands New Guinea": "Western New Guinea",
+    "Newfoundland": "Newfoundland and Labrador",
+    "Nicaraugua": "Nicaragua",
+    "Northwest Territory": "Northwest Territories",
+    "Philippine Islands": "Philippines",
+    "Russian Federation": "Russia",
+    "Shensi": "Shaanxi",
+    "Siam": "Thailand",
+    "Sulawesi Selatan": "Sulawesi",
+    "Timor Island": "West Timor",
+    "Vera Cruz": "Veracruz",
+    "Zaire": "DR Congo",
+    "Baja California [Sur]": "Baja California Sur",
+    "Estado de México": "Mexico State",
+    "Panama Canal Zone": "Panama",
+    "Labrador": "Newfoundland and Labrador",
+    "Greater Antilles": "West Indies",
+    "Lesser Antilles": "West Indies",
+    "Federated States of Micronesia": "Micronesia",
+    "Marocco": "Morocco",
+    "Tchad": "Chad",
+    "New Britain": "Papua New Guinea",
+    "Bismarck Archipelago": "Papua New Guinea",
+    "Kei Islands": "Kai Islands",
+    "North-East New Guinea": "Papua New Guinea",
+    "Papua": "New Guinea",
+    "Batchian": "Batjan",
+    "Ceram": "Seram",
+    "Amboina": "Ambon",
+    "Banda Islands": "Moluccas",
+    "Sicily": "Italy",
+    "Malay States": "Peninsular Malaysia",
+    "New Ireland": "Papua New Guinea",
+    "Admiralty Islands": "Papua New Guinea",
+    "Trobriand Islands": "Papua New Guinea",
+    "D'Entrecasteaux Archipelago": "Papua New Guinea",
+    "Waigeu": "Waigeo",
+    "Maldive Islands": "Maldives",
+    "U.S.A.": "United States",
+    "Tanganyika Territory": "Tanzania",
+    "Tanganyika Territoiy": "Tanzania",
+    "Anglo-Egyptian Sudan": "Africa",
+    "Malagasy Republic": "Madagascar",
+    "British East Africa": "Kenya",
+    "Belgian Congo": "DR Congo",
+    "Nyasaland": "Malawi",
+    "Cameroun": "Cameroon",
+    "Cameroons": "Cameroon",
+    "Asia Minor": "Turkey",
+    "British Honduras": "Belize",
+    "Anglo- Egyptian Sudan": "Africa",
+    "Surinam": "Suriname",
+    "Chili": "Chile",
+    "Brésil": "Brazil",
+    "USA": "United States",
+    "UK": "United Kingdom",
+    "Calif": "California",
+    "Wyo": "Wyoming",
+    "Fla": "Florida",
+    "Kenya Colony": "Kenya",
+    "British Nigeria": "Africa",
+    "Cameroon Mandate": "Cameroon",
+    "Dutch New Guinea": "Western New Guinea",
+    "French Indo-China": "Southeast Asia",
+    "Tonkin": "Vietnam",
+    "British West Indies": "West Indies",
+    "NSW": "New South Wales",
+    "Kenia": "Kenya",
+    "former Yugoslavia": "Europe",
+    "Republic of the Philippines": "Philippines",
+    "Republic of the Congo": "Rep Congo",
+    "Malacca": "Peninsular Malaysia",
+    "Malay Peninsula": "Peninsular Malaysia",
+    "Selangor": "Peninsular Malaysia",
+    "Perak": "Peninsular Malaysia",
+    "Pahang": "Peninsular Malaysia",
+    "Tioman": "Peninsular Malaysia",
+    "Penang": "Peninsular Malaysia",
+    "East Perhentian": "Peninsular Malaysia",
+    "Great Redang": "Peninsular Malaysia",
+    "Aor": "Peninsular Malaysia",
+    "Tenasserim": "Myanmar",
+    "Pemanggil": "Peninsular Malaysia",
+    "Terutau": "Thailand",  # Ko Tarutao
+    "British North Borneo": "Sabah",
+    "Lingga": "Riau Islands",
+    "Banka": "Bangka-Belitung",
+    "Billiton": "Bangka-Belitung",
+    "Bintang": "Riau Islands",
+    "Bunguran": "Riau Islands",
+    "Subi": "Riau Islands",
+    "Sinkep": "Riau Islands",
+    "Batam": "Riau Islands",
+    "Mapor": "Riau Islands",
+    "Karimon": "Riau Islands",
+    "Riabu": "Riau Islands",
+    "Jimaja": "Riau Islands",
+    "Singkep": "Riau Islands",
+    "Kundur": "Riau Islands",
+    "Sugi Bawa": "Riau Islands",
+    "Sugi": "Riau Islands",
+    "Bulan": "Riau Islands",
+    "North Pagi": "North Pagai",
+    "Siantan": "Riau Islands",
+    "Sirhassen": "Riau Islands",
+    "Laut": "Riau Islands",
+    "Tana Masa": "Batu Islands",
+    "Tana Bala": "Batu Islands",
+    "Pinie": "Batu Islands",
+    "Panebangan": "Kalimantan",
+    "Karimata": "Kalimantan",
+    "Lamukotan": "Kalimantan",
+    "Tuangku": "Banyak Islands",
+    "Bangkaru": "Banyak Islands",
+    "Junk Seylon": "Thailand",  # Phuket
+    "Koh Pipidon": "Thailand",
+    "Banguey": "Sabah",  # Banggi
+    "Simalur": "Simeulue",
+    "Mansalar": "Sumatra",
+    "Engano": "Enggano",
+    "Peninsular Siam": "Thailand",
+    "Koh Samui": "Thailand",
+    "Koh (Island) Samui": "Thailand",
+    "Koh Pennan": "Thailand",
+    "Koh (Island) Pennan": "Thailand",
+    "Telibon": "Thailand",
+    "Rawi": "Thailand",
+    "Adang": "Thailand",
+    "Langkawi": "Peninsular Malaysia",
+    "Dayang Bunting": "Peninsular Malaysia",
+    "Pegu": "Myanmar",
+    "Nicobar Islands": "Andamans and Nicobars",
+    "Mergui Archipelago": "Myanmar",
+    "Kangean": "Kangean Islands",
+    "South Pagi": "South Pagai",
+    "Bengal": "South Asia",
+    "Babi": "Simeulue",
+    "Mallewalle": "Sabah",
+    "Balambangan": "Sabah",
+    "Sebuko": "Kalimantan",
+    "Maratua": "Kalimantan",
+    "Chombol": "Riau Islands",
+    "Jarak": "Peninsular Malaysia",
+    "Johore": "Peninsular Malaysia",
+    "Rumbia": "Peninsular Malaysia",
+    "Tinggi": "Peninsular Malaysia",
+    "Lasia": "Simeulue",
+    "Datu": "Kalimantan",
+    "Pipidon": "Thailand",
+    "Mt. Kinabalu": "Sabah",
+    "Serutu": "Kalimantan",  # Karimata islands
+    "Mata Siri": "Kalimantan",  # Matasiri, Laut Kecil Islands, South Kalimantan
+    "Southern Rhodesia": "Zimbabwe",
+    "Transvaal": "South Africa",
+    "Abyssinia": "Ethiopia",
+    "Orange Free State": "South Africa",
+    "Cape Colony": "South Africa",
+    "Natal": "South Africa",
+    "Cape of Good Hope": "South Africa",
+    "Southwest Africa": "Namibia",
+    "Dahomey": "Benin",
+    "Congo Belge": "DR Congo",
+    "Bechuanaland": "Botswana",
+    "Gaboon": "Gabon",
+    "Gold Coast": "Ghana",
+    "Somaliland": "Somalia",
+    "Lado Enclave": "Africa",  # TODO
+    "British Somaliland": "Somalia",
+    "Fernando Po": "Bioko",
+    "Northern Rhodesia": "Zambia",
+    "Kordofan": "Sudan",
+    "Island of Fernando Po": "Bioko",
+    "AngloEgyptian Sudan": "Sudan",
+    "Italian Somaliland": "Somalia",
+    "Tripoli": "Libya",
+    "Zanzibar": "Tanzania",
+    "Sennaar": "Sudan",
+    "Tunis": "Tunisia",
+    "Spanish Guinea": "Rio Muni",
+    "Portuguese Guinea": "Guinea-Bissau",
+    "Ivory Coast": "Cote d'Ivoire",
+    "Darfur": "Sudan",
+    "Cape Province": "South Africa",
+    "Shoa": "Ethiopia",
+    "French Gambia": "Senegal",
+    "Portuguese East Africa": "Mozambique",
+    "RDCongo": "DR Congo",
+    "Yukon Territory": "Yukon",
+    "NWT": "Northwest Territories",
 }
-REMOVE_PARENS = re.compile(r' \([A-Z][a-z]+\)')
+REMOVE_PARENS = re.compile(r" \([A-Z][a-z]+\)")
 
 DataT = Iterable[Dict[str, Any]]
 PagesT = Iterable[Tuple[int, List[str]]]
@@ -250,11 +263,13 @@ def initial_count(s: str, char: str) -> int:
 
 
 def dedent_lines(lines: List[str]) -> List[str]:
-    dedent_by = min((initial_count(line, ' ') for line in lines if line.rstrip()), default=0)
+    dedent_by = min(
+        (initial_count(line, " ") for line in lines if line.rstrip()), default=0
+    )
     return [line[dedent_by:] for line in lines]
 
 
-def get_text(source: Source, encoding: str = 'utf-8') -> Iterable[str]:
+def get_text(source: Source, encoding: str = "utf-8") -> Iterable[str]:
     with (DATA_DIR / source.inputfile).open(encoding=encoding) as f:
         yield from f
 
@@ -264,20 +279,22 @@ def extract_pages(lines: Iterable[str]) -> PagesT:
     current_page = None
     current_lines = []
     for line in lines:
-        if line.startswith('\x0c'):
+        if line.startswith("\x0c"):
             if current_page is not None:
                 yield current_page, current_lines
                 current_lines = []
             line = line[1:].strip()
             try:
-                if re.search(r'^\d+ ', line):
+                if re.search(r"^\d+ ", line):
                     # page number on the left
                     current_page = int(line.split()[0])
                 else:
                     # or the right
                     current_page = int(line.split()[-1])
             except ValueError as e:
-                raise ValueError(f'failure extracting from {line!r} while on {current_page}') from e
+                raise ValueError(
+                    f"failure extracting from {line!r} while on {current_page}"
+                ) from e
         else:
             current_lines.append(line)
     # last page
@@ -289,19 +306,21 @@ def validate_pages(pages: PagesT, verbose: bool = True, check: bool = True) -> P
     current_page: Optional[int] = None
     for page, lines in pages:
         if verbose:
-            print(f'got page {page}')
+            print(f"got page {page}")
         if current_page is not None:
             if page != current_page + 1:
-                message = f'missing {current_page + 1}'
+                message = f"missing {current_page + 1}"
                 if check:
                     assert False, message
                 else:
-                    print('---', message, '---')
+                    print("---", message, "---")
         current_page = page
         yield page, lines
 
 
-def align_columns(pages: PagesT, single_column_pages: Container[int] = frozenset()) -> PagesT:
+def align_columns(
+    pages: PagesT, single_column_pages: Container[int] = frozenset()
+) -> PagesT:
     """Rearrange the text to separate the two columns on each page."""
     for page, lines in pages:
         if not any(line.rstrip() for line in lines):
@@ -310,7 +329,7 @@ def align_columns(pages: PagesT, single_column_pages: Container[int] = frozenset
         max_len = max(len(line) for line in lines)
         best_blank = -1
         for i in range(max_len):
-            if not all(len(line) <= i or line[i] == ' ' for line in lines):
+            if not all(len(line) <= i or line[i] == " " for line in lines):
                 continue
             num_lines = len([line for line in lines if len(line) > i])
             if num_lines < 5:
@@ -320,13 +339,18 @@ def align_columns(pages: PagesT, single_column_pages: Container[int] = frozenset
             if page in single_column_pages:
                 yield page, [line.rstrip() for line in lines]
             else:
-                assert False, f'failed to find split for {page}'
+                assert False, f"failed to find split for {page}"
         else:
             first_column = [line[:best_blank].rstrip() for line in lines]
-            second_column = [line[best_blank + 1:].rstrip() for line in lines]
+            second_column = [line[best_blank + 1 :].rstrip() for line in lines]
             num_lines = len(second_column)
-            while len([line for line in second_column if line.startswith(' ')]) > num_lines / 2:
-                second_column = [line[1:] if line.startswith(' ') else line for line in second_column]
+            while (
+                len([line for line in second_column if line.startswith(" ")])
+                > num_lines / 2
+            ):
+                second_column = [
+                    line[1:] if line.startswith(" ") else line for line in second_column
+                ]
             yield page, first_column + second_column
 
 
@@ -335,70 +359,76 @@ def clean_text(names: DataT, clean_labels: bool = True) -> DataT:
     for name in names:
         new_name = {}
         for key, value in name.items():
-            if key == 'pages' or not isinstance(value, list):
+            if key == "pages" or not isinstance(value, list):
                 if isinstance(value, str):
                     value = clean_string(value)
                 new_name[key] = value
-            elif key == 'names':
+            elif key == "names":
                 new_name[key] = [clean_line_list(name) for name in value]
             else:
                 text = clean_line_list(value)
                 if clean_labels and isinstance(key, str):
-                    text = re.sub(r'^\s*' + re.escape(key) + r'[\-—:\. ]+', '', text)
+                    text = re.sub(r"^\s*" + re.escape(key) + r"[\-—:\. ]+", "", text)
                 new_name[key] = text.strip()
         yield new_name
 
 
 def clean_line_list(lines: Iterable[str]) -> str:
-    text = '\n'.join(lines)
+    text = "\n".join(lines)
     return clean_string(text)
 
 
 def clean_string(text: str) -> str:
-    text = unicodedata.normalize('NFC', text)
-    text = text.replace(' \xad ', '')
-    text = text.replace('\xad', '')
-    text = text.replace('’', "'")
-    text = re.sub(r'[“”]', '"', text)
-    text = re.sub(r'- *\n+ *', '', text)
-    text = re.sub(r'\s+', ' ', text)
+    text = unicodedata.normalize("NFC", text)
+    text = text.replace(" \xad ", "")
+    text = text.replace("\xad", "")
+    text = text.replace("’", "'")
+    text = re.sub(r"[“”]", '"', text)
+    text = re.sub(r"- *\n+ *", "", text)
+    text = re.sub(r"\s+", " ", text)
     return text.strip()
 
 
 def clean_text_simple(names: DataT) -> DataT:
     for name in names:
         yield {
-            'text': ' '.join(line.strip() for line in name['lines']),
-            'pages': name['pages'],
+            "text": " ".join(line.strip() for line in name["lines"]),
+            "pages": name["pages"],
         }
 
 
-def split_name_authority(name_authority: str, *, try_harder: bool = False, quiet: bool = False) -> Dict[str, str]:
-    name_authority = re.sub(r'([A-Za-z][a-z]*)\[([a-z?]+( \([A-Z][a-z]+\))?)\]\.', r'\1\2', name_authority)
-    name_authority = re.sub(r'([A-Z][a-z]*)\[([a-z]+)\]', r'\1\2', name_authority)
-    name_authority = re.sub(r'^\[([A-Z][a-z]+)\]', r'\1', name_authority)
-    name_authority = re.sub(r'\[\([A-Z][a-z]+\)\] ', r'', name_authority)
-    name_authority = re.sub(r'^\[[A-Z][a-z]+ \(\]([A-Z][a-z]+)\[\)\]', r'\1', name_authority)
-    name_authority = re.sub(r'\b([a-z])\[([a-z]+)\](?= )', r'\1\2', name_authority)
-    name_authority = name_authority.replace('(sic)', '')
-    name_authority = re.sub(r'\s+', ' ', name_authority)
+def split_name_authority(
+    name_authority: str, *, try_harder: bool = False, quiet: bool = False
+) -> Dict[str, str]:
+    name_authority = re.sub(
+        r"([A-Za-z][a-z]*)\[([a-z?]+( \([A-Z][a-z]+\))?)\]\.", r"\1\2", name_authority
+    )
+    name_authority = re.sub(r"([A-Z][a-z]*)\[([a-z]+)\]", r"\1\2", name_authority)
+    name_authority = re.sub(r"^\[([A-Z][a-z]+)\]", r"\1", name_authority)
+    name_authority = re.sub(r"\[\([A-Z][a-z]+\)\] ", r"", name_authority)
+    name_authority = re.sub(
+        r"^\[[A-Z][a-z]+ \(\]([A-Z][a-z]+)\[\)\]", r"\1", name_authority
+    )
+    name_authority = re.sub(r"\b([a-z])\[([a-z]+)\](?= )", r"\1\2", name_authority)
+    name_authority = name_authority.replace("(sic)", "")
+    name_authority = re.sub(r"\s+", " ", name_authority)
     regexes = [
         # Lets us manually put | in to separate original name and authority in hard cases
-        r'^(?P<original_name>[^\|]+) \| (?P<authority>.*)$',
-        r'^(?P<original_name>[A-ZÑ][a-zëöiïü]+) (?P<authority>(d\')?[A-ZÁ][a-zA-Z\-âöáéüšñ\.èç]+)$',
+        r"^(?P<original_name>[^\|]+) \| (?P<authority>.*)$",
+        r"^(?P<original_name>[A-ZÑ][a-zëöiïü]+) (?P<authority>(d\')?[A-ZÁ][a-zA-Z\-âöáéüšñ\.èç]+)$",
         (
-            r'^(?P<original_name>(\? )?[A-ZÑ][a-zëöiïü]+\??( \([A-Z][a-z]+\.?\??\))?((,? var\.| \(\?\)| \?)? [a-z]{3,}(-[a-z]{3,})?){1,2}) '
-            r'(?P<authority>de Beaux|de Blainville|de Winton|de Beerst|von Bloeker|(d\'|de la )?[A-ZÁ][a-zA-Z\-âöüášéèíñç\.,\'& ]+)( \(ex [^\)]+\))?$'
+            r"^(?P<original_name>(\? )?[A-ZÑ][a-zëöiïü]+\??( \([A-Z][a-z]+\.?\??\))?((,? var\.| \(\?\)| \?)? [a-z]{3,}(-[a-z]{3,})?){1,2}) "
+            r"(?P<authority>de Beaux|de Blainville|de Winton|de Beerst|von Bloeker|(d\'|de la )?[A-ZÁ][a-zA-Z\-âöüášéèíñç\.,\'& ]+)( \(ex [^\)]+\))?$"
         ),
-        r'^(?P<original_name>(\? )?.*?) (?P<authority>[A-ZÉ]\.[\- ].*)$',
-        r'^(?P<original_name>(\? )?[A-ZÑ][a-zëöíïü]+) (?P<authority>(d\'|de la )?[A-ZÁ][a-zA-Z\-öáéšíñ\., ]+ (and|&) [A-ZÁ][a-zA-Z\-âöüáéèíñç]+)$',
-        r'^(?P<original_name>[A-Z][a-z]+) (?P<authority>Hamilton Smith|Von Dueben)$',
+        r"^(?P<original_name>(\? )?.*?) (?P<authority>[A-ZÉ]\.[\- ].*)$",
+        r"^(?P<original_name>(\? )?[A-ZÑ][a-zëöíïü]+) (?P<authority>(d\'|de la )?[A-ZÁ][a-zA-Z\-öáéšíñ\., ]+ (and|&) [A-ZÁ][a-zA-Z\-âöüáéèíñç]+)$",
+        r"^(?P<original_name>[A-Z][a-z]+) (?P<authority>Hamilton Smith|Von Dueben)$",
     ]
     if try_harder:
         regexes += [
-            r'^(?P<original_name>[a-z]+) (?P<authority>[A-Z].*? and [A-Z].*)$',
-            r'^(?P<original_name>.* [a-zë\-]+) (?P<authority>[A-ZÁÉ].*)$',
-            r'^(?P<original_name>.*) (?P<authority>[^ ]+)$',
+            r"^(?P<original_name>[a-z]+) (?P<authority>[A-Z].*? and [A-Z].*)$",
+            r"^(?P<original_name>.* [a-zë\-]+) (?P<authority>[A-ZÁÉ].*)$",
+            r"^(?P<original_name>.*) (?P<authority>[^ ]+)$",
         ]
     for rgx in regexes:
         match = re.match(rgx, name_authority)
@@ -409,128 +439,165 @@ def split_name_authority(name_authority: str, *, try_harder: bool = False, quiet
     return {}
 
 
-def translate_to_db(names: DataT, collection_name: Optional[str] = None, source: Optional[Source] = None, verbose: bool = False) -> DataT:
+def translate_to_db(
+    names: DataT,
+    collection_name: Optional[str] = None,
+    source: Optional[Source] = None,
+    verbose: bool = False,
+) -> DataT:
     coll: Optional[models.Collection]
     if collection_name is not None:
         coll = models.Collection.by_label(collection_name)
     else:
         coll = None
     for name in names:
-        if 'taxon_name' in name:
+        if "taxon_name" in name:
             try:
-                name['taxon'] = models.Taxon.get(models.Taxon.valid_name == name['taxon_name'])
+                name["taxon"] = models.Taxon.get(
+                    models.Taxon.valid_name == name["taxon_name"]
+                )
             except models.Taxon.DoesNotExist:
                 if verbose:
                     print(f'failed to find taxon {name["taxon_name"]}')
-        if 'orig_name_author' in name and 'original_name' not in name and 'authority' not in name:
-            name.update(split_name_authority(name['orig_name_author'], quiet=not verbose))
-        if 'authority' in name:
-            name['authority'] = unspace_initials(name['authority'])
-        if 'authority' in name and ' and ' in name['authority']:
-            name['authority'] = name['authority'].replace(' and ', ' & ')
-        if 'species_type_kind' in name:
-            if coll is not None and 'collection' not in name:
-                name['collection'] = coll
-            if source is not None and 'type_specimen_source' not in name:
-                name['type_specimen_source'] = source.source
-        type_tags: List[models.TypeTag] = name.get('type_tags', [])
-        for field in ('age_gender', 'gender_age', 'gender'):
+        if (
+            "orig_name_author" in name
+            and "original_name" not in name
+            and "authority" not in name
+        ):
+            name.update(
+                split_name_authority(name["orig_name_author"], quiet=not verbose)
+            )
+        if "authority" in name:
+            name["authority"] = unspace_initials(name["authority"])
+        if "authority" in name and " and " in name["authority"]:
+            name["authority"] = name["authority"].replace(" and ", " & ")
+        if "species_type_kind" in name:
+            if coll is not None and "collection" not in name:
+                name["collection"] = coll
+            if source is not None and "type_specimen_source" not in name:
+                name["type_specimen_source"] = source.source
+        type_tags: List[models.TypeTag] = name.get("type_tags", [])
+        for field in ("age_gender", "gender_age", "gender"):
             if field in name:
                 gender_age = extract_gender_age(name[field])
                 type_tags += gender_age
                 if verbose and not gender_age:
-                    print(f'failed to parse gender age {name[field]!r}')
-        if 'body_parts' in name:
-            body_parts = extract_body_parts(name['body_parts'])
+                    print(f"failed to parse gender age {name[field]!r}")
+        if "body_parts" in name:
+            body_parts = extract_body_parts(name["body_parts"])
             if body_parts:
                 type_tags += body_parts
             else:
                 if verbose:
                     print(f'failed to parse body parts {name["body_parts"]!r}')
-                assert source is not None, f'missing source (at {name})'
-                type_tags.append(models.TypeTag.SpecimenDetail(name['body_parts'], source.source))
-        if 'loc' in name:
-            text = name['loc']
-            assert source is not None, f'missing source (at {name})'
+                assert source is not None, f"missing source (at {name})"
+                type_tags.append(
+                    models.TypeTag.SpecimenDetail(name["body_parts"], source.source)
+                )
+        if "loc" in name:
+            text = name["loc"]
+            assert source is not None, f"missing source (at {name})"
             type_tags.append(models.TypeTag.LocationDetail(text, source.source))
             coords = helpers.extract_coordinates(text)
             if coords:
                 type_tags.append(models.TypeTag.Coordinates(coords[0], coords[1]))
-        if 'collector' in name:
-            type_tags.append(models.TypeTag.Collector(name['collector']))
-        if 'altitude' in name:
-            match = re.match(r'^(\d[\d\-,]*) +(feet|m|meters)$', name['altitude'])
+        if "collector" in name:
+            type_tags.append(models.TypeTag.Collector(name["collector"]))
+        if "altitude" in name:
+            match = re.match(r"^(\d[\d\-,]*) +(feet|m|meters)$", name["altitude"])
             if match:
-                altitude = match.group(1).replace(',', '')
-                unit = constants.AltitudeUnit.ft if match.group(2) == 'feet' else constants.AltitudeUnit.m
+                altitude = match.group(1).replace(",", "")
+                unit = (
+                    constants.AltitudeUnit.ft
+                    if match.group(2) == "feet"
+                    else constants.AltitudeUnit.m
+                )
                 type_tags.append(models.TypeTag.Altitude(altitude, unit))
             elif verbose:
                 print(f'failed to match altitude {name["altitude"]!r}')
-        if 'date' in name:
-            date = name['date']
+        if "date" in name:
+            date = name["date"]
             try:
                 date = helpers.standardize_date(date)
             except ValueError:
                 if verbose:
-                    print(f'failed to parse date {date!r}')
-                if 'specimen_detail' in name and date in name['specimen_detail']:
+                    print(f"failed to parse date {date!r}")
+                if "specimen_detail" in name and date in name["specimen_detail"]:
                     pass  # it will be included elsewhere
                 else:
-                    assert source is not None, f'missing source (at {name})'
-                    type_tags.append(models.TypeTag.SpecimenDetail(f'Collected: "{date}"', source.source))
+                    assert source is not None, f"missing source (at {name})"
+                    type_tags.append(
+                        models.TypeTag.SpecimenDetail(
+                            f'Collected: "{date}"', source.source
+                        )
+                    )
             else:
                 if date is not None:
                     type_tags.append(models.TypeTag.Date(date))
-        if 'specimen_detail' in name:
-            assert source is not None, f'missing source (at {name})'
-            type_tags.append(models.TypeTag.SpecimenDetail(name['specimen_detail'], source.source))
-        if 'original_name' in name:
-            name['original_name'] = re.sub(r'\[([a-z]+)\]\.', r'\1', name['original_name'])
+        if "specimen_detail" in name:
+            assert source is not None, f"missing source (at {name})"
+            type_tags.append(
+                models.TypeTag.SpecimenDetail(name["specimen_detail"], source.source)
+            )
+        if "original_name" in name:
+            name["original_name"] = re.sub(
+                r"\[([a-z]+)\]\.", r"\1", name["original_name"]
+            )
 
         if type_tags:
-            name['type_tags'] = type_tags
+            name["type_tags"] = type_tags
         yield name
 
 
-def translate_type_locality(names: DataT, start_at_end: bool = False, quiet: bool = False) -> DataT:
+def translate_type_locality(
+    names: DataT, start_at_end: bool = False, quiet: bool = False
+) -> DataT:
     for name in names:
-        if 'loc' in name:
-            loc = name['loc']
-            loc = loc.replace('"', '').rstrip('.')
-            loc = re.sub(r', \d[\.\d –\-NWSE]+$', '', loc)
-            loc = re.sub(r', \d[,\d]+ ft$', '', loc)
-            loc = re.sub(r'\. Altitude, .*$', '', loc)
-            loc = re.sub(r'[ \[]lat\. .*$', '', loc)
-            loc = re.sub(r'[\.,;:\[ ]+$', '', loc)
-            parts = [[re.sub(r' \([^\(]+\)$', '', part)] for part in loc.split(', ')]
+        if "loc" in name:
+            loc = name["loc"]
+            loc = loc.replace('"', "").rstrip(".")
+            loc = re.sub(r", \d[\.\d –\-NWSE]+$", "", loc)
+            loc = re.sub(r", \d[,\d]+ ft$", "", loc)
+            loc = re.sub(r"\. Altitude, .*$", "", loc)
+            loc = re.sub(r"[ \[]lat\. .*$", "", loc)
+            loc = re.sub(r"[\.,;:\[ ]+$", "", loc)
+            parts = [[re.sub(r" \([^\(]+\)$", "", part)] for part in loc.split(", ")]
             if start_at_end:
                 parts = list(reversed(parts))
             type_loc = extract_region(parts)
             if type_loc is not None:
-                name['type_locality'] = type_loc
+                name["type_locality"] = type_loc
             elif not quiet:
-                print('could not extract type locality from', loc)
+                print("could not extract type locality from", loc)
         yield name
 
 
-AUTHOR_NAME_RGX = re.compile(r'''
+AUTHOR_NAME_RGX = re.compile(
+    r"""
     (?P<name>[A-Z][a-z]+(\s\([A-Z][a-z]+\??\))?(\s\([a-z]+\??\))?(\s[a-z\'-]{3,})?(\svar\.)?\s[a-z\'-]{3,})
     \s
     \(?(?P<authority>([A-Z]\.\s)*[a-zA-Z,\-\. ]+)(,\s\d+)?\)?$
-''', re.VERBOSE)
+""",
+    re.VERBOSE,
+)
 
 
 def extract_name_and_author(text: str) -> Dict[str, str]:
-    if text == 'Sus oi Miller':
-        return {'original_name': 'Sus oi', 'authority': 'Miller'}
-    text = re.sub(r' \[sic\.?\]', '', text)
-    text = re.sub(r'\[([A-Za-z]+)\]\.?', r'\1', text)
-    text = text.replace('\xad', '').replace('œ', 'oe').replace('æ', 'ae')
+    if text == "Sus oi Miller":
+        return {"original_name": "Sus oi", "authority": "Miller"}
+    text = re.sub(r" \[sic\.?\]", "", text)
+    text = re.sub(r"\[([A-Za-z]+)\]\.?", r"\1", text)
+    text = text.replace("\xad", "").replace("œ", "oe").replace("æ", "ae")
     match = AUTHOR_NAME_RGX.match(text)
-    assert match, f'failed to match {text!r}'
-    authority = match.group('authority').replace(', and ', ' & ').replace(' and ', ' & ').replace(', in', '')
-    authority = re.sub(r'(?<=\.) (?=[A-Z]\.)', '', authority)
-    return {'original_name': match.group('name'), 'authority': authority}
+    assert match, f"failed to match {text!r}"
+    authority = (
+        match.group("authority")
+        .replace(", and ", " & ")
+        .replace(" and ", " & ")
+        .replace(", in", "")
+    )
+    authority = re.sub(r"(?<=\.) (?=[A-Z]\.)", "", authority)
+    return {"original_name": match.group("name"), "authority": authority}
 
 
 def enum_has_member(enum_cls: Type[enum.Enum], member: str) -> bool:
@@ -546,9 +613,9 @@ def extract_species_type_kind(text: str) -> Optional[constants.SpeciesGroupType]
     text = text.lower()
     if enum_has_member(constants.SpeciesGroupType, text):
         return constants.SpeciesGroupType[text]
-    elif text == 'syntype':
+    elif text == "syntype":
         return constants.SpeciesGroupType.syntypes
-    elif text in ('paralectotype', 'paralectotypes'):
+    elif text in ("paralectotype", "paralectotypes"):
         # If there is a paralectotype, there must also be a lectotype
         return constants.SpeciesGroupType.lectotype
     else:
@@ -556,75 +623,96 @@ def extract_species_type_kind(text: str) -> Optional[constants.SpeciesGroupType]
 
 
 def extract_gender_age(text: str) -> List[TypeTag]:
-    text = re.sub(r'\[.*?: ([^\]]+)\]', r'\1', text)
-    text = text.strip().lower().replace('macho', 'male').replace('hembra', 'female')
+    text = re.sub(r"\[.*?: ([^\]]+)\]", r"\1", text)
+    text = text.strip().lower().replace("macho", "male").replace("hembra", "female")
     out = []
     if enum_has_member(constants.SpecimenAge, text):
         out.append(TypeTag.Age(constants.SpecimenAge[text]))
     elif enum_has_member(constants.SpecimenGender, text):
         out.append(TypeTag.Gender(constants.SpecimenGender[text]))
-    elif text == 'unsexed adult' or text == 'adult, sex not given' or text == 'adult, sex unknown' or text == 'adult unsexed' or text == 'adult (not sexed)':
+    elif (
+        text == "unsexed adult"
+        or text == "adult, sex not given"
+        or text == "adult, sex unknown"
+        or text == "adult unsexed"
+        or text == "adult (not sexed)"
+    ):
         out.append(TypeTag.Age(constants.SpecimenAge.adult))
         out.append(TypeTag.Gender(constants.SpecimenGender.unknown))
-    elif text.endswith(', age not given'):
-        gender = text.split(',')[0]
+    elif text.endswith(", age not given"):
+        gender = text.split(",")[0]
         if enum_has_member(constants.SpecimenGender, gender):
             out.append(TypeTag.Gender(constants.SpecimenGender[gender]))
-    elif ' ' in text:
+    elif " " in text:
         age, gender = text.rsplit(maxsplit=1)
         if enum_has_member(constants.SpecimenAge, age):
             out.append(TypeTag.Age(constants.SpecimenAge[age]))
-        elif age == 'immature' or age == 'young':
+        elif age == "immature" or age == "young":
             out.append(TypeTag.Age(constants.SpecimenAge.juvenile))
-        elif age == 'young adult':
+        elif age == "young adult":
             out.append(TypeTag.Age(constants.SpecimenAge.subadult))
-        elif age == 'old' or age == 'old adult' or age == 'aged':
+        elif age == "old" or age == "old adult" or age == "aged":
             out.append(TypeTag.Age(constants.SpecimenAge.adult))
         if enum_has_member(constants.SpecimenGender, gender):
             out.append(TypeTag.Gender(constants.SpecimenGender[gender]))
-    elif text == 'f':
+    elif text == "f":
         out.append(TypeTag.Gender(constants.SpecimenGender.female))
-    elif text == 'm':
+    elif text == "m":
         out.append(TypeTag.Gender(constants.SpecimenGender.male))
     return out
 
 
-SKIN = TypeTag.Organ(constants.Organ.skin, '', '')
-SKULL = TypeTag.Organ(constants.Organ.skull, '', '')
-IN_ALCOHOL = TypeTag.Organ(constants.Organ.in_alcohol, '', '')
-SKELETON = TypeTag.Organ(constants.Organ.postcranial_skeleton, '', '')
+SKIN = TypeTag.Organ(constants.Organ.skin, "", "")
+SKULL = TypeTag.Organ(constants.Organ.skull, "", "")
+IN_ALCOHOL = TypeTag.Organ(constants.Organ.in_alcohol, "", "")
+SKELETON = TypeTag.Organ(constants.Organ.postcranial_skeleton, "", "")
 
 
 def extract_body_parts(organs: str) -> List[TypeTag]:
-    organs = organs.lower().replace('[', '').replace(']', '')
-    organs = re.sub(r'sk..?ll', 'skull', organs).replace('skufl', 'skull').strip()
-    if organs in ('skin and skull', 'skin and cranium', 'study skin and skull', 'skull and skin', 'mounted skin and skull',
-                  'skull and head skin', 'mounted skin, skull separate', 'tanned (flat) skin and skull') or '(skin and skull)' in organs:
+    organs = organs.lower().replace("[", "").replace("]", "")
+    organs = re.sub(r"sk..?ll", "skull", organs).replace("skufl", "skull").strip()
+    if (
+        organs
+        in (
+            "skin and skull",
+            "skin and cranium",
+            "study skin and skull",
+            "skull and skin",
+            "mounted skin and skull",
+            "skull and head skin",
+            "mounted skin, skull separate",
+            "tanned (flat) skin and skull",
+        )
+        or "(skin and skull)" in organs
+    ):
         tags = [SKIN, SKULL]
-    elif organs == 'skin and skeleton':
+    elif organs == "skin and skeleton":
         tags = [SKIN, SKULL, SKELETON]
-    elif organs.startswith('skin, skull,'):
+    elif organs.startswith("skin, skull,"):
         tags = [SKIN, SKULL]
-        if 'skeleton' in organs:
+        if "skeleton" in organs:
             tags.append(SKELETON)
-        elif 'in alcohol' in organs:
+        elif "in alcohol" in organs:
             tags.append(IN_ALCOHOL)
-    elif 'in alcohol' in organs or 'alcoholic' in organs or 'in spirits' in organs:
+    elif "in alcohol" in organs or "alcoholic" in organs or "in spirits" in organs:
         tags = [IN_ALCOHOL]
-        if 'skull' in organs:
+        if "skull" in organs:
             tags.append(SKULL)
-    elif organs.startswith(('skull only', 'cranium only')) or organs == 'skull without skin':
+    elif (
+        organs.startswith(("skull only", "cranium only"))
+        or organs == "skull without skin"
+    ):
         tags = [SKULL]
-    elif organs.startswith('skin only') or organs == 'skin without skull':
+    elif organs.startswith("skin only") or organs == "skin without skull":
         tags = [SKIN]
-    elif organs in ('skin', 'mounted skin, skull inside'):
+    elif organs in ("skin", "mounted skin, skull inside"):
         tags = [SKIN]
-    elif organs in ('skull', 'cranium'):
+    elif organs in ("skull", "cranium"):
         tags = [SKULL]
-    elif organs == 'skull and postcranial skeleton':
+    elif organs == "skull and postcranial skeleton":
         tags = [SKULL, SKELETON]
-    elif 'mandible' in organs or 'ramus' in organs:
-        tags = [TypeTag.Organ(constants.Organ.mandible, organs, '')]
+    elif "mandible" in organs or "ramus" in organs:
+        tags = [TypeTag.Organ(constants.Organ.mandible, organs, "")]
     else:
         tags = []
     return tags
@@ -634,11 +722,16 @@ def get_possible_names(names: Iterable[str]) -> Iterable[str]:
     for name in names:
         yield name
         yield NAME_SYNONYMS.get(name, name)
-        if name.endswith(' Island'):
-            fixed = name[:-len(' Island')]
+        if name.endswith(" Island"):
+            fixed = name[: -len(" Island")]
             yield fixed
             yield NAME_SYNONYMS.get(fixed, fixed)
-        without_direction = re.sub(r'^(North|South|West|East|NE|SE|NW|SW|Republic of|Central|Middle)-?(west|east)?(ern)? (central )?', '', name, flags=re.IGNORECASE)
+        without_direction = re.sub(
+            r"^(North|South|West|East|NE|SE|NW|SW|Republic of|Central|Middle)-?(west|east)?(ern)? (central )?",
+            "",
+            name,
+            flags=re.IGNORECASE,
+        )
         if without_direction != name:
             yield without_direction
             yield NAME_SYNONYMS.get(without_direction, without_direction)
@@ -674,7 +767,7 @@ def extract_region(components: Sequence[Sequence[str]]) -> Optional[models.Locat
         else:
             # Child regions for these are just for some outlying islands, so we don't care
             # if we can't extract a child.
-            if region.name not in ('Colombia', 'Ecuador', 'Honduras'):
+            if region.name not in ("Colombia", "Ecuador", "Honduras"):
                 pass  # print(f'could not extract subregion from {components}')
     return region.get_location()
 
@@ -693,20 +786,30 @@ def genus_of_name(name: models.Name) -> Optional[models.Taxon]:
         return None
 
 
-def find_name(original_name: str, authority: str, max_distance: int = 3) -> Optional[models.Name]:
+def find_name(
+    original_name: str, authority: str, max_distance: int = 3
+) -> Optional[models.Name]:
     # Exact match
     try:
-        return models.Name.get(models.Name.original_name == original_name, models.Name.authority == authority)
+        return models.Name.get(
+            models.Name.original_name == original_name,
+            models.Name.authority == authority,
+        )
     except models.Name.DoesNotExist:
         pass
 
-    if original_name.islower() and ' ' not in original_name:
-        candidates = models.Name.filter(models.Name.root_name == original_name, models.Name.authority == authority)
+    if original_name.islower() and " " not in original_name:
+        candidates = models.Name.filter(
+            models.Name.root_name == original_name, models.Name.authority == authority
+        )
         count = candidates.count()
         if count == 1:
             return candidates.get()
         elif count > 1:
-            available_names = candidates.filter(models.Name.nomenclature_status == constants.NomenclatureStatus.available)
+            available_names = candidates.filter(
+                models.Name.nomenclature_status
+                == constants.NomenclatureStatus.available
+            )
             if available_names.count() == 1:
                 return available_names.get()
 
@@ -715,18 +818,24 @@ def find_name(original_name: str, authority: str, max_distance: int = 3) -> Opti
     genus_name = helpers.genus_name_of_name(original_name)
     possible_genus_names = [genus_name]
     # try subgenus
-    match = re.search(r'\(([A-Z][a-z]+)\)', original_name)
+    match = re.search(r"\(([A-Z][a-z]+)\)", original_name)
     if match:
         possible_genus_names.append(match.group(1))
-    all_names = models.Name.filter(models.Name.root_name == root_name, models.Name.authority == authority)
+    all_names = models.Name.filter(
+        models.Name.root_name == root_name, models.Name.authority == authority
+    )
     for genus in possible_genus_names:
         names = [name for name in all_names if genus_name_of_name(name) == genus]
         if len(names) == 1:
             return names[0]
 
     # If the genus name is a synonym, try its valid equivalent.
-    genus_nams = list(models.Name.filter(models.Name.group == constants.Group.genus,
-                                         models.Name.root_name == genus_name))
+    genus_nams = list(
+        models.Name.filter(
+            models.Name.group == constants.Group.genus,
+            models.Name.root_name == genus_name,
+        )
+    )
     if len(genus_nams) == 1:
         txn = genus_nams[0].taxon.parent_of_rank(constants.Rank.genus)
         names = [name for name in all_names if genus_of_name(name) == txn]
@@ -735,15 +844,20 @@ def find_name(original_name: str, authority: str, max_distance: int = 3) -> Opti
     # Fuzzy match on original name
     matches = [
         name
-        for name in models.Name.filter(models.Name.original_name != None, models.Name.authority == authority)
-        if Levenshtein.distance(original_name, name.original_name) < max_distance or
-        REMOVE_PARENS.sub('', original_name) == REMOVE_PARENS.sub('', name.original_name)
+        for name in models.Name.filter(
+            models.Name.original_name != None, models.Name.authority == authority
+        )
+        if Levenshtein.distance(original_name, name.original_name) < max_distance
+        or REMOVE_PARENS.sub("", original_name)
+        == REMOVE_PARENS.sub("", name.original_name)
     ]
     if len(matches) == 1:
         return matches[0]
 
     # Find names without an original name in similar genera.
-    name_genus_pairs, genus_to_orig_genera = build_original_name_map(root_name, authority)
+    name_genus_pairs, genus_to_orig_genera = build_original_name_map(
+        root_name, authority
+    )
     matches = []
     for nam, genus in name_genus_pairs:
         if genus_name in genus_to_orig_genera[genus]:
@@ -754,11 +868,17 @@ def find_name(original_name: str, authority: str, max_distance: int = 3) -> Opti
 
 
 @functools.lru_cache(maxsize=1024)
-def build_original_name_map(root_name: str, authority: str) -> Tuple[List[Tuple[models.Name, models.Taxon]], Dict[models.Taxon, Set[str]]]:
+def build_original_name_map(
+    root_name: str, authority: str
+) -> Tuple[List[Tuple[models.Name, models.Taxon]], Dict[models.Taxon, Set[str]]]:
     nams: List[Tuple[models.Name, models.Taxon]] = []
     genus_to_orig_genera: Dict[models.Taxon, Set[str]] = {}
-    for nam in models.Name.filter(models.Name.group == constants.Group.species, models.Name.original_name >> None,
-                                  models.Name.root_name == root_name, models.Name.authority == authority):
+    for nam in models.Name.filter(
+        models.Name.group == constants.Group.species,
+        models.Name.original_name >> None,
+        models.Name.root_name == root_name,
+        models.Name.authority == authority,
+    ):
         try:
             genus = nam.taxon.parent_of_rank(constants.Rank.genus)
         except ValueError:
@@ -779,51 +899,51 @@ def get_original_genera_of_genus(genus: models.Taxon) -> Set[str]:
 
 
 def unspace_initials(authority: str) -> str:
-    return re.sub(r'([A-Z]\.) (?=[A-Z]\.)', r'\1', authority).strip()
+    return re.sub(r"([A-Z]\.) (?=[A-Z]\.)", r"\1", authority).strip()
 
 
 def name_variants(original_name: str, authority: str) -> Iterable[Tuple[str, str]]:
-    authority = authority.replace(' and ', ' & ')
+    authority = authority.replace(" and ", " & ")
     yield original_name, authority
     original_authority = authority
-    if 'œ' in original_name:
-        original_name = original_name.replace('œ', 'oe')
+    if "œ" in original_name:
+        original_name = original_name.replace("œ", "oe")
         yield original_name, authority
-    if 'æ' in original_name:
-        original_name = original_name.replace('æ', 'ae')
+    if "æ" in original_name:
+        original_name = original_name.replace("æ", "ae")
         yield original_name, authority
     unspaced = unspace_initials(authority)
     if original_authority != unspaced:
         yield original_name, unspaced
-    if authority.endswith('f'):
+    if authority.endswith("f"):
         yield original_name, authority[:-1]
-    authority = re.sub(r'([A-ZÉ]\.)+ ', '', authority).strip()
+    authority = re.sub(r"([A-ZÉ]\.)+ ", "", authority).strip()
     if authority != original_authority:
         yield original_name, authority
-    if ' in ' in authority:
-        authority = re.sub(r',? in .*$', '', authority)
+    if " in " in authority:
+        authority = re.sub(r",? in .*$", "", authority)
         yield original_name, authority
-        yield original_name, re.sub(r'^.* in ', '', original_authority)
-    if authority == 'Hill':
-        yield original_name, 'J. Eric Hill'
-    if 'ue' in original_name:
-        yield original_name.replace('ue', 'ü'), authority
-    if authority == 'Schwartz':
-        yield original_name, 'Schwarz'
-    if authority == 'Linné':
-        yield original_name, 'Linnaeus'
-    if authority == 'Mjoberg':
-        yield original_name, 'Mjöberg'
-    if authority == 'Forster':
-        yield original_name, 'Förster'
-    if authority == 'Forster & Rothschild':
-        yield original_name, 'Förster & Rothschild'
-    if authority == 'Rummler':
-        yield original_name, 'Rümmler'
-    if authority in ('Müller & Schlegel', 'Schlegel & Müller'):
+        yield original_name, re.sub(r"^.* in ", "", original_authority)
+    if authority == "Hill":
+        yield original_name, "J. Eric Hill"
+    if "ue" in original_name:
+        yield original_name.replace("ue", "ü"), authority
+    if authority == "Schwartz":
+        yield original_name, "Schwarz"
+    if authority == "Linné":
+        yield original_name, "Linnaeus"
+    if authority == "Mjoberg":
+        yield original_name, "Mjöberg"
+    if authority == "Forster":
+        yield original_name, "Förster"
+    if authority == "Forster & Rothschild":
+        yield original_name, "Förster & Rothschild"
+    if authority == "Rummler":
+        yield original_name, "Rümmler"
+    if authority in ("Müller & Schlegel", "Schlegel & Müller"):
         # many names that were previously attributed to M & S were earlier described by M alone
-        yield original_name, 'Müller'
-    parts = re.split(r', | & ', authority)
+        yield original_name, "Müller"
+    parts = re.split(r", | & ", authority)
     initials_map = get_initials_map()
     options = [initials_map.get(name, set()) | {name} for name in parts]
     for authors_list in itertools.product(*options):
@@ -833,54 +953,72 @@ def name_variants(original_name: str, authority: str) -> Iterable[Tuple[str, str
 @functools.lru_cache()
 def get_initials_map() -> Dict[str, Set[str]]:
     result: Dict[str, Set[str]] = defaultdict(set)
-    for nam in models.Name.filter(models.Name.authority.contains('. ')):
+    for nam in models.Name.filter(models.Name.authority.contains(". ")):
         for author in nam.get_authors():
-            if '. ' in author:
-                uninitialed = re.sub(r'([A-ZÉ]\.)+ ', '', author).strip()
+            if ". " in author:
+                uninitialed = re.sub(r"([A-ZÉ]\.)+ ", "", author).strip()
                 result[uninitialed].add(author)
     return dict(result)
 
 
-def associate_types(names: DataT, name_config: NameConfig = NameConfig(), quiet: bool = False) -> DataT:
+def associate_types(
+    names: DataT, name_config: NameConfig = NameConfig(), quiet: bool = False
+) -> DataT:
     success = tried = 0
     for name in names:
-        if 'type_name' in name and 'type_authority' in name:
+        if "type_name" in name and "type_authority" in name:
             tried += 1
-            typ = identify_name(name['type_name'], name['type_authority'], name_config, quiet=quiet)
+            typ = identify_name(
+                name["type_name"], name["type_authority"], name_config, quiet=quiet
+            )
             if typ:
                 success += 1
-                name['type'] = typ
+                name["type"] = typ
         yield name
-    print(f'types success: {success}/{tried}')
+    print(f"types success: {success}/{tried}")
 
 
-def associate_variants(names: DataT, name_config: NameConfig = NameConfig(), quiet: bool = False) -> DataT:
+def associate_variants(
+    names: DataT, name_config: NameConfig = NameConfig(), quiet: bool = False
+) -> DataT:
     success = tried = 0
     for name in names:
-        if 'variant_name' in name and 'variant_authority' in name:
+        if "variant_name" in name and "variant_authority" in name:
             tried += 1
-            typ = identify_name(name['variant_name'], name['variant_authority'], name_config, quiet=quiet)
+            typ = identify_name(
+                name["variant_name"],
+                name["variant_authority"],
+                name_config,
+                quiet=quiet,
+            )
             if typ:
                 success += 1
-                name['variant_target'] = typ
+                name["variant_target"] = typ
         yield name
-    print(f'variants success: {success}/{tried}')
+    print(f"variants success: {success}/{tried}")
 
 
 def fix_author(author: str, name_config: NameConfig) -> str:
-    author = author.replace(' and ', ' & ').replace(', & ', ' & ')
-    authors = re.split(r', | & ', author)
+    author = author.replace(" and ", " & ").replace(", & ", " & ")
+    authors = re.split(r", | & ", author)
     authors = [name_config.authority_fixes.get(author, author) for author in authors]
     authors = [shell.AUTHOR_SYNONYMS.get(author, author) for author in authors]
     if len(authors) > 1:
-        return ' & '.join([', '.join(authors[:-1]), authors[-1]])
+        return " & ".join([", ".join(authors[:-1]), authors[-1]])
     else:
         return authors[0]
 
 
-def identify_name(orig_name: str, author: str, name_config: NameConfig = NameConfig(), *,
-                  quiet: bool = False, max_distance: int = 3, use_taxon_match: bool = False) -> Optional[models.Name]:
-    author = author.replace(' and ', ' & ').replace(', & ', ' & ')
+def identify_name(
+    orig_name: str,
+    author: str,
+    name_config: NameConfig = NameConfig(),
+    *,
+    quiet: bool = False,
+    max_distance: int = 3,
+    use_taxon_match: bool = False,
+) -> Optional[models.Name]:
+    author = author.replace(" and ", " & ").replace(", & ", " & ")
     if (orig_name, author) in name_config.ignored_names:
         return None
     if use_taxon_match:
@@ -900,48 +1038,57 @@ def identify_name(orig_name: str, author: str, name_config: NameConfig = NameCon
         return name_obj
     else:
         if not quiet and (orig_name, author) not in name_config.ignored_names:
-            print(f'could not find name {orig_name} -- {author} (tried variants {list(name_variants(orig_name, author))})')
+            print(
+                f"could not find name {orig_name} -- {author} (tried variants {list(name_variants(orig_name, author))})"
+            )
         return None
 
 
 def manually_associate_name(name: Dict[str, Any]) -> Optional[models.Name]:
-    print(name['raw_text'])
+    print(name["raw_text"])
 
-    getter = models.Taxon.getter('valid_name')
+    getter = models.Taxon.getter("valid_name")
     while True:
-        valid_name = getter.get_one_key('valid_name> ')
+        valid_name = getter.get_one_key("valid_name> ")
         if not valid_name:
             break
         try:
             txn = models.Taxon.get(models.Taxon.valid_name == valid_name)
         except models.Taxon.DoesNotExist:
-            print(f'invalid name {valid_name!r}')
+            print(f"invalid name {valid_name!r}")
             continue
         else:
             txn.display()
-            if getinput.yes_no('Is this correct?'):
+            if getinput.yes_no("Is this correct?"):
                 return txn.base_name
 
-    getter = models.Name.getter('original_name')
+    getter = models.Name.getter("original_name")
     while True:
-        original_name = getter.get_one_key('original_name> ')
+        original_name = getter.get_one_key("original_name> ")
         if not original_name:
             break
         try:
             name_obj = models.Name.get(models.Name.original_name == original_name)
         except models.Name.DoesNotExist:
-            print(f'invalid name {original_name!r}')
+            print(f"invalid name {original_name!r}")
             continue
         else:
             name_obj.display()
-            if getinput.yes_no('Is this correct?'):
+            if getinput.yes_no("Is this correct?"):
                 return name_obj
     return None
 
 
-def associate_names(names: DataT, name_config: NameConfig = NameConfig(), start_at: Optional[str] = None,
-                    name_field: str = 'original_name', quiet: bool = False, try_manual: bool = False,
-                    max_distance: int = 3, use_taxon_match: bool = False) -> DataT:
+def associate_names(
+    names: DataT,
+    name_config: NameConfig = NameConfig(),
+    start_at: Optional[str] = None,
+    name_field: str = "original_name",
+    quiet: bool = False,
+    try_manual: bool = False,
+    max_distance: int = 3,
+    use_taxon_match: bool = False,
+) -> DataT:
     total = 0
     found = 0
     ignored = 0
@@ -953,85 +1100,120 @@ def associate_names(names: DataT, name_config: NameConfig = NameConfig(), start_
             else:
                 continue
         total += 1
-        if name_field in name and 'authority' in name:
-            name['authority'] = fix_author(name['authority'], name_config)
-            name_quiet = 'variant_target' in name or 'name_quiet' in name
-            name_obj = identify_name(name[name_field], name['authority'], name_config,
-                                     quiet=quiet or name_quiet, max_distance=max_distance,
-                                     use_taxon_match=use_taxon_match)
+        if name_field in name and "authority" in name:
+            name["authority"] = fix_author(name["authority"], name_config)
+            name_quiet = "variant_target" in name or "name_quiet" in name
+            name_obj = identify_name(
+                name[name_field],
+                name["authority"],
+                name_config,
+                quiet=quiet or name_quiet,
+                max_distance=max_distance,
+                use_taxon_match=use_taxon_match,
+            )
             if name_obj:
                 found += 1
-                name['name_obj'] = name_obj
+                name["name_obj"] = name_obj
             elif name_quiet:
                 ignored += 1
-            elif (name[name_field], name['authority']) not in name_config.ignored_names:
+            elif (name[name_field], name["authority"]) not in name_config.ignored_names:
                 if try_manual:
                     name_obj = manually_associate_name(name)
                     if name_obj is not None:
-                        name['name_obj'] = name_obj
+                        name["name_obj"] = name_obj
                     else:
-                        del shell.ns['nam']
-                        print('== Starting a shell; set the name in the variable "nam" ==')
+                        del shell.ns["nam"]
+                        print(
+                            '== Starting a shell; set the name in the variable "nam" =='
+                        )
                         shell.run_shell()
-                        if 'nam' in shell.ns:
+                        if "nam" in shell.ns:
                             print(f'Using name {shell.ns["nam"]}')
-                            name['name_obj'] = shell.ns['nam']
-                if not quiet and 'name_obj' not in name:
-                    print(name['raw_text'])
+                            name["name_obj"] = shell.ns["nam"]
+                if not quiet and "name_obj" not in name:
+                    print(name["raw_text"])
                 # for key, value in name.items():
                 #     print(f'{key}: {value!r}')
         yield name
-    print(f'found: {found + ignored}/{total} (ignored: {ignored})')
+    print(f"found: {found + ignored}/{total} (ignored: {ignored})")
 
 
 def maybe_add_iss(name: Dict[str, Any]) -> Optional[models.Name]:
-    if 'variant_target' not in name:
+    if "variant_target" not in name:
         return None
-    root_name = helpers.root_name_of_name(name['original_name'], constants.Rank.species)
-    year = re.sub(r'[a-z]', '', name['year'])
-    nam = name['variant_target'].add_variant(root_name, name['variant_kind'], interactive=False)
-    nam.authority = name['authority']
+    root_name = helpers.root_name_of_name(name["original_name"], constants.Rank.species)
+    year = re.sub(r"[a-z]", "", name["year"])
+    nam = name["variant_target"].add_variant(
+        root_name, name["variant_kind"], interactive=False
+    )
+    nam.authority = name["authority"]
     nam.year = year
-    print('added incorrect subsequent spelling')
+    print("added incorrect subsequent spelling")
     nam.display()
     return nam
 
 
-def write_to_db(names: DataT, source: Source, dry_run: bool = True, edit_if_no_holotype: bool = True,
-                always_edit: bool = False) -> DataT:
+def write_to_db(
+    names: DataT,
+    source: Source,
+    dry_run: bool = True,
+    edit_if_no_holotype: bool = True,
+    always_edit: bool = False,
+) -> DataT:
     num_changed: Counter[str] = Counter()
     for i, name in enumerate(names):
-        if 'name_obj' not in name:
+        if "name_obj" not in name:
             if dry_run:
                 continue
             else:
                 new_name = maybe_add_iss(name)
                 if new_name:
-                    name['name_obj'] = new_name
+                    name["name_obj"] = new_name
                 else:
                     continue
-        nam = name['name_obj']
-        if 'pages' not in name:
-            pages = ''
-        elif len(name['pages']) == 1:
-            pages = str(name['pages'][0])
+        nam = name["name_obj"]
+        if "pages" not in name:
+            pages = ""
+        elif len(name["pages"]) == 1:
+            pages = str(name["pages"][0])
         else:
             pages = f'{name["pages"][0]}-{name["pages"][-1]}'
 
-        print(f'--- processing {nam} (i={i}; p. {pages}) ---')
+        print(f"--- processing {nam} (i={i}; p. {pages}) ---")
         yield name
 
-        if 'variant_target' in name:
-            if nam.nomenclature_status != name['variant_kind'] and not dry_run:
-                comment = f'See {{{source.source}}} p. {pages}'
+        if "variant_target" in name:
+            if nam.nomenclature_status != name["variant_kind"] and not dry_run:
+                comment = f"See {{{source.source}}} p. {pages}"
                 if nam.nomenclature_status == constants.NomenclatureStatus.available:
-                    nam.make_variant(name['variant_kind'], name['variant_target'], comment)
+                    nam.make_variant(
+                        name["variant_kind"], name["variant_target"], comment
+                    )
                 else:
-                    nam.add_tag(models.STATUS_TO_TAG[name['variant_kind']](name=name['variant_target'], comment=comment))
+                    nam.add_tag(
+                        models.STATUS_TO_TAG[name["variant_kind"]](
+                            name=name["variant_target"], comment=comment
+                        )
+                    )
 
-        for attr in ('type_tags', 'type_locality', 'collection', 'type_specimen', 'species_type_kind', 'verbatim_citation',
-                     'original_name', 'type_specimen_source', 'type', 'nomenclature_status', 'genus_type_kind', 'page_described',
-                     'verbatim_type', 'authority', 'year', 'taxon'):
+        for attr in (
+            "type_tags",
+            "type_locality",
+            "collection",
+            "type_specimen",
+            "species_type_kind",
+            "verbatim_citation",
+            "original_name",
+            "type_specimen_source",
+            "type",
+            "nomenclature_status",
+            "genus_type_kind",
+            "page_described",
+            "verbatim_type",
+            "authority",
+            "year",
+            "taxon",
+        ):
             if attr not in name or name[attr] is None:
                 continue
             current_value = getattr(nam, attr)
@@ -1039,88 +1221,121 @@ def write_to_db(names: DataT, source: Source, dry_run: bool = True, edit_if_no_h
             if current_value == new_value:
                 continue
             elif current_value is not None:
-                if attr == 'type_locality':
+                if attr == "type_locality":
                     # if the new TL is a parent of the current, ignore it
                     if new_value.region in current_value.region.all_parents():
                         continue
-                if attr == 'type_tags':
+                if attr == "type_tags":
                     new_tags = set(new_value) - set(current_value)
                     existing_types = tuple({type(tag) for tag in current_value})
                     tags_of_new_types = {
-                        tag for tag in new_tags
+                        tag
+                        for tag in new_tags
                         # Always add LocationDetail tags, because it has a source field and it's OK to have multiple tags
-                        if (not isinstance(tag, existing_types)) or isinstance(tag, (TypeTag.LocationDetail, TypeTag.SpecimenDetail))
+                        if (not isinstance(tag, existing_types))
+                        or isinstance(
+                            tag, (TypeTag.LocationDetail, TypeTag.SpecimenDetail)
+                        )
                     }
                     if not tags_of_new_types:
                         continue
-                    print(f'adding tags: {tags_of_new_types}')
+                    print(f"adding tags: {tags_of_new_types}")
                     if not dry_run:
                         nam.type_tags = sorted(nam.type_tags + tuple(tags_of_new_types))
                     new_tags -= tags_of_new_types
                     if new_tags:
-                        print(f'new tags: {new_tags}')
+                        print(f"new tags: {new_tags}")
                         if not dry_run:
-                            nam.fill_field('type_tags')
+                            nam.fill_field("type_tags")
                     continue
-                elif attr == 'authority':
+                elif attr == "authority":
                     # If the names just differ in the addition of initials, ignore the difference. But don't do this if both
                     # have different initials; then we should review manually.
-                    new_no_initials = re.sub(r'^([A-Z]\.)+ ', '', new_value)
+                    new_no_initials = re.sub(r"^([A-Z]\.)+ ", "", new_value)
                     if new_no_initials == current_value:
                         continue
-                    current_no_initials = re.sub(r'^([A-Z]\.)+ ', '', current_value)
+                    current_no_initials = re.sub(r"^([A-Z]\.)+ ", "", current_value)
                     if current_no_initials == new_value:
                         continue
 
                     # don't ask (this is for northamerica.py)
-                    if new_value == current_value + 'f':
+                    if new_value == current_value + "f":
                         continue
 
-                if attr == 'taxon':
-                    if new_value.is_child_of(current_value) or current_value.is_child_of(new_value):
+                if attr == "taxon":
+                    if new_value.is_child_of(
+                        current_value
+                    ) or current_value.is_child_of(new_value):
                         continue
 
-                if attr in ('verbatim_citation', 'verbatim_type'):
+                if attr in ("verbatim_citation", "verbatim_type"):
                     if new_value in current_value:
                         continue
-                    new_value = f'{current_value} [From {{{source.source}}}: {new_value}]'
+                    new_value = (
+                        f"{current_value} [From {{{source.source}}}: {new_value}]"
+                    )
                 else:
-                    print('---')
-                    print(f'value for {attr} differs: (new) {new_value} vs. (current) {current_value}')
+                    print("---")
+                    print(
+                        f"value for {attr} differs: (new) {new_value} vs. (current) {current_value}"
+                    )
 
-                if attr == 'original_name':
+                if attr == "original_name":
                     if new_value == nam.corrected_original_name:
                         continue
-                    new_root_name = helpers.root_name_of_name(new_value, constants.Rank.species)
-                    if helpers.root_name_of_name(nam.original_name, constants.Rank.species).lower() != new_root_name.lower():
-                        if not dry_run and not getinput.yes_no(f'Is the source\'s spelling {new_value} correct?'):
+                    new_root_name = helpers.root_name_of_name(
+                        new_value, constants.Rank.species
+                    )
+                    if (
+                        helpers.root_name_of_name(
+                            nam.original_name, constants.Rank.species
+                        ).lower()
+                        != new_root_name.lower()
+                    ):
+                        if not dry_run and not getinput.yes_no(
+                            f"Is the source's spelling {new_value} correct?"
+                        ):
                             continue
                         try:
-                            existing = models.Name.filter(models.Name.original_name == new_value).get()
+                            existing = models.Name.filter(
+                                models.Name.original_name == new_value
+                            ).get()
                         except models.Name.DoesNotExist:
-                            print(f'creating ISS with orig name={new_value}')
+                            print(f"creating ISS with orig name={new_value}")
                             if not dry_run:
                                 nam.open_description()
-                                if getinput.yes_no(f'Is the original spelling {nam.original_name} correct? '):
-                                    if 'pages' in name:
-                                        page_described = name['pages'][0]
+                                if getinput.yes_no(
+                                    f"Is the original spelling {nam.original_name} correct? "
+                                ):
+                                    if "pages" in name:
+                                        page_described = name["pages"][0]
                                     else:
                                         page_described = None
-                                    nam.add_variant(new_root_name, constants.NomenclatureStatus.incorrect_subsequent_spelling,
-                                                    paper=source.source, page_described=page_described, original_name=new_value)
+                                    nam.add_variant(
+                                        new_root_name,
+                                        constants.NomenclatureStatus.incorrect_subsequent_spelling,
+                                        paper=source.source,
+                                        page_described=page_described,
+                                        original_name=new_value,
+                                    )
                                     continue
                         else:
                             if existing.original_citation == source.source:
                                 continue
 
-                if attr == 'type_specimen_source':
+                if attr == "type_specimen_source":
                     nam.display()
                     if not dry_run:
-                        should_replace = getinput.yes_no('Replace type_specimen_source? ')
+                        should_replace = getinput.yes_no(
+                            "Replace type_specimen_source? "
+                        )
                         if not should_replace:
                             continue
                     continue
-                elif attr not in ('verbatim_citation', 'verbatim_type') and not (attr == 'nomenclature_status' and current_value == constants.NomenclatureStatus.available):
+                elif attr not in ("verbatim_citation", "verbatim_type") and not (
+                    attr == "nomenclature_status"
+                    and current_value == constants.NomenclatureStatus.available
+                ):
                     if not dry_run:
                         nam.display()
                         nam.open_description()
@@ -1132,8 +1347,12 @@ def write_to_db(names: DataT, source: Source, dry_run: bool = True, edit_if_no_h
 
         if not dry_run:
             should_edit = False
-            if edit_if_no_holotype and ('species_type_kind' not in name or 'type_specimen' not in name or name['species_type_kind'] != constants.SpeciesGroupType.holotype):
-                print(f'{nam} does not have a holotype: {name}')
+            if edit_if_no_holotype and (
+                "species_type_kind" not in name
+                or "type_specimen" not in name
+                or name["species_type_kind"] != constants.SpeciesGroupType.holotype
+            ):
+                print(f"{nam} does not have a holotype: {name}")
                 should_edit = True
             if always_edit:
                 should_edit = True
@@ -1144,13 +1363,21 @@ def write_to_db(names: DataT, source: Source, dry_run: bool = True, edit_if_no_h
                 if empty_fields:
                     nam.fill_required_fields()
                 else:
-                    nam.fill_field('type_tags')
+                    nam.fill_field("type_tags")
 
-            if nam.comments.filter(models.NameComment.source == source.source).count() == 0:
-                nam.add_comment(constants.CommentKind.structured_quote, json.dumps(name['raw_text']), source.source, pages)
+            if (
+                nam.comments.filter(models.NameComment.source == source.source).count()
+                == 0
+            ):
+                nam.add_comment(
+                    constants.CommentKind.structured_quote,
+                    json.dumps(name["raw_text"]),
+                    source.source,
+                    pages,
+                )
 
     for attr, value in num_changed.most_common():
-        print(f'{attr}: {value}')
+        print(f"{attr}: {value}")
 
 
 def print_counts(names: DataT, field: str) -> None:
@@ -1162,7 +1389,10 @@ def print_counts(names: DataT, field: str) -> None:
 def print_counts_if_no_tag(names: DataT, field: str, tag_cls: TypeTag) -> None:
     counts: Counter[Any] = Counter()
     for name in names:
-        if field in name and ('type_tags' not in name or not any(isinstance(tag, tag_cls) for tag in name['type_tags'])):
+        if field in name and (
+            "type_tags" not in name
+            or not any(isinstance(tag, tag_cls) for tag in name["type_tags"])
+        ):
             counts[name[field]] += 1
     for value, count in counts.most_common():
         print(count, value)
@@ -1173,7 +1403,7 @@ def print_field_counts(names: DataT) -> None:
     for name in names:
         for field, value in name.items():
             counts[field] += 1
-            if field == 'type_tags':
+            if field == "type_tags":
                 tags = sorted({type(tag).__name__ for tag in value})
                 for tag in tags:
                     counts[tag] += 1

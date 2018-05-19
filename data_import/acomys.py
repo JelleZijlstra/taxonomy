@@ -3,22 +3,25 @@ import re
 from . import lib
 from .lib import DataT, PagesT
 
-SOURCE = lib.Source('acomys.txt', 'Acomys-distribution (Bates 1994).pdf')
+SOURCE = lib.Source("acomys.txt", "Acomys-distribution (Bates 1994).pdf")
 
 
 def extract_names(pages: PagesT) -> DataT:
 
     for page, lines in pages:
         for line in lines:
-            if line.strip() == 'REFERENCES':
+            if line.strip() == "REFERENCES":
                 return
             if line.strip():
-                yield {'pages': [page], 'raw_text': line}
+                yield {"pages": [page], "raw_text": line}
 
 
 def split_fields(names: DataT) -> DataT:
     for name in names:
-        match = re.match(r'^(?P<orig_name_author>[^,]+), (?P<year>\d{4}) ?[a-d]?: (?P<page_described>[^;]+); (?P<loc>.*)$', name['raw_text'])
+        match = re.match(
+            r"^(?P<orig_name_author>[^,]+), (?P<year>\d{4}) ?[a-d]?: (?P<page_described>[^;]+); (?P<loc>.*)$",
+            name["raw_text"],
+        )
         if match:
             name.update(match.groupdict())
         else:
@@ -41,6 +44,6 @@ def main() -> DataT:
     return names
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     for p in main():
         print(p)

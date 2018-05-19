@@ -3,7 +3,7 @@ from typing import Any, Dict, List
 from data_import.lib import NameConfig, associate_names
 from taxonomy.db.constants import CommentKind
 
-raw_data = '''Alectops ater Gray    1866    BMNH
+raw_data = """Alectops ater Gray    1866    BMNH
 Anoura wiedii   Peters  1869    MNHN
 Arctibeus leucomus  Gray    1848    BMNH
 Atalapha cineria brasiliensis   Pira    1905
@@ -114,37 +114,45 @@ Vespertilio spixii  Fischer 1829
 Vespertilio splendidus  Wagner  1845    ZSM
 Vespertilio subflavus   F. Cuvier   1832    MNHN
 Vespertilio villosissimus   É. Geoffroy Saint-Hilaire   1806    MNHN
-'''
+"""
 
-if __name__ == '__main__':
-    data = [line.split('\t') for line in raw_data.splitlines()]
+if __name__ == "__main__":
+    data = [line.split("\t") for line in raw_data.splitlines()]
 
     raw_names: List[Dict[str, Any]] = []
     for line in data:
         name: Dict[str, Any] = {
-            'original_name': line[0],
-            'authority': line[1],
-            'year': line[2],
-            'raw_text': ', '.join(line),
+            "original_name": line[0],
+            "authority": line[1],
+            "year": line[2],
+            "raw_text": ", ".join(line),
         }
         if len(line) > 3:
-            name['museum'] = line[3]
+            name["museum"] = line[3]
         raw_names.append(name)
 
-    names = associate_names(raw_names, NameConfig({
-        'Anoura wiedii': 'Anura wiedii',
-        'Choeronycteris peruana': 'Glossophaga (Choeronycteris) peruana',
-        'Nycticejus varius': 'Nysticeius varius',
-    }, {
-        'Poppig': 'Poeppig',
-    }, {
-        ('Myotis nigricans osculatii', 'Cabrera'),
-    }))
+    names = associate_names(
+        raw_names,
+        NameConfig(
+            {
+                "Anoura wiedii": "Anura wiedii",
+                "Choeronycteris peruana": "Glossophaga (Choeronycteris) peruana",
+                "Nycticejus varius": "Nysticeius varius",
+            },
+            {"Poppig": "Poeppig"},
+            {("Myotis nigricans osculatii", "Cabrera")},
+        ),
+    )
 
     for name in names:
-        if not name.get('name_obj'):
+        if not name.get("name_obj"):
             continue
-        comment = 'Type specimen could not be located.'
-        if 'museum' in name:
+        comment = "Type specimen could not be located."
+        if "museum" in name:
             comment += f' It is most likely in the {name["museum"]}.'
-        name['name_obj'].add_comment(CommentKind.type_specimen, comment, 'Chiroptera Neotropis-European types.pdf', 'appendix 6')
+        name["name_obj"].add_comment(
+            CommentKind.type_specimen,
+            comment,
+            "Chiroptera Neotropis-European types.pdf",
+            "appendix 6",
+        )
