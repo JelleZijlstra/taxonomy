@@ -11,7 +11,7 @@ import json
 from typing import TYPE_CHECKING, Any, Iterable, List, Union
 
 if TYPE_CHECKING:
-    from .models import Taxon  # # pylint: disable=unused-import
+    from .models import Taxon  # noqa: F401 # pylint: disable=unused-import
 
 _Taxon = Union[int, 'Taxon']
 

@@ -13,7 +13,7 @@ from . import constants
 from .constants import Group, Rank
 
 if TYPE_CHECKING:
-    from .models import Name, Taxon  # pylint: disable=unused-import
+    from .models import Name, Taxon  # noqa: F401  # pylint: disable=unused-import
 
 SPECIES_RANKS = [Rank.subspecies, Rank.species, Rank.species_group]
 GENUS_RANKS = [Rank.subgenus, Rank.genus]
