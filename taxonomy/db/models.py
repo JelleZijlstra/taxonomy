@@ -2018,6 +2018,9 @@ class Name(BaseModel):
         def original_name_completer(p: str, d: Optional[str]) -> Optional[Name]:
             return Name.getter('original_name').get_one(p, default=d or '')
 
+        def collection_completer(p: str, d: Optional[str]) -> Optional[Name]:
+            return Collection.getter('label').get_one(p, default=d or '')
+
         for field_name, tag_cls in [('type_tags', TypeTag), ('tags', Tag)]:
             if field == field_name:
                 completers: Dict[Tuple[Type[adt.ADT], str], getinput.Completer[Any]] = {}
@@ -2025,6 +2028,8 @@ class Name(BaseModel):
                     for attribute, typ in tag._attributes.items():
                         if typ is Name:
                             completers[(tag, attribute)] = original_name_completer
+                        elif typ is Collection:
+                            completers[(tag, attribute)] = collection_completer
                         elif typ is str and attribute in ('source', 'opinion'):
                             completers[(tag, attribute)] = self._completer_for_source_field
                 return completers
@@ -2700,3 +2705,4 @@ class TypeTag(adt.ADT):
     SpecimenDetail(text=str, source=str, tag=17)  # type: ignore  # more information on the specimen
     LocationDetail(text=str, source=str, tag=18)  # type: ignore  # phrasing of the type locality in a particular source
     IncludedSpecies(name=Name, comment=str, tag=19)  # type: ignore  # an originally included species in a genus without an original type designation
+    Repository(repository=Collection, tag=20)  # type: ignore  # repository that holds some of the type specimens
