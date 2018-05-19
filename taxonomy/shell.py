@@ -1163,7 +1163,7 @@ def fill_data_from_paper(
     paper: Optional[str] = None, always_edit_tags: bool = False
 ) -> None:
     if paper is None:
-        paper = models.BaseModel.get_value_for_article_field("paper")
+        paper = models.BaseModel.get_value_for_article_field_on_class("paper")
     assert paper is not None, "paper needs to be specified"
     models.fill_data_from_paper(paper, always_edit_tags=always_edit_tags)
 

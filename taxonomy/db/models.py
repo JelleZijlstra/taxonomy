@@ -303,8 +303,16 @@ class BaseModel(Model):
         else:
             return getter(value)
 
-    @staticmethod
     def get_value_for_article_field(
+        self, field: str, default: Optional[str] = None
+    ) -> Optional[str]:
+        current_val = getattr(self, field, None)
+        if current_val is not None:
+            default = current_val
+        return self.get_value_for_article_field_on_class(field, default)
+
+    @staticmethod
+    def get_value_for_article_field_on_class(
         field: str, default: Optional[str] = None
     ) -> Optional[str]:
         names = ehphp.call_ehphp("get_all", {})
@@ -3459,7 +3467,7 @@ class NameComment(BaseModel):
             text = getinput.get_line(prompt="text> ")
         assert text is not None
         if source is None:
-            source = cls.get_value_for_article_field("source")
+            source = cls.get_value_for_article_field_on_class("source")
             if page is None:
                 page = getinput.get_line(prompt="page> ")
         return cls.make(name=name, kind=kind, text=text, source=source, page=page)
