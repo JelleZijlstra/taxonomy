@@ -101,6 +101,16 @@ def _descriptor_set(self: peewee.FieldDescriptor, instance: Model, value: Any) -
 peewee.FieldDescriptor.__set__ = _descriptor_set
 
 
+def get_completer(
+    cls: Type[ModelT], field: str
+) -> Callable[[str, Optional[str]], Optional[ModelT]]:
+
+    def completer(p: str, d: Optional[str]) -> Any:
+        return cls.getter(field).get_one(p, default=d or "")
+
+    return completer
+
+
 class BaseModel(Model):
     label_field: str
     creation_event: events.Event[Any]
@@ -249,7 +259,7 @@ class BaseModel(Model):
                 field_obj.get_adt(),
                 existing=current_value,
                 completers=self.get_completers_for_adt_field(field),
-                callbacks={"edit": self.fill_field},
+                callbacks={"edit": self.fill_field, "e": self.fill_field},
             )
         elif isinstance(field_obj, CharField):
             default = "" if current_value is None else current_value
@@ -2678,13 +2688,6 @@ class Name(BaseModel):
             return super().get_value_for_field(field)
 
     def get_completers_for_adt_field(self, field: str) -> getinput.CompleterMap:
-
-        def original_name_completer(p: str, d: Optional[str]) -> Optional[Name]:
-            return Name.getter("original_name").get_one(p, default=d or "")
-
-        def collection_completer(p: str, d: Optional[str]) -> Optional[Name]:
-            return Collection.getter("label").get_one(p, default=d or "")
-
         for field_name, tag_cls in [("type_tags", TypeTag), ("tags", Tag)]:
             if field == field_name:
                 completers: Dict[
@@ -2692,14 +2695,19 @@ class Name(BaseModel):
                 ] = {}
                 for tag in tag_cls._tag_to_member.values():  # type: ignore
                     for attribute, typ in tag._attributes.items():
+                        completer: Optional[getinput.Completer[Any]]
                         if typ is Name:
-                            completers[(tag, attribute)] = original_name_completer
+                            completer = get_completer(Name, "original_name")
                         elif typ is Collection:
-                            completers[(tag, attribute)] = collection_completer
+                            completer = get_completer(Collection, "label")
                         elif typ is str and attribute in ("source", "opinion"):
-                            completers[
-                                (tag, attribute)
-                            ] = self._completer_for_source_field
+                            completer = self._completer_for_source_field
+                        elif typ is str and attribute in ("lectotype", "neotype"):
+                            completer = get_completer(Name, "type_specimen")
+                        else:
+                            completer = None
+                        if completer is not None:
+                            completers[(tag, attribute)] = completer
                 return completers
         return {}
 

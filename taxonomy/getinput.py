@@ -244,7 +244,7 @@ def get_adt_list(
             else:
                 print(f"unrecognized command: {command}")
         else:
-            print(f"unrecognized command: {command}")
+            print(f"unrecognized command: {member}")
 
 
 def _get_adt_member(
