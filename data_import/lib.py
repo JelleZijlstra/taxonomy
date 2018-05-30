@@ -8,6 +8,7 @@ import unicodedata
 from pathlib import Path
 from typing import (
     Any,
+    Callable,
     Container,
     Counter,
     Dict,
@@ -319,7 +320,10 @@ def validate_pages(pages: PagesT, verbose: bool = True, check: bool = True) -> P
 
 
 def align_columns(
-    pages: PagesT, single_column_pages: Container[int] = frozenset()
+    pages: PagesT,
+    single_column_pages: Container[int] = frozenset(),
+    use_first: bool = False,
+    min_column: int = 0,
 ) -> PagesT:
     """Rearrange the text to separate the two columns on each page."""
     for page, lines in pages:
@@ -327,20 +331,24 @@ def align_columns(
             continue
         # find a position that is blank in every line
         max_len = max(len(line) for line in lines)
-        best_blank = -1
-        for i in range(max_len):
+        possible_splits = []
+        for i in range(min_column, max_len):
             if not all(len(line) <= i or line[i] == " " for line in lines):
                 continue
             num_lines = len([line for line in lines if len(line) > i])
             if num_lines < 5:
                 continue
-            best_blank = i
-        if best_blank == -1:
+            possible_splits.append(i)
+        if not possible_splits:
             if page in single_column_pages:
                 yield page, [line.rstrip() for line in lines]
             else:
                 assert False, f"failed to find split for {page}"
         else:
+            if use_first:
+                best_blank = min(possible_splits)
+            else:
+                best_blank = max(possible_splits)
             first_column = [line[:best_blank].rstrip() for line in lines]
             second_column = [line[best_blank + 1 :].rstrip() for line in lines]
             num_lines = len(second_column)
@@ -410,7 +418,8 @@ def split_name_authority(
         r"^\[[A-Z][a-z]+ \(\]([A-Z][a-z]+)\[\)\]", r"\1", name_authority
     )
     name_authority = re.sub(r"\b([a-z])\[([a-z]+)\](?= )", r"\1\2", name_authority)
-    name_authority = name_authority.replace("(sic)", "")
+    name_authority = re.sub(r"^\[([A-Za-z ]+)\]", r"\1", name_authority)
+    name_authority = name_authority.replace("(sic)", "").replace("[sic]", "")
     name_authority = re.sub(r"\s+", " ", name_authority)
     regexes = [
         # Lets us manually put | in to separate original name and authority in hard cases
@@ -787,14 +796,19 @@ def genus_of_name(name: models.Name) -> Optional[models.Taxon]:
 
 
 def find_name(
-    original_name: str, authority: str, max_distance: int = 3
+    original_name: str,
+    authority: str,
+    max_distance: int = 3,
+    year: Optional[str] = None,
 ) -> Optional[models.Name]:
     # Exact match
+    query = models.Name.filter(
+        models.Name.original_name == original_name, models.Name.authority == authority
+    )
+    if year:
+        query = query.filter(models.Name.year == year)
     try:
-        return models.Name.get(
-            models.Name.original_name == original_name,
-            models.Name.authority == authority,
-        )
+        return query.get()
     except models.Name.DoesNotExist:
         pass
 
@@ -802,6 +816,8 @@ def find_name(
         candidates = models.Name.filter(
             models.Name.root_name == original_name, models.Name.authority == authority
         )
+        if year:
+            candidates = candidates.filter(models.Name.year == year)
         count = candidates.count()
         if count == 1:
             return candidates.get()
@@ -824,6 +840,8 @@ def find_name(
     all_names = models.Name.filter(
         models.Name.root_name == root_name, models.Name.authority == authority
     )
+    if year:
+        all_names = all_names.filter(models.Name.year == year)
     for genus in possible_genus_names:
         names = [name for name in all_names if genus_name_of_name(name) == genus]
         if len(names) == 1:
@@ -842,11 +860,14 @@ def find_name(
         if len(names) == 1:
             return names[0]
     # Fuzzy match on original name
+    candidates = models.Name.filter(
+        models.Name.original_name != None, models.Name.authority == authority
+    )
+    if year:
+        candidates = candidates.filter(models.Name.year == year)
     matches = [
         name
-        for name in models.Name.filter(
-            models.Name.original_name != None, models.Name.authority == authority
-        )
+        for name in candidates
         if Levenshtein.distance(original_name, name.original_name) < max_distance
         or REMOVE_PARENS.sub("", original_name)
         == REMOVE_PARENS.sub("", name.original_name)
@@ -856,7 +877,7 @@ def find_name(
 
     # Find names without an original name in similar genera.
     name_genus_pairs, genus_to_orig_genera = build_original_name_map(
-        root_name, authority
+        root_name, authority, year=year
     )
     matches = []
     for nam, genus in name_genus_pairs:
@@ -869,16 +890,19 @@ def find_name(
 
 @functools.lru_cache(maxsize=1024)
 def build_original_name_map(
-    root_name: str, authority: str
+    root_name: str, authority: str, year: Optional[str] = None
 ) -> Tuple[List[Tuple[models.Name, models.Taxon]], Dict[models.Taxon, Set[str]]]:
     nams: List[Tuple[models.Name, models.Taxon]] = []
     genus_to_orig_genera: Dict[models.Taxon, Set[str]] = {}
-    for nam in models.Name.filter(
+    query = models.Name.filter(
         models.Name.group == constants.Group.species,
         models.Name.original_name >> None,
         models.Name.root_name == root_name,
         models.Name.authority == authority,
-    ):
+    )
+    if year:
+        query = query.filter(models.Name.year == year)
+    for nam in query:
         try:
             genus = nam.taxon.parent_of_rank(constants.Rank.genus)
         except ValueError:
@@ -1017,6 +1041,7 @@ def identify_name(
     quiet: bool = False,
     max_distance: int = 3,
     use_taxon_match: bool = False,
+    year: Optional[str] = None,
 ) -> Optional[models.Name]:
     author = author.replace(" and ", " & ").replace(", & ", " & ")
     if (orig_name, author) in name_config.ignored_names:
@@ -1031,7 +1056,9 @@ def identify_name(
     orig_name = name_config.original_name_fixes.get(orig_name, orig_name)
 
     for original_name, authority in name_variants(orig_name, author.strip()):
-        name_obj = find_name(original_name, authority, max_distance=max_distance)
+        name_obj = find_name(
+            original_name, authority, max_distance=max_distance, year=year
+        )
         if name_obj is not None:
             break
     if name_obj:
@@ -1088,6 +1115,7 @@ def associate_names(
     try_manual: bool = False,
     max_distance: int = 3,
     use_taxon_match: bool = False,
+    match_year: bool = False,
 ) -> DataT:
     total = 0
     found = 0
@@ -1110,6 +1138,7 @@ def associate_names(
                 quiet=quiet or name_quiet,
                 max_distance=max_distance,
                 use_taxon_match=use_taxon_match,
+                year=name["year"] if match_year else None,
             )
             if name_obj:
                 found += 1
@@ -1158,6 +1187,7 @@ def write_to_db(
     source: Source,
     dry_run: bool = True,
     edit_if_no_holotype: bool = True,
+    edit_if: Callable[[Dict[str, Any]], bool] = lambda _: False,
     always_edit: bool = False,
 ) -> DataT:
     num_changed: Counter[str] = Counter()
@@ -1355,6 +1385,8 @@ def write_to_db(
                 print(f"{nam} does not have a holotype: {name}")
                 should_edit = True
             if always_edit:
+                should_edit = True
+            if edit_if(name):
                 should_edit = True
 
             if should_edit:
