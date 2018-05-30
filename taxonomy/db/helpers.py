@@ -172,7 +172,6 @@ def root_name_of_name(s: str, rank: Rank) -> str:
 
 
 def strip_rank(name: str, rank: Rank, quiet: bool = False) -> str:
-
     def strip_of_suffix(name: str, suffix: str) -> Optional[str]:
         if re.search(suffix + "$", name):
             return re.sub(suffix + "$", "", name)
@@ -484,7 +483,6 @@ def unsplit_authors(authors: Sequence[str]) -> str:
 
 
 class TimeHolder:
-
     def __init__(self, label: str) -> None:
         self.label = label
         self.time: float = 0.0

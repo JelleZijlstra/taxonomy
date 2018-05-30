@@ -27,7 +27,6 @@ class DefinitionType(enum.Enum):
 
 
 class Definition:
-
     def __init__(
         self, typ: DefinitionType, arguments: Iterable[Union[str, _Taxon]]
     ) -> None:

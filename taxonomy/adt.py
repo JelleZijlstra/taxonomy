@@ -19,7 +19,6 @@ BASIC_TYPES = (int, str, float, bool, list)
 
 
 class _ADTMember:
-
     def __init__(self, name: str) -> None:
         self.name = name
         self.called = False
@@ -34,7 +33,6 @@ class _ADTMember:
 
 
 class _ADTNamespace(MutableMapping[str, Any]):
-
     def __init__(self, globals_dict: Dict[str, Any]) -> None:
         self._globals = globals_dict
         self._mapping: Dict[str, _ADTMember] = {}
@@ -104,7 +102,6 @@ def _adt_member_hash(self: Any) -> int:
 
 
 class _ADTMeta(type):
-
     @classmethod
     def __prepare__(mcs, name: str, bases: Any) -> _ADTNamespace:
         return _ADTNamespace(sys._getframe(1).f_globals)
@@ -178,7 +175,6 @@ class _ADTMeta(type):
                 member_cls = cls_obj()
 
                 def make_init(member_cls: object) -> Callable[[object], None]:
-
                     def __init__(self: object) -> None:
                         raise TypeError(f"cannot instantiate {member_cls}")
 

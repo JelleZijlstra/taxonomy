@@ -18,7 +18,6 @@ import collections
 import functools
 import os.path
 import re
-import sys
 from typing import (
     Any,
     Callable,
@@ -47,7 +46,7 @@ from traitlets.config.loader import Config
 from . import getinput
 from .db import constants, definition, detection, ehphp, helpers, models
 from .db.constants import Age, Group, NomenclatureStatus, Rank
-from .db.models import Name, Tag, Taxon, TypeTag, database
+from .db.models import Collection, Name, Tag, Taxon, TypeTag, database
 
 T = TypeVar("T")
 
@@ -104,7 +103,7 @@ ns = _ShellNamespace(
         "O": Name.getter("original_name"),
         "NC": models.NameComplex.getter("label"),
         "SC": models.SpeciesNameComplex.getter("label"),
-        "C": models.Collection.getter("label"),
+        "C": Collection.getter("label"),
         "reconnect": _reconnect,
         "Tag": models.Tag,
         "TypeTag": models.TypeTag,

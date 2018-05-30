@@ -11,7 +11,6 @@ from . import constants, models
 
 
 class _SuffixTree(object):
-
     def __init__(self, names: Iterable[str] = ()) -> None:
         self.dictionary: Dict[str, _SuffixTree] = collections.defaultdict(_SuffixTree)
         self.count = 0

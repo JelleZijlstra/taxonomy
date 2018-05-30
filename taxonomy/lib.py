@@ -118,7 +118,6 @@ def multi_taxon(
 
 
 def unrecorded_taxa(root: Taxon) -> None:
-
     def has_occurrence(taxon: Taxon) -> bool:
         return taxon.occurrences.count() > 0
 
