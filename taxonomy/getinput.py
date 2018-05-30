@@ -2,6 +2,7 @@ import enum
 import functools
 import re
 import subprocess
+import sys
 from typing import (
     Any,
     Callable,
@@ -64,6 +65,7 @@ def get_line(
     history = _get_history(history_key)
     while True:
         try:
+            _flush()
             line = prompt_toolkit.prompt(
                 message=prompt,
                 default=default,
@@ -97,7 +99,6 @@ def yes_no(prompt: str, default: Optional[bool] = None) -> bool:
 
 
 class _Completer(prompt_toolkit.completion.Completer):
-
     def __init__(self, strings: Iterable[str]) -> None:
         self.strings = sorted(strings)
 
@@ -129,6 +130,7 @@ def get_with_completion(
         validator = _FixedValidator([*options, ""] if allow_empty else options)
     else:
         validator = None
+    _flush()
     return prompt_toolkit.prompt(
         completer=_Completer(options),
         message=message,
@@ -318,3 +320,10 @@ def encode_name(name: str) -> str:
 
 def decode_name(name: str) -> str:
     return _decode_re.sub(lambda m: chr(int(m.group(1))), name.replace("_", " "))
+
+
+def _flush() -> None:
+    # Flush standard streams before we call into prompt_toolkit, because otherwise
+    # output sometimes does not show up.
+    sys.stdout.flush()
+    sys.stderr.flush()

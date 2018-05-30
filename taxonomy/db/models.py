@@ -104,9 +104,17 @@ peewee.FieldDescriptor.__set__ = _descriptor_set
 def get_completer(
     cls: Type[ModelT], field: str
 ) -> Callable[[str, Optional[str]], Optional[ModelT]]:
+    def completer(prompt: str, default: Optional[str]) -> Any:
+        return cls.getter(field).get_one(prompt, default=default or "")
 
-    def completer(p: str, d: Optional[str]) -> Any:
-        return cls.getter(field).get_one(p, default=d or "")
+    return completer
+
+
+def get_str_completer(
+    cls: Type[Model], field: str
+) -> Callable[[str, Optional[str]], Optional[str]]:
+    def completer(prompt: str, default: Optional[str]) -> Any:
+        return cls.getter(field).get_one_key(prompt, default=default or "")
 
     return completer
 
@@ -361,7 +369,6 @@ EnumT = TypeVar("EnumT", bound=enum.Enum)
 
 
 class _EnumFieldDescriptor(peewee.FieldDescriptor, Generic[EnumT]):
-
     def __init__(self, field: peewee.Field, enum_cls: Type[EnumT]) -> None:
         super().__init__(field)
         self.enum_cls = enum_cls
@@ -379,7 +386,6 @@ class _EnumFieldDescriptor(peewee.FieldDescriptor, Generic[EnumT]):
 
 
 class EnumField(IntegerField):
-
     def __init__(self, enum_cls: Type[enum.Enum], **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.enum_cls = enum_cls
@@ -390,7 +396,6 @@ class EnumField(IntegerField):
 
 
 class _ADTDescriptor(peewee.FieldDescriptor):
-
     def __init__(self, field: peewee.Field, adt_cls: Any) -> None:
         super().__init__(field)
         self.adt_cls = adt_cls
@@ -415,7 +420,6 @@ class _ADTDescriptor(peewee.FieldDescriptor):
 
 
 class ADTField(TextField):
-
     def __init__(self, adt_cls: Callable[[], Type[Any]], **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.adt_cls = adt_cls
@@ -429,7 +433,6 @@ class ADTField(TextField):
 
 
 class _NameGetter(Generic[ModelT]):
-
     def __init__(self, cls: Type[ModelT], field: str) -> None:
         self.cls = cls
         self.field = field
@@ -479,7 +482,9 @@ class _NameGetter(Generic[ModelT]):
     def get_one_key(self, prompt: str = "> ", default: str = "") -> Optional[str]:
         self._warm_cache()
         assert self._data is not None
-        key = getinput.get_with_completion(self._data, prompt, default=default)
+        key = getinput.get_with_completion(
+            self._data, prompt, default=default, history_key=self
+        )
         if key == "":
             return None
         return key
@@ -487,7 +492,9 @@ class _NameGetter(Generic[ModelT]):
     def get_one(self, prompt: str = "> ", default: str = "") -> Optional[ModelT]:
         self._warm_cache()
         assert self._data is not None
-        key = getinput.get_with_completion(self._data, prompt, default=default)
+        key = getinput.get_with_completion(
+            self._data, prompt, default=default, history_key=self
+        )
         if key == "":
             return None
         return getattr(self, getinput.encode_name(key))
@@ -1683,6 +1690,7 @@ class SpeciesNameComplex(BaseModel):
     See ICZN Articles 11.9.1 and 31.
 
     """
+
     creation_event = events.Event["SpeciesNameComplex"]()
     save_event = events.Event["SpeciesNameComplex"]()
     label_field = "label"
@@ -1941,6 +1949,7 @@ class SpeciesNameComplex(BaseModel):
 
 class NameComplex(BaseModel):
     """Group of genus-group names with the same derivation."""
+
     creation_event = events.Event["NameComplex"]()
     save_event = events.Event["NameComplex"]()
     label_field = "label"
@@ -2381,6 +2390,7 @@ class NameComplex(BaseModel):
 
 class NameEnding(BaseModel):
     """Name ending that is mapped to a NameComplex."""
+
     label_field = "ending"
 
     name_complex = ForeignKeyField(
@@ -2395,6 +2405,7 @@ class NameEnding(BaseModel):
 
 class SpeciesNameEnding(BaseModel):
     """Name ending that is mapped to a SpeciesNameComplex."""
+
     label_field = "ending"
 
     name_complex = ForeignKeyField(
@@ -2703,7 +2714,7 @@ class Name(BaseModel):
                         elif typ is str and attribute in ("source", "opinion"):
                             completer = self._completer_for_source_field
                         elif typ is str and attribute in ("lectotype", "neotype"):
-                            completer = get_completer(Name, "type_specimen")
+                            completer = get_str_completer(Name, "type_specimen")
                         else:
                             completer = None
                         if completer is not None:
@@ -3242,7 +3253,6 @@ class Name(BaseModel):
     def detect_type(
         self, verbatim_type: Optional[str] = None, verbose: bool = False
     ) -> List["Name"]:
-
         def cleanup(name: str) -> str:
             return re.sub(
                 r"\s+",
@@ -3292,7 +3302,6 @@ class Name(BaseModel):
             return verbatim_type, None
 
     def detect_type_from_verbatim_type(self, verbatim_type: str) -> List["Name"]:
-
         def _filter_by_authority(
             candidates: List["Name"], authority: Optional[str]
         ) -> List["Name"]:

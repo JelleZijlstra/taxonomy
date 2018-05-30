@@ -53,7 +53,6 @@ T = TypeVar("T")
 
 
 class _ShellNamespace(dict):  # type: ignore
-
     def __missing__(self, key: str) -> object:
         try:
             return getattr(__builtins__, key)
@@ -123,7 +122,6 @@ CallableT = TypeVar("CallableT", bound=Callable[..., Any])
 
 
 def command(fn: CallableT) -> CallableT:
-
     @functools.wraps(fn)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
         try:
@@ -136,7 +134,6 @@ def command(fn: CallableT) -> CallableT:
 
 
 def generator_command(fn: Callable[..., Iterable[T]]) -> Callable[..., List[T]]:
-
     @functools.wraps(fn)
     def wrapper(*args: Any, **kwargs: Any) -> Optional[List[T]]:
         try:
@@ -186,7 +183,6 @@ _MissingDataProducer = Callable[..., Iterable[Tuple[Name, str]]]
 
 
 def _add_missing_data(fn: _MissingDataProducer) -> Callable[..., None]:
-
     @functools.wraps(fn)
     def wrapper(*args: Any, **kwargs: Any) -> None:
         for nam, message in fn(*args, **kwargs):
@@ -210,7 +206,9 @@ def fix_bad_ampersands() -> Iterable[Tuple[Name, str]]:
 def fix_et_al() -> Iterable[Tuple[Name, str]]:
     for name in Name.filter(
         Name.authority % "%et al%", Name.original_citation != None
-    ).order_by(Name.original_name, Name.root_name):  # noqa: E711
+    ).order_by(
+        Name.original_name, Name.root_name
+    ):  # noqa: E711
         yield name, "Name {} uses et al.".format(name.description())
 
 
@@ -219,7 +217,9 @@ def fix_et_al() -> Iterable[Tuple[Name, str]]:
 def add_original_names() -> Iterable[Tuple[Name, str]]:
     for name in Name.filter(
         Name.original_citation != None, Name.original_name >> None
-    ).order_by(Name.original_name):  # noqa: E711
+    ).order_by(
+        Name.original_name
+    ):  # noqa: E711
         message = "Name {} is missing an original name, but has original citation {{{}}}:{}".format(
             name.description(), name.original_citation, name.page_described
         )
@@ -331,7 +331,9 @@ def detect_types(max_count: Optional[int] = None, verbose: bool = False) -> None
     group = (Group.family, Group.genus)
     for name in Name.filter(
         Name.verbatim_type != None, Name.type >> None, Name.group << group
-    ).limit(max_count):  # noqa: E711
+    ).limit(
+        max_count
+    ):  # noqa: E711
         count += 1
         if name.detect_and_set_type(verbatim_type=name.verbatim_type, verbose=verbose):
             successful_count += 1
@@ -471,7 +473,6 @@ def detect_species_name_complexes(dry_run: bool = False) -> None:
 
 
 class SuffixTree(Generic[T]):
-
     def __init__(self) -> None:
         self.children: Dict[str, SuffixTree[T]] = collections.defaultdict(SuffixTree)
         self.values: List[T] = []
@@ -665,7 +666,6 @@ def root_name_mismatch() -> Iterable[Name]:
 def _duplicate_finder(
     fn: Callable[..., Iterable[Mapping[Any, Sequence[T]]]]
 ) -> Callable[..., Optional[List[Sequence[T]]]]:
-
     @generator_command
     @functools.wraps(fn)
     def wrapper(*args: Any, **kwargs: Any) -> Iterable[Sequence[T]]:
@@ -731,7 +731,6 @@ def stem_statistics() -> None:
 
 
 class ScoreHolder:
-
     def __init__(self, data: Dict[Taxon, Dict[str, Any]]) -> None:
         self.data = data
 
@@ -1555,6 +1554,7 @@ AUTHOR_SYNONYMS = {
     "Wied": "Wied-Neuwied",
     "Peron": "Péron",
     "Von Dueben": "von Dueben",
+    "Ruppell": "Rüppell",
 }
 AMBIGUOUS_AUTHORS = {
     "Allen",
@@ -1620,7 +1620,6 @@ def _get_new_author(nams: List[Name], citation: str, author: str) -> Optional[st
         if last == author:
             return f"{initials} {last}"
     nams[0].open_description()
-    sys.stdout.flush()
     return Name.getter("authority").get_one_key("author> ")
 
 
@@ -1751,6 +1750,39 @@ def names_of_authority(author: str, year: int, edit: bool = False) -> List[Name]
         if edit:
             nam.fill_required_fields()
     return nams
+
+
+@command
+def find_multiple_repository_names(
+    filter: Optional[str] = None, edit: bool = False
+) -> List[Name]:
+    all_nams = Name.filter(
+        Name.type_specimen.contains(", "),
+        Name.collection != Collection.by_label("multiple"),
+    )
+    nams = []
+    for nam in all_nams:
+        parts = set(part.split()[0] for part in nam.type_specimen.split(", "))
+        if len(parts) == 1 and re.match(r"^[A-Z]+$", list(parts)[0]):
+            continue  # All from same collection
+        if filter is not None:
+            if not nam.type_specimen.startswith(filter):
+                continue
+        nams.append(nam)
+    if edit:
+        for nam in nams:
+            nam.display()
+            nam.e.type_specimen
+            nam.e.collection
+            nam.e.type_tags
+    return nams
+
+
+@command
+def moreau(nam: Name) -> None:
+    nam.display()
+    nam.e.type_locality
+    nam.e.type_tags
 
 
 def run_shell() -> None:
