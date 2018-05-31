@@ -1189,6 +1189,7 @@ def write_to_db(
     edit_if_no_holotype: bool = True,
     edit_if: Callable[[Dict[str, Any]], bool] = lambda _: False,
     always_edit: bool = False,
+    skip_fields: Container[str] = frozenset(),
 ) -> DataT:
     num_changed: Counter[str] = Counter()
     for i, name in enumerate(names):
@@ -1377,23 +1378,28 @@ def write_to_db(
 
         if not dry_run:
             should_edit = False
-            if edit_if_no_holotype and (
-                "species_type_kind" not in name
-                or "type_specimen" not in name
-                or name["species_type_kind"] != constants.SpeciesGroupType.holotype
-            ):
-                print(f"{nam} does not have a holotype: {name}")
-                should_edit = True
             if always_edit:
                 should_edit = True
             if edit_if(name):
+                should_edit = True
+
+            if (
+                not should_edit
+                and edit_if_no_holotype
+                and (
+                    "species_type_kind" not in name
+                    or "type_specimen" not in name
+                    or name["species_type_kind"] != constants.SpeciesGroupType.holotype
+                )
+            ):
+                print(f"{nam} does not have a holotype: {name}")
                 should_edit = True
 
             if should_edit:
                 nam.display()
                 empty_fields = list(nam.get_empty_required_fields())
                 if empty_fields:
-                    nam.fill_required_fields()
+                    nam.fill_required_fields(skip_fields=skip_fields)
                 else:
                     nam.fill_field("type_tags")
 

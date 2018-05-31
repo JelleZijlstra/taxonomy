@@ -354,9 +354,10 @@ class BaseModel(Model):
             if getattr(self, field) is None
         )
 
-    def fill_required_fields(self) -> None:
+    def fill_required_fields(self, skip_fields: Container[str] = frozenset()) -> None:
         for field in self.get_empty_required_fields():
-            self.fill_field(field)
+            if field not in skip_fields:
+                self.fill_field(field)
 
     @classmethod
     def create_interactively(cls: Type[ModelT]) -> ModelT:
@@ -3074,8 +3075,8 @@ class Name(BaseModel):
                 yield "type"
             if self.group == Group.species:
                 yield "type_locality"
-                # 75 is a special Collection that indicates there is no preserved specimen.
-                if self.collection is None or (self.collection.id != 75):
+                # 75 (lost) and 381 (untraced) are special Collections that indicate there is no preserved specimen.
+                if self.collection is None or (self.collection.id not in (75, 381)):
                     yield "type_specimen"
                 yield "collection"
                 if self.type_specimen is not None or self.collection is not None:

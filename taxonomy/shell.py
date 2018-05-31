@@ -1462,7 +1462,7 @@ def check_type_tags(dry_run: bool = False) -> Iterable[Tuple[Name, str]]:
     for nam in Name.filter(
         Name.species_type_kind == constants.SpeciesGroupType.lectotype
     ):
-        if nam.collection and nam.collection.name == "lost":
+        if nam.collection and nam.collection.name in ("lost", "untraced"):
             continue
         for tag in nam.type_tags or ():
             if (
