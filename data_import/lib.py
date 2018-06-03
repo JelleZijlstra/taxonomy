@@ -319,6 +319,52 @@ def validate_pages(pages: PagesT, verbose: bool = True, check: bool = True) -> P
         yield page, lines
 
 
+class NoSplitFound(Exception):
+    pass
+
+
+def split_lines(
+    lines: List[str],
+    page: int,
+    single_column_pages: Container[int] = frozenset(),
+    use_first: bool = False,
+    min_column: int = 0,
+) -> List[str]:
+    if not any(line.rstrip() for line in lines):
+        return []
+    # find a position that is blank in every line
+    max_len = max(len(line) for line in lines)
+    possible_splits = []
+    for i in range(min_column, max_len):
+        if not all(len(line) <= i or line[i] == " " for line in lines):
+            continue
+        num_lines = len([line for line in lines if len(line) > i])
+        if num_lines < 5:
+            continue
+        possible_splits.append(i)
+    if not possible_splits:
+        if page in single_column_pages:
+            return [line.rstrip() for line in lines]
+        else:
+            raise NoSplitFound(f"failed to find split for {page}")
+    else:
+        if use_first:
+            best_blank = min(possible_splits)
+        else:
+            best_blank = max(possible_splits)
+        first_column = [line[:best_blank].rstrip() for line in lines]
+        second_column = [line[best_blank + 1 :].rstrip() for line in lines]
+        num_lines = len(second_column)
+        while (
+            len([line for line in second_column if line.startswith(" ")])
+            > num_lines / 2
+        ):
+            second_column = [
+                line[1:] if line.startswith(" ") else line for line in second_column
+            ]
+        return first_column + second_column
+
+
 def align_columns(
     pages: PagesT,
     single_column_pages: Container[int] = frozenset(),
@@ -327,39 +373,10 @@ def align_columns(
 ) -> PagesT:
     """Rearrange the text to separate the two columns on each page."""
     for page, lines in pages:
-        if not any(line.rstrip() for line in lines):
+        lines = split_lines(lines, page, single_column_pages, use_first, min_column)
+        if not lines:
             continue
-        # find a position that is blank in every line
-        max_len = max(len(line) for line in lines)
-        possible_splits = []
-        for i in range(min_column, max_len):
-            if not all(len(line) <= i or line[i] == " " for line in lines):
-                continue
-            num_lines = len([line for line in lines if len(line) > i])
-            if num_lines < 5:
-                continue
-            possible_splits.append(i)
-        if not possible_splits:
-            if page in single_column_pages:
-                yield page, [line.rstrip() for line in lines]
-            else:
-                assert False, f"failed to find split for {page}"
-        else:
-            if use_first:
-                best_blank = min(possible_splits)
-            else:
-                best_blank = max(possible_splits)
-            first_column = [line[:best_blank].rstrip() for line in lines]
-            second_column = [line[best_blank + 1 :].rstrip() for line in lines]
-            num_lines = len(second_column)
-            while (
-                len([line for line in second_column if line.startswith(" ")])
-                > num_lines / 2
-            ):
-                second_column = [
-                    line[1:] if line.startswith(" ") else line for line in second_column
-                ]
-            yield page, first_column + second_column
+        yield page, lines
 
 
 def clean_text(names: DataT, clean_labels: bool = True) -> DataT:
