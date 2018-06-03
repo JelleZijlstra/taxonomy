@@ -1202,6 +1202,8 @@ def names_with_location_detail_without_type_loc(
         tags = [tag for tag in nam.type_tags if isinstance(tag, TypeTag.LocationDetail)]
         if not tags:
             continue
+        if "type_locality" not in nam.get_required_fields():
+            continue
         nam.display()
         for tag in tags:
             print(tag)

@@ -1270,6 +1270,7 @@ class Taxon(BaseModel):
         min_year: Optional[int] = None,
         age: Optional[constants.Age] = None,
         field: Optional[str] = None,
+        skip_if_seen: bool = False,
     ) -> None:
         """Calls fill_required_fields() for all names in this taxon."""
         all_names = self.all_names(age=age)
@@ -1292,7 +1293,7 @@ class Taxon(BaseModel):
             {nam.original_citation for nam in all_names if should_include(nam)}
         )
         for citation in citations:
-            fill_data_from_paper(citation)
+            fill_data_from_paper(citation, skip_if_seen=skip_if_seen)
         if not only_with_original:
             for nam in self.all_names(age=age):
                 if not should_include(nam):
@@ -1335,7 +1336,9 @@ class Taxon(BaseModel):
         return [name for name in result if name is not None and " " not in name]
 
 
-def fill_data_from_paper(paper: str, always_edit_tags: bool = False) -> None:
+def fill_data_from_paper(
+    paper: str, always_edit_tags: bool = False, skip_if_seen: bool = False
+) -> None:
     opened = False
 
     def sort_key(nam: Name) -> Tuple[str, int]:
@@ -1345,6 +1348,9 @@ def fill_data_from_paper(paper: str, always_edit_tags: bool = False) -> None:
             return (nam.page_described, 0)
 
     for nam in sorted(Name.filter(Name.original_citation == paper), key=sort_key):
+        if skip_if_seen and has_location_detail_from_original(nam):
+            continue
+        nam.display()
         required_fields = list(nam.get_empty_required_fields())
         if required_fields:
             if not opened:
@@ -1356,6 +1362,18 @@ def fill_data_from_paper(paper: str, always_edit_tags: bool = False) -> None:
             nam.fill_required_fields()
         elif always_edit_tags:
             nam.fill_field("type_tags")
+
+
+def has_location_detail_from_original(nam: "Name") -> bool:
+    if not nam.original_citation or not nam.type_tags:
+        return False
+    for tag in nam.type_tags:
+        if (
+            isinstance(tag, TypeTag.LocationDetail)
+            and tag.source == nam.original_citation
+        ):
+            return True
+    return False
 
 
 definition.taxon_cls = Taxon
