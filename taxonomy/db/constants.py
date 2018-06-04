@@ -411,21 +411,26 @@ class SpeciesNameKind(enum.IntEnum):
 
 class TypeSpeciesDesignation(enum.IntEnum):
     # in order, Art. 68.1
-    original_designation = (
-        1
-    )  # Art. 68.2. Before 1931, "gen. n., sp. n." indicates an original designation. Also for species named typus, typic-.
+
+    # Art. 68.2. Before 1931, "gen. n., sp. n." indicates an original designation. Also for species named typus, typic-.
+    original_designation = 1
     monotypy = 2  # Art. 68.3
     absolute_tautonymy = 3  # Art. 68.4
     linnaean_tautonymy = 4  # Art. 68.5
     subsequent_monotypy = 5  # Art. 69.3, only for genera originally without species
     subsequent_designation = 6  # Art. 69.1
-    implicit = (
-        7
-    )  # names of nomina nova and emendations have the same type, Art. 67.8, 69.2.3
-    misidentification = (
-        8
-    )  # if the type was misidentified, you can do whatever you want (Art. 70.3)
+    # names of nomina nova and emendations have the same type, Art. 67.8, 69.2.3
+    implicit = 7
+    # if the type was misidentified, you can do whatever you want (Art. 70.3)
+    misidentification = 8
     designated_by_the_commission = 9  # type explicitly designated by the Commission
+
+    def requires_tag(self) -> bool:
+        return self in {
+            TypeSpeciesDesignation.monotypy,
+            TypeSpeciesDesignation.subsequent_designation,
+            TypeSpeciesDesignation.designated_by_the_commission,
+        }
 
 
 class SpeciesGroupType(enum.IntEnum):

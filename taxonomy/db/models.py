@@ -3113,14 +3113,11 @@ class Name(BaseModel):
             if self.group == Group.genus:
                 if self.type is not None:
                     yield "genus_type_kind"
-                if self.original_citation is not None and (
-                    self.type is None
-                    or self.genus_type_kind is None
-                    or self.genus_type_kind
-                    == constants.TypeSpeciesDesignation.subsequent_designation
-                ):
-                    # for originally included species
-                    yield "type_tags"
+                    if (
+                        self.genus_type_kind is None
+                        or self.genus_type_kind.requires_tag()
+                    ):
+                        yield "type_tags"
 
     def validate(
         self,
