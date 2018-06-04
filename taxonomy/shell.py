@@ -1556,6 +1556,9 @@ AUTHOR_SYNONYMS = {
     "Peron": "Péron",
     "Von Dueben": "von Dueben",
     "Ruppell": "Rüppell",
+    "Miranda Ribeiro": "Miranda-Ribeiro",  # {Miranda-Ribeiro-biography.pdf}
+    "de Miranda Ribeiro": "Miranda-Ribeiro",
+    "de Miranda-Ribeiro": "Miranda-Ribeiro",
 }
 AMBIGUOUS_AUTHORS = {
     "Allen",
