@@ -189,7 +189,7 @@ def get_enum_member(  # noqa
 
 
 T = TypeVar("T")
-Completer = Callable[[str, T], T]
+Completer = Callable[[str, Any], T]
 CompleterMap = Mapping[Tuple[Type[adt.ADT], str], Completer[Any]]
 CallbackMap = Mapping[str, Callable[[str], object]]
 

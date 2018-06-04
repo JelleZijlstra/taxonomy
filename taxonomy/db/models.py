@@ -104,8 +104,14 @@ peewee.FieldDescriptor.__set__ = _descriptor_set
 def get_completer(
     cls: Type[ModelT], field: str
 ) -> Callable[[str, Optional[str]], Optional[ModelT]]:
-    def completer(prompt: str, default: Optional[str]) -> Any:
-        return cls.getter(field).get_one(prompt, default=default or "")
+    def completer(prompt: str, default: Any) -> Any:
+        if isinstance(default, BaseModel):
+            default = str(default.id)
+        elif default is None:
+            default = ""
+        elif not isinstance(default, str):
+            raise TypeError(f"default must be str or Model, not {default!r}")
+        return cls.getter(field).get_one(prompt, default=default)
 
     return completer
 
@@ -498,6 +504,9 @@ class _NameGetter(Generic[ModelT]):
         )
         if key == "":
             return None
+        elif key.isnumeric():
+            val = int(key)
+            return self.cls.get(id=val)
         return getattr(self, getinput.encode_name(key))
 
     def _warm_cache(self) -> None:
