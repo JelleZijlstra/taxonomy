@@ -355,6 +355,7 @@ def standardize_date(date: str) -> Optional[str]:
         "%B %Y",  # February 1992
         "%B, %Y",  # February, 1992
         "%bt %Y",  # Sept 1992
+        "%m.%Y",  # 02.1992
     ]
     for fmt in date_month_formats:
         try:
@@ -499,3 +500,67 @@ def timer(label: str) -> Iterator[TimeHolder]:
         taken = end_time - start_time
         print(f"{label} took {taken:.03f} s")
         th.time = taken
+
+
+TABLE = {
+    "ъ": '"',
+    "ь": "'",
+    "а": "a",
+    "б": "b",
+    "в": "v",
+    "г": "g",
+    "д": "d",
+    "ж": "zh",
+    "з": "z",
+    "и": "i",
+    "й": "y",
+    "к": "k",
+    "л": "l",
+    "м": "m",
+    "н": "n",
+    "о": "o",
+    "п": "p",
+    "р": "r",
+    "с": "s",
+    "т": "t",
+    "у": "u",
+    "ф": "f",
+    "х": "kh",
+    "ц": "ts",
+    "ч": "ch",
+    "ш": "sh",
+    "щ": "shch",
+    "ы": "y",
+    "э": "e",
+    "ю": "yu",
+    "я": "ya",
+}
+NEED_Y = {"а", "и", "й", "о", "ы", "э", "ю", "я", "ъ", "ь", "е", "ё"}
+
+
+def romanize_russian(cyrillic: str) -> str:
+    """Romanize a Russian name.
+
+    Uses the BGN/PCGN romanization: https://en.wikipedia.org/wiki/BGN/PCGN_romanization_of_Russian
+
+    We omit all optional mid-dots.
+
+    """
+    out = []
+    for i, c in enumerate(cyrillic):
+        is_upper = c.isupper()
+        c = c.lower()
+        if c in TABLE:
+            new_c = TABLE[c]
+        elif c in ("е", "ё"):
+            vowel = "e" if c == "е" else "ë"
+            if i == 0 or cyrillic[i - 1] in NEED_Y:
+                new_c = f"y{vowel}"
+            else:
+                new_c = vowel
+        else:
+            new_c = c
+        if is_upper:
+            new_c = f"{new_c[0].upper()}{new_c[1:]}"
+        out.append(new_c)
+    return "".join(out)
