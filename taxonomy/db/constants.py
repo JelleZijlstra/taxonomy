@@ -388,9 +388,8 @@ class SpeciesNameKind(enum.IntEnum):
     adjective = 1  # Latin adjective, Art. 11.9.1.1
     noun_in_apposition = 2  # Art 11.9.1.2
     genitive = 3  # genitive Latin noun, Art 11.9.1.3
-    genitive_adjective = (
-        4
-    )  # adjective used as a noun, Art. 11.9.1.4 (probably very rare in mammals)
+    # adjective used as a noun, Art. 11.9.1.4 (probably very rare in mammals)
+    genitive_adjective = 4
     non_latin = 5  # not a Latin word, treated as indeclinable (cf. Art. 31.2.3)
     ambiguous_noun = 6  # noun in apposition under Art. 31.2.2
 
@@ -401,9 +400,8 @@ class SpeciesNameKind(enum.IntEnum):
     patronym_feminine_plural = 10  # -arum patronym
     patronym_latin = 11  # patronym formed from a Latin name (Art. 31.1.1)
 
-    unknown = (
-        12
-    )  # no etymology given and no etymology apparent; treated as invariant by default
+    # no etymology given and no etymology apparent; treated as invariant by default
+    unknown = 12
 
     def is_single_complex(self) -> bool:
         return self not in {SpeciesNameKind.adjective, SpeciesNameKind.ambiguous_noun}
@@ -424,12 +422,13 @@ class TypeSpeciesDesignation(enum.IntEnum):
     # if the type was misidentified, you can do whatever you want (Art. 70.3)
     misidentification = 8
     designated_by_the_commission = 9  # type explicitly designated by the Commission
+    undesignated = 10  # no type was ever designated
 
     def requires_tag(self) -> bool:
         return self in {
-            TypeSpeciesDesignation.monotypy,
             TypeSpeciesDesignation.subsequent_designation,
             TypeSpeciesDesignation.designated_by_the_commission,
+            TypeSpeciesDesignation.undesignated,
         }
 
 
@@ -438,9 +437,8 @@ class SpeciesGroupType(enum.IntEnum):
     lectotype = 102
     neotype = 103
     syntypes = 104
-    nonexistent = (
-        105
-    )  # no type has been designated; unknown whether there was a holotype or syntype
+    # no type has been designated; unknown whether there was a holotype or syntype
+    nonexistent = 105
 
 
 class SpecimenGender(enum.IntEnum):
