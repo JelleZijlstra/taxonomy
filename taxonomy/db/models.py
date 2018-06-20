@@ -1753,9 +1753,7 @@ class SpeciesNameComplex(BaseModel):
                 self.neuter_ending,
             )
         ):
-            return (
-                f"{self.label} ({self.kind.name}, -{self.masculine_ending}, -{self.feminine_ending}, -{self.neuter_ending})"
-            )
+            return f"{self.label} ({self.kind.name}, -{self.masculine_ending}, -{self.feminine_ending}, -{self.neuter_ending})"
         else:
             return f"{self.label} ({self.kind.name})"
 
@@ -2005,9 +2003,7 @@ class NameComplex(BaseModel):
         db_table = "name_complex"
 
     def __repr__(self) -> str:
-        return (
-            f'{self.label} ({self.code_article.name}, {self.gender.name}, -{self.stem_remove or ""}+{self.stem_add or ""})'
-        )
+        return f'{self.label} ({self.code_article.name}, {self.gender.name}, -{self.stem_remove or ""}+{self.stem_add or ""})'
 
     def self_apply(self, dry_run: bool = True) -> List["Name"]:
         return self.apply_to_ending(self.label, dry_run=dry_run)

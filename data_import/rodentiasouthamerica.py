@@ -150,9 +150,7 @@ def build_refs_dict(refs: DataT) -> RefsDictT:
         assert (
             authors,
             year,
-        ) not in refs_dict, (
-            f"duplicate key ({authors!r}, {year!r}) (new: {text}, existing: {refs_dict[(authors, year)]}"
-        )
+        ) not in refs_dict, f"duplicate key ({authors!r}, {year!r}) (new: {text}, existing: {refs_dict[(authors, year)]}"
         refs_dict[(authors, year)] = text
     # for key, value in refs_dict.items():
     #     print(key)

@@ -59,9 +59,7 @@ def extract_taxa(pages: Iterable[Tuple[int, List[str]]]) -> DataT:
     def _assert_no_type_loc() -> None:
         assert (
             not type_loc_lines
-        ), (
-            f"duplicate type loc while processing {current_taxon} / {line} / {type_loc_lines}"
-        )
+        ), f"duplicate type loc while processing {current_taxon} / {line} / {type_loc_lines}"
         assert (
             "type_locality" not in current_taxon
         ), f"duplicate type loc while processing {current_taxon} / {line}"

@@ -1287,9 +1287,7 @@ def check_tags(dry_run: bool = True) -> Iterable[Tuple[Name, str]]:
         current_priority = status_to_priority[nam.nomenclature_status]
         new_priority = status_to_priority[status]
         if current_priority > new_priority:
-            comment = (
-                f"Status automatically changed from {nam.nomenclature_status.name} to {status.name} because of {tag}"
-            )
+            comment = f"Status automatically changed from {nam.nomenclature_status.name} to {status.name} because of {tag}"
             print(f"changing status of {nam} and adding comment {comment!r}")
             if not dry_run:
                 nam.add_comment(constants.CommentKind.automatic_change, comment, "")
