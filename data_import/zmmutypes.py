@@ -1,5 +1,4 @@
 import re
-from collections import Counter
 import copy
 from typing import Any, List, Dict, Iterable, Tuple
 from taxonomy.db import constants, models
