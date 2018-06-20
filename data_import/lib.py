@@ -234,6 +234,11 @@ NAME_SYNONYMS = {
     "RDCongo": "DR Congo",
     "Yukon Territory": "Yukon",
     "NWT": "Northwest Territories",
+    "Tadzhikistan": "Tajikistan",
+    "Kazakstan": "Kazakhstan",
+    "Makedonia": "Macedonia",
+    "Kirgizia": "Kyrgyzstan",
+    "Cameron": "Cameroon",
 }
 REMOVE_PARENS = re.compile(r" \([A-Z][a-z]+\)")
 
@@ -329,6 +334,7 @@ def split_lines(
     single_column_pages: Container[int] = frozenset(),
     use_first: bool = False,
     min_column: int = 0,
+    dedent_right: bool = True,
 ) -> List[str]:
     if not any(line.rstrip() for line in lines):
         return []
@@ -354,14 +360,15 @@ def split_lines(
             best_blank = max(possible_splits)
         first_column = [line[:best_blank].rstrip() for line in lines]
         second_column = [line[best_blank + 1 :].rstrip() for line in lines]
-        num_lines = len(second_column)
-        while (
-            len([line for line in second_column if line.startswith(" ")])
-            > num_lines / 2
-        ):
-            second_column = [
-                line[1:] if line.startswith(" ") else line for line in second_column
-            ]
+        if dedent_right:
+            num_lines = len(second_column)
+            while (
+                len([line for line in second_column if line.startswith(" ")])
+                > num_lines / 2
+            ):
+                second_column = [
+                    line[1:] if line.startswith(" ") else line for line in second_column
+                ]
         return first_column + second_column
 
 
@@ -370,10 +377,13 @@ def align_columns(
     single_column_pages: Container[int] = frozenset(),
     use_first: bool = False,
     min_column: int = 0,
+    dedent_right: bool = True,
 ) -> PagesT:
     """Rearrange the text to separate the two columns on each page."""
     for page, lines in pages:
-        lines = split_lines(lines, page, single_column_pages, use_first, min_column)
+        lines = split_lines(
+            lines, page, single_column_pages, use_first, min_column, dedent_right
+        )
         if not lines:
             continue
         yield page, lines
@@ -382,20 +392,26 @@ def align_columns(
 def clean_text(names: DataT, clean_labels: bool = True) -> DataT:
     """Puts each field into a single line and undoes line breaks within words."""
     for name in names:
-        new_name = {}
-        for key, value in name.items():
-            if key == "pages" or not isinstance(value, list):
-                if isinstance(value, str):
-                    value = clean_string(value)
-                new_name[key] = value
-            elif key == "names":
-                new_name[key] = [clean_line_list(name) for name in value]
-            else:
-                text = clean_line_list(value)
-                if clean_labels and isinstance(key, str):
-                    text = re.sub(r"^\s*" + re.escape(key) + r"[\-—:\. ]+", "", text)
-                new_name[key] = text.strip()
-        yield new_name
+        yield clean_text_dict(name, clean_labels=clean_labels)
+
+
+def clean_text_dict(name: Dict[str, Any], clean_labels: bool = True) -> Dict[str, Any]:
+    new_name = {}
+    for key, value in name.items():
+        if key == "pages" or not isinstance(value, list):
+            if isinstance(value, str):
+                value = clean_string(value)
+            elif isinstance(value, dict):
+                value = clean_text_dict(value, clean_labels=clean_labels)
+            new_name[key] = value
+        elif key == "names":
+            new_name[key] = [clean_line_list(name) for name in value]
+        else:
+            text = clean_line_list(value)
+            if clean_labels and isinstance(key, str):
+                text = re.sub(r"^\s*" + re.escape(key) + r"[\-—:\. ]+", "", text)
+            new_name[key] = text.strip()
+    return new_name
 
 
 def clean_line_list(lines: Iterable[str]) -> str:
@@ -509,6 +525,8 @@ def translate_to_db(
                 type_tags += gender_age
                 if verbose and not gender_age:
                     print(f"failed to parse gender age {name[field]!r}")
+        if "gender_value" in name:
+            type_tags.append(TypeTag.Gender(name["gender_value"]))
         if "body_parts" in name:
             body_parts = extract_body_parts(name["body_parts"])
             if body_parts:
@@ -741,6 +759,10 @@ def extract_body_parts(organs: str) -> List[TypeTag]:
         tags = [TypeTag.Organ(constants.Organ.mandible, organs, "")]
     else:
         tags = []
+    if organs.startswith("Шкура"):
+        tags.append(SKIN)
+    if "череп " in organs or "череп:" in organs or organs.startswith("Череп"):
+        tags.append(SKULL)
     return tags
 
 
@@ -1040,6 +1062,7 @@ def associate_variants(
 
 
 def fix_author(author: str, name_config: NameConfig) -> str:
+    author = name_config.authority_fixes.get(author, author)
     author = author.replace(" and ", " & ").replace(", & ", " & ")
     authors = re.split(r", | & ", author)
     authors = [name_config.authority_fixes.get(author, author) for author in authors]
@@ -1177,7 +1200,10 @@ def associate_names(
                             print(f'Using name {shell.ns["nam"]}')
                             name["name_obj"] = shell.ns["nam"]
                 if not quiet and "name_obj" not in name:
-                    print(name["raw_text"])
+                    if "cyrillic_authority" in name:
+                        print(name["cyrillic_authority"])
+                    else:
+                        print(name["raw_text"])
                 # for key, value in name.items():
                 #     print(f'{key}: {value!r}')
         yield name
@@ -1409,7 +1435,10 @@ def write_to_db(
                     or name["species_type_kind"] != constants.SpeciesGroupType.holotype
                 )
             ):
-                print(f"{nam} does not have a holotype: {name}")
+                print(f"{nam} does not have a holotype")
+                for key, value in sorted(name.items()):
+                    print(f"-- {key} -- ")
+                    print(value)
                 should_edit = True
 
             if should_edit:
