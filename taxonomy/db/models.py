@@ -687,9 +687,15 @@ class Taxon(BaseModel):
                 out += child.children_of_rank(rank, age=age)
             return out
 
+    def names_like(self, root_name: str) -> List["Name"]:
+        """Find names matching root_name within this taxon."""
+        pattern = re.compile(root_name)
+        nams = self.all_names()
+        return [nam for nam in nams if pattern.match(nam.root_name)]
+
     def find_names(
         self, root_name: str, group: Optional[Group] = None, fuzzy: bool = True
-    ) -> List["Taxon"]:
+    ) -> List["Name"]:
         """Find instances of the given root_name within the given container taxon."""
         if fuzzy:
             query = Name.root_name % root_name  # LIKE
@@ -1279,7 +1285,7 @@ class Taxon(BaseModel):
         min_year: Optional[int] = None,
         age: Optional[constants.Age] = None,
         field: Optional[str] = None,
-        skip_if_seen: bool = False,
+        skip_if_seen: bool = True,
     ) -> None:
         """Calls fill_required_fields() for all names in this taxon."""
         all_names = self.all_names(age=age)
@@ -1346,7 +1352,7 @@ class Taxon(BaseModel):
 
 
 def fill_data_from_paper(
-    paper: str, always_edit_tags: bool = False, skip_if_seen: bool = False
+    paper: str, always_edit_tags: bool = False, skip_if_seen: bool = True
 ) -> None:
     opened = False
 
@@ -1357,7 +1363,7 @@ def fill_data_from_paper(
             return (nam.page_described, 0)
 
     for nam in sorted(Name.filter(Name.original_citation == paper), key=sort_key):
-        if skip_if_seen and has_location_detail_from_original(nam):
+        if skip_if_seen and has_data_from_original(nam):
             continue
         nam.display()
         required_fields = list(nam.get_empty_required_fields())
@@ -1373,15 +1379,19 @@ def fill_data_from_paper(
             nam.fill_field("type_tags")
 
 
-def has_location_detail_from_original(nam: "Name") -> bool:
+def has_data_from_original(nam: "Name") -> bool:
     if not nam.original_citation or not nam.type_tags:
         return False
     for tag in nam.type_tags:
-        if (
-            isinstance(tag, TypeTag.LocationDetail)
-            and tag.source == nam.original_citation
-        ):
-            return True
+        if nam.group == Group.species:
+            if (
+                isinstance(tag, TypeTag.LocationDetail)
+                and tag.source == nam.original_citation
+            ):
+                return True
+        elif nam.group == Group.genus:
+            if isinstance(tag, TypeTag.IncludedSpecies):
+                return True
     return False
 
 
