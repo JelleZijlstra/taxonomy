@@ -63,67 +63,51 @@ class NomenclatureStatus(enum.IntEnum):
     teratological = 11  # Art 1.3.2: "teratological specimens as such"
     hybrid_as_such = 12  # Art. 1.3.3: "hybrid specimens as such" (cf. Art. 17.2)
     informal = 13  # Art. 1.3.5: "as means of temporary reference"
-    work_of_extant = (
-        14
-    )  # Art. 1.3.6: "after 1930, for the work of extant animals"; 13.6.2
+    # Art. 1.3.6: "after 1930, for the work of extant animals"; 13.6.2
+    work_of_extant = 14
     zoological_formula = 15  # Art. 1.3.7: names like Herrera's "MamXus"
-    unlisted = (
-        16
-    )  # Art. 10.7: name not in a Part of the "List of Available Names in Zoology"
+    # Art. 10.7: name not in a Part of the "List of Available Names in Zoology"
+    unlisted = 16
     not_latin_alphabet = 17  # Art. 11.2: names must be in the Latin alphabet
-    inconsistently_binominal = (
-        18
-    )  # Art. 11.4: author must consistently use binominal nomenclature
+    # Art. 11.4: author must consistently use binominal nomenclature
+    inconsistently_binominal = 18
     not_used_as_valid = 19  # Art. 11.5, 11.6
     not_used_as_genus_plural = 20  # Art. 11.7.1.2
     based_on_a_suppressed_name = 21  # Art. 11.7.1.5, 39
     not_published_with_a_generic_name = 22  # Art. 11.9.3
     multiple_words = 23  # Art. 11.9.4
-    no_type_specified = (
-        24
-    )  # Art. 13.3: genus-group name after 1930 (but not ichnotaxa); Art. 16.2 for family-group names after 1999; Art. 16.4 for species-group names after 1999
-    anonymous_authorship = (
-        25
-    )  # Art. 14: anonymously published names are unavailable after 1950
+    # Art. 13.3: genus-group name after 1930 (but not ichnotaxa); Art. 16.2 for family-group names after 1999; Art. 16.4 for species-group names after 1999
+    no_type_specified = 24
+    # Art. 14: anonymously published names are unavailable after 1950
+    anonymous_authorship = 25
     conditional = 26  # Art. 15
-    variety_or_form = (
-        27
-    )  # Art. 15.2: after 1960, "variety" or "form" excludes the name (cf. infrasubspecific)
-    not_explicitly_new = (
-        28
-    )  # Art. 16: names published after 1999 must be explicitly new
-    mandatory_change = (
-        29
-    )  # Art. 34: rank change for family-group name and gender agreement for species-group name (first one moved to reranking)
-    ites_name = (
-        30
-    )  # Art. 20: names in -ites, -ytes, -ithes for fossils may not be available
-    hybrid_name = (
-        31
-    )  # names based on hybrids are available, but do not compete in priority (Art. 23.8)
-    art_13_nomen_oblitum = (
-        32
-    )  # Art. 23.12: name rejected under Art. 23b in the 1961-1973 Code
+    # Art. 15.2: after 1960, "variety" or "form" excludes the name (cf. infrasubspecific)
+    variety_or_form = 27
+    # Art. 16: names published after 1999 must be explicitly new
+    not_explicitly_new = 28
+    # Art. 34: rank change for family-group name and gender agreement for species-group name (first one moved to reranking)
+    mandatory_change = 29
+    # Art. 20: names in -ites, -ytes, -ithes for fossils may not be available
+    ites_name = 30
+    # names based on hybrids are available, but do not compete in priority (Art. 23.8)
+    hybrid_name = 31
+    # Art. 23.12: name rejected under Art. 23b in the 1961-1973 Code
+    art_13_nomen_oblitum = 32
     variant = 33  # probably an ISS (7), but may be UE (8)
     justified_emendation = 34  # Art. 32.5: correction of incorrect original spellings
     preoccupied = 35  # junior homonym (still available)
-    based_on_homonym = (
-        39
-    )  # Art. 39: family-group names based on junior homonyms must be replaced
+    # Art. 39: family-group names based on junior homonyms must be replaced
+    based_on_homonym = 39
     partially_suppressed = 40  # suppressed for Priority but not Homonymy
-    nomen_novum = (
-        41
-    )  # Nomen novum or substitution for another name. Such names are available, but using a different status makes it easier to keep track of their types.
-    incorrect_original_spelling = (
-        42
-    )  # if there are multiple variants in the original description
+    # Nomen novum or substitution for another name. Such names are available, but using a different status makes it easier to keep track of their types.
+    nomen_novum = 41
+    # if there are multiple variants in the original description
+    incorrect_original_spelling = 42
     type_not_treated_as_valid = 43  # Art. 11.7.1.1: genus name must be treated as valid
-    reranking = (
-        44
-    )  # subset of mandatory change: family-group name changed to a new rank
-    subsequent_usage = (
-        45
-    )  # usage of a name (e.g., a misidentification) that does not create a new name
+    # subset of mandatory change: family-group name changed to a new rank
+    reranking = 44
+    # usage of a name (e.g., a misidentification) that does not create a new name
+    subsequent_usage = 45
     not_intended_as_a_scientific_name = 46  # e.g., a vernacular name
     collective_group = 47
 
