@@ -837,7 +837,8 @@ class Taxon(BaseModel):
 
     def add(self) -> "Taxon":
         rank = getinput.get_enum_member(
-            Rank, default=Rank.genus if self.rank > Rank.genus else Rank.species,
+            Rank,
+            default=Rank.genus if self.rank > Rank.genus else Rank.species,
             allow_empty=False,
         )
         name = getinput.get_line("name> ", allow_none=False)
@@ -2388,7 +2389,9 @@ class NameComplex(BaseModel):
             "latin_changed_ending",
         ):
             stem = getinput.get_line("stem> ")
-            gender = getinput.get_enum_member(constants.Gender, "gender> ", allow_empty=False)
+            gender = getinput.get_enum_member(
+                constants.Gender, "gender> ", allow_empty=False
+            )
             comment = getinput.get_line("comment> ")
             stem_remove = getinput.get_line("stem_remove> ")
             stem_add = getinput.get_line("stem_add> ")
@@ -2403,7 +2406,9 @@ class NameComplex(BaseModel):
             if getinput.yes_no("self-apply?"):
                 nc.self_apply(dry_run=False)
         elif kind in ("expressly_specified", "indicated"):
-            gender = getinput.get_enum_member(constants.Gender, "gender> ", allow_empty=False)
+            gender = getinput.get_enum_member(
+                constants.Gender, "gender> ", allow_empty=False
+            )
             stem_remove = getinput.get_line("stem_remove> ")
             stem_add = getinput.get_line("stem_add> ")
             nc = method(gender=gender, stem_remove=stem_remove, stem_add=stem_add)
@@ -2412,7 +2417,9 @@ class NameComplex(BaseModel):
             stem_add = getinput.get_line("stem_add> ")
             nc = method(stem_remove=stem_remove, stem_add=stem_add)
         elif kind == "defaulted":
-            gender = getinput.get_enum_member(constants.Gender, "gender> ", allow_empty=False)
+            gender = getinput.get_enum_member(
+                constants.Gender, "gender> ", allow_empty=False
+            )
             ending = getinput.get_line("ending> ")
             stem_remove = getinput.get_line("stem_remove> ")
             stem_add = getinput.get_line("stem_add> ")
