@@ -125,6 +125,7 @@ class NomenclatureStatus(enum.IntEnum):
         45
     )  # usage of a name (e.g., a misidentification) that does not create a new name
     not_intended_as_a_scientific_name = 46  # e.g., a vernacular name
+    collective_group = 47
 
     def requires_type(self) -> bool:
         """Whether a name of this status should have a type designated."""

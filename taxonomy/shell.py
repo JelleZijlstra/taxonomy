@@ -1515,6 +1515,7 @@ def move_to_lowest_rank(dry_run: bool = False) -> Iterable[Tuple[Name, str]]:
 
 AUTHOR_SYNONYMS = {
     "Afanasiev": helpers.romanize_russian("Афанасьев"),
+    "Barret-Hamilton": "Barrett-Hamilton",
     "Blainville": "de Blainville",
     "Bobrinskii": helpers.romanize_russian("Бобринской"),
     "Bobrinskoi": helpers.romanize_russian("Бобринской"),
@@ -1527,6 +1528,7 @@ AUTHOR_SYNONYMS = {
     "Chernyavskii": helpers.romanize_russian("Чернявский"),
     "Crawford Cabral": "Crawford-Cabral",
     "Czersky": helpers.romanize_russian("Черский"),
+    "De Blainville": "Blainville",
     "De Beaux": "de Beaux",
     "de Miranda Ribeiro": "Miranda-Ribeiro",
     "de Miranda-Ribeiro": "Miranda-Ribeiro",
@@ -1830,6 +1832,14 @@ def moreau(nam: Name) -> None:
     nam.display()
     nam.e.type_locality
     nam.e.type_tags
+
+
+@command
+def f(obj: Any, skip_fields: List[str] = []) -> None:
+    if not isinstance(obj, Name):
+        obj = next(iter(obj))
+    obj.display()
+    obj.fill_required_fields(skip_fields=skip_fields)
 
 
 def run_shell() -> None:

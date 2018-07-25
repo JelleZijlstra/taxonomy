@@ -285,6 +285,7 @@ def extract_pages(lines: Iterable[str]) -> PagesT:
     current_page = None
     current_lines = []
     for line in lines:
+        line = line.replace(' ', ' ')
         if line.startswith("\x0c"):
             if current_page is not None:
                 yield current_page, current_lines
@@ -301,7 +302,7 @@ def extract_pages(lines: Iterable[str]) -> PagesT:
                 raise ValueError(
                     f"failure extracting from {line!r} while on {current_page}"
                 ) from e
-        else:
+        elif current_page:
             current_lines.append(line)
     # last page
     assert current_page is not None
@@ -460,7 +461,7 @@ def split_name_authority(
         r"^(?P<original_name>[A-ZÑ][a-zëöiïü]+) (?P<authority>(d\')?[A-ZÁ][a-zA-Z\-âöáéüšñ\.èç]+)$",
         (
             r"^(?P<original_name>(\? )?[A-ZÑ][a-zëöiïü]+\??( \([A-Z][a-z]+\.?\??\))?((,? var\.| \(\?\)| \?)? [a-z]{3,}(-[a-z]{3,})?){1,2}) "
-            r"(?P<authority>de Beaux|de Blainville|de Winton|de Beerst|von Bloeker|(d\'|de la )?[A-ZÁ][a-zA-Z\-âöüášéèíñç\.,\'& ]+)( \(ex [^\)]+\))?$"
+            r"(?P<authority>de Beaux|de Blainville|de Winton|de Beerst|von Bloeker|de Selys Longchamps|de Filippi|(d\'|de la )?[A-ZÁ][a-zA-Z\-âöüášéèíñç\.,\'& ]+)( \(ex [^\)]+\))?$"
         ),
         r"^(?P<original_name>(\? )?.*?) (?P<authority>[A-ZÉ]\.[\- ].*)$",
         r"^(?P<original_name>(\? )?[A-ZÑ][a-zëöíïü]+) (?P<authority>(d\'|de la )?[A-ZÁ][a-zA-Z\-öáéšíñ\., ]+ (and|&) [A-ZÁ][a-zA-Z\-âöüáéèíñç]+)$",
@@ -1415,6 +1416,8 @@ def write_to_db(
                         nam.open_description()
                         nam.fill_field(attr)
                     continue
+            elif attr in ("verbatim_citation", "verbatim_type"):
+                new_value = f"{new_value} [from {{{source.source}}}]"
             num_changed[attr] += 1
             if not dry_run:
                 setattr(nam, attr, new_value)

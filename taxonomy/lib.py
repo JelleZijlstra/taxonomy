@@ -1,8 +1,10 @@
-from typing import Any, Iterable, List, Optional, Tuple, Type
+from collections import defaultdict
+from functools import partial
+from typing import Any, Container, Iterable, List, Optional, Tuple, Type, Union
 
 import peewee
 
-from taxonomy.db.constants import Age, Rank
+from taxonomy.db.constants import Age, Group, Rank
 from taxonomy.db.models import (
     BaseModel,
     Collection,
@@ -173,3 +175,41 @@ def locless_names(
     for nam in nams:
         nam.display()
     return nams
+
+
+def f(nam: Union[Name, List[Name]], skip_fields: Container[str] = frozenset()) -> None:
+    if isinstance(nam, list):
+        nam = nam[0]
+    nam.display()
+    nam.fill_required_fields(skip_fields=skip_fields)
+
+
+g = partial(f, skip_fields={'original_citation', 'type_specimen', 'collection'})
+
+
+class _NamesGetter:
+    def __init__(self, group: Group) -> None:
+        self._cache = None
+        self._group = group
+
+    def __getattr__(self, attr: str) -> List[Name]:
+        self._fill_cache()
+        return self._cache[attr]
+
+    def __dir__(self) -> Iterable[str]:
+        self._fill_cache()
+        yield from self._cache.keys()
+        yield from super().__dir__()
+
+    def _fill_cache(self) -> None:
+        if self._cache is not None:
+            return
+        self._cache = defaultdict(list)
+        for nam in Name.filter(Name.group == self._group):
+            self._cache[nam.root_name].append(nam)
+
+    def clear_cache(self) -> None:
+        self._cache = None
+
+ns = _NamesGetter(Group.species)
+gs = _NamesGetter(Group.genus)
