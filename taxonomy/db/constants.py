@@ -221,6 +221,7 @@ class NomenclatureStatus(enum.IntEnum):
             [cls.variant],
             [cls.hybrid_name],
             [cls.nomen_novum],
+            [cls.collective_group],
             [cls.available],
         ]
 
