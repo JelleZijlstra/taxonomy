@@ -1,6 +1,6 @@
 from collections import defaultdict
 from functools import partial
-from typing import Any, Container, Iterable, List, Optional, Tuple, Type, Union
+from typing import Any, Container, Dict, Iterable, List, Optional, Tuple, Type, Union
 
 import peewee
 
@@ -189,15 +189,17 @@ g = partial(f, skip_fields={"original_citation", "type_specimen", "collection"})
 
 class _NamesGetter:
     def __init__(self, group: Group) -> None:
-        self._cache = None
+        self._cache: Optional[Dict[str, List[Name]]] = None
         self._group = group
 
     def __getattr__(self, attr: str) -> List[Name]:
         self._fill_cache()
+        assert self._cache is not None
         return self._cache[attr]
 
     def __dir__(self) -> Iterable[str]:
         self._fill_cache()
+        assert self._cache is not None
         yield from self._cache.keys()
         yield from super().__dir__()
 

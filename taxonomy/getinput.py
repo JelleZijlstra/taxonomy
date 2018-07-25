@@ -151,7 +151,7 @@ def get_enum_member(
     prompt: str = "> ",
     *,
     default: Optional[EnumT] = None,
-    allow_empty: bool = True,
+    allow_empty: bool,
 ) -> EnumT:
     ...  # noqa
 
