@@ -285,7 +285,7 @@ def extract_pages(lines: Iterable[str]) -> PagesT:
     current_page = None
     current_lines = []
     for line in lines:
-        line = line.replace(' ', ' ')
+        line = line.replace(" ", " ")
         if line.startswith("\x0c"):
             if current_page is not None:
                 yield current_page, current_lines

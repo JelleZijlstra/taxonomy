@@ -184,7 +184,7 @@ def f(nam: Union[Name, List[Name]], skip_fields: Container[str] = frozenset()) -
     nam.fill_required_fields(skip_fields=skip_fields)
 
 
-g = partial(f, skip_fields={'original_citation', 'type_specimen', 'collection'})
+g = partial(f, skip_fields={"original_citation", "type_specimen", "collection"})
 
 
 class _NamesGetter:
@@ -210,6 +210,7 @@ class _NamesGetter:
 
     def clear_cache(self) -> None:
         self._cache = None
+
 
 ns = _NamesGetter(Group.species)
 gs = _NamesGetter(Group.genus)

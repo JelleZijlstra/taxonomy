@@ -2520,13 +2520,13 @@ class Collection(BaseModel):
         return obj
 
     def display(self) -> None:
-        print(f'{self!r}, {self.location}')
+        print(f"{self!r}, {self.location}")
         if self.comment:
-            print(f'    Comment: {self.comment}')
+            print(f"    Comment: {self.comment}")
         for nam in sorted(self.type_specimens, key=lambda nam: nam.root_name):
-            print(f'    {nam} (type: {nam.type_specimen})')
+            print(f"    {nam} (type: {nam.type_specimen})")
 
-    def merge(self, other: 'Collection') -> None:
+    def merge(self, other: "Collection") -> None:
         for nam in self.type_specimens:
             nam.collection = other
             nam.save()
@@ -3130,14 +3130,14 @@ class Name(BaseModel):
                     yield "species_type_kind"
                 yield "type_tags"
             if self.group == Group.genus:
-                if self.genus_type_kind != constants.TypeSpeciesDesignation.undesignated:
+                if (
+                    self.genus_type_kind
+                    != constants.TypeSpeciesDesignation.undesignated
+                ):
                     yield "type"
                 if self.type is not None:
                     yield "genus_type_kind"
-                if (
-                    self.genus_type_kind is None
-                    or self.genus_type_kind.requires_tag()
-                ):
+                if self.genus_type_kind is None or self.genus_type_kind.requires_tag():
                     yield "type_tags"
 
     def validate_as_child(self, status: Status = Status.valid) -> Taxon:
@@ -3152,7 +3152,7 @@ class Name(BaseModel):
         elif self.taxon.rank == Rank.family:
             new_rank = Rank.subfamily
         else:
-            raise ValueError(f'cannot validate child with rank {self.taxon.rank}')
+            raise ValueError(f"cannot validate child with rank {self.taxon.rank}")
         return self.validate(parent=self.taxon, rank=new_rank, status=status)
 
     def validate(
