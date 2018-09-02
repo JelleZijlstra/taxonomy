@@ -1811,12 +1811,16 @@ def find_multiple_repository_names(
     )
     nams = []
     for nam in all_nams:
-        parts = set(part.split()[0] for part in nam.type_specimen.split(", "))
+        type_specimen = re.sub(r" \([^\)]+\)", "", nam.type_specimen)
+        parts = {re.split(r"[ \-]", part)[0] for part in type_specimen.split(", ")}
         if len(parts) == 1 and re.match(r"^[A-Z]+$", list(parts)[0]):
             continue  # All from same collection
         if filter is not None:
             if not nam.type_specimen.startswith(filter):
                 continue
+        print(nam)
+        print(f' - {nam.type_specimen}')
+        print(f' - {nam.collection}')
         nams.append(nam)
     if edit:
         for nam in nams:
