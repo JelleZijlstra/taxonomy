@@ -473,6 +473,7 @@ def clean_text(text: str) -> str:
     text = text.replace("‘‘", '"')
     text = text.replace("’’", '"')
     text = re.sub(r"(?<=[a-z])- (?=[a-z])", "", text)
+    text = re.sub(r" @$", " [brackets original]", text)
     return text
 
 
