@@ -31,11 +31,11 @@ class StopException(Exception):
 
 
 def _color(code: int) -> str:
-    return "%s[%sm" % (chr(27), code)
+    return "{}[{}m".format(chr(27), code)
 
 
 def _colored_text(text: str, code: int) -> str:
-    return "%s%s%s" % (_color(code), text, _color(0))
+    return "{}{}{}".format(_color(code), text, _color(0))
 
 
 def red(text: str) -> str:

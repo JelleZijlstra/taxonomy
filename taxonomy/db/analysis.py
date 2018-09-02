@@ -44,7 +44,7 @@ class _SuffixTree(object):
         for key, subtree in subtrees:
             if min_count is not None and subtree.count < min_count:
                 continue
-            print("%s%s: " % (" " * (4 * depth), key), end="")
+            print("{}{}: ".format(" " * (4 * depth), key), end="")
             subtree.display(
                 max_depth=max_depth - 1,
                 depth=depth + 1,

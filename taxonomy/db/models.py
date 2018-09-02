@@ -154,7 +154,7 @@ class BaseModel(Model):
         return result
 
     def dump_data(self) -> str:
-        return "%s(%r)" % (self.__class__.__name__, self.__dict__)
+        return f"{self.__class__.__name__}({self.__dict__!r})"
 
     def full_data(self) -> None:
         for field in sorted(self.fields()):
@@ -204,10 +204,10 @@ class BaseModel(Model):
                 yield field
 
     def __repr__(self) -> str:
-        return "%s(%s)" % (
+        return "{}({})".format(
             self.__class__.__name__,
             ", ".join(
-                "%s=%s" % (field, getattr(self, field))
+                "{}={}".format(field, getattr(self, field))
                 for field in self.fields()
                 if getattr(self, field) is not None
             ),
@@ -224,10 +224,10 @@ class BaseModel(Model):
             if my_data is None:
                 pass
             elif into_data is None:
-                print("setting %s: %s" % (field, my_data))
+                print(f"setting {field}: {my_data}")
                 setattr(into, field, my_data)
             elif my_data != into_data:
-                print("warning: dropping %s: %s" % (field, my_data))
+                print(f"warning: dropping {field}: {my_data}")
         into.save()
 
     @classmethod
@@ -744,7 +744,7 @@ class Taxon(BaseModel):
             for key, value in data.items():
                 if value:
                     file.write(" " * ((depth + 1) * 4))
-                    file.write("%s: %s\n" % (key, value))
+                    file.write(f"{key}: {value}\n")
         for name in self.sorted_names():
             if name_exclude_fn is None or not name_exclude_fn(name):
                 file.write(name.get_description(depth=depth + 1, full=full))
@@ -778,7 +778,9 @@ class Taxon(BaseModel):
         if self.parent is not None:
             self.parent.display_parents(max_depth=max_depth, file=file)
 
-        file.write("%s %s (%s)\n" % (self.rank.name, self.full_name(), self.age.name))
+        file.write(
+            "{} {} ({})\n".format(self.rank.name, self.full_name(), self.age.name)
+        )
         file.write(self.base_name.get_description(depth=1))
 
     def ranked_parents(self) -> Tuple[Optional["Taxon"], Optional["Taxon"]]:
@@ -898,7 +900,7 @@ class Taxon(BaseModel):
         """Convenience method to add a type species described in the same paper as the genus."""
         assert self.rank == Rank.genus
         assert self.base_name.type is None
-        full_name = "%s %s" % (self.valid_name, name)
+        full_name = f"{self.valid_name} {name}"
         if isinstance(page_described, int):
             page_described = str(page_described)
         result = self.add_static(
@@ -1020,9 +1022,8 @@ class Taxon(BaseModel):
         elif self.rank == Rank.superfamily:
             rank = Rank.family
         else:
-            assert False, "Cannot add nominate subtaxon of %s of rank %s" % (
-                self,
-                self.rank.name,
+            assert False, "Cannot add nominate subtaxon of {} of rank {}".format(
+                self, self.rank.name
             )
 
         taxon = Taxon.create(age=self.age, rank=rank, parent=self)
@@ -1073,15 +1074,15 @@ class Taxon(BaseModel):
                 return name.original_name
             else:
                 if self.rank == Rank.species_group:
-                    return "%s (%s)" % (genus.base_name.root_name, name.root_name)
+                    return f"{genus.base_name.root_name} ({name.root_name})"
                 elif self.rank == Rank.species:
-                    return "%s %s" % (genus.base_name.root_name, name.root_name)
+                    return f"{genus.base_name.root_name} {name.root_name}"
                 else:
                     assert self.rank == Rank.subspecies, (
                         "Unexpected rank %s" % self.rank.name
                     )
                     species = self.parent_of_rank(Rank.species)
-                    return "%s %s %s" % (
+                    return "{} {} {}".format(
                         genus.base_name.root_name,
                         species.base_name.root_name,
                         name.root_name,
@@ -1135,7 +1136,7 @@ class Taxon(BaseModel):
     def recompute_name(self) -> None:
         new_name = self.compute_valid_name()
         if new_name != self.valid_name and new_name is not None:
-            print("Changing valid name: %s -> %s" % (self.valid_name, new_name))
+            print(f"Changing valid name: {self.valid_name} -> {new_name}")
             self.valid_name = new_name
             self.save()
 
@@ -1174,9 +1175,8 @@ class Taxon(BaseModel):
             except peewee.IntegrityError:
                 print("dropping duplicate occurrence %s" % occ)
                 existing = to_taxon.at(occ.location)
-                additional_comment = "Also under _%s_ with source {%s}." % (
-                    self.name,
-                    occ.source,
+                additional_comment = "Also under _{}_ with source {{{}}}.".format(
+                    self.name, occ.source
                 )
                 if comment is not None:
                     additional_comment += " " + comment
@@ -1262,7 +1262,7 @@ class Taxon(BaseModel):
             if total == 0 or num == total:
                 return 100.0
             percentage = num * 100.0 / total
-            print("%s: %s of %s (%.2f%%)" % (label, num, total, percentage))
+            print(f"{label}: {num} of {total} ({percentage:.2f}%)")
             return percentage
 
         overall_count = 0
@@ -1348,8 +1348,8 @@ class Taxon(BaseModel):
     def __dir__(self) -> List[str]:
         result = set(super().__dir__())
         names = self.sorted_names()
-        result |= set(name.original_name for name in names)
-        result |= set(name.root_name for name in names)
+        result |= {name.original_name for name in names}
+        result |= {name.root_name for name in names}
         return [name for name in result if name is not None and " " not in name]
 
 
@@ -1509,7 +1509,7 @@ class Period(BaseModel):
     def display(
         self, full: bool = False, depth: int = 0, file: IO[str] = sys.stdout
     ) -> None:
-        file.write("%s%s\n" % (" " * (depth + 4), repr(self)))
+        file.write("{}{}\n".format(" " * (depth + 4), repr(self)))
         for location in Location.filter(
             Location.max_period == self, Location.min_period == self
         ):
@@ -1537,9 +1537,8 @@ class Period(BaseModel):
             if isinstance(value, Period):
                 value = value.name
             properties[field] = value
-        return "%s (%s)" % (
-            self.name,
-            ", ".join("%s=%s" % item for item in properties.items()),
+        return "{} ({})".format(
+            self.name, ", ".join("%s=%s" % item for item in properties.items())
         )
 
 
@@ -1575,9 +1574,9 @@ class Region(BaseModel):
     def display(
         self, full: bool = False, depth: int = 0, file: IO[str] = sys.stdout
     ) -> None:
-        file.write("%s%s\n" % (" " * (depth + 4), repr(self)))
+        file.write("{}{}\n".format(" " * (depth + 4), repr(self)))
         if self.comment:
-            file.write("%sComment: %s\n" % (" " * (depth + 12), self.comment))
+            file.write("{}Comment: {}\n".format(" " * (depth + 12), self.comment))
         for location in self.locations:
             location.display(full=full, depth=depth + 4, file=file)
         for child in self.children:
@@ -1668,26 +1667,26 @@ class Location(BaseModel):
             if self.min_period != self.max_period:
                 age_str += "–%s" % self.min_period.name
         if self.min_age is not None and self.max_age is not None:
-            age_str += "; %s–%s" % (self.max_age, self.min_age)
-        return "%s (%s), %s" % (self.name, age_str, self.region.name)
+            age_str += f"; {self.max_age}–{self.min_age}"
+        return f"{self.name} ({age_str}), {self.region.name}"
 
     def display(
         self, full: bool = False, depth: int = 0, file: IO[str] = sys.stdout
     ) -> None:
-        file.write("%s%s\n" % (" " * (depth + 4), repr(self)))
+        file.write("{}{}\n".format(" " * (depth + 4), repr(self)))
         space = " " * (depth + 12)
         if self.comment:
-            file.write("%sComment: %s\n" % (space, self.comment))
+            file.write(f"{space}Comment: {self.comment}\n")
         type_locs = list(self.type_localities)
         if type_locs:
-            file.write("%sType localities:\n" % (" " * (depth + 8),))
+            file.write("{}Type localities:\n".format(" " * (depth + 8)))
             for nam in type_locs:
                 file.write(f"{space}{nam}\n")
         if full:
             self.display_organized(depth=depth, file=file)
         else:
             for occurrence in sorted(self.taxa, key=lambda occ: occ.taxon.valid_name):
-                file.write("%s%s\n" % (" " * (depth + 8), occurrence))
+                file.write("{}{}\n".format(" " * (depth + 8), occurrence))
 
     def display_organized(self, depth: int = 0, file: IO[str] = sys.stdout) -> None:
         taxa = sorted(
@@ -1704,12 +1703,12 @@ class Location(BaseModel):
             if order != current_order:
                 current_order = order
                 if order is not None:
-                    file.write("%s%s\n" % (" " * (depth + 8), order))
+                    file.write("{}{}\n".format(" " * (depth + 8), order))
             if family != current_family:
                 current_family = family
                 if family is not None:
-                    file.write("%s%s\n" % (" " * (depth + 12), family))
-            file.write("%s%s\n" % (" " * (depth + 16), occ))
+                    file.write("{}{}\n".format(" " * (depth + 12), family))
+            file.write("{}{}\n".format(" " * (depth + 16), occ))
 
     def make_local_unit(
         self, name: Optional[str] = None, parent: Optional[Period] = None
@@ -3063,7 +3062,7 @@ class Name(BaseModel):
             result = "".join(
                 [result]
                 + [
-                    " " * ((depth + 2) * 4) + "%s: %s\n" % (key, value)
+                    " " * ((depth + 2) * 4) + f"{key}: {value}\n"
                     for key, value in data.items()
                     if value
                 ]
@@ -3253,7 +3252,7 @@ class Name(BaseModel):
             return
         computed = helpers.convert_gender(self.root_name, gender)
         if computed != self.root_name:
-            print("Modifying root_name: %s -> %s" % (self.root_name, computed))
+            print(f"Modifying root_name: {self.root_name} -> {computed}")
             self.root_name = computed
             self.save()
 
@@ -3305,7 +3304,7 @@ class Name(BaseModel):
         if verbatim_type is None:
             verbatim_type = self.verbatim_type
         if verbose:
-            print("=== Detecting type for %s from %s" % (self, verbatim_type))
+            print(f"=== Detecting type for {self} from {verbatim_type}")
         candidates = self.detect_type(verbatim_type=verbatim_type, verbose=verbose)
         if candidates is None or not candidates:
             print(
@@ -3501,14 +3500,14 @@ class Occurrence(BaseModel):
         self.save()
 
     def __repr__(self) -> str:
-        out = "%s in %s (%s%s)" % (
+        out = "{} in {} ({}{})".format(
             self.taxon,
             self.location,
             self.source,
             "; " + self.comment if self.comment else "",
         )
         if self.status != OccurrenceStatus.valid:
-            out = "[%s] %s" % (self.status.name.upper(), out)
+            out = "[{}] {}".format(self.status.name.upper(), out)
         return out
 
 

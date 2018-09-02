@@ -46,7 +46,9 @@ class Definition:
         return _cls_of_type[DefinitionType(typ)](*arguments)
 
     def __repr__(self) -> str:
-        return "%s(%s)" % (self.__class__.__name__, ", ".join(map(str, self.arguments)))
+        return "{}({})".format(
+            self.__class__.__name__, ", ".join(map(str, self.arguments))
+        )
 
 
 class Node(Definition):
@@ -76,7 +78,7 @@ class Branch(Definition):
         super().__init__(DefinitionType.branch, [self.anchor] + self.excluded)
 
     def __str__(self) -> str:
-        return ">%s~%s" % (
+        return ">{}~{}".format(
             self.anchor.valid_name,
             "∨".join(taxon.valid_name for taxon in self.excluded),
         )
@@ -91,7 +93,7 @@ class Apomorphy(Definition):
         super().__init__(DefinitionType.apomorphy, [self.apomorphy, self.anchor])
 
     def __str__(self) -> str:
-        return ">%s(%s)" % (self.apomorphy, self.anchor)
+        return f">{self.apomorphy}({self.anchor})"
 
 
 class Other(Definition):

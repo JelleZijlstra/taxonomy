@@ -63,11 +63,11 @@ class _ShellNamespace(dict):  # type: ignore
         keys = set(super().keys())
         keys |= set(dir(__builtins__))
         if not hasattr(self, "_names"):
-            self._names = set(
+            self._names = {
                 getinput.encode_name(taxon.valid_name)
                 for taxon in Taxon.select(Taxon.valid_name)
                 if taxon.valid_name is not None
-            )
+            }
         return keys | self._names
 
     def __delitem__(self, key: str) -> None:
@@ -174,7 +174,7 @@ def n(name: str) -> Iterable[Name]:
 
 @generator_command
 def h(authority: str, year: str) -> Iterable[Name]:
-    return Name.filter(Name.authority % "%{}%".format(authority), Name.year == year)
+    return Name.filter(Name.authority % f"%{authority}%", Name.year == year)
 
 
 # Maintenance
@@ -286,7 +286,7 @@ def find_rank_mismatch() -> Iterable[Taxon]:
         if expected_group != taxon.base_name.group:
             rank = taxon.rank.name
             group = taxon.base_name.group.name
-            print("Group mismatch for %s: rank %s but group %s" % (taxon, rank, group))
+            print(f"Group mismatch for {taxon}: rank {rank} but group {group}")
             yield taxon
 
 
@@ -350,7 +350,7 @@ def detect_types_from_root_names(max_count: Optional[int] = None) -> None:
         )
         candidates = list(filter(lambda c: c.taxon.is_child_of(name.taxon), candidates))
         if len(candidates) == 1:
-            print("Detected type for name %s: %s" % (name, candidates[0]))
+            print("Detected type for name {}: {}".format(name, candidates[0]))
             name.type = candidates[0]
             name.save()
             return True
@@ -651,14 +651,12 @@ def root_name_mismatch() -> Iterable[Name]:
             continue
         for stripped in helpers.name_with_suffixes_removed(name.root_name):
             if stripped == stem_name or stripped + "i" == stem_name:
-                print(
-                    "Autocorrecting root name: %s -> %s" % (name.root_name, stem_name)
-                )
+                print(f"Autocorrecting root name: {name.root_name} -> {stem_name}")
                 name.root_name = stem_name
                 name.save()
                 break
         if name.root_name != stem_name:
-            print("Stem mismatch for %s: %s vs. %s" % (name, name.root_name, stem_name))
+            print(f"Stem mismatch for {name}: {name.root_name} vs. {stem_name}")
             yield name
 
 
@@ -696,7 +694,7 @@ def dup_taxa() -> List[Dict[str, List[Taxon]]]:
 def dup_genus() -> List[Dict[str, List[Name]]]:
     names: Dict[str, List[Name]] = collections.defaultdict(list)
     for name in Name.filter(Name.group == Group.genus):
-        full_name = "%s %s, %s" % (name.root_name, name.authority, name.year)
+        full_name = f"{name.root_name} {name.authority}, {name.year}"
         names[full_name].append(name)
     return [names]
 
@@ -721,12 +719,12 @@ def stem_statistics() -> None:
     gender = Name.filter(Name.group == Group.genus, ~(Name.gender >> None)).count()
     total = Name.filter(Name.group == Group.genus).count()
     print("Genus-group names:")
-    print("stem: %s/%s (%.02f%%)" % (stem, total, stem / total * 100))
-    print("gender: %s/%s (%.02f%%)" % (gender, total, gender / total * 100))
+    print("stem: {}/{} ({:.02f}%)".format(stem, total, stem / total * 100))
+    print("gender: {}/{} ({:.02f}%)".format(gender, total, gender / total * 100))
     print("Family-group names:")
     total = Name.filter(Name.group == Group.family).count()
     typ = Name.filter(Name.group == Group.family, ~(Name.type >> None)).count()
-    print("type: %s/%s (%.02f%%)" % (typ, total, typ / total * 100))
+    print("type: {}/{} ({:.02f}%)".format(typ, total, typ / total * 100))
 
 
 class ScoreHolder:
@@ -973,7 +971,7 @@ def print_percentages() -> None:
         print("Total", total)
         for attribute in attributes:
             percentage = data[attribute] * 100.0 / total
-            print("%s: %s (%.2f%%)" % (attribute, data[attribute], percentage))
+            print("{}: {} ({:.2f}%)".format(attribute, data[attribute], percentage))
 
 
 @generator_command
@@ -1819,8 +1817,8 @@ def find_multiple_repository_names(
             if not nam.type_specimen.startswith(filter):
                 continue
         print(nam)
-        print(f' - {nam.type_specimen}')
-        print(f' - {nam.collection}')
+        print(f" - {nam.type_specimen}")
+        print(f" - {nam.collection}")
         nams.append(nam)
     if edit:
         for nam in nams:

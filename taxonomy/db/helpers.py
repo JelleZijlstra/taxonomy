@@ -313,7 +313,7 @@ def convert_gender(name: str, gender: constants.Gender) -> str:
         else:
             return name
     else:
-        raise ValueError("unknown gender {}".format(gender))
+        raise ValueError(f"unknown gender {gender}")
 
 
 def _canonicalize_gender(name: str) -> str:
