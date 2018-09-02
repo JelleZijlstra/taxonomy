@@ -1675,8 +1675,14 @@ class Location(BaseModel):
         self, full: bool = False, depth: int = 0, file: IO[str] = sys.stdout
     ) -> None:
         file.write("%s%s\n" % (" " * (depth + 4), repr(self)))
+        space = " " * (depth + 12)
         if self.comment:
-            file.write("%sComment: %s\n" % (" " * (depth + 12), self.comment))
+            file.write("%sComment: %s\n" % (space, self.comment))
+        type_locs = list(self.type_localities)
+        if type_locs:
+            file.write("%sType localities:\n" % (" " * (depth + 8),))
+            for nam in type_locs:
+                file.write(f"{space}{nam}\n")
         if full:
             self.display_organized(depth=depth, file=file)
         else:
