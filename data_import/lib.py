@@ -1115,9 +1115,9 @@ def identify_name(
 def manually_associate_name(name: Dict[str, Any]) -> Optional[models.Name]:
     print(name["raw_text"])
 
-    getter = models.Taxon.getter("valid_name")
+    taxon_getter = models.Taxon.getter("valid_name")
     while True:
-        valid_name = getter.get_one_key("valid_name> ")
+        valid_name = taxon_getter.get_one_key("valid_name> ")
         if not valid_name:
             break
         try:
@@ -1130,9 +1130,9 @@ def manually_associate_name(name: Dict[str, Any]) -> Optional[models.Name]:
             if getinput.yes_no("Is this correct?"):
                 return txn.base_name
 
-    getter = models.Name.getter("original_name")
+    name_getter = models.Name.getter("original_name")
     while True:
-        original_name = getter.get_one_key("original_name> ")
+        original_name = name_getter.get_one_key("original_name> ")
         if not original_name:
             break
         try:
