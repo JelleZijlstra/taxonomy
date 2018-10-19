@@ -955,7 +955,7 @@ class Taxon(BaseModel):
     def syn_from_paper(
         self,
         root_name: str,
-        paper: str,
+        paper: Optional[str],
         page_described: Union[None, int, str] = None,
         status: Status = Status.synonym,
         group: Optional[Group] = None,
@@ -963,6 +963,9 @@ class Taxon(BaseModel):
         interactive: bool = True,
         **kwargs: Any,
     ) -> "Name":
+        if paper is None:
+            paper = self.get_value_for_article_field("paper")
+
         authority, year = ehphp.call_ehphp("taxonomicAuthority", [paper])[0]
         result = self.add_syn(
             root_name=root_name,
@@ -985,12 +988,15 @@ class Taxon(BaseModel):
         self,
         rank: Rank,
         name: str,
-        paper: str,
+        paper: Optional[str] = None,
         page_described: Union[None, int, str] = None,
         status: Status = Status.valid,
         age: Optional[constants.Age] = None,
         **override_kwargs: Any,
     ) -> "Taxon":
+        if paper is None:
+            paper = self.get_value_for_article_field("paper")
+
         authority, year = ehphp.call_ehphp("taxonomicAuthority", [paper])[0]
         result = self.add_static(
             rank=rank,
@@ -3264,12 +3270,14 @@ class Name(BaseModel):
 
     def set_paper(
         self,
-        paper: str,
+        paper: Optional[str] = None,
         page_described: Union[None, int, str] = None,
         original_name: Optional[int] = None,
         force: bool = False,
         **kwargs: Any,
     ) -> None:
+        if paper is None:
+            paper = self.get_value_for_article_field("original_citation")
         authority, year = ehphp.call_ehphp("taxonomicAuthority", [paper])[0]
         if original_name is None and self.status == Status.valid:
             original_name = self.taxon.valid_name
