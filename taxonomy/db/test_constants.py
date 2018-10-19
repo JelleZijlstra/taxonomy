@@ -4,7 +4,7 @@ from .constants import NomenclatureStatus
 
 
 def test_hierarchy() -> None:
-    all_statuses = set(NomenclatureStatus)  # type: ignore
+    all_statuses = set(NomenclatureStatus)
     in_hierarchy = set(itertools.chain.from_iterable(NomenclatureStatus.hierarchy()))
     difference = all_statuses - in_hierarchy
     assert (

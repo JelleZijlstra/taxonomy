@@ -8,6 +8,7 @@ import sys
 import time
 import traceback
 from typing import (
+    cast,
     IO,
     Any,
     Callable,
@@ -845,7 +846,8 @@ class Taxon(BaseModel):
         )
         name = getinput.get_line("name> ", allow_none=False)
         assert name is not None
-        age = getinput.get_enum_member(constants.Age, default=self.age)
+        default = cast(constants.Age, self.age)
+        age = getinput.get_enum_member(constants.Age, default=default)
         status = getinput.get_enum_member(Status, default=Status.valid)
         taxon = Taxon.create(valid_name=name, age=age, rank=rank, parent=self)
         name_obj = Name.create(
@@ -1721,7 +1723,7 @@ class Location(BaseModel):
     ) -> Period:
         if name is None:
             name = self.name
-        period = Period.make(  # type: ignore
+        period = Period.make(
             name,
             constants.PeriodSystem.local_unit,
             parent=parent,
