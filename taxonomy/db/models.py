@@ -1243,8 +1243,7 @@ class Taxon(BaseModel):
         return {
             name
             for name in self.all_names(age=age)
-            if getattr(name, field) is None
-            and field in name.get_empty_required_fields()
+            if getattr(name, field) is None and field in name.get_required_fields()
         }
 
     def stats(self, age: Optional[constants.Age] = None) -> Dict[str, float]:
@@ -1303,7 +1302,10 @@ class Taxon(BaseModel):
         def should_include(nam: Name) -> bool:
             if nam.original_citation is None:
                 return False
-            if field is not None and field not in nam.get_empty_required_fields():
+            if field is not None and (
+                getattr(nam, field) is not None
+                or field not in nam.get_required_fields()
+            ):
                 return False
             if min_year is not None:
                 try:
@@ -1820,6 +1822,17 @@ class SpeciesNameComplex(BaseModel):
                 else:
                     return name[: -len(ending)]
         raise ValueError(f"could not extract stem from {name} using {self}")
+
+    def get_form(self, name: str, gender: constants.Gender) -> str:
+        stem = self.get_stem_from_name(name)
+        if gender == constants.Gender.masculine:
+            return stem + self.masculine_ending
+        elif gender == constants.Gender.feminine:
+            return stem + self.feminine_ending
+        elif gender == constants.Gender.neuter:
+            return stem + self.neuter_ending
+        else:
+            raise ValueError(f"invalid gender {gender!r}")
 
     def get_forms(self, name: str) -> Iterable[str]:
         if self.kind == SpeciesNameKind.adjective:
@@ -2652,6 +2665,11 @@ class Name(BaseModel):
         else:
             self._name_complex_id = None
 
+    def get_stem(self) -> Optional[str]:
+        if self.group != Group.genus or self.name_complex is None:
+            return None
+        return self.name_complex.get_stem_from_name(self.root_name)
+
     @property
     def definition(self) -> Optional[Definition]:
         data = self._definition
@@ -2799,7 +2817,11 @@ class Name(BaseModel):
         for field in super().get_empty_required_fields():
             fields.append(field)
             yield field
-        if fields and self.group == Group.species and "type_tags" not in fields:
+        if (
+            fields
+            and "type_tags" not in fields
+            and "type_tags" in self.get_required_fields()
+        ):
             # Always make the user edit type_tags if some other field was unfilled.
             yield "type_tags"
 
@@ -3120,8 +3142,7 @@ class Name(BaseModel):
         if (
             self.group in (Group.genus, Group.species)
             and self.original_name is not None
-            and self.nomenclature_status
-            != NomenclatureStatus.not_published_with_a_generic_name
+            and self.nomenclature_status.requires_corrected_original_name()
         ):
             yield "corrected_original_name"
 
@@ -3159,7 +3180,10 @@ class Name(BaseModel):
                     yield "type"
                 if self.type is not None:
                     yield "genus_type_kind"
-                if self.genus_type_kind is None or self.genus_type_kind.requires_tag():
+                if self.genus_type_kind is None:
+                    if self.original_citation is not None:
+                        yield "type_tags"
+                elif self.genus_type_kind.requires_tag():
                     yield "type_tags"
 
     def validate_as_child(self, status: Status = Status.valid) -> Taxon:
@@ -3249,20 +3273,33 @@ class Name(BaseModel):
         assert self.status == Status.valid
         self.original_name = self.taxon.valid_name
 
-    def compute_gender(self) -> None:
-        assert (
-            self.group == Group.species
-        ), "Cannot compute gender outside the species group"
-        genus = self.taxon.parent_of_rank(Rank.genus)
-        gender = genus.base_name.gender
-        if gender is None:
-            print("Parent genus %s does not have gender set" % genus)
-            return
-        computed = helpers.convert_gender(self.root_name, gender)
+    def compute_gender(self, dry_run: bool = True) -> bool:
+        if (
+            self.group != Group.species
+            or self.name_complex is None
+            or self.name_complex.kind != SpeciesNameKind.adjective
+        ):
+            return True
+        try:
+            genus = self.taxon.parent_of_rank(Rank.genus)
+        except ValueError:
+            return True
+        if genus.base_name.name_complex is None:
+            return True
+
+        gender = genus.base_name.name_complex.gender
+        try:
+            computed = self.name_complex.get_form(self.root_name, gender)
+        except ValueError:
+            print(f"Invalid root_name for {self} (complex {self.name_complex})")
+            return False
         if computed != self.root_name:
-            print(f"Modifying root_name: {self.root_name} -> {computed}")
-            self.root_name = computed
-            self.save()
+            print(f"Modifying root_name for {self}: {self.root_name} -> {computed}")
+            if not dry_run:
+                self.root_name = computed
+                self.save()
+            return False
+        return True
 
     def __str__(self) -> str:
         return self.description()
@@ -3658,3 +3695,5 @@ class TypeTag(adt.ADT):
     IncludedSpecies(name=Name, comment=str, tag=19)  # type: ignore
     # repository that holds some of the type specimens
     Repository(repository=Collection, tag=20)  # type: ignore
+    # indicates that it was originally a genus coelebs
+    GenusCoelebs(comments=str, tag=21)

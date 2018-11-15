@@ -637,6 +637,59 @@ def generate_word_list() -> Set[str]:
 
 
 @generator_command
+def stem_mismatch(autofix: bool = False) -> Iterable[Name]:
+    for nam in Name.filter(Name.group == Group.genus, ~(Name._name_complex_id >> None)):
+        if nam.stem is None:
+            continue
+        if nam.stem != nam.get_stem():
+            print(f"Stem mismatch for {nam}: {nam.stem} vs. {nam.get_stem()}")
+            if autofix:
+                nam.stem = nam.get_stem()
+                nam.save()
+            yield nam
+
+
+@generator_command
+def complexless_stems() -> Iterable[Name]:
+    for nam in Name.filter(
+        Name.group == Group.genus, Name._name_complex_id == None, Name.stem != None
+    ):
+        if nam.nomenclature_status.requires_name_complex():
+            yield nam
+
+
+@generator_command
+def correct_species_root_names(dry_run: bool = True) -> Iterable[Name]:
+    for nam in Name.filter(Name.group == Group.species, Name._name_complex_id != None):
+        if not nam.compute_gender(dry_run=dry_run):
+            yield nam
+
+
+@generator_command
+def species_root_name_mismatch() -> Iterable[Name]:
+    for nam in Name.filter(
+        Name.group == Group.species,
+        Name._name_complex_id != None,
+        Name.corrected_original_name != None,
+    ):
+        original_root_name = nam.corrected_original_name.split()[-1]
+        if nam.name_complex.kind == constants.SpeciesNameKind.adjective:
+            try:
+                forms = list(nam.name_complex.get_forms(nam.root_name))
+            except ValueError:
+                print(f"{nam}: {nam.root_name} does not match {nam.name_complex}")
+                yield nam
+                continue
+            if original_root_name not in forms:
+                print(f"{nam}: {original_root_name} does not match {nam.root_name}")
+                yield nam
+        else:
+            if original_root_name != nam.root_name:
+                print(f"{nam}: {original_root_name} does not match {nam.root_name}")
+                yield nam
+
+
+@generator_command
 def root_name_mismatch() -> Iterable[Name]:
     for name in Name.filter(Name.group == Group.family, ~(Name.type >> None)):
         if name.is_unavailable():
@@ -731,11 +784,11 @@ class ScoreHolder:
     def __init__(self, data: Dict[Taxon, Dict[str, Any]]) -> None:
         self.data = data
 
-    def by_field(self, field: str, min_count: int = 0) -> None:
+    def by_field(self, field: str, min_count: int = 0, max_score: float = 101) -> None:
         items = (
             (key, value)
             for key, value in self.data.items()
-            if value["total"] > min_count
+            if value["total"] > min_count and value.get(field, 100) < max_score
         )
         sorted_items = sorted(
             items, key=lambda pair: (pair[1].get(field, 100), pair[1]["total"])
@@ -1521,6 +1574,7 @@ AUTHOR_SYNONYMS = {
     "Bogatschev": helpers.romanize_russian("Богачев"),
     "C. Hamilton Smith": "C.H. Smith",
     "C.F. Major": "Forsyth Major",
+    "C. Smith": "C.H. Smith",
     "C.E.H. Smith": "C.H. Smith",
     "Chabaeva": helpers.romanize_russian("Хабаева"),
     "Chernyavskii": helpers.romanize_russian("Чернявский"),
@@ -1568,6 +1622,7 @@ AUTHOR_SYNONYMS = {
     "Milne Edwards": "Milne-Edwards",
     "Miranda Ribeiro": "Miranda-Ribeiro",  # {Miranda-Ribeiro-biography.pdf}
     "Morosova-Turova": helpers.romanize_russian("Морозова-Турова"),
+    "Muizon": "de Muizon",
     "Naumoff": helpers.romanize_russian("Наумов"),
     "Peron": "Péron",
     "Petenyi": "Petényi",
@@ -1593,7 +1648,9 @@ AUTHOR_SYNONYMS = {
     "Tzalkin": helpers.romanize_russian("Цалкин"),
     "Vasil'eva": helpers.romanize_russian("Васильева"),
     "Verestchagin": helpers.romanize_russian("Верещагин"),
+    "Van Bénéden": "Van Beneden",
     "Von Dueben": "von Dueben",
+    "von Haast": "Haast",
     "Von Lehmann": "Lehmann",
     "Vorontzov": "Vorontsov",
     "Wasiljewa": helpers.romanize_russian("Васильева"),

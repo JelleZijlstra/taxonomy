@@ -146,6 +146,13 @@ class NomenclatureStatus(enum.IntEnum):
             NomenclatureStatus.informal,
         }
 
+    def requires_corrected_original_name(self) -> bool:
+        return self not in {
+            NomenclatureStatus.not_published_with_a_generic_name,
+            NomenclatureStatus.informal,
+            NomenclatureStatus.not_intended_as_a_scientific_name,
+        }
+
     @classmethod
     def hierarchy(cls) -> List[List["NomenclatureStatus"]]:
         """Hierarchy of the severity of various problems with a name.
