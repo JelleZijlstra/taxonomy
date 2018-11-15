@@ -1106,6 +1106,7 @@ def identify_name(
         return name_obj
     else:
         if not quiet and (orig_name, author) not in name_config.ignored_names:
+            print(f"--- finding name {orig_name} -- {author}")
             print(
                 f"could not find name {orig_name} -- {author} (tried variants {list(name_variants(orig_name, author))})"
             )
