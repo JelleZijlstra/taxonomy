@@ -3696,4 +3696,4 @@ class TypeTag(adt.ADT):
     # repository that holds some of the type specimens
     Repository(repository=Collection, tag=20)  # type: ignore
     # indicates that it was originally a genus coelebs
-    GenusCoelebs(comments=str, tag=21)
+    GenusCoelebs(comments=str, tag=21)  # type: ignore

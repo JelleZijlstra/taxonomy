@@ -5,7 +5,6 @@ import re
 from typing import Any, Deque, Dict, Iterable, List, Tuple
 
 from taxonomy import shell
-from taxonomy.db import constants
 
 from . import lib
 from .lib import DataT
@@ -63,10 +62,11 @@ class LineKind(enum.Enum):
 def can_be_name_header(line: str) -> bool:
     if len(line) > 100:
         return False
-    return re.match(
+    match = re.match(
         r"^.* [A-Z].*, \d{4}[a-z]?: (Table |Plate |Text to Plate |col\. )?([ivxlc]+|\d+)(, (\d+|footnote))*\.$",
         line,
-    ) and (line[0].isupper() or line[0] in ("[", "Φ", "$", "†", "Ω"))
+    )
+    return bool(match) and (line[0].isupper() or line[0] in ("[", "Φ", "$", "†", "Ω"))
 
 
 def extract_names(pages: Iterable[Tuple[int, List[str]]]) -> DataT:
@@ -207,7 +207,9 @@ def extract_names(pages: Iterable[Tuple[int, List[str]]]) -> DataT:
                 elif "sensu" in line:
                     line_kinds.append(LineKind.taxon_header)
                 elif re.match(
-                    r"^ +([†Φ] )?(Suborder |Subfamily |Family |Cohort |Superorder )?[A-Z][a-z]+( [a-z]+){0,2} +\(?([A-Z]\. )?[A-Z](cK)?[a-zé]+(-[A-Z][a-z]+)?( & [A-Z](cK)?[a-z]+)?( et al\.)?, \d{4}\)?$",
+                    r"^ +([†Φ] )?(Suborder |Subfamily |Family |Cohort |Superorder )?"
+                    r"[A-Z][a-z]+( [a-z]+){0,2} +\(?([A-Z]\. )?[A-Z](cK)?[a-zé]+(-[A-Z][a-z]+)?"
+                    r"( & [A-Z](cK)?[a-z]+)?( et al\.)?, \d{4}\)?$",
                     line,
                 ):
                     line_kinds.append(LineKind.taxon_header)
@@ -217,7 +219,6 @@ def extract_names(pages: Iterable[Tuple[int, List[str]]]) -> DataT:
 
 def build_refs_dict(refs: DataT) -> RefsDictT:
     refs_dict: RefsDictT = {}
-    last_authors: str = ""
     for ref in refs:
         # Adams M, Baverstock PR, Watts CHS, Reardon T (1987a)
         #    Electrophoretic resolution of species boundaries in
@@ -246,9 +247,6 @@ def build_refs_dict(refs: DataT) -> RefsDictT:
             key not in refs_dict
         ), f"duplicate key {key!r} (new: {text}, existing: {refs_dict[key]}"
         refs_dict[key] = text
-    # for key, value in refs_dict.items():
-    #     print(key)
-    #     print(value)
     return refs_dict
 
 
