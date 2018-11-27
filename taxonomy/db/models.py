@@ -719,7 +719,8 @@ class Taxon(BaseModel):
 
     def display_extant(self) -> None:
         self.display(
-            exclude_fn=lambda t: t.age != constants.Age.extant,
+            exclude_fn=lambda t: t.age != constants.Age.extant
+            or t.base_name.status != Status.valid,
             name_exclude_fn=lambda n: n.status == Status.synonym,
         )
 
