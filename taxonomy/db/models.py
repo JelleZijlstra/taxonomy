@@ -1603,6 +1603,42 @@ class Region(BaseModel):
             yield self.parent
             yield from self.parent.all_parents()
 
+    def has_collections(self) -> bool:
+        for _ in self.collections:
+            return True
+        return any(child.has_collections() for child in self.children)
+
+    def display_collections(
+        self, full: bool = False, only_nonempty: bool = True, depth: int = 0
+    ) -> None:
+        if only_nonempty and not self.has_collections():
+            return
+        print(" " * depth + self.name)
+        by_city = collections.defaultdict(list)
+        cities = set()
+        for collection in sorted(self.collections, key=lambda c: c.label):
+            by_city[collection.city or ""].append(collection)
+            cities.add(collection.city)
+        if cities == {None}:
+            for collection in by_city[""]:
+                collection.display(full=full, depth=depth + 4)
+        else:
+            for city, colls in sorted(by_city.items()):
+                print(" " * (depth + 4) + city)
+                for collection in colls:
+                    collection.display(full=full, depth=depth + 8)
+        for child in sorted(self.children, key=lambda c: c.name):
+            child.display_collections(
+                full=full, only_nonempty=only_nonempty, depth=depth + 4
+            )
+
+    def add_cities(self) -> None:
+        for collection in self.collections.filter(Collection.city == None):
+            collection.display()
+            collection.fill_field("city")
+        for child in self.children:
+            child.add_cities()
+
 
 class Location(BaseModel):
     creation_event = events.Event["Location"]()
@@ -2526,7 +2562,8 @@ class Collection(BaseModel):
     city = CharField(null=True)
 
     def __repr__(self) -> str:
-        return f"{self.name} ({self.label})"
+        city = f", {self.city}" if self.city else ""
+        return f"{self.name}{city} ({self.label})"
 
     @classmethod
     def by_label(cls, label: str) -> "Collection":
@@ -2556,12 +2593,14 @@ class Collection(BaseModel):
         obj.fill_required_fields()
         return obj
 
-    def display(self) -> None:
-        print(f"{self!r}, {self.location}")
+    def display(self, full: bool = True, depth: int = 0) -> None:
+        city = f", {self.city}" if self.city else ""
+        print(" " * depth + f"{self!r}{city}, {self.location}")
         if self.comment:
-            print(f"    Comment: {self.comment}")
-        for nam in sorted(self.type_specimens, key=lambda nam: nam.root_name):
-            print(f"    {nam} (type: {nam.type_specimen})")
+            print(" " * (depth + 4) + f"Comment: {self.comment}")
+        if full:
+            for nam in sorted(self.type_specimens, key=lambda nam: nam.root_name):
+                print(" " * (depth + 4) + f"{nam} (type: {nam.type_specimen})")
 
     def merge(self, other: "Collection") -> None:
         for nam in self.type_specimens:

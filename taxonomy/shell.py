@@ -729,6 +729,14 @@ def _duplicate_finder(
 
 
 @_duplicate_finder
+def dup_collections() -> List[Dict[str, List[Collection]]]:
+    colls: Dict[str, List[Collection]] = collections.defaultdict(list)
+    for coll in Collection.select():
+        colls[coll.label].append(coll)
+    return [colls]
+
+
+@_duplicate_finder
 def dup_taxa() -> List[Dict[str, List[Taxon]]]:
     taxa: Dict[str, List[Taxon]] = collections.defaultdict(list)
     for txn in Taxon.select():
@@ -1803,6 +1811,7 @@ def run_maintenance(skip_slow: bool = True) -> Dict[Any, Any]:
         disambiguate_authors,
         validate_authors,
         detect_corrected_original_names,
+        dup_collections,
         # dup_names,
         # dup_genus,
         # dup_taxa,
