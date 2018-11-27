@@ -1842,10 +1842,16 @@ def names_of_authority(author: str, year: int, edit: bool = False) -> List[Name]
     )
 
     def sort_key(nam: Name) -> int:
+        if nam.page_described is None:
+            return -1
         try:
             return int(nam.page_described)
-        except (TypeError, ValueError):
-            return -1
+        except ValueError:
+            m = re.match(r"^(\d+)", nam.page_described)
+            if m:
+                return int(m.group(1))
+            else:
+                return -1
 
     nams = sorted(query, key=sort_key)
     print(f"{len(nams)} names")
