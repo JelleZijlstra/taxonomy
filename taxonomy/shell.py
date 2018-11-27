@@ -739,7 +739,7 @@ def dup_collections() -> List[Dict[str, List[Collection]]]:
 @_duplicate_finder
 def dup_taxa() -> List[Dict[str, List[Taxon]]]:
     taxa: Dict[str, List[Taxon]] = collections.defaultdict(list)
-    for txn in Taxon.select():
+    for txn in Taxon.filter():
         if txn.rank == Rank.subgenus and taxa[txn.valid_name]:
             continue
         if (

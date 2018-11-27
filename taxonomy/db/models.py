@@ -561,6 +561,10 @@ class Taxon(BaseModel):
 
     name = property(lambda self: self.base_name)
 
+    @classmethod
+    def filter(self, *args, **kwargs: Any) -> Any:
+        return super().filter(Taxon.age != constants.Age.removed).filter(*args, **kwargs)
+
     @property
     def base_name(self) -> "Name":
         try:
@@ -577,14 +581,20 @@ class Taxon(BaseModel):
     def group(self) -> Group:
         return helpers.group_of_rank(self.rank)
 
+    def get_names(self) -> Iterable["Name"]:
+        return self.names.filter(Name.status != Status.removed)
+
     def sorted_names(self, exclude_valid: bool = False) -> List["Name"]:
-        names: Iterable[Name] = self.names
+        names: Iterable[Name] = self.get_names()
         if exclude_valid:
             names = filter(lambda name: name.status != Status.valid, names)
         return sorted(names, key=operator.attrgetter("status", "root_name"))
 
+    def get_children(self) -> Iterable["Taxon"]:
+        return self.children.filter(Taxon.age != constants.Age.removed)
+
     def sorted_children(self) -> List["Taxon"]:
-        return sorted(self.children, key=operator.attrgetter("rank", "valid_name"))
+        return sorted(self.get_children(), key=operator.attrgetter("rank", "valid_name"))
 
     def sorted_occurrences(self) -> List["Occurrence"]:
         return sorted(self.occurrences, key=lambda o: o.location.name)
@@ -684,7 +694,7 @@ class Taxon(BaseModel):
                 return []
         else:
             out: List[Taxon] = []
-            for child in self.children:
+            for child in self.get_children():
                 out += child.children_of_rank(rank, age=age)
             return out
 
@@ -1101,7 +1111,7 @@ class Taxon(BaseModel):
         """Finds the name that is expected to be the base name for this name."""
         if self.base_name.nomenclature_status == NomenclatureStatus.informal:
             return self.base_name
-        names = set(self.names)
+        names = set(self.get_names())
         if self.base_name.taxon != self:
             names |= set(self.base_name.taxon.names)
         group = self.base_name.group
@@ -1139,7 +1149,7 @@ class Taxon(BaseModel):
     def check_base_names(self) -> Iterable["Taxon"]:
         if not self.check_expected_base_name():
             yield self
-        for child in self.children:
+        for child in self.get_children():
             yield from child.check_base_names()
 
     def recompute_name(self) -> None:
@@ -1150,29 +1160,29 @@ class Taxon(BaseModel):
             self.save()
 
     def merge(self, into: "Taxon") -> None:
-        for child in self.children:
+        for child in self.get_children():
             child.parent = into
             child.save()
-        for nam in self.names:
+        for nam in self.get_names():
             if nam != self.base_name:
                 nam.taxon = into
                 nam.save()
 
         self._merge_fields(into, exclude={"id", "_base_name_id"})
         self.base_name.merge(into.base_name, allow_valid=True)
-        self.remove()
+        self.remove(reason=f"Merged into {into} (T#{into.id})")
 
     def synonymize(self, to_taxon: "Taxon") -> "Name":
         if self.data is not None:
             print("Warning: removing data: %s" % self.data)
         assert self != to_taxon, "Cannot synonymize %s with itself" % self
-        for child in self.children:
+        for child in self.get_children():
             child.parent = to_taxon
             child.save()
         nam = self.base_name
         nam.status = Status.synonym
         nam.save()
-        for name in self.names:
+        for name in self.get_names():
             name.taxon = to_taxon
             name.save()
         for occ in self.occurrences:
@@ -1191,7 +1201,7 @@ class Taxon(BaseModel):
                     additional_comment += " " + comment
                 existing.add_comment(additional_comment)
         to_taxon.base_name.status = Status.valid
-        self.delete_instance()
+        self.remove(reason=f"Synonymized into {to_taxon} (T#{to_taxon.id})")
         return Name.get(Name.id == nam.id)
 
     def make_species_group(self) -> "Taxon":
@@ -1211,17 +1221,20 @@ class Taxon(BaseModel):
 
     def run_on_self_and_children(self, callback: Callable[["Taxon"], object]) -> None:
         callback(self)
-        for child in self.children:
+        for child in self.get_children():
             child.run_on_self_and_children(callback)
 
-    def remove(self) -> None:
-        if self.children.count() != 0:
+    def remove(self, reason: Optional[str] = None) -> None:
+        for _ in self.get_children():
             print("Cannot remove %s since it has unremoved children" % self)
             return
         print("Removing taxon %s" % self)
         for name in self.sorted_names():
-            name.remove()
-        self.delete_instance()
+            name.remove(reason=reason)
+        self.status = Status.removed
+        if reason is not None:
+            self.data = reason
+        self.save()
 
     def all_names(self, age: Optional[constants.Age] = None) -> Set["Name"]:
         names: Set["Name"]
@@ -1229,12 +1242,12 @@ class Taxon(BaseModel):
             if self.age > age:
                 return set()
             elif self.age == age:
-                names = set(self.names)
+                names = set(self.get_names())
             else:
                 names = set()
         else:
-            names = set(self.names)
-        for child in self.children:
+            names = set(self.get_names())
+        for child in self.get_children():
             names |= child.all_names(age=age)
         return names
 
@@ -2680,6 +2693,10 @@ class Name(BaseModel):
     class Meta(object):
         db_table = "name"
 
+    @classmethod
+    def filter(self, *args, **kwargs: Any) -> Any:
+        return super().filter(Name.status != Status.removed).filter(*args, **kwargs)
+
     @property
     def name_complex(self) -> Union[None, NameComplex, SpeciesNameComplex]:
         if self._name_complex_id is None:
@@ -3293,7 +3310,7 @@ class Name(BaseModel):
                 Status.dubious,
             ), f"Can only merge synonymous names (not {self})"
         self._merge_fields(into, exclude={"id"})
-        self.remove()
+        self.remove(reason=f"Removed because it was merged into {into} (N#{into.id})")
 
     def open_description(self) -> bool:
         if self.original_citation is None:
@@ -3305,9 +3322,12 @@ class Name(BaseModel):
                 pass
         return True
 
-    def remove(self) -> None:
+    def remove(self, reason: Optional[str] = None) -> None:
         print("Deleting name: " + self.description())
-        self.delete_instance()
+        self.status = Status.removed
+        self.save()
+        if reason:
+            self.add_comment(constants.CommentKind.removal, reason, "", "")
 
     def original_valid(self) -> None:
         assert self.original_name is None

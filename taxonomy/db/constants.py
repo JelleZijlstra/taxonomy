@@ -15,11 +15,16 @@ class Age(enum.IntEnum):
     holocene = 1
     fossil = 2
     ichno = 3
+    removed = 4  # taxon is removed; should not have any references
 
     def get_symbol(self) -> str:
-        return {self.extant: "", self.holocene: "☠", self.fossil: "†", self.ichno: "👣"}[
-            self
-        ]
+        return {
+            self.extant: "",
+            self.holocene: "☠",
+            self.fossil: "†",
+            self.ichno: "👣",
+            self.removed: "!",
+        }[self]
 
 
 class Status(enum.IntEnum):
@@ -47,6 +52,8 @@ class Status(enum.IntEnum):
     # Never published or used in a published work. I keep these in the database only in case I was
     # wrong and they are real names.
     spurious = 5
+    # Name was removed; should not be used, but we keep it around to avoid breaking references.
+    removed = 6
 
 
 class NomenclatureStatus(enum.IntEnum):
@@ -480,3 +487,4 @@ class CommentKind(enum.IntEnum):
     spelling = 12
     authorship = 13
     automatic_change = 14
+    removal = 15
