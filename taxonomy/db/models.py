@@ -2522,6 +2522,7 @@ class Collection(BaseModel):
         Region, related_name="collections", db_column="location_id"
     )
     comment = CharField(null=True)
+    city = CharField(null=True)
 
     def __repr__(self) -> str:
         return f"{self.name} ({self.label})"
