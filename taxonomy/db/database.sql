@@ -164,7 +164,8 @@ CREATE TABLE `collection` (
 	`name` varchar(255),
 	`location_id` integer,
 	`comment` varchar(65535),
-	`city` varchar(255) default null
+	`city` varchar(255) default null,
+	`removed` integer default 0,
 );
 
 CREATE TABLE `name_comment` (

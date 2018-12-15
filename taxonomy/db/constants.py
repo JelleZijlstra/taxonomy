@@ -151,6 +151,7 @@ class NomenclatureStatus(enum.IntEnum):
             NomenclatureStatus.not_intended_as_a_scientific_name,
             NomenclatureStatus.zoological_formula,
             NomenclatureStatus.informal,
+            NomenclatureStatus.subsequent_usage,
         }
 
     def requires_corrected_original_name(self) -> bool:
@@ -465,6 +466,7 @@ class Organ(enum.IntEnum):
     tooth = 5
     in_alcohol = 6
     other = 7
+    maxilla = 8
 
 
 class AltitudeUnit(enum.IntEnum):

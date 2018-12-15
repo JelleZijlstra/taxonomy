@@ -4,7 +4,7 @@ from typing import Any, Container, Dict, Iterable, List, Optional, Tuple, Type, 
 
 import peewee
 
-from taxonomy.db.constants import Age, Group, Rank
+from taxonomy.db.constants import Age, Group, Rank, Status
 from taxonomy.db.models import (
     BaseModel,
     Collection,
@@ -180,6 +180,8 @@ def locless_names(
 def f(nam: Union[Name, List[Name]], skip_fields: Container[str] = frozenset()) -> None:
     if isinstance(nam, list):
         nam = nam[0]
+    if isinstance(nam, Taxon):
+        nam = nam.base_name
     nam.display()
     nam.fill_required_fields(skip_fields=skip_fields)
 
@@ -207,7 +209,7 @@ class _NamesGetter:
         if self._cache is not None:
             return
         self._cache = defaultdict(list)
-        for nam in Name.filter(Name.group == self._group):
+        for nam in Name.filter(Name.group == self._group, Name.status != Status.removed):
             self._cache[nam.root_name].append(nam)
 
     def clear_cache(self) -> None:

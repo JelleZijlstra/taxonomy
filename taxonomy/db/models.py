@@ -435,6 +435,7 @@ class ADTField(TextField):
     def add_to_class(self, model_class: Type[BaseModel], name: str) -> None:
         super().add_to_class(model_class, name)
         setattr(model_class, name, _ADTDescriptor(self, self.adt_cls))
+        setattr(model_class, f'_raw_{name}', peewee.FieldDescriptor(self))
 
     def get_adt(self) -> Type[Any]:
         return self.adt_cls()
@@ -562,8 +563,8 @@ class Taxon(BaseModel):
     name = property(lambda self: self.base_name)
 
     @classmethod
-    def filter(self, *args, **kwargs: Any) -> Any:
-        return super().filter(Taxon.age != constants.Age.removed).filter(*args, **kwargs)
+    def select_valid(cls, *args: Any) -> Any:
+        return cls.select(*args).filter(Taxon.age != constants.Age.removed)
 
     @property
     def base_name(self) -> "Name":
@@ -588,7 +589,11 @@ class Taxon(BaseModel):
         names: Iterable[Name] = self.get_names()
         if exclude_valid:
             names = filter(lambda name: name.status != Status.valid, names)
-        return sorted(names, key=operator.attrgetter("status", "root_name"))
+
+        def sort_key(nam):
+            return nam.status not in (Status.valid, Status.nomen_dubium), nam.root_name, (nam.year or "")
+
+        return sorted(names, key=sort_key)
 
     def get_children(self) -> Iterable["Taxon"]:
         return self.children.filter(Taxon.age != constants.Age.removed)
@@ -1231,7 +1236,7 @@ class Taxon(BaseModel):
         print("Removing taxon %s" % self)
         for name in self.sorted_names():
             name.remove(reason=reason)
-        self.status = Status.removed
+        self.age = constants.Age.removed
         if reason is not None:
             self.data = reason
         self.save()
@@ -1342,7 +1347,7 @@ class Taxon(BaseModel):
                     nam.fill_required_fields()
 
     def fill_field(self, field: str) -> None:
-        for name in self.all_names():
+        for name in sorted(self.all_names(), key=lambda nam: (nam.authority or "", nam.year or "")):
             if field in name.get_empty_required_fields():
                 name.display()
                 name.fill_field(field)
@@ -1416,7 +1421,7 @@ def has_data_from_original(nam: "Name") -> bool:
             ):
                 return True
         elif nam.group == Group.genus:
-            if isinstance(tag, TypeTag.IncludedSpecies):
+            if isinstance(tag, (TypeTag.IncludedSpecies, TypeTag.GenusCoelebs)):
                 return True
     return False
 
@@ -2573,6 +2578,7 @@ class Collection(BaseModel):
     )
     comment = CharField(null=True)
     city = CharField(null=True)
+    removed = BooleanField(default=False)
 
     def __repr__(self) -> str:
         city = f", {self.city}" if self.city else ""
@@ -2694,8 +2700,8 @@ class Name(BaseModel):
         db_table = "name"
 
     @classmethod
-    def filter(self, *args, **kwargs: Any) -> Any:
-        return super().filter(Name.status != Status.removed).filter(*args, **kwargs)
+    def select_valid(cls, *args: Any) -> Any:
+        return cls.select(*args).filter(Name.status != Status.removed)
 
     @property
     def name_complex(self) -> Union[None, NameComplex, SpeciesNameComplex]:
@@ -3685,6 +3691,36 @@ class NameComment(BaseModel):
         return f'{self.text} ({"; ".join(components)})'
 
 
+class Article(BaseModel):
+    addmonth = CharField()
+    addday = CharField()
+    addyear = CharField()
+    path = CharField()
+    name = CharField()
+    authors = CharField()
+    year = CharField()
+    title = CharField()
+    journal = CharField()
+    series = CharField()
+    volume = CharField()
+    issue = CharField()
+    start_page = CharField()
+    end_page = CharField()
+    url = CharField()
+    doi = CharField()
+    typ = IntegerField(db_column="type")
+    publisher = CharField()
+    location = CharField()
+    pages = CharField()
+    ids = TextField()
+    bools = TextField()
+    parent = CharField()
+    misc_data = TextField()
+
+    class Meta:
+        db_table = "article"
+
+
 class Tag(adt.ADT):
     PreoccupiedBy(name=Name, comment=str, tag=1)  # type: ignore
     UnjustifiedEmendationOf(name=Name, comment=str, tag=2)  # type: ignore
@@ -3709,6 +3745,8 @@ class Tag(adt.ADT):
     SelectionOfPriority(over=Name, source=str, comment=str, tag=16)  # type: ignore
     # Priority reversed by ICZN opinion
     ReversalOfPriority(over=Name, opinion=str, comment=str, tag=17)  # type: ignore
+    # Placed on the Official Index, but without being suppressed.
+    Rejected(opinion=str, comment=str, tag=18)  # type: ignore
 
 
 STATUS_TO_TAG = {
