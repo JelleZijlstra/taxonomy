@@ -45,7 +45,7 @@ from traitlets.config.loader import Config
 
 from . import getinput
 from .db import constants, definition, detection, ehphp, helpers, models
-from .db.constants import Age, Group, NomenclatureStatus, Rank
+from .db.constants import Age, Group, NomenclatureStatus, Rank, PeriodSystem
 from .db.models import Collection, Name, Tag, Taxon, TypeTag, database
 
 T = TypeVar("T")
@@ -261,6 +261,40 @@ def make_pleistocene_localities(dry_run: bool = False) -> None:
             print(f"setting comment on {loc} to {comment}")
             if not dry_run:
                 loc.comment = comment
+
+
+@generator_command
+def bad_stratigraphy(dry_run: bool = True) -> Iterable[models.Location]:
+    for loc in models.Location.select():
+        if loc.min_period is None and loc.max_period is not None:
+            print(f"=== {loc.name}: missing min_period ===")
+            loc.display()
+            yield loc
+        if loc.max_period is None and loc.min_period is not None:
+            print(f"=== {loc.name}: missing max_period ===")
+            loc.display()
+            yield loc
+        if loc.stratigraphic_unit is None and loc.min_period is None:
+            print(f"=== {loc.name}: missing stratigraphic_unit and period ===")
+            loc.display()
+            yield loc
+        periods = (loc.min_period, loc.max_period)
+        has_stratigraphic = False
+        for period in periods:
+            # exclude Recent (171)
+            if period is not None and period.id != 171 and period.system in (PeriodSystem.formation, PeriodSystem.group, PeriodSystem.member, PeriodSystem.other_stratigraphy, PeriodSystem.bed, PeriodSystem.supergroup):
+                has_stratigraphic = True
+        if has_stratigraphic:
+            print(f"=== {loc.name} has stratigraphic period ===")
+            loc.display()
+            yield loc
+            period = loc.min_period
+            if period == loc.max_period and loc.stratigraphic_unit is None:
+                print(f"autofixing {loc.name}")
+                if not dry_run:
+                    loc.min_period = period.min_period
+                    loc.max_period = period.max_period
+                    loc.stratigraphic_unit = period
 
 
 @command
@@ -1885,6 +1919,7 @@ def run_maintenance(skip_slow: bool = True) -> Dict[Any, Any]:
         # dup_names,
         # dup_genus,
         # dup_taxa,
+        bad_stratigraphy,
     ]
     # these each take >60 s
     slow: List[Callable[[], Any]] = [

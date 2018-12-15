@@ -82,6 +82,7 @@ CREATE TABLE `period` (
 	`comment` VARCHAR(65535) DEFAULT NULL,
 	`min_period_id` INT UNSIGNED DEFAULT NULL,
 	`max_period_id` INT UNSIGNED DEFAULT NULL,
+	`region_id` INT UNSIGNED DEFAULT NULL,
 	PRIMARY KEY(`id`),
 	INDEX(`name`),
 	UNIQUE KEY(`name`)

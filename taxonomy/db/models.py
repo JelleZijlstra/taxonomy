@@ -435,7 +435,7 @@ class ADTField(TextField):
     def add_to_class(self, model_class: Type[BaseModel], name: str) -> None:
         super().add_to_class(model_class, name)
         setattr(model_class, name, _ADTDescriptor(self, self.adt_cls))
-        setattr(model_class, f'_raw_{name}', peewee.FieldDescriptor(self))
+        setattr(model_class, f"_raw_{name}", peewee.FieldDescriptor(self))
 
     def get_adt(self) -> Type[Any]:
         return self.adt_cls()
@@ -591,7 +591,11 @@ class Taxon(BaseModel):
             names = filter(lambda name: name.status != Status.valid, names)
 
         def sort_key(nam):
-            return nam.status not in (Status.valid, Status.nomen_dubium), nam.root_name, (nam.year or "")
+            return (
+                nam.status not in (Status.valid, Status.nomen_dubium),
+                nam.root_name,
+                (nam.year or ""),
+            )
 
         return sorted(names, key=sort_key)
 
@@ -599,7 +603,9 @@ class Taxon(BaseModel):
         return self.children.filter(Taxon.age != constants.Age.removed)
 
     def sorted_children(self) -> List["Taxon"]:
-        return sorted(self.get_children(), key=operator.attrgetter("rank", "valid_name"))
+        return sorted(
+            self.get_children(), key=operator.attrgetter("rank", "valid_name")
+        )
 
     def sorted_occurrences(self) -> List["Occurrence"]:
         return sorted(self.occurrences, key=lambda o: o.location.name)
@@ -1347,7 +1353,9 @@ class Taxon(BaseModel):
                     nam.fill_required_fields()
 
     def fill_field(self, field: str) -> None:
-        for name in sorted(self.all_names(), key=lambda nam: (nam.authority or "", nam.year or "")):
+        for name in sorted(
+            self.all_names(), key=lambda nam: (nam.authority or "", nam.year or "")
+        ):
             if field in name.get_empty_required_fields():
                 name.display()
                 name.fill_field(field)
@@ -1432,6 +1440,110 @@ definition.taxon_cls = Taxon
 T = TypeVar("T")
 
 
+class Region(BaseModel):
+    label_field = "name"
+
+    name = CharField()
+    comment = CharField(null=True)
+    parent = ForeignKeyField(
+        "self", related_name="children", db_column="parent_id", null=True
+    )
+    kind = EnumField(constants.RegionKind)
+
+    @classmethod
+    def make(
+        cls, name: str, kind: constants.RegionKind, parent: Optional["Region"] = None
+    ) -> "Region":
+        region = cls.create(name=name, kind=kind, parent=parent)
+        Location.make(
+            name=name,
+            period=Period.filter(Period.name == "Recent").get(),
+            region=region,
+        )
+        return region
+
+    def __repr__(self) -> str:
+        out = self.name
+        if self.parent:
+            out += ", %s" % self.parent.name
+        out += " (%s)" % self.kind
+        return out
+
+    def display(
+        self, full: bool = False, depth: int = 0, file: IO[str] = sys.stdout
+    ) -> None:
+        file.write("{}{}\n".format(" " * (depth + 4), repr(self)))
+        if self.comment:
+            file.write("{}Comment: {}\n".format(" " * (depth + 12), self.comment))
+        for location in self.locations:
+            location.display(full=full, depth=depth + 4, file=file)
+        for child in self.children:
+            child.display(full=full, depth=depth + 4, file=file)
+
+    def get_location(self) -> "Location":
+        """Returns the corresponding Recent Location."""
+        return Location.get(region=self, name=self.name)
+
+    def all_parents(self) -> Iterable["Region"]:
+        """Returns all parent regions of this region."""
+        if self.parent is not None:
+            yield self.parent
+            yield from self.parent.all_parents()
+
+    def has_collections(self) -> bool:
+        for _ in self.collections:
+            return True
+        return any(child.has_collections() for child in self.children)
+
+    def display_collections(
+        self, full: bool = False, only_nonempty: bool = True, depth: int = 0
+    ) -> None:
+        if only_nonempty and not self.has_collections():
+            return
+        print(" " * depth + self.name)
+        by_city = collections.defaultdict(list)
+        cities = set()
+        for collection in sorted(self.collections, key=lambda c: c.label):
+            by_city[collection.city or ""].append(collection)
+            cities.add(collection.city)
+        if cities == {None}:
+            for collection in by_city[""]:
+                collection.display(full=full, depth=depth + 4)
+        else:
+            for city, colls in sorted(by_city.items()):
+                print(" " * (depth + 4) + city)
+                for collection in colls:
+                    collection.display(full=full, depth=depth + 8)
+        for child in sorted(self.children, key=lambda c: c.name):
+            child.display_collections(
+                full=full, only_nonempty=only_nonempty, depth=depth + 4
+            )
+
+    def has_periods(self) -> bool:
+        for _ in self.periods:
+            return True
+        return any(child.has_periods() for child in self.children)
+
+    def display_periods(self, full: bool = False, depth: int = 0):
+        if not self.has_periods():
+            return
+        print(" " * depth + self.name)
+        for period in sorted(self.periods, key=lambda p: p.name):
+            if full:
+                period.display(depth=depth + 4)
+            else:
+                print(" " * (depth + 4) + period.name)
+        for child in sorted(self.children, key=lambda c: c.name):
+            child.display_periods(full=full, depth=depth + 4)
+
+    def add_cities(self) -> None:
+        for collection in self.collections.filter(Collection.city == None):
+            collection.display()
+            collection.fill_field("city")
+        for child in self.children:
+            child.add_cities()
+
+
 class Period(BaseModel):
     creation_event = events.Event["Period"]()
     save_event = events.Event["Period"]()
@@ -1457,6 +1569,9 @@ class Period(BaseModel):
     )
     system = EnumField(constants.PeriodSystem)
     comment = CharField()
+    region = ForeignKeyField(
+        Region, related_name="periods", db_column="region_id", null=True
+    )
 
     @staticmethod
     def _filter_none(seq: Iterable[Optional[T]]) -> Iterable[T]:
@@ -1555,6 +1670,26 @@ class Period(BaseModel):
     def make_locality(self, region: "Region") -> "Location":
         return Location.make(self.name, region, self)
 
+    def all_localities(self) -> Iterable["Location"]:
+        yield from self.locations_stratigraphy
+        for child in self.children:
+            yield from child.all_localities()
+
+    def all_regions(self) -> Set[Region]:
+        return {loc.region for loc in self.all_localities()}
+
+    def autoset_region(self) -> bool:
+        if self.region is not None:
+            return True
+        regions = self.all_regions()
+        if len(regions) == 1:
+            region = next(iter(regions))
+            print(f"{self}: setting region to {region}")
+            self.region = region
+            return True
+        else:
+            return False
+
     def __repr__(self) -> str:
         properties = {}
         for field in self.fields():
@@ -1569,93 +1704,6 @@ class Period(BaseModel):
         return "{} ({})".format(
             self.name, ", ".join("%s=%s" % item for item in properties.items())
         )
-
-
-class Region(BaseModel):
-    label_field = "name"
-
-    name = CharField()
-    comment = CharField(null=True)
-    parent = ForeignKeyField(
-        "self", related_name="children", db_column="parent_id", null=True
-    )
-    kind = EnumField(constants.RegionKind)
-
-    @classmethod
-    def make(
-        cls, name: str, kind: constants.RegionKind, parent: Optional["Region"] = None
-    ) -> "Region":
-        region = cls.create(name=name, kind=kind, parent=parent)
-        Location.make(
-            name=name,
-            period=Period.filter(Period.name == "Recent").get(),
-            region=region,
-        )
-        return region
-
-    def __repr__(self) -> str:
-        out = self.name
-        if self.parent:
-            out += ", %s" % self.parent.name
-        out += " (%s)" % self.kind
-        return out
-
-    def display(
-        self, full: bool = False, depth: int = 0, file: IO[str] = sys.stdout
-    ) -> None:
-        file.write("{}{}\n".format(" " * (depth + 4), repr(self)))
-        if self.comment:
-            file.write("{}Comment: {}\n".format(" " * (depth + 12), self.comment))
-        for location in self.locations:
-            location.display(full=full, depth=depth + 4, file=file)
-        for child in self.children:
-            child.display(full=full, depth=depth + 4, file=file)
-
-    def get_location(self) -> "Location":
-        """Returns the corresponding Recent Location."""
-        return Location.get(region=self, name=self.name)
-
-    def all_parents(self) -> Iterable["Region"]:
-        """Returns all parent regions of this region."""
-        if self.parent is not None:
-            yield self.parent
-            yield from self.parent.all_parents()
-
-    def has_collections(self) -> bool:
-        for _ in self.collections:
-            return True
-        return any(child.has_collections() for child in self.children)
-
-    def display_collections(
-        self, full: bool = False, only_nonempty: bool = True, depth: int = 0
-    ) -> None:
-        if only_nonempty and not self.has_collections():
-            return
-        print(" " * depth + self.name)
-        by_city = collections.defaultdict(list)
-        cities = set()
-        for collection in sorted(self.collections, key=lambda c: c.label):
-            by_city[collection.city or ""].append(collection)
-            cities.add(collection.city)
-        if cities == {None}:
-            for collection in by_city[""]:
-                collection.display(full=full, depth=depth + 4)
-        else:
-            for city, colls in sorted(by_city.items()):
-                print(" " * (depth + 4) + city)
-                for collection in colls:
-                    collection.display(full=full, depth=depth + 8)
-        for child in sorted(self.children, key=lambda c: c.name):
-            child.display_collections(
-                full=full, only_nonempty=only_nonempty, depth=depth + 4
-            )
-
-    def add_cities(self) -> None:
-        for collection in self.collections.filter(Collection.city == None):
-            collection.display()
-            collection.fill_field("city")
-        for child in self.children:
-            child.add_cities()
 
 
 class Location(BaseModel):
@@ -1729,7 +1777,7 @@ class Location(BaseModel):
             if self.stratigraphic_unit is not None:
                 age_str += "; "
             age_str += self.max_period.name
-            if self.min_period != self.max_period:
+            if self.min_period is not None and self.min_period != self.max_period:
                 age_str += "–%s" % self.min_period.name
         if self.min_age is not None and self.max_age is not None:
             age_str += f"; {self.max_age}–{self.min_age}"
