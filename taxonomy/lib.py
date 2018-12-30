@@ -209,7 +209,9 @@ class _NamesGetter:
         if self._cache is not None:
             return
         self._cache = defaultdict(list)
-        for nam in Name.filter(Name.group == self._group, Name.status != Status.removed):
+        for nam in Name.filter(
+            Name.group == self._group, Name.status != Status.removed
+        ):
             self._cache[nam.root_name].append(nam)
 
     def clear_cache(self) -> None:

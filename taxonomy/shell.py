@@ -170,12 +170,16 @@ def taxon_of_name(name: str) -> Taxon:
 @generator_command
 def n(name: str) -> Iterable[Name]:
     """Finds names with the given root name or original name."""
-    return Name.select_valid().filter((Name.root_name % name) | (Name.original_name % name))
+    return Name.select_valid().filter(
+        (Name.root_name % name) | (Name.original_name % name)
+    )
 
 
 @generator_command
 def h(authority: str, year: str) -> Iterable[Name]:
-    return Name.select_valid().filter(Name.authority % f"%{authority}%", Name.year == year)
+    return Name.select_valid().filter(
+        Name.authority % f"%{authority}%", Name.year == year
+    )
 
 
 # Maintenance
@@ -204,10 +208,10 @@ def fix_bad_ampersands() -> Iterable[Tuple[Name, str]]:
 @command
 @_add_missing_data
 def fix_et_al() -> Iterable[Tuple[Name, str]]:
-    for name in Name.select_valid().filter(
-        Name.authority % "%et al%", Name.original_citation != None
-    ).order_by(
-        Name.original_name, Name.root_name
+    for name in (
+        Name.select_valid()
+        .filter(Name.authority % "%et al%", Name.original_citation != None)
+        .order_by(Name.original_name, Name.root_name)
     ):  # noqa: E711
         yield name, "Name {} uses et al.".format(name.description())
 
@@ -215,10 +219,10 @@ def fix_et_al() -> Iterable[Tuple[Name, str]]:
 @command
 @_add_missing_data
 def add_original_names() -> Iterable[Tuple[Name, str]]:
-    for name in Name.select_valid().filter(
-        Name.original_citation != None, Name.original_name >> None
-    ).order_by(
-        Name.original_name
+    for name in (
+        Name.select_valid()
+        .filter(Name.original_citation != None, Name.original_name >> None)
+        .order_by(Name.original_name)
     ):  # noqa: E711
         message = "Name {} is missing an original name, but has original citation {{{}}}:{}".format(
             name.description(), name.original_citation, name.page_described
@@ -229,11 +233,15 @@ def add_original_names() -> Iterable[Tuple[Name, str]]:
 @command
 @_add_missing_data
 def add_page_described() -> Iterable[Tuple[Name, str]]:
-    for name in Name.select_valid().filter(
-        Name.original_citation != None,
-        Name.page_described >> None,  # noqa: E711
-        Name.year != "in press",
-    ).order_by(Name.original_citation, Name.original_name):
+    for name in (
+        Name.select_valid()
+        .filter(
+            Name.original_citation != None,
+            Name.page_described >> None,  # noqa: E711
+            Name.year != "in press",
+        )
+        .order_by(Name.original_citation, Name.original_name)
+    ):
         if name.year in ("2015", "2016"):
             continue  # recent JVP papers don't have page numbers
         message = (
@@ -282,7 +290,19 @@ def bad_stratigraphy(dry_run: bool = True) -> Iterable[models.Location]:
         has_stratigraphic = False
         for period in periods:
             # exclude Recent (171)
-            if period is not None and period.id != 171 and period.system in (PeriodSystem.formation, PeriodSystem.group, PeriodSystem.member, PeriodSystem.other_stratigraphy, PeriodSystem.bed, PeriodSystem.supergroup):
+            if (
+                period is not None
+                and period.id != 171
+                and period.system
+                in (
+                    PeriodSystem.formation,
+                    PeriodSystem.group,
+                    PeriodSystem.member,
+                    PeriodSystem.other_stratigraphy,
+                    PeriodSystem.bed,
+                    PeriodSystem.supergroup,
+                )
+            ):
                 has_stratigraphic = True
         if has_stratigraphic:
             print(f"=== {loc.name} has stratigraphic period ===")
@@ -299,12 +319,16 @@ def bad_stratigraphy(dry_run: bool = True) -> Iterable[models.Location]:
 
 @command
 def add_types() -> None:
-    for name in Name.select_valid().filter(
-        Name.original_citation != None,
-        Name.type >> None,
-        Name.year > "1930",  # noqa: E711
-        Name.group == Group.genus,
-    ).order_by(Name.original_citation):
+    for name in (
+        Name.select_valid()
+        .filter(
+            Name.original_citation != None,
+            Name.type >> None,
+            Name.year > "1930",  # noqa: E711
+            Name.group == Group.genus,
+        )
+        .order_by(Name.original_citation)
+    ):
         if "type" not in name.get_required_fields():
             continue
         name.taxon.display(full=True, max_depth=1)
@@ -363,10 +387,10 @@ def detect_types(max_count: Optional[int] = None, verbose: bool = False) -> None
     count = 0
     successful_count = 0
     group = (Group.family, Group.genus)
-    for name in Name.select_valid().filter(
-        Name.verbatim_type != None, Name.type >> None, Name.group << group
-    ).limit(
-        max_count
+    for name in (
+        Name.select_valid()
+        .filter(Name.verbatim_type != None, Name.type >> None, Name.group << group)
+        .limit(max_count)
     ):  # noqa: E711
         count += 1
         if name.detect_and_set_type(verbatim_type=name.verbatim_type, verbose=verbose):
@@ -399,7 +423,8 @@ def detect_types_from_root_names(max_count: Optional[int] = None) -> None:
     count = 0
     successful_count = 0
     for name in (
-        Name.select_valid().filter(Name.group == Group.family, Name.type >> None)
+        Name.select_valid()
+        .filter(Name.group == Group.family, Name.type >> None)
         .order_by(Name.id.desc())
         .limit(max_count)
     ):
@@ -423,12 +448,18 @@ def detect_types_from_root_names(max_count: Optional[int] = None) -> None:
 
 @command
 def endswith(end: str) -> List[Name]:
-    return list(Name.select_valid().filter(Name.group == Group.genus, Name.root_name % ("%%%s" % end)))
+    return list(
+        Name.select_valid().filter(
+            Name.group == Group.genus, Name.root_name % ("%%%s" % end)
+        )
+    )
 
 
 @command
 def detect_stems() -> None:
-    for name in Name.select_valid().filter(Name.group == Group.genus, Name.stem >> None):
+    for name in Name.select_valid().filter(
+        Name.group == Group.genus, Name.stem >> None
+    ):
         inferred = detection.detect_stem_and_gender(name.root_name)
         if inferred is None:
             continue
@@ -451,7 +482,9 @@ def detect_stems() -> None:
 @command
 def detect_complexes() -> None:
     endings = list(models.NameEnding.select())
-    for name in Name.select_valid().filter(Name.group == Group.genus, Name._name_complex_id >> None):
+    for name in Name.select_valid().filter(
+        Name.group == Group.genus, Name._name_complex_id >> None
+    ):
         inferred = find_ending(name, endings)
         if inferred is None:
             continue
@@ -488,7 +521,9 @@ def detect_species_name_complexes(dry_run: bool = False) -> None:
             full_names[form] = snc
     success = 0
     total = 0
-    for name in Name.select_valid().filter(Name.group == Group.species, Name._name_complex_id >> None):
+    for name in Name.select_valid().filter(
+        Name.group == Group.species, Name._name_complex_id >> None
+    ):
         total += 1
         if name.root_name in full_names:
             inferred = full_names[name.root_name]
@@ -592,7 +627,9 @@ def find_first_declension_adjectives(dry_run: bool = True) -> Dict[str, int]:
         "en.wiktionary.org", "Latin first and second declension adjectives"
     )
     species_name_to_names: Dict[str, List[Name]] = collections.defaultdict(list)
-    for name in Name.select_valid().filter(Name.group == Group.species, Name._name_complex_id >> None):
+    for name in Name.select_valid().filter(
+        Name.group == Group.species, Name._name_complex_id >> None
+    ):
         species_name_to_names[name.root_name].append(name)
     count = 0
     names_applied: Counter[str] = Counter()
@@ -673,7 +710,9 @@ def generate_word_list() -> Set[str]:
 
 @generator_command
 def stem_mismatch(autofix: bool = False) -> Iterable[Name]:
-    for nam in Name.select_valid().filter(Name.group == Group.genus, ~(Name._name_complex_id >> None)):
+    for nam in Name.select_valid().filter(
+        Name.group == Group.genus, ~(Name._name_complex_id >> None)
+    ):
         if nam.stem is None:
             continue
         if nam.stem != nam.get_stem():
@@ -695,7 +734,9 @@ def complexless_stems() -> Iterable[Name]:
 
 @generator_command
 def correct_species_root_names(dry_run: bool = True) -> Iterable[Name]:
-    for nam in Name.select_valid().filter(Name.group == Group.species, Name._name_complex_id != None):
+    for nam in Name.select_valid().filter(
+        Name.group == Group.species, Name._name_complex_id != None
+    ):
         if not nam.compute_gender(dry_run=dry_run):
             yield nam
 
@@ -726,7 +767,9 @@ def species_root_name_mismatch() -> Iterable[Name]:
 
 @generator_command
 def root_name_mismatch(interactive: bool = False) -> Iterable[Name]:
-    for name in Name.select_valid().filter(Name.group == Group.family, ~(Name.type >> None)):
+    for name in Name.select_valid().filter(
+        Name.group == Group.family, ~(Name.type >> None)
+    ):
         if name.is_unavailable():
             continue
         stem_name = name.type.stem
@@ -780,11 +823,17 @@ def dup_taxa() -> List[Dict[str, List[Taxon]]]:
         if txn.rank == Rank.subgenus and taxa[txn.valid_name]:
             continue
         taxa[txn.valid_name].append(txn)
-    return [{
-        label: [t for t in ts if t.base_name.nomenclature_status != NomenclatureStatus.preoccupied]
-        for label, ts in taxa.items()
-        if len(ts) > 1
-    }]
+    return [
+        {
+            label: [
+                t
+                for t in ts
+                if t.base_name.nomenclature_status != NomenclatureStatus.preoccupied
+            ]
+            for label, ts in taxa.items()
+            if len(ts) > 1
+        }
+    ]
 
 
 @_duplicate_finder
@@ -803,7 +852,9 @@ def dup_names() -> List[
     original_year: Dict[
         Tuple[str, str, constants.NomenclatureStatus], List[Name]
     ] = collections.defaultdict(list)
-    for name in Name.select_valid().filter(Name.original_name != None, Name.year != None):
+    for name in Name.select_valid().filter(
+        Name.original_name != None, Name.year != None
+    ):
         original_year[(name.original_name, name.year, name.nomenclature_status)].append(
             name
         )
@@ -812,15 +863,27 @@ def dup_names() -> List[
 
 @command
 def stem_statistics() -> None:
-    stem = Name.select_valid().filter(Name.group == Group.genus, ~(Name.stem >> None)).count()
-    gender = Name.select_valid().filter(Name.group == Group.genus, ~(Name.gender >> None)).count()
+    stem = (
+        Name.select_valid()
+        .filter(Name.group == Group.genus, ~(Name.stem >> None))
+        .count()
+    )
+    gender = (
+        Name.select_valid()
+        .filter(Name.group == Group.genus, ~(Name.gender >> None))
+        .count()
+    )
     total = Name.select_valid().filter(Name.group == Group.genus).count()
     print("Genus-group names:")
     print("stem: {}/{} ({:.02f}%)".format(stem, total, stem / total * 100))
     print("gender: {}/{} ({:.02f}%)".format(gender, total, gender / total * 100))
     print("Family-group names:")
     total = Name.select_valid().filter(Name.group == Group.family).count()
-    typ = Name.select_valid().filter(Name.group == Group.family, ~(Name.type >> None)).count()
+    typ = (
+        Name.select_valid()
+        .filter(Name.group == Group.family, ~(Name.type >> None))
+        .count()
+    )
     print("type: {}/{} ({:.02f}%)".format(typ, total, typ / total * 100))
 
 
@@ -941,11 +1004,7 @@ HIGH_QUALITY = {
     "Rhynchocephalia",
     "Allocaudata",
 }
-LOW_QUALITY = {
-    "Neornithes",
-    "Ornithischia",
-    "root"
-}
+LOW_QUALITY = {"Neornithes", "Ornithischia", "root"}
 
 
 def is_high_quality(taxon: Taxon) -> bool:
@@ -1135,7 +1194,9 @@ def bad_parents() -> Iterable[Name]:
 
 @generator_command
 def parentless_taxa() -> Iterable[Taxon]:
-    return (t for t in Taxon.select_valid().filter(Taxon.parent >> None) if t.id != 1)  # exclude root
+    return (
+        t for t in Taxon.select_valid().filter(Taxon.parent >> None) if t.id != 1
+    )  # exclude root
 
 
 @generator_command
@@ -1171,7 +1232,9 @@ ATTRIBUTES_BY_GROUP = {
 @generator_command
 def disallowed_attribute() -> Iterable[Tuple[Name, str]]:
     for field, groups in ATTRIBUTES_BY_GROUP.items():
-        for nam in Name.select_valid().filter(getattr(Name, field) != None, ~(Name.group << groups)):
+        for nam in Name.select_valid().filter(
+            getattr(Name, field) != None, ~(Name.group << groups)
+        ):
             yield nam, field
 
 
@@ -1342,7 +1405,9 @@ def names_with_location_detail_without_type_loc(
     taxon: Optional[Taxon] = None
 ) -> Iterable[Name]:
     if taxon is None:
-        nams = Name.select_valid().filter(Name.type_tags != None, Name.type_locality >> None)
+        nams = Name.select_valid().filter(
+            Name.type_tags != None, Name.type_locality >> None
+        )
     else:
         nams = [
             nam
@@ -1395,25 +1460,41 @@ def type_locality_without_detail() -> Iterable[Name]:
 @command
 def most_common_comments(field: str = "other_comments") -> Counter[str]:
     return Counter(
-        getattr(nam, field) for nam in Name.select_valid().filter(getattr(Name, field) != None)
+        getattr(nam, field)
+        for nam in Name.select_valid().filter(getattr(Name, field) != None)
     )
 
 
 @command
 def redundant_comments():
-    for nam in Name.select_valid().filter(Name.nomenclature_comments == "Nomen nudum", Name.nomenclature_status == NomenclatureStatus.nomen_nudum):
+    for nam in Name.select_valid().filter(
+        Name.nomenclature_comments == "Nomen nudum",
+        Name.nomenclature_status == NomenclatureStatus.nomen_nudum,
+    ):
         print(f"{nam}: remove {nam.nomenclature_comments!r}")
         nam.nomenclature_comments = None
-    for nam in Name.select_valid().filter(Name.other_comments == "Nomen nudum", Name.nomenclature_status == NomenclatureStatus.nomen_nudum):
+    for nam in Name.select_valid().filter(
+        Name.other_comments == "Nomen nudum",
+        Name.nomenclature_status == NomenclatureStatus.nomen_nudum,
+    ):
         print(f"{nam}: remove {nam.other_comments!r}")
         nam.other_comments = None
-    for nam in Name.select_valid().filter(Name.nomenclature_comments == "Preoccupied", Name.nomenclature_status == NomenclatureStatus.preoccupied):
+    for nam in Name.select_valid().filter(
+        Name.nomenclature_comments == "Preoccupied",
+        Name.nomenclature_status == NomenclatureStatus.preoccupied,
+    ):
         print(f"{nam}: remove {nam.nomenclature_comments!r}")
         nam.nomenclature_comments = None
-    for nam in Name.select_valid().filter(Name.other_comments == "Preoccupied", Name.nomenclature_status == NomenclatureStatus.preoccupied):
+    for nam in Name.select_valid().filter(
+        Name.other_comments == "Preoccupied",
+        Name.nomenclature_status == NomenclatureStatus.preoccupied,
+    ):
         print(f"{nam}: remove {nam.other_comments!r}")
         nam.other_comments = None
-    for nam in Name.select_valid().filter(Name.other_comments == "Nomen dubium", Name.status == constants.Status.nomen_dubium):
+    for nam in Name.select_valid().filter(
+        Name.other_comments == "Nomen dubium",
+        Name.status == constants.Status.nomen_dubium,
+    ):
         print(f"{nam}: remove {nam.other_comments!r}")
         nam.other_comments = None
 
