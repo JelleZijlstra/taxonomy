@@ -1466,7 +1466,7 @@ def most_common_comments(field: str = "other_comments") -> Counter[str]:
 
 
 @command
-def redundant_comments():
+def redundant_comments() -> None:
     for nam in Name.select_valid().filter(
         Name.nomenclature_comments == "Nomen nudum",
         Name.nomenclature_status == NomenclatureStatus.nomen_nudum,

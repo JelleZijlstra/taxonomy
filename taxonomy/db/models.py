@@ -240,7 +240,7 @@ class BaseModel(Model):
         """
         return dict(database.execute_sql(sql))
 
-    def reload(self) -> ModelT:
+    def reload(self: ModelT) -> ModelT:
         return type(self).get(id=self.id)
 
     def serialize(self) -> int:
@@ -593,7 +593,7 @@ class Taxon(BaseModel):
         if exclude_valid:
             names = filter(lambda name: name.status != Status.valid, names)
 
-        def sort_key(nam):
+        def sort_key(nam: "Name") -> Tuple[bool, str, str]:
             return (
                 nam.status not in (Status.valid, Status.nomen_dubium),
                 nam.root_name,
@@ -1245,7 +1245,7 @@ class Taxon(BaseModel):
         print("Removing taxon %s" % self)
         for name in self.sorted_names():
             name.remove(reason=reason)
-        self.age = constants.Age.removed
+        self.age = constants.Age.removed  # type: ignore
         if reason is not None:
             self.data = reason
         self.save()
@@ -1507,7 +1507,7 @@ class Region(BaseModel):
         if only_nonempty and not self.has_collections():
             return
         print(" " * depth + self.name)
-        by_city = collections.defaultdict(list)
+        by_city: Dict[str, List["Collection"]] = collections.defaultdict(list)
         cities = set()
         for collection in sorted(self.collections, key=lambda c: c.label):
             by_city[collection.city or ""].append(collection)
@@ -1530,7 +1530,7 @@ class Region(BaseModel):
             return True
         return any(child.has_periods() for child in self.children)
 
-    def display_periods(self, full: bool = False, depth: int = 0):
+    def display_periods(self, full: bool = False, depth: int = 0) -> None:
         if not self.has_periods():
             return
         print(" " * depth + self.name)
@@ -3384,7 +3384,7 @@ class Name(BaseModel):
 
     def remove(self, reason: Optional[str] = None) -> None:
         print("Deleting name: " + self.description())
-        self.status = Status.removed
+        self.status = Status.removed  # type: ignore
         self.save()
         if reason:
             self.add_comment(constants.CommentKind.removal, reason, "", "")

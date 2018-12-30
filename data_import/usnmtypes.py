@@ -214,7 +214,7 @@ def translate_type_localities(names: DataT) -> DataT:
             text = name["loc"].rstrip(".")
             text = re.sub(r"\[.*?: ([^\]]+)\]", r"\1", text)
             text = text.replace("[", "").replace("]", "")
-            parts = [
+            parts: List[List[str]] = [
                 list(filter(None, re.split(r"[()]", part))) for part in text.split(", ")
             ]
             type_loc = lib.extract_region(list(reversed(parts)))
