@@ -240,6 +240,9 @@ class BaseModel(Model):
         """
         return dict(database.execute_sql(sql))
 
+    def reload(self) -> ModelT:
+        return type(self).get(id=self.id)
+
     def serialize(self) -> int:
         return self.id
 
@@ -1348,6 +1351,7 @@ class Taxon(BaseModel):
             fill_data_from_paper(citation, skip_if_seen=skip_if_seen)
         if not only_with_original:
             for nam in self.all_names(age=age):
+                nam = nam.reload()
                 if not should_include(nam):
                     print(nam)
                     nam.fill_required_fields()
@@ -1402,6 +1406,7 @@ def fill_data_from_paper(
             return (nam.page_described or "", 0)
 
     for nam in sorted(Name.filter(Name.original_citation == paper), key=sort_key):
+        nam = nam.reload()
         if skip_if_seen and has_data_from_original(nam):
             continue
         nam.display()
@@ -1472,6 +1477,7 @@ class Region(BaseModel):
     def display(
         self, full: bool = False, depth: int = 0, file: IO[str] = sys.stdout
     ) -> None:
+        getinput.flush()
         file.write("{}{}\n".format(" " * (depth + 4), repr(self)))
         if self.comment:
             file.write("{}Comment: {}\n".format(" " * (depth + 12), self.comment))

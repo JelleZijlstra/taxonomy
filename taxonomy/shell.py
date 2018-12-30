@@ -857,7 +857,7 @@ def get_scores(
     for taxon in taxa:
         if age is not None and taxon.age > age:
             continue
-        print("---", taxon, "---")
+        getinput.show(f"--- {taxon} ---")
         data[taxon] = taxon.stats(age=age)
     return ScoreHolder(data)
 

@@ -65,7 +65,7 @@ def get_line(
     history = _get_history(history_key)
     while True:
         try:
-            _flush()
+            flush()
             line = prompt_toolkit.prompt(
                 message=prompt,
                 default=default,
@@ -130,7 +130,7 @@ def get_with_completion(
         validator = _FixedValidator([*options, ""] if allow_empty else options)
     else:
         validator = None
-    _flush()
+    flush()
     return prompt_toolkit.prompt(
         completer=_Completer(options),
         message=message,
@@ -322,8 +322,13 @@ def decode_name(name: str) -> str:
     return _decode_re.sub(lambda m: chr(int(m.group(1))), name.replace("_", " "))
 
 
-def _flush() -> None:
+def flush() -> None:
     # Flush standard streams before we call into prompt_toolkit, because otherwise
     # output sometimes does not show up.
     sys.stdout.flush()
     sys.stderr.flush()
+
+
+def show(obj: object) -> None:
+    flush()
+    print(obj)
