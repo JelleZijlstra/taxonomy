@@ -212,7 +212,7 @@ def fix_et_al() -> Iterable[Tuple[Name, str]]:
         Name.select_valid()
         .filter(Name.authority % "%et al%", Name.original_citation != None)
         .order_by(Name.original_name, Name.root_name)
-    ):  # noqa: E711
+    ):
         yield name, "Name {} uses et al.".format(name.description())
 
 
@@ -223,7 +223,7 @@ def add_original_names() -> Iterable[Tuple[Name, str]]:
         Name.select_valid()
         .filter(Name.original_citation != None, Name.original_name >> None)
         .order_by(Name.original_name)
-    ):  # noqa: E711
+    ):
         message = "Name {} is missing an original name, but has original citation {{{}}}:{}".format(
             name.description(), name.original_citation, name.page_described
         )
