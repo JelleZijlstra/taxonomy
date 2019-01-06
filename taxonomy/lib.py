@@ -189,6 +189,14 @@ def f(nam: Union[Name, List[Name]], skip_fields: Container[str] = frozenset()) -
 g = partial(f, skip_fields={"original_citation", "type_specimen", "collection"})
 
 
+def set_page(nams: Iterable[Name]):
+    for nam in nams:
+        if nam.verbatim_citation is not None and nam.page_described is None:
+            nam.display()
+            print(nam.verbatim_citation)
+            nam.e.page_described
+
+
 class _NamesGetter:
     def __init__(self, group: Group) -> None:
         self._cache: Optional[Dict[str, List[Name]]] = None

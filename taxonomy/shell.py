@@ -2102,6 +2102,17 @@ def f(obj: Any, skip_fields: List[str] = []) -> None:
     obj.fill_required_fields(skip_fields=skip_fields)
 
 
+@command
+def replace_comments(substr: str, field: str = "other_comments") -> None:
+    for nam in Name.filter(getattr(Name, field).contains(substr)).order_by(
+        getattr(Name, field)
+    ):
+        nam.display()
+        print(getattr(nam, field))
+        nam.add_comment()
+        setattr(nam, field, None)
+
+
 def fgsyn(off: Optional[Name] = None) -> Name:
     """Adds a family-group synonym."""
     if off is not None:
