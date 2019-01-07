@@ -37,9 +37,9 @@ from peewee import (
     TextField,
 )
 
-from . import constants, definition, ehphp, helpers, settings
-from .. import adt, events, getinput
-from .constants import (
+from .. import constants, definition, ehphp, helpers, settings
+from ... import adt, events, getinput
+from ..constants import (
     GenderArticle,
     Group,
     NomenclatureStatus,
@@ -49,7 +49,7 @@ from .constants import (
     SpeciesNameKind,
     Status,
 )
-from .definition import Definition
+from ..definition import Definition
 
 if settings.use_sqlite:
     database = SqliteDatabase(settings.database_file)

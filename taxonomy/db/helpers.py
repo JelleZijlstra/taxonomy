@@ -7,7 +7,6 @@ import re
 from operator import itemgetter
 import time
 from typing import (
-    TYPE_CHECKING,
     Any,
     Dict,
     Iterable,
@@ -21,9 +20,6 @@ from typing import (
 
 from . import constants
 from .constants import Group, Rank
-
-if TYPE_CHECKING:
-    from .models import Name, Taxon  # noqa: F401
 
 SPECIES_RANKS = [Rank.subspecies, Rank.species, Rank.species_group]
 GENUS_RANKS = [Rank.subgenus, Rank.genus]
@@ -216,57 +212,6 @@ def genus_name_of_name(name: str) -> str:
     if name.lower().startswith("cf. "):
         return name.split()[1]
     return name.split()[0].replace("?", "")
-
-
-def dict_of_name(name: "Name") -> Dict[str, Any]:
-    result = {
-        "id": name.id,
-        "authority": name.authority,
-        "root_name": name.root_name,
-        "group_numeric": name.group.value,
-        "group": name.group.name,
-        "nomenclature_comments": name.nomenclature_comments,
-        "original_citation": name.original_citation,
-        "original_name": name.original_name,
-        "other_comments": name.other_comments,
-        "page_described": name.page_described,
-        "status_numeric": name.status.value,
-        "status": name.status.name,
-        "taxonomy_comments": name.taxonomy_comments,
-        "year": name.year,
-    }
-    if name.type is not None:
-        result["type"] = {"id": name.type.id}
-        if name.type.original_name is not None:
-            result["type"]["name"] = name.type.original_name
-        else:
-            result["type"]["name"] = name.type.root_name
-    return result
-
-
-def dict_of_taxon(taxon: "Taxon") -> Dict[str, Any]:
-    return {
-        "id": taxon.id,
-        "valid_name": taxon.valid_name,
-        "rank_numeric": taxon.rank.value,
-        "rank": taxon.rank.name,
-        "names": [],
-        "children": [],
-        "age_numeric": taxon.age.value,
-        "age": taxon.age.name,
-    }
-
-
-def tree_of_taxon(taxon: "Taxon", include_root: bool = False) -> Dict[str, Any]:
-    result = dict_of_taxon(taxon)
-    if include_root or not taxon.is_page_root:
-        for name in taxon.names:
-            result["names"].append(dict_of_name(name))
-        result["names"].sort(key=itemgetter("status_numeric", "root_name"))
-        for child in taxon.children:
-            result["children"].append(tree_of_taxon(child))
-        result["children"].sort(key=itemgetter("rank_numeric", "valid_name"))
-    return result
 
 
 _T1 = TypeVar("_T1")
