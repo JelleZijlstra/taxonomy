@@ -490,3 +490,15 @@ class CommentKind(enum.IntEnum):
     authorship = 13
     automatic_change = 14
     removal = 15
+
+
+class ArticleType(enum.IntEnum):
+    ERROR = 0
+    CHAPTER = 1
+    BOOK = 2
+    THESIS = 3  # kind of degree in "series", university in "publisher"
+    WEB = 5
+    MISCELLANEOUS = 6
+    REDIRECT = 7  # ID of target in "parent"
+    SUPPLEMENT = 8  # ID of target in "parent", kind of supplement in "title"
+    JOURNAL = 9
