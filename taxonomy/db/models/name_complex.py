@@ -1,55 +1,11 @@
-import collections
-import datetime
-import enum
-import json
-import operator
-import re
-import sys
-import time
-import traceback
-from typing import (
-    cast,
-    IO,
-    Any,
-    Callable,
-    Container,
-    Dict,
-    Generic,
-    Iterable,
-    List,
-    Optional,
-    Set,
-    Tuple,
-    Type,
-    TypeVar,
-    Union,
-)
+from typing import Iterable, List, Optional
 
 import peewee
-from peewee import (
-    BooleanField,
-    CharField,
-    ForeignKeyField,
-    IntegerField,
-    Model,
-    MySQLDatabase,
-    SqliteDatabase,
-    TextField,
-)
+from peewee import BooleanField, CharField, ForeignKeyField
 
-from .. import constants, definition, ehphp, helpers, models, settings
-from ... import adt, events, getinput
-from ..constants import (
-    GenderArticle,
-    Group,
-    NomenclatureStatus,
-    OccurrenceStatus,
-    Rank,
-    SourceLanguage,
-    SpeciesNameKind,
-    Status,
-)
-from ..definition import Definition
+from .. import constants, models
+from ... import events, getinput
+from ..constants import GenderArticle, Group, SourceLanguage, SpeciesNameKind
 
 from .base import BaseModel, EnumField
 
@@ -163,7 +119,10 @@ class SpeciesNameComplex(BaseModel):
 
     def get_names(self) -> List["models.Name"]:
         return list(
-            models.Name.filter(models.Name._name_complex_id == self.id, models.Name.group == Group.species)
+            models.Name.filter(
+                models.Name._name_complex_id == self.id,
+                models.Name.group == Group.species,
+            )
         )
 
     def make_ending(
@@ -395,7 +354,10 @@ class NameComplex(BaseModel):
 
     def get_names(self) -> List["models.Name"]:
         return list(
-            models.Name.filter(models.Name._name_complex_id == self.id, models.Name.group == Group.genus)
+            models.Name.filter(
+                models.Name._name_complex_id == self.id,
+                models.Name.group == Group.genus,
+            )
         )
 
     @classmethod

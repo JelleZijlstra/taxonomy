@@ -3,14 +3,26 @@
 Definitions of various models.
 
 """
-from .base import *
+from .base import *  # noqa: F403,F401
 
-from .article import Article
-from .collection import Collection
-from .location import Location
-from .name import Name, NameComment, TypeTag, Tag, STATUS_TO_TAG, has_data_from_original
-from .name_complex import NameComplex, SpeciesNameComplex, NameEnding, SpeciesNameEnding
-from .occurrence import Occurrence 
-from .period import Period 
-from .region import Region
-from .taxon import Taxon
+from .article import Article  # noqa: F401
+from .collection import Collection  # noqa: F401
+from .location import Location  # noqa: F401
+from .name import (  # noqa: F401
+    Name,
+    NameComment,
+    TypeTag,
+    Tag,
+    STATUS_TO_TAG,
+    has_data_from_original,
+)
+from .name_complex import (  # noqa: F401
+    NameComplex,
+    SpeciesNameComplex,
+    NameEnding,
+    SpeciesNameEnding,
+)
+from .occurrence import Occurrence  # noqa: F401
+from .period import Period  # noqa: F401
+from .region import Region  # noqa: F401
+from .taxon import Taxon  # noqa: F401

@@ -1,15 +1,7 @@
-import collections
-import datetime
 import enum
 import json
-import operator
-import re
-import sys
-import time
 import traceback
 from typing import (
-    cast,
-    IO,
     Any,
     Callable,
     Container,
@@ -27,7 +19,6 @@ from typing import (
 
 import peewee
 from peewee import (
-    BooleanField,
     CharField,
     ForeignKeyField,
     IntegerField,
@@ -37,19 +28,8 @@ from peewee import (
     TextField,
 )
 
-from .. import constants, definition, ehphp, helpers, settings
-from ... import adt, events, getinput
-from ..constants import (
-    GenderArticle,
-    Group,
-    NomenclatureStatus,
-    OccurrenceStatus,
-    Rank,
-    SourceLanguage,
-    SpeciesNameKind,
-    Status,
-)
-from ..definition import Definition
+from .. import ehphp, settings
+from ... import events, getinput
 
 if settings.use_sqlite:
     database = SqliteDatabase(settings.database_file)

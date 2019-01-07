@@ -1,60 +1,10 @@
-import collections
-import datetime
-import enum
-import json
-import operator
-import re
-import sys
-import time
-import traceback
-from typing import (
-    cast,
-    IO,
-    Any,
-    Callable,
-    Container,
-    Dict,
-    Generic,
-    Iterable,
-    List,
-    Optional,
-    Set,
-    Tuple,
-    Type,
-    TypeVar,
-    Union,
-)
+from peewee import CharField, ForeignKeyField
 
-import peewee
-from peewee import (
-    BooleanField,
-    CharField,
-    ForeignKeyField,
-    IntegerField,
-    Model,
-    MySQLDatabase,
-    SqliteDatabase,
-    TextField,
-)
-
-from .. import constants, definition, ehphp, helpers, settings
-from ... import adt, events, getinput
-from ..constants import (
-    GenderArticle,
-    Group,
-    NomenclatureStatus,
-    OccurrenceStatus,
-    Rank,
-    SourceLanguage,
-    SpeciesNameKind,
-    Status,
-)
-from ..definition import Definition
+from ..constants import OccurrenceStatus
 
 from .base import BaseModel, EnumField
 from .taxon import Taxon
 from .location import Location
-
 
 
 class Occurrence(BaseModel):
@@ -81,4 +31,3 @@ class Occurrence(BaseModel):
         if self.status != OccurrenceStatus.valid:
             out = "[{}] {}".format(self.status.name.upper(), out)
         return out
-

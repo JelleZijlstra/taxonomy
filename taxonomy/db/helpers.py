@@ -4,10 +4,8 @@ from contextlib import contextmanager
 import datetime
 import json
 import re
-from operator import itemgetter
 import time
 from typing import (
-    Any,
     Dict,
     Iterable,
     Iterator,

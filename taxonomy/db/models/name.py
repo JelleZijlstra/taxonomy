@@ -1,54 +1,25 @@
-import collections
 import datetime
-import enum
 import json
-import operator
 import re
-import sys
 import time
-import traceback
 from typing import (
-    cast,
-    IO,
     Any,
     Callable,
-    Container,
     Dict,
-    Generic,
     Iterable,
     List,
     Optional,
-    Set,
     Tuple,
     Type,
     TypeVar,
     Union,
 )
 
-import peewee
-from peewee import (
-    BooleanField,
-    CharField,
-    ForeignKeyField,
-    IntegerField,
-    Model,
-    MySQLDatabase,
-    SqliteDatabase,
-    TextField,
-)
+from peewee import CharField, ForeignKeyField, IntegerField, Model, TextField
 
-from .. import constants, definition, ehphp, helpers, settings
+from .. import constants, ehphp, helpers
 from ... import adt, events, getinput
-from ..constants import (
-    GenderArticle,
-    Group,
-    NomenclatureStatus,
-    OccurrenceStatus,
-    Rank,
-    SourceLanguage,
-    SpeciesNameKind,
-    Status,
-)
+from ..constants import Group, NomenclatureStatus, Rank, SpeciesNameKind, Status
 from ..definition import Definition
 
 from .base import BaseModel, EnumField, ADTField
@@ -56,7 +27,9 @@ from .collection import Collection
 from .taxon import Taxon
 from .location import Location
 from .name_complex import NameComplex, SpeciesNameComplex
+
 ModelT = TypeVar("ModelT", bound="BaseModel")
+
 
 class Name(BaseModel):
     creation_event = events.Event["Name"]()
@@ -1109,7 +1082,6 @@ def has_data_from_original(nam: "Name") -> bool:
             if isinstance(tag, (TypeTag.IncludedSpecies, TypeTag.GenusCoelebs)):
                 return True
     return False
-
 
 
 def get_completer(

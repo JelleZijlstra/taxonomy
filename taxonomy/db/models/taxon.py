@@ -1,12 +1,7 @@
 import collections
-import datetime
-import enum
-import json
 import operator
 import re
 import sys
-import time
-import traceback
 from typing import (
     cast,
     IO,
@@ -14,42 +9,20 @@ from typing import (
     Callable,
     Container,
     Dict,
-    Generic,
     Iterable,
     List,
     Optional,
     Set,
     Tuple,
-    Type,
-    TypeVar,
     Union,
 )
 
 import peewee
-from peewee import (
-    BooleanField,
-    CharField,
-    ForeignKeyField,
-    IntegerField,
-    Model,
-    MySQLDatabase,
-    SqliteDatabase,
-    TextField,
-)
+from peewee import BooleanField, CharField, ForeignKeyField, IntegerField, TextField
 
-from .. import constants, definition, ehphp, helpers, models, settings
-from ... import adt, events, getinput
-from ..constants import (
-    GenderArticle,
-    Group,
-    NomenclatureStatus,
-    OccurrenceStatus,
-    Rank,
-    SourceLanguage,
-    SpeciesNameKind,
-    Status,
-)
-from ..definition import Definition
+from .. import constants, definition, ehphp, helpers, models
+from ... import events, getinput
+from ..constants import Group, NomenclatureStatus, OccurrenceStatus, Rank, Status
 
 from .base import BaseModel, EnumField
 
@@ -70,7 +43,8 @@ class _OccurrenceGetter(object):
     def __getattr__(self, loc_name: str) -> "models.Occurrence":
         return self(
             models.Location.get(
-                models.Location.name == loc_name.replace("_", " "), models.Location.deleted == False
+                models.Location.name == loc_name.replace("_", " "),
+                models.Location.deleted == False,
             )
         )
 
@@ -79,7 +53,6 @@ class _OccurrenceGetter(object):
 
     def __dir__(self) -> List[str]:
         return [o.location.name.replace(" ", "_") for o in self.instance.occurrences]
-
 
 
 class Taxon(BaseModel):
@@ -930,6 +903,7 @@ class Taxon(BaseModel):
         result |= {name.root_name for name in names}
         return [name for name in result if name is not None and " " not in name]
 
+
 definition.taxon_cls = Taxon
 
 
@@ -944,7 +918,9 @@ def fill_data_from_paper(
         except (TypeError, ValueError):
             return (nam.page_described or "", 0)
 
-    for nam in sorted(models.Name.filter(models.Name.original_citation == paper), key=sort_key):
+    for nam in sorted(
+        models.Name.filter(models.Name.original_citation == paper), key=sort_key
+    ):
         nam = nam.reload()
         if skip_if_seen and models.has_data_from_original(nam):
             continue
@@ -960,4 +936,3 @@ def fill_data_from_paper(
             nam.fill_required_fields()
         elif always_edit_tags:
             nam.fill_field("type_tags")
-

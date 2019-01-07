@@ -1,55 +1,10 @@
-import collections
-import datetime
-import enum
-import json
-import operator
-import re
 import sys
-import time
-import traceback
-from typing import (
-    cast,
-    IO,
-    Any,
-    Callable,
-    Container,
-    Dict,
-    Generic,
-    Iterable,
-    List,
-    Optional,
-    Set,
-    Tuple,
-    Type,
-    TypeVar,
-    Union,
-)
+from typing import IO, Any, Iterable, Optional, Set, TypeVar
 
-import peewee
-from peewee import (
-    BooleanField,
-    CharField,
-    ForeignKeyField,
-    IntegerField,
-    Model,
-    MySQLDatabase,
-    SqliteDatabase,
-    TextField,
-)
+from peewee import CharField, ForeignKeyField, IntegerField
 
-from .. import constants, definition, ehphp, helpers, models, settings
-from ... import adt, events, getinput
-from ..constants import (
-    GenderArticle,
-    Group,
-    NomenclatureStatus,
-    OccurrenceStatus,
-    Rank,
-    SourceLanguage,
-    SpeciesNameKind,
-    Status,
-)
-from ..definition import Definition
+from .. import constants, models
+from ... import events, getinput
 
 from .base import BaseModel, EnumField
 from .region import Region
