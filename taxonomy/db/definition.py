@@ -11,7 +11,7 @@ import json
 from typing import TYPE_CHECKING, Any, Iterable, List, Union
 
 if TYPE_CHECKING:
-    from .models.base import Taxon  # noqa: F401
+    from .models.taxon import Taxon  # noqa: F401
 
 _Taxon = Union[int, "Taxon"]
 

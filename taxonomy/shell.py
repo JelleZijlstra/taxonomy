@@ -335,7 +335,7 @@ def add_types() -> None:
         print(
             f"Name {name} is missing type, but has original citation {name.original_citation}"
         )
-        models.fill_data_from_paper(name.original_citation)
+        models.taxon.fill_data_from_paper(name.original_citation)
 
 
 @generator_command
@@ -1377,7 +1377,7 @@ def fill_data_from_paper(
     if paper is None:
         paper = models.BaseModel.get_value_for_article_field_on_class("paper")
     assert paper is not None, "paper needs to be specified"
-    models.fill_data_from_paper(paper, always_edit_tags=always_edit_tags)
+    models.taxon.fill_data_from_paper(paper, always_edit_tags=always_edit_tags)
 
 
 @command
