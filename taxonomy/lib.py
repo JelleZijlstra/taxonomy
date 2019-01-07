@@ -1,3 +1,10 @@
+"""
+
+File that gets loaded on startup of the taxonomy shell.
+
+Contents overlap with shell.py, which defines "commands".
+
+"""
 from collections import defaultdict
 from functools import partial
 from typing import Any, Container, Dict, Iterable, List, Optional, Tuple, Type, Union
@@ -189,7 +196,7 @@ def f(nam: Union[Name, List[Name]], skip_fields: Container[str] = frozenset()) -
 g = partial(f, skip_fields={"original_citation", "type_specimen", "collection"})
 
 
-def set_page(nams: Iterable[Name]):
+def set_page(nams: Iterable[Name]) -> None:
     for nam in nams:
         if nam.verbatim_citation is not None and nam.page_described is None:
             nam.display()

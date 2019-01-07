@@ -1,3 +1,8 @@
+"""
+
+Helpers for retrieving user input.
+
+"""
 import enum
 import functools
 import re
