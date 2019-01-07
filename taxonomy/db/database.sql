@@ -103,6 +103,7 @@ CREATE TABLE `location` (
 	`location_detail` text,
 	`age_detail` text,
 	`source` varchar(255) default null,
+	`deleted` TINYINT DEFAULT 0,
 	PRIMARY KEY(`id`),
 	INDEX(`name`),
 	UNIQUE KEY(`name`)

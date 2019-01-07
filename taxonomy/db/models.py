@@ -536,7 +536,11 @@ class _OccurrenceGetter(object):
         return self.__class__(instance)
 
     def __getattr__(self, loc_name: str) -> "Occurrence":
-        return self(Location.get(Location.name == loc_name.replace("_", " ")))
+        return self(
+            Location.get(
+                Location.name == loc_name.replace("_", " "), Location.deleted == False
+            )
+        )
 
     def __call__(self, loc: "Location") -> "Occurrence":
         return self.instance.occurrences.filter(Occurrence.location == loc).get()
@@ -1488,7 +1492,7 @@ class Region(BaseModel):
 
     def get_location(self) -> "Location":
         """Returns the corresponding Recent Location."""
-        return Location.get(region=self, name=self.name)
+        return Location.get(region=self, name=self.name, deleted=False)
 
     def all_parents(self) -> Iterable["Region"]:
         """Returns all parent regions of this region."""
@@ -1661,7 +1665,9 @@ class Period(BaseModel):
     ) -> None:
         file.write("{}{}\n".format(" " * (depth + 4), repr(self)))
         for location in Location.filter(
-            Location.max_period == self, Location.min_period == self
+            Location.max_period == self,
+            Location.min_period == self,
+            Location.deleted == False,
         ):
             location.display(full=full, depth=depth + 2, file=file)
         for location in self.locations_stratigraphy:
@@ -1739,6 +1745,7 @@ class Location(BaseModel):
     location_detail = TextField()
     age_detail = TextField()
     source = TextField()
+    deleted = BooleanField(default=False)
 
     @classmethod
     def make(
@@ -1846,6 +1853,18 @@ class Location(BaseModel):
         self.min_period = self.max_period = period
         self.save()
         return period
+
+    def merge(self, other: "Location") -> None:
+        for taxon in self.type_localities:
+            taxon.type_locality = other
+        for occ in self.taxa:
+            occ.location = other
+        new_comment = f"Merged into {other} (L#{other.id})"
+        if not self.comment:
+            self.comment = new_comment
+        else:
+            self.comment = f"{self.comment} – {new_comment}"
+        self.deleted = True
 
 
 class SpeciesNameComplex(BaseModel):
