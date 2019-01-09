@@ -2,7 +2,7 @@ from ..constants import ArticleType
 
 from peewee import CharField, IntegerField, TextField
 import prompt_toolkit
-from typing import Iterable, NamedTuple
+from typing import Iterable, List, NamedTuple
 
 from .base import BaseModel, EnumField
 

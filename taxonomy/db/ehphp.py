@@ -16,7 +16,6 @@ class EHPHPError(Exception):
 def call_ehphp(cmd: str, args: Any) -> Any:
     if isinstance(args, list):
         args = {"files": args}
-    args["includeMySQL"] = True
     params = {"command": cmd, "arguments": json.dumps(args), "format": "json"}
     req = requests.post(URL, data=params)
     try:

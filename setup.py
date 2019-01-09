@@ -16,7 +16,8 @@ setup(
     packages=['taxonomy'],
     install_requires=[
         'peewee==2.10.2',
-        'IPython',
+        'IPython<7',
+        'prompt_toolkit<2',
         'PyMySQL',
         'requests',
         'unidecode',

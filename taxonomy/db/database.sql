@@ -209,5 +209,15 @@ CREATE TABLE `article` (
     `parent` varchar(255) DEFAULT NULL,
     `misc_data` varchar(4096) DEFAULT NULL,
     `path` varchar(255) DEFAULT NULL,
+    `kind` integer DEFAULT NULL,
+    `parent_id` INT UNSIGNED DEFAULT NULL,
     PRIMARY KEY (`name`)
+);
+
+CREATE TABLE `article_comment` (
+    `id` integer primary key,
+    `name_id` integer not null,
+    `kind` integer,
+    `date` integer,
+    `text` text
 );
