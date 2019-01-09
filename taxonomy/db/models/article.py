@@ -78,6 +78,7 @@ class Article(BaseModel):
         yield "name"
         yield from _TYPE_TO_FIELDS[self.type]
 
+
 #     @classmethod
 #     def check(cls, dry_run: bool = False) -> bool:
 #         """Checks the catalog for things to be changed:

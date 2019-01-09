@@ -5,16 +5,7 @@ import datetime
 import json
 import re
 import time
-from typing import (
-    Dict,
-    Iterable,
-    Iterator,
-    Mapping,
-    Optional,
-    Sequence,
-    Tuple,
-    TypeVar,
-)
+from typing import Dict, Iterable, Iterator, Mapping, Optional, Sequence, Tuple, TypeVar
 
 from . import constants
 from .constants import Group, Rank
