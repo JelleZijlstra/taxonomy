@@ -906,10 +906,14 @@ class Taxon(BaseModel):
 
 definition.taxon_cls = Taxon
 
+_finished_papers: Set[str] = set()
+
 
 def fill_data_from_paper(
     paper: str, always_edit_tags: bool = False, skip_if_seen: bool = True
 ) -> None:
+    if paper in _finished_papers:
+        return
     opened = False
 
     def sort_key(nam: models.Name) -> Tuple[str, int]:
@@ -936,3 +940,6 @@ def fill_data_from_paper(
             nam.fill_required_fields()
         elif always_edit_tags:
             nam.fill_field("type_tags")
+
+    if not opened:
+        _finished_papers.add(paper)
