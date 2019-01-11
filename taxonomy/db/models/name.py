@@ -184,6 +184,11 @@ class Name(BaseModel):
                 print(f"inferred collection to be {coll} from {self.type_specimen}")
                 return coll
             return super().get_value_for_field(field)
+        elif field == "original_name":
+            if self.original_name is None and self.group in (Group.genus, Group.high):
+                return self.root_name
+            else:
+                return super().get_value_for_field(field)
         elif field == "corrected_original_name":
             inferred = self.infer_corrected_original_name()
             if inferred is not None:
