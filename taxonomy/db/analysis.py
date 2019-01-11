@@ -64,5 +64,5 @@ def genus_suffix_tree(no_complex_only: bool = False) -> _SuffixTree:
         models.Name.group == constants.Group.genus
     )
     if no_complex_only:
-        query = query.where(models.Name._name_complex_id >> None)
+        query = query.where(models.Name.name_complex >> None)
     return _SuffixTree(name.root_name for name in query)

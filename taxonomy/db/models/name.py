@@ -68,7 +68,8 @@ class Name(BaseModel):
     # Gender and stem
     stem = CharField(null=True)  # redundant with name complex?
     gender = EnumField(constants.Gender)  # for genus group; redundant with name complex
-    _name_complex_id = IntegerField(null=True, db_column="name_complex_id")
+    name_complex = ForeignKeyField(NameComplex, null=True, related_name="names")
+    species_name_complex = ForeignKeyField(SpeciesNameComplex, null=True, related_name="names")
 
     # Types
     type = ForeignKeyField(
@@ -105,32 +106,6 @@ class Name(BaseModel):
     @classmethod
     def select_valid(cls, *args: Any) -> Any:
         return cls.select(*args).filter(Name.status != Status.removed)
-
-    @property
-    def name_complex(self) -> Union[None, NameComplex, SpeciesNameComplex]:
-        if self._name_complex_id is None:
-            return None
-        if self.group == Group.species:
-            return SpeciesNameComplex.get(id=self._name_complex_id)
-        elif self.group == Group.genus:
-            return NameComplex.get(id=self._name_complex_id)
-        else:
-            raise TypeError(f"{self} cannot have a name complex")
-
-    @name_complex.setter
-    def name_complex(self, nc: Union[None, NameComplex, SpeciesNameComplex]) -> None:
-        if nc is not None:
-            if self.group == Group.species:
-                if not isinstance(nc, SpeciesNameComplex):
-                    raise TypeError(f"{nc} must be a SpeciesNameComplex")
-            elif self.group == Group.genus:
-                if not isinstance(nc, NameComplex):
-                    raise TypeError(f"{nc} must be a NameComplex")
-            else:
-                raise TypeError(f"cannot set name_complex")
-            self._name_complex_id = nc.id
-        else:
-            self._name_complex_id = None
 
     def get_stem(self) -> Optional[str]:
         if self.group != Group.genus or self.name_complex is None:
@@ -239,16 +214,11 @@ class Name(BaseModel):
                 return typ
             else:
                 raise EOFError
-        elif field == "name_complex":
-            if self.group == Group.genus:
-                return self.get_name_complex(NameComplex)
-            elif self.group == Group.species:
-                value = self.get_name_complex(SpeciesNameComplex)
-                if value is not None and value.kind.is_single_complex():
-                    value.apply_to_ending(self.root_name, interactive=True)
-                return value
-            else:
-                raise TypeError("cannot have name complex")
+        elif field == "species_name_complex":
+            value = super().get_value_for_field(field)
+            if value is not None and value.kind.is_single_complex():
+                value.apply_to_ending(self.root_name, interactive=True)
+            return value
         else:
             return super().get_value_for_field(field)
 
@@ -291,17 +261,6 @@ class Name(BaseModel):
         ):
             # Always make the user edit type_tags if some other field was unfilled.
             yield "type_tags"
-
-    @staticmethod
-    def get_name_complex(model_cls: Type[BaseModel]) -> Optional[BaseModel]:
-        getter = model_cls.getter("label")
-        value = getter.get_one_key("name_complex> ")
-        if value is None:
-            return None
-        elif value == "n":
-            return model_cls.create_interactively()
-        else:
-            return model_cls.by_label(value)
 
     def add_additional_data(self, new_data: str) -> None:
         """Add data to the "additional" field within the "data" field"""
@@ -513,6 +472,8 @@ class Name(BaseModel):
                 parts.append(f"corrected: {self.corrected_original_name}")
             if self.name_complex is not None:
                 parts.append(f"name complex: {self.name_complex}")
+            elif self.species_name_complex is not None:
+                parts.append(f"name complex: {self.species_name_complex}")
             else:
                 if self.stem is not None:
                     parts.append("stem: %s" % self.stem)
@@ -621,10 +582,15 @@ class Name(BaseModel):
             yield "verbatim_citation"
 
         if (
-            self.group in (Group.genus, Group.species)
+            self.group == Group.genus
             and self.nomenclature_status.requires_name_complex()
         ):
             yield "name_complex"
+        if (
+            self.group == Group.species
+            and self.nomenclature_status.requires_name_complex()
+        ):
+            yield "species_name_complex"
 
         if self.nomenclature_status.requires_type():
             if self.group == Group.family:
@@ -746,8 +712,8 @@ class Name(BaseModel):
     def compute_gender(self, dry_run: bool = True) -> bool:
         if (
             self.group != Group.species
-            or self.name_complex is None
-            or self.name_complex.kind != SpeciesNameKind.adjective
+            or self.species_name_complex is None
+            or self.species_name_complex.kind != SpeciesNameKind.adjective
         ):
             return True
         try:
@@ -759,9 +725,9 @@ class Name(BaseModel):
 
         gender = genus.base_name.name_complex.gender
         try:
-            computed = self.name_complex.get_form(self.root_name, gender)
+            computed = self.species_name_complex.get_form(self.root_name, gender)
         except ValueError:
-            print(f"Invalid root_name for {self} (complex {self.name_complex})")
+            print(f"Invalid root_name for {self} (complex {self.species_name_complex})")
             return False
         if computed != self.root_name:
             print(f"Modifying root_name for {self}: {self.root_name} -> {computed}")

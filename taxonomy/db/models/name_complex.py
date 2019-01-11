@@ -60,7 +60,7 @@ class SpeciesNameComplex(BaseModel):
             name
             for name in models.Name.filter(
                 models.Name.group == Group.species,
-                models.Name._name_complex_id >> None,
+                models.Name.species_name_complex >> None,
                 models.Name.root_name % f"*{ending}",
             )
             if name.root_name.endswith(ending)
@@ -69,11 +69,11 @@ class SpeciesNameComplex(BaseModel):
         for name in names:
             print(name)
             if not dry_run:
-                name.name_complex = self
+                name.species_name_complex = self
         if interactive:
             if getinput.yes_no("apply?"):
                 for name in names:
-                    name.name_complex = self
+                    name.species_name_complex = self
                 dry_run = False
         if not dry_run:
             saved_endings = list(self.endings)
@@ -118,12 +118,7 @@ class SpeciesNameComplex(BaseModel):
             yield name
 
     def get_names(self) -> List["models.Name"]:
-        return list(
-            models.Name.filter(
-                models.Name._name_complex_id == self.id,
-                models.Name.group == Group.species,
-            )
-        )
+        return list(self.names)
 
     def make_ending(
         self, ending: str, comment: Optional[str] = "", full_name_only: bool = False
@@ -138,7 +133,7 @@ class SpeciesNameComplex(BaseModel):
     def remove(self) -> None:
         for nam in self.get_names():
             print("removing name complex from", nam)
-            nam.name_complex = None
+            nam.species_name_complex = None
             nam.save()
         for ending in self.endings:
             print("removing ending", ending)
@@ -316,7 +311,7 @@ class NameComplex(BaseModel):
             name
             for name in models.Name.filter(
                 models.Name.group == Group.genus,
-                models.Name._name_complex_id >> None,
+                models.Name.name_complex >> None,
                 models.Name.root_name % f"*{ending}",
             )
             if name.root_name.endswith(ending)
@@ -353,12 +348,7 @@ class NameComplex(BaseModel):
         return NameEnding.create(name_complex=self, ending=ending, comment=comment)
 
     def get_names(self) -> List["models.Name"]:
-        return list(
-            models.Name.filter(
-                models.Name._name_complex_id == self.id,
-                models.Name.group == Group.genus,
-            )
-        )
+        return list(self.names)
 
     @classmethod
     def make(

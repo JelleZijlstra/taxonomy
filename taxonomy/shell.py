@@ -483,7 +483,7 @@ def detect_stems() -> None:
 def detect_complexes() -> None:
     endings = list(models.NameEnding.select())
     for name in Name.select_valid().filter(
-        Name.group == Group.genus, Name._name_complex_id >> None
+        Name.group == Group.genus, Name.name_complex >> None
     ):
         inferred = find_ending(name, endings)
         if inferred is None:
@@ -522,7 +522,7 @@ def detect_species_name_complexes(dry_run: bool = False) -> None:
     success = 0
     total = 0
     for name in Name.select_valid().filter(
-        Name.group == Group.species, Name._name_complex_id >> None
+        Name.group == Group.species, Name.species_name_complex >> None
     ):
         total += 1
         if name.root_name in full_names:
@@ -536,7 +536,7 @@ def detect_species_name_complexes(dry_run: bool = False) -> None:
         print(f"inferred complex for {name}: {inferred}")
         success += 1
         if not dry_run:
-            name.name_complex = inferred
+            name.species_name_complex = inferred
             name.save()
     print(f"{success}/{total} inferred")
 
@@ -607,14 +607,14 @@ def find_patronyms(dry_run: bool = True, min_length: int = 4) -> Dict[str, int]:
             (latinized, latinized_name),
         ]:
             for nam in species_name_to_names[name]:
-                if nam.name_complex is None:
+                if nam.species_name_complex is None:
                     print(f"set {nam} to {snc} patronym")
                     count += 1
                     names_applied[name] += 1
                     if not dry_run and len(author) >= min_length:
                         snc.make_ending(name, full_name_only=True)
-                elif nam.name_complex != snc:
-                    print(f"{nam} has {nam.name_complex} but expected {snc}")
+                elif nam.species_name_complex != snc:
+                    print(f"{nam} has {nam.species_name_complex} but expected {snc}")
     print(f"applied {count} names")
     if not dry_run:
         detect_species_name_complexes()
@@ -628,7 +628,7 @@ def find_first_declension_adjectives(dry_run: bool = True) -> Dict[str, int]:
     )
     species_name_to_names: Dict[str, List[Name]] = collections.defaultdict(list)
     for name in Name.select_valid().filter(
-        Name.group == Group.species, Name._name_complex_id >> None
+        Name.group == Group.species, Name.species_name_complex >> None
     ):
         species_name_to_names[name.root_name].append(name)
     count = 0
@@ -711,7 +711,7 @@ def generate_word_list() -> Set[str]:
 @generator_command
 def stem_mismatch(autofix: bool = False) -> Iterable[Name]:
     for nam in Name.select_valid().filter(
-        Name.group == Group.genus, ~(Name._name_complex_id >> None)
+        Name.group == Group.genus, ~(Name.name_complex >> None)
     ):
         if nam.stem is None:
             continue
@@ -726,7 +726,7 @@ def stem_mismatch(autofix: bool = False) -> Iterable[Name]:
 @generator_command
 def complexless_stems() -> Iterable[Name]:
     for nam in Name.select_valid().filter(
-        Name.group == Group.genus, Name._name_complex_id == None, Name.stem != None
+        Name.group == Group.genus, Name.name_complex == None, Name.stem != None
     ):
         if nam.nomenclature_status.requires_name_complex():
             yield nam
@@ -735,7 +735,7 @@ def complexless_stems() -> Iterable[Name]:
 @generator_command
 def correct_species_root_names(dry_run: bool = True) -> Iterable[Name]:
     for nam in Name.select_valid().filter(
-        Name.group == Group.species, Name._name_complex_id != None
+        Name.group == Group.species, Name.species_name_complex != None
     ):
         if not nam.compute_gender(dry_run=dry_run):
             yield nam
@@ -745,15 +745,15 @@ def correct_species_root_names(dry_run: bool = True) -> Iterable[Name]:
 def species_root_name_mismatch() -> Iterable[Name]:
     for nam in Name.select_valid().filter(
         Name.group == Group.species,
-        Name._name_complex_id != None,
+        Name.species_name_complex != None,
         Name.corrected_original_name != None,
     ):
         original_root_name = nam.corrected_original_name.split()[-1]
-        if nam.name_complex.kind == constants.SpeciesNameKind.adjective:
+        if nam.species_name_complex.kind == constants.SpeciesNameKind.adjective:
             try:
-                forms = list(nam.name_complex.get_forms(nam.root_name))
+                forms = list(nam.species_name_complex.get_forms(nam.root_name))
             except ValueError:
-                print(f"{nam}: {nam.root_name} does not match {nam.name_complex}")
+                print(f"{nam}: {nam.root_name} does not match {nam.species_name_complex}")
                 yield nam
                 continue
             if original_root_name not in forms:
@@ -1216,7 +1216,8 @@ def bad_types() -> Iterable[Name]:
 ATTRIBUTES_BY_GROUP = {
     "stem": (Group.genus,),
     "gender": (Group.genus,),
-    "_name_complex_id": (Group.genus, Group.species),
+    "name_complex": (Group.genus,),
+    "species_name_complex": (Group.species,),
     "type": (Group.family, Group.genus),
     "type_locality": (Group.species,),
     "type_locality_description": (Group.species,),

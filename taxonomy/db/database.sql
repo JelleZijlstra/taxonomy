@@ -45,6 +45,7 @@ CREATE TABLE `name` (
     `type_specimen` varchar(1024) DEFAULT NULL,
     `nomenclature_status` INT NOT NULL DEFAULT 1, -- available or not
     `name_complex_id` INT UNSIGNED DEFAULT NULL,
+    `species_name_complex_id` INT UNSIGNED DEFAULT NULL,
     `collection_id` integer default null,
     `type_description` varchar(65535) default null,
     `type_specimen_source` varchar(512) default null,
