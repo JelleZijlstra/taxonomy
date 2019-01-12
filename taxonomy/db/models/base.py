@@ -75,7 +75,6 @@ def _descriptor_set(self: peewee.FieldDescriptor, instance: Model, value: Any) -
     instance._dirty.add(self.att_name)
     # Otherwise this gets called in the constructor.
     if getattr(instance, "_is_prepared", False):
-        print(f"saving {instance} to set {self.att_name} to {value}")
         instance.save()
 
 

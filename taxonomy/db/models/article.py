@@ -1,6 +1,6 @@
 from ..constants import ArticleType
 
-from peewee import CharField, IntegerField, TextField
+from peewee import CharField, ForeignKeyField, IntegerField, TextField
 import prompt_toolkit
 from typing import Iterable, List, NamedTuple
 
