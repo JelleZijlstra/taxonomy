@@ -30,6 +30,7 @@ CREATE TABLE `name` (
     `year` VARCHAR(255) DEFAULT NULL,
     `page_described` VARCHAR(255) DEFAULT NULL,
     `original_citation` VARCHAR(512) DEFAULT NULL,
+    `original_citation_id` INT UNSIGNED DEFAULT NULL,
     `verbatim_type` VARCHAR(1024) DEFAULT NULL,
     `verbatim_citation` VARCHAR(1024) DEFAULT NULL,
     `type_id` INT UNSIGNED DEFAULT NULL, -- ID of type genus/species for family, genus group
@@ -49,6 +50,7 @@ CREATE TABLE `name` (
     `collection_id` integer default null,
     `type_description` varchar(65535) default null,
     `type_specimen_source` varchar(512) default null,
+    `type_specimen_source_id` INT UNSIGNED DEFAULT NULL,
     `type_kind` integer default null, -- don't want it, drop this once I figure out the SQLite syntax
     `tags` varchar(65535) default null,
     `genus_type_kind` integer default null,
@@ -57,7 +59,8 @@ CREATE TABLE `name` (
     PRIMARY KEY(`id`),
     INDEX(`original_name`),
     INDEX(`root_name`),
-    INDEX(`taxon_id`)
+    INDEX(`taxon_id`),
+    INDEX(`type_locality_id`)
 ) ENGINE=INNODB DEFAULT CHARSET=utf8;
 
 CREATE TABLE `region` (
@@ -212,12 +215,13 @@ CREATE TABLE `article` (
     `path` varchar(255) DEFAULT NULL,
     `kind` integer DEFAULT NULL,
     `parent_id` INT UNSIGNED DEFAULT NULL,
+    `tags` text default null,
     PRIMARY KEY (`name`)
 );
 
 CREATE TABLE `article_comment` (
     `id` integer primary key,
-    `name_id` integer not null,
+    `article_id` integer not null,
     `kind` integer,
     `date` integer,
     `text` text
