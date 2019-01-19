@@ -263,7 +263,9 @@ class BaseModel(Model):
     def get_completers_for_adt_field(self, field: str) -> getinput.CompleterMap:
         return {}
 
-    def get_value_for_foreign_key_field(self, field: str, default: Optional[Any] = None) -> Any:
+    def get_value_for_foreign_key_field(
+        self, field: str, default: Optional[Any] = None
+    ) -> Any:
         if default is None:
             default = getattr(self, field)
         return self.get_value_for_foreign_key_field_on_class(field, default)
@@ -276,7 +278,9 @@ class BaseModel(Model):
         return cls.get_value_for_foreign_class(field, field_obj.rel_model, current_val)
 
     @staticmethod
-    def get_value_for_foreign_class(label: str, foreign_cls: Type["BaseModel"], default_obj: Optional[Any] = None) -> Any:
+    def get_value_for_foreign_class(
+        label: str, foreign_cls: Type["BaseModel"], default_obj: Optional[Any] = None
+    ) -> Any:
         if default_obj is None:
             default = ""
         else:
@@ -294,7 +298,9 @@ class BaseModel(Model):
                 return getter(value)
             except foreign_cls.DoesNotExist:
                 if getinput.yes_no(f"create new {foreign_cls.__name} named {value}? "):
-                    result = foreign_cls.create_interactively(**{foreign_cls.label_field: value})
+                    result = foreign_cls.create_interactively(
+                        **{foreign_cls.label_field: value}
+                    )
                     print(f"created new {foreign_cls} {result}")
                     return result
                 else:
@@ -319,7 +325,9 @@ class BaseModel(Model):
             if field not in skip_fields:
                 self.fill_field(field)
 
-    def get_tag(self, tags: Optional[Sequence[adt.ADT]], tag_cls: Type[adt.ADT]) -> Iterable[adt.ADT]:
+    def get_tag(
+        self, tags: Optional[Sequence[adt.ADT]], tag_cls: Type[adt.ADT]
+    ) -> Iterable[adt.ADT]:
         if tags is None:
             return
         for tag in tags:

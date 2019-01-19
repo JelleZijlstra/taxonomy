@@ -61,7 +61,9 @@ class Name(BaseModel):
 
     # Citation and authority
     authority = CharField(null=True)
-    original_citation = ForeignKeyField(Article, null=True, db_column="original_citation_id", related_name="new_names")
+    original_citation = ForeignKeyField(
+        Article, null=True, db_column="original_citation_id", related_name="new_names"
+    )
     page_described = CharField(null=True)
     verbatim_citation = CharField(null=True)
     year = CharField(null=True)  # redundant with data for the publication itself
@@ -70,7 +72,9 @@ class Name(BaseModel):
     stem = CharField(null=True)  # redundant with name complex?
     gender = EnumField(constants.Gender)  # for genus group; redundant with name complex
     name_complex = ForeignKeyField(NameComplex, null=True, related_name="names")
-    species_name_complex = ForeignKeyField(SpeciesNameComplex, null=True, related_name="names")
+    species_name_complex = ForeignKeyField(
+        SpeciesNameComplex, null=True, related_name="names"
+    )
 
     # Types
     type = ForeignKeyField(
@@ -88,7 +92,12 @@ class Name(BaseModel):
     collection = ForeignKeyField(
         Collection, null=True, db_column="collection_id", related_name="type_specimens"
     )
-    type_specimen_source = ForeignKeyField(Article, null=True, db_column="type_specimen_source_id", related_name="type_source_names")
+    type_specimen_source = ForeignKeyField(
+        Article,
+        null=True,
+        db_column="type_specimen_source_id",
+        related_name="type_source_names",
+    )
     genus_type_kind = EnumField(constants.TypeSpeciesDesignation, null=True)
     species_type_kind = EnumField(constants.SpeciesGroupType, null=True)
     type_tags = ADTField(lambda: TypeTag, null=True)
@@ -978,7 +987,9 @@ class NameComment(BaseModel):
     kind = EnumField(constants.CommentKind)
     date = IntegerField()
     text = TextField()
-    source = ForeignKeyField(Article, related_name="name_comments", null=True, db_column="source_id")
+    source = ForeignKeyField(
+        Article, related_name="name_comments", null=True, db_column="source_id"
+    )
     page = TextField()
 
     class Meta:
@@ -1034,7 +1045,9 @@ class NameComment(BaseModel):
         ]
         if self.source:
             components.append(
-                f"{{{self.source.name}}}:{self.page}" if self.page else f"{{{self.source.name}}}"
+                f"{{{self.source.name}}}:{self.page}"
+                if self.page
+                else f"{{{self.source.name}}}"
             )
         return f'{self.text} ({"; ".join(components)})'
 

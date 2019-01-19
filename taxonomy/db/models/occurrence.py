@@ -13,7 +13,9 @@ class Occurrence(BaseModel):
     location = ForeignKeyField(Location, related_name="taxa", db_column="location_id")
     comment = CharField()
     status = EnumField(OccurrenceStatus, default=OccurrenceStatus.valid)
-    source = ForeignKeyField(Article, related_name="occurrences", null=True, db_column="source_id")
+    source = ForeignKeyField(
+        Article, related_name="occurrences", null=True, db_column="source_id"
+    )
 
     def add_comment(self, new_comment: str) -> None:
         if self.comment is None:
