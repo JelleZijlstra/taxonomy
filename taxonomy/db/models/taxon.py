@@ -292,17 +292,77 @@ class Taxon(BaseModel):
             return
         if max_depth is None or max_depth > 0:
             new_max_depth = None if max_depth is None else max_depth - 1
-            for child in self.sorted_children():
-                child.display(
+            children = list(self.get_children())
+            if self.base_name.status == Status.valid:
+                valid_children = []
+                dubious_children = []
+                for child in children:
+                    if child.base_name.status == Status.valid:
+                        valid_children.append(child)
+                    else:
+                        dubious_children.append(child)
+                self._display_children(
+                    valid_children,
+                    full=full,
+                    max_depth=new_max_depth,
                     file=file,
                     depth=depth + 1,
-                    max_depth=new_max_depth,
-                    full=full,
                     exclude=exclude,
                     exclude_fn=exclude_fn,
                     name_exclude_fn=name_exclude_fn,
                     show_occurrences=show_occurrences,
                 )
+                if dubious_children:
+                    file.write(
+                        " " * ((depth + 1) * 4) + f"Dubious ({self.valid_name}):\n"
+                    )
+                    self._display_children(
+                        dubious_children,
+                        full=full,
+                        max_depth=new_max_depth,
+                        file=file,
+                        depth=depth + 2,
+                        exclude=exclude,
+                        exclude_fn=exclude_fn,
+                        name_exclude_fn=name_exclude_fn,
+                        show_occurrences=show_occurrences,
+                    )
+            else:
+                self._display_children(
+                    children,
+                    full=full,
+                    max_depth=new_max_depth,
+                    file=file,
+                    depth=depth + 1,
+                    exclude=exclude,
+                    exclude_fn=exclude_fn,
+                    name_exclude_fn=name_exclude_fn,
+                    show_occurrences=show_occurrences,
+                )
+
+    def _display_children(
+        self,
+        children: List["Taxon"],
+        full: bool,
+        max_depth: Optional[int],
+        file: IO[str],
+        depth: int,
+        exclude: Container["Taxon"],
+        exclude_fn: Optional[Callable[["Taxon"], bool]],
+        name_exclude_fn: Optional[Callable[["models.Name"], bool]],
+        show_occurrences: bool,
+    ) -> None:
+        for child in sorted(children, key=lambda t: (t.rank, t.valid_name)):
+            child.display(
+                file=file,
+                depth=depth,
+                max_depth=max_depth,
+                full=full,
+                exclude=exclude,
+                exclude_fn=exclude_fn,
+                name_exclude_fn=name_exclude_fn,
+                show_occurrences=show_occurrences,
+            )
 
     def display_parents(
         self, max_depth: Optional[int] = None, file: IO[str] = sys.stdout
@@ -463,7 +523,7 @@ class Taxon(BaseModel):
     def switch_basename(self, name: "models.Name") -> None:
         assert name.taxon == self, f"{name} is not a synonym of {self}"
         old_base = self.base_name
-        name.status = Status.valid
+        name.status = old_base.status
         old_base.status = Status.synonym
         self.base_name = name
         self.recompute_name()
@@ -604,6 +664,8 @@ class Taxon(BaseModel):
             return name.root_name + helpers.suffix_of_rank(self.rank)
         else:
             assert name.group == Group.species
+            if name.status != Status.valid:
+                return name.corrected_original_name
             try:
                 genus = self.parent_of_rank(Rank.genus)
             except ValueError:
@@ -612,9 +674,8 @@ class Taxon(BaseModel):
                 assert self.rank in (Rank.species, Rank.subspecies), (
                     "Taxon %s should have a genus parent" % self
                 )
-                # default to the original name for now. This isn't ideal because sometimes the original name
-                # contains misspellings, but we don't really have a place to store that information better.
-                return name.original_name
+                # default to the corrected original name
+                return name.corrected_original_name
             else:
                 if self.rank == Rank.species_group:
                     return f"{genus.base_name.root_name} ({name.root_name})"
@@ -700,6 +761,7 @@ class Taxon(BaseModel):
         if self.data is not None:
             print("Warning: removing data: %s" % self.data)
         assert self != to_taxon, "Cannot synonymize %s with itself" % self
+        original_to_status = to_taxon.base_name.status
         for child in self.get_children():
             child.parent = to_taxon
             child.save()
@@ -724,7 +786,7 @@ class Taxon(BaseModel):
                 if comment is not None:
                     additional_comment += " " + comment
                 existing.add_comment(additional_comment)
-        to_taxon.base_name.status = Status.valid
+        to_taxon.base_name.status = original_to_status
         self.remove(reason=f"Synonymized into {to_taxon} (T#{to_taxon.id})")
         return models.Name.get(models.Name.id == nam.id)
 
