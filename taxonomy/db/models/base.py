@@ -10,6 +10,7 @@ from typing import (
     Iterable,
     List,
     Optional,
+    Sequence,
     Set,
     Tuple,
     Type,
@@ -29,7 +30,7 @@ from peewee import (
 )
 
 from .. import ehphp, settings
-from ... import events, getinput
+from ... import adt, events, getinput
 
 if settings.use_sqlite:
     database = SqliteDatabase(settings.database_file)
@@ -324,6 +325,13 @@ class BaseModel(Model):
             if field not in skip_fields:
                 self.fill_field(field)
 
+    def get_tag(self, tags: Optional[Sequence[adt.ADT]], tag_cls: Type[adt.ADT]) -> Iterable[adt.ADT]:
+        if tags is None:
+            return
+        for tag in tags:
+            if isinstance(tag, tag_cls):
+                yield tag
+
     @classmethod
     def create_interactively(cls: Type[ModelT]) -> ModelT:
         obj = cls.create()
@@ -368,11 +376,12 @@ class _ADTDescriptor(peewee.FieldDescriptor):
 
     def __get__(self, instance: Any, instance_type: Any = None) -> EnumT:
         value = super().__get__(instance, instance_type=instance_type)
-        if isinstance(value, str):
+        if isinstance(value, str) and value:
             if not isinstance(self.adt_cls, type):
                 self.adt_cls = self.adt_cls()
-            value = tuple(self.adt_cls.unserialize(val) for val in json.loads(value))
-        return value
+            return tuple(self.adt_cls.unserialize(val) for val in json.loads(value))
+        else:
+            return value
 
     def __set__(self, instance: Any, value: Any) -> None:
         if isinstance(value, tuple):

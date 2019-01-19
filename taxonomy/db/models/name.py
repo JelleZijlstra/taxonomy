@@ -306,11 +306,8 @@ class Name(BaseModel):
             self.type_tags = self.type_tags + (tag,)
 
     def has_type_tag(self, tag_cls: Type[adt.ADT]) -> bool:
-        if self.type_tags is None:
-            return False
-        for tag in self.type_tags:
-            if isinstance(tag, tag_cls):
-                return True
+        for _ in self.get_tag(self.type_tags, tag_cls):
+            return True
         return False
 
     def add_included(self, species: "Name", comment: str = "") -> None:
