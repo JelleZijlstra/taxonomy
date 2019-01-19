@@ -269,7 +269,7 @@ class Name(BaseModel):
 
     def add_additional_data(self, new_data: str) -> None:
         """Add data to the "additional" field within the "data" field"""
-        data = json.loads(self.data)
+        data = self._load_data()
         if "additional" not in data:
             data["additional"] = []
         data["additional"].append(new_data)
@@ -277,10 +277,7 @@ class Name(BaseModel):
         self.save()
 
     def add_data(self, field: str, value: Any, concat_duplicate: bool = False) -> None:
-        if self.data is None or self.data == "":
-            data: Dict[str, Any] = {}
-        else:
-            data = json.loads(self.data)
+        data = self._load_data()
         if field in data:
             if concat_duplicate:
                 existing = data[field]
@@ -292,6 +289,16 @@ class Name(BaseModel):
                 raise ValueError(f"{field} is already in {data}")
         data[field] = value
         self.data = json.dumps(data)
+
+    def get_data(self, field: str) -> Any:
+        data = self._load_data()
+        return data[field]
+
+    def _load_data(self) -> Dict[str, Any]:
+        if self.data is None or self.data == "":
+            return {}
+        else:
+            return json.loads(self.data)
 
     def add_tag(self, tag: adt.ADT) -> None:
         if self.tags is None:
