@@ -117,6 +117,8 @@ class NomenclatureStatus(enum.IntEnum):
     subsequent_usage = 45
     not_intended_as_a_scientific_name = 46  # e.g., a vernacular name
     collective_group = 47
+    # Art. 11.8: a genus-group name must be a nominative singular noun.
+    not_nominative_singular = 48
 
     def requires_type(self) -> bool:
         """Whether a name of this status should have a type designated."""
@@ -152,6 +154,7 @@ class NomenclatureStatus(enum.IntEnum):
             NomenclatureStatus.zoological_formula,
             NomenclatureStatus.informal,
             NomenclatureStatus.subsequent_usage,
+            NomenclatureStatus.not_nominative_singular,
         }
 
     def requires_corrected_original_name(self) -> bool:
