@@ -1,4 +1,4 @@
-from typing import Optional, Type
+from typing import Any, Optional, Type
 
 from peewee import BooleanField, CharField, ForeignKeyField
 
@@ -46,10 +46,19 @@ class Collection(BaseModel):
             )
 
     @classmethod
-    def create_interactively(cls: Type[ModelT]) -> ModelT:
-        label = getinput.get_line("label> ")
-        name = getinput.get_line("name> ")
-        location = cls.get_value_for_foreign_key_field_on_class("location")
+    def create_interactively(
+        cls: Type[ModelT],
+        label: Optional[str] = None,
+        name: Optional[str] = None,
+        location: Optional[Region] = None,
+        **kwargs: Any,
+    ) -> ModelT:
+        if label is None:
+            label = getinput.get_line("label> ")
+        if name is None:
+            name = getinput.get_line("name> ")
+        if location is None:
+            location = cls.get_value_for_foreign_key_field_on_class("location")
         obj = cls.create(label=label, name=name, location=location)
         obj.fill_required_fields()
         return obj

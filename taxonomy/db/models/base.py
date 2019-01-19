@@ -376,7 +376,7 @@ class _ADTDescriptor(peewee.FieldDescriptor):
         super().__init__(field)
         self.adt_cls = adt_cls
 
-    def __get__(self, instance: Any, instance_type: Any = None) -> EnumT:
+    def __get__(self, instance: Any, instance_type: Any = None) -> Any:
         value = super().__get__(instance, instance_type=instance_type)
         if isinstance(value, str) and value:
             if not isinstance(self.adt_cls, type):

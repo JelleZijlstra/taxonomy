@@ -1,5 +1,5 @@
 import sys
-from typing import IO, Optional
+from typing import Any, IO, Optional
 
 from peewee import BooleanField, CharField, ForeignKeyField, IntegerField, TextField
 
@@ -60,13 +60,26 @@ class Location(BaseModel):
         )
 
     @classmethod
-    def create_interactively(cls) -> "Location":
-        name = getinput.get_line("name> ")
+    def create_interactively(
+        cls,
+        name: Optional[str] = None,
+        region: Optional[Region] = None,
+        period: Optional[Period] = None,
+        comment: Optional[str] = None,
+        **kwargs: Any,
+    ) -> "Location":
+        if name is None:
+            name = getinput.get_line("name> ")
         assert name is not None
-        region = cls.get_value_for_foreign_key_field_on_class("region")
-        period = cls.get_value_for_foreign_key_field_on_class("min_period")
-        comment = getinput.get_line("comment> ")
-        result = cls.make(name=name, region=region, period=period, comment=comment)
+        if region is None:
+            region = cls.get_value_for_foreign_key_field_on_class("region")
+        if period is None:
+            period = cls.get_value_for_foreign_key_field_on_class("min_period")
+        if comment is None:
+            comment = getinput.get_line("comment> ")
+        result = cls.make(
+            name=name, region=region, period=period, comment=comment, **kwargs
+        )
         result.fill_required_fields()
         return result
 

@@ -90,13 +90,20 @@ class Period(BaseModel):
         return period
 
     @classmethod
-    def create_interactively(cls) -> "Period":
+    def create_interactively(
+        cls,
+        name: Optional[str] = None,
+        kind: Optional[constants.PeriodSystem] = None,
+        **kwargs: Any,
+    ) -> "Period":
         print("creating Periods interactively only allows stratigraphic units")
-        name = getinput.get_line("name> ")
+        if name is None:
+            name = getinput.get_line("name> ")
         assert name is not None
-        kind = getinput.get_enum_member(
-            constants.PeriodSystem, "kind> ", allow_empty=False
-        )
+        if kind is None:
+            kind = getinput.get_enum_member(
+                constants.PeriodSystem, "kind> ", allow_empty=False
+            )
         result = cls.make_stratigraphy(name, kind)
         result.fill_required_fields()
         return result

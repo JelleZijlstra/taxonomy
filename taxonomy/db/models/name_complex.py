@@ -1,4 +1,4 @@
-from typing import Iterable, List, Optional
+from typing import Any, Iterable, List, Optional
 
 import peewee
 from peewee import BooleanField, CharField, ForeignKeyField
@@ -254,7 +254,7 @@ class SpeciesNameComplex(BaseModel):
         return cls.adjective(stem, comment, "", "", "", auto_apply=auto_apply)
 
     @classmethod
-    def create_interactively(cls) -> "SpeciesNameComplex":
+    def create_interactively(cls, **kwargs: Any) -> "SpeciesNameComplex":
         kind = getinput.get_with_completion(
             [
                 "ambiguous",
@@ -655,7 +655,7 @@ class NameComplex(BaseModel):
         return base_label
 
     @classmethod
-    def create_interactively(cls) -> "NameComplex":
+    def create_interactively(cls, **kwargs: Any) -> "NameComplex":
         kind = getinput.get_with_completion(
             [
                 "latin_stem",

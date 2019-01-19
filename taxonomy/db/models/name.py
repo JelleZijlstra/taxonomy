@@ -716,7 +716,7 @@ class Name(BaseModel):
         self.status = Status.removed  # type: ignore
         self.save()
         if reason:
-            self.add_comment(constants.CommentKind.removal, reason, "", "")
+            self.add_comment(constants.CommentKind.removal, reason, None, "")
 
     def original_valid(self) -> None:
         assert self.original_name is None
@@ -1021,6 +1021,7 @@ class NameComment(BaseModel):
         text: Optional[str] = None,
         source: Optional[Article] = None,
         page: Optional[str] = None,
+        **kwargs: Any,
     ) -> "NameComment":
         if name is None:
             name = cls.get_value_for_foreign_key_field_on_class("name")

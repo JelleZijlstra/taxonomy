@@ -13,6 +13,7 @@ import peewee
 
 from taxonomy.db.constants import Age, Group, Rank, Status
 from taxonomy.db.models import (
+    Article,
     BaseModel,
     Collection,
     Location,
@@ -26,7 +27,7 @@ from taxonomy.db.models import (
 def occ(
     t: Taxon,
     loc: Location,
-    source: Optional[str] = None,
+    source: Optional[Article] = None,
     replace_source: bool = False,
     **kwargs: Any
 ) -> Occurrence:
@@ -50,7 +51,7 @@ def occ(
 def occur(
     t: Taxon,
     locs: Iterable[Location],
-    source: Optional[str] = None,
+    source: Optional[Article] = None,
     replace_source: bool = False,
     **kwargs: Any
 ) -> None:
@@ -107,7 +108,7 @@ def most_type_specimens(limit: int = 50) -> List[Tuple[Collection, int]]:
 def mocc(
     t: Taxon,
     locs: Iterable[Location],
-    source: Optional[str] = None,
+    source: Optional[Article] = None,
     replace_source: bool = False,
     **kwargs: Any
 ) -> None:
@@ -118,7 +119,7 @@ def mocc(
 def multi_taxon(
     ts: Iterable[Taxon],
     loc: Location,
-    source: Optional[str] = None,
+    source: Optional[Article] = None,
     replace_source: bool = False,
     **kwargs: Any
 ) -> None:

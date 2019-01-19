@@ -1375,7 +1375,7 @@ def set_empty_to_none(
 
 @command
 def fill_data_from_paper(
-    paper: Optional[str] = None, always_edit_tags: bool = False
+    paper: Optional[models.Article] = None, always_edit_tags: bool = False
 ) -> None:
     if paper is None:
         paper = models.BaseModel.get_value_for_foreign_class("paper", models.Article)
@@ -1537,7 +1537,7 @@ def check_tags(dry_run: bool = True) -> Iterable[Tuple[Name, str]]:
             comment = f"Status automatically changed from {nam.nomenclature_status.name} to {status.name} because of {tag}"
             print(f"changing status of {nam} and adding comment {comment!r}")
             if not dry_run:
-                nam.add_comment(constants.CommentKind.automatic_change, comment, "")
+                nam.add_comment(constants.CommentKind.automatic_change, comment, None)
                 nam.nomenclature_status = status  # type: ignore
                 nam.save()
 
@@ -1930,7 +1930,7 @@ def disambiguate_authors(dry_run: bool = False) -> None:
     for author in sorted(AMBIGUOUS_AUTHORS):
         print(f"--- {author} ---")
         nams = list(_names_with_author(author))
-        by_citation: Dict[Optional[str], List[Name]] = collections.defaultdict(list)
+        by_citation: Dict[Optional[Article], List[Name]] = collections.defaultdict(list)
         for nam in nams:
             by_citation[nam.original_citation].append(nam)
         for citation, nams in by_citation.items():
