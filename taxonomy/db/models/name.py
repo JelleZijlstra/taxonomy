@@ -239,8 +239,8 @@ class Name(BaseModel):
                             completer = get_completer(Name, "original_name")
                         elif typ is Collection:
                             completer = get_completer(Collection, "label")
-                        elif typ is str and attribute in ("source", "opinion"):
-                            completer = self._completer_for_source_field
+                        elif typ is Article:
+                            completer = get_completer(Article, "name")
                         elif typ is str and attribute in ("lectotype", "neotype"):
                             completer = get_str_completer(Name, "type_specimen")
                         else:
@@ -249,9 +249,6 @@ class Name(BaseModel):
                             completers[(tag, attribute)] = completer
                 return completers
         return {}
-
-    def _completer_for_source_field(self, prompt: str, default: str) -> str:
-        return self.get_value_for_article_field(prompt[:-2], default=default) or ""
 
     def get_empty_required_fields(self) -> Iterable[str]:
         fields = []
@@ -1091,23 +1088,23 @@ class Tag(adt.ADT):
     # If we don't know which of 2-4 to use
     VariantOf(name=Name, comment=str, tag=6)  # type: ignore
     # "opinion" is a reference to an Article containing an ICZN Opinion
-    PartiallySuppressedBy(opinion=str, comment=str, tag=7)  # type: ignore
-    FullySuppressedBy(opinion=str, comment=str, tag=8)  # type: ignore
+    PartiallySuppressedBy(opinion=Article, comment=str, tag=7)  # type: ignore
+    FullySuppressedBy(opinion=Article, comment=str, tag=8)  # type: ignore
     TakesPriorityOf(name=Name, comment=str, tag=9)  # type: ignore
     # ICZN Art. 23.9. The reference is to the nomen protectum relative to which precedence is reversed.
     NomenOblitum(name=Name, comment=str, tag=10)  # type: ignore
     MandatoryChangeOf(name=Name, comment=str, tag=11)  # type: ignore
     # Conserved by placement on the Official List.
-    Conserved(opinion=str, comment=str, tag=12)  # type: ignore
+    Conserved(opinion=Article, comment=str, tag=12)  # type: ignore
     IncorrectOriginalSpellingOf(name=Name, comment=str, tag=13)  # type: ignore
     # selection as the correct original spelling
-    SelectionOfSpelling(source=str, comment=str, tag=14)  # type: ignore
+    SelectionOfSpelling(source=Article, comment=str, tag=14)  # type: ignore
     SubsequentUsageOf(name=Name, comment=str, tag=15)  # type: ignore
-    SelectionOfPriority(over=Name, source=str, comment=str, tag=16)  # type: ignore
+    SelectionOfPriority(over=Name, source=Article, comment=str, tag=16)  # type: ignore
     # Priority reversed by ICZN opinion
-    ReversalOfPriority(over=Name, opinion=str, comment=str, tag=17)  # type: ignore
+    ReversalOfPriority(over=Name, opinion=Article, comment=str, tag=17)  # type: ignore
     # Placed on the Official Index, but without being suppressed.
-    Rejected(opinion=str, comment=str, tag=18)  # type: ignore
+    Rejected(opinion=Article, comment=str, tag=18)  # type: ignore
 
 
 STATUS_TO_TAG = {
@@ -1138,19 +1135,19 @@ class TypeTag(adt.ADT):
     Host(name=str, tag=11)  # type: ignore
     # 12 is unused
     # subsequent designation of the type (for a genus)
-    TypeDesignation(source=str, type=Name, comment=str, tag=13)  # type: ignore
+    TypeDesignation(source=Article, type=Name, comment=str, tag=13)  # type: ignore
     # like the above, but by the Commission (and therefore trumping everything else)
-    CommissionTypeDesignation(opinion=str, type=Name, tag=14)  # type: ignore
+    CommissionTypeDesignation(opinion=Article, type=Name, tag=14)  # type: ignore
     LectotypeDesignation(  # type: ignore
-        source=str, lectotype=str, valid=bool, comment=str, tag=15
+        source=Article, lectotype=str, valid=bool, comment=str, tag=15
     )
     NeotypeDesignation(  # type: ignore
-        source=str, neotype=str, valid=bool, comment=str, tag=16
+        source=Article, neotype=str, valid=bool, comment=str, tag=16
     )
     # more information on the specimen
-    SpecimenDetail(text=str, source=str, tag=17)  # type: ignore
+    SpecimenDetail(text=str, source=Article, tag=17)  # type: ignore
     # phrasing of the type locality in a particular source
-    LocationDetail(text=str, source=str, tag=18)  # type: ignore
+    LocationDetail(text=str, source=Article, tag=18)  # type: ignore
     # an originally included species in a genus without an original type designation
     IncludedSpecies(name=Name, comment=str, tag=19)  # type: ignore
     # repository that holds some of the type specimens
@@ -1158,4 +1155,4 @@ class TypeTag(adt.ADT):
     # indicates that it was originally a genus coelebs
     GenusCoelebs(comments=str, tag=21)  # type: ignore
     # quotation with information about a type species
-    TypeSpeciesDetail(text=str, source=str, tag=22)  # type: ignore
+    TypeSpeciesDetail(text=str, source=Article, tag=22)  # type: ignore

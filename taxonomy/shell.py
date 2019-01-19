@@ -1376,7 +1376,7 @@ def fill_data_from_paper(
     paper: Optional[str] = None, always_edit_tags: bool = False
 ) -> None:
     if paper is None:
-        paper = models.BaseModel.get_value_for_article_field_on_class("paper")
+        paper = models.BaseModel.get_value_for_foreign_class("paper", models.Article)
     assert paper is not None, "paper needs to be specified"
     models.taxon.fill_data_from_paper(paper, always_edit_tags=always_edit_tags)
 
@@ -2121,7 +2121,7 @@ def fgsyn(off: Optional[Name] = None) -> Name:
     else:
         taxon = Taxon.get_one_by("valid_name", prompt="taxon> ")
     root_name = Name.getter("original_name").get_one_key("name> ")
-    source = Name.get_value_for_article_field_on_class("source")
+    source = Name.get_value_for_foreign_class("source", models.Article)
     kwargs = {}
     if off is not None:
         kwargs["type"] = off.type

@@ -300,24 +300,6 @@ class BaseModel(Model):
                 else:
                     return None
 
-    def get_value_for_article_field(
-        self, field: str, default: Optional[str] = None
-    ) -> Optional[str]:
-        current_val = getattr(self, field, None)
-        if current_val is not None:
-            default = current_val
-        return self.get_value_for_article_field_on_class(field, default)
-
-    @staticmethod
-    def get_value_for_article_field_on_class(
-        field: str, default: Optional[str] = None
-    ) -> Optional[str]:
-        names = ehphp.call_ehphp("get_all", {})
-        return (
-            getinput.get_with_completion(names, f"{field}> ", default=default or "")
-            or None
-        )
-
     def fill_field(self, field: str) -> None:
         setattr(self, field, self.get_value_for_field(field))
         self.save()
