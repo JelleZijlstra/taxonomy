@@ -29,7 +29,7 @@ from peewee import (
     TextField,
 )
 
-from .. import ehphp, settings
+from .. import settings
 from ... import adt, events, getinput
 
 if settings.use_sqlite:

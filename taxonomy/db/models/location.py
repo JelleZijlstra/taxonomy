@@ -1,5 +1,5 @@
 import sys
-from typing import IO, Any, Optional
+from typing import IO, Optional
 
 from peewee import BooleanField, CharField, ForeignKeyField, IntegerField, TextField
 
