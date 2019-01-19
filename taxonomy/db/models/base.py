@@ -286,7 +286,15 @@ class BaseModel(Model):
         elif value is None:
             return None
         else:
-            return getter(value)
+            try:
+                return getter(value)
+            except foreign_cls.DoesNotExist:
+                if getinput.yes_no(f"create new {foreign_cls.__name} named {value}? "):
+                    result = foreign_cls.create_interactively(**{foreign_cls.label_field: value})
+                    print(f"created new {foreign_cls} {result}")
+                    return result
+                else:
+                    return None
 
     def get_value_for_article_field(
         self, field: str, default: Optional[str] = None
@@ -333,8 +341,8 @@ class BaseModel(Model):
                 yield tag
 
     @classmethod
-    def create_interactively(cls: Type[ModelT]) -> ModelT:
-        obj = cls.create()
+    def create_interactively(cls: Type[ModelT], **kwargs: Any) -> ModelT:
+        obj = cls.create(**kwargs)
         obj.fill_required_fields()
         return obj
 
