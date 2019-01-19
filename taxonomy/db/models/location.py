@@ -7,6 +7,7 @@ from .. import constants
 from ... import events, getinput
 
 from .base import BaseModel
+from .article import Article
 from .period import Period
 from .region import Region
 
@@ -37,7 +38,7 @@ class Location(BaseModel):
     longitude = CharField()
     location_detail = TextField()
     age_detail = TextField()
-    source = TextField()
+    source = ForeignKeyField(Article, related_name="locations", null=True)
     deleted = BooleanField(default=False)
 
     @classmethod
@@ -68,12 +69,6 @@ class Location(BaseModel):
         result = cls.make(name=name, region=region, period=period, comment=comment)
         result.fill_required_fields()
         return result
-
-    def get_value_for_field(self, field: str) -> Any:
-        if field == "source":
-            return self.get_value_for_article_field(field)
-        else:
-            return super().get_value_for_field(field)
 
     def __repr__(self) -> str:
         age_str = ""

@@ -101,7 +101,7 @@ def translate_to_db(names: DataT) -> DataT:
     for name in names:
         if "Holotype" in name:
             name["collection"] = ummz
-            name["type_specimen_source"] = SOURCE
+            name["type_specimen_source"] = models.Article.get(name=SOURCE)
             name["species_type_kind"] = constants.SpeciesGroupType.holotype
         type_tags: List[models.TypeTag] = []
         if "gender_age" in name:

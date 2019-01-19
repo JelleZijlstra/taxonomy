@@ -23,6 +23,7 @@ from ..constants import Group, NomenclatureStatus, Rank, SpeciesNameKind, Status
 from ..definition import Definition
 
 from .base import BaseModel, EnumField, ADTField
+from .article import Article
 from .collection import Collection
 from .taxon import Taxon
 from .location import Location
@@ -60,7 +61,7 @@ class Name(BaseModel):
 
     # Citation and authority
     authority = CharField(null=True)
-    original_citation = CharField(null=True)
+    original_citation = ForeignKeyField(Article, null=True, db_column="original_citation_id", related_name="new_names")
     page_described = CharField(null=True)
     verbatim_citation = CharField(null=True)
     year = CharField(null=True)  # redundant with data for the publication itself
@@ -87,7 +88,7 @@ class Name(BaseModel):
     collection = ForeignKeyField(
         Collection, null=True, db_column="collection_id", related_name="type_specimens"
     )
-    type_specimen_source = CharField(null=True)
+    type_specimen_source = ForeignKeyField(Article, null=True, db_column="type_specimen_source_id", related_name="type_source_names")
     genus_type_kind = EnumField(constants.TypeSpeciesDesignation, null=True)
     species_type_kind = EnumField(constants.SpeciesGroupType, null=True)
     type_tags = ADTField(lambda: TypeTag, null=True)
@@ -204,10 +205,8 @@ class Name(BaseModel):
             if self.type_locality is not None:
                 print(self.type_locality)
             return super().get_value_for_field(field)
-        elif field == "original_citation":
-            return self.get_value_for_article_field(field)
         elif field == "type_specimen_source":
-            return self.get_value_for_article_field(
+            return self.get_value_for_foreign_key_field(
                 field, default=self.original_citation
             )
         elif field == "type":
@@ -325,7 +324,7 @@ class Name(BaseModel):
         self,
         kind: Optional[constants.CommentKind] = None,
         text: Optional[str] = None,
-        source: Optional[str] = None,
+        source: Optional[Article] = None,
         page: Optional[str] = None,
     ) -> "NameComment":
         return NameComment.create_interactively(
@@ -454,7 +453,7 @@ class Name(BaseModel):
         if self.page_described is not None:
             out += ":%s" % self.page_described
         if self.original_citation is not None:
-            out += " {%s}" % self.original_citation
+            out += " {%s}" % self.original_citation.name
         if self.type is not None:
             kind = f"; {self.genus_type_kind.name}" if self.genus_type_kind else ""
             out += f" (type: {self.type}{kind})"
@@ -521,7 +520,7 @@ class Name(BaseModel):
             if self.collection is not None:
                 type_info.append(f"in {self.collection}")
             if self.type_specimen_source is not None:
-                type_info.append(f"{{{self.type_specimen_source}}}")
+                type_info.append(f"{{{self.type_specimen_source.name}}}")
             if self.type_locality is not None:
                 type_info.append(f"from {self.type_locality.name}")
             if type_info:
@@ -701,7 +700,7 @@ class Name(BaseModel):
             print("%s: original citation unknown" % self.description())
         else:
             try:
-                ehphp.call_ehphp("openf", [self.original_citation])
+                ehphp.call_ehphp("openf", [self.original_citation.name])
             except ehphp.EHPHPError:
                 pass
         return True
@@ -754,14 +753,14 @@ class Name(BaseModel):
 
     def set_paper(
         self,
-        paper: Optional[str] = None,
+        paper: Optional[Article] = None,
         page_described: Union[None, int, str] = None,
         original_name: Optional[int] = None,
         force: bool = False,
         **kwargs: Any,
     ) -> None:
         if paper is None:
-            paper = self.get_value_for_article_field("original_citation")
+            paper = self.get_value_for_foreign_class("original_citation", Article)
         authority, year = ehphp.call_ehphp("taxonomicAuthority", [paper])[0]
         if original_name is None and self.status == Status.valid:
             original_name = self.taxon.valid_name
@@ -982,7 +981,7 @@ class NameComment(BaseModel):
     kind = EnumField(constants.CommentKind)
     date = IntegerField()
     text = TextField()
-    source = CharField()
+    source = ForeignKeyField(Article, related_name="name_comments", null=True, db_column="source_id")
     page = TextField()
 
     class Meta:
@@ -994,7 +993,7 @@ class NameComment(BaseModel):
         name: Name,
         kind: constants.CommentKind,
         text: str,
-        source: Optional[str] = None,
+        source: Optional[Article] = None,
         page: Optional[str] = None,
     ) -> "NameComment":
         return cls.create(
@@ -1012,7 +1011,7 @@ class NameComment(BaseModel):
         name: Optional[Name] = None,
         kind: Optional[constants.CommentKind] = None,
         text: Optional[str] = None,
-        source: Optional[str] = None,
+        source: Optional[Article] = None,
         page: Optional[str] = None,
     ) -> "NameComment":
         if name is None:
@@ -1026,7 +1025,7 @@ class NameComment(BaseModel):
             text = getinput.get_line(prompt="text> ")
         assert text is not None
         if source is None:
-            source = cls.get_value_for_article_field_on_class("source")
+            source = cls.get_value_for_foreign_class("source", Article)
             if page is None:
                 page = getinput.get_line(prompt="page> ")
         return cls.make(name=name, kind=kind, text=text, source=source, page=page)
@@ -1038,7 +1037,7 @@ class NameComment(BaseModel):
         ]
         if self.source:
             components.append(
-                f"{{{self.source}}}:{self.page}" if self.page else f"{{{self.source}}}"
+                f"{{{self.source.name}}}:{self.page}" if self.page else f"{{{self.source.name}}}"
             )
         return f'{self.text} ({"; ".join(components)})'
 

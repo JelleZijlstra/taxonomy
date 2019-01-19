@@ -495,7 +495,7 @@ def extract_data() -> Iterable[Dict[str, Any]]:
             all_tags.append(TypeTag.SpecimenDetail(type_text, SOURCE))
         name["type_tags"] = all_tags
         name["collection"] = models.Collection.by_label("AMNH")
-        name["type_specimen_source"] = SOURCE
+        name["type_specimen_source"] = models.Article.get(name=SOURCE)
         yield name
 
 

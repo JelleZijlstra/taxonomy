@@ -76,7 +76,7 @@ def split_fields(names: DataT) -> DataT:
                 elif coll == "NSMT-M":
                     name["collection"] = models.Collection.by_label("NSMT")
             name["species_type_kind"] = constants.SpeciesGroupType.holotype
-            name["type_specimen_source"] = SOURCE.source
+            name["type_specimen_source"] = models.Article.get(name=SOURCE.source)
 
         yield name
 

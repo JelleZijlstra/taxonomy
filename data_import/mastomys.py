@@ -39,7 +39,7 @@ def extract_names(names: DataT) -> DataT:
         name["species_type_kind"] = constants.SpeciesGroupType.holotype
         coll = name["type_specimen"].split()[0]
         name["collection"] = models.Collection.by_label(coll)
-        name["type_specimen_source"] = SOURCE.source
+        name["type_specimen_source"] = models.Name.get(name=SOURCE.source)
         yield name
 
 

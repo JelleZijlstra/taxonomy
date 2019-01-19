@@ -66,6 +66,8 @@ class Article(BaseModel):
     parent = ForeignKeyField("self", related_name="children", null=True)
     misc_data = TextField()
 
+    label_field = "name"
+
     class Meta:
         db_table = "article"
 
@@ -77,3 +79,6 @@ class Article(BaseModel):
         yield "path"
         yield "name"
         yield from _TYPE_TO_FIELDS[self.type]
+
+    def __repr__(self) -> str:
+        return f"{{{self.name}}}"

@@ -518,7 +518,7 @@ def translate_to_db(
             if coll is not None and "collection" not in name:
                 name["collection"] = coll
             if source is not None and "type_specimen_source" not in name:
-                name["type_specimen_source"] = source.source
+                name["type_specimen_source"] = models.Article.get(name=source.source)
         type_tags: List[models.TypeTag] = name.get("type_tags", [])
         for field in ("age_gender", "gender_age", "gender"):
             if field in name:
@@ -1396,7 +1396,7 @@ def write_to_db(
                                     )
                                     continue
                         else:
-                            if existing.original_citation == source.source:
+                            if existing.original_citation.name == source.source:
                                 continue
 
                 if attr == "type_specimen_source":

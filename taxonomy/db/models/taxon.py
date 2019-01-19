@@ -25,6 +25,7 @@ from ... import events, getinput
 from ..constants import Group, NomenclatureStatus, OccurrenceStatus, Rank, Status
 
 from .base import BaseModel, EnumField
+from .article import Article
 
 
 class _OccurrenceGetter(object):
@@ -463,7 +464,7 @@ class Taxon(BaseModel):
         authority: Optional[str] = None,
         year: Union[None, int, str] = None,
         original_name: Optional[str] = None,
-        original_citation: Optional[str] = None,
+        original_citation: Optional[Article] = None,
         page_described: Union[None, int, str] = None,
         status: Status = Status.synonym,
         nomenclature_status: NomenclatureStatus = NomenclatureStatus.available,
@@ -531,7 +532,7 @@ class Taxon(BaseModel):
     def add_occurrence(
         self,
         location: "models.Location",
-        paper: Optional[str] = None,
+        paper: Optional[Article] = None,
         comment: Optional[str] = None,
         status: OccurrenceStatus = OccurrenceStatus.valid,
     ) -> "models.Occurrence":
@@ -552,7 +553,7 @@ class Taxon(BaseModel):
     def syn_from_paper(
         self,
         root_name: str,
-        paper: Optional[str],
+        paper: Optional[Article],
         page_described: Union[None, int, str] = None,
         status: Status = Status.synonym,
         group: Optional[Group] = None,
@@ -561,7 +562,7 @@ class Taxon(BaseModel):
         **kwargs: Any,
     ) -> "models.Name":
         if paper is None:
-            paper = self.get_value_for_article_field("paper")
+            paper = self.get_value_for_foreign_class("paper", Article)
 
         authority, year = ehphp.call_ehphp("taxonomicAuthority", [paper])[0]
         result = self.add_syn(
@@ -592,7 +593,7 @@ class Taxon(BaseModel):
         **override_kwargs: Any,
     ) -> "Taxon":
         if paper is None:
-            paper = self.get_value_for_article_field("paper")
+            paper = self.get_value_for_foreign_class("paper", Article)
 
         authority, year = ehphp.call_ehphp("taxonomicAuthority", [paper])[0]
         result = self.add_static(
@@ -972,9 +973,9 @@ _finished_papers: Set[str] = set()
 
 
 def fill_data_from_paper(
-    paper: str, always_edit_tags: bool = False, skip_if_seen: bool = True
+    paper: Article, always_edit_tags: bool = False, skip_if_seen: bool = True
 ) -> None:
-    if paper in _finished_papers:
+    if paper.name in _finished_papers:
         return
     opened = False
 
@@ -994,9 +995,9 @@ def fill_data_from_paper(
         required_fields = list(nam.get_empty_required_fields())
         if required_fields:
             if not opened:
-                getinput.add_to_clipboard(paper)
-                ehphp.call_ehphp("openf", [paper])
-                print(f"filling data from {paper}")
+                getinput.add_to_clipboard(paper.name)
+                ehphp.call_ehphp("openf", [paper.name])
+                print(f"filling data from {paper.name}")
                 opened = True
             print(nam, "described at", nam.page_described)
             nam.fill_required_fields()
@@ -1004,4 +1005,4 @@ def fill_data_from_paper(
             nam.fill_field("type_tags")
 
     if not opened:
-        _finished_papers.add(paper)
+        _finished_papers.add(paper.name)

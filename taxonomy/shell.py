@@ -46,7 +46,7 @@ from traitlets.config.loader import Config
 from . import getinput
 from .db import constants, definition, detection, ehphp, helpers, models
 from .db.constants import Age, Group, NomenclatureStatus, Rank, PeriodSystem
-from .db.models import Collection, Name, Tag, Taxon, TypeTag, database
+from .db.models import Article, Collection, Name, Tag, Taxon, TypeTag, database
 
 T = TypeVar("T")
 
@@ -225,7 +225,7 @@ def add_original_names() -> Iterable[Tuple[Name, str]]:
         .order_by(Name.original_name)
     ):
         message = "Name {} is missing an original name, but has original citation {{{}}}:{}".format(
-            name.description(), name.original_citation, name.page_described
+            name.description(), name.original_citation.name, name.page_described
         )
         yield name, message
 
@@ -246,7 +246,7 @@ def add_page_described() -> Iterable[Tuple[Name, str]]:
             continue  # recent JVP papers don't have page numbers
         message = (
             "Name %s is missing page described, but has original citation {%s}"
-            % (name.description(), name.original_citation)
+            % (name.description(), name.original_citation.name)
         )
         yield name, message
 
@@ -333,7 +333,7 @@ def add_types() -> None:
             continue
         name.taxon.display(full=True, max_depth=1)
         print(
-            f"Name {name} is missing type, but has original citation {name.original_citation}"
+            f"Name {name} is missing type, but has original citation {name.original_citation.name}"
         )
         models.taxon.fill_data_from_paper(name.original_citation)
 
@@ -1324,7 +1324,7 @@ def clean_up_verbatim(dry_run: bool = False) -> None:
     for nam in Name.select_valid().filter(
         Name.verbatim_citation != None, Name.original_citation != None
     ):
-        print(f"{nam}: {nam.original_citation}, {nam.verbatim_citation}")
+        print(f"{nam}: {nam.original_citation.name}, {nam.verbatim_citation}")
         citation_count += 1
         if not dry_run:
             nam.add_data(
@@ -1911,8 +1911,8 @@ def apply_author_synonyms(dry_run: bool = False) -> None:
             _replace_author(nam, bad, good, dry_run=dry_run)
 
 
-def _get_new_author(nams: List[Name], citation: str, author: str) -> Optional[str]:
-    authors = ehphp.call_ehphp("getField", {"field": "authors", "files": [citation]})[0]
+def _get_new_author(nams: List[Name], citation: Article, author: str) -> Optional[str]:
+    authors = ehphp.call_ehphp("getField", {"field": "authors", "files": [citation.name]})[0]
     if ";" not in authors and ", " in authors:
         last, initials = authors.split(", ")
         if last == author:

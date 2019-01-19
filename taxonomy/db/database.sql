@@ -107,6 +107,7 @@ CREATE TABLE `location` (
     `location_detail` text,
     `age_detail` text,
     `source` varchar(255) default null,
+    `source_id` INT UNSIGNED DEFAULT NULL,
     `deleted` TINYINT DEFAULT 0,
     PRIMARY KEY(`id`),
     INDEX(`name`),
@@ -119,6 +120,7 @@ CREATE TABLE `occurrence` (
     `location_id` INT UNSIGNED,
     `comment` VARCHAR(65535) DEFAULT NULL,
     `source` VARCHAR(1023),
+    `source_id` INT UNSIGNED DEFAULT NULL,
     `status` INT UNSIGNED,
     PRIMARY KEY(`id`),
     INDEX(`taxon_id`),
@@ -181,6 +183,7 @@ CREATE TABLE `name_comment` (
     `date` integer,
     `text` text,
     `source` varchar(512),
+    `source_id` INT UNSIGNED DEFAULT NULL,
     `page` varchar(512)
 );
 

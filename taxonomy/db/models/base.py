@@ -263,22 +263,26 @@ class BaseModel(Model):
     def get_completers_for_adt_field(self, field: str) -> getinput.CompleterMap:
         return {}
 
-    def get_value_for_foreign_key_field(self, field: str) -> Any:
-        current_val = getattr(self, field)
-        return self.get_value_for_foreign_key_field_on_class(field, current_val)
+    def get_value_for_foreign_key_field(self, field: str, default: Optional[Any] = None) -> Any:
+        if default is None:
+            default = getattr(self, field)
+        return self.get_value_for_foreign_key_field_on_class(field, default)
 
     @classmethod
     def get_value_for_foreign_key_field_on_class(
         cls, field: str, current_val: Optional[Any] = None
     ) -> Any:
         field_obj = getattr(cls, field)
-        foreign_cls = field_obj.rel_model
-        if current_val is None:
+        return cls.get_value_for_foreign_class(field, field_obj.rel_model, current_val)
+
+    @staticmethod
+    def get_value_for_foreign_class(label: str, foreign_cls: Type["BaseModel"], default_obj: Optional[Any] = None) -> Any:
+        if default_obj is None:
             default = ""
         else:
-            default = getattr(current_val, foreign_cls.label_field)
+            default = getattr(default_obj, foreign_cls.label_field)
         getter = foreign_cls.getter(foreign_cls.label_field)
-        value = getter.get_one_key(f"{field}> ", default=default)
+        value = getter.get_one_key(f"{label}> ", default=default)
         if value == "n":
             result = foreign_cls.create_interactively()
             print(f"created new {foreign_cls} {result}")

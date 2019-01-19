@@ -3,6 +3,7 @@ from peewee import CharField, ForeignKeyField
 from ..constants import OccurrenceStatus
 
 from .base import BaseModel, EnumField
+from .article import Article
 from .taxon import Taxon
 from .location import Location
 
@@ -12,7 +13,7 @@ class Occurrence(BaseModel):
     location = ForeignKeyField(Location, related_name="taxa", db_column="location_id")
     comment = CharField()
     status = EnumField(OccurrenceStatus, default=OccurrenceStatus.valid)
-    source = CharField()
+    source = ForeignKeyField(Article, related_name="occurrences", null=True, db_column="source_id")
 
     def add_comment(self, new_comment: str) -> None:
         if self.comment is None:
@@ -25,7 +26,7 @@ class Occurrence(BaseModel):
         out = "{} in {} ({}{})".format(
             self.taxon,
             self.location,
-            self.source,
+            self.source.name,
             "; " + self.comment if self.comment else "",
         )
         if self.status != OccurrenceStatus.valid:
