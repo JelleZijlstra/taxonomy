@@ -1,9 +1,9 @@
 import sys
-from typing import Any, IO, Optional
+from typing import Any, IO, Iterable, Optional
 
 from peewee import BooleanField, CharField, ForeignKeyField, IntegerField, TextField
 
-from .. import constants
+from .. import constants, models
 from ... import events, getinput
 
 from .base import BaseModel
@@ -98,7 +98,11 @@ class Location(BaseModel):
         return f"{self.name} ({age_str}), {self.region.name}"
 
     def display(
-        self, full: bool = False, depth: int = 0, file: IO[str] = sys.stdout
+        self,
+        full: bool = False,
+        organized: bool = False,
+        depth: int = 0,
+        file: IO[str] = sys.stdout,
     ) -> None:
         file.write("{}{}\n".format(" " * (depth + 4), repr(self)))
         space = " " * (depth + 12)
@@ -107,9 +111,14 @@ class Location(BaseModel):
         type_locs = list(self.type_localities)
         if type_locs:
             file.write("{}Type localities:\n".format(" " * (depth + 8)))
+            tag_spaces = " " * (depth + 16)
             for nam in type_locs:
                 file.write(f"{space}{nam}\n")
-        if full:
+                if full and nam.type_tags:
+                    for tag in nam.type_tags:
+                        if isinstance(tag, models.name.TypeTag.LocationDetail):
+                            file.write(f"{tag_spaces}{tag}\n")
+        if organized:
             self.display_organized(depth=depth, file=file)
         else:
             for occurrence in sorted(self.taxa, key=lambda occ: occ.taxon.valid_name):
@@ -166,3 +175,13 @@ class Location(BaseModel):
         else:
             self.comment = f"{self.comment} – {new_comment}"
         self.deleted = True
+
+    def set_period(self, period: Period) -> None:
+        self.min_period = self.max_period = period
+
+    def get_required_fields(self) -> Iterable[str]:
+        yield "name"
+        yield "min_period"
+        yield "max_period"
+        yield "stratigraphic_unit"
+        yield "region"

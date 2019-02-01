@@ -127,23 +127,37 @@ class Period(BaseModel):
         return period
 
     def display(
-        self, full: bool = False, depth: int = 0, file: IO[str] = sys.stdout
+        self,
+        full: bool = False,
+        depth: int = 0,
+        file: IO[str] = sys.stdout,
+        locations: bool = True,
+        children: bool = True,
     ) -> None:
         file.write("{}{}\n".format(" " * (depth + 4), repr(self)))
-        for location in models.Location.filter(
+        if locations:
+            for location in self.period_localities():
+                location.display(full=full, depth=depth + 4, file=file)
+            for location in self.locations_stratigraphy:
+                location.display(full=full, depth=depth + 4, file=file)
+        if children:
+            for period in self.children:
+                period.display(
+                    full=full, depth=depth + 2, file=file, locations=locations
+                )
+            for period in Period.filter(
+                Period.max_period == self, Period.min_period == self
+            ):
+                period.display(
+                    full=full, depth=depth + 2, file=file, locations=locations
+                )
+
+    def period_localities(self) -> Iterable["models.Location"]:
+        return models.Location.filter(
             models.Location.max_period == self,
             models.Location.min_period == self,
             models.Location.deleted == False,
-        ):
-            location.display(full=full, depth=depth + 2, file=file)
-        for location in self.locations_stratigraphy:
-            location.display(full=full, depth=depth + 2, file=file)
-        for period in self.children:
-            period.display(full=full, depth=depth + 1, file=file)
-        for period in Period.filter(
-            Period.max_period == self, Period.min_period == self
-        ):
-            period.display(full=full, depth=depth + 1, file=file)
+        )
 
     def make_locality(self, region: "Region") -> "models.Location":
         return models.Location.make(self.name, region, self)
@@ -167,6 +181,11 @@ class Period(BaseModel):
             return True
         else:
             return False
+
+    def get_required_fields(self) -> Iterable[str]:
+        yield "name"
+        yield "parent"
+        yield "system"
 
     def __repr__(self) -> str:
         properties = {}

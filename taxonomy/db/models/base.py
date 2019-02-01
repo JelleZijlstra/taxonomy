@@ -1,3 +1,4 @@
+from collections import Counter
 import enum
 import json
 import traceback
@@ -194,7 +195,29 @@ class BaseModel(Model):
             FROM {cls._meta.db_table}
             GROUP BY {attribute}
         """
-        return dict(database.execute_sql(sql))
+        return Counter(database.execute_sql(sql))
+
+    @classmethod
+    def bfind(cls: Type[ModelT], **kwargs: Any) -> List[ModelT]:
+        filters = []
+        fields = cls._meta.fields
+        for key, value in kwargs.items():
+            if key not in fields:
+                raise ValueError(f"{key} is not a valid field")
+            field = fields[key]
+            if isinstance(value, str):
+                filters.append(field.contains(value))
+            else:
+                filters.append(field == value)
+        objs = list(cls.filter(*filters))
+        if hasattr(cls, "label_field"):
+            objs = sorted(objs, key=lambda obj: getattr(obj, cls.label_field) or "")
+            for obj in objs:
+                print(getattr(obj, cls.label_field))
+        else:
+            for obj in objs:
+                print(obj)
+        return objs
 
     def reload(self: ModelT) -> ModelT:
         return type(self).get(id=self.id)
@@ -205,6 +228,11 @@ class BaseModel(Model):
     @classmethod
     def unserialize(cls: Type[ModelT], data: int) -> ModelT:
         return cls.get(id=data)
+
+    @classmethod
+    def select_valid(cls, *args: Any) -> Any:
+        """Subclasses may override this to filter out removed instances."""
+        return cls.select(*args)
 
     @classmethod
     def getter(cls: Type[ModelT], attr: str) -> "_NameGetter[ModelT]":
@@ -233,7 +261,7 @@ class BaseModel(Model):
                 field_obj.get_adt(),
                 existing=current_value,
                 completers=self.get_completers_for_adt_field(field),
-                callbacks={"edit": self.fill_field, "e": self.fill_field},
+                callbacks=self.get_adt_callbacks(),
             )
         elif isinstance(field_obj, CharField):
             default = "" if current_value is None else current_value
@@ -259,6 +287,12 @@ class BaseModel(Model):
                 return int(result)
         else:
             raise ValueError(f"don't know how to fill {field}")
+
+    def get_adt_callbacks(self) -> getinput.CallbackMap:
+        def callback(field: str) -> Callable[[], None]:
+            return lambda: self.fill_field(field)
+
+        return {field: callback(field) for field in self.get_field_names()}
 
     def get_completers_for_adt_field(self, field: str) -> getinput.CompleterMap:
         return {}
@@ -297,7 +331,9 @@ class BaseModel(Model):
             try:
                 return getter(value)
             except foreign_cls.DoesNotExist:
-                if getinput.yes_no(f"create new {foreign_cls.__name} named {value}? "):
+                if getinput.yes_no(
+                    f"create new {foreign_cls.__name__} named {value}? "
+                ):
                     result = foreign_cls.create_interactively(
                         **{foreign_cls.label_field: value}
                     )
@@ -310,14 +346,27 @@ class BaseModel(Model):
         setattr(self, field, self.get_value_for_field(field))
         self.save()
 
+    def get_field_names(self) -> List[str]:
+        return [field for field in self._meta.fields.keys() if field != "id"]
+
     def get_required_fields(self) -> Iterable[str]:
-        return (field for field in self._meta.fields.keys() if field != "id")
+        yield from self.get_field_names()
 
     def get_empty_required_fields(self) -> Iterable[str]:
         return (
             field
             for field in self.get_required_fields()
             if getattr(self, field) is None
+        )
+
+    def get_deprecated_fields(self) -> Iterable[str]:
+        return ()
+
+    def get_nonempty_deprecated_fields(self) -> Iterable[str]:
+        return (
+            field
+            for field in self.get_deprecated_fields()
+            if getattr(self, field) is not None
         )
 
     def fill_required_fields(self, skip_fields: Container[str] = frozenset()) -> None:
@@ -429,15 +478,37 @@ class _NameGetter(Generic[ModelT]):
         return result | self._encoded_data
 
     def __getattr__(self, name: str) -> ModelT:
-        return self.cls.get(self.field_obj == getinput.decode_name(name))
+        return self.get_or_choose(getinput.decode_name(name))
 
     def __call__(self, name: str) -> ModelT:
-        return self.cls.get(self.field_obj == name)
+        return self.get_or_choose(name)
 
     def __contains__(self, name: str) -> bool:
         self._warm_cache()
         assert self._data is not None
         return name in self._data
+
+    def get_or_choose(self, name: str) -> ModelT:
+        nams = list(self.cls.select_valid().filter(self.field_obj == name))
+        count = len(nams)
+        if count == 0:
+            raise self.cls.DoesNotExist(name)
+        elif count == 1:
+            return nams[0]
+        else:
+            for i, nam in enumerate(nams):
+                print(f"{i}: {nam} (#{nam.id})")
+            choices = [str(i) for i in range(len(nams))]
+            choice = getinput.get_with_completion(
+                options=choices,
+                message="Choose one: ",
+                disallow_other=True,
+                history_key=(self, name),
+            )
+            if choice == "":
+                raise self.cls.DoesNotExist(name)
+            idx = int(choice)
+            return nams[idx]
 
     def clear_cache(self) -> None:
         self._data = None
@@ -478,7 +549,7 @@ class _NameGetter(Generic[ModelT]):
         elif key.isnumeric():
             val = int(key)
             return self.cls.get(id=val)
-        return getattr(self, getinput.encode_name(key))
+        return self.get_or_choose(key)
 
     def _warm_cache(self) -> None:
         if self._data is None:

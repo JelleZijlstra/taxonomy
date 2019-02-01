@@ -897,15 +897,39 @@ class ScoreHolder:
         items = (
             (key, value)
             for key, value in self.data.items()
-            if value["total"] > min_count and value.get(field, 100) < max_score
+            if value["total"] > min_count
+            and value.get(field, (100, None, None))[0] < max_score
         )
-        sorted_items = sorted(
-            items, key=lambda pair: (pair[1].get(field, 100), pair[1]["total"])
-        )
+
+        def sort_key(pair):
+            _, data = pair
+            percentage, required_count, count = data.get(field, (100, 0, 0))
+            return (percentage, required_count, data["total"])
+
+        sorted_items = sorted(items, key=sort_key)
         for taxon, data in sorted_items:
+            if field in data:
+                percentage, required_count, count = data[field]
+            else:
+                percentage, required_count, count = 100, 0, 0
             print(
-                f'{taxon} {data.get(field, 100):.2f} {data["total"]} {data["score"]:.2f}'
+                f'{taxon} {percentage:.2f} ({count}/{required_count}) {data["total"]}'
             )
+
+    def completion_rate(self) -> None:
+        fields = {field for data in self.data.values() for field in data} - {
+            "total",
+            "count",
+            "score",
+        }
+        counts = collections.defaultdict(int)
+        for data in self.data.values():
+            for field in fields:
+                if field not in data or data[field][0] == 100:
+                    counts[field] += 1
+        total = len(self.data)
+        for field, count in sorted(counts.items(), key=lambda p: p[1]):
+            print(f"{field}: {count * 100 / total:.2f} ({count}/{total})")
 
 
 @command
@@ -1299,19 +1323,29 @@ def check_age_parents() -> Iterable[Taxon]:
 
 
 @command
-def clean_up_verbatim(dry_run: bool = False) -> None:
+def clean_up_verbatim(dry_run: bool = False, slow: bool = False) -> None:
+    def _maybe_clean_verbatim(nam):
+        print(f"{nam}: {nam.type}, {nam.verbatim_type}")
+        if not dry_run:
+            nam.add_data("verbatim_type", nam.verbatim_type, concat_duplicate=True)
+            nam.verbatim_type = None
+            nam.save()
+
     famgen_type_count = species_type_count = citation_count = 0
     for nam in Name.select_valid().filter(
         Name.group << (Group.family, Group.genus),
         Name.verbatim_type != None,
         Name.type != None,
     ):
-        print(f"{nam}: {nam.type}, {nam.verbatim_type}")
         famgen_type_count += 1
-        if not dry_run:
-            nam.add_data("verbatim_type", nam.verbatim_type, concat_duplicate=True)
-            nam.verbatim_type = None
-            nam.save()
+        _maybe_clean_verbatim(nam)
+    if slow:
+        for nam in Name.select_valid().filter(
+            Name.group << (Group.family, Group.genus), Name.verbatim_type != None
+        ):
+            if "type" not in nam.get_required_fields():
+                famgen_type_count += 1
+                _maybe_clean_verbatim(nam)
     for nam in Name.select_valid().filter(
         Name.group == Group.species,
         Name.verbatim_type != None,
@@ -1784,6 +1818,7 @@ AUTHOR_SYNONYMS = {
     "de Selys-Longchamps": "de Sélys Longchamps",
     "De Winton": "de Winton",
     "du Chaillu": "Du Chaillu",
+    "Degerbol": "Degerbøl",
     "DuChaillu": "Du Chaillu",
     "Dukelskaia": helpers.romanize_russian("Дукельская"),
     "Dukelski": "Dukelskiy",
@@ -1844,6 +1879,8 @@ AUTHOR_SYNONYMS = {
     "Tzalkin": helpers.romanize_russian("Цалкин"),
     "Vasil'eva": helpers.romanize_russian("Васильева"),
     "Verestchagin": helpers.romanize_russian("Верещагин"),
+    "Vereschchagin": helpers.romanize_russian("Верещагин"),
+    "Vereschagin": helpers.romanize_russian("Верещагин"),
     "Van Bénéden": "Van Beneden",
     "Von Dueben": "von Dueben",
     "von Haast": "Haast",

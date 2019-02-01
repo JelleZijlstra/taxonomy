@@ -564,7 +564,7 @@ class Taxon(BaseModel):
         if paper is None:
             paper = self.get_value_for_foreign_class("paper", Article)
 
-        authority, year = ehphp.call_ehphp("taxonomicAuthority", [paper])[0]
+        authority, year = ehphp.call_ehphp("taxonomicAuthority", [paper.name])[0]
         result = self.add_syn(
             root_name=root_name,
             authority=authority,
@@ -586,7 +586,7 @@ class Taxon(BaseModel):
         self,
         rank: Rank,
         name: str,
-        paper: Optional[str] = None,
+        paper: Optional[Article] = None,
         page_described: Union[None, int, str] = None,
         status: Status = Status.valid,
         age: Optional[constants.Age] = None,
@@ -595,7 +595,7 @@ class Taxon(BaseModel):
         if paper is None:
             paper = self.get_value_for_foreign_class("paper", Article)
 
-        authority, year = ehphp.call_ehphp("taxonomicAuthority", [paper])[0]
+        authority, year = ehphp.call_ehphp("taxonomicAuthority", [paper.name])[0]
         result = self.add_static(
             rank=rank,
             name=name,
@@ -858,6 +858,12 @@ class Taxon(BaseModel):
                 required_counts[field] += 1
                 if getattr(name, field) is not None:
                     counts[field] += 1
+            for field in name.get_deprecated_fields():
+                # We count deprecated fields differently: we simply
+                # add one "required" count for every name that still has it,
+                # and ignore others.
+                if getattr(name, field) is not None:
+                    required_counts[field] += 1
 
         total = len(names)
         output: Dict[str, float] = {"total": total}
@@ -873,20 +879,31 @@ class Taxon(BaseModel):
             print(f"{label}: {num} of {total} ({percentage:.2f}%)")
             return percentage
 
+        def sort_key(pair):
+            attribute, total = pair
+            count = counts[attribute]
+            if total == 0 or count == total:
+                return (100.0, total)
+            else:
+                percentage = count * 100.0 / total
+                return (percentage, total)
+
         overall_count = 0
         overall_required = 0
-        for attribute, count in sorted(
-            required_counts.items(), key=lambda i: (counts[i[0]], i[0])
-        ):
+        for attribute, count in sorted(required_counts.items(), key=sort_key):
             percentage = print_percentage(counts[attribute], count, attribute)
-            output[attribute] = percentage
+            output[attribute] = (percentage, counts[attribute], count)
             overall_required += count
             overall_count += counts[attribute]
         if overall_required:
-            output["score"] = overall_count / overall_required * 100
+            output["score"] = (
+                overall_count / overall_required * 100,
+                overall_required,
+                overall_count,
+            )
         else:
-            output["score"] = 0.0
-        print(f'Overall score: {output["score"]:.2f}')
+            output["score"] = (0.0, overall_required, overall_count)
+        print(f'Overall score: {output["score"][0]:.2f}')
         return output
 
     def fill_data_for_names(
@@ -918,7 +935,8 @@ class Taxon(BaseModel):
                 return True
 
         citations = sorted(
-            {nam.original_citation for nam in all_names if should_include(nam)}
+            {nam.original_citation for nam in all_names if should_include(nam)},
+            key=lambda art: art.name,
         )
         for citation in citations:
             fill_data_from_paper(citation, skip_if_seen=skip_if_seen)
@@ -986,7 +1004,10 @@ def fill_data_from_paper(
             return (nam.page_described or "", 0)
 
     for nam in sorted(
-        models.Name.filter(models.Name.original_citation == paper), key=sort_key
+        models.Name.filter(
+            models.Name.original_citation == paper, models.Name.status != Status.removed
+        ),
+        key=sort_key,
     ):
         nam = nam.reload()
         if skip_if_seen and models.has_data_from_original(nam):

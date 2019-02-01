@@ -155,6 +155,7 @@ class NomenclatureStatus(enum.IntEnum):
             NomenclatureStatus.informal,
             NomenclatureStatus.subsequent_usage,
             NomenclatureStatus.not_nominative_singular,
+            NomenclatureStatus.before_1758,
         }
 
     def requires_corrected_original_name(self) -> bool:

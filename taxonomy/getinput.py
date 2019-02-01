@@ -196,7 +196,7 @@ def get_enum_member(  # noqa
 T = TypeVar("T")
 Completer = Callable[[str, Any], T]
 CompleterMap = Mapping[Tuple[Type[adt.ADT], str], Completer[Any]]
-CallbackMap = Mapping[str, Callable[[str], object]]
+CallbackMap = Mapping[str, Callable[[], object]]
 
 
 def get_adt_list(
@@ -219,6 +219,7 @@ def get_adt_list(
             "p",
             *map(str, range(len(out))),
             *[f"r{i}" for i in range(len(out))],
+            *callbacks.keys(),
         ]
         member = get_with_completion(
             options,
@@ -234,22 +235,26 @@ def get_adt_list(
             return tuple(out)
         elif member.isnumeric():
             index = int(member)
-            existing_member = out[index]
-            out[index] = _get_adt_member(
-                type(existing_member), existing=existing_member, completers=completers
-            )
+            if index >= len(out):
+                print(f"{index} is out of range")
+            else:
+                existing_member = out[index]
+                out[index] = _get_adt_member(
+                    type(existing_member),
+                    existing=existing_member,
+                    completers=completers,
+                )
         elif member.startswith("r") and member[1:].isnumeric():
             index = int(member[1:])
-            print("removing member:", out[index])
-            del out[index]
+            if index >= len(out):
+                print(f"{index} is out of range")
+            else:
+                print("removing member:", out[index])
+                del out[index]
         elif member in name_to_cls:
             out.append(_get_adt_member(name_to_cls[member], completers=completers))
-        elif " " in member:
-            command, argument = member.split(" ", maxsplit=1)
-            if command in callbacks:
-                callbacks[command](argument)
-            else:
-                print(f"unrecognized command: {command}")
+        elif member in callbacks:
+            callbacks[member]()
         else:
             print(f"unrecognized command: {member}")
 

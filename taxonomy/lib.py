@@ -185,6 +185,17 @@ def locless_names(
     return nams
 
 
+def names_with_attribute(
+    txn: Taxon, attribute: str, age: Optional[Age] = Age.extant
+) -> List[Name]:
+    nams = [
+        name for name in txn.all_names(age=age) if getattr(name, attribute) is not None
+    ]
+    for nam in nams:
+        nam.display()
+    return nams
+
+
 def f(nam: Union[Name, List[Name]], skip_fields: Container[str] = frozenset()) -> None:
     if isinstance(nam, list):
         nam = nam[0]
@@ -194,7 +205,10 @@ def f(nam: Union[Name, List[Name]], skip_fields: Container[str] = frozenset()) -
     nam.fill_required_fields(skip_fields=skip_fields)
 
 
-g = partial(f, skip_fields={"original_citation", "type_specimen", "collection"})
+g = partial(
+    f,
+    skip_fields={"original_citation", "type_specimen", "collection", "genus_type_kind"},
+)
 
 
 def set_page(nams: Iterable[Name]) -> None:
@@ -211,9 +225,13 @@ class _NamesGetter:
         self._group = group
 
     def __getattr__(self, attr: str) -> List[Name]:
-        self._fill_cache()
-        assert self._cache is not None
-        return self._cache[attr]
+        return list(
+            Name.filter(
+                Name.group == self._group,
+                Name.status != Status.removed,
+                Name.root_name == attr,
+            )
+        )
 
     def __dir__(self) -> Iterable[str]:
         self._fill_cache()

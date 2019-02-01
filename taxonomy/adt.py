@@ -232,7 +232,10 @@ class ADT(_ADTBase, metaclass=_ADTMeta):
             args = []
             for arg_type, serialized in zip(member_cls._attributes.values(), value[1:]):
                 if hasattr(arg_type, "unserialize"):
-                    args.append(arg_type.unserialize(serialized))
+                    if serialized is None:
+                        args.append(None)
+                    else:
+                        args.append(arg_type.unserialize(serialized))
                 elif isinstance(arg_type, type) and issubclass(arg_type, enum.IntEnum):
                     args.append(arg_type(serialized))
                 else:

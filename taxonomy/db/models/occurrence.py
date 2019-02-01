@@ -28,7 +28,7 @@ class Occurrence(BaseModel):
         out = "{} in {} ({}{})".format(
             self.taxon,
             self.location,
-            self.source.name,
+            self.source.name if self.source else "no source",
             "; " + self.comment if self.comment else "",
         )
         if self.status != OccurrenceStatus.valid:

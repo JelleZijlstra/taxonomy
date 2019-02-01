@@ -216,7 +216,10 @@ class Name(BaseModel):
             return super().get_value_for_field(field)
         elif field == "type_specimen_source":
             return self.get_value_for_foreign_key_field(
-                field, default=self.original_citation
+                field,
+                default=self.original_citation
+                if self.type_specimen_source is None
+                else None,
             )
         elif field == "type":
             typ = self.get_value_for_foreign_key_field("type")
@@ -234,6 +237,10 @@ class Name(BaseModel):
             return value
         else:
             return super().get_value_for_field(field)
+
+    def get_adt_callbacks(self) -> getinput.CallbackMap:
+        callbacks = super().get_adt_callbacks()
+        return {**callbacks, "add_comment": self.add_comment}
 
     def get_completers_for_adt_field(self, field: str) -> getinput.CompleterMap:
         for field_name, tag_cls in [("type_tags", TypeTag), ("tags", Tag)]:
@@ -335,6 +342,15 @@ class Name(BaseModel):
     ) -> "NameComment":
         return NameComment.create_interactively(
             name=self, kind=kind, text=text, source=source, page=page
+        )
+
+    def add_nomen_nudum(self) -> "Name":
+        """Adds a nomen nudum similar to this name."""
+        return self.taxon.add_syn(
+            root_name=self.root_name,
+            original_name=self.original_name,
+            authority=self.authority,
+            nomenclature_status=NomenclatureStatus.nomen_nudum,
         )
 
     def description(self) -> str:
@@ -632,6 +648,13 @@ class Name(BaseModel):
                         yield "type_tags"
                 elif self.genus_type_kind.requires_tag():
                     yield "type_tags"
+
+    def get_deprecated_fields(self) -> Iterable[str]:
+        yield "type_locality_description"
+        yield "taxonomy_comments"
+        yield "nomenclature_comments"
+        yield "other_comments"
+        # maybe stem and gender? should add something automated to get rid of those if there's a name complex
 
     def validate_as_child(self, status: Status = Status.valid) -> Taxon:
         if self.taxon.rank == Rank.species:
@@ -1170,3 +1193,5 @@ class TypeTag(adt.ADT):
     GenusCoelebs(comments=str, tag=21)  # type: ignore
     # quotation with information about a type species
     TypeSpeciesDetail(text=str, source=Article, tag=22)  # type: ignore
+    # Likely location of the type specimen.
+    ProbableRepository(repository=Collection, reasoning=str, tag=23)  # type: ignore
