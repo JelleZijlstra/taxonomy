@@ -220,9 +220,10 @@ class Name(BaseModel):
                 default=self.original_citation
                 if self.type_specimen_source is None
                 else None,
+                callbacks=self.get_adt_callbacks(),
             )
         elif field == "type":
-            typ = self.get_value_for_foreign_key_field("type")
+            typ = super().get_value_for_field(field)
             print(f"type: {typ}")
             if typ is None:
                 return None
@@ -240,7 +241,11 @@ class Name(BaseModel):
 
     def get_adt_callbacks(self) -> getinput.CallbackMap:
         callbacks = super().get_adt_callbacks()
-        return {**callbacks, "add_comment": self.add_comment}
+        return {
+            **callbacks,
+            "add_comment": self.add_comment,
+            "o": self.open_description,
+        }
 
     def get_completers_for_adt_field(self, field: str) -> getinput.CompleterMap:
         for field_name, tag_cls in [("type_tags", TypeTag), ("tags", Tag)]:

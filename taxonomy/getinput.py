@@ -5,6 +5,7 @@ Helpers for retrieving user input.
 """
 import enum
 import functools
+import itertools
 import re
 import subprocess
 import sys
@@ -26,7 +27,11 @@ import prompt_toolkit
 
 from . import adt
 
-Handlers = Mapping[str, Callable[[str], bool]]
+
+T = TypeVar("T")
+Completer = Callable[[str, Any], T]
+CompleterMap = Mapping[Tuple[Type[adt.ADT], str], Completer[Any]]
+CallbackMap = Mapping[str, Callable[[], object]]
 
 RED = 31
 GREEN = 32
@@ -60,7 +65,7 @@ def blue(text: str) -> str:
 def get_line(
     prompt: str,
     validate: Optional[Callable[[str], bool]] = None,
-    handlers: Handlers = {},
+    callbacks: CallbackMap = {},
     should_stop: Callable[[str], bool] = lambda _: False,
     allow_none: bool = True,
     mouse_support: bool = False,
@@ -72,6 +77,8 @@ def get_line(
     if history_key is None:
         history_key = prompt
     history = _get_history(history_key)
+    if completer is None and callbacks:
+        completer = _Completer(callbacks.keys())
     while True:
         try:
             flush()
@@ -85,8 +92,8 @@ def get_line(
             )
         except EOFError:
             raise StopException()
-        if line in handlers:
-            handlers[line](line)
+        if line in callbacks:
+            callbacks[line]()
             continue
         if should_stop(line):
             return None
@@ -133,7 +140,7 @@ def get_with_completion(
     history_key: Optional[object] = None,
     disallow_other: bool = False,
     allow_empty: bool = True,
-    handlers: Handlers = {},
+    callbacks: CallbackMap = {},
 ) -> str:
     if history_key is None:
         history_key = (tuple(options), message)
@@ -143,11 +150,12 @@ def get_with_completion(
     else:
         validator = None
     return get_line(
-        completer=_Completer(options),
+        completer=_Completer(itertools.chain(options, callbacks.keys())),
         prompt=message,
         default=default,
         history_key=history_key,
         validator=validator,
+        callbacks=callbacks,
     )
 
 
@@ -163,13 +171,18 @@ def get_enum_member(
     *,
     default: Optional[EnumT] = None,
     allow_empty: bool,
+    callbacks: CallbackMap = {},
 ) -> EnumT:
     ...  # noqa
 
 
 @overload  # noqa
 def get_enum_member(
-    enum_cls: Type[EnumT], prompt: str = "> ", *, default: Optional[EnumT] = None
+    enum_cls: Type[EnumT],
+    prompt: str = "> ",
+    *,
+    default: Optional[EnumT] = None,
+    callbacks: CallbackMap = {},
 ) -> Optional[EnumT]:
     ...  # noqa
 
@@ -180,6 +193,7 @@ def get_enum_member(  # noqa
     *,
     default: Optional[EnumT] = None,
     allow_empty: bool = True,
+    callbacks: CallbackMap = {},
 ) -> Optional[EnumT]:
     if default is None:
         default_str = ""
@@ -193,16 +207,11 @@ def get_enum_member(  # noqa
         history_key=enum_cls,
         disallow_other=True,
         allow_empty=allow_empty,
+        callbacks=callbacks,
     )
     if choice == "":
         return None
     return enum_cls[choice]
-
-
-T = TypeVar("T")
-Completer = Callable[[str, Any], T]
-CompleterMap = Mapping[Tuple[Type[adt.ADT], str], Completer[Any]]
-CallbackMap = Mapping[str, Callable[[], object]]
 
 
 def get_adt_list(

@@ -262,33 +262,44 @@ class BaseModel(Model):
         field_obj = getattr(type(self), field)
         prompt = f"{field}> "
         current_value = getattr(self, field)
+        callbacks = self.get_adt_callbacks()
         if isinstance(field_obj, ForeignKeyField):
-            return self.get_value_for_foreign_key_field(field)
+            return self.get_value_for_foreign_key_field(field, callbacks=callbacks)
         elif isinstance(field_obj, ADTField):
             return getinput.get_adt_list(
                 field_obj.get_adt(),
                 existing=current_value,
                 completers=self.get_completers_for_adt_field(field),
-                callbacks=self.get_adt_callbacks(),
+                callbacks=callbacks,
             )
         elif isinstance(field_obj, CharField):
             default = "" if current_value is None else current_value
-            return self.getter(field).get_one_key(prompt, default=default) or None
+            return (
+                self.getter(field).get_one_key(
+                    prompt, default=default, callbacks=callbacks
+                )
+                or None
+            )
         elif isinstance(field_obj, TextField):
             default = "" if current_value is None else current_value
             return (
-                getinput.get_line(prompt, default=default, mouse_support=True) or None
+                getinput.get_line(
+                    prompt, default=default, mouse_support=True, callbacks=callbacks
+                )
+                or None
             )
         elif isinstance(field_obj, EnumField):
             default = current_value
             if default is None and field in self.field_defaults:
                 default = self.field_defaults[field]
             return getinput.get_enum_member(
-                field_obj.enum_cls, prompt=prompt, default=default
+                field_obj.enum_cls, prompt=prompt, default=default, callbacks=callbacks
             )
         elif isinstance(field_obj, IntegerField):
             default = "" if current_value is None else current_value
-            result = getinput.get_line(prompt, default=default, mouse_support=True)
+            result = getinput.get_line(
+                prompt, default=default, mouse_support=True, callbacks=callbacks
+            )
             if result == "" or result is None:
                 return None
             else:
@@ -306,29 +317,42 @@ class BaseModel(Model):
         return {}
 
     def get_value_for_foreign_key_field(
-        self, field: str, default: Optional[Any] = None
+        self,
+        field: str,
+        default: Optional[Any] = None,
+        callbacks: getinput.CallbackMap = {},
     ) -> Any:
         if default is None:
             default = getattr(self, field)
-        return self.get_value_for_foreign_key_field_on_class(field, default)
+        return self.get_value_for_foreign_key_field_on_class(
+            field, default, callbacks=callbacks
+        )
 
     @classmethod
     def get_value_for_foreign_key_field_on_class(
-        cls, field: str, current_val: Optional[Any] = None
+        cls,
+        field: str,
+        current_val: Optional[Any] = None,
+        callbacks: getinput.CallbackMap = {},
     ) -> Any:
         field_obj = getattr(cls, field)
-        return cls.get_value_for_foreign_class(field, field_obj.rel_model, current_val)
+        return cls.get_value_for_foreign_class(
+            field, field_obj.rel_model, current_val, callbacks=callbacks
+        )
 
     @staticmethod
     def get_value_for_foreign_class(
-        label: str, foreign_cls: Type["BaseModel"], default_obj: Optional[Any] = None
+        label: str,
+        foreign_cls: Type["BaseModel"],
+        default_obj: Optional[Any] = None,
+        callbacks: getinput.CallbackMap = {},
     ) -> Any:
         if default_obj is None:
             default = ""
         else:
             default = getattr(default_obj, foreign_cls.label_field)
         getter = foreign_cls.getter(foreign_cls.label_field)
-        value = getter.get_one_key(f"{label}> ", default=default)
+        value = getter.get_one_key(f"{label}> ", default=default, callbacks=callbacks)
         if value == "n":
             result = foreign_cls.create_interactively()
             print(f"created new {foreign_cls} {result}")
@@ -539,21 +563,31 @@ class _NameGetter(Generic[ModelT]):
         self._data.add(val)
         self._encoded_data.add(getinput.encode_name(val))
 
-    def get_one_key(self, prompt: str = "> ", default: str = "") -> Optional[str]:
+    def get_one_key(
+        self,
+        prompt: str = "> ",
+        default: str = "",
+        callbacks: getinput.CallbackMap = {},
+    ) -> Optional[str]:
         self._warm_cache()
         assert self._data is not None
         key = getinput.get_with_completion(
-            self._data, prompt, default=default, history_key=self
+            self._data, prompt, default=default, history_key=self, callbacks=callbacks
         )
         if key == "":
             return None
         return key
 
-    def get_one(self, prompt: str = "> ", default: str = "") -> Optional[ModelT]:
+    def get_one(
+        self,
+        prompt: str = "> ",
+        default: str = "",
+        callbacks: getinput.CallbackMap = {},
+    ) -> Optional[ModelT]:
         self._warm_cache()
         assert self._data is not None
         key = getinput.get_with_completion(
-            self._data, prompt, default=default, history_key=self
+            self._data, prompt, default=default, history_key=self, callbacks=callbacks
         )
         if key == "":
             return None
