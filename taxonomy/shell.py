@@ -958,14 +958,12 @@ def name_mismatches(
             )
             yield taxon
             count += 1
-            # for species-group taxa with a known genus parent, the computed valid name is almost
-            # always right (the mismatch will usually happen after a change in genus classification)
-            # one area that isn't well-covered yet is autocorrecting gender endings
-            if (
-                correct_undoubted
-                and taxon.base_name.group == Group.species
-                and taxon.has_parent_of_rank(Rank.genus)
-            ):
+            # For species-group taxa, we always trust the computed name. Usually these
+            # have been reassigned to a different genus, or changed between species and
+            # subspecies, or they have become nomina dubia (in which case we use the
+            # corrected original name). For family-group names we don't always trust the
+            # computed name, because stems may be arbitrary.
+            if correct_undoubted and taxon.base_name.group == Group.species:
                 taxon.recompute_name()
             elif correct:
                 taxon.recompute_name()
@@ -1190,7 +1188,12 @@ def bad_base_names() -> Iterable[Taxon]:
                     base_name_id NOT IN (
                         SELECT id
                         FROM name
-                        WHERE status != {constants.Status.removed.value}
+                        WHERE status IN (
+                            {constants.Status.valid.value},
+                            {constants.Status.nomen_dubium.value},
+                            {constants.Status.species_inquirenda.value},
+                            {constants.Status.spurious.value}
+                        )
                     )
                 )
         """
@@ -1211,9 +1214,8 @@ def bad_parents() -> Iterable[Name]:
 
 @generator_command
 def parentless_taxa() -> Iterable[Taxon]:
-    return (
-        t for t in Taxon.select_valid().filter(Taxon.parent >> None) if t.id != 1
-    )  # exclude root
+    # exclude root
+    return (t for t in Taxon.select_valid().filter(Taxon.parent >> None) if t.id != 1)
 
 
 @generator_command
@@ -1272,7 +1274,7 @@ def childless_taxa() -> Iterable[Taxon]:
             FROM taxon
             WHERE
                 rank > 5 AND
-                age != {Age.removed.value}
+                age != {Age.removed.value} AND
                 id NOT IN (
                     SELECT parent_id
                     FROM taxon
@@ -1906,6 +1908,8 @@ AMBIGUOUS_AUTHORS = {
     "Leakey",
     "Anderson",
     "Bryant",
+    "Merriam",
+    "Heller",
 }
 
 
@@ -2006,6 +2010,22 @@ def initials_report() -> None:
 
 
 @command
+def resolve_redirects(dry_run: bool = False) -> None:
+    for nam in Name.filter(Name.original_citation != None):
+        if nam.original_citation.kind == constants.ArticleKind.redirect:
+            print(f"{nam}: {nam.original_citation} -> {nam.original_citation.parent}")
+            if not dry_run:
+                nam.original_citation = nam.original_citation.parent
+    for nam in Name.filter(Name.type_specimen_source != None):
+        if nam.type_specimen_source.kind == constants.ArticleKind.redirect:
+            print(
+                f"{nam}: {nam.type_specimen_source} -> {nam.type_specimen_source.parent}"
+            )
+            if not dry_run:
+                nam.type_specimen_source = nam.type_specimen_source.parent
+
+
+@command
 def run_maintenance(skip_slow: bool = True) -> Dict[Any, Any]:
     """Runs maintenance checks that are expected to pass for the entire database."""
     fns: List[Callable[[], Any]] = [
@@ -2034,6 +2054,7 @@ def run_maintenance(skip_slow: bool = True) -> Dict[Any, Any]:
         # dup_genus,
         # dup_taxa,
         bad_stratigraphy,
+        resolve_redirects,
     ]
     # these each take >60 s
     slow: List[Callable[[], Any]] = [
@@ -2043,6 +2064,7 @@ def run_maintenance(skip_slow: bool = True) -> Dict[Any, Any]:
         check_tags,  # except for this one at 27 s
         check_type_tags,
         check_age_parents,
+        name_mismatches,
     ]
     if not skip_slow:
         fns += slow
@@ -2158,6 +2180,37 @@ def fgsyn(off: Optional[Name] = None) -> Name:
     if off is not None:
         kwargs["type"] = off.type
     return taxon.syn_from_paper(root_name, source, original_name=root_name, **kwargs)
+
+
+@command
+def author_report(author: str) -> None:
+    nams = list(
+        Name.select_valid().filter(
+            Name.authority == author, Name.original_citation == None
+        )
+    )
+
+    by_year = collections.defaultdict(list)
+    no_year = []
+    for nam in nams:
+        if nam.year is not None:
+            by_year[nam.year].append(nam)
+        else:
+            no_year.append(nam)
+    print(f"total names: {len(nams)}")
+    if not nams:
+        return
+    print(f"years: {min(by_year)}–{max(by_year)}")
+    for year, year_nams in sorted(by_year.items()):
+        print(f"{year} ({len(year_nams)})")
+        for nam in year_nams:
+            print(f"    {nam}")
+            if nam.verbatim_citation:
+                print(f"        {nam.verbatim_citation}")
+            elif nam.page_described:
+                print(f"        {nam.page_described}")
+    if no_year:
+        print(f"no year: {no_year}")
 
 
 def run_shell() -> None:
