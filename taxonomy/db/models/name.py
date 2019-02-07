@@ -329,6 +329,34 @@ class Name(BaseModel):
             return True
         return False
 
+    def map_type_tags(self, fn: Callable[["TypeTag"], Optional["TypeTag"]]) -> None:
+        type_tags = self.type_tags
+        if type_tags is None:
+            return
+        new_tags = []
+        for tag in type_tags:
+            new_tag = fn(tag)
+            if new_tag is not None:
+                new_tags.append(new_tag)
+        self.type_tags = new_tags
+
+    def replace_original_citation(self, new_citation: Optional[Article] = None) -> None:
+        if new_citation is None:
+            new_citation = Article.get_one_by("name")
+        existing = self.original_citation
+
+        def map_fn(tag: TypeTag) -> TypeTag:
+            if isinstance(tag, TypeTag.LocationDetail) and tag.source == existing:
+                return TypeTag.LocationDetail(tag.text, new_citation)
+            elif isinstance(tag, TypeTag.SpecimenDetail) and tag.source == existing:
+                return TypeTag.SpecimenDetail(tag.text, new_citation)
+            else:
+                return tag
+
+        self.map_type_tags(map_fn)
+        self.original_citation = new_citation
+        self.save()
+
     def add_included(self, species: "Name", comment: str = "") -> None:
         assert isinstance(species, Name)
         self.add_type_tag(TypeTag.IncludedSpecies(species, comment))
