@@ -389,8 +389,13 @@ class Name(BaseModel):
         if self.authority:
             out += " %s" % self.authority
         if self.year:
-            out += ", %s" % self.year
-        out += " (= %s)" % self.taxon.valid_name
+            out += f", {self.year}"
+        parenthesized_bits = [f"= {self.taxon.valid_name}"]
+        if self.nomenclature_status != NomenclatureStatus.available:
+            parenthesized_bits.append(self.nomenclature_status.name)
+        if self.status != Status.valid:
+            parenthesized_bits.append(self.status.name)
+        out += f" ({', '.join(parenthesized_bits)})"
         return out
 
     def is_unavailable(self) -> bool:
