@@ -26,6 +26,8 @@ import prompt_toolkit
 
 from . import adt
 
+Handlers = Mapping[str, Callable[[str], bool]]
+
 RED = 31
 GREEN = 32
 BLUE = 34
@@ -58,12 +60,14 @@ def blue(text: str) -> str:
 def get_line(
     prompt: str,
     validate: Optional[Callable[[str], bool]] = None,
-    handlers: Mapping[str, Callable[[str], bool]] = {},
+    handlers: Handlers = {},
     should_stop: Callable[[str], bool] = lambda _: False,
     allow_none: bool = True,
     mouse_support: bool = False,
     default: str = "",
     history_key: Optional[object] = None,
+    validator: Optional[prompt_toolkit.validation.Validator] = None,
+    completer: Optional[prompt_toolkit.completion.Completer] = None,
 ) -> Optional[str]:
     if history_key is None:
         history_key = prompt
@@ -76,6 +80,8 @@ def get_line(
                 default=default,
                 mouse_support=mouse_support,
                 history=history,
+                validator=validator,
+                completer=completer,
             )
         except EOFError:
             raise StopException()
@@ -127,6 +133,7 @@ def get_with_completion(
     history_key: Optional[object] = None,
     disallow_other: bool = False,
     allow_empty: bool = True,
+    handlers: Handlers = {},
 ) -> str:
     if history_key is None:
         history_key = (tuple(options), message)
@@ -135,12 +142,11 @@ def get_with_completion(
         validator = _FixedValidator([*options, ""] if allow_empty else options)
     else:
         validator = None
-    flush()
-    return prompt_toolkit.prompt(
+    return get_line(
         completer=_Completer(options),
-        message=message,
+        prompt=message,
         default=default,
-        history=_get_history(history_key),
+        history_key=history_key,
         validator=validator,
     )
 
@@ -301,7 +307,10 @@ def add_to_clipboard(data: str) -> None:
 @functools.lru_cache(maxsize=None)
 def _get_history(key: object) -> prompt_toolkit.history.InMemoryHistory:
     history = prompt_toolkit.history.InMemoryHistory()
-    history.append("")
+    if hasattr(history, "append"):
+        history.append("")
+    else:
+        history.append_string("")
     return history
 
 
