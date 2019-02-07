@@ -488,8 +488,11 @@ class _NameGetter(Generic[ModelT]):
     def __getattr__(self, name: str) -> ModelT:
         return self.get_or_choose(getinput.decode_name(name))
 
-    def __call__(self, name: str) -> ModelT:
-        return self.get_or_choose(name)
+    def __call__(self, name: Optional[str] = None) -> ModelT:
+        if name is not None:
+            return self.get_or_choose(name)
+        else:
+            return self.cls.get_one_by(self.field)
 
     def __contains__(self, name: str) -> bool:
         self._warm_cache()
