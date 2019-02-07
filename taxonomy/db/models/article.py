@@ -1,4 +1,4 @@
-from ..constants import ArticleType
+from ..constants import ArticleKind, ArticleType
 
 from peewee import CharField, ForeignKeyField, TextField
 from typing import Iterable, List, NamedTuple
@@ -62,6 +62,7 @@ class Article(BaseModel):
     pages = CharField()
     ids = TextField()
     bools = TextField()
+    kind = EnumField(ArticleKind)
     parent = ForeignKeyField("self", related_name="children", null=True)
     misc_data = TextField()
 

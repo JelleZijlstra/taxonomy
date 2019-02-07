@@ -511,3 +511,21 @@ class ArticleType(enum.IntEnum):
     REDIRECT = 7  # ID of target in "parent"
     SUPPLEMENT = 8  # ID of target in "parent", kind of supplement in "title"
     JOURNAL = 9
+
+
+class ArticleKind(enum.IntEnum):
+    electronic = 1  # have an electronic copy
+    physical = 2  # have a physical copy
+    no_copy = 3  # don't actually have a copy
+    part = 4  # the article is part of some other article
+    redirect = 5  # it's a redirect
+    removed = 6  # it has been removed
+    reference = 7  # reference to an online resource
+
+
+class ArticleCommentKind(enum.IntEnum):
+    dating = 1
+    contents = 2
+    authorship = 3
+    location = 4  # e.g., where to find it in its parent
+    other = 5
