@@ -595,7 +595,11 @@ class Name(BaseModel):
                     " " * ((depth + 2) * 4) + comment.get_description() + "\n"
                     for comment in self.comments
                     if include_data
-                    or comment.kind != constants.CommentKind.structured_quote
+                    or comment.kind
+                    not in (
+                        constants.CommentKind.structured_quote,
+                        constants.CommentKind.automatic_change,
+                    )
                 ]
             )
         return result
