@@ -292,15 +292,7 @@ def bad_stratigraphy(dry_run: bool = True) -> Iterable[models.Location]:
             if (
                 period is not None
                 and period.id != 171
-                and period.system
-                in (
-                    PeriodSystem.formation,
-                    PeriodSystem.group,
-                    PeriodSystem.member,
-                    PeriodSystem.other_stratigraphy,
-                    PeriodSystem.bed,
-                    PeriodSystem.supergroup,
-                )
+                and period.system.is_stratigraphy()
             ):
                 has_stratigraphic = True
         if has_stratigraphic:

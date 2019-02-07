@@ -304,8 +304,10 @@ class PeriodSystem(enum.IntEnum):
     formation = 22
     group = 23
     supergroup = 24
-    other_stratigraphy = 25
+    other_stratigraphy = 25  # deprecated
     elma = 26  # European Land Mammal Age (Cenozoic)
+    other_lithostratigraphy = 27
+    other_chronostratigraphy = 28
 
     def is_stratigraphy(self) -> bool:
         return self in {
@@ -314,7 +316,7 @@ class PeriodSystem(enum.IntEnum):
             PeriodSystem.formation,
             PeriodSystem.group,
             PeriodSystem.supergroup,
-            PeriodSystem.other_stratigraphy,
+            PeriodSystem.other_lithostratigraphy,
         }
 
     def is_chronology(self) -> bool:
