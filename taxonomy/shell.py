@@ -1946,9 +1946,7 @@ def apply_author_synonyms(dry_run: bool = False) -> None:
 
 
 def _get_new_author(nams: List[Name], citation: Article, author: str) -> Optional[str]:
-    authors = ehphp.call_ehphp(
-        "getField", {"field": "authors", "files": [citation.name]}
-    )[0]
+    authors = citation.authors
     if ";" not in authors and ", " in authors:
         last, initials = authors.split(", ")
         if last == author:
