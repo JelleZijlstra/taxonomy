@@ -38,7 +38,6 @@ class Name(BaseModel):
     label_field = "corrected_original_name"
     call_sign = "N"
     field_defaults = {
-        "genus_type_kind": constants.TypeSpeciesDesignation.original_designation,
         "species_type_kind": constants.SpeciesGroupType.holotype,
         "nomenclature_status": NomenclatureStatus.available,
         "status": Status.valid,
