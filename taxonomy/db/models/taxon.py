@@ -164,7 +164,7 @@ class Taxon(BaseModel):
                 )
             elif self.rank == Rank.genus:
                 self._needs_is = (
-                    Taxon.select()
+                    Taxon.select_valid()
                     .where(
                         Taxon.parent == self,
                         (Taxon.rank == Rank.subgenus)
