@@ -30,14 +30,18 @@ from peewee import (
     TextField,
 )
 
-from .. import settings
-from ... import adt, events, getinput
+from ... import adt, config, events, getinput
+
+settings = config.get_options()
 
 if settings.use_sqlite:
-    database = SqliteDatabase(settings.database_file)
+    database = SqliteDatabase(str(settings.db_filename))
 else:
     database = MySQLDatabase(
-        settings.DATABASE, user=settings.USER, passwd=settings.PASSWD, charset="utf8"
+        settings.db_name,
+        user=settings.db_user,
+        passwd=settings.db_password,
+        charset="utf8",
     )
     database.get_conn().ping(True)
 
