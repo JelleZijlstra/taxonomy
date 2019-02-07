@@ -16,6 +16,7 @@ class Occurrence(BaseModel):
     source = ForeignKeyField(
         Article, related_name="occurrences", null=True, db_column="source_id"
     )
+    call_sign = "O"
 
     def add_comment(self, new_comment: str) -> None:
         if self.comment is None:

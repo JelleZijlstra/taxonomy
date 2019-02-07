@@ -12,6 +12,7 @@ from .base import BaseModel, EnumField
 
 class Region(BaseModel):
     label_field = "name"
+    call_sign = "R"
 
     name = CharField()
     comment = CharField(null=True)

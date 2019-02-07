@@ -85,6 +85,7 @@ peewee.FieldDescriptor.__set__ = _descriptor_set
 
 class BaseModel(Model):
     label_field: str
+    call_sign: str
     creation_event: events.Event[Any]
     save_event: events.Event[Any]
     field_defaults: Dict[str, Any] = {}

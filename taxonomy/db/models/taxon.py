@@ -60,6 +60,7 @@ class Taxon(BaseModel):
     creation_event = events.Event["Taxon"]()
     save_event = events.Event["Taxon"]()
     label_field = "valid_name"
+    call_sign = "T"
 
     rank = EnumField(Rank)
     valid_name = CharField(default="")

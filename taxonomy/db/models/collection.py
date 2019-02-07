@@ -12,6 +12,7 @@ class Collection(BaseModel):
     creation_event = events.Event["Collection"]()
     save_event = events.Event["Collection"]()
     label_field = "label"
+    call_sign = "C"
 
     label = CharField()
     name = CharField()

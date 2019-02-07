@@ -97,14 +97,7 @@ ns = _ShellNamespace(
         "Apomorphy": definition.Apomorphy,
         "Other": definition.Other,
         "N": Name.getter("root_name"),
-        "L": models.Location.getter("name"),
-        "P": models.Period.getter("name"),
-        "R": models.Region.getter("name"),
-        "O": Name.getter("original_name"),
-        "NC": models.NameComplex.getter("label"),
-        "SC": models.SpeciesNameComplex.getter("label"),
-        "C": Collection.getter("label"),
-        "A": models.Article.getter("name"),
+        "O": Name.getter("corrected_original_name"),
         "reconnect": _reconnect,
         "Tag": models.Tag,
         "TypeTag": models.TypeTag,
@@ -116,6 +109,12 @@ ns.update(constants.__dict__)
 
 for model in models.BaseModel.__subclasses__():
     ns[model.__name__] = model
+    if (
+        hasattr(model, "call_sign")
+        and hasattr(model, "label_field")
+        and model is not Name
+    ):
+        ns[model.call_sign] = model.getter(model.label_field)
 
 
 CallableT = TypeVar("CallableT", bound=Callable[..., Any])

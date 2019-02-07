@@ -16,6 +16,7 @@ class Location(BaseModel):
     creation_event = events.Event["Location"]()
     save_event = events.Event["Location"]()
     label_field = "name"
+    call_sign = "L"
 
     name = CharField()
     min_period = ForeignKeyField(

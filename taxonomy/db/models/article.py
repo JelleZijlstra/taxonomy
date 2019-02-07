@@ -66,6 +66,7 @@ class Article(BaseModel):
     misc_data = TextField()
 
     label_field = "name"
+    call_sign = "A"
 
     class Meta:
         db_table = "article"

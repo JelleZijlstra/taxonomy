@@ -17,6 +17,7 @@ class Period(BaseModel):
     creation_event = events.Event["Period"]()
     save_event = events.Event["Period"]()
     label_field = "name"
+    call_sign = "P"
 
     name = CharField()
     parent = ForeignKeyField(
