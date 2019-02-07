@@ -229,7 +229,7 @@ class Name(BaseModel):
             elif getinput.yes_no("Is this correct? "):
                 return typ
             else:
-                raise EOFError
+                return None
         elif field == "species_name_complex":
             value = super().get_value_for_field(field)
             if value is not None and value.kind.is_single_complex():
