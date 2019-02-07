@@ -203,8 +203,10 @@ class BaseModel(Model):
         return Counter(database.execute_sql(sql))
 
     @classmethod
-    def bfind(cls: Type[ModelT], **kwargs: Any) -> List[ModelT]:
-        filters = []
+    def bfind(
+        cls: Type[ModelT], *args: Any, quiet: bool = False, **kwargs: Any
+    ) -> List[ModelT]:
+        filters = [*args]
         fields = cls._meta.fields
         for key, value in kwargs.items():
             if key not in fields:
@@ -215,13 +217,14 @@ class BaseModel(Model):
             else:
                 filters.append(field == value)
         objs = list(cls.filter(*filters))
-        if hasattr(cls, "label_field"):
-            objs = sorted(objs, key=lambda obj: getattr(obj, cls.label_field) or "")
-            for obj in objs:
-                print(getattr(obj, cls.label_field))
-        else:
-            for obj in objs:
-                print(obj)
+        if not quiet:
+            if hasattr(cls, "label_field"):
+                objs = sorted(objs, key=lambda obj: getattr(obj, cls.label_field) or "")
+                for obj in objs:
+                    print(getattr(obj, cls.label_field))
+            else:
+                for obj in objs:
+                    print(obj)
         return objs
 
     def reload(self: ModelT) -> ModelT:
