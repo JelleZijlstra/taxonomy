@@ -3,7 +3,8 @@ from ..constants import ArticleKind, ArticleType
 from peewee import CharField, ForeignKeyField, TextField
 from typing import Iterable, List, NamedTuple
 
-from .base import BaseModel, EnumField
+from .base import ADTField, BaseModel, EnumField
+from ... import events
 
 _TYPE_TO_FIELDS = {
     ArticleType.JOURNAL: [
@@ -40,34 +41,42 @@ class LsFile(NamedTuple):
 
 
 class Article(BaseModel):
-    addmonth = CharField()
-    addday = CharField()
-    addyear = CharField()
-    path = CharField()
-    name = CharField()
-    authors = CharField()
-    year = CharField()
-    title = CharField()
-    journal = CharField()
-    series = CharField()
-    volume = CharField()
-    issue = CharField()
-    start_page = CharField()
-    end_page = CharField()
-    url = CharField()
-    doi = CharField()
-    typ = EnumField(ArticleType, db_column="type")
-    publisher = CharField()
-    location = CharField()
-    pages = CharField()
-    ids = TextField()
-    bools = TextField()
-    kind = EnumField(ArticleKind)
-    parent = ForeignKeyField("self", related_name="children", null=True)
-    misc_data = TextField()
-
+    creation_event = events.Event["CommonArticle"]()
+    save_event = events.Event["CommonArticle"]()
     label_field = "name"
     call_sign = "A"
+
+    # Properties that have a one-to-one correspondence with the database.
+    addmonth = CharField()  # month added to catalog
+    addday = CharField()  # day added to catalog
+    addyear = CharField()  # year added to catalog
+    name = CharField()  # name of file (or handle of citation)
+    authors = CharField()
+    year = CharField()  # year published
+    # title (chapter title for book chapter; book title for full book or thesis)
+    title = CharField()
+    journal = CharField()  # journal published in
+    series = CharField()  # journal series
+    volume = CharField()  # journal volume
+    issue = CharField()  # journal issue
+    start_page = CharField()  # start page
+    end_page = CharField()  # end page
+    url = CharField()  # url where available
+    doi = CharField()  # DOI
+    type = EnumField(ArticleType)  # type of file
+    publisher = CharField()  # publisher
+    location = CharField()  # geographical location published
+    pages = CharField()  # number of pages in book
+    misc_data = CharField()  # miscellaneous data
+
+    path = CharField()  # path to file (contains NOFILE if "file" is not a file)
+    ids = CharField()  # array of properties for various less-common identifiers
+    bools = CharField()  # array of boolean flags
+    kind = EnumField(ArticleKind)
+    parent_id = ForeignKeyField(
+        "self", related_name="children", null=True, db_column="parent_id"
+    )
+    tags = ADTField(lambda: Tag, null=True)
 
     class Meta:
         db_table = "article"
