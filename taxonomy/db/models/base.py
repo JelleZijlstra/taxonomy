@@ -378,8 +378,9 @@ class BaseModel(Model):
         setattr(self, field, self.get_value_for_field(field))
         self.save()
 
-    def get_field_names(self) -> List[str]:
-        return [field for field in self._meta.fields.keys() if field != "id"]
+    @classmethod
+    def get_field_names(cls) -> List[str]:
+        return [field for field in cls._meta.fields.keys() if field != "id"]
 
     def get_required_fields(self) -> Iterable[str]:
         yield from self.get_field_names()
