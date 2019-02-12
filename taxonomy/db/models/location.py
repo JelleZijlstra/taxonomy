@@ -117,7 +117,7 @@ class Location(BaseModel):
                 file.write(f"{space}{nam}\n")
                 if full and nam.type_tags:
                     for tag in nam.type_tags:
-                        if isinstance(tag, models.name.TypeTag.LocationDetail):
+                        if isinstance(tag, models.TypeTag.LocationDetail):
                             file.write(f"{tag_spaces}{tag}\n")
         if organized:
             self.display_organized(depth=depth, file=file)

@@ -39,7 +39,7 @@ if settings.use_sqlite:
 else:
     database = MySQLDatabase(
         settings.db_name,
-        user=settings.db_user,
+        user=settings.db_username,
         passwd=settings.db_password,
         charset="utf8",
     )
@@ -130,6 +130,10 @@ class BaseModel(Model):
             except Exception:
                 traceback.print_exc()
                 print(f"{field}: could not get value")
+
+    def display(self) -> None:
+        """Print data about this object."""
+        self.full_data()
 
     def s(self, **kwargs: Any) -> None:
         """Set attributes on the object.
@@ -311,7 +315,8 @@ class BaseModel(Model):
         def callback(field: str) -> Callable[[], None]:
             return lambda: self.fill_field(field)
 
-        return {field: callback(field) for field in self.get_field_names()}
+        field_editors = {field: callback(field) for field in self.get_field_names()}
+        return {**field_editors, "d": self.display}
 
     def get_completers_for_adt_field(self, field: str) -> getinput.CompleterMap:
         return {}
@@ -513,7 +518,7 @@ class _NameGetter(Generic[ModelT]):
     def __getattr__(self, name: str) -> ModelT:
         return self.get_or_choose(getinput.decode_name(name))
 
-    def __call__(self, name: Optional[str] = None) -> ModelT:
+    def __call__(self, name: Optional[str] = None) -> Optional[ModelT]:
         if name is not None:
             return self.get_or_choose(name)
         else:
@@ -541,7 +546,7 @@ class _NameGetter(Generic[ModelT]):
                 disallow_other=True,
                 history_key=(self, name),
             )
-            if choice == "":
+            if not choice:
                 raise self.cls.DoesNotExist(name)
             idx = int(choice)
             return nams[idx]
@@ -590,7 +595,7 @@ class _NameGetter(Generic[ModelT]):
         key = getinput.get_with_completion(
             self._data, prompt, default=default, history_key=self, callbacks=callbacks
         )
-        if key == "":
+        if not key:
             return None
         elif key.isnumeric():
             val = int(key)

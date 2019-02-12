@@ -90,7 +90,7 @@ def parse_config_file(filename: Path) -> Options:
         )
 
 
-def get_options() -> None:
+def get_options() -> Options:
     if "TAXONOMY_CONFIG_FILE" in os.environ:
         config_file = Path(os.environ["TAXONOMY_CONFIG_FILE"])
     else:

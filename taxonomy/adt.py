@@ -103,7 +103,7 @@ def _adt_member_hash(self: Any) -> int:
 
 class _ADTMeta(type):
     @classmethod
-    def __prepare__(mcs, name: str, bases: Any) -> _ADTNamespace:
+    def __prepare__(mcs, name: str, bases: Any) -> _ADTNamespace:  # type: ignore
         return _ADTNamespace(sys._getframe(1).f_globals)
 
     def __new__(mcs, name: str, bases: Any, ns: Any) -> Type[Any]:
@@ -229,7 +229,7 @@ class ADT(_ADTBase, metaclass=_ADTMeta):
         tag = value[0]
         member_cls = cls._tag_to_member[tag]
         if member_cls._has_args:
-            args = []
+            args: List[Any] = []
             for arg_type, serialized in zip(member_cls._attributes.values(), value[1:]):
                 if hasattr(arg_type, "unserialize"):
                     if serialized is None:

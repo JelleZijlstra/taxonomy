@@ -1634,7 +1634,6 @@ def check_tags(dry_run: bool = True) -> Iterable[Tuple[Name, str]]:
 
 @generator_command
 def check_type_tags(dry_run: bool = False) -> Iterable[Tuple[Name, str]]:
-    all_sources = ehphp.call_ehphp("get_all", {})
     for nam in Name.select_valid().filter(Name.type_tags != None):
         tags: List[TypeTag] = []
         original_tags = list(nam.type_tags)
@@ -1667,13 +1666,6 @@ def check_type_tags(dry_run: bool = False) -> Iterable[Tuple[Name, str]]:
                 if date is None:
                     continue
                 tags.append(TypeTag.Date(date))
-            elif isinstance(tag, TypeTag.SpecimenDetail):
-                if tag.source and tag.source not in all_sources:
-                    print(
-                        f"{nam} uses non-existent source {tag.source} in SpecimenDetail"
-                    )
-                    yield nam, f"non-existent source {tag.source} (SpecimenDetail)"
-                tags.append(tag)
             elif isinstance(tag, TypeTag.Altitude):
                 if (
                     not re.match(r"^-?\d+([\-\.]\d+)?$", tag.altitude)
@@ -1683,11 +1675,6 @@ def check_type_tags(dry_run: bool = False) -> Iterable[Tuple[Name, str]]:
                     yield nam, f"bad altitude tag {tag}"
                 tags.append(tag)
             elif isinstance(tag, TypeTag.LocationDetail):
-                if tag.source and tag.source not in all_sources:
-                    print(
-                        f"{nam} uses non-existent source {tag.source} in LocationDetail"
-                    )
-                    yield nam, f"non-existent source {tag.source} (LocationDetail)"
                 coords = helpers.extract_coordinates(tag.text)
                 if coords and not any(
                     isinstance(t, TypeTag.Coordinates) for t in original_tags
@@ -1724,6 +1711,7 @@ def check_type_tags(dry_run: bool = False) -> Iterable[Tuple[Name, str]]:
             print(original_tags)
             print(tags)
             nam.type_tags = tags
+    getinput.flush()
     for nam in Name.select_valid().filter(
         Name.genus_type_kind == constants.TypeSpeciesDesignation.subsequent_designation
     ):
@@ -2009,6 +1997,16 @@ def initials_report() -> None:
 
 @command
 def resolve_redirects(dry_run: bool = False) -> None:
+    for nam in Name.filter(Name.type_tags != None):
+        def map_fn(source: Article) -> Article:
+            if source is None:
+                return None
+            if source.kind == constants.ArticleKind.redirect:
+                print(f"{nam}: {source} -> {source.parent}")
+                if not dry_run:
+                    return source.parent
+            return source
+        nam.map_type_tags_by_type(Article, map_fn)
     for nam in Name.filter(Name.original_citation != None):
         if nam.original_citation.kind == constants.ArticleKind.redirect:
             print(f"{nam}: {nam.original_citation} -> {nam.original_citation.parent}")
@@ -2145,14 +2143,6 @@ def moreau(nam: Name) -> None:
     nam.display()
     nam.e.type_locality
     nam.e.type_tags
-
-
-@command
-def f(obj: Any, skip_fields: List[str] = []) -> None:
-    if not isinstance(obj, Name):
-        obj = next(iter(obj))
-    obj.display()
-    obj.fill_required_fields(skip_fields=skip_fields)
 
 
 @command

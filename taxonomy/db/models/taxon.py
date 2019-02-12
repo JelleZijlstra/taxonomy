@@ -867,7 +867,7 @@ class Taxon(BaseModel):
                     required_counts[field] += 1
 
         total = len(names)
-        output: Dict[str, float] = {"total": total}
+        output: Dict[str, Any] = {"total": total}
         by_group = ", ".join(
             f"{v.name}: {counts_by_group[v]}" for v in reversed(Group)  # type: ignore
         )
@@ -880,7 +880,7 @@ class Taxon(BaseModel):
             print(f"{label}: {num} of {total} ({percentage:.2f}%)")
             return percentage
 
-        def sort_key(pair):
+        def sort_key(pair: Tuple[str, int]) -> Tuple[float, int]:
             attribute, total = pair
             count = counts[attribute]
             if total == 0 or count == total:

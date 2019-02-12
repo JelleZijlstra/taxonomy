@@ -141,7 +141,7 @@ def get_with_completion(
     disallow_other: bool = False,
     allow_empty: bool = True,
     callbacks: CallbackMap = {},
-) -> str:
+) -> Optional[str]:
     if history_key is None:
         history_key = (tuple(options), message)
     validator: Optional[prompt_toolkit.validation.Validator]
@@ -209,7 +209,7 @@ def get_enum_member(  # noqa
         allow_empty=allow_empty,
         callbacks=callbacks,
     )
-    if choice == "":
+    if choice == "" or choice is None:
         return None
     return enum_cls[choice]
 
@@ -245,7 +245,7 @@ def get_adt_list(
         if member == "p":
             print(f"current: {_stringify_adt_with_indexes(out)}")
             continue
-        elif member == "":
+        elif not member:
             print(f"new tags: {out}")
             return tuple(out)
         elif member.isnumeric():

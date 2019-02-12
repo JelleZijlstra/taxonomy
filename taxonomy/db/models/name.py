@@ -343,7 +343,21 @@ class Name(BaseModel):
             new_tag = fn(tag)
             if new_tag is not None:
                 new_tags.append(new_tag)
-        self.type_tags = new_tags
+        self.type_tags = tuple(new_tags)  # type: ignore
+
+    def map_type_tags_by_type(self, typ: Type[Any], fn: Callable[[Any], Any]) -> None:
+        def map_fn(tag: TypeTag) -> TypeTag:
+            new_args = []
+            tag_type = type(tag)
+            for arg_name, arg_type in tag_type._attributes.items():
+                val = getattr(tag, arg_name)
+                if arg_type is typ:
+                    new_args.append(fn(val))
+                else:
+                    new_args.append(val)
+            return tag_type(*new_args)
+
+        self.map_type_tags(map_fn)
 
     def replace_original_citation(self, new_citation: Optional[Article] = None) -> None:
         if new_citation is None:

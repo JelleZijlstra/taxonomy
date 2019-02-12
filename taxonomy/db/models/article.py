@@ -4,7 +4,7 @@ from peewee import CharField, ForeignKeyField, TextField
 from typing import Iterable, List, NamedTuple
 
 from .base import ADTField, BaseModel, EnumField
-from ... import events
+from ... import events, adt
 
 _TYPE_TO_FIELDS = {
     ArticleType.JOURNAL: [
@@ -41,8 +41,8 @@ class LsFile(NamedTuple):
 
 
 class Article(BaseModel):
-    creation_event = events.Event["CommonArticle"]()
-    save_event = events.Event["CommonArticle"]()
+    creation_event = events.Event["Article"]()
+    save_event = events.Event["Article"]()
     label_field = "name"
     call_sign = "A"
 
@@ -73,9 +73,7 @@ class Article(BaseModel):
     ids = CharField()  # array of properties for various less-common identifiers
     bools = CharField()  # array of boolean flags
     kind = EnumField(ArticleKind)
-    parent_id = ForeignKeyField(
-        "self", related_name="children", null=True, db_column="parent_id"
-    )
+    parent = ForeignKeyField("self", related_name="children", null=True)
     tags = ADTField(lambda: Tag, null=True)
 
     class Meta:
@@ -92,3 +90,21 @@ class Article(BaseModel):
 
     def __repr__(self) -> str:
         return f"{{{self.name}}}"
+
+
+class Tag(adt.ADT):
+    # identifiers
+    ISBN(text=str, tag=1)  # type: ignore
+    Eurobats(text=str, tag=2)  # type: ignore
+    HDL(text=str, tag=3)  # type: ignore
+    JStor(text=str, tag=4)  # type: ignore
+    PMID(text=str, tag=5)  # type: ignore
+    ISSN(text=str, tag=6)  # type: ignore
+    PMC(text=str, tag=7)  # type: ignore
+
+    # other
+    Edition(text=str, tag=8)  # type: ignore
+    FullIssue(comment=str, tag=9)  # type: ignore
+    PartLocation(  # type: ignore
+        parent=Article, start_page=int, end_page=int, comment=str, tag=10
+    )

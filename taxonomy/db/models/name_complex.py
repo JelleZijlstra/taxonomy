@@ -266,6 +266,7 @@ class SpeciesNameComplex(BaseModel):
             ],
             "kind> ",
         )
+        assert kind is not None
         stem = getinput.get_line("stem> ")
         assert stem is not None
         comment = getinput.get_line("comment> ")
@@ -674,6 +675,7 @@ class NameComplex(BaseModel):
             "kind> ",
             allow_empty=False,
         )
+        assert kind is not None
         method = getattr(cls, kind)
         if kind in (
             "latin_stem",
