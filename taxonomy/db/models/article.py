@@ -2,8 +2,9 @@ from ..constants import ArticleKind, ArticleType
 
 from pathlib import Path
 from peewee import CharField, ForeignKeyField, TextField
+import re
 import subprocess
-from typing import Iterable, List, NamedTuple
+from typing import Any, Dict, Iterable, List, NamedTuple, Optional, Sequence, Tuple
 
 from .base import ADTField, BaseModel, EnumField
 from ... import config, events, adt
@@ -153,6 +154,130 @@ class Article(BaseModel):
 
     def isredirect(self) -> bool:
         return self.type == ArticleType.REDIRECT
+
+    # Authors
+
+    def getAuthors(
+        self,
+        separator: str = ";",  # Text between two authors
+        lastSeparator: Optional[str] = None,  # Text between last two authors
+        separatorWithTwoAuthors: Optional[
+            str
+        ] = None,  # Text between authors if there are only two
+        asArray: bool = False,  # Return authors as an array
+        capitalizeNames: bool = False,  # Whether to capitalize names
+        spaceInitials: bool = False,  # Whether to space initials
+        initialsBeforeName: bool = False,  # Whether to place initials before the surname
+        firstInitialsBeforeName: bool = False,  # Whether to place the first author's initials before their surname
+        includeInitials: bool = True,  # Whether to include initials
+    ) -> Any:
+        if lastSeparator is None:
+            lastSeparator = separator
+        if separatorWithTwoAuthors is None:
+            separatorWithTwoAuthors = lastSeparator
+        array = self._getAuthors()
+        if asArray:
+            return array
+        out = ""
+        num_authors = len(array)
+        for i, author in enumerate(array):
+            # Separators
+            if i > 0:
+                if i < num_authors - 1:
+                    out += f"{separator} "
+                elif i == 1:
+                    out += f"{separatorWithTwoAuthors} "
+                else:
+                    out += f"{lastSeparator} "
+
+            # Process author
+            if capitalizeNames:
+                author = (author[0].upper(), *author[1:])
+            if spaceInitials and len(author) > 1:
+                initials = re.sub(r"\.(?![- ]|$)", ". ", author[1])
+                author = (author[0], initials, *author[2:])
+            if len(author) > 1 and includeInitials:
+                if firstInitialsBeforeName if i == 0 else initialsBeforeName:
+                    author_str = author[1] + " " + author[0]
+                else:
+                    author_str = author[0] + ", " + author[1]
+                if len(author) > 2:
+                    author_str += ", " + author[2]
+            else:
+                author_str = author[0]
+            out += author_str
+        return out
+
+    @staticmethod
+    def explode_authors(input: str) -> List[Sequence[str]]:
+        authors = input.split("; ")
+
+        def map_fn(author: str) -> Sequence[str]:
+            arr = author.split(", ")
+            if len(arr) > 1:
+                return arr
+            else:
+                return (author, "")
+
+        return [map_fn(author) for author in authors]
+
+    def countAuthors(self) -> int:
+        return len(self._getAuthors())
+
+    def getPaleoBioDBAuthors(self) -> Dict[str, str]:
+        authors = self._getAuthors()
+
+        def author_fn(author: Sequence[str]) -> Tuple[str, str]:
+            name = author[0]
+            if len(author) > 2:
+                name += ", " + author[2]
+            return (author[1], name)
+
+        authors = [author_fn(author) for author in authors]
+        output = {
+            "author1init": "",
+            "author1last": "",
+            "author2init": "",
+            "author2last": "",
+            "otherauthors": "",
+        }
+        if len(authors) > 0:
+            output["author1init"] = authors[0][0]
+            output["author1last"] = authors[0][1]
+        if len(authors) > 1:
+            output["author2init"] = authors[1][0]
+            output["author2last"] = authors[1][1]
+        if len(authors) > 2:
+            output["otherauthors"] = ", ".join(
+                " ".join(author) for author in authors[2:]
+            )
+        return output
+
+    def taxonomicAuthority(self) -> Tuple[str, str]:
+        return (
+            self.getAuthors(separator=",", lastSeparator=" &", includeInitials=False),
+            self.year,
+        )
+
+    def _getAuthors(self) -> List[Sequence[str]]:
+        """Should return output like
+
+        [
+            ('Zijlstra', 'J.S.'),
+            ('Smith', 'J.', 'Jr.'),
+        ]
+
+        for a paper by "Zijlstra, J.S.; Smith, J., Jr."."""
+        if self.authors is None:
+            return []
+        return self.explode_authors(self.authors)
+
+    @staticmethod
+    def implode_authors(authors: Iterable[Sequence[str]]) -> str:
+        """Turns a list as returned by _getAuthors into a single string."""
+        return "; ".join(
+            ", ".join(part for part in author if part) for author in authors
+        )
 
     def __repr__(self) -> str:
         return f"{{{self.name}}}"
