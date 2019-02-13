@@ -44,7 +44,7 @@ import unidecode
 from traitlets.config.loader import Config
 
 from . import getinput
-from .db import constants, definition, detection, ehphp, helpers, models
+from .db import constants, definition, detection, helpers, models
 from .db.constants import Age, Group, NomenclatureStatus, Rank, PeriodSystem
 from .db.models import Article, Collection, Name, Tag, Taxon, TypeTag, database
 
@@ -1998,6 +1998,7 @@ def initials_report() -> None:
 @command
 def resolve_redirects(dry_run: bool = False) -> None:
     for nam in Name.filter(Name.type_tags != None):
+
         def map_fn(source: Article) -> Article:
             if source is None:
                 return None
@@ -2006,6 +2007,7 @@ def resolve_redirects(dry_run: bool = False) -> None:
                 if not dry_run:
                     return source.parent
             return source
+
         nam.map_type_tags_by_type(Article, map_fn)
     for nam in Name.filter(Name.original_citation != None):
         if nam.original_citation.kind == constants.ArticleKind.redirect:

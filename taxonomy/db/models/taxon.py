@@ -20,7 +20,7 @@ from typing import (
 import peewee
 from peewee import BooleanField, CharField, ForeignKeyField, IntegerField, TextField
 
-from .. import constants, definition, ehphp, helpers, models
+from .. import constants, definition, helpers, models
 from ... import events, getinput
 from ..constants import Group, NomenclatureStatus, OccurrenceStatus, Rank, Status
 
@@ -565,7 +565,7 @@ class Taxon(BaseModel):
         if paper is None:
             paper = self.get_value_for_foreign_class("paper", Article)
 
-        authority, year = ehphp.call_ehphp("taxonomicAuthority", [paper.name])[0]
+        authority, year = paper.taxonomicAuthority()
         result = self.add_syn(
             root_name=root_name,
             authority=authority,
@@ -596,7 +596,7 @@ class Taxon(BaseModel):
         if paper is None:
             paper = self.get_value_for_foreign_class("paper", Article)
 
-        authority, year = ehphp.call_ehphp("taxonomicAuthority", [paper.name])[0]
+        authority, year = paper.taxonomicAuthority()
         result = self.add_static(
             rank=rank,
             name=name,
@@ -1018,7 +1018,7 @@ def fill_data_from_paper(
         if required_fields:
             if not opened:
                 getinput.add_to_clipboard(paper.name)
-                ehphp.call_ehphp("openf", [paper.name])
+                paper.openf()
                 print(f"filling data from {paper.name}")
                 opened = True
             print(nam, "described at", nam.page_described)

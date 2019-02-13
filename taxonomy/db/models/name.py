@@ -17,7 +17,7 @@ from typing import (
 
 from peewee import CharField, ForeignKeyField, IntegerField, Model, TextField
 
-from .. import constants, ehphp, helpers
+from .. import constants, helpers
 from ... import adt, events, getinput
 from ..constants import Group, NomenclatureStatus, Rank, SpeciesNameKind, Status
 from ..definition import Definition
@@ -784,10 +784,7 @@ class Name(BaseModel):
         if self.original_citation is None:
             print("%s: original citation unknown" % self.description())
         else:
-            try:
-                ehphp.call_ehphp("openf", [self.original_citation.name])
-            except ehphp.EHPHPError:
-                pass
+            self.original_citation.openf()
         return True
 
     def remove(self, reason: Optional[str] = None) -> None:
@@ -846,7 +843,7 @@ class Name(BaseModel):
     ) -> None:
         if paper is None:
             paper = self.get_value_for_foreign_class("original_citation", Article)
-        authority, year = ehphp.call_ehphp("taxonomicAuthority", [paper])[0]
+        authority, year = paper.taxonomicAuthority()
         if original_name is None and self.status == Status.valid:
             original_name = self.taxon.valid_name
         attributes = [
