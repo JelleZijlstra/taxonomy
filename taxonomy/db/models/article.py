@@ -1,11 +1,14 @@
 from ..constants import ArticleKind, ArticleType
 
+from pathlib import Path
 from peewee import CharField, ForeignKeyField, TextField
+import subprocess
 from typing import Iterable, List, NamedTuple
 
 from .base import ADTField, BaseModel, EnumField
-from ... import events, adt
+from ... import config, events, adt
 
+_options = config.get_options()
 _TYPE_TO_FIELDS = {
     ArticleType.JOURNAL: [
         "authors",
@@ -95,6 +98,61 @@ class Article(BaseModel):
                 continue
             self.fill_field(field)
         return True
+
+    def get_path(self, *, folder: bool = False, fullpath: bool = True) -> Path:
+        # returns path to file
+        # 'type' => 'Type of path: shell, url, or none',
+        # 'folder' => 'Whether we want the folder only',
+        # 'fullpath' => 'Whether the full path should be returned',
+        # 'print' => 'Whether the result should be printed',
+        if not self.isfile():
+            raise ValueError("path() called on a non-file")
+        out = self._path()
+        if fullpath:
+            out = _options.library_path / out
+        if not folder:
+            out = out / self.name
+        return out
+
+    def path_string(self) -> str:
+        return self.path or ""
+
+    def path_list(self) -> List[str]:
+        if self.path is None:
+            return []
+        else:
+            return self.path.split("/")
+
+    def _path(self) -> Path:
+        path = self.path_list()
+        out = Path(path[0])
+        for part in path[1:]:
+            out = out / part
+        return out
+
+    def openf(self, place: str = "catalog") -> bool:
+        if not self.isfile():
+            print("openf: error: not a file, cannot open")
+            return False
+        if place == "catalog":
+            path = self.get_path(fullpath=True)
+        elif place == "temp":
+            path = _options.new_path / self.name
+        subprocess.check_call(["open", str(path)])
+        return True
+
+    def isfile(self) -> bool:
+        # returns whether this 'file' is a file
+        return self.kind == ArticleKind.electronic
+
+    def isnofile(self) -> bool:
+        return not self.isfile()
+
+    def issupplement(self) -> bool:
+        return self.type == ArticleType.SUPPLEMENT
+
+    def isredirect(self) -> bool:
+        return self.type == ArticleType.REDIRECT
 
     def __repr__(self) -> str:
         return f"{{{self.name}}}"
