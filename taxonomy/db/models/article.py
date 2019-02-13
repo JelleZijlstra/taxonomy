@@ -73,7 +73,7 @@ class Article(BaseModel):
     ids = CharField()  # array of properties for various less-common identifiers
     bools = CharField()  # array of boolean flags
     kind = EnumField(ArticleKind)
-    parent = ForeignKeyField("self", related_name="children", null=True)
+    parent = ForeignKeyField("self", null=True)
     tags = ADTField(lambda: Tag, null=True)
 
     class Meta:
