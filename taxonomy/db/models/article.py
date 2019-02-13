@@ -88,6 +88,14 @@ class Article(BaseModel):
         yield "name"
         yield from _TYPE_TO_FIELDS[self.type]
 
+    def trymanual(self) -> bool:
+        fields = _TYPE_TO_FIELDS[self.type]
+        for field in fields:
+            if getattr(self, field, None):
+                continue
+            self.fill_field(field)
+        return True
+
     def __repr__(self) -> str:
         return f"{{{self.name}}}"
 
