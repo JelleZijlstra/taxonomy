@@ -1,13 +1,15 @@
-from ..constants import ArticleKind, ArticleType
+from ..constants import ArticleCommentKind, ArticleKind, ArticleType
 
+import datetime
 from pathlib import Path
-from peewee import CharField, ForeignKeyField, TextField
+from peewee import CharField, ForeignKeyField, IntegerField, TextField
 import re
 import subprocess
+import time
 from typing import Any, Dict, Iterable, List, NamedTuple, Optional, Sequence, Tuple
 
 from .base import ADTField, BaseModel, EnumField
-from ... import config, events, adt
+from ... import config, events, adt, getinput
 
 _options = config.get_options()
 _TYPE_TO_FIELDS = {
@@ -281,6 +283,51 @@ class Article(BaseModel):
 
     def __repr__(self) -> str:
         return f"{{{self.name}}}"
+
+
+class ArticleComment(BaseModel):
+    article = ForeignKeyField(Article, related_name="comments", db_column="article_id")
+    kind = EnumField(ArticleCommentKind)
+    date = IntegerField()
+    text = TextField()
+
+    class Meta:
+        db_table = "article_comment"
+
+    @classmethod
+    def make(
+        cls, article: Article, kind: ArticleCommentKind, text: str, **kwargs: Any
+    ) -> "ArticleComment":
+        return cls.create(
+            article=article, kind=kind, text=text, date=int(time.time()), **kwargs
+        )
+
+    @classmethod
+    def create_interactively(
+        cls,
+        article: Optional[Article] = None,
+        kind: Optional[ArticleCommentKind] = None,
+        text: Optional[str] = None,
+        **kwargs: Any,
+    ) -> "ArticleComment":
+        if article is None:
+            article = cls.get_value_for_foreign_key_field_on_class("article")
+        assert article is not None
+        if kind is None:
+            kind = getinput.get_enum_member(
+                ArticleCommentKind, prompt="kind> ", allow_empty=False
+            )
+        if text is None:
+            text = getinput.get_line(prompt="text> ")
+        assert text is not None
+        return cls.make(article=article, kind=kind, text=text, **kwargs)
+
+    def get_description(self) -> str:
+        components = [
+            self.kind.name,
+            datetime.datetime.fromtimestamp(self.date).strftime("%b %d, %Y %H:%M:%S"),
+        ]
+        return f'{self.text} ({"; ".join(components)})'
 
 
 class Tag(adt.ADT):

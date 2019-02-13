@@ -5,7 +5,7 @@ Definitions of various models.
 """
 from .base import *  # noqa: F403,F401
 
-from .article import Article  # noqa: F401
+from .article import Article, ArticleComment  # noqa: F401
 from .collection import Collection  # noqa: F401
 from .location import Location  # noqa: F401
 from .name import (  # noqa: F401
