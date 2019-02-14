@@ -948,7 +948,7 @@ class Taxon(BaseModel):
                     print(nam)
                     nam.fill_required_fields()
 
-    def fill_field(self, field: str) -> None:
+    def fill_field_for_names(self, field: str) -> None:
         for name in sorted(
             self.all_names(), key=lambda nam: (nam.authority or "", nam.year or "")
         ):
