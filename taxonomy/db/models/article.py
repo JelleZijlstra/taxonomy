@@ -6,7 +6,17 @@ from peewee import CharField, ForeignKeyField, IntegerField, TextField
 import re
 import subprocess
 import time
-from typing import Any, Dict, Iterable, List, NamedTuple, Optional, Sequence, Tuple
+from typing import (
+    Any,
+    Dict,
+    Iterable,
+    List,
+    NamedTuple,
+    Optional,
+    Sequence,
+    Tuple,
+    Type,
+)
 
 from .base import ADTField, BaseModel, EnumField
 from ... import config, events, adt, getinput
@@ -270,6 +280,50 @@ class Article(BaseModel):
         return "; ".join(
             ", ".join(part for part in author if part) for author in authors
         )
+
+    def add_comment(
+        self, kind: Optional[ArticleCommentKind] = None, text: Optional[str] = None
+    ) -> "ArticleComment":
+        return ArticleComment.create_interactively(article=self, kind=kind, text=text)
+
+    def add_tag(self, tag: adt.ADT) -> None:
+        if self.tags is None:
+            self.tags = [tag]
+        else:
+            self.tags = self.tags + (tag,)
+
+    def geturl(self) -> Optional[str]:
+        # get the URL for this file from the data given
+        if self.url:
+            return self.url
+        if self.doi:
+            return f"http://dx.doi.org/{self.doi}"
+        tries = {
+            Tag.JSTOR: "http://www.jstor.org/stable/",
+            Tag.HDL: "http://hdl.handle.net/",
+            Tag.PMID: "http://www.ncbi.nlm.nih.gov/pubmed/",
+            Tag.PMC: "http://www.ncbi.nlm.nih.gov/pmc/articles/PMC",
+        }
+        for identifier, url in tries.items():
+            value = self.getIdentifier(identifier)
+            if value:
+                return url + value
+        return None
+
+    def openurl(self) -> bool:
+        # open the URL associated with the file
+        url = self.geturl()
+        if not url:
+            print("No URL to open")
+            return False
+        else:
+            subprocess.check_call(["open", url])
+            return True
+
+    def getIdentifier(self, identifier: Type[adt.ADT]) -> Optional[str]:
+        for tag in self.get_tag(self.tags, identifier):
+            return tag.text
+        return None
 
     def __repr__(self) -> str:
         return f"{{{self.name}}}"
