@@ -209,7 +209,7 @@ def fix_bad_ampersands() -> Iterable[Tuple[Name, str]]:
 def fix_et_al() -> Iterable[Tuple[Name, str]]:
     for name in (
         Name.select_valid()
-        .filter(Name.authority % "%et al%", Name.original_citation != None)
+        .filter(Name.authority.contains("et al"), Name.original_citation != None)
         .order_by(Name.original_name, Name.root_name)
     ):
         yield name, "Name {} uses et al.".format(name.description())
