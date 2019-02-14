@@ -97,7 +97,7 @@ ns = _ShellNamespace(
         "Apomorphy": definition.Apomorphy,
         "Other": definition.Other,
         "N": Name.getter("root_name"),
-        "O": Name.getter("corrected_original_name"),
+        "O": Name.getter("original_name"),
         "reconnect": _reconnect,
         "Tag": models.Tag,
         "TypeTag": models.TypeTag,
