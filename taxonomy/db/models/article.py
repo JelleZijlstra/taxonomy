@@ -8,6 +8,7 @@ import subprocess
 import time
 from typing import (
     Any,
+    Callable,
     Dict,
     Iterable,
     List,
@@ -43,7 +44,7 @@ _TYPE_TO_FIELDS = {
         "parent",
         "url",
     ],
-    ArticleType.BOOK: ["authors", "year", "title", "pages", "publisher", "isbn"],
+    ArticleType.BOOK: ["authors", "year", "title", "pages", "publisher", "location"],
     ArticleType.THESIS: ["authors", "year", "title", "pages", "publisher", "series"],
     ArticleType.SUPPLEMENT: ["title", "parent"],
     ArticleType.WEB: ["authors", "year", "title", "url"],
@@ -325,6 +326,17 @@ class Article(BaseModel):
             return tag.text
         return None
 
+    def cite(self, citetype: str = "paper") -> str:
+        if self.issupplement():
+            return self.parent.cite(citetype=citetype)
+        if citetype in _CITE_FUNCTIONS:
+            return _CITE_FUNCTIONS[citetype](self)
+        else:
+            raise ValueError(f"unknown citetype {citetype}")
+
+    def display(self) -> None:
+        print(self.cite())
+
     def __repr__(self) -> str:
         return f"{{{self.name}}}"
 
@@ -372,6 +384,18 @@ class ArticleComment(BaseModel):
             datetime.datetime.fromtimestamp(self.date).strftime("%b %d, %Y %H:%M:%S"),
         ]
         return f'{self.text} ({"; ".join(components)})'
+
+
+Citer = Callable[[Article], str]
+_CITE_FUNCTIONS: Dict[str, Citer] = {}
+
+
+def register_cite_function(name: str) -> Callable[[Citer], Citer]:
+    def decorator(citer: Citer) -> Citer:
+        _CITE_FUNCTIONS[name] = citer
+        return citer
+
+    return decorator
 
 
 class Tag(adt.ADT):
