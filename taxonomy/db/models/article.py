@@ -117,7 +117,7 @@ class Article(BaseModel):
         """Returns the full path to this file."""
         if not self.isfile():
             raise ValueError("path() called on a non-file")
-        out = self._path()
+        out = self.relative_path()
         return _options.library_path / out / self.name
 
     def path_list(self) -> List[str]:
