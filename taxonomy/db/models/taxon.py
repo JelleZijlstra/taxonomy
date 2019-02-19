@@ -855,16 +855,18 @@ class Taxon(BaseModel):
         counts_by_group: Dict[str, int] = collections.defaultdict(int)
         for name in names:
             counts_by_group[name.group] += 1
+            deprecated = set(name.get_deprecated_fields())
             for field in name.get_required_fields():
-                required_counts[field] += 1
-                if getattr(name, field) is not None:
-                    counts[field] += 1
-            for field in name.get_deprecated_fields():
-                # We count deprecated fields differently: we simply
-                # add one "required" count for every name that still has it,
-                # and ignore others.
-                if getattr(name, field) is not None:
+                if field in deprecated:
+                    # We count deprecated fields differently: we simply
+                    # add one "required" count for every name that still has it,
+                    # and ignore others.
+                    if getattr(name, field) is not None:
+                        required_counts[field] += 1
+                else:
                     required_counts[field] += 1
+                    if getattr(name, field) is not None:
+                        counts[field] += 1
 
         total = len(names)
         output: Dict[str, Any] = {"total": total}

@@ -704,6 +704,9 @@ class Name(BaseModel):
                         yield "type_tags"
                 elif self.genus_type_kind.requires_tag():
                     yield "type_tags"
+        for field in self.get_deprecated_fields():
+            if getattr(self, field) is not None:
+                yield field
 
     def get_deprecated_fields(self) -> Iterable[str]:
         yield "type_locality_description"
