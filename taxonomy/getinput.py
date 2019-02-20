@@ -17,6 +17,7 @@ from typing import (
     List,
     Mapping,
     Optional,
+    Sequence,
     Tuple,
     Type,
     TypeVar,
@@ -114,6 +115,31 @@ def yes_no(prompt: str, default: Optional[bool] = None) -> bool:
         default=default_str,
     )
     return result is not None and result.lower() in positive
+
+
+def choose_one(
+    options: Sequence[T],
+    *,
+    message: str = "Choose one: ",
+    allow_empty: bool = True,
+    display_fn: Callable[[T], str] = str,
+    history_key: object = None,
+) -> Optional[T]:
+    for i, option in enumerate(options):
+        print(f"{i}: {display_fn(option)}")
+    choices = [str(i) for i in range(len(options))]
+    if history_key is None:
+        history_key = tuple(options)
+    choice = get_with_completion(
+        options=choices,
+        message=message,
+        disallow_other=True,
+        history_key=history_key,
+        allow_empty=allow_empty,
+    )
+    if not choice:
+        return None
+    return options[int(choice)]
 
 
 class _Completer(prompt_toolkit.completion.Completer):

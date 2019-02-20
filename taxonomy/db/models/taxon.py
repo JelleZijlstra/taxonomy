@@ -978,7 +978,11 @@ class Taxon(BaseModel):
         elif not candidates:
             raise AttributeError(attr)
         else:
-            raise models.Name.DoesNotExist(f"Candidates: {candidates}")
+            return getinput.choose_one(
+                candidates,
+                display_fn=lambda nam: f"{nam} (#{nam.id})",
+                history_key=(self, attr),
+            )
 
     def __dir__(self) -> List[str]:
         result = set(super().__dir__())

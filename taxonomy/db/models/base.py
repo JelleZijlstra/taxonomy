@@ -540,19 +540,14 @@ class _NameGetter(Generic[ModelT]):
         elif count == 1:
             return nams[0]
         else:
-            for i, nam in enumerate(nams):
-                print(f"{i}: {nam} (#{nam.id})")
-            choices = [str(i) for i in range(len(nams))]
-            choice = getinput.get_with_completion(
-                options=choices,
-                message="Choose one: ",
-                disallow_other=True,
+            choice = getinput.choose_one(
+                nams,
+                display_fn=lambda nam: f"{nam} (#{nam.id})",
                 history_key=(self, name),
             )
-            if not choice:
+            if choice is None:
                 raise self.cls.DoesNotExist(name)
-            idx = int(choice)
-            return nams[idx]
+            return choice
 
     def clear_cache(self) -> None:
         self._data = None
