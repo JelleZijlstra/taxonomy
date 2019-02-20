@@ -60,7 +60,8 @@ CREATE TABLE `name` (
     INDEX(`original_name`),
     INDEX(`root_name`),
     INDEX(`taxon_id`),
-    INDEX(`type_locality_id`)
+    INDEX(`type_locality_id`),
+    INDEX(`corrected_original_name`)
 ) ENGINE=INNODB DEFAULT CHARSET=utf8;
 
 CREATE TABLE `region` (
