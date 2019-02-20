@@ -97,11 +97,13 @@ class Article(BaseModel):
         db_table = "article"
 
     def get_required_fields(self) -> Iterable[str]:
+        yield "kind"
         yield "type"
         yield "addmonth"
         yield "addday"
         yield "addyear"
-        yield "path"
+        if self.kind == ArticleKind.electronic:
+            yield "path"
         yield "name"
         yield from _TYPE_TO_FIELDS[self.type]
 
