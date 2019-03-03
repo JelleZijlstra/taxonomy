@@ -204,7 +204,7 @@ class BaseModel(Model):
             FROM {cls._meta.db_table}
             GROUP BY {attribute}
         """
-        return Counter(database.execute_sql(sql))
+        return Counter(dict(database.execute_sql(sql)))
 
     @classmethod
     def bfind(
@@ -220,7 +220,7 @@ class BaseModel(Model):
                 filters.append(field.contains(value))
             else:
                 filters.append(field == value)
-        objs = list(cls.filter(*filters))
+        objs = list(cls.select_valid().filter(*filters))
         if not quiet:
             if hasattr(cls, "label_field"):
                 objs = sorted(objs, key=lambda obj: getattr(obj, cls.label_field) or "")
