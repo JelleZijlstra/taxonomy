@@ -8,6 +8,7 @@ from typing import (
     Any,
     Callable,
     Container,
+    Counter,
     Dict,
     Iterable,
     List,
@@ -22,7 +23,7 @@ from peewee import BooleanField, CharField, ForeignKeyField, IntegerField, TextF
 
 from .. import constants, definition, helpers, models
 from ... import events, getinput
-from ..constants import Group, NomenclatureStatus, OccurrenceStatus, Rank, Status
+from ..constants import Age, Group, NomenclatureStatus, OccurrenceStatus, Rank, Status
 
 from .base import BaseModel, EnumField
 from .article import Article
@@ -957,6 +958,12 @@ class Taxon(BaseModel):
             if field in name.get_empty_required_fields():
                 name.display()
                 name.fill_field(field)
+
+    def count_attribute(
+        self, field: str = "type_locality", age: Optional[Age] = None
+    ) -> Counter[Any]:
+        nams = self.all_names(age=age)
+        return Counter(getattr(nam, field) for nam in nams)
 
     at = _OccurrenceGetter()
 
