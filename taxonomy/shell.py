@@ -2173,16 +2173,23 @@ def fgsyn(off: Optional[Name] = None) -> Name:
 
 
 @command
-def author_report(author: str) -> None:
-    nams = list(
-        Name.select_valid().filter(
-            Name.authority == author, Name.original_citation == None
-        )
-    )
+def author_report(
+    author: str, partial: bool = False, missing_attribute: Optional[str] = None
+) -> None:
+    if partial:
+        condition = Name.authority.contains(author)
+    else:
+        condition = Name.authority == author
+    nams = list(Name.select_valid().filter(condition, Name.original_citation == None))
 
     by_year = collections.defaultdict(list)
     no_year = []
     for nam in nams:
+        if (
+            missing_attribute is not None
+            and missing_attribute not in nam.get_empty_required_fields()
+        ):
+            continue
         if nam.year is not None:
             by_year[nam.year].append(nam)
         else:
