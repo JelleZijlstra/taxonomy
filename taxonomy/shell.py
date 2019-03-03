@@ -1550,6 +1550,47 @@ def check_expected_base_name() -> Iterable[Taxon]:
 
 
 @generator_command
+def check_justified_emendations() -> Iterable[Tuple[Name, str]]:
+    """Checks that justified emendations are treated correctly.
+
+    See documentation in name.rst.
+
+    """
+    justified_emendations = Name.bfind(
+        nomenclature_status=NomenclatureStatus.justified_emendation, quiet=True
+    )
+    as_emendeds = set(
+        Name.bfind(nomenclature_status=NomenclatureStatus.as_emended, quiet=True)
+    )
+    for nam in justified_emendations:
+        target = nam.get_tag_target(Tag.JustifiedEmendationOf)
+        if target is None:
+            yield nam, "justified_emendation without a JustifiedEmendationOf tag"
+            continue
+        ios_target = target.get_tag_target(Tag.IncorrectOriginalSpellingOf)
+        if target.nomenclature_status is NomenclatureStatus.incorrect_original_spelling:
+            if ios_target.nomenclature_status is not NomenclatureStatus.as_emended:
+                yield ios_target, f"should be as_emended because {target} is an IOS"
+            elif ios_target in as_emendeds:
+                as_emendeds.remove(ios_target)
+            if nam.root_name == target.root_name:
+                yield nam, f"root_name should be different from {target}"
+            if nam.root_name != ios_target.root_name:
+                yield nam, f"root_name should match {ios_target}"
+        elif target.nomenclature_status is NomenclatureStatus.available:
+            if ios_target is not None:
+                yield target, "unexpected IncorrectOriginalSpellingOf tag"
+            if target.root_name != nam.root_name:
+                yield nam, f"root_name does not match ({nam.root_name} vs. {target.root_name} in {target})"
+            elif target.original_name == target.corrected_original_name:
+                yield nam, f"justified emendation but there is nothing to emend in {target}"
+        else:
+            yield nam, f"unexpected status in target {target}"
+    for nam in as_emendeds:
+        yield nam, "as_emended without a justified_emendation"
+
+
+@generator_command
 def check_tags(dry_run: bool = True) -> Iterable[Tuple[Name, str]]:
     """Looks at all tags set on names and applies related changes."""
     status_to_priority = {}

@@ -158,3 +158,35 @@ Miscellaneous data
 - _tags_: Various more unusual nomenclatural attributes in a fixed form (for
   example, the name this name is preoccupied by or is an incorrect subsequent
   spelling of).
+
+Justified emendations
+---------------------
+Although the Code generally mandates that original spellings are to be
+maintained, on rare occasions a spelling other than the original is valid (see
+Arts. 32.5 and 33.2.3.1). In such cases, three names should be entered into the
+database:
+
+- The name as corrected, with its original author and date and with nomenclature_status
+  set to as_emended. The page_described field should be omitted.
+- The name as originally spelled, with its original author and date, but no other
+  data (such as type_tags). It should have nomenclature_status set to
+  incorrect_original_spelling and an IncorrectOriginalSpellingOf tag pointing to
+  the emended name.
+- The name as corrected, with the author and date who first performed the correction.
+  This name should have nomenclature_status set to justified_emendation and a
+  JustifiedEmendationOf tag pointing to the original spelling.
+
+Emendations under Arts. 32.5.2 (removal of diacritics and other marks) and 32.5.3
+(correction of family-group names) are generally unambiguous and mechanical, so
+the database will usually make these corrections silently. If desired, a name
+with status justified_emendation can be entered with as its authority the first
+author to use the corrected name.
+
+Mandatory changes
+-----------------
+There are two categories of mandatory changes (Art. 34):
+- For family-group names, the ending must be changed if the rank changes.
+- For species-group names, the specific name must be changed to agree in gender
+  with the generic name.
+These can both be expressed with the MandatoryChangeOf tag in the database, but
+this is rarely necessary.

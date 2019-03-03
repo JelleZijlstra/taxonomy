@@ -96,6 +96,10 @@ class Article(BaseModel):
     class Meta:
         db_table = "article"
 
+    @classmethod
+    def select_valid(cls, *args: Any) -> Any:
+        return cls.select(*args).filter(cls.type != ArticleType.REDIRECT)
+
     def get_required_fields(self) -> Iterable[str]:
         yield "kind"
         yield "type"

@@ -119,6 +119,8 @@ class NomenclatureStatus(enum.IntEnum):
     collective_group = 47
     # Art. 11.8: a genus-group name must be a nominative singular noun.
     not_nominative_singular = 48
+    # Justified emendation, available with its original author and date.
+    as_emended = 49
 
     def requires_type(self) -> bool:
         """Whether a name of this status should have a type designated."""
@@ -128,6 +130,7 @@ class NomenclatureStatus(enum.IntEnum):
             NomenclatureStatus.art_13_nomen_oblitum,
             NomenclatureStatus.preoccupied,
             NomenclatureStatus.reranking,
+            NomenclatureStatus.as_emended,
         }
 
     def can_preoccupy(self) -> bool:
@@ -141,6 +144,7 @@ class NomenclatureStatus(enum.IntEnum):
             NomenclatureStatus.preoccupied,
             NomenclatureStatus.partially_suppressed,
             NomenclatureStatus.nomen_novum,
+            NomenclatureStatus.as_emended,
         }
 
     def requires_name_complex(self) -> bool:
@@ -230,6 +234,19 @@ class NomenclatureStatus(enum.IntEnum):
             [cls.collective_group],
             [cls.available],
         ]
+
+
+class EmendationJustification(enum.IntEnum):
+    # Art. 32.5.1: evidence of inadvertent error in the original publication
+    inadvertent_error = 1
+    # Art. 32.5.2: removal of diacritics or other marks
+    removal_of_mark = 2
+    # Art. 32.5.3: incorrectly formed family-group name
+    incorrect_family_group_name = 3
+    # Art. 33.2.3.1: emendation is in prevailing usage
+    prevailing_usage = 4
+    # The emendation has been validated by the Commission
+    conserved_by_the_commission = 5
 
 
 class Group(enum.IntEnum):
@@ -392,6 +409,8 @@ class GenderArticle(enum.IntEnum):
     # names, but I interpret them as having the gender of their Greek root. The question is usually
     # academic because these names tend to be incorrect subsequent spellings.
     bad_transliteration = 12
+    # Etymology unknown, but stem is "obvious" (e.g., _Madataeus_)
+    unknown_obvious_stem = 13
 
 
 class SpeciesNameKind(enum.IntEnum):

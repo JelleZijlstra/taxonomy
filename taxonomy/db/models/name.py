@@ -19,7 +19,14 @@ from peewee import CharField, ForeignKeyField, IntegerField, Model, TextField
 
 from .. import constants, helpers
 from ... import adt, events, getinput
-from ..constants import Group, NomenclatureStatus, Rank, SpeciesNameKind, Status
+from ..constants import (
+    EmendationJustification,
+    Group,
+    NomenclatureStatus,
+    Rank,
+    SpeciesNameKind,
+    Status,
+)
 from ..definition import Definition
 
 from .base import BaseModel, EnumField, ADTField
@@ -316,6 +323,13 @@ class Name(BaseModel):
             return {}
         else:
             return json.loads(self.data)
+
+    def get_tag_target(self, tag_cls: Type[adt.ADT]) -> Optional["Name"]:
+        if self.tags:
+            for tag in self.tags:
+                if isinstance(tag, tag_cls):
+                    return tag.name
+        return None
 
     def add_tag(self, tag: adt.ADT) -> None:
         if self.tags is None:
@@ -662,7 +676,8 @@ class Name(BaseModel):
 
         yield "authority"
         yield "year"
-        yield "page_described"
+        if self.nomenclature_status != NomenclatureStatus.as_emended:
+            yield "page_described"
         yield "original_citation"
         if self.original_citation is None:
             yield "verbatim_citation"
@@ -1175,7 +1190,7 @@ def get_str_completer(
 class Tag(adt.ADT):
     PreoccupiedBy(name=Name, comment=str, tag=1)  # type: ignore
     UnjustifiedEmendationOf(name=Name, comment=str, tag=2)  # type: ignore
-    JustifiedEmendationOf(name=Name, comment=str, tag=3)  # type: ignore
+    JustifiedEmendationOfDeprecated(name=Name, comment=str, tag=3)  # type: ignore
     IncorrectSubsequentSpellingOf(name=Name, comment=str, tag=4)  # type: ignore
     NomenNovumFor(name=Name, comment=str, tag=5)  # type: ignore
     # If we don't know which of 2-4 to use
@@ -1198,6 +1213,10 @@ class Tag(adt.ADT):
     ReversalOfPriority(over=Name, opinion=Article, comment=str, tag=17)  # type: ignore
     # Placed on the Official Index, but without being suppressed.
     Rejected(opinion=Article, comment=str, tag=18)  # type: ignore
+    # See discussion in docs/name.rst
+    JustifiedEmendationOf(  # type: ignore
+        name=Name, justification=EmendationJustification, comment=str, tag=19
+    )
 
 
 STATUS_TO_TAG = {

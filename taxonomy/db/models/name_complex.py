@@ -440,6 +440,27 @@ class NameComplex(BaseModel):
         )
 
     @classmethod
+    def unknown_obvious_stem(
+        cls,
+        stem: str,
+        gender: constants.Gender,
+        comment: Optional[str] = None,
+        stem_remove: str = "",
+        stem_add: str = "",
+    ) -> "NameComplex":
+        """Name based on a word of unknown etymology, but of obvious grammatical behavior."""
+        return cls._get_or_create(
+            stem,
+            stem=stem,
+            gender=gender,
+            comment=comment,
+            source_language=SourceLanguage.latin,
+            code_article=GenderArticle.unknown_obvious_stem,
+            stem_remove=stem_remove,
+            stem_add=stem_add,
+        )
+
+    @classmethod
     def greek_stem(
         cls,
         stem: str,
@@ -671,6 +692,7 @@ class NameComplex(BaseModel):
                 "indicated",
                 "defaulted_masculine",
                 "defaulted",
+                "unknown_obvious_stem",
             ],
             "kind> ",
             allow_empty=False,
@@ -684,6 +706,7 @@ class NameComplex(BaseModel):
             "bad_transliteration",
             "common_gender",
             "latin_changed_ending",
+            "unknown_obvious_stem",
         ):
             stem = getinput.get_line("stem> ")
             gender = getinput.get_enum_member(
