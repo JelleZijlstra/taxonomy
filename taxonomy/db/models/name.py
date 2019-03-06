@@ -1190,7 +1190,6 @@ def get_str_completer(
 class Tag(adt.ADT):
     PreoccupiedBy(name=Name, comment=str, tag=1)  # type: ignore
     UnjustifiedEmendationOf(name=Name, comment=str, tag=2)  # type: ignore
-    JustifiedEmendationOfDeprecated(name=Name, comment=str, tag=3)  # type: ignore
     IncorrectSubsequentSpellingOf(name=Name, comment=str, tag=4)  # type: ignore
     NomenNovumFor(name=Name, comment=str, tag=5)  # type: ignore
     # If we don't know which of 2-4 to use
