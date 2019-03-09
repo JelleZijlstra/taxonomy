@@ -527,7 +527,6 @@ class ArticleType(enum.IntEnum):
     THESIS = 3  # kind of degree in "series", university in "publisher"
     WEB = 5
     MISCELLANEOUS = 6
-    REDIRECT = 7  # ID of target in "parent"
     SUPPLEMENT = 8  # ID of target in "parent", kind of supplement in "title"
     JOURNAL = 9
 

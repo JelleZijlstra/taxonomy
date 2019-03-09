@@ -98,7 +98,7 @@ class Article(BaseModel):
 
     @classmethod
     def select_valid(cls, *args: Any) -> Any:
-        return cls.select(*args).filter(cls.type != ArticleType.REDIRECT)
+        return cls.select(*args).filter(cls.kind != ArticleKind.redirect)
 
     def get_required_fields(self) -> Iterable[str]:
         yield "kind"
@@ -162,7 +162,7 @@ class Article(BaseModel):
         return self.type == ArticleType.SUPPLEMENT
 
     def isredirect(self) -> bool:
-        return self.type == ArticleType.REDIRECT
+        return self.kind == ArticleKind.redirect
 
     # Authors
 
