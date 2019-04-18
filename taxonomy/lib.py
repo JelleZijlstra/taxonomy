@@ -15,6 +15,7 @@ from taxonomy.db.constants import Age, Group, Rank, Status
 from taxonomy.db.models import (
     Article,
     BaseModel,
+    CitationGroup,
     Collection,
     Location,
     Name,
@@ -57,6 +58,19 @@ def occur(
 ) -> None:
     for loc in locs:
         occ(t, loc, source=source, replace_source=replace_source, **kwargs)
+
+
+def biggest_citation_groups(limit: int = 50) -> List[Tuple[CitationGroup, int]]:
+    query = (
+        CitationGroup.select(
+            CitationGroup, peewee.fn.Count(CitationGroup.id).alias("num_names")
+        )
+        .join(Name, peewee.JOIN_LEFT_OUTER)
+        .group_by(CitationGroup.id)
+        .order_by(peewee.fn.Count(CitationGroup.id).desc())
+        .limit(limit)
+    )
+    return list(reversed([(t, t.num_names) for t in query]))
 
 
 def biggest_localities(limit: int = 50) -> List[Tuple[Location, int]]:
@@ -196,13 +210,19 @@ def names_with_attribute(
     return nams
 
 
-def f(nam: Union[Name, List[Name]], skip_fields: Container[str] = frozenset()) -> None:
+def f(
+    nam: Union[Name, List[Name]],
+    skip_fields: Container[str] = frozenset(),
+    always_edit: bool = False,
+) -> None:
     if isinstance(nam, list):
         nam = nam[0]
     if isinstance(nam, Taxon):
         nam = nam.base_name
     nam.display()
-    nam.fill_required_fields(skip_fields=skip_fields)
+    edited_any = nam.fill_required_fields(skip_fields=skip_fields)
+    if always_edit and not edited_any:
+        nam.e.type_tags
 
 
 g = partial(

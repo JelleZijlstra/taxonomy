@@ -10,6 +10,7 @@ from . import citations  # noqa: F401
 from .collection import Collection  # noqa: F401
 from .location import Location  # noqa: F401
 from .name import (  # noqa: F401
+    CitationGroup,
     Name,
     NameComment,
     TypeTag,

@@ -62,6 +62,32 @@ class Region(BaseModel):
             yield self.parent
             yield from self.parent.all_parents()
 
+    def has_citation_groups(self) -> bool:
+        for _ in self.citation_groups:
+            return True
+        return any(child.has_citation_groups() for child in self.children)
+
+    def display_citation_groups(
+        self, full: bool = False, only_nonempty: bool = True, depth: int = 0
+    ) -> None:
+        if only_nonempty and not self.has_citation_groups():
+            return
+        print(" " * depth + self.name)
+        by_type: Dict[
+            constants.ArticleType, List["models.CitationGroup"]
+        ] = collections.defaultdict(list)
+        for group in sorted(self.citation_groups, key=lambda cg: cg.name):
+            by_type[group.type].append(group)
+        for typ, groups in sorted(by_type.items(), key=lambda pair: pair[0].name):
+            print(f"{' ' * (depth + 4)}{typ.name}")
+            for group in groups:
+                if not group.deleted:
+                    group.display(full=full, include_articles=full, depth=depth + 8)
+        for child in sorted(self.children, key=lambda c: c.name):
+            child.display_citation_groups(
+                full=full, only_nonempty=only_nonempty, depth=depth + 4
+            )
+
     def has_collections(self) -> bool:
         for _ in self.collections:
             return True

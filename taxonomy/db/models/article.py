@@ -19,8 +19,10 @@ from typing import (
     Type,
 )
 
-from .base import ADTField, BaseModel, EnumField
+from .base import ADTField, BaseModel, EnumField, ModelT
 from ... import config, events, adt, getinput
+
+from .citation_group import CitationGroup
 
 _options = config.get_options()
 _TYPE_TO_FIELDS = {
@@ -28,7 +30,7 @@ _TYPE_TO_FIELDS = {
         "authors",
         "year",
         "title",
-        "journal",
+        "citation_group",
         "volume",
         "issue",
         "start_page",
@@ -44,8 +46,22 @@ _TYPE_TO_FIELDS = {
         "parent",
         "url",
     ],
-    ArticleType.BOOK: ["authors", "year", "title", "pages", "publisher", "location"],
-    ArticleType.THESIS: ["authors", "year", "title", "pages", "publisher", "series"],
+    ArticleType.BOOK: [
+        "authors",
+        "year",
+        "title",
+        "pages",
+        "publisher",
+        "citation_group",
+    ],
+    ArticleType.THESIS: [
+        "authors",
+        "year",
+        "title",
+        "pages",
+        "citation_group",
+        "series",
+    ],
     ArticleType.SUPPLEMENT: ["title", "parent"],
     ArticleType.WEB: ["authors", "year", "title", "url"],
     ArticleType.MISCELLANEOUS: ["authors", "year", "title", "url"],
@@ -72,7 +88,9 @@ class Article(BaseModel):
     year = CharField()  # year published
     # title (chapter title for book chapter; book title for full book or thesis)
     title = CharField()
-    journal = CharField()  # journal published in
+    _journal = CharField(
+        db_column="journal"
+    )  # journal published in (deprecated; use citation_group)
     series = CharField()  # journal series
     volume = CharField()  # journal volume
     issue = CharField()  # journal issue
@@ -82,7 +100,9 @@ class Article(BaseModel):
     doi = CharField()  # DOI
     type = EnumField(ArticleType)  # type of file
     publisher = CharField()  # publisher
-    location = CharField()  # geographical location published
+    _location = CharField(
+        db_column="location"
+    )  # geographical location published (deprecated; use citation_group)
     pages = CharField()  # number of pages in book
     misc_data = CharField()  # miscellaneous data
 
@@ -92,6 +112,38 @@ class Article(BaseModel):
     kind = EnumField(ArticleKind)
     parent = ForeignKeyField("self", null=True)
     tags = ADTField(lambda: Tag, null=True)
+    citation_group = ForeignKeyField(CitationGroup, null=True)
+
+    @property
+    def journal(self) -> Optional[str]:
+        if self.type != ArticleType.JOURNAL:
+            return None
+        if self.citation_group is not None:
+            return self.citation_group.name
+        else:
+            return None
+
+    @journal.setter
+    def journal(self, value: str) -> None:
+        self.citation_group = CitationGroup.get_or_create(value)
+
+    @property
+    def place_of_publication(self) -> Optional[str]:
+        if self.type not in (ArticleType.BOOK, ArticleType.WEB):
+            return None
+        if self.citation_group is not None:
+            return self.citation_group.name
+        else:
+            return None
+
+    @property
+    def institution(self) -> Optional[str]:
+        if self.type != ArticleType.THESIS:
+            return None
+        if self.citation_group is not None:
+            return self.citation_group.name
+        else:
+            return None
 
     class Meta:
         db_table = "article"
@@ -99,6 +151,19 @@ class Article(BaseModel):
     @classmethod
     def select_valid(cls, *args: Any) -> Any:
         return cls.select(*args).filter(cls.kind != ArticleKind.redirect)
+
+    @classmethod
+    def bfind(
+        cls: Type[ModelT],
+        *args: Any,
+        quiet: bool = False,
+        sort_key: Optional[Callable[[ModelT], Any]] = None,
+        journal: Optional[str] = None,
+        **kwargs: Any,
+    ) -> List[ModelT]:
+        if journal is not None:
+            args = (*args, cls.citation_group == CitationGroup.get(name=journal))
+        return super().bfind(*args, quiet=quiet, sort_key=sort_key, **kwargs)
 
     def get_required_fields(self) -> Iterable[str]:
         yield "kind"
@@ -409,7 +474,7 @@ class Tag(adt.ADT):
     ISBN(text=str, tag=1)  # type: ignore
     Eurobats(text=str, tag=2)  # type: ignore
     HDL(text=str, tag=3)  # type: ignore
-    JStor(text=str, tag=4)  # type: ignore
+    JSTOR(text=str, tag=4)  # type: ignore
     PMID(text=str, tag=5)  # type: ignore
     ISSN(text=str, tag=6)  # type: ignore
     PMC(text=str, tag=7)  # type: ignore

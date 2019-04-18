@@ -56,6 +56,7 @@ CREATE TABLE `name` (
     `genus_type_kind` integer default null,
     `species_type_kind` integer default null,
     `type_tags` text default null,
+    `citation_group` INT UNSIGNED DEFAULT NULL,
     PRIMARY KEY(`id`),
     INDEX(`original_name`),
     INDEX(`root_name`),
@@ -220,6 +221,7 @@ CREATE TABLE `article` (
     `kind` integer DEFAULT NULL,
     `parent_id` INT UNSIGNED DEFAULT NULL,
     `tags` text default null,
+    `citation_group_id` INT UNSIGNED DEFAULT NULL,
     PRIMARY KEY (`name`)
 );
 
@@ -229,4 +231,13 @@ CREATE TABLE `article_comment` (
     `kind` integer,
     `date` integer,
     `text` text
+);
+
+CREATE TABLE `citation_group` (
+    `id` integer primary key,
+    `name` varchar(255) NOT NULL,
+    `region_id` INTEGER DEFAULT NULL,
+    `deleted` TINYINT DEFAULT 0,
+    `type` integer NOT NULL DEFAULT 0,
+    UNIQUE KEY(`name`)
 );

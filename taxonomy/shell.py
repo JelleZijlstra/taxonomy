@@ -15,6 +15,7 @@ Possible ones to add:
 """
 
 import collections
+from collections import defaultdict
 import functools
 import os.path
 import re
@@ -45,10 +46,21 @@ from traitlets.config.loader import Config
 
 from . import getinput
 from .db import constants, definition, detection, helpers, models
-from .db.constants import Age, Group, NomenclatureStatus, Rank, PeriodSystem
-from .db.models import Article, Collection, Name, Tag, Taxon, TypeTag, database
+from .db.constants import Age, Group, NomenclatureStatus, Rank
+from .db.models import (
+    Article,
+    CitationGroup,
+    Collection,
+    Name,
+    Tag,
+    Taxon,
+    TypeTag,
+    database,
+)
 
 T = TypeVar("T")
+
+COMMENT_FIELDS = {"other_comments", "nomenclature_comments", "taxonomy_comments"}
 
 
 class _ShellNamespace(dict):  # type: ignore
@@ -102,7 +114,7 @@ ns = _ShellNamespace(
         "Tag": models.Tag,
         "TypeTag": models.TypeTag,
         "Counter": collections.Counter,
-        "defaultdict": collections.defaultdict,
+        "defaultdict": defaultdict,
     }
 )
 ns.update(constants.__dict__)
@@ -243,9 +255,9 @@ def add_page_described() -> Iterable[Tuple[Name, str]]:
     ):
         if name.year in ("2015", "2016"):
             continue  # recent JVP papers don't have page numbers
-        message = (
-            "Name %s is missing page described, but has original citation {%s}"
-            % (name.description(), name.original_citation.name)
+        message = "Name %s is missing page described, but has original citation {%s}" % (
+            name.description(),
+            name.original_citation.name,
         )
         yield name, message
 
@@ -534,7 +546,7 @@ def detect_species_name_complexes(dry_run: bool = False) -> None:
 
 class SuffixTree(Generic[T]):
     def __init__(self) -> None:
-        self.children: Dict[str, SuffixTree[T]] = collections.defaultdict(SuffixTree)
+        self.children: Dict[str, SuffixTree[T]] = defaultdict(SuffixTree)
         self.values: List[T] = []
 
     def add(self, key: str, value: T) -> None:
@@ -566,7 +578,7 @@ class SuffixTree(Generic[T]):
 def find_patronyms(dry_run: bool = True, min_length: int = 4) -> Dict[str, int]:
     """Finds names based on patronyms of authors in the database."""
     authors = set()
-    species_name_to_names: Dict[str, List[Name]] = collections.defaultdict(list)
+    species_name_to_names: Dict[str, List[Name]] = defaultdict(list)
     for name in Name.select_valid():
         if name.authority:
             for author in name.get_authors():
@@ -617,7 +629,7 @@ def find_first_declension_adjectives(dry_run: bool = True) -> Dict[str, int]:
     adjectives = get_pages_in_wiki_category(
         "en.wiktionary.org", "Latin first and second declension adjectives"
     )
-    species_name_to_names: Dict[str, List[Name]] = collections.defaultdict(list)
+    species_name_to_names: Dict[str, List[Name]] = defaultdict(list)
     for name in Name.select_valid().filter(
         Name.group == Group.species, Name.species_name_complex >> None
     ):
@@ -803,7 +815,7 @@ def _duplicate_finder(
 
 @_duplicate_finder
 def dup_collections() -> List[Dict[str, List[Collection]]]:
-    colls: Dict[str, List[Collection]] = collections.defaultdict(list)
+    colls: Dict[str, List[Collection]] = defaultdict(list)
     for coll in Collection.select():
         colls[coll.label].append(coll)
     return [colls]
@@ -811,7 +823,7 @@ def dup_collections() -> List[Dict[str, List[Collection]]]:
 
 @_duplicate_finder
 def dup_taxa() -> List[Dict[str, List[Taxon]]]:
-    taxa: Dict[str, List[Taxon]] = collections.defaultdict(list)
+    taxa: Dict[str, List[Taxon]] = defaultdict(list)
     for txn in Taxon.select_valid():
         if txn.rank == Rank.subgenus and taxa[txn.valid_name]:
             continue
@@ -831,7 +843,7 @@ def dup_taxa() -> List[Dict[str, List[Taxon]]]:
 
 @_duplicate_finder
 def dup_genus() -> List[Dict[str, List[Name]]]:
-    names: Dict[str, List[Name]] = collections.defaultdict(list)
+    names: Dict[str, List[Name]] = defaultdict(list)
     for name in Name.select_valid().filter(Name.group == Group.genus):
         full_name = f"{name.root_name} {name.authority}, {name.year}"
         names[full_name].append(name)
@@ -844,7 +856,7 @@ def dup_names() -> List[
 ]:
     original_year: Dict[
         Tuple[str, str, constants.NomenclatureStatus], List[Name]
-    ] = collections.defaultdict(list)
+    ] = defaultdict(list)
     for name in Name.select_valid().filter(
         Name.original_name != None, Name.year != None
     ):
@@ -892,17 +904,19 @@ class ScoreHolder:
             and value.get(field, (100, None, None))[0] < max_score
         )
 
-        def sort_key(pair):
+        def sort_key(
+            pair: Tuple[Any, Dict[str, Tuple[float, int, int]]]
+        ) -> Tuple[Any, ...]:
             _, data = pair
-            percentage, required_count, count = data.get(field, (100, 0, 0))
+            percentage, count, required_count = data.get(field, (100, 0, 0))
             return (percentage, required_count, data["total"])
 
         sorted_items = sorted(items, key=sort_key)
         for taxon, data in sorted_items:
             if field in data:
-                percentage, required_count, count = data[field]
+                percentage, count, required_count = data[field]
             else:
-                percentage, required_count, count = 100, 0, 0
+                percentage, count, required_count = 100, 0, 0
             print(
                 f'{taxon} {percentage:.2f} ({count}/{required_count}) {data["total"]}'
             )
@@ -913,7 +927,7 @@ class ScoreHolder:
             "count",
             "score",
         }
-        counts = collections.defaultdict(int)
+        counts: Dict[str, int] = defaultdict(int)
         for data in self.data.values():
             for field in fields:
                 if field not in data or data[field][0] == 100:
@@ -1149,9 +1163,7 @@ def print_percentages() -> None:
 
     print("Finished collecting parents for taxa")
 
-    counts_of_parent: Dict[int, Dict[str, int]] = collections.defaultdict(
-        lambda: collections.defaultdict(int)
-    )
+    counts_of_parent: Dict[int, Dict[str, int]] = defaultdict(lambda: defaultdict(int))
     for name in Name.select_valid():
         parent_id = parent_of_taxon[name.taxon.id]
         counts_of_parent[parent_id]["total"] += 1
@@ -1317,14 +1329,14 @@ def check_age_parents() -> Iterable[Taxon]:
 
 @command
 def clean_up_verbatim(dry_run: bool = False, slow: bool = False) -> None:
-    def _maybe_clean_verbatim(nam):
+    def _maybe_clean_verbatim(nam: Name) -> None:
         print(f"{nam}: {nam.type}, {nam.verbatim_type}")
         if not dry_run:
             nam.add_data("verbatim_type", nam.verbatim_type, concat_duplicate=True)
             nam.verbatim_type = None
             nam.save()
 
-    famgen_type_count = species_type_count = citation_count = 0
+    famgen_type_count = species_type_count = citation_count = citation_group_count = 0
     for nam in Name.select_valid().filter(
         Name.group << (Group.family, Group.genus),
         Name.verbatim_type != None,
@@ -1361,9 +1373,40 @@ def clean_up_verbatim(dry_run: bool = False, slow: bool = False) -> None:
             )
             nam.verbatim_citation = None
             nam.save()
+    for nam in Name.select_valid().filter(
+        Name.citation_group != None, Name.original_citation != None
+    ):
+        print(f"{nam}: {nam.original_citation.name}, {nam.citation_group}")
+        citation_group_count += 1
+        if not dry_run:
+            nam.citation_group = None
     print(f"Family/genera type count: {famgen_type_count}")
     print(f"Species type count: {species_type_count}")
     print(f"Citation count: {citation_count}")
+    print(f"Citation group count: {citation_group_count}")
+
+
+@command
+def set_citation_group_for_matching_citation(dry_run: bool = False) -> None:
+    cite_to_nams: Dict[str, List[Name]] = defaultdict(list)
+    cite_to_group: Dict[str, Set[CitationGroup]] = defaultdict(set)
+    count = 0
+    for nam in Name.bfind(Name.verbatim_citation != None, quiet=True):
+        cite_to_nams[nam.verbatim_citation].append(nam)
+        if nam.citation_group is not None:
+            cite_to_group[nam.verbatim_citation].add(nam.citation_group)
+    for cite, groups in cite_to_group.items():
+        if len(groups) == 1:
+            group = next(iter(groups))
+            for nam in cite_to_nams[cite]:
+                if nam.citation_group is None:
+                    print(f"{nam} ({cite}) -> {group}")
+                    count += 1
+                    if not dry_run:
+                        nam.citation_group = group
+        else:
+            print(f"error: {cite} maps to {groups}")
+    print(f"Added {count} citation_groups")
 
 
 @command
@@ -1408,6 +1451,85 @@ def fill_data_from_paper(
         paper = models.BaseModel.get_value_for_foreign_class("paper", models.Article)
     assert paper is not None, "paper needs to be specified"
     models.taxon.fill_data_from_paper(paper, always_edit_tags=always_edit_tags)
+
+
+@command
+def fill_data_from_author(author: str, always_edit_tags: bool = False) -> None:
+    for nam in Name.bfind(authority=author):
+        if nam.original_citation is not None:
+            print(nam, nam.original_citation)
+            fill_data_from_paper(nam.original_citation)
+
+
+@command
+def fill_citation_group_for_type(
+    article_type: constants.ArticleType, field: str, dry_run: bool = False
+) -> None:
+    for art in Article.bfind(
+        Article.citation_group == None,
+        Article.type == article_type,
+        getattr(Article, field) != None,
+        getattr(Article, field) != "",
+        quiet=True,
+    ):
+        name = getattr(art, field)
+        try:
+            cg = CitationGroup.get(name=name)
+        except CitationGroup.DoesNotExist:
+            print(f"Create: {name}, type={article_type}")
+            if dry_run:
+                continue
+            cg = CitationGroup.create(name=name, type=article_type)
+        if not dry_run:
+            print(f"set {art} {cg}")
+            art.citation_group = cg
+            art.save()
+
+
+@command
+def set_region_for_groups(*queries: Any) -> None:
+    for cg in CitationGroup.bfind(CitationGroup.region == None, *queries):
+        cg.display(full=True)
+        cg.e.region
+
+
+@command
+def fill_citation_group_for_author(author: str) -> None:
+    for nam in Name.bfind(
+        Name.verbatim_citation != None,
+        Name.citation_group == None,
+        authority=author,
+        sort_key=lambda nam: nam.verbatim_citation,
+    ):
+        nam = nam.reload()
+        if nam.citation_group is None:
+            nam.display()
+            nam.fill_field("citation_group")
+
+
+@command
+def fill_citation_group_for_pattern(pattern: str) -> None:
+    for nam in Name.bfind(
+        Name.verbatim_citation != None,
+        Name.citation_group == None,
+        Name.verbatim_citation % pattern,
+        sort_key=lambda nam: nam.verbatim_citation,
+    ):
+        nam = nam.reload()
+        if nam.citation_group is None:
+            nam.display()
+            nam.fill_field("citation_group")
+
+
+@command
+def fill_citation_group_for_taxon_authors(
+    taxon: Taxon, age: Optional[Age] = Age.extant
+) -> None:
+    nams = taxon.names_missing_field("citation_group", age=age)
+    authors = sorted({nam.authority for nam in nams})
+    for author in authors:
+        print(f"==== {author} ====")
+        fill_citation_group_for_author(author)
 
 
 @command
@@ -1496,6 +1618,33 @@ def most_common_comments(field: str = "other_comments") -> Counter[str]:
 
 
 @command
+def most_common_sources(
+    taxon: Optional[Taxon] = None, print_limit: int = 5
+) -> Iterable[Tuple[str, List[Name]]]:
+    source_to_nams: Dict[str, List[Name]] = defaultdict(list)
+    if taxon is None:
+        for field in COMMENT_FIELDS:
+            for nam in Name.filter(getattr(Name, field) != None):
+                for source in helpers.extract_sources(getattr(nam, field)):
+                    source_to_nams[source].append(nam)
+    else:
+        nams = taxon.all_names()
+        for nam in nams:
+            for field in COMMENT_FIELDS:
+                value = getattr(nam, field)
+                if value is not None:
+                    for source in helpers.extract_sources(value):
+                        source_to_nams[source].append(nam)
+    output = sorted(source_to_nams.items(), key=lambda pair: -len(pair[1]))
+    for source, output_nams in output:
+        if len(output_nams) >= print_limit:
+            print(f"{source}: {len(output_nams)}")
+        else:
+            break
+    return output
+
+
+@command
 def redundant_comments() -> None:
     for nam in Name.select_valid().filter(
         Name.nomenclature_comments == "Nomen nudum",
@@ -1568,7 +1717,11 @@ def check_justified_emendations() -> Iterable[Tuple[Name, str]]:
             yield nam, "justified_emendation without a JustifiedEmendationOf tag"
             continue
         ios_target = target.get_tag_target(Tag.IncorrectOriginalSpellingOf)
-        if target.nomenclature_status is NomenclatureStatus.incorrect_original_spelling:
+        if ios_target is None:
+            yield target, "missing IncorrectOriginalSpellingOf tag"
+        elif (
+            target.nomenclature_status is NomenclatureStatus.incorrect_original_spelling
+        ):
             if ios_target.nomenclature_status is not NomenclatureStatus.as_emended:
                 yield ios_target, f"should be as_emended because {target} is an IOS"
             elif ios_target in as_emendeds:
@@ -1609,7 +1762,7 @@ def check_tags(dry_run: bool = True) -> Iterable[Tuple[Name, str]]:
                 nam.nomenclature_status = status  # type: ignore
                 nam.save()
 
-    names_by_tag: Dict[Type[Any], Set[Name]] = collections.defaultdict(set)
+    names_by_tag: Dict[Type[Any], Set[Name]] = defaultdict(set)
     for nam in Name.select_valid().filter(Name.tags != None):
         try:
             tags = nam.tags
@@ -1989,7 +2142,7 @@ def disambiguate_authors(dry_run: bool = False) -> None:
     for author in sorted(AMBIGUOUS_AUTHORS):
         print(f"--- {author} ---")
         nams = list(_names_with_author(author))
-        by_citation: Dict[Optional[Article], List[Name]] = collections.defaultdict(list)
+        by_citation: Dict[Optional[Article], List[Name]] = defaultdict(list)
         for nam in nams:
             by_citation[nam.original_citation].append(nam)
         for citation, nams in by_citation.items():
@@ -2020,9 +2173,7 @@ def validate_authors(dry_run: bool = False) -> Iterable[Name]:
 
 @command
 def initials_report() -> None:
-    data: Dict[str, Dict[str, List[Name]]] = collections.defaultdict(
-        lambda: collections.defaultdict(list)
-    )
+    data: Dict[str, Dict[str, List[Name]]] = defaultdict(lambda: defaultdict(list))
     for nam in Name.select_valid().filter(Name.authority % "*.*"):
         authors = nam.get_authors()
         for author in authors:
@@ -2093,7 +2244,7 @@ def run_maintenance(skip_slow: bool = True) -> Dict[Any, Any]:
         # dup_genus,
         # dup_taxa,
         bad_stratigraphy,
-        resolve_redirects,
+        set_citation_group_for_matching_citation,
     ]
     # these each take >60 s
     slow: List[Callable[[], Any]] = [
@@ -2104,6 +2255,7 @@ def run_maintenance(skip_slow: bool = True) -> Dict[Any, Any]:
         check_type_tags,
         check_age_parents,
         name_mismatches,
+        resolve_redirects,
     ]
     if not skip_slow:
         fns += slow
@@ -2189,14 +2341,21 @@ def moreau(nam: Name) -> None:
 
 
 @command
-def replace_comments(substr: str, field: str = "other_comments") -> None:
-    for nam in Name.filter(getattr(Name, field).contains(substr)).order_by(
-        getattr(Name, field)
-    ):
-        nam.display()
-        print(getattr(nam, field))
-        nam.add_comment()
-        setattr(nam, field, None)
+def replace_comments(substr: str) -> None:
+    try:
+        art = Article.get(name=substr)
+    except Article.DoesNotExist:
+        pass
+    else:
+        art.openf()
+    for field in COMMENT_FIELDS:
+        for nam in Name.filter(getattr(Name, field).contains(substr)).order_by(
+            getattr(Name, field)
+        ):
+            nam.display()
+            print(getattr(nam, field))
+            nam.add_comment()
+            setattr(nam, field, None)
 
 
 def fgsyn(off: Optional[Name] = None) -> Name:
@@ -2221,10 +2380,13 @@ def author_report(
         condition = Name.authority.contains(author)
     else:
         condition = Name.authority == author
-    nams = list(Name.select_valid().filter(condition, Name.original_citation == None))
+    query = Name.select_valid().filter(condition)
+    if not missing_attribute:
+        query = query.filter(Name.original_citation == None)
+    nams = list(query)
 
-    by_year = collections.defaultdict(list)
-    no_year = []
+    by_year: Dict[str, List[Name]] = defaultdict(list)
+    no_year: List[Name] = []
     for nam in nams:
         if (
             missing_attribute is not None
@@ -2235,8 +2397,8 @@ def author_report(
             by_year[nam.year].append(nam)
         else:
             no_year.append(nam)
-    print(f"total names: {len(nams)}")
-    if not nams:
+    print(f"total names: {sum(len(v) for v in by_year.items()) + len(no_year)}")
+    if not by_year and not no_year:
         return
     print(f"years: {min(by_year)}–{max(by_year)}")
     for year, year_nams in sorted(by_year.items()):

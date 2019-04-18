@@ -859,11 +859,9 @@ class Taxon(BaseModel):
             deprecated = set(name.get_deprecated_fields())
             for field in name.get_required_fields():
                 if field in deprecated:
-                    # We count deprecated fields differently: we simply
-                    # add one "required" count for every name that still has it,
-                    # and ignore others.
-                    if getattr(name, field) is not None:
-                        required_counts[field] += 1
+                    required_counts[field] += 1
+                    if getattr(name, field) is None:
+                        counts[field] += 1
                 else:
                     required_counts[field] += 1
                     if getattr(name, field) is not None:
@@ -955,6 +953,7 @@ class Taxon(BaseModel):
         for name in sorted(
             self.all_names(), key=lambda nam: (nam.authority or "", nam.year or "")
         ):
+            name = name.reload()
             if field in name.get_empty_required_fields():
                 name.display()
                 name.fill_field(field)
@@ -985,11 +984,14 @@ class Taxon(BaseModel):
         elif not candidates:
             raise AttributeError(attr)
         else:
-            return getinput.choose_one(
+            nam = getinput.choose_one(
                 candidates,
                 display_fn=lambda nam: f"{nam} (#{nam.id})",
                 history_key=(self, attr),
             )
+            if nam is None:
+                raise AttributeError(attr)
+            return nam
 
     def __dir__(self) -> List[str]:
         result = set(super().__dir__())

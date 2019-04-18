@@ -103,7 +103,7 @@ def _adt_member_hash(self: Any) -> int:
 
 class _ADTMeta(type):
     @classmethod
-    def __prepare__(mcs, name: str, bases: Any) -> _ADTNamespace:  # type: ignore
+    def __prepare__(mcs, name: str, bases: Any) -> _ADTNamespace:
         return _ADTNamespace(sys._getframe(1).f_globals)
 
     def __new__(mcs, name: str, bases: Any, ns: Any) -> Type[Any]:

@@ -31,6 +31,7 @@ from ..definition import Definition
 
 from .base import BaseModel, EnumField, ADTField
 from .article import Article
+from .citation_group import CitationGroup
 from .collection import Collection
 from .taxon import Taxon
 from .location import Location
@@ -73,6 +74,9 @@ class Name(BaseModel):
     )
     page_described = CharField(null=True)
     verbatim_citation = CharField(null=True)
+    citation_group = ForeignKeyField(
+        CitationGroup, null=True, db_column="citation_group", related_name="names"
+    )
     year = CharField(null=True)  # redundant with data for the publication itself
 
     # Gender and stem
@@ -238,6 +242,12 @@ class Name(BaseModel):
                 return typ
             else:
                 return None
+        elif field == "citation_group":
+            existing = self.citation_group
+            value = super().get_value_for_field(field)
+            if existing is None and value is not None:
+                value.apply_to_patterns()
+            return value
         elif field == "species_name_complex":
             value = super().get_value_for_field(field)
             if value is not None and value.kind.is_single_complex():
@@ -451,6 +461,14 @@ class Name(BaseModel):
         else:
             return int(self.year)
 
+    def sort_key(self) -> Tuple[Any, ...]:
+        return (
+            self.numeric_year(),
+            self.numeric_page_described(),
+            self.original_name or "",
+            self.root_name,
+        )
+
     def make_variant(
         self, status: NomenclatureStatus, of_name: "Name", comment: Optional[str] = None
     ) -> None:
@@ -595,6 +613,9 @@ class Name(BaseModel):
                 "taxonomy_comments": self.taxonomy_comments,
                 "verbatim_type": self.verbatim_type,
                 "verbatim_citation": self.verbatim_citation,
+                "citation_group": self.citation_group.name
+                if self.citation_group is not None
+                else None,
                 "type_locality_description": self.type_locality_description,
                 "tags": sorted(self.tags) if self.tags else None,
             }
@@ -651,11 +672,18 @@ class Name(BaseModel):
             if verbose:
                 print("0 because no original citation")
             return 0
+        deprecated_fields = set(self.get_deprecated_fields())
         for field in required_fields:
-            if getattr(self, field) is None:
-                if verbose:
-                    print(f"1 because {field} is missing")
-                return 1
+            if field in deprecated_fields:
+                if getattr(self, field) is not None:
+                    if verbose:
+                        print(f"1 because {field} is set")
+                    return 1
+            else:
+                if getattr(self, field) is None:
+                    if verbose:
+                        print(f"1 because {field} is missing")
+                    return 1
         if verbose:
             print("2 because all fields are set")
         return 2
@@ -681,6 +709,8 @@ class Name(BaseModel):
         yield "original_citation"
         if self.original_citation is None:
             yield "verbatim_citation"
+        if self.verbatim_citation is not None:
+            yield "citation_group"
 
         if (
             self.group == Group.genus
@@ -720,8 +750,7 @@ class Name(BaseModel):
                 elif self.genus_type_kind.requires_tag():
                     yield "type_tags"
         for field in self.get_deprecated_fields():
-            if getattr(self, field) is not None:
-                yield field
+            yield field
 
     def get_deprecated_fields(self) -> Iterable[str]:
         yield "type_locality_description"

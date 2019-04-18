@@ -21,6 +21,7 @@ from typing import (
 
 import peewee
 from peewee import (
+    BooleanField,
     CharField,
     ForeignKeyField,
     IntegerField,
@@ -208,7 +209,11 @@ class BaseModel(Model):
 
     @classmethod
     def bfind(
-        cls: Type[ModelT], *args: Any, quiet: bool = False, **kwargs: Any
+        cls: Type[ModelT],
+        *args: Any,
+        quiet: bool = False,
+        sort_key: Optional[Callable[[ModelT], Any]] = None,
+        **kwargs: Any,
     ) -> List[ModelT]:
         filters = [*args]
         fields = cls._meta.fields
@@ -221,14 +226,18 @@ class BaseModel(Model):
             else:
                 filters.append(field == value)
         objs = list(cls.select_valid().filter(*filters))
+        if sort_key is None and hasattr(cls, "label_field"):
+            sort_key = lambda obj: getattr(obj, cls.label_field) or ""
+        if sort_key is not None:
+            objs = sorted(objs, key=sort_key)
         if not quiet:
             if hasattr(cls, "label_field"):
-                objs = sorted(objs, key=lambda obj: getattr(obj, cls.label_field) or "")
                 for obj in objs:
                     print(getattr(obj, cls.label_field))
             else:
                 for obj in objs:
                     print(obj)
+            print(f"{len(objs)} found")
         return objs
 
     def reload(self: ModelT) -> ModelT:
@@ -308,6 +317,8 @@ class BaseModel(Model):
                 return None
             else:
                 return int(result)
+        elif isinstance(field_obj, BooleanField):
+            return getinput.yes_no(prompt, default=current_value, callbacks=callbacks)
         else:
             raise ValueError(f"don't know how to fill {field}")
 
@@ -410,10 +421,14 @@ class BaseModel(Model):
             if getattr(self, field) is not None
         )
 
-    def fill_required_fields(self, skip_fields: Container[str] = frozenset()) -> None:
+    def fill_required_fields(self, skip_fields: Container[str] = frozenset()) -> bool:
+        """Edit all required fields that are empty. Returns whether any field was edited."""
+        edited_any = False
         for field in self.get_empty_required_fields():
             if field not in skip_fields:
                 self.fill_field(field)
+                edited_any = True
+        return edited_any
 
     def get_tag(
         self, tags: Optional[Sequence[adt.ADT]], tag_cls: Type[adt.ADT]

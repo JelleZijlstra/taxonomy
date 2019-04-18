@@ -105,7 +105,9 @@ def get_line(
         return line
 
 
-def yes_no(prompt: str, default: Optional[bool] = None) -> bool:
+def yes_no(
+    prompt: str, default: Optional[bool] = None, callbacks: CallbackMap = {}
+) -> bool:
     positive = {"y", "yes"}
     negative = {"n", "no"}
     default_str = "y" if default is True else ("n" if default is False else "")
@@ -113,6 +115,7 @@ def yes_no(prompt: str, default: Optional[bool] = None) -> bool:
         prompt + "> ",
         validate=lambda line: line.lower() in positive | negative,
         default=default_str,
+        callbacks=callbacks,
     )
     return result is not None and result.lower() in positive
 
