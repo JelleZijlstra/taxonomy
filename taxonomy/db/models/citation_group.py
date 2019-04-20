@@ -19,6 +19,7 @@ class CitationGroup(BaseModel):
     region = ForeignKeyField(Region, related_name="citation_groups", null=True)
     deleted = BooleanField(default=False)
     type = EnumField(constants.ArticleType)
+    target = ForeignKeyField("self", related_name="redirects", null=True)
 
     class Meta(object):
         db_table = "citation_group"
@@ -42,7 +43,14 @@ class CitationGroup(BaseModel):
         try:
             return cls.get(name=name)
         except cls.DoesNotExist:
+            print(f"Creating new CitationGroup named {name}...")
             return cls.create_interactively(name=name)
+
+    def get_required_fields(self) -> Iterable[str]:
+        yield "name"
+        yield "type"
+        if self.type not in (constants.ArticleType.ERROR, constants.ArticleType.REDIRECT):
+            yield "region"
 
     def apply_to_patterns(self) -> None:
         first = True
@@ -92,7 +100,7 @@ class CitationGroup(BaseModel):
         if full:
             self._display_nams(self.names, depth=depth)
         if include_articles:
-            for art in sorted(self.get_articles(), key=lambda art: art.name):
+            for art in sorted(self.get_articles(), key=lambda art: (art.year, art.name)):
                 print(f"{' ' * (depth + 4)}{art.cite()}")
 
     def delete(self) -> None:
@@ -111,8 +119,8 @@ class CitationGroup(BaseModel):
         for art in self.get_articles():
             art.citation_group = other
             art.save()
-        self.name += f" (merged into {other.name}; CG#{other.id})"
-        self.delete()
+        self.target = other
+        self.type = constants.ArticleType.REDIRECT
 
     def get_articles(self) -> Any:
         return models.Article.select_valid().filter(

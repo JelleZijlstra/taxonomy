@@ -15,6 +15,7 @@ from typing import (
     NamedTuple,
     Optional,
     Sequence,
+    Set,
     Tuple,
     Type,
 )
@@ -229,6 +230,23 @@ class Article(BaseModel):
     def isredirect(self) -> bool:
         return self.kind == ArticleKind.redirect
 
+    def is_page_in_range(self, page: int) -> bool:
+        if self.pages is not None:
+            try:
+                pages = int(self.pages)
+            except ValueError:
+                return False
+            return page <= pages
+        elif self.start_page and self.end_page:
+            try:
+                start_page = int(self.start_page)
+                end_page = int(self.end_page)
+            except ValueError:
+                return False
+            return page in range(start_page, end_page)
+        else:
+            return False
+
     # Authors
 
     def getAuthors(
@@ -332,6 +350,9 @@ class Article(BaseModel):
             self.getAuthors(separator=",", lastSeparator=" &", includeInitials=False),
             self.year,
         )
+
+    def author_set(self) -> Set[str]:
+        return {last for last, *_ in self._getAuthors()}
 
     def _getAuthors(self) -> List[Sequence[str]]:
         """Should return output like

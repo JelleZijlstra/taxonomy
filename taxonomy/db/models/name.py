@@ -9,6 +9,7 @@ from typing import (
     Iterable,
     List,
     Optional,
+    Set,
     Tuple,
     Type,
     TypeVar,
@@ -516,6 +517,12 @@ class Name(BaseModel):
 
     def conserve(self, opinion: str, comment: Optional[str] = None) -> None:
         self.add_tag(Tag.Conserved(opinion, comment))
+
+    def author_set(self) -> Set[str]:
+        return {
+            author.rsplit(". ", 1)[-1].split(", ", 1)[0]
+            for author in self.get_authors()
+        }
 
     def get_authors(self) -> List[str]:
         return re.split(r", | & ", re.sub(r"et al\.$", "", self.authority))

@@ -529,6 +529,7 @@ class ArticleType(enum.IntEnum):
     MISCELLANEOUS = 6
     SUPPLEMENT = 8  # ID of target in "parent", kind of supplement in "title"
     JOURNAL = 9
+    REDIRECT = 10
 
 
 class ArticleKind(enum.IntEnum):

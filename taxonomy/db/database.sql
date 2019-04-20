@@ -239,5 +239,6 @@ CREATE TABLE `citation_group` (
     `region_id` INTEGER DEFAULT NULL,
     `deleted` TINYINT DEFAULT 0,
     `type` integer NOT NULL DEFAULT 0,
+    `target_id` integer default null,
     UNIQUE KEY(`name`)
 );

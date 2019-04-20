@@ -255,9 +255,9 @@ def add_page_described() -> Iterable[Tuple[Name, str]]:
     ):
         if name.year in ("2015", "2016"):
             continue  # recent JVP papers don't have page numbers
-        message = "Name %s is missing page described, but has original citation {%s}" % (
-            name.description(),
-            name.original_citation.name,
+        message = (
+            "Name %s is missing page described, but has original citation {%s}"
+            % (name.description(), name.original_citation.name)
         )
         yield name, message
 
@@ -1488,7 +1488,11 @@ def fill_citation_group_for_type(
 
 @command
 def set_region_for_groups(*queries: Any) -> None:
-    for cg in CitationGroup.bfind(CitationGroup.region == None, *queries):
+    for cg in CitationGroup.bfind(
+        CitationGroup.region == None,
+        CitationGroup.type != constants.ArticleType.REDIRECT,
+        *queries,
+    ):
         cg.display(full=True)
         cg.e.region
 
@@ -2411,6 +2415,47 @@ def author_report(
                 print(f"        {nam.page_described}")
     if no_year:
         print(f"no year: {no_year}")
+
+
+@command
+def find_potential_citations() -> None:
+    for cg in CitationGroup.select_valid():
+        if cg.names.count() == 0:
+            continue
+        potential_arts = Article.bfind(citation_group=cg, quiet=True)
+        if not potential_arts:
+            continue
+        print(f"Trying {cg}...")
+        for nam in cg.names:
+            try:
+                page = int(nam.page_described)
+            except (TypeError, ValueError):
+                continue
+            candidates = [
+                art
+                for art in potential_arts
+                if nam.author_set() <= art.author_set()
+                and nam.year == art.year
+                and art.is_page_in_range(page)
+            ]
+            if candidates:
+                print("------")
+                nam.display()
+                for candidate in candidates:
+                    print(candidate.cite())
+
+
+@command
+def fix_citation_group_redirects() -> None:
+    for cg in CitationGroup.select_valid().filter(
+        CitationGroup.type == constants.ArticleType.REDIRECT
+    ):
+        for nam in cg.names:
+            print(f"update {nam} -> {cg.target}")
+            nam.citation_group = cg.target
+        for art in cg.get_articles():
+            print(f"update {art} -> {cg.target}")
+            art.citation_group = cg.target
 
 
 def run_shell() -> None:

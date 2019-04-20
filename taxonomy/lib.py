@@ -60,6 +60,22 @@ def occur(
         occ(t, loc, source=source, replace_source=replace_source, **kwargs)
 
 
+def biggest_citation_groups_no_region(
+    limit: int = 50
+) -> List[Tuple[CitationGroup, int]]:
+    query = (
+        CitationGroup.select(
+            CitationGroup, peewee.fn.Count(CitationGroup.id).alias("num_names")
+        )
+        .filter(CitationGroup.region == None)
+        .join(Name, peewee.JOIN_LEFT_OUTER)
+        .group_by(CitationGroup.id)
+        .order_by(peewee.fn.Count(CitationGroup.id).desc())
+        .limit(limit)
+    )
+    return list(reversed([(t, t.num_names) for t in query]))
+
+
 def biggest_citation_groups(limit: int = 50) -> List[Tuple[CitationGroup, int]]:
     query = (
         CitationGroup.select(
