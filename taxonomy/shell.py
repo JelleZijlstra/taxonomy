@@ -255,9 +255,9 @@ def add_page_described() -> Iterable[Tuple[Name, str]]:
     ):
         if name.year in ("2015", "2016"):
             continue  # recent JVP papers don't have page numbers
-        message = (
-            "Name %s is missing page described, but has original citation {%s}"
-            % (name.description(), name.original_citation.name)
+        message = "Name %s is missing page described, but has original citation {%s}" % (
+            name.description(),
+            name.original_citation.name,
         )
         yield name, message
 

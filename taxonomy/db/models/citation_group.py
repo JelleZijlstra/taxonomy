@@ -140,7 +140,7 @@ class CitationGroup(BaseModel):
                     print(f"Warning: skipping {art} because it has series {art.series}")
             art.save()
         self.target = other
-        self.type = constants.ArticleType.REDIRECT
+        self.type = constants.ArticleType.REDIRECT  # type: ignore
 
     def get_articles(self) -> Any:
         return models.Article.select_valid().filter(

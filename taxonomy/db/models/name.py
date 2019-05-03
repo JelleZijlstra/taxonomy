@@ -1116,15 +1116,14 @@ class Name(BaseModel):
             for cg, count in cgs.most_common():
                 print(count, cg)
 
-        cgs = [
+        similar_name_cgs = [
             nam.citation_group
             for nam in similar_names
             if nam.citation_group is not None
         ]
-        if cgs:
+        if similar_name_cgs:
             print("=== citation_group for names with same author")
-            cgs = Counter(cgs)
-            for cg, count in cgs.most_common():
+            for cg, count in Counter(similar_name_cgs).most_common():
                 print(count, cg)
 
     @classmethod
