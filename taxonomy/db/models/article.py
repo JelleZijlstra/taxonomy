@@ -230,8 +230,14 @@ class Article(BaseModel):
     def isredirect(self) -> bool:
         return self.kind == ArticleKind.redirect
 
+    def numeric_year(self) -> int:
+        try:
+            return int(self.year)
+        except (TypeError, ValueError):
+            return 0
+
     def is_page_in_range(self, page: int) -> bool:
-        if self.pages is not None:
+        if self.pages:
             try:
                 pages = int(self.pages)
             except ValueError:
@@ -243,7 +249,7 @@ class Article(BaseModel):
                 end_page = int(self.end_page)
             except ValueError:
                 return False
-            return page in range(start_page, end_page)
+            return page in range(start_page, end_page + 1)
         else:
             return False
 
@@ -366,6 +372,17 @@ class Article(BaseModel):
         if self.authors is None:
             return []
         return self.explode_authors(self.authors)
+
+    def getEnclosingAuthors(self, **kwargs: Any) -> str:
+        obj = self.getEnclosing()
+        if obj is None:
+            return ""
+        if not obj.authors:
+            return ""
+        # why?
+        if obj.authors == self.authors:
+            return ""
+        return obj.getAuthors(**kwargs)
 
     @staticmethod
     def implode_authors(authors: Iterable[Sequence[str]]) -> str:

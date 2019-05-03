@@ -5,9 +5,10 @@ Module for high-level analysis of the database.
 """
 
 import collections
-from typing import Dict, Iterable, Optional, Sequence
+from typing import Counter, Dict, Iterable, Optional, Sequence
 
 from . import constants, models
+from .models import CitationGroup, Taxon
 
 
 class _SuffixTree(object):
@@ -66,3 +67,19 @@ def genus_suffix_tree(no_complex_only: bool = False) -> _SuffixTree:
     if no_complex_only:
         query = query.where(models.Name.name_complex >> None)
     return _SuffixTree(name.root_name for name in query)
+
+
+def count_citation_groups(
+    taxon: Taxon, age: Optional[constants.Age] = None
+) -> Counter[Optional[CitationGroup]]:
+    counts: Counter[Optional[CitationGroup]] = Counter()
+    for nam in taxon.all_names(age=age):
+        if nam.citation_group is not None:
+            counts[nam.citation_group] += 1
+            continue
+        elif nam.original_citation is not None:
+            if nam.original_citation.citation_group is not None:
+                counts[nam.original_citation.citation_group] += 1
+                continue
+        counts[None] += 1
+    return counts

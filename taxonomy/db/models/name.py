@@ -1,3 +1,4 @@
+from collections import Counter
 import datetime
 import json
 import re
@@ -246,7 +247,11 @@ class Name(BaseModel):
         elif field == "citation_group":
             existing = self.citation_group
             value = super().get_value_for_field(field)
-            if existing is None and value is not None:
+            if (
+                existing is None
+                and value is not None
+                and self.verbatim_citation is not None
+            ):
                 value.apply_to_patterns()
             return value
         elif field == "species_name_complex":
@@ -1074,6 +1079,53 @@ class Name(BaseModel):
                     if candidate.taxon.is_child_of(parent)
                 ]
             return candidates
+
+    def possible_citation_groups(self) -> None:
+        if self.verbatim_citation is not None:
+            same_citation = list(
+                self.select_valid().filter(
+                    Name.verbatim_citation == self.verbatim_citation, Name.id != self.id
+                )
+            )
+            if same_citation:
+                print("=== same verbatim_citation:")
+                for nam in same_citation:
+                    nam.display()
+        similar_names = list(
+            self.select_valid().filter(
+                Name.authority == self.authority,
+                Name.year == self.year,
+                Name.id != self.id,
+            )
+        )
+        if not similar_names:
+            return
+
+        print(f"=== {len(similar_names)} similar names")
+        for nam in sorted(similar_names, key=lambda nam: nam.numeric_page_described()):
+            nam.display()
+
+        citations = {
+            nam.original_citation
+            for nam in similar_names
+            if nam.original_citation is not None
+        }
+        if citations:
+            print("=== citations for names with same author")
+            cgs = Counter(art.citation_group for art in citations)
+            for cg, count in cgs.most_common():
+                print(count, cg)
+
+        cgs = [
+            nam.citation_group
+            for nam in similar_names
+            if nam.citation_group is not None
+        ]
+        if cgs:
+            print("=== citation_group for names with same author")
+            cgs = Counter(cgs)
+            for cg, count in cgs.most_common():
+                print(count, cg)
 
     @classmethod
     def find_name(

@@ -77,7 +77,7 @@ def _citenormal(article: Article, *, mw: bool) -> str:
             out += f"P. {article.start_page}"
         else:
             out += f"Pp. {article.start_page}–{article.end_page}"
-        enclosing = article.getEnclosing()
+        enclosing = article.parent
         if not enclosing:
             out += " in Unknown"
         else:

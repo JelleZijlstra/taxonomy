@@ -958,6 +958,22 @@ class Taxon(BaseModel):
                 name.display()
                 name.fill_field(field)
 
+    def fill_citation_group(self, age: Optional[Age] = None) -> None:
+        for name in sorted(
+            self.all_names(age=age),
+            key=lambda nam: (
+                nam.authority or "",
+                nam.numeric_year(),
+                nam.numeric_page_described(),
+            ),
+        ):
+            name = name.reload()
+            if name.verbatim_citation is not None and name.citation_group is None:
+                name.possible_citation_groups()
+                print("=== name")
+                name.display()
+                name.fill_field("citation_group")
+
     def count_attribute(
         self, field: str = "type_locality", age: Optional[Age] = None
     ) -> Counter[Any]:

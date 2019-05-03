@@ -1498,15 +1498,37 @@ def set_region_for_groups(*queries: Any) -> None:
 
 
 @command
-def fill_citation_group_for_author(author: str) -> None:
+def fill_citation_group_for_author(author: str, require_citation: bool = True) -> None:
+    queries = [Name.citation_group == None, Name.original_citation == None]
+    if require_citation:
+        queries.append(Name.verbatim_citation != None)
     for nam in Name.bfind(
-        Name.verbatim_citation != None,
-        Name.citation_group == None,
+        *queries,
         authority=author,
-        sort_key=lambda nam: nam.verbatim_citation,
+        sort_key=lambda nam: (nam.numeric_year(), nam.verbatim_citation or ""),
     ):
         nam = nam.reload()
         if nam.citation_group is None:
+            nam.possible_citation_groups()
+            print("===", nam)
+            nam.display()
+            nam.fill_field("citation_group")
+
+
+@command
+def fill_citation_groups() -> None:
+    for nam in sorted(
+        Name.bfind(Name.verbatim_citation != None, Name.citation_group == None),
+        key=lambda nam: (
+            nam.authority,
+            nam.numeric_year(),
+            nam.verbatim_citation or "",
+        ),
+    ):
+        nam = nam.reload()
+        if nam.citation_group is None:
+            nam.possible_citation_groups()
+            print("===", nam)
             nam.display()
             nam.fill_field("citation_group")
 
@@ -1599,6 +1621,29 @@ def more_precise_type_localities(loc: models.Location) -> None:
             if isinstance(tag, models.TypeTag.LocationDetail):
                 print(tag)
         nam.fill_field("type_locality")
+
+
+def _more_precise(region: models.Region, objects: Iterable[Any], field: str) -> None:
+    for obj in objects:
+        obj.display()
+        obj.fill_field(field)
+
+
+@command
+def more_precise(region: models.Region) -> None:
+    loc = region.get_location()
+    funcs = [
+        ("type localities", lambda: more_precise_type_localities(loc)),
+        ("collections", lambda: _more_precise(region, region.collections, "location")),
+        ("localities", lambda: _more_precise(region, region.locations, "region")),
+        (
+            "citation groups",
+            lambda: _more_precise(region, region.citation_groups, "region"),
+        ),
+    ]
+    for label, func in funcs:
+        if getinput.yes_no(f"Run {label}? "):
+            func()
 
 
 @generator_command
@@ -2418,31 +2463,72 @@ def author_report(
 
 
 @command
-def find_potential_citations() -> None:
-    for cg in CitationGroup.select_valid():
-        if cg.names.count() == 0:
+def find_potential_citations(fix: bool = False) -> int:
+    count = sum(
+        find_potential_citations_for_group(cg, fix=fix)
+        for cg in CitationGroup.select_valid()
+    )
+    return count
+
+
+@command
+def find_potential_citations_for_group(cg: CitationGroup, fix: bool = False) -> int:
+    if cg.get_names().count() == 0:
+        return 0
+    potential_arts = Article.bfind(citation_group=cg, quiet=True)
+    if not potential_arts:
+        return 0
+    count = 0
+    print(f"Trying {cg}...")
+    for nam in sorted(cg.get_names(), key=lambda nam: nam.sort_key()):
+        page = nam.numeric_page_described()
+        if not page:
             continue
-        potential_arts = Article.bfind(citation_group=cg, quiet=True)
-        if not potential_arts:
-            continue
-        print(f"Trying {cg}...")
-        for nam in cg.names:
-            try:
-                page = int(nam.page_described)
-            except (TypeError, ValueError):
-                continue
-            candidates = [
-                art
-                for art in potential_arts
-                if nam.author_set() <= art.author_set()
-                and nam.year == art.year
-                and art.is_page_in_range(page)
-            ]
-            if candidates:
-                print("------")
-                nam.display()
+        candidates = [
+            art
+            for art in potential_arts
+            if nam.author_set() <= art.author_set()
+            and nam.year == art.year
+            and art.is_page_in_range(page)
+        ]
+        if candidates:
+            print("------")
+            count += 1
+            nam.display()
+            for candidate in candidates:
+                print(candidate.cite())
+            if fix:
                 for candidate in candidates:
-                    print(candidate.cite())
+                    candidate.openf()
+                    getinput.add_to_clipboard(candidate.name)
+                nam.fill_required_fields()
+    if count:
+        print(f"{cg} had {count} potential citations")
+    return count
+
+
+@command
+def citation_groups_with_recent_names() -> None:
+    for cg in CitationGroup.select_valid().filter(
+        CitationGroup.type == constants.ArticleType.JOURNAL
+    ):
+        names = [nam for nam in cg.get_names() if nam.numeric_year() > 1923]
+        if not names:
+            continue
+        arts = [
+            art
+            for art in Article.bfind(citation_group=cg, quiet=True)
+            if art.numeric_year() > 1923
+        ]
+        if not arts:
+            continue
+        if not any(art.doi or art.url for art in arts):
+            continue
+        print(f"=== {cg} has {len(names)} names and {len(arts)} articles ===")
+        for nam in sorted(names, key=lambda nam: nam.sort_key()):
+            nam.display()
+        for art in sorted(arts, key=lambda art: (art.numeric_year(), art.start_page)):
+            print(art.cite())
 
 
 @command
@@ -2450,7 +2536,7 @@ def fix_citation_group_redirects() -> None:
     for cg in CitationGroup.select_valid().filter(
         CitationGroup.type == constants.ArticleType.REDIRECT
     ):
-        for nam in cg.names:
+        for nam in cg.get_names():
             print(f"update {nam} -> {cg.target}")
             nam.citation_group = cg.target
         for art in cg.get_articles():

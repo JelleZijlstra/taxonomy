@@ -49,7 +49,10 @@ class CitationGroup(BaseModel):
     def get_required_fields(self) -> Iterable[str]:
         yield "name"
         yield "type"
-        if self.type not in (constants.ArticleType.ERROR, constants.ArticleType.REDIRECT):
+        if self.type not in (
+            constants.ArticleType.ERROR,
+            constants.ArticleType.REDIRECT,
+        ):
             yield "region"
 
     def apply_to_patterns(self) -> None:
@@ -78,7 +81,7 @@ class CitationGroup(BaseModel):
         end_year: Optional[int] = None,
         author: Optional[str] = None,
     ) -> List["models.Name"]:
-        nams = list(self.nams)
+        nams = list(self.get_names())
         if end_year is not None:
             nams = [
                 nam for nam in nams if nam.numeric_year() in range(start_year, end_year)
@@ -93,31 +96,48 @@ class CitationGroup(BaseModel):
     def display(
         self, depth: int = 0, full: bool = True, include_articles: bool = False
     ) -> None:
-        name_count = self.names.count()
-        article_count = self.get_articles().count()
+        nams = list(self.get_names())
+        arts = list(self.get_articles())
         region_str = f"{self.region.name}; " if self.region else ""
-        print(f"{' ' * depth}{self.name} ({region_str}{name_count}/{article_count})")
+        print(
+            f"{' ' * depth}{self.name} ({region_str}{self.count_and_range(nams)}/{self.count_and_range(arts)})"
+        )
         if full:
-            self._display_nams(self.names, depth=depth)
+            self._display_nams(nams, depth=depth)
         if include_articles:
-            for art in sorted(self.get_articles(), key=lambda art: (art.year, art.name)):
-                print(f"{' ' * (depth + 4)}{art.cite()}")
+            for art in sorted(arts, key=lambda art: (art.numeric_year(), art.name)):
+                print(f"{' ' * (depth + 4)}{{{art.name}}}: {art.cite()}")
+
+    def count_and_range(self, objs: List[Any]) -> str:
+        years = [obj.numeric_year() for obj in objs]
+        years = [year for year in years if year != 0]
+        if not objs:
+            return "—"
+        elif years:
+            return f"{len(objs)}, {min(years)}—{max(years)}"
+        else:
+            return f"{len(objs)}"
 
     def delete(self) -> None:
         assert (
-            self.names.count() == 0
+            self.get_names().count() == 0
         ), f"cannot delete {self} because it contains names"
         assert (
             self.get_articles().count() == 0
         ), f"cannot delete {self} because it contains articles"
         self.deleted = True
 
-    def merge(self, other: "CitationGroup") -> None:
-        for nam in self.names:
+    def merge(self, other: "CitationGroup", series: Optional[str] = None) -> None:
+        for nam in self.get_names():
             nam.citation_group = other
             nam.save()
         for art in self.get_articles():
             art.citation_group = other
+            if series:
+                if not art.series:
+                    art.series = series
+                else:
+                    print(f"Warning: skipping {art} because it has series {art.series}")
             art.save()
         self.target = other
         self.type = constants.ArticleType.REDIRECT
@@ -127,10 +147,13 @@ class CitationGroup(BaseModel):
             models.Article.citation_group == self
         )
 
+    def get_names(self) -> Any:
+        return self.names.filter(models.Name.status != constants.Status.removed)
+
     def _display_nams(self, nams: Iterable["models.Name"], depth: int = 0) -> None:
         for nam in sorted(nams, key=lambda nam: nam.sort_key()):
             print(f"{' ' * (depth + 4)}{nam}")
             print(f"{' ' * (depth + 8)}{nam.verbatim_citation}")
 
     def __repr__(self) -> str:
-        return repr(self.name)
+        return f"{self.name} ({self.type.name}; {self.region.name if self.region else '(unknown)'})"
