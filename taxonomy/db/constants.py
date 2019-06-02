@@ -124,14 +124,7 @@ class NomenclatureStatus(enum.IntEnum):
 
     def requires_type(self) -> bool:
         """Whether a name of this status should have a type designated."""
-        return self in {
-            NomenclatureStatus.available,
-            NomenclatureStatus.hybrid_name,
-            NomenclatureStatus.art_13_nomen_oblitum,
-            NomenclatureStatus.preoccupied,
-            NomenclatureStatus.reranking,
-            NomenclatureStatus.as_emended,
-        }
+        return self in REQUIRES_TYPE
 
     def can_preoccupy(self) -> bool:
         """Whether a name of this type can preoccupy another name."""
@@ -234,6 +227,16 @@ class NomenclatureStatus(enum.IntEnum):
             [cls.collective_group],
             [cls.available, cls.as_emended],
         ]
+
+
+REQUIRES_TYPE = {
+    NomenclatureStatus.available,
+    NomenclatureStatus.hybrid_name,
+    NomenclatureStatus.art_13_nomen_oblitum,
+    NomenclatureStatus.preoccupied,
+    NomenclatureStatus.reranking,
+    NomenclatureStatus.as_emended,
+}
 
 
 class EmendationJustification(enum.IntEnum):

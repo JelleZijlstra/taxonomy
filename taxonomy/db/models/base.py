@@ -90,6 +90,8 @@ peewee.FieldDescriptor.__set__ = _descriptor_set
 
 class BaseModel(Model):
     label_field: str
+    # If given, lists are separated into groups based on this field.
+    grouping_field: Optional[str] = None
     call_sign: str
     creation_event: events.Event[Any]
     save_event: events.Event[Any]
@@ -136,6 +138,12 @@ class BaseModel(Model):
         """Print data about this object."""
         self.full_data()
 
+    def sort_key(self) -> Any:
+        if hasattr(self, "label_field"):
+            return getattr(self, self.label_field)
+        else:
+            return self.id
+
     def s(self, **kwargs: Any) -> None:
         """Set attributes on the object.
 
@@ -166,10 +174,14 @@ class BaseModel(Model):
                 pass
 
     @classmethod
-    def fields(cls) -> Iterable[peewee.Field]:
-        for field in dir(cls):
-            if isinstance(getattr(cls, field), peewee.Field):
-                yield field
+    def fields(cls) -> Iterable[str]:
+        yield from cls._meta.fields.keys()
+
+    def __str__(self) -> str:
+        if hasattr(self, "label_field"):
+            return getattr(self, self.label_field)
+        else:
+            return repr(self)
 
     def __repr__(self) -> str:
         return "{}({})".format(

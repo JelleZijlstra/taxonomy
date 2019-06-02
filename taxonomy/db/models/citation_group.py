@@ -13,6 +13,7 @@ class CitationGroup(BaseModel):
     creation_event = events.Event["CitationGroup"]()
     save_event = events.Event["CitationGroup"]()
     label_field = "name"
+    grouping_field = "type"
     call_sign = "CG"
 
     name = CharField()
@@ -139,6 +140,9 @@ class CitationGroup(BaseModel):
                 else:
                     print(f"Warning: skipping {art} because it has series {art.series}")
             art.save()
+        if other.region is None and self.region is not None:
+            print(f"Setting region: {self.region}")
+            other.region = self.region
         self.target = other
         self.type = constants.ArticleType.REDIRECT  # type: ignore
 

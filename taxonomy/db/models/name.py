@@ -46,6 +46,7 @@ class Name(BaseModel):
     creation_event = events.Event["Name"]()
     save_event = events.Event["Name"]()
     label_field = "corrected_original_name"
+    grouping_field = "status"
     call_sign = "N"
     field_defaults = {
         "species_type_kind": constants.SpeciesGroupType.holotype,
@@ -1164,6 +1165,9 @@ class Name(BaseModel):
 
 
 class NameComment(BaseModel):
+    call_sign = "NCO"
+    grouping_field = "kind"
+
     name = ForeignKeyField(Name, related_name="comments", db_column="name_id")
     kind = EnumField(constants.CommentKind)
     date = IntegerField()

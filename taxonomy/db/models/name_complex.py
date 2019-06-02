@@ -755,6 +755,7 @@ class NameEnding(BaseModel):
     """Name ending that is mapped to a NameComplex."""
 
     label_field = "ending"
+    call_sign = "NE"
 
     name_complex = ForeignKeyField(
         NameComplex, related_name="endings", db_column="name_complex_id"
@@ -770,6 +771,7 @@ class SpeciesNameEnding(BaseModel):
     """Name ending that is mapped to a SpeciesNameComplex."""
 
     label_field = "ending"
+    call_sign = "SNE"
 
     name_complex = ForeignKeyField(
         SpeciesNameComplex, related_name="endings", db_column="name_complex_id"

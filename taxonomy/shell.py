@@ -255,9 +255,9 @@ def add_page_described() -> Iterable[Tuple[Name, str]]:
     ):
         if name.year in ("2015", "2016"):
             continue  # recent JVP papers don't have page numbers
-        message = "Name %s is missing page described, but has original citation {%s}" % (
-            name.description(),
-            name.original_citation.name,
+        message = (
+            "Name %s is missing page described, but has original citation {%s}"
+            % (name.description(), name.original_citation.name)
         )
         yield name, message
 
@@ -811,6 +811,25 @@ def _duplicate_finder(
                     yield entries_list
 
     return wrapper
+
+
+def _clean_up_word(word: str) -> str:
+    if word in ("the", "de", "des", "der", "of", "la", "le"):
+        return ""
+    return word.rstrip("s")
+
+
+@_duplicate_finder
+def dup_citation_groups() -> List[Dict[str, List[CitationGroup]]]:
+    cgs: Dict[str, List[CitationGroup]] = defaultdict(list)
+    for cg in CitationGroup.select_valid():
+        if cg.type == constants.ArticleType.REDIRECT:
+            continue
+        normalized_name = "".join(
+            _clean_up_word(word) for word in cg.name.lower().split()
+        )
+        cgs[normalized_name].append(cg)
+    return [cgs]
 
 
 @_duplicate_finder
@@ -2475,7 +2494,7 @@ def find_potential_citations(fix: bool = False) -> int:
 def find_potential_citations_for_group(cg: CitationGroup, fix: bool = False) -> int:
     if cg.get_names().count() == 0:
         return 0
-    potential_arts = Article.bfind(citation_group=cg, quiet=True)
+    potential_arts = Article.bfind(Article.kind != constants.ArticleKind.no_copy, citation_group=cg, quiet=True)
     if not potential_arts:
         return 0
     count = 0

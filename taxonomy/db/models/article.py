@@ -456,6 +456,8 @@ class ArticleComment(BaseModel):
     date = IntegerField()
     text = TextField()
 
+    call_sign = "AC"
+
     class Meta:
         db_table = "article_comment"
 
