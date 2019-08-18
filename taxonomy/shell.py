@@ -50,6 +50,7 @@ from .db.constants import Age, Group, NomenclatureStatus, Rank, ArticleKind
 from .db.models import (
     Article,
     CitationGroup,
+    CitationGroupTag,
     Collection,
     Name,
     Tag,
@@ -2495,11 +2496,26 @@ def author_report(
         print(f"no year: {no_year}")
 
 
+@generator_command
+def enforce_must_have() -> Iterator[Name]:
+    cgs = [
+        cg
+        for cg in CitationGroup.select_valid()
+        if cg.has_tag(CitationGroupTag.MustHave)
+    ]
+    for cg in cgs:
+        for nam in cg.get_names():
+            if nam.original_citation is None:
+                print(f"{nam} is in {cg}, but has no original_citation")
+                yield nam
+
+
 @command
 def find_potential_citations(fix: bool = False) -> int:
     count = sum(
         find_potential_citations_for_group(cg, fix=fix)
         for cg in CitationGroup.select_valid()
+        if not cg.has_tag(CitationGroupTag.IgnorePotentialCitations)
     )
     return count
 
@@ -2508,7 +2524,9 @@ def find_potential_citations(fix: bool = False) -> int:
 def find_potential_citations_for_group(cg: CitationGroup, fix: bool = False) -> int:
     if cg.get_names().count() == 0:
         return 0
-    potential_arts = Article.bfind(Article.kind != constants.ArticleKind.no_copy, citation_group=cg, quiet=True)
+    potential_arts = Article.bfind(
+        Article.kind != constants.ArticleKind.no_copy, citation_group=cg, quiet=True
+    )
     if not potential_arts:
         return 0
     count = 0

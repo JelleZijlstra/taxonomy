@@ -3,9 +3,9 @@ from typing import Any, Iterable, List, Optional
 from peewee import BooleanField, CharField, ForeignKeyField
 
 from .. import constants, models
-from ... import events, getinput
+from ... import adt, events, getinput
 
-from .base import BaseModel, EnumField
+from .base import BaseModel, EnumField, ADTField
 from .region import Region
 
 
@@ -21,6 +21,7 @@ class CitationGroup(BaseModel):
     deleted = BooleanField(default=False)
     type = EnumField(constants.ArticleType)
     target = ForeignKeyField("self", related_name="redirects", null=True)
+    tags = ADTField(lambda: CitationGroupTag, null=True)
 
     class Meta(object):
         db_table = "citation_group"
@@ -55,6 +56,11 @@ class CitationGroup(BaseModel):
             constants.ArticleType.REDIRECT,
         ):
             yield "region"
+
+    def has_tag(self, tag: adt.ADT) -> bool:
+        if self.tags is None:
+            return False
+        return any(my_tag is tag for my_tag in self.tags)
 
     def apply_to_patterns(self) -> None:
         first = True
@@ -161,3 +167,10 @@ class CitationGroup(BaseModel):
 
     def __repr__(self) -> str:
         return f"{self.name} ({self.type.name}; {self.region.name if self.region else '(unknown)'})"
+
+
+class CitationGroupTag(adt.ADT):
+    # Must have articles for all citations in this group
+    MustHave(tag=1)  # type: ignore
+    # Ignore in find_potential_citations()
+    IgnorePotentialCitations(tag=2)  # type: ignore

@@ -62,7 +62,8 @@ CREATE TABLE `name` (
     INDEX(`root_name`),
     INDEX(`taxon_id`),
     INDEX(`type_locality_id`),
-    INDEX(`corrected_original_name`)
+    INDEX(`corrected_original_name`),
+    INDEX(`citation_group`)
 ) ENGINE=INNODB DEFAULT CHARSET=utf8;
 
 CREATE TABLE `region` (
@@ -222,7 +223,8 @@ CREATE TABLE `article` (
     `parent_id` INT UNSIGNED DEFAULT NULL,
     `tags` text default null,
     `citation_group_id` INT UNSIGNED DEFAULT NULL,
-    PRIMARY KEY (`name`)
+    PRIMARY KEY (`name`),
+    INDEX(`citation_group_id`)
 );
 
 CREATE TABLE `article_comment` (
@@ -240,5 +242,6 @@ CREATE TABLE `citation_group` (
     `deleted` TINYINT DEFAULT 0,
     `type` integer NOT NULL DEFAULT 0,
     `target_id` integer default null,
+    `tags` text default null,
     UNIQUE KEY(`name`)
 );

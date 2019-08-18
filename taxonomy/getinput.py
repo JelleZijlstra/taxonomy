@@ -308,6 +308,8 @@ def _get_adt_member(
     existing: Optional[adt.ADT] = None,
     completers: CompleterMap = {},
 ) -> adt.ADT:
+    if not member_cls._has_args:
+        return member_cls
     args: Dict[str, Any] = {}
     for arg_name, typ in member_cls._attributes.items():
         existing_value = getattr(existing, arg_name, None)
