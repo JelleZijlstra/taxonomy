@@ -126,7 +126,10 @@ class Article(BaseModel):
 
     @journal.setter
     def journal(self, value: str) -> None:
-        self.citation_group = CitationGroup.get_or_create(value)
+        if value is None:
+            self.citation_group = None
+        else:
+            self.citation_group = CitationGroup.get_or_create(value)
 
     @property
     def place_of_publication(self) -> Optional[str]:

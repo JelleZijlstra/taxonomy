@@ -46,7 +46,7 @@ from traitlets.config.loader import Config
 
 from . import getinput
 from .db import constants, definition, detection, helpers, models
-from .db.constants import Age, Group, NomenclatureStatus, Rank
+from .db.constants import Age, Group, NomenclatureStatus, Rank, ArticleKind
 from .db.models import (
     Article,
     CitationGroup,
@@ -1184,7 +1184,11 @@ def print_percentages() -> None:
 
     counts_of_parent: Dict[int, Dict[str, int]] = defaultdict(lambda: defaultdict(int))
     for name in Name.select_valid():
-        parent_id = parent_of_taxon[name.taxon.id]
+        try:
+            parent_id = parent_of_taxon[name.taxon.id]
+        except KeyError:
+            print(f"failed to find taxon for {name} (id={name.id})")
+            continue
         counts_of_parent[parent_id]["total"] += 1
         for attribute in attributes:
             if getattr(name, attribute) is not None:
@@ -1710,6 +1714,16 @@ def most_common_sources(
         else:
             break
     return output
+
+
+@command
+def replace_comments_from_folder(folder: str) -> None:
+    arts = Article.bfind(Article.path.startswith(folder), quiet=True)
+    sources = dict(most_common_sources(print_limit=100))
+    for art in sorted(arts, key=lambda art: art.path):
+        print(art.name)
+        if art.name in sources:
+            replace_comments(art.name)
 
 
 @command
@@ -2498,7 +2512,7 @@ def find_potential_citations_for_group(cg: CitationGroup, fix: bool = False) -> 
     if not potential_arts:
         return 0
     count = 0
-    print(f"Trying {cg}...")
+    print(f"Trying {cg}...", flush=True)
     for nam in sorted(cg.get_names(), key=lambda nam: nam.sort_key()):
         page = nam.numeric_page_described()
         if not page:
@@ -2509,6 +2523,7 @@ def find_potential_citations_for_group(cg: CitationGroup, fix: bool = False) -> 
             if nam.author_set() <= art.author_set()
             and nam.year == art.year
             and art.is_page_in_range(page)
+            and art.kind is not ArticleKind.no_copy
         ]
         if candidates:
             print("------")
@@ -2522,7 +2537,7 @@ def find_potential_citations_for_group(cg: CitationGroup, fix: bool = False) -> 
                     getinput.add_to_clipboard(candidate.name)
                 nam.fill_required_fields()
     if count:
-        print(f"{cg} had {count} potential citations")
+        print(f"{cg} had {count} potential citations", flush=True)
     return count
 
 

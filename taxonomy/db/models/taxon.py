@@ -923,6 +923,9 @@ class Taxon(BaseModel):
         def should_include(nam: models.Name) -> bool:
             if nam.original_citation is None:
                 return False
+            empty_required = list(nam.get_empty_required_fields())
+            if not empty_required:
+                return False
             if field is not None and (
                 getattr(nam, field) is not None
                 or field not in nam.get_required_fields()

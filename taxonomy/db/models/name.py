@@ -1360,3 +1360,7 @@ class TypeTag(adt.ADT):
     TypeSpeciesDetail(text=str, source=Article, tag=22)  # type: ignore
     # Likely location of the type specimen.
     ProbableRepository(repository=Collection, reasoning=str, tag=23)  # type: ignore
+    # Data on the repository of the type material.
+    CollectionDetail(text=str, source=Article, tag=24)  # type: ignore
+    # Quotes about the original citation.
+    CitationDetail(text=str, source=Article, tag=25)  # type: ignore
