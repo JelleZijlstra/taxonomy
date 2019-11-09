@@ -329,7 +329,7 @@ def _get_adt_member(
         elif typ is bool:
             args[arg_name] = yes_no(f"{arg_name}> ", default=existing_value)
         elif typ in adt.BASIC_TYPES:
-            args[arg_name] = typ(
+            args[arg_name] = typ(  # type: ignore
                 get_line(
                     f"{arg_name}> ",
                     history_key=(member_cls, arg_name),

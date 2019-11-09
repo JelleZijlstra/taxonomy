@@ -11,11 +11,12 @@ from typing import (
     Iterator,
     List,
     MutableMapping,
+    Tuple,
     Type,
     TypeVar,
 )
 
-BASIC_TYPES = (int, str, float, bool, list)
+BASIC_TYPES: Tuple[Type[Any], ...] = (int, str, float, bool, list)
 
 
 class _ADTMember:
@@ -201,7 +202,7 @@ else:
 
 
 class ADT(_ADTBase, metaclass=_ADTMeta):
-    _attributes: Dict[str, Type[Any]]
+    _attributes: Dict[str, Any]
     _has_args: bool
     _tag: int
     _tag_to_member: Dict[int, Type[Any]]
