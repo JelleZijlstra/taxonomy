@@ -175,7 +175,9 @@ def get_with_completion(
         history_key = (tuple(options), message)
     validator: Optional[prompt_toolkit.validation.Validator]
     if disallow_other:
-        validator = _FixedValidator([*options, ""] if allow_empty else options)
+        validator = _FixedValidator(
+            [*options, *callbacks, ""] if allow_empty else [*options, *callbacks]
+        )
     else:
         validator = None
     return get_line(
@@ -263,7 +265,7 @@ def get_adt_list(
             "p",
             *map(str, range(len(out))),
             *[f"r{i}" for i in range(len(out))],
-            *callbacks.keys(),
+            *callbacks,
         ]
         member = get_with_completion(
             options,
@@ -391,3 +393,25 @@ def flush() -> None:
 def show(obj: object) -> None:
     flush()
     print(obj)
+
+
+def print_scores(data: Sequence[Tuple[str, float]]) -> None:
+    if not data:
+        return
+    width = 170
+    label_width = max(len(label) for label, _ in data)
+    chart_width = width - label_width - 1
+    for label, value in data:
+        line = (
+            label
+            + " " * (label_width - len(label) + 1)
+            + "#" * int(value * chart_width)
+        )
+        print(line)
+
+
+def print_header(obj: object) -> None:
+    obj_str = str(obj)
+    print(f"/={'=' * len(obj_str)}=\\")
+    print(f"| {obj_str} |")
+    print(f"\\={'=' * len(obj_str)}=/")

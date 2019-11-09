@@ -223,10 +223,10 @@ class Name(BaseModel):
             else:
                 return super().get_value_for_field(field)
         elif field == "type_tags":
-            if self.type_locality_description is not None:
-                print(self.type_locality_description)
             if self.type_locality is not None:
-                print(self.type_locality)
+                print(repr(self.type_locality))
+            if self.collection is not None:
+                print(repr(self.collection))
             return super().get_value_for_field(field)
         elif field == "type_specimen_source":
             return self.get_value_for_foreign_key_field(
@@ -307,6 +307,14 @@ class Name(BaseModel):
         ):
             # Always make the user edit type_tags if some other field was unfilled.
             yield "type_tags"
+
+    def fill_field_if_empty(self, field: str) -> None:
+        if field in self.get_empty_required_fields():
+            if field == "verbatim_citation":
+                getinput.print_header(self)
+                self.possible_citation_groups()
+            self.display()
+            self.fill_field(field)
 
     def add_additional_data(self, new_data: str) -> None:
         """Add data to the "additional" field within the "data" field"""
@@ -440,12 +448,17 @@ class Name(BaseModel):
             out += " %s" % self.authority
         if self.year:
             out += f", {self.year}"
-        parenthesized_bits = [f"= {self.taxon.valid_name}"]
+        if self.page_described:
+            out += f":{self.page_described}"
+        parenthesized_bits = []
+        if self.taxon.valid_name != self.original_name:
+            parenthesized_bits.append(f"= {self.taxon.valid_name}")
         if self.nomenclature_status != NomenclatureStatus.available:
             parenthesized_bits.append(self.nomenclature_status.name)
         if self.status != Status.valid:
             parenthesized_bits.append(self.status.name)
-        out += f" ({', '.join(parenthesized_bits)})"
+        if parenthesized_bits:
+            out += f" ({', '.join(parenthesized_bits)})"
         return out
 
     def is_unavailable(self) -> bool:
@@ -460,13 +473,32 @@ class Name(BaseModel):
         else:
             return 0
 
+    def extract_page_described(self) -> Optional[int]:
+        """Attempts to extract a page that appears in the original description, if at all possible."""
+        page_described = self.numeric_page_described()
+        if page_described != 0:
+            return page_described
+        if self.verbatim_citation is not None:
+            match = re.search(
+                r"[):]\s*(\d+)\s*([\-–]\s*\d+)?\.?\s*$", self.verbatim_citation
+            )
+            if match:
+                return int(match.group(1))
+        return None
+
     def numeric_year(self) -> int:
         if self.year is None:
             return 0
         elif "-" in self.year:
-            return int(self.year.split("-")[-1])
+            try:
+                return int(self.year.split("-")[-1])
+            except ValueError:
+                return 0
         else:
-            return int(self.year)
+            try:
+                return int(self.year)
+            except ValueError:
+                return 0
 
     def sort_key(self) -> Tuple[Any, ...]:
         return (
@@ -1364,3 +1396,5 @@ class TypeTag(adt.ADT):
     CollectionDetail(text=str, source=Article, tag=24)  # type: ignore
     # Quotes about the original citation.
     CitationDetail(text=str, source=Article, tag=25)  # type: ignore
+    DefinitionDetail(text=str, source=Article, tag=26)  # type: ignore
+    EtymologyDetail(text=str, source=Article, tag=27)  # type: ignore

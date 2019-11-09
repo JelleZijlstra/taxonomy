@@ -510,6 +510,8 @@ class Taxon(BaseModel):
             authority=self.base_name.authority,
             year=self.base_name.year,
             original_citation=self.base_name.original_citation,
+            verbatim_citation=self.base_name.verbatim_citation,
+            citation_group=self.base_name.citation_group,
             original_name=full_name,
             page_described=page_described,
             status=self.base_name.status,
@@ -555,8 +557,8 @@ class Taxon(BaseModel):
 
     def syn_from_paper(
         self,
-        root_name: str,
-        paper: Optional[Article],
+        root_name: Optional[str] = None,
+        paper: Optional[Article] = None,
         page_described: Union[None, int, str] = None,
         status: Status = Status.synonym,
         group: Optional[Group] = None,
@@ -564,6 +566,8 @@ class Taxon(BaseModel):
         interactive: bool = True,
         **kwargs: Any,
     ) -> "models.Name":
+        if root_name is None:
+            root_name = Name.getter("root_name").get_one_key("root_name> ")
         if paper is None:
             paper = self.get_value_for_foreign_class("paper", Article)
 
@@ -587,14 +591,22 @@ class Taxon(BaseModel):
 
     def from_paper(
         self,
-        rank: Rank,
-        name: str,
+        rank: Optional[Rank] = None,
+        name: Optional[str] = None,
         paper: Optional[Article] = None,
         page_described: Union[None, int, str] = None,
         status: Status = Status.valid,
         age: Optional[constants.Age] = None,
         **override_kwargs: Any,
     ) -> "Taxon":
+        if rank is None:
+            rank = getinput.get_enum_member(Rank, "rank> ")
+        if name is None:
+            if self.rank in (Rank.genus, Rank.species):
+                default = self.valid_name
+            else:
+                default = ""
+            name = self.getter("valid_name").get_one_key("name> ", default=default)
         if paper is None:
             paper = self.get_value_for_foreign_class("paper", Article)
 
@@ -826,7 +838,14 @@ class Taxon(BaseModel):
             self.data = reason
         self.save()
 
-    def all_names(self, age: Optional[constants.Age] = None) -> Set["models.Name"]:
+    def all_names(
+        self,
+        age: Optional[constants.Age] = None,
+        exclude: Container["Taxon"] = frozenset(),
+        min_year: Optional[int] = None,
+    ) -> Set["models.Name"]:
+        if self in exclude:
+            return set()
         names: Set["models.Name"]
         if age is not None:
             if self.age > age:
@@ -837,21 +856,29 @@ class Taxon(BaseModel):
                 names = set()
         else:
             names = set(self.get_names())
+        if min_year is not None:
+            names = {nam for nam in names if nam.numeric_year() >= min_year}
         for child in self.get_children():
-            names |= child.all_names(age=age)
+            names |= child.all_names(age=age, exclude=exclude, min_year=min_year)
         return names
 
     def names_missing_field(
-        self, field: str, age: Optional[constants.Age] = None
+        self, field: str, age: Optional[constants.Age] = None, min_year: Optional[int] = None
     ) -> Set["models.Name"]:
         return {
             name
-            for name in self.all_names(age=age)
+            for name in self.all_names(age=age, min_year=min_year)
             if getattr(name, field) is None and field in name.get_required_fields()
         }
 
-    def stats(self, age: Optional[constants.Age] = None) -> Dict[str, float]:
-        names = self.all_names(age=age)
+    def stats(
+        self,
+        age: Optional[constants.Age] = None,
+        graphical: bool = False,
+        focus_field: Optional[str] = None,
+        min_year: Optional[int] = None,
+    ) -> Dict[str, float]:
+        names = self.all_names(age=age, min_year=min_year)
         counts: Dict[str, int] = collections.defaultdict(int)
         required_counts: Dict[str, int] = collections.defaultdict(int)
         counts_by_group: Dict[str, int] = collections.defaultdict(int)
@@ -870,17 +897,17 @@ class Taxon(BaseModel):
 
         total = len(names)
         output: Dict[str, Any] = {"total": total}
-        by_group = ", ".join(
-            f"{v.name}: {counts_by_group[v]}" for v in reversed(Group)  # type: ignore
-        )
-        print(f"Total names: {total} ({by_group})")
+        if focus_field is None:
+            by_group = ", ".join(
+                f"{v.name}: {counts_by_group[v]}"
+                for v in reversed(Group)  # type: ignore
+            )
+            print(f"Total names: {total} ({by_group})")
 
         def print_percentage(num: int, total: int, label: str) -> float:
             if total == 0 or num == total:
                 return 100.0
-            percentage = num * 100.0 / total
-            print(f"{label}: {num} of {total} ({percentage:.2f}%)")
-            return percentage
+            return num * 100.0 / total
 
         def sort_key(pair: Tuple[str, int]) -> Tuple[float, int]:
             attribute, total = pair
@@ -893,20 +920,31 @@ class Taxon(BaseModel):
 
         overall_count = 0
         overall_required = 0
-        for attribute, count in sorted(required_counts.items(), key=sort_key):
-            percentage = print_percentage(counts[attribute], count, attribute)
-            output[attribute] = (percentage, counts[attribute], count)
-            overall_required += count
-            overall_count += counts[attribute]
+        graphical_data = []
+        for attribute, required_count in sorted(required_counts.items(), key=sort_key):
+            count = counts[attribute]
+            percentage = print_percentage(count, required_count, attribute)
+            if focus_field is None or focus_field == attribute:
+                if graphical:
+                    graphical_data.append((attribute, percentage / 100))
+                elif percentage < 100:
+                    print(
+                        f"{attribute}: {count} of {required_count} ({percentage:.2f}%)"
+                    )
+            output[attribute] = (percentage, count, required_count)
+            overall_required += required_count
+            overall_count += count
         if overall_required:
-            output["score"] = (
-                overall_count / overall_required * 100,
-                overall_required,
-                overall_count,
-            )
+            score = overall_count / overall_required * 100
+            if graphical and focus_field == "score":
+                graphical_data.append(("score", score))
+            output["score"] = (score, overall_required, overall_count)
         else:
             output["score"] = (0.0, overall_required, overall_count)
-        print(f'Overall score: {output["score"][0]:.2f}')
+        if graphical:
+            getinput.print_scores(graphical_data)
+        if focus_field is None:
+            print(f'Overall score: {output["score"][0]:.2f}')
         return output
 
     def fill_data_for_names(
@@ -953,14 +991,15 @@ class Taxon(BaseModel):
                     print(nam)
                     nam.fill_required_fields()
 
-    def fill_field_for_names(self, field: str) -> None:
+    def fill_field_for_names(
+        self, field: str, exclude: Container["Taxon"] = frozenset(), min_year: Optional[int] = None
+    ) -> None:
         for name in sorted(
-            self.all_names(), key=lambda nam: (nam.authority or "", nam.year or "")
+            self.all_names(exclude=exclude, min_year=min_year),
+            key=lambda nam: (nam.authority or "", nam.year or ""),
         ):
             name = name.reload()
-            if field in name.get_empty_required_fields():
-                name.display()
-                name.fill_field(field)
+            name.fill_field_if_empty(field)
 
     def fill_citation_group(self, age: Optional[Age] = None) -> None:
         for name in sorted(

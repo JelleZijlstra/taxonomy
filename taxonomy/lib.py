@@ -207,9 +207,9 @@ def count_field(model: Type[BaseModel], field: str) -> List[Tuple[Any, int]]:
 
 
 def locless_names(
-    genus: Taxon, attribute: str = "type_locality", age: Optional[Age] = Age.extant
+    genus: Taxon, attribute: str = "type_locality", age: Optional[Age] = Age.extant, min_year: Optional[int] = None
 ) -> List[Name]:
-    nams = list(genus.names_missing_field(attribute, age=age))
+    nams = list(genus.names_missing_field(attribute, age=age, min_year=min_year))
     for nam in nams:
         nam.display()
     return nams

@@ -112,6 +112,7 @@ CREATE TABLE `location` (
     `source` varchar(255) default null,
     `source_id` INT UNSIGNED DEFAULT NULL,
     `deleted` TINYINT DEFAULT 0,
+    `tags` text default null,
     PRIMARY KEY(`id`),
     INDEX(`name`),
     UNIQUE KEY(`name`)
@@ -243,5 +244,13 @@ CREATE TABLE `citation_group` (
     `type` integer NOT NULL DEFAULT 0,
     `target_id` integer default null,
     `tags` text default null,
+    `archive` text default null,
     UNIQUE KEY(`name`)
+);
+
+CREATE TABLE `citation_group_pattern` (
+    `id` integer primary key,
+    `citation_group_id` int unsigned not null,
+    `pattern` varchar(255) not null,
+    unique key(`pattern`)
 );

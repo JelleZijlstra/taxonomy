@@ -1,8 +1,8 @@
-from typing import Any, Iterable, List, Optional
+from typing import Any, Iterable, List, Optional, Type
 
-from peewee import BooleanField, CharField, ForeignKeyField
+from peewee import BooleanField, CharField, ForeignKeyField, IntegrityError
 
-from .. import constants, models
+from .. import constants, helpers, models
 from ... import adt, events, getinput
 
 from .base import BaseModel, EnumField, ADTField
@@ -22,6 +22,7 @@ class CitationGroup(BaseModel):
     type = EnumField(constants.ArticleType)
     target = ForeignKeyField("self", related_name="redirects", null=True)
     tags = ADTField(lambda: CitationGroupTag, null=True)
+    archive = CharField(null=True)
 
     class Meta(object):
         db_table = "citation_group"
@@ -62,25 +63,32 @@ class CitationGroup(BaseModel):
             return False
         return any(my_tag is tag for my_tag in self.tags)
 
+    def get_tag(self, tag_cls: Type[adt.ADT]) -> Optional[adt.ADT]:
+        if self.tags is None:
+            return None
+        for tag in self.tags:
+            if tag is tag_cls or isinstance(tag, tag_cls):
+                return tag
+        return None
+
     def apply_to_patterns(self) -> None:
-        first = True
+        getinput.add_to_clipboard(self.name)
         while True:
-            default = f"{self.name}*" if first else ""
-            pattern = getinput.get_line("pattern to apply to> ", default=default)
+            pattern = getinput.get_line("pattern to apply to> ")
             if not pattern:
                 break
-            else:
-                first = False
-                self.add_for_pattern(pattern)
+            self.add_for_pattern(pattern)
 
     def add_for_pattern(self, pattern: str) -> None:
         for nam in models.Name.bfind(
             models.Name.verbatim_citation != None,
             models.Name.citation_group == None,
-            models.Name.verbatim_citation % pattern,
+            models.Name.verbatim_citation % f"*{pattern}*",
         ):
             nam.display()
             nam.citation_group = self
+        if getinput.yes_no("Save pattern? "):
+            CitationGroupPattern.make(pattern=pattern, citation_group=self)
 
     def for_years(
         self,
@@ -88,7 +96,7 @@ class CitationGroup(BaseModel):
         end_year: Optional[int] = None,
         author: Optional[str] = None,
     ) -> List["models.Name"]:
-        nams = list(self.get_names())
+        nams = self.get_names()
         if end_year is not None:
             nams = [
                 nam for nam in nams if nam.numeric_year() in range(start_year, end_year)
@@ -98,12 +106,12 @@ class CitationGroup(BaseModel):
         if author is not None:
             nams = [nam for nam in nams if author in nam.authority]
         self._display_nams(nams)
-        return sorted(nams, key=lambda nam: nam.sort_key())
+        return nams
 
     def display(
         self, depth: int = 0, full: bool = True, include_articles: bool = False
     ) -> None:
-        nams = list(self.get_names())
+        nams = self.get_names()
         arts = list(self.get_articles())
         region_str = f"{self.region.name}; " if self.region else ""
         print(
@@ -127,7 +135,7 @@ class CitationGroup(BaseModel):
 
     def delete(self) -> None:
         assert (
-            self.get_names().count() == 0
+            len(self.get_names()) == 0
         ), f"cannot delete {self} because it contains names"
         assert (
             self.get_articles().count() == 0
@@ -157,8 +165,9 @@ class CitationGroup(BaseModel):
             models.Article.citation_group == self
         )
 
-    def get_names(self) -> Any:
-        return self.names.filter(models.Name.status != constants.Status.removed)
+    def get_names(self) -> List["models.Name"]:
+        names = self.names.filter(models.Name.status != constants.Status.removed)
+        return sorted(names, key=lambda nam: nam.sort_key())
 
     def _display_nams(self, nams: Iterable["models.Name"], depth: int = 0) -> None:
         for nam in sorted(nams, key=lambda nam: nam.sort_key()):
@@ -169,8 +178,36 @@ class CitationGroup(BaseModel):
         return f"{self.name} ({self.type.name}; {self.region.name if self.region else '(unknown)'})"
 
 
+class CitationGroupPattern(BaseModel):
+    label_field = "pattern"
+    call_sign = "CGP"
+
+    pattern = CharField(null=False)
+    citation_group = ForeignKeyField(CitationGroup, related_name="patterns", null=False)
+
+    class Meta:
+        db_table = "citation_group_pattern"
+
+    @classmethod
+    def make(
+        cls, pattern: str, citation_group: CitationGroup
+    ) -> "CitationGroupPattern":
+        pattern = helpers.simplify_string(pattern)
+        try:
+            return cls.create(pattern=pattern, citation_group=citation_group)
+        except IntegrityError:
+            existing = cls.get(pattern=pattern)
+            if existing.citation_group != citation_group:
+                raise ValueError(
+                    f"Conflicting CG for existing pattern: {existing.citation_group}"
+                )
+            return existing
+
+
 class CitationGroupTag(adt.ADT):
     # Must have articles for all citations in this group
     MustHave(tag=1)  # type: ignore
     # Ignore in find_potential_citations()
     IgnorePotentialCitations(tag=2)  # type: ignore
+    # Like MustHave, but only for articles published after this year
+    MustHaveAfter(tag=3, year=str)  # type: ignore

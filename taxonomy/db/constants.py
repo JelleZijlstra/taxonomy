@@ -16,14 +16,24 @@ class Age(enum.IntEnum):
     fossil = 2
     ichno = 3
     removed = 4  # taxon is removed; should not have any references
+    track = 5
+    egg = 6
+    coprolite = 7
+    burrow = 8
+    bite_trace = 9
 
     def get_symbol(self) -> str:
         return {
             self.extant: "",
             self.holocene: "☠",
             self.fossil: "†",
-            self.ichno: "👣",
+            self.ichno: "👻",
             self.removed: "!",
+            self.track: "👣",
+            self.egg: "🥚",
+            self.coprolite: "💩",
+            self.burrow: "🕳️",
+            self.bite_trace: "😋",
         }[self]
 
 

@@ -9,7 +9,11 @@ from .article import Article, ArticleComment  # noqa: F401
 from . import citations  # noqa: F401
 from .collection import Collection  # noqa: F401
 from .location import Location  # noqa: F401
-from .citation_group import CitationGroup, CitationGroupTag  # noqa: F401
+from .citation_group import (  # noqa: F401
+    CitationGroup,
+    CitationGroupPattern,
+    CitationGroupTag,
+)
 from .name import (  # noqa: F401
     Name,
     NameComment,

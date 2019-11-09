@@ -50,6 +50,7 @@ from .db.constants import Age, Group, NomenclatureStatus, Rank, ArticleKind
 from .db.models import (
     Article,
     CitationGroup,
+    CitationGroupPattern,
     CitationGroupTag,
     Collection,
     Name,
@@ -264,23 +265,24 @@ def add_page_described() -> Iterable[Tuple[Name, str]]:
 
 
 @command
-def make_pleistocene_localities(dry_run: bool = False) -> None:
+def make_general_localities(dry_run: bool = False) -> None:
     pleistocene = models.Period.get(models.Period.name == "Pleistocene")
+    phanerozoic = models.Period.get(models.Period.name == "Phanerozoic")
     for region in models.Region.select():
-        name = f"{region.name} Pleistocene"
-        try:
-            loc = models.Location.get(models.Location.name == name)
-        except models.Location.DoesNotExist:
-            print(f"creating location {name}")
-            if dry_run:
-                continue
-            else:
-                loc = models.Location.make(name=name, region=region, period=pleistocene)
-        if not loc.comment:
-            comment = f"Undifferentiated Pleistocene localities in {region.name}"
-            print(f"setting comment on {loc} to {comment}")
-            if not dry_run:
-                loc.comment = comment
+        for (name, period) in [("Pleistocene", pleistocene), ("fossil", phanerozoic)]:
+            name = f"{region.name} {name}"
+            try:
+                loc = models.Location.get(models.Location.name == name)
+            except models.Location.DoesNotExist:
+                print(f"creating location {name}")
+                if dry_run:
+                    continue
+                else:
+                    loc = models.Location.make(name=name, region=region, period=period)
+            if not loc.has_tag(models.location.LocationTag.General):
+                print(f"adding General tag to {loc}")
+                if not dry_run:
+                    loc.add_tag(models.location.LocationTag.General)
 
 
 @generator_command
@@ -794,8 +796,10 @@ def root_name_mismatch(interactive: bool = False) -> Iterable[Name]:
                 break
         if name.root_name != stem_name:
             print(f"Stem mismatch for {name}: {name.root_name} vs. {stem_name}")
-            if interactive and getinput.yes_no("correct? "):
-                name.root_name = stem_name
+            if interactive:
+                name.display()
+                if getinput.yes_no("correct? "):
+                    name.root_name = stem_name
             yield name
 
 
@@ -814,22 +818,13 @@ def _duplicate_finder(
     return wrapper
 
 
-def _clean_up_word(word: str) -> str:
-    if word in ("the", "de", "des", "der", "of", "la", "le"):
-        return ""
-    return word.rstrip("s")
-
-
 @_duplicate_finder
 def dup_citation_groups() -> List[Dict[str, List[CitationGroup]]]:
     cgs: Dict[str, List[CitationGroup]] = defaultdict(list)
     for cg in CitationGroup.select_valid():
         if cg.type == constants.ArticleType.REDIRECT:
             continue
-        normalized_name = "".join(
-            _clean_up_word(word) for word in cg.name.lower().split()
-        )
-        cgs[normalized_name].append(cg)
+        cgs[helpers.simplify_string(cg.name)].append(cg)
     return [cgs]
 
 
@@ -865,7 +860,11 @@ def dup_taxa() -> List[Dict[str, List[Taxon]]]:
 def dup_genus() -> List[Dict[str, List[Name]]]:
     names: Dict[str, List[Name]] = defaultdict(list)
     for name in Name.select_valid().filter(Name.group == Group.genus):
-        full_name = f"{name.root_name} {name.authority}, {name.year}"
+        if name.original_citation is not None:
+            citation = name.original_citation.name
+        else:
+            citation = ""
+        full_name = f"{name.root_name} {name.authority}, {name.year}, {citation}"
         names[full_name].append(name)
     return [names]
 
@@ -880,9 +879,13 @@ def dup_names() -> List[
     for name in Name.select_valid().filter(
         Name.original_name != None, Name.year != None
     ):
-        original_year[(name.original_name, name.year, name.nomenclature_status)].append(
-            name
+        key = (
+            name.original_name,
+            name.year,
+            name.nomenclature_status,
+            name.original_citation,
         )
+        original_year[key].append(name)
     return [original_year]
 
 
@@ -916,7 +919,13 @@ class ScoreHolder:
     def __init__(self, data: Dict[Taxon, Dict[str, Any]]) -> None:
         self.data = data
 
-    def by_field(self, field: str, min_count: int = 0, max_score: float = 101) -> None:
+    def by_field(
+        self,
+        field: str,
+        min_count: int = 0,
+        max_score: float = 101,
+        graphical: bool = False,
+    ) -> None:
         items = (
             (key, value)
             for key, value in self.data.items()
@@ -932,14 +941,33 @@ class ScoreHolder:
             return (percentage, required_count, data["total"])
 
         sorted_items = sorted(items, key=sort_key)
+        chart_data = []
         for taxon, data in sorted_items:
             if field in data:
                 percentage, count, required_count = data[field]
             else:
                 percentage, count, required_count = 100, 0, 0
-            print(
+            label = (
                 f'{taxon} {percentage:.2f} ({count}/{required_count}) {data["total"]}'
             )
+            if graphical:
+                chart_data.append((label, percentage / 100))
+            else:
+                print(label)
+        if chart_data:
+            getinput.print_scores(chart_data)
+
+    def by_num_missing(self, field: str) -> None:
+        items = []
+        for key, value in self.data.items():
+            _, count, required_count = value.get(field, (100, 0, 0))
+            num_missing = required_count - count
+            if num_missing > 0:
+                items.append((key, num_missing, required_count))
+        for taxon, num_missing, total in sorted(
+            items, key=lambda pair: (pair[1], pair[2], pair[0])
+        ):
+            print(f"{taxon}: {num_missing}/{total}")
 
     def completion_rate(self) -> None:
         fields = {field for data in self.data.values() for field in data} - {
@@ -962,6 +990,9 @@ def get_scores(
     rank: Rank,
     within_taxon: Optional[Taxon] = None,
     age: Optional[constants.Age] = None,
+    graphical: bool = False,
+    focus_field: Optional[str] = None,
+    min_year: Optional[int] = None,
 ) -> ScoreHolder:
     data = {}
     if within_taxon is not None:
@@ -972,7 +1003,9 @@ def get_scores(
         if age is not None and taxon.age > age:
             continue
         getinput.show(f"--- {taxon} ---")
-        data[taxon] = taxon.stats(age=age)
+        data[taxon] = taxon.stats(
+            age=age, graphical=graphical, focus_field=focus_field, min_year=min_year
+        )
     return ScoreHolder(data)
 
 
@@ -1404,10 +1437,14 @@ def clean_up_verbatim(dry_run: bool = False, slow: bool = False) -> None:
         citation_group_count += 1
         if not dry_run:
             nam.citation_group = None
-    print(f"Family/genera type count: {famgen_type_count}")
-    print(f"Species type count: {species_type_count}")
-    print(f"Citation count: {citation_count}")
-    print(f"Citation group count: {citation_group_count}")
+    if famgen_type_count:
+        print(f"Family/genera type count: {famgen_type_count}")
+    if species_type_count:
+        print(f"Species type count: {species_type_count}")
+    if citation_count:
+        print(f"Citation count: {citation_count}")
+    if citation_group_count:
+        print(f"Citation group count: {citation_group_count}")
 
 
 @command
@@ -1533,6 +1570,7 @@ def fill_citation_group_for_author(author: str, require_citation: bool = True) -
     ):
         nam = nam.reload()
         if nam.citation_group is None:
+            getinput.print_header(nam)
             nam.possible_citation_groups()
             print("===", nam)
             nam.display()
@@ -1540,9 +1578,33 @@ def fill_citation_group_for_author(author: str, require_citation: bool = True) -
 
 
 @command
-def fill_citation_groups() -> None:
+def fill_citation_groups(book: bool = False, interactive: bool = True) -> None:
+    book_cg = CitationGroup.get(CitationGroup.name == "book")
+    if book:
+        query = Name.citation_group == book_cg
+    else:
+        query = Name.citation_group == None
+    names = Name.bfind(Name.verbatim_citation != None, query, quiet=True)
+    patterns = list(CitationGroupPattern.select_valid())
+    print(f"Filling citation group for {len(names)} names")
+
+    for nam in names:
+        citation = helpers.simplify_string(nam.verbatim_citation)
+        for pattern in patterns:
+            if pattern.pattern in citation:
+                print("===", nam)
+                print(nam.verbatim_citation)
+                print(
+                    f"Inferred group with '{pattern.pattern}': {pattern.citation_group}"
+                )
+                nam.citation_group = pattern.citation_group
+                nam.save()
+
+    if not interactive:
+        return
+
     for nam in sorted(
-        Name.bfind(Name.verbatim_citation != None, Name.citation_group == None),
+        Name.bfind(Name.verbatim_citation != None, query, quiet=True),
         key=lambda nam: (
             nam.authority,
             nam.numeric_year(),
@@ -1550,7 +1612,12 @@ def fill_citation_groups() -> None:
         ),
     ):
         nam = nam.reload()
-        if nam.citation_group is None:
+        if book:
+            condition = nam.citation_group == book_cg
+        else:
+            condition = nam.citation_group is None
+        if condition:
+            getinput.print_header(nam)
             nam.possible_citation_groups()
             print("===", nam)
             nam.display()
@@ -1583,6 +1650,35 @@ def fill_citation_group_for_taxon_authors(
 
 
 @command
+def field_by_year(field: Optional[str] = None) -> None:
+    by_year_cited = defaultdict(int)
+    by_year_total = defaultdict(int)
+    if field is None:
+        for nam in Name.bfind(
+            Name.original_citation == None, Name.year != None, quiet=True
+        ):
+            by_year_total[nam.year] += 1
+            if nam.verbatim_citation:
+                by_year_cited[nam.year] += 1
+    else:
+        for nam in Name.bfind(Name.year != None, quiet=True):
+            required_fields = nam.get_required_fields()
+            if field not in required_fields:
+                continue
+            by_year_total[nam.year] += 1
+            if getattr(nam, field) is not None:
+                by_year_cited[nam.year] += 1
+    data = []
+    for year in sorted(by_year_total):
+        total = by_year_total[year]
+        value = by_year_cited[year] / total
+        print(year, total, value)
+        if len(year) == 4:
+            data.append((f"{year} ({total})", value))
+    getinput.print_scores(data)
+
+
+@command
 def fill_type_locality(
     extant_only: bool = True, start_at: Optional[Name] = None
 ) -> None:
@@ -1608,20 +1704,27 @@ def names_with_location_detail_without_type_loc(
 ) -> Iterable[Name]:
     if taxon is None:
         nams = Name.select_valid().filter(
-            Name.type_tags != None, Name.type_locality >> None
+            Name.type_tags != None,
+            Name.type_locality >> None,
+            Name.group == Group.species,
         )
     else:
         nams = [
             nam
             for nam in taxon.all_names()
-            if nam.type_tags is not None and nam.type_locality is None
+            if nam.type_tags is not None
+            and nam.type_locality is None
+            and nam.group == Group.species
         ]
+    nams_with_key = []
     for nam in nams:
         tags = [tag for tag in nam.type_tags if isinstance(tag, TypeTag.LocationDetail)]
         if not tags:
             continue
         if "type_locality" not in nam.get_required_fields():
             continue
+        nams_with_key.append(([(tag.source.name, tag.text) for tag in tags], nam, tags))
+    for _, nam, tags in sorted(nams_with_key):
         nam.display()
         for tag in tags:
             print(tag)
@@ -1680,6 +1783,12 @@ def type_locality_without_detail() -> Iterable[Name]:
         ):
             print(f"{nam} has a type locality but no location detail")
             yield nam
+
+
+@command
+def most_common_citation_groups_after(year: int) -> Dict[CitationGroup, int]:
+    nams = Name.bfind(Name.citation_group != None, Name.year > year, quiet=True)
+    return Counter(nam.citation_group for nam in nams)
 
 
 @command
@@ -2055,6 +2164,12 @@ def move_to_lowest_rank(dry_run: bool = False) -> Iterable[Tuple[Name, str]]:
 AUTHOR_SYNONYMS = {
     "Afanasiev": helpers.romanize_russian("Афанасьев"),
     "Barret-Hamilton": "Barrett-Hamilton",
+    "Belayeva": helpers.romanize_russian("Беляева"),
+    "Beliaeva": helpers.romanize_russian("Беляева"),
+    "Beliajeva": helpers.romanize_russian("Беляева"),
+    "Beljaeva": helpers.romanize_russian("Беляева"),
+    "Belyayeva": helpers.romanize_russian("Беляева"),
+    "Belyaeva": helpers.romanize_russian("Беляева"),
     "Blainville": "de Blainville",
     "Bobrinskii": helpers.romanize_russian("Бобринской"),
     "Bobrinskoi": helpers.romanize_russian("Бобринской"),
@@ -2066,10 +2181,12 @@ AUTHOR_SYNONYMS = {
     "C.E.H. Smith": "C.H. Smith",
     "Chabaeva": helpers.romanize_russian("Хабаева"),
     "Chernyavskii": helpers.romanize_russian("Чернявский"),
+    "Christol": "de Christol",
     "Crawford Cabral": "Crawford-Cabral",
     "Czersky": helpers.romanize_russian("Черский"),
     "De Blainville": "de Blainville",
     "De Beaux": "de Beaux",
+    "De Christol": "de Christol",
     "de Miranda Ribeiro": "Miranda-Ribeiro",
     "de Miranda-Ribeiro": "Miranda-Ribeiro",
     "De Muizon": "de Muizon",
@@ -2107,6 +2224,9 @@ AUTHOR_SYNONYMS = {
     "LeConte": "Le Conte",
     "Leconte": "Le Conte",
     "Lonnberg": "Lönnberg",
+    "Lychev": helpers.romanize_russian("Лычев"),
+    "Lytschev": helpers.romanize_russian("Лычев"),
+    "Lytshev": helpers.romanize_russian("Лычев"),
     "Major": "Forsyth Major",
     "Milne Edwards": "Milne-Edwards",
     "Miranda Ribeiro": "Miranda-Ribeiro",  # {Miranda-Ribeiro-biography.pdf}
@@ -2124,6 +2244,7 @@ AUTHOR_SYNONYMS = {
     "Ruppell": "Rüppell",
     "Scalon": helpers.romanize_russian("Скалон"),
     "Selewin": helpers.romanize_russian("Селевин"),
+    "Serres": "de Serres",
     "Severtsow": helpers.romanize_russian("Северцов"),
     "Severtzov": helpers.romanize_russian("Северцов"),
     "Severtzow": helpers.romanize_russian("Северцов"),
@@ -2213,8 +2334,8 @@ def apply_author_synonyms(dry_run: bool = False) -> None:
 def _get_new_author(nams: List[Name], citation: Article, author: str) -> Optional[str]:
     authors = citation.authors
     if ";" not in authors and ", " in authors:
-        last, initials = authors.split(", ")
-        if last == author:
+        last, initials = authors.split(", ", maxsplit=1)
+        if last == author and "," not in initials:
             return f"{initials} {last}"
     nams[0].open_description()
     return Name.getter("authority").get_one_key("author> ")
@@ -2328,6 +2449,10 @@ def run_maintenance(skip_slow: bool = True) -> Dict[Any, Any]:
         # dup_taxa,
         bad_stratigraphy,
         set_citation_group_for_matching_citation,
+        enforce_must_have,
+        fix_citation_group_redirects,
+        recent_names_without_verbatim,
+        make_general_localities,
     ]
     # these each take >60 s
     slow: List[Callable[[], Any]] = [
@@ -2458,7 +2583,7 @@ def fgsyn(off: Optional[Name] = None) -> Name:
 @command
 def author_report(
     author: str, partial: bool = False, missing_attribute: Optional[str] = None
-) -> None:
+) -> List[Name]:
     if partial:
         condition = Name.authority.contains(author)
     else:
@@ -2480,11 +2605,13 @@ def author_report(
             by_year[nam.year].append(nam)
         else:
             no_year.append(nam)
-    print(f"total names: {sum(len(v) for v in by_year.items()) + len(no_year)}")
+    print(f"total names: {sum(len(v) for _, v in by_year.items()) + len(no_year)}")
     if not by_year and not no_year:
-        return
+        return []
     print(f"years: {min(by_year)}–{max(by_year)}")
+    out = []
     for year, year_nams in sorted(by_year.items()):
+        out += year_nams
         print(f"{year} ({len(year_nams)})")
         for nam in year_nams:
             print(f"    {nam}")
@@ -2494,20 +2621,47 @@ def author_report(
                 print(f"        {nam.page_described}")
     if no_year:
         print(f"no year: {no_year}")
+        out += no_year
+    return out
 
 
 @generator_command
-def enforce_must_have() -> Iterator[Name]:
-    cgs = [
+def enforce_must_have(fix: bool = True) -> Iterator[Name]:
+    for cg in sorted(_must_have_citation_groups(), key=lambda cg: cg.archive or ""):
+        after_tag = cg.get_tag(CitationGroupTag.MustHaveAfter)
+        found_any = False
+        for nam in cg.get_names():
+            if nam.original_citation is not None:
+                continue
+            if after_tag is not None and nam.numeric_year() < int(after_tag.year):
+                continue
+            if not found_any:
+                getinput.print_header(nam.citation_group.name)
+            print(f"{nam} is in {cg}, but has no original_citation")
+            nam.display()
+            found_any = True
+            yield nam
+        if found_any:
+            find_potential_citations_for_group(cg, fix=fix)
+
+
+@generator_command
+def archive_for_must_have(fix: bool = True) -> Iterator[CitationGroup]:
+    for cg in _must_have_citation_groups():
+        if cg.archive is None:
+            getinput.print_header(cg)
+            cg.display()
+            cg.e.archive
+            yield cg
+
+
+def _must_have_citation_groups() -> List[CitationGroup]:
+    return [
         cg
         for cg in CitationGroup.select_valid()
         if cg.has_tag(CitationGroupTag.MustHave)
+        or cg.get_tag(CitationGroupTag.MustHaveAfter)
     ]
-    for cg in cgs:
-        for nam in cg.get_names():
-            if nam.original_citation is None:
-                print(f"{nam} is in {cg}, but has no original_citation")
-                yield nam
 
 
 @command
@@ -2522,7 +2676,7 @@ def find_potential_citations(fix: bool = False) -> int:
 
 @command
 def find_potential_citations_for_group(cg: CitationGroup, fix: bool = False) -> int:
-    if cg.get_names().count() == 0:
+    if not cg.get_names():
         return 0
     potential_arts = Article.bfind(
         Article.kind != constants.ArticleKind.no_copy, citation_group=cg, quiet=True
@@ -2531,8 +2685,10 @@ def find_potential_citations_for_group(cg: CitationGroup, fix: bool = False) -> 
         return 0
     count = 0
     print(f"Trying {cg}...", flush=True)
-    for nam in sorted(cg.get_names(), key=lambda nam: nam.sort_key()):
-        page = nam.numeric_page_described()
+    for nam in cg.get_names():
+        if nam.original_citation is not None:
+            continue
+        page = nam.extract_page_described()
         if not page:
             continue
         candidates = [
@@ -2544,7 +2700,7 @@ def find_potential_citations_for_group(cg: CitationGroup, fix: bool = False) -> 
             and art.kind is not ArticleKind.no_copy
         ]
         if candidates:
-            print("------")
+            getinput.print_header(nam)
             count += 1
             nam.display()
             for candidate in candidates:
@@ -2559,18 +2715,61 @@ def find_potential_citations_for_group(cg: CitationGroup, fix: bool = False) -> 
     return count
 
 
+@generator_command
+def recent_names_without_verbatim(
+    threshold: int = 1990, fix: bool = False
+) -> Iterator[Name]:
+    return fill_verbatim_citation_for_names(Name.year >= str(threshold), fix=fix)
+
+
+@generator_command
+def fill_verbatim_citation_for_author(
+    author: str, substring: bool = False, fix: bool = False
+):
+    return fill_verbatim_citation_for_names(
+        Name.authority.contains(author) if substring else Name.authority == author,
+        fix=fix,
+    )
+
+
+def fill_verbatim_citation_for_names(
+    *queries: Any, fix: bool = False
+) -> Iterator[Name]:
+    for nam in sorted(
+        Name.bfind(
+            *queries, Name.original_citation == None, Name.verbatim_citation == None
+        ),
+        key=lambda nam: (
+            -nam.numeric_year(),
+            nam.authority or "",
+            nam.original_name or "",
+            nam.root_name,
+        ),
+    ):
+        nam = nam.reload()
+        if "verbatim_citation" not in nam.get_empty_required_fields():
+            continue
+        if fix:
+            getinput.print_header(nam)
+            nam.possible_citation_groups()
+        nam.display()
+        if fix:
+            nam.e.verbatim_citation
+        yield nam
+
+
 @command
-def citation_groups_with_recent_names() -> None:
+def citation_groups_with_recent_names(threshold: int = 1923) -> None:
     for cg in CitationGroup.select_valid().filter(
         CitationGroup.type == constants.ArticleType.JOURNAL
     ):
-        names = [nam for nam in cg.get_names() if nam.numeric_year() > 1923]
+        names = [nam for nam in cg.get_names() if nam.numeric_year() > threshold]
         if not names:
             continue
         arts = [
             art
             for art in Article.bfind(citation_group=cg, quiet=True)
-            if art.numeric_year() > 1923
+            if art.numeric_year() > threshold
         ]
         if not arts:
             continue
@@ -2579,8 +2778,7 @@ def citation_groups_with_recent_names() -> None:
         print(f"=== {cg} has {len(names)} names and {len(arts)} articles ===")
         for nam in sorted(names, key=lambda nam: nam.sort_key()):
             nam.display()
-        for art in sorted(arts, key=lambda art: (art.numeric_year(), art.start_page)):
-            print(art.cite())
+        getinput.flush()
 
 
 @command

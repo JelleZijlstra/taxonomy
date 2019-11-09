@@ -47,6 +47,13 @@ class Period(BaseModel):
     def _filter_none(seq: Iterable[Optional[T]]) -> Iterable[T]:
         return (elt for elt in seq if elt is not None)
 
+    def sort_key(self) -> int:
+        if self.min_age:
+            return self.min_age
+        if self.min_period:
+            return self.min_period.sort_key()
+        return -1
+
     def get_min_age(self) -> Optional[int]:
         if self.min_age is not None:
             return self.min_age

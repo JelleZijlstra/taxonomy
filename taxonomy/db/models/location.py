@@ -1,12 +1,12 @@
 import sys
-from typing import Any, IO, Iterable, Optional
+from typing import Any, IO, Iterable, Optional, Type
 
 from peewee import BooleanField, CharField, ForeignKeyField, IntegerField, TextField
 
 from .. import constants, models
-from ... import events, getinput
+from ... import adt, events, getinput
 
-from .base import BaseModel
+from .base import BaseModel, ADTField
 from .article import Article
 from .period import Period
 from .region import Region
@@ -42,6 +42,7 @@ class Location(BaseModel):
     age_detail = TextField()
     source = ForeignKeyField(Article, related_name="locations", null=True)
     deleted = BooleanField(default=False)
+    tags = ADTField(lambda: LocationTag, null=True)
 
     @classmethod
     def make(
@@ -187,3 +188,19 @@ class Location(BaseModel):
         yield "max_period"
         yield "stratigraphic_unit"
         yield "region"
+
+    def has_tag(self, tag: adt.ADT) -> bool:
+        if self.tags is None:
+            return False
+        return any(my_tag is tag for my_tag in self.tags)
+
+    def add_tag(self, tag: adt.ADT) -> None:
+        if self.tags is None:
+            self.tags = (tag,)
+        else:
+            self.tags = self.tags + (tag,)
+
+
+class LocationTag(adt.ADT):
+    # General locality; should be simplified if possible.
+    General(tag=1)  # type: ignore

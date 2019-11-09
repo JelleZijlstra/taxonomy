@@ -1,3 +1,8 @@
+"""
+
+Install the taxonomy package.
+
+"""
 try:
     from setuptools import setup
 except ImportError:
