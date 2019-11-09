@@ -424,7 +424,8 @@ def citejvp(article: Article) -> str:
 
 @register_cite_function("bibtex")
 def citebibtex(article: Article) -> str:
-    # lambda function to add a property to the output
+    out = "@"
+
     def add(key: str, value: Optional[str], mandatory: bool = False) -> None:
         nonlocal out
         if not value:
@@ -433,7 +434,6 @@ def citebibtex(article: Article) -> str:
             return
         out += "\t" + key + ' = "' + value + '",\n'
 
-    out = "@"
     if article.type == ArticleType.JOURNAL:
         out += "article"
     elif article.type == ArticleType.BOOK:

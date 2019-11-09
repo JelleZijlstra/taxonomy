@@ -530,7 +530,7 @@ class Taxon(BaseModel):
         assert name.taxon == self, f"{name} is not a synonym of {self}"
         old_base = self.base_name
         name.status = old_base.status
-        old_base.status = Status.synonym
+        old_base.status = Status.synonym  # type: ignore
         self.base_name = name
         self.recompute_name()
 
@@ -567,7 +567,8 @@ class Taxon(BaseModel):
         **kwargs: Any,
     ) -> "models.Name":
         if root_name is None:
-            root_name = Name.getter("root_name").get_one_key("root_name> ")
+            root_name = models.Name.getter("root_name").get_one_key("root_name> ")
+        assert root_name is not None
         if paper is None:
             paper = self.get_value_for_foreign_class("paper", Article)
 
@@ -601,12 +602,14 @@ class Taxon(BaseModel):
     ) -> "Taxon":
         if rank is None:
             rank = getinput.get_enum_member(Rank, "rank> ")
+        assert rank is not None
         if name is None:
             if self.rank in (Rank.genus, Rank.species):
                 default = self.valid_name
             else:
                 default = ""
             name = self.getter("valid_name").get_one_key("name> ", default=default)
+        assert name is not None
         if paper is None:
             paper = self.get_value_for_foreign_class("paper", Article)
 
@@ -782,7 +785,7 @@ class Taxon(BaseModel):
             child.parent = to_taxon
             child.save()
         nam = self.base_name
-        nam.status = Status.synonym
+        nam.status = Status.synonym  # type: ignore
         nam.save()
         for name in self.get_names():
             name.taxon = to_taxon
@@ -863,7 +866,10 @@ class Taxon(BaseModel):
         return names
 
     def names_missing_field(
-        self, field: str, age: Optional[constants.Age] = None, min_year: Optional[int] = None
+        self,
+        field: str,
+        age: Optional[constants.Age] = None,
+        min_year: Optional[int] = None,
     ) -> Set["models.Name"]:
         return {
             name
@@ -881,7 +887,7 @@ class Taxon(BaseModel):
         names = self.all_names(age=age, min_year=min_year)
         counts: Dict[str, int] = collections.defaultdict(int)
         required_counts: Dict[str, int] = collections.defaultdict(int)
-        counts_by_group: Dict[str, int] = collections.defaultdict(int)
+        counts_by_group: Dict[Group, int] = collections.defaultdict(int)
         for name in names:
             counts_by_group[name.group] += 1
             deprecated = set(name.get_deprecated_fields())
@@ -899,8 +905,7 @@ class Taxon(BaseModel):
         output: Dict[str, Any] = {"total": total}
         if focus_field is None:
             by_group = ", ".join(
-                f"{v.name}: {counts_by_group[v]}"
-                for v in reversed(Group)  # type: ignore
+                f"{v.name}: {counts_by_group[v]}" for v in reversed(Group)
             )
             print(f"Total names: {total} ({by_group})")
 
@@ -992,7 +997,10 @@ class Taxon(BaseModel):
                     nam.fill_required_fields()
 
     def fill_field_for_names(
-        self, field: str, exclude: Container["Taxon"] = frozenset(), min_year: Optional[int] = None
+        self,
+        field: str,
+        exclude: Container["Taxon"] = frozenset(),
+        min_year: Optional[int] = None,
     ) -> None:
         for name in sorted(
             self.all_names(exclude=exclude, min_year=min_year),

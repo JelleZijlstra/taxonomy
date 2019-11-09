@@ -61,7 +61,7 @@ def occur(
 
 
 def biggest_citation_groups_no_region(
-    limit: int = 50
+    limit: int = 50,
 ) -> List[Tuple[CitationGroup, int]]:
     query = (
         CitationGroup.select(
@@ -207,7 +207,10 @@ def count_field(model: Type[BaseModel], field: str) -> List[Tuple[Any, int]]:
 
 
 def locless_names(
-    genus: Taxon, attribute: str = "type_locality", age: Optional[Age] = Age.extant, min_year: Optional[int] = None
+    genus: Taxon,
+    attribute: str = "type_locality",
+    age: Optional[Age] = Age.extant,
+    min_year: Optional[int] = None,
 ) -> List[Name]:
     nams = list(genus.names_missing_field(attribute, age=age, min_year=min_year))
     for nam in nams:

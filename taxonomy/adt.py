@@ -106,7 +106,7 @@ class _ADTMeta(type):
     def __prepare__(mcs, name: str, bases: Any) -> _ADTNamespace:  # type: ignore
         return _ADTNamespace(sys._getframe(1).f_globals)
 
-    def __new__(mcs, name: str, bases: Any, ns: Any) -> Type[Any]:
+    def __new__(mcs, name: str, bases: Any, ns: Any) -> Any:
         if "_is_member" in ns and ns["_is_member"]:
             return super().__new__(mcs, name, bases, ns)
         members = {}

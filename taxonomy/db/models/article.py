@@ -158,13 +158,13 @@ class Article(BaseModel):
 
     @classmethod
     def bfind(
-        cls: Type[ModelT],
+        cls,
         *args: Any,
         quiet: bool = False,
-        sort_key: Optional[Callable[[ModelT], Any]] = None,
+        sort_key: Optional[Callable[["Article"], Any]] = None,
         journal: Optional[str] = None,
         **kwargs: Any,
-    ) -> List[ModelT]:
+    ) -> List["Article"]:
         if journal is not None:
             args = (*args, cls.citation_group == CitationGroup.get(name=journal))
         return super().bfind(*args, quiet=quiet, sort_key=sort_key, **kwargs)
@@ -434,7 +434,7 @@ class Article(BaseModel):
             return True
 
     def getIdentifier(self, identifier: Type[adt.ADT]) -> Optional[str]:
-        for tag in self.get_tag(self.tags, identifier):
+        for tag in self.get_tags(self.tags, identifier):
             return tag.text
         return None
 

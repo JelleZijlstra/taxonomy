@@ -871,10 +871,18 @@ def dup_genus() -> List[Dict[str, List[Name]]]:
 
 @_duplicate_finder
 def dup_names() -> List[
-    Dict[Tuple[str, str, constants.NomenclatureStatus], List[Name]]
+    Dict[
+        Tuple[
+            Optional[str], Optional[str], constants.NomenclatureStatus, Optional[str]
+        ],
+        List[Name],
+    ]
 ]:
     original_year: Dict[
-        Tuple[str, str, constants.NomenclatureStatus], List[Name]
+        Tuple[
+            Optional[str], Optional[str], constants.NomenclatureStatus, Optional[str]
+        ],
+        List[Name],
     ] = defaultdict(list)
     for name in Name.select_valid().filter(
         Name.original_name != None, Name.year != None
@@ -1651,8 +1659,8 @@ def fill_citation_group_for_taxon_authors(
 
 @command
 def field_by_year(field: Optional[str] = None) -> None:
-    by_year_cited = defaultdict(int)
-    by_year_total = defaultdict(int)
+    by_year_cited: Dict[str, int] = defaultdict(int)
+    by_year_total: Dict[str, int] = defaultdict(int)
     if field is None:
         for nam in Name.bfind(
             Name.original_citation == None, Name.year != None, quiet=True
@@ -1700,7 +1708,7 @@ def fill_type_locality(
 
 
 def names_with_location_detail_without_type_loc(
-    taxon: Optional[Taxon] = None
+    taxon: Optional[Taxon] = None,
 ) -> Iterable[Name]:
     if taxon is None:
         nams = Name.select_valid().filter(
@@ -2609,7 +2617,7 @@ def author_report(
     if not by_year and not no_year:
         return []
     print(f"years: {min(by_year)}–{max(by_year)}")
-    out = []
+    out: List[Name] = []
     for year, year_nams in sorted(by_year.items()):
         out += year_nams
         print(f"{year} ({len(year_nams)})")
@@ -2725,7 +2733,7 @@ def recent_names_without_verbatim(
 @generator_command
 def fill_verbatim_citation_for_author(
     author: str, substring: bool = False, fix: bool = False
-):
+) -> Iterator[Name]:
     return fill_verbatim_citation_for_names(
         Name.authority.contains(author) if substring else Name.authority == author,
         fix=fix,

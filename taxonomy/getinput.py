@@ -21,6 +21,7 @@ from typing import (
     Tuple,
     Type,
     TypeVar,
+    Union,
     overload,
 )
 
@@ -33,6 +34,7 @@ T = TypeVar("T")
 Completer = Callable[[str, Any], T]
 CompleterMap = Mapping[Tuple[Type[adt.ADT], str], Completer[Any]]
 CallbackMap = Mapping[str, Callable[[], object]]
+ADTOrInstance = Union[adt.ADT, Type[adt.ADT]]
 
 RED = 31
 GREEN = 32
@@ -250,8 +252,8 @@ def get_adt_list(
     existing: Optional[Iterable[adt.ADT]] = None,
     completers: CompleterMap = {},
     callbacks: CallbackMap = {},
-) -> Tuple[adt.ADT, ...]:
-    out: List[adt.ADT] = []
+) -> Tuple[ADTOrInstance, ...]:
+    out: List[ADTOrInstance] = []
     if existing is not None:
         out += existing
         print(f"existing: {_stringify_adt_with_indexes(out)}")
@@ -285,11 +287,12 @@ def get_adt_list(
                 print(f"{index} is out of range")
             else:
                 existing_member = out[index]
-                out[index] = _get_adt_member(
-                    type(existing_member),
-                    existing=existing_member,
-                    completers=completers,
-                )
+                if existing_member._has_args:
+                    out[index] = _get_adt_member(
+                        type(existing_member),  # type: ignore
+                        existing=existing_member,
+                        completers=completers,
+                    )
         elif member.startswith("r") and member[1:].isnumeric():
             index = int(member[1:])
             if index >= len(out):
@@ -307,9 +310,9 @@ def get_adt_list(
 
 def _get_adt_member(
     member_cls: Type[adt.ADT],
-    existing: Optional[adt.ADT] = None,
+    existing: Optional[ADTOrInstance] = None,
     completers: CompleterMap = {},
-) -> adt.ADT:
+) -> ADTOrInstance:
     if not member_cls._has_args:
         return member_cls
     args: Dict[str, Any] = {}
@@ -338,7 +341,7 @@ def _get_adt_member(
     return member_cls(**args)
 
 
-def _stringify_adt_with_indexes(adts: Iterable[adt.ADT]) -> str:
+def _stringify_adt_with_indexes(adts: Iterable[ADTOrInstance]) -> str:
     return "\n".join(f"{i}: {tag}" for i, tag in enumerate(adts))
 
 

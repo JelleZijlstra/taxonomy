@@ -442,7 +442,7 @@ class BaseModel(Model):
                 edited_any = True
         return edited_any
 
-    def get_tag(
+    def get_tags(
         self, tags: Optional[Sequence[adt.ADT]], tag_cls: Type[adt.ADT]
     ) -> Iterable[adt.ADT]:
         if tags is None:
