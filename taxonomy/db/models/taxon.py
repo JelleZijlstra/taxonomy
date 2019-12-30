@@ -1,4 +1,5 @@
-import collections
+from collections import defaultdict
+from functools import lru_cache
 import operator
 import re
 import sys
@@ -13,6 +14,7 @@ from typing import (
     Iterable,
     List,
     Optional,
+    Sequence,
     Set,
     Tuple,
     Union,
@@ -23,7 +25,15 @@ from peewee import BooleanField, CharField, ForeignKeyField, IntegerField, TextF
 
 from .. import constants, definition, helpers, models
 from ... import events, getinput
-from ..constants import Age, Group, NomenclatureStatus, OccurrenceStatus, Rank, Status
+from ..constants import (
+    Age,
+    Group,
+    NomenclatureStatus,
+    OccurrenceStatus,
+    Rank,
+    Status,
+    ArticleKind,
+)
 
 from .base import BaseModel, EnumField
 from .article import Article
@@ -303,7 +313,7 @@ class Taxon(BaseModel):
                 for child in children:
                     if child.base_name.status == Status.valid:
                         valid_children.append(child)
-                    else:
+                    elif exclude_fn is None or not exclude_fn(child):
                         dubious_children.append(child)
                 self._display_children(
                     valid_children,
@@ -383,33 +393,79 @@ class Taxon(BaseModel):
         )
         file.write(self.base_name.get_description(depth=1))
 
-    def ranked_parents(self) -> Tuple[Optional["Taxon"], Optional["Taxon"]]:
-        """Returns the order-level and family-level parents of the taxon.
+    def display_type_localities(
+        self,
+        full: bool = False,
+        geographically: bool = False,
+        region: Optional["models.Region"] = None,
+        exclude: Container["Taxon"] = frozenset(),
+        file: IO[str] = sys.stdout,
+    ) -> None:
+        nams = self.all_names(exclude=exclude)
+        by_locality: Dict[models.Location, List[models.Name]] = defaultdict(list)
+        for nam in nams:
+            if nam.type_locality is not None:
+                by_locality[nam.type_locality].append(nam)
 
-        The family-level parent is the one parent of family rank. The order-level parent
-        is of rank order if there is one, and otherwise the first unranked taxon above the
-        highest-ranked family-group taxon.
+        def display_locs(
+            by_locality: Dict[models.Location, List[models.Name]], depth: int = 0
+        ) -> None:
+            current_period: Optional[models.Period] = None
+            for loc, nams in sorted(
+                by_locality.items(),
+                key=lambda pair: (
+                    models.period.period_sort_key(pair[0].min_period),
+                    pair[0].name,
+                ),
+            ):
+                if loc.min_period != current_period:
+                    file.write(f"{' ' * depth}{loc.min_period}\n")
+                    current_period = loc.min_period
+                file.write(f"{' ' * (4 + depth)}{loc}\n")
+                models.name.write_type_localities(nams, full=full, depth=depth)
+                getinput.flush()
 
-        """
-        family_rank = None
-        order_rank = None
-        current_parent = self
-        while current_parent is not None:
-            parent_rank = current_parent.rank
-            if parent_rank == Rank.family:
-                family_rank = current_parent
-            if helpers.group_of_rank(parent_rank) == Group.family:
-                order_rank = None
-            if parent_rank == Rank.order:
-                order_rank = current_parent
-                break
-            if parent_rank == Rank.unranked and order_rank is None:
-                order_rank = current_parent
-            if parent_rank > Rank.order and parent_rank != Rank.unranked:
-                break
+        if geographically:
+            by_region: Dict[
+                models.Region, Dict[models.Location, List[models.Name]]
+            ] = defaultdict(dict)
+            for loc, nams in by_locality.items():
+                by_region[loc.region][loc] = nams
 
-            current_parent = current_parent.parent
-        return order_rank, family_rank
+            region_to_children: Dict[
+                Optional[models.Region], Set[models.Region]
+            ] = defaultdict(set)
+
+            def add_region(region: models.Region) -> None:
+                if region in region_to_children[region.parent]:
+                    return
+                region_to_children[region.parent].add(region)
+                if region.parent is not None:
+                    add_region(region.parent)
+
+            def display_region(region: models.Region, depth: int) -> None:
+                file.write(f"{' ' * depth}{region}\n")
+                display_locs(by_region[region], depth=depth + 4)
+                for child in sorted(
+                    region_to_children[region], key=lambda child: child.name
+                ):
+                    display_region(child, depth=depth + 4)
+
+            for region_with_locs in by_region:
+                add_region(region_with_locs)
+
+            if region is not None:
+                display_region(region, 0)
+            else:
+                display_region(next(iter(region_to_children[None])), 0)
+        else:
+            if region is not None:
+                by_locality = {
+                    loc: nams
+                    for loc, nams in by_locality.items()
+                    if loc.region.has_parent(region)
+                }
+            display_locs(by_locality)
 
     def add_static(
         self,
@@ -885,9 +941,9 @@ class Taxon(BaseModel):
         min_year: Optional[int] = None,
     ) -> Dict[str, float]:
         names = self.all_names(age=age, min_year=min_year)
-        counts: Dict[str, int] = collections.defaultdict(int)
-        required_counts: Dict[str, int] = collections.defaultdict(int)
-        counts_by_group: Dict[Group, int] = collections.defaultdict(int)
+        counts: Dict[str, int] = defaultdict(int)
+        required_counts: Dict[str, int] = defaultdict(int)
+        counts_by_group: Dict[Group, int] = defaultdict(int)
         for name in names:
             counts_by_group[name.group] += 1
             deprecated = set(name.get_deprecated_fields())
@@ -965,6 +1021,8 @@ class Taxon(BaseModel):
 
         def should_include(nam: models.Name) -> bool:
             if nam.original_citation is None:
+                return False
+            if nam.original_citation.kind is ArticleKind.no_copy:
                 return False
             empty_required = list(nam.get_empty_required_fields())
             if not empty_required:
@@ -1110,3 +1168,69 @@ def fill_data_from_paper(
 
     if not opened:
         _finished_papers.add(paper.name)
+
+
+@lru_cache(maxsize=2048)
+def ranked_parents(
+    txn: Optional[Taxon],
+) -> Tuple[Optional[Taxon], Optional[Taxon], Optional[Taxon]]:
+    """Returns the class-level, order-level and family-level parents of the taxon.
+
+    The family-level parent is the one parent of family rank. The order-level parent
+    is of rank order if there is one, and otherwise the first unranked taxon above the
+    highest-ranked family-group taxon.
+
+    """
+    if txn is None:
+        return (None, None, None)
+    rank = txn.rank
+    if rank is Rank.class_:
+        return (txn, None, None)
+    if rank > Rank.class_ and rank != Rank.unranked:
+        return (None, None, None)
+    parent_class, parent_order, parent_family = ranked_parents(txn.parent)
+    if rank is Rank.order:
+        return (parent_class, txn, None)
+    elif rank is Rank.family:
+        return (parent_class, parent_order, txn)
+    elif rank > Rank.superfamily:
+        if parent_family is None and (
+            parent_order is None or parent_order.rank is not Rank.order
+        ):
+            return (parent_class, txn, None)
+        else:
+            return (parent_class, parent_order, parent_family)
+    else:
+        return (parent_class, parent_order, parent_family)
+
+
+def display_organized(
+    data: Sequence[Tuple[str, Taxon]], depth: int = 0, file: IO[str] = sys.stdout
+) -> None:
+    labeled_data = [(text, taxon, ranked_parents(taxon)) for text, taxon in data]
+    labeled_data = sorted(
+        labeled_data,
+        key=lambda item: (
+            "" if item[2][0] is None else item[2][0].valid_name,
+            "" if item[2][1] is None else item[2][1].valid_name,
+            "" if item[2][2] is None else item[2][2].valid_name,
+            item[1].valid_name,
+        ),
+    )
+    current_class = None
+    current_order = None
+    current_family = None
+    for text, _, (class_, order, family) in labeled_data:
+        if class_ != current_class:
+            current_class = class_
+            if class_ is not None:
+                file.write(f"{' ' * (depth + 8)}{class_}\n")
+        if order != current_order:
+            current_order = order
+            if order is not None:
+                file.write(f"{' ' * (depth + 12)}{order}\n")
+        if family != current_family:
+            current_family = family
+            if family is not None:
+                file.write(f"{' ' * (depth + 16)}{family}\n")
+        file.write(getinput.indent(text, depth + 20))

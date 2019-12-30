@@ -340,14 +340,7 @@ class PeriodSystem(enum.IntEnum):
     other_chronostratigraphy = 28
 
     def is_stratigraphy(self) -> bool:
-        return self in {
-            PeriodSystem.bed,
-            PeriodSystem.member,
-            PeriodSystem.formation,
-            PeriodSystem.group,
-            PeriodSystem.supergroup,
-            PeriodSystem.other_lithostratigraphy,
-        }
+        return self in STRATIGRAPHIC_PERIODS
 
     def is_chronology(self) -> bool:
         return (
@@ -357,23 +350,35 @@ class PeriodSystem(enum.IntEnum):
         )
 
     def is_biochronology(self) -> bool:
-        return self in {
-            PeriodSystem.mn_zone,
-            PeriodSystem.mp_zone,
-            PeriodSystem.nalma,
-            PeriodSystem.salma,
-            PeriodSystem.alma,
-            PeriodSystem.elma,
-        }
+        return self in BIOCHRONOLOGICAL_PERIODS
 
     def is_geochronology(self) -> bool:
-        return self in {
-            PeriodSystem.age,
-            PeriodSystem.epoch,
-            PeriodSystem.period,
-            PeriodSystem.era,
-            PeriodSystem.eon,
-        }
+        return self in GEOCHRONOLOGICAL_PERIODS
+
+
+STRATIGRAPHIC_PERIODS = {
+    PeriodSystem.bed,
+    PeriodSystem.member,
+    PeriodSystem.formation,
+    PeriodSystem.group,
+    PeriodSystem.supergroup,
+    PeriodSystem.other_lithostratigraphy,
+}
+BIOCHRONOLOGICAL_PERIODS = {
+    PeriodSystem.mn_zone,
+    PeriodSystem.mp_zone,
+    PeriodSystem.nalma,
+    PeriodSystem.salma,
+    PeriodSystem.alma,
+    PeriodSystem.elma,
+}
+GEOCHRONOLOGICAL_PERIODS = {
+    PeriodSystem.age,
+    PeriodSystem.epoch,
+    PeriodSystem.period,
+    PeriodSystem.era,
+    PeriodSystem.eon,
+}
 
 
 class OccurrenceStatus(enum.IntEnum):
@@ -531,6 +536,9 @@ class CommentKind(enum.IntEnum):
     authorship = 13
     automatic_change = 14
     removal = 15
+    contents = 16
+    definition = 17
+    removed = 18
 
 
 class ArticleType(enum.IntEnum):

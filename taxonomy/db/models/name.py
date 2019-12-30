@@ -2,14 +2,17 @@ from collections import Counter
 import datetime
 import json
 import re
+import sys
 import time
 from typing import (
     Any,
     Callable,
     Dict,
+    IO,
     Iterable,
     List,
     Optional,
+    Sequence,
     Set,
     Tuple,
     Type,
@@ -35,7 +38,7 @@ from .base import BaseModel, EnumField, ADTField
 from .article import Article
 from .citation_group import CitationGroup
 from .collection import Collection
-from .taxon import Taxon
+from .taxon import Taxon, display_organized
 from .location import Location
 from .name_complex import NameComplex, SpeciesNameComplex
 
@@ -269,7 +272,15 @@ class Name(BaseModel):
             **callbacks,
             "add_comment": self.add_comment,
             "o": self.open_description,
+            "add_type_identical": self._add_type_identical_callback,
+            "make_variant": self.make_variant,
+            "add_variant": self.add_variant,
+            "preoccupied_by": self.preoccupied_by,
         }
+
+    def _add_type_identical_callback(self) -> None:
+        root_name = self.getter("root_name").get_one_key("root_name> ")
+        return self.taxon.add_type_identical(root_name)
 
     def get_completers_for_adt_field(self, field: str) -> getinput.CompleterMap:
         for field_name, tag_cls in [("type_tags", TypeTag), ("tags", Tag)]:
@@ -509,24 +520,44 @@ class Name(BaseModel):
         )
 
     def make_variant(
-        self, status: NomenclatureStatus, of_name: "Name", comment: Optional[str] = None
+        self,
+        status: Optional[NomenclatureStatus] = None,
+        of_name: Optional["Name"] = None,
+        comment: Optional[str] = None,
     ) -> None:
         if self.nomenclature_status != NomenclatureStatus.available:
             raise ValueError(f"{self} is {self.nomenclature_status.name}")
+        if status is None:
+            status = getinput.get_enum_member(
+                NomenclatureStatus, prompt="nomenclature_status> ", allow_empty=False
+            )
+        if of_name is None:
+            of_name = Name.getter("corrected_original_name").get_one(prompt="of_name> ")
+        if of_name is None:
+            raise ValueError("of_name is None")
         self.add_tag(STATUS_TO_TAG[status](name=of_name, comment=comment))
         self.nomenclature_status = status  # type: ignore
         self.save()
 
     def add_variant(
         self,
-        root_name: str,
-        status: NomenclatureStatus = NomenclatureStatus.variant,
+        root_name: Optional[str] = None,
+        status: NomenclatureStatus = None,
         paper: Optional[str] = None,
         page_described: Optional[str] = None,
         original_name: Optional[str] = None,
         *,
         interactive: bool = True,
     ) -> "Name":
+        if root_name is None:
+            root_name = Name.getter("root_name").get_one(prompt="root_name> ")
+        if root_name is None:
+            raise ValueError("root_name is None")
+        if status is None:
+            status = getinput.get_enum_member(
+                NomenclatureStatus, prompt="nomenclature_status> ", allow_empty=False
+            )
+
         if paper is not None:
             nam = self.taxon.syn_from_paper(root_name, paper, interactive=False)
             nam.original_name = original_name
@@ -545,7 +576,13 @@ class Name(BaseModel):
             nam.fill_required_fields()
         return nam
 
-    def preoccupied_by(self, name: "Name", comment: Optional[str] = None) -> None:
+    def preoccupied_by(
+        self, name: Optional["Name"] = None, comment: Optional[str] = None
+    ) -> None:
+        if name is None:
+            name = Name.getter("corrected_original_name").get_one(prompt="name> ")
+        if name is None:
+            raise ValueError("name is None")
         self.add_tag(Tag.PreoccupiedBy(name, comment))
         if self.nomenclature_status == NomenclatureStatus.available:
             self.nomenclature_status = NomenclatureStatus.preoccupied  # type: ignore
@@ -652,46 +689,39 @@ class Name(BaseModel):
             intro_line = getinput.green(out)
         result = " " * ((depth + 1) * 4) + intro_line + "\n"
         if full:
-            data = {
-                "nomenclature_comments": self.nomenclature_comments,
-                "other_comments": self.other_comments,
-                "taxonomy_comments": self.taxonomy_comments,
-                "verbatim_type": self.verbatim_type,
-                "verbatim_citation": self.verbatim_citation,
-                "citation_group": self.citation_group.name
-                if self.citation_group is not None
-                else None,
-                "type_locality_description": self.type_locality_description,
-                "tags": sorted(self.tags) if self.tags else None,
-            }
-            if include_data:
-                data["data"] = self.data
+            data = {}
+            if self.type_locality is not None:
+                data["locality"] = repr(self.type_locality)
             type_info = []
             if self.species_type_kind is not None:
                 type_info.append(self.species_type_kind.name)
             if self.type_specimen is not None:
                 type_info.append(self.type_specimen)
             if self.collection is not None:
-                type_info.append(f"in {self.collection}")
+                type_info.append(f"in {self.collection!r}")
             if self.type_specimen_source is not None:
                 type_info.append(f"{{{self.type_specimen_source.name}}}")
-            if self.type_locality is not None:
-                type_info.append(f"from {self.type_locality.name}")
             if type_info:
                 data["type"] = "; ".join(type_info)
+            if self.citation_group is not None:
+                data["citation_group"] = self.citation_group.name
+            data["verbatim_citation"] = self.verbatim_citation
+            data["verbatim_type"] = self.verbatim_type
+            data["nomenclature_comments"] = self.nomenclature_comments
+            data["other_comments"] = self.other_comments
+            data["taxonomy_comments"] = self.taxonomy_comments
+            if self.tags:
+                data["tags"] = sorted(self.tags)
+            if include_data:
+                data["data"] = self.data
+
+            spacing = " " * ((depth + 2) * 4)
             result = "".join(
                 [result]
+                + [f"{spacing}{key}: {value}\n" for key, value in data.items() if value]
+                + [f"{spacing}{tag}\n" for tag in (self.type_tags or [])]
                 + [
-                    " " * ((depth + 2) * 4) + f"{key}: {value}\n"
-                    for key, value in data.items()
-                    if value
-                ]
-                + [
-                    " " * ((depth + 2) * 4) + str(tag) + "\n"
-                    for tag in (self.type_tags or [])
-                ]
-                + [
-                    " " * ((depth + 2) * 4) + comment.get_description() + "\n"
+                    f"{spacing}{comment.get_description()}\n"
                     for comment in self.comments
                     if include_data
                     or comment.kind
@@ -1213,6 +1243,12 @@ class NameComment(BaseModel):
         db_table = "name_comment"
 
     @classmethod
+    def select_valid(cls, *args: Any) -> Any:
+        return cls.select(*args).filter(
+            NameComment.kind != constants.CommentKind.removed
+        )
+
+    @classmethod
     def make(
         cls,
         name: Name,
@@ -1270,13 +1306,20 @@ class NameComment(BaseModel):
         return f'{self.text} ({"; ".join(components)})'
 
 
-def has_data_from_original(nam: "Name") -> bool:
+def has_data_from_original(nam: Name) -> bool:
     if not nam.original_citation or not nam.type_tags:
         return False
     for tag in nam.type_tags:
         if nam.group == Group.species:
             if (
-                isinstance(tag, TypeTag.LocationDetail)
+                isinstance(
+                    tag,
+                    (
+                        TypeTag.LocationDetail,
+                        TypeTag.SpecimenDetail,
+                        TypeTag.CitationDetail,
+                    ),
+                )
                 and tag.source == nam.original_citation
             ):
                 return True
@@ -1308,6 +1351,34 @@ def get_str_completer(
         return cls.getter(field).get_one_key(prompt, default=default or "")
 
     return completer
+
+
+def write_type_localities(
+    type_locs: Sequence[Name],
+    *,
+    depth: int = 0,
+    full: bool = False,
+    organized: bool = False,
+    file: IO[str] = sys.stdout,
+) -> None:
+    if not type_locs:
+        return
+
+    def write_type_loc(nam: Name) -> str:
+        lines = [f"{nam}\n"]
+        if full and nam.type_tags:
+            for tag in nam.type_tags:
+                if isinstance(tag, TypeTag.LocationDetail):
+                    lines.append(f"    {tag}\n")
+        return "".join(lines)
+
+    if organized:
+        display_organized(
+            [(write_type_loc(nam), nam.taxon) for nam in type_locs], depth=depth
+        )
+    else:
+        for nam in type_locs:
+            file.write(getinput.indent(write_type_loc(nam), depth + 8))
 
 
 class Tag(adt.ADT):

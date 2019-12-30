@@ -1,7 +1,9 @@
+from collections import defaultdict
+from functools import lru_cache
 import sys
-from typing import IO, Any, Iterable, Optional, Set, TypeVar
+from typing import IO, Any, Iterable, List, Optional, Set, Tuple, TypeVar
 
-from peewee import CharField, ForeignKeyField, IntegerField
+from peewee import BooleanField, CharField, ForeignKeyField, IntegerField
 
 from .. import constants, models
 from ... import events, getinput
@@ -42,17 +44,33 @@ class Period(BaseModel):
     region = ForeignKeyField(
         Region, related_name="periods", db_column="region_id", null=True
     )
+    deleted = BooleanField()
+
+    @classmethod
+    def select_valid(cls, *args: Any) -> Any:
+        return cls.select(*args).filter(Period.deleted != True)
+
+    def merge(self, other: "Period") -> None:
+        for loc in self.locations_min:
+            loc.min_period = other
+        for loc in self.locations_max:
+            loc.max_period = other
+        for loc in self.locations_stratigraphy:
+            loc.stratigraphic_unit = other
+        new_comment = f"Merged into {other} (P#{other.id})"
+        if not self.comment:
+            self.comment = new_comment
+        else:
+            self.comment = f"{self.comment} – {new_comment}"
+        self.deleted = True
+        self.save()
 
     @staticmethod
     def _filter_none(seq: Iterable[Optional[T]]) -> Iterable[T]:
         return (elt for elt in seq if elt is not None)
 
-    def sort_key(self) -> int:
-        if self.min_age:
-            return self.min_age
-        if self.min_period:
-            return self.min_period.sort_key()
-        return -1
+    def sort_key(self) -> Tuple[int, int, int, str]:
+        return period_sort_key(self)
 
     def get_min_age(self) -> Optional[int]:
         if self.min_age is not None:
@@ -90,6 +108,7 @@ class Period(BaseModel):
             next=next,
             min_age=min_age,
             max_age=max_age,
+            deleted=False,
             **kwargs,
         )
         if next is not None:
@@ -127,7 +146,9 @@ class Period(BaseModel):
     ) -> "Period":
         if period is not None:
             kwargs["max_period"] = kwargs["min_period"] = period
-        period = cls.create(name=name, system=kind.value, parent=parent, **kwargs)
+        period = cls.create(
+            name=name, system=kind.value, parent=parent, deleted=False, **kwargs
+        )
         if "next" in kwargs:
             next_period = kwargs["next"]
             next_period.prev = period
@@ -148,6 +169,11 @@ class Period(BaseModel):
                 location.display(full=full, depth=depth + 4, file=file)
             for location in self.locations_stratigraphy:
                 location.display(full=full, depth=depth + 4, file=file)
+            partial_locations = list(self.max_only_localities())
+            if partial_locations:
+                file.write(f"{' ' * (depth + 6)}Partially within this interval:\n")
+                for location in partial_locations:
+                    location.display(full=full, depth=depth + 4, file=file)
         if children:
             for period in self.children:
                 period.display(
@@ -160,20 +186,46 @@ class Period(BaseModel):
                     full=full, depth=depth + 2, file=file, locations=locations
                 )
 
+    def max_only_localities(self) -> Iterable["models.Location"]:
+        return models.Location.select_valid().filter(
+            models.Location.max_period == self, models.Location.min_period != self,
+        )
+
     def period_localities(self) -> Iterable["models.Location"]:
-        return models.Location.filter(
-            models.Location.max_period == self,
-            models.Location.min_period == self,
-            models.Location.deleted == False,
+        return models.Location.select_valid().filter(
+            models.Location.max_period == self, models.Location.min_period == self,
         )
 
     def make_locality(self, region: "Region") -> "models.Location":
         return models.Location.make(self.name, region, self)
 
-    def all_localities(self) -> Iterable["models.Location"]:
+    def stratigraphic_localities(self) -> Iterable["models.Location"]:
         yield from self.locations_stratigraphy
         for child in self.children:
-            yield from child.all_localities()
+            yield from child.stratigraphic_localities()
+
+    def all_localities(self, include_children: bool = True) -> Set["models.Location"]:
+        locations = {
+            *self.locations_stratigraphy,
+            *self.locations_min,
+            *self.locations_max,
+        }
+        if include_children:
+            for child in self.children:
+                locations |= child.all_localities()
+        return {loc for loc in locations if loc.deleted is not True}
+
+    def all_type_localities(self, include_children: bool = True) -> List["models.Name"]:
+        return [
+            nam
+            for loc in self.all_localities(include_children=include_children)
+            for nam in loc.type_localities
+        ]
+
+    def display_type_localities(self, include_children: bool = True) -> None:
+        models.name.write_type_localities(
+            self.all_type_localities(include_children=include_children), organized=True
+        )
 
     def all_regions(self) -> Set[Region]:
         return {loc.region for loc in self.all_localities()}
@@ -201,7 +253,7 @@ class Period(BaseModel):
             if field == "name":
                 continue
             value = getattr(self, field)
-            if value is None:
+            if value is None or value is False:
                 continue
             if isinstance(value, Period):
                 value = value.name
@@ -209,3 +261,84 @@ class Period(BaseModel):
         return "{} ({})".format(
             self.name, ", ".join("%s=%s" % item for item in properties.items())
         )
+
+
+@lru_cache(maxsize=1024)
+def period_sort_key(period: Period) -> Tuple[int, int, int, str]:
+    """The sort key consists of four parts.
+
+    - The maximum age of the period, or of its first parent that has a minimum
+      age. This is a negative number.
+    - The number of recursive parents that have the same age, or no age.
+    - The number of siblings that are younger and are otherwise the same, as a
+      negative number.
+    - The name of the period.
+
+    """
+    if period.max_age is not None:
+        if period.parent is not None and period.parent.max_age == period.max_age:
+            return _get_from_parent(period, period.parent)
+        if (
+            period.max_period is not None
+            and period.max_period.max_age == period.max_age
+        ):
+            return _get_from_parent(period, period.max_period)
+        return (-period.max_age, 0, 0, period.name)
+    if period.parent is not None:
+        return _get_from_parent(period, period.parent)
+    if period.max_period is not None:
+        return _get_from_parent(period, period.max_period)
+    return (0, 0, 0, period.name)
+
+
+def _get_from_parent(period: Period, parent: Period) -> Tuple[int, int, int, str]:
+    age, parents, _, _ = period_sort_key(parent)
+    return _apply_next_correction(period, age, parents)
+
+
+def _apply_next_correction(
+    period: Period, age: int, parents: int
+) -> Tuple[int, int, int, str]:
+    if period.next is not None:
+        next_age, next_parents, next_siblings, _ = period_sort_key(period.next)
+        if (next_age, next_parents) == (age, parents + 1):
+            return (age, parents + 1, next_siblings - 1, period.name)
+    return (age, parents + 1, 0, period.name)
+
+
+def display_period_tree(min_count: int = 0, full: bool = False) -> None:
+    max_parent_to_periods = defaultdict(int)
+    parent_to_periods = defaultdict(list)
+    period_to_max_parent = {}
+
+    def add_period(period: Period) -> Period:
+        if period in period_to_max_parent:
+            return period_to_max_parent[period]
+        if period.parent is None:
+            period_to_max_parent[period] = period
+            max_parent_to_periods[period] += 1
+            return period
+        parent_to_periods[period.parent].append(period)
+        max_parent = add_period(period.parent)
+        max_parent_to_periods[max_parent] += 1
+        period_to_max_parent[period] = max_parent
+        return max_parent
+
+    for period in Period.select_valid():
+        add_period(period)
+
+    def display_period(period: Period, depth: int) -> None:
+        spacing = " " * (depth * 4)
+        if full:
+            print(f"{spacing}{period!r}")
+        else:
+            print(f"{spacing}{period}")
+        for child in sorted(parent_to_periods[period], key=period_sort_key):
+            display_period(child, depth + 1)
+
+    for max_parent, count in sorted(
+        max_parent_to_periods.items(), key=lambda item: -item[1]
+    ):
+        if count >= min_count:
+            getinput.print_header(f"{max_parent.name} ({count})")
+            display_period(max_parent, 0)

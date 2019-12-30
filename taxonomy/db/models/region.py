@@ -1,4 +1,5 @@
 import collections
+from functools import lru_cache
 import sys
 from typing import IO, Dict, Iterable, List, Optional
 
@@ -61,6 +62,11 @@ class Region(BaseModel):
         if self.parent is not None:
             yield self.parent
             yield from self.parent.all_parents()
+
+    def all_citation_groups(self) -> Iterable["models.CitationGroup"]:
+        yield from self.citation_groups
+        for child in self.children:
+            yield from child.all_citation_groups()
 
     def has_citation_groups(self) -> bool:
         for _ in self.citation_groups:
@@ -140,3 +146,12 @@ class Region(BaseModel):
             collection.fill_field("city")
         for child in self.children:
             child.add_cities()
+
+    @lru_cache(maxsize=2048)
+    def has_parent(self, parent: "Region") -> bool:
+        if self == parent:
+            return True
+        elif self.parent is None:
+            return False
+        else:
+            return self.parent.has_parent(parent)

@@ -18,12 +18,16 @@ from typing import (
     Set,
     Tuple,
     Type,
+    TypeVar,
+    cast,
 )
 
-from .base import ADTField, BaseModel, EnumField, ModelT
+from .base import ADTField, BaseModel, EnumField
 from ... import config, events, adt, getinput
 
 from .citation_group import CitationGroup
+
+T = TypeVar("T", bound="Article")
 
 _options = config.get_options()
 _TYPE_TO_FIELDS = {
@@ -168,6 +172,15 @@ class Article(BaseModel):
         if journal is not None:
             args = (*args, cls.citation_group == CitationGroup.get(name=journal))
         return super().bfind(*args, quiet=quiet, sort_key=sort_key, **kwargs)
+
+    def get_adt_callbacks(self) -> getinput.CallbackMap:
+        callbacks = super().get_adt_callbacks()
+        return {
+            **callbacks,
+            "o": self.openf,
+            "openf": self.openf,
+            "reverse": self.reverse_authors,
+        }
 
     def get_required_fields(self) -> Iterable[str]:
         yield "kind"
@@ -322,6 +335,11 @@ class Article(BaseModel):
 
         return [map_fn(author) for author in authors]
 
+    def reverse_authors(self) -> None:
+        authors = self._getAuthors()
+        self.authors = self.implode_authors(reversed(authors))
+        self.save()
+
     def countAuthors(self) -> int:
         return len(self._getAuthors())
 
@@ -405,6 +423,11 @@ class Article(BaseModel):
         else:
             self.tags = self.tags + (tag,)
 
+    def has_tag(self, tag_cls: Type[adt.ADT]) -> bool:
+        for tag in self.get_tags(self.tags, tag_cls):
+            return True
+        return False
+
     def geturl(self) -> Optional[str]:
         # get the URL for this file from the data given
         if self.url:
@@ -438,6 +461,12 @@ class Article(BaseModel):
             return tag.text
         return None
 
+    def getEnclosing(self: T) -> Optional[T]:
+        if self.parent is not None:
+            return cast(T, self.parent)
+        else:
+            return None
+
     def cite(self, citetype: str = "paper") -> str:
         if self.issupplement():
             return self.parent.cite(citetype=citetype)
@@ -448,6 +477,12 @@ class Article(BaseModel):
 
     def display(self) -> None:
         print(self.cite())
+
+    def display_names(self) -> None:
+        print(repr(self))
+        self.display()
+        for nam in self.new_names:
+            nam.display()
 
     def __repr__(self) -> str:
         return f"{{{self.name}}}"
@@ -528,3 +563,4 @@ class Tag(adt.ADT):
     PartLocation(  # type: ignore
         parent=Article, start_page=int, end_page=int, comment=str, tag=10
     )
+    NonOriginal(comment=str, tag=10)  # type: ignore

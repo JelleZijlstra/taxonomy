@@ -211,3 +211,5 @@ class CitationGroupTag(adt.ADT):
     IgnorePotentialCitations(tag=2)  # type: ignore
     # Like MustHave, but only for articles published after this year
     MustHaveAfter(tag=3, year=str)  # type: ignore
+    # Articles in this citation group must have a series set.
+    MustHaveSeries(comment=str, tag=11)  # type: ignore

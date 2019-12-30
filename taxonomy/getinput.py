@@ -7,6 +7,7 @@ import enum
 import functools
 import itertools
 import re
+import shutil
 import subprocess
 import sys
 from typing import (
@@ -401,7 +402,7 @@ def show(obj: object) -> None:
 def print_scores(data: Sequence[Tuple[str, float]]) -> None:
     if not data:
         return
-    width = 170
+    width = shutil.get_terminal_size().columns
     label_width = max(len(label) for label, _ in data)
     chart_width = width - label_width - 1
     for label, value in data:
@@ -418,3 +419,8 @@ def print_header(obj: object) -> None:
     print(f"/={'=' * len(obj_str)}=\\")
     print(f"| {obj_str} |")
     print(f"\\={'=' * len(obj_str)}=/")
+
+
+def indent(text: str, width: int):
+    spacing = " " * width
+    return "".join(f"{spacing}{line}\n" for line in text.splitlines())

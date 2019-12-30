@@ -321,7 +321,7 @@ class BaseModel(Model):
                 field_obj.enum_cls, prompt=prompt, default=default, callbacks=callbacks
             )
         elif isinstance(field_obj, IntegerField):
-            default = "" if current_value is None else current_value
+            default = "" if current_value is None else str(current_value)
             result = getinput.get_line(
                 prompt, default=default, mouse_support=True, callbacks=callbacks
             )

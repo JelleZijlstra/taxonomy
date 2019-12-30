@@ -45,6 +45,10 @@ class Location(BaseModel):
     tags = ADTField(lambda: LocationTag, null=True)
 
     @classmethod
+    def select_valid(cls, *args: Any) -> Any:
+        return cls.select(*args).filter(Location.deleted != True)
+
+    @classmethod
     def make(
         cls,
         name: str,
@@ -104,50 +108,31 @@ class Location(BaseModel):
         self,
         full: bool = False,
         organized: bool = False,
+        *,
+        include_occurrences: bool = False,
         depth: int = 0,
         file: IO[str] = sys.stdout,
     ) -> None:
         file.write("{}{}\n".format(" " * (depth + 4), repr(self)))
-        space = " " * (depth + 12)
         if self.comment:
+            space = " " * (depth + 12)
             file.write(f"{space}Comment: {self.comment}\n")
         type_locs = list(self.type_localities)
-        if type_locs:
-            file.write("{}Type localities:\n".format(" " * (depth + 8)))
-            tag_spaces = " " * (depth + 16)
-            for nam in type_locs:
-                file.write(f"{space}{nam}\n")
-                if full and nam.type_tags:
-                    for tag in nam.type_tags:
-                        if isinstance(tag, models.TypeTag.LocationDetail):
-                            file.write(f"{tag_spaces}{tag}\n")
-        if organized:
-            self.display_organized(depth=depth, file=file)
-        else:
-            for occurrence in sorted(self.taxa, key=lambda occ: occ.taxon.valid_name):
-                file.write("{}{}\n".format(" " * (depth + 8), occurrence))
-
-    def display_organized(self, depth: int = 0, file: IO[str] = sys.stdout) -> None:
-        taxa = sorted(
-            ((occ, occ.taxon.ranked_parents()) for occ in self.taxa),
-            key=lambda pair: (
-                "" if pair[1][0] is None else pair[1][0].valid_name,
-                "" if pair[1][1] is None else pair[1][1].valid_name,
-                pair[0].taxon.valid_name,
-            ),
+        models.name.write_type_localities(
+            type_locs, depth=depth, full=full, organized=organized, file=file
         )
-        current_order = None
-        current_family = None
-        for occ, (order, family) in taxa:
-            if order != current_order:
-                current_order = order
-                if order is not None:
-                    file.write("{}{}\n".format(" " * (depth + 8), order))
-            if family != current_family:
-                current_family = family
-                if family is not None:
-                    file.write("{}{}\n".format(" " * (depth + 12), family))
-            file.write("{}{}\n".format(" " * (depth + 16), occ))
+        if include_occurrences:
+            taxa = list(self.taxa)
+            if not taxa:
+                return
+            file.write("{}Occurrences:\n".format(" " * (depth + 8)))
+            if organized:
+                models.taxon.display_organized(
+                    [(str(occ), occ.taxon) for occ in taxa], depth=depth, file=file
+                )
+            else:
+                for occurrence in sorted(taxa, key=lambda occ: occ.taxon.valid_name):
+                    file.write("{}{}\n".format(" " * (depth + 12), occurrence))
 
     def make_local_unit(
         self, name: Optional[str] = None, parent: Optional[Period] = None
@@ -182,6 +167,15 @@ class Location(BaseModel):
     def set_period(self, period: Period) -> None:
         self.min_period = self.max_period = period
 
+    def fill_field(self, field: str) -> None:
+        if field == "period":
+            period = self.get_value_for_foreign_class(
+                "period", Period, self.min_period, self.get_adt_callbacks()
+            )
+            self.set_period(period)
+        else:
+            super().fill_field(field)
+
     def get_required_fields(self) -> Iterable[str]:
         yield "name"
         yield "min_period"
@@ -199,6 +193,14 @@ class Location(BaseModel):
             self.tags = (tag,)
         else:
             self.tags = self.tags + (tag,)
+
+    def is_in_region(self, query: Region) -> bool:
+        region = self.region
+        while region is not None:
+            if region == query:
+                return True
+            region = region.parent
+        return False
 
 
 class LocationTag(adt.ADT):

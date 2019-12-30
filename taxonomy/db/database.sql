@@ -90,6 +90,7 @@ CREATE TABLE `period` (
     `min_period_id` INT UNSIGNED DEFAULT NULL,
     `max_period_id` INT UNSIGNED DEFAULT NULL,
     `region_id` INT UNSIGNED DEFAULT NULL,
+    `deleted` BOOL DEFAULT FALSE,
     PRIMARY KEY(`id`),
     INDEX(`name`),
     UNIQUE KEY(`name`)

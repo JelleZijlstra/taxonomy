@@ -54,6 +54,7 @@ from .db.models import (
     CitationGroupTag,
     Collection,
     Name,
+    Period,
     Tag,
     Taxon,
     TypeTag,
@@ -117,6 +118,7 @@ ns = _ShellNamespace(
         "TypeTag": models.TypeTag,
         "Counter": collections.Counter,
         "defaultdict": defaultdict,
+        "getinput": getinput,
     }
 )
 ns.update(constants.__dict__)
@@ -266,8 +268,8 @@ def add_page_described() -> Iterable[Tuple[Name, str]]:
 
 @command
 def make_general_localities(dry_run: bool = False) -> None:
-    pleistocene = models.Period.get(models.Period.name == "Pleistocene")
-    phanerozoic = models.Period.get(models.Period.name == "Phanerozoic")
+    pleistocene = Period.get(Period.name == "Pleistocene")
+    phanerozoic = Period.get(Period.name == "Phanerozoic")
     for region in models.Region.select():
         for (name, period) in [("Pleistocene", pleistocene), ("fossil", phanerozoic)]:
             name = f"{region.name} {name}"
@@ -321,6 +323,42 @@ def bad_stratigraphy(dry_run: bool = True) -> Iterable[models.Location]:
                     loc.min_period = period.min_period
                     loc.max_period = period.max_period
                     loc.stratigraphic_unit = period
+
+
+@command
+def infer_min_max_age(dry_run: bool = True):
+    not_stratigraphic = ~(Period.system << constants.STRATIGRAPHIC_PERIODS)
+    for period in Period.select_valid().filter(
+        Period.min_age == None, not_stratigraphic
+    ):
+        children = list(period.children)
+        if not children:
+            continue
+        try:
+            min_age = min(child.min_age for child in children)
+        except TypeError:
+            pass  # one of the min_ages is None
+        else:
+            if min_age is not None:
+                print(f"{period}: set min_age to {min_age}")
+                if not dry_run:
+                    period.min_age = min_age
+
+    for period in Period.select_valid().filter(
+        Period.max_age == None, not_stratigraphic
+    ):
+        children = list(period.children)
+        if not children:
+            continue
+        try:
+            max_age = max(child.max_age for child in children)
+        except TypeError:
+            pass  # one of the max_ages is None
+        else:
+            if max_age is not None:
+                print(f"{period}: set max_age to {max_age}")
+                if not dry_run:
+                    period.max_age = max_age
 
 
 @command
@@ -486,7 +524,7 @@ def detect_stems() -> None:
 
 
 @command
-def detect_complexes() -> None:
+def detect_complexes(allow_ignoring: bool = True) -> None:
     endings = list(models.NameEnding.select())
     for name in Name.select_valid().filter(
         Name.group == Group.genus, Name.name_complex >> None
@@ -495,14 +533,17 @@ def detect_complexes() -> None:
         if inferred is None:
             continue
         stem = inferred.get_stem_from_name(name.root_name)
-        if name.stem is not None and name.stem != stem:
-            print(f"ignoring {inferred} for {name} because {inferred.stem} != {stem}")
-            continue
-        if name.gender is not None and name.gender != inferred.gender:
-            print(
-                f"ignoring {inferred} for {name} because {inferred.gender} != {name.gender}"
-            )
-            continue
+        if allow_ignoring:
+            if name.stem is not None and name.stem != stem:
+                print(
+                    f"ignoring {inferred} for {name} because {inferred.stem} != {stem}"
+                )
+                continue
+            if name.gender is not None and name.gender != inferred.gender:
+                print(
+                    f"ignoring {inferred} for {name} because {inferred.gender} != {name.gender}"
+                )
+                continue
         print(f"Inferred stem and complex for {name}: {stem}, {inferred}")
         name.stem = stem
         name.gender = inferred.gender
@@ -992,29 +1033,58 @@ class ScoreHolder:
         for field, count in sorted(counts.items(), key=lambda p: p[1]):
             print(f"{field}: {count * 100 / total:.2f} ({count}/{total})")
 
+    @classmethod
+    def from_taxa(
+        cls,
+        taxa: Iterable[Taxon],
+        age: Optional[Age] = None,
+        graphical: bool = False,
+        focus_field: Optional[str] = None,
+        min_year: Optional[int] = None,
+    ) -> "ScoreHolder":
+        data = {}
+        for taxon in taxa:
+            if age is not None and taxon.age > age:
+                continue
+            getinput.show(f"--- {taxon} ---")
+            data[taxon] = taxon.stats(
+                age=age, graphical=graphical, focus_field=focus_field, min_year=min_year
+            )
+        return cls(data)
+
 
 @command
 def get_scores(
     rank: Rank,
     within_taxon: Optional[Taxon] = None,
-    age: Optional[constants.Age] = None,
+    age: Optional[Age] = None,
     graphical: bool = False,
     focus_field: Optional[str] = None,
     min_year: Optional[int] = None,
 ) -> ScoreHolder:
-    data = {}
     if within_taxon is not None:
         taxa = within_taxon.children_of_rank(rank)
     else:
         taxa = Taxon.select_valid().filter(Taxon.rank == rank)
-    for taxon in taxa:
-        if age is not None and taxon.age > age:
+    return ScoreHolder.from_taxa(
+        taxa, age=age, graphical=graphical, focus_field=focus_field, min_year=min_year
+    )
+
+
+@command
+def get_scores_for_period(
+    rank: Rank,
+    period: Period,
+    focus_field: Optional[str] = None,
+    graphical: bool = False,
+) -> ScoreHolder:
+    taxa = set()
+    for nam in period.all_type_localities():
+        try:
+            taxa.add(nam.taxon.parent_of_rank(rank))
+        except ValueError:
             continue
-        getinput.show(f"--- {taxon} ---")
-        data[taxon] = taxon.stats(
-            age=age, graphical=graphical, focus_field=focus_field, min_year=min_year
-        )
-    return ScoreHolder(data)
+    return ScoreHolder.from_taxa(taxa, focus_field=focus_field, graphical=graphical)
 
 
 @generator_command
@@ -1322,7 +1392,6 @@ ATTRIBUTES_BY_GROUP = {
     "type_specimen_source": (Group.species,),
     "genus_type_kind": (Group.genus,),
     "species_type_kind": (Group.species,),
-    "type_tags": (Group.genus, Group.species),
 }
 
 
@@ -1456,7 +1525,9 @@ def clean_up_verbatim(dry_run: bool = False, slow: bool = False) -> None:
 
 
 @command
-def set_citation_group_for_matching_citation(dry_run: bool = False) -> None:
+def set_citation_group_for_matching_citation(
+    dry_run: bool = False, fix: bool = False
+) -> None:
     cite_to_nams: Dict[str, List[Name]] = defaultdict(list)
     cite_to_group: Dict[str, Set[CitationGroup]] = defaultdict(set)
     count = 0
@@ -1475,6 +1546,11 @@ def set_citation_group_for_matching_citation(dry_run: bool = False) -> None:
                         nam.citation_group = group
         else:
             print(f"error: {cite} maps to {groups}")
+            if fix:
+                getinput.print_header(cite)
+                for nam in cite_to_nams[cite]:
+                    nam.display()
+                    nam.e.citation_group
     print(f"Added {count} citation_groups")
 
 
@@ -1708,7 +1784,7 @@ def fill_type_locality(
 
 
 def names_with_location_detail_without_type_loc(
-    taxon: Optional[Taxon] = None,
+    taxon: Optional[Taxon] = None, *, substring: Optional[str] = None
 ) -> Iterable[Name]:
     if taxon is None:
         nams = Name.select_valid().filter(
@@ -1731,6 +1807,9 @@ def names_with_location_detail_without_type_loc(
             continue
         if "type_locality" not in nam.get_required_fields():
             continue
+        if substring is not None:
+            if not any(substring in tag.text for tag in tags):
+                continue
         nams_with_key.append(([(tag.source.name, tag.text) for tag in tags], nam, tags))
     for _, nam, tags in sorted(nams_with_key):
         nam.display()
@@ -1740,22 +1819,53 @@ def names_with_location_detail_without_type_loc(
 
 
 @command
-def fill_type_locality_from_location_detail(taxon: Optional[Taxon] = None) -> None:
-    for nam in names_with_location_detail_without_type_loc(taxon):
+def fill_type_locality_from_location_detail(
+    taxon: Optional[Taxon] = None, substring: Optional[str] = None
+) -> None:
+    for nam in names_with_location_detail_without_type_loc(taxon, substring=substring):
         nam.fill_field("type_locality")
 
 
 @command
-def more_precise_type_localities(loc: models.Location) -> None:
+def more_precise_type_localities(
+    loc: models.Location, *, substring: Optional[str] = None
+) -> None:
     for nam in loc.type_localities:
         if not nam.type_tags:
             continue
-        print("-------------------------")
-        print(nam)
+        if substring is not None:
+            if not any(
+                substring in tag.text
+                for tag in nam.type_tags
+                if isinstance(tag, TypeTag.LocationDetail)
+            ):
+                continue
+        getinput.print_header(nam)
         for tag in nam.type_tags:
-            if isinstance(tag, models.TypeTag.LocationDetail):
+            if isinstance(tag, TypeTag.LocationDetail):
                 print(tag)
         nam.fill_field("type_locality")
+
+
+@command
+def more_precise_periods(
+    period: models.Period, region: Optional[models.Region] = None
+) -> None:
+    for loc in sorted(
+        period.all_localities(include_children=False),
+        key=lambda loc: (loc.region.name, loc.name),
+    ):
+        if region is not None and not loc.is_in_region(region):
+            continue
+        getinput.print_header(loc)
+        loc.display(full=True)
+        if loc.stratigraphic_unit == period:
+            loc.e.stratigraphic_unit
+        else:
+            loc.e.max_period
+            loc.e.min_period
+            if loc.stratigraphic_unit is None:
+                loc.e.stratigraphic_unit
 
 
 def _more_precise(region: models.Region, objects: Iterable[Any], field: str) -> None:
@@ -2258,6 +2368,7 @@ AUTHOR_SYNONYMS = {
     "Severtzow": helpers.romanize_russian("Северцов"),
     "Souef": "Le Souef",
     "St Leger": "St. Leger",
+    "Teilhard": "Teilhard de Chardin",
     "Tichomirov": helpers.romanize_russian("Тихомиров"),
     "Tichomirow": helpers.romanize_russian("Тихомиров"),
     "Timofeev": helpers.romanize_russian("Тимофеев"),
@@ -2335,6 +2446,8 @@ def _replace_author(name: Name, bad: str, good: str, dry_run: bool = True) -> No
 @command
 def apply_author_synonyms(dry_run: bool = False) -> None:
     for bad, good in AUTHOR_SYNONYMS.items():
+        if bad == good:
+            continue
         for nam in _names_with_author(bad):
             _replace_author(nam, bad, good, dry_run=dry_run)
 
@@ -2461,6 +2574,7 @@ def run_maintenance(skip_slow: bool = True) -> Dict[Any, Any]:
         fix_citation_group_redirects,
         recent_names_without_verbatim,
         make_general_localities,
+        enforce_must_have_series,
     ]
     # these each take >60 s
     slow: List[Callable[[], Any]] = [
@@ -2654,6 +2768,24 @@ def enforce_must_have(fix: bool = True) -> Iterator[Name]:
 
 
 @generator_command
+def enforce_must_have_series(fix: bool = True) -> Iterator[Article]:
+    cgs = [
+        cg
+        for cg in CitationGroup.select_valid()
+        if cg.get_tag(CitationGroupTag.MustHaveSeries)
+    ]
+    for cg in cgs:
+        getinput.print_header(cg)
+        for art in cg.article_set:
+            if not art.series:
+                art.display()
+                print(f"{art} is in {cg}, but is missing a series")
+                yield art
+                if fix:
+                    art.e.series
+
+
+@generator_command
 def archive_for_must_have(fix: bool = True) -> Iterator[CitationGroup]:
     for cg in _must_have_citation_groups():
         if cg.archive is None:
@@ -2673,10 +2805,16 @@ def _must_have_citation_groups() -> List[CitationGroup]:
 
 
 @command
-def find_potential_citations(fix: bool = False) -> int:
+def find_potential_citations(
+    fix: bool = False, region: Optional[models.Region] = None
+) -> int:
+    if region is None:
+        cgs = CitationGroup.select_valid()
+    else:
+        cgs = region.all_citation_groups()
     count = sum(
-        find_potential_citations_for_group(cg, fix=fix)
-        for cg in CitationGroup.select_valid()
+        find_potential_citations_for_group(cg, fix=fix) or 0
+        for cg in cgs
         if not cg.has_tag(CitationGroupTag.IgnorePotentialCitations)
     )
     return count
@@ -2706,6 +2844,7 @@ def find_potential_citations_for_group(cg: CitationGroup, fix: bool = False) -> 
             and nam.year == art.year
             and art.is_page_in_range(page)
             and art.kind is not ArticleKind.no_copy
+            and not art.has_tag(models.article.Tag.NonOriginal)
         ]
         if candidates:
             getinput.print_header(nam)
@@ -2800,6 +2939,13 @@ def fix_citation_group_redirects() -> None:
         for art in cg.get_articles():
             print(f"update {art} -> {cg.target}")
             art.citation_group = cg.target
+
+
+@command
+def reset_db():
+    database = models.base.database
+    database.close()
+    database.connect()
 
 
 def run_shell() -> None:
