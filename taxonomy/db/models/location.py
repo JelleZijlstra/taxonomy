@@ -1,5 +1,5 @@
 import sys
-from typing import Any, IO, Iterable, Optional
+from typing import Any, IO, Iterable, Optional, Type, Union
 
 from peewee import BooleanField, CharField, ForeignKeyField, IntegerField, TextField
 
@@ -8,7 +8,7 @@ from ... import adt, events, getinput
 
 from .base import BaseModel, ADTField
 from .article import Article
-from .period import Period
+from .period import Period, period_sort_key
 from .region import Region
 
 
@@ -78,12 +78,8 @@ class Location(BaseModel):
         if name is None:
             name = getinput.get_line("name> ")
         assert name is not None
-        if region is None:
-            region = cls.get_value_for_foreign_key_field_on_class("region")
         if period is None:
             period = cls.get_value_for_foreign_key_field_on_class("min_period")
-        if comment is None:
-            comment = getinput.get_line("comment> ")
         result = cls.make(
             name=name, region=region, period=period, comment=comment, **kwargs
         )
@@ -102,7 +98,16 @@ class Location(BaseModel):
                 age_str += "–%s" % self.min_period.name
         if self.min_age is not None and self.max_age is not None:
             age_str += f"; {self.max_age}–{self.min_age}"
+        if self.tags:
+            age_str += "; " + ", ".join(repr(tag) for tag in self.tags)
         return f"{self.name} ({age_str}), {self.region.name}"
+
+    def sort_key(self) -> Any:
+        return (
+            period_sort_key(self.min_period),
+            period_sort_key(self.max_period),
+            self.name,
+        )
 
     def display(
         self,
@@ -141,7 +146,7 @@ class Location(BaseModel):
             name = self.name
         period = Period.make(
             name,
-            constants.PeriodSystem.local_unit,
+            constants.PeriodRank.local_unit,
             parent=parent,
             min_age=self.min_age,
             max_age=self.max_age,
@@ -178,15 +183,18 @@ class Location(BaseModel):
 
     def get_required_fields(self) -> Iterable[str]:
         yield "name"
-        yield "min_period"
         yield "max_period"
+        yield "min_period"
         yield "stratigraphic_unit"
         yield "region"
 
-    def has_tag(self, tag: adt.ADT) -> bool:
+    def has_tag(self, tag: Union[adt.ADT, Type[adt.ADT]]) -> bool:
         if self.tags is None:
             return False
-        return any(my_tag is tag for my_tag in self.tags)
+        if isinstance(tag, type):
+            return any(isinstance(my_tag, tag) for my_tag in self.tags)
+        else:
+            return any(my_tag is tag for my_tag in self.tags)
 
     def add_tag(self, tag: adt.ADT) -> None:
         if self.tags is None:
@@ -206,3 +214,15 @@ class Location(BaseModel):
 class LocationTag(adt.ADT):
     # General locality; should be simplified if possible.
     General(tag=1)  # type: ignore
+
+    # Locality identifiers in other databases
+
+    # Paleobiology Database
+    PBDB(id=str, tag=2)  # type: ignore
+
+    # {North America Tertiary-localities.pdf}, appendix to
+    # Evolution of Tertiary Mammals of North America
+    ETMNA(id=str, tag=3)  # type: ignore
+
+    # Neogene of the Old World database
+    NOW(id=str, tag=4)  # type: ignore

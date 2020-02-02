@@ -410,17 +410,26 @@ class Taxon(BaseModel):
         def display_locs(
             by_locality: Dict[models.Location, List[models.Name]], depth: int = 0
         ) -> None:
-            current_period: Optional[models.Period] = None
+            current_periods: Tuple[Optional[models.Period], Optional[models.Period]] = (
+                None,
+                None,
+            )
             for loc, nams in sorted(
                 by_locality.items(),
                 key=lambda pair: (
                     models.period.period_sort_key(pair[0].min_period),
+                    models.period.period_sort_key(pair[0].max_period),
                     pair[0].name,
                 ),
             ):
-                if loc.min_period != current_period:
-                    file.write(f"{' ' * depth}{loc.min_period}\n")
-                    current_period = loc.min_period
+                periods = (loc.max_period, loc.min_period)
+                if periods != current_periods:
+                    if loc.max_period == loc.min_period:
+                        period_str = str(loc.min_period)
+                    else:
+                        period_str = f"{loc.max_period}–{loc.min_period}"
+                    file.write(f"{' ' * depth}{period_str}\n")
+                    current_periods = periods
                 file.write(f"{' ' * (4 + depth)}{loc}\n")
                 models.name.write_type_localities(nams, full=full, depth=depth)
                 getinput.flush()

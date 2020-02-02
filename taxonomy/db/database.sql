@@ -86,6 +86,7 @@ CREATE TABLE `period` (
     `min_age` INT UNSIGNED,
     `max_age` INT UNSIGNED,
     `system` INT UNSIGNED,
+    `rank` INT UNSIGNED,
     `comment` VARCHAR(65535) DEFAULT NULL,
     `min_period_id` INT UNSIGNED DEFAULT NULL,
     `max_period_id` INT UNSIGNED DEFAULT NULL,

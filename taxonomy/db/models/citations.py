@@ -524,9 +524,9 @@ def citewp(article: Article) -> str:
     if doi:
         # {{cite doi}}
         out1 = "{{cite doi|" + doi + "}}"
-    elif article.getIdentifier(Tag.JStor):
+    elif article.getIdentifier(Tag.JSTOR):
         # {{cite jstor}}
-        out1 = "{{cite jstor|" + article.getIdentifier(Tag.JStor) + "}}"  # type: ignore
+        out1 = "{{cite jstor|" + article.getIdentifier(Tag.JSTOR) + "}}"  # type: ignore
     elif article.getIdentifier(Tag.HDL):
         # {{cite hdl}}
         out1 = "{{cite hdl|" + article.getIdentifier(Tag.HDL) + "}}"  # type: ignore
@@ -560,7 +560,7 @@ def citewp(article: Article) -> str:
     paras["year"] = article.year
     if article.getIdentifier(Tag.HDL):
         paras["id"] = "{{hdl|" + article.getIdentifier(Tag.HDL) + "}}"  # type: ignore
-    paras["jstor"] = article.getIdentifier(Tag.JStor)
+    paras["jstor"] = article.getIdentifier(Tag.JSTOR)
     paras["pmid"] = article.getIdentifier(Tag.PMID)
     paras["url"] = article.url
     paras["doi"] = doi if doi else ""

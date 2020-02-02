@@ -312,72 +312,67 @@ class Rank(enum.IntEnum):
 class RegionKind(enum.IntEnum):
     continent = 0
     country = 1
-    subnational = 2
+    subnational = 2  # first-level subdivision, like a US state
     planet = 3
     other = 4
+    county = 5
 
 
 class PeriodSystem(enum.IntEnum):
-    mn_zone = 0  # MN zones (European Neogene)
-    mp_zone = 1  # MP zones (European Paleogene)
-    nalma = 2  # North American Land Mammal Age (Campanian-Recent)
-    salma = 3  # South American Land Mammal Age (Cenozoic)
-    alma = 4  # Asian Land Mammal Age (Cenozoic)
+    gts = 1  # The Geologic Time Scale
+    nalma = 2  # North American land mammal age system
+    elma = 3  # European land mammal age system, plus MN and MP zones
+    alma = 4  # Asian land mammal age system
+    salma = 5  # South American land mammal age system
+    lithostratigraphy = 6  # lithostratigraphical units, like formations
+    aulma = 7  # Australian land mammal age system
+    local_biostratigraphy = 8  # local biostratigraphic zonation
+
+
+class PeriodRank(enum.IntEnum):
     age = 5
     epoch = 6
     period = 7
     era = 8
     eon = 9
-    local_unit = 10  # Miscellaneous local units
     bed = 20
     member = 21
     formation = 22
     group = 23
     supergroup = 24
-    other_stratigraphy = 25  # deprecated
-    elma = 26  # European Land Mammal Age (Cenozoic)
     other_lithostratigraphy = 27
     other_chronostratigraphy = 28
-
-    def is_stratigraphy(self) -> bool:
-        return self in STRATIGRAPHIC_PERIODS
-
-    def is_chronology(self) -> bool:
-        return (
-            self.is_biochronology()
-            or self.is_geochronology()
-            or self == PeriodSystem.local_unit
-        )
-
-    def is_biochronology(self) -> bool:
-        return self in BIOCHRONOLOGICAL_PERIODS
-
-    def is_geochronology(self) -> bool:
-        return self in GEOCHRONOLOGICAL_PERIODS
+    subage = 29  # e.g., the Lysitean
+    biozone = 30  # e.g., Pu1
 
 
-STRATIGRAPHIC_PERIODS = {
-    PeriodSystem.bed,
-    PeriodSystem.member,
-    PeriodSystem.formation,
-    PeriodSystem.group,
-    PeriodSystem.supergroup,
-    PeriodSystem.other_lithostratigraphy,
-}
-BIOCHRONOLOGICAL_PERIODS = {
-    PeriodSystem.mn_zone,
-    PeriodSystem.mp_zone,
-    PeriodSystem.nalma,
-    PeriodSystem.salma,
-    PeriodSystem.alma,
-    PeriodSystem.elma,
-}
-GEOCHRONOLOGICAL_PERIODS = {
-    PeriodSystem.age,
-    PeriodSystem.epoch,
-    PeriodSystem.period,
-    PeriodSystem.era,
-    PeriodSystem.eon,
+SYSTEM_TO_ALLOWED_RANKS = {
+    PeriodSystem.gts: {
+        PeriodRank.age,
+        PeriodRank.epoch,
+        PeriodRank.period,
+        PeriodRank.era,
+        PeriodRank.eon,
+        PeriodRank.other_chronostratigraphy,
+    },
+    PeriodSystem.nalma: {PeriodRank.age, PeriodRank.subage, PeriodRank.biozone},
+    PeriodSystem.elma: {PeriodRank.age, PeriodRank.biozone},
+    PeriodSystem.alma: {PeriodRank.age, PeriodRank.subage},
+    PeriodSystem.salma: {PeriodRank.age, PeriodRank.subage},
+    PeriodSystem.aulma: {PeriodRank.age},
+    PeriodSystem.lithostratigraphy: {
+        PeriodRank.bed,
+        PeriodRank.member,
+        PeriodRank.formation,
+        PeriodRank.group,
+        PeriodRank.supergroup,
+        PeriodRank.other_lithostratigraphy,
+    },
+    PeriodSystem.local_biostratigraphy: {
+        PeriodRank.age,
+        PeriodRank.subage,
+        PeriodRank.biozone,
+    },
 }
 
 

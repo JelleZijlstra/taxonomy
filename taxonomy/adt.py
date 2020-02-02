@@ -93,8 +93,11 @@ def _adt_member_lt(self: Any, other: Any) -> Any:
     if not isinstance(other, type(self)):
         return type(self).__name__ < type(other).__name__
     for attr in self._attributes.keys():
-        if _none_safe_lt(getattr(self, attr), getattr(other, attr)):
-            return True
+        left_attr = getattr(self, attr)
+        right_attr = getattr(other, attr)
+        if left_attr == right_attr:
+            continue
+        return _none_safe_lt(left_attr, right_attr)
     return False
 
 

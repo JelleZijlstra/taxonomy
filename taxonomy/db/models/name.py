@@ -430,12 +430,24 @@ class Name(BaseModel):
         assert isinstance(species, Name)
         self.add_type_tag(TypeTag.IncludedSpecies(species, comment))
 
+    def add_static_comment(
+        self,
+        kind: constants.CommentKind,
+        text: str,
+        source: Optional[Article] = None,
+        page: Optional[str] = None,
+    ) -> "NameComment":
+        return NameComment.make(
+            name=self, kind=kind, text=text, source=source, page=page
+        )
+
     def add_comment(
         self,
         kind: Optional[constants.CommentKind] = None,
         text: Optional[str] = None,
         source: Optional[Article] = None,
         page: Optional[str] = None,
+        interactive: bool = True,
     ) -> "NameComment":
         return NameComment.create_interactively(
             name=self, kind=kind, text=text, source=source, page=page

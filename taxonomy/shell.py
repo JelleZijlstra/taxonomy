@@ -16,8 +16,11 @@ Possible ones to add:
 
 import collections
 from collections import defaultdict
+import csv
 import functools
 import os.path
+from pathlib import Path
+import peewee
 import re
 from typing import (
     Any,
@@ -46,7 +49,14 @@ from traitlets.config.loader import Config
 
 from . import getinput
 from .db import constants, definition, detection, helpers, models
-from .db.constants import Age, Group, NomenclatureStatus, Rank, ArticleKind
+from .db.constants import (
+    Age,
+    Group,
+    NomenclatureStatus,
+    Rank,
+    ArticleKind,
+    PeriodSystem,
+)
 from .db.models import (
     Article,
     CitationGroup,
@@ -119,6 +129,7 @@ ns = _ShellNamespace(
         "Counter": collections.Counter,
         "defaultdict": defaultdict,
         "getinput": getinput,
+        "models": models,
     }
 )
 ns.update(constants.__dict__)
@@ -287,6 +298,33 @@ def make_general_localities(dry_run: bool = False) -> None:
                     loc.add_tag(models.location.LocationTag.General)
 
 
+@command
+def make_county_regions(
+    state: models.Region, name: Optional[str] = None, dry_run: bool = True
+) -> None:
+    if name is None:
+        name = state.name
+    data_path = Path(__file__).parent.parent / "data_import/data/counties.csv"
+    counties = []
+    with data_path.open(encoding="latin1") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            county = row["GEO.display-label"]
+            if county.endswith(f", {name}"):
+                counties.append(county)
+    print("Creating counties", counties)
+    if dry_run:
+        return
+    for county in counties:
+        try:
+            models.Region.make(county, constants.RegionKind.county, state)
+        except peewee.IntegrityError:
+            print(f"{county} already exists")
+    make_general_localities()
+    _more_precise_by_county(state, counties)
+    more_precise(state)
+
+
 @generator_command
 def bad_stratigraphy(dry_run: bool = True) -> Iterable[models.Location]:
     for loc in models.Location.select():
@@ -305,12 +343,7 @@ def bad_stratigraphy(dry_run: bool = True) -> Iterable[models.Location]:
         periods = (loc.min_period, loc.max_period)
         has_stratigraphic = False
         for period in periods:
-            # exclude Recent (171)
-            if (
-                period is not None
-                and period.id != 171
-                and period.system.is_stratigraphy()
-            ):
+            if period is not None and period.system is PeriodSystem.lithostratigraphy:
                 has_stratigraphic = True
         if has_stratigraphic:
             print(f"=== {loc.name} has stratigraphic period ===")
@@ -325,9 +358,27 @@ def bad_stratigraphy(dry_run: bool = True) -> Iterable[models.Location]:
                     loc.stratigraphic_unit = period
 
 
+@generator_command
+def check_period_ranks() -> Iterable[models.Period]:
+    for period in Period.select_valid():
+        if period.system is None:
+            print(f"{period} is missing a system")
+            yield period
+            continue
+        if period.rank is None:
+            print(f"{period} is missing a rank")
+            yield period
+            continue
+        if period.rank not in constants.SYSTEM_TO_ALLOWED_RANKS[period.system]:
+            print(
+                f"{period} is of rank {period.rank}, which is not allowed for {period.system}"
+            )
+            yield period
+
+
 @command
 def infer_min_max_age(dry_run: bool = True):
-    not_stratigraphic = ~(Period.system << constants.STRATIGRAPHIC_PERIODS)
+    not_stratigraphic = Period.system != PeriodSystem.lithostratigraphy
     for period in Period.select_valid().filter(
         Period.min_age == None, not_stratigraphic
     ):
@@ -1849,11 +1900,14 @@ def more_precise_type_localities(
 
 @command
 def more_precise_periods(
-    period: models.Period, region: Optional[models.Region] = None
+    period: models.Period,
+    region: Optional[models.Region] = None,
+    include_children: bool = False,
+    set_stratigraphy: bool = True,
 ) -> None:
     for loc in sorted(
-        period.all_localities(include_children=False),
-        key=lambda loc: (loc.region.name, loc.name),
+        period.all_localities(include_children=include_children),
+        key=lambda loc: (loc.max_period.sort_key(), loc.region.name, loc.name),
     ):
         if region is not None and not loc.is_in_region(region):
             continue
@@ -1864,14 +1918,57 @@ def more_precise_periods(
         else:
             loc.e.max_period
             loc.e.min_period
-            if loc.stratigraphic_unit is None:
+            if set_stratigraphy and loc.stratigraphic_unit is None:
                 loc.e.stratigraphic_unit
 
 
-def _more_precise(region: models.Region, objects: Iterable[Any], field: str) -> None:
+def _more_precise(
+    region: models.Region,
+    objects: Iterable[Any],
+    field: str,
+    filter_func: Callable[[Any], bool] = lambda _: True,
+) -> None:
     for obj in objects:
-        obj.display()
+        if not filter_func(obj):
+            continue
+        getinput.print_header(obj)
+        obj.display(full=True)
         obj.fill_field(field)
+
+
+def _more_precise_by_county(state: models.Region, counties: Sequence[str]) -> None:
+    to_replace = f"unty, {state.name}"
+    if getinput.yes_no("Run county substring search for type localities?"):
+        locs = [
+            models.Location.get(name=state.name),
+            models.Location.get(name=f"{state.name} Pleistocene"),
+            models.Location.get(name=f"{state.name} fossil"),
+        ]
+        for loc in locs:
+            getinput.print_header(loc.name)
+            for county in counties:
+                more_precise_type_localities(
+                    loc, substring=county.replace(to_replace, "")
+                )
+    if getinput.yes_no("Run county substring search for localities?"):
+        for county in counties:
+            _more_precise(
+                state,
+                state.sorted_locations(),
+                "region",
+                _make_loc_filterer(county.replace(to_replace, "")),
+            )
+
+
+def _make_loc_filterer(substring: str) -> Callable[[models.Location], bool]:
+    def filterer(loc: models.Location) -> bool:
+        for nam in loc.type_localities:
+            for tag in nam.get_tags(nam.type_tags, TypeTag.LocationDetail):
+                if substring in tag.text:
+                    return True
+        return False
+
+    return filterer
 
 
 @command
@@ -1880,10 +1977,13 @@ def more_precise(region: models.Region) -> None:
     funcs = [
         ("type localities", lambda: more_precise_type_localities(loc)),
         ("collections", lambda: _more_precise(region, region.collections, "location")),
-        ("localities", lambda: _more_precise(region, region.locations, "region")),
         (
             "citation groups",
             lambda: _more_precise(region, region.citation_groups, "region"),
+        ),
+        (
+            "localities",
+            lambda: _more_precise(region, region.sorted_locations(), "region"),
         ),
     ]
     for label, func in funcs:
@@ -2068,7 +2168,7 @@ def check_tags(dry_run: bool = True) -> Iterable[Tuple[Name, str]]:
             comment = f"Status automatically changed from {nam.nomenclature_status.name} to {status.name} because of {tag}"
             print(f"changing status of {nam} and adding comment {comment!r}")
             if not dry_run:
-                nam.add_comment(constants.CommentKind.automatic_change, comment, None)
+                nam.add_static_comment(constants.CommentKind.automatic_change, comment)
                 nam.nomenclature_status = status  # type: ignore
                 nam.save()
 
@@ -2083,19 +2183,28 @@ def check_tags(dry_run: bool = True) -> Iterable[Tuple[Name, str]]:
             names_by_tag[type(tag)].add(nam)
             if isinstance(tag, Tag.PreoccupiedBy):
                 maybe_adjust_status(nam, NomenclatureStatus.preoccupied, tag)
-                if nam.group != tag.name.group:
+                senior_name = tag.name
+                if nam.group != senior_name.group:
                     print(
-                        f"{nam} is of a different group than supposed senior name {tag.name}"
+                        f"{nam} is of a different group than supposed senior name {senior_name}"
                     )
                     yield nam, "homonym of different group"
-                if nam.effective_year() < tag.name.effective_year():
-                    print(f"{nam} predates supposed senior name {tag.name}")
+                if (
+                    senior_name.nomenclature_status
+                    is NomenclatureStatus.subsequent_usage
+                ):
+                    for senior_name_tag in senior_name.get_tags(
+                        senior_name.tags, Tag.SubsequentUsageOf
+                    ):
+                        senior_name = senior_name_tag.name
+                if nam.effective_year() < senior_name.effective_year():
+                    print(f"{nam} predates supposed senior name {senior_name}")
                     yield nam, "antedates homonym"
                 # TODO apply this check to species too by handling gender endings correctly.
                 if nam.group != Group.species:
                     if nam.root_name != tag.name.root_name:
                         print(
-                            f"{nam} has a different root name than supposed senior name {tag.name}"
+                            f"{nam} has a different root name than supposed senior name {senior_name}"
                         )
                         yield nam, "differently-named homonym"
             elif isinstance(
@@ -2122,7 +2231,11 @@ def check_tags(dry_run: bool = True) -> Iterable[Tuple[Name, str]]:
             elif isinstance(tag, Tag.FullySuppressedBy):
                 maybe_adjust_status(nam, NomenclatureStatus.fully_suppressed, tag)
             elif isinstance(tag, Tag.Conserved):
-                if nam.nomenclature_status != NomenclatureStatus.available:
+                if nam.nomenclature_status not in (
+                    NomenclatureStatus.available,
+                    NomenclatureStatus.as_emended,
+                    NomenclatureStatus.nomen_novum,
+                ):
                     print(
                         f"{nam} is on the Official List, but is not marked as available."
                     )
@@ -2136,86 +2249,94 @@ def check_tags(dry_run: bool = True) -> Iterable[Tuple[Name, str]]:
                 yield nam, f"has status {status.name} but no corresponding tag"
 
 
+def check_type_tags_for_name(
+    nam: Name, dry_run: bool = False
+) -> Iterable[Tuple[Name, str]]:
+    tags: List[TypeTag] = []
+    original_tags = list(nam.type_tags)
+    for tag in original_tags:
+        if isinstance(tag, TypeTag.CommissionTypeDesignation):
+            if nam.type != tag.type:
+                print(
+                    f"{nam} has {nam.type} as its type, but the Commission has designated {tag.type}"
+                )
+                if not dry_run:
+                    nam.type = tag.type
+            if (
+                nam.genus_type_kind
+                != constants.TypeSpeciesDesignation.designated_by_the_commission
+            ):
+                print(
+                    f"{nam} has {nam.genus_type_kind}, but its type was set by the Commission"
+                )
+                if not dry_run:
+                    nam.genus_type_kind = (
+                        constants.TypeSpeciesDesignation.designated_by_the_commission
+                    )
+        elif isinstance(tag, TypeTag.Date):
+            date = tag.date
+            try:
+                date = helpers.standardize_date(date)
+            except ValueError:
+                print(f"{nam} has date {tag.date}, which cannot be parsed")
+                yield nam, "unparseable date"
+            if date is None:
+                continue
+            tags.append(TypeTag.Date(date))
+        elif isinstance(tag, TypeTag.Altitude):
+            if (
+                not re.match(r"^-?\d+([\-\.]\d+)?$", tag.altitude)
+                or tag.altitude == "000"
+            ):
+                print(f"{nam} has altitude {tag}, which cannot be parsed")
+                yield nam, f"bad altitude tag {tag}"
+            tags.append(tag)
+        elif isinstance(tag, TypeTag.LocationDetail):
+            coords = helpers.extract_coordinates(tag.text)
+            if coords and not any(
+                isinstance(t, TypeTag.Coordinates) for t in original_tags
+            ):
+                tags.append(TypeTag.Coordinates(coords[0], coords[1]))
+                print(
+                    f"{nam}: adding coordinates {tags[-1]} extracted from {tag.text!r}"
+                )
+            tags.append(tag)
+        elif isinstance(tag, TypeTag.Coordinates):
+            try:
+                lat = helpers.standardize_coordinates(tag.latitude, is_latitude=True)
+            except helpers.InvalidCoordinates as e:
+                print(f"{nam} has invalid latitude {tag.latitude}: {e}")
+                yield nam, f"invalid latitude {tag.latitude}"
+                lat = tag.latitude
+            try:
+                longitude = helpers.standardize_coordinates(
+                    tag.longitude, is_latitude=False
+                )
+            except helpers.InvalidCoordinates as e:
+                print(f"{nam} has invalid longitude {tag.longitude}: {e}")
+                yield nam, f"invalid longitude {tag.longitude}"
+                longitude = tag.longitude
+            tags.append(TypeTag.Coordinates(lat, longitude))
+        else:
+            tags.append(tag)
+        # TODO: for lectotype and subsequent designations, ensure the earliest valid one is used.
+    tags = sorted(set(tags))
+    if not dry_run and tags != original_tags:
+        print(f"changing tags for {nam}")
+        print(original_tags)
+        print(tags)
+        nam.type_tags = tags
+
+
 @generator_command
-def check_type_tags(dry_run: bool = False) -> Iterable[Tuple[Name, str]]:
+def check_type_tags(
+    dry_run: bool = False, require_type_designations: bool = False
+) -> Iterable[Tuple[Name, str]]:
     for nam in Name.select_valid().filter(Name.type_tags != None):
-        tags: List[TypeTag] = []
-        original_tags = list(nam.type_tags)
-        for tag in original_tags:
-            if isinstance(tag, TypeTag.CommissionTypeDesignation):
-                if nam.type != tag.type:
-                    print(
-                        f"{nam} has {nam.type} as its type, but the Commission has designated {tag.type}"
-                    )
-                    if not dry_run:
-                        nam.type = tag.type
-                if (
-                    nam.genus_type_kind
-                    != constants.TypeSpeciesDesignation.designated_by_the_commission
-                ):
-                    print(
-                        f"{nam} has {nam.genus_type_kind}, but its type was set by the Commission"
-                    )
-                    if not dry_run:
-                        nam.genus_type_kind = (
-                            constants.TypeSpeciesDesignation.designated_by_the_commission
-                        )
-            elif isinstance(tag, TypeTag.Date):
-                date = tag.date
-                try:
-                    date = helpers.standardize_date(date)
-                except ValueError:
-                    print(f"{nam} has date {tag.date}, which cannot be parsed")
-                    yield nam, "unparseable date"
-                if date is None:
-                    continue
-                tags.append(TypeTag.Date(date))
-            elif isinstance(tag, TypeTag.Altitude):
-                if (
-                    not re.match(r"^-?\d+([\-\.]\d+)?$", tag.altitude)
-                    or tag.altitude == "000"
-                ):
-                    print(f"{nam} has altitude {tag}, which cannot be parsed")
-                    yield nam, f"bad altitude tag {tag}"
-                tags.append(tag)
-            elif isinstance(tag, TypeTag.LocationDetail):
-                coords = helpers.extract_coordinates(tag.text)
-                if coords and not any(
-                    isinstance(t, TypeTag.Coordinates) for t in original_tags
-                ):
-                    tags.append(TypeTag.Coordinates(coords[0], coords[1]))
-                    print(
-                        f"{nam}: adding coordinates {tags[-1]} extracted from {tag.text!r}"
-                    )
-                tags.append(tag)
-            elif isinstance(tag, TypeTag.Coordinates):
-                try:
-                    lat = helpers.standardize_coordinates(
-                        tag.latitude, is_latitude=True
-                    )
-                except helpers.InvalidCoordinates as e:
-                    print(f"{nam} has invalid latitude {tag.latitude}: {e}")
-                    yield nam, f"invalid latitude {tag.latitude}"
-                    lat = tag.latitude
-                try:
-                    longitude = helpers.standardize_coordinates(
-                        tag.longitude, is_latitude=False
-                    )
-                except helpers.InvalidCoordinates as e:
-                    print(f"{nam} has invalid longitude {tag.longitude}: {e}")
-                    yield nam, f"invalid longitude {tag.longitude}"
-                    longitude = tag.longitude
-                tags.append(TypeTag.Coordinates(lat, longitude))
-            else:
-                tags.append(tag)
-            # TODO: for lectotype and subsequent designations, ensure the earliest valid one is used.
-        tags = sorted(set(tags))
-        if not dry_run and tags != original_tags:
-            print("changing tags")
-            print(original_tags)
-            print(tags)
-            nam.type_tags = tags
+        yield from check_type_tags_for_name(nam, dry_run)
     getinput.flush()
+    if not require_type_designations:
+        return
     for nam in Name.select_valid().filter(
         Name.genus_type_kind == constants.TypeSpeciesDesignation.subsequent_designation
     ):
@@ -2415,6 +2536,8 @@ AMBIGUOUS_AUTHORS = {
     "Bryant",
     "Merriam",
     "Heller",
+    "Wood",
+    "Wilson",
 }
 
 
@@ -2575,6 +2698,7 @@ def run_maintenance(skip_slow: bool = True) -> Dict[Any, Any]:
         recent_names_without_verbatim,
         make_general_localities,
         enforce_must_have_series,
+        check_period_ranks,
     ]
     # these each take >60 s
     slow: List[Callable[[], Any]] = [

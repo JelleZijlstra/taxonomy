@@ -396,7 +396,7 @@ def flush() -> None:
 
 def show(obj: object) -> None:
     flush()
-    print(obj)
+    print(obj, flush=True)
 
 
 def print_scores(data: Sequence[Tuple[str, float]]) -> None:
@@ -415,10 +415,11 @@ def print_scores(data: Sequence[Tuple[str, float]]) -> None:
 
 
 def print_header(obj: object) -> None:
+    flush()
     obj_str = str(obj)
-    print(f"/={'=' * len(obj_str)}=\\")
-    print(f"| {obj_str} |")
-    print(f"\\={'=' * len(obj_str)}=/")
+    print(f"/={'=' * len(obj_str)}=\\", flush=True)
+    print(f"| {obj_str} |", flush=True)
+    print(f"\\={'=' * len(obj_str)}=/", flush=True)
 
 
 def indent(text: str, width: int):

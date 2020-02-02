@@ -42,16 +42,27 @@ class Region(BaseModel):
         return out
 
     def display(
-        self, full: bool = False, depth: int = 0, file: IO[str] = sys.stdout
+        self,
+        full: bool = False,
+        depth: int = 0,
+        file: IO[str] = sys.stdout,
+        children: bool = True,
     ) -> None:
         getinput.flush()
         file.write("{}{}\n".format(" " * (depth + 4), repr(self)))
         if self.comment:
             file.write("{}Comment: {}\n".format(" " * (depth + 12), self.comment))
-        for location in self.locations:
+        for location in self.sorted_locations():
             location.display(full=full, depth=depth + 4, file=file)
-        for child in self.children:
-            child.display(full=full, depth=depth + 4, file=file)
+        if children:
+            for child in self.children:
+                child.display(full=full, depth=depth + 4, file=file)
+
+    def sorted_locations(self) -> List["models.Location"]:
+        return sorted(
+            self.locations.filter(models.Location.deleted != True),
+            key=models.Location.sort_key,
+        )
 
     def get_location(self) -> "models.Location":
         """Returns the corresponding Recent Location."""

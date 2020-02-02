@@ -40,11 +40,37 @@ class Period(BaseModel):
         "self", related_name="children_max", db_column="max_period_id", null=True
     )
     system = EnumField(constants.PeriodSystem)
+    rank = EnumField(constants.PeriodRank)
     comment = CharField()
     region = ForeignKeyField(
         Region, related_name="periods", db_column="region_id", null=True
     )
-    deleted = BooleanField()
+    deleted = BooleanField(default=False)
+
+    def __repr__(self) -> str:
+        parts = [f"{self.rank.name} in {self.system.name}"]
+        if self.parent is not None:
+            parts.append(f"part of {self.parent.name}")
+        if self.region is not None:
+            parts.append(f"located in {self.region.name}")
+        if self.max_period is not None:
+            if self.min_period == self.max_period:
+                parts.append(f"correlated to {self.min_period.name}")
+            else:
+                parts.append(
+                    f"correlated to {self.max_period.name}—{self.min_period.name}"
+                )
+        if self.max_age is not None:
+            parts.append(
+                f"dated to {display_age(self.max_age)}—{display_age(self.min_age)}"
+            )
+        if self.prev is not None:
+            parts.append(f"overlies {self.prev.name}")
+        if self.next is not None:
+            parts.append(f"underlies {self.next.name}")
+        if self.deleted:
+            parts.append("DELETED")
+        return "{} ({})".format(self.name, ", ".join(parts))
 
     @classmethod
     def select_valid(cls, *args: Any) -> Any:
@@ -93,6 +119,8 @@ class Period(BaseModel):
         cls,
         name: str,
         system: constants.PeriodSystem,
+        rank: constants.PeriodRank,
+        *,
         parent: Optional["Period"] = None,
         next: Optional["Period"] = None,
         min_age: Optional[int] = None,
@@ -103,7 +131,8 @@ class Period(BaseModel):
             max_age = next.min_age
         period = cls.create(
             name=name,
-            system=system.value,
+            system=system,
+            rank=rank,
             parent=parent,
             next=next,
             min_age=min_age,
@@ -120,18 +149,18 @@ class Period(BaseModel):
     def create_interactively(
         cls,
         name: Optional[str] = None,
-        kind: Optional[constants.PeriodSystem] = None,
+        rank: Optional[constants.PeriodRank] = None,
         **kwargs: Any,
     ) -> "Period":
         print("creating Periods interactively only allows stratigraphic units")
         if name is None:
             name = getinput.get_line("name> ")
         assert name is not None
-        if kind is None:
-            kind = getinput.get_enum_member(
-                constants.PeriodSystem, "kind> ", allow_empty=False
+        if rank is None:
+            rank = getinput.get_enum_member(
+                constants.PeriodRank, "rank> ", allow_empty=False
             )
-        result = cls.make_stratigraphy(name, kind)
+        result = cls.make_stratigraphy(name, rank)
         result.fill_required_fields()
         return result
 
@@ -139,7 +168,7 @@ class Period(BaseModel):
     def make_stratigraphy(
         cls,
         name: str,
-        kind: constants.PeriodSystem,
+        rank: constants.PeriodRank,
         period: Optional["Period"] = None,
         parent: Optional["Period"] = None,
         **kwargs: Any,
@@ -147,7 +176,12 @@ class Period(BaseModel):
         if period is not None:
             kwargs["max_period"] = kwargs["min_period"] = period
         period = cls.create(
-            name=name, system=kind.value, parent=parent, deleted=False, **kwargs
+            name=name,
+            system=constants.PeriodSystem.lithostratigraphy,
+            rank=rank.value,
+            parent=parent,
+            deleted=False,
+            **kwargs,
         )
         if "next" in kwargs:
             next_period = kwargs["next"]
@@ -175,12 +209,13 @@ class Period(BaseModel):
                 for location in partial_locations:
                     location.display(full=full, depth=depth + 4, file=file)
         if children:
-            for period in self.children:
+            for period in sorted(self.children, key=period_sort_key):
                 period.display(
                     full=full, depth=depth + 2, file=file, locations=locations
                 )
-            for period in Period.filter(
-                Period.max_period == self, Period.min_period == self
+            for period in sorted(
+                Period.filter(Period.max_period == self, Period.min_period == self),
+                key=period_sort_key,
             ):
                 period.display(
                     full=full, depth=depth + 2, file=file, locations=locations
@@ -247,20 +282,14 @@ class Period(BaseModel):
         yield "parent"
         yield "system"
 
-    def __repr__(self) -> str:
-        properties = {}
-        for field in self.fields():
-            if field == "name":
-                continue
-            value = getattr(self, field)
-            if value is None or value is False:
-                continue
-            if isinstance(value, Period):
-                value = value.name
-            properties[field] = value
-        return "{} ({})".format(
-            self.name, ", ".join("%s=%s" % item for item in properties.items())
-        )
+
+def display_age(age: int) -> str:
+    if age < 1000:
+        return str(age)
+    elif age < 1_000_000:
+        return f"{age / 1000}k"
+    else:
+        return f"{age / 1_000_000}m"
 
 
 @lru_cache(maxsize=1024)
@@ -306,7 +335,12 @@ def _apply_next_correction(
     return (age, parents + 1, 0, period.name)
 
 
-def display_period_tree(min_count: int = 0, full: bool = False) -> None:
+def display_period_tree(
+    min_count: int = 0,
+    system: Optional[constants.PeriodSystem] = None,
+    full: bool = False,
+    include_taxa: bool = False,
+) -> None:
     max_parent_to_periods = defaultdict(int)
     parent_to_periods = defaultdict(list)
     period_to_max_parent = {}
@@ -324,11 +358,18 @@ def display_period_tree(min_count: int = 0, full: bool = False) -> None:
         period_to_max_parent[period] = max_parent
         return max_parent
 
-    for period in Period.select_valid():
+    periods = Period.select_valid()
+    if system is not None:
+        periods = periods.filter(Period.system == system)
+
+    for period in periods:
         add_period(period)
 
     def display_period(period: Period, depth: int) -> None:
         spacing = " " * (depth * 4)
+        if include_taxa:
+            period.display(depth=depth * 4)
+            return
         if full:
             print(f"{spacing}{period!r}")
         else:
@@ -336,9 +377,12 @@ def display_period_tree(min_count: int = 0, full: bool = False) -> None:
         for child in sorted(parent_to_periods[period], key=period_sort_key):
             display_period(child, depth + 1)
 
-    for max_parent, count in sorted(
-        max_parent_to_periods.items(), key=lambda item: -item[1]
-    ):
+    if system is None:
+        key = lambda item: -item[1]
+    else:
+        key = lambda item: period_sort_key(item[0])
+
+    for max_parent, count in sorted(max_parent_to_periods.items(), key=key):
         if count >= min_count:
             getinput.print_header(f"{max_parent.name} ({count})")
             display_period(max_parent, 0)

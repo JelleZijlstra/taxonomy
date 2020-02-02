@@ -217,6 +217,8 @@ class Article(BaseModel):
     def relative_path(self) -> Path:
         """Returns the path relative to the library root."""
         path = self.path_list()
+        if not path:
+            return Path()
         out = Path(path[0])
         for part in path[1:]:
             out = out / part
@@ -226,10 +228,12 @@ class Article(BaseModel):
         if not self.isfile():
             print("openf: error: not a file, cannot open")
             return False
-        if place == "catalog":
-            path = self.get_path()
-        elif place == "temp":
+        if place == "temp" or not self.path:
             path = _options.new_path / self.name
+        elif place == "catalog":
+            path = self.get_path()
+        else:
+            raise ValueError(f"invalid place {place}")
         subprocess.check_call(["open", str(path)])
         return True
 
