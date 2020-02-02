@@ -280,7 +280,42 @@ class Name(BaseModel):
 
     def _add_type_identical_callback(self) -> None:
         root_name = self.getter("root_name").get_one_key("root_name> ")
-        return self.taxon.add_type_identical(root_name)
+        return self.add_type_identical(root_name)
+
+    def add_type_identical(
+        self,
+        name: str,
+        page_described: Union[None, int, str] = None,
+        locality: Optional["models.Location"] = None,
+        **kwargs: Any,
+    ) -> "Taxon":
+        """Convenience method to add a type species described in the same paper as the genus."""
+        assert self.taxon.rank == Rank.genus
+        assert self.type is None
+        full_name = f"{self.corrected_original_name} {name}"
+        if isinstance(page_described, int):
+            page_described = str(page_described)
+        result = self.add_child_taxon(
+            Rank.species,
+            full_name,
+            authority=self.authority,
+            year=self.year,
+            original_citation=self.original_citation,
+            verbatim_citation=self.verbatim_citation,
+            citation_group=self.citation_group,
+            original_name=full_name,
+            page_described=page_described,
+            status=self.status,
+        )
+        self.type = result.base_name
+        self.save()
+        if locality is not None:
+            result.add_occurrence(locality)
+        result.base_name.s(**kwargs)
+        if self.original_citation is not None:
+            self.fill_required_fields()
+            result.base_name.fill_required_fields()
+        return result
 
     def get_completers_for_adt_field(self, field: str) -> getinput.CompleterMap:
         for field_name, tag_cls in [("type_tags", TypeTag), ("tags", Tag)]:
@@ -453,6 +488,32 @@ class Name(BaseModel):
             name=self, kind=kind, text=text, source=source, page=page
         )
 
+    def add_child_taxon(
+        self,
+        rank: Rank,
+        name: str,
+        authority: Optional[str] = None,
+        year: Union[None, str, int] = None,
+        age: Optional[constants.Age] = None,
+        **kwargs: Any,
+    ) -> "Taxon":
+        if age is None:
+            age = self.taxon.age
+        taxon = Taxon.create(valid_name=name, age=age, rank=rank, parent=self.taxon)
+        kwargs["group"] = helpers.group_of_rank(rank)
+        kwargs["root_name"] = helpers.root_name_of_name(name, rank)
+        if "status" not in kwargs:
+            kwargs["status"] = Status.valid
+        name_obj = Name.create(taxon=taxon, **kwargs)
+        if authority is not None:
+            name_obj.authority = authority
+        if year is not None:
+            name_obj.year = year
+        name_obj.save()
+        taxon.base_name = name_obj
+        taxon.save()
+        return taxon
+
     def add_nomen_nudum(self) -> "Name":
         """Adds a nomen nudum similar to this name."""
         return self.taxon.add_syn(
@@ -562,7 +623,7 @@ class Name(BaseModel):
         interactive: bool = True,
     ) -> "Name":
         if root_name is None:
-            root_name = Name.getter("root_name").get_one(prompt="root_name> ")
+            root_name = Name.getter("root_name").get_one_key(prompt="root_name> ")
         if root_name is None:
             raise ValueError("root_name is None")
         if status is None:
@@ -777,8 +838,8 @@ class Name(BaseModel):
 
     def get_required_fields(self) -> Iterable[str]:
         if (
-            self.status == Status.spurious
-            or self.nomenclature_status == NomenclatureStatus.informal
+            self.status is Status.spurious
+            or self.nomenclature_status is NomenclatureStatus.informal
         ):
             return
         yield "original_name"
@@ -796,37 +857,42 @@ class Name(BaseModel):
         yield "original_citation"
         if self.original_citation is None:
             yield "verbatim_citation"
-        if self.verbatim_citation is not None:
-            yield "citation_group"
+            if self.verbatim_citation is not None:
+                yield "citation_group"
+
+        if self.nomenclature_status.requires_type() and self.group is Group.species:
+            # Yield this early because it's often easier to first get all the *Detail
+            # tags and then fill in the required fields.
+            yield "type_tags"
 
         if (
-            self.group == Group.genus
+            self.group is Group.genus
             and self.nomenclature_status.requires_name_complex()
         ):
             yield "name_complex"
         if (
-            self.group == Group.species
+            self.group is Group.species
             and self.nomenclature_status.requires_name_complex()
         ):
             yield "species_name_complex"
 
         if self.nomenclature_status.requires_type():
-            if self.group == Group.family:
+            if self.group is Group.family:
                 yield "type"
-            if self.group == Group.species:
+            elif self.group is Group.species:
                 yield "type_locality"
-                # 75 (lost) and 381 (untraced) are special Collections that indicate there is no preserved specimen.
+                # 75 (lost) and 381 (untraced) are special Collections that
+                # indicate there is no preserved specimen.
                 if self.collection is None or (self.collection.id not in (75, 381)):
                     yield "type_specimen"
                 yield "collection"
                 if self.type_specimen is not None or self.collection is not None:
                     yield "type_specimen_source"
                     yield "species_type_kind"
-                yield "type_tags"
-            if self.group == Group.genus:
+            elif self.group is Group.genus:
                 if (
                     self.genus_type_kind
-                    != constants.TypeSpeciesDesignation.undesignated
+                    is not constants.TypeSpeciesDesignation.undesignated
                 ):
                     yield "type"
                 if self.type is not None:
@@ -836,8 +902,7 @@ class Name(BaseModel):
                         yield "type_tags"
                 elif self.genus_type_kind.requires_tag():
                     yield "type_tags"
-        for field in self.get_deprecated_fields():
-            yield field
+        yield from self.get_deprecated_fields()
 
     def get_deprecated_fields(self) -> Iterable[str]:
         yield "type_locality_description"
@@ -847,15 +912,15 @@ class Name(BaseModel):
         # maybe stem and gender? should add something automated to get rid of those if there's a name complex
 
     def validate_as_child(self, status: Status = Status.valid) -> Taxon:
-        if self.taxon.rank == Rank.species:
+        if self.taxon.rank is Rank.species:
             new_rank = Rank.subspecies
-        elif self.taxon.rank == Rank.genus:
+        elif self.taxon.rank is Rank.genus:
             new_rank = Rank.subgenus
-        elif self.taxon.rank == Rank.tribe:
+        elif self.taxon.rank is Rank.tribe:
             new_rank = Rank.subtribe
-        elif self.taxon.rank == Rank.subfamily:
+        elif self.taxon.rank is Rank.subfamily:
             new_rank = Rank.tribe
-        elif self.taxon.rank == Rank.family:
+        elif self.taxon.rank is Rank.family:
             new_rank = Rank.subfamily
         else:
             raise ValueError(f"cannot validate child with rank {self.taxon.rank}")

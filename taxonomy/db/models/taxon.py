@@ -487,20 +487,9 @@ class Taxon(BaseModel):
     ) -> "Taxon":
         if age is None:
             age = self.age
-        taxon = Taxon.create(valid_name=name, age=age, rank=rank, parent=self)
-        kwargs["group"] = helpers.group_of_rank(rank)
-        kwargs["root_name"] = helpers.root_name_of_name(name, rank)
-        if "status" not in kwargs:
-            kwargs["status"] = Status.valid
-        name_obj = models.Name.create(taxon=taxon, **kwargs)
-        if authority is not None:
-            name_obj.authority = authority
-        if year is not None:
-            name_obj.year = year
-        name_obj.save()
-        taxon.base_name = name_obj
-        taxon.save()
-        return taxon
+        return self.base_name.add_child_taxon(
+            rank=rank, name=name, authority=authority, year=year, age=age, **kwargs,
+        )
 
     def add(self) -> "Taxon":
         rank = getinput.get_enum_member(
@@ -564,32 +553,9 @@ class Taxon(BaseModel):
         **kwargs: Any,
     ) -> "Taxon":
         """Convenience method to add a type species described in the same paper as the genus."""
-        assert self.rank == Rank.genus
-        assert self.base_name.type is None
-        full_name = f"{self.valid_name} {name}"
-        if isinstance(page_described, int):
-            page_described = str(page_described)
-        result = self.add_static(
-            Rank.species,
-            full_name,
-            authority=self.base_name.authority,
-            year=self.base_name.year,
-            original_citation=self.base_name.original_citation,
-            verbatim_citation=self.base_name.verbatim_citation,
-            citation_group=self.base_name.citation_group,
-            original_name=full_name,
-            page_described=page_described,
-            status=self.base_name.status,
+        return self.base_name.add_type_identical(
+            name, page_described=page_described, locality=locality, **kwargs
         )
-        self.base_name.type = result.base_name
-        self.base_name.save()
-        if locality is not None:
-            result.add_occurrence(locality)
-        result.base_name.s(**kwargs)
-        if self.base_name.original_citation is not None:
-            self.base_name.fill_required_fields()
-            result.base_name.fill_required_fields()
-        return result
 
     def switch_basename(self, name: "models.Name") -> None:
         assert name.taxon == self, f"{name} is not a synonym of {self}"
