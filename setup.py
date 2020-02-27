@@ -27,6 +27,7 @@ setup(
         "requests",
         "unidecode",
         "python-levenshtein",
+        "bs4",
         "mypy",
         "flake8",
         "pytest",

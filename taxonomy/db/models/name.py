@@ -244,7 +244,7 @@ class Name(BaseModel):
             print(f"type: {typ}")
             if typ is None:
                 return None
-            elif getinput.yes_no("Is this correct? "):
+            elif self.group is Group.genus or getinput.yes_no("Is this correct? "):
                 return typ
             else:
                 return None
@@ -348,10 +348,11 @@ class Name(BaseModel):
             yield field
         if (
             fields
-            and "type_tags" not in fields
+            and "type_tags" != fields[-1]
             and "type_tags" in self.get_required_fields()
         ):
-            # Always make the user edit type_tags if some other field was unfilled.
+            # Always make the user edit type_tags if some other field was unfilled,
+            # even if we edited type_tags previously in this run.
             yield "type_tags"
 
     def fill_field_if_empty(self, field: str) -> None:
@@ -976,6 +977,8 @@ class Name(BaseModel):
                 Status.synonym,
                 Status.dubious,
             ), f"Can only merge synonymous names (not {self})"
+        if self.type_tags and into.type_tags:
+            into.type_tags += self.type_tags
         self._merge_fields(into, exclude={"id"})
         self.remove(reason=f"Removed because it was merged into {into} (N#{into.id})")
 
@@ -1220,7 +1223,7 @@ class Name(BaseModel):
                 ]
             return candidates
 
-    def possible_citation_groups(self) -> None:
+    def possible_citation_groups(self) -> int:
         if self.verbatim_citation is not None:
             same_citation = list(
                 self.select_valid().filter(
@@ -1236,10 +1239,11 @@ class Name(BaseModel):
                 Name.authority == self.authority,
                 Name.year == self.year,
                 Name.id != self.id,
+                Name.citation_group != self.citation_group,
             )
         )
         if not similar_names:
-            return
+            return 0
 
         print(f"=== {len(similar_names)} similar names")
         for nam in sorted(similar_names, key=lambda nam: nam.numeric_page_described()):
@@ -1265,6 +1269,7 @@ class Name(BaseModel):
             print("=== citation_group for names with same author")
             for cg, count in Counter(similar_name_cgs).most_common():
                 print(count, cg)
+        return len(similar_names)
 
     @classmethod
     def find_name(
@@ -1387,22 +1392,10 @@ def has_data_from_original(nam: Name) -> bool:
     if not nam.original_citation or not nam.type_tags:
         return False
     for tag in nam.type_tags:
-        if nam.group == Group.species:
-            if (
-                isinstance(
-                    tag,
-                    (
-                        TypeTag.LocationDetail,
-                        TypeTag.SpecimenDetail,
-                        TypeTag.CitationDetail,
-                    ),
-                )
-                and tag.source == nam.original_citation
-            ):
-                return True
-        elif nam.group == Group.genus:
-            if isinstance(tag, (TypeTag.IncludedSpecies, TypeTag.GenusCoelebs)):
-                return True
+        if isinstance(tag, SOURCE_TAGS) and tag.source == nam.original_citation:
+            return True
+        if isinstance(tag, (TypeTag.IncludedSpecies, TypeTag.GenusCoelebs)):
+            return True
     return False
 
 
@@ -1546,3 +1539,14 @@ class TypeTag(adt.ADT):
     CitationDetail(text=str, source=Article, tag=25)  # type: ignore
     DefinitionDetail(text=str, source=Article, tag=26)  # type: ignore
     EtymologyDetail(text=str, source=Article, tag=27)  # type: ignore
+
+
+SOURCE_TAGS = (
+    TypeTag.LocationDetail,
+    TypeTag.SpecimenDetail,
+    TypeTag.CitationDetail,
+    TypeTag.EtymologyDetail,
+    TypeTag.CollectionDetail,
+    TypeTag.DefinitionDetail,
+    TypeTag.TypeSpeciesDetail,
+)

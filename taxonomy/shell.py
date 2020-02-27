@@ -311,7 +311,7 @@ def make_county_regions(
         for row in reader:
             county = row["GEO.display-label"]
             if county.endswith(f", {name}"):
-                counties.append(county)
+                counties.append(county.replace(" city, Virginia", " City, Virginia"))
     print("Creating counties", counties)
     if dry_run:
         return
@@ -1713,7 +1713,9 @@ def fill_citation_group_for_author(author: str, require_citation: bool = True) -
 
 
 @command
-def fill_citation_groups(book: bool = False, interactive: bool = True) -> None:
+def fill_citation_groups(
+    book: bool = False, interactive: bool = True, only_with_hints: bool = False
+) -> None:
     book_cg = CitationGroup.get(CitationGroup.name == "book")
     if book:
         query = Name.citation_group == book_cg
@@ -1723,17 +1725,18 @@ def fill_citation_groups(book: bool = False, interactive: bool = True) -> None:
     patterns = list(CitationGroupPattern.select_valid())
     print(f"Filling citation group for {len(names)} names")
 
-    for nam in names:
-        citation = helpers.simplify_string(nam.verbatim_citation)
-        for pattern in patterns:
-            if pattern.pattern in citation:
-                print("===", nam)
-                print(nam.verbatim_citation)
-                print(
-                    f"Inferred group with '{pattern.pattern}': {pattern.citation_group}"
-                )
-                nam.citation_group = pattern.citation_group
-                nam.save()
+    if not book:
+        for nam in names:
+            citation = helpers.simplify_string(nam.verbatim_citation)
+            for pattern in patterns:
+                if pattern.pattern in citation:
+                    print("===", nam)
+                    print(nam.verbatim_citation)
+                    print(
+                        f"Inferred group with '{pattern.pattern}': {pattern.citation_group}"
+                    )
+                    nam.citation_group = pattern.citation_group
+                    nam.save()
 
     if not interactive:
         return
@@ -1753,7 +1756,9 @@ def fill_citation_groups(book: bool = False, interactive: bool = True) -> None:
             condition = nam.citation_group is None
         if condition:
             getinput.print_header(nam)
-            nam.possible_citation_groups()
+            count = nam.possible_citation_groups()
+            if count == 0 and only_with_hints:
+                continue
             print("===", nam)
             nam.display()
             nam.fill_field("citation_group")
@@ -1971,10 +1976,30 @@ def _make_loc_filterer(substring: str) -> Callable[[models.Location], bool]:
     return filterer
 
 
+def _more_precise_by_subdivision(region: models.Region) -> None:
+    children = sorted(child.name for child in region.children)
+    locs = [
+        models.Location.get(name=region.name),
+        models.Location.get(name=f"{region.name} Pleistocene"),
+        models.Location.get(name=f"{region.name} fossil"),
+    ]
+    for loc in locs:
+        getinput.print_header(loc.name)
+        for child in children:
+            getinput.print_header(child)
+            more_precise_type_localities(loc, substring=child)
+    for child in children:
+        getinput.print_header(child)
+        _more_precise(
+            region, region.sorted_locations(), "region", _make_loc_filterer(child)
+        )
+
+
 @command
 def more_precise(region: models.Region) -> None:
     loc = region.get_location()
     funcs = [
+        ("by subdivision", lambda: _more_precise_by_subdivision(region)),
         ("type localities", lambda: more_precise_type_localities(loc)),
         ("collections", lambda: _more_precise(region, region.collections, "location")),
         (
@@ -2975,7 +3000,7 @@ def find_potential_citations_for_group(cg: CitationGroup, fix: bool = False) -> 
             count += 1
             nam.display()
             for candidate in candidates:
-                print(candidate.cite())
+                print(repr(candidate))
             if fix:
                 for candidate in candidates:
                     candidate.openf()
@@ -3063,6 +3088,22 @@ def fix_citation_group_redirects() -> None:
         for art in cg.get_articles():
             print(f"update {art} -> {cg.target}")
             art.citation_group = cg.target
+
+
+@command
+def find_dois() -> None:
+    arts = Article.bfind(
+        Article.doi != None, Article.type == constants.ArticleType.JOURNAL, quiet=True
+    )
+    cgs = {art.citation_group for art in arts}
+    doiless = {
+        art
+        for cg in cgs
+        if cg is not None
+        for art in cg.get_articles().filter(Article.doi == None)
+    }
+    for art in doiless:
+        art.finddoi()
 
 
 @command

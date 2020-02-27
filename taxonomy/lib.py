@@ -211,24 +211,39 @@ def locless_names(
     attribute: str = "type_locality",
     age: Optional[Age] = Age.removed,
     min_year: Optional[int] = None,
+    exclude: Container["Taxon"] = frozenset(),
 ) -> List[Name]:
     if age is Age.removed:
         age = genus.age
-    nams = list(genus.names_missing_field(attribute, age=age, min_year=min_year))
+    nams = list(
+        genus.names_missing_field(
+            attribute, age=age, min_year=min_year, exclude=exclude
+        )
+    )
     for nam in nams:
         nam.display()
     return nams
 
 
 def names_with_attribute(
-    txn: Taxon, attribute: str, age: Optional[Age] = Age.extant
+    txn: Taxon,
+    attribute: str,
+    age: Optional[Age] = None,
+    exclude: Container["Taxon"] = frozenset(),
 ) -> List[Name]:
     nams = [
-        name for name in txn.all_names(age=age) if getattr(name, attribute) is not None
+        name
+        for name in txn.all_names(age=age, exclude=exclude)
+        if getattr(name, attribute) is not None
     ]
     for nam in nams:
         nam.display()
     return nams
+
+
+def commented_names(txn: Taxon) -> List[Name]:
+    attrs = ["other_comments", "nomenclature_comments", "taxonomy_comments"]
+    return [nam for attr in attrs for nam in names_with_attribute(txn, attr)]
 
 
 def f(

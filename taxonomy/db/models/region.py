@@ -47,16 +47,32 @@ class Region(BaseModel):
         depth: int = 0,
         file: IO[str] = sys.stdout,
         children: bool = True,
+        skip_empty: bool = True,
     ) -> None:
+        if skip_empty and self.is_empty():
+            return
         getinput.flush()
         file.write("{}{}\n".format(" " * (depth + 4), repr(self)))
         if self.comment:
             file.write("{}Comment: {}\n".format(" " * (depth + 12), self.comment))
         for location in self.sorted_locations():
+            if skip_empty and location.type_localities.count() == 0:
+                continue
             location.display(full=full, depth=depth + 4, file=file)
         if children:
             for child in self.children:
-                child.display(full=full, depth=depth + 4, file=file)
+                child.display(
+                    full=full, depth=depth + 4, file=file, skip_empty=skip_empty
+                )
+
+    def is_empty(self) -> bool:
+        for loc in self.locations.filter(models.Location.deleted != True):
+            if loc.type_localities.count() > 0:
+                return False
+        for child in self.children:
+            if not child.is_empty():
+                return False
+        return True
 
     def sorted_locations(self) -> List["models.Location"]:
         return sorted(

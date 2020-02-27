@@ -78,6 +78,8 @@ class Location(BaseModel):
         if name is None:
             name = getinput.get_line("name> ")
         assert name is not None
+        if region is None:
+            region = cls.get_value_for_foreign_key_field_on_class("region")
         if period is None:
             period = cls.get_value_for_foreign_key_field_on_class("min_period")
         result = cls.make(

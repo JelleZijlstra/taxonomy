@@ -221,7 +221,6 @@ class NomenclatureStatus(enum.IntEnum):
             # Spelling issues that produce unavailable names.
             [cls.incorrect_subsequent_spelling, cls.incorrect_original_spelling],
             [cls.nomen_nudum],
-            [cls.preoccupied],
             # From here on, names are available.
             [
                 cls.unjustified_emendation,
@@ -235,7 +234,9 @@ class NomenclatureStatus(enum.IntEnum):
             [cls.hybrid_name],
             [cls.nomen_novum],
             [cls.collective_group],
-            [cls.available, cls.as_emended],
+            [cls.as_emended],
+            [cls.preoccupied],
+            [cls.available],
         ]
 
 

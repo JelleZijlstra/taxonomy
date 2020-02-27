@@ -1,9 +1,11 @@
 from ..constants import ArticleCommentKind, ArticleKind, ArticleType
 
+from bs4 import BeautifulSoup
 import datetime
 from pathlib import Path
 from peewee import CharField, ForeignKeyField, IntegerField, TextField
 import re
+import requests
 import subprocess
 import time
 from typing import (
@@ -479,6 +481,36 @@ class Article(BaseModel):
         else:
             raise ValueError(f"unknown citetype {citetype}")
 
+    def finddoi(self) -> bool:
+        if self.doi:
+            return True
+        if self.journal and self.volume and self.start_page:
+            print(f"Trying to find DOI for file {self.name}... ")
+            query_dict = {
+                "pid": _options.crossrefid,
+                "title": self.journal,
+                "volume": self.volume,
+                "spage": self.start_page,
+                "noredirect": "true",
+            }
+            url = "http://www.crossref.org/openurl"
+            response = requests.get(url, query_dict)
+            if not response.ok:
+                print(f"Failed to retrieve data: {response.text}")
+                return False
+            xml = BeautifulSoup(response.text, features="lxml")
+            try:
+                doi = xml.crossref_result.doi.text
+            except AttributeError:
+                print("nothing found")
+                self.triedfinddoi = True
+                return False
+            else:
+                print(f"found doi {doi}")
+                self.doi = doi
+                return True
+        return False
+
     def display(self) -> None:
         print(self.cite())
 
@@ -488,8 +520,11 @@ class Article(BaseModel):
         for nam in self.new_names:
             nam.display()
 
-    def __repr__(self) -> str:
+    def __str__(self) -> str:
         return f"{{{self.name}}}"
+
+    def __repr__(self) -> str:
+        return f"{{{self.name}: {self.cite()}}}"
 
 
 class ArticleComment(BaseModel):

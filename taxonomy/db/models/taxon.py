@@ -901,10 +901,11 @@ class Taxon(BaseModel):
         field: str,
         age: Optional[constants.Age] = None,
         min_year: Optional[int] = None,
+        exclude: Container["Taxon"] = frozenset(),
     ) -> Set["models.Name"]:
         return {
             name
-            for name in self.all_names(age=age, min_year=min_year)
+            for name in self.all_names(age=age, min_year=min_year, exclude=exclude)
             if getattr(name, field) is None and field in name.get_required_fields()
         }
 
@@ -913,9 +914,10 @@ class Taxon(BaseModel):
         age: Optional[constants.Age] = None,
         graphical: bool = False,
         focus_field: Optional[str] = None,
+        exclude: Container["Taxon"] = frozenset(),
         min_year: Optional[int] = None,
     ) -> Dict[str, float]:
-        names = self.all_names(age=age, min_year=min_year)
+        names = self.all_names(age=age, min_year=min_year, exclude=exclude)
         counts: Dict[str, int] = defaultdict(int)
         required_counts: Dict[str, int] = defaultdict(int)
         counts_by_group: Dict[Group, int] = defaultdict(int)
