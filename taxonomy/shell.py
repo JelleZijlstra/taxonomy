@@ -1714,7 +1714,10 @@ def fill_citation_group_for_author(author: str, require_citation: bool = True) -
 
 @command
 def fill_citation_groups(
-    book: bool = False, interactive: bool = True, only_with_hints: bool = False
+    book: bool = False,
+    interactive: bool = True,
+    only_with_hints: bool = False,
+    skip_inference: bool = False,
 ) -> None:
     book_cg = CitationGroup.get(CitationGroup.name == "book")
     if book:
@@ -1725,7 +1728,7 @@ def fill_citation_groups(
     patterns = list(CitationGroupPattern.select_valid())
     print(f"Filling citation group for {len(names)} names")
 
-    if not book:
+    if not book and not skip_inference:
         for nam in names:
             citation = helpers.simplify_string(nam.verbatim_citation)
             for pattern in patterns:
@@ -1816,6 +1819,24 @@ def field_by_year(field: Optional[str] = None) -> None:
         if len(year) == 4:
             data.append((f"{year} ({total})", value))
     getinput.print_scores(data)
+
+
+@command
+def type_localities_like(substring: str, full: bool = False) -> None:
+    nams = Name.bfind(
+        Name._raw_type_tags.contains(substring), Name.type_locality != None, quiet=True
+    )
+    for nam in sorted(
+        nams,
+        key=lambda nam: (
+            str(nam.type_locality.region),
+            str(nam.type_locality),
+            nam.taxon.valid_name,
+        ),
+    ):
+        print(f"{nam.type_locality}, {nam.type_locality.region}: {nam}")
+        if full:
+            nam.display()
 
 
 @command
@@ -2067,6 +2088,16 @@ def most_common_sources(
         else:
             break
     return output
+
+
+@command
+def fill_data_from_folder(folder: str) -> None:
+    arts = Article.bfind(Article.path.startswith(folder), quiet=True)
+    total = len(arts)
+    for i, art in enumerate(sorted(arts, key=lambda art: art.path)):
+        percentage = (i / total) * 100
+        print(f"{percentage:.03}% ({i}/{total}) {art.name}")
+        fill_data_from_paper(art)
 
 
 @command
@@ -2529,6 +2560,8 @@ AUTHOR_SYNONYMS = {
     "Von Dueben": "von Dueben",
     "von Haast": "Haast",
     "Von Lehmann": "Lehmann",
+    "von Huene": "Huene",
+    "Von Huene": "Huene",
     "Vorontzov": "Vorontsov",
     "Wasiljewa": helpers.romanize_russian("Васильева"),
     "Wied": "Wied-Neuwied",
@@ -2833,7 +2866,10 @@ def replace_comments(substr: str) -> None:
         ):
             nam.display()
             print(getattr(nam, field))
-            nam.add_comment()
+            if getinput.yes_no("Add comment? "):
+                nam.add_comment()
+            else:
+                nam.fill_field("type_tags")
             setattr(nam, field, None)
 
 

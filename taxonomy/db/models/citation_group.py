@@ -169,6 +169,12 @@ class CitationGroup(BaseModel):
         names = self.names.filter(models.Name.status != constants.Status.removed)
         return sorted(names, key=lambda nam: nam.sort_key())
 
+    def display_organized(self, depth: int = 0) -> None:
+        region_str = f" ({self.region.name})" if self.region else ""
+        print(f"{' ' * depth}{self.name}{region_str}")
+        nams = [(repr(nam), nam.taxon) for nam in self.get_names()]
+        models.taxon.display_organized(nams)
+
     def _display_nams(self, nams: Iterable["models.Name"], depth: int = 0) -> None:
         for nam in sorted(nams, key=lambda nam: nam.sort_key()):
             print(f"{' ' * (depth + 4)}{nam}")

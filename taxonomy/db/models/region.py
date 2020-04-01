@@ -6,12 +6,14 @@ from typing import IO, Dict, Iterable, List, Optional
 from peewee import CharField, ForeignKeyField
 
 from .. import constants, models
-from ... import getinput
+from ... import events, getinput
 
 from .base import BaseModel, EnumField
 
 
 class Region(BaseModel):
+    creation_event = events.Event["Region"]()
+    save_event = events.Event["Region"]()
     label_field = "name"
     call_sign = "R"
 
@@ -41,6 +43,30 @@ class Region(BaseModel):
         out += " (%s)" % self.kind
         return out
 
+    def rename(self, new_name: Optional[str] = None) -> None:
+        old_name = self.name
+        if new_name is None:
+            new_name = self.getter("name").get_one_key(default=old_name)
+        loc = self.get_location()
+        print("renaming", loc)
+        loc.name = new_name
+        pleistocene_loc = models.Location.get(
+            region=self, name=f"{old_name} Pleistocene", deleted=False
+        )
+        print("renaming", pleistocene_loc)
+        pleistocene_loc.name = f"{new_name} Pleistocene"
+        fossil_loc = models.Location.get(
+            region=self, name=f"{old_name} fossil", deleted=False
+        )
+        print("renaming", fossil_loc)
+        fossil_loc.name = f"{new_name} fossil"
+        for loc in models.Location.bfind(
+            models.Location.name.endswith(f"({old_name})"), region=self
+        ):
+            print("renaming", loc)
+            loc.name = loc.name.replace(f"({old_name})", f"({new_name})")
+        self.name = new_name
+
     def display(
         self,
         full: bool = False,
@@ -48,6 +74,7 @@ class Region(BaseModel):
         file: IO[str] = sys.stdout,
         children: bool = True,
         skip_empty: bool = True,
+        locations: bool = True,
     ) -> None:
         if skip_empty and self.is_empty():
             return
@@ -55,14 +82,19 @@ class Region(BaseModel):
         file.write("{}{}\n".format(" " * (depth + 4), repr(self)))
         if self.comment:
             file.write("{}Comment: {}\n".format(" " * (depth + 12), self.comment))
-        for location in self.sorted_locations():
-            if skip_empty and location.type_localities.count() == 0:
-                continue
-            location.display(full=full, depth=depth + 4, file=file)
+        if locations:
+            for location in self.sorted_locations():
+                if skip_empty and location.type_localities.count() == 0:
+                    continue
+                location.display(full=full, depth=depth + 4, file=file)
         if children:
-            for child in self.children:
+            for child in self.sorted_children():
                 child.display(
-                    full=full, depth=depth + 4, file=file, skip_empty=skip_empty
+                    full=full,
+                    depth=depth + 4,
+                    file=file,
+                    skip_empty=skip_empty,
+                    locations=locations,
                 )
 
     def is_empty(self) -> bool:
@@ -73,6 +105,9 @@ class Region(BaseModel):
             if not child.is_empty():
                 return False
         return True
+
+    def sorted_children(self) -> List["Region"]:
+        return sorted(self.children, key=lambda c: c.name)
 
     def sorted_locations(self) -> List["models.Location"]:
         return sorted(
@@ -116,7 +151,7 @@ class Region(BaseModel):
             for group in groups:
                 if not group.deleted:
                     group.display(full=full, include_articles=full, depth=depth + 8)
-        for child in sorted(self.children, key=lambda c: c.name):
+        for child in self.sorted_children():
             child.display_citation_groups(
                 full=full, only_nonempty=only_nonempty, depth=depth + 4
             )
@@ -145,7 +180,7 @@ class Region(BaseModel):
                 print(" " * (depth + 4) + city)
                 for collection in colls:
                     collection.display(full=full, depth=depth + 8)
-        for child in sorted(self.children, key=lambda c: c.name):
+        for child in self.sorted_children():
             child.display_collections(
                 full=full, only_nonempty=only_nonempty, depth=depth + 4
             )
@@ -164,7 +199,7 @@ class Region(BaseModel):
                 period.display(depth=depth + 4)
             else:
                 print(" " * (depth + 4) + period.name)
-        for child in sorted(self.children, key=lambda c: c.name):
+        for child in self.sorted_children():
             child.display_periods(full=full, depth=depth + 4)
 
     def add_cities(self) -> None:

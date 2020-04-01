@@ -223,12 +223,12 @@ class Period(BaseModel):
 
     def max_only_localities(self) -> Iterable["models.Location"]:
         return models.Location.select_valid().filter(
-            models.Location.max_period == self, models.Location.min_period != self,
+            models.Location.max_period == self, models.Location.min_period != self
         )
 
     def period_localities(self) -> Iterable["models.Location"]:
         return models.Location.select_valid().filter(
-            models.Location.max_period == self, models.Location.min_period == self,
+            models.Location.max_period == self, models.Location.min_period == self
         )
 
     def make_locality(self, region: "Region") -> "models.Location":
@@ -239,27 +239,53 @@ class Period(BaseModel):
         for child in self.children:
             yield from child.stratigraphic_localities()
 
-    def all_localities(self, include_children: bool = True) -> Set["models.Location"]:
-        locations = {
-            *self.locations_stratigraphy,
-            *self.locations_min,
-            *self.locations_max,
-        }
+    def all_localities(
+        self, include_children: bool = True, include_partial: bool = False
+    ) -> Set["models.Location"]:
+        if include_partial:
+            locations = {
+                *self.locations_stratigraphy,
+                *self.locations_min,
+                *self.locations_max,
+            }
+        else:
+            locations = {
+                *self.locations_stratigraphy,
+                *self.locations_min.filter(models.Location.max_period == self),
+            }
         if include_children:
-            for child in self.children:
-                locations |= child.all_localities()
+            if include_partial:
+                children = {*self.children, *self.children_min, *self.children_max}
+            else:
+                children = {
+                    *self.children,
+                    *self.children_min.filter(Period.max_period == self),
+                }
+            for child in children:
+                locations |= child.all_localities(
+                    include_children=include_children, include_partial=include_partial
+                )
         return {loc for loc in locations if loc.deleted is not True}
 
-    def all_type_localities(self, include_children: bool = True) -> List["models.Name"]:
+    def all_type_localities(
+        self, include_children: bool = True, include_partial: bool = False
+    ) -> List["models.Name"]:
         return [
             nam
-            for loc in self.all_localities(include_children=include_children)
+            for loc in self.all_localities(
+                include_children=include_children, include_partial=include_partial
+            )
             for nam in loc.type_localities
         ]
 
-    def display_type_localities(self, include_children: bool = True) -> None:
+    def display_type_localities(
+        self, include_children: bool = True, include_partial: bool = False
+    ) -> None:
         models.name.write_type_localities(
-            self.all_type_localities(include_children=include_children), organized=True
+            self.all_type_localities(
+                include_children=include_children, include_partial=include_partial
+            ),
+            organized=True,
         )
 
     def all_regions(self) -> Set[Region]:
@@ -276,6 +302,15 @@ class Period(BaseModel):
             return True
         else:
             return False
+
+    def fill_field(self, field: str) -> None:
+        if field == "period":
+            period = self.get_value_for_foreign_class(
+                "period", Period, self.min_period, self.get_adt_callbacks()
+            )
+            self.set_period(period)
+        else:
+            super().fill_field(field)
 
     def get_required_fields(self) -> Iterable[str]:
         yield "name"

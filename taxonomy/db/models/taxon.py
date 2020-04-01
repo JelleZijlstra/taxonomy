@@ -393,6 +393,24 @@ class Taxon(BaseModel):
         )
         file.write(self.base_name.get_description(depth=1))
 
+    def get_citation_groups(self) -> Dict["models.CitationGroup", List["models.Name"]]:
+        nams = self.all_names()
+        by_cg: Dict[models.CitationGroup, List[models.Name]] = defaultdict(list)
+        for nam in nams:
+            if nam.citation_group is not None:
+                by_cg[nam.citation_group].append(nam)
+        return by_cg
+
+    def display_citation_groups(self) -> None:
+        by_cg = self.get_citation_groups()
+        items = sorted(by_cg.items(), key=lambda pair: -len(pair[1]))
+        for cg, nams in items:
+            getinput.print_header(f"{cg} ({len(nams)})")
+            for nam in nams:
+                print(f"    {nam}")
+                print(f"        {helpers.clean_string(nam.verbatim_citation)}")
+        getinput.flush()
+
     def display_type_localities(
         self,
         full: bool = False,
@@ -488,7 +506,7 @@ class Taxon(BaseModel):
         if age is None:
             age = self.age
         return self.base_name.add_child_taxon(
-            rank=rank, name=name, authority=authority, year=year, age=age, **kwargs,
+            rank=rank, name=name, authority=authority, year=year, age=age, **kwargs
         )
 
     def add(self) -> "Taxon":
