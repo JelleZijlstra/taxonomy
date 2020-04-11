@@ -85,6 +85,7 @@ class Article(BaseModel):
     save_event = events.Event["Article"]()
     label_field = "name"
     call_sign = "A"
+    excluded_fields = {"path", "addmonth", "addday", "addyear", "kind", "tags"}
 
     # Properties that have a one-to-one correspondence with the database.
     addmonth = CharField()  # month added to catalog

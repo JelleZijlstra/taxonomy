@@ -15,6 +15,7 @@ class CitationGroup(BaseModel):
     label_field = "name"
     grouping_field = "type"
     call_sign = "CG"
+    excluded_fields = {"tags", "archive"}
 
     name = CharField()
     region = ForeignKeyField(Region, related_name="citation_groups", null=True)

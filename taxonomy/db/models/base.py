@@ -268,7 +268,7 @@ class BaseModel(Model):
         """Subclasses may override this to filter out removed instances."""
         return cls.select(*args)
 
-    def should_skip_from_view(self) -> bool:
+    def should_skip(self) -> bool:
         return False
 
     @classmethod
