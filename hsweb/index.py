@@ -7,10 +7,6 @@ from . import components
 from . import view
 
 
-async def hello(request: web.Request) -> web.Response:
-    return web.Response(text="Hello, world")
-
-
 def make_handler(
     root_component: Type[components.Node]
 ) -> Callable[[web.Request], web.Response]:
@@ -36,7 +32,7 @@ def get_model_routes() -> Iterator[str]:
 
 def make_app() -> web.Application:
     app = web.Application()
-    app.add_routes([web.get("/", hello)])
+    app.add_routes([web.get("/", make_handler(view.page.HomePage))])
     app.add_routes(get_model_routes())
     app.router.add_static("/static", Path(view.__file__).parent.parent / "static")
     return app

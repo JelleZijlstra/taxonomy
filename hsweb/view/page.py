@@ -51,8 +51,20 @@ class Page(c.Component):
     async def arender_page_title(self) -> c.Nodes:
         raise NotImplementedError
 
-    async def arender_main(self) -> c.Nodes:
+    async def arender_body(self) -> c.Nodes:
         raise NotImplementedError
+
+
+class HomePage(Page):
+    async def arender_page_title(self) -> c.Nodes:
+        return c.Text("Hesperomys")
+
+    async def arender_body(self) -> c.Nodes:
+        z: c.Nodes = []
+        with c.P().into(z):
+            z += c.Text("The Hesperomys Project is a taxonomic and nomenclatural database of tetrapods. ")
+            z += c.Text("This website is still under construction.")
+        return z
 
 
 class ModelPage(Page):
