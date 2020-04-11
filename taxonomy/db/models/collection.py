@@ -3,6 +3,7 @@ from typing import Any, Optional, Type
 from peewee import BooleanField, CharField, ForeignKeyField
 
 from ... import events, getinput
+from .. import models
 
 from .base import BaseModel, ModelT
 from .region import Region
@@ -65,14 +66,23 @@ class Collection(BaseModel):
         obj.fill_required_fields()
         return obj
 
-    def display(self, full: bool = True, depth: int = 0) -> None:
+    def display(self, full: bool = True, depth: int = 0, organized: bool = False) -> None:
         city = f", {self.city}" if self.city else ""
         print(" " * depth + f"{self!r}{city}, {self.location}")
         if self.comment:
             print(" " * (depth + 4) + f"Comment: {self.comment}")
         if full:
-            for nam in sorted(self.type_specimens, key=lambda nam: nam.root_name):
-                print(" " * (depth + 4) + f"{nam} (type: {nam.type_specimen})")
+            if organized:
+                models.taxon.display_organized(
+                    [(str(f"{nam} (type: {nam.type_specimen})"), nam.taxon) for nam in self.type_specimens], depth=depth
+                )
+            else:
+                for nam in sorted(self.type_specimens, key=lambda nam: nam.taxon.valid_name):
+                    print(" " * (depth + 4) + f"{nam} (type: {nam.type_specimen})")
+                    for tag in nam.type_tags or ():
+                        if isinstance(tag, models.name.TypeTag.CollectionDetail):
+                            print(" " * (depth + 8) + str(tag))
+
 
     def merge(self, other: "Collection") -> None:
         for nam in self.type_specimens:
