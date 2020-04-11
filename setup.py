@@ -31,6 +31,7 @@ setup(
         "mypy",
         "flake8",
         "pytest",
+        "aiohttp",
     ],
     classifiers=[
         "Development Status :: 2 - Pre-Alpha",
