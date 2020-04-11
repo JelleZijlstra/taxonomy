@@ -56,6 +56,7 @@ class Name(BaseModel):
         "nomenclature_status": NomenclatureStatus.available,
         "status": Status.valid,
     }
+    excluded_fields = {"data", "other_comments", "nomenclature_comments", "taxonomy_comments", "type_locality_description"}
 
     # Basic data
     group = EnumField(Group)
@@ -133,6 +134,9 @@ class Name(BaseModel):
     @classmethod
     def select_valid(cls, *args: Any) -> Any:
         return cls.select(*args).filter(Name.status != Status.removed)
+
+    def should_skip(self) -> bool:
+        return self.status is Status.removed
 
     def get_stem(self) -> Optional[str]:
         if self.group != Group.genus or self.name_complex is None:
@@ -1329,6 +1333,9 @@ class NameComment(BaseModel):
         return cls.select(*args).filter(
             NameComment.kind != constants.CommentKind.removed
         )
+
+    def should_skip(self) -> bool:
+        return self.kind in (constants.CommentKind.removed, constants.CommentKind.structured_quote)
 
     @classmethod
     def make(

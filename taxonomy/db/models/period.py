@@ -76,6 +76,9 @@ class Period(BaseModel):
     def select_valid(cls, *args: Any) -> Any:
         return cls.select(*args).filter(Period.deleted != True)
 
+    def should_skip(self) -> bool:
+        return self.deleted
+
     def merge(self, other: "Period") -> None:
         for loc in self.locations_min:
             loc.min_period = other

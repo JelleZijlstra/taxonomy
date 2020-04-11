@@ -96,6 +96,7 @@ class BaseModel(Model):
     creation_event: events.Event[Any]
     save_event: events.Event[Any]
     field_defaults: Dict[str, Any] = {}
+    excluded_fields: Set[str] = set()
 
     class Meta(object):
         database = database
@@ -266,6 +267,9 @@ class BaseModel(Model):
     def select_valid(cls, *args: Any) -> Any:
         """Subclasses may override this to filter out removed instances."""
         return cls.select(*args)
+
+    def should_skip_from_view(self) -> bool:
+        return False
 
     @classmethod
     def getter(cls: Type[ModelT], attr: str) -> "_NameGetter[ModelT]":

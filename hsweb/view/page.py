@@ -86,6 +86,8 @@ class ModelPage(Page):
 
     def get_fields(self) -> Iterator[Tuple[str, Callable[[Any], Optional[c.Nodes]]]]:
         for field in self.model_cls.fields():
+            if field in self.model_cls.excluded_fields:
+                continue
             yield field, partial(self.render_field, field)
 
     def render_field(self, field: str, obj: Any) -> Optional[c.Nodes]:
@@ -98,6 +100,23 @@ class ModelPage(Page):
             return c.Text(value.name)
         elif isinstance(value, models.BaseModel):
             return ModelLink(value)
+        elif isinstance(value, tuple):
+            # tags
+            z: c.Nodes = []
+            with c.UL().into(z):
+                for tag in value:
+                    with c.LI().into(z):
+                        z += c.Text(type(tag).__name__)
+                        with c.DL().into(z):
+                            for attr in tag._attributes:
+                                rendered = self.render_field(attr, tag)
+                                if rendered is None:
+                                    continue
+                                with c.DT().into(z):
+                                    z += c.Text(attr)
+                                with c.DD().into(z):
+                                    z += rendered
+            return z
         else:
             return c.Text(repr(value))
 
@@ -139,7 +158,7 @@ class ModelPage(Page):
         return z
 
     async def arender_relname(self, relname: str, obj: models.BaseModel) -> c.Nodes:
-        related_objs = list(getattr(obj, relname))
+        related_objs = [obj for obj in getattr(obj, relname) if not obj.should_skip()]
         if not related_objs:
             return []
         z: c.Nodes = []

@@ -133,6 +133,9 @@ H2 = _make_tag("h2")
 H3 = _make_tag("h3")
 H4 = _make_tag("h4")
 H5 = _make_tag("h5")
+DL = _make_tag("dl")
+DT = _make_tag("dt")
+DD = _make_tag("dd")
 
 
 class Component(Node):

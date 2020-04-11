@@ -162,6 +162,9 @@ class Article(BaseModel):
     def select_valid(cls, *args: Any) -> Any:
         return cls.select(*args).filter(cls.kind != ArticleKind.redirect)
 
+    def should_skip(self) -> bool:
+        return self.kind is ArticleKind.redirect
+
     @classmethod
     def bfind(
         cls,

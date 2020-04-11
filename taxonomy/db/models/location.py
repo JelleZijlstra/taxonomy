@@ -48,6 +48,9 @@ class Location(BaseModel):
     def select_valid(cls, *args: Any) -> Any:
         return cls.select(*args).filter(Location.deleted != True)
 
+    def should_skip(self) -> bool:
+        return self.deleted
+
     @classmethod
     def make(
         cls,

@@ -93,6 +93,9 @@ class Taxon(BaseModel):
     def select_valid(cls, *args: Any) -> Any:
         return cls.select(*args).filter(Taxon.age != constants.Age.removed)
 
+    def should_skip(self) -> bool:
+        return self.age is constants.Age.removed
+
     @property
     def base_name(self) -> "models.Name":
         try:

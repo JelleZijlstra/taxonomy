@@ -31,6 +31,9 @@ class CitationGroup(BaseModel):
     def select_valid(cls, *args: Any) -> Any:
         return cls.select(*args).filter(CitationGroup.deleted == False)
 
+    def should_skip(self) -> bool:
+        return self.deleted
+
     @classmethod
     def create_interactively(
         cls, name: Optional[str] = None, **kwargs: Any
