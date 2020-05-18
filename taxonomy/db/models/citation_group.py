@@ -99,17 +99,25 @@ class CitationGroup(BaseModel):
         start_year: int,
         end_year: Optional[int] = None,
         author: Optional[str] = None,
+        include_articles: bool = False,
     ) -> List["models.Name"]:
+        def condition(year: int) -> bool:
+            if end_year is not None:
+                return year in range(start_year, end_year)
+            else:
+                return year == start_year
+
         nams = self.get_names()
-        if end_year is not None:
-            nams = [
-                nam for nam in nams if nam.numeric_year() in range(start_year, end_year)
-            ]
-        else:
-            nams = [nam for nam in nams if nam.numeric_year() == start_year]
+        nams = [nam for nam in nams if condition(nam.numeric_year())]
         if author is not None:
             nams = [nam for nam in nams if author in nam.authority]
         self._display_nams(nams)
+        if include_articles:
+            for art in sorted(
+                self.get_articles(), key=lambda art: (art.numeric_year(), art.name)
+            ):
+                if condition(art.numeric_year()):
+                    print(f"    {{{art.name}}}: {art.cite()}")
         return nams
 
     def display(

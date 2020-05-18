@@ -56,7 +56,13 @@ class Name(BaseModel):
         "nomenclature_status": NomenclatureStatus.available,
         "status": Status.valid,
     }
-    excluded_fields = {"data", "other_comments", "nomenclature_comments", "taxonomy_comments", "type_locality_description"}
+    excluded_fields = {
+        "data",
+        "other_comments",
+        "nomenclature_comments",
+        "taxonomy_comments",
+        "type_locality_description",
+    }
 
     # Basic data
     group = EnumField(Group)
@@ -130,6 +136,17 @@ class Name(BaseModel):
 
     class Meta(object):
         db_table = "name"
+
+    @classmethod
+    def with_tag_of_type(cls, tag_cls: Type[adt.ADT]) -> List["Name"]:
+        names = cls.select_valid().filter(
+            Name._raw_type_tags.contains(f"[{tag_cls._tag}, ")
+        )
+        return [
+            name
+            for name in names
+            if any(isinstance(tag, tag_cls) for tag in name.type_tags)
+        ]
 
     @classmethod
     def select_valid(cls, *args: Any) -> Any:
@@ -1335,7 +1352,10 @@ class NameComment(BaseModel):
         )
 
     def should_skip(self) -> bool:
-        return self.kind in (constants.CommentKind.removed, constants.CommentKind.structured_quote)
+        return self.kind in (
+            constants.CommentKind.removed,
+            constants.CommentKind.structured_quote,
+        )
 
     @classmethod
     def make(

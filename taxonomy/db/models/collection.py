@@ -1,4 +1,4 @@
-from typing import Any, Optional, Type
+from typing import Any, List, Optional, Tuple, Type
 
 from peewee import BooleanField, CharField, ForeignKeyField
 
@@ -66,7 +66,9 @@ class Collection(BaseModel):
         obj.fill_required_fields()
         return obj
 
-    def display(self, full: bool = True, depth: int = 0, organized: bool = False) -> None:
+    def display(
+        self, full: bool = True, depth: int = 0, organized: bool = False
+    ) -> None:
         city = f", {self.city}" if self.city else ""
         print(" " * depth + f"{self!r}{city}, {self.location}")
         if self.comment:
@@ -74,15 +76,46 @@ class Collection(BaseModel):
         if full:
             if organized:
                 models.taxon.display_organized(
-                    [(str(f"{nam} (type: {nam.type_specimen})"), nam.taxon) for nam in self.type_specimens], depth=depth
+                    [
+                        (str(f"{nam} (type: {nam.type_specimen})"), nam.taxon)
+                        for nam in self.type_specimens
+                    ],
+                    depth=depth,
                 )
             else:
-                for nam in sorted(self.type_specimens, key=lambda nam: nam.taxon.valid_name):
+                for nam in sorted(
+                    self.type_specimens, key=lambda nam: nam.taxon.valid_name
+                ):
                     print(" " * (depth + 4) + f"{nam} (type: {nam.type_specimen})")
                     for tag in nam.type_tags or ():
                         if isinstance(tag, models.name.TypeTag.CollectionDetail):
                             print(" " * (depth + 8) + str(tag))
 
+    def get_partial(
+        self, display: bool = False
+    ) -> Tuple[List["models.name.Name"], List["models.name.Name"]]:
+        multiple = []
+        probable_repo = []
+        for nam in models.Name.with_tag_of_type(models.name.TypeTag.Repository):
+            for tag in nam.get_tags(nam.type_tags, models.name.TypeTag.Repository):
+                if tag.repository == self:
+                    multiple.append(nam)
+                    if display:
+                        print(tag)
+                        nam.display()
+                    break
+
+        for nam in models.Name.with_tag_of_type(models.name.TypeTag.ProbableRepository):
+            for tag in nam.get_tags(
+                nam.type_tags, models.name.TypeTag.ProbableRepository
+            ):
+                if tag.repository == self:
+                    probable_repo.append(nam)
+                    if display:
+                        print(tag)
+                        nam.display()
+                    break
+        return multiple, probable_repo
 
     def merge(self, other: "Collection") -> None:
         for nam in self.type_specimens:

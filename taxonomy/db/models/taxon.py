@@ -1,4 +1,5 @@
 from collections import defaultdict
+import enum
 from functools import lru_cache
 import operator
 import re
@@ -65,6 +66,17 @@ class _OccurrenceGetter(object):
 
     def __dir__(self) -> List[str]:
         return [o.location.name.replace(" ", "_") for o in self.instance.occurrences]
+
+
+class FillDataLevel(enum.Enum):
+    always = 1  # always edit names, regardless of what data they have
+    only_if_needs_original = (
+        2  # only names that could reasonably need data from original
+    )
+    only_if_limited_data = 3  # only if current data isn't very detailed
+    only_without_data = (
+        4  # only names that have empty required fields and no data from original
+    )
 
 
 class Taxon(BaseModel):
@@ -406,10 +418,12 @@ class Taxon(BaseModel):
 
     def display_citation_groups(self) -> None:
         by_cg = self.get_citation_groups()
-        items = sorted(by_cg.items(), key=lambda pair: -len(pair[1]))
+        items = sorted(by_cg.items(), key=lambda pair: pair[0].name)
         for cg, nams in items:
             getinput.print_header(f"{cg} ({len(nams)})")
-            for nam in nams:
+            for nam in sorted(
+                nams, key=lambda nam: (nam.numeric_year(), nam.numeric_page_described())
+            ):
                 print(f"    {nam}")
                 print(f"        {helpers.clean_string(nam.verbatim_citation)}")
         getinput.flush()
@@ -1012,7 +1026,7 @@ class Taxon(BaseModel):
         min_year: Optional[int] = None,
         age: Optional[constants.Age] = None,
         field: Optional[str] = None,
-        skip_if_seen: bool = True,
+        level: FillDataLevel = FillDataLevel.only_if_limited_data,
     ) -> None:
         """Calls fill_required_fields() for all names in this taxon."""
         all_names = self.all_names(age=age)
@@ -1022,8 +1036,7 @@ class Taxon(BaseModel):
                 return False
             if nam.original_citation.kind is ArticleKind.no_copy:
                 return False
-            empty_required = list(nam.get_empty_required_fields())
-            if not empty_required:
+            if not _should_include_in_always_edit(nam, level):
                 return False
             if field is not None and (
                 getattr(nam, field) is not None
@@ -1044,7 +1057,7 @@ class Taxon(BaseModel):
             key=lambda art: art.name,
         )
         for citation in citations:
-            fill_data_from_paper(citation, skip_if_seen=skip_if_seen)
+            fill_data_from_paper(citation, level=level)
         if not only_with_original:
             for nam in self.all_names(age=age):
                 nam = nam.reload()
@@ -1126,13 +1139,13 @@ class Taxon(BaseModel):
 
 definition.taxon_cls = Taxon
 
-_finished_papers: Set[str] = set()
+_finished_papers: Set[Tuple[str, FillDataLevel]] = set()
 
 
 def fill_data_from_paper(
-    paper: Article, always_edit_tags: bool = False, skip_if_seen: bool = True
+    paper: Article, level: FillDataLevel = FillDataLevel.only_if_limited_data
 ) -> None:
-    if paper.name in _finished_papers:
+    if (paper.name, level) in _finished_papers:
         return
     opened = False
 
@@ -1149,23 +1162,56 @@ def fill_data_from_paper(
         key=sort_key,
     ):
         nam = nam.reload()
-        if skip_if_seen and models.has_data_from_original(nam):
-            continue
         nam.display()
-        required_fields = list(nam.get_empty_required_fields())
-        if required_fields:
-            if not opened:
-                getinput.add_to_clipboard(paper.name)
-                paper.openf()
-                print(f"filling data from {paper.name}")
-                opened = True
+        if not _should_include_in_always_edit(nam, level):
+            continue
+        if not opened:
+            getinput.add_to_clipboard(paper.name)
+            paper.openf()
+            print(f"filling data from {paper.name}")
+            opened = True
+        if list(nam.get_empty_required_fields()):
             print(nam, "described at", nam.page_described)
             nam.fill_required_fields()
-        elif always_edit_tags:
+        else:
             nam.fill_field("type_tags")
 
     if not opened:
-        _finished_papers.add(paper.name)
+        _finished_papers.add((paper.name, level))
+
+
+def _should_include_in_always_edit(nam: "models.Name", level: FillDataLevel) -> bool:
+    if level is FillDataLevel.always:
+        return True
+    if models.has_data_from_original(nam):
+        return False
+
+    required_fields = list(nam.get_empty_required_fields())
+    if required_fields:
+        return True
+
+    if level is FillDataLevel.only_without_data:
+        return False
+
+    if nam.group is Group.family or nam.group is Group.high:
+        return (
+            False  # skip family-group names, we don't need any additional info for them
+        )
+    elif nam.group is Group.genus and (
+        nam.numeric_year() < 1990 or "type" not in nam.get_required_fields()
+    ):
+        return False  # skip old genus-group names, they usually don't have etymology
+    elif (
+        nam.group is Group.species and "type_locality" not in nam.get_required_fields()
+    ):
+        return False  # skip incorrect spellings, nomina nova, and similar
+
+    if level is FillDataLevel.only_if_needs_original:
+        return True
+    else:
+        return not nam.has_type_tag(models.name.TypeTag.Date) and not nam.has_type_tag(
+            models.name.TypeTag.Collector
+        )
 
 
 @lru_cache(maxsize=2048)

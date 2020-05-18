@@ -70,6 +70,7 @@ from .db.models import (
     TypeTag,
     database,
 )
+from .db.models.taxon import FillDataLevel
 
 T = TypeVar("T")
 
@@ -130,6 +131,7 @@ ns = _ShellNamespace(
         "defaultdict": defaultdict,
         "getinput": getinput,
         "models": models,
+        "FillDataLevel": FillDataLevel,
     }
 )
 ns.update(constants.__dict__)
@@ -1641,20 +1643,23 @@ def set_empty_to_none(
 
 @command
 def fill_data_from_paper(
-    paper: Optional[models.Article] = None, always_edit_tags: bool = False
+    paper: Optional[models.Article] = None,
+    level: FillDataLevel = FillDataLevel.only_if_limited_data,
 ) -> None:
     if paper is None:
         paper = models.BaseModel.get_value_for_foreign_class("paper", models.Article)
     assert paper is not None, "paper needs to be specified"
-    models.taxon.fill_data_from_paper(paper, always_edit_tags=always_edit_tags)
+    models.taxon.fill_data_from_paper(paper, level=level)
 
 
 @command
-def fill_data_from_author(author: str, always_edit_tags: bool = False) -> None:
+def fill_data_from_author(
+    author: str, level: FillDataLevel = FillDataLevel.only_if_limited_data
+) -> None:
     for nam in Name.bfind(authority=author):
         if nam.original_citation is not None:
             print(nam, nam.original_citation)
-            fill_data_from_paper(nam.original_citation)
+            fill_data_from_paper(nam.original_citation, level=level)
 
 
 @command
@@ -2091,23 +2096,45 @@ def most_common_sources(
 
 
 @command
-def fill_data_from_folder(folder: str) -> None:
+def fill_data_from_folder(
+    folder: str, level: FillDataLevel = FillDataLevel.only_if_limited_data
+) -> None:
     arts = Article.bfind(Article.path.startswith(folder), quiet=True)
     total = len(arts)
     for i, art in enumerate(sorted(arts, key=lambda art: art.path)):
         percentage = (i / total) * 100
         print(f"{percentage:.03}% ({i}/{total}) {art.name}")
-        fill_data_from_paper(art)
+        getinput.flush()
+        fill_data_from_paper(art, level=level)
 
 
 @command
 def replace_comments_from_folder(folder: str) -> None:
     arts = Article.bfind(Article.path.startswith(folder), quiet=True)
+    total = len(arts)
     sources = dict(most_common_sources(print_limit=100))
-    for art in sorted(arts, key=lambda art: art.path):
-        print(art.name)
+    for i, art in enumerate(sorted(arts, key=lambda art: art.path)):
+        percentage = (i / total) * 100
+        print(f"{percentage:.03}% ({i}/{total}) {art.path}/{art.name}")
+        getinput.flush()
         if art.name in sources:
             replace_comments(art.name)
+
+
+@command
+def clean_up_comments(taxon: Taxon) -> None:
+    nams = taxon.all_names(age=None)
+    total = len(nams)
+    for i, nam in enumerate(nams):
+        for field in COMMENT_FIELDS:
+            value = getattr(nam, field)
+            if value is not None:
+                percentage = (i / total) * 100
+                print(f"{percentage:.03}% ({i}/{total}) {nam}")
+                nam.display()
+                print(f"{field}: {value}")
+                nam.fill_field("type_tags")
+                nam.fill_field(field)
 
 
 @command
@@ -2562,6 +2589,7 @@ AUTHOR_SYNONYMS = {
     "Von Lehmann": "Lehmann",
     "von Huene": "Huene",
     "Von Huene": "Huene",
+    "Von Meyer": "von Meyer",
     "Vorontzov": "Vorontsov",
     "Wasiljewa": helpers.romanize_russian("Васильева"),
     "Wied": "Wied-Neuwied",
@@ -2864,13 +2892,29 @@ def replace_comments(substr: str) -> None:
         for nam in Name.filter(getattr(Name, field).contains(substr)).order_by(
             getattr(Name, field)
         ):
-            nam.display()
-            print(getattr(nam, field))
-            if getinput.yes_no("Add comment? "):
-                nam.add_comment()
-            else:
-                nam.fill_field("type_tags")
-            setattr(nam, field, None)
+            replace_comment_for_name(nam, field)
+
+
+@command
+def replace_comments_for_taxon(taxon: Taxon) -> None:
+    for nam in taxon.all_names():
+        for field in COMMENT_FIELDS:
+            replace_comment_for_name(nam, field)
+
+
+def replace_comment_for_name(nam: Name, field: str) -> None:
+    nam = nam.reload()
+    value = getattr(nam, field)
+    if value is None:
+        return
+    nam.display()
+    print(value)
+    if getinput.yes_no("Add comment? "):
+        nam.add_comment()
+    else:
+        nam.fill_field("type_tags")
+    setattr(nam, field, None)
+    nam.add_data(field, value, concat_duplicate=True)
 
 
 def fgsyn(off: Optional[Name] = None) -> Name:
@@ -3015,7 +3059,6 @@ def find_potential_citations_for_group(cg: CitationGroup, fix: bool = False) -> 
     if not potential_arts:
         return 0
     count = 0
-    print(f"Trying {cg}...", flush=True)
     for nam in cg.get_names():
         if nam.original_citation is not None:
             continue
@@ -3032,6 +3075,8 @@ def find_potential_citations_for_group(cg: CitationGroup, fix: bool = False) -> 
             and not art.has_tag(models.article.Tag.NonOriginal)
         ]
         if candidates:
+            if count == 0:
+                print(f"Trying {cg}...", flush=True)
             getinput.print_header(nam)
             count += 1
             nam.display()

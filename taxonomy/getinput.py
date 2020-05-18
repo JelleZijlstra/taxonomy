@@ -77,6 +77,7 @@ def get_line(
     history_key: Optional[object] = None,
     validator: Optional[prompt_toolkit.validation.Validator] = None,
     completer: Optional[prompt_toolkit.completion.Completer] = None,
+    allow_clear: bool = True,
 ) -> Optional[str]:
     if history_key is None:
         history_key = prompt
@@ -105,6 +106,8 @@ def get_line(
             continue
         if not allow_none and line == "":
             continue
+        if allow_clear and line == "clear":
+            history.strings = [""]
         return line
 
 
