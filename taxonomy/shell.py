@@ -379,7 +379,7 @@ def check_period_ranks() -> Iterable[models.Period]:
 
 
 @command
-def infer_min_max_age(dry_run: bool = True):
+def infer_min_max_age(dry_run: bool = True) -> None:
     not_stratigraphic = Period.system != PeriodSystem.lithostratigraphy
     for period in Period.select_valid().filter(
         Period.min_age == None, not_stratigraphic
@@ -2354,7 +2354,7 @@ def check_type_tags_for_name(
                 )
                 if not dry_run:
                     nam.genus_type_kind = (
-                        constants.TypeSpeciesDesignation.designated_by_the_commission
+                        constants.TypeSpeciesDesignation.designated_by_the_commission  # type: ignore
                     )
         elif isinstance(tag, TypeTag.Date):
             date = tag.date
@@ -2408,7 +2408,7 @@ def check_type_tags_for_name(
         print(f"changing tags for {nam}")
         print(original_tags)
         print(tags)
-        nam.type_tags = tags
+        nam.type_tags = tags  # type: ignore
 
 
 @generator_command
@@ -3188,7 +3188,7 @@ def find_dois() -> None:
 
 
 @command
-def reset_db():
+def reset_db() -> None:
     database = models.base.database
     database.close()
     database.connect()

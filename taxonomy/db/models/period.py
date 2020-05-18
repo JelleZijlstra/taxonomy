@@ -1,7 +1,7 @@
 from collections import defaultdict
 from functools import lru_cache
 import sys
-from typing import IO, Any, Iterable, List, Optional, Set, Tuple, TypeVar
+from typing import IO, Any, Dict, Iterable, List, Optional, Set, Tuple, TypeVar
 
 from peewee import BooleanField, CharField, ForeignKeyField, IntegerField
 
@@ -379,9 +379,9 @@ def display_period_tree(
     full: bool = False,
     include_taxa: bool = False,
 ) -> None:
-    max_parent_to_periods = defaultdict(int)
-    parent_to_periods = defaultdict(list)
-    period_to_max_parent = {}
+    max_parent_to_periods: Dict[Period, int] = defaultdict(int)
+    parent_to_periods: Dict[Period, List[Period]] = defaultdict(list)
+    period_to_max_parent: Dict[Period, Period] = {}
 
     def add_period(period: Period) -> Period:
         if period in period_to_max_parent:

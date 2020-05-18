@@ -171,7 +171,7 @@ class _ADTMeta(type):
                 new_ns: Dict[str, Any] = {}
                 exec(code, {}, new_ns)
                 member_ns["__init__"] = new_ns["__init__"]
-            member_cls = functools.total_ordering(
+            member_cls: Any = functools.total_ordering(
                 type(member.name, (new_cls,), member_ns)
             )
             if not has_args:
@@ -184,7 +184,7 @@ class _ADTMeta(type):
 
                     return __init__
 
-                cls_obj.__init__ = make_init(member_cls)  # type: ignore
+                cls_obj.__init__ = make_init(member_cls)
             new_cls._tag_to_member[member.tag] = member_cls  # type: ignore
             setattr(new_cls, member.name, member_cls)
         return new_cls

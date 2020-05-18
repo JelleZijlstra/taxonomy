@@ -21,6 +21,7 @@ from typing import (
 )
 
 from peewee import CharField, ForeignKeyField, IntegerField, Model, TextField
+from taxonomy.db import models
 
 from .. import constants, helpers
 from ... import adt, events, getinput
@@ -301,7 +302,10 @@ class Name(BaseModel):
 
     def _add_type_identical_callback(self) -> None:
         root_name = self.getter("root_name").get_one_key("root_name> ")
-        return self.add_type_identical(root_name)
+        if root_name is None:
+            print("must provide root name")
+            return
+        self.add_type_identical(root_name)
 
     def add_type_identical(
         self,
@@ -637,7 +641,7 @@ class Name(BaseModel):
     def add_variant(
         self,
         root_name: Optional[str] = None,
-        status: NomenclatureStatus = None,
+        status: Optional[NomenclatureStatus] = None,
         paper: Optional[str] = None,
         page_described: Optional[str] = None,
         original_name: Optional[str] = None,
@@ -784,7 +788,7 @@ class Name(BaseModel):
             intro_line = getinput.green(out)
         result = " " * ((depth + 1) * 4) + intro_line + "\n"
         if full:
-            data = {}
+            data: Dict[str, Any] = {}
             if self.type_locality is not None:
                 data["locality"] = repr(self.type_locality)
             type_info = []

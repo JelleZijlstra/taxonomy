@@ -473,8 +473,8 @@ class Taxon(BaseModel):
             by_region: Dict[
                 models.Region, Dict[models.Location, List[models.Name]]
             ] = defaultdict(dict)
-            for loc, nams in by_locality.items():
-                by_region[loc.region][loc] = nams
+            for loc, loc_nams in by_locality.items():
+                by_region[loc.region][loc] = loc_nams
 
             region_to_children: Dict[
                 Optional[models.Region], Set[models.Region]

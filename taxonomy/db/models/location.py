@@ -144,24 +144,6 @@ class Location(BaseModel):
                 for occurrence in sorted(taxa, key=lambda occ: occ.taxon.valid_name):
                     file.write("{}{}\n".format(" " * (depth + 12), occurrence))
 
-    def make_local_unit(
-        self, name: Optional[str] = None, parent: Optional[Period] = None
-    ) -> Period:
-        if name is None:
-            name = self.name
-        period = Period.make(
-            name,
-            constants.PeriodRank.local_unit,
-            parent=parent,
-            min_age=self.min_age,
-            max_age=self.max_age,
-            min_period=self.min_period,
-            max_period=self.max_period,
-        )
-        self.min_period = self.max_period = period
-        self.save()
-        return period
-
     def merge(self, other: "Location") -> None:
         for taxon in self.type_localities:
             taxon.type_locality = other

@@ -425,6 +425,6 @@ def print_header(obj: object) -> None:
     print(f"\\={'=' * len(obj_str)}=/", flush=True)
 
 
-def indent(text: str, width: int):
+def indent(text: str, width: int) -> str:
     spacing = " " * width
     return "".join(f"{spacing}{line}\n" for line in text.splitlines())
