@@ -168,7 +168,7 @@ def extract_geographical_components(text: str) -> List[Tuple[str, ...]]:
             out[-1] = (out[-1], part[1:].strip())
         else:
             out.append(part)
-    return [(p,) if isinstance(p, str) else p for p in out]  # type: ignore
+    return [(p,) if isinstance(p, str) else p for p in out]
 
 
 test_case = "Congo (= Zaire): (Haut Zaire); Niapu. November 24, 1913."
