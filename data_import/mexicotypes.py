@@ -192,7 +192,7 @@ def write_to_db(names: DataT, dry_run: bool = True) -> None:
                     )
                     print(name["loc"])
                     print(name["state"])
-                    print(nam.type_tags, nam.type_locality_description)
+                    print(nam.type_tags)
                 if not dry_run:
                     nam.type_locality = name["type_locality"]
                 num_changed["type_locality"] += 1

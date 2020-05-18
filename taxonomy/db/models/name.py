@@ -59,10 +59,6 @@ class Name(BaseModel):
     }
     excluded_fields = {
         "data",
-        "other_comments",
-        "nomenclature_comments",
-        "taxonomy_comments",
-        "type_locality_description",
     }
 
     # Basic data
@@ -112,7 +108,6 @@ class Name(BaseModel):
         db_column="type_locality_id",
         null=True,
     )
-    type_locality_description = TextField(null=True)
     type_specimen = CharField(null=True)
     collection = ForeignKeyField(
         Collection, null=True, db_column="collection_id", related_name="type_specimens"
@@ -129,9 +124,6 @@ class Name(BaseModel):
 
     # Miscellaneous data
     data = TextField(null=True)
-    nomenclature_comments = TextField(null=True)
-    other_comments = TextField(null=True)  # deprecated
-    taxonomy_comments = TextField(null=True)
     _definition = CharField(null=True, db_column="definition")
     tags = ADTField(lambda: Tag, null=True)
 
@@ -806,9 +798,6 @@ class Name(BaseModel):
                 data["citation_group"] = self.citation_group.name
             data["verbatim_citation"] = self.verbatim_citation
             data["verbatim_type"] = self.verbatim_type
-            data["nomenclature_comments"] = self.nomenclature_comments
-            data["other_comments"] = self.other_comments
-            data["taxonomy_comments"] = self.taxonomy_comments
             if self.tags:
                 data["tags"] = sorted(self.tags)
             if include_data:
@@ -928,14 +917,6 @@ class Name(BaseModel):
                         yield "type_tags"
                 elif self.genus_type_kind.requires_tag():
                     yield "type_tags"
-        yield from self.get_deprecated_fields()
-
-    def get_deprecated_fields(self) -> Iterable[str]:
-        yield "type_locality_description"
-        yield "taxonomy_comments"
-        yield "nomenclature_comments"
-        yield "other_comments"
-        # maybe stem and gender? should add something automated to get rid of those if there's a name complex
 
     def validate_as_child(self, status: Status = Status.valid) -> Taxon:
         if self.taxon.rank is Rank.species:

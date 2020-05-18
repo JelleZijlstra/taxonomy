@@ -74,8 +74,6 @@ from .db.models.taxon import FillDataLevel
 
 T = TypeVar("T")
 
-COMMENT_FIELDS = {"other_comments", "nomenclature_comments", "taxonomy_comments"}
-
 
 class _ShellNamespace(dict):  # type: ignore
     def __missing__(self, key: str) -> object:
@@ -1439,7 +1437,6 @@ ATTRIBUTES_BY_GROUP = {
     "species_name_complex": (Group.species,),
     "type": (Group.family, Group.genus),
     "type_locality": (Group.species,),
-    "type_locality_description": (Group.species,),
     "type_specimen": (Group.species,),
     "collection": (Group.species,),
     "type_specimen_source": (Group.species,),
@@ -1608,29 +1605,6 @@ def set_citation_group_for_matching_citation(
 
 
 @command
-def clean_up_type_locality_description(dry_run: bool = False) -> None:
-    count = removed = 0
-    for nam in Name.select_valid().filter(
-        Name.type_locality_description != None, Name.type_tags != None
-    ):
-        count += 1
-        tags = [tag for tag in nam.type_tags if isinstance(tag, TypeTag.LocationDetail)]
-        if not tags:
-            continue
-        print("----------------")
-        print(nam)
-        for tag in tags:
-            print(tag)
-        print(nam.type_locality_description)
-        if not dry_run:
-            removed += 1
-            print("automatically emptying data")
-            nam.add_data("type_locality_description", nam.type_locality_description)
-            nam.type_locality_description = None
-    print(f"removed: {removed}/{count}")
-
-
-@command
 def set_empty_to_none(
     model_cls: Type[models.BaseModel], field: str, dry_run: bool = False
 ) -> None:
@@ -1699,25 +1673,6 @@ def set_region_for_groups(*queries: Any) -> None:
 
 
 @command
-def fill_citation_group_for_author(author: str, require_citation: bool = True) -> None:
-    queries = [Name.citation_group == None, Name.original_citation == None]
-    if require_citation:
-        queries.append(Name.verbatim_citation != None)
-    for nam in Name.bfind(
-        *queries,
-        authority=author,
-        sort_key=lambda nam: (nam.numeric_year(), nam.verbatim_citation or ""),
-    ):
-        nam = nam.reload()
-        if nam.citation_group is None:
-            getinput.print_header(nam)
-            nam.possible_citation_groups()
-            print("===", nam)
-            nam.display()
-            nam.fill_field("citation_group")
-
-
-@command
 def fill_citation_groups(
     book: bool = False,
     interactive: bool = True,
@@ -1773,31 +1728,6 @@ def fill_citation_groups(
 
 
 @command
-def fill_citation_group_for_pattern(pattern: str) -> None:
-    for nam in Name.bfind(
-        Name.verbatim_citation != None,
-        Name.citation_group == None,
-        Name.verbatim_citation % pattern,
-        sort_key=lambda nam: nam.verbatim_citation,
-    ):
-        nam = nam.reload()
-        if nam.citation_group is None:
-            nam.display()
-            nam.fill_field("citation_group")
-
-
-@command
-def fill_citation_group_for_taxon_authors(
-    taxon: Taxon, age: Optional[Age] = Age.extant
-) -> None:
-    nams = taxon.names_missing_field("citation_group", age=age)
-    authors = sorted({nam.authority for nam in nams})
-    for author in authors:
-        print(f"==== {author} ====")
-        fill_citation_group_for_author(author)
-
-
-@command
 def field_by_year(field: Optional[str] = None) -> None:
     by_year_cited: Dict[str, int] = defaultdict(int)
     by_year_total: Dict[str, int] = defaultdict(int)
@@ -1842,27 +1772,6 @@ def type_localities_like(substring: str, full: bool = False) -> None:
         print(f"{nam.type_locality}, {nam.type_locality.region}: {nam}")
         if full:
             nam.display()
-
-
-@command
-def fill_type_locality(
-    extant_only: bool = True, start_at: Optional[Name] = None
-) -> None:
-    started = start_at is None
-    for nam in Name.select_valid().filter(
-        Name.type_locality_description != None, Name.type_locality >> None
-    ):
-        if extant_only and nam.taxon.age != Age.extant:
-            continue
-        if not started:
-            assert start_at is not None
-            if nam.id == start_at.id:
-                started = True
-            else:
-                continue
-        print(nam)
-        print(nam.type_locality_description)
-        nam.fill_field("type_locality")
 
 
 def names_with_location_detail_without_type_loc(
@@ -2061,41 +1970,6 @@ def most_common_citation_groups_after(year: int) -> Dict[CitationGroup, int]:
 
 
 @command
-def most_common_comments(field: str = "other_comments") -> Counter[str]:
-    return Counter(
-        getattr(nam, field)
-        for nam in Name.select_valid().filter(getattr(Name, field) != None)
-    )
-
-
-@command
-def most_common_sources(
-    taxon: Optional[Taxon] = None, print_limit: int = 5
-) -> Iterable[Tuple[str, List[Name]]]:
-    source_to_nams: Dict[str, List[Name]] = defaultdict(list)
-    if taxon is None:
-        for field in COMMENT_FIELDS:
-            for nam in Name.filter(getattr(Name, field) != None):
-                for source in helpers.extract_sources(getattr(nam, field)):
-                    source_to_nams[source].append(nam)
-    else:
-        nams = taxon.all_names()
-        for nam in nams:
-            for field in COMMENT_FIELDS:
-                value = getattr(nam, field)
-                if value is not None:
-                    for source in helpers.extract_sources(value):
-                        source_to_nams[source].append(nam)
-    output = sorted(source_to_nams.items(), key=lambda pair: -len(pair[1]))
-    for source, output_nams in output:
-        if len(output_nams) >= print_limit:
-            print(f"{source}: {len(output_nams)}")
-        else:
-            break
-    return output
-
-
-@command
 def fill_data_from_folder(
     folder: str, level: FillDataLevel = FillDataLevel.only_if_limited_data
 ) -> None:
@@ -2106,69 +1980,6 @@ def fill_data_from_folder(
         print(f"{percentage:.03}% ({i}/{total}) {art.name}")
         getinput.flush()
         fill_data_from_paper(art, level=level)
-
-
-@command
-def replace_comments_from_folder(folder: str) -> None:
-    arts = Article.bfind(Article.path.startswith(folder), quiet=True)
-    total = len(arts)
-    sources = dict(most_common_sources(print_limit=100))
-    for i, art in enumerate(sorted(arts, key=lambda art: art.path)):
-        percentage = (i / total) * 100
-        print(f"{percentage:.03}% ({i}/{total}) {art.path}/{art.name}")
-        getinput.flush()
-        if art.name in sources:
-            replace_comments(art.name)
-
-
-@command
-def clean_up_comments(taxon: Taxon) -> None:
-    nams = taxon.all_names(age=None)
-    total = len(nams)
-    for i, nam in enumerate(nams):
-        for field in COMMENT_FIELDS:
-            value = getattr(nam, field)
-            if value is not None:
-                percentage = (i / total) * 100
-                print(f"{percentage:.03}% ({i}/{total}) {nam}")
-                nam.display()
-                print(f"{field}: {value}")
-                nam.fill_field("type_tags")
-                nam.fill_field(field)
-
-
-@command
-def redundant_comments() -> None:
-    for nam in Name.select_valid().filter(
-        Name.nomenclature_comments == "Nomen nudum",
-        Name.nomenclature_status == NomenclatureStatus.nomen_nudum,
-    ):
-        print(f"{nam}: remove {nam.nomenclature_comments!r}")
-        nam.nomenclature_comments = None
-    for nam in Name.select_valid().filter(
-        Name.other_comments == "Nomen nudum",
-        Name.nomenclature_status == NomenclatureStatus.nomen_nudum,
-    ):
-        print(f"{nam}: remove {nam.other_comments!r}")
-        nam.other_comments = None
-    for nam in Name.select_valid().filter(
-        Name.nomenclature_comments == "Preoccupied",
-        Name.nomenclature_status == NomenclatureStatus.preoccupied,
-    ):
-        print(f"{nam}: remove {nam.nomenclature_comments!r}")
-        nam.nomenclature_comments = None
-    for nam in Name.select_valid().filter(
-        Name.other_comments == "Preoccupied",
-        Name.nomenclature_status == NomenclatureStatus.preoccupied,
-    ):
-        print(f"{nam}: remove {nam.other_comments!r}")
-        nam.other_comments = None
-    for nam in Name.select_valid().filter(
-        Name.other_comments == "Nomen dubium",
-        Name.status == constants.Status.nomen_dubium,
-    ):
-        print(f"{nam}: remove {nam.other_comments!r}")
-        nam.other_comments = None
 
 
 @generator_command
@@ -2753,9 +2564,7 @@ def resolve_redirects(dry_run: bool = False) -> None:
 def run_maintenance(skip_slow: bool = True) -> Dict[Any, Any]:
     """Runs maintenance checks that are expected to pass for the entire database."""
     fns: List[Callable[[], Any]] = [
-        lambda: set_empty_to_none(Name, "type_locality_description"),
         clean_up_verbatim,
-        clean_up_type_locality_description,
         parentless_taxa,
         bad_parents,
         bad_taxa,
@@ -2878,43 +2687,6 @@ def moreau(nam: Name) -> None:
     nam.display()
     nam.e.type_locality
     nam.e.type_tags
-
-
-@command
-def replace_comments(substr: str) -> None:
-    try:
-        art = Article.get(name=substr)
-    except Article.DoesNotExist:
-        pass
-    else:
-        art.openf()
-    for field in COMMENT_FIELDS:
-        for nam in Name.filter(getattr(Name, field).contains(substr)).order_by(
-            getattr(Name, field)
-        ):
-            replace_comment_for_name(nam, field)
-
-
-@command
-def replace_comments_for_taxon(taxon: Taxon) -> None:
-    for nam in taxon.all_names():
-        for field in COMMENT_FIELDS:
-            replace_comment_for_name(nam, field)
-
-
-def replace_comment_for_name(nam: Name, field: str) -> None:
-    nam = nam.reload()
-    value = getattr(nam, field)
-    if value is None:
-        return
-    nam.display()
-    print(value)
-    if getinput.yes_no("Add comment? "):
-        nam.add_comment()
-    else:
-        nam.fill_field("type_tags")
-    setattr(nam, field, None)
-    nam.add_data(field, value, concat_duplicate=True)
 
 
 def fgsyn(off: Optional[Name] = None) -> Name:

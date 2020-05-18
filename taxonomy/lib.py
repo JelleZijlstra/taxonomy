@@ -241,11 +241,6 @@ def names_with_attribute(
     return nams
 
 
-def commented_names(txn: Taxon) -> List[Name]:
-    attrs = ["other_comments", "nomenclature_comments", "taxonomy_comments"]
-    return [nam for attr in attrs for nam in names_with_attribute(txn, attr)]
-
-
 def f(
     nam: Union[Name, List[Name]],
     skip_fields: Container[str] = frozenset(),
