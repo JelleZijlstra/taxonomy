@@ -248,9 +248,7 @@ class Name(BaseModel):
         elif field == "type_specimen_source":
             return self.get_value_for_foreign_key_field(
                 field,
-                default=self.original_citation
-                if self.type_specimen_source is None
-                else None,
+                default=None,
                 callbacks=self.get_adt_callbacks(),
             )
         elif field == "type":
@@ -902,7 +900,6 @@ class Name(BaseModel):
                     yield "type_specimen"
                 yield "collection"
                 if self.type_specimen is not None or self.collection is not None:
-                    yield "type_specimen_source"
                     yield "species_type_kind"
             elif self.group is Group.genus:
                 if (
