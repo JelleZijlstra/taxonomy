@@ -605,18 +605,18 @@ def detect_complexes(allow_ignoring: bool = True) -> None:
 @command
 def detect_species_name_complexes(dry_run: bool = False) -> None:
     endings_tree: SuffixTree[models.SpeciesNameEnding] = SuffixTree()
-    full_names: Dict[str, models.SpeciesNameComplex] = {}
+    full_names: Dict[str, Tuple[models.SpeciesNameComplex, str]] = {}
     for ending in models.SpeciesNameEnding.select():
         for form in ending.name_complex.get_forms(ending.ending):
             if ending.full_name_only:
-                full_names[form] = ending.name_complex
+                full_names[form] = (ending.name_complex, str(ending))
             else:
                 endings_tree.add(form, ending)
     for snc in models.SpeciesNameComplex.filter(
         models.SpeciesNameComplex.kind == constants.SpeciesNameKind.adjective
     ):
         for form in snc.get_forms(snc.stem):
-            full_names[form] = snc
+            full_names[form] = (snc, "(full name)")
     success = 0
     total = 0
     for name in Name.select_valid().filter(
@@ -624,14 +624,15 @@ def detect_species_name_complexes(dry_run: bool = False) -> None:
     ):
         total += 1
         if name.root_name in full_names:
-            inferred = full_names[name.root_name]
+            inferred, reason = full_names[name.root_name]
         else:
             endings = endings_tree.lookup(name.root_name)
             try:
                 inferred = max(endings, key=lambda e: -len(e.ending)).name_complex
             except ValueError:
                 continue
-        print(f"inferred complex for {name}: {inferred}")
+            reason = str(endings)
+        print(f"inferred complex for {name}: {inferred}, using {reason}")
         success += 1
         if not dry_run:
             name.species_name_complex = inferred
