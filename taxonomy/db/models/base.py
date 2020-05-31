@@ -226,6 +226,7 @@ class BaseModel(Model):
         *args: Any,
         quiet: bool = False,
         sort_key: Optional[Callable[[ModelT], Any]] = None,
+        sort: bool = True,
         **kwargs: Any,
     ) -> List[ModelT]:
         filters = [*args]
@@ -239,10 +240,11 @@ class BaseModel(Model):
             else:
                 filters.append(field == value)
         objs = list(cls.select_valid().filter(*filters))
-        if sort_key is None and hasattr(cls, "label_field"):
-            sort_key = lambda obj: getattr(obj, cls.label_field) or ""
-        if sort_key is not None:
-            objs = sorted(objs, key=sort_key)
+        if sort:
+            if sort_key is None and hasattr(cls, "label_field"):
+                sort_key = lambda obj: getattr(obj, cls.label_field) or ""
+            if sort_key is not None:
+                objs = sorted(objs, key=sort_key)
         if not quiet:
             if hasattr(cls, "label_field"):
                 for obj in objs:
@@ -283,9 +285,9 @@ class BaseModel(Model):
 
     @classmethod
     def get_one_by(
-        cls: Type[ModelT], attr: str, prompt: str = "> "
+        cls: Type[ModelT], attr: str, *, prompt: str = "> ", allow_empty: bool = True
     ) -> Optional[ModelT]:
-        return cls.getter(attr).get_one(prompt)
+        return cls.getter(attr).get_one(prompt, allow_empty=allow_empty)
 
     def get_value_for_field(self, field: str) -> Any:
         field_obj = getattr(type(self), field)
@@ -351,60 +353,77 @@ class BaseModel(Model):
     def get_value_for_foreign_key_field(
         self,
         field: str,
-        default: Optional[Any] = None,
+        *,
+        default_obj: Optional[Any] = None,
         callbacks: getinput.CallbackMap = {},
     ) -> Any:
-        if default is None:
-            default = getattr(self, field)
+        if default_obj is None:
+            default_obj = getattr(self, field)
         return self.get_value_for_foreign_key_field_on_class(
-            field, default, callbacks=callbacks
+            field, default_obj=default_obj, callbacks=callbacks
         )
 
     @classmethod
     def get_value_for_foreign_key_field_on_class(
         cls,
         field: str,
-        current_val: Optional[Any] = None,
+        *,
+        default_obj: Optional[Any] = None,
         callbacks: getinput.CallbackMap = {},
+        allow_none: bool = True,
     ) -> Any:
         field_obj = getattr(cls, field)
         return cls.get_value_for_foreign_class(
-            field, field_obj.rel_model, current_val, callbacks=callbacks
+            field,
+            field_obj.rel_model,
+            default_obj=default_obj,
+            callbacks=callbacks,
+            allow_none=allow_none,
         )
 
     @staticmethod
     def get_value_for_foreign_class(
         label: str,
         foreign_cls: Type["BaseModel"],
+        *,
         default_obj: Optional[Any] = None,
         callbacks: getinput.CallbackMap = {},
+        allow_none: bool = True,
     ) -> Any:
         if default_obj is None:
             default = ""
         else:
             default = getattr(default_obj, foreign_cls.label_field)
         getter = foreign_cls.getter(foreign_cls.label_field)
-        value = getter.get_one_key(f"{label}> ", default=default, callbacks=callbacks)
-        if value == "n":
-            result = foreign_cls.create_interactively()
-            print(f"created new {foreign_cls} {result}")
-            return result
-        elif value is None:
-            return None
-        else:
-            try:
-                return getter(value)
-            except foreign_cls.DoesNotExist:
-                if getinput.yes_no(
-                    f"create new {foreign_cls.__name__} named {value}? "
-                ):
-                    result = foreign_cls.create_interactively(
-                        **{foreign_cls.label_field: value}
-                    )
-                    print(f"created new {foreign_cls} {result}")
-                    return result
-                else:
-                    return None
+        while True:
+            value = getter.get_one_key(
+                f"{label}> ",
+                default=default,
+                callbacks=callbacks,
+                allow_empty=allow_none,
+            )
+            if value == "n":
+                result = foreign_cls.create_interactively()
+                print(f"created new {foreign_cls} {result}")
+                return result
+            elif value is None:
+                return None
+            else:
+                try:
+                    return getter(value)
+                except foreign_cls.DoesNotExist:
+                    if getinput.yes_no(
+                        f"create new {foreign_cls.__name__} named {value}? "
+                    ):
+                        result = foreign_cls.create_interactively(
+                            **{foreign_cls.label_field: value}
+                        )
+                        print(f"created new {foreign_cls} {result}")
+                        return result
+                    elif allow_none:
+                        continue
+                    else:
+                        return None
 
     def fill_field(self, field: str) -> None:
         setattr(self, field, self.get_value_for_field(field))
@@ -454,6 +473,13 @@ class BaseModel(Model):
         for tag in tags:
             if isinstance(tag, tag_cls):
                 yield tag
+
+    def add_to_history(self) -> None:
+        """Add this object to the history for its label field."""
+        if not hasattr(self, "label_field"):
+            return
+        getter = self.getter(self.label_field)
+        getinput.append_history(getter, str(getattr(self, self.label_field)))
 
     @classmethod
     def create_interactively(cls: Type[ModelT], **kwargs: Any) -> ModelT:
@@ -543,6 +569,9 @@ class _NameGetter(Generic[ModelT]):
         if hasattr(cls, "save_event"):
             cls.save_event.on(self.add_name)
 
+    def __repr__(self) -> str:
+        return f"_NameGetter({self.cls}, {self.field})"
+
     def __dir__(self) -> Set[str]:
         result = set(super().__dir__())
         self._warm_cache()
@@ -595,19 +624,28 @@ class _NameGetter(Generic[ModelT]):
         if val is None:
             return
         val = str(val)
+        if val == "":
+            return
         self._data.add(val)
         self._encoded_data.add(getinput.encode_name(val))
 
     def get_one_key(
         self,
         prompt: str = "> ",
+        *,
         default: str = "",
         callbacks: getinput.CallbackMap = {},
+        allow_empty: bool = True,
     ) -> Optional[str]:
         self._warm_cache()
         assert self._data is not None
         key = getinput.get_with_completion(
-            self._data, prompt, default=default, history_key=self, callbacks=callbacks
+            self._data,
+            prompt,
+            default=default,
+            history_key=self,
+            callbacks=callbacks,
+            allow_empty=allow_empty,
         )
         if key == "":
             return None
@@ -616,13 +654,20 @@ class _NameGetter(Generic[ModelT]):
     def get_one(
         self,
         prompt: str = "> ",
+        *,
         default: str = "",
         callbacks: getinput.CallbackMap = {},
+        allow_empty: bool = True,
     ) -> Optional[ModelT]:
         self._warm_cache()
         assert self._data is not None
         key = getinput.get_with_completion(
-            self._data, prompt, default=default, history_key=self, callbacks=callbacks
+            self._data,
+            prompt,
+            default=default,
+            history_key=self,
+            callbacks=callbacks,
+            allow_empty=allow_empty,
         )
         if not key:
             return None

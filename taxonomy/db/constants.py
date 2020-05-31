@@ -345,6 +345,7 @@ class PeriodRank(enum.IntEnum):
     other_chronostratigraphy = 28
     subage = 29  # e.g., the Lysitean
     biozone = 30  # e.g., Pu1
+    subgroup = 31
 
 
 SYSTEM_TO_ALLOWED_RANKS = {
@@ -365,6 +366,7 @@ SYSTEM_TO_ALLOWED_RANKS = {
         PeriodRank.bed,
         PeriodRank.member,
         PeriodRank.formation,
+        PeriodRank.subgroup,
         PeriodRank.group,
         PeriodRank.supergroup,
         PeriodRank.other_lithostratigraphy,

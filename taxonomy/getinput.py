@@ -193,6 +193,7 @@ def get_with_completion(
         history_key=history_key,
         validator=validator,
         callbacks=callbacks,
+        allow_none=allow_empty,
     )
 
 
@@ -260,7 +261,9 @@ def get_adt_list(
     out: List[ADTOrInstance] = []
     if existing is not None:
         out += existing
-        print(f"existing: {_stringify_adt_with_indexes(out)}")
+        print("existing:")
+        for line in display_tags("  ", existing, show_indexes=True):
+            print(line, end="")
     name_to_cls = {}
     for member_name in adt_cls._members:
         name_to_cls[member_name.lower()] = getattr(adt_cls, member_name)
@@ -280,7 +283,8 @@ def get_adt_list(
             disallow_other=not callbacks,
         )
         if member == "p":
-            print(f"current: {_stringify_adt_with_indexes(out)}")
+            for line in display_tags("", out, show_indexes=True):
+                print(line, end="")
             continue
         elif not member:
             print(f"new tags: {out}")
@@ -310,6 +314,35 @@ def get_adt_list(
             callbacks[member]()
         else:
             print(f"unrecognized command: {member}")
+
+
+def display_tags(
+    spacing: str,
+    tags: Optional[Iterable[Union[adt.ADT, Type[adt.ADT]]]],
+    show_indexes: bool = False,
+) -> Iterable[str]:
+    if tags is None:
+        return
+    tags = list(tags)
+    if show_indexes:
+        tags = tags
+    else:
+        tags = sorted(tags)
+    for i, tag in enumerate(tags):
+        if show_indexes:
+            index = f"{i}: "
+        else:
+            index = ""
+        if isinstance(tag, type):
+            # tag without arguments
+            yield f"{spacing}{index}{tag.__name__}\n"
+        else:
+            yield f"{spacing}{index}{type(tag).__name__}\n"
+            for attr in tag._attributes:
+                value = getattr(tag, attr)
+                if isinstance(value, str):
+                    value = re.sub(r"\s+", " ", value).strip()
+                yield f"{spacing}  {attr}: {value!s}\n"
 
 
 def _get_adt_member(
@@ -345,22 +378,26 @@ def _get_adt_member(
     return member_cls(**args)
 
 
-def _stringify_adt_with_indexes(adts: Iterable[ADTOrInstance]) -> str:
-    return "\n".join(f"{i}: {tag}" for i, tag in enumerate(adts))
-
-
 def add_to_clipboard(data: str) -> None:
     subprocess.run(["pbcopy"], check=True, input=data.encode("utf-8"))
+
+
+def append_history(key: object, history_entry: str) -> None:
+    _append(_get_history(key), history_entry)
 
 
 @functools.lru_cache(maxsize=None)
 def _get_history(key: object) -> prompt_toolkit.history.InMemoryHistory:
     history = prompt_toolkit.history.InMemoryHistory()
-    if hasattr(history, "append"):
-        history.append("")
-    else:
-        history.append_string("")
+    _append(history, "")
     return history
+
+
+def _append(history: prompt_toolkit.history.InMemoryHistory, entry: str) -> None:
+    if hasattr(history, "append"):
+        history.append(entry)
+    else:
+        history.append_string(entry)
 
 
 class _FixedValidator(prompt_toolkit.validation.Validator):

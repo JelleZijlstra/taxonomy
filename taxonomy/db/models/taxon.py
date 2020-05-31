@@ -532,11 +532,15 @@ class Taxon(BaseModel):
             default=Rank.genus if self.rank > Rank.genus else Rank.species,
             allow_empty=False,
         )
-        name = getinput.get_line("name> ", allow_none=False)
+        name = self.getter("valid_name").get_one_key("name> ", allow_empty=False)
         assert name is not None
         default = cast(constants.Age, self.age)
-        age = getinput.get_enum_member(constants.Age, default=default)
-        status = getinput.get_enum_member(Status, default=Status.valid)
+        age = getinput.get_enum_member(
+            constants.Age, default=default, allow_empty=False
+        )
+        status = getinput.get_enum_member(
+            Status, default=Status.valid, allow_empty=False
+        )
         taxon = Taxon.create(valid_name=name, age=age, rank=rank, parent=self)
         name_obj = models.Name.create(
             taxon=taxon,
@@ -552,7 +556,7 @@ class Taxon(BaseModel):
 
     def add_syn(
         self,
-        root_name: str,
+        root_name: Optional[str] = None,
         authority: Optional[str] = None,
         year: Union[None, int, str] = None,
         original_name: Optional[str] = None,
@@ -563,6 +567,10 @@ class Taxon(BaseModel):
         interactive: bool = True,
         **kwargs: Any,
     ) -> "models.Name":
+        if root_name is None:
+            root_name = models.Name.getter("root_name").get_one_key(
+                "root_name> ", allow_empty=False
+            )
         kwargs["root_name"] = root_name
         kwargs["authority"] = authority
         kwargs["year"] = year
@@ -633,10 +641,12 @@ class Taxon(BaseModel):
         **kwargs: Any,
     ) -> "models.Name":
         if root_name is None:
-            root_name = models.Name.getter("root_name").get_one_key("root_name> ")
+            root_name = models.Name.getter("root_name").get_one_key(
+                "root_name> ", allow_empty=False
+            )
         assert root_name is not None
         if paper is None:
-            paper = self.get_value_for_foreign_class("paper", Article)
+            paper = self.get_value_for_foreign_class("paper", Article, allow_none=False)
 
         authority, year = paper.taxonomicAuthority()
         result = self.add_syn(
@@ -667,17 +677,19 @@ class Taxon(BaseModel):
         **override_kwargs: Any,
     ) -> "Taxon":
         if rank is None:
-            rank = getinput.get_enum_member(Rank, "rank> ")
+            rank = getinput.get_enum_member(Rank, "rank> ", allow_empty=False)
         assert rank is not None
         if name is None:
             if self.rank in (Rank.genus, Rank.species):
                 default = self.valid_name
             else:
                 default = ""
-            name = self.getter("valid_name").get_one_key("name> ", default=default)
+            name = self.getter("valid_name").get_one_key(
+                "name> ", default=default, allow_empty=False
+            )
         assert name is not None
         if paper is None:
-            paper = self.get_value_for_foreign_class("paper", Article)
+            paper = self.get_value_for_foreign_class("paper", Article, allow_none=False)
 
         authority, year = paper.taxonomicAuthority()
         result = self.add_static(
@@ -959,7 +971,8 @@ class Taxon(BaseModel):
         for name in names:
             counts_by_group[name.group] += 1
             deprecated = set(name.get_deprecated_fields())
-            for field in name.get_required_fields():
+            required = set(name.get_required_fields())
+            for field in required | deprecated:
                 if field in deprecated:
                     required_counts[field] += 1
                     if getattr(name, field) is None:
@@ -1110,6 +1123,8 @@ class Taxon(BaseModel):
 
     def __getattr__(self, attr: str) -> "models.Name":
         """Returns a name belonging to this taxon with the given root_name or original_name."""
+        if attr.startswith("_"):
+            raise AttributeError(attr)
         candidates = [
             name
             for name in self.sorted_names()
@@ -1168,6 +1183,7 @@ def fill_data_from_paper(
         if not opened:
             getinput.add_to_clipboard(paper.name)
             paper.openf()
+            paper.add_to_history()
             print(f"filling data from {paper.name}")
             opened = True
         if list(nam.get_empty_required_fields()):
@@ -1176,8 +1192,30 @@ def fill_data_from_paper(
         else:
             nam.fill_field("type_tags")
 
-    if not opened:
+    opened_for_tss = replace_type_specimen_source_from_paper(paper)
+
+    if not opened and not opened_for_tss:
         _finished_papers.add((paper.name, level))
+
+
+_checked_arts_for_type_specimen_source = set()
+
+
+def replace_type_specimen_source_from_paper(art: Article) -> bool:
+    if art.name in _checked_arts_for_type_specimen_source:
+        return False
+    nams = list(art.type_source_names)
+    if not nams:
+        _checked_arts_for_type_specimen_source.add(art.name)
+        return False
+    print(f"{art.name}: {len(nams)} names")
+    art.add_to_history()
+    art.openf()
+    for nam in nams:
+        nam.display()
+        nam.e.type_tags
+        nam.type_specimen_source = None
+    return True
 
 
 def _should_include_in_always_edit(nam: "models.Name", level: FillDataLevel) -> bool:

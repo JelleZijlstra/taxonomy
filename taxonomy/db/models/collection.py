@@ -61,7 +61,9 @@ class Collection(BaseModel):
         if name is None:
             name = getinput.get_line("name> ")
         if location is None:
-            location = cls.get_value_for_foreign_key_field_on_class("location")
+            location = cls.get_value_for_foreign_key_field_on_class(
+                "location", allow_none=False
+            )
         obj = cls.create(label=label, name=name, location=location)
         obj.fill_required_fields()
         return obj

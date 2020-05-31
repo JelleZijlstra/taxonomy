@@ -46,7 +46,9 @@ class Region(BaseModel):
     def rename(self, new_name: Optional[str] = None) -> None:
         old_name = self.name
         if new_name is None:
-            new_name = self.getter("name").get_one_key(default=old_name)
+            new_name = self.getter("name").get_one_key(
+                default=old_name, allow_empty=False
+            )
         loc = self.get_location()
         print("renaming", loc)
         loc.name = new_name

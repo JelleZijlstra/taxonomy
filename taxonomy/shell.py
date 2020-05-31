@@ -18,6 +18,7 @@ import collections
 from collections import defaultdict
 import csv
 import functools
+from itertools import groupby
 import os.path
 from pathlib import Path
 import peewee
@@ -48,7 +49,7 @@ import unidecode
 from traitlets.config.loader import Config
 
 from . import getinput
-from .db import constants, definition, detection, helpers, models
+from .db import constants, definition, helpers, models
 from .db.constants import (
     Age,
     Group,
@@ -551,30 +552,6 @@ def endswith(end: str) -> List[Name]:
 
 
 @command
-def detect_stems() -> None:
-    for name in Name.select_valid().filter(
-        Name.group == Group.genus, Name.stem >> None
-    ):
-        inferred = detection.detect_stem_and_gender(name.root_name)
-        if inferred is None:
-            continue
-        if not inferred.confident:
-            print(
-                "%s: stem %s, gender %s"
-                % (name.description(), inferred.stem, inferred.gender)
-            )
-            if not getinput.yes_no("Is this correct? "):
-                continue
-        print(
-            "Inferred stem and gender for %s: %s, %s"
-            % (name, inferred.stem, inferred.gender)
-        )
-        name.stem = inferred.stem
-        name.gender = inferred.gender
-        name.save()
-
-
-@command
 def detect_complexes(allow_ignoring: bool = True) -> None:
     endings = list(models.NameEnding.select())
     for name in Name.select_valid().filter(
@@ -596,8 +573,6 @@ def detect_complexes(allow_ignoring: bool = True) -> None:
                 )
                 continue
         print(f"Inferred stem and complex for {name}: {stem}, {inferred}")
-        name.stem = stem
-        name.gender = inferred.gender
         name.name_complex = inferred
         name.save()
 
@@ -647,6 +622,9 @@ class SuffixTree(Generic[T]):
 
     def add(self, key: str, value: T) -> None:
         self._add(iter(reversed(key)), value)
+
+    def count(self) -> int:
+        return len(self.values) + sum(child.count() for child in self.children.values())
 
     def lookup(self, key: str) -> Iterable[T]:
         yield from self._lookup(iter(reversed(key)))
@@ -1314,7 +1292,7 @@ def _tl_count(region: models.Region) -> Tuple[int, List[str]]:
         count += child_count
         lines += child_lines
     line = f"{count} - {region.name}"
-    return count, [line, *["    " + l for l in lines]]
+    return count, [line, *["    " + line for line in lines]]
 
 
 @command
@@ -1513,6 +1491,136 @@ def check_age_parents() -> Iterable[Taxon]:
 
 
 @command
+def sorted_field_values(
+    field: str,
+    model_cls: Type[models.BaseModel] = Name,
+    *,
+    filters: Iterable[Any] = [],
+    exclude_fn: Optional[Callable[[Any], bool]] = None,
+) -> None:
+    nams = model_cls.bfind(
+        getattr(model_cls, field) != None, *filters, quiet=True, sort=False
+    )
+    key_fn = lambda nam: getattr(nam, field)
+    for value, group_iter in groupby(sorted(nams, key=key_fn), key_fn):
+        if exclude_fn is not None and exclude_fn(value):
+            continue
+        group = list(group_iter)
+        if len(group) < 3:
+            for nam in group:
+                print(f"{value!r}: {nam}")
+        else:
+            print(f"{value!r}: {len(group)} objects: {group[0]}, {group[1]}, ...")
+
+
+@command
+def bad_page_described() -> None:
+    # TODO clean this, currently matches a lot of fields
+    sorted_field_values(
+        "page_described",
+        filters=[Name.original_citation != None],
+        exclude_fn=models.name.is_valid_page_described,
+    )
+
+
+@command
+def field_counts() -> None:
+    for field in (
+        "verbatim_citation",
+        "verbatim_type",
+        "stem",
+        "gender",
+        "type_specimen_source",
+    ):
+        print(field, Name.select_valid().filter(getattr(Name, field) != None).count())
+    print("Total", Name.select_valid().count())
+
+
+@command
+def clean_up_gender(dry_run: bool = True) -> None:
+    count = 0
+    for nam in Name.bfind(
+        Name.gender != None, Name.name_complex != None, quiet=True, sort=False
+    ):
+        if nam.gender == nam.name_complex.gender:
+            print(
+                f"remove gender from {nam} (gender={nam.gender!r}, NC={nam.name_complex})"
+            )
+            if not dry_run:
+                nam.gender = None  # type: ignore
+            count += 1
+        else:
+            print(f"{nam}: gender mismatch {nam.gender!r} vs. {nam.name_complex}")
+        getinput.flush()
+    print(f"{count} cleaned up")
+
+
+@generator_command
+def clean_up_stem(dry_run: bool = True) -> Iterable[Name]:
+    count = 0
+    for nam in Name.bfind(
+        Name.stem != None, Name.name_complex != None, quiet=True, sort=False
+    ):
+        try:
+            inferred = nam.name_complex.get_stem_from_name(nam.corrected_original_name)
+        except ValueError as e:
+            print(f"{nam}: cannot infer stem from {nam.name_complex} because of {e}")
+            yield nam
+            continue
+        if nam.stem == inferred:
+            print(f"remove stem from {nam} (stem={nam.stem!r}, NC={nam.name_complex})")
+            if not dry_run:
+                nam.stem = None
+            count += 1
+        else:
+            print(
+                f"{nam}: stem mismatch {nam.stem!r} vs. {inferred!r} from {nam.name_complex}"
+            )
+            yield nam
+        getinput.flush()
+    print(f"{count} cleaned up")
+
+
+@command
+def clean_up_type_specimen_source(dry_run: bool = True, fast: bool = False) -> None:
+    count = 0
+    for nam in Name.bfind(
+        Name.type_specimen_source != None,
+        Name.type_tags != None,
+        Name.type_specimen != None,
+        quiet=True,
+    ):
+        matching_tags = [
+            tag
+            for tag in nam.type_tags
+            if isinstance(tag, (TypeTag.SpecimenDetail, TypeTag.CollectionDetail))
+            and tag.source == nam.type_specimen_source
+        ]
+        patterns = [helpers.simplify_string(nam.type_specimen)]
+        numeric_type_specimen = helpers.simplify_string(
+            re.sub(r"^[A-Z]+ ", "", nam.type_specimen)
+        )
+        if len(numeric_type_specimen) > 4:
+            patterns.append(numeric_type_specimen)
+        texts = [helpers.simplify_string(tag.text) for tag in matching_tags]
+        if matching_tags and any(
+            pattern in text for text in texts for pattern in patterns
+        ):
+            if fast:
+                print(nam)
+            else:
+                nam.display()
+                for tag in matching_tags:
+                    print(tag)
+            if not dry_run:
+                nam.type_specimen_source = None
+                nam.save()
+            getinput.flush()
+            count += 1
+    print(f"{count} cleaned up")
+
+
+@command
 def clean_up_verbatim(dry_run: bool = False, slow: bool = False) -> None:
     def _maybe_clean_verbatim(nam: Name) -> None:
         print(f"{nam}: {nam.type}, {nam.verbatim_type}")
@@ -1622,7 +1730,9 @@ def fill_data_from_paper(
     level: FillDataLevel = FillDataLevel.only_if_limited_data,
 ) -> None:
     if paper is None:
-        paper = models.BaseModel.get_value_for_foreign_class("paper", models.Article)
+        paper = models.BaseModel.get_value_for_foreign_class(
+            "paper", models.Article, allow_none=False
+        )
     assert paper is not None, "paper needs to be specified"
     models.taxon.fill_data_from_paper(paper, level=level)
 
@@ -1981,6 +2091,17 @@ def fill_data_from_folder(
         print(f"{percentage:.03}% ({i}/{total}) {art.name}")
         getinput.flush()
         fill_data_from_paper(art, level=level)
+
+
+@command
+def replace_type_specimen_source_from_folder(folder: str) -> None:
+    arts = Article.bfind(Article.path.startswith(folder), quiet=True)
+    total = len(arts)
+    for i, art in enumerate(sorted(arts, key=lambda art: art.path)):
+        percentage = (i / total) * 100
+        print(f"{percentage:.03}% ({i}/{total}) {art.name}")
+        getinput.flush()
+        models.taxon.replace_type_specimen_source_from_paper(art)
 
 
 @generator_command
@@ -2695,9 +2816,11 @@ def fgsyn(off: Optional[Name] = None) -> Name:
     if off is not None:
         taxon = off.taxon
     else:
-        taxon = Taxon.get_one_by("valid_name", prompt="taxon> ")
-    root_name = Name.getter("original_name").get_one_key("name> ")
-    source = Name.get_value_for_foreign_class("source", models.Article)
+        taxon = Taxon.get_one_by("valid_name", prompt="taxon> ", allow_empty=False)
+    root_name = Name.getter("original_name").get_one_key("name> ", allow_empty=False)
+    source = Name.get_value_for_foreign_class(
+        "source", models.Article, allow_none=False
+    )
     kwargs = {}
     if off is not None:
         kwargs["type"] = off.type

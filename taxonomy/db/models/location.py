@@ -3,7 +3,7 @@ from typing import Any, IO, Iterable, Optional, Type, Union
 
 from peewee import BooleanField, CharField, ForeignKeyField, IntegerField, TextField
 
-from .. import constants, models
+from .. import models
 from ... import adt, events, getinput
 
 from .base import BaseModel, ADTField
@@ -82,7 +82,9 @@ class Location(BaseModel):
             name = getinput.get_line("name> ")
         assert name is not None
         if region is None:
-            region = cls.get_value_for_foreign_key_field_on_class("region")
+            region = cls.get_value_for_foreign_key_field_on_class(
+                "region", allow_none=False
+            )
         if period is None:
             period = cls.get_value_for_foreign_key_field_on_class("min_period")
         result = cls.make(
@@ -156,13 +158,16 @@ class Location(BaseModel):
             self.comment = f"{self.comment} – {new_comment}"
         self.deleted = True
 
-    def set_period(self, period: Period) -> None:
+    def set_period(self, period: Optional[Period]) -> None:
         self.min_period = self.max_period = period
 
     def fill_field(self, field: str) -> None:
         if field == "period":
             period = self.get_value_for_foreign_class(
-                "period", Period, self.min_period, self.get_adt_callbacks()
+                "period",
+                Period,
+                default_obj=self.min_period,
+                callbacks=self.get_adt_callbacks(),
             )
             self.set_period(period)
         else:

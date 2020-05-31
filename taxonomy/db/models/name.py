@@ -91,7 +91,9 @@ class Name(BaseModel):
 
     # Gender and stem
     stem = CharField(null=True)  # redundant with name complex?
-    gender = EnumField(constants.Gender)  # for genus group; redundant with name complex
+    gender = EnumField(
+        constants.Gender, null=True
+    )  # for genus group; redundant with name complex
     name_complex = ForeignKeyField(NameComplex, null=True, related_name="names")
     species_name_complex = ForeignKeyField(
         SpeciesNameComplex, null=True, related_name="names"
@@ -247,9 +249,7 @@ class Name(BaseModel):
             return super().get_value_for_field(field)
         elif field == "type_specimen_source":
             return self.get_value_for_foreign_key_field(
-                field,
-                default=None,
-                callbacks=self.get_adt_callbacks(),
+                field, default_obj=None, callbacks=self.get_adt_callbacks(),
             )
         elif field == "type":
             typ = super().get_value_for_field(field)
@@ -285,17 +285,33 @@ class Name(BaseModel):
             "add_comment": self.add_comment,
             "o": self.open_description,
             "add_type_identical": self._add_type_identical_callback,
+            "from_paper": self._from_paper_callback,
+            "add_child": self._add_child_callback,
+            "syn_from_paper": self._syn_from_paper_callback,
+            "add_syn": self._add_syn_callback,
             "make_variant": self.make_variant,
             "add_variant": self.add_variant,
             "preoccupied_by": self.preoccupied_by,
         }
 
     def _add_type_identical_callback(self) -> None:
-        root_name = self.getter("root_name").get_one_key("root_name> ")
-        if root_name is None:
-            print("must provide root name")
-            return
+        root_name = self.getter("root_name").get_one_key(
+            "root_name> ", allow_empty=False
+        )
+        assert root_name is not None
         self.add_type_identical(root_name)
+
+    def _from_paper_callback(self) -> None:
+        self.taxon.from_paper()
+
+    def _add_child_callback(self) -> None:
+        self.taxon.add()
+
+    def _syn_from_paper_callback(self) -> None:
+        self.taxon.syn_from_paper()
+
+    def _add_syn_callback(self) -> None:
+        self.taxon.add_syn()
 
     def add_type_identical(
         self,
@@ -462,7 +478,7 @@ class Name(BaseModel):
 
     def replace_original_citation(self, new_citation: Optional[Article] = None) -> None:
         if new_citation is None:
-            new_citation = Article.get_one_by("name")
+            new_citation = Article.get_one_by("name", allow_empty=False)
         existing = self.original_citation
 
         def map_fn(tag: TypeTag) -> TypeTag:
@@ -621,7 +637,9 @@ class Name(BaseModel):
                 NomenclatureStatus, prompt="nomenclature_status> ", allow_empty=False
             )
         if of_name is None:
-            of_name = Name.getter("corrected_original_name").get_one(prompt="of_name> ")
+            of_name = Name.getter("corrected_original_name").get_one(
+                prompt="of_name> ", allow_empty=False
+            )
         if of_name is None:
             raise ValueError("of_name is None")
         self.add_tag(STATUS_TO_TAG[status](name=of_name, comment=comment))
@@ -639,7 +657,9 @@ class Name(BaseModel):
         interactive: bool = True,
     ) -> "Name":
         if root_name is None:
-            root_name = Name.getter("root_name").get_one_key(prompt="root_name> ")
+            root_name = Name.getter("root_name").get_one_key(
+                prompt="root_name> ", allow_empty=False
+            )
         if root_name is None:
             raise ValueError("root_name is None")
         if status is None:
@@ -669,7 +689,9 @@ class Name(BaseModel):
         self, name: Optional["Name"] = None, comment: Optional[str] = None
     ) -> None:
         if name is None:
-            name = Name.getter("corrected_original_name").get_one(prompt="name> ")
+            name = Name.getter("corrected_original_name").get_one(
+                prompt="name> ", allow_empty=False
+            )
         if name is None:
             raise ValueError("name is None")
         self.add_tag(Tag.PreoccupiedBy(name, comment))
@@ -796,8 +818,6 @@ class Name(BaseModel):
                 data["citation_group"] = self.citation_group.name
             data["verbatim_citation"] = self.verbatim_citation
             data["verbatim_type"] = self.verbatim_type
-            if self.tags:
-                data["tags"] = sorted(self.tags)
             if include_data:
                 data["data"] = self.data
 
@@ -805,7 +825,8 @@ class Name(BaseModel):
             result = "".join(
                 [result]
                 + [f"{spacing}{key}: {value}\n" for key, value in data.items() if value]
-                + [f"{spacing}{tag}\n" for tag in (self.type_tags or [])]
+                + list(getinput.display_tags(spacing, self.tags))
+                + list(getinput.display_tags(spacing, self.type_tags))
                 + [
                     f"{spacing}{comment.get_description()}\n"
                     for comment in self.comments
@@ -914,6 +935,11 @@ class Name(BaseModel):
                         yield "type_tags"
                 elif self.genus_type_kind.requires_tag():
                     yield "type_tags"
+
+    def get_deprecated_fields(self) -> Iterable[str]:
+        yield "type_specimen_source"
+        yield "stem"
+        yield "gender"
 
     def validate_as_child(self, status: Status = Status.valid) -> Taxon:
         if self.taxon.rank is Rank.species:
@@ -1047,7 +1073,9 @@ class Name(BaseModel):
         **kwargs: Any,
     ) -> None:
         if paper is None:
-            paper = self.get_value_for_foreign_class("original_citation", Article)
+            paper = self.get_value_for_foreign_class(
+                "original_citation", Article, allow_none=False
+            )
         authority, year = paper.taxonomicAuthority()
         if original_name is None and self.status == Status.valid:
             original_name = self.taxon.valid_name
@@ -1368,7 +1396,9 @@ class NameComment(BaseModel):
         **kwargs: Any,
     ) -> "NameComment":
         if name is None:
-            name = cls.get_value_for_foreign_key_field_on_class("name")
+            name = cls.get_value_for_foreign_key_field_on_class(
+                "name", allow_none=False
+            )
         assert name is not None
         if kind is None:
             kind = getinput.get_enum_member(
@@ -1458,6 +1488,26 @@ def write_type_localities(
     else:
         for nam in type_locs:
             file.write(getinput.indent(write_type_loc(nam), depth + 8))
+
+
+def is_valid_page_described(page_described: str) -> bool:
+    parts = re.split(r", |-", page_described)
+    return all(is_valid_page_described_single(part) for part in parts)
+
+
+def is_valid_page_described_single(page_described: str) -> bool:
+    pattern = r" \(footnote( \d+)?\)$"
+    if re.search(pattern, page_described):
+        return is_valid_page_described_single(re.sub(pattern, "", page_described))
+    if page_described.isnumeric():
+        return True
+    # Roman numerals
+    if set(page_described) <= set("ixvcl"):
+        return True
+    for prefix in ("pl. ", "fig. ", "figs. ", "pls. "):
+        if page_described.startswith(prefix):
+            return is_valid_page_described_single(page_described[len(prefix) :])
+    return False
 
 
 class Tag(adt.ADT):

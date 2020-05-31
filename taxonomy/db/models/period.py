@@ -306,10 +306,16 @@ class Period(BaseModel):
         else:
             return False
 
+    def set_period(self, period: Optional["Period"]) -> None:
+        self.min_period = self.max_period = period
+
     def fill_field(self, field: str) -> None:
         if field == "period":
             period = self.get_value_for_foreign_class(
-                "period", Period, self.min_period, self.get_adt_callbacks()
+                "period",
+                Period,
+                default_obj=self.min_period,
+                callbacks=self.get_adt_callbacks(),
             )
             self.set_period(period)
         else:

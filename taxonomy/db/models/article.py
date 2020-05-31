@@ -559,7 +559,9 @@ class ArticleComment(BaseModel):
         **kwargs: Any,
     ) -> "ArticleComment":
         if article is None:
-            article = cls.get_value_for_foreign_key_field_on_class("article")
+            article = cls.get_value_for_foreign_key_field_on_class(
+                "article", allow_none=False
+            )
         assert article is not None
         if kind is None:
             kind = getinput.get_enum_member(

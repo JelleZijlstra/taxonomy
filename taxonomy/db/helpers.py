@@ -353,13 +353,13 @@ def standardize_coordinates(text: str, *, is_latitude: bool) -> str:
     direction = match.group("direction")
 
     if "." in degrees and minutes:
-        raise InvalidCoordinates(f"fractional degrees when minutes are given")
+        raise InvalidCoordinates("fractional degrees when minutes are given")
     if float(degrees) > (90 if is_latitude else 180):
         raise InvalidCoordinates(f"invalid degree {degrees}")
 
     if minutes:
         if "." in minutes and seconds:
-            raise InvalidCoordinates(f"fractional degrees when minutes are given")
+            raise InvalidCoordinates("fractional degrees when minutes are given")
         if float(minutes) > 60:
             raise InvalidCoordinates(f"invalid minutes {minutes}")
 

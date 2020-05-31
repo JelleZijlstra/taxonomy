@@ -40,7 +40,9 @@ class CitationGroup(BaseModel):
         cls, name: Optional[str] = None, **kwargs: Any
     ) -> "CitationGroup":
         if name is None:
-            name = models.Article.getter("journal").get_one_key("name> ")
+            name = models.Article.getter("journal").get_one_key(
+                "name> ", allow_empty=False
+            )
         obj = cls.create(name=name, **kwargs)
         obj.fill_required_fields()
         return obj
