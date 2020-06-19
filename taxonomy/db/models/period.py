@@ -5,7 +5,8 @@ from typing import IO, Any, Dict, Iterable, List, Optional, Set, Tuple, TypeVar
 
 from peewee import BooleanField, CharField, ForeignKeyField, IntegerField
 
-from .. import constants, models
+from .. import models
+from ..constants import PeriodRank, PeriodSystem, RequirednessLevel
 from ... import events, getinput
 
 from .base import BaseModel, EnumField
@@ -39,8 +40,8 @@ class Period(BaseModel):
     max_period = ForeignKeyField(
         "self", related_name="children_max", db_column="max_period_id", null=True
     )
-    system = EnumField(constants.PeriodSystem)
-    rank = EnumField(constants.PeriodRank)
+    system = EnumField(PeriodSystem)
+    rank = EnumField(PeriodRank)
     comment = CharField()
     region = ForeignKeyField(
         Region, related_name="periods", db_column="region_id", null=True
@@ -121,8 +122,8 @@ class Period(BaseModel):
     def make(
         cls,
         name: str,
-        system: constants.PeriodSystem,
-        rank: constants.PeriodRank,
+        system: PeriodSystem,
+        rank: PeriodRank,
         *,
         parent: Optional["Period"] = None,
         next: Optional["Period"] = None,
@@ -152,7 +153,7 @@ class Period(BaseModel):
     def create_interactively(
         cls,
         name: Optional[str] = None,
-        rank: Optional[constants.PeriodRank] = None,
+        rank: Optional[PeriodRank] = None,
         **kwargs: Any,
     ) -> "Period":
         print("creating Periods interactively only allows stratigraphic units")
@@ -161,7 +162,7 @@ class Period(BaseModel):
         assert name is not None
         if rank is None:
             rank = getinput.get_enum_member(
-                constants.PeriodRank, "rank> ", allow_empty=False
+                PeriodRank, "rank> ", allow_empty=False
             )
         result = cls.make_stratigraphy(name, rank)
         result.fill_required_fields()
@@ -171,7 +172,7 @@ class Period(BaseModel):
     def make_stratigraphy(
         cls,
         name: str,
-        rank: constants.PeriodRank,
+        rank: PeriodRank,
         period: Optional["Period"] = None,
         parent: Optional["Period"] = None,
         **kwargs: Any,
@@ -180,7 +181,7 @@ class Period(BaseModel):
             kwargs["max_period"] = kwargs["min_period"] = period
         period = cls.create(
             name=name,
-            system=constants.PeriodSystem.lithostratigraphy,
+            system=PeriodSystem.lithostratigraphy,
             rank=rank.value,
             parent=parent,
             deleted=False,
@@ -326,6 +327,32 @@ class Period(BaseModel):
         yield "parent"
         yield "system"
 
+    def requires_parent(self) -> RequirednessLevel:
+        if self.system is PeriodSystem.gts:
+            if self.rank is PeriodRank.eon:
+                return RequirednessLevel.disallowed
+            else:
+                return RequirednessLevel.required
+        elif self.system in (PeriodSystem.nalma, PeriodSystem.elma, PeriodSystem.alma, PeriodSystem.salma, PeriodSystem.aulma):
+            if self.rank is PeriodRank.age:
+                return RequirednessLevel.disallowed
+            else:
+                if self.rank is PeriodRank.biozone and self.system is PeriodSystem.elma:
+                    return RequirednessLevel.optional
+                return RequirednessLevel.required
+        elif self.system is PeriodSystem.lithostratigraphy:
+            if self.rank is PeriodRank.supergroup:
+                return RequirednessLevel.disallowed
+            else:
+                return RequirednessLevel.optional
+        elif self.system is PeriodSystem.local_biostratigraphy:
+            if self.rank is PeriodRank.zonation:
+                return RequirednessLevel.disallowed
+            else:
+                return RequirednessLevel.required
+        else:
+            assert False, f"unrecognized system {self.system!r}"
+
 
 def display_age(age: int) -> str:
     if age < 1000:
@@ -381,7 +408,7 @@ def _apply_next_correction(
 
 def display_period_tree(
     min_count: int = 0,
-    system: Optional[constants.PeriodSystem] = None,
+    system: Optional[PeriodSystem] = None,
     full: bool = False,
     include_taxa: bool = False,
 ) -> None:

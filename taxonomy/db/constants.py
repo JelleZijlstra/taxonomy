@@ -4,6 +4,12 @@ import enum
 from typing import List
 
 
+class RequirednessLevel(enum.IntEnum):
+    required = 1
+    optional = 2
+    disallowed = 3
+
+
 class Gender(enum.IntEnum):
     masculine = 0
     feminine = 1
@@ -346,6 +352,7 @@ class PeriodRank(enum.IntEnum):
     subage = 29  # e.g., the Lysitean
     biozone = 30  # e.g., Pu1
     subgroup = 31
+    zonation = 32  # "Period" encompassing a whole zonation system.
 
 
 SYSTEM_TO_ALLOWED_RANKS = {
@@ -372,6 +379,7 @@ SYSTEM_TO_ALLOWED_RANKS = {
         PeriodRank.other_lithostratigraphy,
     },
     PeriodSystem.local_biostratigraphy: {
+        PeriodRank.zonation,
         PeriodRank.age,
         PeriodRank.subage,
         PeriodRank.biozone,

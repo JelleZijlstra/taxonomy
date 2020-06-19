@@ -513,7 +513,6 @@ def citewp(article: Article) -> str:
     # stuff related to {{cite doi}} and friends
     # determines whether only one citation is returned or two if
     # {{cite doi}} or friends can be used
-    verbosecite = article.global_p.verbosecite
     if article.doi:
         # to fix bug 28212. Commented out for now since it seems we don't
         # need it. Or perhaps we do; I never know.
@@ -530,8 +529,6 @@ def citewp(article: Article) -> str:
     elif article.getIdentifier(Tag.HDL):
         # {{cite hdl}}
         out1 = "{{cite hdl|" + article.getIdentifier(Tag.HDL) + "}}"  # type: ignore
-    if not verbosecite and out1:
-        return out1
     if article.type == ArticleType.JOURNAL:
         label = "journal"
     elif article.type in (ArticleType.BOOK, ArticleType.CHAPTER):
@@ -619,14 +616,10 @@ def citewp(article: Article) -> str:
     elif article.type == ArticleType.WEB:
         paras["title"] = article.title
         paras["publisher"] = article.publisher
-    if article.global_p.includerefharv:
-        paras["ref"] = "harv"
     out = sfn = ""
-    if article.global_p.includesfn:
-        out = sfn = "<!--" + article.getsfn() + "-->"
     out += "{{cite " + label + " | "
     out += " | ".join(f"{key} = {value}" for key, value in paras.items() if value)
     out += "}}"
     # final cleanup
     out = re.sub(r"\s+", " ", re.sub(r"(?<!\.)\.\.(?!\.)", ".", wikify(out)))
-    return f"{sfn + out1}\n{out}" if verbosecite and out1 else out
+    return f"{sfn + out1}\n{out}" if out1 else out

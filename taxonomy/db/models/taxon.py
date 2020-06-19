@@ -1170,12 +1170,16 @@ def fill_data_from_paper(
         except (TypeError, ValueError):
             return (nam.page_described or "", 0)
 
-    for nam in sorted(
+    nams = sorted(
         models.Name.filter(
             models.Name.original_citation == paper, models.Name.status != Status.removed
         ),
         key=sort_key,
-    ):
+    )
+    if nams:
+        print(f"{paper.name}: {len(nams)} names (fill_data_from_paper)")
+
+    for nam in nams:
         nam = nam.reload()
         nam.display()
         if not _should_include_in_always_edit(nam, level):
@@ -1208,7 +1212,7 @@ def replace_type_specimen_source_from_paper(art: Article) -> bool:
     if not nams:
         _checked_arts_for_type_specimen_source.add(art.name)
         return False
-    print(f"{art.name}: {len(nams)} names")
+    print(f"{art.name}: {len(nams)} names (replace_type_specimen_source_from_paper)")
     art.add_to_history()
     art.openf()
     for nam in nams:

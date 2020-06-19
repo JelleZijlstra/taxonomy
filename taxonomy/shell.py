@@ -57,6 +57,7 @@ from .db.constants import (
     Rank,
     ArticleKind,
     PeriodSystem,
+    RequirednessLevel,
 )
 from .db.models import (
     Article,
@@ -375,6 +376,15 @@ def check_period_ranks() -> Iterable[models.Period]:
                 f"{period} is of rank {period.rank}, which is not allowed for {period.system}"
             )
             yield period
+        requires_parent = period.requires_parent()
+        if period.parent is None:
+            if requires_parent is RequirednessLevel.required:
+                print(f"{period} must have a parent")
+                yield period
+        else:
+            if requires_parent is RequirednessLevel.disallowed:
+                print(f"{period} may not have a parent")
+                yield period
 
 
 @command
@@ -1536,8 +1546,8 @@ def field_counts() -> None:
     print("Total", Name.select_valid().count())
 
 
-@command
-def clean_up_gender(dry_run: bool = True) -> None:
+@generator_command
+def clean_up_gender(dry_run: bool = False) -> Iterable[Name]:
     count = 0
     for nam in Name.bfind(
         Name.gender != None, Name.name_complex != None, quiet=True, sort=False
@@ -1551,12 +1561,13 @@ def clean_up_gender(dry_run: bool = True) -> None:
             count += 1
         else:
             print(f"{nam}: gender mismatch {nam.gender!r} vs. {nam.name_complex}")
+            yield nam
         getinput.flush()
     print(f"{count} cleaned up")
 
 
 @generator_command
-def clean_up_stem(dry_run: bool = True) -> Iterable[Name]:
+def clean_up_stem(dry_run: bool = False) -> Iterable[Name]:
     count = 0
     for nam in Name.bfind(
         Name.stem != None, Name.name_complex != None, quiet=True, sort=False
@@ -1582,7 +1593,7 @@ def clean_up_stem(dry_run: bool = True) -> Iterable[Name]:
 
 
 @command
-def clean_up_type_specimen_source(dry_run: bool = True, fast: bool = False) -> None:
+def clean_up_type_specimen_source(dry_run: bool = False, fast: bool = False) -> None:
     count = 0
     for nam in Name.bfind(
         Name.type_specimen_source != None,
@@ -1590,34 +1601,43 @@ def clean_up_type_specimen_source(dry_run: bool = True, fast: bool = False) -> N
         Name.type_specimen != None,
         quiet=True,
     ):
-        matching_tags = [
-            tag
-            for tag in nam.type_tags
-            if isinstance(tag, (TypeTag.SpecimenDetail, TypeTag.CollectionDetail))
-            and tag.source == nam.type_specimen_source
-        ]
-        patterns = [helpers.simplify_string(nam.type_specimen)]
-        numeric_type_specimen = helpers.simplify_string(
-            re.sub(r"^[A-Z]+ ", "", nam.type_specimen)
-        )
-        if len(numeric_type_specimen) > 4:
-            patterns.append(numeric_type_specimen)
-        texts = [helpers.simplify_string(tag.text) for tag in matching_tags]
-        if matching_tags and any(
-            pattern in text for text in texts for pattern in patterns
-        ):
-            if fast:
-                print(nam)
-            else:
-                nam.display()
-                for tag in matching_tags:
-                    print(tag)
-            if not dry_run:
-                nam.type_specimen_source = None
-                nam.save()
-            getinput.flush()
+        if clean_up_type_specimen_source_for_name(nam, dry_run=dry_run, fast=fast):
             count += 1
     print(f"{count} cleaned up")
+
+
+@command
+def clean_up_type_specimen_source_for_name(nam: Name, dry_run: bool = False, fast: bool = False) -> bool:
+    if not nam.type_tags or nam.type_specimen is None or nam.type_specimen_source is None:
+        return False
+    matching_tags = [
+        tag
+        for tag in nam.type_tags
+        if isinstance(tag, (TypeTag.SpecimenDetail, TypeTag.CollectionDetail))
+        and tag.source == nam.type_specimen_source
+    ]
+    patterns = [helpers.simplify_string(nam.type_specimen)]
+    numeric_type_specimen = helpers.simplify_string(
+        re.sub(r"^[A-Z]+ ", "", nam.type_specimen)
+    )
+    if len(numeric_type_specimen) > 4:
+        patterns.append(numeric_type_specimen)
+    texts = [helpers.simplify_string(tag.text) for tag in matching_tags]
+    if matching_tags and any(
+        pattern in text for text in texts for pattern in patterns
+    ):
+        if fast:
+            print(nam)
+        else:
+            nam.display()
+            for tag in matching_tags:
+                print(tag)
+        if not dry_run:
+            nam.type_specimen_source = None
+            nam.save()
+        getinput.flush()
+        return True
+    return False
 
 
 @command
@@ -2075,6 +2095,17 @@ def type_locality_without_detail() -> Iterable[Name]:
 
 
 @command
+def most_common(model_cls: Type[models.BaseModel], field: str) -> Counter:
+    objects = model_cls.bfind(getattr(model_cls, field) != None, quiet=True)
+    counter = Counter()
+    for obj in objects:
+        counter[getattr(obj, field)] += 1
+    for value, count in counter.most_common(10):
+        print(value, count)
+    return counter
+
+
+@command
 def most_common_citation_groups_after(year: int) -> Dict[CitationGroup, int]:
     nams = Name.bfind(Name.citation_group != None, Name.year > year, quiet=True)
     return Counter(nam.citation_group for nam in nams)
@@ -2088,7 +2119,7 @@ def fill_data_from_folder(
     total = len(arts)
     for i, art in enumerate(sorted(arts, key=lambda art: art.path)):
         percentage = (i / total) * 100
-        print(f"{percentage:.03}% ({i}/{total}) {art.name}")
+        print(f"{percentage:.03}% ({i}/{total}) {art.path}/{art.name}")
         getinput.flush()
         fill_data_from_paper(art, level=level)
 
@@ -2099,7 +2130,7 @@ def replace_type_specimen_source_from_folder(folder: str) -> None:
     total = len(arts)
     for i, art in enumerate(sorted(arts, key=lambda art: art.path)):
         percentage = (i / total) * 100
-        print(f"{percentage:.03}% ({i}/{total}) {art.name}")
+        print(f"{percentage:.03}% ({i}/{total}) {art.path}/{art.name}")
         getinput.flush()
         models.taxon.replace_type_specimen_source_from_paper(art)
 
@@ -2716,6 +2747,9 @@ def run_maintenance(skip_slow: bool = True) -> Dict[Any, Any]:
         make_general_localities,
         enforce_must_have_series,
         check_period_ranks,
+        clean_up_stem,
+        clean_up_gender,
+        clean_up_type_specimen_source,
     ]
     # these each take >60 s
     slow: List[Callable[[], Any]] = [
@@ -3088,6 +3122,14 @@ def reset_db() -> None:
     database = models.base.database
     database.close()
     database.connect()
+
+
+@command
+def print_parent() -> Optional[Taxon]:
+    taxon = Taxon.getter("valid_name").get_one()
+    if taxon:
+        return taxon.parent
+    return None
 
 
 def run_shell() -> None:
