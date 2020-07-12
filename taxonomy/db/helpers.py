@@ -58,6 +58,8 @@ SUFFIXES = {
     Rank.superfamily: "oidea",
     Rank.hyperfamily: "oides",
 }
+VALID_SUFFIXES = set(SUFFIXES.values())
+
 _RANKS = {
     "root": Rank.root,
     "Unnamed rank": Rank.root,

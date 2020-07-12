@@ -262,6 +262,12 @@ class Article(BaseModel):
         except (TypeError, ValueError):
             return 0
 
+    def numeric_start_page(self) -> int:
+        try:
+            return int(self.start_page)
+        except (TypeError, ValueError):
+            return 0
+
     def is_page_in_range(self, page: int) -> bool:
         if self.pages:
             try:

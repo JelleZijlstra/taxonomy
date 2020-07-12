@@ -99,6 +99,22 @@ class Region(BaseModel):
                     locations=locations,
                 )
 
+    def display_without_stratigraphy(
+        self,
+        full: bool = False,
+        depth: int = 0,
+        file: IO[str] = sys.stdout,
+        skip_empty: bool = False,
+    ) -> None:
+        for location in self.sorted_locations():
+            if skip_empty and location.type_localities.count() == 0:
+                continue
+            if location.stratigraphic_unit is not None:
+                continue
+            if location.has_tag(models.location.LocationTag.General):
+                continue
+            location.display(full=full, depth=depth + 4, file=file)
+
     def is_empty(self) -> bool:
         for loc in self.locations.filter(models.Location.deleted != True):
             if loc.type_localities.count() > 0:

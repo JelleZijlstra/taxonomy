@@ -123,7 +123,7 @@ ns = _ShellNamespace(
         "Apomorphy": definition.Apomorphy,
         "Other": definition.Other,
         "N": Name.getter("root_name"),
-        "O": Name.getter("original_name"),
+        "O": Name.getter("corrected_original_name"),
         "reconnect": _reconnect,
         "Tag": models.Tag,
         "TypeTag": models.TypeTag,
@@ -457,18 +457,19 @@ def find_rank_mismatch() -> Iterable[Taxon]:
 
 @generator_command
 def detect_corrected_original_names(
-    dry_run: bool = False, interactive: bool = False, ignore_failure: bool = False
+    dry_run: bool = False,
+    interactive: bool = False,
+    ignore_failure: bool = False,
+    aggressive: bool = False,
 ) -> Iterable[Name]:
     total = successful = 0
     for nam in Name.select_valid().filter(
-        Name.original_name != None,
-        Name.corrected_original_name == None,
-        Name.group << (Group.genus, Group.species),
+        Name.original_name != None, Name.corrected_original_name == None
     ):
         if "corrected_original_name" not in nam.get_required_fields():
             continue
         total += 1
-        inferred = nam.infer_corrected_original_name()
+        inferred = nam.infer_corrected_original_name(aggressive=aggressive)
         if inferred:
             successful += 1
             print(
@@ -485,6 +486,112 @@ def detect_corrected_original_names(
                 nam.fill_field("corrected_original_name")
             yield nam
     print(f"Success: {successful}/{total}")
+
+
+@generator_command
+def check_root_name() -> Iterator[Tuple[Name, str]]:
+    """Check that root_names are correct."""
+
+    def make_message(nam: Name, text: str) -> Tuple[Name, str]:
+        message = f"{nam}: root name {nam.root_name!r} {text}"
+        print(message)
+        return (nam, message)
+
+    for nam in Name.select_valid():
+        if nam.nomenclature_status.permissive_corrected_original_name():
+            continue
+        if nam.group in (Group.high, Group.genus, Group.family):
+            if not re.match(r"^[A-Z][a-z]+$", nam.root_name):
+                yield make_message(nam, "contains unexpected characters")
+        elif nam.group is Group.species:
+            if not re.match(r"^[a-z]+$", nam.root_name):
+                yield make_message(nam, "contains unexpected characters")
+
+
+@generator_command
+def check_corrected_original_name() -> Iterator[Tuple[Name, str]]:
+    """Check that corrected_original_names are correct."""
+
+    def make_message(nam: Name, text: str) -> Tuple[Name, str]:
+        message = (
+            f"{nam}: corrected original name {nam.corrected_original_name!r} {text}"
+        )
+        print(message)
+        return (nam, message)
+
+    for nam in Name.select_valid().filter(Name.corrected_original_name != None):
+        if nam.nomenclature_status.permissive_corrected_original_name():
+            continue
+        inferred = nam.infer_corrected_original_name()
+        if inferred is not None and inferred != nam.corrected_original_name:
+            yield make_message(
+                nam,
+                f"inferred name {inferred!r} does not match current name {nam.corrected_original_name!r}",
+            )
+        if not re.match(r"^[A-Z][a-z ]+$", nam.corrected_original_name):
+            yield make_message(nam, "contains unexpected characters")
+            continue
+        if nam.group in (Group.high, Group.genus):
+            if " " in nam.corrected_original_name:
+                yield make_message(nam, "contains whitespace")
+                continue
+            if nam.corrected_original_name != nam.root_name:
+                yield make_message(nam, f"does not match root_name {nam.root_name!r}")
+                continue
+        elif nam.group is Group.family:
+            if (
+                nam.nomenclature_status
+                is NomenclatureStatus.not_based_on_a_generic_name
+            ):
+                possibilities = {
+                    f"{nam.root_name}{suffix}" for suffix in helpers.VALID_SUFFIXES
+                }
+                if nam.corrected_original_name not in {nam.root_name} | possibilities:
+                    yield make_message(
+                        nam, f"does not match root_name {nam.root_name!r}"
+                    )
+                continue
+            if not nam.corrected_original_name.endswith(tuple(helpers.VALID_SUFFIXES)):
+                yield make_message(nam, "does not end with a valid family-group suffix")
+                continue
+            if nam.type is not None:
+                stem = nam.type.get_stem() or nam.type.stem
+                if stem is not None:
+                    possibilities = {
+                        f"{stem}{suffix}" for suffix in helpers.VALID_SUFFIXES
+                    }
+                    if stem.endswith("id"):  # allow eliding -id-
+                        possibilities |= {
+                            f"{stem[:-2]}{suffix}" for suffix in helpers.VALID_SUFFIXES
+                        }
+                    if nam.type.name_complex is not None:
+                        if (
+                            nam.type.name_complex.id == 95
+                        ):  # ops_masculine: allow -ops- and -op-
+                            possibilities |= {
+                                f"{stem}s{suffix}" for suffix in helpers.VALID_SUFFIXES
+                            }
+                    if nam.corrected_original_name not in possibilities:
+                        yield make_message(
+                            nam, f"does not match expected stem {stem!r}"
+                        )
+                        continue
+        elif nam.group is Group.species:
+            parts = nam.corrected_original_name.split(" ")
+            if len(parts) not in (2, 3, 4):
+                yield make_message(nam, "is not a valid species or subspecies name")
+                continue
+            if parts[-1] != nam.root_name:
+                if nam.species_name_complex is not None:
+                    try:
+                        forms = list(nam.species_name_complex.get_forms(nam.root_name))
+                    except ValueError as e:
+                        yield make_message(nam, f"has invalid name complex: {e!r}")
+                        continue
+                    if parts[-1] in forms:
+                        continue
+                yield make_message(nam, f"does not match root_name {nam.root_name!r}")
+                continue
 
 
 @command
@@ -1593,22 +1700,41 @@ def clean_up_stem(dry_run: bool = False) -> Iterable[Name]:
 
 
 @command
-def clean_up_type_specimen_source(dry_run: bool = False, fast: bool = False) -> None:
+def clean_up_type_specimen_source(
+    dry_run: bool = False, fast: bool = False, interactive: bool = False
+) -> None:
     count = 0
-    for nam in Name.bfind(
+    nams = Name.bfind(
         Name.type_specimen_source != None,
         Name.type_tags != None,
         Name.type_specimen != None,
         quiet=True,
-    ):
-        if clean_up_type_specimen_source_for_name(nam, dry_run=dry_run, fast=fast):
+    )
+    if interactive:
+        nams = sorted(
+            nams,
+            key=lambda nam: (
+                nam.type_specimen_source.path,
+                nam.type_specimen_source.name,
+            ),
+        )
+    for nam in nams:
+        if clean_up_type_specimen_source_for_name(
+            nam, dry_run=dry_run, fast=fast, interactive=interactive
+        ):
             count += 1
     print(f"{count} cleaned up")
 
 
 @command
-def clean_up_type_specimen_source_for_name(nam: Name, dry_run: bool = False, fast: bool = False) -> bool:
-    if not nam.type_tags or nam.type_specimen is None or nam.type_specimen_source is None:
+def clean_up_type_specimen_source_for_name(
+    nam: Name, dry_run: bool = False, fast: bool = False, interactive: bool = False
+) -> bool:
+    if (
+        not nam.type_tags
+        or nam.type_specimen is None
+        or nam.type_specimen_source is None
+    ):
         return False
     matching_tags = [
         tag
@@ -1623,20 +1749,31 @@ def clean_up_type_specimen_source_for_name(nam: Name, dry_run: bool = False, fas
     if len(numeric_type_specimen) > 4:
         patterns.append(numeric_type_specimen)
     texts = [helpers.simplify_string(tag.text) for tag in matching_tags]
-    if matching_tags and any(
-        pattern in text for text in texts for pattern in patterns
-    ):
-        if fast:
-            print(nam)
-        else:
+    if matching_tags:
+        if any(pattern in text for text in texts for pattern in patterns):
+            if fast:
+                print(nam)
+            else:
+                nam.display()
+                for tag in matching_tags:
+                    print(tag)
+            if not dry_run:
+                nam.type_specimen_source = None
+                nam.save()
+            getinput.flush()
+            return True
+        elif interactive:
             nam.display()
             for tag in matching_tags:
                 print(tag)
-        if not dry_run:
-            nam.type_specimen_source = None
-            nam.save()
-        getinput.flush()
-        return True
+            if not dry_run:
+                nam.type_specimen_source.openf()
+                nam.type_specimen_source.add_to_history()
+                nam.edit()
+                nam.type_specimen_source = None
+                nam.save()
+            getinput.flush()
+            return True
     return False
 
 
@@ -1764,7 +1901,7 @@ def fill_data_from_author(
     for nam in Name.bfind(authority=author):
         if nam.original_citation is not None:
             print(nam, nam.original_citation)
-            fill_data_from_paper(nam.original_citation, level=level)
+            models.taxon.fill_data_from_paper(nam.original_citation, level=level)
 
 
 @command
@@ -2095,9 +2232,9 @@ def type_locality_without_detail() -> Iterable[Name]:
 
 
 @command
-def most_common(model_cls: Type[models.BaseModel], field: str) -> Counter:
+def most_common(model_cls: Type[models.BaseModel], field: str) -> Counter[Any]:
     objects = model_cls.bfind(getattr(model_cls, field) != None, quiet=True)
-    counter = Counter()
+    counter: Counter[Any] = Counter()
     for obj in objects:
         counter[getattr(obj, field)] += 1
     for value, count in counter.most_common(10):
@@ -2113,15 +2250,48 @@ def most_common_citation_groups_after(year: int) -> Dict[CitationGroup, int]:
 
 @command
 def fill_data_from_folder(
-    folder: str, level: FillDataLevel = FillDataLevel.only_if_limited_data
+    folder: str,
+    level: FillDataLevel = FillDataLevel.only_if_limited_data,
+    only_fill_cache: bool = False,
 ) -> None:
     arts = Article.bfind(Article.path.startswith(folder), quiet=True)
+    fill_data_from_articles(
+        sorted(arts, key=lambda art: art.path),
+        level=level,
+        only_fill_cache=only_fill_cache,
+    )
+
+
+def fill_data_from_articles(
+    arts: Sequence[Article], level: FillDataLevel, only_fill_cache: bool
+) -> None:
     total = len(arts)
-    for i, art in enumerate(sorted(arts, key=lambda art: art.path)):
+    if total is None:
+        print("no articles found")
+        return
+    done = 0
+    for i, art in enumerate(arts):
         percentage = (i / total) * 100
         print(f"{percentage:.03}% ({i}/{total}) {art.path}/{art.name}")
         getinput.flush()
-        fill_data_from_paper(art, level=level)
+        if models.taxon.fill_data_from_paper(
+            art, level=level, only_fill_cache=only_fill_cache
+        ):
+            done += 1
+    print(f"{done}/{total} ({(done / total) * 100:.03}%) done")
+
+
+@command
+def fill_data_from_citation_group(
+    cg: CitationGroup,
+    level: FillDataLevel = FillDataLevel.only_if_limited_data,
+    only_fill_cache: bool = False,
+) -> None:
+    arts = sorted(
+        cg.get_articles(),
+        key=lambda art: (art.numeric_year(), art.numeric_start_page()),
+    )
+    fill_data_from_articles(arts, level=level, only_fill_cache=only_fill_cache)
 
 
 @command
@@ -2750,6 +2920,7 @@ def run_maintenance(skip_slow: bool = True) -> Dict[Any, Any]:
         clean_up_stem,
         clean_up_gender,
         clean_up_type_specimen_source,
+        check_corrected_original_name,
     ]
     # these each take >60 s
     slow: List[Callable[[], Any]] = [
@@ -2851,7 +3022,9 @@ def fgsyn(off: Optional[Name] = None) -> Name:
         taxon = off.taxon
     else:
         taxon = Taxon.get_one_by("valid_name", prompt="taxon> ", allow_empty=False)
-    root_name = Name.getter("original_name").get_one_key("name> ", allow_empty=False)
+    root_name = Name.getter("corrected_original_name").get_one_key(
+        "name> ", allow_empty=False
+    )
     source = Name.get_value_for_foreign_class(
         "source", models.Article, allow_none=False
     )
@@ -3049,7 +3222,7 @@ def fill_verbatim_citation_for_names(
         key=lambda nam: (
             -nam.numeric_year(),
             nam.authority or "",
-            nam.original_name or "",
+            nam.corrected_original_name or "",
             nam.root_name,
         ),
     ):

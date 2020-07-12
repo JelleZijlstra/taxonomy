@@ -173,11 +173,13 @@ class NomenclatureStatus(enum.IntEnum):
             NomenclatureStatus.not_published_with_a_generic_name,
         }
 
-    def requires_corrected_original_name(self) -> bool:
-        return self not in {
+    def permissive_corrected_original_name(self) -> bool:
+        """Corrected original names with one of these statuses are not strictly checked."""
+        return self in {
             NomenclatureStatus.not_published_with_a_generic_name,
             NomenclatureStatus.informal,
             NomenclatureStatus.not_intended_as_a_scientific_name,
+            NomenclatureStatus.not_nominative_singular,
         }
 
     @classmethod
@@ -435,6 +437,9 @@ class GenderArticle(enum.IntEnum):
     bad_transliteration = 12
     # Etymology unknown, but stem is "obvious" (e.g., _Madataeus_)
     unknown_obvious_stem = 13
+    # Stem explicitly set, usually in connection with an otherwise preoccupied
+    # family-group name.
+    stem_expressly_set = 14
 
 
 class SpeciesNameKind(enum.IntEnum):

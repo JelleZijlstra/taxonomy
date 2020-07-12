@@ -1158,10 +1158,12 @@ _finished_papers: Set[Tuple[str, FillDataLevel]] = set()
 
 
 def fill_data_from_paper(
-    paper: Article, level: FillDataLevel = FillDataLevel.only_if_limited_data
-) -> None:
+    paper: Article,
+    level: FillDataLevel = FillDataLevel.only_if_limited_data,
+    only_fill_cache: bool = False,
+) -> bool:
     if (paper.name, level) in _finished_papers:
-        return
+        return True
     opened = False
 
     def sort_key(nam: models.Name) -> Tuple[str, int]:
@@ -1180,45 +1182,66 @@ def fill_data_from_paper(
         print(f"{paper.name}: {len(nams)} names (fill_data_from_paper)")
 
     for nam in nams:
-        nam = nam.reload()
-        nam.display()
+        if not only_fill_cache:
+            nam = nam.reload()
+            nam.display()
         if not _should_include_in_always_edit(nam, level):
             continue
         if not opened:
-            getinput.add_to_clipboard(paper.name)
-            paper.openf()
-            paper.add_to_history()
-            print(f"filling data from {paper.name}")
+            if not only_fill_cache:
+                getinput.add_to_clipboard(paper.name)
+                paper.openf()
+                paper.add_to_history()
+                print(f"filling data from {paper.name}")
             opened = True
-        if list(nam.get_empty_required_fields()):
-            print(nam, "described at", nam.page_described)
-            nam.fill_required_fields()
-        else:
-            nam.fill_field("type_tags")
+            if only_fill_cache:
+                break
+        if not only_fill_cache:
+            if list(nam.get_empty_required_fields()):
+                print(nam, "described at", nam.page_described)
+                nam.fill_required_fields()
+            else:
+                nam.fill_field("type_tags")
 
-    opened_for_tss = replace_type_specimen_source_from_paper(paper)
+    opened_for_tss = replace_type_specimen_source_from_paper(
+        paper, only_fill_cache=only_fill_cache
+    )
 
     if not opened and not opened_for_tss:
         _finished_papers.add((paper.name, level))
+        return True
+    return False
 
 
-_checked_arts_for_type_specimen_source = set()
+_checked_arts_for_type_specimen_source: Set[str] = set()
 
 
-def replace_type_specimen_source_from_paper(art: Article) -> bool:
+def replace_type_specimen_source_from_paper(
+    art: Article, only_fill_cache: bool = False
+) -> bool:
     if art.name in _checked_arts_for_type_specimen_source:
         return False
     nams = list(art.type_source_names)
     if not nams:
         _checked_arts_for_type_specimen_source.add(art.name)
         return False
+    if only_fill_cache:
+        return True
     print(f"{art.name}: {len(nams)} names (replace_type_specimen_source_from_paper)")
     art.add_to_history()
     art.openf()
-    for nam in nams:
+
+    def sort_key(nam: models.Name) -> Tuple[bool, int]:
+        if nam.original_citation == art:
+            return (False, nam.numeric_page_described())
+        else:
+            return (True, nam.id)
+
+    for nam in sorted(nams, key=sort_key):
         nam.display()
         nam.e.type_tags
         nam.type_specimen_source = None
+        nam.save()
     return True
 
 

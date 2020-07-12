@@ -289,7 +289,7 @@ class BaseModel(Model):
     ) -> Optional[ModelT]:
         return cls.getter(attr).get_one(prompt, allow_empty=allow_empty)
 
-    def get_value_for_field(self, field: str) -> Any:
+    def get_value_for_field(self, field: str, default: Optional[str] = None) -> Any:
         field_obj = getattr(type(self), field)
         prompt = f"{field}> "
         current_value = getattr(self, field)
@@ -304,7 +304,8 @@ class BaseModel(Model):
                 callbacks=callbacks,
             )
         elif isinstance(field_obj, CharField):
-            default = "" if current_value is None else current_value
+            if default is None:
+                default = "" if current_value is None else current_value
             return (
                 self.getter(field).get_one_key(
                     prompt, default=default, callbacks=callbacks
@@ -312,7 +313,8 @@ class BaseModel(Model):
                 or None
             )
         elif isinstance(field_obj, TextField):
-            default = "" if current_value is None else current_value
+            if default is None:
+                default = "" if current_value is None else current_value
             return (
                 getinput.get_line(
                     prompt, default=default, mouse_support=True, callbacks=callbacks
@@ -345,7 +347,48 @@ class BaseModel(Model):
             return lambda: self.fill_field(field)
 
         field_editors = {field: callback(field) for field in self.get_field_names()}
-        return {**field_editors, "d": self.display}
+        return {
+            **field_editors,
+            "d": self.display,
+            "edit_foreign": self.edit_foreign,
+            "edit_sibling": self.edit_sibling,
+        }
+
+    def edit_sibling(self) -> None:
+        sibling = self.get_value_for_foreign_class(self.label_field, type(self))
+        if sibling is not None:
+            sibling.display()
+            sibling.edit()
+            sibling.save()
+
+    def edit_foreign(self) -> None:
+        options = {
+            name: field
+            for name, field in self._meta.fields.items()
+            if isinstance(field, peewee.ForeignKeyField)
+        }
+        chosen = getinput.get_with_completion(
+            options,
+            "field> ",
+            history_key=(type(self), "edit_foreign"),
+            disallow_other=True,
+        )
+        if not chosen:
+            return
+        value = getattr(self, chosen)
+        if value is None:
+            print(f"{self} has no {chosen}")
+            return
+        value.display()
+        value.edit()
+
+    def edit(self) -> None:
+        getinput.get_with_completion(
+            options=[],
+            message=f"{self}> ",
+            disallow_other=True,
+            callbacks=self.get_adt_callbacks(),
+        )
 
     def get_completers_for_adt_field(self, field: str) -> getinput.CompleterMap:
         return {}
@@ -661,20 +704,25 @@ class _NameGetter(Generic[ModelT]):
     ) -> Optional[ModelT]:
         self._warm_cache()
         assert self._data is not None
-        key = getinput.get_with_completion(
-            self._data,
-            prompt,
-            default=default,
-            history_key=self,
-            callbacks=callbacks,
-            allow_empty=allow_empty,
-        )
-        if not key:
-            return None
-        elif key.isnumeric():
-            val = int(key)
-            return self.cls.get(id=val)
-        return self.get_or_choose(key)
+        while True:
+            key = getinput.get_with_completion(
+                self._data,
+                prompt,
+                default=default,
+                history_key=self,
+                callbacks=callbacks,
+                allow_empty=allow_empty,
+            )
+            if not key:
+                return None
+            elif key.isnumeric():
+                val = int(key)
+                return self.cls.get(id=val)
+            try:
+                return self.get_or_choose(key)
+            except self.cls.DoesNotExist:
+                print(f"{key!r} does not exist")
+                continue
 
     def _warm_cache(self) -> None:
         if self._data is None:

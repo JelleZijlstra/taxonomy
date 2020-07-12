@@ -161,9 +161,7 @@ class Period(BaseModel):
             name = getinput.get_line("name> ")
         assert name is not None
         if rank is None:
-            rank = getinput.get_enum_member(
-                PeriodRank, "rank> ", allow_empty=False
-            )
+            rank = getinput.get_enum_member(PeriodRank, "rank> ", allow_empty=False)
         result = cls.make_stratigraphy(name, rank)
         result.fill_required_fields()
         return result
@@ -333,7 +331,13 @@ class Period(BaseModel):
                 return RequirednessLevel.disallowed
             else:
                 return RequirednessLevel.required
-        elif self.system in (PeriodSystem.nalma, PeriodSystem.elma, PeriodSystem.alma, PeriodSystem.salma, PeriodSystem.aulma):
+        elif self.system in (
+            PeriodSystem.nalma,
+            PeriodSystem.elma,
+            PeriodSystem.alma,
+            PeriodSystem.salma,
+            PeriodSystem.aulma,
+        ):
             if self.rank is PeriodRank.age:
                 return RequirednessLevel.disallowed
             else:

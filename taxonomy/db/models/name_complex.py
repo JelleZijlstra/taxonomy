@@ -86,7 +86,11 @@ class SpeciesNameComplex(BaseModel):
     def get_stem_from_name(self, name: str) -> str:
         """Applies the group to a genus name to get the name's stem."""
         assert self.stem.endswith(self.masculine_ending)
-        stem = self.stem[: -len(self.masculine_ending)]
+        if self.masculine_ending:
+            # This doesn't work as expected if len(self.masculine_ending) == 0.
+            stem = self.stem[: -len(self.masculine_ending)]
+        else:
+            stem = self.stem
         for ending in (self.masculine_ending, self.feminine_ending, self.neuter_ending):
             if name.endswith(stem + ending):
                 if ending == "":
@@ -591,6 +595,23 @@ class NameComplex(BaseModel):
         )
 
     @classmethod
+    def stem_expressly_set(
+        cls, gender: constants.Gender, stem_remove: str = "", stem_add: str = ""
+    ) -> "NameComplex":
+        """Stem expressly set to a specific value."""
+        label = cls._make_label(
+            f"stem_expressly_set_{gender.name}", stem_remove, stem_add
+        )
+        return cls._get_or_create(
+            label,
+            source_language=SourceLanguage.other,
+            gender=gender,
+            code_article=GenderArticle.stem_expressly_set,
+            stem_remove=stem_remove,
+            stem_add=stem_add,
+        )
+
+    @classmethod
     def expressly_specified(
         cls, gender: constants.Gender, stem_remove: str = "", stem_add: str = ""
     ) -> "NameComplex":
@@ -693,6 +714,7 @@ class NameComplex(BaseModel):
                 "defaulted_masculine",
                 "defaulted",
                 "unknown_obvious_stem",
+                "stem_expressly_set",
             ],
             "kind> ",
             allow_empty=False,
@@ -725,7 +747,7 @@ class NameComplex(BaseModel):
             nc.self_apply()
             if getinput.yes_no("self-apply?"):
                 nc.self_apply(dry_run=False)
-        elif kind in ("expressly_specified", "indicated"):
+        elif kind in ("expressly_specified", "indicated", "stem_expressly_set"):
             gender = getinput.get_enum_member(
                 constants.Gender, "gender> ", allow_empty=False
             )

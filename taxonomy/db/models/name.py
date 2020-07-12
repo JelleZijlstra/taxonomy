@@ -170,36 +170,51 @@ class Name(BaseModel):
         else:
             self._definition = defn.serialize()
 
-    def infer_corrected_original_name(self) -> Optional[str]:
-        if not self.original_name or self.group not in (Group.genus, Group.species):
+    def infer_corrected_original_name(self, aggressive: bool = False) -> Optional[str]:
+        if not self.original_name:
             return None
-        original_name = (
-            self.original_name.replace("(?)", "")
-            .replace("?", "")
-            .replace("æ", "ae")
-            .replace("ë", "e")
-            .replace("í", "i")
-            .replace("ï", "i")
-            .replace("á", "a")
-            .replace('"', "")
-            .replace("'", "")
-            .replace("ř", "r")
-            .replace("é", "e")
-            .replace("š", "s")
-            .replace("á", "a")
-            .replace("ć", "c")
-        )
-        original_name = re.sub(r"\s+", " ", original_name).strip()
-        original_name = re.sub(r"([a-z]{2})-([a-z]{2})", r"\1\2", original_name)
-        if self.group == Group.genus:
+        original_name = clean_original_name(self.original_name)
+        if self.nomenclature_status.permissive_corrected_original_name():
+            return None
+        if self.group in (Group.genus, Group.high):
             if re.match(r"^[A-Z][a-z]+$", original_name):
                 return original_name
-            match = re.match(r"^[A-Z][a-z]+ \(([A-Z][a-z]+)\)$", original_name)
-            if match:
-                return match.group(1)
-        elif self.group == Group.species:
+            if self.group is Group.genus:
+                match = re.match(r"^[A-Z][a-z]+ \(([A-Z][a-z]+)\)$", original_name)
+                if match:
+                    return match.group(1)
+        elif self.group is Group.family:
+            if (
+                self.nomenclature_status
+                is NomenclatureStatus.not_based_on_a_generic_name
+            ):
+                if re.match(r"^[A-Z][a-z]+$", original_name):
+                    return original_name
+            if self.type is not None:
+                stem = self.type.get_stem()
+                if stem is not None:
+                    for suffix in helpers.VALID_SUFFIXES:
+                        if original_name == f"{stem}{suffix}":
+                            return original_name
+                    if aggressive and not any(
+                        original_name.endswith(suffix)
+                        for suffix in helpers.VALID_SUFFIXES
+                    ):
+                        return f"{stem}idae"
+                if aggressive and self.type.stem is not None:
+                    stem = self.type.stem
+                    for suffix in helpers.VALID_SUFFIXES:
+                        if original_name == f"{stem}{suffix}":
+                            return original_name
+                    if aggressive and not any(
+                        original_name.endswith(suffix)
+                        for suffix in helpers.VALID_SUFFIXES
+                    ):
+                        return f"{stem}idae"
+        elif self.group is Group.species:
             if re.match(r"^[A-Z][a-z]+( [a-z]+){1,2}$", original_name):
-                return original_name
+                if self.root_name == original_name.split(" ")[-1]:
+                    return original_name
             if re.match(r"^[A-Z][a-z]+ [A-Z][a-z]+$", original_name):
                 genus, species = original_name.split()
                 return f"{genus} {species.lower()}"
@@ -211,10 +226,11 @@ class Name(BaseModel):
                 name = f'{match.group("genus")} {match.group("species").lower()}'
                 if match.group("subspecies"):
                     name += " " + match.group("subspecies").lower()
-                return name
+                if self.root_name == name.split(" ")[-1]:
+                    return name
         return None
 
-    def get_value_for_field(self, field: str) -> Any:
+    def get_value_for_field(self, field: str, default: Optional[str] = None) -> Any:
         if (
             field == "collection"
             and self.collection is None
@@ -226,12 +242,12 @@ class Name(BaseModel):
                 coll = getter(coll_name)
                 print(f"inferred collection to be {coll} from {self.type_specimen}")
                 return coll
-            return super().get_value_for_field(field)
+            return super().get_value_for_field(field, default=default)
         elif field == "original_name":
             if self.original_name is None and self.group in (Group.genus, Group.high):
                 return self.root_name
             else:
-                return super().get_value_for_field(field)
+                return super().get_value_for_field(field, default=default)
         elif field == "corrected_original_name":
             inferred = self.infer_corrected_original_name()
             if inferred is not None:
@@ -240,19 +256,23 @@ class Name(BaseModel):
                 )
                 return inferred
             else:
-                return super().get_value_for_field(field)
+                if self.corrected_original_name is not None:
+                    default = self.corrected_original_name
+                else:
+                    default = self.original_name
+                return super().get_value_for_field(field, default=default)
         elif field == "type_tags":
             if self.type_locality is not None:
                 print(repr(self.type_locality))
             if self.collection is not None:
                 print(repr(self.collection))
-            return super().get_value_for_field(field)
+            return super().get_value_for_field(field, default=default)
         elif field == "type_specimen_source":
             return self.get_value_for_foreign_key_field(
                 field, default_obj=None, callbacks=self.get_adt_callbacks(),
             )
         elif field == "type":
-            typ = super().get_value_for_field(field)
+            typ = super().get_value_for_field(field, default=default)
             print(f"type: {typ}")
             if typ is None:
                 return None
@@ -262,7 +282,7 @@ class Name(BaseModel):
                 return None
         elif field == "citation_group":
             existing = self.citation_group
-            value = super().get_value_for_field(field)
+            value = super().get_value_for_field(field, default=default)
             if (
                 existing is None
                 and value is not None
@@ -271,12 +291,12 @@ class Name(BaseModel):
                 value.apply_to_patterns()
             return value
         elif field == "species_name_complex":
-            value = super().get_value_for_field(field)
+            value = super().get_value_for_field(field, default=default)
             if value is not None and value.kind.is_single_complex():
                 value.apply_to_ending(self.root_name, interactive=True)
             return value
         else:
-            return super().get_value_for_field(field)
+            return super().get_value_for_field(field, default=default)
 
     def get_adt_callbacks(self) -> getinput.CallbackMap:
         callbacks = super().get_adt_callbacks()
@@ -292,7 +312,11 @@ class Name(BaseModel):
             "make_variant": self.make_variant,
             "add_variant": self.add_variant,
             "preoccupied_by": self.preoccupied_by,
+            "display_type_locality": lambda: self.type_locality.display(),
         }
+
+    def edit(self) -> None:
+        self.fill_field("type_tags")
 
     def _add_type_identical_callback(self) -> None:
         root_name = self.getter("root_name").get_one_key(
@@ -358,7 +382,7 @@ class Name(BaseModel):
                     for attribute, typ in tag._attributes.items():
                         completer: Optional[getinput.Completer[Any]]
                         if typ is Name:
-                            completer = get_completer(Name, "original_name")
+                            completer = get_completer(Name, "corrected_original_name")
                         elif typ is Collection:
                             completer = get_completer(Collection, "label")
                         elif typ is Article:
@@ -620,7 +644,7 @@ class Name(BaseModel):
         return (
             self.numeric_year(),
             self.numeric_page_described(),
-            self.original_name or "",
+            self.corrected_original_name or "",
             self.root_name,
         )
 
@@ -877,11 +901,7 @@ class Name(BaseModel):
         ):
             return
         yield "original_name"
-        if (
-            self.group in (Group.genus, Group.species)
-            and self.original_name is not None
-            and self.nomenclature_status.requires_corrected_original_name()
-        ):
+        if self.original_name is not None:
             yield "corrected_original_name"
 
         yield "authority"
@@ -1508,6 +1528,27 @@ def is_valid_page_described_single(page_described: str) -> bool:
         if page_described.startswith(prefix):
             return is_valid_page_described_single(page_described[len(prefix) :])
     return False
+
+
+def clean_original_name(original_name: str) -> str:
+    original_name = (
+        original_name.replace("(?)", "")
+        .replace("?", "")
+        .replace("æ", "ae")
+        .replace("ë", "e")
+        .replace("í", "i")
+        .replace("ï", "i")
+        .replace("á", "a")
+        .replace('"', "")
+        .replace("'", "")
+        .replace("ř", "r")
+        .replace("é", "e")
+        .replace("š", "s")
+        .replace("á", "a")
+        .replace("ć", "c")
+    )
+    original_name = re.sub(r"\s+", " ", original_name).strip()
+    return re.sub(r"([a-z]{2})-([a-z]{2})", r"\1\2", original_name)
 
 
 class Tag(adt.ADT):
