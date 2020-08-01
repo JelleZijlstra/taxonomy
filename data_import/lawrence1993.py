@@ -11,7 +11,7 @@ import enum
 import json
 import re
 from pathlib import Path
-from typing import Any, Counter, Dict, Iterable, List, Optional, Tuple, Type, Union
+from typing import Any, Counter, Dict, Iterable, List, Optional, Tuple, Type
 
 import Levenshtein
 import unidecode

@@ -107,6 +107,7 @@ class _TagCallable(Protocol):
 
 _ATTR_MAPPING = {"class_": "class"}
 
+
 def _make_tag(tag_name: str) -> _TagCallable:
     def inner(content: Nodes = [], **attrs: str) -> Tag:
         attrs = {_ATTR_MAPPING.get(k, k): v for k, v in attrs.items()}

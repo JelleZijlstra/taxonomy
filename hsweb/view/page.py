@@ -62,7 +62,9 @@ class HomePage(Page):
     async def arender_body(self) -> c.Nodes:
         z: c.Nodes = []
         with c.P().into(z):
-            z += c.Text("The Hesperomys Project is a taxonomic and nomenclatural database of tetrapods. ")
+            z += c.Text(
+                "The Hesperomys Project is a taxonomic and nomenclatural database of tetrapods. "
+            )
             z += c.Text("This website is still under construction.")
         return z
 
