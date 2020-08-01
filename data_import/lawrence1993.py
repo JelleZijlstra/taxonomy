@@ -162,7 +162,7 @@ def extract_geographical_components(text: str) -> List[Tuple[str, ...]]:
     text = re.sub(r"([A-Z])\(([a-z]+)\)", r"\1\2", text)
     parts = re.split(r"[():,;\.]+", text)
     parts = list(filter(None, (part.strip() for part in parts)))
-    out: List[Union[str, Tuple[Any, str]]] = []
+    out: List[Any] = []
     for part in parts:
         if part.startswith("=") and out:
             out[-1] = (out[-1], part[1:].strip())

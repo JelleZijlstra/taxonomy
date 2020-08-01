@@ -352,6 +352,7 @@ class BaseModel(Model):
             "d": self.display,
             "edit_foreign": self.edit_foreign,
             "edit_sibling": self.edit_sibling,
+            "empty": self.empty,
         }
 
     def edit_sibling(self) -> None:
@@ -381,6 +382,23 @@ class BaseModel(Model):
             return
         value.display()
         value.edit()
+
+    def empty(self) -> None:
+        chosen = getinput.get_with_completion(
+            self._meta.fields,
+            "field to empty> ",
+            history_key=(type(self), "empty"),
+            disallow_other=True,
+        )
+        if not chosen:
+            return
+        value = getattr(self, chosen)
+        if value is None:
+            print(f"{self}: {chosen} is already None")
+            return
+        print(f"Current value: {value}")
+        setattr(self, chosen, None)
+        self.save()
 
     def edit(self) -> None:
         getinput.get_with_completion(
@@ -723,6 +741,14 @@ class _NameGetter(Generic[ModelT]):
             except self.cls.DoesNotExist:
                 print(f"{key!r} does not exist")
                 continue
+
+    def get_and_edit(self) -> None:
+        while True:
+            obj = self.get_one()
+            if obj is None:
+                return
+            obj.display()
+            obj.edit()
 
     def _warm_cache(self) -> None:
         if self._data is None:

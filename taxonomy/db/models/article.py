@@ -524,11 +524,16 @@ class Article(BaseModel):
     def display(self) -> None:
         print(self.cite())
 
-    def display_names(self) -> None:
+    def display_names(self, full: bool = False) -> None:
         print(repr(self))
-        self.display()
-        for nam in self.new_names:
-            nam.display()
+        new_names = list(self.new_names)
+        print(f"New names ({len(new_names)}):")
+        for nam in new_names:
+            nam.display(full=full)
+        tss_names = list(self.type_source_names)
+        print(f"Type specimen source ({len(tss_names)}):")
+        for nam in tss_names:
+            nam.display(full=full)
 
     def __str__(self) -> str:
         return f"{{{self.name}}}"

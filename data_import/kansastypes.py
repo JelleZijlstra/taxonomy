@@ -65,6 +65,7 @@ def split_fields(names: DataT) -> DataT:
         name["authority"] = match.group(2)
         name["verbatim_citation"] = match.group(3)
         if "Holotype" in name and "KU" in name["Holotype"]:
+            name["specimen_detail"] = name["Holotype"]
             name["species_type_kind"] = constants.SpeciesGroupType.holotype
             match = re.match(
                 r"[-—]?(.*), (KU \d+)( \(originally [^\)]+\))?, from (.*)[,;] obtained (.*?)\.?$",
@@ -119,7 +120,7 @@ def main() -> DataT:
     names = lib.translate_to_db(names, "KU", SOURCE)
     names = lib.translate_type_locality(names, start_at_end=True)
     names = associate_names(names)
-    lib.write_to_db(names, SOURCE, dry_run=False)
+    names = lib.write_to_db(names, SOURCE, dry_run=False)
     lib.print_counts_if_no_tag(names, "Holotype", models.TypeTag.Date)
     lib.print_field_counts(names)
     return names

@@ -250,6 +250,9 @@ class Source(NamedTuple):
     inputfile: str
     source: str
 
+    def get_source(self) -> models.Article:
+        return models.Article.get(name=self.source)
+
 
 class NameConfig(NamedTuple):
     original_name_fixes: Mapping[str, str] = {}
@@ -433,10 +436,15 @@ def clean_string(text: str) -> str:
 
 def clean_text_simple(names: DataT) -> DataT:
     for name in names:
-        yield {
-            "text": " ".join(line.strip() for line in name["lines"]),
-            "pages": name["pages"],
-        }
+        new_name = {"pages": name["pages"]}
+        for key, value in name.items():
+            if key == "pages":
+                continue
+            if key == "lines":
+                new_name["text"] = " ".join(line.strip() for line in value)
+            else:
+                new_name[key] = " ".join(line.strip() for line in value)
+        yield new_name
 
 
 def split_name_authority(
@@ -517,8 +525,6 @@ def translate_to_db(
         if "species_type_kind" in name:
             if coll is not None and "collection" not in name:
                 name["collection"] = coll
-            if source is not None and "type_specimen_source" not in name:
-                name["type_specimen_source"] = models.Article.get(name=source.source)
         type_tags: List[models.TypeTag] = name.get("type_tags", [])
         for field in ("age_gender", "gender_age", "gender"):
             if field in name:
@@ -537,12 +543,14 @@ def translate_to_db(
                     print(f'failed to parse body parts {name["body_parts"]!r}')
                 assert source is not None, f"missing source (at {name})"
                 type_tags.append(
-                    models.TypeTag.SpecimenDetail(name["body_parts"], source.source)
+                    models.TypeTag.SpecimenDetail(
+                        name["body_parts"], source.get_source()
+                    )
                 )
         if "loc" in name:
             text = name["loc"]
             assert source is not None, f"missing source (at {name})"
-            type_tags.append(models.TypeTag.LocationDetail(text, source.source))
+            type_tags.append(models.TypeTag.LocationDetail(text, source.get_source()))
             coords = helpers.extract_coordinates(text)
             if coords:
                 type_tags.append(models.TypeTag.Coordinates(coords[0], coords[1]))
@@ -573,7 +581,7 @@ def translate_to_db(
                     assert source is not None, f"missing source (at {name})"
                     type_tags.append(
                         models.TypeTag.SpecimenDetail(
-                            f'Collected: "{date}"', source.source
+                            f'Collected: "{date}"', source.get_source()
                         )
                     )
             else:
@@ -582,7 +590,9 @@ def translate_to_db(
         if "specimen_detail" in name:
             assert source is not None, f"missing source (at {name})"
             type_tags.append(
-                models.TypeTag.SpecimenDetail(name["specimen_detail"], source.source)
+                models.TypeTag.SpecimenDetail(
+                    name["specimen_detail"], source.get_source()
+                )
             )
         if "original_name" in name:
             name["original_name"] = re.sub(
@@ -1390,13 +1400,13 @@ def write_to_db(
                                     nam.add_variant(
                                         new_root_name,
                                         constants.NomenclatureStatus.incorrect_subsequent_spelling,
-                                        paper=source.source,
+                                        paper=source.get_source(),
                                         page_described=page_described,
                                         original_name=new_value,
                                     )
                                     continue
                         else:
-                            if existing.original_citation.name == source.source:
+                            if existing.original_citation == source.get_source():
                                 continue
 
                 if attr == "type_specimen_source":
@@ -1454,13 +1464,15 @@ def write_to_db(
                     nam.fill_field("type_tags")
 
             if (
-                nam.comments.filter(models.NameComment.source == source.source).count()
+                nam.comments.filter(
+                    models.NameComment.source == source.get_source()
+                ).count()
                 == 0
             ):
                 nam.add_comment(
                     constants.CommentKind.structured_quote,
                     json.dumps(name["raw_text"]),
-                    source.source,
+                    source.get_source(),
                     pages,
                 )
 

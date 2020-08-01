@@ -1716,10 +1716,11 @@ def clean_up_type_specimen_source(
             key=lambda nam: (
                 nam.type_specimen_source.path,
                 nam.type_specimen_source.name,
+                nam.corrected_original_name or "",
             ),
         )
     for nam in nams:
-        if clean_up_type_specimen_source_for_name(
+        if models.taxon.clean_up_type_specimen_source_for_name(
             nam, dry_run=dry_run, fast=fast, interactive=interactive
         ):
             count += 1
@@ -1730,51 +1731,9 @@ def clean_up_type_specimen_source(
 def clean_up_type_specimen_source_for_name(
     nam: Name, dry_run: bool = False, fast: bool = False, interactive: bool = False
 ) -> bool:
-    if (
-        not nam.type_tags
-        or nam.type_specimen is None
-        or nam.type_specimen_source is None
-    ):
-        return False
-    matching_tags = [
-        tag
-        for tag in nam.type_tags
-        if isinstance(tag, (TypeTag.SpecimenDetail, TypeTag.CollectionDetail))
-        and tag.source == nam.type_specimen_source
-    ]
-    patterns = [helpers.simplify_string(nam.type_specimen)]
-    numeric_type_specimen = helpers.simplify_string(
-        re.sub(r"^[A-Z]+ ", "", nam.type_specimen)
+    return models.taxon.clean_up_type_specimen_source_for_name(
+        nam, dry_run=dry_run, fast=fast, interactive=interactive
     )
-    if len(numeric_type_specimen) > 4:
-        patterns.append(numeric_type_specimen)
-    texts = [helpers.simplify_string(tag.text) for tag in matching_tags]
-    if matching_tags:
-        if any(pattern in text for text in texts for pattern in patterns):
-            if fast:
-                print(nam)
-            else:
-                nam.display()
-                for tag in matching_tags:
-                    print(tag)
-            if not dry_run:
-                nam.type_specimen_source = None
-                nam.save()
-            getinput.flush()
-            return True
-        elif interactive:
-            nam.display()
-            for tag in matching_tags:
-                print(tag)
-            if not dry_run:
-                nam.type_specimen_source.openf()
-                nam.type_specimen_source.add_to_history()
-                nam.edit()
-                nam.type_specimen_source = None
-                nam.save()
-            getinput.flush()
-            return True
-    return False
 
 
 @command
@@ -1885,23 +1844,32 @@ def set_empty_to_none(
 def fill_data_from_paper(
     paper: Optional[models.Article] = None,
     level: FillDataLevel = FillDataLevel.only_if_limited_data,
+    ask_before_opening: bool = True,
 ) -> None:
     if paper is None:
         paper = models.BaseModel.get_value_for_foreign_class(
             "paper", models.Article, allow_none=False
         )
     assert paper is not None, "paper needs to be specified"
-    models.taxon.fill_data_from_paper(paper, level=level)
+    models.taxon.fill_data_from_paper(
+        paper, level=level, ask_before_opening=ask_before_opening
+    )
 
 
 @command
 def fill_data_from_author(
-    author: str, level: FillDataLevel = FillDataLevel.only_if_limited_data
+    author: str,
+    level: FillDataLevel = FillDataLevel.only_if_limited_data,
+    ask_before_opening: bool = False,
 ) -> None:
     for nam in Name.bfind(authority=author):
         if nam.original_citation is not None:
             print(nam, nam.original_citation)
-            models.taxon.fill_data_from_paper(nam.original_citation, level=level)
+            models.taxon.fill_data_from_paper(
+                nam.original_citation,
+                level=level,
+                ask_before_opening=ask_before_opening,
+            )
 
 
 @command
@@ -2233,13 +2201,34 @@ def type_locality_without_detail() -> Iterable[Name]:
 
 @command
 def most_common(model_cls: Type[models.BaseModel], field: str) -> Counter[Any]:
-    objects = model_cls.bfind(getattr(model_cls, field) != None, quiet=True)
+    objects = model_cls.select_valid().filter(getattr(model_cls, field) != None)
     counter: Counter[Any] = Counter()
     for obj in objects:
         counter[getattr(obj, field)] += 1
     for value, count in counter.most_common(10):
         print(value, count)
     return counter
+
+
+@command
+def most_common_mapped(
+    model_cls: Type[models.BaseModel], field: str, mapper: Callable[[Any], Any]
+) -> Counter[Any]:
+    objects = model_cls.select_valid().filter(getattr(model_cls, field) != None)
+    counter: Counter[Any] = Counter()
+    for obj in objects:
+        value = getattr(obj, field)
+        counter[mapper(value)] += 1
+    for value, count in counter.most_common(10):
+        print(value, count)
+    return counter
+
+
+@command
+def most_common_cg_for_tss() -> Counter[models.CitationGroup]:
+    return most_common_mapped(
+        Name, "type_specimen_source", lambda art: art.citation_group
+    )
 
 
 @command
@@ -2253,17 +2242,22 @@ def fill_data_from_folder(
     folder: str,
     level: FillDataLevel = FillDataLevel.only_if_limited_data,
     only_fill_cache: bool = False,
+    ask_before_opening: bool = True,
 ) -> None:
     arts = Article.bfind(Article.path.startswith(folder), quiet=True)
     fill_data_from_articles(
         sorted(arts, key=lambda art: art.path),
         level=level,
         only_fill_cache=only_fill_cache,
+        ask_before_opening=ask_before_opening,
     )
 
 
 def fill_data_from_articles(
-    arts: Sequence[Article], level: FillDataLevel, only_fill_cache: bool
+    arts: Sequence[Article],
+    level: FillDataLevel,
+    only_fill_cache: bool,
+    ask_before_opening: bool = False,
 ) -> None:
     total = len(arts)
     if total is None:
@@ -2275,7 +2269,10 @@ def fill_data_from_articles(
         print(f"{percentage:.03}% ({i}/{total}) {art.path}/{art.name}")
         getinput.flush()
         if models.taxon.fill_data_from_paper(
-            art, level=level, only_fill_cache=only_fill_cache
+            art,
+            level=level,
+            only_fill_cache=only_fill_cache,
+            ask_before_opening=ask_before_opening,
         ):
             done += 1
     print(f"{done}/{total} ({(done / total) * 100:.03}%) done")
@@ -2283,15 +2280,32 @@ def fill_data_from_articles(
 
 @command
 def fill_data_from_citation_group(
-    cg: CitationGroup,
+    cg: Optional[CitationGroup] = None,
     level: FillDataLevel = FillDataLevel.only_if_limited_data,
     only_fill_cache: bool = False,
+    ask_before_opening: bool = True,
 ) -> None:
-    arts = sorted(
-        cg.get_articles(),
-        key=lambda art: (art.numeric_year(), art.numeric_start_page()),
+    if cg is None:
+        cg = CitationGroup.getter("name").get_one()
+    if cg is None:
+        return
+
+    def sort_key(art: Article) -> Tuple[int, int, int]:
+        year = art.numeric_year()
+        try:
+            volume = int(art.volume)
+        except (TypeError, ValueError):
+            volume = 0
+        start_page = art.numeric_start_page()
+        return (year, volume, start_page)
+
+    arts = sorted(cg.get_articles(), key=sort_key)
+    fill_data_from_articles(
+        arts,
+        level=level,
+        only_fill_cache=only_fill_cache,
+        ask_before_opening=ask_before_opening,
     )
-    fill_data_from_articles(arts, level=level, only_fill_cache=only_fill_cache)
 
 
 @command
@@ -3303,6 +3317,19 @@ def print_parent() -> Optional[Taxon]:
     if taxon:
         return taxon.parent
     return None
+
+
+@command
+def clean_tss_interactive(
+    art: Optional[Article] = None, field: str = "corrected_original_name"
+) -> None:
+    if art is None:
+        art = Article.getter("name").get_one()
+        if art is None:
+            return
+    art.display_names()
+    models.taxon.clean_tss_interactive(art, field=field)
+    fill_data_from_paper(art)
 
 
 def run_shell() -> None:

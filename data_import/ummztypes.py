@@ -59,7 +59,7 @@ def extract_names(pages: Iterable[Tuple[int, List[str]]]) -> DataT:
 
 def split_fields(names: DataT) -> DataT:
     for name in names:
-        name["raw_name"] = dict(name)
+        name["raw_text"] = dict(name)
         match = re.match(
             r"^([A-Z][a-z ]+) \(?([A-Z][a-zé A-Z\.]+)\)?, (.*)$", name["name"]
         )
@@ -99,11 +99,17 @@ def split_fields(names: DataT) -> DataT:
 def translate_to_db(names: DataT) -> DataT:
     ummz = models.Collection.by_label("UMMZ")
     for name in names:
+        type_tags: List[models.TypeTag] = []
         if "Holotype" in name:
             name["collection"] = ummz
-            name["type_specimen_source"] = models.Article.get(name=SOURCE)
             name["species_type_kind"] = constants.SpeciesGroupType.holotype
-        type_tags: List[models.TypeTag] = []
+        for field in ("Holotype", "Lectotype", "Neotype"):
+            if field in name:
+                type_tags.append(
+                    models.TypeTag.SpecimenDetail(
+                        name[field], models.Article.get(name=SOURCE.source)
+                    )
+                )
         if "gender_age" in name:
             type_tags += lib.extract_gender_age(name["gender_age"])
         if "body_parts" in name:
@@ -146,7 +152,7 @@ def main() -> DataT:
     names = split_fields(names)
     names = translate_to_db(names)
     names = associate_names(names)
-    lib.write_to_db(names, SOURCE, dry_run=False)
+    names = lib.write_to_db(names, SOURCE, dry_run=False)
     return names
 
 

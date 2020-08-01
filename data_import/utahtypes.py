@@ -32,7 +32,7 @@ def split_text(names: DataT) -> DataT:
         text = name["lines"]
         name["raw_text"] = text
         match = re.match(
-            r"^(.*?)[\. ]+HOLOTYPE[\.\- —]+(.*?)(REMARKS[\.\- ]+(.*))?$", text
+            r"^(.*?)[\. ]+HOLOTYPE[\.\- —]+(.*?)(REMARK[Ss][\.\- ]+(.*))?$", text
         )
         if match:
             name["name_author"] = match.group(1)
@@ -62,10 +62,11 @@ def split_fields(names: DataT) -> DataT:
         assert match is not None, f'failed to match {name["holotype"]}'
         name["age_gender"] = match.group(1)
         name["body_parts"] = match.group(2)
-        name["type_specimen"] = match.group(3)
+        name["type_specimen"] = match.group(3).replace("UU ", "UMNH ")
         name["loc"] = match.group(4)
         name["date"] = match.group(5)
         name["collector"] = match.group(6)
+        name["specimen_detail"] = name["holotype"]
         yield name
 
 
@@ -76,10 +77,10 @@ def main() -> None:
     names = lib.clean_text(names)
     names = split_text(names)
     names = split_fields(names)
-    names = lib.translate_to_db(names, "UU", SOURCE)
+    names = lib.translate_to_db(names, "UMNH", SOURCE)
     names = lib.translate_type_locality(names, start_at_end=True)
     names = lib.associate_names(names)
-    lib.write_to_db(names, SOURCE, dry_run=False)
+    names = lib.write_to_db(names, SOURCE, dry_run=False)
     lib.print_field_counts(names)
 
 

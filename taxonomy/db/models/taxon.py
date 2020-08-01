@@ -1040,6 +1040,7 @@ class Taxon(BaseModel):
         age: Optional[constants.Age] = None,
         field: Optional[str] = None,
         level: FillDataLevel = FillDataLevel.only_if_limited_data,
+        ask_before_opening: bool = True,
     ) -> None:
         """Calls fill_required_fields() for all names in this taxon."""
         all_names = self.all_names(age=age)
@@ -1066,11 +1067,18 @@ class Taxon(BaseModel):
                 return True
 
         citations = sorted(
-            {nam.original_citation for nam in all_names if should_include(nam)},
+            {nam.original_citation for nam in all_names if should_include(nam)}
+            | {
+                nam.type_specimen_source
+                for nam in all_names
+                if nam.type_specimen_source is not None
+            },
             key=lambda art: art.name,
         )
         for citation in citations:
-            fill_data_from_paper(citation, level=level)
+            fill_data_from_paper(
+                citation, level=level, ask_before_opening=ask_before_opening
+            )
         if not only_with_original:
             for nam in self.all_names(age=age):
                 nam = nam.reload()
@@ -1161,6 +1169,7 @@ def fill_data_from_paper(
     paper: Article,
     level: FillDataLevel = FillDataLevel.only_if_limited_data,
     only_fill_cache: bool = False,
+    ask_before_opening: bool = False,
 ) -> bool:
     if (paper.name, level) in _finished_papers:
         return True
@@ -1178,8 +1187,11 @@ def fill_data_from_paper(
         ),
         key=sort_key,
     )
+    nams = [nam for nam in nams if _should_include_in_always_edit(nam, level)]
     if nams:
         print(f"{paper.name}: {len(nams)} names (fill_data_from_paper)")
+        if ask_before_opening and not only_fill_cache:
+            clean_tss_interactive(paper)
 
     for nam in nams:
         if not only_fill_cache:
@@ -1204,7 +1216,9 @@ def fill_data_from_paper(
                 nam.fill_field("type_tags")
 
     opened_for_tss = replace_type_specimen_source_from_paper(
-        paper, only_fill_cache=only_fill_cache
+        paper,
+        only_fill_cache=only_fill_cache,
+        ask_before_opening=ask_before_opening and not nams,
     )
 
     if not opened and not opened_for_tss:
@@ -1213,11 +1227,90 @@ def fill_data_from_paper(
     return False
 
 
+def _contains_type_specimen(
+    text: str, specimen_text: str, collection: Optional["models.Collection"]
+) -> bool:
+    patterns = [helpers.simplify_string(specimen_text)]
+    numeric_type_specimen = helpers.simplify_string(
+        re.sub(r"^[A-Z]+ ", "", specimen_text)
+    )
+    if len(numeric_type_specimen) > 3:
+        patterns.append(numeric_type_specimen)
+    if collection and specimen_text.startswith(collection.label + " "):
+        num_chars = len(collection.label) + 1
+        simplified = helpers.simplify_string(specimen_text[num_chars:])
+        if len(simplified) > 3:
+            patterns.append(simplified)
+    return any(pattern in text for pattern in patterns)
+
+
+def clean_up_type_specimen_source_for_name(
+    nam: "models.Name",
+    dry_run: bool = False,
+    fast: bool = False,
+    interactive: bool = False,
+) -> bool:
+    if (
+        not nam.type_tags
+        or nam.type_specimen is None
+        or nam.type_specimen_source is None
+    ):
+        return False
+    matching_tags = [
+        tag
+        for tag in nam.type_tags
+        if isinstance(
+            tag,
+            (models.name.TypeTag.SpecimenDetail, models.name.TypeTag.CollectionDetail),
+        )
+        and tag.source == nam.type_specimen_source
+    ]
+    patterns = [helpers.simplify_string(nam.type_specimen)]
+    numeric_type_specimen = helpers.simplify_string(
+        re.sub(r"^[A-Z]+ ", "", nam.type_specimen)
+    )
+    if len(numeric_type_specimen) > 4:
+        patterns.append(numeric_type_specimen)
+    texts = [helpers.simplify_string(tag.text) for tag in matching_tags]
+    if matching_tags:
+        if any(
+            all(
+                _contains_type_specimen(text, part, nam.collection)
+                for part in nam.type_specimen.split(", ")
+            )
+            for text in texts
+        ):
+            if fast:
+                print(nam)
+            else:
+                nam.display()
+                for tag in matching_tags:
+                    print(tag)
+            if not dry_run:
+                nam.type_specimen_source = None
+                nam.save()
+            getinput.flush()
+            return True
+        elif interactive:
+            nam.display()
+            for tag in matching_tags:
+                print(tag)
+            if not dry_run:
+                nam.type_specimen_source.openf()
+                nam.type_specimen_source.add_to_history()
+                nam.edit()
+                nam.type_specimen_source = None
+                nam.save()
+            getinput.flush()
+            return True
+    return False
+
+
 _checked_arts_for_type_specimen_source: Set[str] = set()
 
 
 def replace_type_specimen_source_from_paper(
-    art: Article, only_fill_cache: bool = False
+    art: Article, only_fill_cache: bool = False, ask_before_opening: bool = False
 ) -> bool:
     if art.name in _checked_arts_for_type_specimen_source:
         return False
@@ -1225,11 +1318,28 @@ def replace_type_specimen_source_from_paper(
     if not nams:
         _checked_arts_for_type_specimen_source.add(art.name)
         return False
+    print(f"{art.name}: {len(nams)} names (replace_type_specimen_source_from_paper)")
     if only_fill_cache:
         return True
-    print(f"{art.name}: {len(nams)} names (replace_type_specimen_source_from_paper)")
+    for nam in nams:
+        clean_up_type_specimen_source_for_name(nam)
+    nams = list(art.type_source_names)
+    if not nams:
+        _checked_arts_for_type_specimen_source.add(art.name)
+        return False
     art.add_to_history()
     art.openf()
+    if ask_before_opening:
+        clean_tss_interactive(art)
+
+    nams = list(art.type_source_names)
+    for nam in nams:
+        clean_up_type_specimen_source_for_name(nam)
+
+    nams = list(art.type_source_names)
+    if not nams:
+        _checked_arts_for_type_specimen_source.add(art.name)
+        return False
 
     def sort_key(nam: models.Name) -> Tuple[bool, int]:
         if nam.original_citation == art:
@@ -1238,11 +1348,35 @@ def replace_type_specimen_source_from_paper(
             return (True, nam.id)
 
     for nam in sorted(nams, key=sort_key):
+        nam = nam.reload()
+        if nam.type_specimen_source is None:
+            print(f"{art.name}: type_specimen_source already gone from {nam}")
+            continue
         nam.display()
         nam.e.type_tags
         nam.type_specimen_source = None
         nam.save()
     return True
+
+
+def clean_tss_interactive(art: Article, field: str = "corrected_original_name") -> None:
+    art.openf()
+    art.add_to_history()
+    while True:
+        obj = models.Name.getter(field).get_one(
+            prompt=f"{field}> ",
+            callbacks={"o": lambda: art.openf(), "d": lambda: art.display_names()},
+        )
+        if obj is None:
+            break
+        obj.display()
+        obj.edit()
+        clean_up_type_specimen_source_for_name(obj)
+        if obj.type_specimen_source == art:
+            obj.display()
+            if getinput.yes_no("Remove type_specimen_source? "):
+                obj.type_specimen_source = None
+            obj.save()
 
 
 def _should_include_in_always_edit(nam: "models.Name", level: FillDataLevel) -> bool:

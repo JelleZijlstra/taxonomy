@@ -21,7 +21,6 @@ from typing import (
 )
 
 from peewee import CharField, ForeignKeyField, IntegerField, Model, TextField
-from taxonomy.db import models
 
 from .. import constants, helpers
 from ... import adt, events, getinput
@@ -290,11 +289,6 @@ class Name(BaseModel):
             ):
                 value.apply_to_patterns()
             return value
-        elif field == "species_name_complex":
-            value = super().get_value_for_field(field, default=default)
-            if value is not None and value.kind.is_single_complex():
-                value.apply_to_ending(self.root_name, interactive=True)
-            return value
         else:
             return super().get_value_for_field(field, default=default)
 
@@ -341,7 +335,7 @@ class Name(BaseModel):
         self,
         name: str,
         page_described: Union[None, int, str] = None,
-        locality: Optional["models.Location"] = None,
+        locality: Optional[Location] = None,
         **kwargs: Any,
     ) -> "Taxon":
         """Convenience method to add a type species described in the same paper as the genus."""
@@ -868,7 +862,8 @@ class Name(BaseModel):
         print(
             self.get_description(
                 full=full, include_data=include_data, include_taxon=True
-            )
+            ),
+            end="",
         )
 
     def knowledge_level(self, verbose: bool = False) -> int:

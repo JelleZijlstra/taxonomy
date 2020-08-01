@@ -34,12 +34,23 @@ def extract_names(names: DataT) -> DataT:
             .title()
             .replace("Van Der Straeten", "Van der Straeten")
             .replace("Thomas", "O. Thomas")
-            .replace("Dewinton", "de Winton"),
+            .replace("Dewinton", "de Winton")
+            .replace("Heim De Balsac", "Heim de Balsac"),
         )
         name["species_type_kind"] = constants.SpeciesGroupType.holotype
-        coll = name["type_specimen"].split()[0]
+        coll = (
+            name["type_specimen"]
+            .split()[0]
+            .replace("CM", "CM (Carnegie)")
+            .replace("MRAC", "RMCA")
+        )
         name["collection"] = models.Collection.by_label(coll)
-        name["type_specimen_source"] = models.Name.get(name=SOURCE.source)
+        name["type_tags"] = [
+            models.TypeTag.SpecimenDetail(
+                "[Holotype] " + name["type_specimen"],
+                models.Article.get(name=SOURCE.source),
+            )
+        ]
         yield name
 
 
@@ -49,7 +60,7 @@ def main() -> DataT:
     names = extract_names(names)
 
     names = lib.associate_names(names)
-    lib.write_to_db(names, SOURCE, dry_run=False)
+    names = lib.write_to_db(names, SOURCE, dry_run=False)
     # lib.print_counts_if_no_tag(names, 'loc', models.TypeTag.Coordinates)
     lib.print_field_counts(names)
     return names
