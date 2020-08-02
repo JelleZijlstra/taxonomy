@@ -234,4 +234,4 @@ class CitationGroupTag(adt.ADT):
     # Articles in this citation group must have a series set.
     MustHaveSeries(comment=str, tag=11)  # type: ignore
     # Information on where to find it.
-    Repository(url=str, comment=str, tag=12)  # type: ignore
+    OnlineRepository(url=str, comment=str, tag=12)  # type: ignore

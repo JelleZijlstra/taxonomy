@@ -18,7 +18,7 @@ import unidecode
 
 from taxonomy import getinput
 from taxonomy.db import constants, helpers, models
-from taxonomy.db.constants import Organ
+from taxonomy.db.constants import SpecimenOrgan
 from taxonomy.db.models import TypeTag
 
 from . import lib
@@ -238,10 +238,10 @@ def extract_collector(text: str) -> str:
     return re.sub(r" \([A-Z\d]+\)$", "", text)
 
 
-SKIN = TypeTag.Organ(Organ.skin, "", "")
-SKULL = TypeTag.Organ(Organ.skull, "", "")
-IN_ALCOHOL = TypeTag.Organ(Organ.in_alcohol, "", "")
-SKELETON = TypeTag.Organ(Organ.postcranial_skeleton, "", "")
+SKIN = TypeTag.Organ(SpecimenOrgan.skin, "", "")
+SKULL = TypeTag.Organ(SpecimenOrgan.skull, "", "")
+IN_ALCOHOL = TypeTag.Organ(SpecimenOrgan.in_alcohol, "", "")
+SKELETON = TypeTag.Organ(SpecimenOrgan.postcranial_skeleton, "", "")
 
 
 def enum_has_member(enum_cls: Type[enum.Enum], member: str) -> bool:

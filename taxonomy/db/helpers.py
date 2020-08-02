@@ -229,11 +229,11 @@ def fix_data(data: str) -> Optional[str]:
         return None
 
 
-def convert_gender(name: str, gender: constants.Gender) -> str:
+def convert_gender(name: str, gender: constants.GrammaticalGender) -> str:
     name = _canonicalize_gender(name)
-    if gender == constants.Gender.masculine:
+    if gender == constants.GrammaticalGender.masculine:
         return name
-    elif gender == constants.Gender.feminine:
+    elif gender == constants.GrammaticalGender.feminine:
         # TODO this will fail occasionally
         if name.endswith("us"):
             return re.sub(r"us$", "a", name)
@@ -241,7 +241,7 @@ def convert_gender(name: str, gender: constants.Gender) -> str:
             return name + "a"
         else:
             return name
-    elif gender == constants.Gender.neuter:
+    elif gender == constants.GrammaticalGender.neuter:
         # should really only be ensis but let's be broader
         if name.endswith("is"):
             return re.sub(r"is$", "e", name)

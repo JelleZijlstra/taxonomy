@@ -3,9 +3,9 @@ from typing import Any, Iterable, List, Optional
 import peewee
 from peewee import BooleanField, CharField, ForeignKeyField
 
-from .. import constants, models
+from .. import models
 from ... import events, getinput
-from ..constants import GenderArticle, Group, SourceLanguage, SpeciesNameKind
+from ..constants import GrammaticalGender, GenderArticle, Group, SourceLanguage, SpeciesNameKind
 
 from .base import BaseModel, EnumField
 
@@ -99,13 +99,13 @@ class SpeciesNameComplex(BaseModel):
                     return name[: -len(ending)]
         raise ValueError(f"could not extract stem from {name} using {self}")
 
-    def get_form(self, name: str, gender: constants.Gender) -> str:
+    def get_form(self, name: str, gender: GrammaticalGender) -> str:
         stem = self.get_stem_from_name(name)
-        if gender == constants.Gender.masculine:
+        if gender == GrammaticalGender.masculine:
             return stem + self.masculine_ending
-        elif gender == constants.Gender.feminine:
+        elif gender == GrammaticalGender.feminine:
             return stem + self.feminine_ending
-        elif gender == constants.Gender.neuter:
+        elif gender == GrammaticalGender.neuter:
             return stem + self.neuter_ending
         else:
             raise ValueError(f"invalid gender {gender!r}")
@@ -298,7 +298,7 @@ class NameComplex(BaseModel):
     stem = CharField()
     source_language = EnumField(SourceLanguage)
     code_article = EnumField(GenderArticle)
-    gender = EnumField(constants.Gender)
+    gender = EnumField(GrammaticalGender)
     comment = CharField()
     stem_remove = CharField(null=False)
     stem_add = CharField(null=False)
@@ -365,7 +365,7 @@ class NameComplex(BaseModel):
         stem: Optional[str] = None,
         source_language: SourceLanguage = SourceLanguage.other,
         code_article: GenderArticle,
-        gender: constants.Gender,
+        gender: GrammaticalGender,
         comment: Optional[str] = None,
         stem_remove: str = "",
         stem_add: str = "",
@@ -389,7 +389,7 @@ class NameComplex(BaseModel):
         stem: Optional[str] = None,
         source_language: SourceLanguage,
         code_article: GenderArticle,
-        gender: constants.Gender,
+        gender: GrammaticalGender,
         comment: Optional[str] = None,
         stem_remove: str = "",
         stem_add: str = "",
@@ -426,7 +426,7 @@ class NameComplex(BaseModel):
     def latin_stem(
         cls,
         stem: str,
-        gender: constants.Gender,
+        gender: GrammaticalGender,
         comment: Optional[str] = None,
         stem_remove: str = "",
         stem_add: str = "",
@@ -447,7 +447,7 @@ class NameComplex(BaseModel):
     def unknown_obvious_stem(
         cls,
         stem: str,
-        gender: constants.Gender,
+        gender: GrammaticalGender,
         comment: Optional[str] = None,
         stem_remove: str = "",
         stem_add: str = "",
@@ -468,7 +468,7 @@ class NameComplex(BaseModel):
     def greek_stem(
         cls,
         stem: str,
-        gender: constants.Gender,
+        gender: GrammaticalGender,
         comment: Optional[str] = None,
         stem_remove: str = "",
         stem_add: str = "",
@@ -489,7 +489,7 @@ class NameComplex(BaseModel):
     def latinized_greek(
         cls,
         stem: str,
-        gender: constants.Gender,
+        gender: GrammaticalGender,
         comment: Optional[str] = None,
         stem_remove: str = "",
         stem_add: str = "",
@@ -510,7 +510,7 @@ class NameComplex(BaseModel):
     def bad_transliteration(
         cls,
         stem: str,
-        gender: constants.Gender,
+        gender: GrammaticalGender,
         comment: Optional[str] = None,
         stem_remove: str = "",
         stem_add: str = "",
@@ -531,7 +531,7 @@ class NameComplex(BaseModel):
     def common_gender(
         cls,
         stem: str,
-        gender: constants.Gender = constants.Gender.masculine,
+        gender: GrammaticalGender = GrammaticalGender.masculine,
         comment: Optional[str] = None,
         stem_remove: str = "",
         stem_add: str = "",
@@ -552,13 +552,13 @@ class NameComplex(BaseModel):
     def oides_name(
         cls,
         stem: str,
-        gender: constants.Gender = constants.Gender.masculine,
+        gender: GrammaticalGender = GrammaticalGender.masculine,
         comment: Optional[str] = None,
     ) -> "NameComplex":
         """Names ending in -oides and a few other endings default to masculine unless the author treated it otherwise."""
         if stem not in ("ites", "oides", "ides", "odes", "istes"):
             raise ValueError("Art. 30.1.4.4 only applies to a limited set of stems")
-        if gender != constants.Gender.masculine:
+        if gender != GrammaticalGender.masculine:
             label = f"{stem}_{gender.name}"
         else:
             label = stem
@@ -577,7 +577,7 @@ class NameComplex(BaseModel):
     def latin_changed_ending(
         cls,
         stem: str,
-        gender: constants.Gender,
+        gender: GrammaticalGender,
         comment: Optional[str] = None,
         stem_remove: str = "",
         stem_add: str = "",
@@ -596,7 +596,7 @@ class NameComplex(BaseModel):
 
     @classmethod
     def stem_expressly_set(
-        cls, gender: constants.Gender, stem_remove: str = "", stem_add: str = ""
+        cls, gender: GrammaticalGender, stem_remove: str = "", stem_add: str = ""
     ) -> "NameComplex":
         """Stem expressly set to a specific value."""
         label = cls._make_label(
@@ -613,7 +613,7 @@ class NameComplex(BaseModel):
 
     @classmethod
     def expressly_specified(
-        cls, gender: constants.Gender, stem_remove: str = "", stem_add: str = ""
+        cls, gender: GrammaticalGender, stem_remove: str = "", stem_add: str = ""
     ) -> "NameComplex":
         """Gender expressly specified by the author."""
         label = cls._make_label(
@@ -630,7 +630,7 @@ class NameComplex(BaseModel):
 
     @classmethod
     def indicated(
-        cls, gender: constants.Gender, stem_remove: str = "", stem_add: str = ""
+        cls, gender: GrammaticalGender, stem_remove: str = "", stem_add: str = ""
     ) -> "NameComplex":
         """Gender indicated by an adjectival species name."""
         label = cls._make_label(f"indicated_{gender.name}", stem_remove, stem_add)
@@ -652,7 +652,7 @@ class NameComplex(BaseModel):
         return cls._get_or_create(
             label,
             source_language=SourceLanguage.other,
-            gender=constants.Gender.masculine,
+            gender=GrammaticalGender.masculine,
             code_article=GenderArticle.art30_2_4,
             stem_remove=stem_remove,
             stem_add=stem_add,
@@ -661,17 +661,17 @@ class NameComplex(BaseModel):
     @classmethod
     def defaulted(
         cls,
-        gender: constants.Gender,
+        gender: GrammaticalGender,
         ending: str,
         stem_remove: str = "",
         stem_add: str = "",
     ) -> "NameComplex":
         """Defaulted to feminine or neuter as a non-Western name with a specific ending."""
-        if gender == constants.Gender.masculine:
+        if gender == GrammaticalGender.masculine:
             assert False, "use defaulted_masculine instead"
-        elif gender == constants.Gender.feminine:
+        elif gender == GrammaticalGender.feminine:
             assert ending == "a", "only -a endings default to feminine"
-        elif gender == constants.Gender.neuter:
+        elif gender == GrammaticalGender.neuter:
             assert ending in (
                 "um",
                 "on",
@@ -732,7 +732,7 @@ class NameComplex(BaseModel):
         ):
             stem = getinput.get_line("stem> ")
             gender = getinput.get_enum_member(
-                constants.Gender, "gender> ", allow_empty=False
+                GrammaticalGender, "gender> ", allow_empty=False
             )
             comment = getinput.get_line("comment> ")
             stem_remove = getinput.get_line("stem_remove> ")
@@ -749,7 +749,7 @@ class NameComplex(BaseModel):
                 nc.self_apply(dry_run=False)
         elif kind in ("expressly_specified", "indicated", "stem_expressly_set"):
             gender = getinput.get_enum_member(
-                constants.Gender, "gender> ", allow_empty=False
+                GrammaticalGender, "gender> ", allow_empty=False
             )
             stem_remove = getinput.get_line("stem_remove> ")
             stem_add = getinput.get_line("stem_add> ")
@@ -760,7 +760,7 @@ class NameComplex(BaseModel):
             nc = method(stem_remove=stem_remove, stem_add=stem_add)
         elif kind == "defaulted":
             gender = getinput.get_enum_member(
-                constants.Gender, "gender> ", allow_empty=False
+                GrammaticalGender, "gender> ", allow_empty=False
             )
             ending = getinput.get_line("ending> ")
             stem_remove = getinput.get_line("stem_remove> ")

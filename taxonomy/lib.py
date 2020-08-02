@@ -11,7 +11,7 @@ from typing import Any, Container, Dict, Iterable, List, Optional, Tuple, Type, 
 
 import peewee
 
-from taxonomy.db.constants import Age, Group, Rank, Status
+from taxonomy.db.constants import AgeClass, Group, Rank, Status
 from taxonomy.db.models import (
     Article,
     BaseModel,
@@ -161,10 +161,10 @@ def unrecorded_taxa(root: Taxon) -> None:
     def has_occurrence(taxon: Taxon) -> bool:
         return taxon.occurrences.count() > 0
 
-    if root.age == Age.fossil:
+    if root.age is AgeClass.fossil:
         return
 
-    if root.rank == Rank.species:
+    if root.rank is Rank.species:
         if not has_occurrence(root) and not any(
             has_occurrence(child) for child in root.children
         ):
@@ -209,11 +209,11 @@ def count_field(model: Type[BaseModel], field: str) -> List[Tuple[Any, int]]:
 def locless_names(
     genus: Taxon,
     attribute: str = "type_locality",
-    age: Optional[Age] = Age.removed,
+    age: Optional[AgeClass] = AgeClass.removed,
     min_year: Optional[int] = None,
     exclude: Container["Taxon"] = frozenset(),
 ) -> List[Name]:
-    if age is Age.removed:
+    if age is AgeClass.removed:
         age = genus.age
     nams = list(
         genus.names_missing_field(
@@ -228,7 +228,7 @@ def locless_names(
 def names_with_attribute(
     txn: Taxon,
     attribute: str,
-    age: Optional[Age] = None,
+    age: Optional[AgeClass] = None,
     exclude: Container["Taxon"] = frozenset(),
 ) -> List[Name]:
     nams = [

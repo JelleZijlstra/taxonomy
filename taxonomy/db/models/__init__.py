@@ -17,7 +17,7 @@ from .name import (  # noqa: F401
     Name as Name,
     NameComment as NameComment,
     TypeTag as TypeTag,
-    Tag as Tag,
+    NameTag as NameTag,
     STATUS_TO_TAG as STATUS_TO_TAG,
     has_data_from_original as has_data_from_original,
 )

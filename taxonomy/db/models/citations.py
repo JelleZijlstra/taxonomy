@@ -3,7 +3,7 @@
 import re
 from typing import Dict, List, Optional
 
-from .article import Article, Tag, register_cite_function
+from .article import Article, ArticleTag, register_cite_function
 from ..constants import ArticleType
 
 
@@ -467,7 +467,7 @@ def citebibtex(article: Article) -> str:
     elif article.type == ArticleType.BOOK:
         add("publisher", article.publisher, True)
         add("address", article.place_of_publication)
-    isbn = article.getIdentifier(Tag.ISBN)
+    isbn = article.getIdentifier(ArticleTag.ISBN)
     if isbn:
         add("note", "{ISBN} " + isbn)
     out += "}"
@@ -523,12 +523,16 @@ def citewp(article: Article) -> str:
     if doi:
         # {{cite doi}}
         out1 = "{{cite doi|" + doi + "}}"
-    elif article.getIdentifier(Tag.JSTOR):
+    elif article.getIdentifier(ArticleTag.JSTOR):
         # {{cite jstor}}
-        out1 = "{{cite jstor|" + article.getIdentifier(Tag.JSTOR) + "}}"  # type: ignore
-    elif article.getIdentifier(Tag.HDL):
+        out1 = (
+            "{{cite jstor|" + article.getIdentifier(ArticleTag.JSTOR) + "}}"
+        )  # type: ignore
+    elif article.getIdentifier(ArticleTag.HDL):
         # {{cite hdl}}
-        out1 = "{{cite hdl|" + article.getIdentifier(Tag.HDL) + "}}"  # type: ignore
+        out1 = (
+            "{{cite hdl|" + article.getIdentifier(ArticleTag.HDL) + "}}"
+        )  # type: ignore
     if article.type == ArticleType.JOURNAL:
         label = "journal"
     elif article.type in (ArticleType.BOOK, ArticleType.CHAPTER):
@@ -555,16 +559,18 @@ def citewp(article: Article) -> str:
         paras["coauthors"] = "; ".join(coauthors)
     # easy stuff we need in all classes
     paras["year"] = article.year
-    if article.getIdentifier(Tag.HDL):
-        paras["id"] = "{{hdl|" + article.getIdentifier(Tag.HDL) + "}}"  # type: ignore
-    paras["jstor"] = article.getIdentifier(Tag.JSTOR)
-    paras["pmid"] = article.getIdentifier(Tag.PMID)
+    if article.getIdentifier(ArticleTag.HDL):
+        paras["id"] = (
+            "{{hdl|" + article.getIdentifier(ArticleTag.HDL) + "}}"
+        )  # type: ignore
+    paras["jstor"] = article.getIdentifier(ArticleTag.JSTOR)
+    paras["pmid"] = article.getIdentifier(ArticleTag.PMID)
     paras["url"] = article.url
     paras["doi"] = doi if doi else ""
-    paras["pmc"] = article.getIdentifier(Tag.PMC)
+    paras["pmc"] = article.getIdentifier(ArticleTag.PMC)
     paras["publisher"] = article.publisher
     paras["location"] = article.place_of_publication
-    paras["isbn"] = article.getIdentifier(Tag.ISBN)
+    paras["isbn"] = article.getIdentifier(ArticleTag.ISBN)
     paras["pages"] = page_range(article)
     if article.type == ArticleType.JOURNAL:
         paras["title"] = article.title
@@ -575,7 +581,7 @@ def citewp(article: Article) -> str:
         paras["title"] = article.title
         if not paras["pages"]:
             paras["pages"] = article.pages
-        paras["edition"] = article.getIdentifier(Tag.Edition)
+        paras["edition"] = article.getIdentifier(ArticleTag.Edition)
     elif article.type == ArticleType.CHAPTER:
         paras["chapter"] = article.title
         enclosing = article.getEnclosing()
@@ -583,7 +589,7 @@ def citewp(article: Article) -> str:
             paras["title"] = enclosing.title
             paras["publisher"] = enclosing.publisher
             paras["location"] = enclosing.place_of_publication
-            paras["edition"] = enclosing.getIdentifier(Tag.Edition)
+            paras["edition"] = enclosing.getIdentifier(ArticleTag.Edition)
             bauthors = article.getEnclosingAuthors(asArray=True)
             if bauthors:
                 for i, author in enumerate(bauthors):

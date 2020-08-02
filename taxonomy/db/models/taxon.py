@@ -24,10 +24,10 @@ from typing import (
 import peewee
 from peewee import BooleanField, CharField, ForeignKeyField, IntegerField, TextField
 
-from .. import constants, definition, helpers, models
+from .. import definition, helpers, models
 from ... import events, getinput
 from ..constants import (
-    Age,
+    AgeClass,
     Group,
     NomenclatureStatus,
     OccurrenceStatus,
@@ -88,7 +88,7 @@ class Taxon(BaseModel):
 
     rank = EnumField(Rank)
     valid_name = CharField(default="")
-    age = EnumField(constants.Age)
+    age = EnumField(AgeClass)
     parent = ForeignKeyField(
         "self", related_name="children", null=True, db_column="parent_id"
     )
@@ -103,10 +103,10 @@ class Taxon(BaseModel):
 
     @classmethod
     def select_valid(cls, *args: Any) -> Any:
-        return cls.select(*args).filter(Taxon.age != constants.Age.removed)
+        return cls.select(*args).filter(Taxon.age != AgeClass.removed)
 
     def should_skip(self) -> bool:
-        return self.age is constants.Age.removed
+        return self.age is AgeClass.removed
 
     @property
     def base_name(self) -> "models.Name":
@@ -142,7 +142,7 @@ class Taxon(BaseModel):
         return sorted(names, key=sort_key)
 
     def get_children(self) -> Iterable["Taxon"]:
-        return self.children.filter(Taxon.age != constants.Age.removed)
+        return self.children.filter(Taxon.age != AgeClass.removed)
 
     def sorted_children(self) -> List["Taxon"]:
         return sorted(
@@ -236,7 +236,7 @@ class Taxon(BaseModel):
             return self.parent.is_child_of(taxon)
 
     def children_of_rank(
-        self, rank: Rank, age: Optional[constants.Age] = None
+        self, rank: Rank, age: Optional[AgeClass] = None
     ) -> List["Taxon"]:
         if self.rank < rank:
             return []
@@ -282,7 +282,7 @@ class Taxon(BaseModel):
 
     def display_extant(self) -> None:
         self.display(
-            exclude_fn=lambda t: t.age != constants.Age.extant
+            exclude_fn=lambda t: t.age != AgeClass.extant
             or t.base_name.status != Status.valid,
             name_exclude_fn=lambda n: n.status == Status.synonym,
         )
@@ -517,7 +517,7 @@ class Taxon(BaseModel):
         name: str,
         authority: Optional[str] = None,
         year: Union[None, str, int] = None,
-        age: Optional[constants.Age] = None,
+        age: Optional[AgeClass] = None,
         **kwargs: Any,
     ) -> "Taxon":
         if age is None:
@@ -534,9 +534,9 @@ class Taxon(BaseModel):
         )
         name = self.getter("valid_name").get_one_key("name> ", allow_empty=False)
         assert name is not None
-        default = cast(constants.Age, self.age)
+        default = cast(AgeClass, self.age)
         age = getinput.get_enum_member(
-            constants.Age, default=default, allow_empty=False
+            AgeClass, default=default, allow_empty=False
         )
         status = getinput.get_enum_member(
             Status, default=Status.valid, allow_empty=False
@@ -636,7 +636,7 @@ class Taxon(BaseModel):
         page_described: Union[None, int, str] = None,
         status: Status = Status.synonym,
         group: Optional[Group] = None,
-        age: Optional[constants.Age] = None,
+        age: Optional[AgeClass] = None,
         interactive: bool = True,
         **kwargs: Any,
     ) -> "models.Name":
@@ -673,7 +673,7 @@ class Taxon(BaseModel):
         paper: Optional[Article] = None,
         page_described: Union[None, int, str] = None,
         status: Status = Status.valid,
-        age: Optional[constants.Age] = None,
+        age: Optional[AgeClass] = None,
         **override_kwargs: Any,
     ) -> "Taxon":
         if rank is None:
@@ -914,14 +914,14 @@ class Taxon(BaseModel):
         print("Removing taxon %s" % self)
         for name in self.sorted_names():
             name.remove(reason=reason)
-        self.age = constants.Age.removed  # type: ignore
+        self.age = AgeClass.removed  # type: ignore
         if reason is not None:
             self.data = reason
         self.save()
 
     def all_names(
         self,
-        age: Optional[constants.Age] = None,
+        age: Optional[AgeClass] = None,
         exclude: Container["Taxon"] = frozenset(),
         min_year: Optional[int] = None,
     ) -> Set["models.Name"]:
@@ -946,7 +946,7 @@ class Taxon(BaseModel):
     def names_missing_field(
         self,
         field: str,
-        age: Optional[constants.Age] = None,
+        age: Optional[AgeClass] = None,
         min_year: Optional[int] = None,
         exclude: Container["Taxon"] = frozenset(),
     ) -> Set["models.Name"]:
@@ -958,7 +958,7 @@ class Taxon(BaseModel):
 
     def stats(
         self,
-        age: Optional[constants.Age] = None,
+        age: Optional[AgeClass] = None,
         graphical: bool = False,
         focus_field: Optional[str] = None,
         exclude: Container["Taxon"] = frozenset(),
@@ -1037,7 +1037,7 @@ class Taxon(BaseModel):
         self,
         only_with_original: bool = True,
         min_year: Optional[int] = None,
-        age: Optional[constants.Age] = None,
+        age: Optional[AgeClass] = None,
         field: Optional[str] = None,
         level: FillDataLevel = FillDataLevel.only_if_limited_data,
         ask_before_opening: bool = True,
@@ -1099,7 +1099,7 @@ class Taxon(BaseModel):
             name = name.reload()
             name.fill_field_if_empty(field)
 
-    def fill_citation_group(self, age: Optional[Age] = None) -> None:
+    def fill_citation_group(self, age: Optional[AgeClass] = None) -> None:
         for name in sorted(
             self.all_names(age=age),
             key=lambda nam: (
@@ -1116,7 +1116,7 @@ class Taxon(BaseModel):
                 name.fill_field("citation_group")
 
     def count_attribute(
-        self, field: str = "type_locality", age: Optional[Age] = None
+        self, field: str = "type_locality", age: Optional[AgeClass] = None
     ) -> Counter[Any]:
         nams = self.all_names(age=age)
         return Counter(getattr(nam, field) for nam in nams)

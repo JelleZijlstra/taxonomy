@@ -31,6 +31,7 @@ from ..constants import (
     Rank,
     SpeciesNameKind,
     Status,
+    AgeClass,
 )
 from ..definition import Definition
 
@@ -56,9 +57,7 @@ class Name(BaseModel):
         "nomenclature_status": NomenclatureStatus.available,
         "status": Status.valid,
     }
-    excluded_fields = {
-        "data",
-    }
+    excluded_fields = {"data"}
 
     # Basic data
     group = EnumField(Group)
@@ -91,7 +90,7 @@ class Name(BaseModel):
     # Gender and stem
     stem = CharField(null=True)  # redundant with name complex?
     gender = EnumField(
-        constants.Gender, null=True
+        constants.GrammaticalGender, null=True
     )  # for genus group; redundant with name complex
     name_complex = ForeignKeyField(NameComplex, null=True, related_name="names")
     species_name_complex = ForeignKeyField(
@@ -126,7 +125,7 @@ class Name(BaseModel):
     # Miscellaneous data
     data = TextField(null=True)
     _definition = CharField(null=True, db_column="definition")
-    tags = ADTField(lambda: Tag, null=True)
+    tags = ADTField(lambda: NameTag, null=True)
 
     class Meta(object):
         db_table = "name"
@@ -268,7 +267,7 @@ class Name(BaseModel):
             return super().get_value_for_field(field, default=default)
         elif field == "type_specimen_source":
             return self.get_value_for_foreign_key_field(
-                field, default_obj=None, callbacks=self.get_adt_callbacks(),
+                field, default_obj=None, callbacks=self.get_adt_callbacks()
             )
         elif field == "type":
             typ = super().get_value_for_field(field, default=default)
@@ -367,7 +366,7 @@ class Name(BaseModel):
         return result
 
     def get_completers_for_adt_field(self, field: str) -> getinput.CompleterMap:
-        for field_name, tag_cls in [("type_tags", TypeTag), ("tags", Tag)]:
+        for field_name, tag_cls in [("type_tags", TypeTag), ("tags", NameTag)]:
             if field == field_name:
                 completers: Dict[
                     Tuple[Type[adt.ADT], str], getinput.Completer[Any]
@@ -544,7 +543,7 @@ class Name(BaseModel):
         name: str,
         authority: Optional[str] = None,
         year: Union[None, str, int] = None,
-        age: Optional[constants.Age] = None,
+        age: Optional[AgeClass] = None,
         **kwargs: Any,
     ) -> "Taxon":
         if age is None:
@@ -712,7 +711,7 @@ class Name(BaseModel):
             )
         if name is None:
             raise ValueError("name is None")
-        self.add_tag(Tag.PreoccupiedBy(name, comment))
+        self.add_tag(NameTag.PreoccupiedBy(name, comment))
         if self.nomenclature_status == NomenclatureStatus.available:
             self.nomenclature_status = NomenclatureStatus.preoccupied  # type: ignore
         else:
@@ -720,7 +719,7 @@ class Name(BaseModel):
         self.save()
 
     def conserve(self, opinion: str, comment: Optional[str] = None) -> None:
-        self.add_tag(Tag.Conserved(opinion, comment))
+        self.add_tag(NameTag.Conserved(opinion, comment))
 
     def author_set(self) -> Set[str]:
         return {
@@ -803,7 +802,7 @@ class Name(BaseModel):
                 if self.stem is not None:
                     parts.append("stem: %s" % self.stem)
                 if self.gender is not None:
-                    parts.append(constants.Gender(self.gender).name)
+                    parts.append(constants.GrammaticalGender(self.gender).name)
             if self.definition is not None:
                 parts.append(str(self.definition))
             out += " (%s)" % "; ".join(parts)
@@ -1166,12 +1165,14 @@ class Name(BaseModel):
             lambda verbatim: self._split_authority(verbatim)[0],
             lambda verbatim: verbatim.split()[1] if " " in verbatim else verbatim,
             lambda verbatim: helpers.convert_gender(
-                verbatim, constants.Gender.masculine
+                verbatim, constants.GrammaticalGender.masculine
             ),
             lambda verbatim: helpers.convert_gender(
-                verbatim, constants.Gender.feminine
+                verbatim, constants.GrammaticalGender.feminine
             ),
-            lambda verbatim: helpers.convert_gender(verbatim, constants.Gender.neuter),
+            lambda verbatim: helpers.convert_gender(
+                verbatim, constants.GrammaticalGender.neuter
+            ),
         ]
         if verbatim_type is None:
             verbatim_type = self.verbatim_type
@@ -1546,7 +1547,7 @@ def clean_original_name(original_name: str) -> str:
     return re.sub(r"([a-z]{2})-([a-z]{2})", r"\1\2", original_name)
 
 
-class Tag(adt.ADT):
+class NameTag(adt.ADT):
     PreoccupiedBy(name=Name, comment=str, tag=1)  # type: ignore
     UnjustifiedEmendationOf(name=Name, comment=str, tag=2)  # type: ignore
     IncorrectSubsequentSpellingOf(name=Name, comment=str, tag=4)  # type: ignore
@@ -1578,15 +1579,15 @@ class Tag(adt.ADT):
 
 
 STATUS_TO_TAG = {
-    NomenclatureStatus.unjustified_emendation: Tag.UnjustifiedEmendationOf,
-    NomenclatureStatus.justified_emendation: Tag.JustifiedEmendationOf,
-    NomenclatureStatus.incorrect_subsequent_spelling: Tag.IncorrectSubsequentSpellingOf,
-    NomenclatureStatus.variant: Tag.VariantOf,
-    NomenclatureStatus.mandatory_change: Tag.MandatoryChangeOf,
-    NomenclatureStatus.nomen_novum: Tag.NomenNovumFor,
-    NomenclatureStatus.incorrect_original_spelling: Tag.IncorrectOriginalSpellingOf,
-    NomenclatureStatus.subsequent_usage: Tag.SubsequentUsageOf,
-    NomenclatureStatus.preoccupied: Tag.PreoccupiedBy,
+    NomenclatureStatus.unjustified_emendation: NameTag.UnjustifiedEmendationOf,
+    NomenclatureStatus.justified_emendation: NameTag.JustifiedEmendationOf,
+    NomenclatureStatus.incorrect_subsequent_spelling: NameTag.IncorrectSubsequentSpellingOf,
+    NomenclatureStatus.variant: NameTag.VariantOf,
+    NomenclatureStatus.mandatory_change: NameTag.MandatoryChangeOf,
+    NomenclatureStatus.nomen_novum: NameTag.NomenNovumFor,
+    NomenclatureStatus.incorrect_original_spelling: NameTag.IncorrectOriginalSpellingOf,
+    NomenclatureStatus.subsequent_usage: NameTag.SubsequentUsageOf,
+    NomenclatureStatus.preoccupied: NameTag.PreoccupiedBy,
 }
 
 
@@ -1595,7 +1596,7 @@ class TypeTag(adt.ADT):
     Date(date=str, tag=2)  # type: ignore
     Gender(gender=constants.SpecimenGender, tag=3)  # type: ignore
     Age(age=constants.SpecimenAge, tag=4)  # type: ignore
-    Organ(organ=constants.Organ, detail=str, condition=str, tag=5)  # type: ignore
+    Organ(organ=constants.SpecimenOrgan, detail=str, condition=str, tag=5)  # type: ignore
     Altitude(altitude=str, unit=constants.AltitudeUnit, tag=6)  # type: ignore
     Coordinates(latitude=str, longitude=str, tag=7)  # type: ignore
     # Authoritative description for a disputed type locality. Should be rarely used.

@@ -717,10 +717,10 @@ def extract_gender_age(text: str) -> List[TypeTag]:
     return out
 
 
-SKIN = TypeTag.Organ(constants.Organ.skin, "", "")
-SKULL = TypeTag.Organ(constants.Organ.skull, "", "")
-IN_ALCOHOL = TypeTag.Organ(constants.Organ.in_alcohol, "", "")
-SKELETON = TypeTag.Organ(constants.Organ.postcranial_skeleton, "", "")
+SKIN = TypeTag.Organ(constants.SpecimenOrgan.skin, "", "")
+SKULL = TypeTag.Organ(constants.SpecimenOrgan.skull, "", "")
+IN_ALCOHOL = TypeTag.Organ(constants.SpecimenOrgan.in_alcohol, "", "")
+SKELETON = TypeTag.Organ(constants.SpecimenOrgan.postcranial_skeleton, "", "")
 
 
 def extract_body_parts(organs: str) -> List[TypeTag]:
@@ -767,7 +767,7 @@ def extract_body_parts(organs: str) -> List[TypeTag]:
     elif organs == "skull and postcranial skeleton":
         tags = [SKULL, SKELETON]
     elif "mandible" in organs or "ramus" in organs:
-        tags = [TypeTag.Organ(constants.Organ.mandible, organs, "")]
+        tags = [TypeTag.Organ(constants.SpecimenOrgan.mandible, organs, "")]
     else:
         tags = []
     if organs.startswith("Шкура"):

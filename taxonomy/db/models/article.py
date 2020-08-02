@@ -119,7 +119,7 @@ class Article(BaseModel):
     bools = CharField()  # array of boolean flags
     kind = EnumField(ArticleKind)
     parent = ForeignKeyField("self", null=True)
-    tags = ADTField(lambda: Tag, null=True)
+    tags = ADTField(lambda: ArticleTag, null=True)
     citation_group = ForeignKeyField(CitationGroup, null=True)
 
     @property
@@ -451,10 +451,10 @@ class Article(BaseModel):
         if self.doi:
             return f"http://dx.doi.org/{self.doi}"
         tries = {
-            Tag.JSTOR: "http://www.jstor.org/stable/",
-            Tag.HDL: "http://hdl.handle.net/",
-            Tag.PMID: "http://www.ncbi.nlm.nih.gov/pubmed/",
-            Tag.PMC: "http://www.ncbi.nlm.nih.gov/pmc/articles/PMC",
+            ArticleTag.JSTOR: "http://www.jstor.org/stable/",
+            ArticleTag.HDL: "http://hdl.handle.net/",
+            ArticleTag.PMID: "http://www.ncbi.nlm.nih.gov/pubmed/",
+            ArticleTag.PMC: "http://www.ncbi.nlm.nih.gov/pmc/articles/PMC",
         }
         for identifier, url in tries.items():
             value = self.getIdentifier(identifier)
@@ -603,7 +603,7 @@ def register_cite_function(name: str) -> Callable[[Citer], Citer]:
     return decorator
 
 
-class Tag(adt.ADT):
+class ArticleTag(adt.ADT):
     # identifiers
     ISBN(text=str, tag=1)  # type: ignore
     Eurobats(text=str, tag=2)  # type: ignore

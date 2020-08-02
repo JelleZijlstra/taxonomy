@@ -70,7 +70,7 @@ def genus_suffix_tree(no_complex_only: bool = False) -> _SuffixTree:
 
 
 def count_citation_groups(
-    taxon: Taxon, age: Optional[constants.Age] = None
+    taxon: Taxon, age: Optional[constants.AgeClass] = None
 ) -> Counter[Optional[CitationGroup]]:
     counts: Counter[Optional[CitationGroup]] = Counter()
     for nam in taxon.all_names(age=age):

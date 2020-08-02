@@ -51,7 +51,7 @@ from traitlets.config.loader import Config
 from . import getinput
 from .db import constants, definition, helpers, models
 from .db.constants import (
-    Age,
+    AgeClass,
     Group,
     NomenclatureStatus,
     Rank,
@@ -67,7 +67,7 @@ from .db.models import (
     Collection,
     Name,
     Period,
-    Tag,
+    NameTag,
     Taxon,
     TypeTag,
     database,
@@ -125,7 +125,7 @@ ns = _ShellNamespace(
         "N": Name.getter("root_name"),
         "O": Name.getter("corrected_original_name"),
         "reconnect": _reconnect,
-        "Tag": models.Tag,
+        "NameTag": models.NameTag,
         "TypeTag": models.TypeTag,
         "Counter": collections.Counter,
         "defaultdict": defaultdict,
@@ -1184,7 +1184,7 @@ class ScoreHolder:
     def from_taxa(
         cls,
         taxa: Iterable[Taxon],
-        age: Optional[Age] = None,
+        age: Optional[AgeClass] = None,
         graphical: bool = False,
         focus_field: Optional[str] = None,
         min_year: Optional[int] = None,
@@ -1204,7 +1204,7 @@ class ScoreHolder:
 def get_scores(
     rank: Rank,
     within_taxon: Optional[Taxon] = None,
-    age: Optional[Age] = None,
+    age: Optional[AgeClass] = None,
     graphical: bool = False,
     focus_field: Optional[str] = None,
     min_year: Optional[int] = None,
@@ -1476,7 +1476,7 @@ def bad_base_names() -> Iterable[Taxon]:
         f"""
             SELECT * FROM taxon
             WHERE
-                age != {constants.Age.removed.value} AND
+                age != {AgeClass.removed.value} AND
                 (
                     base_name_id IS NULL OR
                     base_name_id NOT IN (
@@ -1566,13 +1566,13 @@ def childless_taxa() -> Iterable[Taxon]:
             FROM taxon
             WHERE
                 rank > 5 AND
-                age != {Age.removed.value} AND
+                age != {AgeClass.removed.value} AND
                 id NOT IN (
                     SELECT parent_id
                     FROM taxon
                     WHERE
                         parent_id IS NOT NULL AND
-                        age != {Age.removed.value}
+                        age != {AgeClass.removed.value}
                 )
         """
     )
@@ -1585,7 +1585,7 @@ def labeled_childless_taxa() -> Iterable[LabeledName]:
 
 @command
 def fossilize(
-    *taxa: Taxon, to_status: Age = Age.fossil, from_status: Age = Age.extant
+    *taxa: Taxon, to_status: AgeClass = AgeClass.fossil, from_status: AgeClass = AgeClass.extant
 ) -> None:
     for taxon in taxa:
         if taxon.age != from_status:
@@ -2353,11 +2353,11 @@ def check_justified_emendations() -> Iterable[Tuple[Name, str]]:
         Name.bfind(nomenclature_status=NomenclatureStatus.as_emended, quiet=True)
     )
     for nam in justified_emendations:
-        target = nam.get_tag_target(Tag.JustifiedEmendationOf)
+        target = nam.get_tag_target(NameTag.JustifiedEmendationOf)
         if target is None:
             yield nam, "justified_emendation without a JustifiedEmendationOf tag"
             continue
-        ios_target = target.get_tag_target(Tag.IncorrectOriginalSpellingOf)
+        ios_target = target.get_tag_target(NameTag.IncorrectOriginalSpellingOf)
         if ios_target is None:
             yield target, "missing IncorrectOriginalSpellingOf tag"
         elif (
@@ -2412,7 +2412,7 @@ def check_tags(dry_run: bool = True) -> Iterable[Tuple[Name, str]]:
             continue
         for tag in tags:
             names_by_tag[type(tag)].add(nam)
-            if isinstance(tag, Tag.PreoccupiedBy):
+            if isinstance(tag, NameTag.PreoccupiedBy):
                 maybe_adjust_status(nam, NomenclatureStatus.preoccupied, tag)
                 senior_name = tag.name
                 if nam.group != senior_name.group:
@@ -2425,7 +2425,7 @@ def check_tags(dry_run: bool = True) -> Iterable[Tuple[Name, str]]:
                     is NomenclatureStatus.subsequent_usage
                 ):
                     for senior_name_tag in senior_name.get_tags(
-                        senior_name.tags, Tag.SubsequentUsageOf
+                        senior_name.tags, NameTag.SubsequentUsageOf
                     ):
                         senior_name = senior_name_tag.name
                 if nam.effective_year() < senior_name.effective_year():
@@ -2441,11 +2441,11 @@ def check_tags(dry_run: bool = True) -> Iterable[Tuple[Name, str]]:
             elif isinstance(
                 tag,
                 (
-                    Tag.UnjustifiedEmendationOf,
-                    Tag.IncorrectSubsequentSpellingOf,
-                    Tag.VariantOf,
-                    Tag.NomenNovumFor,
-                    Tag.JustifiedEmendationOf,
+                    NameTag.UnjustifiedEmendationOf,
+                    NameTag.IncorrectSubsequentSpellingOf,
+                    NameTag.VariantOf,
+                    NameTag.NomenNovumFor,
+                    NameTag.JustifiedEmendationOf,
                 ),
             ):
                 for status, tag_cls in models.STATUS_TO_TAG.items():
@@ -2457,11 +2457,11 @@ def check_tags(dry_run: bool = True) -> Iterable[Tuple[Name, str]]:
                 if nam.taxon != tag.name.taxon:
                     print(f"{nam} is not assigned to the same name as {tag.name}")
                     yield nam, "not synonym of original name"
-            elif isinstance(tag, Tag.PartiallySuppressedBy):
+            elif isinstance(tag, NameTag.PartiallySuppressedBy):
                 maybe_adjust_status(nam, NomenclatureStatus.partially_suppressed, tag)
-            elif isinstance(tag, Tag.FullySuppressedBy):
+            elif isinstance(tag, NameTag.FullySuppressedBy):
                 maybe_adjust_status(nam, NomenclatureStatus.fully_suppressed, tag)
-            elif isinstance(tag, Tag.Conserved):
+            elif isinstance(tag, NameTag.Conserved):
                 if nam.nomenclature_status not in (
                     NomenclatureStatus.available,
                     NomenclatureStatus.as_emended,
@@ -3189,7 +3189,7 @@ def find_potential_citations_for_group(cg: CitationGroup, fix: bool = False) -> 
             and nam.year == art.year
             and art.is_page_in_range(page)
             and art.kind is not ArticleKind.no_copy
-            and not art.has_tag(models.article.Tag.NonOriginal)
+            and not art.has_tag(models.article.NameTag.NonOriginal)
         ]
         if candidates:
             if count == 0:

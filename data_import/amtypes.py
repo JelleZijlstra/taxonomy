@@ -114,12 +114,12 @@ def split_fields(names: DataT, verbose: bool = False) -> DataT:
                     enums: List[Tuple[Type[Enum], models.TypeTag]] = [
                         (constants.SpecimenGender, models.TypeTag.Gender),
                         (constants.SpecimenAge, models.TypeTag.Age),
-                        (constants.Organ, models.TypeTag.Organ),
+                        (constants.SpecimenOrgan, models.TypeTag.Organ),
                     ]
                     for enum, tag in enums:
                         if lib.enum_has_member(enum, part):
                             enum_member: Any = enum[part]
-                            if enum is constants.Organ:
+                            if enum is constants.SpecimenOrgan:
                                 tags.append(models.TypeTag.Organ(enum_member, "", ""))
                             else:
                                 tags.append(tag(enum_member))
@@ -131,16 +131,16 @@ def split_fields(names: DataT, verbose: bool = False) -> DataT:
                             )
                         elif part == "body in alc":
                             tags.append(
-                                models.TypeTag.Organ(constants.Organ.in_alcohol, "", "")
+                                models.TypeTag.Organ(constants.SpecimenOrgan.in_alcohol, "", "")
                             )
                         elif part in ("study skin", "flat skin only", "flat skin"):
                             tags.append(
-                                models.TypeTag.Organ(constants.Organ.skin, "", "")
+                                models.TypeTag.Organ(constants.SpecimenOrgan.skin, "", "")
                             )
                         elif part in ("skin mounted", "skin mount"):
                             tags.append(
                                 models.TypeTag.Organ(
-                                    constants.Organ.skin, "", "mounted"
+                                    constants.SpecimenOrgan.skin, "", "mounted"
                                 )
                             )
                         elif part in ("female adult", "adult female"):

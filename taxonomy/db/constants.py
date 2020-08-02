@@ -10,13 +10,13 @@ class RequirednessLevel(enum.IntEnum):
     disallowed = 3
 
 
-class Gender(enum.IntEnum):
+class GrammaticalGender(enum.IntEnum):
     masculine = 0
     feminine = 1
     neuter = 2
 
 
-class Age(enum.IntEnum):
+class AgeClass(enum.IntEnum):
     extant = 0
     holocene = 1
     fossil = 2
@@ -514,7 +514,7 @@ class SpecimenAge(enum.IntEnum):
     larva = 5
 
 
-class Organ(enum.IntEnum):
+class SpecimenOrgan(enum.IntEnum):
     # parts of specimens that are commonly preserved
     skin = 1
     skull = 2
