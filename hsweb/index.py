@@ -1,4 +1,5 @@
 from aiohttp import web
+from functools import lru_cache
 from pathlib import Path
 import taxonomy
 from typing import Callable, Iterator, Type
@@ -9,6 +10,12 @@ from . import view
 from . import schema
 
 HSWEB_ROOT = Path(view.__file__).parent.parent
+HESPEROMYS_ROOT = Path("/Users/jelle/py/hesperomys")
+
+
+@lru_cache()
+def get_static_file_contents(path: str) -> bytes:
+    return (HESPEROMYS_ROOT / "build" / path).read_bytes()
 
 
 def make_handler(
@@ -22,6 +29,20 @@ def make_handler(
         )
 
     return handler
+
+
+def make_static_handler(
+    path: str, content_type: str
+) -> Callable[[web.Request], web.Response]:
+    async def handler(request: web.Request) -> web.Response:
+        return web.Response(
+            body=get_static_file_contents("index.html"), content_type=content_type
+        )
+
+    return handler
+
+
+react_handler = make_static_handler("index.html", "text/html")
 
 
 def get_model_routes() -> Iterator[str]:
@@ -41,13 +62,30 @@ def get_model_routes() -> Iterator[str]:
             )
 
 
+async def on_prepare(request: web.Request, response: web.Response) -> None:
+    response.headers["Access-Control-Allow-Origin"] = "http://localhost:3000"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+
+
 def make_app() -> web.Application:
     app = web.Application()
     GraphQLView.attach(app, schema=schema.schema, graphiql=True)
-    app.add_routes([web.get("/", make_handler(view.page.HomePage))])
-    app.add_routes(get_model_routes())
-    app.router.add_static("/static", HSWEB_ROOT / "static")
+    app.router.add_static("/static", HESPEROMYS_ROOT / "build" / "static")
+    app.add_routes(
+        [web.get("/favicon.ico", make_static_handler("favicon.ico", "image/x-icon"))]
+    )
 
-    graphql_schema = HSWEB_ROOT.parent / "frontend" / "hesperomys" / "hesperomys.graphql"
+    # Delegate everything else to React
+    app.add_routes(
+        [
+            web.get("/{part1}/{part2}/{part3}", react_handler),
+            web.get("/{part1}/{part2}", react_handler),
+            web.get("/{part1}", react_handler),
+            web.get("/", react_handler),
+        ]
+    )
+    app.on_response_prepare.append(on_prepare)
+
+    graphql_schema = HESPEROMYS_ROOT / "hesperomys.graphql"
     graphql_schema.write_text(str(schema.schema))
     return app
