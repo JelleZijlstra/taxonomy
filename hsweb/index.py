@@ -2,9 +2,13 @@ from aiohttp import web
 from pathlib import Path
 import taxonomy
 from typing import Callable, Iterator, Type
+from aiohttp_graphql import GraphQLView
 
 from . import components
 from . import view
+from . import schema
+
+HSWEB_ROOT = Path(view.__file__).parent.parent
 
 
 def make_handler(
@@ -39,7 +43,11 @@ def get_model_routes() -> Iterator[str]:
 
 def make_app() -> web.Application:
     app = web.Application()
+    GraphQLView.attach(app, schema=schema.schema, graphiql=True)
     app.add_routes([web.get("/", make_handler(view.page.HomePage))])
     app.add_routes(get_model_routes())
-    app.router.add_static("/static", Path(view.__file__).parent.parent / "static")
+    app.router.add_static("/static", HSWEB_ROOT / "static")
+
+    graphql_schema = HSWEB_ROOT.parent / "frontend" / "hesperomys" / "hesperomys.graphql"
+    graphql_schema.write_text(str(schema.schema))
     return app
