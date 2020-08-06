@@ -20,7 +20,7 @@ setup(
     license="MIT",
     packages=["taxonomy"],
     install_requires=[
-        "peewee==2.10.2",
+        "peewee==3.13.3",
         "IPython<7",
         "prompt_toolkit<2",
         "PyMySQL",

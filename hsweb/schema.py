@@ -179,7 +179,7 @@ def build_reverse_rel_field(
         after: Optional[str] = None,
     ) -> TList[ObjectType]:
         model = get_model(model_cls, parent)
-        object_type = build_object_type_from_model(peewee_field.rel_model)
+        object_type = build_object_type_from_model(peewee_field.model)
         query = getattr(model, name)
         if after:
             offset = int(base64.b64decode(after).split(b":")[1]) + 1
@@ -189,7 +189,7 @@ def build_reverse_rel_field(
         return [object_type(id=obj.id, oid=obj.id) for obj in query]
 
     return ConnectionField(
-        lambda: build_connection(build_object_type_from_model(peewee_field.rel_model)),
+        lambda: build_connection(build_object_type_from_model(peewee_field.model)),
         resolver=resolver,
     )
 
@@ -202,8 +202,8 @@ def build_object_type_from_model(model_cls: Type[BaseModel]) -> Type[ObjectType]
             continue
         namespace[name] = build_graphene_field(model_cls, name, peewee_field)
 
-    for name, peewee_field in model_cls._meta.reverse_rel.items():
-        namespace[name] = build_reverse_rel_field(model_cls, name, peewee_field)
+    for peewee_field in model_cls._meta.backrefs:
+        namespace[peewee_field.backref] = build_reverse_rel_field(model_cls, peewee_field.backref, peewee_field)
 
     class Meta:
         interfaces = (Node, Model)

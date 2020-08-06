@@ -94,7 +94,7 @@ class Taxon(BaseModel):
     )
     data = TextField(null=True)
     is_page_root = BooleanField(default=False)
-    _base_name_id = IntegerField(null=True, db_column="base_name_id")
+    base_name = peewee.DeferredForeignKey("Name")
 
     class Meta(object):
         db_table = "taxon"
@@ -107,19 +107,6 @@ class Taxon(BaseModel):
 
     def should_skip(self) -> bool:
         return self.age is AgeClass.removed
-
-    @property
-    def base_name(self) -> "models.Name":
-        try:
-            return models.Name.get(models.Name.id == self._base_name_id)
-        except models.Name.DoesNotExist:
-            return None  # type: ignore  # too annoying to actually deal with this
-
-    @base_name.setter
-    def base_name(self, value: "models.Name") -> None:
-        self._base_name_id = value.id
-        Taxon.update(_base_name_id=value.id).where(Taxon.id == self.id).execute()
-        self.save()
 
     def group(self) -> Group:
         return helpers.group_of_rank(self.rank)

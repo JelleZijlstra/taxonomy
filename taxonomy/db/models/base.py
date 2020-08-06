@@ -1,5 +1,6 @@
 from collections import Counter
 import enum
+from functools import partial
 import json
 import traceback
 from typing import (
@@ -29,6 +30,7 @@ from peewee import (
     MySQLDatabase,
     SqliteDatabase,
     TextField,
+    FieldAccessor
 )
 
 from ... import adt, config, events, getinput
@@ -71,21 +73,21 @@ class _FieldEditor(object):
         return ["all"] + sorted(self.instance._meta.fields.keys())
 
 
-def _descriptor_set(self: peewee.FieldDescriptor, instance: Model, value: Any) -> None:
+def _descriptor_set(self: FieldAccessor, instance: Model, value: Any) -> None:
     """Monkeypatch the __set__ method on peewee descriptors to always save immediately.
 
     This is useful for us because in interactive use, it is easy to forget to call .save(), and
     we are not concerned about the performance implications of saving often.
 
     """
-    instance._data[self.att_name] = value
-    instance._dirty.add(self.att_name)
+    instance.__data__[self.name] = value
+    instance._dirty.add(self.name)
     # Otherwise this gets called in the constructor.
     if getattr(instance, "_is_prepared", False):
         instance.save()
 
 
-peewee.FieldDescriptor.__set__ = _descriptor_set
+FieldAccessor.__set__ = _descriptor_set
 
 
 class BaseModel(Model):
@@ -552,9 +554,9 @@ class BaseModel(Model):
 EnumT = TypeVar("EnumT", bound=enum.Enum)
 
 
-class _EnumFieldDescriptor(peewee.FieldDescriptor, Generic[EnumT]):
-    def __init__(self, field: peewee.Field, enum_cls: Type[EnumT]) -> None:
-        super().__init__(field)
+class _EnumFieldDescriptor(FieldAccessor, Generic[EnumT]):
+    def __init__(self, model: Type[BaseModel], field: peewee.Field, name: str, enum_cls: Type[EnumT]) -> None:
+        super().__init__(model, field, name)
         self.enum_cls = enum_cls
 
     def __get__(self, instance: Any, instance_type: Any = None) -> EnumT:
@@ -573,15 +575,12 @@ class EnumField(IntegerField):
     def __init__(self, enum_cls: Type[enum.Enum], **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.enum_cls = enum_cls
-
-    def add_to_class(self, model_class: Type[BaseModel], name: str) -> None:
-        super().add_to_class(model_class, name)
-        setattr(model_class, name, _EnumFieldDescriptor(self, self.enum_cls))
+        self.accessor_class = partial(_EnumFieldDescriptor, enum_cls=enum_cls)
 
 
-class _ADTDescriptor(peewee.FieldDescriptor):
-    def __init__(self, field: peewee.Field, adt_cls: Any) -> None:
-        super().__init__(field)
+class _ADTDescriptor(FieldAccessor):
+    def __init__(self, model: Type[BaseModel], field: peewee.Field, name: str, adt_cls: Any) -> None:
+        super().__init__(model, field, name)
         self.adt_cls = adt_cls
 
     def __get__(self, instance: Any, instance_type: Any = None) -> Any:
@@ -608,11 +607,12 @@ class ADTField(TextField):
     def __init__(self, adt_cls: Callable[[], Type[Any]], **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.adt_cls = adt_cls
+        self.accessor_class = partial(_ADTDescriptor, adt_cls=adt_cls)
 
     def add_to_class(self, model_class: Type[BaseModel], name: str) -> None:
         super().add_to_class(model_class, name)
-        setattr(model_class, name, _ADTDescriptor(self, self.adt_cls))
-        setattr(model_class, f"_raw_{name}", peewee.FieldDescriptor(self))
+        setattr(model_class, name, _ADTDescriptor(model_class, self, name, self.adt_cls))
+        setattr(model_class, f"_raw_{name}", FieldAccessor(model_class, self, name))
 
     def get_adt(self) -> Type[Any]:
         return self.adt_cls()
