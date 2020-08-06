@@ -87,5 +87,5 @@ def make_app() -> web.Application:
     app.on_response_prepare.append(on_prepare)
 
     graphql_schema = HESPEROMYS_ROOT / "hesperomys.graphql"
-    graphql_schema.write_text(str(schema.schema))
+    graphql_schema.write_text(schema.get_schema_string())
     return app

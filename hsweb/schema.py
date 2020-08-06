@@ -20,6 +20,7 @@ from graphene import (
 from graphene.relay import Node, Connection, ConnectionField
 from graphene.utils.str_converters import to_snake_case
 import peewee
+import re
 
 SCALAR_FIELD_TO_GRAPHENE = {
     peewee.CharField: String,
@@ -28,6 +29,12 @@ SCALAR_FIELD_TO_GRAPHENE = {
     peewee.IntegerField: Int,
 }
 TYPES: TList[ObjectType] = []
+CALL_SIGN_TO_MODEL = {model.call_sign: model for model in BaseModel.__subclasses__()}
+
+
+class Model(Interface):
+    oid = Int(required=True)
+    call_sign = String(required=True)
 
 
 @lru_cache()
@@ -199,7 +206,7 @@ def build_object_type_from_model(model_cls: Type[BaseModel]) -> Type[ObjectType]
         namespace[name] = build_reverse_rel_field(model_cls, name, peewee_field)
 
     class Meta:
-        interfaces = (Node,)
+        interfaces = (Node, Model)
 
     @classmethod
     def get_node(cls: Type[ObjectType], info: ResolveInfo, id: int) -> ObjectType:
@@ -207,6 +214,9 @@ def build_object_type_from_model(model_cls: Type[BaseModel]) -> Type[ObjectType]
 
     namespace["Meta"] = Meta
     namespace["oid"] = Field(Int, required=True)
+    namespace["call_sign"] = Field(
+        String, required=True, resolver=lambda *args: model_cls.call_sign
+    )
     namespace["get_node"] = get_node
 
     return type(model_cls.__name__, (ObjectType,), namespace)
@@ -245,9 +255,36 @@ def get_model_resolvers() -> Dict[str, Field]:
     return resolvers
 
 
+def resolve_by_call_sign(
+    parent: ObjectType, info: ResolveInfo, call_sign: str, oid: str
+) -> TList[ObjectType]:
+    model_cls = CALL_SIGN_TO_MODEL[call_sign.upper()]
+    object_type = build_object_type_from_model(model_cls)
+    if oid.isnumeric():
+        return [object_type(oid=int(oid), id=int(oid))]
+    else:
+        objs = model_cls.select_valid().filter(
+            getattr(model_cls, model_cls.label_field) == oid
+        )
+        return [object_type(id=obj.id, oid=obj.id) for obj in objs]
+
+
 class Query(ObjectType):
     node = Node.Field()
+    by_call_sign = List(
+        Model,
+        call_sign=String(required=True),
+        oid=String(required=True),
+        resolver=resolve_by_call_sign,
+    )
     locals().update(get_model_resolvers())
 
 
 schema = Schema(query=Query, types=TYPES)
+
+
+def get_schema_string() -> str:
+    # Graphene has a bug in the str() of its schema, where it puts multiple interfaces
+    # as "A, B" instead of "A & B". Hacky workaround (that will work only as long as
+    # we have at most two interfaces).
+    return re.sub(r" implements ([A-Z][a-z]+), ", r" implements \1 & ", str(schema))
