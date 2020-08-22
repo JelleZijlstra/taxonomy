@@ -93,7 +93,7 @@ class Article(BaseModel):
     addyear = CharField()  # year added to catalog
     name = CharField()  # name of file (or handle of citation)
     authors = CharField()
-    year = CharField()  # year published
+    year = CharField(null=True)  # year published
     # title (chapter title for book chapter; book title for full book or thesis)
     title = CharField()
     _journal = CharField(

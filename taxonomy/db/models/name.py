@@ -306,6 +306,7 @@ class Name(BaseModel):
             "add_variant": self.add_variant,
             "preoccupied_by": self.preoccupied_by,
             "display_type_locality": lambda: self.type_locality.display(),
+            "fill_required_fields": lambda: self.fill_required_fields(skip_fields={"type_tags"})
         }
 
     def edit(self) -> None:

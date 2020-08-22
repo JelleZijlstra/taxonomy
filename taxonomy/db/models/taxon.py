@@ -1417,7 +1417,7 @@ def ranked_parents(
     if rank is Rank.class_:
         return (txn, None, None)
     if rank > Rank.class_ and rank != Rank.unranked:
-        return (None, None, None)
+        return (txn, None, None)
     parent_class, parent_order, parent_family = ranked_parents(txn.parent)
     if rank is Rank.order:
         return (parent_class, txn, None)

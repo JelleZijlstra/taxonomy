@@ -110,9 +110,11 @@ def build_graphene_field(
         )
     elif isinstance(peewee_field, peewee.ForeignKeyField):
 
-        def fk_resolver(parent: ObjectType, info: ResolveInfo) -> ObjectType:
+        def fk_resolver(parent: ObjectType, info: ResolveInfo) -> Optional[ObjectType]:
             model = get_model(model_cls, parent)
             foreign_model = getattr(model, name)
+            if foreign_model is None:
+                return None
             return build_object_type_from_model(peewee_field.rel_model)(
                 id=foreign_model.id, oid=foreign_model.id
             )
@@ -183,9 +185,9 @@ def build_reverse_rel_field(
         query = getattr(model, name)
         if after:
             offset = int(base64.b64decode(after).split(b":")[1]) + 1
-            query = query.limit(first + offset).offset(offset)
+            query = query.limit(first + offset + 1).offset(offset)
         else:
-            query = query.limit(first)
+            query = query.limit(first + 1)
         return [object_type(id=obj.id, oid=obj.id) for obj in query]
 
     return ConnectionField(
