@@ -1,4 +1,5 @@
 from taxonomy.db.models.base import BaseModel, EnumField, ADTField
+from taxonomy.db.derived_data import DerivedField
 from taxonomy.adt import ADT
 from typing import Type, Any, Dict, List as TList, Optional, Tuple
 import base64
@@ -12,6 +13,7 @@ from graphene import (
     ID,
     Interface,
     List,
+    NonNull,
     String,
     Int,
     ResolveInfo,
@@ -27,6 +29,11 @@ SCALAR_FIELD_TO_GRAPHENE = {
     peewee.TextField: String,
     peewee.BooleanField: Boolean,
     peewee.IntegerField: Int,
+}
+TYPE_TO_GRAPHENE = {
+    str: String,
+    bool: Boolean,
+    int: Int,
 }
 TYPES: TList[ObjectType] = []
 CALL_SIGN_TO_MODEL = {model.call_sign: model for model in BaseModel.__subclasses__()}
@@ -50,7 +57,7 @@ def build_graphene_field_from_adt_arg(typ: Type[Any]) -> Field:
     elif typ is bool:
         return Field(Boolean)
     elif issubclass(typ, BaseModel):
-        return Field(lambda: build_object_type_from_model(typ))
+        return Field(NonNull(lambda: build_object_type_from_model(typ)))
     elif issubclass(typ, enum.Enum):
         return Field(make_enum(typ))
     else:
@@ -106,15 +113,25 @@ def build_graphene_field(
         return Field(
             make_enum(peewee_field.enum_cls),
             required=not peewee_field.null,
-            resolver=lambda parent, info: getattr(get_model(model_cls, parent), name),
+            resolver=lambda parent, info: getattr(get_model(model_cls, parent, info), name),
         )
     elif isinstance(peewee_field, peewee.ForeignKeyField):
+        call_sign = getattr(model_cls, name).rel_model.call_sign
 
         def fk_resolver(parent: ObjectType, info: ResolveInfo) -> Optional[ObjectType]:
-            model = get_model(model_cls, parent)
-            foreign_model = getattr(model, name)
-            if foreign_model is None:
+            model = get_model(model_cls, parent, info)
+            oid = model.__data__[name]
+            if oid is None:
                 return None
+            key = (call_sign, oid)
+            cache = info.context["request"]
+            if key in cache:
+                foreign_model = cache[key]
+            else:
+                foreign_model = getattr(model, name)
+                if foreign_model is None:
+                    return None
+                info.context["request"][key] = foreign_model
             return build_object_type_from_model(peewee_field.rel_model)(
                 id=foreign_model.id, oid=foreign_model.id
             )
@@ -127,8 +144,8 @@ def build_graphene_field(
     elif isinstance(peewee_field, ADTField):
         adt_cls = peewee_field.adt_cls()
 
-        def fk_resolver(parent: ObjectType, info: ResolveInfo) -> TList[ObjectType]:
-            model = get_model(model_cls, parent)
+        def adt_resolver(parent: ObjectType, info: ResolveInfo) -> TList[ObjectType]:
+            model = get_model(model_cls, parent, info)
             adts = getattr(model, name)
             if not adts:
                 return []
@@ -148,19 +165,23 @@ def build_graphene_field(
                     )
             return out
 
-        return List(build_adt(adt_cls), required=True, resolver=fk_resolver)
+        return List(build_adt(adt_cls), required=True, resolver=adt_resolver)
     elif type(peewee_field) in SCALAR_FIELD_TO_GRAPHENE:
         return Field(
             SCALAR_FIELD_TO_GRAPHENE[type(peewee_field)],
             required=not peewee_field.null,
-            resolver=lambda parent, info: getattr(get_model(model_cls, parent), name),
+            resolver=lambda parent, info: getattr(get_model(model_cls, parent, info), name),
         )
     else:
         assert False, f"failed to translate {peewee_field}"
 
 
-def get_model(model_cls: Type[BaseModel], parent: Any) -> BaseModel:
-    return model_cls.select_valid().filter(model_cls.id == parent.oid).get()
+def get_model(model_cls: Type[BaseModel], parent: Any, info: ResolveInfo) -> BaseModel:
+    cache = info.context["request"]
+    key = (model_cls.call_sign, parent.oid)
+    if key not in cache:
+        cache[key] = model_cls.select_valid().filter(model_cls.id == parent.oid).get()
+    return cache[key]
 
 
 @lru_cache()
@@ -174,26 +195,60 @@ def build_connection(object_type: Type[ObjectType]) -> Type[Connection]:
 def build_reverse_rel_field(
     model_cls: Type[BaseModel], name: str, peewee_field: peewee.ForeignKeyField
 ) -> Field:
+    call_sign = peewee_field.model.call_sign
+
     def resolver(
         parent: ObjectType,
         info: ResolveInfo,
         first: int = 10,
         after: Optional[str] = None,
     ) -> TList[ObjectType]:
-        model = get_model(model_cls, parent)
+        model = get_model(model_cls, parent, info)
         object_type = build_object_type_from_model(peewee_field.model)
         query = getattr(model, name)
         if after:
             offset = int(base64.b64decode(after).split(b":")[1]) + 1
-            query = query.limit(first + offset + 1).offset(offset)
+            query = query.limit(first + offset + 1)
         else:
             query = query.limit(first + 1)
-        return [object_type(id=obj.id, oid=obj.id) for obj in query]
+        cache = info.context["request"]
+        ret = []
+        for obj in query:
+            ret.append(object_type(id=obj.id, oid=obj.id))
+            cache[(call_sign, obj.id)] = obj
+        return ret
 
     return ConnectionField(
         lambda: build_connection(build_object_type_from_model(peewee_field.model)),
         resolver=resolver,
     )
+
+
+def build_derived_field(model_cls: Type[BaseModel], derived_field: DerivedField) -> Field:
+    if issubclass(derived_field.typ, BaseModel):
+
+        def fk_resolver(parent: ObjectType, info: ResolveInfo) -> Optional[ObjectType]:
+            model = get_model(model_cls, parent, info)
+            foreign_model_oid = model.get_raw_derived_field(derived_field.name)
+            if foreign_model_oid is None:
+                return None
+            return build_object_type_from_model(derived_field.typ)(
+                id=foreign_model_oid, oid=foreign_model_oid
+            )
+
+        return Field(
+            lambda: build_object_type_from_model(derived_field.typ),
+            required=False,
+            resolver=fk_resolver,
+        )
+    elif derived_field.typ in TYPE_TO_GRAPHENE:
+        return Field(
+            TYPE_TO_GRAPHENE[derived_field.typ],
+            required=False,
+            resolver=lambda parent, info: get_model(model_cls, parent, info).get_derived_field(name),
+        )
+    else:
+        assert False, f"unimplemented for {derived_field.typ}"
 
 
 @lru_cache()
@@ -206,6 +261,9 @@ def build_object_type_from_model(model_cls: Type[BaseModel]) -> Type[ObjectType]
 
     for peewee_field in model_cls._meta.backrefs:
         namespace[peewee_field.backref] = build_reverse_rel_field(model_cls, peewee_field.backref, peewee_field)
+
+    for derived_field in model_cls.derived_fields:
+        namespace[derived_field.name] = build_derived_field(model_cls, derived_field)
 
     class Meta:
         interfaces = (Node, Model)

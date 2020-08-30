@@ -28,7 +28,7 @@ class SpeciesNameComplex(BaseModel):
     masculine_ending = CharField()
     feminine_ending = CharField()
     neuter_ending = CharField()
-    comment = CharField()
+    comment = CharField(null=True)
 
     class Meta(object):
         db_table = "species_name_complex"
@@ -299,7 +299,7 @@ class NameComplex(BaseModel):
     source_language = EnumField(SourceLanguage)
     code_article = EnumField(GenderArticle)
     gender = EnumField(GrammaticalGender)
-    comment = CharField()
+    comment = CharField(null=True)
     stem_remove = CharField(null=False)
     stem_add = CharField(null=False)
 

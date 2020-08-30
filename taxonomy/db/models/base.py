@@ -34,6 +34,7 @@ from peewee import (
 )
 
 from ... import adt, config, events, getinput
+from .. import derived_data
 
 settings = config.get_options()
 
@@ -99,11 +100,24 @@ class BaseModel(Model):
     save_event: events.Event[Any]
     field_defaults: Dict[str, Any] = {}
     excluded_fields: Set[str] = set()
+    derived_fields: List["derived_data.DerivedField"] = []
+    _name_to_derived_field: Dict[str, "derived_data.DerivedField"] = {}
 
     class Meta(object):
         database = database
 
     e = _FieldEditor()
+
+    def __init_subclass__(cls) -> None:
+        super().__init_subclass__()
+        cls._name_to_derived_field = {field.name: field for field in cls.derived_fields}
+        for field in cls.derived_fields:
+            if field.typ is derived_data.SetLater:
+                field.typ = cls
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self._is_prepared = True
 
     @classmethod
     def create(cls: Type[ModelT], *args: Any, **kwargs: Any) -> ModelT:
@@ -140,6 +154,21 @@ class BaseModel(Model):
     def display(self) -> None:
         """Print data about this object."""
         self.full_data()
+
+    def get_derived_field(self, name: str) -> Any:
+        return self._name_to_derived_field[name].get_value(self)
+
+    def get_raw_derived_field(self, name: str) -> Any:
+        return self._name_to_derived_field[name].get_raw_value(self)
+
+    @classmethod
+    def compute_all_derived_fields(cls) -> None:
+        if not cls.derived_fields:
+            return
+        for obj in cls.select_valid():
+            for field in cls.derived_fields:
+                value = field.compute(obj)
+                field.set_value(obj, value)
 
     def sort_key(self) -> Any:
         if hasattr(self, "label_field"):

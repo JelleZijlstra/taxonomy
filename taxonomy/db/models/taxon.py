@@ -25,6 +25,7 @@ import peewee
 from peewee import BooleanField, CharField, ForeignKeyField, IntegerField, TextField
 
 from .. import definition, helpers, models
+from ..derived_data import DerivedField, SetLater
 from ... import events, getinput
 from ..constants import (
     AgeClass,
@@ -95,6 +96,12 @@ class Taxon(BaseModel):
     data = TextField(null=True)
     is_page_root = BooleanField(default=False)
     base_name = peewee.DeferredForeignKey("Name")
+
+    derived_fields = [
+        DerivedField("class_", SetLater, lambda taxon: ranked_parents(taxon)[0]),
+        DerivedField("order", SetLater, lambda taxon: ranked_parents(taxon)[1]),
+        DerivedField("family", SetLater, lambda taxon: ranked_parents(taxon)[2]),
+    ]
 
     class Meta(object):
         db_table = "taxon"
@@ -1419,9 +1426,18 @@ def ranked_parents(
     if rank > Rank.class_ and rank != Rank.unranked:
         return (txn, None, None)
     parent_class, parent_order, parent_family = ranked_parents(txn.parent)
-    if rank is Rank.order:
+    if rank is Rank.unranked:
+        if parent_family is not None:
+            return (parent_class, parent_order, parent_family)
+        elif parent_class is None:
+            return (txn, None, None)
+        elif parent_order is None:
+            return (parent_class, txn, None)
+        else:
+            return (parent_class, parent_order, txn)
+    elif rank >= Rank.order:
         return (parent_class, txn, None)
-    elif rank is Rank.family:
+    elif rank >= Rank.family:
         return (parent_class, parent_order, txn)
     elif rank > Rank.superfamily:
         if parent_family is None and (

@@ -599,13 +599,7 @@ class Name(BaseModel):
         return not self.nomenclature_status.can_preoccupy()
 
     def numeric_page_described(self) -> int:
-        if self.page_described is None:
-            return 0
-        match = re.match(r"^(\d+)", self.page_described)
-        if match:
-            return int(match.group(1))
-        else:
-            return 0
+        return helpers.to_int(self.page_described)
 
     def extract_page_described(self) -> Optional[int]:
         """Attempts to extract a page that appears in the original description, if at all possible."""

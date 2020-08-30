@@ -531,3 +531,14 @@ def clean_string(text: str) -> str:
     text = re.sub(r"-\s+", "", text)
     text = re.sub(r"\s+", " ", text)
     return text.strip()
+
+
+def to_int(string: Optional[str]) -> int:
+    """Convert a usually int-like string to a number, to be used as a sort key."""
+    if string is None:
+        return 0
+    match = re.match(r"^(\d+)", string)
+    if match:
+        return int(match.group(1))
+    else:
+        return 0

@@ -116,7 +116,7 @@ class CitationGroup(BaseModel):
         self._display_nams(nams)
         if include_articles:
             for art in sorted(
-                self.get_articles(), key=lambda art: (art.numeric_year(), art.name)
+                self.get_articles(), key=lambda art: (art.numeric_year(), art.numeric_start_page(), art.name)
             ):
                 if condition(art.numeric_year()):
                     print(f"    {{{art.name}}}: {art.cite()}")

@@ -49,7 +49,7 @@ import unidecode
 from traitlets.config.loader import Config
 
 from . import getinput
-from .db import constants, definition, helpers, models
+from .db import constants, definition, derived_data, helpers, models
 from .db.constants import (
     AgeClass,
     Group,
@@ -3330,6 +3330,14 @@ def clean_tss_interactive(
     art.display_names()
     models.taxon.clean_tss_interactive(art, field=field)
     fill_data_from_paper(art)
+
+
+@command
+def compute_derived_fields() -> None:
+    for cls in models.BaseModel.__subclasses__():
+        print(f"Computing for {cls}")
+        cls.compute_all_derived_fields()
+    derived_data.write_derived_data(derived_data.load_derived_data())
 
 
 def run_shell() -> None:

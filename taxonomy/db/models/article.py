@@ -1,5 +1,3 @@
-from ..constants import ArticleCommentKind, ArticleKind, ArticleType
-
 from bs4 import BeautifulSoup
 import datetime
 from pathlib import Path
@@ -25,6 +23,8 @@ from typing import (
 )
 
 from .base import ADTField, BaseModel, EnumField
+from ..constants import ArticleCommentKind, ArticleKind, ArticleType
+from ..helpers import to_int
 from ... import config, events, adt, getinput
 
 from .citation_group import CitationGroup
@@ -230,10 +230,13 @@ class Article(BaseModel):
             out = out / part
         return out
 
-    def openf(self, place: str = "catalog") -> bool:
+    def openf(self, place: str = "catalog") -> None:
         if not self.isfile():
-            print("openf: error: not a file, cannot open")
-            return False
+            if self.parent is not None:
+                self.parent.openf()
+            else:
+                print("openf: error: not a file, cannot open")
+            return
         if place == "temp" or not self.path:
             path = _options.new_path / self.name
         elif place == "catalog":
@@ -241,7 +244,6 @@ class Article(BaseModel):
         else:
             raise ValueError(f"invalid place {place}")
         subprocess.check_call(["open", str(path)])
-        return True
 
     def isfile(self) -> bool:
         # returns whether this 'file' is a file
@@ -257,16 +259,10 @@ class Article(BaseModel):
         return self.kind == ArticleKind.redirect
 
     def numeric_year(self) -> int:
-        try:
-            return int(self.year)
-        except (TypeError, ValueError):
-            return 0
+        return to_int(self.year)
 
     def numeric_start_page(self) -> int:
-        try:
-            return int(self.start_page)
-        except (TypeError, ValueError):
-            return 0
+        return to_int(self.start_page)
 
     def is_page_in_range(self, page: int) -> bool:
         if self.pages:
