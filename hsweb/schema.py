@@ -21,6 +21,7 @@ from graphene import (
 )
 from graphene.relay import Node, Connection, ConnectionField
 from graphene.utils.str_converters import to_snake_case
+from pathlib import Path
 import peewee
 import re
 
@@ -30,13 +31,11 @@ SCALAR_FIELD_TO_GRAPHENE = {
     peewee.BooleanField: Boolean,
     peewee.IntegerField: Int,
 }
-TYPE_TO_GRAPHENE = {
-    str: String,
-    bool: Boolean,
-    int: Int,
-}
+TYPE_TO_GRAPHENE = {str: String, bool: Boolean, int: Int}
 TYPES: TList[ObjectType] = []
 CALL_SIGN_TO_MODEL = {model.call_sign: model for model in BaseModel.__subclasses__()}
+
+DOCS_ROOT = Path(__file__).parent.parent / "docs"
 
 
 class Model(Interface):
@@ -113,7 +112,9 @@ def build_graphene_field(
         return Field(
             make_enum(peewee_field.enum_cls),
             required=not peewee_field.null,
-            resolver=lambda parent, info: getattr(get_model(model_cls, parent, info), name),
+            resolver=lambda parent, info: getattr(
+                get_model(model_cls, parent, info), name
+            ),
         )
     elif isinstance(peewee_field, peewee.ForeignKeyField):
         call_sign = getattr(model_cls, name).rel_model.call_sign
@@ -170,7 +171,9 @@ def build_graphene_field(
         return Field(
             SCALAR_FIELD_TO_GRAPHENE[type(peewee_field)],
             required=not peewee_field.null,
-            resolver=lambda parent, info: getattr(get_model(model_cls, parent, info), name),
+            resolver=lambda parent, info: getattr(
+                get_model(model_cls, parent, info), name
+            ),
         )
     else:
         assert False, f"failed to translate {peewee_field}"
@@ -192,10 +195,35 @@ def build_connection(object_type: Type[ObjectType]) -> Type[Connection]:
     return type(f"{object_type.__name__}Connection", (Connection,), {"Meta": Meta})
 
 
+def build_reverse_rel_count_field(
+    model_cls: Type[BaseModel], name: str, peewee_field: peewee.ForeignKeyField
+) -> Field:
+
+    def resolver(
+        parent: ObjectType,
+        info: ResolveInfo
+    ) -> TList[ObjectType]:
+        model = get_model(model_cls, parent, info)
+        query = getattr(model, name)
+        return query.count()
+
+    return Int(required=True, resolver=resolver)
+
+
 def build_reverse_rel_field(
     model_cls: Type[BaseModel], name: str, peewee_field: peewee.ForeignKeyField
 ) -> Field:
-    call_sign = peewee_field.model.call_sign
+    foreign_model = peewee_field.model
+    call_sign = foreign_model.call_sign
+
+    if hasattr(foreign_model, "label_field"):
+        label_field = getattr(foreign_model, foreign_model.label_field)
+
+        def apply_ordering(query: Any) -> Any:
+            return query.order_by(label_field)
+    else:
+        def apply_ordering(query: Any) -> Any:
+            return query
 
     def resolver(
         parent: ObjectType,
@@ -204,13 +232,14 @@ def build_reverse_rel_field(
         after: Optional[str] = None,
     ) -> TList[ObjectType]:
         model = get_model(model_cls, parent, info)
-        object_type = build_object_type_from_model(peewee_field.model)
-        query = getattr(model, name)
+        object_type = build_object_type_from_model(foreign_model)
+        query = apply_ordering(getattr(model, name))
         if after:
             offset = int(base64.b64decode(after).split(b":")[1]) + 1
             query = query.limit(first + offset + 1)
         else:
             query = query.limit(first + 1)
+        query = foreign_model.add_validity_check(query)
         cache = info.context["request"]
         ret = []
         for obj in query:
@@ -219,17 +248,20 @@ def build_reverse_rel_field(
         return ret
 
     return ConnectionField(
-        lambda: build_connection(build_object_type_from_model(peewee_field.model)),
+        lambda: build_connection(build_object_type_from_model(foreign_model)),
         resolver=resolver,
     )
 
 
-def build_derived_field(model_cls: Type[BaseModel], derived_field: DerivedField) -> Field:
+def build_derived_field(
+    model_cls: Type[BaseModel], derived_field: DerivedField
+) -> Field:
+    field_name = derived_field.name
     if issubclass(derived_field.typ, BaseModel):
 
         def fk_resolver(parent: ObjectType, info: ResolveInfo) -> Optional[ObjectType]:
             model = get_model(model_cls, parent, info)
-            foreign_model_oid = model.get_raw_derived_field(derived_field.name)
+            foreign_model_oid = model.get_raw_derived_field(field_name)
             if foreign_model_oid is None:
                 return None
             return build_object_type_from_model(derived_field.typ)(
@@ -245,7 +277,9 @@ def build_derived_field(model_cls: Type[BaseModel], derived_field: DerivedField)
         return Field(
             TYPE_TO_GRAPHENE[derived_field.typ],
             required=False,
-            resolver=lambda parent, info: get_model(model_cls, parent, info).get_derived_field(name),
+            resolver=lambda parent, info: get_model(
+                model_cls, parent, info
+            ).get_derived_field(field_name),
         )
     else:
         assert False, f"unimplemented for {derived_field.typ}"
@@ -260,7 +294,12 @@ def build_object_type_from_model(model_cls: Type[BaseModel]) -> Type[ObjectType]
         namespace[name] = build_graphene_field(model_cls, name, peewee_field)
 
     for peewee_field in model_cls._meta.backrefs:
-        namespace[peewee_field.backref] = build_reverse_rel_field(model_cls, peewee_field.backref, peewee_field)
+        namespace[peewee_field.backref] = build_reverse_rel_field(
+            model_cls, peewee_field.backref, peewee_field
+        )
+        namespace[f"num_{peewee_field.backref}"] = build_reverse_rel_count_field(
+            model_cls, peewee_field.backref, peewee_field
+        )
 
     for derived_field in model_cls.derived_fields:
         namespace[derived_field.name] = build_derived_field(model_cls, derived_field)
@@ -324,9 +363,18 @@ def resolve_by_call_sign(
         return [object_type(oid=int(oid), id=int(oid))]
     else:
         objs = model_cls.select_valid().filter(
-            getattr(model_cls, model_cls.label_field) == oid
+            getattr(model_cls, model_cls.label_field) == oid.replace("_", " ")
         )
         return [object_type(id=obj.id, oid=obj.id) for obj in objs]
+
+
+def resolve_documentation(parent: ObjectType, info: ResolveInfo, path: str) -> Optional[str]:
+    if not re.match(r"^[a-zA-Z\-\d]+$", path):
+        return None
+    full_path = DOCS_ROOT / (path + ".md")
+    if full_path.exists():
+        return full_path.read_text()
+    return None
 
 
 class Query(ObjectType):
@@ -336,6 +384,11 @@ class Query(ObjectType):
         call_sign=String(required=True),
         oid=String(required=True),
         resolver=resolve_by_call_sign,
+    )
+    documentation = String(
+        required=False,
+        path=String(required=True),
+        resolver=resolve_documentation
     )
     locals().update(get_model_resolvers())
 

@@ -109,8 +109,8 @@ class Taxon(BaseModel):
     name = property(lambda self: self.base_name)
 
     @classmethod
-    def select_valid(cls, *args: Any) -> Any:
-        return cls.select(*args).filter(Taxon.age != AgeClass.removed)
+    def add_validity_check(cls, query: Any) -> Any:
+        return query.filter(Taxon.age != AgeClass.removed)
 
     def should_skip(self) -> bool:
         return self.age is AgeClass.removed

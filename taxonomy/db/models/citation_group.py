@@ -29,8 +29,8 @@ class CitationGroup(BaseModel):
         db_table = "citation_group"
 
     @classmethod
-    def select_valid(cls, *args: Any) -> Any:
-        return cls.select(*args).filter(CitationGroup.deleted == False)
+    def add_validity_check(cls, query: Any) -> Any:
+        return query.filter(CitationGroup.deleted == False)
 
     def should_skip(self) -> bool:
         return self.deleted

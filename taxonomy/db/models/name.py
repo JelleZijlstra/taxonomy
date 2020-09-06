@@ -142,8 +142,8 @@ class Name(BaseModel):
         ]
 
     @classmethod
-    def select_valid(cls, *args: Any) -> Any:
-        return cls.select(*args).filter(Name.status != Status.removed)
+    def add_validity_check(cls, query: Any) -> Any:
+        return query.filter(Name.status != Status.removed)
 
     def should_skip(self) -> bool:
         return self.status is Status.removed
@@ -1367,8 +1367,8 @@ class NameComment(BaseModel):
         db_table = "name_comment"
 
     @classmethod
-    def select_valid(cls, *args: Any) -> Any:
-        return cls.select(*args).filter(
+    def add_validity_check(cls, query: Any) -> Any:
+        return query.filter(
             NameComment.kind != constants.CommentKind.removed
         )
 

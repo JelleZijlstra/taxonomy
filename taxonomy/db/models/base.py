@@ -299,7 +299,12 @@ class BaseModel(Model):
     @classmethod
     def select_valid(cls, *args: Any) -> Any:
         """Subclasses may override this to filter out removed instances."""
-        return cls.select(*args)
+        return cls.add_validity_check(cls.select(*args))
+
+    @classmethod
+    def add_validity_check(cls, query: Any) -> Any:
+        """Add a filter to the query that removes invalid objects."""
+        return query
 
     def should_skip(self) -> bool:
         return False

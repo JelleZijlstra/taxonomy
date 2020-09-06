@@ -45,8 +45,8 @@ class Location(BaseModel):
     tags = ADTField(lambda: LocationTag, null=True)
 
     @classmethod
-    def select_valid(cls, *args: Any) -> Any:
-        return cls.select(*args).filter(Location.deleted != True)
+    def add_validity_check(cls, query: Any) -> Any:
+        return query.filter(Location.deleted != True)
 
     def should_skip(self) -> bool:
         return self.deleted

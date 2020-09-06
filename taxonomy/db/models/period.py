@@ -7,6 +7,7 @@ from peewee import BooleanField, CharField, ForeignKeyField, IntegerField
 
 from .. import models
 from ..constants import PeriodRank, PeriodSystem, RequirednessLevel
+from ..derived_data import DerivedField
 from ... import events, getinput
 
 from .base import BaseModel, EnumField
@@ -48,6 +49,15 @@ class Period(BaseModel):
     )
     deleted = BooleanField(default=False)
 
+    derived_fields = [
+        DerivedField("has_locations_stratigraphy", bool, lambda period: period.has_locations_stratigraphy())
+    ]
+
+    def has_locations_stratigraphy(self) -> bool:
+        for _ in self.locations_stratigraphy:
+            return True
+        return any(child.has_locations_stratigraphy() for child in self.children)
+
     def __repr__(self) -> str:
         parts = [f"{self.rank.name} in {self.system.name}"]
         if self.parent is not None:
@@ -74,8 +84,8 @@ class Period(BaseModel):
         return "{} ({})".format(self.name, ", ".join(parts))
 
     @classmethod
-    def select_valid(cls, *args: Any) -> Any:
-        return cls.select(*args).filter(Period.deleted != True)
+    def add_validity_check(cls, query: Any) -> Any:
+        return query.filter(Period.deleted != True)
 
     def should_skip(self) -> bool:
         return self.deleted

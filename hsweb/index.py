@@ -4,6 +4,7 @@ from pathlib import Path
 import taxonomy
 from typing import Callable, Iterator, Type
 from aiohttp_graphql import GraphQLView
+import logging
 
 from . import components
 from . import view
@@ -11,6 +12,9 @@ from . import schema
 
 HSWEB_ROOT = Path(view.__file__).parent.parent
 HESPEROMYS_ROOT = Path("/Users/jelle/py/hesperomys")
+
+logger = logging.getLogger('peewee')
+logger.setLevel(logging.DEBUG)
 
 
 @lru_cache()

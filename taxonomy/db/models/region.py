@@ -6,6 +6,7 @@ from typing import IO, Dict, Iterable, List, Optional
 from peewee import CharField, ForeignKeyField
 
 from .. import constants, models
+from ..derived_data import DerivedField
 from ... import events, getinput
 
 from .base import BaseModel, EnumField
@@ -23,6 +24,14 @@ class Region(BaseModel):
         "self", related_name="children", db_column="parent_id", null=True
     )
     kind = EnumField(constants.RegionKind)
+
+    derived_fields = [
+        DerivedField("has_collections", bool, lambda region: region.has_collections()),
+        DerivedField("has_citation_groups", bool, lambda region: region.has_citation_groups()),
+        DerivedField("has_locations", bool, lambda region: region.has_locations()),
+        DerivedField("has_periods", bool, lambda region: region.has_periods()),
+        DerivedField("has_type_localities", bool, lambda region: not region.is_empty()),
+    ]
 
     @classmethod
     def make(
@@ -202,6 +211,11 @@ class Region(BaseModel):
             child.display_collections(
                 full=full, only_nonempty=only_nonempty, depth=depth + 4
             )
+
+    def has_locations(self) -> bool:
+        for _ in self.locations:
+            return True
+        return any(child.has_locations() for child in self.children)
 
     def has_periods(self) -> bool:
         for _ in self.periods:

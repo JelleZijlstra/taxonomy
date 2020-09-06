@@ -34,15 +34,15 @@ Latin has many other groups of irregular adjectives, including some that are use
 such as alius, alia, aliud and celer, celeris, celere.
 
 There is a special group of names of the form adjective-i-noun, where the noun is often a body part,
-like breviceps "short-headed". I believe that these names are adjectives, although many are
+like _breviceps_ "short-headed". I believe that these names are adjectives, although many are
 indeclinable.
 
 Nouns in apposition
 -------------------
-Latin nouns in the nominative case are fairly common as scientific names. For example, typus "type"
+Latin nouns in the nominative case are fairly common as scientific names. For example, _typus_ "type"
 is common. The Code specifies (Art. 31.2.2) that names that could be either a noun or an
 adjective are to be treated as nouns unless there is evidence that the author intended them to be
-adjectives. This affects many names in -fer.
+adjectives. This affects many names in _-fer_.
 
 Genitive nouns
 --------------

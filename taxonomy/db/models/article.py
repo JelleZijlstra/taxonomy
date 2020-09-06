@@ -92,31 +92,31 @@ class Article(BaseModel):
     addday = CharField()  # day added to catalog
     addyear = CharField()  # year added to catalog
     name = CharField()  # name of file (or handle of citation)
-    authors = CharField()
+    authors = CharField(null=True)
     year = CharField(null=True)  # year published
     # title (chapter title for book chapter; book title for full book or thesis)
-    title = CharField()
+    title = CharField(null=True)
     _journal = CharField(
         db_column="journal"
     )  # journal published in (deprecated; use citation_group)
-    series = CharField()  # journal series
-    volume = CharField()  # journal volume
-    issue = CharField()  # journal issue
-    start_page = CharField()  # start page
-    end_page = CharField()  # end page
-    url = CharField()  # url where available
-    doi = CharField()  # DOI
+    series = CharField(null=True)  # journal series
+    volume = CharField(null=True)  # journal volume
+    issue = CharField(null=True)  # journal issue
+    start_page = CharField(null=True)
+    end_page = CharField(null=True)
+    url = CharField(null=True)
+    doi = CharField(null=True)
     type = EnumField(ArticleType)  # type of file
-    publisher = CharField()  # publisher
+    publisher = CharField(null=True)
     _location = CharField(
         db_column="location"
     )  # geographical location published (deprecated; use citation_group)
-    pages = CharField()  # number of pages in book
+    pages = CharField(null=True)  # number of pages in book
     misc_data = CharField()  # miscellaneous data
 
-    path = CharField()  # path to file (contains NOFILE if "file" is not a file)
-    ids = CharField()  # array of properties for various less-common identifiers
-    bools = CharField()  # array of boolean flags
+    path = CharField(null=True)  # path to file (contains NOFILE if "file" is not a file)
+    ids = CharField(null=True)  # array of properties for various less-common identifiers
+    bools = CharField(null=True)  # array of boolean flags
     kind = EnumField(ArticleKind)
     parent = ForeignKeyField("self", null=True)
     tags = ADTField(lambda: ArticleTag, null=True)
@@ -160,8 +160,8 @@ class Article(BaseModel):
         db_table = "article"
 
     @classmethod
-    def select_valid(cls, *args: Any) -> Any:
-        return cls.select(*args).filter(cls.kind != ArticleKind.redirect)
+    def add_validity_check(cls, query: Any) -> Any:
+        return query.filter(cls.kind != ArticleKind.redirect)
 
     def should_skip(self) -> bool:
         return self.kind is ArticleKind.redirect
@@ -389,6 +389,15 @@ class Article(BaseModel):
             self.getAuthors(separator=",", lastSeparator=" &", includeInitials=False),
             self.year,
         )
+
+    def markdown_link(self) -> str:
+        authors_list = self._getAuthors()
+        if len(authors_list) > 2:
+            authors = f"{authors_list[0][0]} et al."
+        else:
+            authors, _ = self.taxonomicAuthority()
+        name = self.name.replace(" ", "_")
+        return f"[{authors} ({self.year})](/a/{name})"
 
     def author_set(self) -> Set[str]:
         return {last for last, *_ in self._getAuthors()}

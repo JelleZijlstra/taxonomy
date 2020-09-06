@@ -23,7 +23,7 @@ class SpeciesNameComplex(BaseModel):
     call_sign = "SC"
 
     label = CharField()
-    stem = CharField()
+    stem = CharField(null=True)
     kind = EnumField(SpeciesNameKind)
     masculine_ending = CharField()
     feminine_ending = CharField()
@@ -295,7 +295,7 @@ class NameComplex(BaseModel):
     call_sign = "NC"
 
     label = CharField()
-    stem = CharField()
+    stem = CharField(null=True)
     source_language = EnumField(SourceLanguage)
     code_article = EnumField(GenderArticle)
     gender = EnumField(GrammaticalGender)
