@@ -306,7 +306,9 @@ class Name(BaseModel):
             "add_variant": self.add_variant,
             "preoccupied_by": self.preoccupied_by,
             "display_type_locality": lambda: self.type_locality.display(),
-            "fill_required_fields": lambda: self.fill_required_fields(skip_fields={"type_tags"})
+            "fill_required_fields": lambda: self.fill_required_fields(
+                skip_fields={"type_tags"}
+            ),
         }
 
     def edit(self) -> None:
@@ -1368,9 +1370,7 @@ class NameComment(BaseModel):
 
     @classmethod
     def add_validity_check(cls, query: Any) -> Any:
-        return query.filter(
-            NameComment.kind != constants.CommentKind.removed
-        )
+        return query.filter(NameComment.kind != constants.CommentKind.removed)
 
     def should_skip(self) -> bool:
         return self.kind in (

@@ -114,8 +114,12 @@ class Article(BaseModel):
     pages = CharField(null=True)  # number of pages in book
     misc_data = CharField()  # miscellaneous data
 
-    path = CharField(null=True)  # path to file (contains NOFILE if "file" is not a file)
-    ids = CharField(null=True)  # array of properties for various less-common identifiers
+    path = CharField(
+        null=True
+    )  # path to file (contains NOFILE if "file" is not a file)
+    ids = CharField(
+        null=True
+    )  # array of properties for various less-common identifiers
     bools = CharField(null=True)  # array of boolean flags
     kind = EnumField(ArticleKind)
     parent = ForeignKeyField("self", null=True)

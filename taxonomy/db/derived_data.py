@@ -60,7 +60,9 @@ class DerivedField:
 
     def set_value(self, model: "models.base.BaseModel", value: T) -> None:
         data = load_derived_data()
-        data.setdefault(model.call_sign, {}).setdefault(model.id, {})[self.name] = self.serialize(value)
+        data.setdefault(model.call_sign, {}).setdefault(model.id, {})[
+            self.name
+        ] = self.serialize(value)
 
     def serialize(self, value: T) -> Any:
         if isinstance(value, models.base.BaseModel):
@@ -68,7 +70,11 @@ class DerivedField:
         return value
 
     def deserialize(self, serialized: Any) -> T:
-        if serialized is not None and isinstance(self.typ, type) and issubclass(self.typ, models.base.BaseModel):
+        if (
+            serialized is not None
+            and isinstance(self.typ, type)
+            and issubclass(self.typ, models.base.BaseModel)
+        ):
             return self.typ.select_valid().filter(self.typ.id == serialized).get()
         return serialized
 

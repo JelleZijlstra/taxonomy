@@ -35,7 +35,9 @@ def _rep(pattern: str, replacement: str) -> Callable[[str], str]:
     return lambda name: re.sub(r"%s$" % pattern, replacement, name)
 
 
-_endings: List[Tuple[str, Union[str, Callable[[str], str]], GrammaticalGender, bool]] = [
+_endings: List[
+    Tuple[str, Union[str, Callable[[str], str]], GrammaticalGender, bool]
+] = [
     ("arctos", "os", GrammaticalGender.masculine, True),
     ("apis", "is", GrammaticalGender.masculine, True),
     ("apus", _rep("us", "od"), GrammaticalGender.masculine, True),
@@ -138,7 +140,12 @@ _endings: List[Tuple[str, Union[str, Callable[[str], str]], GrammaticalGender, b
     ("ntes", "es", GrammaticalGender.masculine, True),
     ("nus", "us", GrammaticalGender.masculine, True),
     ("ocus", "us", GrammaticalGender.masculine, True),
-    ("odemus", "us", GrammaticalGender.masculine, True),  # Apodemus is not derived from Mus
+    (
+        "odemus",
+        "us",
+        GrammaticalGender.masculine,
+        True,
+    ),  # Apodemus is not derived from Mus
     ("adon", lambda n: n + "t", GrammaticalGender.masculine, True),
     ("edon", lambda n: n + "t", GrammaticalGender.masculine, True),
     ("idon", lambda n: n + "t", GrammaticalGender.masculine, True),
@@ -227,7 +234,12 @@ _endings: List[Tuple[str, Union[str, Callable[[str], str]], GrammaticalGender, b
     ("era", "a", GrammaticalGender.feminine, True),
     ("erra", "a", GrammaticalGender.feminine, True),
     ("ga", "a", GrammaticalGender.feminine, True),
-    ("genys", "s", GrammaticalGender.feminine, True),  # See comments under Cteniogenyidae
+    (
+        "genys",
+        "s",
+        GrammaticalGender.feminine,
+        True,
+    ),  # See comments under Cteniogenyidae
     ("siren", "", GrammaticalGender.feminine, True),
     ("gale", "e", GrammaticalGender.feminine, True),
     ("manis", "is", GrammaticalGender.feminine, True),

@@ -30,7 +30,7 @@ from peewee import (
     MySQLDatabase,
     SqliteDatabase,
     TextField,
-    FieldAccessor
+    FieldAccessor,
 )
 
 from ... import adt, config, events, getinput
@@ -589,7 +589,13 @@ EnumT = TypeVar("EnumT", bound=enum.Enum)
 
 
 class _EnumFieldDescriptor(FieldAccessor, Generic[EnumT]):
-    def __init__(self, model: Type[BaseModel], field: peewee.Field, name: str, enum_cls: Type[EnumT]) -> None:
+    def __init__(
+        self,
+        model: Type[BaseModel],
+        field: peewee.Field,
+        name: str,
+        enum_cls: Type[EnumT],
+    ) -> None:
         super().__init__(model, field, name)
         self.enum_cls = enum_cls
 
@@ -613,7 +619,9 @@ class EnumField(IntegerField):
 
 
 class _ADTDescriptor(FieldAccessor):
-    def __init__(self, model: Type[BaseModel], field: peewee.Field, name: str, adt_cls: Any) -> None:
+    def __init__(
+        self, model: Type[BaseModel], field: peewee.Field, name: str, adt_cls: Any
+    ) -> None:
         super().__init__(model, field, name)
         self.adt_cls = adt_cls
 
@@ -645,7 +653,9 @@ class ADTField(TextField):
 
     def add_to_class(self, model_class: Type[BaseModel], name: str) -> None:
         super().add_to_class(model_class, name)
-        setattr(model_class, name, _ADTDescriptor(model_class, self, name, self.adt_cls))
+        setattr(
+            model_class, name, _ADTDescriptor(model_class, self, name, self.adt_cls)
+        )
         setattr(model_class, f"_raw_{name}", FieldAccessor(model_class, self, name))
 
     def get_adt(self) -> Type[Any]:

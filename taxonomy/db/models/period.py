@@ -50,7 +50,11 @@ class Period(BaseModel):
     deleted = BooleanField(default=False)
 
     derived_fields = [
-        DerivedField("has_locations_stratigraphy", bool, lambda period: period.has_locations_stratigraphy())
+        DerivedField(
+            "has_locations_stratigraphy",
+            bool,
+            lambda period: period.has_locations_stratigraphy(),
+        )
     ]
 
     def has_locations_stratigraphy(self) -> bool:

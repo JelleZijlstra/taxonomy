@@ -27,7 +27,9 @@ class Region(BaseModel):
 
     derived_fields = [
         DerivedField("has_collections", bool, lambda region: region.has_collections()),
-        DerivedField("has_citation_groups", bool, lambda region: region.has_citation_groups()),
+        DerivedField(
+            "has_citation_groups", bool, lambda region: region.has_citation_groups()
+        ),
         DerivedField("has_locations", bool, lambda region: region.has_locations()),
         DerivedField("has_periods", bool, lambda region: region.has_periods()),
         DerivedField("has_type_localities", bool, lambda region: not region.is_empty()),

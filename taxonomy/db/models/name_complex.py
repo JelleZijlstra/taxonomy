@@ -5,7 +5,13 @@ from peewee import BooleanField, CharField, ForeignKeyField
 
 from .. import models
 from ... import events, getinput
-from ..constants import GrammaticalGender, GenderArticle, Group, SourceLanguage, SpeciesNameKind
+from ..constants import (
+    GrammaticalGender,
+    GenderArticle,
+    Group,
+    SourceLanguage,
+    SpeciesNameKind,
+)
 
 from .base import BaseModel, EnumField
 
