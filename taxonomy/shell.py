@@ -1585,7 +1585,9 @@ def labeled_childless_taxa() -> Iterable[LabeledName]:
 
 @command
 def fossilize(
-    *taxa: Taxon, to_status: AgeClass = AgeClass.fossil, from_status: AgeClass = AgeClass.extant
+    *taxa: Taxon,
+    to_status: AgeClass = AgeClass.fossil,
+    from_status: AgeClass = AgeClass.extant,
 ) -> None:
     for taxon in taxa:
         if taxon.age != from_status:
@@ -1843,7 +1845,7 @@ def set_empty_to_none(
 @command
 def fill_data_from_paper(
     paper: Optional[models.Article] = None,
-    level: FillDataLevel = FillDataLevel.only_if_limited_data,
+    level: FillDataLevel = FillDataLevel.incomplete_detail,
     ask_before_opening: bool = True,
 ) -> None:
     if paper is None:
@@ -1859,7 +1861,7 @@ def fill_data_from_paper(
 @command
 def fill_data_from_author(
     author: str,
-    level: FillDataLevel = FillDataLevel.only_if_limited_data,
+    level: FillDataLevel = FillDataLevel.incomplete_detail,
     ask_before_opening: bool = False,
 ) -> None:
     for nam in Name.bfind(authority=author):
@@ -2240,7 +2242,7 @@ def most_common_citation_groups_after(year: int) -> Dict[CitationGroup, int]:
 @command
 def fill_data_from_folder(
     folder: str,
-    level: FillDataLevel = FillDataLevel.only_if_limited_data,
+    level: FillDataLevel = FillDataLevel.incomplete_detail,
     only_fill_cache: bool = False,
     ask_before_opening: bool = True,
 ) -> None:
@@ -2275,13 +2277,21 @@ def fill_data_from_articles(
             ask_before_opening=ask_before_opening,
         ):
             done += 1
+        elif not only_fill_cache:
+            # Redo this to make sure we finished the paper.
+            models.taxon.fill_data_from_paper(
+                art,
+                level=level,
+                only_fill_cache=False,
+                ask_before_opening=ask_before_opening,
+            )
     print(f"{done}/{total} ({(done / total) * 100:.03}%) done")
 
 
 @command
 def fill_data_from_citation_group(
     cg: Optional[CitationGroup] = None,
-    level: FillDataLevel = FillDataLevel.only_if_limited_data,
+    level: FillDataLevel = FillDataLevel.incomplete_detail,
     only_fill_cache: bool = False,
     ask_before_opening: bool = True,
 ) -> None:

@@ -535,14 +535,16 @@ class Article(BaseModel):
 
     def display_names(self, full: bool = False) -> None:
         print(repr(self))
-        new_names = list(self.new_names)
-        print(f"New names ({len(new_names)}):")
-        for nam in new_names:
-            nam.display(full=full)
+        new_names = sorted(self.new_names, key=lambda nam: nam.numeric_page_described())
+        if new_names:
+            print(f"New names ({len(new_names)}):")
+            for nam in new_names:
+                nam.display(full=full)
         tss_names = list(self.type_source_names)
-        print(f"Type specimen source ({len(tss_names)}):")
-        for nam in tss_names:
-            nam.display(full=full)
+        if tss_names:
+            print(f"Type specimen source ({len(tss_names)}):")
+            for nam in tss_names:
+                nam.display(full=full)
 
     def __str__(self) -> str:
         return f"{{{self.name}}}"
