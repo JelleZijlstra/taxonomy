@@ -62,15 +62,13 @@ def split_fields(names: DataT) -> DataT:
         if match:
             name.update(match.groupdict())
             text = name["rest"]
+            name["specimen_detail"] = text
             if text.startswith("Type from"):
                 if "; " in text:
                     loc, rest = text.split("; ", 1)
                     name["loc"] = loc
-                    name["specimen_detail"] = rest
                 else:
                     name["loc"] = text
-            else:
-                name["specimen_detail"] = text
         else:
             continue
         for field in ("loc", "specimen_detail"):
@@ -78,6 +76,9 @@ def split_fields(names: DataT) -> DataT:
                 del name[field]
             if field in name and "[" in name[field]:
                 name[field] = name[field] + " [brackets original]"
+
+        if "loc" in name:
+            del name["loc"]
 
         yield name
 
@@ -96,8 +97,7 @@ def main() -> DataT:
         names,
         SOURCE,
         dry_run=False,
-        edit_if_no_holotype=False,
-        edit_if=lambda name: "specimen_detail" in name,
+        edit_if_no_holotype=False
     )
     lib.print_field_counts(names)
     return names
