@@ -6,6 +6,7 @@ import traceback
 from typing import (
     Any,
     Callable,
+    ClassVar,
     Container,
     Dict,
     Generic,
@@ -102,6 +103,7 @@ class BaseModel(Model):
     excluded_fields: Set[str] = set()
     derived_fields: List["derived_data.DerivedField"] = []
     _name_to_derived_field: Dict[str, "derived_data.DerivedField"] = {}
+    call_sign_to_model: ClassVar[Dict[str, Type["BaseModel"]]] = {}
 
     class Meta(object):
         database = database
@@ -110,6 +112,8 @@ class BaseModel(Model):
 
     def __init_subclass__(cls) -> None:
         super().__init_subclass__()
+        if hasattr(cls, "call_sign"):
+            BaseModel.call_sign_to_model[cls.call_sign] = cls
         cls._name_to_derived_field = {field.name: field for field in cls.derived_fields}
         for field in cls.derived_fields:
             if field.typ is derived_data.SetLater:
@@ -793,6 +797,11 @@ class _NameGetter(Generic[ModelT]):
                 return
             obj.display()
             obj.edit()
+
+    def get_all(self) -> List[str]:
+        self._warm_cache()
+        assert self._data is not None
+        return sorted(self._data)
 
     def _warm_cache(self) -> None:
         if self._data is None:

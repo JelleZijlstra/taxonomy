@@ -198,11 +198,7 @@ def build_connection(object_type: Type[ObjectType]) -> Type[Connection]:
 def build_reverse_rel_count_field(
     model_cls: Type[BaseModel], name: str, peewee_field: peewee.ForeignKeyField
 ) -> Field:
-
-    def resolver(
-        parent: ObjectType,
-        info: ResolveInfo
-    ) -> TList[ObjectType]:
+    def resolver(parent: ObjectType, info: ResolveInfo) -> TList[ObjectType]:
         model = get_model(model_cls, parent, info)
         query = getattr(model, name)
         return query.count()
@@ -221,7 +217,9 @@ def build_reverse_rel_field(
 
         def apply_ordering(query: Any) -> Any:
             return query.order_by(label_field)
+
     else:
+
         def apply_ordering(query: Any) -> Any:
             return query
 
@@ -313,6 +311,11 @@ def build_object_type_from_model(model_cls: Type[BaseModel]) -> Type[ObjectType]
 
     namespace["Meta"] = Meta
     namespace["oid"] = Field(Int, required=True)
+    namespace["model_cls"] = Field(
+        lambda: ModelCls,
+        required=True,
+        resolver=lambda *args: ModelCls(call_sign=model_cls.call_sign),
+    )
     namespace["call_sign"] = Field(
         String, required=True, resolver=lambda *args: model_cls.call_sign
     )
@@ -368,13 +371,39 @@ def resolve_by_call_sign(
         return [object_type(id=obj.id, oid=obj.id) for obj in objs]
 
 
-def resolve_documentation(parent: ObjectType, info: ResolveInfo, path: str) -> Optional[str]:
+def resolve_documentation(
+    parent: ObjectType, info: ResolveInfo, path: str
+) -> Optional[str]:
     if not re.match(r"^[a-zA-Z\-\d]+$", path):
         return None
     full_path = DOCS_ROOT / (path + ".md")
     if full_path.exists():
         return full_path.read_text()
     return None
+
+
+def resolve_autocompletions(
+    parent: "ModelCls", info: ResolveInfo, field: Optional[str] = None
+) -> TList[str]:
+    model_cls = BaseModel.call_sign_to_model[parent.call_sign]
+    if field is None:
+        field = model_cls.label_field
+    return model_cls.getter(field).get_all()
+
+
+class ModelCls(ObjectType):
+    call_sign = String(required=True)
+    name = String(
+        required=True,
+        resolver=lambda self, *args: BaseModel.call_sign_to_model[
+            self.call_sign
+        ].__name__,
+    )
+    autocompletions = Field(
+        NonNull(List(NonNull(String))),
+        field=String(required=False),
+        resolver=resolve_autocompletions,
+    )
 
 
 class Query(ObjectType):
@@ -386,9 +415,13 @@ class Query(ObjectType):
         resolver=resolve_by_call_sign,
     )
     documentation = String(
-        required=False,
-        path=String(required=True),
-        resolver=resolve_documentation
+        required=False, path=String(required=True), resolver=resolve_documentation
+    )
+    model_cls = Field(
+        ModelCls,
+        call_sign=String(required=True),
+        required=True,
+        resolver=lambda self, info, call_sign: ModelCls(call_sign=call_sign),
     )
     locals().update(get_model_resolvers())
 

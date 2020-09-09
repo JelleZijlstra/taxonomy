@@ -93,12 +93,7 @@ def main() -> DataT:
     names = lib.translate_to_db(names, "USNM", SOURCE, verbose=True)
     names = lib.translate_type_locality(names, start_at_end=True, quiet=True)
     names = lib.associate_names(names)
-    names = lib.write_to_db(
-        names,
-        SOURCE,
-        dry_run=False,
-        edit_if_no_holotype=False
-    )
+    names = lib.write_to_db(names, SOURCE, dry_run=False, edit_if_no_holotype=False)
     lib.print_field_counts(names)
     return names
 

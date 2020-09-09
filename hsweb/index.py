@@ -13,7 +13,7 @@ from . import schema
 HSWEB_ROOT = Path(view.__file__).parent.parent
 HESPEROMYS_ROOT = Path("/Users/jelle/py/hesperomys")
 
-logger = logging.getLogger('peewee')
+logger = logging.getLogger("peewee")
 logger.setLevel(logging.DEBUG)
 
 

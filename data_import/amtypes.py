@@ -131,11 +131,15 @@ def split_fields(names: DataT, verbose: bool = False) -> DataT:
                             )
                         elif part == "body in alc":
                             tags.append(
-                                models.TypeTag.Organ(constants.SpecimenOrgan.in_alcohol, "", "")
+                                models.TypeTag.Organ(
+                                    constants.SpecimenOrgan.in_alcohol, "", ""
+                                )
                             )
                         elif part in ("study skin", "flat skin only", "flat skin"):
                             tags.append(
-                                models.TypeTag.Organ(constants.SpecimenOrgan.skin, "", "")
+                                models.TypeTag.Organ(
+                                    constants.SpecimenOrgan.skin, "", ""
+                                )
                             )
                         elif part in ("skin mounted", "skin mount"):
                             tags.append(
