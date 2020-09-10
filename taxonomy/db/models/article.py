@@ -1,7 +1,7 @@
 from bs4 import BeautifulSoup
 import datetime
 from pathlib import Path
-from peewee import CharField, ForeignKeyField, IntegerField, TextField
+from peewee import CharField, DeferredForeignKey, ForeignKeyField, IntegerField, TextField
 import re
 import requests
 import subprocess
@@ -122,7 +122,7 @@ class Article(BaseModel):
     )  # array of properties for various less-common identifiers
     bools = CharField(null=True)  # array of boolean flags
     kind = EnumField(ArticleKind)
-    parent = ForeignKeyField("self", null=True)
+    parent = DeferredForeignKey("Article", null=True)
     tags = ADTField(lambda: ArticleTag, null=True)
     citation_group = ForeignKeyField(CitationGroup, null=True)
 
