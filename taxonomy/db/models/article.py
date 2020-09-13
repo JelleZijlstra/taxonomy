@@ -492,6 +492,10 @@ class Article(BaseModel):
         else:
             return None
 
+    def markdown_link(self) -> str:
+        cite = self.cite().replace("<i>", "_").replace("</i>", "_")
+        return f"[{cite}](/a/{self.id})"
+
     def cite(self, citetype: str = "paper") -> str:
         if self.issupplement():
             return self.parent.cite(citetype=citetype)

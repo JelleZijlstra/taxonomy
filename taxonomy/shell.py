@@ -2214,22 +2214,28 @@ def most_common(model_cls: Type[models.BaseModel], field: str) -> Counter[Any]:
 
 @command
 def most_common_mapped(
-    model_cls: Type[models.BaseModel], field: str, mapper: Callable[[Any], Any]
+    model_cls: Type[models.BaseModel],
+    field: str,
+    mapper: Callable[[Any], Any],
+    num_to_display: int = 10,
 ) -> Counter[Any]:
     objects = model_cls.select_valid().filter(getattr(model_cls, field) != None)
     counter: Counter[Any] = Counter()
     for obj in objects:
         value = getattr(obj, field)
         counter[mapper(value)] += 1
-    for value, count in counter.most_common(10):
+    for value, count in counter.most_common(num_to_display):
         print(value, count)
     return counter
 
 
 @command
-def most_common_cg_for_tss() -> Counter[models.CitationGroup]:
+def most_common_cg_for_tss(num_to_display: int = 10) -> Counter[models.CitationGroup]:
     return most_common_mapped(
-        Name, "type_specimen_source", lambda art: art.citation_group
+        Name,
+        "type_specimen_source",
+        lambda art: art.citation_group,
+        num_to_display=num_to_display,
     )
 
 
@@ -2247,45 +2253,12 @@ def fill_data_from_folder(
     ask_before_opening: bool = True,
 ) -> None:
     arts = Article.bfind(Article.path.startswith(folder), quiet=True)
-    fill_data_from_articles(
+    models.taxon.fill_data_from_articles(
         sorted(arts, key=lambda art: art.path),
         level=level,
         only_fill_cache=only_fill_cache,
         ask_before_opening=ask_before_opening,
     )
-
-
-def fill_data_from_articles(
-    arts: Sequence[Article],
-    level: FillDataLevel,
-    only_fill_cache: bool,
-    ask_before_opening: bool = False,
-) -> None:
-    total = len(arts)
-    if total is None:
-        print("no articles found")
-        return
-    done = 0
-    for i, art in enumerate(arts):
-        percentage = (i / total) * 100
-        print(f"{percentage:.03}% ({i}/{total}) {art.path}/{art.name}")
-        getinput.flush()
-        if models.taxon.fill_data_from_paper(
-            art,
-            level=level,
-            only_fill_cache=only_fill_cache,
-            ask_before_opening=ask_before_opening,
-        ):
-            done += 1
-        elif not only_fill_cache:
-            # Redo this to make sure we finished the paper.
-            models.taxon.fill_data_from_paper(
-                art,
-                level=level,
-                only_fill_cache=False,
-                ask_before_opening=ask_before_opening,
-            )
-    print(f"{done}/{total} ({(done / total) * 100:.03}%) done")
 
 
 @command
@@ -2310,7 +2283,7 @@ def fill_data_from_citation_group(
         return (year, volume, start_page)
 
     arts = sorted(cg.get_articles(), key=sort_key)
-    fill_data_from_articles(
+    models.taxon.fill_data_from_articles(
         arts,
         level=level,
         only_fill_cache=only_fill_cache,
@@ -3199,7 +3172,7 @@ def find_potential_citations_for_group(cg: CitationGroup, fix: bool = False) -> 
             and nam.year == art.year
             and art.is_page_in_range(page)
             and art.kind is not ArticleKind.no_copy
-            and not art.has_tag(models.article.NameTag.NonOriginal)
+            and not art.has_tag(models.article.ArticleTag.NonOriginal)
         ]
         if candidates:
             if count == 0:

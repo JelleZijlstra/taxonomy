@@ -1028,8 +1028,10 @@ class Taxon(BaseModel):
         min_year: Optional[int] = None,
         age: Optional[AgeClass] = None,
         field: Optional[str] = None,
-        level: FillDataLevel = FillDataLevel.needs_more_data,
+        level: FillDataLevel = FillDataLevel.incomplete_detail,
         ask_before_opening: bool = True,
+        only_fill_cache: bool = False,
+        filter_by_name_level: bool = False,
     ) -> None:
         """Calls fill_required_fields() for all names in this taxon."""
         all_names = self.all_names(age=age)
@@ -1039,7 +1041,7 @@ class Taxon(BaseModel):
                 return False
             if nam.original_citation.kind is ArticleKind.no_copy:
                 return False
-            if _fill_data_level_for_name(nam) > level:
+            if filter_by_name_level and _fill_data_level_for_name(nam) > level:
                 return False
             if field is not None and (
                 getattr(nam, field) is not None
@@ -1064,10 +1066,12 @@ class Taxon(BaseModel):
             },
             key=lambda art: art.name,
         )
-        for citation in citations:
-            fill_data_from_paper(
-                citation, level=level, ask_before_opening=ask_before_opening
-            )
+        fill_data_from_articles(
+            citations,
+            level=level,
+            ask_before_opening=ask_before_opening,
+            only_fill_cache=only_fill_cache,
+        )
         if not only_with_original:
             for nam in self.all_names(age=age):
                 nam = nam.reload()
@@ -1213,6 +1217,39 @@ def fill_data_from_paper(
         _finished_papers.add((paper.name, level))
         return True
     return False
+
+
+def fill_data_from_articles(
+    arts: Sequence[Article],
+    level: FillDataLevel,
+    only_fill_cache: bool,
+    ask_before_opening: bool = False,
+) -> None:
+    total = len(arts)
+    if total == 0:
+        print("no articles found")
+        return
+    done = 0
+    for i, art in enumerate(arts):
+        percentage = (i / total) * 100
+        print(f"{percentage:.03}% ({i}/{total}) {art.path}/{art.name}")
+        getinput.flush()
+        if fill_data_from_paper(
+            art,
+            level=level,
+            only_fill_cache=only_fill_cache,
+            ask_before_opening=ask_before_opening,
+        ):
+            done += 1
+        elif not only_fill_cache:
+            # Redo this to make sure we finished the paper.
+            fill_data_from_paper(
+                art,
+                level=level,
+                only_fill_cache=False,
+                ask_before_opening=ask_before_opening,
+            )
+    print(f"{done}/{total} ({(done / total) * 100:.03}%) done")
 
 
 def _contains_type_specimen(

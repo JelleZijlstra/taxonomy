@@ -48,6 +48,9 @@ class Collection(BaseModel):
                 label=label, name=name, location=location, comment=comment
             )
 
+    def get_required_fields(self) -> List[str]:
+        return ["label", "name", "location", "city"]
+
     @classmethod
     def create_interactively(
         cls: Type[ModelT],
