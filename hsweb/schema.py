@@ -87,7 +87,7 @@ def build_adt_member(adt_cls: Type[ADT], adt: ADT) -> Type[ObjectType]:
 @lru_cache()
 def build_adt_interface(adt_cls: Type[ADT]) -> Type[Interface]:
     # These interfaces are empty, but graphene complains if we actually leave it empty
-    return type(adt_cls.__name__, (Interface,), {"__ignored": Field(ID, required=True)})
+    return type(adt_cls.__name__, (Interface,), {"__ignored": Field(ID, required=False)})
 
 
 @lru_cache()
@@ -152,10 +152,11 @@ def build_graphene_field(
                 return []
             out = []
             for adt in adts:
-                graphene_cls = build_adt_member(adt_cls, type(adt))
                 if not adt._has_args:
+                    graphene_cls = build_adt_member(adt_cls, adt)
                     out.append(graphene_cls())
                 else:
+                    graphene_cls = build_adt_member(adt_cls, type(adt))
                     out.append(
                         graphene_cls(
                             **{
