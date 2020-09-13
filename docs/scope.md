@@ -5,6 +5,13 @@ fossil) tetrapods and a few minor invertebrate groups. It focuses on aspects of 
 such as type specimens, technical availability, and etymology, but also covers taxonomy and
 chronology.
 
+## Information included
+
+The focus of the database is on nomenclature and taxonomy. For each taxonomic group covered,
+the aim is to include every available or otherwise notable name, list all important nomenclatural
+information (such as data about types and original descriptions), and place all names in a consistent,
+up-to-date taxonomic scheme.
+
 ## Taxonomic groups covered
 
 Major groups covered include:
