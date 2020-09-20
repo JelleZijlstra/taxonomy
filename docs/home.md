@@ -42,3 +42,17 @@ Information about the objects in the database:
 - [Region](/docs/region)
 - [Species name complex](/docs/species-name-complex)
 - [Taxon](/docs/taxon)
+
+# Contact
+
+If you have feedback or comments, or if you have something to contribute to the database,
+feel free to contact me at [jelle.zijlstra@gmail.com](mailto:jelle.zijlstra@gmail.com).
+
+# Disclaimer
+
+This database is not a published work under the _International Code of Zoological
+Nomenclature_ and any nomenclatural acts are without effect (Art. 8.2).
+
+Information in the database was gathered from a large number of sources and
+sometimes copied from uncorrected OCR text. Before you rely on a statement in the
+database, you should check it against the original source.
