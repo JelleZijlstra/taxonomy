@@ -366,8 +366,10 @@ def resolve_by_call_sign(
     if oid.isnumeric():
         return [object_type(oid=int(oid), id=int(oid))]
     else:
+        if not model_cls.label_field_has_underscores:
+            oid = oid.replace("_", " ")
         objs = model_cls.select_valid().filter(
-            getattr(model_cls, model_cls.label_field) == oid.replace("_", " ")
+            getattr(model_cls, model_cls.label_field) == oid
         )
         return [object_type(id=obj.id, oid=obj.id) for obj in objs]
 

@@ -26,6 +26,7 @@ class SpeciesNameComplex(BaseModel):
     creation_event = events.Event["SpeciesNameComplex"]()
     save_event = events.Event["SpeciesNameComplex"]()
     label_field = "label"
+    label_field_has_underscores = True
     call_sign = "SC"
 
     label = CharField()
@@ -298,6 +299,7 @@ class NameComplex(BaseModel):
     creation_event = events.Event["NameComplex"]()
     save_event = events.Event["NameComplex"]()
     label_field = "label"
+    label_field_has_underscores = True
     call_sign = "NC"
 
     label = CharField()

@@ -94,6 +94,7 @@ FieldAccessor.__set__ = _descriptor_set
 
 class BaseModel(Model):
     label_field: str
+    label_field_has_underscores = False
     # If given, lists are separated into groups based on this field.
     grouping_field: Optional[str] = None
     call_sign: str
