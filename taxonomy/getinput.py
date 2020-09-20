@@ -257,17 +257,18 @@ def get_adt_list(
     existing: Optional[Iterable[adt.ADT]] = None,
     completers: CompleterMap = {},
     callbacks: CallbackMap = {},
+    show_existing: bool = False,
 ) -> Tuple[ADTOrInstance, ...]:
     out: List[ADTOrInstance] = []
     if existing is not None:
         out += existing
-        print("existing:")
-        for line in display_tags("  ", existing, show_indexes=True):
-            print(line, end="")
+        if show_existing:
+            print("existing:")
+            for line in display_tags("  ", existing, show_indexes=True):
+                print(line, end="")
     name_to_cls = {}
     for member_name in adt_cls._members:
         name_to_cls[member_name.lower()] = getattr(adt_cls, member_name)
-    print(f'options: {", ".join(name_to_cls.keys())}')
     while True:
         options = [
             *name_to_cls.keys(),
@@ -286,6 +287,8 @@ def get_adt_list(
             for line in display_tags("", out, show_indexes=True):
                 print(line, end="")
             continue
+        elif member == "h":
+            print(f'options: {", ".join(name_to_cls.keys())}')
         elif not member:
             print(f"new tags: {out}")
             return tuple(out)

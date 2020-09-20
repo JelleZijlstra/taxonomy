@@ -72,7 +72,7 @@ from .db.models import (
     TypeTag,
     database,
 )
-from .db.models.taxon import FillDataLevel
+from .db.models.taxon import FillDataLevel, DEFAULT_LEVEL
 
 T = TypeVar("T")
 
@@ -1845,7 +1845,7 @@ def set_empty_to_none(
 @command
 def fill_data_from_paper(
     paper: Optional[models.Article] = None,
-    level: FillDataLevel = FillDataLevel.incomplete_detail,
+    level: FillDataLevel = DEFAULT_LEVEL,
     ask_before_opening: bool = True,
 ) -> None:
     if paper is None:
@@ -1861,7 +1861,7 @@ def fill_data_from_paper(
 @command
 def fill_data_from_author(
     author: str,
-    level: FillDataLevel = FillDataLevel.incomplete_detail,
+    level: FillDataLevel = DEFAULT_LEVEL,
     ask_before_opening: bool = False,
 ) -> None:
     for nam in Name.bfind(authority=author):
@@ -2248,9 +2248,10 @@ def most_common_citation_groups_after(year: int) -> Dict[CitationGroup, int]:
 @command
 def fill_data_from_folder(
     folder: str,
-    level: FillDataLevel = FillDataLevel.incomplete_detail,
+    level: FillDataLevel = DEFAULT_LEVEL,
     only_fill_cache: bool = False,
     ask_before_opening: bool = True,
+    skip_nofile: bool = True,
 ) -> None:
     arts = Article.bfind(Article.path.startswith(folder), quiet=True)
     models.taxon.fill_data_from_articles(
@@ -2258,15 +2259,17 @@ def fill_data_from_folder(
         level=level,
         only_fill_cache=only_fill_cache,
         ask_before_opening=ask_before_opening,
+        skip_nofile=skip_nofile,
     )
 
 
 @command
 def fill_data_from_citation_group(
     cg: Optional[CitationGroup] = None,
-    level: FillDataLevel = FillDataLevel.incomplete_detail,
+    level: FillDataLevel = DEFAULT_LEVEL,
     only_fill_cache: bool = False,
     ask_before_opening: bool = True,
+    skip_nofile: bool = True,
 ) -> None:
     if cg is None:
         cg = CitationGroup.getter("name").get_one()
@@ -2288,6 +2291,7 @@ def fill_data_from_citation_group(
         level=level,
         only_fill_cache=only_fill_cache,
         ask_before_opening=ask_before_opening,
+        skip_nofile=skip_nofile,
     )
 
 

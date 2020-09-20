@@ -22,7 +22,7 @@ from typing import (
 )
 
 import peewee
-from peewee import BooleanField, CharField, ForeignKeyField, IntegerField, TextField
+from peewee import BooleanField, CharField, ForeignKeyField, TextField
 
 from .. import definition, helpers, models
 from ..derived_data import DerivedField, SetLater
@@ -47,6 +47,9 @@ class FillDataLevel(enum.IntEnum):
     incomplete_detail = 3  # fill data if species has LD but not SD or vice versa
     missing_detail = 4  # fill data if species name is missing location/specimen detail
     nothing_needed = 5
+
+
+DEFAULT_LEVEL = FillDataLevel.needs_basic_data
 
 
 class _OccurrenceGetter(object):
@@ -1028,10 +1031,11 @@ class Taxon(BaseModel):
         min_year: Optional[int] = None,
         age: Optional[AgeClass] = None,
         field: Optional[str] = None,
-        level: FillDataLevel = FillDataLevel.incomplete_detail,
+        level: FillDataLevel = DEFAULT_LEVEL,
         ask_before_opening: bool = True,
         only_fill_cache: bool = False,
         filter_by_name_level: bool = False,
+        skip_nofile: bool = True,
     ) -> None:
         """Calls fill_required_fields() for all names in this taxon."""
         all_names = self.all_names(age=age)
@@ -1064,13 +1068,14 @@ class Taxon(BaseModel):
                 for nam in all_names
                 if nam.type_specimen_source is not None
             },
-            key=lambda art: art.name,
+            key=lambda art: (art.path, art.name),
         )
         fill_data_from_articles(
             citations,
             level=level,
             ask_before_opening=ask_before_opening,
             only_fill_cache=only_fill_cache,
+            skip_nofile=skip_nofile,
         )
         if not only_with_original:
             for nam in self.all_names(age=age):
@@ -1160,13 +1165,18 @@ _finished_papers: Set[Tuple[str, FillDataLevel]] = set()
 
 def fill_data_from_paper(
     paper: Article,
-    level: FillDataLevel = FillDataLevel.incomplete_detail,
+    level: FillDataLevel = DEFAULT_LEVEL,
     only_fill_cache: bool = False,
     ask_before_opening: bool = False,
+    finish_what_you_start: bool = True,
 ) -> bool:
     if (paper.name, level) in _finished_papers:
         return True
     opened = False
+    if finish_what_you_start:
+        goal_level = max(level, FillDataLevel.missing_detail)
+    else:
+        goal_level = level
 
     def sort_key(nam: models.Name) -> Tuple[str, int]:
         try:
@@ -1180,37 +1190,37 @@ def fill_data_from_paper(
         ),
         key=sort_key,
     )
-    nams = [nam for nam in nams if _fill_data_level_for_name(nam) <= level]
-    if nams:
-        print(f"{paper.name}: {len(nams)} names (fill_data_from_paper)")
+    nams_below_level = [nam for nam in nams if _fill_data_level_for_name(nam) <= level]
+    if nams_below_level:
+        print(f"{paper.name}: {len(nams_below_level)} names (fill_data_from_paper)")
         if ask_before_opening and not only_fill_cache:
             clean_tss_interactive(paper)
 
-    for nam in nams:
-        if only_fill_cache:
-            opened = True
-        else:
-            nam = nam.reload()
-            while _fill_data_level_for_name(nam) <= level:
-                nam.display()
-                if not opened:
-                    getinput.add_to_clipboard(paper.name)
-                    paper.openf()
-                    paper.add_to_history()
-                    print(f"filling data from {paper.name}")
+        for nam in nams:
+            if only_fill_cache:
                 opened = True
-                current_level = _fill_data_level_for_name(nam)
-                print(f"Level: {current_level.name.upper()}")
-                if list(nam.get_empty_required_fields()):
-                    print(nam, "described at", nam.page_described)
-                    nam.fill_required_fields()
-                else:
-                    nam.fill_field("type_tags")
+            else:
+                nam = nam.reload()
+                while _fill_data_level_for_name(nam) <= goal_level:
+                    nam.display()
+                    if not opened:
+                        getinput.add_to_clipboard(paper.name)
+                        paper.openf()
+                        paper.add_to_history()
+                        print(f"filling data from {paper.name}")
+                    opened = True
+                    current_level = _fill_data_level_for_name(nam)
+                    print(f"Level: {current_level.name.upper()}")
+                    if list(nam.get_empty_required_fields()):
+                        print(nam, "described at", nam.page_described)
+                        nam.fill_required_fields()
+                    else:
+                        nam.fill_field("type_tags")
 
     opened_for_tss = replace_type_specimen_source_from_paper(
         paper,
         only_fill_cache=only_fill_cache,
-        ask_before_opening=ask_before_opening and not nams,
+        ask_before_opening=ask_before_opening and not nams_below_level,
     )
 
     if not opened and not opened_for_tss:
@@ -1224,6 +1234,7 @@ def fill_data_from_articles(
     level: FillDataLevel,
     only_fill_cache: bool,
     ask_before_opening: bool = False,
+    skip_nofile: bool = True,
 ) -> None:
     total = len(arts)
     if total == 0:
@@ -1234,6 +1245,9 @@ def fill_data_from_articles(
         percentage = (i / total) * 100
         print(f"{percentage:.03}% ({i}/{total}) {art.path}/{art.name}")
         getinput.flush()
+        if not only_fill_cache and skip_nofile and not art.isfile():
+            print("skipping NOFILE article")
+            continue
         if fill_data_from_paper(
             art,
             level=level,
@@ -1447,7 +1461,7 @@ def _require_detail(nam: "models.Name") -> bool:
     year = nam.numeric_year()
     if year > 1920:
         return True
-    elif year < 1900:
+    elif year <= 1900:
         return False
     else:
         return nam.taxon.age is AgeClass.extant
