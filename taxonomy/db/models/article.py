@@ -1,7 +1,13 @@
 from bs4 import BeautifulSoup
 import datetime
 from pathlib import Path
-from peewee import CharField, DeferredForeignKey, ForeignKeyField, IntegerField, TextField
+from peewee import (
+    CharField,
+    DeferredForeignKey,
+    ForeignKeyField,
+    IntegerField,
+    TextField,
+)
 import re
 import requests
 import subprocess

@@ -1,4 +1,5 @@
 from taxonomy.db.models.base import BaseModel, EnumField, ADTField
+from taxonomy.db.models import Period, Location
 from taxonomy.db.derived_data import DerivedField
 from taxonomy.adt import ADT
 from typing import Type, Any, Dict, List as TList, Optional, Tuple
@@ -87,7 +88,9 @@ def build_adt_member(adt_cls: Type[ADT], adt: ADT) -> Type[ObjectType]:
 @lru_cache()
 def build_adt_interface(adt_cls: Type[ADT]) -> Type[Interface]:
     # These interfaces are empty, but graphene complains if we actually leave it empty
-    return type(adt_cls.__name__, (Interface,), {"__ignored": Field(ID, required=False)})
+    return type(
+        adt_cls.__name__, (Interface,), {"__ignored": Field(ID, required=False)}
+    )
 
 
 @lru_cache()
@@ -207,6 +210,29 @@ def build_reverse_rel_count_field(
     return Int(required=True, resolver=resolver)
 
 
+def chronological_locations_resolver(
+    parent: ObjectType, info: ResolveInfo, first: int = 10, after: Optional[str] = None
+) -> TList[ObjectType]:
+    model = get_model(Period, parent, info)
+    object_type = build_object_type_from_model(Location)
+    query = (
+        Location.select_valid()
+        .filter((Location.min_period == model) | (Location.max_period == model))
+        .order_by(Location.label_field)
+    )
+    if after:
+        offset = int(base64.b64decode(after).split(b":")[1]) + 1
+        query = query.limit(first + offset + 1)
+    else:
+        query = query.limit(first + 1)
+    cache = info.context["request"]
+    ret = []
+    for obj in query:
+        ret.append(object_type(id=obj.id, oid=obj.id))
+        cache[(Location.call_sign, obj.id)] = obj
+    return ret
+
+
 def build_reverse_rel_field(
     model_cls: Type[BaseModel], name: str, peewee_field: peewee.ForeignKeyField
 ) -> Field:
@@ -250,6 +276,16 @@ def build_reverse_rel_field(
         lambda: build_connection(build_object_type_from_model(foreign_model)),
         resolver=resolver,
     )
+
+
+CUSTOM_FIELDS = {
+    Period: {
+        "locations_chronology": ConnectionField(
+            lambda: build_connection(build_object_type_from_model(Location)),
+            resolver=chronological_locations_resolver,
+        )
+    }
+}
 
 
 def build_derived_field(
@@ -302,6 +338,8 @@ def build_object_type_from_model(model_cls: Type[BaseModel]) -> Type[ObjectType]
 
     for derived_field in model_cls.derived_fields:
         namespace[derived_field.name] = build_derived_field(model_cls, derived_field)
+
+    namespace.update(CUSTOM_FIELDS.get(model_cls, {}))
 
     class Meta:
         interfaces = (Node, Model)

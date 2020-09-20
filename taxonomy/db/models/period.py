@@ -54,13 +54,25 @@ class Period(BaseModel):
             "has_locations_stratigraphy",
             bool,
             lambda period: period.has_locations_stratigraphy(),
-        )
+        ),
+        DerivedField(
+            "has_locations_chronology",
+            bool,
+            lambda period: period.has_locations_chronology(),
+        ),
     ]
 
     def has_locations_stratigraphy(self) -> bool:
         for _ in self.locations_stratigraphy:
             return True
         return any(child.has_locations_stratigraphy() for child in self.children)
+
+    def has_locations_chronology(self) -> bool:
+        for _ in self.locations_min:
+            return True
+        for _ in self.locations_max:
+            return True
+        return any(child.has_locations_chronology() for child in self.children)
 
     def __repr__(self) -> str:
         parts = [f"{self.rank.name} in {self.system.name}"]
