@@ -56,7 +56,7 @@ def make_app(build_root: Optional[str] = None) -> web.Application:
     GraphQLView.attach(app, schema=schema.schema, graphiql=True)
     app.router.add_static("/static", hesperomys_dir / "build" / "static")
     app.add_routes(
-        [web.get("/favicon.ico", make_static_handler("favicon.ico", "image/x-icon"))]
+        [web.get("/favicon.ico", make_static_handler("favicon.ico", "image/x-icon", hesperomys_dir))]
     )
 
     # Delegate everything else to React

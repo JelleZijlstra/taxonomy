@@ -32,6 +32,8 @@ setup(
         "flake8",
         "pytest",
         "aiohttp",
+        "aiohttp_graphql",
+        "graphene",
     ],
     classifiers=[
         "Development Status :: 2 - Pre-Alpha",
