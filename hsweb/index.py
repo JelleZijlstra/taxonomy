@@ -1,33 +1,17 @@
 from aiohttp import web
 from functools import lru_cache
 from pathlib import Path
-from typing import Callable, Type, Optional
+from typing import Callable, Optional
 from aiohttp_graphql import GraphQLView
 
-from . import components
-from . import view
 from . import schema
 
-HSWEB_ROOT = Path(view.__file__).parent.parent
 HESPEROMYS_ROOT = Path("/Users/jelle/py/hesperomys")
 
 
 @lru_cache()
 def get_static_file_contents(hesperomys_dir: Path, path: str) -> bytes:
     return (hesperomys_dir / "build" / path).read_bytes()
-
-
-def make_handler(
-    root_component: Type[components.Node],
-) -> Callable[[web.Request], web.Response]:
-    async def handler(request: web.Request) -> web.Response:
-        return web.Response(
-            body=await root_component(request).arender(),
-            content_type="text/html",
-            charset="utf-8",
-        )
-
-    return handler
 
 
 def make_static_handler(
