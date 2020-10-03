@@ -102,8 +102,8 @@ class BaseModel(Model):
     save_event: events.Event[Any]
     field_defaults: Dict[str, Any] = {}
     excluded_fields: Set[str] = set()
-    derived_fields: List["derived_data.DerivedField"] = []
-    _name_to_derived_field: Dict[str, "derived_data.DerivedField"] = {}
+    derived_fields: List["derived_data.DerivedField[Any]"] = []
+    _name_to_derived_field: Dict[str, "derived_data.DerivedField[Any]"] = {}
     call_sign_to_model: ClassVar[Dict[str, Type["BaseModel"]]] = {}
 
     class Meta(object):
@@ -172,8 +172,13 @@ class BaseModel(Model):
             return
         for obj in cls.select_valid():
             for field in cls.derived_fields:
-                value = field.compute(obj)
-                field.set_value(obj, value)
+                if field.compute is not None:
+                    value = field.compute(obj)
+                    field.set_value(obj, value)
+
+        for field in cls.derived_fields:
+            if field.compute_all is not None:
+                field.compute_and_store_all(cls)
 
     def sort_key(self) -> Any:
         if hasattr(self, "label_field"):
