@@ -1,7 +1,7 @@
 from aiohttp import web
 from functools import lru_cache
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Awaitable, Callable, Optional
 from aiohttp_graphql import GraphQLView
 
 from . import schema
@@ -16,7 +16,7 @@ def get_static_file_contents(hesperomys_dir: Path, path: str) -> bytes:
 
 def make_static_handler(
     path: str, content_type: str, hesperomys_dir: Path
-) -> Callable[[web.Request], web.Response]:
+) -> Callable[[web.Request], Awaitable[web.Response]]:
     async def handler(request: web.Request) -> web.Response:
         return web.Response(
             body=get_static_file_contents(hesperomys_dir, "index.html"),
@@ -53,7 +53,8 @@ def make_app(build_root: Optional[str] = None) -> web.Application:
             web.get("/", react_handler),
         ]
     )
-    app.on_response_prepare.append(on_prepare)
+    # invariance is too strict here
+    app.on_response_prepare.append(on_prepare)  # type: ignore
 
     graphql_schema = hesperomys_dir / "hesperomys.graphql"
     graphql_schema.write_text(schema.get_schema_string())

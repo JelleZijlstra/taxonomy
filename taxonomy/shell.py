@@ -1642,7 +1642,7 @@ def clean_up_gender(dry_run: bool = False) -> Iterable[Name]:
                 f"remove gender from {nam} (gender={nam.gender!r}, NC={nam.name_complex})"
             )
             if not dry_run:
-                nam.gender = None  # type: ignore
+                nam.gender = None
             count += 1
         else:
             print(f"{nam}: gender mismatch {nam.gender!r} vs. {nam.name_complex}")

@@ -242,14 +242,18 @@ def names_with_attribute(
 
 
 def f(
-    nam: Union[Name, List[Name]],
+    nams: Union[Name, Taxon, List[Name], List[Taxon]],
     skip_fields: Container[str] = frozenset(),
     always_edit: bool = False,
 ) -> None:
-    if isinstance(nam, list):
-        nam = nam[0]
-    if isinstance(nam, Taxon):
-        nam = nam.base_name
+    if isinstance(nams, list):
+        nam_or_taxon = nams[0]
+    else:
+        nam_or_taxon = nams
+    if isinstance(nam_or_taxon, Taxon):
+        nam = nam_or_taxon.base_name
+    else:
+        nam = nam_or_taxon
     nam.display()
     edited_any = nam.fill_required_fields(skip_fields=skip_fields)
     if always_edit and not edited_any:

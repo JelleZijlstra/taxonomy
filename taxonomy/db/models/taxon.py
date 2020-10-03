@@ -596,7 +596,7 @@ class Taxon(BaseModel):
         assert name.taxon == self, f"{name} is not a synonym of {self}"
         old_base = self.base_name
         name.status = old_base.status
-        old_base.status = Status.synonym  # type: ignore
+        old_base.status = Status.synonym
         self.base_name = name
         self.recompute_name()
 
@@ -855,7 +855,7 @@ class Taxon(BaseModel):
             child.parent = to_taxon
             child.save()
         nam = self.base_name
-        nam.status = Status.synonym  # type: ignore
+        nam.status = Status.synonym
         nam.save()
         for name in self.get_names():
             name.taxon = to_taxon

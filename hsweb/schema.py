@@ -359,7 +359,6 @@ def build_object_type_from_model(model_cls: Type[BaseModel]) -> Type[ObjectType]
     class Meta:
         interfaces = (Node, Model)
 
-    @classmethod
     def get_node(cls: Type[ObjectType], info: ResolveInfo, id: int) -> ObjectType:
         return cls(oid=id, id=id)
 
@@ -373,7 +372,7 @@ def build_object_type_from_model(model_cls: Type[BaseModel]) -> Type[ObjectType]
     namespace["call_sign"] = Field(
         String, required=True, resolver=lambda *args: model_cls.call_sign
     )
-    namespace["get_node"] = get_node
+    namespace["get_node"] = classmethod(get_node)
 
     return type(model_cls.__name__, (ObjectType,), namespace)
 

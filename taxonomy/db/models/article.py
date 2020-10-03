@@ -400,15 +400,6 @@ class Article(BaseModel):
             self.year,
         )
 
-    def markdown_link(self) -> str:
-        authors_list = self._getAuthors()
-        if len(authors_list) > 2:
-            authors = f"{authors_list[0][0]} et al."
-        else:
-            authors, _ = self.taxonomicAuthority()
-        name = self.name.replace(" ", "_")
-        return f"[{authors} ({self.year})](/a/{name})"
-
     def author_set(self) -> Set[str]:
         return {last for last, *_ in self._getAuthors()}
 
@@ -497,6 +488,15 @@ class Article(BaseModel):
             return cast(T, self.parent)
         else:
             return None
+
+    def concise_markdown_link(self) -> str:
+        authors_list = self._getAuthors()
+        if len(authors_list) > 2:
+            authors = f"{authors_list[0][0]} et al."
+        else:
+            authors, _ = self.taxonomicAuthority()
+        name = self.name.replace(" ", "_")
+        return f"[{authors} ({self.year})](/a/{name})"
 
     def markdown_link(self) -> str:
         cite = self.cite().replace("<i>", "_").replace("</i>", "_")
