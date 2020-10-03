@@ -218,7 +218,7 @@ class BaseModel(Model):
         if hasattr(self, "label_field"):
             return getattr(self, self.label_field)
         else:
-            return repr(self)
+            return BaseModel.__repr__(self)
 
     def __repr__(self) -> str:
         return "{}({})".format(

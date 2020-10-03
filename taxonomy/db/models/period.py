@@ -50,29 +50,15 @@ class Period(BaseModel):
     deleted = BooleanField(default=False)
 
     derived_fields = [
-        DerivedField(
-            "has_locations_stratigraphy",
-            bool,
-            lambda period: period.has_locations_stratigraphy(),
-        ),
-        DerivedField(
-            "has_locations_chronology",
-            bool,
-            lambda period: period.has_locations_chronology(),
-        ),
+        DerivedField("has_locations", bool, lambda period: period.has_locations())
     ]
 
-    def has_locations_stratigraphy(self) -> bool:
-        for _ in self.locations_stratigraphy:
-            return True
-        return any(child.has_locations_stratigraphy() for child in self.children)
-
-    def has_locations_chronology(self) -> bool:
+    def has_locations(self) -> bool:
         for _ in self.locations_min:
             return True
         for _ in self.locations_max:
             return True
-        return any(child.has_locations_chronology() for child in self.children)
+        return any(child.has_locations() for child in self.children)
 
     def __repr__(self) -> str:
         parts = [f"{self.rank.name} in {self.system.name}"]
@@ -111,8 +97,6 @@ class Period(BaseModel):
             loc.min_period = other
         for loc in self.locations_max:
             loc.max_period = other
-        for loc in self.locations_stratigraphy:
-            loc.stratigraphic_unit = other
         new_comment = f"Merged into {other} (P#{other.id})"
         if not self.comment:
             self.comment = new_comment
@@ -175,48 +159,6 @@ class Period(BaseModel):
             next.save()
         return period
 
-    @classmethod
-    def create_interactively(
-        cls,
-        name: Optional[str] = None,
-        rank: Optional[PeriodRank] = None,
-        **kwargs: Any,
-    ) -> "Period":
-        print("creating Periods interactively only allows stratigraphic units")
-        if name is None:
-            name = getinput.get_line("name> ")
-        assert name is not None
-        if rank is None:
-            rank = getinput.get_enum_member(PeriodRank, "rank> ", allow_empty=False)
-        result = cls.make_stratigraphy(name, rank)
-        result.fill_required_fields()
-        return result
-
-    @classmethod
-    def make_stratigraphy(
-        cls,
-        name: str,
-        rank: PeriodRank,
-        period: Optional["Period"] = None,
-        parent: Optional["Period"] = None,
-        **kwargs: Any,
-    ) -> "Period":
-        if period is not None:
-            kwargs["max_period"] = kwargs["min_period"] = period
-        period = cls.create(
-            name=name,
-            system=PeriodSystem.lithostratigraphy,
-            rank=rank.value,
-            parent=parent,
-            deleted=False,
-            **kwargs,
-        )
-        if "next" in kwargs:
-            next_period = kwargs["next"]
-            next_period.prev = period
-            next_period.save()
-        return period
-
     def display(
         self,
         full: bool = False,
@@ -228,8 +170,6 @@ class Period(BaseModel):
         file.write("{}{}\n".format(" " * (depth + 4), repr(self)))
         if locations:
             for location in self.period_localities():
-                location.display(full=full, depth=depth + 4, file=file)
-            for location in self.locations_stratigraphy:
                 location.display(full=full, depth=depth + 4, file=file)
             partial_locations = list(self.max_only_localities())
             if partial_locations:
@@ -262,25 +202,13 @@ class Period(BaseModel):
     def make_locality(self, region: "Region") -> "models.Location":
         return models.Location.make(self.name, region, self)
 
-    def stratigraphic_localities(self) -> Iterable["models.Location"]:
-        yield from self.locations_stratigraphy
-        for child in self.children:
-            yield from child.stratigraphic_localities()
-
     def all_localities(
         self, include_children: bool = True, include_partial: bool = False
     ) -> Set["models.Location"]:
         if include_partial:
-            locations = {
-                *self.locations_stratigraphy,
-                *self.locations_min,
-                *self.locations_max,
-            }
+            locations = {*self.locations_min, *self.locations_max}
         else:
-            locations = {
-                *self.locations_stratigraphy,
-                *self.locations_min.filter(models.Location.max_period == self),
-            }
+            locations = self.locations_min.filter(models.Location.max_period == self)
         if include_children:
             if include_partial:
                 children = {*self.children, *self.children_min, *self.children_max}
@@ -370,11 +298,6 @@ class Period(BaseModel):
                 if self.rank is PeriodRank.biozone and self.system is PeriodSystem.elma:
                     return RequirednessLevel.optional
                 return RequirednessLevel.required
-        elif self.system is PeriodSystem.lithostratigraphy:
-            if self.rank is PeriodRank.supergroup:
-                return RequirednessLevel.disallowed
-            else:
-                return RequirednessLevel.optional
         elif self.system is PeriodSystem.local_biostratigraphy:
             if self.rank is PeriodRank.zonation:
                 return RequirednessLevel.disallowed

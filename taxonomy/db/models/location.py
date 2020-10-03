@@ -10,6 +10,7 @@ from .base import BaseModel, ADTField
 from .article import Article
 from .period import Period, period_sort_key
 from .region import Region
+from .stratigraphic_unit import StratigraphicUnit
 
 
 class Location(BaseModel):
@@ -29,10 +30,7 @@ class Location(BaseModel):
     min_age = IntegerField(null=True)
     max_age = IntegerField(null=True)
     stratigraphic_unit = ForeignKeyField(
-        Period,
-        related_name="locations_stratigraphy",
-        db_column="stratigraphic_unit_id",
-        null=True,
+        StratigraphicUnit, related_name="locations", null=True
     )
     region = ForeignKeyField(Region, related_name="locations", db_column="region_id")
     comment = CharField()
@@ -58,7 +56,7 @@ class Location(BaseModel):
         region: Region,
         period: Period,
         comment: Optional[str] = None,
-        stratigraphic_unit: Optional[Period] = None,
+        stratigraphic_unit: Optional[StratigraphicUnit] = None,
     ) -> "Location":
         return cls.create(
             name=name,

@@ -97,6 +97,22 @@ CREATE TABLE `period` (
     UNIQUE KEY(`name`)
 ) ENGINE=INNODB DEFAULT CHARSET=utf8;
 
+CREATE TABLE `stratigraphic_unit` (
+    `id` INT UNSIGNED AUTO_INCREMENT,
+    `name` VARCHAR(255) NOT NULL,
+    `parent_id` INT UNSIGNED,
+    `prev_id` INT UNSIGNED,
+    `rank` INT UNSIGNED,
+    `comment` VARCHAR(65535) DEFAULT NULL,
+    `min_period_id` INT UNSIGNED DEFAULT NULL,
+    `max_period_id` INT UNSIGNED DEFAULT NULL,
+    `region_id` INT UNSIGNED DEFAULT NULL,
+    `deleted` BOOL DEFAULT FALSE,
+    PRIMARY KEY(`id`),
+    INDEX(`name`),
+    UNIQUE KEY(`name`)
+) ENGINE=INNODB DEFAULT CHARSET=utf8;
+
 CREATE TABLE `location` (
     `id` INT UNSIGNED AUTO_INCREMENT,
     `name` VARCHAR(255) NOT NULL,

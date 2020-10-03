@@ -30,4 +30,5 @@ from .name_complex import (  # noqa: F401
 from .occurrence import Occurrence as Occurrence  # noqa: F401
 from .period import Period as Period  # noqa: F401
 from .region import Region as Region  # noqa: F401
+from .stratigraphic_unit import StratigraphicUnit as StratigraphicUnit  # noqa: F401
 from .taxon import Taxon as Taxon  # noqa: F401

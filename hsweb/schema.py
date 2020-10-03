@@ -210,11 +210,10 @@ def build_reverse_rel_count_field(
     return Int(required=True, resolver=resolver)
 
 
-def chronological_locations_resolver(
+def _get_locations(
     parent: ObjectType, info: ResolveInfo, first: int = 10, after: Optional[str] = None
-) -> TList[ObjectType]:
+) -> Any:
     model = get_model(Period, parent, info)
-    object_type = build_object_type_from_model(Location)
     query = (
         Location.select_valid()
         .filter((Location.min_period == model) | (Location.max_period == model))
@@ -225,12 +224,27 @@ def chronological_locations_resolver(
         query = query.limit(first + offset + 1)
     else:
         query = query.limit(first + 1)
+    return query
+
+
+def locations_resolver(
+    parent: ObjectType, info: ResolveInfo, first: int = 10, after: Optional[str] = None
+) -> TList[ObjectType]:
+    object_type = build_object_type_from_model(Location)
+    query = _get_locations(parent, info, first, after)
     cache = info.context["request"]
     ret = []
     for obj in query:
         ret.append(object_type(id=obj.id, oid=obj.id))
         cache[(Location.call_sign, obj.id)] = obj
     return ret
+
+
+def num_locations_resolver(
+    parent: ObjectType, info: ResolveInfo, first: int = 10, after: Optional[str] = None
+) -> int:
+    query = _get_locations(parent, info, first, after)
+    return query.count()
 
 
 def build_reverse_rel_field(
@@ -280,10 +294,11 @@ def build_reverse_rel_field(
 
 CUSTOM_FIELDS = {
     Period: {
-        "locations_chronology": ConnectionField(
+        "locations": ConnectionField(
             lambda: build_connection(build_object_type_from_model(Location)),
-            resolver=chronological_locations_resolver,
-        )
+            resolver=locations_resolver,
+        ),
+        "num_locations": Int(required=True, resolver=num_locations_resolver),
     }
 }
 

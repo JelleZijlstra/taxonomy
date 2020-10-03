@@ -68,6 +68,7 @@ from .db.models import (
     Name,
     Period,
     NameTag,
+    StratigraphicUnit,
     Taxon,
     TypeTag,
     database,
@@ -338,26 +339,6 @@ def bad_stratigraphy(dry_run: bool = True) -> Iterable[models.Location]:
             print(f"=== {loc.name}: missing max_period ===")
             loc.display()
             yield loc
-        if loc.stratigraphic_unit is None and loc.min_period is None:
-            print(f"=== {loc.name}: missing stratigraphic_unit and period ===")
-            loc.display()
-            yield loc
-        periods = (loc.min_period, loc.max_period)
-        has_stratigraphic = False
-        for period in periods:
-            if period is not None and period.system is PeriodSystem.lithostratigraphy:
-                has_stratigraphic = True
-        if has_stratigraphic:
-            print(f"=== {loc.name} has stratigraphic period ===")
-            loc.display()
-            yield loc
-            period = loc.min_period
-            if period == loc.max_period and loc.stratigraphic_unit is None:
-                print(f"autofixing {loc.name}")
-                if not dry_run:
-                    loc.min_period = period.min_period
-                    loc.max_period = period.max_period
-                    loc.stratigraphic_unit = period
 
 
 @generator_command
@@ -389,10 +370,7 @@ def check_period_ranks() -> Iterable[models.Period]:
 
 @command
 def infer_min_max_age(dry_run: bool = True) -> None:
-    not_stratigraphic = Period.system != PeriodSystem.lithostratigraphy
-    for period in Period.select_valid().filter(
-        Period.min_age == None, not_stratigraphic
-    ):
+    for period in Period.select_valid().filter(Period.min_age == None):
         children = list(period.children)
         if not children:
             continue
@@ -406,9 +384,7 @@ def infer_min_max_age(dry_run: bool = True) -> None:
                 if not dry_run:
                     period.min_age = min_age
 
-    for period in Period.select_valid().filter(
-        Period.max_age == None, not_stratigraphic
-    ):
+    for period in Period.select_valid().filter(Period.max_age == None):
         children = list(period.children)
         if not children:
             continue
@@ -1860,9 +1836,7 @@ def fill_data_from_paper(
 
 @command
 def fill_data_from_author(
-    author: str,
-    level: FillDataLevel = DEFAULT_LEVEL,
-    ask_before_opening: bool = False,
+    author: str, level: FillDataLevel = DEFAULT_LEVEL, ask_before_opening: bool = False
 ) -> None:
     for nam in Name.bfind(authority=author):
         if nam.original_citation is not None:

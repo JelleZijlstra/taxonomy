@@ -333,7 +333,7 @@ class PeriodSystem(enum.IntEnum):
     elma = 3  # European land mammal age system, plus MN and MP zones
     alma = 4  # Asian land mammal age system
     salma = 5  # South American land mammal age system
-    lithostratigraphy = 6  # lithostratigraphical units, like formations
+    _lithostratigraphy = 6  # lithostratigraphical units, like formations (deprecated)
     aulma = 7  # Australian land mammal age system
     local_biostratigraphy = 8  # local biostratigraphic zonation
 
@@ -344,17 +344,20 @@ class PeriodRank(enum.IntEnum):
     period = 7
     era = 8
     eon = 9
+    other_chronostratigraphy = 28
+    subage = 29  # e.g., the Lysitean
+    biozone = 30  # e.g., Pu1
+    zonation = 32  # "Period" encompassing a whole zonation system.
+
+
+class StratigraphicUnitRank(enum.IntEnum):
     bed = 20
     member = 21
     formation = 22
     group = 23
     supergroup = 24
     other_lithostratigraphy = 27
-    other_chronostratigraphy = 28
-    subage = 29  # e.g., the Lysitean
-    biozone = 30  # e.g., Pu1
     subgroup = 31
-    zonation = 32  # "Period" encompassing a whole zonation system.
 
 
 SYSTEM_TO_ALLOWED_RANKS = {
@@ -371,15 +374,6 @@ SYSTEM_TO_ALLOWED_RANKS = {
     PeriodSystem.alma: {PeriodRank.age, PeriodRank.subage},
     PeriodSystem.salma: {PeriodRank.age, PeriodRank.subage},
     PeriodSystem.aulma: {PeriodRank.age},
-    PeriodSystem.lithostratigraphy: {
-        PeriodRank.bed,
-        PeriodRank.member,
-        PeriodRank.formation,
-        PeriodRank.subgroup,
-        PeriodRank.group,
-        PeriodRank.supergroup,
-        PeriodRank.other_lithostratigraphy,
-    },
     PeriodSystem.local_biostratigraphy: {
         PeriodRank.zonation,
         PeriodRank.age,
