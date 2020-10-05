@@ -31,6 +31,7 @@ from typing import (
 from .base import ADTField, BaseModel, EnumField
 from ..constants import ArticleCommentKind, ArticleKind, ArticleType
 from ..helpers import to_int
+from .. import models
 from ... import config, events, adt, getinput
 
 from .citation_group import CitationGroup
@@ -545,12 +546,12 @@ class Article(BaseModel):
 
     def display_names(self, full: bool = False) -> None:
         print(repr(self))
-        new_names = sorted(self.new_names, key=lambda nam: nam.numeric_page_described())
+        new_names = sorted(models.Name.add_validity_check(self.new_names), key=lambda nam: nam.numeric_page_described())
         if new_names:
             print(f"New names ({len(new_names)}):")
             for nam in new_names:
                 nam.display(full=full)
-        tss_names = list(self.type_source_names)
+        tss_names = list(models.Name.add_validity_check(self.type_source_names))
         if tss_names:
             print(f"Type specimen source ({len(tss_names)}):")
             for nam in tss_names:

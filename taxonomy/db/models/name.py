@@ -42,6 +42,7 @@ from .collection import Collection
 from .taxon import Taxon, display_organized
 from .location import Location
 from .name_complex import NameComplex, SpeciesNameComplex
+from .person import Person
 
 ModelT = TypeVar("ModelT", bound="BaseModel")
 
@@ -383,6 +384,8 @@ class Name(BaseModel):
                             completer = get_completer(Collection, "label")
                         elif typ is Article:
                             completer = get_completer(Article, "name")
+                        elif typ is Person:
+                            completer = get_completer(Person, "family_name")
                         elif typ is str and attribute in ("lectotype", "neotype"):
                             completer = get_str_completer(Name, "type_specimen")
                         else:
@@ -1630,6 +1633,7 @@ class TypeTag(adt.ADT):
     CitationDetail(text=str, source=Article, tag=25)  # type: ignore
     DefinitionDetail(text=str, source=Article, tag=26)  # type: ignore
     EtymologyDetail(text=str, source=Article, tag=27)  # type: ignore
+    NamedAfter(person=Person, tag=28)  # type: ignore
 
 
 SOURCE_TAGS = (

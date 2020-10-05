@@ -574,3 +574,21 @@ class ArticleCommentKind(enum.IntEnum):
     authorship = 3
     location = 4  # e.g., where to find it in its parent
     other = 5
+
+
+class NamingConvention(enum.IntEnum):
+    western = 1
+    chinese = 2
+    japanese = 3
+    dutch = 4
+    burmese = 5
+    spanish = 6
+    ancient = 7
+
+
+class PersonType(enum.IntEnum):
+    unchecked = 1
+    checked = 2
+    soft_redirect = 3
+    hard_redirect = 4
+    deleted = 5

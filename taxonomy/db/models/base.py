@@ -787,14 +787,28 @@ class _NameGetter(Generic[ModelT]):
             )
             if not key:
                 return None
-            elif key.isnumeric():
-                val = int(key)
-                return self.cls.get(id=val)
+            elif key == "n":
+                result = self.cls.create_interactively()
+                print(f"created new {self.cls} {result}")
+                return result
+            elif key == "e":
+                try:
+                    obj = self._get_from_key(default)
+                except self.cls.DoesNotExist:
+                    continue
+                obj.edit()
+                continue
             try:
-                return self.get_or_choose(key)
+                return self._get_from_key(key)
             except self.cls.DoesNotExist:
                 print(f"{key!r} does not exist")
                 continue
+
+    def _get_from_key(self, key: str) -> Optional[ModelT]:
+        if key.isnumeric():
+            return self.cls.get(id=int(key))
+        else:
+            return self.get_or_choose(key)
 
     def get_and_edit(self) -> None:
         while True:
@@ -813,5 +827,5 @@ class _NameGetter(Generic[ModelT]):
         if self._data is None:
             self._data = set()
             self._encoded_data = set()
-            for obj in self.cls.select(self.field_obj):
+            for obj in self.cls.select_valid(self.field_obj):
                 self._add_obj(obj)

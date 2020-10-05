@@ -2221,12 +2221,14 @@ def most_common_citation_groups_after(year: int) -> Dict[CitationGroup, int]:
 
 @command
 def fill_data_from_folder(
-    folder: str,
+    folder: Optional[str] = None,
     level: FillDataLevel = DEFAULT_LEVEL,
     only_fill_cache: bool = False,
     ask_before_opening: bool = True,
     skip_nofile: bool = True,
 ) -> None:
+    if folder is None:
+        folder = Article.getter("path").get_one_key() or ""
     arts = Article.bfind(Article.path.startswith(folder), quiet=True)
     models.taxon.fill_data_from_articles(
         sorted(arts, key=lambda art: art.path),

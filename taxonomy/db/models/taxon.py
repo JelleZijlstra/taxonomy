@@ -1398,7 +1398,7 @@ def replace_type_specimen_source_from_paper(
     return True
 
 
-def display_names(art: Article, *, full: bool = False) -> None:
+def display_names(art: Article, *, full: bool = False, omit_if_done: bool = False) -> None:
     print(repr(art))
     new_names = sorted(art.new_names, key=lambda nam: nam.numeric_page_described())
     if new_names:
@@ -1407,6 +1407,8 @@ def display_names(art: Article, *, full: bool = False) -> None:
         for nam in new_names:
             level = _fill_data_level_for_name(nam)
             levels.append(level)
+            if omit_if_done and level is FillDataLevel.nothing_needed:
+                continue
             if full:
                 nam.display(full=True)
                 print(f"    Level: {level.name.upper()}")
@@ -1431,6 +1433,7 @@ def clean_tss_interactive(art: Article, field: str = "corrected_original_name") 
                 "o": lambda: art.openf(),
                 "d": lambda: display_names(art),
                 "f": lambda: display_names(art, full=True),
+                "t": lambda: display_names(art, omit_if_done=True),
             },
         )
         if obj is None:

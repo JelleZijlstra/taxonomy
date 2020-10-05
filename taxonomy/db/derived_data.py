@@ -6,7 +6,8 @@ Implementation of pre-computed derived data.
 from dataclasses import dataclass
 from functools import lru_cache
 import pickle
-from typing import Any, Dict, Generic, Optional, Protocol, TypeVar, Type
+from typing import Any, Dict, Generic, Optional, TypeVar, Type
+from typing_extensions import Protocol
 
 from .. import config
 

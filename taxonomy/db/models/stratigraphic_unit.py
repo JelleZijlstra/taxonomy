@@ -28,7 +28,7 @@ class StratigraphicUnit(BaseModel):
         "self", related_name="children", db_column="parent_id", null=True
     )
     prev = ForeignKeyField(
-        "self", related_name="next_foreign", db_column="prev_id", null=True
+        "self", related_name="next", db_column="prev_id", null=True
     )
     min_period = ForeignKeyField(
         Period, related_name="stratigraphic_units_min", null=True
@@ -241,8 +241,8 @@ def unit_sort_key(unit: StratigraphicUnit) -> Tuple[int, int, str]:
     """
     if unit.parent is not None:
         parents, _, _ = unit_sort_key(unit.parent)
-        if unit.next is not None:
-            next_parents, next_siblings, _ = unit_sort_key(unit.next)
+        for next_period in unit.next:
+            next_parents, next_siblings, _ = unit_sort_key(next_period)
             if next_parents == parents + 1:
                 return (parents + 1, next_siblings - 1, unit.name)
         return (parents + 1, 0, unit.name)

@@ -272,3 +272,19 @@ CREATE TABLE `citation_group_pattern` (
     `pattern` varchar(255) not null,
     unique key(`pattern`)
 );
+
+CREATE TABLE `person` (
+  `id` integer  NOT NULL PRIMARY KEY AUTOINCREMENT,
+  `family_name` varchar(255) NOT NULL,
+  `given_names` varchar(255) DEFAULT NULL,
+  `initials` varchar(255) DEFAULT NULL,
+  `suffix` varchar(255) DEFAULT NULL,
+  `tussenvoegsel` varchar(255) DEFAULT NULL,
+  `birth` varchar(255) DEFAULT NULL,
+  `death` varchar(255) DEFAULT NULL,
+  `tags` text default null,
+  `naming_convention` INTEGER NOT NULL DEFAULT 1,
+  `type` INTEGER NOT NULL DEFAULT 1,
+  `target_id` INTEGER DEFAULT NULL
+);
+CREATE INDEX "idx_person_name" ON "person" (`family_name`);
