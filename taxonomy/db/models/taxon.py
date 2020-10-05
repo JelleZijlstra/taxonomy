@@ -1398,7 +1398,9 @@ def replace_type_specimen_source_from_paper(
     return True
 
 
-def display_names(art: Article, *, full: bool = False, omit_if_done: bool = False) -> None:
+def display_names(
+    art: Article, *, full: bool = False, omit_if_done: bool = False
+) -> None:
     print(repr(art))
     new_names = sorted(art.new_names, key=lambda nam: nam.numeric_page_described())
     if new_names:

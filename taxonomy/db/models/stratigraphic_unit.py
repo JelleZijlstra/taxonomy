@@ -27,9 +27,7 @@ class StratigraphicUnit(BaseModel):
     parent = ForeignKeyField(
         "self", related_name="children", db_column="parent_id", null=True
     )
-    prev = ForeignKeyField(
-        "self", related_name="next", db_column="prev_id", null=True
-    )
+    prev = ForeignKeyField("self", related_name="next", db_column="prev_id", null=True)
     min_period = ForeignKeyField(
         Period, related_name="stratigraphic_units_min", null=True
     )

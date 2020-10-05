@@ -62,7 +62,9 @@ class DerivedField(Generic[T]):
             if self.name in object_data:
                 return self.deserialize(object_data[self.name], self.get_type())
             print(f"Cache miss on {model} {self.name}")
-            assert self.compute is not None, "compute must be set for pull-on-miss field"
+            assert (
+                self.compute is not None
+            ), "compute must be set for pull-on-miss field"
             value = self.compute(model)
             object_data[self.name] = self.serialize(value)
             return value
@@ -77,7 +79,9 @@ class DerivedField(Generic[T]):
             if self.name in object_data:
                 return object_data[self.name]
             print(f"Cache miss on {model} {self.name}")
-            assert self.compute is not None, "compute must be set for pull-on-miss field"
+            assert (
+                self.compute is not None
+            ), "compute must be set for pull-on-miss field"
             value = self.compute(model)
             object_data[self.name] = self.serialize(value)
             return object_data[self.name]
@@ -100,13 +104,13 @@ class DerivedField(Generic[T]):
     def deserialize(self, serialized: Any, typ: Any) -> T:
         if serialized is None:
             return None
-        if (
-            isinstance(typ, type)
-            and issubclass(typ, models.base.BaseModel)
-        ):
+        if isinstance(typ, type) and issubclass(typ, models.base.BaseModel):
             return typ.select_valid().filter(typ.id == serialized).get()
-        if typing_inspect.is_generic_type(typ) and typing_inspect.get_origin(typ) is list:
-            arg_type, = typing_inspect.get_args(typ)
+        if (
+            typing_inspect.is_generic_type(typ)
+            and typing_inspect.get_origin(typ) is list
+        ):
+            (arg_type,) = typing_inspect.get_args(typ)
             return [self.deserialize(elt, arg_type) for elt in serialized]
         return serialized
 

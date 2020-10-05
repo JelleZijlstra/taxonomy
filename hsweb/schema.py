@@ -136,7 +136,7 @@ def build_graphene_field(
                 foreign_model = getattr(model, name)
                 if foreign_model is None:
                     return None
-                info.context["request"][key] = foreign_model
+                cache[key] = foreign_model
             return build_object_type_from_model(peewee_field.rel_model)(
                 id=foreign_model.id, oid=foreign_model.id
             )
@@ -313,19 +313,15 @@ def build_derived_field(
     field_name = derived_field.name
     typ = derived_field.get_type()
     if isinstance(typ, type) and issubclass(typ, BaseModel):
-        call_sign = typ.call_sign
 
         def fk_resolver(parent: ObjectType, info: ResolveInfo) -> Optional[ObjectType]:
             model = get_model(model_cls, parent, info)
             foreign_model_oid = model.get_raw_derived_field(field_name)
             if foreign_model_oid is None:
                 return None
-            cache = info.context["request"]
-            obj = build_object_type_from_model(typ)(
+            return build_object_type_from_model(typ)(
                 id=foreign_model_oid, oid=foreign_model_oid
             )
-            cache[(call_sign, obj.id)] = obj
-            return obj
 
         return Field(
             lambda: build_object_type_from_model(typ),
@@ -341,9 +337,8 @@ def build_derived_field(
             ).get_derived_field(field_name),
         )
     elif typing_inspect.is_generic_type(typ) and typing_inspect.get_origin(typ) is list:
-        arg_type, = typing_inspect.get_args(typ)
+        (arg_type,) = typing_inspect.get_args(typ)
         if issubclass(arg_type, BaseModel):
-            call_sign = arg_type.call_sign
 
             def elt_type():
                 return build_connection(build_object_type_from_model(arg_type))
@@ -359,13 +354,7 @@ def build_derived_field(
                 if foreign_model_oids is None:
                     return []
                 object_type = build_object_type_from_model(arg_type)
-                ret = []
-                cache = info.context["request"]
-                for oid in foreign_model_oids:
-                    obj = object_type(id=oid, oid=oid)
-                    cache[(obj.call_sign, obj.id)] = obj
-                    ret.append(obj)
-                return ret
+                return [object_type(id=oid, oid=oid) for oid in foreign_model_oids]
 
         elif typ in TYPE_TO_GRAPHENE:
             elt_type = build_connection(TYPE_TO_GRAPHENE[arg_type])

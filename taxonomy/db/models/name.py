@@ -385,7 +385,7 @@ class Name(BaseModel):
                         elif typ is Article:
                             completer = get_completer(Article, "name")
                         elif typ is Person:
-                            completer = get_completer(Person, "family_name")
+                            completer = get_completer(Person, None)
                         elif typ is str and attribute in ("lectotype", "neotype"):
                             completer = get_str_completer(Name, "type_specimen")
                         else:
@@ -1453,7 +1453,7 @@ def has_data_from_original(nam: Name) -> bool:
 
 
 def get_completer(
-    cls: Type[ModelT], field: str
+    cls: Type[ModelT], field: Optional[str]
 ) -> Callable[[str, Optional[str]], Optional[ModelT]]:
     def completer(prompt: str, default: Any) -> Any:
         if isinstance(default, BaseModel):
@@ -1468,7 +1468,7 @@ def get_completer(
 
 
 def get_str_completer(
-    cls: Type[Model], field: str
+    cls: Type[Model], field: Optional[str]
 ) -> Callable[[str, Optional[str]], Optional[str]]:
     def completer(prompt: str, default: Optional[str]) -> Any:
         return cls.getter(field).get_one_key(prompt, default=default or "")

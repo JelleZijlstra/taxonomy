@@ -285,6 +285,7 @@ CREATE TABLE `person` (
   `tags` text default null,
   `naming_convention` INTEGER NOT NULL DEFAULT 1,
   `type` INTEGER NOT NULL DEFAULT 1,
-  `target_id` INTEGER DEFAULT NULL
+  `target_id` INTEGER DEFAULT NULL,
+  `bio` TEXT DEFAULT NULL
 );
 CREATE INDEX "idx_person_name" ON "person" (`family_name`);

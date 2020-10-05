@@ -199,6 +199,11 @@ class Article(BaseModel):
             "reverse": self.reverse_authors,
         }
 
+    def get_value_to_show_for_field(self, field: Optional[str]) -> str:
+        if field is None:
+            return self.name
+        return getattr(self, field)
+
     def get_required_fields(self) -> Iterable[str]:
         yield "kind"
         yield "type"
@@ -546,7 +551,10 @@ class Article(BaseModel):
 
     def display_names(self, full: bool = False) -> None:
         print(repr(self))
-        new_names = sorted(models.Name.add_validity_check(self.new_names), key=lambda nam: nam.numeric_page_described())
+        new_names = sorted(
+            models.Name.add_validity_check(self.new_names),
+            key=lambda nam: nam.numeric_page_described(),
+        )
         if new_names:
             print(f"New names ({len(new_names)}):")
             for nam in new_names:

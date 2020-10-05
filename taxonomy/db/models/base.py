@@ -2,6 +2,7 @@ from collections import Counter
 import enum
 from functools import partial
 import json
+import re
 import traceback
 from typing import (
     Any,
@@ -186,6 +187,14 @@ class BaseModel(Model):
         else:
             return self.id
 
+    def get_url(self) -> str:
+        return f"/{self.call_sign.lower()}/{self.id}"
+
+    def get_value_to_show_for_field(self, field: Optional[str]) -> str:
+        if field is None:
+            return f"{self} ({self.get_url()})"
+        return getattr(self, field)
+
     def s(self, **kwargs: Any) -> None:
         """Set attributes on the object.
 
@@ -320,7 +329,7 @@ class BaseModel(Model):
         return False
 
     @classmethod
-    def getter(cls: Type[ModelT], attr: str) -> "_NameGetter[ModelT]":
+    def getter(cls: Type[ModelT], attr: Optional[str]) -> "_NameGetter[ModelT]":
         key = (cls, attr)
         if key in _getters:
             return _getters[key]
@@ -501,7 +510,7 @@ class BaseModel(Model):
             default = ""
         else:
             default = getattr(default_obj, foreign_cls.label_field)
-        getter = foreign_cls.getter(foreign_cls.label_field)
+        getter = foreign_cls.getter(None)
         while True:
             value = getter.get_one_key(
                 f"{label}> ",
@@ -581,12 +590,10 @@ class BaseModel(Model):
             if isinstance(tag, tag_cls):
                 yield tag
 
-    def add_to_history(self) -> None:
+    def add_to_history(self, field: Optional[str] = None) -> None:
         """Add this object to the history for its label field."""
-        if not hasattr(self, "label_field"):
-            return
-        getter = self.getter(self.label_field)
-        getinput.append_history(getter, str(getattr(self, self.label_field)))
+        getter = self.getter(field)
+        getinput.append_history(getter, self.get_value_to_show_for_field(field))
 
     @classmethod
     def create_interactively(cls: Type[ModelT], **kwargs: Any) -> ModelT:
@@ -673,10 +680,10 @@ class ADTField(TextField):
 
 
 class _NameGetter(Generic[ModelT]):
-    def __init__(self, cls: Type[ModelT], field: str) -> None:
+    def __init__(self, cls: Type[ModelT], field: Optional[str] = None) -> None:
         self.cls = cls
         self.field = field
-        self.field_obj = getattr(cls, field)
+        self.field_obj = getattr(cls, field if field is not None else cls.label_field)
         self._data: Optional[Set[str]] = None
         self._encoded_data: Optional[Set[str]] = None
         if hasattr(cls, "creation_event"):
@@ -694,7 +701,7 @@ class _NameGetter(Generic[ModelT]):
         return result | self._encoded_data
 
     def __getattr__(self, name: str) -> ModelT:
-        return self.get_or_choose(getinput.decode_name(name))
+        return self._get_from_key(getinput.decode_name(name))
 
     def __call__(self, name: Optional[str] = None) -> Optional[ModelT]:
         if name is not None:
@@ -735,7 +742,7 @@ class _NameGetter(Generic[ModelT]):
     def _add_obj(self, obj: ModelT) -> None:
         assert self._data is not None
         assert self._encoded_data is not None
-        val = getattr(obj, self.field)
+        val = obj.get_value_to_show_for_field(self.field)
         if val is None:
             return
         val = str(val)
@@ -808,6 +815,11 @@ class _NameGetter(Generic[ModelT]):
         if key.isnumeric():
             return self.cls.get(id=int(key))
         else:
+            call_sign = self.cls.call_sign
+            match = re.search(rf"/[{call_sign.lower()}{call_sign.upper()}]/(\d+)", key)
+            if match:
+                oid = int(match.group(1))
+                return self.cls.get(id=int(oid))
             return self.get_or_choose(key)
 
     def get_and_edit(self) -> None:
@@ -827,5 +839,5 @@ class _NameGetter(Generic[ModelT]):
         if self._data is None:
             self._data = set()
             self._encoded_data = set()
-            for obj in self.cls.select_valid(self.field_obj):
+            for obj in self.cls.select_valid():
                 self._add_obj(obj)

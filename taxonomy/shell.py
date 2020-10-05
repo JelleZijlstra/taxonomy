@@ -17,6 +17,7 @@ Possible ones to add:
 import collections
 from collections import defaultdict
 import csv
+import difflib
 import functools
 from itertools import groupby
 import os.path
@@ -56,7 +57,6 @@ from .db.constants import (
     NomenclatureStatus,
     Rank,
     ArticleKind,
-    PeriodSystem,
     RequirednessLevel,
 )
 from .db.models import (
@@ -67,8 +67,8 @@ from .db.models import (
     Collection,
     Name,
     Period,
+    Person,
     NameTag,
-    StratigraphicUnit,
     Taxon,
     TypeTag,
     database,
@@ -2176,6 +2176,192 @@ def type_locality_without_detail() -> Iterable[Name]:
 
 
 @command
+def most_common_unchecked_names(num_to_display: int = 10) -> Counter[str]:
+    counter: Counter[str] = Counter()
+    for person in Person.select_valid().filter(
+        Person.type == constants.PersonType.unchecked
+    ):
+        num_refs = sum(person.num_references().values())
+        counter[person.family_name] += num_refs
+    for value, count in counter.most_common(num_to_display):
+        print(value, count)
+    return counter
+
+
+@command
+def reassign_references(family_name: Optional[str] = None) -> None:
+    if family_name is None:
+        family_name = Person.getter("family_name").get_one_key()
+    for person in Person.bfind(
+        type=constants.PersonType.unchecked, family_name=family_name, quiet=True
+    ):
+        num_refs = sum(person.num_references().values())
+        if num_refs > 0:
+            print(f"{person} ({num_refs})")
+            person.reassign_references()
+
+
+PersonParams = Optional[Dict[str, str]]
+
+_UPPER = r"[A-ZŠČА-Я]"
+_LOWER = r"[a-záéíãěäóèìğñüúöšýčç'а-я]{2,}"
+_SIMPLE_FAMILY = rf"((Ma?c|De|La|Le|D'|d'|Du)?{_UPPER}{_LOWER})"
+_FAMILY = (
+    rf"((von |de |de la |De la |du |del |de La )?{_SIMPLE_FAMILY}(-{_SIMPLE_FAMILY})?)"
+)
+_SUFFIX_GROUP = r"(?P<suffix>,? (jr|Jr|Sr)\.?)?"
+
+
+def _initials(name: str) -> PersonParams:
+    if "Expedition" in name:
+        return None
+    match = re.match(
+        rf"^(?P<initials>\[?({_UPPER}h?\.-?\s?)+\]?( {_FAMILY})*)\s*(?P<family>{_FAMILY}){_SUFFIX_GROUP}$",
+        name,
+    )
+    if match:
+        return {
+            "family_name": match.group("family"),
+            "initials": re.sub(
+                rf"\.(?={_FAMILY})",
+                ". ",
+                re.sub(r"\s", "", match.group("initials").strip("[]")),
+            ),
+            "suffix": _parse_suffix(match.group("suffix")),
+        }
+    return None
+
+
+def _parse_suffix(suffix: Optional[str]) -> Optional[str]:
+    if not suffix:
+        return None
+    suffix = suffix.strip(",. ")
+    return suffix + "."
+
+
+def _full_name(name: str) -> PersonParams:
+    match = re.match(
+        rf"^(?P<given_names>{_UPPER}{_LOWER}( {_UPPER}\.)?) (?P<family_name>{_FAMILY}){_SUFFIX_GROUP}$",
+        name,
+    )
+    if match:
+        return {
+            "family_name": match.group("family_name"),
+            "given_names": match.group("given_names"),
+            "suffix": _parse_suffix(match.group("suffix")),
+        }
+    return None
+
+
+def _last_name_only(name: str) -> PersonParams:
+    match = re.match(rf"^{_FAMILY}$", name)
+    if match:
+        return {"family_name": name}
+    return None
+
+
+def _cyrillic(name: str) -> PersonParams:
+    match = re.match(
+        r"^(?P<family_name>[А-Я][а-я]+) (?P<initials>([А-Я]\.? ?)+)$", name
+    )
+    if match:
+        return {
+            "family_name": match.group("family_name"),
+            "initials": "".join(
+                c + "."
+                for c in match.group("initials").replace(" ", "").replace(".", "")
+            ),
+        }
+    return None
+
+
+MATCHERS = [_initials, _full_name, _last_name_only, _cyrillic]
+
+
+@command
+def replace_collectors(
+    dry_run: bool = True,
+    show_nams: bool = False,
+    limit: Optional[int] = None,
+    create_names: bool = False,
+    print_failure: bool = True,
+):
+    nams = (
+        Name.select_valid()
+        .filter(Name.type_tags.contains(f"[{TypeTag.Collector._tag},"))
+        .limit(limit)
+    )
+    matched = 0
+    unmatched = 1
+    for nam in nams:
+        all_tags = list(nam.type_tags)
+        tags = [tag for tag in all_tags if isinstance(tag, TypeTag.Collector)]
+        if tags:
+            if show_nams:
+                nam.display(full=False)
+            new_tags = all_tags
+            for matching_tag in tags:
+                names = (
+                    re.sub(r"\s+", " ", matching_tag.name)
+                    .replace(" and ", " & ")
+                    .replace(" y ", " & ")
+                    .strip()
+                    .rstrip(".")
+                    .split(" & ")
+                )
+                if len(names) == 2 and ", " in names[0] and "Jr" not in names[0]:
+                    names = [*names[0].strip().rstrip(",").split(", "), names[1]]
+                params_by_name = []
+                for name in names:
+                    person_params = None
+                    for matcher in MATCHERS:
+                        person_params = matcher(name)
+                        if person_params is not None:
+                            break
+                    params_by_name.append(person_params)
+
+                if all(params is not None for params in params_by_name):
+                    print(f"Get persons from {names}: {params_by_name}")
+                    additional_tags = [
+                        TypeTag.CollectedBy(
+                            person=None
+                            if dry_run and not create_names
+                            else Person.get_or_create_unchecked(**params)
+                        )
+                        for params in params_by_name
+                    ]
+                    new_tags = [
+                        tag for tag in new_tags if tag is not matching_tag
+                    ] + additional_tags
+                    matched += 1
+                else:
+                    if print_failure:
+                        print(f"Failed to match: {names}")
+                    unmatched += 1
+
+            if new_tags != list(nam.type_tags):
+                print("Change tags:")
+                print_diff(nam.type_tags, new_tags)
+                if not dry_run:
+                    nam.type_tags = new_tags
+                    nam.save()
+
+    print(f"matched = {matched}")
+    print(f"unmatched = {unmatched}")
+
+
+def print_diff(a: Sequence[Any], b: Sequence[Any]) -> None:
+    matcher = difflib.SequenceMatcher(a=a, b=b)
+    for opcode, a_lo, a_hi, b_lo, b_hi in matcher.get_opcodes():
+        if opcode == "equal":
+            continue
+        for i in range(a_lo, a_hi):
+            print(f"- {a[i]}")
+        for i in range(b_lo, b_hi):
+            print(f"+ {b[i]}")
+
+
+@command
 def most_common(model_cls: Type[models.BaseModel], field: str) -> Counter[Any]:
     objects = model_cls.select_valid().filter(getattr(model_cls, field) != None)
     counter: Counter[Any] = Counter()
@@ -3300,6 +3486,11 @@ def compute_derived_fields() -> None:
     for cls in models.BaseModel.__subclasses__():
         print(f"Computing for {cls}")
         cls.compute_all_derived_fields()
+    write_derived_data()
+
+
+@command
+def write_derived_data() -> None:
     derived_data.write_derived_data(derived_data.load_derived_data())
 
 
