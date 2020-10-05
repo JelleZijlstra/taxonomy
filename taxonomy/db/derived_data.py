@@ -6,8 +6,9 @@ Implementation of pre-computed derived data.
 from dataclasses import dataclass
 from functools import lru_cache
 import pickle
-from typing import Any, Dict, Generic, Optional, TypeVar, Type
+from typing import Any, Dict, Generic, Optional, TypeVar, Type, Union
 from typing_extensions import Protocol
+import typing_inspect
 
 from .. import config
 
@@ -35,10 +36,20 @@ class ComputeAllFunc(Protocol[T]):
         ...
 
 
+class _LazyTypeArg(Protocol[T]):
+    def __call__(self) -> Type[T]:
+        ...
+
+
+@dataclass
+class LazyType(Generic[T]):
+    typ: _LazyTypeArg[T]
+
+
 @dataclass
 class DerivedField(Generic[T]):
     name: str
-    typ: Type[T]
+    typ: Union[Type[T], LazyType[T]]
     compute: Optional[SingleComputeFunc[T]] = None
     compute_all: Optional[ComputeAllFunc[T]] = None
     pull_on_miss: bool = True
@@ -49,14 +60,14 @@ class DerivedField(Generic[T]):
         object_data = model_data.setdefault(model.id, {})
         if self.pull_on_miss:
             if self.name in object_data:
-                return self.deserialize(object_data[self.name])
+                return self.deserialize(object_data[self.name], self.get_type())
             print(f"Cache miss on {model} {self.name}")
             assert self.compute is not None, "compute must be set for pull-on-miss field"
             value = self.compute(model)
             object_data[self.name] = self.serialize(value)
             return value
         else:
-            return self.deserialize(object_data.get(self.name))
+            return self.deserialize(object_data.get(self.name), self.get_type())
 
     def get_raw_value(self, model: "models.base.BaseModel") -> T:
         data = load_derived_data()
@@ -79,19 +90,30 @@ class DerivedField(Generic[T]):
             self.name
         ] = self.serialize(value)
 
-    def serialize(self, value: T) -> Any:
+    def serialize(self, value: Any) -> Any:
+        if isinstance(value, list):
+            return [self.serialize(elt) for elt in value]
         if isinstance(value, models.base.BaseModel):
             return value.id
         return value
 
-    def deserialize(self, serialized: Any) -> T:
+    def deserialize(self, serialized: Any, typ: Any) -> T:
+        if serialized is None:
+            return None
         if (
-            serialized is not None
-            and isinstance(self.typ, type)
-            and issubclass(self.typ, models.base.BaseModel)
+            isinstance(typ, type)
+            and issubclass(typ, models.base.BaseModel)
         ):
-            return self.typ.select_valid().filter(self.typ.id == serialized).get()
+            return typ.select_valid().filter(typ.id == serialized).get()
+        if typing_inspect.is_generic_type(typ) and typing_inspect.get_origin(typ) is list:
+            arg_type, = typing_inspect.get_args(typ)
+            return [self.deserialize(elt, arg_type) for elt in serialized]
         return serialized
+
+    def get_type(self) -> Type[T]:
+        if isinstance(self.typ, LazyType):
+            self.typ = self.typ.typ()
+        return self.typ
 
     def compute_and_store_all(self, model_cls: Type["models.base.BaseModel"]) -> None:
         data = load_derived_data()

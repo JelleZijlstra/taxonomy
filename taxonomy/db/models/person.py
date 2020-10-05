@@ -1,15 +1,15 @@
 import sys
-from typing import IO, Any, Optional, TypeVar
+from collections import defaultdict
+from typing import IO, Any, Dict, List, Optional, Type
 
 from peewee import CharField, DeferredForeignKey
 
 from ..constants import NamingConvention, PersonType
+from ..derived_data import DerivedField, LazyType
+from .. import models
 from ... import adt, events
 
 from .base import BaseModel, EnumField, ADTField
-
-
-T = TypeVar("T")
 
 
 class Person(BaseModel):
@@ -30,10 +30,20 @@ class Person(BaseModel):
     type = EnumField(PersonType)
     target = DeferredForeignKey("Person", null=True)
 
-    def has_locations(self) -> bool:
-        for _ in self.locations:
-            return True
-        return any(child.has_locations() for child in self.children)
+    derived_fields = [
+        DerivedField(
+            "patronyms",
+            LazyType(lambda: List[models.Name]),
+            compute_all=lambda: _compute_from_type_tag(models.TypeTag.NamedAfter),
+            pull_on_miss=False,
+        ),
+        DerivedField(
+            "collected",
+            LazyType(lambda: List[models.Name]),
+            compute_all=lambda: _compute_from_type_tag(models.TypeTag.CollectedBy),
+            pull_on_miss=False,
+        ),
+    ]
 
     def __str__(self) -> str:
         parts = []
@@ -97,3 +107,16 @@ def _display_year(year: Optional[str]) -> str:
     except ValueError:
         pass
     return year
+
+
+def _compute_from_type_tag(
+    tag_cls: "Type[models.TypeTag]"
+) -> Dict[int, "List[models.Name]"]:
+    out = defaultdict(list)
+    for nam in models.Name.select_valid().filter(
+        models.Name.type_tags.contains(f"[{tag_cls._tag},")
+    ):
+        for tag in nam.type_tags:
+            if isinstance(tag, tag_cls):
+                out[tag.person.id].append(nam)
+    return out

@@ -1634,6 +1634,7 @@ class TypeTag(adt.ADT):
     DefinitionDetail(text=str, source=Article, tag=26)  # type: ignore
     EtymologyDetail(text=str, source=Article, tag=27)  # type: ignore
     NamedAfter(person=Person, tag=28)  # type: ignore
+    CollectedBy(person=Person, tag=29)  # type: ignore
 
 
 SOURCE_TAGS = (

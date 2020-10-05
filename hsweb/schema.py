@@ -3,6 +3,7 @@ from taxonomy.db.models import Period, Location
 from taxonomy.db.derived_data import DerivedField
 from taxonomy.adt import ADT
 from typing import Type, Any, Dict, List as TList, Optional, Tuple
+import typing_inspect
 import base64
 import enum
 from functools import lru_cache
@@ -273,11 +274,7 @@ def build_reverse_rel_field(
         model = get_model(model_cls, parent, info)
         object_type = build_object_type_from_model(foreign_model)
         query = apply_ordering(getattr(model, name))
-        if after:
-            offset = int(base64.b64decode(after).split(b":")[1]) + 1
-            query = query.limit(first + offset + 1)
-        else:
-            query = query.limit(first + 1)
+        query = query.limit(first + _decode_after(after) + 1)
         query = foreign_model.add_validity_check(query)
         cache = info.context["request"]
         ret = []
@@ -290,6 +287,13 @@ def build_reverse_rel_field(
         lambda: build_connection(build_object_type_from_model(foreign_model)),
         resolver=resolver,
     )
+
+
+def _decode_after(after: Optional[str]) -> int:
+    if after:
+        return int(base64.b64decode(after).split(b":")[1]) + 1
+    else:
+        return 0
 
 
 CUSTOM_FIELDS = {
@@ -307,32 +311,79 @@ def build_derived_field(
     model_cls: Type[BaseModel], derived_field: DerivedField
 ) -> Field:
     field_name = derived_field.name
-    if issubclass(derived_field.typ, BaseModel):
+    typ = derived_field.get_type()
+    if isinstance(typ, type) and issubclass(typ, BaseModel):
+        call_sign = typ.call_sign
 
         def fk_resolver(parent: ObjectType, info: ResolveInfo) -> Optional[ObjectType]:
             model = get_model(model_cls, parent, info)
             foreign_model_oid = model.get_raw_derived_field(field_name)
             if foreign_model_oid is None:
                 return None
-            return build_object_type_from_model(derived_field.typ)(
+            cache = info.context["request"]
+            obj = build_object_type_from_model(typ)(
                 id=foreign_model_oid, oid=foreign_model_oid
             )
+            cache[(call_sign, obj.id)] = obj
+            return obj
 
         return Field(
-            lambda: build_object_type_from_model(derived_field.typ),
+            lambda: build_object_type_from_model(typ),
             required=False,
             resolver=fk_resolver,
         )
-    elif derived_field.typ in TYPE_TO_GRAPHENE:
+    elif typ in TYPE_TO_GRAPHENE:
         return Field(
-            TYPE_TO_GRAPHENE[derived_field.typ],
+            TYPE_TO_GRAPHENE[typ],
             required=False,
             resolver=lambda parent, info: get_model(
                 model_cls, parent, info
             ).get_derived_field(field_name),
         )
+    elif typing_inspect.is_generic_type(typ) and typing_inspect.get_origin(typ) is list:
+        arg_type, = typing_inspect.get_args(typ)
+        if issubclass(arg_type, BaseModel):
+            call_sign = arg_type.call_sign
+
+            def elt_type():
+                return build_connection(build_object_type_from_model(arg_type))
+
+            def list_resolver(
+                parent: ObjectType,
+                info: ResolveInfo,
+                first: int = 10,
+                after: Optional[str] = None,
+            ) -> TList[ObjectType]:
+                model = get_model(model_cls, parent, info)
+                foreign_model_oids = model.get_raw_derived_field(field_name)
+                if foreign_model_oids is None:
+                    return []
+                object_type = build_object_type_from_model(arg_type)
+                ret = []
+                cache = info.context["request"]
+                for oid in foreign_model_oids:
+                    obj = object_type(id=oid, oid=oid)
+                    cache[(obj.call_sign, obj.id)] = obj
+                    ret.append(obj)
+                return ret
+
+        elif typ in TYPE_TO_GRAPHENE:
+            elt_type = build_connection(TYPE_TO_GRAPHENE[arg_type])
+
+            def list_resolver(
+                parent: ObjectType,
+                info: ResolveInfo,
+                first: int = 10,
+                after: Optional[str] = None,
+            ) -> Any:
+                model = get_model(model_cls, parent, info)
+                return model.get_derived_field(field_name)
+
+        else:
+            assert False, f"unimplemented for {arg_type}"
+        return ConnectionField(elt_type, resolver=list_resolver)
     else:
-        assert False, f"unimplemented for {derived_field.typ}"
+        assert False, f"unimplemented for {typ}"
 
 
 @lru_cache()
