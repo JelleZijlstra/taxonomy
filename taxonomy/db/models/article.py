@@ -42,7 +42,7 @@ T = TypeVar("T", bound="Article")
 _options = config.get_options()
 _TYPE_TO_FIELDS = {
     ArticleType.JOURNAL: [
-        "authors",
+        "author_tags",
         "year",
         "title",
         "citation_group",
@@ -53,7 +53,7 @@ _TYPE_TO_FIELDS = {
         "url",
     ],
     ArticleType.CHAPTER: [
-        "authors",
+        "author_tags",
         "year",
         "title",
         "start_page",
@@ -62,7 +62,7 @@ _TYPE_TO_FIELDS = {
         "url",
     ],
     ArticleType.BOOK: [
-        "authors",
+        "author_tags",
         "year",
         "title",
         "pages",
@@ -70,7 +70,7 @@ _TYPE_TO_FIELDS = {
         "citation_group",
     ],
     ArticleType.THESIS: [
-        "authors",
+        "author_tags",
         "year",
         "title",
         "pages",
@@ -78,8 +78,8 @@ _TYPE_TO_FIELDS = {
         "series",
     ],
     ArticleType.SUPPLEMENT: ["title", "parent"],
-    ArticleType.WEB: ["authors", "year", "title", "url"],
-    ArticleType.MISCELLANEOUS: ["authors", "year", "title", "url"],
+    ArticleType.WEB: ["author_tags", "year", "title", "url"],
+    ArticleType.MISCELLANEOUS: ["author_tags", "year", "title", "url"],
 }
 
 
@@ -375,6 +375,11 @@ class Article(BaseModel):
         else:
             return None
 
+    def get_authors(self) -> List[Person]:
+        if self.author_tags is None:
+            return []
+        return [author.person for author in self.author_tags]
+
     def getAuthors(
         self,
         separator: str = ";",  # Text between two authors
@@ -382,7 +387,6 @@ class Article(BaseModel):
         separatorWithTwoAuthors: Optional[
             str
         ] = None,  # Text between authors if there are only two
-        asArray: bool = False,  # Return authors as an array
         capitalizeNames: bool = False,  # Whether to capitalize names
         spaceInitials: bool = False,  # Whether to space initials
         initialsBeforeName: bool = False,  # Whether to place initials before the surname
@@ -393,9 +397,7 @@ class Article(BaseModel):
             lastSeparator = separator
         if separatorWithTwoAuthors is None:
             separatorWithTwoAuthors = lastSeparator
-        array = self._getAuthors()
-        if asArray:
-            return array
+        array = self.get_authors()
         out = ""
         num_authors = len(array)
         for i, author in enumerate(array):
@@ -410,19 +412,23 @@ class Article(BaseModel):
 
             # Process author
             if capitalizeNames:
-                author = (author[0].upper(), *author[1:])
-            if spaceInitials and len(author) > 1:
-                initials = re.sub(r"\.(?![- ]|$)", ". ", author[1])
-                author = (author[0], initials, *author[2:])
-            if len(author) > 1 and includeInitials:
-                if firstInitialsBeforeName if i == 0 else initialsBeforeName:
-                    author_str = author[1] + " " + author[0]
-                else:
-                    author_str = author[0] + ", " + author[1]
-                if len(author) > 2:
-                    author_str += ", " + author[2]
+                family_name = author.family_name.upper()
             else:
-                author_str = author[0]
+                family_name = author.family_name
+            initials = author.get_initials()
+
+            if spaceInitials and initials:
+                initials = re.sub(r"\.(?![- ]|$)", ". ", initials)
+
+            if initials and includeInitials:
+                if firstInitialsBeforeName if i == 0 else initialsBeforeName:
+                    author_str = f"{initials} {family_name}"
+                else:
+                    author_str = f"{family_name}, {initials}"
+                if author.suffix:
+                    author_str += ", " + author.suffix
+            else:
+                author_str = family_name
             out += author_str
         return out
 
@@ -440,21 +446,21 @@ class Article(BaseModel):
         return [map_fn(author) for author in authors]
 
     def reverse_authors(self) -> None:
-        authors = self._getAuthors()
-        self.authors = self.implode_authors(reversed(authors))
+        authors = self.get_authors()
+        self.author_tags = list(reversed(authors))
         self.save()
 
     def countAuthors(self) -> int:
-        return len(self._getAuthors())
+        return len(self.get_authors())
 
     def getPaleoBioDBAuthors(self) -> Dict[str, str]:
-        authors = self._getAuthors()
+        authors = self.get_authors()
 
-        def author_fn(author: Sequence[str]) -> Tuple[str, str]:
-            name = author[0]
-            if len(author) > 2:
-                name += ", " + author[2]
-            return (author[1], name)
+        def author_fn(author: Person) -> Tuple[str, str]:
+            name = author.family_name
+            if author.suffix:
+                name += ", " + author.suffix
+            return (author.get_initials(), name)
 
         authors = [author_fn(author) for author in authors]
         output = {
@@ -483,7 +489,7 @@ class Article(BaseModel):
         )
 
     def author_set(self) -> Set[str]:
-        return {last for last, *_ in self._getAuthors()}
+        return {author.family_name for author in self.get_authors()}
 
     def _getAuthors(self) -> List[Sequence[str]]:
         """Should return output like
@@ -497,17 +503,6 @@ class Article(BaseModel):
         if self.authors is None:
             return []
         return self.explode_authors(self.authors)
-
-    def getEnclosingAuthors(self, **kwargs: Any) -> str:
-        obj = self.getEnclosing()
-        if obj is None:
-            return ""
-        if not obj.authors:
-            return ""
-        # why?
-        if obj.authors == self.authors:
-            return ""
-        return obj.getAuthors(**kwargs)
 
     @staticmethod
     def implode_authors(authors: Iterable[Sequence[str]]) -> str:
@@ -572,9 +567,9 @@ class Article(BaseModel):
             return None
 
     def concise_markdown_link(self) -> str:
-        authors_list = self._getAuthors()
+        authors_list = self.get_authors()
         if len(authors_list) > 2:
-            authors = f"{authors_list[0][0]} et al."
+            authors = f"{authors_list[0].family_name} et al."
         else:
             authors, _ = self.taxonomicAuthority()
         name = self.name.replace(" ", "_")

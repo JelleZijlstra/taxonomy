@@ -62,6 +62,20 @@ class Person(BaseModel):
         return self.get_description()
 
     def get_description(self, family_first: bool = False, url: bool = False) -> str:
+        parts = [self.get_full_name(family_first)]
+        parens = []
+        if self.birth or self.death:
+            parens.append(f"{_display_year(self.birth)}–{_display_year(self.death)}")
+        if self.bio is not None:
+            parens.append(self.bio)
+        parens.append(self.type.name)
+        parens.append(self.naming_convention.name)
+        if url:
+            parens.append(self.get_url())
+        parts.append(f" ({'; '.join(parens)})")
+        return "".join(parts)
+
+    def get_full_name(self, family_first: bool = False) -> str:
         parts = []
         if family_first:
             parts.append(self.family_name)
@@ -90,17 +104,17 @@ class Person(BaseModel):
                 parts.append(" " + self.suffix)
             else:
                 parts.append(", " + self.suffix)
-        parens = []
-        if self.birth or self.death:
-            parens.append(f"{_display_year(self.birth)}–{_display_year(self.death)}")
-        if self.bio is not None:
-            parens.append(self.bio)
-        parens.append(self.type.name)
-        parens.append(self.naming_convention.name)
-        if url:
-            parens.append(self.get_url())
-        parts.append(f" ({'; '.join(parens)})")
         return "".join(parts)
+
+    def get_initials(self) -> Optional[str]:
+        if self.initials:
+            return self.initials
+        if not self.given_names:
+            return None
+        names = self.given_names.split(" ")
+        return "".join(
+            name[0] + "." if name[0].isupper() else f" {name} " for name in names
+        )
 
     def get_value_to_show_for_field(self, field: Optional[str]) -> str:
         if field is None:
@@ -153,11 +167,11 @@ class Person(BaseModel):
         return None
 
     def add_to_derived_field(self, field_name: str, obj: BaseModel) -> None:
-        current = self.get_derived_field(field_name)
+        current = self.get_derived_field(field_name) or []
         self.set_derived_field(field_name, [*current, obj])
 
     def remove_from_derived_field(self, field_name: str, obj: BaseModel) -> None:
-        current = self.get_derived_field(field_name)
+        current = self.get_derived_field(field_name) or []
         self.set_derived_field(field_name, [o for o in current if o != obj])
 
     def edit_tag_sequence(
@@ -184,6 +198,7 @@ class Person(BaseModel):
         obj: BaseModel,
         field_name: str,
         tag_cls: Type[adt.ADT],
+        derived_field_name: str,
         target: Optional["Person"] = None,
     ) -> None:
         tags = getattr(obj, field_name)
@@ -196,8 +211,8 @@ class Person(BaseModel):
             setattr(obj, field_name, new_tags)
             obj.save()
             if new_person is not None:
-                self.remove_from_derived_field(field_name, obj)
-                new_person.add_to_derived_field(field_name, obj)
+                self.remove_from_derived_field(derived_field_name, obj)
+                new_person.add_to_derived_field(derived_field_name, obj)
 
     def num_references(self) -> Dict[str, int]:
         num_refs = {}
@@ -208,18 +223,18 @@ class Person(BaseModel):
         return num_refs
 
     def reassign_references(self, target: Optional["Person"] = None) -> None:
-        patronyms = self.get_derived_field("patronyms")
-        if patronyms:
-            for patronym in patronyms:
-                self.edit_tag_sequence_on_object(
-                    patronym, "type_tags", models.TypeTag.NamedAfter, target=target
-                )
-        collected_types = self.get_derived_field("collected")
-        if collected_types:
-            for collected in collected_types:
-                self.edit_tag_sequence_on_object(
-                    collected, "type_tags", models.TypeTag.CollectedBy, target=target
-                )
+        for field_name, tag_name, tag_cls in [
+            ("patronyms", "type_tags", models.TypeTag.NamedAfter),
+            ("collected", "type_tags", models.TypeTag.CollectedBy),
+            ("names", "author_tags", AuthorTag.Author),
+            ("articles", "author_tags", AuthorTag.Author),
+        ]:
+            objs = self.get_derived_field(field_name)
+            if objs:
+                for obj in objs:
+                    self.edit_tag_sequence_on_object(
+                        obj, tag_name, tag_cls, field_name, target=target
+                    )
 
     def make_soft_redirect(self, target: "Person") -> None:
         self.type = PersonType.soft_redirect

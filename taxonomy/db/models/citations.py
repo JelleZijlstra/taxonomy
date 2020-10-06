@@ -82,7 +82,7 @@ def _citenormal(article: Article, *, mw: bool) -> str:
             out += " in Unknown"
         else:
             out += " in "
-            out += article.getEnclosingAuthors(separator=",", lastSeparator=" and")
+            out += enclosing.getAuthors(separator=",", lastSeparator=" and")
             out += " (eds.). "
             out += f"{enclosing.title}. {enclosing.publisher}"
             if enclosing.pages:
@@ -161,7 +161,7 @@ def citebzn(article: Article) -> str:
         enclosing = article.getEnclosing()
         if enclosing is not None:
             out += " <i>in</i> "
-            out += article.getEnclosingAuthors().replace("(Ed", "(ed")
+            out += enclosing.getAuthors().replace("(Ed", "(ed")
             out += ", <i>" + enclosing.title + "</i>. "
             out += enclosing.pages + " pp. " + enclosing.publisher
             if enclosing.place_of_publication:
@@ -197,7 +197,7 @@ def citejhe(article: Article) -> str:
         enclosing = article.getEnclosing()
         if enclosing is not None:
             out += "In: "
-            out += article.getEnclosingAuthors(separator=",")
+            out += enclosing.getAuthors(separator=",")
             out += " (Eds.), "
             out += (
                 enclosing.title
@@ -246,7 +246,7 @@ def citepalaeontology(article: Article) -> str:
         enclosing = article.getEnclosing()
         if enclosing is not None:
             out += " <i>In</i> "
-            out += article.getEnclosingAuthors(
+            out += enclosing.getAuthors(
                 capitalizeNames=True,
                 spaceInitials=True,
                 separator=", ",
@@ -294,7 +294,7 @@ def citejpal(article: Article) -> str:
         enclosing = article.getEnclosing()
         if enclosing is not None:
             out += " <i>In</i> "
-            bauthors = article.getEnclosingAuthors(
+            bauthors = enclosing.getAuthors(
                 capitalizeNames=True,
                 firstInitialsBeforeName=True,
                 initialsBeforeName=True,
@@ -342,7 +342,7 @@ def citepalevol(article: Article) -> str:
         enclosing = article.getEnclosing()
         if enclosing is not None:
             out += ". In: "
-            bauthors = article.getEnclosingAuthors(
+            bauthors = enclosing.getAuthors(
                 initialsBeforeName=False, separator=",", spaceInitials=False
             )
             out += bauthors
@@ -392,7 +392,7 @@ def citejvp(article: Article) -> str:
         enclosing = article.getEnclosing()
         if enclosing is not None:
             out += " in "
-            bauthors = article.getEnclosingAuthors(
+            bauthors = enclosing.getAuthors(
                 initialsBeforeName=False,
                 separator=",",
                 lastSeparator=", and",
@@ -488,7 +488,7 @@ def citezootaxa(article: Article) -> str:
         enclosing = article.getEnclosing()
         if enclosing is not None:
             out += " <i>In</i>: "
-            out += article.getEnclosingAuthors(separator=",", lastSeparator=" &")
+            out += enclosing.getAuthors(separator=",", lastSeparator=" &")
             out += " (Eds), <i>" + enclosing.title + "</i>. "
             out += enclosing.publisher + ", " + enclosing.place_of_publication
             out += ", pp. " + page_range(article)
@@ -545,16 +545,17 @@ def citewp(article: Article) -> str:
         raise RuntimeError(f"unrecognized type {article.type}")
     paras: Dict[str, Optional[str]] = {}
     # authors
-    authors = article.getAuthors(asArray=True)
     coauthors: List[str] = []
-    for i, author in enumerate(authors):
+    for i, author in enumerate(article.get_authors()):
         if i < 9:
             # templates only support up to 9 authors
-            paras[f"last{i + 1}"] = author[0]
-            if author[1]:
-                paras[f"first{i + 1}"] = author[1]
+            paras[f"last{i + 1}"] = author.family_name
+            if author.given_names:
+                paras[f"first{i + 1}"] = author.given_names
+            elif author.initials:
+                paras[f"first{i + 1}"] = author.initials
         else:
-            coauthors.append(", ".join(author))
+            coauthors.append(author.get_full_name(family_first=True))
     if coauthors:
         paras["coauthors"] = "; ".join(coauthors)
     # easy stuff we need in all classes
@@ -590,30 +591,36 @@ def citewp(article: Article) -> str:
             paras["publisher"] = enclosing.publisher
             paras["location"] = enclosing.place_of_publication
             paras["edition"] = enclosing.getIdentifier(ArticleTag.Edition)
-            bauthors = article.getEnclosingAuthors(asArray=True)
-            if bauthors:
-                for i, author in enumerate(bauthors):
-                    # only four editors supported
-                    if i < 4:
-                        paras[f"editor{i + 1}-last"] = author[0]
-                        paras[f"editor{i + 1}-first"] = author[1]
-                    else:
-                        # because cite book only supports four editors, we have to hack by
-                        # putting the remaining editors in |editor4-last=
-                        if i == 4:
-                            del paras["editor4-first"]
-                            paras["editor4-last"] = ", ".join(bauthors[3]) + "; "
-                        paras["editor4-last"] = (
-                            (paras["editor4-last"] or "") + ", ".join(author) + "; "
-                        )
-                # double period bug
-                if "editor4-last" in paras and ";" in (paras["editor4-last"] or ""):
-                    paras["editor4-last"] = re.sub(
-                        r"; $", "", re.sub(r"\.$", "", paras["editor4-last"] or "")
-                    )
+            bauthors = enclosing.get_authors()
+            for i, author in enumerate(bauthors):
+                # only four editors supported
+                if i < 4:
+                    paras[f"editor{i + 1}-last"] = author.family_name
+                    if author.given_names:
+                        paras[f"editor{i + 1}-first"] = author.given_names
+                    elif author.initials:
+                        paras[f"editor{i + 1}-first"] = author.initials
                 else:
-                    last_first = f"editor{len(bauthors)}-first"
-                    paras[last_first] = re.sub(r"\.$", "", paras[last_first] or "")
+                    # because cite book only supports four editors, we have to hack by
+                    # putting the remaining editors in |editor4-last=
+                    if i == 4:
+                        del paras["editor4-first"]
+                        paras["editor4-last"] = (
+                            bauthors[3].get_full_name(family_first=True) + "; "
+                        )
+                    paras["editor4-last"] = (
+                        (paras["editor4-last"] or "")
+                        + bauthors[4].get_full_name(family_first=True)
+                        + "; "
+                    )
+            # double period bug
+            if "editor4-last" in paras and ";" in (paras["editor4-last"] or ""):
+                paras["editor4-last"] = re.sub(
+                    r"; $", "", re.sub(r"\.$", "", paras["editor4-last"] or "")
+                )
+            else:
+                last_first = f"editor{len(bauthors)}-first"
+                paras[last_first] = re.sub(r"\.$", "", paras[last_first] or "")
     elif article.type == ArticleType.THESIS:
         paras["title"] = article.title
         paras["degree"] = article.thesis_gettype()

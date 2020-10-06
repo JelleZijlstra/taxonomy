@@ -2197,7 +2197,12 @@ def reassign_references(family_name: Optional[str] = None) -> None:
     ):
         num_refs = sum(person.num_references().values())
         if num_refs > 0:
-            print(f"{person} ({num_refs})")
+            print(f"======= {person} ({num_refs}) =======")
+            if getinput.yes_no("Make soft redirect? "):
+                target = Person.getter(None).get_one("target> ")
+                if target is not None:
+                    person.make_soft_redirect(target)
+                    continue
             person.reassign_references()
 
 
