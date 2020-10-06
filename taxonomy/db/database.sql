@@ -57,6 +57,7 @@ CREATE TABLE `name` (
     `species_type_kind` integer default null,
     `type_tags` text default null,
     `citation_group` INT UNSIGNED DEFAULT NULL,
+    `author_tags` text default null,
     PRIMARY KEY(`id`),
     INDEX(`original_name`),
     INDEX(`root_name`),
@@ -242,6 +243,7 @@ CREATE TABLE `article` (
     `parent_id` INT UNSIGNED DEFAULT NULL,
     `tags` text default null,
     `citation_group_id` INT UNSIGNED DEFAULT NULL,
+    `author_tags` text default null
     PRIMARY KEY (`name`),
     INDEX(`citation_group_id`)
 );

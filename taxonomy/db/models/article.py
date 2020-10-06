@@ -28,13 +28,14 @@ from typing import (
     cast,
 )
 
-from .base import ADTField, BaseModel, EnumField
+from .base import ADTField, BaseModel, EnumField, get_completer
 from ..constants import ArticleCommentKind, ArticleKind, ArticleType
 from ..helpers import to_int
 from .. import models
 from ... import config, events, adt, getinput
 
 from .citation_group import CitationGroup
+from .person import AuthorTag, Person
 
 T = TypeVar("T", bound="Article")
 
@@ -100,6 +101,7 @@ class Article(BaseModel):
     addyear = CharField()  # year added to catalog
     name = CharField()  # name of file (or handle of citation)
     authors = CharField(null=True)
+    author_tags = ADTField(lambda: AuthorTag, null=True)
     year = CharField(null=True)  # year published
     # title (chapter title for book chapter; book title for full book or thesis)
     title = CharField(null=True)
@@ -215,6 +217,26 @@ class Article(BaseModel):
         yield "name"
         yield from _TYPE_TO_FIELDS[self.type]
 
+    def get_completers_for_adt_field(self, field: str) -> getinput.CompleterMap:
+        for field_name, tag_cls in [("author_tags", AuthorTag)]:
+            if field == field_name:
+                completers: Dict[
+                    Tuple[Type[adt.ADT], str], getinput.Completer[Any]
+                ] = {}
+                for tag in tag_cls._tag_to_member.values():  # type: ignore
+                    for attribute, typ in tag._attributes.items():
+                        completer: Optional[getinput.Completer[Any]]
+                        if typ is Article:
+                            completer = get_completer(Article, "name")
+                        elif typ is Person:
+                            completer = get_completer(Person, None)
+                        else:
+                            completer = None
+                        if completer is not None:
+                            completers[(tag, attribute)] = completer
+                return completers
+        return {}
+
     def trymanual(self) -> bool:
         fields = _TYPE_TO_FIELDS[self.type]
         for field in fields:
@@ -298,6 +320,60 @@ class Article(BaseModel):
             return False
 
     # Authors
+
+    @classmethod
+    def infer_author_tags_for_all(
+        cls, dry_run: bool = True, limit: Optional[int] = None
+    ) -> None:
+        arts = (
+            cls.select_valid()
+            .filter(cls.authors != None, cls.authors != "", cls.author_tags == None)
+            .limit(limit)
+        )
+        for art in arts:
+            print(repr(art))
+            art.infer_author_tags(dry_run=dry_run)
+
+    def infer_author_tags(self, dry_run: bool = True) -> None:
+        if self.author_tags is not None or not self.authors:
+            return
+        exploded = self._getAuthors()
+        params_by_name = [self._author_to_person(author) for author in exploded]
+        if all(params_by_name):
+            print(f"Authors: {self.authors!r} -> {params_by_name}")
+            if not dry_run:
+                tags = [
+                    AuthorTag.Author(person=Person.get_or_create_unchecked(**params))
+                    for params in params_by_name
+                ]
+                self.author_tags = tags
+        else:
+            print("Failed to match", exploded)
+
+    def _author_to_person(self, author: List[str]) -> Dict[str, Optional[str]]:
+        if not any(author):
+            return None
+        if len(author) == 1:
+            return {"family_name": author[0]}
+        elif len(author) in (2, 3):
+            params = {"family_name": author[0]}
+            if author[1] in ("Lord", "Earl of"):
+                params["given_names"] = author[1]
+            elif author[1]:
+                match = re.match(
+                    r"(^.*[A-ZŠİŞÖČİÖÓÉŻØÇÀĽÈÚŁÁА-Я][hyluj]?\.)(( [a-záéíãěäóèìğñüúöšýčç'а-я]+)*)",
+                    author[1],
+                )
+                if match is None:
+                    return None
+                params["initials"] = match.group(1)
+                if match.group(2):
+                    params["tussenvoegsel"] = match.group(2).strip()
+            if len(author) == 3:
+                params["suffix"] = author[2]
+            return params
+        else:
+            return None
 
     def getAuthors(
         self,

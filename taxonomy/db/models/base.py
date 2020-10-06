@@ -167,6 +167,9 @@ class BaseModel(Model):
     def get_raw_derived_field(self, name: str) -> Any:
         return self._name_to_derived_field[name].get_raw_value(self)
 
+    def set_derived_field(self, name: str, value: Any) -> None:
+        self._name_to_derived_field[name].set_value(self, value)
+
     @classmethod
     def compute_all_derived_fields(cls) -> None:
         if not cls.derived_fields:
@@ -841,3 +844,27 @@ class _NameGetter(Generic[ModelT]):
             self._encoded_data = set()
             for obj in self.cls.select_valid():
                 self._add_obj(obj)
+
+
+def get_completer(
+    cls: Type[ModelT], field: Optional[str]
+) -> Callable[[str, Optional[str]], Optional[ModelT]]:
+    def completer(prompt: str, default: Any) -> Any:
+        if isinstance(default, BaseModel):
+            default = str(default.id)
+        elif default is None:
+            default = ""
+        elif not isinstance(default, str):
+            raise TypeError(f"default must be str or Model, not {default!r}")
+        return cls.getter(field).get_one(prompt, default=default)
+
+    return completer
+
+
+def get_str_completer(
+    cls: Type[Model], field: Optional[str]
+) -> Callable[[str, Optional[str]], Optional[str]]:
+    def completer(prompt: str, default: Optional[str]) -> Any:
+        return cls.getter(field).get_one_key(prompt, default=default or "")
+
+    return completer

@@ -2203,21 +2203,21 @@ def reassign_references(family_name: Optional[str] = None) -> None:
 
 PersonParams = Optional[Dict[str, str]]
 
-_UPPER = r"[A-ZŠČА-Я]"
+_UPPER = r"[A-ZŠİŞÖČÓА-Я]"
 _LOWER = r"[a-záéíãěäóèìğñüúöšýčç'а-я]{2,}"
-_SIMPLE_FAMILY = rf"((Ma?c|De|La|Le|D'|d'|Du)?{_UPPER}{_LOWER})"
+_SIMPLE_FAMILY = rf"((Ma?c|De|La|Le|D'|d'|Du|O')?{_UPPER}{_LOWER})"
 _FAMILY = (
     rf"((von |de |de la |De la |du |del |de La )?{_SIMPLE_FAMILY}(-{_SIMPLE_FAMILY})?)"
 )
 _SUFFIX_GROUP = r"(?P<suffix>,? (jr|Jr|Sr)\.?)?"
+_INITIALS_GROUP = rf"(?P<initials>\[?((Mc|de )?{_UPPER}h?\.-?\s?)+\]?( {_FAMILY})*)"
 
 
 def _initials(name: str) -> PersonParams:
     if "Expedition" in name:
         return None
     match = re.match(
-        rf"^(?P<initials>\[?({_UPPER}h?\.-?\s?)+\]?( {_FAMILY})*)\s*(?P<family>{_FAMILY}){_SUFFIX_GROUP}$",
-        name,
+        rf"^{_INITIALS_GROUP}\s*(?P<family>{_FAMILY}){_SUFFIX_GROUP}$", name
     )
     if match:
         return {
@@ -2240,8 +2240,10 @@ def _parse_suffix(suffix: Optional[str]) -> Optional[str]:
 
 
 def _full_name(name: str) -> PersonParams:
+    if "Expedition" in name or "Miss " in name:
+        return None
     match = re.match(
-        rf"^(?P<given_names>{_UPPER}{_LOWER}( {_UPPER}\.)?) (?P<family_name>{_FAMILY}){_SUFFIX_GROUP}$",
+        rf"^(?P<given_names>{_FAMILY}( {_UPPER}\.)*) (?P<family_name>{_FAMILY}){_SUFFIX_GROUP}$",
         name,
     )
     if match:
@@ -2275,7 +2277,25 @@ def _cyrillic(name: str) -> PersonParams:
     return None
 
 
-MATCHERS = [_initials, _full_name, _last_name_only, _cyrillic]
+def _van(name: str) -> PersonParams:
+    match = re.match(
+        rf"^{_INITIALS_GROUP}\s+van\s+(?P<family_name>{_FAMILY}){_SUFFIX_GROUP}$", name
+    )
+    if match:
+        return {
+            "family_name": match.group("family_name"),
+            "initials": re.sub(
+                rf"\.(?={_FAMILY})",
+                ". ",
+                re.sub(r"\s", "", match.group("initials").strip("[]")),
+            ),
+            "suffix": _parse_suffix(match.group("suffix")),
+            "tussenvoegsel": "van",
+        }
+    return None
+
+
+MATCHERS = [_initials, _full_name, _last_name_only, _cyrillic, _van]
 
 
 @command
@@ -2285,7 +2305,7 @@ def replace_collectors(
     limit: Optional[int] = None,
     create_names: bool = False,
     print_failure: bool = True,
-):
+) -> List[str]:
     nams = (
         Name.select_valid()
         .filter(Name.type_tags.contains(f"[{TypeTag.Collector._tag},"))
@@ -2293,6 +2313,7 @@ def replace_collectors(
     )
     matched = 0
     unmatched = 1
+    unmatched_names = []
     for nam in nams:
         all_tags = list(nam.type_tags)
         tags = [tag for tag in all_tags if isinstance(tag, TypeTag.Collector)]
@@ -2302,9 +2323,16 @@ def replace_collectors(
             new_tags = all_tags
             for matching_tag in tags:
                 names = (
-                    re.sub(r"\s+", " ", matching_tag.name)
+                    re.sub(
+                        r"^\[(MC: |SL: )?(.*)\]$",
+                        r"\2",
+                        re.sub(r"\s+", " ", matching_tag.name),
+                    )
+                    .replace("[MC: ", "[")
+                    .replace("[SL: ", "[")
                     .replace(" and ", " & ")
                     .replace(" y ", " & ")
+                    .replace(" (Al)", "")
                     .strip()
                     .rstrip(".")
                     .split(" & ")
@@ -2338,6 +2366,7 @@ def replace_collectors(
                     if print_failure:
                         print(f"Failed to match: {names}")
                     unmatched += 1
+                    unmatched_names.append(matching_tag.name)
 
             if new_tags != list(nam.type_tags):
                 print("Change tags:")
@@ -2348,6 +2377,7 @@ def replace_collectors(
 
     print(f"matched = {matched}")
     print(f"unmatched = {unmatched}")
+    return unmatched_names
 
 
 def print_diff(a: Sequence[Any], b: Sequence[Any]) -> None:

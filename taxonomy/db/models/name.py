@@ -16,11 +16,10 @@ from typing import (
     Set,
     Tuple,
     Type,
-    TypeVar,
     Union,
 )
 
-from peewee import CharField, ForeignKeyField, IntegerField, Model, TextField
+from peewee import CharField, ForeignKeyField, IntegerField, TextField
 
 from .. import constants, helpers
 from ... import adt, events, getinput
@@ -35,16 +34,14 @@ from ..constants import (
 )
 from ..definition import Definition
 
-from .base import BaseModel, EnumField, ADTField
+from .base import BaseModel, EnumField, ADTField, get_completer, get_str_completer
 from .article import Article
 from .citation_group import CitationGroup
 from .collection import Collection
 from .taxon import Taxon, display_organized
 from .location import Location
 from .name_complex import NameComplex, SpeciesNameComplex
-from .person import Person
-
-ModelT = TypeVar("ModelT", bound="BaseModel")
+from .person import Person, AuthorTag
 
 
 class Name(BaseModel):
@@ -78,6 +75,7 @@ class Name(BaseModel):
 
     # Citation and authority
     authority = CharField(null=True)
+    author_tags = ADTField(lambda: AuthorTag, null=True)
     original_citation = ForeignKeyField(
         Article, null=True, db_column="original_citation_id", related_name="new_names"
     )
@@ -720,6 +718,58 @@ class Name(BaseModel):
 
     def conserve(self, opinion: str, comment: Optional[str] = None) -> None:
         self.add_tag(NameTag.Conserved(opinion, comment))
+
+    @classmethod
+    def infer_author_tags_for_all(
+        cls, dry_run: bool = True, limit: Optional[int] = None
+    ) -> None:
+        nams = (
+            cls.select_valid()
+            .filter(cls.authority != None, cls.author_tags == None)
+            .limit(limit)
+        )
+        for nam in nams:
+            nam.display(full=False)
+            nam.infer_author_tags(dry_run=dry_run)
+
+    def infer_author_tags(self, dry_run: bool = True) -> None:
+        if self.authority is None or self.author_tags is not None:
+            return
+        if (
+            self.original_citation is not None
+            and self.original_citation.author_tags is not None
+            and self.original_citation.taxonomicAuthority()[0] == self.authority
+        ):
+            author_tags = self.original_citation.author_tags
+            print(f"Inferred: {self.authority!r} -> {author_tags}")
+            if not dry_run:
+                self.author_tags = author_tags
+        else:
+            if "et al." in self.authority:
+                params_by_name = [None]
+            else:
+                authors = self.get_authors()
+                params_by_name = [self._author_to_person(author) for author in authors]
+            if all(params_by_name):
+                print(f"Authors: {self.authority!r} -> {params_by_name}")
+                if not dry_run:
+                    tags = [
+                        AuthorTag.Author(
+                            person=Person.get_or_create_unchecked(**params)
+                        )
+                        for params in params_by_name
+                    ]
+                    self.author_tags = tags
+            else:
+                print("Failed to match", self.authority)
+
+    def _author_to_person(self, author: str) -> Dict[str, Optional[str]]:
+        match = re.match(
+            r"^((?P<initials>([A-Z]\.)+) )?(?P<family_name>[A-Z].*)$", author
+        )
+        if match is not None:
+            return match.groupdict()
+        return None
 
     def author_set(self) -> Set[str]:
         return {
@@ -1450,30 +1500,6 @@ def has_data_from_original(nam: Name) -> bool:
         if isinstance(tag, (TypeTag.IncludedSpecies, TypeTag.GenusCoelebs)):
             return True
     return False
-
-
-def get_completer(
-    cls: Type[ModelT], field: Optional[str]
-) -> Callable[[str, Optional[str]], Optional[ModelT]]:
-    def completer(prompt: str, default: Any) -> Any:
-        if isinstance(default, BaseModel):
-            default = str(default.id)
-        elif default is None:
-            default = ""
-        elif not isinstance(default, str):
-            raise TypeError(f"default must be str or Model, not {default!r}")
-        return cls.getter(field).get_one(prompt, default=default)
-
-    return completer
-
-
-def get_str_completer(
-    cls: Type[Model], field: Optional[str]
-) -> Callable[[str, Optional[str]], Optional[str]]:
-    def completer(prompt: str, default: Optional[str]) -> Any:
-        return cls.getter(field).get_one_key(prompt, default=default or "")
-
-    return completer
 
 
 def write_type_localities(

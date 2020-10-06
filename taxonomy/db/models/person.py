@@ -1,6 +1,6 @@
 import sys
 from collections import defaultdict
-from typing import IO, Any, Dict, List, Optional, Sequence, Type
+from typing import IO, Any, Dict, List, Optional, Sequence, Tuple, Type
 
 from peewee import CharField, DeferredForeignKey, TextField
 
@@ -42,6 +42,18 @@ class Person(BaseModel):
             "collected",
             LazyType(lambda: List[models.Name]),
             compute_all=lambda: _compute_from_type_tag(models.TypeTag.CollectedBy),
+            pull_on_miss=False,
+        ),
+        DerivedField(
+            "articles",
+            LazyType(lambda: List[models.Article]),
+            compute_all=lambda: _compute_from_author_tag(models.Article),
+            pull_on_miss=False,
+        ),
+        DerivedField(
+            "names",
+            LazyType(lambda: List[models.Name]),
+            compute_all=lambda: _compute_from_author_tag(models.Name),
             pull_on_miss=False,
         ),
     ]
@@ -140,24 +152,32 @@ class Person(BaseModel):
                 return tag
         return None
 
+    def add_to_derived_field(self, field_name: str, obj: BaseModel) -> None:
+        current = self.get_derived_field(field_name)
+        self.set_derived_field(field_name, [*current, obj])
+
+    def remove_from_derived_field(self, field_name: str, obj: BaseModel) -> None:
+        current = self.get_derived_field(field_name)
+        self.set_derived_field(field_name, [o for o in current if o != obj])
+
     def edit_tag_sequence(
         self,
         tags: Optional[Sequence[adt.ADT]],
         tag_cls: Type[adt.ADT],
         target: Optional["Person"] = None,
-    ) -> Optional[Sequence[adt.ADT]]:
+    ) -> Tuple[Optional[Sequence[adt.ADT]], Optional["Person"]]:
         matching_tag = self.find_tag(tags, tag_cls)
         if matching_tag is None:
-            return None
+            return None, None
         print(matching_tag)
         if target is not None:
             new_person = target
         else:
             new_person = self.getter(None).get_one()
             if new_person is None:
-                return None
+                return None, None
         new_tag = tag_cls(person=new_person)
-        return [new_tag if tag == matching_tag else tag for tag in tags]
+        return [new_tag if tag == matching_tag else tag for tag in tags], new_person
 
     def edit_tag_sequence_on_object(
         self,
@@ -171,10 +191,13 @@ class Person(BaseModel):
         if tag is None:
             return
         obj.display()
-        new_tags = self.edit_tag_sequence(tags, tag_cls, target)
+        new_tags, new_person = self.edit_tag_sequence(tags, tag_cls, target)
         if new_tags is not None:
             setattr(obj, field_name, new_tags)
             obj.save()
+            if new_person is not None:
+                self.remove_from_derived_field(field_name, obj)
+                new_person.add_to_derived_field(field_name, obj)
 
     def num_references(self) -> Dict[str, int]:
         num_refs = {}
@@ -203,6 +226,24 @@ class Person(BaseModel):
         self.target = target
         self.reassign_references(target=target)
 
+    def maybe_autodelete(self, dry_run: bool = True) -> None:
+        self = self.reload()
+        if self.type is not PersonType.unchecked:
+            return
+        num_refs = sum(self.num_references().values())
+        if num_refs > 0:
+            return
+        print(f"Autodeleting {self!r}")
+        if not dry_run:
+            self.type = PersonType.deleted
+            self.save()
+
+    @classmethod
+    def autodelete(cls, dry_run: bool = True) -> None:
+        cls.compute_all_derived_fields()
+        for person in cls.select_valid().filter(cls.type == PersonType.unchecked):
+            person.maybe_autodelete(dry_run=dry_run)
+
     @classmethod
     def get_or_create_unchecked(
         cls,
@@ -211,22 +252,44 @@ class Person(BaseModel):
         initials: Optional[str] = None,
         given_names: Optional[str] = None,
         suffix: Optional[str] = None,
+        tussenvoegsel: Optional[str] = None,
     ) -> None:
-        objs = Person.select_valid().filter(
-            Person.family_name == family_name,
-            Person.given_names == given_names,
-            Person.initials == initials,
-            Person.suffix == suffix,
-            Person.type == PersonType.unchecked,
+        objs = list(
+            Person.select_valid().filter(
+                Person.family_name == family_name,
+                Person.given_names == given_names,
+                Person.initials == initials,
+                Person.suffix == suffix,
+                Person.tussenvoegsel == tussenvoegsel,
+                Person.type == PersonType.unchecked,
+            )
         )
         if objs:
             return objs[0]  # should only be one
+
+        objs = list(
+            Person.select().filter(
+                Person.family_name == family_name,
+                Person.given_names == given_names,
+                Person.initials == initials,
+                Person.suffix == suffix,
+                Person.tussenvoegsel == tussenvoegsel,
+                Person.type == PersonType.deleted,
+            )
+        )
+        if objs:
+            obj = objs[0]
+            obj.type = PersonType.unchecked
+            print(f"Resurrected {obj}")
+            return obj
+
         else:
             obj = cls.create(
                 family_name=family_name,
                 given_names=given_names,
                 initials=initials,
                 suffix=suffix,
+                tussenvoegsel=tussenvoegsel,
                 type=PersonType.unchecked,
                 naming_convention=NamingConvention.western,
             )
@@ -234,8 +297,13 @@ class Person(BaseModel):
             return obj
 
 
+# Reused in Article and Name
+class AuthorTag(adt.ADT):
+    Author(person=Person, tag=2)  # type: ignore
+
+
 class PersonTag(adt.ADT):
-    Wiki(text=str, tag=1)
+    Wiki(text=str, tag=1)  # type: ignore
 
 
 def _display_year(year: Optional[str]) -> str:
@@ -247,6 +315,17 @@ def _display_year(year: Optional[str]) -> str:
     except ValueError:
         pass
     return year
+
+
+def _compute_from_author_tag(
+    model_cls: Type[BaseModel],
+) -> Dict[int, "List[BaseModel]"]:
+    out = defaultdict(list)
+    for nam in model_cls.select_valid().filter(model_cls.author_tags != None):
+        for tag in nam.author_tags:
+            if isinstance(tag, AuthorTag.Author):
+                out[tag.person.id].append(nam)
+    return out
 
 
 def _compute_from_type_tag(

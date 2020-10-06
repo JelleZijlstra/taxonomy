@@ -584,6 +584,7 @@ class NamingConvention(enum.IntEnum):
     burmese = 5
     spanish = 6
     ancient = 7
+    organization = 8
 
 
 class PersonType(enum.IntEnum):
