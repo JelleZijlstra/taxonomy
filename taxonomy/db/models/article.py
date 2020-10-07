@@ -100,7 +100,6 @@ class Article(BaseModel):
     addday = CharField()  # day added to catalog
     addyear = CharField()  # year added to catalog
     name = CharField()  # name of file (or handle of citation)
-    authors = CharField(null=True)
     author_tags = ADTField(lambda: AuthorTag, null=True)
     year = CharField(null=True)  # year published
     # title (chapter title for book chapter; book title for full book or thesis)
@@ -321,62 +320,6 @@ class Article(BaseModel):
 
     # Authors
 
-    @classmethod
-    def infer_author_tags_for_all(
-        cls, dry_run: bool = True, limit: Optional[int] = None
-    ) -> None:
-        arts = (
-            cls.select_valid()
-            .filter(cls.authors != None, cls.authors != "", cls.author_tags == None)
-            .limit(limit)
-        )
-        for art in arts:
-            print(repr(art))
-            art.infer_author_tags(dry_run=dry_run)
-
-    def infer_author_tags(self, dry_run: bool = True) -> None:
-        if self.author_tags is not None or not self.authors:
-            return
-        exploded = self._getAuthors()
-        params_by_name = [self._author_to_person(author) for author in exploded]
-        if all(params_by_name):
-            print(f"Authors: {self.authors!r} -> {params_by_name}")
-            if not dry_run:
-                tags = [
-                    AuthorTag.Author(person=Person.get_or_create_unchecked(**params))
-                    for params in params_by_name
-                ]
-                self.author_tags = tags
-        else:
-            print("Failed to match", exploded)
-
-    def _author_to_person(
-        self, author: List[str]
-    ) -> Optional[Dict[str, Optional[str]]]:
-        if not any(author):
-            return None
-        if len(author) == 1:
-            return {"family_name": author[0]}
-        elif len(author) in (2, 3):
-            params: Dict[str, Optional[str]] = {"family_name": author[0]}
-            if author[1] in ("Lord", "Earl of"):
-                params["given_names"] = author[1]
-            elif author[1]:
-                match = re.match(
-                    r"(^.*[A-ZŠİŞÖČİÖÓÉŻØÇÀĽÈÚŁÁА-Я][hyluj]?\.)(( [a-záéíãěäóèìğñüúöšýčç'а-я]+)*)",
-                    author[1],
-                )
-                if match is None:
-                    return None
-                params["initials"] = match.group(1)
-                if match.group(2):
-                    params["tussenvoegsel"] = match.group(2).strip()
-            if len(author) == 3:
-                params["suffix"] = author[2]
-            return params
-        else:
-            return None
-
     def get_authors(self) -> List[Person]:
         if self.author_tags is None:
             return []
@@ -494,26 +437,6 @@ class Article(BaseModel):
 
     def author_set(self) -> Set[str]:
         return {author.family_name for author in self.get_authors()}
-
-    def _getAuthors(self) -> List[Sequence[str]]:
-        """Should return output like
-
-        [
-            ('Zijlstra', 'J.S.'),
-            ('Smith', 'J.', 'Jr.'),
-        ]
-
-        for a paper by "Zijlstra, J.S.; Smith, J., Jr."."""
-        if self.authors is None:
-            return []
-        return self.explode_authors(self.authors)
-
-    @staticmethod
-    def implode_authors(authors: Iterable[Sequence[str]]) -> str:
-        """Turns a list as returned by _getAuthors into a single string."""
-        return "; ".join(
-            ", ".join(part for part in author if part) for author in authors
-        )
 
     def add_comment(
         self, kind: Optional[ArticleCommentKind] = None, text: Optional[str] = None

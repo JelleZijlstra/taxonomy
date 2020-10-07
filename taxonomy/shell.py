@@ -3015,11 +3015,12 @@ def apply_author_synonyms(dry_run: bool = False) -> None:
 
 
 def _get_new_author(nams: List[Name], citation: Article, author: str) -> Optional[str]:
-    authors = citation.authors
-    if ";" not in authors and ", " in authors:
-        last, initials = authors.split(", ", maxsplit=1)
-        if last == author and "," not in initials:
-            return f"{initials} {last}"
+    authors = citation.get_authors()
+    for person in authors:
+        if person.family_name == author:
+            initials = person.get_initials()
+            if initials is not None:
+                return f"{initials} {author}"
     nams[0].open_description()
     return Name.getter("authority").get_one_key("author> ")
 
