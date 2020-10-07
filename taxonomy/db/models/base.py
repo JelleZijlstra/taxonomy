@@ -53,7 +53,7 @@ else:
 
 
 ModelT = TypeVar("ModelT", bound="BaseModel")
-_getters: Dict[Tuple[Type[Model], str], "_NameGetter[Any]"] = {}
+_getters: Dict[Tuple[Type[Model], Optional[str]], "_NameGetter[Any]"] = {}
 
 
 class _FieldEditor(object):
@@ -157,8 +157,12 @@ class BaseModel(Model):
                 traceback.print_exc()
                 print(f"{field}: could not get value")
 
-    def display(self) -> None:
-        """Print data about this object."""
+    def display(self, *, full: bool = False) -> None:
+        """Print data about this object.
+
+        Subclasses may use the full parameter to decide how much data to show.
+
+        """
         self.full_data()
 
     def get_derived_field(self, name: str) -> Any:
@@ -347,9 +351,13 @@ class BaseModel(Model):
 
     @classmethod
     def get_one_by(
-        cls: Type[ModelT], attr: str, *, prompt: str = "> ", allow_empty: bool = True
+        cls: Type[ModelT],
+        field: Optional[str],
+        *,
+        prompt: str = "> ",
+        allow_empty: bool = True,
     ) -> Optional[ModelT]:
-        return cls.getter(attr).get_one(prompt, allow_empty=allow_empty)
+        return cls.getter(field).get_one(prompt, allow_empty=allow_empty)
 
     def get_value_for_field(self, field: str, default: Optional[str] = None) -> Any:
         field_obj = getattr(type(self), field)
@@ -707,7 +715,7 @@ class _NameGetter(Generic[ModelT]):
         assert self._encoded_data is not None
         return result | self._encoded_data
 
-    def __getattr__(self, name: str) -> ModelT:
+    def __getattr__(self, name: str) -> Optional[ModelT]:
         return self._get_from_key(getinput.decode_name(name))
 
     def __call__(self, name: Optional[str] = None) -> Optional[ModelT]:
@@ -810,7 +818,8 @@ class _NameGetter(Generic[ModelT]):
                     obj = self._get_from_key(default)
                 except self.cls.DoesNotExist:
                     continue
-                obj.edit()
+                if obj is not None:
+                    obj.edit()
                 continue
             try:
                 return self._get_from_key(key)

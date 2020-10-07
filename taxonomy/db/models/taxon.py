@@ -80,6 +80,13 @@ class _OccurrenceGetter(object):
         return [o.location.name.replace(" ", "_") for o in self.instance.occurrences]
 
 
+def _make_parent_getter(index: int) -> Any:
+    def _get_ranked_parent(taxon: "Taxon") -> Optional["Taxon"]:
+        return ranked_parents(taxon)[index]
+
+    return _get_ranked_parent
+
+
 class Taxon(BaseModel):
     creation_event = events.Event["Taxon"]()
     save_event = events.Event["Taxon"]()
@@ -98,9 +105,9 @@ class Taxon(BaseModel):
     base_name = peewee.DeferredForeignKey("Name")
 
     derived_fields = [
-        DerivedField("class_", SetLater, lambda taxon: ranked_parents(taxon)[0]),
-        DerivedField("order", SetLater, lambda taxon: ranked_parents(taxon)[1]),
-        DerivedField("family", SetLater, lambda taxon: ranked_parents(taxon)[2]),
+        DerivedField("class_", SetLater, _make_parent_getter(0)),
+        DerivedField("order", SetLater, _make_parent_getter(1)),
+        DerivedField("family", SetLater, _make_parent_getter(2)),
     ]
 
     class Meta(object):

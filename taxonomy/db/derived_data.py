@@ -36,8 +36,8 @@ class ComputeAllFunc(Protocol[T]):
         ...
 
 
-class _LazyTypeArg(Protocol[T]):
-    def __call__(self) -> Type[T]:
+class _LazyTypeArg(Protocol[T_co]):
+    def __call__(self) -> Type[T_co]:
         ...
 
 
@@ -101,7 +101,7 @@ class DerivedField(Generic[T]):
             return value.id
         return value
 
-    def deserialize(self, serialized: Any, typ: Any) -> T:
+    def deserialize(self, serialized: Any, typ: Any) -> Any:
         if serialized is None:
             return None
         if isinstance(typ, type) and issubclass(typ, models.base.BaseModel):

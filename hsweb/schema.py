@@ -296,11 +296,14 @@ def _decode_after(after: Optional[str]) -> int:
         return 0
 
 
+def make_location_connection() -> Type[Connection]:
+    return build_connection(build_object_type_from_model(Location))
+
+
 CUSTOM_FIELDS = {
     Period: {
         "locations": ConnectionField(
-            lambda: build_connection(build_object_type_from_model(Location)),
-            resolver=locations_resolver,
+            make_location_connection, resolver=locations_resolver
         ),
         "num_locations": Int(required=True, resolver=num_locations_resolver),
     }
@@ -308,7 +311,7 @@ CUSTOM_FIELDS = {
 
 
 def build_derived_field(
-    model_cls: Type[BaseModel], derived_field: DerivedField
+    model_cls: Type[BaseModel], derived_field: DerivedField[Any]
 ) -> Field:
     field_name = derived_field.name
     typ = derived_field.get_type()
@@ -340,7 +343,7 @@ def build_derived_field(
         (arg_type,) = typing_inspect.get_args(typ)
         if issubclass(arg_type, BaseModel):
 
-            def elt_type():
+            def elt_type() -> Type[Connection]:
                 return build_connection(build_object_type_from_model(arg_type))
 
             def list_resolver(
@@ -348,7 +351,7 @@ def build_derived_field(
                 info: ResolveInfo,
                 first: int = 10,
                 after: Optional[str] = None,
-            ) -> TList[ObjectType]:
+            ) -> Any:
                 model = get_model(model_cls, parent, info)
                 foreign_model_oids = model.get_raw_derived_field(field_name)
                 if foreign_model_oids is None:

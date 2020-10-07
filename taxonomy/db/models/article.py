@@ -223,7 +223,7 @@ class Article(BaseModel):
                 completers: Dict[
                     Tuple[Type[adt.ADT], str], getinput.Completer[Any]
                 ] = {}
-                for tag in tag_cls._tag_to_member.values():  # type: ignore
+                for tag in tag_cls._tag_to_member.values():
                     for attribute, typ in tag._attributes.items():
                         completer: Optional[getinput.Completer[Any]]
                         if typ is Article:
@@ -350,13 +350,15 @@ class Article(BaseModel):
         else:
             print("Failed to match", exploded)
 
-    def _author_to_person(self, author: List[str]) -> Dict[str, Optional[str]]:
+    def _author_to_person(
+        self, author: List[str]
+    ) -> Optional[Dict[str, Optional[str]]]:
         if not any(author):
             return None
         if len(author) == 1:
             return {"family_name": author[0]}
         elif len(author) in (2, 3):
-            params = {"family_name": author[0]}
+            params: Dict[str, Optional[str]] = {"family_name": author[0]}
             if author[1] in ("Lord", "Earl of"):
                 params["given_names"] = author[1]
             elif author[1]:
@@ -447,7 +449,9 @@ class Article(BaseModel):
 
     def reverse_authors(self) -> None:
         authors = self.get_authors()
-        self.author_tags = list(reversed(authors))
+        self.author_tags = [
+            AuthorTag(person=person) for person in reversed(authors)  # type: ignore
+        ]
         self.save()
 
     def countAuthors(self) -> int:
@@ -460,9 +464,9 @@ class Article(BaseModel):
             name = author.family_name
             if author.suffix:
                 name += ", " + author.suffix
-            return (author.get_initials(), name)
+            return (author.get_initials() or "", name)
 
-        authors = [author_fn(author) for author in authors]
+        author_pairs = [author_fn(author) for author in authors]
         output = {
             "author1init": "",
             "author1last": "",
@@ -471,14 +475,14 @@ class Article(BaseModel):
             "otherauthors": "",
         }
         if len(authors) > 0:
-            output["author1init"] = authors[0][0]
-            output["author1last"] = authors[0][1]
+            output["author1init"] = author_pairs[0][0]
+            output["author1last"] = author_pairs[0][1]
         if len(authors) > 1:
-            output["author2init"] = authors[1][0]
-            output["author2last"] = authors[1][1]
+            output["author2init"] = author_pairs[1][0]
+            output["author2last"] = author_pairs[1][1]
         if len(authors) > 2:
             output["otherauthors"] = ", ".join(
-                " ".join(author) for author in authors[2:]
+                " ".join(author) for author in author_pairs[2:]
             )
         return output
 
@@ -617,7 +621,7 @@ class Article(BaseModel):
                 return True
         return False
 
-    def display(self) -> None:
+    def display(self, full: bool = False) -> None:
         print(self.cite())
 
     def display_names(self, full: bool = False) -> None:

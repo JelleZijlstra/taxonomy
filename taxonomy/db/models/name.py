@@ -368,7 +368,11 @@ class Name(BaseModel):
         return result
 
     def get_completers_for_adt_field(self, field: str) -> getinput.CompleterMap:
-        for field_name, tag_cls in [("type_tags", TypeTag), ("tags", NameTag), ("author_tags", AuthorTag)]:
+        for field_name, tag_cls in [
+            ("type_tags", TypeTag),
+            ("tags", NameTag),
+            ("author_tags", AuthorTag),
+        ]:
             if field == field_name:
                 completers: Dict[
                     Tuple[Type[adt.ADT], str], getinput.Completer[Any]
@@ -769,7 +773,7 @@ class Name(BaseModel):
             else:
                 print("Failed to match", self.authority)
 
-    def _author_to_person(self, author: str) -> Dict[str, Optional[str]]:
+    def _author_to_person(self, author: str) -> Optional[Dict[str, str]]:
         match = re.match(
             r"^((?P<initials>([A-ZÉ]\.)+) )?((?P<tussenvoegsel>de|von|van|van der|van den|van de) )?(?P<family_name>(d'|de|de la |zur |du |dos |del |di |ul-|von der |da |vander|dal |delle |ul )?[ÄÉÜÁÖŞA-Z].*)(, (?P<suffix>2nd))?$",
             author,
@@ -1627,9 +1631,9 @@ class TypeTag(adt.ADT):
     Date(date=str, tag=2)  # type: ignore
     Gender(gender=constants.SpecimenGender, tag=3)  # type: ignore
     Age(age=constants.SpecimenAge, tag=4)  # type: ignore
-    Organ(
+    Organ(  # type: ignore
         organ=constants.SpecimenOrgan, detail=str, condition=str, tag=5
-    )  # type: ignore
+    )
     Altitude(altitude=str, unit=constants.AltitudeUnit, tag=6)  # type: ignore
     Coordinates(latitude=str, longitude=str, tag=7)  # type: ignore
     # Authoritative description for a disputed type locality. Should be rarely used.

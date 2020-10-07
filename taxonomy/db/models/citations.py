@@ -520,19 +520,17 @@ def citewp(article: Article) -> str:
     else:
         doi = ""
     out1 = ""
+    jstor = article.getIdentifier(ArticleTag.JSTOR)
+    hdl = article.getIdentifier(ArticleTag.HDL)
     if doi:
         # {{cite doi}}
         out1 = "{{cite doi|" + doi + "}}"
-    elif article.getIdentifier(ArticleTag.JSTOR):
+    elif jstor:
         # {{cite jstor}}
-        out1 = (
-            "{{cite jstor|" + article.getIdentifier(ArticleTag.JSTOR) + "}}"
-        )  # type: ignore
-    elif article.getIdentifier(ArticleTag.HDL):
+        out1 = "{{cite jstor|" + jstor + "}}"
+    elif hdl:
         # {{cite hdl}}
-        out1 = (
-            "{{cite hdl|" + article.getIdentifier(ArticleTag.HDL) + "}}"
-        )  # type: ignore
+        out1 = "{{cite hdl|" + hdl + "}}"
     if article.type == ArticleType.JOURNAL:
         label = "journal"
     elif article.type in (ArticleType.BOOK, ArticleType.CHAPTER):
@@ -560,10 +558,8 @@ def citewp(article: Article) -> str:
         paras["coauthors"] = "; ".join(coauthors)
     # easy stuff we need in all classes
     paras["year"] = article.year
-    if article.getIdentifier(ArticleTag.HDL):
-        paras["id"] = (
-            "{{hdl|" + article.getIdentifier(ArticleTag.HDL) + "}}"
-        )  # type: ignore
+    if hdl:
+        paras["id"] = "{{hdl|" + hdl + "}}"
     paras["jstor"] = article.getIdentifier(ArticleTag.JSTOR)
     paras["pmid"] = article.getIdentifier(ArticleTag.PMID)
     paras["url"] = article.url

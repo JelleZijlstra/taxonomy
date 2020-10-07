@@ -2210,7 +2210,7 @@ def reassign_references(family_name: Optional[str] = None) -> None:
                     callbacks={
                         "d": person.display,
                         "p": lambda: print("s = skip, r = soft redirect, d = display"),
-                        "e": person.edit(),
+                        "e": person.edit,
                     },
                 )
                 if command in ("r", "soft_redirect"):
@@ -2227,7 +2227,7 @@ def reassign_references(family_name: Optional[str] = None) -> None:
                     break
 
 
-PersonParams = Optional[Dict[str, str]]
+PersonParams = Optional[Dict[str, Optional[str]]]
 
 _UPPER = r"[A-ZŠİŞÖČÓА-Я]"
 _LOWER = r"[a-záéíãěäóèìğñüúöšýčç'а-я]{2,}"

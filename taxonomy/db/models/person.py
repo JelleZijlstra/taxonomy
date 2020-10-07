@@ -1,6 +1,6 @@
 import sys
 from collections import defaultdict
-from typing import IO, Any, Dict, List, Optional, Sequence, Tuple, Type
+from typing import cast, IO, Any, Dict, List, Optional, Sequence, Tuple, Type
 
 from peewee import CharField, DeferredForeignKey, TextField
 
@@ -141,7 +141,9 @@ class Person(BaseModel):
         result.fill_field("tags")
         return result
 
-    def display(self, depth: int = 0, file: IO[str] = sys.stdout) -> None:
+    def display(
+        self, full: bool = True, depth: int = 0, file: IO[str] = sys.stdout
+    ) -> None:
         onset = " " * depth
         indented_onset = onset + " " * 4
         double_indented_onset = onset + " " * 8
@@ -149,12 +151,13 @@ class Person(BaseModel):
         if self.tags:
             for tag in self.tags:
                 file.write(indented_onset + repr(tag) + "\n")
-        for field in self.derived_fields:
-            refs = self.get_derived_field(field.name)
-            if refs is not None:
-                file.write(f"{indented_onset}{field.name.title()} ({len(refs)})\n")
-                for nam in sorted(refs, key=lambda nam: nam.sort_key()):
-                    file.write(f"{double_indented_onset}{nam}\n")
+        if full:
+            for field in cast(List[DerivedField[Any]], self.derived_fields):
+                refs = self.get_derived_field(field.name)
+                if refs is not None:
+                    file.write(f"{indented_onset}{field.name.title()} ({len(refs)})\n")
+                    for nam in sorted(refs, key=lambda nam: nam.sort_key()):
+                        file.write(f"{double_indented_onset}{nam}\n")
 
     def find_tag(
         self, tags: Optional[Sequence[adt.ADT]], tag_cls: Type[adt.ADT]
@@ -180,16 +183,18 @@ class Person(BaseModel):
         tag_cls: Type[adt.ADT],
         target: Optional["Person"] = None,
     ) -> Tuple[Optional[Sequence[adt.ADT]], Optional["Person"]]:
+        if tags is None:
+            return None, None
         matching_tag = self.find_tag(tags, tag_cls)
         if matching_tag is None:
             return None, None
         print(matching_tag)
-        if target is not None:
-            new_person = target
-        else:
+        if target is None:
             new_person = self.getter(None).get_one()
             if new_person is None:
                 return None, None
+        else:
+            new_person = target
         new_tag = tag_cls(person=new_person)
         return [new_tag if tag == matching_tag else tag for tag in tags], new_person
 
@@ -219,7 +224,7 @@ class Person(BaseModel):
 
     def num_references(self) -> Dict[str, int]:
         num_refs = {}
-        for field in self.derived_fields:
+        for field in cast(List[DerivedField[Any]], self.derived_fields):
             refs = self.get_raw_derived_field(field.name)
             if refs is not None:
                 num_refs[field.name] = len(refs)
@@ -240,7 +245,7 @@ class Person(BaseModel):
                     )
 
     def make_soft_redirect(self, target: "Person") -> None:
-        self.type = PersonType.soft_redirect
+        self.type = PersonType.soft_redirect  # type: ignore
         self.target = target
         self.reassign_references(target=target)
 
@@ -252,7 +257,7 @@ class Person(BaseModel):
             return
         print(f"Autodeleting {self!r}")
         if not dry_run:
-            self.type = PersonType.deleted
+            self.type = PersonType.deleted  # type: ignore
             self.save()
 
     @classmethod
