@@ -171,7 +171,7 @@ def build_graphene_field(
                     )
             return out
 
-        return List(build_adt(adt_cls), required=True, resolver=adt_resolver)
+        return List(NonNull(build_adt(adt_cls)), required=True, resolver=adt_resolver)
     elif type(peewee_field) in SCALAR_FIELD_TO_GRAPHENE:
         return Field(
             SCALAR_FIELD_TO_GRAPHENE[type(peewee_field)],
