@@ -124,6 +124,10 @@ class DerivedField(Generic[T]):
         model_data = data.setdefault(model_cls.call_sign, {})
         if self.compute_all is not None:
             field_data = self.compute_all()
+            # First remove all data for this field
+            for _, object_data in model_data.items():
+                if self.name in object_data:
+                    del object_data[self.name]
         else:
             assert self.compute is not None
             field_data = {obj.id: self.compute(obj) for obj in model_cls.select_valid()}

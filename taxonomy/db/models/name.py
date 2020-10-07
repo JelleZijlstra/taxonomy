@@ -368,7 +368,7 @@ class Name(BaseModel):
         return result
 
     def get_completers_for_adt_field(self, field: str) -> getinput.CompleterMap:
-        for field_name, tag_cls in [("type_tags", TypeTag), ("tags", NameTag)]:
+        for field_name, tag_cls in [("type_tags", TypeTag), ("tags", NameTag), ("author_tags", AuthorTag)]:
             if field == field_name:
                 completers: Dict[
                     Tuple[Type[adt.ADT], str], getinput.Completer[Any]
@@ -747,6 +747,12 @@ class Name(BaseModel):
         else:
             if "et al." in self.authority:
                 params_by_name = [None]
+            elif self.authority == "H.E. Wood, 2nd":
+                params_by_name = {
+                    "family_name": "Wood",
+                    "given_names": "Horace Elmer",
+                    "suffix": "2nd",
+                }
             else:
                 authors = self.get_authors()
                 params_by_name = [self._author_to_person(author) for author in authors]
@@ -765,7 +771,8 @@ class Name(BaseModel):
 
     def _author_to_person(self, author: str) -> Dict[str, Optional[str]]:
         match = re.match(
-            r"^((?P<initials>([A-Z]\.)+) )?(?P<family_name>[A-Z].*)$", author
+            r"^((?P<initials>([A-ZÉ]\.)+) )?((?P<tussenvoegsel>de|von|van|van der|van den|van de) )?(?P<family_name>(d'|de|de la |zur |du |dos |del |di |ul-|von der |da |vander|dal |delle |ul )?[ÄÉÜÁÖŞA-Z].*)(, (?P<suffix>2nd))?$",
+            author,
         )
         if match is not None:
             return match.groupdict()
@@ -1620,7 +1627,9 @@ class TypeTag(adt.ADT):
     Date(date=str, tag=2)  # type: ignore
     Gender(gender=constants.SpecimenGender, tag=3)  # type: ignore
     Age(age=constants.SpecimenAge, tag=4)  # type: ignore
-    Organ(organ=constants.SpecimenOrgan, detail=str, condition=str, tag=5)  # type: ignore
+    Organ(
+        organ=constants.SpecimenOrgan, detail=str, condition=str, tag=5
+    )  # type: ignore
     Altitude(altitude=str, unit=constants.AltitudeUnit, tag=6)  # type: ignore
     Coordinates(latitude=str, longitude=str, tag=7)  # type: ignore
     # Authoritative description for a disputed type locality. Should be rarely used.

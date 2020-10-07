@@ -20,6 +20,7 @@ import csv
 import difflib
 import functools
 from itertools import groupby
+import logging
 import os.path
 from pathlib import Path
 import peewee
@@ -2198,12 +2199,32 @@ def reassign_references(family_name: Optional[str] = None) -> None:
         num_refs = sum(person.num_references().values())
         if num_refs > 0:
             print(f"======= {person} ({num_refs}) =======")
-            if getinput.yes_no("Make soft redirect? "):
-                target = Person.getter(None).get_one("target> ")
-                if target is not None:
-                    person.make_soft_redirect(target)
-                    continue
-            person.reassign_references()
+            while True:
+                command = getinput.get_line(
+                    "command> ",
+                    validate=lambda command: command
+                    in ("s", "skip", "r", "soft_redirect", ""),
+                    allow_none=True,
+                    mouse_support=False,
+                    history_key="reassign_references",
+                    callbacks={
+                        "d": person.display,
+                        "p": lambda: print("s = skip, r = soft redirect, d = display"),
+                        "e": person.edit(),
+                    },
+                )
+                if command in ("r", "soft_redirect"):
+                    target = Person.getter(None).get_one("target> ")
+                    if target is not None:
+                        person.make_soft_redirect(target)
+                        break
+                    else:
+                        continue
+                elif command in ("s", "skip"):
+                    break
+                else:
+                    person.reassign_references()
+                    break
 
 
 PersonParams = Optional[Dict[str, str]]
@@ -3527,6 +3548,16 @@ def compute_derived_fields() -> None:
 @command
 def write_derived_data() -> None:
     derived_data.write_derived_data(derived_data.load_derived_data())
+
+
+@command
+def show_queries(on: bool) -> None:
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger("peewee")
+    if on:
+        logger.setLevel(logging.DEBUG)
+    else:
+        logger.setLevel(logging.INFO)
 
 
 def run_shell() -> None:

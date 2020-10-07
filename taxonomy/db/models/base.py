@@ -170,15 +170,19 @@ class BaseModel(Model):
     def set_derived_field(self, name: str, value: Any) -> None:
         self._name_to_derived_field[name].set_value(self, value)
 
+    def get_raw_tags_field(self, name: str) -> Any:
+        return json.loads(self.__data__[name])
+
     @classmethod
     def compute_all_derived_fields(cls) -> None:
         if not cls.derived_fields:
             return
-        for obj in cls.select_valid():
-            for field in cls.derived_fields:
-                if field.compute is not None:
-                    value = field.compute(obj)
-                    field.set_value(obj, value)
+        if any(field.compute is not None for field in cls.derived_fields):
+            for obj in cls.select_valid():
+                for field in cls.derived_fields:
+                    if field.compute is not None:
+                        value = field.compute(obj)
+                        field.set_value(obj, value)
 
         for field in cls.derived_fields:
             if field.compute_all is not None:

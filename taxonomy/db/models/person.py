@@ -214,10 +214,13 @@ class Person(BaseModel):
                 self.remove_from_derived_field(derived_field_name, obj)
                 new_person.add_to_derived_field(derived_field_name, obj)
 
+    def edit(self) -> None:
+        self.fill_field("tags")
+
     def num_references(self) -> Dict[str, int]:
         num_refs = {}
         for field in self.derived_fields:
-            refs = self.get_derived_field(field.name)
+            refs = self.get_raw_derived_field(field.name)
             if refs is not None:
                 num_refs[field.name] = len(refs)
         return num_refs
@@ -242,7 +245,6 @@ class Person(BaseModel):
         self.reassign_references(target=target)
 
     def maybe_autodelete(self, dry_run: bool = True) -> None:
-        self = self.reload()
         if self.type is not PersonType.unchecked:
             return
         num_refs = sum(self.num_references().values())
@@ -336,10 +338,11 @@ def _compute_from_author_tag(
     model_cls: Type[BaseModel],
 ) -> Dict[int, "List[BaseModel]"]:
     out = defaultdict(list)
-    for nam in model_cls.select_valid().filter(model_cls.author_tags != None):
-        for tag in nam.author_tags:
-            if isinstance(tag, AuthorTag.Author):
-                out[tag.person.id].append(nam)
+    tag_id = AuthorTag.Author._tag
+    for obj in model_cls.select_valid().filter(model_cls.author_tags != None):
+        for tag in obj.get_raw_tags_field("author_tags"):
+            if tag[0] == tag_id:
+                out[tag[1]].append(obj)
     return out
 
 
@@ -347,10 +350,11 @@ def _compute_from_type_tag(
     tag_cls: "Type[models.TypeTag]",
 ) -> Dict[int, "List[models.Name]"]:
     out = defaultdict(list)
+    tag_id = tag_cls._tag
     for nam in models.Name.select_valid().filter(
         models.Name.type_tags.contains(f"[{tag_cls._tag},")
     ):
-        for tag in nam.type_tags:
-            if isinstance(tag, tag_cls):
-                out[tag.person.id].append(nam)
+        for tag in nam.get_raw_tags_field("type_tags"):
+            if tag[0] == tag_id:
+                out[tag[1]].append(nam)
     return out
