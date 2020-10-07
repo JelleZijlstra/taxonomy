@@ -230,6 +230,9 @@ class Person(BaseModel):
                 num_refs[field.name] = len(refs)
         return num_refs
 
+    def total_references(self) -> int:
+        return sum(self.num_references().values())
+
     def reassign_references(self, target: Optional["Person"] = None) -> None:
         for field_name, tag_name, tag_cls in [
             ("patronyms", "type_tags", models.TypeTag.NamedAfter),

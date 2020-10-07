@@ -189,13 +189,6 @@ def move_to_stratigraphy(loc: Location, period: Period) -> None:
     loc.save()
 
 
-def h(author: str, year: str, uncited: bool = False) -> List[Name]:
-    query = Name.filter(Name.authority % author, Name.year == year)
-    if uncited:
-        query = query.filter(Name.original_citation >> None)
-    return list(query)
-
-
 def count_field(model: Type[BaseModel], field: str) -> List[Tuple[Any, int]]:
     field_obj = getattr(model, field)
     return [

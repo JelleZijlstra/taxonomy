@@ -205,13 +205,6 @@ def n(name: str) -> Iterable[Name]:
     )
 
 
-@generator_command
-def h(authority: str, year: str) -> Iterable[Name]:
-    return Name.select_valid().filter(
-        Name.authority % f"%{authority}%", Name.year == year
-    )
-
-
 # Maintenance
 _MissingDataProducer = Callable[..., Iterable[Tuple[Name, str]]]
 
@@ -226,24 +219,6 @@ def _add_missing_data(fn: _MissingDataProducer) -> Callable[..., None]:
             nam.fill_required_fields()
 
     return wrapper
-
-
-@command
-@_add_missing_data
-def fix_bad_ampersands() -> Iterable[Tuple[Name, str]]:
-    for name in Name.select_valid().filter(Name.authority % "%&%&%"):
-        yield name, "Name {} has bad authority format".format(name.description())
-
-
-@command
-@_add_missing_data
-def fix_et_al() -> Iterable[Tuple[Name, str]]:
-    for name in (
-        Name.select_valid()
-        .filter(Name.authority.contains("et al"), Name.original_citation != None)
-        .order_by(Name.original_name, Name.root_name)
-    ):
-        yield name, "Name {} uses et al.".format(name.description())
 
 
 @command
@@ -748,9 +723,8 @@ def find_patronyms(dry_run: bool = True, min_length: int = 4) -> Dict[str, int]:
     authors = set()
     species_name_to_names: Dict[str, List[Name]] = defaultdict(list)
     for name in Name.select_valid():
-        if name.authority:
-            for author in name.get_authors():
-                author = re.sub(r"^([A-Z]\.)+ ", "", author)
+        if name.author_tags:
+            for author in name.author_set():
                 author = unidecode.unidecode(
                     author.replace("-", "").replace(" ", "").replace("'", "")
                 ).lower()
@@ -861,7 +835,7 @@ def find_ending(
 def generate_word_list() -> Set[str]:
     strings = set()
     for nam in Name.select_valid():
-        for attr in ("original_name", "root_name", "authority", "verbatim_citation"):
+        for attr in ("original_name", "root_name", "verbatim_citation"):
             value = getattr(nam, attr)
             if value is not None:
                 strings.add(value)
@@ -1029,7 +1003,9 @@ def dup_genus() -> List[Dict[str, List[Name]]]:
             citation = name.original_citation.name
         else:
             citation = ""
-        full_name = f"{name.root_name} {name.authority}, {name.year}, {citation}"
+        full_name = (
+            f"{name.root_name} {name.taxonomic_authority()}, {name.year}, {citation}"
+        )
         names[full_name].append(name)
     return [names]
 
@@ -1243,7 +1219,7 @@ def name_mismatches(
 @generator_command
 def authorless_names(
     root_taxon: Taxon,
-    attribute: str = "authority",
+    attribute: str = "author_tags",
     predicate: Optional[Callable[[Name], bool]] = None,
 ) -> Iterable[Name]:
     for nam in root_taxon.names:
@@ -1315,7 +1291,7 @@ def label_name(name: Name) -> LabeledName:
 
 
 @command
-def labeled_authorless_names(attribute: str = "authority") -> List[LabeledName]:
+def labeled_authorless_names(attribute: str = "author_tags") -> List[LabeledName]:
     nams = Name.select_valid().filter(getattr(Name, attribute) >> None)
     return [
         label_name(name) for name in nams if attribute in name.get_required_fields()
@@ -1395,7 +1371,7 @@ def print_percentages() -> None:
         "original_name",
         "original_citation",
         "page_described",
-        "authority",
+        "author_tags",
         "year",
     ]
     parent_of_taxon: Dict[int, int] = {}
@@ -1837,16 +1813,14 @@ def fill_data_from_paper(
 
 @command
 def fill_data_from_author(
-    author: str, level: FillDataLevel = DEFAULT_LEVEL, ask_before_opening: bool = False
+    author: Person,
+    level: FillDataLevel = DEFAULT_LEVEL,
+    ask_before_opening: bool = False,
 ) -> None:
-    for nam in Name.bfind(authority=author):
-        if nam.original_citation is not None:
-            print(nam, nam.original_citation)
-            models.taxon.fill_data_from_paper(
-                nam.original_citation,
-                level=level,
-                ask_before_opening=ask_before_opening,
-            )
+    for article in author.get_derived_field("articles"):
+        models.taxon.fill_data_from_paper(
+            article, level=level, ask_before_opening=ask_before_opening
+        )
 
 
 @command
@@ -1920,7 +1894,7 @@ def fill_citation_groups(
     for nam in sorted(
         Name.bfind(Name.verbatim_citation != None, query, quiet=True),
         key=lambda nam: (
-            nam.authority,
+            nam.taxonomic_authority(),
             nam.numeric_year(),
             nam.verbatim_citation or "",
         ),
@@ -2980,99 +2954,15 @@ AMBIGUOUS_AUTHORS = {
 }
 
 
-def _names_with_author(author: str) -> Iterable[Name]:
-    for nam in Name.select_valid().filter(Name.authority % f"*{author}*"):
-        authors = nam.get_authors()
-        if author in authors:
-            yield nam
-
-
-def _replace_author(name: Name, bad: str, good: str, dry_run: bool = True) -> None:
-    authors = name.get_authors()
-    orig_authors = list(authors)
-    index = authors.index(bad)
-    assert index != -1, f"cannot find {bad} in {name}"
-    if authors.count(bad) != 1:
-        print(f"there are multiple authors; please edit manually ({bad} -> {good})")
-        if not dry_run:
-            new_authors = getinput.get_line(prompt="> ", default=name.authority)
-            print(f"change author for {name}: {name.authority} -> {new_authors}")
-            name.authority = new_authors
-        return
-    authors[index] = good
-    print(f"change author for {name}: {orig_authors} -> {authors}")
-    if not dry_run:
-        name.set_authors(authors)
-
-
 @command
 def apply_author_synonyms(dry_run: bool = False) -> None:
     for bad, good in AUTHOR_SYNONYMS.items():
         if bad == good:
             continue
-        for nam in _names_with_author(bad):
-            _replace_author(nam, bad, good, dry_run=dry_run)
-
-
-def _get_new_author(nams: List[Name], citation: Article, author: str) -> Optional[str]:
-    authors = citation.get_authors()
-    for person in authors:
-        if person.family_name == author:
-            initials = person.get_initials()
-            if initials is not None:
-                return f"{initials} {author}"
-    nams[0].open_description()
-    return Name.getter("authority").get_one_key("author> ")
-
-
-@command
-def disambiguate_authors(dry_run: bool = False) -> None:
-    for author in sorted(AMBIGUOUS_AUTHORS):
-        print(f"--- {author} ---")
-        nams = list(_names_with_author(author))
-        by_citation: Dict[Optional[Article], List[Name]] = defaultdict(list)
-        for nam in nams:
-            by_citation[nam.original_citation].append(nam)
-        for citation, nams in by_citation.items():
-            if citation is None:
-                print(f"skipping {len(nams)} names without citation")
-                continue
-            print(f"--- {citation} ---")
-            print(f"author for names: {nams}")
-            new_author = _get_new_author(nams, citation, author)
-            if new_author:
-                for nam in nams:
-                    _replace_author(nam, author, new_author, dry_run=dry_run)
-
-
-@generator_command
-def validate_authors(dry_run: bool = False) -> Iterable[Name]:
-    for nam in Name.select_valid().filter(Name.authority.contains("[")):
-        print(f"{nam}: invalid authors")
-        yield nam
-
-    for nam in Name.select_valid().filter(Name.authority % "*. *"):
-        authority = re.sub(r"([A-Z]\.) (?=[A-Z]\.)", r"\1", nam.authority)
-        if authority != nam.authority:
-            print(f"{nam}: {nam.authority} -> {authority}")
-            if not dry_run:
-                nam.authority = authority
-
-
-@command
-def initials_report() -> None:
-    data: Dict[str, Dict[str, List[Name]]] = defaultdict(lambda: defaultdict(list))
-    for nam in Name.select_valid().filter(Name.authority % "*.*"):
-        authors = nam.get_authors()
-        for author in authors:
-            if ". " in author:
-                initials, last = author.rsplit(". ", maxsplit=1)
-                data[last][f"{initials}."].append(nam)
-
-    for last_name, by_initial in sorted(data.items()):
-        print(f"--- {last_name} ---")
-        for initials, names in sorted(by_initial.items()):
-            print(f"{initials} -- {len(names)}")
+        for person in Person.select_valid().filter(Person.family_name == bad):
+            if person.total_references() > 0:
+                print(f"=== {person} ({bad} -> {good}) ===")
+                person.display()
 
 
 @command
@@ -3122,8 +3012,6 @@ def run_maintenance(skip_slow: bool = True) -> Dict[Any, Any]:
         disallowed_attribute,
         autoset_original_name,
         apply_author_synonyms,
-        disambiguate_authors,
-        validate_authors,
         detect_corrected_original_names,
         dup_collections,
         # dup_names,
@@ -3170,13 +3058,19 @@ def run_maintenance(skip_slow: bool = True) -> Dict[Any, Any]:
     return out
 
 
+def names_of_author(author: str, include_partial: bool) -> List[Name]:
+    persons = Person.select_valid().filter(
+        Person.family_name.contains(author)
+        if include_partial
+        else Person.family_name == author
+    )
+    return [nam for person in persons for nam in person.get_derived_field("names")]
+
+
 @command
 def names_of_authority(author: str, year: int, edit: bool = False) -> List[Name]:
-    query = Name.select_valid().filter(
-        Name.authority.contains(author),
-        Name.year == year,
-        Name.original_citation >> None,
-    )
+    nams = names_of_author(author, include_partial=False)
+    nams = [nam for nam in nams if nam.year == year]
 
     def sort_key(nam: Name) -> int:
         if nam.page_described is None:
@@ -3190,7 +3084,7 @@ def names_of_authority(author: str, year: int, edit: bool = False) -> List[Name]
             else:
                 return -1
 
-    nams = sorted(query, key=sort_key)
+    nams = sorted(nams, key=sort_key)
     print(f"{len(nams)} names")
     for nam in nams:
         nam.display()
@@ -3258,14 +3152,9 @@ def fgsyn(off: Optional[Name] = None) -> Name:
 def author_report(
     author: str, partial: bool = False, missing_attribute: Optional[str] = None
 ) -> List[Name]:
-    if partial:
-        condition = Name.authority.contains(author)
-    else:
-        condition = Name.authority == author
-    query = Name.select_valid().filter(condition)
+    nams = names_of_author(author, include_partial=partial)
     if not missing_attribute:
-        query = query.filter(Name.original_citation == None)
-    nams = list(query)
+        nams = [nam for nam in nams if nam.original_citation is None]
 
     by_year: Dict[str, List[Name]] = defaultdict(list)
     no_year: List[Name] = []
@@ -3422,16 +3311,6 @@ def recent_names_without_verbatim(
     return fill_verbatim_citation_for_names(Name.year >= str(threshold), fix=fix)
 
 
-@generator_command
-def fill_verbatim_citation_for_author(
-    author: str, substring: bool = False, fix: bool = False
-) -> Iterator[Name]:
-    return fill_verbatim_citation_for_names(
-        Name.authority.contains(author) if substring else Name.authority == author,
-        fix=fix,
-    )
-
-
 def fill_verbatim_citation_for_names(
     *queries: Any, fix: bool = False
 ) -> Iterator[Name]:
@@ -3441,7 +3320,7 @@ def fill_verbatim_citation_for_names(
         ),
         key=lambda nam: (
             -nam.numeric_year(),
-            nam.authority or "",
+            nam.taxonomic_authority(),
             nam.corrected_original_name or "",
             nam.root_name,
         ),

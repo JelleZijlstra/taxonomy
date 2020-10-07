@@ -74,7 +74,6 @@ class Name(BaseModel):
     )
 
     # Citation and authority
-    authority = CharField(null=True)
     author_tags = ADTField(lambda: AuthorTag, null=True)
     original_citation = ForeignKeyField(
         Article, null=True, db_column="original_citation_id", related_name="new_names"
@@ -348,7 +347,7 @@ class Name(BaseModel):
         result = self.add_child_taxon(
             Rank.species,
             full_name,
-            authority=self.authority,
+            author_tags=self.author_tags,
             year=self.year,
             original_citation=self.original_citation,
             verbatim_citation=self.verbatim_citation,
@@ -546,13 +545,7 @@ class Name(BaseModel):
         )
 
     def add_child_taxon(
-        self,
-        rank: Rank,
-        name: str,
-        authority: Optional[str] = None,
-        year: Union[None, str, int] = None,
-        age: Optional[AgeClass] = None,
-        **kwargs: Any,
+        self, rank: Rank, name: str, age: Optional[AgeClass] = None, **kwargs: Any
     ) -> "Taxon":
         if age is None:
             age = self.taxon.age
@@ -562,10 +555,6 @@ class Name(BaseModel):
         if "status" not in kwargs:
             kwargs["status"] = Status.valid
         name_obj = Name.create(taxon=taxon, **kwargs)
-        if authority is not None:
-            name_obj.authority = authority
-        if year is not None:
-            name_obj.year = year
         name_obj.save()
         taxon.base_name = name_obj
         taxon.save()
@@ -576,7 +565,7 @@ class Name(BaseModel):
         return self.taxon.add_syn(
             root_name=self.root_name,
             original_name=self.original_name,
-            authority=self.authority,
+            author_tags=self.author_tags,
             nomenclature_status=NomenclatureStatus.nomen_nudum,
         )
 
@@ -585,8 +574,8 @@ class Name(BaseModel):
             out = self.original_name
         else:
             out = self.root_name
-        if self.authority:
-            out += " %s" % self.authority
+        if self.author_tags:
+            out += " %s" % self.taxonomic_authority()
         if self.year:
             out += f", {self.year}"
         if self.page_described:
@@ -724,56 +713,28 @@ class Name(BaseModel):
         self.add_tag(NameTag.Conserved(opinion, comment))
 
     @classmethod
-    def infer_author_tags_for_all(
-        cls, dry_run: bool = True, limit: Optional[int] = None
-    ) -> None:
-        nams = (
-            cls.select_valid()
-            .filter(cls.authority != None, cls.author_tags == None)
-            .limit(limit)
-        )
-        for nam in nams:
-            nam.display(full=False)
-            nam.infer_author_tags(dry_run=dry_run)
-
-    def infer_author_tags(self, dry_run: bool = True) -> None:
-        if self.authority is None or self.author_tags is not None:
-            return
-        if (
-            self.original_citation is not None
-            and self.original_citation.author_tags is not None
-            and self.original_citation.taxonomicAuthority()[0] == self.authority
-        ):
-            author_tags = self.original_citation.author_tags
-            print(f"Inferred: {self.authority!r} -> {author_tags}")
-            if not dry_run:
-                self.author_tags = author_tags
+    def infer_author_tags(cls, authority: str) -> Optional[List[AuthorTag]]:
+        params_by_name: List[Optional[Dict[str, str]]]
+        if "et al." in authority:
+            params_by_name = [None]
+        elif authority == "H.E. Wood, 2nd":
+            params_by_name = [
+                {"family_name": "Wood", "given_names": "Horace Elmer", "suffix": "2nd"}
+            ]
         else:
-            if "et al." in self.authority:
-                params_by_name = [None]
-            elif self.authority == "H.E. Wood, 2nd":
-                params_by_name = {
-                    "family_name": "Wood",
-                    "given_names": "Horace Elmer",
-                    "suffix": "2nd",
-                }
-            else:
-                authors = self.get_authors()
-                params_by_name = [self._author_to_person(author) for author in authors]
-            if all(params_by_name):
-                print(f"Authors: {self.authority!r} -> {params_by_name}")
-                if not dry_run:
-                    tags = [
-                        AuthorTag.Author(
-                            person=Person.get_or_create_unchecked(**params)
-                        )
-                        for params in params_by_name
-                    ]
-                    self.author_tags = tags
-            else:
-                print("Failed to match", self.authority)
+            authors = re.split(r", | & ", re.sub(r"et al\.$", "", authority))
+            params_by_name = [cls._author_to_person(author) for author in authors]
+        if all(params_by_name):
+            print(f"Authors: {authority!r} -> {params_by_name}")
+            return [
+                AuthorTag.Author(person=Person.get_or_create_unchecked(**params))
+                for params in params_by_name
+            ]
+        else:
+            return None
 
-    def _author_to_person(self, author: str) -> Optional[Dict[str, str]]:
+    @staticmethod
+    def _author_to_person(author: str) -> Optional[Dict[str, str]]:
         match = re.match(
             r"^((?P<initials>([A-ZÉ]\.)+) )?((?P<tussenvoegsel>de|von|van|van der|van den|van de) )?(?P<family_name>(d'|de|de la |zur |du |dos |del |di |ul-|von der |da |vander|dal |delle |ul )?[ÄÉÜÁÖŞA-Z].*)(, (?P<suffix>2nd))?$",
             author,
@@ -783,16 +744,18 @@ class Name(BaseModel):
         return None
 
     def author_set(self) -> Set[str]:
-        return {
-            author.rsplit(". ", 1)[-1].split(", ", 1)[0]
-            for author in self.get_authors()
-        }
+        return {author.family_name for author in self.get_authors()}
 
-    def get_authors(self) -> List[str]:
-        return re.split(r", | & ", re.sub(r"et al\.$", "", self.authority))
+    def get_authors(self) -> List[Person]:
+        if self.author_tags is None:
+            return []
+        return [author.person for author in self.author_tags]
 
-    def set_authors(self, authors: List[str]) -> None:
-        self.authority = helpers.unsplit_authors(authors)
+    def taxonomic_authority(self) -> str:
+        authors = self.get_authors()
+        if len(authors) <= 2:
+            return " & ".join(author.family_name for author in authors)
+        return ", ".join(authors[:-1]) + " & " + authors[-1]
 
     def effective_year(self) -> int:
         """Returns the effective year of validity for this name.
@@ -823,8 +786,8 @@ class Name(BaseModel):
             out = self.root_name
         else:
             out = self.original_name
-        if self.authority is not None:
-            out += " %s" % self.authority
+        if self.author_tags is not None:
+            out += " %s" % self.taxonomic_authority()
         if self.year is not None:
             out += ", %s" % self.year
         if self.page_described is not None:
@@ -959,7 +922,7 @@ class Name(BaseModel):
         if self.original_name is not None:
             yield "corrected_original_name"
 
-        yield "authority"
+        yield "author_tags"
         yield "year"
         if self.nomenclature_status != NomenclatureStatus.as_emended:
             yield "page_described"
@@ -1151,12 +1114,11 @@ class Name(BaseModel):
             paper = self.get_value_for_foreign_class(
                 "original_citation", Article, allow_none=False
             )
-        authority, year = paper.taxonomicAuthority()
         if original_name is None and self.status == Status.valid:
             original_name = self.taxon.valid_name
         attributes = [
-            ("authority", authority),
-            ("year", year),
+            ("author_tags", paper.author_tags),
+            ("year", paper.year),
             ("original_citation", paper),
             ("page_described", page_described),
             ("original_name", original_name),
@@ -1272,7 +1234,7 @@ class Name(BaseModel):
                 author, year = split
             result = []
             for candidate in candidates:
-                if candidate.authority != author:
+                if candidate.taxonomic_authority() != author:
                     continue
                 if year is not None and candidate.year != year:
                     continue
@@ -1344,7 +1306,7 @@ class Name(BaseModel):
                     nam.display()
         similar_names = list(
             self.select_valid().filter(
-                Name.authority == self.authority,
+                Name.author_tags == self.author_tags,
                 Name.year == self.year,
                 Name.id != self.id,
                 Name.citation_group != self.citation_group,
@@ -1378,42 +1340,6 @@ class Name(BaseModel):
             for cg, count in Counter(similar_name_cgs).most_common():
                 print(count, cg)
         return len(similar_names)
-
-    @classmethod
-    def find_name(
-        cls,
-        name: str,
-        rank: Optional[Rank] = None,
-        authority: Optional[str] = None,
-        year: Union[None, int, str] = None,
-    ) -> "Name":
-        """Find a Name object corresponding to the given information."""
-        if rank is None:
-            group = None
-            initial_lst = cls.select().where(cls.root_name == name)
-        else:
-            group = helpers.group_of_rank(rank)
-            if group == Group.family:
-                root_name = helpers.strip_rank(name, rank, quiet=True)
-            else:
-                root_name = name
-            initial_lst = cls.select().where(
-                cls.root_name == root_name, cls.group == group
-            )
-        for nm in initial_lst:
-            if authority is not None and nm.authority and nm.authority != authority:
-                continue
-            if year is not None and nm.year and nm.year != year:
-                continue
-            if group == Group.family:
-                if (
-                    nm.original_name
-                    and nm.original_name != name
-                    and initial_lst.count() > 1
-                ):
-                    continue
-            return nm
-        raise cls.DoesNotExist
 
 
 class NameComment(BaseModel):

@@ -516,7 +516,6 @@ class Taxon(BaseModel):
         self,
         rank: Rank,
         name: str,
-        authority: Optional[str] = None,
         year: Union[None, str, int] = None,
         age: Optional[AgeClass] = None,
         **kwargs: Any,
@@ -524,7 +523,7 @@ class Taxon(BaseModel):
         if age is None:
             age = self.age
         return self.base_name.add_child_taxon(
-            rank=rank, name=name, authority=authority, year=year, age=age, **kwargs
+            rank=rank, name=name, year=year, age=age, **kwargs
         )
 
     def add(self) -> "Taxon":
@@ -556,7 +555,6 @@ class Taxon(BaseModel):
     def add_syn(
         self,
         root_name: Optional[str] = None,
-        authority: Optional[str] = None,
         year: Union[None, int, str] = None,
         original_name: Optional[str] = None,
         original_citation: Optional[Article] = None,
@@ -571,7 +569,6 @@ class Taxon(BaseModel):
                 "root_name> ", allow_empty=False
             )
         kwargs["root_name"] = root_name
-        kwargs["authority"] = authority
         kwargs["year"] = year
         # included in the method signature so they autocomplete in shell
         kwargs["original_name"] = original_name
@@ -647,11 +644,10 @@ class Taxon(BaseModel):
         if paper is None:
             paper = self.get_value_for_foreign_class("paper", Article, allow_none=False)
 
-        authority, year = paper.taxonomicAuthority()
         result = self.add_syn(
             root_name=root_name,
-            authority=authority,
-            year=year,
+            author_tags=paper.author_tags,
+            year=paper.year,
             original_citation=paper,
             page_described=page_described,
             status=status,
@@ -690,15 +686,14 @@ class Taxon(BaseModel):
         if paper is None:
             paper = self.get_value_for_foreign_class("paper", Article, allow_none=False)
 
-        authority, year = paper.taxonomicAuthority()
         result = self.add_static(
             rank=rank,
             name=name,
             original_citation=paper,
             page_described=page_described,
             original_name=name,
-            authority=authority,
-            year=year,
+            author_tags=paper.author_tags,
+            year=paper.year,
             parent=self,
             status=status,
             age=age,
@@ -1099,7 +1094,7 @@ class Taxon(BaseModel):
     ) -> None:
         for name in sorted(
             self.all_names(exclude=exclude, min_year=min_year),
-            key=lambda nam: (nam.authority or "", nam.year or ""),
+            key=lambda nam: (nam.taxonomic_authority(), nam.year or ""),
         ):
             name = name.reload()
             name.fill_field_if_empty(field)
@@ -1108,7 +1103,7 @@ class Taxon(BaseModel):
         for name in sorted(
             self.all_names(age=age),
             key=lambda nam: (
-                nam.authority or "",
+                nam.taxonomic_authority(),
                 nam.numeric_year(),
                 nam.numeric_page_described(),
             ),

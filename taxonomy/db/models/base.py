@@ -720,7 +720,7 @@ class _NameGetter(Generic[ModelT]):
 
     def __call__(self, name: Optional[str] = None) -> Optional[ModelT]:
         if name is not None:
-            return self.get_or_choose(name)
+            return self._get_from_key(name)
         else:
             return self.cls.get_one_by(self.field)
 
@@ -832,9 +832,9 @@ class _NameGetter(Generic[ModelT]):
             return self.cls.get(id=int(key))
         else:
             call_sign = self.cls.call_sign
-            match = re.search(rf"/[{call_sign.lower()}{call_sign.upper()}]/(\d+)", key)
+            match = re.search(rf"/({call_sign.lower()}|{call_sign.upper()})/(\d+)", key)
             if match:
-                oid = int(match.group(1))
+                oid = int(match.group(2))
                 return self.cls.get(id=int(oid))
             return self.get_or_choose(key)
 
