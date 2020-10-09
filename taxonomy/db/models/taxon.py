@@ -1184,7 +1184,9 @@ def fill_data_from_paper(
         ),
         key=sort_key,
     )
-    nams_below_level = [nam for nam in nams if _fill_data_level_for_name(nam, level) <= level]
+    nams_below_level = [
+        nam for nam in nams if _fill_data_level_for_name(nam, level) <= level
+    ]
     if nams_below_level:
         print(f"{paper.name}: {len(nams_below_level)} names (fill_data_from_paper)")
         if ask_before_opening and not only_fill_cache:
@@ -1446,7 +1448,9 @@ def clean_tss_interactive(art: Article, field: str = "corrected_original_name") 
             obj.save()
 
 
-def _fill_data_level_for_name(nam: "models.Name", desired_level: Optional[FillDataLevel] = None) -> FillDataLevel:
+def _fill_data_level_for_name(
+    nam: "models.Name", desired_level: Optional[FillDataLevel] = None
+) -> FillDataLevel:
     if desired_level is None:
         return nam.get_derived_field("fill_data_level", force_recompute=True)
     level = nam.get_derived_field("fill_data_level")

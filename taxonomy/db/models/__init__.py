@@ -33,3 +33,4 @@ from .region import Region as Region  # noqa: F401
 from .stratigraphic_unit import StratigraphicUnit as StratigraphicUnit  # noqa: F401
 from .taxon import Taxon as Taxon  # noqa: F401
 from .person import Person as Person  # noqa: F401
+from . import tags

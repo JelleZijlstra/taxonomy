@@ -260,6 +260,13 @@ class Article(BaseModel):
             lambda: models.TypeTag.TypeSpeciesDetail,
             2,
         ),
+        get_tag_based_derived_field(
+            "biographies",
+            lambda: models.Person,
+            "tags",
+            lambda: models.tags.PersonTag.Biography,
+            1,
+        ),
     ]
 
     @property

@@ -55,7 +55,9 @@ class DerivedField(Generic[T]):
     compute_all: Optional[ComputeAllFunc[T]] = None
     pull_on_miss: bool = True
 
-    def get_value(self, model: "models.base.BaseModel", force_recompute: bool = False) -> T:
+    def get_value(
+        self, model: "models.base.BaseModel", force_recompute: bool = False
+    ) -> T:
         data = load_derived_data()
         model_data = data.setdefault(model.call_sign, {})
         object_data = model_data.setdefault(model.id, {})
@@ -72,7 +74,9 @@ class DerivedField(Generic[T]):
         else:
             return self.deserialize(object_data.get(self.name), self.get_type())
 
-    def get_raw_value(self, model: "models.base.BaseModel", force_recompute: bool = False) -> T:
+    def get_raw_value(
+        self, model: "models.base.BaseModel", force_recompute: bool = False
+    ) -> T:
         data = load_derived_data()
         model_data = data.setdefault(model.call_sign, {})
         object_data = model_data.setdefault(model.id, {})

@@ -10,7 +10,13 @@ from ..derived_data import DerivedField
 from .. import models
 from ... import adt, events, getinput
 
-from .base import BaseModel, EnumField, ADTField, get_completer, get_tag_based_derived_field
+from .base import (
+    BaseModel,
+    EnumField,
+    ADTField,
+    get_completer,
+    get_tag_based_derived_field,
+)
 
 
 class Person(BaseModel):
@@ -26,7 +32,7 @@ class Person(BaseModel):
     tussenvoegsel = CharField(null=True)
     birth = CharField(null=True)
     death = CharField(null=True)
-    tags = ADTField(lambda: PersonTag, null=True)
+    tags = ADTField(lambda: models.tags.PersonTag, null=True)
     naming_convention = EnumField(NamingConvention)
     type = EnumField(PersonType)
     target = DeferredForeignKey("Person", null=True)
@@ -38,14 +44,14 @@ class Person(BaseModel):
             lambda: models.Name,
             "type_tags",
             lambda: models.TypeTag.NamedAfter,
-            1
+            1,
         ),
         get_tag_based_derived_field(
             "collected",
             lambda: models.Name,
             "type_tags",
             lambda: models.TypeTag.CollectedBy,
-            1
+            1,
         ),
         get_tag_based_derived_field(
             "articles",
@@ -53,7 +59,7 @@ class Person(BaseModel):
             "author_tags",
             lambda: AuthorTag.Author,
             1,
-            skip_filter=True
+            skip_filter=True,
         ),
         get_tag_based_derived_field(
             "names",
@@ -61,7 +67,7 @@ class Person(BaseModel):
             "author_tags",
             lambda: AuthorTag.Author,
             1,
-            skip_filter=True
+            skip_filter=True,
         ),
     ]
 
@@ -159,7 +165,7 @@ class Person(BaseModel):
             for tag in self.tags:
                 file.write(indented_onset + repr(tag) + "\n")
         if full:
-            for field in cast(List[DerivedField[Any]], self.derived_fields):
+            for field in self.derived_fields:
                 refs = self.get_derived_field(field.name)
                 if refs is not None:
                     file.write(f"{indented_onset}{field.name.title()} ({len(refs)})\n")
@@ -186,6 +192,7 @@ class Person(BaseModel):
 
     def edit_tag_sequence(
         self,
+        obj: BaseModel,
         tags: Optional[Sequence[adt.ADT]],
         tag_cls: Type[adt.ADT],
         target: Optional["Person"] = None,
@@ -197,7 +204,7 @@ class Person(BaseModel):
             return None, None
         print(matching_tag)
         if target is None:
-            new_person = self.getter(None).get_one()
+            new_person = self.getter(None).get_one(callbacks=obj.get_adt_callbacks())
             if new_person is None:
                 return None, None
         else:
@@ -218,7 +225,7 @@ class Person(BaseModel):
         if tag is None:
             return
         obj.display()
-        new_tags, new_person = self.edit_tag_sequence(tags, tag_cls, target)
+        new_tags, new_person = self.edit_tag_sequence(obj, tags, tag_cls, target)
         if new_tags is not None:
             setattr(obj, field_name, new_tags)
             obj.save()
@@ -231,7 +238,7 @@ class Person(BaseModel):
 
     def num_references(self) -> Dict[str, int]:
         num_refs = {}
-        for field in cast(List[DerivedField[Any]], self.derived_fields):
+        for field in self.derived_fields:
             refs = self.get_raw_derived_field(field.name)
             if refs is not None:
                 num_refs[field.name] = len(refs)
@@ -293,7 +300,12 @@ class Person(BaseModel):
                 Person.initials == initials,
                 Person.suffix == suffix,
                 Person.tussenvoegsel == tussenvoegsel,
-                Person.type == PersonType.unchecked,
+                Person.type
+                << (
+                    PersonType.unchecked,
+                    PersonType.soft_redirect,
+                    PersonType.hard_redirect,
+                ),
             )
         )
         if objs:
@@ -329,7 +341,7 @@ class Person(BaseModel):
             return obj
 
     def get_completers_for_adt_field(self, field: str) -> getinput.CompleterMap:
-        for field_name, tag_cls in [("tags", PersonTag)]:
+        for field_name, tag_cls in [("tags", models.tags.PersonTag)]:
             if field == field_name:
                 completers: Dict[
                     Tuple[Type[adt.ADT], str], getinput.Completer[Any]
@@ -341,6 +353,8 @@ class Person(BaseModel):
                             completer = get_completer(Collection, None)
                         elif typ is Region:
                             completer = get_completer(Region, None)
+                        elif typ is models.Article:
+                            completer = get_completer(models.Article, None)
                         else:
                             completer = None
                         if completer is not None:
@@ -348,15 +362,10 @@ class Person(BaseModel):
                 return completers
         return {}
 
+
 # Reused in Article and Name
 class AuthorTag(adt.ADT):
     Author(person=Person, tag=2)  # type: ignore
-
-
-class PersonTag(adt.ADT):
-    Wiki(text=str, tag=1)  # type: ignore
-    Institution(institution=Collection, tag=2)  # type: ignore
-    ActiveRegion(region=Region, tag=3)  # type: ignore
 
 
 def _display_year(year: Optional[str]) -> str:

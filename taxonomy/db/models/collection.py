@@ -30,7 +30,7 @@ class Collection(BaseModel):
             "associated_people",
             lambda: models.Person,
             "tags",
-            lambda: models.person.PersonTag.Institution,
+            lambda: models.tags.PersonTag.Institution,
             1,
         ),
         get_tag_based_derived_field(

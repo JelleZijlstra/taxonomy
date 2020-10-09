@@ -179,7 +179,10 @@ class BaseModel(Model):
         self._name_to_derived_field[name].set_value(self, value)
 
     def get_raw_tags_field(self, name: str) -> Any:
-        return json.loads(self.__data__[name])
+        data = self.__data__[name]
+        if data is None:
+            return []
+        return json.loads(data)
 
     @classmethod
     def compute_all_derived_fields(cls) -> None:
@@ -908,13 +911,13 @@ def get_tag_based_derived_field(
     name: str,
     lazy_model_cls: Callable[[], Type[BaseModel]],
     tag_field: str,
-    lazy_tag_cls: lambda: Type[adt.ADT],
+    lazy_tag_cls: Callable[[], Type[adt.ADT]],
     field_index: int,
     skip_filter: bool = False,
-) -> derived_data.DerivedField:
+) -> derived_data.DerivedField[List[Any]]:
     def compute_all() -> Dict[int, List[BaseModel]]:
         model_cls = lazy_model_cls()
-        out = defaultdict(list)
+        out: Dict[int, List[BaseModel]] = defaultdict(list)
         tag_id = lazy_tag_cls()._tag
         field_obj = getattr(model_cls, tag_field)
         if skip_filter:
@@ -929,7 +932,7 @@ def get_tag_based_derived_field(
 
     return derived_data.DerivedField(
         name,
-        derived_data.LazyType(lambda: List[lazy_model_cls()]),
+        derived_data.LazyType(lambda: List[lazy_model_cls()]),  # type: ignore
         compute_all=compute_all,
         pull_on_miss=False,
     )

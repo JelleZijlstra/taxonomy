@@ -33,12 +33,14 @@ class Region(BaseModel):
         DerivedField("has_locations", bool, lambda region: region.has_locations()),
         DerivedField("has_periods", bool, lambda region: region.has_periods()),
         DerivedField("has_type_localities", bool, lambda region: not region.is_empty()),
-        DerivedField("has_associated_people", bool, lambda region: region.has_associated_people()),
+        DerivedField(
+            "has_associated_people", bool, lambda region: region.has_associated_people()
+        ),
         get_tag_based_derived_field(
             "associated_people",
             lambda: models.Person,
             "tags",
-            lambda: models.person.PersonTag.ActiveRegion,
+            lambda: models.tags.PersonTag.ActiveRegion,
             1,
         ),
     ]

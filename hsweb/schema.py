@@ -393,18 +393,14 @@ def build_derived_count_field(
     typ = derived_field.get_type()
     if typing_inspect.is_generic_type(typ) and typing_inspect.get_origin(typ) is list:
 
-            def resolver(
-                parent: ObjectType,
-                info: ResolveInfo
-            ) -> int:
-                model = get_model(model_cls, parent, info)
-                value = model.get_raw_derived_field(field_name)
-                if value is None:
-                    return 0
-                return len(value)
+        def resolver(parent: ObjectType, info: ResolveInfo) -> int:
+            model = get_model(model_cls, parent, info)
+            value = model.get_raw_derived_field(field_name)
+            if value is None:
+                return 0
+            return len(value)
 
-            return Field(
-                Int, required=True, resolver=resolver)
+        return Field(Int, required=True, resolver=resolver)
 
     return None
 

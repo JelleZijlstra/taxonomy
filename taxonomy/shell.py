@@ -59,6 +59,7 @@ from .db.constants import (
     Rank,
     ArticleKind,
     RequirednessLevel,
+    FillDataLevel,
 )
 from .db.models import (
     Article,
@@ -74,7 +75,7 @@ from .db.models import (
     TypeTag,
     database,
 )
-from .db.models.taxon import FillDataLevel, DEFAULT_LEVEL
+from .db.models.taxon import DEFAULT_LEVEL
 
 T = TypeVar("T")
 
@@ -133,7 +134,6 @@ ns = _ShellNamespace(
         "defaultdict": defaultdict,
         "getinput": getinput,
         "models": models,
-        "FillDataLevel": FillDataLevel,
     }
 )
 ns.update(constants.__dict__)
