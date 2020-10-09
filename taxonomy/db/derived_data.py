@@ -4,6 +4,7 @@ Implementation of pre-computed derived data.
 
 """
 from dataclasses import dataclass
+import enum
 from functools import lru_cache
 import pickle
 from typing import Any, Dict, Generic, Optional, TypeVar, Type, Union
@@ -54,12 +55,12 @@ class DerivedField(Generic[T]):
     compute_all: Optional[ComputeAllFunc[T]] = None
     pull_on_miss: bool = True
 
-    def get_value(self, model: "models.base.BaseModel") -> T:
+    def get_value(self, model: "models.base.BaseModel", force_recompute: bool = False) -> T:
         data = load_derived_data()
         model_data = data.setdefault(model.call_sign, {})
         object_data = model_data.setdefault(model.id, {})
         if self.pull_on_miss:
-            if self.name in object_data:
+            if not force_recompute and self.name in object_data:
                 return self.deserialize(object_data[self.name], self.get_type())
             print(f"Cache miss on {model} {self.name}")
             assert (
@@ -71,12 +72,12 @@ class DerivedField(Generic[T]):
         else:
             return self.deserialize(object_data.get(self.name), self.get_type())
 
-    def get_raw_value(self, model: "models.base.BaseModel") -> T:
+    def get_raw_value(self, model: "models.base.BaseModel", force_recompute: bool = False) -> T:
         data = load_derived_data()
         model_data = data.setdefault(model.call_sign, {})
         object_data = model_data.setdefault(model.id, {})
         if self.pull_on_miss:
-            if self.name in object_data:
+            if not force_recompute and self.name in object_data:
                 return object_data[self.name]
             print(f"Cache miss on {model} {self.name}")
             assert (
@@ -97,6 +98,8 @@ class DerivedField(Generic[T]):
     def serialize(self, value: Any) -> Any:
         if isinstance(value, list):
             return [self.serialize(elt) for elt in value]
+        if isinstance(value, enum.Enum):
+            return value.value
         if isinstance(value, models.base.BaseModel):
             return value.id
         return value
@@ -104,8 +107,11 @@ class DerivedField(Generic[T]):
     def deserialize(self, serialized: Any, typ: Any) -> Any:
         if serialized is None:
             return None
-        if isinstance(typ, type) and issubclass(typ, models.base.BaseModel):
-            return typ.select_valid().filter(typ.id == serialized).get()
+        if isinstance(typ, type):
+            if issubclass(typ, models.base.BaseModel):
+                return typ.select_valid().filter(typ.id == serialized).get()
+            elif issubclass(typ, enum.Enum):
+                return typ(serialized)
         if (
             typing_inspect.is_generic_type(typ)
             and typing_inspect.get_origin(typ) is list

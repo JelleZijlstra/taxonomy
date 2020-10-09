@@ -1,4 +1,4 @@
-from collections import Counter
+from collections import Counter, defaultdict
 import enum
 from functools import partial
 import json
@@ -165,11 +165,15 @@ class BaseModel(Model):
         """
         self.full_data()
 
-    def get_derived_field(self, name: str) -> Any:
-        return self._name_to_derived_field[name].get_value(self)
+    def get_derived_field(self, name: str, force_recompute: bool = False) -> Any:
+        return self._name_to_derived_field[name].get_value(
+            self, force_recompute=force_recompute
+        )
 
-    def get_raw_derived_field(self, name: str) -> Any:
-        return self._name_to_derived_field[name].get_raw_value(self)
+    def get_raw_derived_field(self, name: str, force_recompute: bool = False) -> Any:
+        return self._name_to_derived_field[name].get_raw_value(
+            self, force_recompute=force_recompute
+        )
 
     def set_derived_field(self, name: str, value: Any) -> None:
         self._name_to_derived_field[name].set_value(self, value)
@@ -181,8 +185,16 @@ class BaseModel(Model):
     def compute_all_derived_fields(cls) -> None:
         if not cls.derived_fields:
             return
-        if any(field.compute is not None for field in cls.derived_fields):
-            for obj in cls.select_valid():
+        single_compute_fields = [
+            field for field in cls.derived_fields if field.compute is not None
+        ]
+        if single_compute_fields:
+            print(
+                f"Computing {', '.join(field.name for field in single_compute_fields)}"
+            )
+            for i, obj in enumerate(cls.select_valid()):
+                if i > 0 and i % 100 == 0:
+                    print(f"{i} done")
                 for field in cls.derived_fields:
                     if field.compute is not None:
                         value = field.compute(obj)
@@ -190,6 +202,7 @@ class BaseModel(Model):
 
         for field in cls.derived_fields:
             if field.compute_all is not None:
+                print(f"Computing {field.name}")
                 field.compute_and_store_all(cls)
 
     def sort_key(self) -> Any:
@@ -200,6 +213,14 @@ class BaseModel(Model):
 
     def get_url(self) -> str:
         return f"/{self.call_sign.lower()}/{self.id}"
+
+    @classmethod
+    def select_for_field(cls, field: Optional[str]) -> Any:
+        if field is not None:
+            field_obj = getattr(cls, field)
+            return cls.select_valid(field_obj).filter(field_obj != None)
+        else:
+            return cls.select_valid()
 
     def get_value_to_show_for_field(self, field: Optional[str]) -> str:
         if field is None:
@@ -855,7 +876,7 @@ class _NameGetter(Generic[ModelT]):
         if self._data is None:
             self._data = set()
             self._encoded_data = set()
-            for obj in self.cls.select_valid():
+            for obj in self.cls.select_for_field(self.field):
                 self._add_obj(obj)
 
 
@@ -881,3 +902,34 @@ def get_str_completer(
         return cls.getter(field).get_one_key(prompt, default=default or "")
 
     return completer
+
+
+def get_tag_based_derived_field(
+    name: str,
+    lazy_model_cls: Callable[[], Type[BaseModel]],
+    tag_field: str,
+    lazy_tag_cls: lambda: Type[adt.ADT],
+    field_index: int,
+    skip_filter: bool = False,
+) -> derived_data.DerivedField:
+    def compute_all() -> Dict[int, List[BaseModel]]:
+        model_cls = lazy_model_cls()
+        out = defaultdict(list)
+        tag_id = lazy_tag_cls()._tag
+        field_obj = getattr(model_cls, tag_field)
+        if skip_filter:
+            query = field_obj != None
+        else:
+            query = field_obj.contains(f"[{tag_id},")
+        for obj in model_cls.select_valid().filter(query):
+            for tag in obj.get_raw_tags_field(tag_field):
+                if tag[0] == tag_id:
+                    out[tag[field_index]].append(obj)
+        return out
+
+    return derived_data.DerivedField(
+        name,
+        derived_data.LazyType(lambda: List[lazy_model_cls()]),
+        compute_all=compute_all,
+        pull_on_miss=False,
+    )

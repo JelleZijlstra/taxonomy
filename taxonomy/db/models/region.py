@@ -9,7 +9,7 @@ from .. import constants, models
 from ..derived_data import DerivedField
 from ... import events, getinput
 
-from .base import BaseModel, EnumField
+from .base import BaseModel, EnumField, get_tag_based_derived_field
 
 
 class Region(BaseModel):
@@ -33,6 +33,14 @@ class Region(BaseModel):
         DerivedField("has_locations", bool, lambda region: region.has_locations()),
         DerivedField("has_periods", bool, lambda region: region.has_periods()),
         DerivedField("has_type_localities", bool, lambda region: not region.is_empty()),
+        DerivedField("has_associated_people", bool, lambda region: region.has_associated_people()),
+        get_tag_based_derived_field(
+            "associated_people",
+            lambda: models.Person,
+            "tags",
+            lambda: models.person.PersonTag.ActiveRegion,
+            1,
+        ),
     ]
 
     @classmethod
@@ -218,6 +226,11 @@ class Region(BaseModel):
         for _ in self.locations:
             return True
         return any(child.has_locations() for child in self.children)
+
+    def has_associated_people(self) -> bool:
+        if self.get_raw_derived_field("associated_people"):
+            return True
+        return any(child.has_associated_people() for child in self.children)
 
     def has_periods(self) -> bool:
         for _ in self.periods:

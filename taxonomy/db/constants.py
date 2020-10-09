@@ -585,6 +585,7 @@ class NamingConvention(enum.IntEnum):
     spanish = 6
     ancient = 7
     organization = 8
+    hungarian = 9
 
 
 class PersonType(enum.IntEnum):
@@ -593,3 +594,11 @@ class PersonType(enum.IntEnum):
     soft_redirect = 3
     hard_redirect = 4
     deleted = 5
+
+
+class FillDataLevel(enum.IntEnum):
+    needs_basic_data = 1  # missing data and no data from original
+    needs_more_data = 2  # e.g., etymologydetail for genera
+    incomplete_detail = 3  # fill data if species has LD but not SD or vice versa
+    missing_detail = 4  # fill data if species name is missing location/specimen detail
+    nothing_needed = 5

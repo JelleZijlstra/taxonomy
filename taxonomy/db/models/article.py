@@ -28,7 +28,13 @@ from typing import (
     cast,
 )
 
-from .base import ADTField, BaseModel, EnumField, get_completer
+from .base import (
+    ADTField,
+    BaseModel,
+    EnumField,
+    get_completer,
+    get_tag_based_derived_field,
+)
 from ..constants import ArticleCommentKind, ArticleKind, ArticleType
 from ..helpers import to_int
 from .. import models
@@ -133,6 +139,128 @@ class Article(BaseModel):
     parent = DeferredForeignKey("Article", null=True)
     tags = ADTField(lambda: ArticleTag, null=True)
     citation_group = ForeignKeyField(CitationGroup, null=True)
+
+    derived_fields = [
+        get_tag_based_derived_field(
+            "partially_suppressed_names",
+            lambda: models.Name,
+            "tags",
+            lambda: models.NameTag.PartiallySuppressedBy,
+            1,
+        ),
+        get_tag_based_derived_field(
+            "fully_suppressed_names",
+            lambda: models.Name,
+            "tags",
+            lambda: models.NameTag.FullySuppressedBy,
+            1,
+        ),
+        get_tag_based_derived_field(
+            "conserved_names",
+            lambda: models.Name,
+            "tags",
+            lambda: models.NameTag.Conserved,
+            1,
+        ),
+        get_tag_based_derived_field(
+            "spelling_selections",
+            lambda: models.Name,
+            "tags",
+            lambda: models.NameTag.SelectionOfSpelling,
+            2,
+        ),
+        get_tag_based_derived_field(
+            "priority_selections",
+            lambda: models.Name,
+            "tags",
+            lambda: models.NameTag.SelectionOfPriority,
+            2,
+        ),
+        get_tag_based_derived_field(
+            "priority_reversals",
+            lambda: models.Name,
+            "tags",
+            lambda: models.NameTag.ReversalOfPriority,
+            1,
+        ),
+        get_tag_based_derived_field(
+            "type_designations",
+            lambda: models.Name,
+            "type_tags",
+            lambda: models.TypeTag.TypeDesignation,
+            1,
+        ),
+        get_tag_based_derived_field(
+            "commission_type_designations",
+            lambda: models.Name,
+            "type_tags",
+            lambda: models.TypeTag.CommissionTypeDesignation,
+            1,
+        ),
+        get_tag_based_derived_field(
+            "lectotype_designations",
+            lambda: models.Name,
+            "type_tags",
+            lambda: models.TypeTag.LectotypeDesignation,
+            1,
+        ),
+        get_tag_based_derived_field(
+            "neotype_designations",
+            lambda: models.Name,
+            "type_tags",
+            lambda: models.TypeTag.NeotypeDesignation,
+            1,
+        ),
+        get_tag_based_derived_field(
+            "specimen_details",
+            lambda: models.Name,
+            "type_tags",
+            lambda: models.TypeTag.SpecimenDetail,
+            2,
+        ),
+        get_tag_based_derived_field(
+            "location_details",
+            lambda: models.Name,
+            "type_tags",
+            lambda: models.TypeTag.LocationDetail,
+            2,
+        ),
+        get_tag_based_derived_field(
+            "collection_details",
+            lambda: models.Name,
+            "type_tags",
+            lambda: models.TypeTag.CollectionDetail,
+            2,
+        ),
+        get_tag_based_derived_field(
+            "citation_details",
+            lambda: models.Name,
+            "type_tags",
+            lambda: models.TypeTag.CitationDetail,
+            2,
+        ),
+        get_tag_based_derived_field(
+            "definition_details",
+            lambda: models.Name,
+            "type_tags",
+            lambda: models.TypeTag.DefinitionDetail,
+            2,
+        ),
+        get_tag_based_derived_field(
+            "etymology_details",
+            lambda: models.Name,
+            "type_tags",
+            lambda: models.TypeTag.EtymologyDetail,
+            2,
+        ),
+        get_tag_based_derived_field(
+            "type_species_details",
+            lambda: models.Name,
+            "type_tags",
+            lambda: models.TypeTag.TypeSpeciesDetail,
+            2,
+        ),
+    ]
 
     @property
     def journal(self) -> Optional[str]:

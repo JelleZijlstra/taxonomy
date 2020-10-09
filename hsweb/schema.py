@@ -331,6 +331,14 @@ def build_derived_field(
             required=False,
             resolver=fk_resolver,
         )
+    elif isinstance(typ, type) and issubclass(typ, enum.Enum):
+        return Field(
+            make_enum(typ),
+            required=False,
+            resolver=lambda parent, info: get_model(
+                model_cls, parent, info
+            ).get_derived_field(field_name),
+        )
     elif typ in TYPE_TO_GRAPHENE:
         return Field(
             TYPE_TO_GRAPHENE[typ],
@@ -378,6 +386,29 @@ def build_derived_field(
         assert False, f"unimplemented for {typ}"
 
 
+def build_derived_count_field(
+    model_cls: Type[BaseModel], derived_field: DerivedField[Any]
+) -> Optional[Field]:
+    field_name = derived_field.name
+    typ = derived_field.get_type()
+    if typing_inspect.is_generic_type(typ) and typing_inspect.get_origin(typ) is list:
+
+            def resolver(
+                parent: ObjectType,
+                info: ResolveInfo
+            ) -> int:
+                model = get_model(model_cls, parent, info)
+                value = model.get_raw_derived_field(field_name)
+                if value is None:
+                    return 0
+                return len(value)
+
+            return Field(
+                Int, required=True, resolver=resolver)
+
+    return None
+
+
 @lru_cache()
 def build_object_type_from_model(model_cls: Type[BaseModel]) -> Type[ObjectType]:
     namespace = {}
@@ -396,6 +427,9 @@ def build_object_type_from_model(model_cls: Type[BaseModel]) -> Type[ObjectType]
 
     for derived_field in model_cls.derived_fields:
         namespace[derived_field.name] = build_derived_field(model_cls, derived_field)
+        count_field = build_derived_count_field(model_cls, derived_field)
+        if count_field is not None:
+            namespace[f"num_{derived_field.name}"] = count_field
 
     namespace.update(CUSTOM_FIELDS.get(model_cls, {}))
 

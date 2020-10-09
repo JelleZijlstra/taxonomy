@@ -5,7 +5,7 @@ from peewee import BooleanField, CharField, ForeignKeyField
 from ... import events, getinput
 from .. import models
 
-from .base import BaseModel, ModelT
+from .base import BaseModel, ModelT, get_tag_based_derived_field
 from .region import Region
 
 
@@ -24,6 +24,30 @@ class Collection(BaseModel):
     comment = CharField(null=True)
     city = CharField(null=True)
     removed = BooleanField(default=False)
+
+    derived_fields = [
+        get_tag_based_derived_field(
+            "associated_people",
+            lambda: models.Person,
+            "tags",
+            lambda: models.person.PersonTag.Institution,
+            1,
+        ),
+        get_tag_based_derived_field(
+            "probable_specimens",
+            lambda: models.Name,
+            "type_tags",
+            lambda: models.name.TypeTag.ProbableRepository,
+            1,
+        ),
+        get_tag_based_derived_field(
+            "shared_specimens",
+            lambda: models.Name,
+            "type_tags",
+            lambda: models.name.TypeTag.Repository,
+            1,
+        ),
+    ]
 
     def __repr__(self) -> str:
         city = f", {self.city}" if self.city else ""

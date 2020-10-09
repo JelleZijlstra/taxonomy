@@ -1,15 +1,16 @@
 import sys
-from collections import defaultdict
 from typing import cast, IO, Any, Dict, List, Optional, Sequence, Tuple, Type
 
 from peewee import CharField, DeferredForeignKey, TextField
 
+from .collection import Collection
+from .region import Region
 from ..constants import NamingConvention, PersonType
-from ..derived_data import DerivedField, LazyType
+from ..derived_data import DerivedField
 from .. import models
-from ... import adt, events
+from ... import adt, events, getinput
 
-from .base import BaseModel, EnumField, ADTField
+from .base import BaseModel, EnumField, ADTField, get_completer, get_tag_based_derived_field
 
 
 class Person(BaseModel):
@@ -32,29 +33,35 @@ class Person(BaseModel):
     bio = TextField(null=True)
 
     derived_fields = [
-        DerivedField(
+        get_tag_based_derived_field(
             "patronyms",
-            LazyType(lambda: List[models.Name]),
-            compute_all=lambda: _compute_from_type_tag(models.TypeTag.NamedAfter),
-            pull_on_miss=False,
+            lambda: models.Name,
+            "type_tags",
+            lambda: models.TypeTag.NamedAfter,
+            1
         ),
-        DerivedField(
+        get_tag_based_derived_field(
             "collected",
-            LazyType(lambda: List[models.Name]),
-            compute_all=lambda: _compute_from_type_tag(models.TypeTag.CollectedBy),
-            pull_on_miss=False,
+            lambda: models.Name,
+            "type_tags",
+            lambda: models.TypeTag.CollectedBy,
+            1
         ),
-        DerivedField(
+        get_tag_based_derived_field(
             "articles",
-            LazyType(lambda: List[models.Article]),
-            compute_all=lambda: _compute_from_author_tag(models.Article),
-            pull_on_miss=False,
+            lambda: models.Article,
+            "author_tags",
+            lambda: AuthorTag.Author,
+            1,
+            skip_filter=True
         ),
-        DerivedField(
+        get_tag_based_derived_field(
             "names",
-            LazyType(lambda: List[models.Name]),
-            compute_all=lambda: _compute_from_author_tag(models.Name),
-            pull_on_miss=False,
+            lambda: models.Name,
+            "author_tags",
+            lambda: AuthorTag.Author,
+            1,
+            skip_filter=True
         ),
     ]
 
@@ -170,12 +177,12 @@ class Person(BaseModel):
         return None
 
     def add_to_derived_field(self, field_name: str, obj: BaseModel) -> None:
-        current = self.get_derived_field(field_name) or []
-        self.set_derived_field(field_name, [*current, obj])
+        current = self.get_raw_derived_field(field_name) or []
+        self.set_derived_field(field_name, [*current, obj.id])
 
     def remove_from_derived_field(self, field_name: str, obj: BaseModel) -> None:
-        current = self.get_derived_field(field_name) or []
-        self.set_derived_field(field_name, [o for o in current if o != obj])
+        current = self.get_raw_derived_field(field_name) or []
+        self.set_derived_field(field_name, [o for o in current if o != obj.id])
 
     def edit_tag_sequence(
         self,
@@ -321,6 +328,25 @@ class Person(BaseModel):
             print(f"Created {obj}")
             return obj
 
+    def get_completers_for_adt_field(self, field: str) -> getinput.CompleterMap:
+        for field_name, tag_cls in [("tags", PersonTag)]:
+            if field == field_name:
+                completers: Dict[
+                    Tuple[Type[adt.ADT], str], getinput.Completer[Any]
+                ] = {}
+                for tag in tag_cls._tag_to_member.values():
+                    for attribute, typ in tag._attributes.items():
+                        completer: Optional[getinput.Completer[Any]]
+                        if typ is Collection:
+                            completer = get_completer(Collection, None)
+                        elif typ is Region:
+                            completer = get_completer(Region, None)
+                        else:
+                            completer = None
+                        if completer is not None:
+                            completers[(tag, attribute)] = completer
+                return completers
+        return {}
 
 # Reused in Article and Name
 class AuthorTag(adt.ADT):
@@ -329,6 +355,8 @@ class AuthorTag(adt.ADT):
 
 class PersonTag(adt.ADT):
     Wiki(text=str, tag=1)  # type: ignore
+    Institution(institution=Collection, tag=2)  # type: ignore
+    ActiveRegion(region=Region, tag=3)  # type: ignore
 
 
 def _display_year(year: Optional[str]) -> str:
@@ -340,29 +368,3 @@ def _display_year(year: Optional[str]) -> str:
     except ValueError:
         pass
     return year
-
-
-def _compute_from_author_tag(
-    model_cls: Type[BaseModel],
-) -> Dict[int, "List[BaseModel]"]:
-    out = defaultdict(list)
-    tag_id = AuthorTag.Author._tag
-    for obj in model_cls.select_valid().filter(model_cls.author_tags != None):
-        for tag in obj.get_raw_tags_field("author_tags"):
-            if tag[0] == tag_id:
-                out[tag[1]].append(obj)
-    return out
-
-
-def _compute_from_type_tag(
-    tag_cls: "Type[models.TypeTag]",
-) -> Dict[int, "List[models.Name]"]:
-    out = defaultdict(list)
-    tag_id = tag_cls._tag
-    for nam in models.Name.select_valid().filter(
-        models.Name.type_tags.contains(f"[{tag_cls._tag},")
-    ):
-        for tag in nam.get_raw_tags_field("type_tags"):
-            if tag[0] == tag_id:
-                out[tag[1]].append(nam)
-    return out

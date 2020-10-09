@@ -31,10 +31,19 @@ from ..constants import (
     SpeciesNameKind,
     Status,
     AgeClass,
+    FillDataLevel,
 )
 from ..definition import Definition
+from ..derived_data import DerivedField
 
-from .base import BaseModel, EnumField, ADTField, get_completer, get_str_completer
+from .base import (
+    BaseModel,
+    EnumField,
+    ADTField,
+    get_completer,
+    get_str_completer,
+    get_tag_based_derived_field,
+)
 from .article import Article
 from .citation_group import CitationGroup
 from .collection import Collection
@@ -42,6 +51,13 @@ from .taxon import Taxon, display_organized
 from .location import Location
 from .name_complex import NameComplex, SpeciesNameComplex
 from .person import Person, AuthorTag
+
+_CRUCIAL_MISSING_FIELDS: Dict[Group, Set[str]] = {
+    Group.species: {"species_name_complex"},
+    Group.genus: {"name_complex"},
+    Group.family: set(),
+    Group.high: set(),
+}
 
 
 class Name(BaseModel):
@@ -128,15 +144,113 @@ class Name(BaseModel):
     class Meta(object):
         db_table = "name"
 
+    derived_fields = [
+        DerivedField(
+            "fill_data_level", FillDataLevel, lambda nam: nam.fill_data_level()
+        ),
+        get_tag_based_derived_field(
+            "preoccupied_names", lambda: Name, "tags", lambda: NameTag.PreoccupiedBy, 1
+        ),
+        get_tag_based_derived_field(
+            "unjustified_emendations",
+            lambda: Name,
+            "tags",
+            lambda: NameTag.UnjustifiedEmendationOf,
+            1,
+        ),
+        get_tag_based_derived_field(
+            "incorrect_subsequent_spellings",
+            lambda: Name,
+            "tags",
+            lambda: NameTag.IncorrectSubsequentSpellingOf,
+            1,
+        ),
+        get_tag_based_derived_field(
+            "nomina_nova", lambda: Name, "tags", lambda: NameTag.NomenNovumFor, 1
+        ),
+        get_tag_based_derived_field(
+            "variants", lambda: Name, "tags", lambda: NameTag.VariantOf, 1
+        ),
+        get_tag_based_derived_field(
+            "taking_priority", lambda: Name, "tags", lambda: NameTag.TakesPriorityOf, 1
+        ),
+        get_tag_based_derived_field(
+            "nomina_oblita", lambda: Name, "tags", lambda: NameTag.NomenOblitum, 1
+        ),
+        get_tag_based_derived_field(
+            "mandatory_changes",
+            lambda: Name,
+            "tags",
+            lambda: NameTag.MandatoryChangeOf,
+            1,
+        ),
+        get_tag_based_derived_field(
+            "incorrect_original_spellings",
+            lambda: Name,
+            "tags",
+            lambda: NameTag.IncorrectOriginalSpellingOf,
+            1,
+        ),
+        get_tag_based_derived_field(
+            "subsequent_usages",
+            lambda: Name,
+            "tags",
+            lambda: NameTag.SubsequentUsageOf,
+            1,
+        ),
+        get_tag_based_derived_field(
+            "selections_of_priority",
+            lambda: Name,
+            "tags",
+            lambda: NameTag.SelectionOfPriority,
+            1,
+        ),
+        get_tag_based_derived_field(
+            "selections_of_spelling",
+            lambda: Name,
+            "tags",
+            lambda: NameTag.SelectionOfSpelling,
+            1,
+        ),
+        get_tag_based_derived_field(
+            "reversals_of_priority",
+            lambda: Name,
+            "tags",
+            lambda: NameTag.ReversalOfPriority,
+            1,
+        ),
+        get_tag_based_derived_field(
+            "justified_emendations",
+            lambda: Name,
+            "tags",
+            lambda: NameTag.JustifiedEmendationOf,
+            1,
+        ),
+        get_tag_based_derived_field(
+            "designated_as_type",
+            lambda: Name,
+            "type_tags",
+            lambda: TypeTag.TypeDesignation,
+            2,
+        ),
+        get_tag_based_derived_field(
+            "commission_designated_as_type",
+            lambda: Name,
+            "type_tags",
+            lambda: TypeTag.CommissionTypeDesignation,
+            2,
+        ),
+    ]
+
     @classmethod
     def with_tag_of_type(cls, tag_cls: Type[adt.ADT]) -> List["Name"]:
-        names = cls.select_valid().filter(
-            Name._raw_type_tags.contains(f"[{tag_cls._tag}, ")
-        )
+        names = cls.select_valid().filter(Name.type_tags.contains(f"[{tag_cls._tag},"))
         return [
             name
             for name in names
-            if any(isinstance(tag, tag_cls) for tag in name.type_tags)
+            if any(
+                tag[0] == tag_cls._tag for tag in name.get_raw_tags_field("type_tags")
+            )
         ]
 
     @classmethod
@@ -380,11 +494,11 @@ class Name(BaseModel):
                     for attribute, typ in tag._attributes.items():
                         completer: Optional[getinput.Completer[Any]]
                         if typ is Name:
-                            completer = get_completer(Name, "corrected_original_name")
+                            completer = get_completer(Name, None)
                         elif typ is Collection:
-                            completer = get_completer(Collection, "label")
+                            completer = get_completer(Collection, None)
                         elif typ is Article:
-                            completer = get_completer(Article, "name")
+                            completer = get_completer(Article, None)
                         elif typ is Person:
                             completer = get_completer(Person, None)
                         elif typ is str and attribute in ("lectotype", "neotype"):
@@ -452,27 +566,32 @@ class Name(BaseModel):
             return json.loads(self.data)
 
     def get_tag_target(self, tag_cls: Type[adt.ADT]) -> Optional["Name"]:
-        if self.tags:
-            for tag in self.tags:
+        tags = self.tags
+        if tags:
+            for tag in tags:
                 if isinstance(tag, tag_cls):
                     return tag.name
         return None
 
     def add_tag(self, tag: adt.ADT) -> None:
-        if self.tags is None:
+        tags = self.tags
+        if tags is None:
             self.tags = [tag]
         else:
-            self.tags = self.tags + (tag,)
+            self.tags = tags + (tag,)
 
     def add_type_tag(self, tag: adt.ADT) -> None:
-        if self.type_tags is None:
+        type_tags = self.type_tags
+        if type_tags is None:
             self.type_tags = [tag]
         else:
-            self.type_tags = self.type_tags + (tag,)
+            self.type_tags = type_tags + (tag,)
 
     def has_type_tag(self, tag_cls: Type[adt.ADT]) -> bool:
-        for _ in self.get_tags(self.type_tags, tag_cls):
-            return True
+        tag_id = tag_cls._tag
+        for tag in self.get_raw_tags_field("type_tags"):
+            if tag[0] == tag_id:
+                return True
         return False
 
     def map_type_tags(self, fn: Callable[["TypeTag"], Optional["TypeTag"]]) -> None:
@@ -755,7 +874,11 @@ class Name(BaseModel):
         authors = self.get_authors()
         if len(authors) <= 2:
             return " & ".join(author.family_name for author in authors)
-        return ", ".join(authors[:-1]) + " & " + authors[-1]
+        return (
+            ", ".join(author.family_name for author in authors[:-1])
+            + " & "
+            + authors[-1].family_name
+        )
 
     def effective_year(self) -> int:
         """Returns the effective year of validity for this name.
@@ -911,6 +1034,72 @@ class Name(BaseModel):
         if verbose:
             print("2 because all fields are set")
         return 2
+
+    def _requires_detail(self) -> bool:
+        if "type_locality" not in self.get_required_fields():
+            return False
+        year = self.numeric_year()
+        if year > 1920:
+            return True
+        elif year <= 1900:
+            return False
+        else:
+            return self.taxon.age is AgeClass.extant
+
+    def fill_data_level(self) -> FillDataLevel:
+        required_fields = set(self.get_empty_required_fields())
+        if has_data_from_original(self):
+            if _CRUCIAL_MISSING_FIELDS[self.group] & required_fields:
+                return FillDataLevel.needs_more_data
+            if (
+                self.group is Group.family
+                or self.group is Group.high
+                or self.group is Group.genus
+            ):
+                return FillDataLevel.nothing_needed
+            else:
+                if not self._requires_detail():
+                    return FillDataLevel.nothing_needed
+                else:
+                    tags: List[TypeTag] = self.type_tags or []
+                    citation = self.original_citation
+                    ld = [
+                        tag
+                        for tag in tags
+                        if isinstance(tag, TypeTag.LocationDetail)
+                        and tag.source == citation
+                    ]
+                    sd = [
+                        tag
+                        for tag in tags
+                        if isinstance(
+                            tag, (TypeTag.SpecimenDetail, TypeTag.CitationDetail)
+                        )
+                        and tag.source == citation
+                    ]
+                    if bool(sd) and bool(ld):
+                        return FillDataLevel.nothing_needed
+                    else:
+                        return FillDataLevel.incomplete_detail
+        else:
+            if required_fields:
+                return FillDataLevel.needs_basic_data
+            elif self.group is Group.family or self.group is Group.high:
+                return FillDataLevel.nothing_needed
+            elif self.group is Group.genus:
+                if "type" in self.get_required_fields() and self.numeric_year() >= 1990:
+                    return FillDataLevel.needs_basic_data
+                else:
+                    return FillDataLevel.nothing_needed
+            else:
+                if "type_locality" not in self.get_required_fields():
+                    return FillDataLevel.nothing_needed
+                elif self.has_type_tag(TypeTag.Date) and self.has_type_tag(
+                    TypeTag.Collector
+                ):
+                    return FillDataLevel.missing_detail
+                else:
+                    return FillDataLevel.needs_more_data
 
     def get_required_fields(self) -> Iterable[str]:
         if (
@@ -1429,7 +1618,7 @@ class NameComment(BaseModel):
 
 
 def has_data_from_original(nam: Name) -> bool:
-    if not nam.original_citation or not nam.type_tags:
+    if not nam.original_citation or not nam.get_raw_tags_field("type_tags"):
         return False
     for tag in nam.type_tags:
         if isinstance(tag, SOURCE_TAGS) and tag.source == nam.original_citation:

@@ -1,5 +1,4 @@
 from collections import defaultdict
-import enum
 from functools import lru_cache
 import operator
 import re
@@ -35,18 +34,11 @@ from ..constants import (
     Rank,
     Status,
     ArticleKind,
+    FillDataLevel,
 )
 
 from .base import BaseModel, EnumField
 from .article import Article
-
-
-class FillDataLevel(enum.IntEnum):
-    needs_basic_data = 1  # missing data and no data from original
-    needs_more_data = 2  # e.g., etymologydetail for genera
-    incomplete_detail = 3  # fill data if species has LD but not SD or vice versa
-    missing_detail = 4  # fill data if species name is missing location/specimen detail
-    nothing_needed = 5
 
 
 DEFAULT_LEVEL = FillDataLevel.needs_basic_data
@@ -1047,7 +1039,7 @@ class Taxon(BaseModel):
                 return False
             if nam.original_citation.kind is ArticleKind.no_copy:
                 return False
-            if filter_by_name_level and _fill_data_level_for_name(nam) > level:
+            if filter_by_name_level and _fill_data_level_for_name(nam, level) > level:
                 return False
             if field is not None and (
                 getattr(nam, field) is not None
@@ -1192,7 +1184,7 @@ def fill_data_from_paper(
         ),
         key=sort_key,
     )
-    nams_below_level = [nam for nam in nams if _fill_data_level_for_name(nam) <= level]
+    nams_below_level = [nam for nam in nams if _fill_data_level_for_name(nam, level) <= level]
     if nams_below_level:
         print(f"{paper.name}: {len(nams_below_level)} names (fill_data_from_paper)")
         if ask_before_opening and not only_fill_cache:
@@ -1203,7 +1195,7 @@ def fill_data_from_paper(
                 opened = True
             else:
                 nam = nam.reload()
-                while _fill_data_level_for_name(nam) <= goal_level:
+                while _fill_data_level_for_name(nam, goal_level) <= goal_level:
                     nam.display()
                     if not opened:
                         getinput.add_to_clipboard(paper.name)
@@ -1454,84 +1446,13 @@ def clean_tss_interactive(art: Article, field: str = "corrected_original_name") 
             obj.save()
 
 
-_CRUCIAL_MISSING_FIELDS: Dict[Group, Set[str]] = {
-    Group.species: {"species_name_complex"},
-    Group.genus: {"name_complex"},
-    Group.family: set(),
-    Group.high: set(),
-}
-
-
-def _require_detail(nam: "models.Name") -> bool:
-    if "type_locality" not in nam.get_required_fields():
-        return False
-    year = nam.numeric_year()
-    if year > 1920:
-        return True
-    elif year <= 1900:
-        return False
-    else:
-        return nam.taxon.age is AgeClass.extant
-
-
-def _fill_data_level_for_name(nam: "models.Name") -> FillDataLevel:
-    required_fields = set(nam.get_empty_required_fields())
-    if models.has_data_from_original(nam):
-        if _CRUCIAL_MISSING_FIELDS[nam.group] & required_fields:
-            return FillDataLevel.needs_more_data
-        if (
-            nam.group is Group.family
-            or nam.group is Group.high
-            or nam.group is Group.genus
-        ):
-            return FillDataLevel.nothing_needed
-        else:
-            if not _require_detail(nam):
-                return FillDataLevel.nothing_needed
-            else:
-                tags: List[models.name.TypeTag] = nam.type_tags or []
-                citation = nam.original_citation
-                ld = [
-                    tag
-                    for tag in tags
-                    if isinstance(tag, models.name.TypeTag.LocationDetail)
-                    and tag.source == citation
-                ]
-                sd = [
-                    tag
-                    for tag in tags
-                    if isinstance(
-                        tag,
-                        (
-                            models.name.TypeTag.SpecimenDetail,
-                            models.name.TypeTag.CitationDetail,
-                        ),
-                    )
-                    and tag.source == citation
-                ]
-                if bool(sd) and bool(ld):
-                    return FillDataLevel.nothing_needed
-                else:
-                    return FillDataLevel.incomplete_detail
-    else:
-        if required_fields:
-            return FillDataLevel.needs_basic_data
-        elif nam.group is Group.family or nam.group is Group.high:
-            return FillDataLevel.nothing_needed
-        elif nam.group is Group.genus:
-            if "type" in nam.get_required_fields() and nam.numeric_year() >= 1990:
-                return FillDataLevel.needs_basic_data
-            else:
-                return FillDataLevel.nothing_needed
-        else:
-            if "type_locality" not in nam.get_required_fields():
-                return FillDataLevel.nothing_needed
-            elif nam.has_type_tag(models.name.TypeTag.Date) and nam.has_type_tag(
-                models.name.TypeTag.Collector
-            ):
-                return FillDataLevel.missing_detail
-            else:
-                return FillDataLevel.needs_more_data
+def _fill_data_level_for_name(nam: "models.Name", desired_level: Optional[FillDataLevel] = None) -> FillDataLevel:
+    if desired_level is None:
+        return nam.get_derived_field("fill_data_level", force_recompute=True)
+    level = nam.get_derived_field("fill_data_level")
+    if level <= desired_level:
+        level = nam.get_derived_field("fill_data_level", force_recompute=True)
+    return level
 
 
 @lru_cache(maxsize=2048)

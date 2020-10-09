@@ -3420,7 +3420,7 @@ def clean_tss_interactive(
 @command
 def compute_derived_fields() -> None:
     for cls in models.BaseModel.__subclasses__():
-        print(f"Computing for {cls}")
+        print(f"=== Computing for {cls} ===")
         cls.compute_all_derived_fields()
     write_derived_data()
 
