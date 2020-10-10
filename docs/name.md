@@ -24,8 +24,8 @@ their limits are subjective in nature.
 - _root name_: The name to be used as a root to form a valid taxon name from
   this name. For high- and genus-group names, this is simply the name. For
   family-group names, it is the stem without any rank ending (e.g., "Sigmodont"
-  for [Sigmodontinae](/n/Sigmodontinae)). For species-group names, it is the specific name (e.g.,
-  "palustris" for [_Oryzomys palustris_](/n/59371)).
+  for [Sigmodontinae](/n/Sigmodontinae)). For species-group names, it is the
+  specific name (e.g., "palustris" for [_Oryzomys palustris_](/n/59371)).
 - _status_: The taxonomic status of the name. The status may be _valid_ (the
   name is the base name for a valid taxon), _synonym_ (the name denotes a
   synonym of a valid taxon), _dubious_ (the name is treated as a synonym, but
@@ -218,8 +218,10 @@ genus-group names should have at least one. They fall into several groups:
     to, but an _EtymologyDetail_ tag is not essential for assigning a name to a
     complex, because many original descriptions do not specify an etymology.
 - Structured information about the type
-  - _Collector_: Name of the person who collected the type specimen or was
+  - _CollectedBy_: The [person](/docs/person) who collected the type specimen or was
     otherwise responsible for acquiring it.
+  - _Collector_: Similar to _CollectedBy_, but as a string. This tag is being phased
+    out.
   - _Date_: Date when the type specimen was collected. Ideally this should be the
     day, but it can be a month or year if no more precise data is available.
   - _Gender_: The biological gender of the type specimen.
@@ -254,6 +256,9 @@ genus-group names should have at least one. They fall into several groups:
   - _NeotypeDesignation_: Designation of a specimen as the neotype of a
     species-group name.
 - Miscellaneous fields
+  - _NamedAfter_: Reference to the [person](/docs/person) this name was named
+    after. This field was added recently, so it is not yet used in all cases
+    where it should be used.
   - _IncludedSpecies_: For genus-group names, reference to a species-group name that
     was one of the originally included species in the genus. Usually this is given
     only for species without an originally designated type, in which case the

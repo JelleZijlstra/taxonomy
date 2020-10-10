@@ -39,8 +39,10 @@ Information about the objects in the database:
 - [Name](/docs/name)
 - [Name complex](/docs/name-complex)
 - [Period](/docs/period)
+- [Person](/docs/person)
 - [Region](/docs/region)
 - [Species name complex](/docs/species-name-complex)
+- [Stratigraphic unit](/docs/stratigraphic-unit)
 - [Taxon](/docs/taxon)
 
 # Contact

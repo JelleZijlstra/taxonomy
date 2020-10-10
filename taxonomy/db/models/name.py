@@ -871,14 +871,7 @@ class Name(BaseModel):
         return [author.person for author in self.author_tags]
 
     def taxonomic_authority(self) -> str:
-        authors = self.get_authors()
-        if len(authors) <= 2:
-            return " & ".join(author.family_name for author in authors)
-        return (
-            ", ".join(author.family_name for author in authors[:-1])
-            + " & "
-            + authors[-1].family_name
-        )
+        return Person.join_authors(self.get_authors())
 
     def effective_year(self) -> int:
         """Returns the effective year of validity for this name.

@@ -1,6 +1,6 @@
 # About
 
-I am Jelle Zijlstra, the creator and maintainer of the _Hesperomys_ Project. I got interested in mammals
+I am [Jelle Zijlstra](/h/5331), the creator and maintainer of the _Hesperomys_ Project. I got interested in mammals
 and taxonomy at an early age and started doing paleontological research in high school. I moved to the
 United States for college and I currently live in California, where I work for
 [Quora](https://www.quora.com) as a software engineer.

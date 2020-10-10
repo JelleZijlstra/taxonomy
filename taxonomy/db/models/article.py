@@ -565,10 +565,7 @@ class Article(BaseModel):
         return output
 
     def taxonomicAuthority(self) -> Tuple[str, str]:
-        return (
-            self.getAuthors(separator=",", lastSeparator=" &", includeInitials=False),
-            self.year,
-        )
+        return (Person.join_authors(self.get_authors()), self.year)
 
     def author_set(self) -> Set[str]:
         return {author.family_name for author in self.get_authors()}
@@ -631,7 +628,7 @@ class Article(BaseModel):
     def concise_markdown_link(self) -> str:
         authors_list = self.get_authors()
         if len(authors_list) > 2:
-            authors = f"{authors_list[0].family_name} et al."
+            authors = f"{authors_list[0].taxonomic_authority()} et al."
         else:
             authors, _ = self.taxonomicAuthority()
         name = self.name.replace(" ", "_")

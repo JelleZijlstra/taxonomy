@@ -1,12 +1,11 @@
 import sys
-from typing import cast, IO, Any, Dict, List, Optional, Sequence, Tuple, Type
+from typing import IO, Any, Dict, Optional, Sequence, Tuple, Type
 
 from peewee import CharField, DeferredForeignKey, TextField
 
 from .collection import Collection
 from .region import Region
 from ..constants import NamingConvention, PersonType
-from ..derived_data import DerivedField
 from .. import models
 from ... import adt, events, getinput
 
@@ -129,6 +128,22 @@ class Person(BaseModel):
             name[0] + "." if name[0].isupper() else f" {name} " for name in names
         )
 
+    @classmethod
+    def join_authors(cls, authors: Sequence["Person"]) -> str:
+        if len(authors) <= 2:
+            return " & ".join(author.taxonomic_authority() for author in authors)
+        return (
+            ", ".join(author.taxonomic_authority() for author in authors[:-1])
+            + " & "
+            + authors[-1].taxonomic_authority()
+        )
+
+    def taxonomic_authority(self) -> str:
+        if self.tussenvoegsel is not None and self.naming_convention is NamingConvention.dutch:
+            return f"{self.tussenvoegsel[0].upper()}{self.tussenvoegsel[1:]} {self.family_name}"
+        else:
+            return self.family_name
+
     def get_value_to_show_for_field(self, field: Optional[str]) -> str:
         if field is None:
             return self.get_description(family_first=True, url=True)
@@ -148,7 +163,7 @@ class Person(BaseModel):
         if family_name is None:
             family_name = cls.getter("family_name").get_one_key("family_name> ")
         assert family_name is not None
-        kwargs.setdefault("type", PersonType.checked)
+        kwargs.setdefault("type", PersonType.unchecked)
         kwargs.setdefault("naming_convention", NamingConvention.western)
         result = cls.create(family_name=family_name, **kwargs)
         result.fill_field("tags")
