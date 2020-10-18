@@ -444,6 +444,7 @@ class BaseModel(Model):
         return {
             **field_editors,
             "d": self.display,
+            "f": lambda: self.display(full=True),
             "edit_foreign": self.edit_foreign,
             "edit_sibling": self.edit_sibling,
             "empty": self.empty,
@@ -762,7 +763,7 @@ class _NameGetter(Generic[ModelT]):
             return nams[0]
         else:
             choice = getinput.choose_one(
-                nams,
+                sorted(nams, key=lambda nam: nam.sort_key()),
                 display_fn=lambda nam: f"{nam} (#{nam.id})",
                 history_key=(self, name),
             )

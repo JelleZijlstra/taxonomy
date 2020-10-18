@@ -219,6 +219,8 @@ class StratigraphicUnit(BaseModel):
     def get_required_fields(self) -> Iterable[str]:
         yield "name"
         yield "rank"
+        if self.requires_parent() is not RequirednessLevel.disallowed:
+            yield "parent"
 
     def requires_parent(self) -> RequirednessLevel:
         if self.rank is StratigraphicUnitRank.supergroup:

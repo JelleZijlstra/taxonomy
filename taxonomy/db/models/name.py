@@ -873,6 +873,32 @@ class Name(BaseModel):
     def taxonomic_authority(self) -> str:
         return Person.join_authors(self.get_authors())
 
+    def check_authors(self, autofix: bool = False) -> bool:
+        citation = self.original_citation
+        if not citation:
+            return True
+        if self.get_raw_tags_field("author_tags") == citation.get_raw_tags_field("author_tags"):
+            return True
+        name_authors = self.get_authors()
+        article_authors = self.original_citation.get_authors()
+        if len(name_authors) != len(article_authors):
+            print(f"{self}: length mismatch {len(name_authors)} vs. {len(article_authors)}")
+            return False
+        new_authors = list(self.author_tags)
+        for i, (name_author, article_author) in enumerate(zip(name_authors, article_authors)):
+            if name_author == article_author:
+                continue
+
+            if article_author.is_more_specific_than(name_author):
+                print(f"{self} author {i}: {article_author} is more specific than {name_author}")
+                new_authors[i] = AuthorTag.Author(person=article_author)
+            else:
+                print(f"{self} author {i}: {article_author} does not match {name_author}")
+        getinput.print_diff(self.author_tags, new_authors)
+        if autofix:
+            self.author_tags = new_authors
+        return False
+
     def effective_year(self) -> int:
         """Returns the effective year of validity for this name.
 
@@ -1088,7 +1114,7 @@ class Name(BaseModel):
                 if "type_locality" not in self.get_required_fields():
                     return FillDataLevel.nothing_needed
                 elif self.has_type_tag(TypeTag.Date) and self.has_type_tag(
-                    TypeTag.Collector
+                    TypeTag.CollectedBy
                 ):
                     return FillDataLevel.missing_detail
                 else:
@@ -1488,7 +1514,7 @@ class Name(BaseModel):
                     nam.display()
         similar_names = list(
             self.select_valid().filter(
-                Name.author_tags == self.author_tags,
+                Name.author_tags == self.__data__["author_tags"],
                 Name.year == self.year,
                 Name.id != self.id,
                 Name.citation_group != self.citation_group,
@@ -1735,7 +1761,7 @@ STATUS_TO_TAG = {
 
 
 class TypeTag(adt.ADT):
-    Collector(name=str, tag=1)  # type: ignore
+    # 1 used to be Collector, removed
     Date(date=str, tag=2)  # type: ignore
     Gender(gender=constants.SpecimenGender, tag=3)  # type: ignore
     Age(age=constants.SpecimenAge, tag=4)  # type: ignore

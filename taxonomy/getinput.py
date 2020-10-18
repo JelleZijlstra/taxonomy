@@ -3,6 +3,7 @@
 Helpers for retrieving user input.
 
 """
+import difflib
 import enum
 import functools
 import itertools
@@ -468,3 +469,14 @@ def print_header(obj: object) -> None:
 def indent(text: str, width: int) -> str:
     spacing = " " * width
     return "".join(f"{spacing}{line}\n" for line in text.splitlines())
+
+
+def print_diff(a: Sequence[Any], b: Sequence[Any]) -> None:
+    matcher = difflib.SequenceMatcher(a=a, b=b)
+    for opcode, a_lo, a_hi, b_lo, b_hi in matcher.get_opcodes():
+        if opcode == "equal":
+            continue
+        for i in range(a_lo, a_hi):
+            print(f"- {a[i]}")
+        for i in range(b_lo, b_hi):
+            print(f"+ {b[i]}")

@@ -577,7 +577,7 @@ class ArticleCommentKind(enum.IntEnum):
 
 
 class NamingConvention(enum.IntEnum):
-    western = 1
+    unspecified = 1
     chinese = 2
     japanese = 3
     dutch = 4
@@ -586,6 +586,10 @@ class NamingConvention(enum.IntEnum):
     ancient = 7
     organization = 8
     hungarian = 9
+    vietnamese = 10
+    german = 11
+    western = 12
+    russian = 13
 
 
 class PersonType(enum.IntEnum):

@@ -1,5 +1,5 @@
 import sys
-from typing import IO, Any, Dict, Optional, Sequence, Tuple, Type
+from typing import IO, Any, Dict, List, Optional, Sequence, Tuple, Type
 
 from peewee import CharField, DeferredForeignKey, TextField
 
@@ -16,6 +16,26 @@ from .base import (
     get_completer,
     get_tag_based_derived_field,
 )
+
+ALLOWED_TUSSENVOEGSELS = {
+    NamingConvention.dutch: {
+        "de",
+        "van",
+        "van den",
+        "van der",
+        "van de",
+        "ten",
+        "ter",
+        "in den",
+        "in 't",
+    },
+    NamingConvention.german: {"von", "von den", "von der", "zu"},
+    # French, Italian, Portuguese
+    NamingConvention.western: {"de", "du", "dos", "da", "de la", "del", "do"},
+}
+ALLOWED_TUSSENVOEGSELS[NamingConvention.unspecified] = set.union(
+    *ALLOWED_TUSSENVOEGSELS.values()
+) | {"v.d."}
 
 
 class Person(BaseModel):
@@ -139,7 +159,10 @@ class Person(BaseModel):
         )
 
     def taxonomic_authority(self) -> str:
-        if self.tussenvoegsel is not None and self.naming_convention is NamingConvention.dutch:
+        if (
+            self.tussenvoegsel is not None
+            and self.naming_convention is NamingConvention.dutch
+        ):
             return f"{self.tussenvoegsel[0].upper()}{self.tussenvoegsel[1:]} {self.family_name}"
         else:
             return self.family_name
@@ -156,21 +179,12 @@ class Person(BaseModel):
     def should_skip(self) -> bool:
         return self.type is not PersonType.deleted
 
-    @classmethod
-    def create_interactively(
-        cls, family_name: Optional[str] = None, **kwargs: Any
-    ) -> "Person":
-        if family_name is None:
-            family_name = cls.getter("family_name").get_one_key("family_name> ")
-        assert family_name is not None
-        kwargs.setdefault("type", PersonType.unchecked)
-        kwargs.setdefault("naming_convention", NamingConvention.western)
-        result = cls.create(family_name=family_name, **kwargs)
-        result.fill_field("tags")
-        return result
-
     def display(
-        self, full: bool = True, depth: int = 0, file: IO[str] = sys.stdout
+        self,
+        full: bool = False,
+        depth: int = 0,
+        file: IO[str] = sys.stdout,
+        include_detail: bool = False,
     ) -> None:
         onset = " " * depth
         indented_onset = onset + " " * 4
@@ -184,8 +198,11 @@ class Person(BaseModel):
                 refs = self.get_derived_field(field.name)
                 if refs is not None:
                     file.write(f"{indented_onset}{field.name.title()} ({len(refs)})\n")
-                    for nam in sorted(refs, key=lambda nam: nam.sort_key()):
-                        file.write(f"{double_indented_onset}{nam}\n")
+                    for nam in sorted(refs, key=_display_sort_key):
+                        if include_detail and isinstance(nam, models.Name):
+                            file.write(nam.get_description(full=True, depth=depth + 4))
+                        else:
+                            file.write(f"{double_indented_onset}{nam!r}\n")
 
     def find_tag(
         self, tags: Optional[Sequence[adt.ADT]], tag_cls: Type[adt.ADT]
@@ -251,6 +268,66 @@ class Person(BaseModel):
     def edit(self) -> None:
         self.fill_field("tags")
 
+    def sort_key(self) -> Tuple[str, ...]:
+        return (
+            self.type.name,
+            self.family_name,
+            self.given_names or "",
+            self.initials or "",
+            self.tussenvoegsel or "",
+            self.suffix or "",
+        )
+
+    def lint(self) -> bool:
+        if self.type is PersonType.deleted:
+            if self.total_references() > 0:
+                print(f"{self}: deleted person has references")
+                return False
+            return True
+        if (
+            self.type is PersonType.checked
+            and self.naming_convention is NamingConvention.unspecified
+        ):
+            print(f"{self}: checked but naming convention not set")
+            return False
+        if self.type is PersonType.unchecked:
+            if self.bio:
+                print(f"{self}: unchecked but bio set")
+                return False
+            if self.tags:
+                print(f"{self}: unchecked but tags set")
+                return False
+            if self.birth:
+                print(f"{self}: unchecked but year of birth set")
+                return False
+            if self.death:
+                print(f"{self}: unchecked but year of death set")
+                return False
+        if self.tussenvoegsel:
+            allowed = ALLOWED_TUSSENVOEGSELS[self.naming_convention]
+            if self.tussenvoegsel not in allowed:
+                print(f"{self}: disallowed tussenvoegsel {self.tussenvoegsel!r}")
+                return False
+        if self.naming_convention is NamingConvention.organization:
+            if self.given_names:
+                print(f"{self}: given_names set for organization")
+                return False
+            if self.initials:
+                print(f"{self}: initials set for organization")
+                return False
+            if self.suffix:
+                print(f"{self}: suffix set for organization")
+                return False
+        return True
+
+    @classmethod
+    def lint_all(cls) -> List["Person"]:
+        bad = []
+        for person in cls.select():
+            if not person.lint():
+                bad.append(person)
+        return bad
+
     def num_references(self) -> Dict[str, int]:
         num_refs = {}
         for field in self.derived_fields:
@@ -264,20 +341,82 @@ class Person(BaseModel):
 
     def reassign_references(self, target: Optional["Person"] = None) -> None:
         for field_name, tag_name, tag_cls in [
+            ("articles", "author_tags", AuthorTag.Author),
+            ("names", "author_tags", AuthorTag.Author),
             ("patronyms", "type_tags", models.TypeTag.NamedAfter),
             ("collected", "type_tags", models.TypeTag.CollectedBy),
-            ("names", "author_tags", AuthorTag.Author),
-            ("articles", "author_tags", AuthorTag.Author),
         ]:
             objs = self.get_derived_field(field_name)
-            if objs:
-                for obj in objs:
-                    self.edit_tag_sequence_on_object(
-                        obj, tag_name, tag_cls, field_name, target=target
-                    )
+            if not objs:
+                continue
+            for obj in sorted(objs, key=_display_sort_key):
+                if field_name == "names":
+                    obj.check_authors(autofix=True)
+                self.edit_tag_sequence_on_object(
+                    obj, tag_name, tag_cls, field_name, target=target
+                )
+
+    def maybe_reassign_references(self) -> None:
+        num_refs = sum(self.num_references().values())
+        if num_refs == 0:
+            return
+        print(f"======= {self} ({num_refs}) =======")
+        while True:
+            command = getinput.get_line(
+                "command> ",
+                validate=lambda command: command
+                in ("s", "skip", "r", "soft_redirect", "", "h", "hard_redirect", ""),
+                allow_none=True,
+                mouse_support=False,
+                history_key="reassign_references",
+                callbacks={
+                    "i": lambda: self.display(full=True, include_detail=True),
+                    "d": lambda: self.display(full=True),
+                    "f": lambda: self.display(full=False),
+                    "p": lambda: print("s = skip, r = soft redirect, d = display"),
+                    "e": self.edit,
+                    "v": lambda: self.reassign_names_with_verbatim(
+                        filter_for_name=True
+                    ),
+                },
+            )
+            if command in ("r", "soft_redirect", "h", "hard_redirect"):
+                target = Person.getter(None).get_one("target> ")
+                if target is not None:
+                    if command.startswith("h"):
+                        self.make_hard_redirect(target)
+                    else:
+                        self.make_soft_redirect(target)
+                    return
+                else:
+                    continue
+            elif command in ("s", "skip"):
+                return
+            else:
+                self.reassign_references()
+                return
+
+    def reassign_names_with_verbatim(self, filter_for_name: bool = False) -> None:
+        nams = self.get_derived_field("names")
+        if not nams:
+            return
+        nams = [nam for nam in nams if nam.verbatim_citation is not None]
+        if filter_for_name:
+            query = self.family_name.lower()
+            nams = [nam for nam in nams if query in nam.verbatim_citation.lower()]
+        nams = sorted(nams, key=lambda nam: (nam.numeric_year(), nam.verbatim_citation))
+        for nam in nams:
+            self.edit_tag_sequence_on_object(
+                nam, "author_tags", AuthorTag.Author, "names"
+            )
 
     def make_soft_redirect(self, target: "Person") -> None:
         self.type = PersonType.soft_redirect  # type: ignore
+        self.target = target
+        self.reassign_references(target=target)
+
+    def make_hard_redirect(self, target: "Person") -> None:
+        self.type = PersonType.hard_redirect  # type: ignore
         self.target = target
         self.reassign_references(target=target)
 
@@ -292,11 +431,43 @@ class Person(BaseModel):
             self.type = PersonType.deleted  # type: ignore
             self.save()
 
+    def is_more_specific_than(self, other: "Person") -> bool:
+        if self.family_name != other.family_name:
+            return False
+        if (
+            self.given_names
+            and not other.given_names
+            and self.get_initials() == other.get_initials()
+        ):
+            return True
+        if self.initials and not other.initials and not other.given_names:
+            return True
+        return False
+
     @classmethod
     def autodelete(cls, dry_run: bool = True) -> None:
         cls.compute_all_derived_fields()
         for person in cls.select_valid().filter(cls.type == PersonType.unchecked):
             person.maybe_autodelete(dry_run=dry_run)
+
+    @classmethod
+    def create_interactively(
+        cls, family_name: Optional[str] = None, **kwargs: Any
+    ) -> "Person":
+        if family_name is None:
+            family_name = cls.getter("family_name").get_one_key("family_name> ")
+        if getinput.yes_no("Create checked person? "):
+            assert family_name is not None
+            kwargs.setdefault("type", PersonType.checked)
+            kwargs.setdefault("naming_convention", NamingConvention.unspecified)
+            result = cls.create(family_name=family_name, **kwargs)
+            result.fill_field("tags")
+            return result
+        else:
+            for field in ("initials", "given_names", "suffix", "tussenvoegsel"):
+                if field not in kwargs:
+                    kwargs[field] = cls.getter(field).get_one_key(f"{field}> ")
+            return cls.get_or_create_unchecked(family_name, **kwargs)
 
     @classmethod
     def get_or_create_unchecked(
@@ -350,7 +521,7 @@ class Person(BaseModel):
                 suffix=suffix,
                 tussenvoegsel=tussenvoegsel,
                 type=PersonType.unchecked,
-                naming_convention=NamingConvention.western,
+                naming_convention=NamingConvention.unspecified,
             )
             print(f"Created {obj}")
             return obj
@@ -392,3 +563,10 @@ def _display_year(year: Optional[str]) -> str:
     except ValueError:
         pass
     return year
+
+
+def _display_sort_key(obj: BaseModel) -> Any:
+    if isinstance(obj, (models.Name, models.Article)):
+        return (obj.numeric_year(), obj.sort_key())
+    else:
+        return obj.sort_key()

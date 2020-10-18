@@ -17,7 +17,6 @@ Possible ones to add:
 import collections
 from collections import defaultdict
 import csv
-import difflib
 import functools
 from itertools import groupby
 import logging
@@ -2164,41 +2163,31 @@ def most_common_unchecked_names(num_to_display: int = 10) -> Counter[str]:
 
 
 @command
-def reassign_references(family_name: Optional[str] = None) -> None:
+def biggest_names(
+    num_to_display: int = 10, unchecked_only: bool = True
+) -> Counter[str]:
+    counter: Counter[Person] = Counter()
+    query = Person.select_valid()
+    if unchecked_only:
+        query = query.filter(Person.type == constants.PersonType.unchecked)
+    for person in query:
+        counter[person] = sum(person.num_references().values())
+    for value, count in counter.most_common(num_to_display):
+        print(value, count)
+    return counter
+
+
+@command
+def reassign_references(family_name: Optional[str] = None, substring: bool = True) -> None:
     if family_name is None:
         family_name = Person.getter("family_name").get_one_key()
-    for person in Person.bfind(
-        type=constants.PersonType.unchecked, family_name=family_name, quiet=True
-    ):
-        num_refs = sum(person.num_references().values())
-        if num_refs > 0:
-            print(f"======= {person} ({num_refs}) =======")
-            while True:
-                command = getinput.get_line(
-                    "command> ",
-                    validate=lambda command: command
-                    in ("s", "skip", "r", "soft_redirect", ""),
-                    allow_none=True,
-                    mouse_support=False,
-                    history_key="reassign_references",
-                    callbacks={
-                        "d": person.display,
-                        "p": lambda: print("s = skip, r = soft redirect, d = display"),
-                        "e": person.edit,
-                    },
-                )
-                if command in ("r", "soft_redirect"):
-                    target = Person.getter(None).get_one("target> ")
-                    if target is not None:
-                        person.make_soft_redirect(target)
-                        break
-                    else:
-                        continue
-                elif command in ("s", "skip"):
-                    break
-                else:
-                    person.reassign_references()
-                    break
+    query = Person.select_valid().filter(Person.type == constants.PersonType.unchecked)
+    if substring:
+        query = query.filter(Person.family_name.contains(family_name))
+    else:
+        query = query.filter(Person.family_name == family_name)
+    for person in sorted(query, key=lambda person: person.sort_key()):
+        person.maybe_reassign_references()
 
 
 PersonParams = Optional[Dict[str, Optional[str]]]
@@ -2296,99 +2285,6 @@ def _van(name: str) -> PersonParams:
 
 
 MATCHERS = [_initials, _full_name, _last_name_only, _cyrillic, _van]
-
-
-@command
-def replace_collectors(
-    dry_run: bool = True,
-    show_nams: bool = False,
-    limit: Optional[int] = None,
-    create_names: bool = False,
-    print_failure: bool = True,
-) -> List[str]:
-    nams = (
-        Name.select_valid()
-        .filter(Name.type_tags.contains(f"[{TypeTag.Collector._tag},"))
-        .limit(limit)
-    )
-    matched = 0
-    unmatched = 1
-    unmatched_names = []
-    for nam in nams:
-        all_tags = list(nam.type_tags)
-        tags = [tag for tag in all_tags if isinstance(tag, TypeTag.Collector)]
-        if tags:
-            if show_nams:
-                nam.display(full=False)
-            new_tags = all_tags
-            for matching_tag in tags:
-                names = (
-                    re.sub(
-                        r"^\[(MC: |SL: )?(.*)\]$",
-                        r"\2",
-                        re.sub(r"\s+", " ", matching_tag.name),
-                    )
-                    .replace("[MC: ", "[")
-                    .replace("[SL: ", "[")
-                    .replace(" and ", " & ")
-                    .replace(" y ", " & ")
-                    .replace(" (Al)", "")
-                    .strip()
-                    .rstrip(".")
-                    .split(" & ")
-                )
-                if len(names) == 2 and ", " in names[0] and "Jr" not in names[0]:
-                    names = [*names[0].strip().rstrip(",").split(", "), names[1]]
-                params_by_name = []
-                for name in names:
-                    person_params = None
-                    for matcher in MATCHERS:
-                        person_params = matcher(name)
-                        if person_params is not None:
-                            break
-                    params_by_name.append(person_params)
-
-                if all(params is not None for params in params_by_name):
-                    print(f"Get persons from {names}: {params_by_name}")
-                    additional_tags = [
-                        TypeTag.CollectedBy(
-                            person=None
-                            if dry_run and not create_names
-                            else Person.get_or_create_unchecked(**params)
-                        )
-                        for params in params_by_name
-                    ]
-                    new_tags = [
-                        tag for tag in new_tags if tag is not matching_tag
-                    ] + additional_tags
-                    matched += 1
-                else:
-                    if print_failure:
-                        print(f"Failed to match: {names}")
-                    unmatched += 1
-                    unmatched_names.append(matching_tag.name)
-
-            if new_tags != list(nam.type_tags):
-                print("Change tags:")
-                print_diff(nam.type_tags, new_tags)
-                if not dry_run:
-                    nam.type_tags = new_tags
-                    nam.save()
-
-    print(f"matched = {matched}")
-    print(f"unmatched = {unmatched}")
-    return unmatched_names
-
-
-def print_diff(a: Sequence[Any], b: Sequence[Any]) -> None:
-    matcher = difflib.SequenceMatcher(a=a, b=b)
-    for opcode, a_lo, a_hi, b_lo, b_hi in matcher.get_opcodes():
-        if opcode == "equal":
-            continue
-        for i in range(a_lo, a_hi):
-            print(f"- {a[i]}")
-        for i in range(b_lo, b_hi):
-            print(f"+ {b[i]}")
 
 
 @command

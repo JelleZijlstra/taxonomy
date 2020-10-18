@@ -64,7 +64,6 @@ class DerivedField(Generic[T]):
         if self.pull_on_miss:
             if not force_recompute and self.name in object_data:
                 return self.deserialize(object_data[self.name], self.get_type())
-            print(f"Cache miss on {model} {self.name}")
             assert (
                 self.compute is not None
             ), "compute must be set for pull-on-miss field"
@@ -83,7 +82,6 @@ class DerivedField(Generic[T]):
         if self.pull_on_miss:
             if not force_recompute and self.name in object_data:
                 return object_data[self.name]
-            print(f"Cache miss on {model} {self.name}")
             assert (
                 self.compute is not None
             ), "compute must be set for pull-on-miss field"
