@@ -2165,7 +2165,7 @@ def most_common_unchecked_names(num_to_display: int = 10) -> Counter[str]:
 @command
 def biggest_names(
     num_to_display: int = 10, unchecked_only: bool = True
-) -> Counter[str]:
+) -> Counter[Person]:
     counter: Counter[Person] = Counter()
     query = Person.select_valid()
     if unchecked_only:

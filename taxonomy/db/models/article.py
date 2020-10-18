@@ -35,7 +35,7 @@ from .base import (
     get_completer,
     get_tag_based_derived_field,
 )
-from ..constants import ArticleCommentKind, ArticleKind, ArticleType
+from ..constants import ArticleCommentKind, ArticleKind, ArticleType, PersonType
 from ..helpers import to_int
 from .. import models
 from ... import config, events, adt, getinput
@@ -676,6 +676,46 @@ class Article(BaseModel):
                 return True
         return False
 
+    def print_doi_information(self) -> None:
+        if not self.doi:
+            return
+        result = get_doi_information(self.doi)
+        if result:
+            print(result.prettify())
+
+    def set_author_tags_from_raw(
+        self,
+        value: Any,
+        confirm_creation: bool = False,
+        confirm_replacement: bool = False,
+    ) -> None:
+        for params in value:
+            if params["family_name"].isupper():
+                params["family_name"] = params["family_name"].title()
+        if confirm_creation:
+            for params in value:
+                print(params)
+            if not getinput.yes_no("Change authors? "):
+                return
+        new_tags = [
+            AuthorTag.Author(person=Person.get_or_create_unchecked(**params))
+            for params in value
+        ]
+        getinput.print_diff(self.author_tags, new_tags)
+        if confirm_replacement:
+            if not getinput.yes_no("Replace authors? "):
+                self.fill_field("author_tags")
+                return
+        self.author_tags = new_tags  # type: ignore
+
+    def recompute_authors_from_doi(self, confirm: bool = True) -> None:
+        if all(author.type is PersonType.checked for author in self.get_authors()):
+            return
+        data = self.expand_doi(overwrite=True)
+        if not data or "author_tags" not in data:
+            return
+        self.set_author_tags_from_raw(data["author_tags"], confirm_creation=confirm)
+
     def display(self, full: bool = False) -> None:
         print(self.cite())
 
@@ -780,3 +820,99 @@ class ArticleTag(adt.ADT):
         parent=Article, start_page=int, end_page=int, comment=str, tag=10
     )
     NonOriginal(comment=str, tag=10)  # type: ignore
+
+
+def get_doi_information(doi: str) -> Optional[BeautifulSoup]:
+    """Retrieves information for this DOI from the API."""
+    response = requests.get(
+        "http://www.crossref.org/openurl/",
+        {"pid": _options.crossrefid, "id": f"doi:{doi}", "noredirect": "true"},
+    )
+    if response.ok:
+        soup = BeautifulSoup(response.text, "xml")
+        if soup.query_result:
+            query = soup.query_result.body.query
+            if query["status"] != "resolved":
+                print(f"Could not resolve DOI {doi}")
+                return None
+            print(f"Retrieved data for DOI {doi}")
+            return query
+    print(f"Could not retrieve data for DOI {doi}")
+    return None
+
+
+def expand_doi(doi: str) -> Dict[str, Any]:
+    result = get_doi_information(doi)
+    if not result:
+        return {}
+    data: Dict[str, Any] = {"doi": doi}
+
+    doiType = result.doi["type"]
+    # values from http:#www.crossref.org/schema/queryResultSchema/crossref_query_output2.0.xsd
+    doi_type_to_article_type = {
+        "journal_title": ArticleType.JOURNAL,
+        "journal_issue": ArticleType.JOURNAL,
+        "journal_volume": ArticleType.JOURNAL,
+        "journal_article": ArticleType.JOURNAL,
+        "conference_paper": ArticleType.CHAPTER,
+        "component": ArticleType.CHAPTER,
+        "book_content": ArticleType.CHAPTER,
+        "dissertation": ArticleType.THESIS,
+        "conference_title": ArticleType.BOOK,
+        "conference_series": ArticleType.BOOK,
+        "book_title": ArticleType.BOOK,
+        "book_series": ArticleType.BOOK,
+        "report-paper_title": ArticleType.MISCELLANEOUS,
+        "report-paper_series": ArticleType.MISCELLANEOUS,
+        "report-paper_content": ArticleType.MISCELLANEOUS,
+        "standard_title": ArticleType.MISCELLANEOUS,
+        "standard_series": ArticleType.MISCELLANEOUS,
+        "standard_content": ArticleType.MISCELLANEOUS,
+    }
+    if doiType not in doi_type_to_article_type:
+        return {}
+    data["type"] = doi_type_to_article_type[doiType]
+    # kill leading zeroes
+    if result.volume is not None:
+        data["volume"] = re.sub(r"^0", "", result.volume.text)
+    if result.issue is not None:
+        data["issue"] = re.sub(r"^0", "", result.issue.text)
+    if result.first_page is not None:
+        data["start_page"] = re.sub(r"^0", "", result.first_page.text)
+    if result.last_page is not None:
+        data["end_page"] = re.sub(r"^0", "", result.last_page.text)
+    if result.year is not None:
+        data["year"] = result.year.text
+    if result.article_title is not None:
+        title = result.article_title.text
+        if title.upper() == title:
+            # all uppercase title; let's clean it up a bit
+            # this won't give correct punctuation, but it'll be better than all-uppercase
+            title = title[0] + title[1:].lower()
+        data["title"] = title
+    if result.journal_title is not None:
+        data["journal"] = result.journal_title.text
+    if result.isbn is not None:
+        data["isbn"] = result.isbn.text
+    if result.contributors is not None:
+        authors = []
+        for author in result.contributors.children:
+            if author.given_name:
+                authors.append(
+                    {
+                        "family_name": author.surname.text,
+                        "given_names": author.given_name.text,
+                    }
+                )
+            else:
+                authors.append({"family_name": author.surname.text})
+        data["author_tags"] = authors
+    if result.volume_title is not None:
+        booktitle = result.volume_title.text
+        if data["type"] == ArticleType.BOOK:
+            data["title"] = booktitle
+        else:  # chapter
+            data["parent_info"] = {"title": booktitle, "isbn": data["isbn"]}
+            if result.article_title is not None:
+                data["title"] = result.article_title.text
+    return data

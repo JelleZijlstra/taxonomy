@@ -896,7 +896,7 @@ class Name(BaseModel):
                 print(f"{self} author {i}: {article_author} does not match {name_author}")
         getinput.print_diff(self.author_tags, new_authors)
         if autofix:
-            self.author_tags = new_authors
+            self.author_tags = new_authors  # type: ignore
         return False
 
     def effective_year(self) -> int:

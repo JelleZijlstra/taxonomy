@@ -456,8 +456,8 @@ class Person(BaseModel):
     ) -> "Person":
         if family_name is None:
             family_name = cls.getter("family_name").get_one_key("family_name> ")
+        assert family_name is not None
         if getinput.yes_no("Create checked person? "):
-            assert family_name is not None
             kwargs.setdefault("type", PersonType.checked)
             kwargs.setdefault("naming_convention", NamingConvention.unspecified)
             result = cls.create(family_name=family_name, **kwargs)
@@ -478,7 +478,7 @@ class Person(BaseModel):
         given_names: Optional[str] = None,
         suffix: Optional[str] = None,
         tussenvoegsel: Optional[str] = None,
-    ) -> None:
+    ) -> "Person":
         objs = list(
             Person.select_valid().filter(
                 Person.family_name == family_name,
