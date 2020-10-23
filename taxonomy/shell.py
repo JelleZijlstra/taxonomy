@@ -635,9 +635,9 @@ def detect_complexes(allow_ignoring: bool = True) -> None:
                     f"ignoring {inferred} for {name} because {inferred.stem} != {stem}"
                 )
                 continue
-            if name.gender is not None and name.gender != inferred.gender:
+            if name.name_gender is not None and name.name_gender != inferred.gender:
                 print(
-                    f"ignoring {inferred} for {name} because {inferred.gender} != {name.gender}"
+                    f"ignoring {inferred} for {name} because {inferred.gender} != {name.name_gender}"
                 )
                 continue
         print(f"Inferred stem and complex for {name}: {stem}, {inferred}")
@@ -1046,7 +1046,7 @@ def stem_statistics() -> None:
     )
     gender = (
         Name.select_valid()
-        .filter(Name.group == Group.genus, ~(Name.gender >> None))
+        .filter(Name.group == Group.genus, ~(Name.name_gender >> None))
         .count()
     )
     total = Name.select_valid().filter(Name.group == Group.genus).count()
@@ -1480,7 +1480,7 @@ def bad_types() -> Iterable[Name]:
 
 ATTRIBUTES_BY_GROUP = {
     "stem": (Group.genus,),
-    "gender": (Group.genus,),
+    "name_gender": (Group.genus,),
     "name_complex": (Group.genus,),
     "species_name_complex": (Group.species,),
     "type": (Group.family, Group.genus),
@@ -1600,7 +1600,7 @@ def field_counts() -> None:
         "verbatim_citation",
         "verbatim_type",
         "stem",
-        "gender",
+        "name_gender",
         "type_specimen_source",
     ):
         print(field, Name.select_valid().filter(getattr(Name, field) != None).count())
@@ -1611,17 +1611,17 @@ def field_counts() -> None:
 def clean_up_gender(dry_run: bool = False) -> Iterable[Name]:
     count = 0
     for nam in Name.bfind(
-        Name.gender != None, Name.name_complex != None, quiet=True, sort=False
+        Name.name_gender != None, Name.name_complex != None, quiet=True, sort=False
     ):
-        if nam.gender == nam.name_complex.gender:
+        if nam.name_gender == nam.name_complex.gender:
             print(
-                f"remove gender from {nam} (gender={nam.gender!r}, NC={nam.name_complex})"
+                f"remove gender from {nam} (gender={nam.name_gender!r}, NC={nam.name_complex})"
             )
             if not dry_run:
-                nam.gender = None
+                nam.name_gender = None
             count += 1
         else:
-            print(f"{nam}: gender mismatch {nam.gender!r} vs. {nam.name_complex}")
+            print(f"{nam}: gender mismatch {nam.name_gender!r} vs. {nam.name_complex}")
             yield nam
         getinput.flush()
     print(f"{count} cleaned up")
@@ -2164,12 +2164,16 @@ def most_common_unchecked_names(num_to_display: int = 10) -> Counter[str]:
 
 @command
 def biggest_names(
-    num_to_display: int = 10, unchecked_only: bool = True
+    num_to_display: int = 10,
+    unchecked_only: bool = True,
+    family_name: Optional[str] = None,
 ) -> Counter[Person]:
     counter: Counter[Person] = Counter()
     query = Person.select_valid()
     if unchecked_only:
         query = query.filter(Person.type == constants.PersonType.unchecked)
+    if family_name is not None:
+        query = query.filter(Person.family_name == family_name)
     for person in query:
         counter[person] = sum(person.num_references().values())
     for value, count in counter.most_common(num_to_display):
@@ -2178,15 +2182,22 @@ def biggest_names(
 
 
 @command
-def reassign_references(family_name: Optional[str] = None, substring: bool = True) -> None:
+def reassign_references(
+    family_name: Optional[str] = None, substring: bool = True
+) -> None:
     if family_name is None:
         family_name = Person.getter("family_name").get_one_key()
+    if not family_name:
+        return
     query = Person.select_valid().filter(Person.type == constants.PersonType.unchecked)
     if substring:
         query = query.filter(Person.family_name.contains(family_name))
     else:
         query = query.filter(Person.family_name == family_name)
-    for person in sorted(query, key=lambda person: person.sort_key()):
+    persons = sorted(query, key=lambda person: person.sort_key())
+    for person in persons:
+        print(f"- {person!r}", flush=True)
+    for person in persons:
         person.maybe_reassign_references()
 
 
@@ -2925,6 +2936,10 @@ def run_maintenance(skip_slow: bool = True) -> Dict[Any, Any]:
         clean_up_gender,
         clean_up_type_specimen_source,
         check_corrected_original_name,
+        Person.autodelete,
+        Person.find_duplicates,
+        Person.resolve_redirects,
+        Person.lint_all,
     ]
     # these each take >60 s
     slow: List[Callable[[], Any]] = [

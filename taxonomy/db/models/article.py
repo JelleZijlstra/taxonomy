@@ -38,10 +38,10 @@ from .base import (
 from ..constants import ArticleCommentKind, ArticleKind, ArticleType, PersonType
 from ..helpers import to_int
 from .. import models
-from ... import config, events, adt, getinput
+from ... import config, events, adt, getinput, parsing
 
 from .citation_group import CitationGroup
-from .person import AuthorTag, Person
+from .person import AuthorTag, Person, PersonLevel
 
 T = TypeVar("T", bound="Article")
 
@@ -333,6 +333,7 @@ class Article(BaseModel):
             "o": self.openf,
             "openf": self.openf,
             "reverse": self.reverse_authors,
+            "specify_authors": self.specify_authors,
         }
 
     def get_value_to_show_for_field(self, field: Optional[str]) -> str:
@@ -582,8 +583,10 @@ class Article(BaseModel):
             self.tags = self.tags + (tag,)
 
     def has_tag(self, tag_cls: Type[adt.ADT]) -> bool:
-        for tag in self.get_tags(self.tags, tag_cls):
-            return True
+        tag_id = tag_cls._tag
+        for tag in self.get_raw_tags_field("tags"):
+            if tag[0] == tag_id:
+                return True
         return False
 
     def geturl(self) -> Optional[str]:
@@ -701,20 +704,73 @@ class Article(BaseModel):
             AuthorTag.Author(person=Person.get_or_create_unchecked(**params))
             for params in value
         ]
-        getinput.print_diff(self.author_tags, new_tags)
+        if self.author_tags is not None:
+            getinput.print_diff(self.author_tags, new_tags)
         if confirm_replacement:
             if not getinput.yes_no("Replace authors? "):
                 self.fill_field("author_tags")
                 return
         self.author_tags = new_tags  # type: ignore
 
-    def recompute_authors_from_doi(self, confirm: bool = True) -> None:
-        if all(author.type is PersonType.checked for author in self.get_authors()):
+    def specify_authors(
+        self, level: Optional[PersonLevel] = PersonLevel.initials_only
+    ) -> None:
+        if self.has_tag(ArticleTag.InitialsOnly):
             return
-        data = self.expand_doi(overwrite=True)
+        opened = False
+        for i, author in enumerate(self.get_authors()):
+            if level is not None and author.get_level() is not level:
+                continue
+            if not opened:
+                self.openf()
+                opened = True
+            author.edit_tag_sequence_on_object(
+                self, "author_tags", AuthorTag.Author, "articles"
+            )
+        if level is not None:
+            bad_authors = [
+                author for author in self.get_authors() if author.get_level() is level
+            ]
+            if bad_authors:
+                print(f"Remaining authors at level {level}: {bad_authors}")
+                if getinput.yes_no("Add InitialsOnly tag? "):
+                    self.add_tag(ArticleTag.InitialsOnly)
+                else:
+                    self.edit()
+
+    def recompute_authors_from_doi(
+        self, confirm: bool = True, force: bool = False
+    ) -> None:
+        if not self.doi:
+            return
+        if not force and not all(
+            author.type is PersonLevel.initials_only for author in self.get_authors()
+        ):
+            return
+        data = expand_doi(self.doi)
         if not data or "author_tags" not in data:
             return
-        self.set_author_tags_from_raw(data["author_tags"], confirm_creation=confirm)
+        if len(data["author_tags"]) != len(self.get_raw_tags_field("author_tags")):
+            return
+        self.set_author_tags_from_raw(
+            data["author_tags"], confirm_creation=confirm, confirm_replacement=confirm
+        )
+
+    @classmethod
+    def recompute_all_incomplete_authors(cls, limit: Optional[int] = None) -> None:
+        for art in (
+            cls.select_valid().filter(cls.doi != None, cls.doi != "").limit(limit)
+        ):
+            if art.doi.startswith("10.2307/"):
+                continue  # JSTOR dois aren't real
+            authors = art.get_authors()
+            if authors and all(
+                author.get_level() is PersonLevel.initials_only for author in authors
+            ):
+                print(art)
+                print(art.get_authors())
+                art.recompute_authors_from_doi(confirm=False)
+                getinput.flush()
 
     def display(self, full: bool = False) -> None:
         print(self.cite())
@@ -820,6 +876,8 @@ class ArticleTag(adt.ADT):
         parent=Article, start_page=int, end_page=int, comment=str, tag=10
     )
     NonOriginal(comment=str, tag=10)  # type: ignore
+    # The article doesn't give full names for the authors
+    InitialsOnly(tag=11)  # type: ignore
 
 
 def get_doi_information(doi: str) -> Optional[BeautifulSoup]:
@@ -897,15 +955,18 @@ def expand_doi(doi: str) -> Dict[str, Any]:
     if result.contributors is not None:
         authors = []
         for author in result.contributors.children:
+            info = {"family_name": author.surname.text}
             if author.given_name:
-                authors.append(
-                    {
-                        "family_name": author.surname.text,
-                        "given_names": author.given_name.text,
-                    }
-                )
-            else:
-                authors.append({"family_name": author.surname.text})
+                given_names = author.given_name.text.title()
+                if given_names[-1].isupper():
+                    given_names = given_names + "."
+                if parsing.matches_grammar(
+                    given_names.replace(" ", ""), parsing.initials_pattern
+                ):
+                    info["initials"] = given_names.replace(" ", "")
+                else:
+                    info["given_names"] = given_names
+            authors.append(info)
         data["author_tags"] = authors
     if result.volume_title is not None:
         booktitle = result.volume_title.text

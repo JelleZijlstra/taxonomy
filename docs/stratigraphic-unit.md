@@ -1,7 +1,7 @@
 # Stratigraphic units
 
 Stratigraphic units are subdivisions of the rock record, such as
-formations and members. Strictly speaking, these are 
+formations and members. Strictly speaking, these are
 lithostratigraphic units; some biostratigraphic units are listed as
 [Periods](/docs/period) instead.
 

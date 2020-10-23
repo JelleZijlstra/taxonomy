@@ -455,6 +455,15 @@ class SpeciesNameKind(enum.IntEnum):
     # no etymology given and no etymology apparent; treated as invariant by default
     unknown = 12
 
+    def is_patronym(self) -> bool:
+        return self in {
+            SpeciesNameKind.patronym_masculine,
+            SpeciesNameKind.patronym_masculine_plural,
+            SpeciesNameKind.patronym_masculine,
+            SpeciesNameKind.patronym_feminine_plural,
+            SpeciesNameKind.patronym_latin,
+        }
+
     def is_single_complex(self) -> bool:
         return self not in {SpeciesNameKind.adjective, SpeciesNameKind.ambiguous_noun}
 
@@ -578,18 +587,21 @@ class ArticleCommentKind(enum.IntEnum):
 
 class NamingConvention(enum.IntEnum):
     unspecified = 1
-    chinese = 2
+    pinyin = 2
     japanese = 3
-    dutch = 4
-    burmese = 5
-    spanish = 6
-    ancient = 7
+    dutch = 4  # treatment of tussenvoegsels
+    burmese = 5  # no family names
+    spanish = 6  # double surnames
+    ancient = 7  # mononyms
     organization = 8
-    hungarian = 9
+    hungarian = 9  # family name usually comes first
     vietnamese = 10
-    german = 11
+    german = 11  # treatment of von
     western = 12
-    russian = 13
+    russian = 13  # allow Cyrillic
+    turkish = 14  # for the dotted and dotless i
+    chinese = 15  # Chinese-style names, but not in pinyin
+    korean = 16
 
 
 class PersonType(enum.IntEnum):

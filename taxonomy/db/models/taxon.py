@@ -1204,6 +1204,7 @@ def fill_data_from_paper(
                         paper.openf()
                         paper.add_to_history()
                         print(f"filling data from {paper.name}")
+                        paper.specify_authors()
                     opened = True
                     current_level = _fill_data_level_for_name(nam)
                     print(f"Level: {current_level.name.upper()}")
@@ -1364,6 +1365,7 @@ def replace_type_specimen_source_from_paper(
         return False
     art.add_to_history()
     art.openf()
+    art.specify_authors()
     if ask_before_opening:
         clean_tss_interactive(art)
 
@@ -1424,14 +1426,16 @@ def display_names(
 def clean_tss_interactive(art: Article, field: str = "corrected_original_name") -> None:
     art.openf()
     art.add_to_history()
+    art.specify_authors()
     while True:
         obj = models.Name.getter(field).get_one(
             prompt=f"{field}> ",
             callbacks={
-                "o": lambda: art.openf(),
+                "o": art.openf,
                 "d": lambda: display_names(art),
                 "f": lambda: display_names(art, full=True),
                 "t": lambda: display_names(art, omit_if_done=True),
+                "edit": art.edit,
             },
         )
         if obj is None:
@@ -1445,7 +1449,7 @@ def clean_tss_interactive(art: Article, field: str = "corrected_original_name") 
             obj.display()
             if getinput.yes_no("Remove type_specimen_source? "):
                 obj.type_specimen_source = None
-            obj.save()
+                obj.save()
 
 
 def _fill_data_level_for_name(

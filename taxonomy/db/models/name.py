@@ -58,6 +58,7 @@ _CRUCIAL_MISSING_FIELDS: Dict[Group, Set[str]] = {
     Group.family: set(),
     Group.high: set(),
 }
+_ETYMOLOGY_CUTOFF = 1990
 
 
 class Name(BaseModel):
@@ -103,8 +104,8 @@ class Name(BaseModel):
 
     # Gender and stem
     stem = CharField(null=True)  # redundant with name complex?
-    gender = EnumField(
-        constants.GrammaticalGender, null=True
+    name_gender = EnumField(
+        constants.GrammaticalGender, null=True, db_column="gender"
     )  # for genus group; redundant with name complex
     name_complex = ForeignKeyField(NameComplex, null=True, related_name="names")
     species_name_complex = ForeignKeyField(
@@ -421,6 +422,8 @@ class Name(BaseModel):
             "fill_required_fields": lambda: self.fill_required_fields(
                 skip_fields={"type_tags"}
             ),
+            "copy_authors": self.copy_authors,
+            "check_authors": self.check_authors,
         }
 
     def edit(self) -> None:
@@ -873,27 +876,64 @@ class Name(BaseModel):
     def taxonomic_authority(self) -> str:
         return Person.join_authors(self.get_authors())
 
-    def check_authors(self, autofix: bool = False) -> bool:
+    def copy_authors(self) -> None:
+        citation = self.original_citation
+        if citation is None:
+            print("No original citation; cannot copy authors")
+            return
+        if self.author_tags:
+            getinput.print_diff(self.author_tags, citation.author_tags)
+        self.author_tags = citation.author_tags
+
+    @classmethod
+    def check_all_authors(
+        cls, autofix: bool = True, quiet: bool = True
+    ) -> List["Name"]:
+        bad = []
+        for nam in cls.select_valid().filter(cls.author_tags != None):
+            if not nam.check_authors(autofix=autofix, quiet=quiet):
+                bad.append(nam)
+        print(f"{len(bad)} discrepancies")
+        return bad
+
+    def check_authors(self, autofix: bool = True, quiet: bool = False) -> bool:
+        if self.has_type_tag(TypeTag.DifferentAuthority):
+            return True
         citation = self.original_citation
         if not citation:
             return True
-        if self.get_raw_tags_field("author_tags") == citation.get_raw_tags_field("author_tags"):
+        if self.get_raw_tags_field("author_tags") == citation.get_raw_tags_field(
+            "author_tags"
+        ):
             return True
+        maybe_print = (
+            (lambda message: None)
+            if quiet
+            else lambda message: print(f"{self}: {message}")
+        )
         name_authors = self.get_authors()
         article_authors = self.original_citation.get_authors()
         if len(name_authors) != len(article_authors):
-            print(f"{self}: length mismatch {len(name_authors)} vs. {len(article_authors)}")
+            maybe_print(
+                f"length mismatch {len(name_authors)} vs. {len(article_authors)}"
+            )
             return False
         new_authors = list(self.author_tags)
-        for i, (name_author, article_author) in enumerate(zip(name_authors, article_authors)):
+        for i, (name_author, article_author) in enumerate(
+            zip(name_authors, article_authors)
+        ):
             if name_author == article_author:
                 continue
 
             if article_author.is_more_specific_than(name_author):
-                print(f"{self} author {i}: {article_author} is more specific than {name_author}")
+                maybe_print(
+                    f"author {i}: {article_author} is more specific than {name_author}"
+                )
                 new_authors[i] = AuthorTag.Author(person=article_author)
             else:
-                print(f"{self} author {i}: {article_author} does not match {name_author}")
+                maybe_print(
+                    f"author {i}: {article_author} (article) does not match {name_author} (name)"
+                )
         getinput.print_diff(self.author_tags, new_authors)
         if autofix:
             self.author_tags = new_authors  # type: ignore
@@ -949,7 +989,7 @@ class Name(BaseModel):
         if full and (
             self.original_name is not None
             or self.stem is not None
-            or self.gender is not None
+            or self.name_gender is not None
             or self.definition is not None
         ):
             parts = []
@@ -967,8 +1007,8 @@ class Name(BaseModel):
             else:
                 if self.stem is not None:
                     parts.append("stem: %s" % self.stem)
-                if self.gender is not None:
-                    parts.append(constants.GrammaticalGender(self.gender).name)
+                if self.name_gender is not None:
+                    parts.append(constants.GrammaticalGender(self.name_gender).name)
             if self.definition is not None:
                 parts.append(str(self.definition))
             out += " (%s)" % "; ".join(parts)
@@ -1067,6 +1107,8 @@ class Name(BaseModel):
 
     def fill_data_level(self) -> FillDataLevel:
         required_fields = set(self.get_empty_required_fields())
+        if not self.check_authors():
+            return FillDataLevel.needs_basic_data
         if has_data_from_original(self):
             if _CRUCIAL_MISSING_FIELDS[self.group] & required_fields:
                 return FillDataLevel.needs_more_data
@@ -1077,26 +1119,47 @@ class Name(BaseModel):
             ):
                 return FillDataLevel.nothing_needed
             else:
+                if (
+                    self.has_type_tag(TypeTag.EtymologyDetail)
+                    and self.species_name_complex
+                    and self.species_name_complex.kind.is_patronym()
+                ):
+                    return FillDataLevel.incomplete_detail
                 if not self._requires_detail():
                     return FillDataLevel.nothing_needed
                 else:
                     tags: List[TypeTag] = self.type_tags or []
                     citation = self.original_citation
-                    ld = [
-                        tag
+                    ld = any(
+                        True
                         for tag in tags
-                        if isinstance(tag, TypeTag.LocationDetail)
-                        and tag.source == citation
-                    ]
-                    sd = [
-                        tag
-                        for tag in tags
-                        if isinstance(
-                            tag, (TypeTag.SpecimenDetail, TypeTag.CitationDetail)
+                        if (
+                            isinstance(tag, TypeTag.LocationDetail)
+                            and tag.source == citation
                         )
-                        and tag.source == citation
-                    ]
-                    if bool(sd) and bool(ld):
+                        or tag is TypeTag.NoLocation
+                    )
+                    sd = any(
+                        True
+                        for tag in tags
+                        if (
+                            isinstance(
+                                tag, (TypeTag.SpecimenDetail, TypeTag.CitationDetail)
+                            )
+                            and tag.source == citation
+                        )
+                        or tag is TypeTag.NoSpecimen
+                    )
+                    ed = self.numeric_year() < _ETYMOLOGY_CUTOFF or any(
+                        True
+                        for tag in tags
+                        if (
+                            isinstance(tag, TypeTag.EtymologyDetail)
+                            and tag.source == citation
+                        )
+                        or tag is TypeTag.NoEtymology
+                    )
+                    if sd and ld and ed:
                         return FillDataLevel.nothing_needed
                     else:
                         return FillDataLevel.incomplete_detail
@@ -1106,7 +1169,11 @@ class Name(BaseModel):
             elif self.group is Group.family or self.group is Group.high:
                 return FillDataLevel.nothing_needed
             elif self.group is Group.genus:
-                if "type" in self.get_required_fields() and self.numeric_year() >= 1990:
+                if (
+                    "type" in self.get_required_fields()
+                    and self.numeric_year() >= _ETYMOLOGY_CUTOFF
+                    and not self.has_type_tag(TypeTag.NoEtymology)
+                ):
                     return FillDataLevel.needs_basic_data
                 else:
                     return FillDataLevel.nothing_needed
@@ -1185,7 +1252,7 @@ class Name(BaseModel):
     def get_deprecated_fields(self) -> Iterable[str]:
         yield "type_specimen_source"
         yield "stem"
-        yield "gender"
+        yield "name_gender"
 
     def validate_as_child(self, status: Status = Status.valid) -> Taxon:
         if self.taxon.rank is Rank.species:
@@ -1808,6 +1875,11 @@ class TypeTag(adt.ADT):
     EtymologyDetail(text=str, source=Article, tag=27)  # type: ignore
     NamedAfter(person=Person, tag=28)  # type: ignore
     CollectedBy(person=Person, tag=29)  # type: ignore
+
+    DifferentAuthority(comment=str, tag=30)  # type: ignore
+    NoEtymology(tag=31)  # type: ignore
+    NoLocation(tag=32)  # type: ignore
+    NoSpecimen(tag=33)  # type: ignore
 
 
 SOURCE_TAGS = (

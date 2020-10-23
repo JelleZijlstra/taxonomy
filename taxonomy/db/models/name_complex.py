@@ -334,9 +334,9 @@ class NameComplex(BaseModel):
         print(f"found {len(names)} names with -{ending} to apply {self}")
         output = []
         for name in names:
-            if name.gender is not None and name.gender != self.gender:
+            if name.name_gender is not None and name.name_gender != self.gender:
                 print(
-                    f"ignoring {name} because its gender {name.gender} does not match"
+                    f"ignoring {name} because its gender {name.name_gender} does not match"
                 )
                 output.append(name)
             else:

@@ -193,11 +193,12 @@ class BaseModel(Model):
         ]
         if single_compute_fields:
             print(
-                f"Computing {', '.join(field.name for field in single_compute_fields)}"
+                f"Computing {', '.join(field.name for field in single_compute_fields)}",
+                flush=True,
             )
             for i, obj in enumerate(cls.select_valid()):
                 if i > 0 and i % 100 == 0:
-                    print(f"{i} done")
+                    print(f"{i} done", flush=True)
                 for field in cls.derived_fields:
                     if field.compute is not None:
                         value = field.compute(obj)
@@ -205,7 +206,7 @@ class BaseModel(Model):
 
         for field in cls.derived_fields:
             if field.compute_all is not None:
-                print(f"Computing {field.name}")
+                print(f"Computing {field.name}", flush=True)
                 field.compute_and_store_all(cls)
 
     def sort_key(self) -> Any:
@@ -436,6 +437,10 @@ class BaseModel(Model):
         else:
             raise ValueError(f"don't know how to fill {field}")
 
+    @classmethod
+    def get_interactive_creators(cls) -> Dict[str, Callable[[], Any]]:
+        return {"n": cls.create_interactively}
+
     def get_adt_callbacks(self) -> getinput.CallbackMap:
         def callback(field: str) -> Callable[[], None]:
             return lambda: self.fill_field(field)
@@ -448,6 +453,7 @@ class BaseModel(Model):
             "edit_foreign": self.edit_foreign,
             "edit_sibling": self.edit_sibling,
             "empty": self.empty,
+            "full_data": self.full_data,
         }
 
     def edit_sibling(self) -> None:
@@ -551,6 +557,7 @@ class BaseModel(Model):
         else:
             default = getattr(default_obj, foreign_cls.label_field)
         getter = foreign_cls.getter(None)
+        creators = foreign_cls.get_interactive_creators()
         while True:
             value = getter.get_one_key(
                 f"{label}> ",
@@ -558,12 +565,13 @@ class BaseModel(Model):
                 callbacks=callbacks,
                 allow_empty=allow_none,
             )
-            if value == "n":
-                result = foreign_cls.create_interactively()
-                print(f"created new {foreign_cls} {result}")
-                return result
-            elif value is None:
+            if value is None:
                 return None
+            elif value in creators:
+                result = creators[value]()
+                if result is not None:
+                    print(f"created {foreign_cls} {result}")
+                    return result
             else:
                 try:
                     return getter(value)
@@ -823,6 +831,7 @@ class _NameGetter(Generic[ModelT]):
     ) -> Optional[ModelT]:
         self._warm_cache()
         assert self._data is not None
+        creators = self.cls.get_interactive_creators()
         while True:
             key = getinput.get_with_completion(
                 self._data,
@@ -834,10 +843,11 @@ class _NameGetter(Generic[ModelT]):
             )
             if not key:
                 return None
-            elif key == "n":
-                result = self.cls.create_interactively()
-                print(f"created new {self.cls} {result}")
-                return result
+            elif key in creators:
+                result = creators[key]()
+                if result is not None:
+                    print(f"created {self.cls} {result}")
+                    return result
             elif key == "e":
                 try:
                     obj = self._get_from_key(default)

@@ -284,7 +284,9 @@ def get_adt_list(
             history_key=adt_cls,
             disallow_other=not callbacks,
         )
-        if member == "p":
+        if member is not None and member in callbacks:
+            callbacks[member]()
+        elif member == "p":
             for line in display_tags("", out, show_indexes=True):
                 print(line, end="")
             continue
@@ -305,6 +307,9 @@ def get_adt_list(
                         existing=existing_member,
                         completers=completers,
                     )
+        elif member == "r" or member == "remove_all":
+            if yes_no("Are you sure you want to remove all tags? "):
+                out[:] = []
         elif member.startswith("r") and member[1:].isnumeric():
             index = int(member[1:])
             if index >= len(out):
@@ -314,8 +319,6 @@ def get_adt_list(
                 del out[index]
         elif member in name_to_cls:
             out.append(_get_adt_member(name_to_cls[member], completers=completers))
-        elif member in callbacks:
-            callbacks[member]()
         else:
             print(f"unrecognized command: {member}")
 

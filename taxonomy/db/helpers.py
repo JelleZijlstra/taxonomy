@@ -515,10 +515,13 @@ def _clean_up_word(word: str) -> str:
     return word.rstrip("s")
 
 
-def simplify_string(text: str) -> str:
+def simplify_string(text: str, clean_words: bool = True) -> str:
     text = re.sub(r"[\.,]", "", text)
     text = clean_string(text).lower()
-    text = "".join(_clean_up_word(word) for word in text.split())
+    if clean_words:
+        text = "".join(_clean_up_word(word) for word in text.split())
+    else:
+        text = text.replace(" ", "")
     return text
 
 
@@ -528,9 +531,22 @@ def clean_string(text: str) -> str:
     text = text.replace("\xad", "")
     text = text.replace("’", "'")
     text = re.sub(r"[“”]", '"', text)
-    text = re.sub(r"-\s+", "", text)
     text = re.sub(r"\s+", " ", text)
     return text.strip()
+
+
+def clean_strings_recursively(obj: object) -> object:
+    if isinstance(obj, str):
+        return clean_string(obj)
+    elif isinstance(obj, dict):
+        return {
+            clean_strings_recursively(key): clean_strings_recursively(value)
+            for key, value in obj.items()
+        }
+    elif isinstance(obj, (list, set, tuple)):
+        return type(obj)(clean_strings_recursively(elt) for elt in obj)
+    else:
+        return obj
 
 
 def to_int(string: Optional[str]) -> int:
