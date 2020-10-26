@@ -179,8 +179,8 @@ class BaseModel(Model):
         self._name_to_derived_field[name].set_value(self, value)
 
     def get_raw_tags_field(self, name: str) -> Any:
-        data = self.__data__[name]
-        if data is None:
+        data = self.__data__.get(name)
+        if not data:
             return []
         return json.loads(data)
 

@@ -1123,6 +1123,7 @@ class Name(BaseModel):
                     self.has_type_tag(TypeTag.EtymologyDetail)
                     and self.species_name_complex
                     and self.species_name_complex.kind.is_patronym()
+                    and not self.has_type_tag(TypeTag.NamedAfter)
                 ):
                     return FillDataLevel.incomplete_detail
                 if not self._requires_detail():

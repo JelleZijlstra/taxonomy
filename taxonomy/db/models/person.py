@@ -175,9 +175,11 @@ class Person(BaseModel):
         names = self.given_names.split(" ")
 
         def name_to_initial(name: str) -> str:
-            if "-" in name:
+            if "." in name:
+                return name
+            elif "-" in name:
                 return "-".join(name_to_initial(part) for part in name.split("-"))
-            elif name[0].isupper():
+            elif name[0].isupper() or self.naming_convention is NamingConvention.pinyin:
                 return name[0] + "."
             else:
                 return f" {name}"
@@ -578,6 +580,9 @@ class Person(BaseModel):
             target = Person.getter(None).get_one("target > ")
         if target is None:
             return
+        if target == self:
+            print(f"Cannot redirect {self} to itself")
+            return
         self.type = PersonType.soft_redirect  # type: ignore
         self.target = target
         self.reassign_references(target=target)
@@ -586,6 +591,9 @@ class Person(BaseModel):
         if target is None:
             target = Person.getter(None).get_one("target > ")
         if target is None:
+            return
+        if target == self:
+            print(f"Cannot redirect {self} to itself")
             return
         self.type = PersonType.hard_redirect  # type: ignore
         self.target = target
@@ -609,31 +617,28 @@ class Person(BaseModel):
             if other.given_names:
                 return self.given_names.startswith(other.given_names + " ")
             elif other.initials:
-                my_initials = self.get_initials()
-                other_initials = other.get_initials()
-                return (
-                    my_initials is not None
-                    and other_initials is not None
-                    and my_initials.replace("-", "")
-                    .lower()
-                    .startswith(other_initials.replace("-", "").lower())
-                )
+                return self._has_more_specific_initials(other)
             else:
                 return True
         elif self.initials:
             if other.given_names:
                 return False
             elif other.initials:
-                my_initials = self.get_initials()
-                other_initials = other.get_initials()
-                return (
-                    my_initials is not None
-                    and other_initials is not None
-                    and my_initials.startswith(other_initials)
-                )
+                return self._has_more_specific_initials(other)
             else:
                 return True
         return False
+
+    def _has_more_specific_initials(self, other: "Person") -> bool:
+        my_initials = self.get_initials()
+        other_initials = other.get_initials()
+        return (
+            my_initials is not None
+            and other_initials is not None
+            and my_initials.replace("-", "")
+            .lower()
+            .startswith(other_initials.replace("-", "").lower())
+        )
 
     @classmethod
     def resolve_redirects(cls) -> None:
