@@ -110,9 +110,17 @@ Languages written in the Latin alphabet:
 - _hungarian_: Hungarian names conventionally put the family name first.
 - _turkish_: Turkish names are separated because forms of the letter I are
   capitalized differently: I ı forms a separate pair from İ i.
-- _vietnamese_: Vietnamese names also write the family name first. Written
+- _vietnamese_: Vietnamese names also write the family name first. Unlike
+  most other East Asian-style names, Vietnamese names usually also include
+  a middle name. Written
   Vietnamese uses a large set of unusual diacritics, but these seem to be
-  usually omitted when Vietnamese scientists are listed as authors.
+  usually omitted when Vietnamese scientists are listed as authors. Modes
+  of citation for Vietnamese names vary; for example,
+  [Nguyen Truong Son](/h/43537) is often cited as "Son", but also as
+  "S.T. Nguyen". In the database, the family name field should contain
+  the family name, and the given names field should contain the given name
+  followed by the middle name. Note that this reverses the normal name order
+  in Vietnamese.
 
 Non-Latin writing systems:
 
