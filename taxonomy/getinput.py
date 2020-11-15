@@ -253,6 +253,9 @@ def get_enum_member(  # noqa
     return enum_cls[choice]
 
 
+_ADT_LIST_BUILTINS = ["r", "remove_all", "h"]
+
+
 def get_adt_list(
     adt_cls: Type[adt.ADT],
     existing: Optional[Iterable[adt.ADT]] = None,
@@ -273,7 +276,7 @@ def get_adt_list(
     while True:
         options = [
             *name_to_cls.keys(),
-            "p",
+            *_ADT_LIST_BUILTINS,
             *map(str, range(len(out))),
             *[f"r{i}" for i in range(len(out))],
             *callbacks,

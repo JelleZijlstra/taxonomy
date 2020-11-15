@@ -46,12 +46,12 @@ class CitationGroup(BaseModel):
         return obj
 
     @classmethod
-    def get_or_create(cls, name: str) -> "CitationGroup":
+    def get_or_create(cls, name: str) -> Optional["CitationGroup"]:
         try:
             return cls.get(name=name)
         except cls.DoesNotExist:
-            print(f"Creating new CitationGroup named {name}...")
-            return cls.create_interactively(name=name)
+            print(f"Failed to find a CitationGroup named {name}...")
+            return cls.getter("name").get_one()
 
     def get_required_fields(self) -> Iterable[str]:
         yield "name"
@@ -110,7 +110,11 @@ class CitationGroup(BaseModel):
         nams = self.get_names()
         nams = [nam for nam in nams if condition(nam.numeric_year())]
         if author is not None:
-            nams = [nam for nam in nams if author in nam.author_set()]
+            nams = [
+                nam
+                for nam in nams
+                if any(author == person.family_name for person in nam.get_authors())
+            ]
         self._display_nams(nams)
         if include_articles:
             for art in sorted(

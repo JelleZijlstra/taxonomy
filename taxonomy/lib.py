@@ -11,6 +11,7 @@ from typing import Any, Container, Dict, Iterable, List, Optional, Tuple, Type, 
 
 import peewee
 
+from taxonomy import getinput
 from taxonomy.db.constants import AgeClass, Group, Rank, Status
 from taxonomy.db.models import (
     Article,
@@ -21,6 +22,7 @@ from taxonomy.db.models import (
     Name,
     Occurrence,
     Period,
+    Person,
     Taxon,
 )
 
@@ -30,7 +32,7 @@ def occ(
     loc: Location,
     source: Optional[Article] = None,
     replace_source: bool = False,
-    **kwargs: Any
+    **kwargs: Any,
 ) -> Occurrence:
     if source is None:
         source = s  # type: ignore  # noqa
@@ -54,7 +56,7 @@ def occur(
     locs: Iterable[Location],
     source: Optional[Article] = None,
     replace_source: bool = False,
-    **kwargs: Any
+    **kwargs: Any,
 ) -> None:
     for loc in locs:
         occ(t, loc, source=source, replace_source=replace_source, **kwargs)
@@ -140,7 +142,7 @@ def mocc(
     locs: Iterable[Location],
     source: Optional[Article] = None,
     replace_source: bool = False,
-    **kwargs: Any
+    **kwargs: Any,
 ) -> None:
     for loc in locs:
         occ(t, loc, source=source, replace_source=replace_source, **kwargs)
@@ -151,7 +153,7 @@ def multi_taxon(
     loc: Location,
     source: Optional[Article] = None,
     replace_source: bool = False,
-    **kwargs: Any
+    **kwargs: Any,
 ) -> None:
     for t in ts:
         occ(t, loc, source=source, replace_source=replace_source, **kwargs)
@@ -257,6 +259,26 @@ g = partial(
     f,
     skip_fields={"original_citation", "type_specimen", "collection", "genus_type_kind"},
 )
+
+
+def h(author: str, year: int) -> Tuple[List[Article], List[Name]]:
+    authors = Person.select_valid().filter(Person.family_name == author)
+    nams = []
+    arts = []
+    for aut in authors:
+        for art in aut.get_sorted_derived_field("articles"):
+            if art.numeric_year() == year:
+                arts.append(art)
+        for nam in aut.get_sorted_derived_field("names"):
+            if nam.numeric_year() == year:
+                nams.append(nam)
+    getinput.print_header(f"Articles by {author} ({year})")
+    for art in arts:
+        print(repr(art))
+    getinput.print_header(f"Names by {author} ({year})")
+    for nam in nams:
+        nam.display(full=False)
+    return arts, nams
 
 
 def set_page(nams: Iterable[Name]) -> None:

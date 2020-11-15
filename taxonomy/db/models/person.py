@@ -57,12 +57,14 @@ UNCHECKED_TYPES = (
 )
 
 
-class PersonLevel(enum.Enum):
-    checked = 1
-    has_given_name = 2
+class PersonLevel(enum.IntEnum):
+    unused = 1
+    family_name_only = 2
     initials_only = 3
-    family_name_only = 4
-    unused = 5
+    has_given_name = 4
+    has_convention = 5
+    redirect = 6
+    checked = 7
 
 
 class Person(BaseModel):
@@ -175,7 +177,9 @@ class Person(BaseModel):
         names = self.given_names.split(" ")
 
         def name_to_initial(name: str) -> str:
-            if "." in name:
+            if not name:
+                return ""
+            elif "." in name:
                 return name
             elif "-" in name:
                 return "-".join(name_to_initial(part) for part in name.split("-"))
@@ -429,6 +433,16 @@ class Person(BaseModel):
         return bad
 
     @classmethod
+    def fix_bad_suffixes(cls) -> None:
+        for person in (
+            cls.select_valid().filter(cls.suffix != None).order_by(cls.family_name)
+        ):
+            if person.suffix != "Jr." and "." in person.suffix:
+                print(person)
+                person.display(full=True)
+                person.maybe_reassign_references()
+
+    @classmethod
     def find_duplicates(cls, autofix: bool = False) -> List[List["Person"]]:
         by_key: Dict[Tuple[Optional[str], ...], List[Person]] = defaultdict(list)
         for person in cls.select_valid().filter(cls.type << UNCHECKED_TYPES):
@@ -470,10 +484,10 @@ class Person(BaseModel):
             getinput.print_header(key)
             for person in group:
                 print(person.total_references(), repr(person))
-            if autofix and all(
-                person.type is PersonType.unchecked
-                and person.naming_convention is NamingConvention.unspecified
-                for person in group
+            if (
+                autofix
+                and all(person.type is PersonType.unchecked for person in group)
+                and len({person.naming_convention for person in group}) == 1
             ):
                 group = sorted(group, key=lambda person: person.id)
                 for person in group[1:]:
@@ -647,7 +661,7 @@ class Person(BaseModel):
         ):
             refs = person.total_references()
             if refs > 0:
-                print(f"{person!r}: {refs} references")
+                getinput.print_header(f"{person!r}: {refs} references")
                 if person.type is PersonType.hard_redirect:
                     person.reassign_references(person.target)
                 else:
@@ -778,9 +792,14 @@ class Person(BaseModel):
     def get_level(self) -> PersonLevel:
         if self.type is PersonType.checked:
             return PersonLevel.checked
+        elif self.type in (PersonType.soft_redirect, PersonType.hard_redirect):
+            return PersonLevel.redirect
         elif self.type is PersonType.unchecked:
             if self.given_names:
-                return PersonLevel.has_given_name
+                if self.naming_convention is NamingConvention.unspecified:
+                    return PersonLevel.has_given_name
+                else:
+                    return PersonLevel.has_convention
             elif self.initials:
                 return PersonLevel.initials_only
             else:
@@ -792,6 +811,16 @@ class Person(BaseModel):
 # Reused in Article and Name
 class AuthorTag(adt.ADT):
     Author(person=Person, tag=2)  # type: ignore
+
+
+def get_new_authors_list() -> List[AuthorTag]:
+    authors = []
+    while True:
+        author = Person.getter(None).get_one("author> ")
+        if author is None:
+            break
+        authors.append(AuthorTag.Author(person=author))
+    return authors
 
 
 def _display_year(year: Optional[str]) -> str:

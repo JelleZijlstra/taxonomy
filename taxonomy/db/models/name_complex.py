@@ -11,6 +11,7 @@ from ..constants import (
     Group,
     SourceLanguage,
     SpeciesNameKind,
+    FillDataLevel,
 )
 
 from .base import BaseModel, EnumField
@@ -291,6 +292,29 @@ class SpeciesNameComplex(BaseModel):
             return cls.adjective(stem, comment, masculine, feminine, neuter)
         else:
             return getattr(cls, kind)(stem=stem, comment=comment)
+
+    def fill_data(
+        self,
+        level: FillDataLevel = FillDataLevel.incomplete_detail,
+        ask_before_opening: bool = True,
+        only_fill_cache: bool = False,
+        skip_nofile: bool = True,
+    ) -> None:
+        citations = sorted(
+            {
+                nam.original_citation
+                for nam in self.names
+                if nam.original_citation is not None
+            },
+            key=lambda art: (art.path, art.name),
+        )
+        models.taxon.fill_data_from_articles(
+            citations,
+            level=level,
+            ask_before_opening=ask_before_opening,
+            only_fill_cache=only_fill_cache,
+            skip_nofile=skip_nofile,
+        )
 
 
 class NameComplex(BaseModel):

@@ -38,7 +38,7 @@ from ..constants import (
 )
 
 from .base import BaseModel, EnumField
-from .article import Article
+from .article import Article, ArticleTag
 
 
 DEFAULT_LEVEL = FillDataLevel.needs_basic_data
@@ -1166,6 +1166,11 @@ def fill_data_from_paper(
 ) -> bool:
     if (paper.name, level) in _finished_papers:
         return True
+    if paper.has_tag(ArticleTag.NeedsTranslation):
+        print(f"{paper.name}: skipping because of NeedsTranslation tag")
+        _finished_papers.add((paper.name, level))
+        return True
+
     opened = False
     if finish_what_you_start:
         goal_level = max(level, FillDataLevel.missing_detail)

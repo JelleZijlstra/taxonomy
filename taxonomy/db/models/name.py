@@ -50,7 +50,7 @@ from .collection import Collection
 from .taxon import Taxon, display_organized
 from .location import Location
 from .name_complex import NameComplex, SpeciesNameComplex
-from .person import Person, AuthorTag
+from .person import Person, AuthorTag, get_new_authors_list
 
 _CRUCIAL_MISSING_FIELDS: Dict[Group, Set[str]] = {
     Group.species: {"species_name_complex"},
@@ -401,6 +401,8 @@ class Name(BaseModel):
             ):
                 value.apply_to_patterns()
             return value
+        elif field == "author_tags" and not self.author_tags:
+            return get_new_authors_list()
         else:
             return super().get_value_for_field(field, default=default)
 
@@ -424,6 +426,7 @@ class Name(BaseModel):
             ),
             "copy_authors": self.copy_authors,
             "check_authors": self.check_authors,
+            "level": lambda: print(self.fill_data_level()),
         }
 
     def edit(self) -> None:
@@ -865,8 +868,8 @@ class Name(BaseModel):
             return match.groupdict()
         return None
 
-    def author_set(self) -> Set[str]:
-        return {author.family_name for author in self.get_authors()}
+    def author_set(self) -> Set[int]:
+        return {pair[1] for pair in self.get_raw_tags_field("author_tags")}
 
     def get_authors(self) -> List[Person]:
         if self.author_tags is None:
@@ -1105,6 +1108,12 @@ class Name(BaseModel):
         else:
             return self.taxon.age is AgeClass.extant
 
+    def is_patronym(self) -> bool:
+        snc = self.species_name_complex
+        if snc is None:
+            return False
+        return snc.kind.is_patronym()
+
     def fill_data_level(self) -> FillDataLevel:
         required_fields = set(self.get_empty_required_fields())
         if not self.check_authors():
@@ -1121,8 +1130,7 @@ class Name(BaseModel):
             else:
                 if (
                     self.has_type_tag(TypeTag.EtymologyDetail)
-                    and self.species_name_complex
-                    and self.species_name_complex.kind.is_patronym()
+                    and self.is_patronym()
                     and not self.has_type_tag(TypeTag.NamedAfter)
                 ):
                     return FillDataLevel.incomplete_detail
@@ -1151,7 +1159,10 @@ class Name(BaseModel):
                         )
                         or tag is TypeTag.NoSpecimen
                     )
-                    ed = self.numeric_year() < _ETYMOLOGY_CUTOFF or any(
+                    ed = (
+                        self.numeric_year() < _ETYMOLOGY_CUTOFF
+                        or not self.is_patronym()
+                    ) or any(
                         True
                         for tag in tags
                         if (

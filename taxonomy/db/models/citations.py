@@ -64,7 +64,8 @@ def _citenormal(article: Article, *, mw: bool) -> str:
     out += ". "
     if article.type == ArticleType.JOURNAL:
         # journals (most common case)
-        out += f"{article.journal} "
+        if article.citation_group:
+            out += f"{article.citation_group.name} "
         if article.series:
             # need to catch "double series"
             out += "(" + str(article.series).replace(";", ") (") + ")"
@@ -108,7 +109,8 @@ def _citenormal(article: Article, *, mw: bool) -> str:
 def citelemurnews(article: Article) -> str:
     authors = article.getAuthors()
     if article.type == ArticleType.JOURNAL:
-        out = f"{authors}. {article.year}. {article.title}. {article.journal} {article.volume}: {article.start_page}–{article.end_page}."
+        cg = article.citation_group.name if article.citation_group else ""
+        out = f"{authors}. {article.year}. {article.title}. {cg} {article.volume}: {article.start_page}–{article.end_page}."
     elif article.type == ArticleType.BOOK:
         out = f"{authors}. {article.year}. {article.title}. {article.publisher}, {article.place_of_publication}."
     # TODO: support non-journal citations
@@ -150,7 +152,8 @@ def citebzn(article: Article) -> str:
     if article.type == ArticleType.JOURNAL:
         out += article.title
         out += ". "
-        out += f"<i>{article.journal}</i>, "
+        if article.citation_group:
+            out += f"<i>{article.citation_group.name}</i>, "
         if article.series:
             # need to catch "double series"
             out += "(" + article.series.replace(";", ") (") + ")"
@@ -232,7 +235,7 @@ def citepalaeontology(article: Article) -> str:
     )
     out += f". {article.year}. "
     if article.type == ArticleType.JOURNAL:
-        out += article.title + ". <i>" + article.journal + "</i>, "
+        out += article.title + ". <i>" + article.citation_group.name + "</i>, "
         # TODO: series
         out += "<b>" + article.volume + "</b>, " + page_range(article)
     elif article.type == ArticleType.BOOK:
@@ -285,7 +288,8 @@ def citejpal(article: Article) -> str:
     )
     out += " " + article.year + ". " + article.title
     if article.type == ArticleType.JOURNAL:
-        out += f". {article.journal}, "
+        if article.citation_group:
+            out += f". {article.citation_group.name}, "
         if article.series:
             out += f"ser. {article.series}, "
         out += article.volume + ":" + page_range(article)
@@ -383,7 +387,8 @@ def citejvp(article: Article) -> str:
     )
     out += ". " + article.year + ". " + article.title
     if article.type == ArticleType.JOURNAL:
-        out += f". {article.journal} "
+        if article.citation_group:
+            out += f". {article.citation_group.name} "
         if article.series:
             out += f"ser. {article.series}, "
         out += article.volume + ":" + page_range(article)
@@ -460,7 +465,8 @@ def citebibtex(article: Article) -> str:
     if article.type == ArticleType.THESIS:
         add("school", article.institution, True)
     elif article.type == ArticleType.JOURNAL:
-        add("journal", article.journal, True)
+        if article.citation_group:
+            add("journal", article.citation_group.name, True)
         add("volume", article.volume)
         add("number", article.issue)
         add("pages", article.start_page + "--" + article.end_page)
@@ -481,7 +487,7 @@ def citezootaxa(article: Article) -> str:
     out += article.getAuthors(separator=",", lastSeparator=" &")
     out += f" ({article.year}) "
     if article.type == ArticleType.JOURNAL:
-        out += article.title + ". <i>" + article.journal + "</i>, "
+        out += article.title + ". <i>" + article.citation_group.name + "</i>, "
         out += article.volume + ", " + page_range(article)
     elif article.type == ArticleType.CHAPTER:
         out += article.title + "."
@@ -571,7 +577,8 @@ def citewp(article: Article) -> str:
     paras["pages"] = page_range(article)
     if article.type == ArticleType.JOURNAL:
         paras["title"] = article.title
-        paras["journal"] = article.journal
+        if article.citation_group:
+            paras["journal"] = article.citation_group.name
         paras["volume"] = article.volume
         paras["issue"] = article.issue
     elif article.type == ArticleType.BOOK:

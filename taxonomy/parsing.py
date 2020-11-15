@@ -339,7 +339,7 @@ pinyin_pre_vowel = C(["i", "u"])
 pinyin_vowel = OneOf.from_strs(
     {"i", "e", "a", "o", "ou", "ao", "u", "ü", "ue", "ua", "üa", "üe"}
 )
-pinyin_coda = OneOf.from_strs({"i", "n", "ng"})
+pinyin_coda = OneOf.from_strs({"i", "n", "ng", "r"})
 pinyin_syllable = (
     Optional(pinyin_initial + Optional(pinyin_pre_vowel))
     + pinyin_vowel

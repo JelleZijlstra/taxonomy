@@ -459,7 +459,7 @@ class SpeciesNameKind(enum.IntEnum):
         return self in {
             SpeciesNameKind.patronym_masculine,
             SpeciesNameKind.patronym_masculine_plural,
-            SpeciesNameKind.patronym_masculine,
+            SpeciesNameKind.patronym_feminine,
             SpeciesNameKind.patronym_feminine_plural,
             SpeciesNameKind.patronym_latin,
         }
@@ -602,6 +602,7 @@ class NamingConvention(enum.IntEnum):
     turkish = 14  # for the dotted and dotless i
     chinese = 15  # Chinese-style names, but not in pinyin
     korean = 16
+    mongolian = 17
 
 
 class PersonType(enum.IntEnum):

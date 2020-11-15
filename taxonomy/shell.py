@@ -74,6 +74,7 @@ from .db.models import (
     TypeTag,
     database,
 )
+from .db.models.person import PersonLevel
 from .db.models.taxon import DEFAULT_LEVEL
 
 T = TypeVar("T")
@@ -128,6 +129,7 @@ ns = _ShellNamespace(
         "O": Name.getter("corrected_original_name"),
         "reconnect": _reconnect,
         "NameTag": models.NameTag,
+        "PersonLevel": PersonLevel,
         "TypeTag": models.TypeTag,
         "Counter": collections.Counter,
         "defaultdict": defaultdict,
@@ -2150,13 +2152,15 @@ def type_locality_without_detail() -> Iterable[Name]:
 
 
 @command
-def most_common_unchecked_names(num_to_display: int = 10) -> Counter[str]:
+def most_common_unchecked_names(
+    num_to_display: int = 10,
+    max_level: Optional[PersonLevel] = PersonLevel.has_given_name,
+) -> Counter[str]:
     counter: Counter[str] = Counter()
-    for person in Person.select_valid().filter(
-        Person.type == constants.PersonType.unchecked
-    ):
-        num_refs = sum(person.num_references().values())
-        counter[person.family_name] += num_refs
+    for person in Person.select_valid():
+        if max_level is None or person.get_level() <= max_level:
+            num_refs = sum(person.num_references().values())
+            counter[person.family_name] += num_refs
     for value, count in counter.most_common(num_to_display):
         print(value, count)
     return counter
@@ -2165,17 +2169,16 @@ def most_common_unchecked_names(num_to_display: int = 10) -> Counter[str]:
 @command
 def biggest_names(
     num_to_display: int = 10,
-    unchecked_only: bool = True,
+    max_level: Optional[PersonLevel] = PersonLevel.has_given_name,
     family_name: Optional[str] = None,
 ) -> Counter[Person]:
     counter: Counter[Person] = Counter()
     query = Person.select_valid()
-    if unchecked_only:
-        query = query.filter(Person.type == constants.PersonType.unchecked)
     if family_name is not None:
         query = query.filter(Person.family_name == family_name)
     for person in query:
-        counter[person] = sum(person.num_references().values())
+        if max_level is None or person.get_level() <= max_level:
+            counter[person] = sum(person.num_references().values())
     for value, count in counter.most_common(num_to_display):
         print(value, count)
     return counter
@@ -2183,7 +2186,9 @@ def biggest_names(
 
 @command
 def reassign_references(
-    family_name: Optional[str] = None, substring: bool = True
+    family_name: Optional[str] = None,
+    substring: bool = True,
+    max_level: Optional[PersonLevel] = PersonLevel.has_given_name,
 ) -> None:
     if family_name is None:
         family_name = Person.getter("family_name").get_one_key()
@@ -2196,9 +2201,10 @@ def reassign_references(
         query = query.filter(Person.family_name == family_name)
     persons = sorted(query, key=lambda person: person.sort_key())
     for person in persons:
-        print(f"- {person!r}", flush=True)
+        print(f"- {person!r} ({person.get_level().name})", flush=True)
     for person in persons:
-        person.maybe_reassign_references()
+        if max_level is None or person.get_level() <= max_level:
+            person.maybe_reassign_references()
 
 
 PersonParams = Optional[Dict[str, Optional[str]]]

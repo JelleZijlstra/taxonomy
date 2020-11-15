@@ -1,5 +1,6 @@
 from bs4 import BeautifulSoup
 import datetime
+from functools import lru_cache
 from pathlib import Path
 from peewee import (
     CharField,
@@ -35,13 +36,13 @@ from .base import (
     get_completer,
     get_tag_based_derived_field,
 )
-from ..constants import ArticleCommentKind, ArticleKind, ArticleType, PersonType
-from ..helpers import to_int
+from ..constants import ArticleCommentKind, ArticleKind, ArticleType, SourceLanguage
+from ..helpers import to_int, clean_string
 from .. import models
 from ... import config, events, adt, getinput, parsing
 
 from .citation_group import CitationGroup
-from .person import AuthorTag, Person, PersonLevel
+from .person import AuthorTag, Person, PersonLevel, get_new_authors_list
 
 T = TypeVar("T", bound="Article")
 
@@ -110,9 +111,6 @@ class Article(BaseModel):
     year = CharField(null=True)  # year published
     # title (chapter title for book chapter; book title for full book or thesis)
     title = CharField(null=True)
-    _journal = CharField(
-        db_column="journal"
-    )  # journal published in (deprecated; use citation_group)
     series = CharField(null=True)  # journal series
     volume = CharField(null=True)  # journal volume
     issue = CharField(null=True)  # journal issue
@@ -270,22 +268,6 @@ class Article(BaseModel):
     ]
 
     @property
-    def journal(self) -> Optional[str]:
-        if self.type != ArticleType.JOURNAL:
-            return None
-        if self.citation_group is not None:
-            return self.citation_group.name
-        else:
-            return None
-
-    @journal.setter
-    def journal(self, value: str) -> None:
-        if value is None:
-            self.citation_group = None
-        else:
-            self.citation_group = CitationGroup.get_or_create(value)
-
-    @property
     def place_of_publication(self) -> Optional[str]:
         if self.type not in (ArticleType.BOOK, ArticleType.WEB):
             return None
@@ -334,12 +316,21 @@ class Article(BaseModel):
             "openf": self.openf,
             "reverse": self.reverse_authors,
             "specify_authors": self.specify_authors,
+            "recompute_authors_from_doi": self.recompute_authors_from_doi,
+            "print_doi_information": self.print_doi_information,
+            "expand_doi": lambda: expand_doi(self.doi) if self.doi else None,
         }
 
     def get_value_to_show_for_field(self, field: Optional[str]) -> str:
         if field is None:
             return self.name
         return getattr(self, field)
+
+    def get_value_for_field(self, field: str, default: Optional[str] = None) -> Any:
+        if field == "author_tags" and not self.author_tags:
+            return get_new_authors_list()
+        else:
+            return super().get_value_for_field(field, default=default)
 
     def get_required_fields(self) -> Iterable[str]:
         yield "kind"
@@ -568,8 +559,8 @@ class Article(BaseModel):
     def taxonomicAuthority(self) -> Tuple[str, str]:
         return (Person.join_authors(self.get_authors()), self.year)
 
-    def author_set(self) -> Set[str]:
-        return {author.family_name for author in self.get_authors()}
+    def author_set(self) -> Set[int]:
+        return {pair[1] for pair in self.get_raw_tags_field("author_tags")}
 
     def add_comment(
         self, kind: Optional[ArticleCommentKind] = None, text: Optional[str] = None
@@ -652,11 +643,16 @@ class Article(BaseModel):
     def finddoi(self) -> bool:
         if self.doi:
             return True
-        if self.journal and self.volume and self.start_page:
+        if (
+            self.type is ArticleType.JOURNAL
+            and self.citation_group
+            and self.volume
+            and self.start_page
+        ):
             print(f"Trying to find DOI for file {self.name}... ")
             query_dict = {
                 "pid": _options.crossrefid,
-                "title": self.journal,
+                "title": self.citation_group.name,
                 "volume": self.volume,
                 "spage": self.start_page,
                 "noredirect": "true",
@@ -713,7 +709,9 @@ class Article(BaseModel):
         self.author_tags = new_tags  # type: ignore
 
     def specify_authors(
-        self, level: Optional[PersonLevel] = PersonLevel.initials_only
+        self,
+        level: Optional[PersonLevel] = PersonLevel.initials_only,
+        should_open: bool = True,
     ) -> None:
         if self.has_tag(ArticleTag.InitialsOnly):
             return
@@ -721,7 +719,7 @@ class Article(BaseModel):
         for i, author in enumerate(self.get_authors()):
             if level is not None and author.get_level() is not level:
                 continue
-            if not opened:
+            if not opened and should_open:
                 self.openf()
                 opened = True
             author.edit_tag_sequence_on_object(
@@ -744,13 +742,18 @@ class Article(BaseModel):
         if not self.doi:
             return
         if not force and not all(
-            author.type is PersonLevel.initials_only for author in self.get_authors()
+            author.get_level() >= PersonLevel.initials_only
+            for author in self.get_authors()
         ):
             return
         data = expand_doi(self.doi)
         if not data or "author_tags" not in data:
+            print(f"Skipping because of no authors in {data}")
             return
-        if len(data["author_tags"]) != len(self.get_raw_tags_field("author_tags")):
+        if not confirm and len(data["author_tags"]) != len(
+            self.get_raw_tags_field("author_tags")
+        ):
+            print(f"Skipping because of length mismatch in {data}")
             return
         self.set_author_tags_from_raw(
             data["author_tags"], confirm_creation=confirm, confirm_replacement=confirm
@@ -878,8 +881,12 @@ class ArticleTag(adt.ADT):
     NonOriginal(comment=str, tag=10)  # type: ignore
     # The article doesn't give full names for the authors
     InitialsOnly(tag=11)  # type: ignore
+    # We can't fill_data_from_paper() because the article is in a language
+    # I don't understand.
+    NeedsTranslation(language=SourceLanguage, tag=12)  # type: ignore
 
 
+@lru_cache()
 def get_doi_information(doi: str) -> Optional[BeautifulSoup]:
     """Retrieves information for this DOI from the API."""
     response = requests.get(
@@ -947,7 +954,7 @@ def expand_doi(doi: str) -> Dict[str, Any]:
             # all uppercase title; let's clean it up a bit
             # this won't give correct punctuation, but it'll be better than all-uppercase
             title = title[0] + title[1:].lower()
-        data["title"] = title
+        data["title"] = clean_string(title)
     if result.journal_title is not None:
         data["journal"] = result.journal_title.text
     if result.isbn is not None:
@@ -955,9 +962,9 @@ def expand_doi(doi: str) -> Dict[str, Any]:
     if result.contributors is not None:
         authors = []
         for author in result.contributors.children:
-            info = {"family_name": author.surname.text}
+            info = {"family_name": clean_string(author.surname.text)}
             if author.given_name:
-                given_names = author.given_name.text.title()
+                given_names = clean_string(author.given_name.text.title())
                 if given_names[-1].isupper():
                     given_names = given_names + "."
                 if parsing.matches_grammar(
@@ -965,7 +972,7 @@ def expand_doi(doi: str) -> Dict[str, Any]:
                 ):
                     info["initials"] = given_names.replace(" ", "")
                 else:
-                    info["given_names"] = given_names
+                    info["given_names"] = re.sub(r"\. ([A-Z]\.)", r".\1", given_names)
             authors.append(info)
         data["author_tags"] = authors
     if result.volume_title is not None:
