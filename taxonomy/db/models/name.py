@@ -916,6 +916,8 @@ class Name(BaseModel):
         )
         name_authors = self.get_authors()
         article_authors = self.original_citation.get_authors()
+        if name_authors == article_authors:
+            return True  # can happen with supplements
         if len(name_authors) != len(article_authors):
             maybe_print(
                 f"length mismatch {len(name_authors)} vs. {len(article_authors)}"

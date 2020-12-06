@@ -312,12 +312,13 @@ class Person(BaseModel):
 
     def sort_key(self) -> Tuple[str, ...]:
         return (
-            self.type.name,
             self.family_name,
+            self.get_initials() or "",
             self.given_names or "",
             self.initials or "",
             self.tussenvoegsel or "",
             self.suffix or "",
+            self.type.name,
         )
 
     def lint(self) -> bool:
@@ -457,7 +458,7 @@ class Person(BaseModel):
         return cls.display_duplicates(by_key, autofix=autofix)
 
     @classmethod
-    def find_near_duplicates(cls) -> List[List["Person"]]:
+    def find_near_duplicates(cls, min_count: int = 20) -> List[List["Person"]]:
         by_key: Dict[str, List[Person]] = defaultdict(list)
         for person in cls.select_valid():
             key = helpers.simplify_string(
@@ -469,17 +470,25 @@ class Person(BaseModel):
             for key, persons in by_key.items()
             if sum(person.total_references() > 0 for person in persons) > 1
         }
-        return cls.display_duplicates(by_key)
+        return cls.display_duplicates(by_key, min_count=min_count)
 
     @classmethod
     def display_duplicates(
-        cls, by_key: Mapping[Any, List["Person"]], autofix: bool = False
+        cls,
+        by_key: Mapping[Any, List["Person"]],
+        autofix: bool = False,
+        min_count: int = 0,
     ) -> List[List["Person"]]:
         out = []
         for key, group in sorted(
             by_key.items(), key=lambda pair: sum(p.total_references() for p in pair[1])
         ):
             if len(group) == 1:
+                continue
+            if (
+                min_count > 0
+                and sum(person.total_references() for person in group) < min_count
+            ):
                 continue
             getinput.print_header(key)
             for person in group:

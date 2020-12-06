@@ -2155,12 +2155,24 @@ def type_locality_without_detail() -> Iterable[Name]:
 def most_common_unchecked_names(
     num_to_display: int = 10,
     max_level: Optional[PersonLevel] = PersonLevel.has_given_name,
+    max_num_names: Optional[int] = None,
 ) -> Counter[str]:
     counter: Counter[str] = Counter()
+    name_counter: Counter[str] = Counter()
     for person in Person.select_valid():
         if max_level is None or person.get_level() <= max_level:
             num_refs = sum(person.num_references().values())
             counter[person.family_name] += num_refs
+            if max_num_names is not None:
+                name_counter[person.family_name] += 1
+    if max_num_names is not None:
+        counter = Counter(
+            {
+                family_name: count
+                for family_name, count in counter.items()
+                if name_counter[family_name] <= max_num_names
+            }
+        )
     for value, count in counter.most_common(num_to_display):
         print(value, count)
     return counter
@@ -2194,7 +2206,7 @@ def reassign_references(
         family_name = Person.getter("family_name").get_one_key()
     if not family_name:
         return
-    query = Person.select_valid().filter(Person.type == constants.PersonType.unchecked)
+    query = Person.select_valid()
     if substring:
         query = query.filter(Person.family_name.contains(family_name))
     else:

@@ -448,6 +448,8 @@ class Article(BaseModel):
     # Authors
 
     def get_authors(self) -> List[Person]:
+        if self.type is ArticleType.SUPPLEMENT and self.parent is not None:
+            return self.parent.get_authors()
         if self.author_tags is None:
             return []
         return [author.person for author in self.author_tags]
