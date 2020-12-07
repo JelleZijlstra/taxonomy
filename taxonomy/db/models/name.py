@@ -147,7 +147,7 @@ class Name(BaseModel):
 
     derived_fields = [
         DerivedField(
-            "fill_data_level", FillDataLevel, lambda nam: nam.fill_data_level()
+            "fill_data_level", FillDataLevel, lambda nam: nam.fill_data_level()[0]
         ),
         get_tag_based_derived_field(
             "preoccupied_names", lambda: Name, "tags", lambda: NameTag.PreoccupiedBy, 1
@@ -426,8 +426,12 @@ class Name(BaseModel):
             ),
             "copy_authors": self.copy_authors,
             "check_authors": self.check_authors,
-            "level": lambda: print(self.fill_data_level()),
+            "level": self.print_fill_data_level,
         }
+
+    def print_fill_data_level(self) -> None:
+        level, reason = self.fill_data_level()
+        print(f"{level}: {reason}")
 
     def edit(self) -> None:
         self.fill_field("type_tags")
@@ -1116,51 +1120,55 @@ class Name(BaseModel):
             return False
         return snc.kind.is_patronym()
 
-    def fill_data_level(self) -> FillDataLevel:
+    def fill_data_level(self) -> Tuple[FillDataLevel, str]:
         required_fields = set(self.get_empty_required_fields())
         if not self.check_authors():
-            return FillDataLevel.needs_basic_data
+            return FillDataLevel.needs_basic_data, "author mismatch"
         if has_data_from_original(self):
-            if _CRUCIAL_MISSING_FIELDS[self.group] & required_fields:
-                return FillDataLevel.needs_more_data
+            crucial_missing = _CRUCIAL_MISSING_FIELDS[self.group] & required_fields
+            if crucial_missing:
+                return (
+                    FillDataLevel.needs_more_data,
+                    f"missing {', '.join(sorted(crucial_missing))}",
+                )
             if (
                 self.group is Group.family
                 or self.group is Group.high
                 or self.group is Group.genus
             ):
-                return FillDataLevel.nothing_needed
+                return FillDataLevel.nothing_needed, ""
             else:
                 if (
                     self.has_type_tag(TypeTag.EtymologyDetail)
                     and self.is_patronym()
                     and not self.has_type_tag(TypeTag.NamedAfter)
                 ):
-                    return FillDataLevel.incomplete_detail
+                    return FillDataLevel.incomplete_detail, "missing NamedAfter tag"
                 if not self._requires_detail():
-                    return FillDataLevel.nothing_needed
+                    return FillDataLevel.nothing_needed, ""
                 else:
                     tags: List[TypeTag] = self.type_tags or []
                     citation = self.original_citation
-                    ld = any(
-                        True
-                        for tag in tags
-                        if (
+                    if not any(
+                        (
                             isinstance(tag, TypeTag.LocationDetail)
                             and tag.source == citation
                         )
                         or tag is TypeTag.NoLocation
-                    )
-                    sd = any(
-                        True
                         for tag in tags
-                        if (
+                    ):
+                        return FillDataLevel.incomplete_detail, "missing LocationDetail"
+                    if not any(
+                        (
                             isinstance(
                                 tag, (TypeTag.SpecimenDetail, TypeTag.CitationDetail)
                             )
                             and tag.source == citation
                         )
                         or tag is TypeTag.NoSpecimen
-                    )
+                        for tag in tags
+                    ):
+                        return FillDataLevel.incomplete_detail, "missing SpecimenDetail"
                     ed = (
                         self.numeric_year() < _ETYMOLOGY_CUTOFF
                         or not self.is_patronym()
@@ -1173,33 +1181,38 @@ class Name(BaseModel):
                         )
                         or tag is TypeTag.NoEtymology
                     )
-                    if sd and ld and ed:
-                        return FillDataLevel.nothing_needed
-                    else:
-                        return FillDataLevel.incomplete_detail
+                    if not ed:
+                        return (
+                            FillDataLevel.incomplete_detail,
+                            "missing EtymologyDetail",
+                        )
+                    return FillDataLevel.nothing_needed, ""
         else:
             if required_fields:
-                return FillDataLevel.needs_basic_data
+                return (
+                    FillDataLevel.needs_basic_data,
+                    f"missing {', '.join(sorted(required_fields))}",
+                )
             elif self.group is Group.family or self.group is Group.high:
-                return FillDataLevel.nothing_needed
+                return FillDataLevel.nothing_needed, ""
             elif self.group is Group.genus:
                 if (
                     "type" in self.get_required_fields()
                     and self.numeric_year() >= _ETYMOLOGY_CUTOFF
                     and not self.has_type_tag(TypeTag.NoEtymology)
                 ):
-                    return FillDataLevel.needs_basic_data
+                    return FillDataLevel.needs_basic_data, "missing EtymologyDetail"
                 else:
-                    return FillDataLevel.nothing_needed
+                    return FillDataLevel.nothing_needed, ""
             else:
                 if "type_locality" not in self.get_required_fields():
-                    return FillDataLevel.nothing_needed
+                    return FillDataLevel.nothing_needed, ""
                 elif self.has_type_tag(TypeTag.Date) and self.has_type_tag(
                     TypeTag.CollectedBy
                 ):
-                    return FillDataLevel.missing_detail
+                    return FillDataLevel.missing_detail, "missing Date or CollectedBy"
                 else:
-                    return FillDataLevel.needs_more_data
+                    return FillDataLevel.needs_more_data, "missing data from original"
 
     def get_required_fields(self) -> Iterable[str]:
         if (

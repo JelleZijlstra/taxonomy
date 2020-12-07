@@ -1211,8 +1211,8 @@ def fill_data_from_paper(
                         print(f"filling data from {paper.name}")
                         paper.specify_authors()
                     opened = True
-                    current_level = _fill_data_level_for_name(nam)
-                    print(f"Level: {current_level.name.upper()}")
+                    current_level, reason = nam.fill_data_level()
+                    print(f"Level: {current_level.name.upper()} ({reason})")
                     if list(nam.get_empty_required_fields()):
                         print(nam, "described at", nam.page_described)
                         nam.fill_required_fields()
@@ -1410,16 +1410,16 @@ def display_names(
         print(f"New names ({len(new_names)}):")
         levels = []
         for nam in new_names:
-            level = _fill_data_level_for_name(nam)
+            level, reason = nam.fill_data_level()
             levels.append(level)
             if omit_if_done and level is FillDataLevel.nothing_needed:
                 continue
             if full:
                 nam.display(full=True)
-                print(f"    Level: {level.name.upper()}")
+                print(f"    Level: {level.name.upper()} ({reason})")
             else:
                 desc = nam.get_description(include_taxon=True, full=False).rstrip()
-                print(f"{desc} ({level.name.upper()})")
+                print(f"{desc} ({level.name.upper()}: {reason})")
         print("Current level:", min(levels).name.upper())
     tss_names = list(art.type_source_names)
     if tss_names:
