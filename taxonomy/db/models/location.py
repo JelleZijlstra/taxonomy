@@ -1,5 +1,5 @@
 import sys
-from typing import Any, IO, Iterable, Optional, Type, Union
+from typing import Any, Callable, Dict, IO, Iterable, Optional, Type, Union
 
 from peewee import BooleanField, CharField, ForeignKeyField, IntegerField, TextField
 
@@ -199,6 +199,75 @@ class Location(BaseModel):
                 return True
             region = region.parent
         return False
+
+    def is_empty(self) -> bool:
+        if self.taxa.count():
+            return False
+        if self.type_localities.count():
+            return False
+        return True
+
+    def lint(self) -> bool:
+        if self.deleted and not self.is_empty():
+            print(f"{self}: deleted location has references")
+            return False
+        return True
+
+    @classmethod
+    def get_or_create_general(cls, region: Region, period: Period) -> "Location":
+        if period.name == "Recent":
+            name = region.name
+        elif period.name == "Phanerozoic":
+            name = f"{region.name} fossil"
+        elif period.name == "Pleistocene":
+            name = f"{region.name} Pleistocene"
+        else:
+            name = f"{period.name} ({region.name})"
+        objs = list(Location.select_valid().filter(Location.name == name))
+        if objs:
+            return objs[0]  # should only be one
+
+        objs = list(
+            Location.select().filter(Location.name == name, Location.deleted == True)
+        )
+        if objs:
+            obj = objs[0]
+            obj.deleted = False
+            print(f"Resurrected {obj}")
+            return obj
+
+        else:
+            obj = cls.make(name=name, region=region, period=period)
+            if not (period.name == "Recent" and region.children.count() == 0):
+                obj.tags = [LocationTag.General]
+            print(f"Created {obj}")
+            return obj
+
+    @classmethod
+    def autodelete(cls, dry_run: bool = False) -> None:
+        for loc in cls.select_valid():
+            loc.maybe_autodelete(dry_run=dry_run)
+
+    def maybe_autodelete(self, dry_run: bool = True) -> None:
+        if not self.is_empty():
+            return
+        print(f"Autodeleting {self!r}")
+        if not dry_run:
+            self.deleted = True
+            self.save()
+
+    @classmethod
+    def get_interactive_creators(cls) -> Dict[str, Callable[[], Any]]:
+        def callback() -> Optional[Location]:
+            region = models.Region.getter(None).get_one("region> ")
+            if region is None:
+                return None
+            period = models.Period.getter(None).get_one("period> ")
+            if period is None:
+                return None
+            return cls.get_or_create_general(region, period)
+
+        return {**super().get_interactive_creators(), "u": callback}
 
 
 class LocationTag(adt.ADT):

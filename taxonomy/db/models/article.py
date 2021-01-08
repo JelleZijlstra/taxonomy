@@ -703,6 +703,13 @@ class Article(BaseModel):
             for params in value
         ]
         if self.author_tags is not None:
+            if len(self.author_tags) == len(new_tags):
+                new_tags = [
+                    existing
+                    if existing.person.is_more_specific_than(new.person)
+                    else new
+                    for existing, new in zip(self.author_tags, new_tags)
+                ]
             getinput.print_diff(self.author_tags, new_tags)
         if confirm_replacement:
             if not getinput.yes_no("Replace authors? "):
@@ -728,15 +735,16 @@ class Article(BaseModel):
                 self, "author_tags", AuthorTag.Author, "articles"
             )
         if level is not None:
+            obj = self.reload()
             bad_authors = [
-                author for author in self.get_authors() if author.get_level() is level
+                author for author in obj.get_authors() if author.get_level() is level
             ]
             if bad_authors:
                 print(f"Remaining authors at level {level}: {bad_authors}")
                 if getinput.yes_no("Add InitialsOnly tag? "):
-                    self.add_tag(ArticleTag.InitialsOnly)
+                    obj.add_tag(ArticleTag.InitialsOnly)
                 else:
-                    self.edit()
+                    obj.edit()
 
     def recompute_authors_from_doi(
         self, confirm: bool = True, force: bool = False

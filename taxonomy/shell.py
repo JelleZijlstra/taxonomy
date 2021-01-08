@@ -258,27 +258,6 @@ def add_page_described() -> Iterable[Tuple[Name, str]]:
 
 
 @command
-def make_general_localities(dry_run: bool = False) -> None:
-    pleistocene = Period.get(Period.name == "Pleistocene")
-    phanerozoic = Period.get(Period.name == "Phanerozoic")
-    for region in models.Region.select():
-        for (name, period) in [("Pleistocene", pleistocene), ("fossil", phanerozoic)]:
-            name = f"{region.name} {name}"
-            try:
-                loc = models.Location.get(models.Location.name == name)
-            except models.Location.DoesNotExist:
-                print(f"creating location {name}")
-                if dry_run:
-                    continue
-                else:
-                    loc = models.Location.make(name=name, region=region, period=period)
-            if not loc.has_tag(models.location.LocationTag.General):
-                print(f"adding General tag to {loc}")
-                if not dry_run:
-                    loc.add_tag(models.location.LocationTag.General)
-
-
-@command
 def make_county_regions(
     state: models.Region, name: Optional[str] = None, dry_run: bool = True
 ) -> None:
@@ -300,7 +279,6 @@ def make_county_regions(
             models.Region.make(county, constants.RegionKind.county, state)
         except peewee.IntegrityError:
             print(f"{county} already exists")
-    make_general_localities()
     _more_precise_by_county(state, counties)
     more_precise(state)
 
@@ -1814,14 +1792,110 @@ def fill_data_from_paper(
 
 @command
 def fill_data_from_author(
-    author: Person,
+    author: Optional[Person] = None,
     level: FillDataLevel = DEFAULT_LEVEL,
-    ask_before_opening: bool = False,
+    only_fill_cache: bool = False,
+    skip_nofile: bool = True,
 ) -> None:
-    for article in author.get_derived_field("articles"):
-        models.taxon.fill_data_from_paper(
-            article, level=level, ask_before_opening=ask_before_opening
+    if author is None:
+        author = Person.getter(None).get_one()
+    if author is None:
+        return
+    arts = author.get_sorted_derived_field("articles")
+    models.taxon.fill_data_from_articles(
+        sorted(arts, key=lambda art: art.path),
+        level=level,
+        only_fill_cache=only_fill_cache,
+        ask_before_opening=True,
+        skip_nofile=skip_nofile,
+    )
+
+
+@command
+def fill_data_for_children(
+    paper: Optional[models.Article] = None,
+    level: FillDataLevel = FillDataLevel.needs_specimen_data,
+    skip_nofile: bool = False,
+    only_fill_cache: bool = False,
+) -> None:
+    if paper is None:
+        paper = models.BaseModel.get_value_for_foreign_class(
+            "paper", models.Article, allow_none=False
         )
+    assert paper is not None, "paper needs to be specified"
+    children = sorted(
+        Article.select_valid().filter(Article.parent == paper),
+        key=lambda child: (child.numeric_start_page(), child.name),
+    )
+    models.taxon.fill_data_from_articles(
+        children,
+        level=level,
+        ask_before_opening=True,
+        skip_nofile=skip_nofile,
+        only_fill_cache=only_fill_cache,
+    )
+    models.taxon.fill_data_from_paper(
+        paper, level=level, only_fill_cache=only_fill_cache
+    )
+
+
+@command
+def fill_data_random(
+    batch_size: int = 20,
+    level: FillDataLevel = DEFAULT_LEVEL,
+    ask_before_opening: bool = True,
+) -> None:
+    count = -1
+    done = 0
+    while True:
+        for count, art in enumerate(
+            Article.select_valid().order_by(peewee.fn.Random()).limit(batch_size),
+            start=count + 1,
+        ):
+            if count > 0:
+                percentage = (done / count) * 100
+            else:
+                percentage = 0.0
+            getinput.show(f"({count}; {percentage:.03}%) {art.name}")
+            result = models.taxon.fill_data_from_paper(
+                art, level=level, only_fill_cache=True
+            )
+            try:
+                models.taxon.fill_data_from_paper(
+                    art, level=level, ask_before_opening=ask_before_opening
+                )
+            except getinput.StopException:
+                continue
+            if result:
+                done += 1
+
+
+@command
+def fill_data_reverse_order(
+    level: FillDataLevel = FillDataLevel.needs_specimen_data,
+    ask_before_opening: bool = True,
+    max_count: Optional[int] = 500,
+) -> None:
+    done = 0
+    for i, art in enumerate(Article.select_valid().order_by(Article.id.desc())):
+        if max_count is not None and i > max_count:
+            return
+        if i > 0:
+            percentage = (done / i) * 100
+        else:
+            percentage = 0.0
+        getinput.show(f"({i}; {percentage:.03}%) {art.name}")
+        result = models.taxon.fill_data_from_paper(
+            art, level=level, only_fill_cache=True
+        )
+        try:
+            models.taxon.fill_data_from_paper(
+                art, level=level, ask_before_opening=ask_before_opening
+            )
+        except getinput.StopException:
+            continue
+        if result:
+            done += 1
 
 
 @command
@@ -2067,12 +2141,7 @@ def _more_precise(
 def _more_precise_by_county(state: models.Region, counties: Sequence[str]) -> None:
     to_replace = f"unty, {state.name}"
     if getinput.yes_no("Run county substring search for type localities?"):
-        locs = [
-            models.Location.get(name=state.name),
-            models.Location.get(name=f"{state.name} Pleistocene"),
-            models.Location.get(name=f"{state.name} fossil"),
-        ]
-        for loc in locs:
+        for loc in state.get_general_localities():
             getinput.print_header(loc.name)
             for county in counties:
                 more_precise_type_localities(
@@ -2101,12 +2170,7 @@ def _make_loc_filterer(substring: str) -> Callable[[models.Location], bool]:
 
 def _more_precise_by_subdivision(region: models.Region) -> None:
     children = sorted(child.name for child in region.children)
-    locs = [
-        models.Location.get(name=region.name),
-        models.Location.get(name=f"{region.name} Pleistocene"),
-        models.Location.get(name=f"{region.name} fossil"),
-    ]
-    for loc in locs:
+    for loc in region.get_general_localities():
         getinput.print_header(loc.name)
         for child in children:
             getinput.print_header(child)
@@ -2947,7 +3011,6 @@ def run_maintenance(skip_slow: bool = True) -> Dict[Any, Any]:
         enforce_must_have,
         fix_citation_group_redirects,
         recent_names_without_verbatim,
-        make_general_localities,
         enforce_must_have_series,
         check_period_ranks,
         clean_up_stem,
@@ -3357,6 +3420,19 @@ def compute_derived_fields() -> None:
 @command
 def write_derived_data() -> None:
     derived_data.write_derived_data(derived_data.load_derived_data())
+
+
+@command
+def warm_all_caches() -> None:
+    for model in models.BaseModel.__subclasses__():
+        if hasattr(model, "label_field"):
+            print(f"{model}: warming None getter")
+            model.getter(None)._warm_cache()
+        for name, field in model._meta.fields.items():
+            if isinstance(field, peewee.CharField):
+                print(f"{model}: warming {name} ({field})")
+                model.getter(name)._warm_cache()
+    fill_data_from_folder("", only_fill_cache=True)
 
 
 @command

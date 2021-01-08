@@ -132,6 +132,18 @@ class BaseModel(Model):
             cls.creation_event.trigger(result)
         return result
 
+    @classmethod
+    def lint_all(cls: Type[ModelT]) -> List[ModelT]:
+        bad = []
+        for person in cls.select():
+            if not person.lint():
+                bad.append(person)
+        return bad
+
+    def lint(self) -> bool:
+        """Return False if something is wrong with this object."""
+        return True
+
     def prepared(self) -> None:
         super().prepared()
         self._is_prepared = True
@@ -452,12 +464,28 @@ class BaseModel(Model):
             "f": lambda: self.display(full=True),
             "edit_foreign": self.edit_foreign,
             "edit_sibling": self.edit_sibling,
+            "edit_sibling_by_field": self.edit_sibling_by_field,
             "empty": self.empty,
             "full_data": self.full_data,
         }
 
     def edit_sibling(self) -> None:
         sibling = self.get_value_for_foreign_class(self.label_field, type(self))
+        if sibling is not None:
+            sibling.display()
+            sibling.edit()
+            sibling.save()
+
+    def edit_sibling_by_field(self) -> None:
+        field = getinput.get_with_completion(
+            self.get_field_names(),
+            message="field> ",
+            history_key=(type(self), "edit_sibling_by_field"),
+            disallow_other=True,
+        )
+        if field is None:
+            return
+        sibling = self.getter(field).get_one()
         if sibling is not None:
             sibling.display()
             sibling.edit()
@@ -890,7 +918,9 @@ class _NameGetter(Generic[ModelT]):
         if self._data is None:
             self._data = set()
             self._encoded_data = set()
-            for obj in self.cls.select_for_field(self.field):
+            for i, obj in enumerate(self.cls.select_for_field(self.field)):
+                if i % 1000 == 0:
+                    print(f"{self}: {i} done")
                 self._add_obj(obj)
 
 

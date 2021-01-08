@@ -336,6 +336,7 @@ class PeriodSystem(enum.IntEnum):
     _lithostratigraphy = 6  # lithostratigraphical units, like formations (deprecated)
     aulma = 7  # Australian land mammal age system
     local_biostratigraphy = 8  # local biostratigraphic zonation
+    aflma = 9  # African land mammal age system
 
 
 class PeriodRank(enum.IntEnum):
@@ -410,6 +411,11 @@ class SourceLanguage(enum.IntEnum):
     arabic = 10
     chinese = 11
     mongolian = 12
+    japanese = 13
+    thai = 14
+    korean = 15
+    hungarian = 16
+    vietnamese = 17
 
 
 class GenderArticle(enum.IntEnum):
@@ -527,6 +533,25 @@ class SpecimenOrgan(enum.IntEnum):
     in_alcohol = 6
     other = 7
     maxilla = 8
+    antler = 9
+    humerus = 10
+    femur = 11
+    ulna = 12
+    radius = 13
+    tibia = 14
+    fibula = 15
+    vertebra = 16
+    pelvis = 17
+    dentary = 18
+    caudal_tube = 19
+    osteoderm = 20
+    coracoid = 21
+    whole_animal = 22
+    egg = 23
+    horn_core = 24
+    frontlet = 25
+    petrosal = 26
+    tarsometatarsus = 27
 
 
 class AltitudeUnit(enum.IntEnum):
@@ -618,4 +643,5 @@ class FillDataLevel(enum.IntEnum):
     needs_more_data = 2  # e.g., etymologydetail for genera
     incomplete_detail = 3  # fill data if species has LD but not SD or vice versa
     missing_detail = 4  # fill data if species name is missing location/specimen detail
-    nothing_needed = 5
+    needs_specimen_data = 5  # needs derived specimen data like organ
+    nothing_needed = 6

@@ -391,8 +391,7 @@ A few countries contain further divisions:
 - [Brazil](/r/Brazil) is divided into regions for each state and the [Distrito Federal](</r/Distrito_Federal_(Brazil)>).
   Within the state of [Pernambuco](/r/Pernambuco), the outlying island of
   [Fernando de Noronha](/r/Fernando_de_Noronha) is a separate region.
-- Within [Colombia](/r/Colombia), the [San Andrés y Providencia](/r/San_Andrés_y_Providencia)
-  archipelago is a separate region.
+- Within [Colombia](/r/Colombia), we recognize regions for each department and for the city of [Bogotá](/r/Bogotá).
 - Within [Ecuador](/r/Ecuador), the [Galápagos Islands](/r/Galápagos_Islands) are a separate region.
 
 ## The oceans

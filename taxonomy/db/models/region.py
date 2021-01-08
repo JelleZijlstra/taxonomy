@@ -64,30 +64,38 @@ class Region(BaseModel):
         out += " (%s)" % self.kind
         return out
 
+    def get_general_localities(self) -> List["models.Location"]:
+        name_field = models.Location.name
+        my_name = self.name
+        return models.Location.bfind(
+            (name_field == my_name)
+            | (name_field == f"{my_name} Pleistocene")
+            | (name_field == f"{my_name} fossil")
+            | (name_field.endswith(f"({my_name})"))
+        )
+
     def rename(self, new_name: Optional[str] = None) -> None:
         old_name = self.name
         if new_name is None:
             new_name = self.getter("name").get_one_key(
                 default=old_name, allow_empty=False
             )
-        loc = self.get_location()
-        print("renaming", loc)
-        loc.name = new_name
-        pleistocene_loc = models.Location.get(
-            region=self, name=f"{old_name} Pleistocene", deleted=False
-        )
-        print("renaming", pleistocene_loc)
-        pleistocene_loc.name = f"{new_name} Pleistocene"
-        fossil_loc = models.Location.get(
-            region=self, name=f"{old_name} fossil", deleted=False
-        )
-        print("renaming", fossil_loc)
-        fossil_loc.name = f"{new_name} fossil"
-        for loc in models.Location.bfind(
-            models.Location.name.endswith(f"({old_name})"), region=self
-        ):
-            print("renaming", loc)
-            loc.name = loc.name.replace(f"({old_name})", f"({new_name})")
+
+        for loc in self.get_general_localities():
+            if loc.name.endswith(f"({old_name})"):
+                loc_name = loc.name.replace(f"({old_name})", f"({new_name})")
+            elif loc.name == old_name:
+                loc_name = new_name
+            elif loc.name == f"{old_name} fossil":
+                loc_name = f"{new_name} fossil"
+            elif loc.name == f"{old_name} Pleistocene":
+                loc_name = f"{new_name} Pleistocene"
+            else:
+                print("Skipping unrecognized name", loc.name)
+                continue
+            print(f"Renaming {loc.name!r} -> {loc_name!r}")
+            loc.name = loc_name
+
         self.name = new_name
 
     def display(

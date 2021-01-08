@@ -431,7 +431,10 @@ class Name(BaseModel):
 
     def print_fill_data_level(self) -> None:
         level, reason = self.fill_data_level()
-        print(f"{level}: {reason}")
+        if reason:
+            print(f"{level.name}: {reason}")
+        else:
+            print(level.name)
 
     def edit(self) -> None:
         self.fill_field("type_tags")
@@ -888,9 +891,15 @@ class Name(BaseModel):
         if citation is None:
             print("No original citation; cannot copy authors")
             return
+        if citation.issupplement() and citation.parent is not None:
+            authors = citation.parent.author_tags
+        else:
+            authors = citation.author_tags
         if self.author_tags:
-            getinput.print_diff(self.author_tags, citation.author_tags)
-        self.author_tags = citation.author_tags
+            getinput.print_diff(self.author_tags, authors)
+        else:
+            print(f"Setting authors: {authors}")
+        self.author_tags = authors
 
     @classmethod
     def check_all_authors(
@@ -1103,39 +1112,45 @@ class Name(BaseModel):
             print("2 because all fields are set")
         return 2
 
-    def _requires_detail(self) -> bool:
-        if "type_locality" not in self.get_required_fields():
-            return False
-        year = self.numeric_year()
-        if year > 1920:
-            return True
-        elif year <= 1900:
-            return False
-        else:
-            return self.taxon.age is AgeClass.extant
-
     def is_patronym(self) -> bool:
         snc = self.species_name_complex
         if snc is None:
             return False
         return snc.kind.is_patronym()
 
+    def is_fossil(self) -> bool:
+        return self.taxon.age is not AgeClass.extant
+
     def fill_data_level(self) -> Tuple[FillDataLevel, str]:
-        required_fields = set(self.get_empty_required_fields())
         if not self.check_authors():
             return FillDataLevel.needs_basic_data, "author mismatch"
+        empty_required_fields = set(self.get_empty_required_fields())
         if has_data_from_original(self):
-            crucial_missing = _CRUCIAL_MISSING_FIELDS[self.group] & required_fields
+            crucial_missing = (
+                _CRUCIAL_MISSING_FIELDS[self.group] & empty_required_fields
+            )
             if crucial_missing:
                 return (
                     FillDataLevel.needs_more_data,
                     f"missing {', '.join(sorted(crucial_missing))}",
                 )
-            if (
-                self.group is Group.family
-                or self.group is Group.high
-                or self.group is Group.genus
-            ):
+            required_fields = self.get_required_fields()
+            if self.group is Group.family or self.group is Group.high:
+                return FillDataLevel.nothing_needed, ""
+            elif self.group is Group.genus:
+                if not self.nomenclature_status.requires_name_complex():
+                    return FillDataLevel.nothing_needed, ""
+                citation = self.original_citation
+                needs_etymology = self.numeric_year() >= _ETYMOLOGY_CUTOFF
+                if needs_etymology and not any(
+                    (
+                        isinstance(tag, TypeTag.EtymologyDetail)
+                        and tag.source == citation
+                    )
+                    or tag is TypeTag.NoEtymology
+                    for tag in (self.type_tags or [])
+                ):
+                    return FillDataLevel.incomplete_detail, "missing EtymologyDetail"
                 return FillDataLevel.nothing_needed, ""
             else:
                 if (
@@ -1144,12 +1159,22 @@ class Name(BaseModel):
                     and not self.has_type_tag(TypeTag.NamedAfter)
                 ):
                     return FillDataLevel.incomplete_detail, "missing NamedAfter tag"
-                if not self._requires_detail():
-                    return FillDataLevel.nothing_needed, ""
-                else:
-                    tags: List[TypeTag] = self.type_tags or []
-                    citation = self.original_citation
-                    if not any(
+                tags: List[TypeTag] = self.type_tags or []
+                citation = self.original_citation
+                needs_etymology = "species_name_complex" in required_fields and (
+                    self.numeric_year() >= _ETYMOLOGY_CUTOFF or self.is_patronym()
+                )
+                if needs_etymology and not any(
+                    (
+                        isinstance(tag, TypeTag.EtymologyDetail)
+                        and tag.source == citation
+                    )
+                    or tag is TypeTag.NoEtymology
+                    for tag in tags
+                ):
+                    return (FillDataLevel.incomplete_detail, "missing EtymologyDetail")
+                if self.numeric_year() > 1900:
+                    if "type_locality" in required_fields and not any(
                         (
                             isinstance(tag, TypeTag.LocationDetail)
                             and tag.source == citation
@@ -1158,7 +1183,7 @@ class Name(BaseModel):
                         for tag in tags
                     ):
                         return FillDataLevel.incomplete_detail, "missing LocationDetail"
-                    if not any(
+                    if "type_specimen" in required_fields and not any(
                         (
                             isinstance(
                                 tag, (TypeTag.SpecimenDetail, TypeTag.CitationDetail)
@@ -1169,37 +1194,41 @@ class Name(BaseModel):
                         for tag in tags
                     ):
                         return FillDataLevel.incomplete_detail, "missing SpecimenDetail"
-                    ed = (
-                        self.numeric_year() < _ETYMOLOGY_CUTOFF
-                        or not self.is_patronym()
-                    ) or any(
-                        True
-                        for tag in tags
-                        if (
-                            isinstance(tag, TypeTag.EtymologyDetail)
-                            and tag.source == citation
-                        )
-                        or tag is TypeTag.NoEtymology
-                    )
-                    if not ed:
-                        return (
-                            FillDataLevel.incomplete_detail,
-                            "missing EtymologyDetail",
-                        )
-                    return FillDataLevel.nothing_needed, ""
+                if (
+                    self.type_specimen
+                    and self.species_type_kind
+                    is not constants.SpeciesGroupType.syntypes
+                ):
+                    required_tags = [(TypeTag.Organ, TypeTag.NoOrgan)]
+                    if not self.is_fossil():
+                        required_tags += [
+                            (TypeTag.Date, TypeTag.NoDate),
+                            (TypeTag.CollectedBy, TypeTag.NoCollector),
+                            (TypeTag.Age, TypeTag.NoAge),
+                            (TypeTag.Gender, TypeTag.NoGender),
+                        ]
+                    for tag_cls, negative_cls in required_tags:
+                        if not any(
+                            isinstance(tag, tag_cls) or tag is negative_cls
+                            for tag in tags
+                        ):
+                            return (
+                                FillDataLevel.needs_specimen_data,
+                                f"missing {tag_cls.__name__} tag",
+                            )
+                return FillDataLevel.nothing_needed, ""
         else:
-            if required_fields:
+            if empty_required_fields:
                 return (
                     FillDataLevel.needs_basic_data,
-                    f"missing {', '.join(sorted(required_fields))}",
+                    f"missing {', '.join(sorted(empty_required_fields))}",
                 )
             elif self.group is Group.family or self.group is Group.high:
                 return FillDataLevel.nothing_needed, ""
             elif self.group is Group.genus:
                 if (
-                    "type" in self.get_required_fields()
+                    self.nomenclature_status.requires_name_complex()
                     and self.numeric_year() >= _ETYMOLOGY_CUTOFF
-                    and not self.has_type_tag(TypeTag.NoEtymology)
                 ):
                     return FillDataLevel.needs_basic_data, "missing EtymologyDetail"
                 else:
@@ -1210,7 +1239,10 @@ class Name(BaseModel):
                 elif self.has_type_tag(TypeTag.Date) and self.has_type_tag(
                     TypeTag.CollectedBy
                 ):
-                    return FillDataLevel.missing_detail, "missing Date or CollectedBy"
+                    return (
+                        FillDataLevel.missing_detail,
+                        "missing data from original, but has Date and CollectedBy",
+                    )
                 else:
                     return FillDataLevel.needs_more_data, "missing data from original"
 
@@ -1736,7 +1768,11 @@ def has_data_from_original(nam: Name) -> bool:
     for tag in nam.type_tags:
         if isinstance(tag, SOURCE_TAGS) and tag.source == nam.original_citation:
             return True
-        if isinstance(tag, (TypeTag.IncludedSpecies, TypeTag.GenusCoelebs)):
+        if isinstance(tag, (TypeTag.IncludedSpecies, TypeTag.GenusCoelebs)) or tag in (
+            TypeTag.NoEtymology,
+            TypeTag.NoLocation,
+            TypeTag.NoSpecimen,
+        ):
             return True
     return False
 
@@ -1907,6 +1943,13 @@ class TypeTag(adt.ADT):
     NoEtymology(tag=31)  # type: ignore
     NoLocation(tag=32)  # type: ignore
     NoSpecimen(tag=33)  # type: ignore
+    NoDate(tag=34)  # type: ignore
+    NoCollector(tag=35)  # type: ignore
+    NoOrgan(tag=36)  # type: ignore
+    NoGender(tag=37)  # type: ignore
+    NoAge(tag=38)  # type: ignore
+    # Person who is involved in the type specimen's history
+    Involved(person=Person, comment=str, tag=39)  # type: ignore
 
 
 SOURCE_TAGS = (

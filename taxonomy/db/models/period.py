@@ -208,7 +208,9 @@ class Period(BaseModel):
         if include_partial:
             locations = {*self.locations_min, *self.locations_max}
         else:
-            locations = self.locations_min.filter(models.Location.max_period == self)
+            locations = set(
+                self.locations_min.filter(models.Location.max_period == self)
+            )
         if include_children:
             if include_partial:
                 children = {*self.children, *self.children_min, *self.children_max}

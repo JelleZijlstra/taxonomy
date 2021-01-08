@@ -46,6 +46,7 @@ ALLOWED_TUSSENVOEGSELS = {
     NamingConvention.german: {"von", "von den", "von der", "zu"},
     # French, Italian, Portuguese
     NamingConvention.western: {"de", "du", "dos", "da", "de la", "del", "do"},
+    NamingConvention.spanish: {"de", "del", "de la", "de los", "de las"},
 }
 ALLOWED_TUSSENVOEGSELS[NamingConvention.unspecified] = set.union(
     *ALLOWED_TUSSENVOEGSELS.values()
@@ -99,6 +100,13 @@ class Person(BaseModel):
             lambda: models.Name,
             "type_tags",
             lambda: models.TypeTag.CollectedBy,
+            1,
+        ),
+        get_tag_based_derived_field(
+            "involved",
+            lambda: models.Name,
+            "type_tags",
+            lambda: models.TypeTag.Involved,
             1,
         ),
         get_tag_based_derived_field(
@@ -248,13 +256,13 @@ class Person(BaseModel):
 
     def find_tag(
         self, tags: Optional[Sequence[adt.ADT]], tag_cls: Type[adt.ADT]
-    ) -> Optional[adt.ADT]:
+    ) -> Tuple[int, Optional[adt.ADT]]:
         if tags is None:
-            return None
-        for tag in tags:
+            return 0, None
+        for i, tag in enumerate(tags):
             if isinstance(tag, tag_cls) and tag.person == self:
-                return tag
-        return None
+                return i, tag
+        return 0, None
 
     def add_to_derived_field(self, field_name: str, obj: BaseModel) -> None:
         current = self.get_raw_derived_field(field_name) or []
@@ -273,18 +281,31 @@ class Person(BaseModel):
     ) -> Tuple[Optional[Sequence[adt.ADT]], Optional["Person"]]:
         if tags is None:
             return None, None
-        matching_tag = self.find_tag(tags, tag_cls)
+        matching_idx, matching_tag = self.find_tag(tags, tag_cls)
         if matching_tag is None:
             return None, None
-        print(matching_tag)
+
         if target is None:
-            new_person = self.getter(None).get_one(callbacks=obj.get_adt_callbacks())
+
+            def who() -> None:
+                print(f"{matching_tag} at index {matching_idx}")
+
+            who()
+            new_person = self.getter(None).get_one(
+                callbacks={**obj.get_adt_callbacks(), "who": who}
+            )
             if new_person is None:
                 return None, None
         else:
             new_person = target
         new_tag = tag_cls(person=new_person)
-        return [new_tag if tag == matching_tag else tag for tag in tags], new_person
+        return (
+            [
+                new_tag if i == matching_idx and tag == matching_tag else tag
+                for i, tag in enumerate(tags)
+            ],
+            new_person,
+        )
 
     def edit_tag_sequence_on_object(
         self,
@@ -294,8 +315,9 @@ class Person(BaseModel):
         derived_field_name: str,
         target: Optional["Person"] = None,
     ) -> None:
+        obj = obj.reload()
         tags = getattr(obj, field_name)
-        tag = self.find_tag(tags, tag_cls)
+        matching_idx, tag = self.find_tag(tags, tag_cls)
         if tag is None:
             return
         obj.display()
@@ -351,7 +373,7 @@ class Person(BaseModel):
                 print(f"{self}: unchecked but year of death set")
                 return False
         if self.tussenvoegsel:
-            allowed = ALLOWED_TUSSENVOEGSELS[self.naming_convention]
+            allowed = ALLOWED_TUSSENVOEGSELS.get(self.naming_convention, set())
             if self.tussenvoegsel not in allowed:
                 print(f"{self}: disallowed tussenvoegsel {self.tussenvoegsel!r}")
                 return False
@@ -424,14 +446,6 @@ class Person(BaseModel):
                 print(f"{self}: invalid family name: {self.family_name!r}")
                 return False
         return True
-
-    @classmethod
-    def lint_all(cls) -> List["Person"]:
-        bad = []
-        for person in cls.select():
-            if not person.lint():
-                bad.append(person)
-        return bad
 
     @classmethod
     def fix_bad_suffixes(cls) -> None:
@@ -529,6 +543,7 @@ class Person(BaseModel):
             ("names", "author_tags", AuthorTag.Author),
             ("patronyms", "type_tags", models.TypeTag.NamedAfter),
             ("collected", "type_tags", models.TypeTag.CollectedBy),
+            ("involved", "type_tags", models.TypeTag.Involved),
         ]:
             for obj in self.get_sorted_derived_field(field_name):
                 if field_name == "names":
@@ -634,6 +649,8 @@ class Person(BaseModel):
             self.save()
 
     def is_more_specific_than(self, other: "Person") -> bool:
+        if other.type in (PersonType.hard_redirect, PersonType.soft_redirect):
+            return other.target == self
         if self.family_name != other.family_name:
             return False
         if self.given_names:

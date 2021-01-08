@@ -1157,6 +1157,22 @@ definition.taxon_cls = Taxon
 _finished_papers: Set[Tuple[str, FillDataLevel]] = set()
 
 
+def _name_sort_key(nam: "models.Name") -> Tuple[str, int]:
+    try:
+        return ("", int(nam.page_described))
+    except (TypeError, ValueError):
+        return (nam.page_described or "", 0)
+
+
+def _get_names(paper: Article) -> List["models.Name"]:
+    return sorted(
+        models.Name.filter(
+            models.Name.original_citation == paper, models.Name.status != Status.removed
+        ),
+        key=_name_sort_key,
+    )
+
+
 def fill_data_from_paper(
     paper: Article,
     level: FillDataLevel = DEFAULT_LEVEL,
@@ -1177,18 +1193,7 @@ def fill_data_from_paper(
     else:
         goal_level = level
 
-    def sort_key(nam: models.Name) -> Tuple[str, int]:
-        try:
-            return ("", int(nam.page_described))
-        except (TypeError, ValueError):
-            return (nam.page_described or "", 0)
-
-    nams = sorted(
-        models.Name.filter(
-            models.Name.original_citation == paper, models.Name.status != Status.removed
-        ),
-        key=sort_key,
-    )
+    nams = _get_names(paper)
     nams_below_level = [
         nam for nam in nams if _fill_data_level_for_name(nam, level) <= level
     ]
@@ -1196,6 +1201,11 @@ def fill_data_from_paper(
         print(f"{paper.name}: {len(nams_below_level)} names (fill_data_from_paper)")
         if ask_before_opening and not only_fill_cache:
             clean_tss_interactive(paper)
+            if paper.has_tag(ArticleTag.NeedsTranslation):
+                print(f"{paper.name}: skipping because of NeedsTranslation tag")
+                _finished_papers.add((paper.name, level))
+                return True
+            nams = _get_names(paper)
 
         for nam in nams:
             if only_fill_cache:
@@ -1237,6 +1247,7 @@ def fill_data_from_articles(
     only_fill_cache: bool,
     ask_before_opening: bool = False,
     skip_nofile: bool = True,
+    specify_authors: bool = False,
 ) -> None:
     total = len(arts)
     if total == 0:
@@ -1250,6 +1261,8 @@ def fill_data_from_articles(
         if not only_fill_cache and skip_nofile and not art.isfile():
             print("skipping NOFILE article")
             continue
+        if not only_fill_cache and specify_authors:
+            art.specify_authors()
         if fill_data_from_paper(
             art,
             level=level,
@@ -1405,7 +1418,7 @@ def display_names(
     art: Article, *, full: bool = False, omit_if_done: bool = False
 ) -> None:
     print(repr(art))
-    new_names = sorted(art.new_names, key=lambda nam: nam.numeric_page_described())
+    new_names = _get_names(art)
     if new_names:
         print(f"New names ({len(new_names)}):")
         levels = []
@@ -1446,8 +1459,8 @@ def clean_tss_interactive(art: Article, field: str = "corrected_original_name") 
         if obj is None:
             break
         obj.display()
-        level = _fill_data_level_for_name(obj)
-        print(f"Level: {level.name.upper()}")
+        level, reason = obj.fill_data_level()
+        print(f"Level: {level.name.upper()} ({reason})")
         obj.edit()
         clean_up_type_specimen_source_for_name(obj)
         if obj.type_specimen_source == art:

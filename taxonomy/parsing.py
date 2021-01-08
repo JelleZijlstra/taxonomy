@@ -113,6 +113,7 @@ upper = C(
             "Ş",
             "Ż",
             "Ž",
+            "Œ",
         }
     )
 )
@@ -140,6 +141,7 @@ lower = C(
             "ì",
             "í",
             "î",
+            "ī",
             "ï",
             "ñ",
             "ò",
@@ -185,6 +187,7 @@ lower = C(
             "ǧ",
             "ș",
             "ț",
+            "ð",
         }
     )
 )
@@ -354,19 +357,20 @@ chinese_lower = C(sorted(unicode_range("a", "z") | {"ü"}))
 chinese_name = latin_upper + OneOrMore(chinese_lower)
 pinyin_given_names_cased = chinese_name + Optional(L("-") + OneOrMore(chinese_lower))
 chinese_given_names = chinese_name + Optional(
-    L("-") + Optional(latin_upper) + OneOrMore(chinese_lower)
+    (L("-") | L(" ")) + Optional(latin_upper) + OneOrMore(chinese_lower)
 )
 
 russian_name = (cyrillic_upper + OneOrMore(cyrillic_lower)) | (
     latin_upper + OneOrMore(latin_lower | Literal("'"))
 )
+russian_family_name = russian_name + Optional(L("-") + russian_name)
 russian_initial = (
     cyrillic_upper
     | latin_upper
     | OneOf.from_strs({"Yu", "Ya", "Sh", "Dzh", "Zh", "Ts"})
 )
-russian_given_names = (
-    russian_name + L(" ") + (russian_name | (russian_initial + L(".")))
+russian_given_names = russian_name + Optional(
+    L(" ") + (russian_name | (russian_initial + L(".")))
 )
 russian_initials = russian_initial + L(".") + Optional(russian_initial + L("."))
 
@@ -377,7 +381,7 @@ initials_pattern = initials.compile()
 family_name_pattern = family_name.compile()
 given_names_pattern = given_names.compile()
 
-russian_family_name_pattern = russian_name.compile()
+russian_family_name_pattern = russian_family_name.compile()
 russian_given_names_pattern = russian_given_names.compile()
 russian_initials_pattern = russian_initials.compile()
 

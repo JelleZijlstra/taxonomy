@@ -60,7 +60,7 @@ The ALMA system is based exclusively on the faunal succession in China and Mongo
 
 ## Africa
 
-No sequence of land mammal ages has been proposed for Africa; the closest equivalent are the "faunal sets" introduced by [Pickford (1981)](</a/Kenya_Miocene-biostratigraphy_(Pickford_1981).pdf>) for the Miocene of Kenya. [Seiffert (2010)](/a/Africa_Paleogene-chronology.pdf) provided an overview of the Paleogene, as did [Werdelin (2010)](/a/Africa_Neogene-chronology.pdf) for the Neogene.
+A sequence of African Land Mammal Ages (AFLMAs) was recently proposed by [Van Couvering & Delson (2020)](/a/Mammalia_Africa-AFLMAs.pdf). This sequence is used in the database. Previously, [Seiffert (2010)](/a/Africa_Paleogene-chronology.pdf) provided an overview of the Paleogene, as did [Werdelin (2010)](/a/Africa_Neogene-chronology.pdf) for the Neogene.
 
 ## Australia
 

@@ -7,6 +7,7 @@ import re
 import time
 from typing import Dict, Iterable, Iterator, Mapping, Optional, Sequence, Tuple, TypeVar
 import unicodedata
+import unidecode
 
 from . import constants
 from .constants import Group, Rank
@@ -516,7 +517,14 @@ def _clean_up_word(word: str) -> str:
 
 
 def simplify_string(text: str, clean_words: bool = True) -> str:
+    """Simplify a string.
+
+    This is intended to remove punctuation, casing, and similar
+    to help compare strings.
+
+    """
     text = re.sub(r"[\.,]", "", text)
+    text = unidecode.unidecode(text)
     text = clean_string(text).lower()
     if clean_words:
         text = "".join(_clean_up_word(word) for word in text.split())
@@ -526,6 +534,12 @@ def simplify_string(text: str, clean_words: bool = True) -> str:
 
 
 def clean_string(text: str) -> str:
+    """Clean a string.
+
+    This is intended as a safe operation that can be applied to any
+    text (e.g., for cleaning up user input).
+
+    """
     text = unicodedata.normalize("NFC", text)
     text = text.replace(" \xad ", "")
     text = text.replace("\xad", "")
