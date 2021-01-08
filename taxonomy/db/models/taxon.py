@@ -1189,7 +1189,7 @@ def fill_data_from_paper(
 
     opened = False
     if finish_what_you_start:
-        goal_level = max(level, FillDataLevel.missing_detail)
+        goal_level = max(level, FillDataLevel.need_specimen_data)
     else:
         goal_level = level
 
