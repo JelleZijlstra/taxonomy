@@ -672,7 +672,7 @@ class BaseModel(Model):
         getinput.append_history(getter, self.get_value_to_show_for_field(field))
 
     @classmethod
-    def create_interactively(cls: Type[ModelT], **kwargs: Any) -> ModelT:
+    def create_interactively(cls: Type[ModelT], **kwargs: Any) -> Optional[ModelT]:
         obj = cls.create(**kwargs)
         obj.fill_required_fields()
         return obj

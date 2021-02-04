@@ -326,8 +326,13 @@ class Person(BaseModel):
             setattr(obj, field_name, new_tags)
             obj.save()
             if new_person is not None:
-                self.remove_from_derived_field(derived_field_name, obj)
-                new_person.add_to_derived_field(derived_field_name, obj)
+                self.move_reference(new_person, derived_field_name, obj)
+
+    def move_reference(
+        self, new_person: "Person", derived_field_name: str, obj: BaseModel
+    ) -> None:
+        self.remove_from_derived_field(derived_field_name, obj)
+        new_person.add_to_derived_field(derived_field_name, obj)
 
     def edit(self) -> None:
         self.fill_field("tags")
@@ -707,20 +712,17 @@ class Person(BaseModel):
     @classmethod
     def create_interactively(
         cls, family_name: Optional[str] = None, **kwargs: Any
-    ) -> "Person":
+    ) -> Optional["Person"]:
         if family_name is None:
             family_name = cls.getter("family_name").get_one_key("family_name> ")
-        assert family_name is not None
-        if getinput.yes_no("Create checked person? "):
-            kwargs.setdefault("type", PersonType.checked)
-            kwargs.setdefault("naming_convention", NamingConvention.unspecified)
-            person = cls.create(family_name=family_name, **kwargs)
-            person.edit()
-        else:
-            for field in ("initials", "given_names", "suffix", "tussenvoegsel"):
-                if field not in kwargs:
-                    kwargs[field] = cls.getter(field).get_one_key(f"{field}> ")
-            person = cls.get_or_create_unchecked(family_name, **kwargs)
+        if family_name is None:
+            return None
+        # Always make a checked person, since unchecked persons should be created
+        # through get_or_create_unchecked
+        kwargs.setdefault("type", PersonType.checked)
+        kwargs.setdefault("naming_convention", NamingConvention.unspecified)
+        person = cls.create(family_name=family_name, **kwargs)
+        person.edit()
         while not person.lint():
             person.edit()
         return person

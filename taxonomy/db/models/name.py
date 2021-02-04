@@ -68,7 +68,6 @@ class Name(BaseModel):
     grouping_field = "status"
     call_sign = "N"
     field_defaults = {
-        "species_type_kind": constants.SpeciesGroupType.holotype,
         "nomenclature_status": NomenclatureStatus.available,
         "status": Status.valid,
     }
@@ -103,7 +102,7 @@ class Name(BaseModel):
     year = CharField(null=True)  # redundant with data for the publication itself
 
     # Gender and stem
-    stem = CharField(null=True)  # redundant with name complex?
+    stem = CharField(null=True)  # redundant with name complex
     name_gender = EnumField(
         constants.GrammaticalGender, null=True, db_column="gender"
     )  # for genus group; redundant with name complex
@@ -126,12 +125,6 @@ class Name(BaseModel):
     type_specimen = CharField(null=True)
     collection = ForeignKeyField(
         Collection, null=True, db_column="collection_id", related_name="type_specimens"
-    )
-    type_specimen_source = ForeignKeyField(
-        Article,
-        null=True,
-        db_column="type_specimen_source_id",
-        related_name="type_source_names",
     )
     genus_type_kind = EnumField(constants.TypeSpeciesDesignation, null=True)
     species_type_kind = EnumField(constants.SpeciesGroupType, null=True)
@@ -378,10 +371,6 @@ class Name(BaseModel):
             if self.collection is not None:
                 print(repr(self.collection))
             return super().get_value_for_field(field, default=default)
-        elif field == "type_specimen_source":
-            return self.get_value_for_foreign_key_field(
-                field, default_obj=None, callbacks=self.get_adt_callbacks()
-            )
         elif field == "type":
             typ = super().get_value_for_field(field, default=default)
             print(f"type: {typ}")
@@ -440,10 +429,9 @@ class Name(BaseModel):
         self.fill_field("type_tags")
 
     def _add_type_identical_callback(self) -> None:
-        root_name = self.getter("root_name").get_one_key(
-            "root_name> ", allow_empty=False
-        )
-        assert root_name is not None
+        root_name = self.getter("root_name").get_one_key("root_name> ")
+        if root_name is None:
+            return
         self.add_type_identical(root_name)
 
     def _from_paper_callback(self) -> None:
@@ -671,7 +659,7 @@ class Name(BaseModel):
         source: Optional[Article] = None,
         page: Optional[str] = None,
         interactive: bool = True,
-    ) -> "NameComment":
+    ) -> Optional["NameComment"]:
         return NameComment.create_interactively(
             name=self, kind=kind, text=text, source=source, page=page
         )
@@ -774,14 +762,14 @@ class Name(BaseModel):
             raise ValueError(f"{self} is {self.nomenclature_status.name}")
         if status is None:
             status = getinput.get_enum_member(
-                NomenclatureStatus, prompt="nomenclature_status> ", allow_empty=False
+                NomenclatureStatus, prompt="nomenclature_status> "
             )
+        if status is None:
+            return
         if of_name is None:
-            of_name = Name.getter("corrected_original_name").get_one(
-                prompt="of_name> ", allow_empty=False
-            )
+            of_name = Name.getter("corrected_original_name").get_one(prompt="of_name> ")
         if of_name is None:
-            raise ValueError("of_name is None")
+            return
         self.add_tag(STATUS_TO_TAG[status](name=of_name, comment=comment))
         self.nomenclature_status = status  # type: ignore
         self.save()
@@ -795,17 +783,17 @@ class Name(BaseModel):
         original_name: Optional[str] = None,
         *,
         interactive: bool = True,
-    ) -> "Name":
+    ) -> Optional["Name"]:
         if root_name is None:
-            root_name = Name.getter("root_name").get_one_key(
-                prompt="root_name> ", allow_empty=False
-            )
+            root_name = Name.getter("root_name").get_one_key(prompt="root_name> ")
         if root_name is None:
-            raise ValueError("root_name is None")
+            return None
         if status is None:
             status = getinput.get_enum_member(
-                NomenclatureStatus, prompt="nomenclature_status> ", allow_empty=False
+                NomenclatureStatus, prompt="nomenclature_status> "
             )
+        if status is None:
+            return None
 
         if paper is not None:
             nam = self.taxon.syn_from_paper(root_name, paper, interactive=False)
@@ -829,11 +817,9 @@ class Name(BaseModel):
         self, name: Optional["Name"] = None, comment: Optional[str] = None
     ) -> None:
         if name is None:
-            name = Name.getter("corrected_original_name").get_one(
-                prompt="name> ", allow_empty=False
-            )
+            name = Name.getter("corrected_original_name").get_one(prompt="name> ")
         if name is None:
-            raise ValueError("name is None")
+            return
         self.add_tag(NameTag.PreoccupiedBy(name, comment))
         if self.nomenclature_status == NomenclatureStatus.available:
             self.nomenclature_status = NomenclatureStatus.preoccupied  # type: ignore
@@ -948,6 +934,8 @@ class Name(BaseModel):
                     f"author {i}: {article_author} is more specific than {name_author}"
                 )
                 new_authors[i] = AuthorTag.Author(person=article_author)
+                if autofix:
+                    name_author.move_reference(article_author, "names", self)
             else:
                 maybe_print(
                     f"author {i}: {article_author} (article) does not match {name_author} (name)"
@@ -1051,8 +1039,6 @@ class Name(BaseModel):
                 type_info.append(self.type_specimen)
             if self.collection is not None:
                 type_info.append(f"in {self.collection!r}")
-            if self.type_specimen_source is not None:
-                type_info.append(f"{{{self.type_specimen_source.name}}}")
             if type_info:
                 data["type"] = "; ".join(type_info)
             if self.citation_group is not None:
@@ -1309,7 +1295,6 @@ class Name(BaseModel):
                     yield "type_tags"
 
     def get_deprecated_fields(self) -> Iterable[str]:
-        yield "type_specimen_source"
         yield "stem"
         yield "name_gender"
 
@@ -1638,14 +1623,18 @@ class Name(BaseModel):
                 print("=== same verbatim_citation:")
                 for nam in same_citation:
                     nam.display()
-        similar_names = list(
-            self.select_valid().filter(
-                Name.author_tags == self.__data__["author_tags"],
-                Name.year == self.year,
-                Name.id != self.id,
-                Name.citation_group != self.citation_group,
-            )
-        )
+
+        similar = [
+            self.get_similar_names_and_papers_for_author(author.family_name)
+            for author in self.get_authors()
+        ]
+        similar_art_sets, similar_nam_sets = zip(*similar)
+        similar_arts = set.intersection(*similar_art_sets)
+        if similar_arts:
+            print(f"=== {len(similar_arts)} similar articles")
+            for art in similar_arts:
+                print(repr(art))
+        similar_names = set.intersection(*similar_nam_sets)
         if not similar_names:
             return 0
 
@@ -1674,6 +1663,26 @@ class Name(BaseModel):
             for cg, count in Counter(similar_name_cgs).most_common():
                 print(count, cg)
         return len(similar_names)
+
+    def get_similar_names_and_papers_for_author(
+        self, author_name: str
+    ) -> Tuple[Set[Article], Set["Name"]]:
+        authors = Person.select_valid().filter(Person.family_name == author_name)
+        nams = set()
+        arts = set()
+        year = self.numeric_year()
+        for author in authors:
+            for art in author.get_sorted_derived_field("articles"):
+                if art.numeric_year() == year:
+                    arts.add(art)
+            for nam in author.get_sorted_derived_field("names"):
+                if (
+                    nam.id != self.id
+                    and nam.numeric_year() == year
+                    and nam.citation_group != self.citation_group
+                ):
+                    nams.add(nam)
+        return arts, nams
 
 
 class NameComment(BaseModel):
@@ -1950,6 +1959,8 @@ class TypeTag(adt.ADT):
     NoAge(tag=38)  # type: ignore
     # Person who is involved in the type specimen's history
     Involved(person=Person, comment=str, tag=39)  # type: ignore
+    # Indicates that a General type locality cannot be fixed
+    ImpreciseLocality(comment=str, tag=40)  # type: ignore
 
 
 SOURCE_TAGS = (

@@ -49,8 +49,8 @@ CREATE TABLE `name` (
     `species_name_complex_id` INT UNSIGNED DEFAULT NULL,
     `collection_id` integer default null,
     `type_description` varchar(65535) default null,
-    `type_specimen_source` varchar(512) default null,
-    `type_specimen_source_id` INT UNSIGNED DEFAULT NULL,
+    `type_specimen_source` varchar(512) default null, -- unused
+    `type_specimen_source_id` INT UNSIGNED DEFAULT NULL, -- unused
     `type_kind` integer default null, -- don't want it, drop this once I figure out the SQLite syntax
     `tags` varchar(65535) default null,
     `genus_type_kind` integer default null,

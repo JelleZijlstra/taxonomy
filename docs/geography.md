@@ -245,7 +245,7 @@ In more detail:
 - [Gibraltar](/r/Gibraltar) is listed as a country.
 - [Kosovo](/r/Kosovo) is also listed as a country. At least four mammals have their type localities in the
   territory of Kosovo.
-- The administrative regions (peripheries) of [Greece](/r/Greece) are listed as regions.
+- The administrative regions (peripheries) of [Greece](/r/Greece) are listed as regions. Within the South Aegean and North Aegean regions, each individual island with significant faunal data is listed as a region.
 - In [Italy](/r/Italy), the 20 regions are listed as separate regions in the database.
 - Within [Portugal](/r/Portugal), the [Azores](/r/Azores) and [Madeira](/r/Madeira) are listed as separate regions.
 - Within [Spain](/r/Spain), the autonomous communities are listed as regions, as are [Ceuta](/r/Ceuta)

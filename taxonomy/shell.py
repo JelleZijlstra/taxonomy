@@ -1467,7 +1467,6 @@ ATTRIBUTES_BY_GROUP = {
     "type_locality": (Group.species,),
     "type_specimen": (Group.species,),
     "collection": (Group.species,),
-    "type_specimen_source": (Group.species,),
     "genus_type_kind": (Group.genus,),
     "species_type_kind": (Group.species,),
 }
@@ -1576,13 +1575,7 @@ def bad_page_described() -> None:
 
 @command
 def field_counts() -> None:
-    for field in (
-        "verbatim_citation",
-        "verbatim_type",
-        "stem",
-        "name_gender",
-        "type_specimen_source",
-    ):
+    for field in ("verbatim_citation", "verbatim_type", "stem", "name_gender"):
         print(field, Name.select_valid().filter(getattr(Name, field) != None).count())
     print("Total", Name.select_valid().count())
 
@@ -1631,43 +1624,6 @@ def clean_up_stem(dry_run: bool = False) -> Iterable[Name]:
             yield nam
         getinput.flush()
     print(f"{count} cleaned up")
-
-
-@command
-def clean_up_type_specimen_source(
-    dry_run: bool = False, fast: bool = False, interactive: bool = False
-) -> None:
-    count = 0
-    nams = Name.bfind(
-        Name.type_specimen_source != None,
-        Name.type_tags != None,
-        Name.type_specimen != None,
-        quiet=True,
-    )
-    if interactive:
-        nams = sorted(
-            nams,
-            key=lambda nam: (
-                nam.type_specimen_source.path,
-                nam.type_specimen_source.name,
-                nam.corrected_original_name or "",
-            ),
-        )
-    for nam in nams:
-        if models.taxon.clean_up_type_specimen_source_for_name(
-            nam, dry_run=dry_run, fast=fast, interactive=interactive
-        ):
-            count += 1
-    print(f"{count} cleaned up")
-
-
-@command
-def clean_up_type_specimen_source_for_name(
-    nam: Name, dry_run: bool = False, fast: bool = False, interactive: bool = False
-) -> bool:
-    return models.taxon.clean_up_type_specimen_source_for_name(
-        nam, dry_run=dry_run, fast=fast, interactive=interactive
-    )
 
 
 @command
@@ -2409,16 +2365,6 @@ def most_common_mapped(
 
 
 @command
-def most_common_cg_for_tss(num_to_display: int = 10) -> Counter[models.CitationGroup]:
-    return most_common_mapped(
-        Name,
-        "type_specimen_source",
-        lambda art: art.citation_group,
-        num_to_display=num_to_display,
-    )
-
-
-@command
 def most_common_citation_groups_after(year: int) -> Dict[CitationGroup, int]:
     nams = Name.bfind(Name.citation_group != None, Name.year > year, quiet=True)
     return Counter(nam.citation_group for nam in nams)
@@ -2474,17 +2420,6 @@ def fill_data_from_citation_group(
         ask_before_opening=ask_before_opening,
         skip_nofile=skip_nofile,
     )
-
-
-@command
-def replace_type_specimen_source_from_folder(folder: str) -> None:
-    arts = Article.bfind(Article.path.startswith(folder), quiet=True)
-    total = len(arts)
-    for i, art in enumerate(sorted(arts, key=lambda art: art.path)):
-        percentage = (i / total) * 100
-        print(f"{percentage:.03}% ({i}/{total}) {art.path}/{art.name}")
-        getinput.flush()
-        models.taxon.replace_type_specimen_source_from_paper(art)
 
 
 @generator_command
@@ -2973,13 +2908,6 @@ def resolve_redirects(dry_run: bool = False) -> None:
             print(f"{nam}: {nam.original_citation} -> {nam.original_citation.parent}")
             if not dry_run:
                 nam.original_citation = nam.original_citation.parent
-    for nam in Name.filter(Name.type_specimen_source != None):
-        if nam.type_specimen_source.kind == constants.ArticleKind.redirect:
-            print(
-                f"{nam}: {nam.type_specimen_source} -> {nam.type_specimen_source.parent}"
-            )
-            if not dry_run:
-                nam.type_specimen_source = nam.type_specimen_source.parent
 
 
 @command
@@ -3015,7 +2943,6 @@ def run_maintenance(skip_slow: bool = True) -> Dict[Any, Any]:
         check_period_ranks,
         clean_up_stem,
         clean_up_gender,
-        clean_up_type_specimen_source,
         check_corrected_original_name,
         Person.autodelete,
         Person.find_duplicates,
@@ -3397,7 +3324,7 @@ def print_parent() -> Optional[Taxon]:
 
 
 @command
-def clean_tss_interactive(
+def edit_names_interactive(
     art: Optional[Article] = None, field: str = "corrected_original_name"
 ) -> None:
     if art is None:
@@ -3405,7 +3332,7 @@ def clean_tss_interactive(
         if art is None:
             return
     art.display_names()
-    models.taxon.clean_tss_interactive(art, field=field)
+    models.taxon.edit_names_interactive(art, field=field)
     fill_data_from_paper(art)
 
 

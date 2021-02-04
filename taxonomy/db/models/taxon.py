@@ -555,11 +555,11 @@ class Taxon(BaseModel):
         nomenclature_status: NomenclatureStatus = NomenclatureStatus.available,
         interactive: bool = True,
         **kwargs: Any,
-    ) -> "models.Name":
+    ) -> Optional["models.Name"]:
         if root_name is None:
-            root_name = models.Name.getter("root_name").get_one_key(
-                "root_name> ", allow_empty=False
-            )
+            root_name = models.Name.getter("root_name").get_one_key("root_name> ")
+        if root_name is None:
+            return None
         kwargs["root_name"] = root_name
         kwargs["year"] = year
         # included in the method signature so they autocomplete in shell
@@ -627,14 +627,15 @@ class Taxon(BaseModel):
         age: Optional[AgeClass] = None,
         interactive: bool = True,
         **kwargs: Any,
-    ) -> "models.Name":
+    ) -> Optional["models.Name"]:
         if root_name is None:
-            root_name = models.Name.getter("root_name").get_one_key(
-                "root_name> ", allow_empty=False
-            )
-        assert root_name is not None
+            root_name = models.Name.getter("root_name").get_one_key("root_name> ")
+        if root_name is None:
+            return None
         if paper is None:
-            paper = self.get_value_for_foreign_class("paper", Article, allow_none=False)
+            paper = self.get_value_for_foreign_class("paper", Article)
+        if paper is None:
+            return None
 
         result = self.add_syn(
             root_name=root_name,
@@ -646,6 +647,8 @@ class Taxon(BaseModel):
             age=age,
             interactive=False,
         )
+        if result is None:
+            return None
         if group is not None:
             kwargs["group"] = group
         result.s(**kwargs)
@@ -662,21 +665,24 @@ class Taxon(BaseModel):
         status: Status = Status.valid,
         age: Optional[AgeClass] = None,
         **override_kwargs: Any,
-    ) -> "Taxon":
+    ) -> Optional["Taxon"]:
         if rank is None:
-            rank = getinput.get_enum_member(Rank, "rank> ", allow_empty=False)
-        assert rank is not None
+            rank = getinput.get_enum_member(Rank, "rank> ")
+        if rank is None:
+            return None
         if name is None:
             if self.rank in (Rank.genus, Rank.species):
                 default = self.valid_name
             else:
                 default = ""
-            name = self.getter("valid_name").get_one_key(
-                "name> ", default=default, allow_empty=False
-            )
-        assert name is not None
+            name = self.getter("valid_name").get_one_key("name> ", default=default)
+        if name is None:
+            return None
+
         if paper is None:
-            paper = self.get_value_for_foreign_class("paper", Article, allow_none=False)
+            paper = self.get_value_for_foreign_class("paper", Article)
+        if paper is None:
+            return None
 
         result = self.add_static(
             rank=rank,
@@ -1056,12 +1062,7 @@ class Taxon(BaseModel):
                 return True
 
         citations = sorted(
-            {nam.original_citation for nam in all_names if should_include(nam)}
-            | {
-                nam.type_specimen_source
-                for nam in all_names
-                if nam.type_specimen_source is not None
-            },
+            {nam.original_citation for nam in all_names if should_include(nam)},
             key=lambda art: (art.path, art.name),
         )
         fill_data_from_articles(
@@ -1189,7 +1190,7 @@ def fill_data_from_paper(
 
     opened = False
     if finish_what_you_start:
-        goal_level = max(level, FillDataLevel.need_specimen_data)
+        goal_level = max(level, FillDataLevel.needs_specimen_data)
     else:
         goal_level = level
 
@@ -1200,7 +1201,7 @@ def fill_data_from_paper(
     if nams_below_level:
         print(f"{paper.name}: {len(nams_below_level)} names (fill_data_from_paper)")
         if ask_before_opening and not only_fill_cache:
-            clean_tss_interactive(paper)
+            edit_names_interactive(paper)
             if paper.has_tag(ArticleTag.NeedsTranslation):
                 print(f"{paper.name}: skipping because of NeedsTranslation tag")
                 _finished_papers.add((paper.name, level))
@@ -1229,13 +1230,7 @@ def fill_data_from_paper(
                     else:
                         nam.fill_field("type_tags")
 
-    opened_for_tss = replace_type_specimen_source_from_paper(
-        paper,
-        only_fill_cache=only_fill_cache,
-        ask_before_opening=ask_before_opening and not nams_below_level,
-    )
-
-    if not opened and not opened_for_tss:
+    if not opened:
         _finished_papers.add((paper.name, level))
         return True
     return False
@@ -1281,139 +1276,6 @@ def fill_data_from_articles(
     print(f"{done}/{total} ({(done / total) * 100:.03}%) done")
 
 
-def _contains_type_specimen(
-    text: str, specimen_text: str, collection: Optional["models.Collection"]
-) -> bool:
-    patterns = [helpers.simplify_string(specimen_text)]
-    numeric_type_specimen = helpers.simplify_string(
-        re.sub(r"^[A-Z]+ ", "", specimen_text)
-    )
-    if len(numeric_type_specimen) > 3:
-        patterns.append(numeric_type_specimen)
-    if collection and specimen_text.startswith(collection.label + " "):
-        num_chars = len(collection.label) + 1
-        simplified = helpers.simplify_string(specimen_text[num_chars:])
-        if len(simplified) > 3:
-            patterns.append(simplified)
-    return any(pattern in text for pattern in patterns)
-
-
-def clean_up_type_specimen_source_for_name(
-    nam: "models.Name",
-    dry_run: bool = False,
-    fast: bool = False,
-    interactive: bool = False,
-) -> bool:
-    if (
-        not nam.type_tags
-        or nam.type_specimen is None
-        or nam.type_specimen_source is None
-    ):
-        return False
-    matching_tags = [
-        tag
-        for tag in nam.type_tags
-        if isinstance(
-            tag,
-            (models.name.TypeTag.SpecimenDetail, models.name.TypeTag.CollectionDetail),
-        )
-        and tag.source == nam.type_specimen_source
-    ]
-    patterns = [helpers.simplify_string(nam.type_specimen)]
-    numeric_type_specimen = helpers.simplify_string(
-        re.sub(r"^[A-Z]+ ", "", nam.type_specimen)
-    )
-    if len(numeric_type_specimen) > 4:
-        patterns.append(numeric_type_specimen)
-    texts = [helpers.simplify_string(tag.text) for tag in matching_tags]
-    if matching_tags:
-        if any(
-            all(
-                _contains_type_specimen(text, part, nam.collection)
-                for part in nam.type_specimen.split(", ")
-            )
-            for text in texts
-        ):
-            if fast:
-                print(nam)
-            else:
-                nam.display()
-                for tag in matching_tags:
-                    print(tag)
-            if not dry_run:
-                nam.type_specimen_source = None
-                nam.save()
-            getinput.flush()
-            return True
-        elif interactive:
-            nam.display()
-            for tag in matching_tags:
-                print(tag)
-            if not dry_run:
-                nam.type_specimen_source.openf()
-                nam.type_specimen_source.add_to_history()
-                nam.edit()
-                nam.type_specimen_source = None
-                nam.save()
-            getinput.flush()
-            return True
-    return False
-
-
-_checked_arts_for_type_specimen_source: Set[str] = set()
-
-
-def replace_type_specimen_source_from_paper(
-    art: Article, only_fill_cache: bool = False, ask_before_opening: bool = False
-) -> bool:
-    if art.name in _checked_arts_for_type_specimen_source:
-        return False
-    nams = list(art.type_source_names)
-    if not nams:
-        _checked_arts_for_type_specimen_source.add(art.name)
-        return False
-    print(f"{art.name}: {len(nams)} names (replace_type_specimen_source_from_paper)")
-    if only_fill_cache:
-        return True
-    for nam in nams:
-        clean_up_type_specimen_source_for_name(nam)
-    nams = list(art.type_source_names)
-    if not nams:
-        _checked_arts_for_type_specimen_source.add(art.name)
-        return False
-    art.add_to_history()
-    art.openf()
-    art.specify_authors()
-    if ask_before_opening:
-        clean_tss_interactive(art)
-
-    nams = list(art.type_source_names)
-    for nam in nams:
-        clean_up_type_specimen_source_for_name(nam)
-
-    nams = list(art.type_source_names)
-    if not nams:
-        _checked_arts_for_type_specimen_source.add(art.name)
-        return False
-
-    def sort_key(nam: models.Name) -> Tuple[bool, int]:
-        if nam.original_citation == art:
-            return (False, nam.numeric_page_described())
-        else:
-            return (True, nam.id)
-
-    for nam in sorted(nams, key=sort_key):
-        nam = nam.reload()
-        if nam.type_specimen_source is None:
-            print(f"{art.name}: type_specimen_source already gone from {nam}")
-            continue
-        nam.display()
-        nam.e.type_tags
-        nam.type_specimen_source = None
-        nam.save()
-    return True
-
-
 def display_names(
     art: Article, *, full: bool = False, omit_if_done: bool = False
 ) -> None:
@@ -1434,14 +1296,9 @@ def display_names(
                 desc = nam.get_description(include_taxon=True, full=False).rstrip()
                 print(f"{desc} ({level.name.upper()}: {reason})")
         print("Current level:", min(levels).name.upper())
-    tss_names = list(art.type_source_names)
-    if tss_names:
-        print(f"Type specimen source ({len(tss_names)}):")
-        for nam in tss_names:
-            nam.display(full=full)
 
 
-def clean_tss_interactive(art: Article, field: str = "corrected_original_name") -> None:
+def edit_names_interactive(art: Article, field: str = "corrected_original_name") -> None:
     art.openf()
     art.add_to_history()
     art.specify_authors()
@@ -1462,12 +1319,6 @@ def clean_tss_interactive(art: Article, field: str = "corrected_original_name") 
         level, reason = obj.fill_data_level()
         print(f"Level: {level.name.upper()} ({reason})")
         obj.edit()
-        clean_up_type_specimen_source_for_name(obj)
-        if obj.type_specimen_source == art:
-            obj.display()
-            if getinput.yes_no("Remove type_specimen_source? "):
-                obj.type_specimen_source = None
-                obj.save()
 
 
 def _fill_data_level_for_name(

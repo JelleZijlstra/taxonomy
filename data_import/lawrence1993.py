@@ -495,7 +495,6 @@ def extract_data() -> Iterable[Dict[str, Any]]:
             all_tags.append(TypeTag.SpecimenDetail(type_text, SOURCE))
         name["type_tags"] = all_tags
         name["collection"] = models.Collection.by_label("AMNH")
-        name["type_specimen_source"] = models.Article.get(name=SOURCE)
         yield name
 
 
@@ -558,14 +557,6 @@ def write_to_db(dry_run: bool = True) -> None:
                         if not dry_run:
                             nam.fill_field("type_tags")
                     continue
-                elif attr == "type_specimen_source":
-                    nam.display(full=True)
-                    if not dry_run:
-                        should_replace = getinput.yes_no(
-                            "Replace type_specimen_source? "
-                        )
-                        if not should_replace:
-                            continue
                 elif attr == "original_name":
                     new_root_name = helpers.root_name_of_name(
                         new_value, constants.Rank.species

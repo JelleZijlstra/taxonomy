@@ -1290,7 +1290,6 @@ def write_to_db(
             "species_type_kind",
             "verbatim_citation",
             "original_name",
-            "type_specimen_source",
             "type",
             "nomenclature_status",
             "genus_type_kind",
@@ -1409,16 +1408,7 @@ def write_to_db(
                             if existing.original_citation == source.get_source():
                                 continue
 
-                if attr == "type_specimen_source":
-                    nam.display()
-                    if not dry_run:
-                        should_replace = getinput.yes_no(
-                            "Replace type_specimen_source? "
-                        )
-                        if not should_replace:
-                            continue
-                    continue
-                elif attr not in ("verbatim_citation", "verbatim_type") and not (
+                if attr not in ("verbatim_citation", "verbatim_type") and not (
                     attr == "nomenclature_status"
                     and current_value == constants.NomenclatureStatus.available
                 ):

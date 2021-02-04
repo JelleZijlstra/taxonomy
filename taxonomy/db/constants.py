@@ -171,6 +171,7 @@ class NomenclatureStatus(enum.IntEnum):
             NomenclatureStatus.before_1758,
             NomenclatureStatus.not_used_as_valid,
             NomenclatureStatus.not_published_with_a_generic_name,
+            NomenclatureStatus.unpublished,
         }
 
     def permissive_corrected_original_name(self) -> bool:
@@ -552,6 +553,19 @@ class SpecimenOrgan(enum.IntEnum):
     frontlet = 25
     petrosal = 26
     tarsometatarsus = 27
+    scapula = 28
+    carpal = 29
+    hyoid = 30
+    rib = 31
+    manus = 32
+    pes = 33
+    astragalus = 34
+    calcaneum = 35
+    clavicle = 36
+    navicular = 37
+    sternum = 38
+    baculum = 39
+    tissue_sample = 40
 
 
 class AltitudeUnit(enum.IntEnum):

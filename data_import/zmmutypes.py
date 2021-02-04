@@ -267,9 +267,6 @@ def split_fields(names: DataT, refs_dict: Dict[Tuple[str, str], str]) -> DataT:
                     del name[key]
                 elif key in KEY_TO_KIND:
                     name["species_type_kind"] = KEY_TO_KIND[key]
-                    name["type_specimen_source"] = models.Article.get(
-                        name=SOURCE.source
-                    )
                     for subkey, subval in value.items():
                         if re.match(r"^[a-z_]+$", subkey):
                             name[subkey] = subval
@@ -280,7 +277,6 @@ def split_fields(names: DataT, refs_dict: Dict[Tuple[str, str], str]) -> DataT:
         if syntypes:
             name["syntypes"] = syntypes
             name["species_type_kind"] = constants.SpeciesGroupType.syntypes
-            name["type_specimen_source"] = models.Article.get(name=SOURCE.source)
         yield name
 
 

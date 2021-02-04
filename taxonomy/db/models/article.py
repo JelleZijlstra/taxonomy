@@ -290,10 +290,15 @@ class Article(BaseModel):
 
     @classmethod
     def add_validity_check(cls, query: Any) -> Any:
-        return query.filter(cls.kind != ArticleKind.redirect)
+        return query.filter(
+            cls.kind != ArticleKind.redirect, cls.kind != ArticleKind.removed
+        )
 
     def should_skip(self) -> bool:
         return self.kind is ArticleKind.redirect
+
+    def edit(self) -> None:
+        self.fill_field("tags")
 
     @classmethod
     def bfind(
@@ -395,7 +400,7 @@ class Article(BaseModel):
         return out
 
     def openf(self, place: str = "catalog") -> None:
-        if not self.isfile():
+        if self.kind != ArticleKind.electronic:
             if self.parent is not None:
                 self.parent.openf()
             else:
@@ -411,7 +416,11 @@ class Article(BaseModel):
 
     def isfile(self) -> bool:
         # returns whether this 'file' is a file
-        return self.kind == ArticleKind.electronic
+        if self.kind == ArticleKind.electronic:
+            return True
+        if self.parent is not None:
+            return self.parent.isfile()
+        return False
 
     def isnofile(self) -> bool:
         return not self.isfile()
@@ -566,7 +575,7 @@ class Article(BaseModel):
 
     def add_comment(
         self, kind: Optional[ArticleCommentKind] = None, text: Optional[str] = None
-    ) -> "ArticleComment":
+    ) -> Optional["ArticleComment"]:
         return ArticleComment.create_interactively(article=self, kind=kind, text=text)
 
     def add_tag(self, tag: adt.ADT) -> None:
@@ -797,11 +806,6 @@ class Article(BaseModel):
         if new_names:
             print(f"New names ({len(new_names)}):")
             for nam in new_names:
-                nam.display(full=full)
-        tss_names = list(models.Name.add_validity_check(self.type_source_names))
-        if tss_names:
-            print(f"Type specimen source ({len(tss_names)}):")
-            for nam in tss_names:
                 nam.display(full=full)
 
     def __str__(self) -> str:
