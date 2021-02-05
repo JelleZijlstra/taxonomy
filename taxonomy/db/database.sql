@@ -130,8 +130,9 @@ CREATE TABLE `location` (
     `age_detail` text,
     `source` varchar(255) default null,
     `source_id` INT UNSIGNED DEFAULT NULL,
-    `deleted` TINYINT DEFAULT 0,
+    `deleted` INT UNSIGNED,
     `tags` text default null,
+    `parent_id` INT UNSIGNED DEFAULT NULL,
     PRIMARY KEY(`id`),
     INDEX(`name`),
     UNIQUE KEY(`name`)

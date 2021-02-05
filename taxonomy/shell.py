@@ -1770,7 +1770,7 @@ def fill_data_from_author(
 @command
 def fill_data_for_children(
     paper: Optional[models.Article] = None,
-    level: FillDataLevel = FillDataLevel.needs_specimen_data,
+    level: FillDataLevel = FillDataLevel.max_level(),
     skip_nofile: bool = False,
     only_fill_cache: bool = False,
 ) -> None:
@@ -1828,7 +1828,7 @@ def fill_data_random(
 
 @command
 def fill_data_reverse_order(
-    level: FillDataLevel = FillDataLevel.needs_specimen_data,
+    level: FillDataLevel = FillDataLevel.max_level(),
     ask_before_opening: bool = True,
     max_count: Optional[int] = 500,
 ) -> None:
@@ -2033,6 +2033,46 @@ def fill_type_locality_from_location_detail(
 ) -> None:
     for nam in names_with_location_detail_without_type_loc(taxon, substring=substring):
         nam.fill_field("type_locality")
+
+
+@command
+def fix_general_type_localities() -> None:
+    region = models.Region.getter(None).get_one()
+    if region is None:
+        return
+    fix_general_type_localities_for_region(region)
+
+
+def fix_general_type_localities_for_region(region: models.Region) -> None:
+    getinput.print_header(region)
+    region.display()
+    for loc in region.locations:
+        if not loc.has_tag(models.location.LocationTag.General):
+            continue
+        if loc.type_localities.count() == 0:
+            continue
+        models.taxon.fill_data_for_names(
+            list(loc.type_localities), level=FillDataLevel.max_level()
+        )
+        getinput.print_header(loc)
+        loc.display(full=True)
+        while True:
+            obj = models.Name.getter("corrected_original_name").get_one(
+                prompt="corrected_original_name> ",
+                callbacks={
+                    "d": lambda: loc.display(),
+                    "f": lambda: loc.display(full=True),
+                },
+            )
+            if obj is None:
+                break
+            obj.display()
+            obj.edit()
+
+        more_precise_type_localities(loc)
+
+    for child in region.children:
+        fix_general_type_localities_for_region(child)
 
 
 @command

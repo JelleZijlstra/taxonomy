@@ -28,6 +28,16 @@ class AgeClass(enum.IntEnum):
     burrow = 8
     bite_trace = 9
 
+    def is_ichno(self) -> bool:
+        return self in (
+            AgeClass.ichno,
+            AgeClass.track,
+            AgeClass.egg,
+            AgeClass.coprolite,
+            AgeClass.burrow,
+            AgeClass.bite_trace,
+        )
+
     def get_symbol(self) -> str:
         return {
             self.extant: "",
@@ -549,7 +559,7 @@ class SpecimenOrgan(enum.IntEnum):
     coracoid = 21
     whole_animal = 22
     egg = 23
-    horn_core = 24
+    horn_core = 24  # of bovids, and other horns of ungulates
     frontlet = 25
     petrosal = 26
     tarsometatarsus = 27
@@ -566,6 +576,7 @@ class SpecimenOrgan(enum.IntEnum):
     sternum = 38
     baculum = 39
     tissue_sample = 40
+    shell = 41  # of a turtle
 
 
 class AltitudeUnit(enum.IntEnum):
@@ -654,8 +665,13 @@ class PersonType(enum.IntEnum):
 
 class FillDataLevel(enum.IntEnum):
     needs_basic_data = 1  # missing data and no data from original
-    needs_more_data = 2  # e.g., etymologydetail for genera
-    incomplete_detail = 3  # fill data if species has LD but not SD or vice versa
-    missing_detail = 4  # fill data if species name is missing location/specimen detail
-    needs_specimen_data = 5  # needs derived specimen data like organ
-    nothing_needed = 6
+    missing_required_fields = 2  # missing crucial required fields
+    missing_detail = 3
+    incomplete_detail = 4
+    incomplete_derived_tags = 5
+    no_data_from_original = 6
+    nothing_needed = 7
+
+    @classmethod
+    def max_level(cls) -> "FillDataLevel":
+        return cls.no_data_from_original

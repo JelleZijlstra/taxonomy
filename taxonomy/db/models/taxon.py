@@ -1039,43 +1039,22 @@ class Taxon(BaseModel):
     ) -> None:
         """Calls fill_required_fields() for all names in this taxon."""
         all_names = self.all_names(age=age)
-
-        def should_include(nam: models.Name) -> bool:
-            if nam.original_citation is None:
-                return False
-            if nam.original_citation.kind is ArticleKind.no_copy:
-                return False
-            if filter_by_name_level and _fill_data_level_for_name(nam, level) > level:
-                return False
-            if field is not None and (
-                getattr(nam, field) is not None
-                or field not in nam.get_required_fields()
-            ):
-                return False
-            if min_year is not None:
-                try:
-                    year = int(nam.year)
-                except (ValueError, TypeError):
-                    return True
-                return min_year <= year
-            else:
-                return True
-
-        citations = sorted(
-            {nam.original_citation for nam in all_names if should_include(nam)},
-            key=lambda art: (art.path, art.name),
-        )
-        fill_data_from_articles(
-            citations,
+        fill_data_for_names(
+            all_names,
+            min_year=min_year,
+            age=age,
+            field=field,
             level=level,
             ask_before_opening=ask_before_opening,
             only_fill_cache=only_fill_cache,
+            filter_by_name_level=filter_by_name_level,
             skip_nofile=skip_nofile,
         )
+
         if not only_with_original:
             for nam in self.all_names(age=age):
                 nam = nam.reload()
-                if not should_include(nam):
+                if nam.original_citation is None:
                     print(nam)
                     nam.fill_required_fields()
 
@@ -1190,7 +1169,7 @@ def fill_data_from_paper(
 
     opened = False
     if finish_what_you_start:
-        goal_level = max(level, FillDataLevel.needs_specimen_data)
+        goal_level = max(level, FillDataLevel.max_level())
     else:
         goal_level = level
 
@@ -1276,6 +1255,53 @@ def fill_data_from_articles(
     print(f"{done}/{total} ({(done / total) * 100:.03}%) done")
 
 
+def fill_data_for_names(
+    nams: Iterable["models.Name"],
+    *,
+    min_year: Optional[int] = None,
+    age: Optional[AgeClass] = None,
+    field: Optional[str] = None,
+    level: FillDataLevel = DEFAULT_LEVEL,
+    ask_before_opening: bool = True,
+    only_fill_cache: bool = False,
+    filter_by_name_level: bool = False,
+    skip_nofile: bool = True,
+) -> None:
+    """Calls fill_required_fields() for all names in this taxon."""
+
+    def should_include(nam: models.Name) -> bool:
+        if nam.original_citation is None:
+            return False
+        if nam.original_citation.kind is ArticleKind.no_copy:
+            return False
+        if filter_by_name_level and _fill_data_level_for_name(nam, level) > level:
+            return False
+        if field is not None and (
+            getattr(nam, field) is not None or field not in nam.get_required_fields()
+        ):
+            return False
+        if min_year is not None:
+            try:
+                year = int(nam.year)
+            except (ValueError, TypeError):
+                return True
+            return min_year <= year
+        else:
+            return True
+
+    citations = sorted(
+        {nam.original_citation for nam in nams if should_include(nam)},
+        key=lambda art: (art.path, art.name),
+    )
+    fill_data_from_articles(
+        citations,
+        level=level,
+        ask_before_opening=ask_before_opening,
+        only_fill_cache=only_fill_cache,
+        skip_nofile=skip_nofile,
+    )
+
+
 def display_names(
     art: Article, *, full: bool = False, omit_if_done: bool = False
 ) -> None:
@@ -1298,7 +1324,9 @@ def display_names(
         print("Current level:", min(levels).name.upper())
 
 
-def edit_names_interactive(art: Article, field: str = "corrected_original_name") -> None:
+def edit_names_interactive(
+    art: Article, field: str = "corrected_original_name"
+) -> None:
     art.openf()
     art.add_to_history()
     art.specify_authors()

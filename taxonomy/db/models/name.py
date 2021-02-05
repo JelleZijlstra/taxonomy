@@ -59,6 +59,7 @@ _CRUCIAL_MISSING_FIELDS: Dict[Group, Set[str]] = {
     Group.high: set(),
 }
 _ETYMOLOGY_CUTOFF = 1990
+_DATA_CUTOFF = 1900
 
 
 class Name(BaseModel):
@@ -1107,130 +1108,117 @@ class Name(BaseModel):
     def is_fossil(self) -> bool:
         return self.taxon.age is not AgeClass.extant
 
+    def is_ichno(self) -> bool:
+        return self.taxon.age.is_ichno()
+
     def fill_data_level(self) -> Tuple[FillDataLevel, str]:
         if not self.check_authors():
             return FillDataLevel.needs_basic_data, "author mismatch"
-        empty_required_fields = set(self.get_empty_required_fields())
+        missing_fields = set(self.get_empty_required_fields())
+        required_details_tags = list(self.get_required_details_tags())
+        missing_details_tags = list(self.get_missing_tags(required_details_tags))
+        required_derived_tags = list(self.get_required_derived_tags())
+        missing_derived_tags = list(self.get_missing_tags(required_derived_tags))
+
+        def tag_list(tags: Iterable[Tuple[TypeTag, ...]]) -> str:
+            # display only the first one in the group; no need to mention NoEtymology c.s.
+            return f"missing {', '.join(group[0].__name__ for group in tags)}"
+
         if has_data_from_original(self):
-            crucial_missing = (
-                _CRUCIAL_MISSING_FIELDS[self.group] & empty_required_fields
-            )
+            crucial_missing = _CRUCIAL_MISSING_FIELDS[self.group] & missing_fields
             if crucial_missing:
                 return (
-                    FillDataLevel.needs_more_data,
+                    FillDataLevel.missing_required_fields,
                     f"missing {', '.join(sorted(crucial_missing))}",
                 )
-            required_fields = self.get_required_fields()
-            if self.group is Group.family or self.group is Group.high:
-                return FillDataLevel.nothing_needed, ""
-            elif self.group is Group.genus:
-                if not self.nomenclature_status.requires_name_complex():
-                    return FillDataLevel.nothing_needed, ""
-                citation = self.original_citation
-                needs_etymology = self.numeric_year() >= _ETYMOLOGY_CUTOFF
-                if needs_etymology and not any(
-                    (
-                        isinstance(tag, TypeTag.EtymologyDetail)
-                        and tag.source == citation
-                    )
-                    or tag is TypeTag.NoEtymology
-                    for tag in (self.type_tags or [])
-                ):
-                    return FillDataLevel.incomplete_detail, "missing EtymologyDetail"
-                return FillDataLevel.nothing_needed, ""
-            else:
-                if (
-                    self.has_type_tag(TypeTag.EtymologyDetail)
-                    and self.is_patronym()
-                    and not self.has_type_tag(TypeTag.NamedAfter)
-                ):
-                    return FillDataLevel.incomplete_detail, "missing NamedAfter tag"
-                tags: List[TypeTag] = self.type_tags or []
-                citation = self.original_citation
-                needs_etymology = "species_name_complex" in required_fields and (
-                    self.numeric_year() >= _ETYMOLOGY_CUTOFF or self.is_patronym()
+            orig = self.original_citation
+            missing_sourced_tags = [
+                (tag, no_tag)
+                for tag, no_tag in required_details_tags
+                if not (
+                    self.has_tag_from_source(tag, orig) or self.has_type_tag(no_tag)
                 )
-                if needs_etymology and not any(
-                    (
-                        isinstance(tag, TypeTag.EtymologyDetail)
-                        and tag.source == citation
-                    )
-                    or tag is TypeTag.NoEtymology
-                    for tag in tags
-                ):
-                    return (FillDataLevel.incomplete_detail, "missing EtymologyDetail")
-                if self.numeric_year() > 1900:
-                    if "type_locality" in required_fields and not any(
-                        (
-                            isinstance(tag, TypeTag.LocationDetail)
-                            and tag.source == citation
-                        )
-                        or tag is TypeTag.NoLocation
-                        for tag in tags
-                    ):
-                        return FillDataLevel.incomplete_detail, "missing LocationDetail"
-                    if "type_specimen" in required_fields and not any(
-                        (
-                            isinstance(
-                                tag, (TypeTag.SpecimenDetail, TypeTag.CitationDetail)
-                            )
-                            and tag.source == citation
-                        )
-                        or tag is TypeTag.NoSpecimen
-                        for tag in tags
-                    ):
-                        return FillDataLevel.incomplete_detail, "missing SpecimenDetail"
-                if (
-                    self.type_specimen
-                    and self.species_type_kind
-                    is not constants.SpeciesGroupType.syntypes
-                ):
-                    required_tags = [(TypeTag.Organ, TypeTag.NoOrgan)]
-                    if not self.is_fossil():
-                        required_tags += [
-                            (TypeTag.Date, TypeTag.NoDate),
-                            (TypeTag.CollectedBy, TypeTag.NoCollector),
-                            (TypeTag.Age, TypeTag.NoAge),
-                            (TypeTag.Gender, TypeTag.NoGender),
-                        ]
-                    for tag_cls, negative_cls in required_tags:
-                        if not any(
-                            isinstance(tag, tag_cls) or tag is negative_cls
-                            for tag in tags
-                        ):
-                            return (
-                                FillDataLevel.needs_specimen_data,
-                                f"missing {tag_cls.__name__} tag",
-                            )
-                return FillDataLevel.nothing_needed, ""
+            ]
+            if missing_sourced_tags:
+                return (FillDataLevel.incomplete_detail, tag_list(missing_sourced_tags))
+            if missing_derived_tags:
+                return (
+                    FillDataLevel.incomplete_derived_tags,
+                    tag_list(missing_derived_tags),
+                )
+            return (FillDataLevel.nothing_needed, "")
         else:
-            if empty_required_fields:
+            if missing_fields:
                 return (
                     FillDataLevel.needs_basic_data,
-                    f"missing {', '.join(sorted(empty_required_fields))}",
+                    f"missing {', '.join(sorted(missing_fields))}",
                 )
-            elif self.group is Group.family or self.group is Group.high:
-                return FillDataLevel.nothing_needed, ""
-            elif self.group is Group.genus:
-                if (
-                    self.nomenclature_status.requires_name_complex()
-                    and self.numeric_year() >= _ETYMOLOGY_CUTOFF
-                ):
-                    return FillDataLevel.needs_basic_data, "missing EtymologyDetail"
-                else:
-                    return FillDataLevel.nothing_needed, ""
+            elif missing_details_tags:
+                return (FillDataLevel.missing_detail, tag_list(missing_details_tags))
+            elif missing_derived_tags:
+                return (FillDataLevel.missing_detail, tag_list(missing_derived_tags))
+            elif required_details_tags or required_derived_tags:
+                return (
+                    FillDataLevel.no_data_from_original,
+                    "has all required tags, but no data from original",
+                )
             else:
-                if "type_locality" not in self.get_required_fields():
-                    return FillDataLevel.nothing_needed, ""
-                elif self.has_type_tag(TypeTag.Date) and self.has_type_tag(
-                    TypeTag.CollectedBy
-                ):
-                    return (
-                        FillDataLevel.missing_detail,
-                        "missing data from original, but has Date and CollectedBy",
-                    )
-                else:
-                    return FillDataLevel.needs_more_data, "missing data from original"
+                return (FillDataLevel.nothing_needed, "")
+
+    def has_tag_from_source(self, tag_cls: "TypeTag", source: "Article") -> bool:
+        tag_id = tag_cls._tag
+        for tag in self.get_raw_tags_field("type_tags"):
+            if tag[0] == tag_id and tag[2] == source.id:
+                return True
+        return False
+
+    def get_required_details_tags(self) -> Iterable[Tuple["TypeTag", "TypeTag"]]:
+        if self.group is Group.genus:
+            if (
+                self.nomenclature_status.requires_name_complex()
+                and self.numeric_year() >= _ETYMOLOGY_CUTOFF
+            ):
+                yield (TypeTag.EtymologyDetail, TypeTag.NoEtymology)
+        elif self.group is Group.species:
+            if self.nomenclature_status.requires_name_complex():
+                if self.numeric_year() >= _ETYMOLOGY_CUTOFF or self.is_patronym():
+                    yield (TypeTag.EtymologyDetail, TypeTag.NoEtymology)
+            if self.numeric_year() >= _DATA_CUTOFF:
+                requires_type = self.nomenclature_status.requires_type()
+                if requires_type:
+                    yield (TypeTag.LocationDetail, TypeTag.NoLocation)
+                    yield (TypeTag.SpecimenDetail, TypeTag.NoSpecimen)
+
+    def get_required_derived_tags(self) -> Iterable[Tuple["TypeTag", ...]]:
+        if self.group is Group.species:
+            if self.collection and self.collection.id == 366:  # multiple
+                yield (TypeTag.Repository,)
+            if (
+                self.type_specimen
+                and self.species_type_kind is not constants.SpeciesGroupType.syntypes
+            ):
+                if not self.is_ichno():
+                    yield (TypeTag.Organ, TypeTag.NoOrgan)
+                if not self.is_fossil():
+                    yield (TypeTag.Date, TypeTag.NoDate)
+                    yield (TypeTag.CollectedBy, TypeTag.NoCollector, TypeTag.Involved)
+                    yield (TypeTag.Age, TypeTag.NoAge)
+                    yield (TypeTag.Gender, TypeTag.NoGender)
+            if self.has_type_tag(TypeTag.EtymologyDetail) and self.is_patronym():
+                yield (TypeTag.NamedAfter,)
+            if self.type_specimen and self.species_type_kind and not self.collection:
+                yield (TypeTag.ProbableRepository,)
+        if self.group is Group.genus:
+            if self.nomenclature_status.requires_type():
+                if self.genus_type_kind is None or self.genus_type_kind.requires_tag():
+                    yield (TypeTag.IncludedSpecies, TypeTag.GenusCoelebs)
+
+    def get_missing_tags(
+        self, required_tags: Iterable[Tuple["TypeTag", ...]]
+    ) -> Iterable[Tuple["TypeTag", ...]]:
+        for group in required_tags:
+            if not any(self.has_type_tag(tag) for tag in group):
+                yield group
 
     def get_required_fields(self) -> Iterable[str]:
         if (

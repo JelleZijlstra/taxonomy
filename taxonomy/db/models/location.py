@@ -1,16 +1,23 @@
+import enum
 import sys
 from typing import Any, Callable, Dict, IO, Iterable, Optional, Type, Union
 
-from peewee import BooleanField, CharField, ForeignKeyField, IntegerField, TextField
+from peewee import CharField, ForeignKeyField, IntegerField, TextField
 
 from .. import models
 from ... import adt, events, getinput
 
-from .base import BaseModel, ADTField
+from .base import BaseModel, ADTField, EnumField
 from .article import Article
 from .period import Period, period_sort_key
 from .region import Region
 from .stratigraphic_unit import StratigraphicUnit
+
+
+class LocationStatus(enum.IntEnum):
+    valid = 0
+    deleted = 1
+    alias = 2
 
 
 class Location(BaseModel):
@@ -39,8 +46,11 @@ class Location(BaseModel):
     location_detail = TextField()
     age_detail = TextField()
     source = ForeignKeyField(Article, related_name="locations", null=True)
-    deleted = BooleanField(default=False)
+    deleted = EnumField(LocationStatus)
     tags = ADTField(lambda: LocationTag, null=True)
+    parent = ForeignKeyField(
+        "self", related_name="aliases", null=True, db_column="parent_id"
+    )
 
     @classmethod
     def add_validity_check(cls, query: Any) -> Any:
@@ -145,16 +155,16 @@ class Location(BaseModel):
                     file.write("{}{}\n".format(" " * (depth + 12), occurrence))
 
     def merge(self, other: "Location") -> None:
+        self.reassign_references(other)
+        self.deleted = LocationStatus.alias  # type: ignore
+        self.parent = other
+
+    def reassign_references(self, other: "Location") -> None:
+        print(f"{self}: reassign references to {other}")
         for taxon in self.type_localities:
             taxon.type_locality = other
         for occ in self.taxa:
             occ.location = other
-        new_comment = f"Merged into {other} (L#{other.id})"
-        if not self.comment:
-            self.comment = new_comment
-        else:
-            self.comment = f"{self.comment} – {new_comment}"
-        self.deleted = True
 
     def set_period(self, period: Optional[Period]) -> None:
         self.min_period = self.max_period = period
@@ -178,13 +188,12 @@ class Location(BaseModel):
         yield "stratigraphic_unit"
         yield "region"
 
-    def has_tag(self, tag: Union[adt.ADT, Type[adt.ADT]]) -> bool:
-        if self.tags is None:
-            return False
-        if isinstance(tag, type):
-            return any(isinstance(my_tag, tag) for my_tag in self.tags)
-        else:
-            return any(my_tag is tag for my_tag in self.tags)
+    def has_tag(self, tag_cls: Union[adt.ADT, Type[adt.ADT]]) -> bool:
+        tag_id = tag_cls._tag
+        for tag in self.get_raw_tags_field("tags"):
+            if tag[0] == tag_id:
+                return True
+        return False
 
     def add_tag(self, tag: adt.ADT) -> None:
         if self.tags is None:
@@ -208,10 +217,19 @@ class Location(BaseModel):
         return True
 
     def lint(self) -> bool:
-        if self.deleted and not self.is_empty():
+        if self.status == LocationStatus.alias and not self.parent:
+            print(f"{self}: alias location has no parent")
+            return False
+        if self.status != LocationStatus.valid and not self.is_empty():
             print(f"{self}: deleted location has references")
             return False
         return True
+
+    @classmethod
+    def fix_references(cls) -> None:
+        for alias in cls.select_valid().filter(cls.status == LocationStatus.alias):
+            if not alias.is_empty() and alias.parent:
+                alias.reassign_references(alias.parent)
 
     @classmethod
     def get_or_create_general(cls, region: Region, period: Period) -> "Location":
@@ -253,7 +271,7 @@ class Location(BaseModel):
             return
         print(f"Autodeleting {self!r}")
         if not dry_run:
-            self.deleted = True
+            self.deleted = LocationStatus.deleted  # type: ignore
             self.save()
 
     @classmethod
