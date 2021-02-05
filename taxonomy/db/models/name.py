@@ -1180,7 +1180,10 @@ class Name(BaseModel):
             ):
                 yield (TypeTag.EtymologyDetail, TypeTag.NoEtymology)
         elif self.group is Group.species:
-            if self.nomenclature_status.requires_name_complex():
+            if (
+                self.nomenclature_status.requires_name_complex()
+                and not self.nomenclature_status.is_variant()
+            ):
                 if self.numeric_year() >= _ETYMOLOGY_CUTOFF or self.is_patronym():
                     yield (TypeTag.EtymologyDetail, TypeTag.NoEtymology)
             if self.numeric_year() >= _DATA_CUTOFF:
@@ -1204,7 +1207,11 @@ class Name(BaseModel):
                     yield (TypeTag.CollectedBy, TypeTag.NoCollector, TypeTag.Involved)
                     yield (TypeTag.Age, TypeTag.NoAge)
                     yield (TypeTag.Gender, TypeTag.NoGender)
-            if self.has_type_tag(TypeTag.EtymologyDetail) and self.is_patronym():
+            if (
+                self.has_type_tag(TypeTag.EtymologyDetail)
+                and self.is_patronym()
+                and not self.nomenclature_status.is_variant()
+            ):
                 yield (TypeTag.NamedAfter,)
             if self.type_specimen and self.species_type_kind and not self.collection:
                 yield (TypeTag.ProbableRepository,)

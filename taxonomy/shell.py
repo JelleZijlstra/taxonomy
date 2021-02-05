@@ -2052,7 +2052,7 @@ def fix_general_type_localities_for_region(region: models.Region) -> None:
         if loc.type_localities.count() == 0:
             continue
         models.taxon.fill_data_for_names(
-            list(loc.type_localities), level=FillDataLevel.max_level()
+            list(loc.type_localities), level=FillDataLevel.incomplete_detail
         )
         getinput.print_header(loc)
         loc.display(full=True)

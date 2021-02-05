@@ -152,6 +152,15 @@ class NomenclatureStatus(enum.IntEnum):
         """Whether a name of this status should have a type designated."""
         return self in REQUIRES_TYPE
 
+    def is_variant(self) -> bool:
+        return self in {
+            NomenclatureStatus.unjustified_emendation,
+            NomenclatureStatus.justified_emendation,
+            NomenclatureStatus.variant,
+            NomenclatureStatus.incorrect_original_spelling,
+            NomenclatureStatus.incorrect_subsequent_spelling,
+        }
+
     def can_preoccupy(self) -> bool:
         """Whether a name of this type can preoccupy another name."""
         return self in {
