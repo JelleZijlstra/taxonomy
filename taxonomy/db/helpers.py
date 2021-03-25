@@ -533,6 +533,10 @@ def simplify_string(text: str, clean_words: bool = True) -> str:
     return text
 
 
+def is_clean_string(text: str) -> bool:
+    return clean_string(text) == text
+
+
 def clean_string(text: str) -> str:
     """Clean a string.
 

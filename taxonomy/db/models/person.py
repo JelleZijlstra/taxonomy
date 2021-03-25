@@ -349,6 +349,14 @@ class Person(BaseModel):
         )
 
     def lint(self) -> bool:
+        for field_name, field_obj in self._meta.fields.items():
+            if isinstance(field_obj, CharField):
+                value = getattr(self, field_name)
+                if value is not None and not helpers.is_clean_string(value):
+                    cleaned = helpers.clean_string(value)
+                    print(f"{self}: clean {field_name} from {value!r} to {cleaned!r}")
+                    setattr(self, field_name, cleaned)
+
         if self.type in (
             PersonType.deleted,
             PersonType.hard_redirect,
@@ -512,18 +520,25 @@ class Person(BaseModel):
             getinput.print_header(key)
             for person in group:
                 print(person.total_references(), repr(person))
-            if (
-                autofix
-                and all(person.type is PersonType.unchecked for person in group)
-                and len({person.naming_convention for person in group}) == 1
-            ):
-                group = sorted(group, key=lambda person: person.id)
-                for person in group[1:]:
-                    print(f"Reassign {person} -> {group[0]}")
-                    person.reassign_references(target=group[0])
-                    person.type = PersonType.deleted  # type: ignore
+            if autofix:
+                cls.maybe_merge_group(group)
             out.append(group)
         return out
+
+    @classmethod
+    def maybe_merge_group(cls, group: List["Person"]) -> None:
+        group = sorted(group, key=lambda person: (-person.get_level().value, person.id))
+        if (
+            all(person.type is PersonType.unchecked for person in group)
+            and len({person.naming_convention for person in group}) == 1
+        ) or (
+            group[0].get_level() is PersonLevel.has_convention
+            and all(person.get_level() < PersonLevel.has_convention for person in group[1:])
+        ):
+            for person in group[1:]:
+                print(f"Reassign {person} -> {group[0]}")
+                person.reassign_references(target=group[0])
+                person.type = PersonType.deleted  # type: ignore
 
     def num_references(self) -> Dict[str, int]:
         num_refs = {}
@@ -753,6 +768,15 @@ class Person(BaseModel):
         suffix: Optional[str] = None,
         tussenvoegsel: Optional[str] = None,
     ) -> "Person":
+        family_name = helpers.clean_string(family_name)
+        if initials is not None:
+            initials = helpers.clean_string(initials)
+        if given_names is not None:
+            given_names = helpers.clean_string(given_names)
+        if suffix is not None:
+            suffix = helpers.clean_string(suffix)
+        if tussenvoegsel is not None:
+            tussenvoegsel = helpers.clean_string(tussenvoegsel)
         objs = list(
             Person.select_valid().filter(
                 Person.family_name == family_name,

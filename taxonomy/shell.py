@@ -41,6 +41,7 @@ from typing import (
     Tuple,
     Type,
     TypeVar,
+    Union,
     cast,
 )
 
@@ -2079,12 +2080,14 @@ def fix_general_type_localities_for_region(region: models.Region) -> None:
 def more_precise_type_localities(
     loc: models.Location, *, substring: Optional[str] = None
 ) -> None:
+    if substring is not None:
+        substring = helpers.simplify_string(substring)
     for nam in loc.type_localities:
         if not nam.type_tags:
             continue
         if substring is not None:
             if not any(
-                substring in tag.text
+                substring in helpers.simplify_string(tag.text)
                 for tag in nam.type_tags
                 if isinstance(tag, TypeTag.LocationDetail)
             ):
@@ -2170,7 +2173,7 @@ def _more_precise_by_subdivision(region: models.Region) -> None:
         getinput.print_header(loc.name)
         for child in children:
             getinput.print_header(child)
-            more_precise_type_localities(loc, substring=child)
+            more_precise_type_localities(loc, substring=re.sub(r" \(.*\)$", "", child))
     for child in children:
         getinput.print_header(child)
         _more_precise(
@@ -3023,7 +3026,9 @@ def names_of_author(author: str, include_partial: bool) -> List[Name]:
         if include_partial
         else Person.family_name == author
     )
-    return [nam for person in persons for nam in person.get_derived_field("names")]
+    return [
+        nam for person in persons for nam in person.get_sorted_derived_field("names")
+    ]
 
 
 @command
@@ -3206,22 +3211,28 @@ def _must_have_citation_groups() -> List[CitationGroup]:
 
 @command
 def find_potential_citations(
-    fix: bool = False, region: Optional[models.Region] = None
+    fix: bool = False, region: Optional[models.Region] = None, aggressive: bool = False
 ) -> int:
     if region is None:
         cgs = CitationGroup.select_valid()
     else:
         cgs = region.all_citation_groups()
     count = sum(
-        find_potential_citations_for_group(cg, fix=fix) or 0
+        find_potential_citations_for_group(cg, fix=fix, aggressive=aggressive) or 0
         for cg in cgs
         if not cg.has_tag(CitationGroupTag.IgnorePotentialCitations)
     )
     return count
 
 
+def _author_names(obj: Union[Article, Name]) -> Set[str]:
+    return {person.family_name for person in obj.get_authors()}
+
+
 @command
-def find_potential_citations_for_group(cg: CitationGroup, fix: bool = False) -> int:
+def find_potential_citations_for_group(
+    cg: CitationGroup, fix: bool = False, aggressive: bool = False
+) -> int:
     if not cg.get_names():
         return 0
     potential_arts = Article.bfind(
@@ -3229,6 +3240,17 @@ def find_potential_citations_for_group(cg: CitationGroup, fix: bool = False) -> 
     )
     if not potential_arts:
         return 0
+
+    def is_possible_match(art: Article, nam: Name, page: int) -> bool:
+        if nam.year != art.year or art.kind is ArticleKind.no_copy or art.has_tag(models.article.ArticleTag.NonOriginal):
+            return False
+        if not art.is_page_in_range(page):
+            return False
+        if aggressive:
+            return _author_names(nam) <= _author_names(art)
+        else:
+            return nam.author_set() <= art.author_set()
+
     count = 0
     for nam in cg.get_names():
         if nam.original_citation is not None:
@@ -3236,15 +3258,7 @@ def find_potential_citations_for_group(cg: CitationGroup, fix: bool = False) -> 
         page = nam.extract_page_described()
         if not page:
             continue
-        candidates = [
-            art
-            for art in potential_arts
-            if nam.author_set() <= art.author_set()
-            and nam.year == art.year
-            and art.is_page_in_range(page)
-            and art.kind is not ArticleKind.no_copy
-            and not art.has_tag(models.article.ArticleTag.NonOriginal)
-        ]
+        candidates = [art for art in potential_arts if is_possible_match(art, nam, page)]
         if candidates:
             if count == 0:
                 print(f"Trying {cg}...", flush=True)

@@ -262,7 +262,10 @@ def get_adt_list(
     completers: CompleterMap = {},
     callbacks: CallbackMap = {},
     show_existing: bool = False,
+    prompt: Optional[str] = None,
 ) -> Tuple[ADTOrInstance, ...]:
+    if prompt is None:
+        prompt = adt_cls.__name__
     out: List[ADTOrInstance] = []
     if existing is not None:
         out += existing
@@ -283,7 +286,7 @@ def get_adt_list(
         ]
         member = get_with_completion(
             options,
-            message=f"{adt_cls.__name__}> ",
+            message=f"{prompt}> ",
             history_key=adt_cls,
             disallow_other=not callbacks,
         )

@@ -172,7 +172,7 @@ class StratigraphicUnit(BaseModel):
     def all_localities(self) -> Iterable["models.Location"]:
         yield from self.locations
         for child in self.children:
-            yield from child.stratigraphic_localities()
+            yield from child.all_localities()
 
     def all_type_localities(self, include_children: bool = True) -> List["models.Name"]:
         if include_children:

@@ -514,23 +514,49 @@ class Taxon(BaseModel):
     ) -> "Taxon":
         if age is None:
             age = self.age
-        return self.base_name.add_child_taxon(
-            rank=rank, name=name, year=year, age=age, **kwargs
-        )
+        taxon = Taxon.create(valid_name=name, age=age, rank=rank, parent=self)
+        kwargs["group"] = helpers.group_of_rank(rank)
+        kwargs["root_name"] = helpers.root_name_of_name(name, rank)
+        if "status" not in kwargs:
+            kwargs["status"] = Status.valid
+        name_obj = models.Name.create(taxon=taxon, year=year, **kwargs)
+        name_obj.save()
+        taxon.base_name = name_obj
+        taxon.save()
+        return taxon
 
-    def add(self) -> "Taxon":
+    def get_adt_callbacks(self) -> getinput.CallbackMap:
+        callbacks = super().get_adt_callbacks()
+        return {
+            **callbacks,
+            "from_paper": self.from_paper,
+            "add_child": self.add,
+            "syn_from_paper": self.syn_from_paper,
+            "add_syn": self.add_syn,
+            "switch_basename": self.switch_basename,
+            "synonymize": self.synonymize,
+            "recompute_name": self.recompute_name,
+            "display_type_localities": self.display_type_localities,
+            "display_citation_groups": self.display_citation_groups,
+            "display_parents": self.display_parents,
+        }
+
+    def add(self) -> Optional["Taxon"]:
         rank = getinput.get_enum_member(
             Rank,
             default=Rank.genus if self.rank > Rank.genus else Rank.species,
             allow_empty=False,
         )
-        name = self.getter("valid_name").get_one_key("name> ", allow_empty=False)
-        assert name is not None
+        name = self.getter("valid_name").get_one_key("name> ")
+        if name is None:
+            return None
         default = cast(AgeClass, self.age)
-        age = getinput.get_enum_member(AgeClass, default=default, allow_empty=False)
-        status = getinput.get_enum_member(
-            Status, default=Status.valid, allow_empty=False
-        )
+        age = getinput.get_enum_member(AgeClass, default=default)
+        if age is None:
+            return None
+        status = getinput.get_enum_member(Status, default=Status.valid)
+        if status is None:
+            return None
         taxon = Taxon.create(valid_name=name, age=age, rank=rank, parent=self)
         name_obj = models.Name.create(
             taxon=taxon,
@@ -588,8 +614,14 @@ class Taxon(BaseModel):
             name, page_described=page_described, locality=locality, **kwargs
         )
 
-    def switch_basename(self, name: "models.Name") -> None:
-        assert name.taxon == self, f"{name} is not a synonym of {self}"
+    def switch_basename(self, name: Optional["models.Name"] = None) -> None:
+        if name is None:
+            name = models.Name.getter(None).get_one()
+            if name is None:
+                return
+        if name.taxon != self:
+            print(f"{name} is not a synonym of {self}")
+            return
         old_base = self.base_name
         name.status = old_base.status
         old_base.status = Status.synonym
@@ -663,7 +695,6 @@ class Taxon(BaseModel):
         paper: Optional[Article] = None,
         page_described: Union[None, int, str] = None,
         status: Status = Status.valid,
-        age: Optional[AgeClass] = None,
         **override_kwargs: Any,
     ) -> Optional["Taxon"]:
         if rank is None:
@@ -682,6 +713,11 @@ class Taxon(BaseModel):
         if paper is None:
             paper = self.get_value_for_foreign_class("paper", Article)
         if paper is None:
+            return None
+
+        default = cast(AgeClass, self.age)
+        age = getinput.get_enum_member(AgeClass, default=default)
+        if age is None:
             return None
 
         result = self.add_static(
@@ -846,10 +882,16 @@ class Taxon(BaseModel):
         self.base_name.merge(into.base_name, allow_valid=True)
         self.remove(reason=f"Merged into {into} (T#{into.id})")
 
-    def synonymize(self, to_taxon: "Taxon") -> "models.Name":
+    def synonymize(self, to_taxon: Optional["Taxon"] = None) -> "models.Name":
+        if to_taxon is None:
+            to_taxon = Taxon.getter(None).get_one()
+            if to_taxon is None:
+                return self.base_name
         if self.data is not None:
             print("Warning: removing data: %s" % self.data)
-        assert self != to_taxon, "Cannot synonymize %s with itself" % self
+        if self == to_taxon:
+            print(f"Cannot synonymize {self} with itself")
+            return self.base_name
         original_to_status = to_taxon.base_name.status
         for child in self.get_children():
             child.parent = to_taxon
@@ -934,6 +976,22 @@ class Taxon(BaseModel):
         for child in self.get_children():
             names |= child.all_names(age=age, exclude=exclude, min_year=min_year)
         return names
+
+    def all_authors(
+        self,
+        age: Optional[AgeClass] = None,
+        exclude: Container["Taxon"] = frozenset(),
+        min_year: Optional[int] = None,
+    ) -> Set["models.Person"]:
+        nams = self.all_names(age=age, exclude=exclude, min_year=min_year)
+        return {author for nam in nams for author in nam.get_authors()}
+
+    def reassign_family_name_authors(self) -> None:
+        for author in sorted(self.all_authors(), key=lambda p: p.sort_key()):
+            if author.get_level() is not models.person.PersonLevel.family_name_only:
+                continue
+            getinput.print_header(author)
+            author.reassign_names_with_verbatim(True)
 
     def names_missing_field(
         self,
@@ -1024,6 +1082,29 @@ class Taxon(BaseModel):
         if focus_field is None:
             print(f'Overall score: {output["score"][0]:.2f}')
         return output
+
+    def edit_names_at_level(
+        self,
+        level: FillDataLevel = FillDataLevel.incomplete_derived_tags,
+        age: Optional[AgeClass] = None,
+        reverse: bool = True,
+    ) -> None:
+        nams = self.all_names(age=age)
+        total = len(nams)
+        for i, nam in enumerate(
+            sorted(nams, reverse=reverse, key=lambda nam: nam.sort_key())
+        ):
+            print(f"({i}/{total}) {nam}")
+            name_level = nam.get_derived_field("fill_data_level")
+            if name_level is level:
+                name_level = nam.get_derived_field(
+                    "fill_data_level", force_recompute=True
+                )
+            if name_level is level:
+                nam.display()
+                level, reason = nam.fill_data_level()
+                print(f"Level: {level.name.upper()} ({reason})")
+                nam.edit()
 
     def fill_data_for_names(
         self,
@@ -1117,7 +1198,7 @@ class Taxon(BaseModel):
         else:
             nam = getinput.choose_one(
                 candidates,
-                display_fn=lambda nam: f"{nam} (#{nam.id})",
+                display_fn=lambda nam: f"{nam!r} (#{nam.id})",
                 history_key=(self, attr),
             )
             if nam is None:

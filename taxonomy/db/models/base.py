@@ -36,7 +36,7 @@ from peewee import (
 )
 
 from ... import adt, config, events, getinput
-from .. import derived_data
+from .. import derived_data, helpers
 
 settings = config.get_options()
 
@@ -126,8 +126,9 @@ class BaseModel(Model):
         self._is_prepared = True
 
     @classmethod
-    def create(cls: Type[ModelT], *args: Any, **kwargs: Any) -> ModelT:
-        result = super().create(*args, **kwargs)
+    def create(cls: Type[ModelT], **kwargs: Any) -> ModelT:
+        kwargs = {key: helpers.clean_string(value) if isinstance(value, str) else value for key, value in kwargs.items()}
+        result = super().create(**kwargs)
         if hasattr(cls, "creation_event"):
             cls.creation_event.trigger(result)
         return result
@@ -276,6 +277,9 @@ class BaseModel(Model):
     def fields(cls) -> Iterable[str]:
         yield from cls._meta.fields.keys()
 
+    def short_description(self) -> str:
+        return str(self)
+
     def __str__(self) -> str:
         if hasattr(self, "label_field"):
             return getattr(self, self.label_field)
@@ -409,6 +413,7 @@ class BaseModel(Model):
                 existing=current_value,
                 completers=self.get_completers_for_adt_field(field),
                 callbacks=callbacks,
+                prompt=self.short_description(),
             )
         elif isinstance(field_obj, CharField):
             if default is None:
@@ -800,7 +805,7 @@ class _NameGetter(Generic[ModelT]):
         else:
             choice = getinput.choose_one(
                 sorted(nams, key=lambda nam: nam.sort_key()),
-                display_fn=lambda nam: f"{nam} (#{nam.id})",
+                display_fn=lambda nam: f"{nam!r} (#{nam.id})",
                 history_key=(self, name),
             )
             if choice is None:

@@ -53,9 +53,9 @@ from .name_complex import NameComplex, SpeciesNameComplex
 from .person import Person, AuthorTag, get_new_authors_list
 
 _CRUCIAL_MISSING_FIELDS: Dict[Group, Set[str]] = {
-    Group.species: {"species_name_complex"},
+    Group.species: {"species_name_complex", "original_name", "corrected_original_name"},
     Group.genus: {"name_complex"},
-    Group.family: set(),
+    Group.family: {"type"},
     Group.high: set(),
 }
 _ETYMOLOGY_CUTOFF = 1990
@@ -477,9 +477,7 @@ class Name(BaseModel):
         if locality is not None:
             result.add_occurrence(locality)
         result.base_name.s(**kwargs)
-        if self.original_citation is not None:
-            self.fill_required_fields()
-            result.base_name.fill_required_fields()
+        result.base_name.edit()
         return result
 
     def get_completers_for_adt_field(self, field: str) -> getinput.CompleterMap:
@@ -668,18 +666,7 @@ class Name(BaseModel):
     def add_child_taxon(
         self, rank: Rank, name: str, age: Optional[AgeClass] = None, **kwargs: Any
     ) -> "Taxon":
-        if age is None:
-            age = self.taxon.age
-        taxon = Taxon.create(valid_name=name, age=age, rank=rank, parent=self.taxon)
-        kwargs["group"] = helpers.group_of_rank(rank)
-        kwargs["root_name"] = helpers.root_name_of_name(name, rank)
-        if "status" not in kwargs:
-            kwargs["status"] = Status.valid
-        name_obj = Name.create(taxon=taxon, **kwargs)
-        name_obj.save()
-        taxon.base_name = name_obj
-        taxon.save()
-        return taxon
+        return self.taxon.add_static(rank, name, age=age, **kwargs)
 
     def add_nomen_nudum(self) -> "Name":
         """Adds a nomen nudum similar to this name."""
@@ -1031,6 +1018,8 @@ class Name(BaseModel):
         result = " " * ((depth + 1) * 4) + intro_line + "\n"
         if full:
             data: Dict[str, Any] = {}
+            level, reason = self.fill_data_level()
+            data["level"] = f"{level.name.upper()} ({reason})"
             if self.type_locality is not None:
                 data["locality"] = repr(self.type_locality)
             type_info = []
@@ -1172,25 +1161,31 @@ class Name(BaseModel):
                 return True
         return False
 
-    def get_required_details_tags(self) -> Iterable[Tuple["TypeTag", "TypeTag"]]:
+    def requires_etymology(self) -> bool:
         if self.group is Group.genus:
-            if (
+            return (
                 self.nomenclature_status.requires_name_complex()
                 and self.numeric_year() >= _ETYMOLOGY_CUTOFF
-            ):
-                yield (TypeTag.EtymologyDetail, TypeTag.NoEtymology)
+            )
         elif self.group is Group.species:
-            if (
+            return (
                 self.nomenclature_status.requires_name_complex()
                 and not self.nomenclature_status.is_variant()
-            ):
-                if self.numeric_year() >= _ETYMOLOGY_CUTOFF or self.is_patronym():
-                    yield (TypeTag.EtymologyDetail, TypeTag.NoEtymology)
-            if self.numeric_year() >= _DATA_CUTOFF:
-                requires_type = self.nomenclature_status.requires_type()
-                if requires_type:
-                    yield (TypeTag.LocationDetail, TypeTag.NoLocation)
-                    yield (TypeTag.SpecimenDetail, TypeTag.NoSpecimen)
+                and (self.numeric_year() >= _ETYMOLOGY_CUTOFF or self.is_patronym())
+            )
+        else:
+            return False
+
+    def get_required_details_tags(self) -> Iterable[Tuple["TypeTag", "TypeTag"]]:
+        if self.requires_etymology():
+            yield (TypeTag.EtymologyDetail, TypeTag.NoEtymology)
+        if (
+            self.group is Group.species
+            and self.numeric_year() >= _DATA_CUTOFF
+            and self.nomenclature_status.requires_type()
+        ):
+            yield (TypeTag.LocationDetail, TypeTag.NoLocation)
+            yield (TypeTag.SpecimenDetail, TypeTag.NoSpecimen)
 
     def get_required_derived_tags(self) -> Iterable[Tuple["TypeTag", ...]]:
         if self.group is Group.species:
@@ -1247,10 +1242,22 @@ class Name(BaseModel):
             if self.verbatim_citation is not None:
                 yield "citation_group"
 
-        if self.nomenclature_status.requires_type() and self.group is Group.species:
+        if self.nomenclature_status.requires_type():
             # Yield this early because it's often easier to first get all the *Detail
             # tags and then fill in the required fields.
-            yield "type_tags"
+            if self.group is Group.species:
+                yield "type_tags"
+            if self.group is Group.genus:
+                if (
+                    (self.type is None and self.genus_type_kind is None)
+                    or (
+                        self.genus_type_kind is None
+                        and self.original_citation is not None
+                    )
+                    or (self.genus_type_kind is not None and self.genus_type_kind.requires_tag())
+                    or self.requires_etymology()
+                ):
+                    yield "type_tags"
 
         if (
             self.group is Group.genus
@@ -1283,11 +1290,6 @@ class Name(BaseModel):
                     yield "type"
                 if self.type is not None:
                     yield "genus_type_kind"
-                if self.genus_type_kind is None:
-                    if self.original_citation is not None:
-                        yield "type_tags"
-                elif self.genus_type_kind.requires_tag():
-                    yield "type_tags"
 
     def get_deprecated_fields(self) -> Iterable[str]:
         yield "stem"
@@ -1409,6 +1411,9 @@ class Name(BaseModel):
                 self.save()
             return False
         return True
+
+    def short_description(self) -> str:
+        return self.root_name
 
     def __str__(self) -> str:
         return self.description()
@@ -1733,23 +1738,25 @@ class NameComment(BaseModel):
         source: Optional[Article] = None,
         page: Optional[str] = None,
         **kwargs: Any,
-    ) -> "NameComment":
+    ) -> Optional["NameComment"]:
         if name is None:
             name = cls.get_value_for_foreign_key_field_on_class(
                 "name", allow_none=False
             )
-        assert name is not None
+            if name is None:
+                return None
         if kind is None:
-            kind = getinput.get_enum_member(
-                constants.CommentKind, prompt="kind> ", allow_empty=False
-            )
+            kind = getinput.get_enum_member(constants.CommentKind, prompt="kind> ")
+            if kind is None:
+                return None
         if text is None:
             text = getinput.get_line(prompt="text> ")
-        assert text is not None
+            if text is None:
+                return None
         if source is None:
             source = cls.get_value_for_foreign_class("source", Article)
-            if page is None:
-                page = getinput.get_line(prompt="page> ")
+        if page is None:
+            page = getinput.get_line(prompt="page> ")
         return cls.make(name=name, kind=kind, text=text, source=source, page=page)
 
     def get_description(self) -> str:

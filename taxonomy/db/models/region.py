@@ -68,6 +68,7 @@ class Region(BaseModel):
         name_field = models.Location.name
         my_name = self.name
         return models.Location.bfind(
+            models.Location.region == self,
             (name_field == my_name)
             | (name_field == f"{my_name} Pleistocene")
             | (name_field == f"{my_name} fossil")

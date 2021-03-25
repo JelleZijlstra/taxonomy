@@ -322,6 +322,7 @@ class Article(BaseModel):
             "reverse": self.reverse_authors,
             "specify_authors": self.specify_authors,
             "recompute_authors_from_doi": self.recompute_authors_from_doi,
+            "recompute_authors_from_jstor": self.recompute_authors_from_jstor,
             "print_doi_information": self.print_doi_information,
             "expand_doi": lambda: expand_doi(self.doi) if self.doi else None,
         }
@@ -437,6 +438,9 @@ class Article(BaseModel):
     def numeric_start_page(self) -> int:
         return to_int(self.start_page)
 
+    def ispdf(self) -> bool:
+        return self.kind is ArticleKind.electronic and self.name.endswith(".pdf")
+
     def is_page_in_range(self, page: int) -> bool:
         if self.pages:
             try:
@@ -453,6 +457,119 @@ class Article(BaseModel):
             return page in range(start_page, end_page + 1)
         else:
             return False
+
+    @lru_cache()
+    def getpdfcontent(self) -> str:
+        if not self.ispdf() or self.isredirect():
+            raise ValueError(f"attempt to get PDF content for non-file {self}")
+        # only get first page
+        return subprocess.run(
+            ["pdftotext", str(self.get_path()), "-", "-l", "1"], stdout=subprocess.PIPE
+        ).stdout.decode("utf-8", "replace")
+
+    def get_jstor_data(self) -> Dict[str, Any]:
+        pdfcontent = self.getpdfcontent()
+        if not re.search(
+            r"(Stable URL: https?:\/\/www\.jstor\.org\/stable\/| Accessed: )",
+            pdfcontent,
+        ):
+            return {}
+        print("Detected JSTOR file; extracting data.")
+        head_text = pdfcontent.split(
+            "\nYour use of the JSTOR archive indicates your acceptance of JSTOR's Terms and Conditions of Use"
+        )[0].split("\nJSTOR is a not-for-profit service that helps scholars")[0].strip()
+        # get rid of occasional text above relevant info
+        head_text = re.sub(r"^.*\n\n", "", head_text)
+        # bail out
+        if "Review by:" in head_text:
+            print("Unable to process data")
+            return {}
+
+        # split into fields
+        head = re.split(
+            r"(\s*Author\(s\): |\s*(Reviewed work\(s\):.*)?\s*Source: |\s*Published by: |\s*Stable URL: |( \.)?\s*Accessed: )",
+            head_text,
+        )
+
+        data: Dict[str, Any] = {}
+        # handle the easy ones
+        data["title"] = head[0]
+        # multiplied by 4 because capturing groups also go into the output of re.split
+        url = head[4 * 4]
+        data["doi"] = "10.2307/" + url.split()[0].split("/")[-1]
+        # problem sometimes
+        if not re.search(r"(, Vol\. |, No\. | \(|\), pp?\. )", head[2 * 4]):
+            print("Unable to process data")
+            return {}
+        # Process "source" field
+        source = re.split(
+            r",\s+(Vol|No|Bd|H)\.\s+|(?<=\d)\s+\(|\),\s+pp?\.\s+", head[2 * 4]
+        )
+        journal = source[0]
+        if journal[-4:].isnumeric() and journal.count(", ") == 2:
+            journal = journal.split(", ")[0].strip()
+        data["journal"] = journal
+        if data["journal"] == "Mammalian Species":
+            source_field = head[2 * 4].strip()
+            match = re.match(
+                r"^Mammalian Species, (Vol|No)\. (?P<volume>\d+)"
+                r"(, No\. (?P<issue>\d+)|, [A-Za-z ]+)? "
+                r"\(.+ (?P<year>\d{4})\), pp\. (?P<pages>[\d-]+)$",
+                source_field,
+            )
+            assert match is not None, f"failed to match {source_field}"
+            data["volume"] = match.group("volume")
+            if match.group("issue"):
+                data["issue"] = match.group("issue")
+            year = match.group("year")
+            pages = match.group("pages")
+        else:
+            num_splits = (len(source) + 1) // 2
+            if num_splits < 3:
+                return {}
+            try:
+                data["volume"] = source[1 * 2]
+                # issue may have been omitted
+                if num_splits > 4:
+                    data["issue"] = source[2 * 2]
+                # year
+                year = source[3 * 2] if num_splits > 4 else source[2 * 2]
+                # start and end pages
+                pages = source[4 * 2] if num_splits > 4 else source[3 * 2]
+            except IndexError:
+                print("unable to process data")
+                return {}
+        data["year"] = re.sub(r"^.*,\s", "", year)
+        first_last = pages.split("-")
+        data["start_page"] = first_last[0]
+        data["end_page"] = first_last[1] if len(first_last) > 1 else first_last[0]
+        # Process authors field
+        # Will fail with various variants, including double surnames
+        authors = re.split(r"(, | and )", head[1 * 4])
+        # array for correctly formatted authors
+        fmtauth = []
+        for i, author_str in enumerate(authors):
+            if i % 2 == 1:
+                continue
+            author = author_str.split()
+            lastname = author[-1]
+            fmtauth.append(self.clean_up_author(lastname, author[:-1]))
+        data["author_tags"] = fmtauth
+        # if it isn't, this code fails miserably anyway
+        data["type"] = ArticleType.JOURNAL
+        return data
+
+    @staticmethod
+    def clean_up_author(family_name: str, names: Sequence[str]) -> Dict[str, str]:
+        if all(name.endswith(".") for name in names):
+            return {"family_name": family_name, "initials": "".join(names)}
+        else:
+            given_names = Article.unspace_initials(" ".join(names))
+            return {"family_name": family_name, "given_names": given_names}
+
+    @staticmethod
+    def unspace_initials(authority: str) -> str:
+        return re.sub(r"([A-Z]\.) (?=[A-Z]\.)", r"\1", authority).strip()
 
     # Authors
 
@@ -755,6 +872,19 @@ class Article(BaseModel):
                 else:
                     obj.edit()
 
+    def recompute_authors_from_jstor(
+        self, confirm: bool = True, force: bool = False
+    ) -> None:
+        if not self.doi:
+            return
+        if not force and all(
+            author.get_level() > PersonLevel.initials_only
+            for author in self.get_authors()
+        ):
+            return
+        data = self.get_jstor_data()
+        self._recompute_authors_from_data(data, confirm)
+
     def recompute_authors_from_doi(
         self, confirm: bool = True, force: bool = False
     ) -> None:
@@ -766,6 +896,9 @@ class Article(BaseModel):
         ):
             return
         data = expand_doi(self.doi)
+        self._recompute_authors_from_data(data, confirm)
+
+    def _recompute_authors_from_data(self, data: Dict[str, Any], confirm: bool) -> None:
         if not data or "author_tags" not in data:
             print(f"Skipping because of no authors in {data}")
             return

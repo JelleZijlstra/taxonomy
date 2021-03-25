@@ -1,6 +1,7 @@
 import enum
 import sys
-from typing import Any, Callable, Dict, IO, Iterable, Optional, Type, Union
+import re
+from typing import Any, Callable, Dict, IO, Iterable, Optional, Type, Union, Counter
 
 from peewee import CharField, ForeignKeyField, IntegerField, TextField
 
@@ -102,20 +103,23 @@ class Location(BaseModel):
         return result
 
     def __repr__(self) -> str:
-        age_str = ""
+        parts = []
+        if self.deleted is LocationStatus.alias:
+            parts.append(f"alias for {self.parent}")
+        elif self.deleted is LocationStatus.deleted:
+            parts.append("deleted")
         if self.stratigraphic_unit is not None:
-            age_str += self.stratigraphic_unit.name
+            parts.append(self.stratigraphic_unit.name)
         if self.max_period is not None:
-            if self.stratigraphic_unit is not None:
-                age_str += "; "
-            age_str += self.max_period.name
+            age_str = self.max_period.name
             if self.min_period is not None and self.min_period != self.max_period:
                 age_str += "–%s" % self.min_period.name
+            parts.append(age_str)
         if self.min_age is not None and self.max_age is not None:
-            age_str += f"; {self.max_age}–{self.min_age}"
+            parts.append(f"{self.max_age}–{self.min_age}")
         if self.tags:
-            age_str += "; " + ", ".join(repr(tag) for tag in self.tags)
-        return f"{self.name} ({age_str}), {self.region.name}"
+            parts.append(", ".join(repr(tag) for tag in self.tags))
+        return f"{self.name} ({'; '.join(parts)}), {self.region.name}"
 
     def sort_key(self) -> Any:
         return (
@@ -154,10 +158,29 @@ class Location(BaseModel):
                 for occurrence in sorted(taxa, key=lambda occ: occ.taxon.valid_name):
                     file.write("{}{}\n".format(" " * (depth + 12), occurrence))
 
-    def merge(self, other: "Location") -> None:
+    def merge(self, other: Optional["Location"] = None) -> None:
+        if other is None:
+            other = self.getter(None).get_one()
+            if other is None:
+                return
         self.reassign_references(other)
         self.deleted = LocationStatus.alias  # type: ignore
         self.parent = other
+
+    def add_alias(self) -> Optional["Location"]:
+        name = self.getter("name").get_one()
+        if name is None:
+            return None
+        return Location.create(
+            parent=self, deleted=LocationStatus.alias, name=name, region=self.region
+        )
+
+    def get_adt_callbacks(self) -> getinput.CallbackMap:
+        callbacks = super().get_adt_callbacks()
+        return {**callbacks, "add_alias": self.add_alias, "merge": self.merge}
+
+    def edit(self) -> None:
+        self.fill_field("tags")
 
     def reassign_references(self, other: "Location") -> None:
         print(f"{self}: reassign references to {other}")
@@ -217,17 +240,17 @@ class Location(BaseModel):
         return True
 
     def lint(self) -> bool:
-        if self.status == LocationStatus.alias and not self.parent:
+        if self.deleted == LocationStatus.alias and not self.parent:
             print(f"{self}: alias location has no parent")
             return False
-        if self.status != LocationStatus.valid and not self.is_empty():
+        if self.deleted != LocationStatus.valid and not self.is_empty():
             print(f"{self}: deleted location has references")
             return False
         return True
 
     @classmethod
     def fix_references(cls) -> None:
-        for alias in cls.select_valid().filter(cls.status == LocationStatus.alias):
+        for alias in cls.select_valid().filter(cls.deleted == LocationStatus.alias):
             if not alias.is_empty() and alias.parent:
                 alias.reassign_references(alias.parent)
 
@@ -267,7 +290,7 @@ class Location(BaseModel):
             loc.maybe_autodelete(dry_run=dry_run)
 
     def maybe_autodelete(self, dry_run: bool = True) -> None:
-        if not self.is_empty():
+        if self.status is LocationStatus.alias or not self.is_empty():
             return
         print(f"Autodeleting {self!r}")
         if not dry_run:
@@ -286,6 +309,19 @@ class Location(BaseModel):
             return cls.get_or_create_general(region, period)
 
         return {**super().get_interactive_creators(), "u": callback}
+
+    def most_common_words(self) -> Counter[str]:
+        words = Counter()
+        for nam in self.type_localities:
+            for tag in nam.type_tags:
+                if isinstance(tag, models.name.TypeTag.LocationDetail):
+                    print(tag.text)
+                    text = re.sub(r"[^a-z ]", "", tag.text.lower())
+                    for word in text.split():
+                        words[word] += 1
+        for word, count in words.most_common(100):
+            print(count, word)
+        return words
 
 
 class LocationTag(adt.ADT):

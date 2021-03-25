@@ -92,10 +92,8 @@ largely those consisting of multiple islands. Special cases are listed below:
 
 ### [Southern Africa](/r/Southern_Africa)
 
-- The [Prince Edward Islands](/r/Prince_Edward_Islands) are treated as a separate region within
-  [South Africa](/r/South_Africa). South Africa
-  has very high biodiversity and well-established provinces, so the provinces are likely to
-  become regions for the database in the future.
+- The nine provinces of [South Africa](/r/South_Africa) are treated as regions, as are the outlying
+  [Prince Edward Islands](/r/Prince_Edward_Islands).
 
 ### [Western Africa](/r/Western_Africa)
 
@@ -392,6 +390,8 @@ A few countries contain further divisions:
   Within the state of [Pernambuco](/r/Pernambuco), the outlying island of
   [Fernando de Noronha](/r/Fernando_de_Noronha) is a separate region.
 - Within [Colombia](/r/Colombia), we recognize regions for each department and for the city of [Bogotá](/r/Bogotá).
+- Within [Venezuela](/r/Venezuela), we recognize regions for each state, the [Capital District](/r/Capital_District_(Venezuela)),
+  and the [Federal Dependencies](/r/Federal_Dependencies_(Venezuela)).
 - Within [Ecuador](/r/Ecuador), the [Galápagos Islands](/r/Galápagos_Islands) are a separate region.
 
 ## The oceans
