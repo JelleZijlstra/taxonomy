@@ -475,9 +475,13 @@ class Article(BaseModel):
         ):
             return {}
         print("Detected JSTOR file; extracting data.")
-        head_text = pdfcontent.split(
-            "\nYour use of the JSTOR archive indicates your acceptance of JSTOR's Terms and Conditions of Use"
-        )[0].split("\nJSTOR is a not-for-profit service that helps scholars")[0].strip()
+        head_text = (
+            pdfcontent.split(
+                "\nYour use of the JSTOR archive indicates your acceptance of JSTOR's Terms and Conditions of Use"
+            )[0]
+            .split("\nJSTOR is a not-for-profit service that helps scholars")[0]
+            .strip()
+        )
         # get rid of occasional text above relevant info
         head_text = re.sub(r"^.*\n\n", "", head_text)
         # bail out

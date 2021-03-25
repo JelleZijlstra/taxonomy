@@ -127,7 +127,10 @@ class BaseModel(Model):
 
     @classmethod
     def create(cls: Type[ModelT], **kwargs: Any) -> ModelT:
-        kwargs = {key: helpers.clean_string(value) if isinstance(value, str) else value for key, value in kwargs.items()}
+        kwargs = {
+            key: helpers.clean_string(value) if isinstance(value, str) else value
+            for key, value in kwargs.items()
+        }
         result = super().create(**kwargs)
         if hasattr(cls, "creation_event"):
             cls.creation_event.trigger(result)

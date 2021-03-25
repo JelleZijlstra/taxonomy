@@ -459,7 +459,7 @@ class Taxon(BaseModel):
                     file.write(f"{' ' * depth}{period_str}\n")
                     current_periods = periods
                 file.write(f"{' ' * (4 + depth)}{loc}\n")
-                models.name.write_type_localities(nams, full=full, depth=depth)
+                models.name.write_names(nams, full=full, depth=depth)
                 getinput.flush()
 
         if geographically:

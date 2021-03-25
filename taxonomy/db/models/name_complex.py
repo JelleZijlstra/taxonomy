@@ -1,4 +1,5 @@
-from typing import Any, Iterable, List, Optional
+from typing import Any, Iterable, List, Optional, IO
+import sys
 
 import peewee
 from peewee import BooleanField, CharField, ForeignKeyField
@@ -53,6 +54,28 @@ class SpeciesNameComplex(BaseModel):
             return f"{self.label} ({self.kind.name}, -{self.masculine_ending}, -{self.feminine_ending}, -{self.neuter_ending})"
         else:
             return f"{self.label} ({self.kind.name})"
+
+    def display(
+        self,
+        full: bool = False,
+        organized: bool = False,
+        *,
+        depth: int = 0,
+        file: IO[str] = sys.stdout,
+    ) -> None:
+        file.write("{}{}\n".format(" " * (depth + 4), repr(self)))
+        if self.comment:
+            space = " " * (depth + 12)
+            file.write(f"{space}Comment: {self.comment}\n")
+        nams = list(self.names)
+        models.name.write_names(
+            nams,
+            depth=depth,
+            full=full,
+            organized=organized,
+            file=file,
+            tag_classes=(models.name.TypeTag.EtymologyDetail,),
+        )
 
     def self_apply(self, dry_run: bool = True) -> List["models.Name"]:
         return self.apply_to_ending(self.label, dry_run=dry_run)
@@ -340,6 +363,28 @@ class NameComplex(BaseModel):
 
     def __repr__(self) -> str:
         return f'{self.label} ({self.code_article.name}, {self.gender.name}, -{self.stem_remove or ""}+{self.stem_add or ""})'
+
+    def display(
+        self,
+        full: bool = False,
+        organized: bool = False,
+        *,
+        depth: int = 0,
+        file: IO[str] = sys.stdout,
+    ) -> None:
+        file.write("{}{}\n".format(" " * (depth + 4), repr(self)))
+        if self.comment:
+            space = " " * (depth + 12)
+            file.write(f"{space}Comment: {self.comment}\n")
+        nams = list(self.names)
+        models.name.write_names(
+            nams,
+            depth=depth,
+            full=full,
+            organized=organized,
+            file=file,
+            tag_classes=(models.name.TypeTag.EtymologyDetail,),
+        )
 
     def self_apply(self, dry_run: bool = True) -> List["models.Name"]:
         return self.apply_to_ending(self.label, dry_run=dry_run)
@@ -676,6 +721,21 @@ class NameComplex(BaseModel):
         )
 
     @classmethod
+    def assumed(
+        cls, gender: GrammaticalGender, stem_remove: str = "", stem_add: str = ""
+    ) -> "NameComplex":
+        """Gender indicated by an adjectival species name."""
+        label = cls._make_label(f"assumed_{gender.name}", stem_remove, stem_add)
+        return cls._get_or_create(
+            label,
+            source_language=SourceLanguage.other,
+            gender=gender,
+            code_article=GenderArticle.assumed,
+            stem_remove=stem_remove,
+            stem_add=stem_add,
+        )
+
+    @classmethod
     def defaulted_masculine(
         cls, stem_remove: str = "", stem_add: str = ""
     ) -> "NameComplex":
@@ -747,6 +807,7 @@ class NameComplex(BaseModel):
                 "defaulted",
                 "unknown_obvious_stem",
                 "stem_expressly_set",
+                "assumed",
             ],
             "kind> ",
             allow_empty=False,
@@ -779,7 +840,12 @@ class NameComplex(BaseModel):
             nc.self_apply()
             if getinput.yes_no("self-apply?"):
                 nc.self_apply(dry_run=False)
-        elif kind in ("expressly_specified", "indicated", "stem_expressly_set"):
+        elif kind in (
+            "expressly_specified",
+            "indicated",
+            "stem_expressly_set",
+            "assumed",
+        ):
             gender = getinput.get_enum_member(
                 GrammaticalGender, "gender> ", allow_empty=False
             )

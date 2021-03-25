@@ -72,7 +72,7 @@ class Region(BaseModel):
             (name_field == my_name)
             | (name_field == f"{my_name} Pleistocene")
             | (name_field == f"{my_name} fossil")
-            | (name_field.endswith(f"({my_name})"))
+            | (name_field.endswith(f"({my_name})")),
         )
 
     def rename(self, new_name: Optional[str] = None) -> None:

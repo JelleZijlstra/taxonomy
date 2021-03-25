@@ -340,7 +340,7 @@ def display_tags(
     if show_indexes:
         tags = tags
     else:
-        tags = sorted(tags)
+        tags = sorted(tags)  # type: ignore
     for i, tag in enumerate(tags):
         if show_indexes:
             index = f"{i}: "

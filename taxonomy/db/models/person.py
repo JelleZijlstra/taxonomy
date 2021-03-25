@@ -533,7 +533,9 @@ class Person(BaseModel):
             and len({person.naming_convention for person in group}) == 1
         ) or (
             group[0].get_level() is PersonLevel.has_convention
-            and all(person.get_level() < PersonLevel.has_convention for person in group[1:])
+            and all(
+                person.get_level() < PersonLevel.has_convention for person in group[1:]
+            )
         ):
             for person in group[1:]:
                 print(f"Reassign {person} -> {group[0]}")

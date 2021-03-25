@@ -1103,6 +1103,15 @@ class Name(BaseModel):
     def fill_data_level(self) -> Tuple[FillDataLevel, str]:
         if not self.check_authors():
             return FillDataLevel.needs_basic_data, "author mismatch"
+        if (
+            self.name_complex is not None
+            and self.original_citation is not None
+            and self.name_complex.code_article is constants.CodeArticle.assumed
+        ):
+            return (
+                FillDataLevel.needs_basic_data,
+                "'assumed' name_complexf or name with original_citation",
+            )
         missing_fields = set(self.get_empty_required_fields())
         required_details_tags = list(self.get_required_details_tags())
         missing_details_tags = list(self.get_missing_tags(required_details_tags))
@@ -1254,7 +1263,10 @@ class Name(BaseModel):
                         self.genus_type_kind is None
                         and self.original_citation is not None
                     )
-                    or (self.genus_type_kind is not None and self.genus_type_kind.requires_tag())
+                    or (
+                        self.genus_type_kind is not None
+                        and self.genus_type_kind.requires_tag()
+                    )
                     or self.requires_etymology()
                 ):
                     yield "type_tags"
@@ -1788,34 +1800,6 @@ def has_data_from_original(nam: Name) -> bool:
     return False
 
 
-def write_type_localities(
-    type_locs: Sequence[Name],
-    *,
-    depth: int = 0,
-    full: bool = False,
-    organized: bool = False,
-    file: IO[str] = sys.stdout,
-) -> None:
-    if not type_locs:
-        return
-
-    def write_type_loc(nam: Name) -> str:
-        lines = [f"{nam}\n"]
-        if full and nam.type_tags:
-            for tag in nam.type_tags:
-                if isinstance(tag, TypeTag.LocationDetail):
-                    lines.append(f"    {tag}\n")
-        return "".join(lines)
-
-    if organized:
-        display_organized(
-            [(write_type_loc(nam), nam.taxon) for nam in type_locs], depth=depth
-        )
-    else:
-        for nam in type_locs:
-            file.write(getinput.indent(write_type_loc(nam), depth + 8))
-
-
 def is_valid_page_described(page_described: str) -> bool:
     parts = re.split(r", |-", page_described)
     return all(is_valid_page_described_single(part) for part in parts)
@@ -1974,3 +1958,30 @@ SOURCE_TAGS = (
     TypeTag.DefinitionDetail,
     TypeTag.TypeSpeciesDetail,
 )
+
+
+def write_names(
+    nams: Sequence[Name],
+    *,
+    depth: int = 0,
+    full: bool = False,
+    organized: bool = False,
+    file: IO[str] = sys.stdout,
+    tag_classes: Tuple[Type[TypeTag]] = (TypeTag.LocationDetail,),
+) -> None:
+    if not nams:
+        return
+
+    def write_nam(nam: Name) -> str:
+        lines = [f"{nam}\n"]
+        if full and nam.type_tags:
+            for tag in nam.type_tags:
+                if isinstance(tag, tag_classes):
+                    lines.append(f"    {tag}\n")
+        return "".join(lines)
+
+    if organized:
+        display_organized([(write_nam(nam), nam.taxon) for nam in nams], depth=depth)
+    else:
+        for nam in nams:
+            file.write(getinput.indent(write_nam(nam), depth + 8))

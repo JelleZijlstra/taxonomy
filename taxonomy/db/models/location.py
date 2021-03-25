@@ -142,7 +142,7 @@ class Location(BaseModel):
             space = " " * (depth + 12)
             file.write(f"{space}Comment: {self.comment}\n")
         type_locs = list(self.type_localities)
-        models.name.write_type_localities(
+        models.name.write_names(
             type_locs, depth=depth, full=full, organized=organized, file=file
         )
         if include_occurrences:
@@ -311,7 +311,7 @@ class Location(BaseModel):
         return {**super().get_interactive_creators(), "u": callback}
 
     def most_common_words(self) -> Counter[str]:
-        words = Counter()
+        words: Counter[str] = Counter()
         for nam in self.type_localities:
             for tag in nam.type_tags:
                 if isinstance(tag, models.name.TypeTag.LocationDetail):

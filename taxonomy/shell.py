@@ -167,7 +167,7 @@ def command(fn: CallableT) -> CallableT:
 
 def generator_command(fn: Callable[..., Iterable[T]]) -> Callable[..., List[T]]:
     @functools.wraps(fn)
-    def wrapper(*args: Any, **kwargs: Any) -> Optional[List[T]]:
+    def wrapper(*args: Any, **kwargs: Any) -> List[T]:
         try:
             return list(fn(*args, **kwargs))
         except getinput.StopException:
@@ -3242,7 +3242,11 @@ def find_potential_citations_for_group(
         return 0
 
     def is_possible_match(art: Article, nam: Name, page: int) -> bool:
-        if nam.year != art.year or art.kind is ArticleKind.no_copy or art.has_tag(models.article.ArticleTag.NonOriginal):
+        if (
+            nam.year != art.year
+            or art.kind is ArticleKind.no_copy
+            or art.has_tag(models.article.ArticleTag.NonOriginal)
+        ):
             return False
         if not art.is_page_in_range(page):
             return False
@@ -3258,7 +3262,9 @@ def find_potential_citations_for_group(
         page = nam.extract_page_described()
         if not page:
             continue
-        candidates = [art for art in potential_arts if is_possible_match(art, nam, page)]
+        candidates = [
+            art for art in potential_arts if is_possible_match(art, nam, page)
+        ]
         if candidates:
             if count == 0:
                 print(f"Trying {cg}...", flush=True)

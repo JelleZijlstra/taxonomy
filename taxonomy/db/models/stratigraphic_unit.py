@@ -182,7 +182,7 @@ class StratigraphicUnit(BaseModel):
         return [nam for loc in locs for nam in loc.type_localities]
 
     def display_type_localities(self, include_children: bool = True) -> None:
-        models.name.write_type_localities(
+        models.name.write_names(
             self.all_type_localities(include_children=include_children), organized=True
         )
 

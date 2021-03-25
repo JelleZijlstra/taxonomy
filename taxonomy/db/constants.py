@@ -460,6 +460,9 @@ class GenderArticle(enum.IntEnum):
     # Stem explicitly set, usually in connection with an otherwise preoccupied
     # family-group name.
     stem_expressly_set = 14
+    # Assumed based on form of the name; should be confirmed against the
+    # original citation.
+    assumed = 15
 
 
 class SpeciesNameKind(enum.IntEnum):
