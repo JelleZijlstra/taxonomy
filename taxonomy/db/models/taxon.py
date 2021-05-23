@@ -539,6 +539,7 @@ class Taxon(BaseModel):
             "display_type_localities": self.display_type_localities,
             "display_citation_groups": self.display_citation_groups,
             "display_parents": self.display_parents,
+            "add_comment": lambda: self.base_name.add_comment(),
         }
 
     def add(self) -> Optional["Taxon"]:

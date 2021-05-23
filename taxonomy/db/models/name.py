@@ -1106,7 +1106,7 @@ class Name(BaseModel):
         if (
             self.name_complex is not None
             and self.original_citation is not None
-            and self.name_complex.code_article is constants.CodeArticle.assumed
+            and self.name_complex.code_article is constants.GenderArticle.assumed
         ):
             return (
                 FillDataLevel.needs_basic_data,

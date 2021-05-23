@@ -652,7 +652,7 @@ class Article(BaseModel):
     def reverse_authors(self) -> None:
         authors = self.get_authors()
         self.author_tags = [
-            AuthorTag(person=person) for person in reversed(authors)  # type: ignore
+            AuthorTag.Author(person=person) for person in reversed(authors)  # type: ignore
         ]
         self.save()
 

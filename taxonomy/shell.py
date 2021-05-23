@@ -1691,6 +1691,39 @@ def clean_up_verbatim(dry_run: bool = False, slow: bool = False) -> None:
 
 
 @command
+def set_name_complex(suffix: str) -> None:
+    nams = Name.bfind(
+        Name.root_name.endswith(suffix),
+        Name.name_complex == None,
+        group=Group.genus,
+        quiet=True,
+    )
+    _set_name_complex_for_names(nams)
+
+
+@command
+def set_name_complex_in_taxon(taxon: Taxon) -> None:
+    nams = [
+        nam
+        for nam in taxon.all_names()
+        if nam.group is Group.genus
+        and nam.name_complex is None
+        and "name_complex" in nam.get_required_fields()
+    ]
+    _set_name_complex_for_names(nams)
+
+
+def _set_name_complex_for_names(nams: Sequence[Name]) -> None:
+    print(f"{len(nams)} total names")
+    for nam in sorted(nams, key=lambda nam: "".join(reversed(nam.root_name.lower()))):
+        if "name_complex" not in nam.get_required_fields():
+            print(f"Skipping {nam} ({nam.nomenclature_status})")
+            continue
+        nam.display()
+        nam.e.name_complex
+
+
+@command
 def set_citation_group_for_matching_citation(
     dry_run: bool = False, fix: bool = False
 ) -> None:
