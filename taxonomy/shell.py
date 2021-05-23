@@ -2293,6 +2293,16 @@ def biggest_names(
 
 
 @command
+def rio_taxon() -> None:
+    taxon = Taxon.getter(None).get_one()
+    nams = taxon.all_names()
+    people = [person for nam in nams for person in nam.get_authors()]
+    for person in sorted(people, key=lambda p: p.sort_key()):
+        if person.get_level() is PersonLevel.family_name_only:
+            person.reassign_initials_only()
+
+
+@command
 def reassign_references(
     family_name: Optional[str] = None,
     substring: bool = True,
