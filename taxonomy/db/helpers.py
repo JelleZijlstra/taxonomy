@@ -548,6 +548,7 @@ def clean_string(text: str) -> str:
     text = text.replace(" \xad ", "")
     text = text.replace("\xad", "")
     text = text.replace("’", "'")
+    text = text.replace("‐", "-")  # use ASCII hyphen
     text = re.sub(r"[“”]", '"', text)
     text = re.sub(r"\s+", " ", text)
     return text.strip()

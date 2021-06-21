@@ -283,7 +283,7 @@ class Taxon(BaseModel):
     def display(
         self,
         full: bool = False,
-        max_depth: Optional[int] = None,
+        max_depth: Optional[int] = 2,
         file: IO[str] = sys.stdout,
         depth: int = 0,
         exclude: Container["Taxon"] = set(),

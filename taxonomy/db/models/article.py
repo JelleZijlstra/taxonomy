@@ -37,7 +37,7 @@ from .base import (
     get_tag_based_derived_field,
 )
 from ..constants import ArticleCommentKind, ArticleKind, ArticleType, SourceLanguage
-from ..helpers import to_int, clean_string
+from ..helpers import to_int, clean_string, clean_strings_recursively
 from .. import models
 from ... import config, events, adt, getinput, parsing
 
@@ -324,8 +324,18 @@ class Article(BaseModel):
             "recompute_authors_from_doi": self.recompute_authors_from_doi,
             "recompute_authors_from_jstor": self.recompute_authors_from_jstor,
             "print_doi_information": self.print_doi_information,
-            "expand_doi": lambda: expand_doi(self.doi) if self.doi else None,
+            "expand_doi": lambda: self.expand_doi(verbose=True, set_fields=True),
+            "display_names": self.display_names,
+            "modernize_in_press": self.modernize_in_press,
         }
+
+    def modernize_in_press(self) -> None:
+        self.year = None
+        self.volume = None
+        self.issue = None
+        self.start_page = None
+        self.end_page = None
+        self.expand_doi(verbose=True, set_fields=True)
 
     def get_value_to_show_for_field(self, field: Optional[str]) -> str:
         if field is None:
@@ -814,6 +824,49 @@ class Article(BaseModel):
         if result:
             print(result.prettify())
 
+    def expand_doi(
+        self, overwrite: bool = False, verbose: bool = False, set_fields: bool = False
+    ) -> Dict[str, Any]:
+        if not self.doi:
+            return {}
+        data = expand_doi(self.doi)
+        for key, value in list(data.items()):
+            # print differences if verbose is set
+            if hasattr(self, key):
+                existing = getattr(self, key)
+                if verbose:
+                    if value != existing:
+                        print(
+                            f"Different data from expanddoi(). File {self.name}; var {key}"
+                        )
+                        print(f"Existing data: {existing}")
+                        print(f"New data: {value}")
+            else:
+                existing = False
+            # overwrite everything if overwrite is set; else only if no existing data
+            if (
+                existing
+                and not overwrite
+                and not (key == "type" and existing == ArticleType.ERROR)
+            ):
+                del data[key]
+        if set_fields:
+            self.set_multi(data)
+        return data
+
+    def set_multi(self, data: Dict[str, Any]) -> None:
+        data = clean_strings_recursively(data)
+        for key, value in data.items():
+            self.set_from_raw(key, value)
+
+    def set_from_raw(self, attr: str, value: Any) -> None:
+        if attr == "author_tags":
+            self.set_author_tags_from_raw(value)
+        elif attr == "journal":
+            self.citation_group = CitationGroup.get_or_create(value)
+        elif attr in self.fields():
+            setattr(self, attr, value)
+
     def set_author_tags_from_raw(
         self,
         value: Any,
@@ -865,16 +918,15 @@ class Article(BaseModel):
                 self, "author_tags", AuthorTag.Author, "articles"
             )
         if level is not None:
-            obj = self.reload()
             bad_authors = [
-                author for author in obj.get_authors() if author.get_level() is level
+                author for author in self.get_authors() if author.get_level() is level
             ]
             if bad_authors:
                 print(f"Remaining authors at level {level}: {bad_authors}")
                 if getinput.yes_no("Add InitialsOnly tag? "):
-                    obj.add_tag(ArticleTag.InitialsOnly)
+                    self.add_tag(ArticleTag.InitialsOnly)
                 else:
-                    obj.edit()
+                    self.edit()
 
     def recompute_authors_from_jstor(
         self, confirm: bool = True, force: bool = False
@@ -934,7 +986,7 @@ class Article(BaseModel):
     def display(self, full: bool = False) -> None:
         print(self.cite())
 
-    def display_names(self, full: bool = False) -> None:
+    def display_names(self, full: bool = False, organized: bool = False) -> None:
         print(repr(self))
         new_names = sorted(
             models.Name.add_validity_check(self.new_names),
@@ -942,8 +994,12 @@ class Article(BaseModel):
         )
         if new_names:
             print(f"New names ({len(new_names)}):")
-            for nam in new_names:
-                nam.display(full=full)
+            if full or not organized:
+                for nam in new_names:
+                    nam.display(full=full)
+            else:
+                pairs = [(nam.get_description(), nam.taxon) for nam in new_names]
+                models.taxon.display_organized(pairs)
 
     def __str__(self) -> str:
         return f"{{{self.name}}}"

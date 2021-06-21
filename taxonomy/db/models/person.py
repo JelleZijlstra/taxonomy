@@ -315,7 +315,6 @@ class Person(BaseModel):
         derived_field_name: str,
         target: Optional["Person"] = None,
     ) -> None:
-        obj = obj.reload()
         tags = getattr(obj, field_name)
         matching_idx, tag = self.find_tag(tags, tag_cls)
         if tag is None:

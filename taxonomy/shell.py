@@ -1581,6 +1581,23 @@ def field_counts() -> None:
     print("Total", Name.select_valid().count())
 
 
+@command
+def clean_column(
+    cls: Type[models.BaseModel], column: str, dry_run: bool = True
+) -> None:
+    for obj in cls.select_valid().filter(getattr(cls, column) != None):
+        old_value = getattr(obj, column)
+        new_value = helpers.clean_string(old_value)
+        if new_value != old_value:
+            getinput.print_header(obj)
+            getinput.print_diff(
+                [old_value, repr(old_value)], [new_value, repr(new_value)]
+            )
+            if not dry_run:
+                setattr(obj, column, new_value)
+                obj.save()
+
+
 @generator_command
 def clean_up_gender(dry_run: bool = False) -> Iterable[Name]:
     count = 0

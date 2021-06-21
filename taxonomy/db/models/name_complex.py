@@ -290,7 +290,7 @@ class SpeciesNameComplex(BaseModel):
         return cls.adjective(stem, comment, "", "", "", auto_apply=auto_apply)
 
     @classmethod
-    def create_interactively(cls, **kwargs: Any) -> "SpeciesNameComplex":
+    def create_interactively(cls, **kwargs: Any) -> Optional["SpeciesNameComplex"]:
         kind = getinput.get_with_completion(
             [
                 "ambiguous",
@@ -303,7 +303,8 @@ class SpeciesNameComplex(BaseModel):
         )
         assert kind is not None
         stem = getinput.get_line("stem> ")
-        assert stem is not None
+        if not stem:
+            return None
         comment = getinput.get_line("comment> ")
         if kind == "adjective":
             masculine = getinput.get_line("masculine_ending> ")
