@@ -35,6 +35,7 @@ setup(
         "aiohttp_graphql",
         "graphene",
         "typing_inspect",
+        "types-requests",
     ],
     classifiers=[
         "Development Status :: 2 - Pre-Alpha",

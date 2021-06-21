@@ -5,7 +5,17 @@ import datetime
 import json
 import re
 import time
-from typing import Dict, Iterable, Iterator, Mapping, Optional, Sequence, Tuple, TypeVar
+from typing import (
+    cast,
+    Dict,
+    Iterable,
+    Iterator,
+    Mapping,
+    Optional,
+    Sequence,
+    Tuple,
+    TypeVar,
+)
 import unicodedata
 import unidecode
 
@@ -554,16 +564,22 @@ def clean_string(text: str) -> str:
     return text.strip()
 
 
-def clean_strings_recursively(obj: object) -> object:
+T = TypeVar("T")
+
+
+def clean_strings_recursively(obj: T) -> T:
     if isinstance(obj, str):
-        return clean_string(obj)
+        return cast(T, clean_string(obj))
     elif isinstance(obj, dict):
-        return {
-            clean_strings_recursively(key): clean_strings_recursively(value)
-            for key, value in obj.items()
-        }
+        return cast(
+            T,
+            {
+                clean_strings_recursively(key): clean_strings_recursively(value)
+                for key, value in obj.items()
+            },
+        )
     elif isinstance(obj, (list, set, tuple)):
-        return type(obj)(clean_strings_recursively(elt) for elt in obj)
+        return cast(T, type(obj)(clean_strings_recursively(elt) for elt in obj))
     else:
         return obj
 

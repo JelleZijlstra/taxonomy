@@ -2312,6 +2312,8 @@ def biggest_names(
 @command
 def rio_taxon() -> None:
     taxon = Taxon.getter(None).get_one()
+    if taxon is None:
+        return
     nams = taxon.all_names()
     people = [person for nam in nams for person in nam.get_authors()]
     for person in sorted(people, key=lambda p: p.sort_key()):

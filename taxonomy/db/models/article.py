@@ -855,8 +855,7 @@ class Article(BaseModel):
         return data
 
     def set_multi(self, data: Dict[str, Any]) -> None:
-        data = clean_strings_recursively(data)
-        for key, value in data.items():
+        for key, value in clean_strings_recursively(data).items():
             self.set_from_raw(key, value)
 
     def set_from_raw(self, attr: str, value: Any) -> None:
