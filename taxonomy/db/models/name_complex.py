@@ -116,7 +116,7 @@ class SpeciesNameComplex(BaseModel):
 
     def get_stem_from_name(self, name: str) -> str:
         """Applies the group to a genus name to get the name's stem."""
-        assert self.stem.endswith(self.masculine_ending)
+        assert self.stem.endswith(self.masculine_ending), f"{self!r}"
         if self.masculine_ending:
             # This doesn't work as expected if len(self.masculine_ending) == 0.
             stem = self.stem[: -len(self.masculine_ending)]

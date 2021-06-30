@@ -261,7 +261,9 @@ g = partial(
 )
 
 
-def h(author: str, year: int) -> Tuple[List[Article], List[Name]]:
+def h(
+    author: str, year: int, page: Optional[int] = None, uncited_only: bool = False
+) -> Tuple[List[Article], List[Name]]:
     authors = Person.select_valid().filter(Person.family_name == author)
     nams = []
     arts = []
@@ -274,10 +276,25 @@ def h(author: str, year: int) -> Tuple[List[Article], List[Name]]:
                 nams.append(nam)
     getinput.print_header(f"Articles by {author} ({year})")
     for art in arts:
+        if page is not None and not art.is_page_in_range(page):
+            continue
         print(repr(art))
     getinput.print_header(f"Names by {author} ({year})")
     for nam in nams:
+        if (
+            page is not None
+            and nam.page_described is None
+            or str(page) not in nam.page_described
+        ):
+            continue
+        if uncited_only and nam.original_citation is not None:
+            continue
         nam.display(full=False)
+        indent = " " * 8
+        if nam.verbatim_citation:
+            print(f"{indent}{nam.verbatim_citation}")
+        if nam.citation_group:
+            print(f"{indent}{nam.citation_group}")
     return arts, nams
 
 

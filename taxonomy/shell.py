@@ -1947,6 +1947,7 @@ def fill_citation_groups(
     interactive: bool = True,
     only_with_hints: bool = False,
     skip_inference: bool = False,
+    show_hints: bool = True,
 ) -> None:
     book_cg = CitationGroup.get(CitationGroup.name == "book")
     if book:
@@ -1988,10 +1989,11 @@ def fill_citation_groups(
             condition = nam.citation_group is None
         if condition:
             getinput.print_header(nam)
-            count = nam.possible_citation_groups()
-            if count == 0 and only_with_hints:
-                continue
-            print("===", nam)
+            if show_hints:
+                count = nam.possible_citation_groups()
+                if count == 0 and only_with_hints:
+                    continue
+                print("===", nam)
             nam.display()
             nam.fill_field("citation_group")
 
@@ -3469,6 +3471,7 @@ def compute_derived_fields() -> None:
 @command
 def write_derived_data() -> None:
     derived_data.write_derived_data(derived_data.load_derived_data())
+    derived_data.write_cached_data(derived_data.load_cached_data())
 
 
 @command

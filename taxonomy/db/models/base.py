@@ -818,10 +818,20 @@ class _NameGetter(Generic[ModelT]):
     def clear_cache(self) -> None:
         self._data = None
         self._encoded_data = None
+        cache = derived_data.load_cached_data()
+        key = self._cache_key()
+        del cache[key]
+
+    def rewarm_cache(self) -> None:
+        self.clear_cache()
+        self._warm_cache()
 
     def add_name(self, nam: ModelT) -> None:
         if self._data is not None:
             self._add_obj(nam)
+
+    def _cache_key(self) -> str:
+        return f"{self.cls.call_sign}:{self.field}"
 
     def _add_obj(self, obj: ModelT) -> None:
         assert self._data is not None
@@ -844,10 +854,11 @@ class _NameGetter(Generic[ModelT]):
         allow_empty: bool = True,
     ) -> Optional[str]:
         self._warm_cache()
-        assert self._data is not None
-        key = getinput.get_with_completion(
-            self._data,
+        callbacks = {**callbacks, "clear_cache": self.rewarm_cache}
+        key = getinput.get_with_lazy_completion(
             prompt,
+            options_provider=self._get_data,
+            is_valid=self.__contains__,
             default=default,
             history_key=self,
             callbacks=callbacks,
@@ -866,12 +877,13 @@ class _NameGetter(Generic[ModelT]):
         allow_empty: bool = True,
     ) -> Optional[ModelT]:
         self._warm_cache()
-        assert self._data is not None
         creators = self.cls.get_interactive_creators()
+        callbacks = {**callbacks, "clear_cache": self.rewarm_cache}
         while True:
-            key = getinput.get_with_completion(
-                self._data,
+            key = getinput.get_with_lazy_completion(
                 prompt,
+                options_provider=self._get_data,
+                is_valid=self.__contains__,
                 default=default,
                 history_key=self,
                 callbacks=callbacks,
@@ -897,6 +909,11 @@ class _NameGetter(Generic[ModelT]):
             except self.cls.DoesNotExist:
                 print(f"{key!r} does not exist")
                 continue
+
+    def _get_data(self) -> Set[str]:
+        self._warm_cache()
+        assert self._data is not None
+        return self._data
 
     def _get_from_key(self, key: str) -> Optional[ModelT]:
         if key.isnumeric():
@@ -924,12 +941,18 @@ class _NameGetter(Generic[ModelT]):
 
     def _warm_cache(self) -> None:
         if self._data is None:
-            self._data = set()
-            self._encoded_data = set()
-            for i, obj in enumerate(self.cls.select_for_field(self.field)):
-                if i % 1000 == 0:
-                    print(f"{self}: {i} done")
-                self._add_obj(obj)
+            cache = derived_data.load_cached_data()
+            key = self._cache_key()
+            if key in cache:
+                self._data, self._encoded_data = cache[key]
+            else:
+                self._data = set()
+                self._encoded_data = set()
+                for i, obj in enumerate(self.cls.select_for_field(self.field)):
+                    if i % 1000 == 0:
+                        print(f"{self}: {i} done")
+                    self._add_obj(obj)
+                cache[key] = (self._data, self._encoded_data)
 
 
 def get_completer(

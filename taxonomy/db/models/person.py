@@ -7,6 +7,7 @@ from typing import (
     Callable,
     Dict,
     List,
+    Iterable,
     Mapping,
     Optional,
     Sequence,
@@ -527,13 +528,34 @@ class Person(BaseModel):
     @classmethod
     def maybe_merge_group(cls, group: List["Person"]) -> None:
         group = sorted(group, key=lambda person: (-person.get_level().value, person.id))
+
+        def all_the_same(group: Iterable[Person], field: str) -> bool:
+            return len({getattr(person, field) for person in group}) == 1
+
         if (
-            all(person.type is PersonType.unchecked for person in group)
-            and len({person.naming_convention for person in group}) == 1
-        ) or (
-            group[0].get_level() is PersonLevel.has_convention
-            and all(
-                person.get_level() < PersonLevel.has_convention for person in group[1:]
+            (
+                all(person.type is PersonType.unchecked for person in group)
+                and all_the_same(group, "naming_convention")
+            )
+            or (
+                group[0].get_level() is PersonLevel.has_convention
+                and all(
+                    person.get_level() < PersonLevel.has_convention
+                    for person in group[1:]
+                )
+            )
+            or (
+                all(person.type is PersonType.soft_redirect for person in group)
+                and all(
+                    all_the_same(group, field)
+                    for field in [
+                        "family_name",
+                        "given_names",
+                        "initials",
+                        "suffix",
+                        "tussenvoegsel",
+                    ]
+                )
             )
         ):
             for person in group[1:]:
@@ -745,19 +767,34 @@ class Person(BaseModel):
 
     @classmethod
     def get_interactive_creators(cls) -> Dict[str, Callable[[], Any]]:
-        def callback() -> Optional[Person]:
-            family_name = cls.getter("family_name").get_one_key("family_name> ")
-            if family_name is None:
-                return None
-            kwargs = {}
-            for field in ("initials", "given_names", "suffix", "tussenvoegsel"):
-                kwargs[field] = cls.getter(field).get_one_key(f"{field}> ")
-            person = cls.get_or_create_unchecked(family_name, **kwargs)
-            while not person.lint():
-                person.edit()
-            return person
+        return {
+            **super().get_interactive_creators(),
+            "u": cls.make_unchecked,
+            "f": cls.make_family_name,
+        }
 
-        return {**super().get_interactive_creators(), "u": callback}
+    @classmethod
+    def make_unchecked(cls) -> Optional["Person"]:
+        family_name = cls.getter("family_name").get_one_key("family_name> ")
+        if family_name is None:
+            return None
+        kwargs = {}
+        for field in ("initials", "given_names", "suffix", "tussenvoegsel"):
+            kwargs[field] = cls.getter(field).get_one_key(f"{field}> ")
+        person = cls.get_or_create_unchecked(family_name, **kwargs)
+        while not person.lint():
+            person.edit()
+        return person
+
+    @classmethod
+    def make_family_name(cls) -> Optional["Person"]:
+        family_name = cls.getter("family_name").get_one_key("family_name> ")
+        if family_name is None:
+            return None
+        person = cls.get_or_create_unchecked(family_name)
+        while not person.lint():
+            person.edit()
+        return person
 
     @classmethod
     def get_or_create_unchecked(
@@ -855,6 +892,8 @@ class Person(BaseModel):
                     return PersonLevel.has_convention
             elif self.initials:
                 return PersonLevel.initials_only
+            elif self.naming_convention is NamingConvention.burmese:
+                return PersonLevel.has_convention
             else:
                 return PersonLevel.family_name_only
         else:

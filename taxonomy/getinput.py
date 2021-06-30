@@ -168,6 +168,63 @@ class _Completer(prompt_toolkit.completion.Completer):
                 yield prompt_toolkit.completion.Completion(string[len(text) :])
 
 
+class _CallbackCompleter(prompt_toolkit.completion.Completer):
+    def __init__(
+        self, strings: Iterable[str], lazy_strings: Callable[[], Iterable[str]]
+    ) -> None:
+        self.strings = sorted(strings)
+        self.lazy_strings = lazy_strings
+
+    def get_completions(
+        self,
+        document: prompt_toolkit.document.Document,
+        complete_event: prompt_toolkit.completion.CompleteEvent,
+    ) -> Iterable[prompt_toolkit.completion.Completion]:
+        # This might be faster with a prefix tree but I'm lazy.
+        text = document.text
+        strings = [
+            string[len(text) :] for string in self.strings if string.startswith(text)
+        ]
+        lazy_strings = [
+            string[len(text) :]
+            for string in self.lazy_strings()
+            if string.startswith(text)
+        ]
+        for s in sorted([*strings, *lazy_strings]):
+            yield prompt_toolkit.completion.Completion(s)
+
+
+def get_with_lazy_completion(
+    message: str = "> ",
+    *,
+    options_provider: Callable[[], Iterable[str]],
+    is_valid: Callable[[str], bool],
+    default: str = "",
+    history_key: object,
+    disallow_other: bool = False,
+    allow_empty: bool = True,
+    callbacks: CallbackMap = {},
+) -> Optional[str]:
+    validator: Optional[prompt_toolkit.validation.Validator]
+    if disallow_other:
+
+        def callback(text: str) -> bool:
+            return (text in callbacks) or is_valid(text)
+
+        validator = _CallbackValidator(callback)
+    else:
+        validator = None
+    return get_line(
+        completer=_CallbackCompleter(callbacks, options_provider),
+        prompt=message,
+        default=default,
+        history_key=history_key,
+        validator=validator,
+        callbacks=callbacks,
+        allow_none=allow_empty,
+    )
+
+
 def get_with_completion(
     options: Iterable[str],
     message: str = "> ",
@@ -421,6 +478,17 @@ class _FixedValidator(prompt_toolkit.validation.Validator):
 
     def validate(self, document: prompt_toolkit.document.Document) -> None:
         if document.text not in self.options:
+            raise prompt_toolkit.validation.ValidationError
+
+
+class _CallbackValidator(prompt_toolkit.validation.Validator):
+    """Validator that uses a callback."""
+
+    def __init__(self, is_valid: Callable[[str], bool]) -> None:
+        self.is_valid = is_valid
+
+    def validate(self, document: prompt_toolkit.document.Document) -> None:
+        if not self.is_valid(document.text):
             raise prompt_toolkit.validation.ValidationError
 
 

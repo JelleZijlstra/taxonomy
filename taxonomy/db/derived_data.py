@@ -21,6 +21,7 @@ settings = config.get_options()
 ObjectData = Dict[str, Any]  # derived data for a single object, keys are field names
 ModelData = Dict[int, ObjectData]  # keys are object ids
 DerivedData = Dict[str, ModelData]  # keys are model call signs
+CachedData = Dict[str, Any]
 
 
 class SetLater:
@@ -155,6 +156,20 @@ def load_derived_data() -> DerivedData:
 
 def write_derived_data(data: DerivedData) -> None:
     with settings.derived_data_filename.open("wb") as f:
+        pickle.dump(data, f)
+
+
+@lru_cache()
+def load_cached_data() -> CachedData:
+    try:
+        with settings.cached_data_filename.open("rb") as f:
+            return pickle.load(f)
+    except (FileNotFoundError, EOFError):
+        return {}
+
+
+def write_cached_data(data: CachedData) -> None:
+    with settings.cached_data_filename.open("wb") as f:
         pickle.dump(data, f)
 
 

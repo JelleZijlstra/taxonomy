@@ -108,12 +108,17 @@ class CitationGroup(BaseModel):
                 return year == start_year
 
         nams = self.get_names()
-        nams = [nam for nam in nams if condition(nam.numeric_year())]
+        nams = [
+            nam
+            for nam in nams
+            if nam.original_citation is None and condition(nam.numeric_year())
+        ]
         if author is not None:
             nams = [
                 nam
                 for nam in nams
                 if any(author == person.family_name for person in nam.get_authors())
+                and nam.original_citation is not None
             ]
         self._display_nams(nams)
         if include_articles:

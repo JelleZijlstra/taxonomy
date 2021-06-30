@@ -1140,6 +1140,10 @@ class Name(BaseModel):
             if missing_sourced_tags:
                 return (FillDataLevel.incomplete_detail, tag_list(missing_sourced_tags))
             if missing_derived_tags:
+                if self.group is Group.genus and self.has_type_tag(
+                    TypeTag.TypeSpeciesDetail
+                ):
+                    return (FillDataLevel.nothing_needed, "")
                 return (
                     FillDataLevel.incomplete_derived_tags,
                     tag_list(missing_derived_tags),
