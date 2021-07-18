@@ -411,12 +411,20 @@ class BaseModel(Model):
         if isinstance(field_obj, ForeignKeyField):
             return self.get_value_for_foreign_key_field(field, callbacks=callbacks)
         elif isinstance(field_obj, ADTField):
+
+            def get_existing() -> List[getinput.ADTOrInstance]:
+                return getattr(self, field) or []
+
+            def set_existing(adts: Tuple[getinput.ADTOrInstance, ...]) -> None:
+                setattr(self, field, adts)
+
             return getinput.get_adt_list(
                 field_obj.get_adt(),
-                existing=current_value,
                 completers=self.get_completers_for_adt_field(field),
                 callbacks=callbacks,
                 prompt=self.short_description(),
+                get_existing=get_existing,
+                set_existing=set_existing,
             )
         elif isinstance(field_obj, CharField):
             if default is None:

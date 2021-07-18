@@ -417,6 +417,7 @@ class Name(BaseModel):
             "copy_authors": self.copy_authors,
             "check_authors": self.check_authors,
             "level": self.print_fill_data_level,
+            "set_nos": self.set_nos,
         }
 
     def print_fill_data_level(self) -> None:
@@ -1099,6 +1100,14 @@ class Name(BaseModel):
 
     def is_ichno(self) -> bool:
         return self.taxon.age.is_ichno()
+
+    def set_nos(self) -> None:
+        required_derived_tags = list(self.get_required_derived_tags())
+        for group in self.get_missing_tags(required_derived_tags):
+            if len(group) >= 2:
+                new_tag = group[1]
+                print(f"Adding tag: {new_tag!r}")
+                self.add_type_tag(new_tag)
 
     def fill_data_level(self) -> Tuple[FillDataLevel, str]:
         if not self.check_authors():

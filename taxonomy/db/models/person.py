@@ -299,7 +299,7 @@ class Person(BaseModel):
                 return None, None
         else:
             new_person = target
-        new_tag = tag_cls(person=new_person)
+        new_tag = matching_tag.replace(person=new_person)
         return (
             [
                 new_tag if i == matching_idx and tag == matching_tag else tag
