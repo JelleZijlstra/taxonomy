@@ -218,12 +218,22 @@ genus-group names should have at least one. They fall into several groups:
     to, but an _EtymologyDetail_ tag is not essential for assigning a name to a
     complex, because many original descriptions do not specify an etymology.
 - Structured information about the type
-  - _CollectedBy_: The [person](/docs/person) who collected the type specimen or was
-    otherwise responsible for acquiring it.
+  - _CollectedBy_: The [person](/docs/person) who collected the type specimen.
+  - _Involved_: A [person](/docs/person) who was involved
+    in the history of the type material, but did not
+    collect it. This can include the preparator, the
+    sponsor of the collector, or the owner of the
+    specimen.
   - _Collector_: Similar to _CollectedBy_, but as a string. This tag is being phased
     out.
   - _Date_: Date when the type specimen was collected. Ideally this should be the
-    day, but it can be a month or year if no more precise data is available.
+    day, but it can be a month or year if no more precise data is available. If no collection date
+    is known, but a subsequent date is (e.g., the date
+    the specimen was registered in a collection), that
+    date should be used with "<" prefixed to it (e.g.,
+    "<1893" or "<7 December 1893"). If the specimen was
+    kept in captivity, the date should be the date it
+    was captured.
   - _Gender_: The biological gender of the type specimen.
   - _Age_: The approximate age of the type specimen, such as "adult", "subadult",
     or "juvenile".

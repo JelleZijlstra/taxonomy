@@ -390,8 +390,8 @@ A few countries contain further divisions:
   Within the state of [Pernambuco](/r/Pernambuco), the outlying island of
   [Fernando de Noronha](/r/Fernando_de_Noronha) is a separate region.
 - Within [Colombia](/r/Colombia), we recognize regions for each department and for the city of [Bogotá](/r/Bogotá).
-- Within [Venezuela](/r/Venezuela), we recognize regions for each state, the [Capital District](/r/Capital_District_(Venezuela)),
-  and the [Federal Dependencies](/r/Federal_Dependencies_(Venezuela)).
+- Within [Venezuela](/r/Venezuela), we recognize regions for each state, the [Capital District](</r/Capital_District_(Venezuela)>),
+  and the [Federal Dependencies](</r/Federal_Dependencies_(Venezuela)>).
 - Within [Ecuador](/r/Ecuador), the [Galápagos Islands](/r/Galápagos_Islands) are a separate region.
 
 ## The oceans
