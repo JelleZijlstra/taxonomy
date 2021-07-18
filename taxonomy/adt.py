@@ -105,6 +105,15 @@ def _adt_member_hash(self: Any) -> int:
     return hash((type(self), tuple(getattr(self, attr) for attr in self._attributes)))
 
 
+def _adt_member_replace(self: Any, **kwargs: Any) -> Any:
+    new_dict = dict(self.__dict__)
+    for key, value in kwargs.items():
+        if key not in new_dict:
+            raise TypeError(f"{type(self)} does not support field {key}")
+        new_dict[key] = value
+    return type(self)(**new_dict)
+
+
 class _ADTMeta(type):
     @classmethod
     def __prepare__(mcs, name: str, bases: Any) -> _ADTNamespace:  # type: ignore
@@ -141,6 +150,7 @@ class _ADTMeta(type):
                 "__eq__": _adt_member_eq,
                 "__lt__": _adt_member_lt,
                 "__hash__": _adt_member_hash,
+                "replace": _adt_member_replace,
             }
             if has_args:
                 for key, value in member.kwargs.items():
