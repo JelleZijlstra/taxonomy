@@ -310,30 +310,40 @@ def get_enum_member(  # noqa
     return enum_cls[choice]
 
 
-_ADT_LIST_BUILTINS = ["r", "remove_all", "h"]
+_ADT_LIST_BUILTINS = ["r", "remove_all", "h", "undo"]
 
 
 def get_adt_list(
     adt_cls: Type[adt.ADT],
+    *,
     existing: Optional[Iterable[adt.ADT]] = None,
     completers: CompleterMap = {},
     callbacks: CallbackMap = {},
     show_existing: bool = False,
     prompt: Optional[str] = None,
+    get_existing: Optional[Callable[[], Iterable[ADTOrInstance]]] = None,
+    set_existing: Optional[Callable[[Tuple[ADTOrInstance, ...]], None]] = None,
 ) -> Tuple[ADTOrInstance, ...]:
     if prompt is None:
         prompt = adt_cls.__name__
-    out: List[ADTOrInstance] = []
-    if existing is not None:
-        out += existing
-        if show_existing:
-            print("existing:")
-            for line in display_tags("  ", existing, show_indexes=True):
-                print(line, end="")
     name_to_cls = {}
     for member_name in adt_cls._members:
         name_to_cls[member_name.lower()] = getattr(adt_cls, member_name)
+    undo_stack: List[List[ADTOrInstance]] = []
     while True:
+        out: List[ADTOrInstance] = []
+        if existing is None and get_existing is not None:
+            existing = get_existing()
+        if existing is not None:
+            out += existing
+            if show_existing:
+                print("existing:")
+                for line in display_tags("  ", existing, show_indexes=True):
+                    print(line, end="")
+                show_existing = False
+        existing = None
+        if not undo_stack or out != undo_stack[-1]:
+            undo_stack.append(list(out))
         options = [
             *name_to_cls.keys(),
             *_ADT_LIST_BUILTINS,
@@ -349,12 +359,17 @@ def get_adt_list(
         )
         if member is not None and member in callbacks:
             callbacks[member]()
+            continue  # don't call set_existing
         elif member == "p":
             for line in display_tags("", out, show_indexes=True):
                 print(line, end="")
-            continue
         elif member == "h":
             print(f'options: {", ".join(name_to_cls.keys())}')
+        elif member == "undo":
+            if undo_stack:
+                out = undo_stack.pop()
+            else:
+                print(f"already at earliest edit")
         elif not member:
             print(f"new tags: {out}")
             return tuple(out)
@@ -384,6 +399,8 @@ def get_adt_list(
             out.append(_get_adt_member(name_to_cls[member], completers=completers))
         else:
             print(f"unrecognized command: {member}")
+        if set_existing is not None:
+            set_existing(out)
 
 
 def display_tags(
