@@ -53,6 +53,14 @@ class CitationGroup(BaseModel):
             print(f"Failed to find a CitationGroup named {name}...")
             return cls.getter("name").get_one()
 
+    @classmethod
+    def get_or_create_city(cls, name: str) -> Optional["CitationGroup"]:
+        cg = cls.select_one(name=name, type=constants.ArticleType.BOOK)
+        if cg is None:
+            print(f"Creating CitationGroup for {name}")
+            return cls.create_interactively(name, type=constants.ArticleType.BOOK)
+        return cg
+
     def get_required_fields(self) -> Iterable[str]:
         yield "name"
         yield "type"
@@ -170,9 +178,11 @@ class CitationGroup(BaseModel):
 
     def merge(self, other: "CitationGroup", series: Optional[str] = None) -> None:
         for nam in self.get_names():
+            print(f"Changing CG on {nam}")
             nam.citation_group = other
             nam.save()
         for art in self.get_articles():
+            print(f"Changing CG on {art}")
             art.citation_group = other
             if series:
                 if not art.series:
@@ -180,11 +190,18 @@ class CitationGroup(BaseModel):
                 else:
                     print(f"Warning: skipping {art} because it has series {art.series}")
             art.save()
+        for book in self.get_books():
+            print(f"Changing CG on {book}")
+            book.citation_group = other
+            book.save()
         if other.region is None and self.region is not None:
             print(f"Setting region: {self.region}")
             other.region = self.region
         self.target = other
         self.type = constants.ArticleType.REDIRECT  # type: ignore
+
+    def get_books(self) -> Any:
+        return models.Book.select_valid().filter(models.Book.citation_group == self)
 
     def get_articles(self) -> Any:
         return models.Article.select_valid().filter(

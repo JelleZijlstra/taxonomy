@@ -7,15 +7,20 @@ Contents overlap with shell.py, which defines "commands".
 """
 from collections import defaultdict
 from functools import partial
+from pathlib import Path
+import re
+from taxonomy.db.models.name import TypeTag
 from typing import Any, Container, Dict, Iterable, List, Optional, Tuple, Type, Union
 
 import peewee
 
 from taxonomy import getinput
-from taxonomy.db.constants import AgeClass, Group, Rank, Status
+from taxonomy.db.constants import AgeClass, FillDataLevel, Group, Rank, Status
+from taxonomy.db.helpers import root_name_of_name
 from taxonomy.db.models import (
     Article,
     BaseModel,
+    Book,
     CitationGroup,
     Collection,
     Location,
@@ -25,41 +30,6 @@ from taxonomy.db.models import (
     Person,
     Taxon,
 )
-
-
-def occ(
-    t: Taxon,
-    loc: Location,
-    source: Optional[Article] = None,
-    replace_source: bool = False,
-    **kwargs: Any,
-) -> Occurrence:
-    if source is None:
-        source = s  # type: ignore  # noqa
-    try:
-        o = t.at(loc)
-    except Occurrence.DoesNotExist:
-        o = t.add_occurrence(loc, source, **kwargs)
-        print("ADDED: %s" % o)
-    else:
-        print("EXISTING: %s" % o)
-        if replace_source and o.source != source:
-            o.source = source
-            o.s(**kwargs)
-            o.save()
-            print("Replaced source: %s" % o)
-    return o
-
-
-def occur(
-    t: Taxon,
-    locs: Iterable[Location],
-    source: Optional[Article] = None,
-    replace_source: bool = False,
-    **kwargs: Any,
-) -> None:
-    for loc in locs:
-        occ(t, loc, source=source, replace_source=replace_source, **kwargs)
 
 
 def biggest_citation_groups_no_region(
@@ -135,28 +105,6 @@ def most_type_specimens(limit: int = 50) -> List[Tuple[Collection, int]]:
         .limit(limit)
     )
     return list(reversed([(t, t.num_types) for t in query]))
-
-
-def mocc(
-    t: Taxon,
-    locs: Iterable[Location],
-    source: Optional[Article] = None,
-    replace_source: bool = False,
-    **kwargs: Any,
-) -> None:
-    for loc in locs:
-        occ(t, loc, source=source, replace_source=replace_source, **kwargs)
-
-
-def multi_taxon(
-    ts: Iterable[Taxon],
-    loc: Location,
-    source: Optional[Article] = None,
-    replace_source: bool = False,
-    **kwargs: Any,
-) -> None:
-    for t in ts:
-        occ(t, loc, source=source, replace_source=replace_source, **kwargs)
 
 
 def unrecorded_taxa(root: Taxon) -> None:
@@ -281,10 +229,8 @@ def h(
         print(repr(art))
     getinput.print_header(f"Names by {author} ({year})")
     for nam in nams:
-        if (
-            page is not None
-            and nam.page_described is None
-            or str(page) not in nam.page_described
+        if page is not None and (
+            nam.page_described is None or str(page) not in nam.page_described
         ):
             continue
         if uncited_only and nam.original_citation is not None:
@@ -341,3 +287,149 @@ class _NamesGetter:
 
 ns = _NamesGetter(Group.species)
 gs = _NamesGetter(Group.genus)
+
+
+def edit_at_level(level: FillDataLevel = FillDataLevel.incomplete_derived_tags) -> None:
+    txn = Taxon.getter(None).get_one()
+    if txn is None:
+        return
+    edit_names(txn.all_names(), level)
+
+
+def edit_by_author(
+    level: FillDataLevel = FillDataLevel.incomplete_derived_tags,
+) -> None:
+    txn = Person.getter(None).get_one()
+    if txn is None:
+        return
+    nams = txn.get_sorted_derived_field("names")
+    edit_names(nams, level)
+
+
+def edit_names(
+    nam_iter: Iterable[Name],
+    level: FillDataLevel = FillDataLevel.incomplete_derived_tags,
+) -> None:
+    nams = sorted(
+        nam_iter,
+        key=lambda nam: (nam.numeric_year(), nam.numeric_page_described()),
+    )
+    print(f"{len(nams)} total names")
+    for i, nam in enumerate(nams):
+        if i % 100 == 0:
+            percentage = i / len(nams) * 100
+            getinput.print_header(f"{i}/{len(nams)} ({percentage:.2f}%) done")
+        while True:
+            name_level, _ = nam.fill_data_level()
+            if name_level != level:
+                break
+            nam.display()
+            nam.edit()
+
+
+def make_genus():
+    parent = Taxon.getter(None).get_one("parent> ")
+    if parent is None:
+        return
+    name = Taxon.getter("valid_name").get_one_key("name> ")
+    if name is None:
+        return
+    try:
+        existing = Taxon.select_valid().filter(Taxon.valid_name == name).get()
+        print(f"{existing} already exists")
+        return
+    except Taxon.DoesNotExist:
+        pass
+    authors = []
+    while True:
+        author = Person.getter("family_name").get_one_key("author> ")
+        if author is None:
+            break
+        authors.append(author)
+    year = Name.getter("year").get_one_key("year> ")
+    if year is None:
+        return
+    people = [Person.get_or_create_unchecked(name) for name in authors]
+    tags = [AuthorTag.Author(person=person) for person in people]
+    new_taxon = parent.add_static(Rank.genus, name, year, author_tags=tags)
+    new_taxon.display()
+    return new_taxon
+
+
+from data_import import geoplanidae
+
+refs = geoplanidae.parse_refs(Path("data_import/data/geoplanidae-refs.html"))
+from taxonomy.db.models.person import AuthorTag
+
+
+def make_species():
+    parent = Taxon.getter(None).get_one("parent> ")
+    if parent is None or parent.rank is not Rank.genus:
+        return
+    original_name = Name.getter("original_name").get_one_key("name> ")
+    if original_name is None:
+        return
+    root_name = root_name_of_name(original_name, Rank.species)
+    name = f"{parent.valid_name} {root_name}"
+    try:
+        existing = Taxon.select_valid().filter(Taxon.valid_name == name).get()
+        print(f"{existing} already exists")
+        return
+    except Taxon.DoesNotExist:
+        pass
+    authors = []
+    while True:
+        author = Person.getter("family_name").get_one_key("author> ")
+        if author is None:
+            break
+        authors.append(author)
+    year = Name.getter("year").get_one_key("year> ")
+    if year is None:
+        return
+    clean_year = re.sub(r" .*", "", year)
+    page = Name.getter("page_described").get_one_key("page> ")
+    location = getinput.get_line("location> ")
+    if location:
+        tag = TypeTag.LocationDetail(
+            location, Article.get(name="Geoplaninae (Ogren & Kawakatsu 1990).pdf")
+        )
+        type_tags = [tag]
+    else:
+        type_tags = []
+    people = [Person.get_or_create_unchecked(name) for name in authors]
+    key = (
+        tuple(name.lower().replace("von ", "").replace("du ", "") for name in authors),
+        year,
+    )
+    verbatim_citation = refs.get(key)
+    if verbatim_citation is not None:
+        print(f"found cite: {verbatim_citation}")
+    tags = [AuthorTag.Author(person=person) for person in people]
+    new_taxon = parent.add_static(
+        Rank.species,
+        name,
+        clean_year,
+        author_tags=tags,
+        page_described=page,
+        root_name=root_name,
+        original_name=original_name,
+        verbatim_citation=verbatim_citation,
+        type_tags=type_tags,
+    )
+    new_taxon.display()
+    return new_taxon
+
+
+def print_prefix(prefix: str) -> None:
+    books = Book.select_valid().filter(Book.dewey.startswith(prefix))
+    for book in sorted(
+        books,
+        key=lambda book: (
+            book.dewey,
+            tuple(
+                author.get_description(family_first=True)
+                for author in book.get_authors()
+            ),
+        ),
+    ):
+        print(book.dewey, repr(book))

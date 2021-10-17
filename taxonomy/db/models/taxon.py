@@ -309,7 +309,7 @@ class Taxon(BaseModel):
         if show_occurrences:
             for occurrence in self.sorted_occurrences():
                 file.write(" " * ((depth + 1) * 4))
-                file.write("%s\n" % (occurrence if full else occurrence.location))
+                file.write(f"{occurrence!r}\n")
         if self in exclude:
             return
         if max_depth is None or max_depth > 0:
@@ -540,6 +540,11 @@ class Taxon(BaseModel):
             "display_citation_groups": self.display_citation_groups,
             "display_parents": self.display_parents,
             "add_comment": lambda: self.base_name.add_comment(),
+            "add_occurrence": self.add_occurrence,
+            "edit_occurrence": self.edit_occurrence,
+            "display_occurrences": lambda: self.display(
+                full=False, show_occurrences=True
+            ),
         }
 
     def add(self) -> Optional["Taxon"]:
@@ -631,13 +636,15 @@ class Taxon(BaseModel):
 
     def add_occurrence(
         self,
-        location: "models.Location",
+        location: Optional["models.Location"] = None,
         paper: Optional[Article] = None,
         comment: Optional[str] = None,
         status: OccurrenceStatus = OccurrenceStatus.valid,
     ) -> "models.Occurrence":
+        if location is None:
+            location = models.Location.getter(None).get_one("location> ")
         if paper is None:
-            paper = self.base_name.original_citation
+            paper = Article.getter(None).get_one("source> ")
         try:
             return models.Occurrence.create(
                 taxon=self,
@@ -649,6 +656,15 @@ class Taxon(BaseModel):
         except peewee.IntegrityError:
             print("DUPLICATE OCCURRENCE")
             return self.at(location)
+
+    def edit_occurrence(self) -> None:
+        occs = {occ.location.name: occ for occ in self.occurrences}
+        occ = getinput.get_with_completion(
+            occs.keys(), "location> ", disallow_other=True
+        )
+        if occ is None:
+            return
+        occs[occ].edit()
 
     def syn_from_paper(
         self,
@@ -898,8 +914,9 @@ class Taxon(BaseModel):
             child.parent = to_taxon
             child.save()
         nam = self.base_name
-        nam.status = Status.synonym
-        nam.save()
+        if nam != to_taxon.base_name:
+            nam.status = Status.synonym
+            nam.save()
         for name in self.get_names():
             name.taxon = to_taxon
             name.save()
@@ -918,8 +935,11 @@ class Taxon(BaseModel):
                 if comment is not None:
                     additional_comment += " " + comment
                 existing.add_comment(additional_comment)
+        to_taxon = to_taxon.reload()
         to_taxon.base_name.status = original_to_status
-        self.remove(reason=f"Synonymized into {to_taxon} (T#{to_taxon.id})")
+        self.remove(
+            reason=f"Synonymized into {to_taxon} (T#{to_taxon.id})", remove_names=False
+        )
         return models.Name.get(models.Name.id == nam.id)
 
     def make_species_group(self) -> "Taxon":
@@ -942,13 +962,16 @@ class Taxon(BaseModel):
         for child in self.get_children():
             child.run_on_self_and_children(callback)
 
-    def remove(self, reason: Optional[str] = None) -> None:
+    def remove(
+        self, reason: Optional[str] = None, *, remove_names: bool = True
+    ) -> None:
         for _ in self.get_children():
             print("Cannot remove %s since it has unremoved children" % self)
             return
         print("Removing taxon %s" % self)
-        for name in self.sorted_names():
-            name.remove(reason=reason)
+        if remove_names:
+            for name in self.sorted_names():
+                name.remove(reason=reason)
         self.age = AgeClass.removed  # type: ignore
         if reason is not None:
             self.data = reason
@@ -1373,7 +1396,7 @@ def fill_data_for_names(
 
     citations = sorted(
         {nam.original_citation for nam in nams if should_include(nam)},
-        key=lambda art: (art.path, art.name),
+        key=lambda art: (art.path or "NOFILE", art.name),
     )
     fill_data_from_articles(
         citations,

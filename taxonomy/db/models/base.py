@@ -1,6 +1,7 @@
 from collections import Counter, defaultdict
 import enum
 from functools import partial
+import inspect
 import json
 import re
 import traceback
@@ -21,6 +22,7 @@ from typing import (
     TypeVar,
     Union,
 )
+import typing_inspect
 
 import peewee
 from peewee import (
@@ -360,6 +362,19 @@ class BaseModel(Model):
             print(f"{len(objs)} found")
         return objs
 
+    @classmethod
+    def select_one(cls: Type[ModelT], *args: Any, **kwargs: Any) -> Optional[ModelT]:
+        rows = cls.bfind(
+            *args,
+            *[getattr(cls, key) == value for key, value in kwargs.items()],
+            quiet=True,
+        )
+        if len(rows) > 1:
+            raise RuntimeError(f"Found multiple rows from {args}, {kwargs}")
+        elif not rows:
+            return None
+        return rows[0]
+
     def reload(self: ModelT) -> ModelT:
         return type(self).get(id=self.id)
 
@@ -483,7 +498,83 @@ class BaseModel(Model):
             "edit_sibling_by_field": self.edit_sibling_by_field,
             "empty": self.empty,
             "full_data": self.full_data,
+            "call": self.call,
         }
+
+    def call(self) -> None:
+        """Call an arbitrary method interactively."""
+        options = {name: self._get_possible_callable(name) for name in dir(self)}
+        options = {name: data for name, data in options.items() if data is not None}
+        name = getinput.get_with_completion(
+            options, message="method to call> ", disallow_other=True
+        )
+        if not name:
+            return
+        obj, sig = options[name]
+        if hasattr(obj, "__doc__"):
+            print(obj.__doc__)
+        args = {}
+        for name, param in sig.parameters.items():
+            try:
+                args[name] = self._fill_param(name, param)
+            except getinput.StopException:
+                return None
+        result = obj(**args)
+        print("Result:", result)
+
+    def _fill_param(self, name: str, param: inspect.Parameter):
+        if param.kind not in (
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            inspect.Parameter.KEYWORD_ONLY,
+        ):
+            print(f"Cannot fill parameter {name} of kind {param.kind!r}")
+            raise getinput.StopException
+        typ = param.annotation
+        is_optional = False
+        if typing_inspect.is_optional_type(typ):
+            args = typing_inspect.get_args(typ)
+            if len(args) == 2 and args[1] is type(None):
+                typ = args[0]
+                is_optional = True
+
+        if typ is bool:
+            return getinput.yes_no(name)
+        elif typ is str:
+            return getinput.get_line(name, allow_none=is_optional)
+        elif typ is int:
+            return int(
+                getinput.get_line(
+                    name,
+                    allow_none=is_optional,
+                    validate=lambda value: value.isnumeric(),
+                )
+            )
+        elif isinstance(typ, type):
+            if issubclass(typ, enum.Enum):
+                return getinput.get_enum_member(typ, f"name> ", allow_empty=is_optional)
+            elif issubclass(typ, BaseModel) and typ is not BaseModel:
+                return typ.getter(None).get_one(f"{name}> ", allow_empty=is_optional)
+        if param.default is not inspect.Parameter.empty:
+            return param.default
+        print(f"Cannot fill parameter {param}")
+        raise getinput.StopException
+
+    def _get_possible_callable(
+        self, name: str
+    ) -> Optional[Tuple[Callable[..., Any], inspect.Signature]]:
+        if name.startswith("_"):
+            return None
+        try:
+            obj = getattr(self, name)
+        except AttributeError:
+            return None
+        if not callable(obj):
+            return None
+        try:
+            sig = inspect.signature(obj)
+        except Exception:
+            return None
+        return obj, sig
 
     def edit_sibling(self) -> None:
         sibling = self.get_value_for_foreign_class(self.label_field, type(self))

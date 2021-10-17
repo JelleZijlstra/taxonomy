@@ -436,6 +436,41 @@ class SourceLanguage(enum.IntEnum):
     korean = 15
     hungarian = 16
     vietnamese = 17
+    italian = 18
+    dutch = 19
+    papiamento = 20
+    catalan = 21
+    modern_greek = 22
+    hebrew = 23
+    aramaic = 24
+    sanskrit = 25
+    hindi = 26
+    old_english = 27
+    bulgarian = 28
+    albanian = 29
+    frisian = 30
+    norwegian = 31
+    danish = 32
+    swedish = 33
+    finnish = 34
+
+
+SOURCE_LANGUAGE_SYNONYMS = {
+    "eng": SourceLanguage.english,
+    "ger": SourceLanguage.german,
+    "fre": SourceLanguage.french,
+    "spa": SourceLanguage.spanish,
+    "rus": SourceLanguage.russian,
+    "chi": SourceLanguage.chinese,
+    "ita": SourceLanguage.italian,
+    "jpn": SourceLanguage.japanese,
+    "dut": SourceLanguage.dutch,
+    "lat": SourceLanguage.latin,
+    "gre": SourceLanguage.modern_greek,
+    "grc": SourceLanguage.greek,
+    "pap": SourceLanguage.papiamento,
+    "cat": SourceLanguage.catalan,
+}
 
 
 class GenderArticle(enum.IntEnum):

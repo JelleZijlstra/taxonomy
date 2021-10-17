@@ -289,6 +289,25 @@ CREATE TABLE `person` (
   `naming_convention` INTEGER NOT NULL DEFAULT 1,
   `type` INTEGER NOT NULL DEFAULT 1,
   `target_id` INTEGER DEFAULT NULL,
-  `bio` TEXT DEFAULT NULL
+  `bio` TEXT DEFAULT NULL,
+  `ol_id` VARCHAR(15) DEFAULT NULL
 );
 CREATE INDEX "idx_person_name" ON "person" (`family_name`);
+CREATE INDEX "idx_ol_id" on "person" (`ol_id`);
+
+CREATE TABLE `book` (
+    `id` integer  NOT NULL PRIMARY KEY AUTOINCREMENT,
+    `author_tags` text default null,
+    `year` varchar(255) DEFAULT NULL,
+    `title` varchar(2048) DEFAULT NULL,
+    `subtitle` varchar(255) DEFAULT NULL,
+    `pages` varchar(255) DEFAULT NULL,
+    `isbn` varchar(255) DEFAULT NULL,
+    `publisher` varchar(255) DEFAULT NULL,
+    `tags` text default null,
+    `citation_group_id` INT UNSIGNED DEFAULT NULL,
+    `dewey` varchar(127) DEFAULT NULL,
+    `loc` varchar(127) DEFAULT NULL,
+    `data` text default null,
+    `category` varchar(255) DEFAULT NULL
+);

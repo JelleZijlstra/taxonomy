@@ -62,5 +62,5 @@ def make_app(build_root: Optional[str] = None) -> web.Application:
     app.on_response_prepare.append(on_prepare)  # type: ignore
 
     graphql_schema = hesperomys_dir / "hesperomys.graphql"
-    graphql_schema.write_text(schema.get_schema_string())
+    graphql_schema.write_text(schema.get_schema_string(schema.schema))
     return app

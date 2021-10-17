@@ -21,6 +21,7 @@ from .collection import Collection
 from .region import Region
 from ..constants import NamingConvention, PersonType
 from .. import models, helpers
+from ..openlibrary import get_author
 from ... import adt, events, getinput, parsing
 
 from .base import (
@@ -43,6 +44,8 @@ ALLOWED_TUSSENVOEGSELS = {
         "ter",
         "in den",
         "in 't",
+        "'t",
+        "von der"
     },
     NamingConvention.german: {"von", "von den", "von der", "zu"},
     # French, Italian, Portuguese
@@ -87,6 +90,7 @@ class Person(BaseModel):
     type = EnumField(PersonType)
     target = DeferredForeignKey("Person", null=True)
     bio = TextField(null=True)
+    ol_id = CharField(null=True)
 
     derived_fields = [
         get_tag_based_derived_field(
@@ -113,6 +117,14 @@ class Person(BaseModel):
         get_tag_based_derived_field(
             "articles",
             lambda: models.Article,
+            "author_tags",
+            lambda: AuthorTag.Author,
+            1,
+            skip_filter=True,
+        ),
+        get_tag_based_derived_field(
+            "books",
+            lambda: models.Book,
             "author_tags",
             lambda: AuthorTag.Author,
             1,
@@ -582,6 +594,7 @@ class Person(BaseModel):
 
     def reassign_references(self, target: Optional["Person"] = None) -> None:
         for field_name, tag_name, tag_cls in [
+            ("books", "author_tags", AuthorTag.Author),
             ("articles", "author_tags", AuthorTag.Author),
             ("names", "author_tags", AuthorTag.Author),
             ("patronyms", "type_tags", models.TypeTag.NamedAfter),
@@ -794,6 +807,32 @@ class Person(BaseModel):
         person = cls.get_or_create_unchecked(family_name)
         while not person.lint():
             person.edit()
+        return person
+
+    @classmethod
+    def get_or_create_from_ol_id(cls, ol_id: str) -> "Person":
+        person = cls.select_one(ol_id=ol_id)
+        if person is None:
+            data = get_author(ol_id)
+            name = data["name"]
+            if " " in name:
+                given_names, family_name = name.rsplit(" ", maxsplit=1)
+            else:
+                family_name = name
+                given_names = None
+            person = cls.get_or_create_unchecked(
+                family_name=family_name, given_names=given_names
+            )
+            if person.ol_id is None:
+                person.ol_id = ol_id
+            else:
+                cls.create(
+                    family_name=family_name,
+                    given_names=given_names,
+                    ol_id=ol_id,
+                    type=PersonType.soft_redirect,
+                    target=person,
+                )
         return person
 
     @classmethod

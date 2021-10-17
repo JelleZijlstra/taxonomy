@@ -418,6 +418,7 @@ class Name(BaseModel):
             "check_authors": self.check_authors,
             "level": self.print_fill_data_level,
             "set_nos": self.set_nos,
+            "validate": self.validate,
         }
 
     def print_fill_data_level(self) -> None:

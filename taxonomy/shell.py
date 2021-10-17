@@ -18,6 +18,7 @@ import collections
 from collections import defaultdict
 import csv
 import functools
+import gc
 from itertools import groupby
 import logging
 import os.path
@@ -79,6 +80,8 @@ from .db.models.person import PersonLevel
 from .db.models.taxon import DEFAULT_LEVEL
 
 T = TypeVar("T")
+
+gc.disable()
 
 
 class _ShellNamespace(dict):  # type: ignore
@@ -3458,6 +3461,85 @@ def edit_names_interactive(
     art.display_names()
     models.taxon.edit_names_interactive(art, field=field)
     fill_data_from_paper(art)
+
+
+@command
+def occ(
+    t: Optional[Taxon] = None,
+    loc: Optional[models.Location] = None,
+    source: Optional[Article] = None,
+    replace_source: bool = False,
+    **kwargs: Any,
+) -> Optional[models.Occurrence]:
+    if t is None:
+        t = Taxon.getter(None).get_one("taxon> ")
+    if t is None:
+        return None
+    if loc is None:
+        loc = models.Location.getter(None).get_one("location> ")
+    if loc is None:
+        return None
+    if source is None:
+        source = Article.getter(None).get_one("source> ")
+    if source is None:
+        return None
+    try:
+        o = t.at(loc)
+    except models.Occurrence.DoesNotExist:
+        o = t.add_occurrence(loc, source, **kwargs)
+        print("ADDED: %s" % o)
+    else:
+        print("EXISTING: %s" % o)
+        if replace_source and o.source != source:
+            o.source = source
+            o.s(**kwargs)
+            o.save()
+            print("Replaced source: %s" % o)
+    return o
+
+
+@command
+def mocc(
+    t: Optional[Taxon] = None,
+    source: Optional[Article] = None,
+    replace_source: bool = False,
+    **kwargs: Any,
+) -> None:
+    if t is None:
+        t = Taxon.getter(None).get_one("taxon> ")
+    if t is None:
+        return None
+    if source is None:
+        source = Article.getter(None).get_one("source> ")
+    if source is None:
+        return None
+    while True:
+        loc = models.Location.getter(None).get_one("location> ")
+        if loc is None:
+            break
+        occ(t, loc, source=source, replace_source=replace_source, **kwargs)
+
+
+@command
+def multi_taxon(
+    loc: Optional[models.Location] = None,
+    source: Optional[Article] = None,
+    replace_source: bool = False,
+    **kwargs: Any,
+) -> None:
+    if loc is None:
+        loc = models.Location.getter(None).get_one("location> ")
+    if loc is None:
+        return None
+    if source is None:
+        source = Article.getter(None).get_one("source> ")
+    if source is None:
+        return None
+    while True:
+        t = Taxon.getter(None).get_one("taxon> ")
+        if t is None:
+            break
+        occ(t, loc, source=source, replace_source=replace_source, **kwargs)
 
 
 @command

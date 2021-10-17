@@ -326,6 +326,7 @@ class Article(BaseModel):
             "print_doi_information": self.print_doi_information,
             "expand_doi": lambda: self.expand_doi(verbose=True, set_fields=True),
             "display_names": self.display_names,
+            "display_type_localities": self.display_type_localities,
             "modernize_in_press": self.modernize_in_press,
         }
 
@@ -985,7 +986,7 @@ class Article(BaseModel):
     def display(self, full: bool = False) -> None:
         print(self.cite())
 
-    def display_names(self, full: bool = False, organized: bool = False) -> None:
+    def display_names(self, full: bool = False, organized: bool = True) -> None:
         print(repr(self))
         new_names = sorted(
             models.Name.add_validity_check(self.new_names),
@@ -999,6 +1000,21 @@ class Article(BaseModel):
             else:
                 pairs = [(nam.get_description(), nam.taxon) for nam in new_names]
                 models.taxon.display_organized(pairs)
+
+    def display_type_localities(self) -> None:
+        print(repr(self))
+        new_names = sorted(
+            models.Name.add_validity_check(self.new_names).filter(models.Name.type_locality != None),
+            key=lambda nam: nam.type_locality.name,
+        )
+        if new_names:
+            print(f"New names ({len(new_names)}):")
+            current_tl: Optional[models.Location] = None
+            for nam in new_names:
+                if nam.type_locality != current_tl:
+                    print(f"    {nam.type_locality!r}")
+                    current_tl = nam.type_locality
+                print(f"{' ' * 8}{nam.get_description()}", end="")
 
     def __str__(self) -> str:
         return f"{{{self.name}}}"
