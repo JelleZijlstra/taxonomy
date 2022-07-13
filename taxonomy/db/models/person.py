@@ -45,7 +45,7 @@ ALLOWED_TUSSENVOEGSELS = {
         "in den",
         "in 't",
         "'t",
-        "von der"
+        "von der",
     },
     NamingConvention.german: {"von", "von den", "von der", "zu"},
     # French, Italian, Portuguese
@@ -327,11 +327,11 @@ class Person(BaseModel):
         tag_cls: Type[adt.ADT],
         derived_field_name: str,
         target: Optional["Person"] = None,
-    ) -> None:
+    ) -> Optional["Person"]:
         tags = getattr(obj, field_name)
         matching_idx, tag = self.find_tag(tags, tag_cls)
         if tag is None:
-            return
+            return None
         obj.display()
         new_tags, new_person = self.edit_tag_sequence(obj, tags, tag_cls, target)
         if new_tags is not None:
@@ -339,6 +339,8 @@ class Person(BaseModel):
             obj.save()
             if new_person is not None:
                 self.move_reference(new_person, derived_field_name, obj)
+            return new_person
+        return None
 
     def move_reference(
         self, new_person: "Person", derived_field_name: str, obj: BaseModel
@@ -625,6 +627,7 @@ class Person(BaseModel):
             "lint": self.lint,
             "rio": self.reassign_initials_only,
             "reassign_initials_only": self.reassign_initials_only,
+            "move": self.move_all_references,
             "soft": self.make_soft_redirect,
             "hard": self.make_hard_redirect,
         }
@@ -638,7 +641,17 @@ class Person(BaseModel):
             command = getinput.get_line(
                 "command> ",
                 validate=lambda command: command
-                in ("s", "skip", "soft", "soft_redirect", "", "h", "hard_redirect", ""),
+                in (
+                    "s",
+                    "skip",
+                    "soft",
+                    "move",
+                    "soft_redirect",
+                    "",
+                    "h",
+                    "hard_redirect",
+                    "",
+                ),
                 allow_none=True,
                 mouse_support=False,
                 history_key="reassign_references",
@@ -664,10 +677,27 @@ class Person(BaseModel):
             query = self.family_name.lower()
             nams = [nam for nam in nams if query in nam.verbatim_citation.lower()]
         nams = sorted(nams, key=lambda nam: (nam.numeric_year(), nam.verbatim_citation))
+        verbatim_to_target: dict[str, Person] = {}
         for nam in nams:
-            self.edit_tag_sequence_on_object(
-                nam, "author_tags", AuthorTag.Author, "names"
+            new_target = self.edit_tag_sequence_on_object(
+                nam,
+                "author_tags",
+                AuthorTag.Author,
+                "names",
+                verbatim_to_target.get(nam.verbatim_citation),
             )
+            if new_target is not None:
+                verbatim_to_target[nam.verbatim_citation] = new_target
+
+    def move_all_references(self, target: Optional["Person"] = None) -> None:
+        if target is None:
+            target = Person.getter(None).get_one("target > ")
+        if target is None:
+            return
+        if target == self:
+            print(f"Cannot move references of {self} to itself")
+            return
+        self.reassign_references(target=target)
 
     def make_soft_redirect(self, target: Optional["Person"] = None) -> None:
         if target is None:

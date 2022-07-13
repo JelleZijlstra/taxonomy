@@ -51,6 +51,8 @@ import requests
 import unidecode
 from traitlets.config.loader import Config
 
+from taxonomy import adt
+
 from . import getinput
 from .db import constants, definition, derived_data, helpers, models
 from .db.constants import (
@@ -95,13 +97,7 @@ class _ShellNamespace(dict):  # type: ignore
     def keys(self) -> Set[str]:  # type: ignore
         keys = set(super().keys())
         keys |= set(dir(__builtins__))
-        if not hasattr(self, "_names"):
-            self._names = {
-                getinput.encode_name(taxon.valid_name)
-                for taxon in Taxon.select_valid(Taxon.valid_name)
-                if taxon.valid_name is not None
-            }
-        return keys | self._names
+        return keys
 
     def __delitem__(self, key: str) -> None:
         if super().__contains__(key):
@@ -419,6 +415,28 @@ def detect_corrected_original_names(
             if interactive:
                 nam.display()
                 nam.fill_field("corrected_original_name")
+            yield nam
+    print(f"Success: {successful}/{total}")
+
+
+@generator_command
+def detect_original_rank(
+    dry_run: bool = False,
+    interactive: bool = False,
+    ignore_failure: bool = False,
+    limit: Optional[int] = None,
+) -> Iterable[Name]:
+    total = successful = 0
+    for nam in (
+        Name.select_valid()
+        .filter(Name.corrected_original_name != None, Name.original_rank == None)
+        .limit(limit)
+    ):
+        total += 1
+        success = nam.autoset_original_rank()
+        if success:
+            successful += 1
+        elif not ignore_failure:
             yield nam
     print(f"Success: {successful}/{total}")
 
@@ -1229,7 +1247,6 @@ class LabeledName(NamedTuple):
     order: Optional[Taxon]
     family: Optional[Taxon]
     is_high_quality: bool
-    is_doubtful: bool
 
 
 HIGH_QUALITY = {
@@ -1269,8 +1286,7 @@ def label_name(name: Name) -> LabeledName:
     except ValueError:
         family = None
     quality = is_high_quality(name.taxon)
-    is_doubtful = name.taxon.is_child_of(taxon_of_name("Doubtful"))
-    return LabeledName(name, order, family, quality, is_doubtful)
+    return LabeledName(name, order, family, quality)
 
 
 @command
@@ -1287,7 +1303,6 @@ def correct_type_taxon(
 ) -> List[Name]:
     count = 0
     out = []
-    doubtful = taxon_of_name("Doubtful")
     for nam in Name.select_valid().filter(
         Name.group << (Group.genus, Group.family), Name.type != None
     ):
@@ -1301,8 +1316,6 @@ def correct_type_taxon(
             if expected_taxon is None:
                 break
         if expected_taxon is None:
-            continue
-        if nam.taxon == doubtful:
             continue
         if nam.taxon != expected_taxon:
             count += 1
@@ -1433,13 +1446,28 @@ def bad_base_names() -> Iterable[Taxon]:
 @generator_command
 def bad_taxa() -> Iterable[Name]:
     return Name.raw(
-        "SELECT * FROM name WHERE taxon_id IS NULL or taxon_id NOT IN (SELECT id FROM taxon)"
+        f"""
+        SELECT * FROM name
+        WHERE
+            status != {constants.Status.removed.value}
+            AND (
+                taxon_id IS NULL
+                OR taxon_id NOT IN (SELECT id FROM taxon WHERE age != {constants.AgeClass.removed.value})
+            )
+        """
     )
 
 
 @generator_command
 def bad_parents() -> Iterable[Name]:
-    return Name.raw("SELECT * FROM taxon WHERE parent_id NOT IN (SELECT id FROM taxon)")
+    return Name.raw(
+        f"""
+        SELECT * FROM taxon
+        WHERE
+            age != {constants.AgeClass.removed.value}
+            AND parent_id NOT IN (SELECT id FROM taxon WHERE age != {constants.AgeClass.removed.value})
+        """
+    )
 
 
 @generator_command
@@ -1460,6 +1488,54 @@ def bad_types() -> Iterable[Name]:
     return Name.raw(
         "SELECT * FROM name WHERE type_id IS NOT NULL AND type_id NOT IN (SELECT id FROM name)"
     )
+
+
+@generator_command
+def check_types(dry_run: bool = False) -> Iterable[Name]:
+    query = Name.raw(
+        f"""
+            SELECT * FROM name
+            WHERE
+                status != {constants.Status.removed.value}
+                AND type_id IS NOT NULL
+                AND type_id NOT IN (SELECT id FROM name WHERE status != {constants.Status.removed.value})
+        """
+    )
+    for nam in query:
+        result = is_name_removed(nam.type)
+        if isinstance(result, Name):
+            print(f"{nam}: set type to {result} instead of {nam.type}")
+            if not dry_run:
+                nam.type = result
+        elif result:
+            yield nam
+
+
+def is_name_removed(nam: Name) -> bool | Name:
+    """Is a name removed?
+
+    Return False if not, True if yes but we don't know what it was merged
+    into, and a Name if it was merged into something else.
+
+    """
+    if nam.status is not constants.Status.removed:
+        return False
+    for comment in nam.comments:
+        if comment.kind is constants.CommentKind.removal:
+            if id := extract_id(comment.text, "N"):
+                replacement = Name.get(id=id)
+                if replacement.status is not constants.Status.removed:
+                    return replacement
+                else:
+                    print(f"Ignoring {replacement} as it is itself removed")
+    return True
+
+
+def extract_id(text: str, call_sign: str) -> int | None:
+    rgx = rf"{call_sign}#(\d+)"
+    if match := re.search(rgx, text):
+        return int(match.group(1))
+    return None
 
 
 ATTRIBUTES_BY_GROUP = {
@@ -1957,7 +2033,12 @@ def fill_citation_groups(
         query = Name.citation_group == book_cg
     else:
         query = Name.citation_group == None
-    names = Name.bfind(Name.verbatim_citation != None, query, quiet=True)
+    names = Name.bfind(
+        Name.verbatim_citation != None,
+        Name.original_citation == None,
+        query,
+        quiet=True,
+    )
     patterns = list(CitationGroupPattern.select_valid())
     print(f"Filling citation group for {len(names)} names")
 
@@ -1978,7 +2059,12 @@ def fill_citation_groups(
         return
 
     for nam in sorted(
-        Name.bfind(Name.verbatim_citation != None, query, quiet=True),
+        Name.bfind(
+            Name.verbatim_citation != None,
+            Name.original_citation == None,
+            query,
+            quiet=True,
+        ),
         key=lambda nam: (
             nam.taxonomic_authority(),
             nam.numeric_year(),
@@ -2089,6 +2175,44 @@ def fill_type_locality_from_location_detail(
 ) -> None:
     for nam in names_with_location_detail_without_type_loc(taxon, substring=substring):
         nam.fill_field("type_locality")
+
+
+def names_with_type_detail_without_type(
+    taxon: Optional[Taxon] = None,
+) -> Iterable[Name]:
+    if taxon is None:
+        nams = Name.select_valid().filter(
+            Name.type_tags != None, Name.type >> None, Name.group == Group.genus
+        )
+    else:
+        nams = [
+            nam
+            for nam in taxon.all_names()
+            if nam.type_tags is not None
+            and nam.type is None
+            and nam.group == Group.genus
+        ]
+    nams_with_key = []
+    for nam in nams:
+        tags = [
+            tag for tag in nam.type_tags if isinstance(tag, TypeTag.TypeSpeciesDetail)
+        ]
+        if not tags:
+            continue
+        if "type" not in nam.get_required_fields():
+            continue
+        nams_with_key.append(([(tag.source.name, tag.text) for tag in tags], nam, tags))
+    for _, nam, tags in sorted(nams_with_key):
+        nam.display()
+        for tag in tags:
+            print(tag)
+        yield nam
+
+
+@command
+def fill_type_from_type_detail(taxon: Optional[Taxon] = None) -> None:
+    for nam in names_with_type_detail_without_type(taxon):
+        nam.fill_field("type")
 
 
 @command
@@ -2297,6 +2421,21 @@ def most_common_unchecked_names(
 
 
 @command
+def most_common_initials() -> Counter[Person]:
+    counter: Counter[Person] = Counter()
+    for pers in Person.select_valid():
+        if pers.get_level() is not PersonLevel.initials_only:
+            continue
+        arts = pers.get_raw_derived_field("articles")
+        if arts is None:
+            continue
+        counter[pers] = len(arts)
+    for pers, val in counter.most_common(10):
+        print(val, pers)
+    return counter
+
+
+@command
 def biggest_names(
     num_to_display: int = 10,
     max_level: Optional[PersonLevel] = PersonLevel.has_given_name,
@@ -2347,6 +2486,64 @@ def reassign_references(
     for person in persons:
         if max_level is None or person.get_level() <= max_level:
             person.maybe_reassign_references()
+
+
+@command
+def doubled_authors(autofix: bool = False) -> None:
+    nams = Name.select_valid().filter(Name.author_tags != None)
+    bad_nams = []
+    for nam in nams:
+        tags = nam.get_raw_tags_field("author_tags")
+        if len(tags) != len({t[1] for t in tags}):
+            print(nam, nam.author_tags)
+            bad_nams.append(nam)
+            if autofix:
+                nam.display()
+                for i, tag in enumerate(nam.author_tags):
+                    print(f"{i}: {tag}")
+                nam.e.author_tags
+    return bad_nams
+
+
+@command
+def reassign_authors(
+    taxon: Optional[Taxon] = None,
+    skip_family: bool = False,
+    skip_initials: bool = False,
+) -> None:
+    if taxon is None:
+        taxon = Taxon.getter(None).get_one()
+    if taxon is None:
+        return
+    if not skip_family:
+        print("v-ing...")
+        nams = [nam for nam in taxon.all_names() if nam.verbatim_citation is not None]
+        authors = {author for nam in nams for author in nam.get_authors()}
+        authors = {
+            author
+            for author in authors
+            if author.get_level() == PersonLevel.family_name_only
+        }
+        print(f"Found {len(authors)} authors")
+        for author in sorted(authors, key=lambda a: a.sort_key()):
+            print(author)
+            author.reassign_names_with_verbatim(filter_for_name=True)
+    if not skip_initials:
+        print("rio-ing...")
+        nams = [nam for nam in taxon.all_names() if nam.original_citation is not None]
+        authors = {author for nam in nams for author in nam.get_authors()}
+        authors = {
+            author
+            for author in authors
+            if author.get_level() == PersonLevel.initials_only
+        }
+        print(f"Found {len(authors)} authors")
+        for author in sorted(authors, key=lambda a: a.sort_key()):
+            print(author)
+            author.reassign_initials_only()
+    print("checking authors...")
+    for nam in taxon.all_names():
+        nam.check_authors()
 
 
 PersonParams = Optional[Dict[str, Optional[str]]]
@@ -2693,12 +2890,46 @@ def check_tags(dry_run: bool = True) -> Iterable[Tuple[Name, str]]:
                 yield nam, f"has status {status.name} but no corresponding tag"
 
 
+def get_tag_fields_of_type(tag: adt.ADT, typ: type[T]) -> Iterable[tuple[str, T]]:
+    tag_type = type(tag)
+    for arg_name, arg_type in tag_type._attributes.items():
+        if arg_type is typ:
+            if (val := getattr(tag, arg_name)) is None:
+                continue
+            yield arg_name, val
+
+
+def replace_arg(tag: adt.ADT, arg: str, val: object) -> adt.ADT:
+    kwargs = {**tag.__dict__, arg: val}
+    return type(tag)(**kwargs)
+
+
 def check_type_tags_for_name(
     nam: Name, dry_run: bool = False
 ) -> Iterable[Tuple[Name, str]]:
     tags: List[TypeTag] = []
     original_tags = list(nam.type_tags)
     for tag in original_tags:
+        for arg_name, art in get_tag_fields_of_type(tag, Article):
+            if art.kind is ArticleKind.removed:
+                print(f"{nam} references a removed Article in {tag}")
+                yield nam, f"bad article in tag {tag}"
+            elif art.kind is ArticleKind.redirect:
+                print(f"{nam} references a redirected Article in {tag} -> {art.parent}")
+                if art.parent is None or art.parent.should_skip():
+                    yield nam, f"bad redirected article in tag {tag}"
+                elif not dry_run:
+                    tag = replace_arg(tag, arg_name, art.parent)
+        for arg_name, tag_nam in get_tag_fields_of_type(tag, Name):
+            result = is_name_removed(tag_nam)
+            if isinstance(result, Name):
+                print(f"{nam} references a merged name")
+                if not dry_run:
+                    tag = replace_arg(tag, arg_name, result)
+            elif result:
+                print(f"{nam} references a removed Name in {tag}")
+                yield nam, f"bad name in tag {tag}"
+
         if isinstance(tag, TypeTag.CommissionTypeDesignation):
             if nam.type != tag.type:
                 print(
@@ -2717,6 +2948,7 @@ def check_type_tags_for_name(
                     nam.genus_type_kind = (
                         constants.TypeSpeciesDesignation.designated_by_the_commission  # type: ignore
                     )
+            tags.append(tag)
         elif isinstance(tag, TypeTag.Date):
             date = tag.date
             try:
@@ -2765,18 +2997,25 @@ def check_type_tags_for_name(
             tags.append(tag)
         # TODO: for lectotype and subsequent designations, ensure the earliest valid one is used.
     tags = sorted(set(tags))
-    if not dry_run and tags != original_tags:
+    if tags != original_tags:
         print(f"changing tags for {nam}")
-        print(original_tags)
-        print(tags)
-        nam.type_tags = tags  # type: ignore
+        if set(tags) == set(original_tags):
+            print("reordering only")
+        else:
+            getinput.print_diff(sorted(original_tags), tags)
+        if not dry_run:
+            nam.type_tags = tags  # type: ignore
 
 
 @generator_command
 def check_type_tags(
     dry_run: bool = False, require_type_designations: bool = False
 ) -> Iterable[Tuple[Name, str]]:
-    for nam in Name.select_valid().filter(Name.type_tags != None):
+    for i, nam in enumerate(
+        Name.select_valid().filter(Name.type_tags != None), start=1
+    ):
+        if i % 1000 == 0:
+            print(f"{i} names...")
         yield from check_type_tags_for_name(nam, dry_run)
     getinput.flush()
     if not require_type_designations:
@@ -3031,6 +3270,7 @@ def run_maintenance(skip_slow: bool = True) -> Dict[Any, Any]:
         bad_base_names,
         bad_occurrences,
         bad_types,
+        check_types,
         labeled_authorless_names,
         root_name_mismatch,
         detect_complexes,
@@ -3054,6 +3294,7 @@ def run_maintenance(skip_slow: bool = True) -> Dict[Any, Any]:
         clean_up_stem,
         clean_up_gender,
         check_corrected_original_name,
+        check_root_name,
         Person.autodelete,
         Person.find_duplicates,
         Person.resolve_redirects,
@@ -3580,6 +3821,8 @@ def show_queries(on: bool) -> None:
 
 
 def run_shell() -> None:
+    # GC does bad things on my current setup for some reason
+    gc.disable()
     config = Config()
     config.InteractiveShell.confirm_exit = False
     config.TerminalIPythonApp.display_banner = False

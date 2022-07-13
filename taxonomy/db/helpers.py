@@ -283,6 +283,13 @@ def standardize_date(date: str) -> Optional[str]:
     """Fixes the format of date fields."""
     if date in ("unknown date", "on unknown date", "on an unknown date"):
         return None
+    # A leading < is allowed to indicate "before"
+    if date.startswith("<"):
+        return "<" + _standardize_inner(date[1:])
+    return _standardize_inner(date)
+
+
+def _standardize_inner(date: str) -> str:
     date = re.sub(r"\]", "", date)
     date = re.sub(r"\[[A-Z a-n]+: ", "", date)
     date = re.sub(

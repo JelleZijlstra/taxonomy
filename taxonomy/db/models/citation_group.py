@@ -89,16 +89,20 @@ class CitationGroup(BaseModel):
             pattern = getinput.get_line("pattern to apply to> ")
             if not pattern:
                 break
+            if len(pattern) < 3:
+                print(f"Pattern too short: {pattern}")
+                continue
             self.add_for_pattern(pattern)
 
     def add_for_pattern(self, pattern: str) -> None:
-        for nam in models.Name.bfind(
-            models.Name.verbatim_citation != None,
-            models.Name.citation_group == None,
-            models.Name.verbatim_citation % f"*{pattern}*",
-        ):
-            nam.display()
-            nam.citation_group = self
+        if getinput.yes_no("Apply pattern? "):
+            for nam in models.Name.bfind(
+                models.Name.verbatim_citation != None,
+                models.Name.citation_group == None,
+                models.Name.verbatim_citation % f"*{pattern}*",
+            ):
+                nam.display()
+                nam.citation_group = self
         if getinput.yes_no("Save pattern? "):
             CitationGroupPattern.make(pattern=pattern, citation_group=self)
 

@@ -1004,7 +1004,9 @@ class Article(BaseModel):
     def display_type_localities(self) -> None:
         print(repr(self))
         new_names = sorted(
-            models.Name.add_validity_check(self.new_names).filter(models.Name.type_locality != None),
+            models.Name.add_validity_check(self.new_names).filter(
+                models.Name.type_locality != None
+            ),
             key=lambda nam: nam.type_locality.name,
         )
         if new_names:

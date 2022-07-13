@@ -207,7 +207,6 @@ if TYPE_CHECKING:
     class _ADTBase(Any):
         pass
 
-
 else:
 
     class _ADTBase:

@@ -308,6 +308,7 @@ class Rank(enum.IntEnum):
     infratribe = 24
     subtribe = 25
     tribe = 30
+    infrafamily = 34
     subfamily = 35
     family = 40
     superfamily = 45
@@ -336,15 +337,29 @@ class Rank(enum.IntEnum):
     root = 200
     unranked = 205
     informal = 210
+    other = 215  # should be used only for original rank
+    variety = 216
+    form = 217
+    infrasubspecific = 218
 
 
 class RegionKind(enum.IntEnum):
     continent = 0
     country = 1
-    subnational = 2  # first-level subdivision, like a US state
+    # first-level subdivision without a specific kind, e.g. a Russian oblast
+    subnational = 2
     planet = 3
-    other = 4
+    other = 4  # miscellaneous informal subdivisions of countries
     county = 5
+    island = 6  # or island group
+    state = 7
+    province = 8
+    department = 9
+    region = 10  # things formally named "region", e.g. in Italy
+    canton = 11
+    prefecture = 12
+    territory = 13
+    supranational = 14  # Supranational regions from the UN geoscheme
 
 
 class PeriodSystem(enum.IntEnum):
@@ -395,6 +410,7 @@ SYSTEM_TO_ALLOWED_RANKS = {
     PeriodSystem.alma: {PeriodRank.age, PeriodRank.subage},
     PeriodSystem.salma: {PeriodRank.age, PeriodRank.subage},
     PeriodSystem.aulma: {PeriodRank.age},
+    PeriodSystem.aflma: {PeriodRank.age},
     PeriodSystem.local_biostratigraphy: {
         PeriodRank.zonation,
         PeriodRank.age,
@@ -624,6 +640,9 @@ class SpecimenOrgan(enum.IntEnum):
     baculum = 39
     tissue_sample = 40
     shell = 41  # of a turtle
+    skeleton = 42  # full skeleton
+    limb = 43
+    girdle = 44
 
 
 class AltitudeUnit(enum.IntEnum):

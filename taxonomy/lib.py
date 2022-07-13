@@ -15,7 +15,14 @@ from typing import Any, Container, Dict, Iterable, List, Optional, Tuple, Type, 
 import peewee
 
 from taxonomy import getinput
-from taxonomy.db.constants import AgeClass, FillDataLevel, Group, Rank, Status
+from taxonomy.db.constants import (
+    AgeClass,
+    FillDataLevel,
+    Group,
+    Rank,
+    RegionKind,
+    Status,
+)
 from taxonomy.db.helpers import root_name_of_name
 from taxonomy.db.models import (
     Article,
@@ -28,6 +35,7 @@ from taxonomy.db.models import (
     Occurrence,
     Period,
     Person,
+    Region,
     Taxon,
 )
 
@@ -433,3 +441,28 @@ def print_prefix(prefix: str) -> None:
         ),
     ):
         print(book.dewey, repr(book))
+
+
+def clean_regions(kind: RegionKind, print_only: bool = False) -> None:
+    regions = Region.bfind(kind=kind, quiet=True)
+    print(f"{len(regions)} total")
+    by_parent: dict[Region, list[Region]] = defaultdict(list)
+    for region in regions:
+        by_parent[region.parent].append(region)
+    for region, children in by_parent.items():
+        print(f"== {region} ==")
+        print(", ".join(child.name for child in children))
+        if print_only:
+            continue
+        new_kind = getinput.get_enum_member(RegionKind, "new kind> ")
+        if new_kind:
+            for child in children:
+                print(child)
+                child.kind = new_kind
+            print("Perform fixup")
+            Region.getter(None).get_and_edit()
+        else:
+            if getinput.yes_no("Edit manually?"):
+                for child in children:
+                    print(child)
+                    child.e.kind

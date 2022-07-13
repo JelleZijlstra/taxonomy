@@ -53,10 +53,15 @@ from .name_complex import NameComplex, SpeciesNameComplex
 from .person import Person, AuthorTag, get_new_authors_list
 
 _CRUCIAL_MISSING_FIELDS: Dict[Group, Set[str]] = {
-    Group.species: {"species_name_complex", "original_name", "corrected_original_name"},
-    Group.genus: {"name_complex"},
-    Group.family: {"type"},
-    Group.high: set(),
+    Group.species: {
+        "species_name_complex",
+        "original_name",
+        "corrected_original_name",
+        "original_rank",
+    },
+    Group.genus: {"name_complex", "original_rank"},
+    Group.family: {"type", "original_rank"},
+    Group.high: {"original_rank"},
 }
 _ETYMOLOGY_CUTOFF = 1990
 _DATA_CUTOFF = 1900
@@ -130,6 +135,7 @@ class Name(BaseModel):
     genus_type_kind = EnumField(constants.TypeSpeciesDesignation, null=True)
     species_type_kind = EnumField(constants.SpeciesGroupType, null=True)
     type_tags = ADTField(lambda: TypeTag, null=True)
+    original_rank = EnumField(constants.Rank, null=True)
 
     # Miscellaneous data
     data = TextField(null=True)
@@ -275,6 +281,67 @@ class Name(BaseModel):
         else:
             self._definition = defn.serialize()
 
+    def infer_original_rank(self) -> Optional[constants.Rank]:
+        if self.corrected_original_name is None:
+            return None
+        handcleaned_name = (
+            self.original_name.lower()
+            .replace("?", "")
+            .replace("cf.", "")
+            .replace("aff.", "")
+            .replace("()", "")
+            .replace("æ", "ae")
+            .strip()
+        )
+        if self.group is Group.species:
+            handcleaned_name = re.sub(r"\([A-Za-z]+\)", "", handcleaned_name)
+        handcleaned_name = re.sub(r"\s+", " ", handcleaned_name)
+        handcleaned_name = handcleaned_name[0].upper() + handcleaned_name[1:]
+        if self.corrected_original_name != handcleaned_name:
+            if self.group is Group.species and " var. " in handcleaned_name:
+                return Rank.variety
+            return None
+        if self.group is Group.species:
+            spaces = self.corrected_original_name.count(" ")
+            if spaces == 2:
+                return Rank.subspecies
+            elif spaces == 1:
+                return Rank.species
+        elif self.group is Group.family:
+            if self.original_name.endswith("idae"):
+                return Rank.family
+            elif self.original_name.endswith("inae"):
+                return Rank.subfamily
+            elif self.original_name.endswith("oidea"):
+                return Rank.superfamily
+        elif self.group is Group.genus:
+            if self.type is not None:
+                type_name = self.type.corrected_original_name
+                if (
+                    type_name is not None
+                    and type_name.split()[0] == self.corrected_original_name
+                ):
+                    return Rank.genus
+        return None
+
+    def autoset_original_rank(self, interactive: bool = False) -> bool:
+        if self.original_rank is not None:
+            return False
+        inferred = self.infer_original_rank()
+        if inferred is not None:
+            print(
+                f"{self}: inferred original_rank to be {inferred!r} from {self.original_name!r}"
+            )
+            self.original_rank = inferred
+            return True
+        else:
+            print(f"{self}: could not infer original rank from {self.original_name!r}")
+            if interactive:
+                self.display()
+                self.open_description()
+                self.fill_field("original_rank")
+            return False
+
     def infer_corrected_original_name(self, aggressive: bool = False) -> Optional[str]:
         if not self.original_name:
             return None
@@ -365,6 +432,21 @@ class Name(BaseModel):
                     default = self.corrected_original_name
                 else:
                     default = self.original_name
+                return super().get_value_for_field(field, default=default)
+        elif field == "original_rank":
+            inferred = self.infer_original_rank()
+            if inferred is not None:
+                print(
+                    f"inferred original_rank to be {inferred!r} from {self.original_name!r}"
+                )
+                return inferred
+            else:
+                if self.group is Group.species:
+                    default = Rank.species
+                elif default is Group.genus:
+                    default = Rank.genus
+                else:
+                    default = None
                 return super().get_value_for_field(field, default=default)
         elif field == "type_tags":
             if self.type_locality is not None:
@@ -1237,6 +1319,8 @@ class Name(BaseModel):
             if self.nomenclature_status.requires_type():
                 if self.genus_type_kind is None or self.genus_type_kind.requires_tag():
                     yield (TypeTag.IncludedSpecies, TypeTag.GenusCoelebs)
+        if self.original_rank is Rank.other:
+            yield (TypeTag.TextualOriginalRank,)
 
     def get_missing_tags(
         self, required_tags: Iterable[Tuple["TypeTag", ...]]
@@ -1254,6 +1338,8 @@ class Name(BaseModel):
         yield "original_name"
         if self.original_name is not None:
             yield "corrected_original_name"
+        if self.corrected_original_name is not None:
+            yield "original_rank"
 
         yield "author_tags"
         yield "year"
@@ -1654,6 +1740,8 @@ class Name(BaseModel):
             self.get_similar_names_and_papers_for_author(author.family_name)
             for author in self.get_authors()
         ]
+        if not similar:
+            return 0
         similar_art_sets, similar_nam_sets = zip(*similar)
         similar_arts = set.intersection(*similar_art_sets)
         if similar_arts:
@@ -1805,7 +1893,14 @@ def has_data_from_original(nam: Name) -> bool:
     for tag in nam.type_tags:
         if isinstance(tag, SOURCE_TAGS) and tag.source == nam.original_citation:
             return True
-        if isinstance(tag, (TypeTag.IncludedSpecies, TypeTag.GenusCoelebs)) or tag in (
+        if isinstance(
+            tag,
+            (
+                TypeTag.IncludedSpecies,
+                TypeTag.GenusCoelebs,
+                TypeTag.TextualOriginalRank,
+            ),
+        ) or tag in (
             TypeTag.NoEtymology,
             TypeTag.NoLocation,
             TypeTag.NoSpecimen,
@@ -1961,6 +2056,9 @@ class TypeTag(adt.ADT):
     Involved(person=Person, comment=str, tag=39)  # type: ignore
     # Indicates that a General type locality cannot be fixed
     ImpreciseLocality(comment=str, tag=40)  # type: ignore
+    # Arbitrary text about nomenclature
+    NomenclatureDetail(text=str, source=Article, tag=41)  # type: ignore
+    TextualOriginalRank(text=str, tag=42)  # type: ignore
 
 
 SOURCE_TAGS = (

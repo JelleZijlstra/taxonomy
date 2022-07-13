@@ -4,6 +4,7 @@ from functools import partial
 import inspect
 import json
 import re
+import time
 import traceback
 from typing import (
     Any,
@@ -42,8 +43,24 @@ from .. import derived_data, helpers
 
 settings = config.get_options()
 
+_log_path = settings.new_path / "log" / "queries.txt"
+_log_f = open(_log_path, "a", encoding="utf-8")
+
 if settings.use_sqlite:
-    database = SqliteDatabase(str(settings.db_filename))
+
+    class LoggingDatabase(SqliteDatabase):
+        def execute_sql(self, sql, *args: Any, **kwargs: Any) -> Any:
+
+            start = time.time()
+            try:
+                return super().execute_sql(sql, *args, **kwargs)
+            finally:
+                end = time.time()
+                if end - start > 0.1:
+                    _log_f.write(f"{end - start:.03f}: {sql}\n")
+                    _log_f.flush()
+
+    database = LoggingDatabase(str(settings.db_filename))
 else:
     database = MySQLDatabase(
         settings.db_name,

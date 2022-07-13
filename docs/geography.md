@@ -144,36 +144,38 @@ can be used for type localities that specify only the island. Indonesia is liste
 Southeastern Asia, but the eastern part is geographically in Oceania, and the regions for Timor
 and New Guinea are listed as part of Oceania.
 
-Within Indonesia, the provinces on each major island form a region. The provinces outside of the
-major islands are largely treated as separate regions, but some are grouped. Some islands within these
-regions are also treated as separate regions. In the future, we will likely create a region for each province.
+Within Indonesia, the provinces on each major island or island group are grouped into a region. This is
+useful because many type localities are just "Sumatra" or "Java" without detail. Each province also gets
+its own region. Within a province, separate islands usually get their own region, except very small
+islands. Within Sumatra, Java, and Kalimantan, regions have not yet been created for the provinces.
+
 In more detail:
 
 - The region of [Sumatra](/r/Sumatra) comprises the island of Sumatra and all islands belonging to provinces with
   territory on the island. A number of offshore islands or island groups are separate regions within the Sumatra
   region: [Banyak Islands](/r/Banyak_Islands), [Batu Islands](/r/Batu_Islands), [Enggano](/r/Enggano), [Nias](/r/Nias),
   [North Pagai](/r/North_Pagai), [Siberut](/r/Siberut), [Simeulue](/r/Simeulue), [Sipora](/r/Sipora),
-  and [South Pagai](/r/South_Pagai).
-- The provinces of [Bangka-Belitung](/r/Bangka-Belitung) and [Riau Islands](/r/Riau_Islands), which comprise
-  islands between Sumatra and Borneo, are each separate regions.
+  and [South Pagai](/r/South_Pagai). The provinces of [Bangka-Belitung](/r/Bangka-Belitung) and
+  [Riau Islands](/r/Riau_Islands), which comprise islands between Sumatra and Borneo, are also part of the Sumatra region.
 - The Indonesian part of Borneo with its offshore islands forms the region of [Kalimantan](/r/Kalimantan).
 - [Java](/r/Java) forms a region with its associated islands. The islands of [Bawean](/r/Bawean) and
   [Madura](/r/Madura) and the [Kangean Islands](/r/Kangean_Islands) are subregions.
-- The island of [Bali](/r/Bali), which is coterminous with a province, is its own region.
-- The region of [Nusa Tenggara](/r/Nusa_Tenggara) comprises the provinces of West and East Nusa Tenggara, which cover
-  the island chain east of Java. The islands of [Flores](/r/Flores), [Lombok](/r/Lombok), [Sumba](/r/Sumba),
+- The [Lesser Sunda Islands](/r/Lesser_Sunda_Islands) comprises the provinces of [Bali](/r/Bali),
+  [West Nusa Tenggara](/r/West_Nusa_Tenggara), and [East Nusa Tenggara](/r/East_Nusa_Tenggara). Within these
+  provinces, the islands of [Flores](/r/Flores), [Lombok](/r/Lombok), [Sumba](/r/Sumba),
   [Sumbawa](/r/Sumbawa), [Alor](/r/Alor), [Rote](/r/Rote) (Roti), and [Savu](/r/Savu) are subregions,
   and there is another subregion for [West Timor](/r/West_Timor), the Indonesian part of the island of Timor.
 - [Sulawesi](/r/Sulawesi) with its associated islands is another region. There are subregions for
-  [Miangas](/r/Miangas), the [Sangihe Islands](/r/Sangihe_Islands), [Siau](/r/Siau), and
-  the [Talaud Islands](/r/Talaud_Islands).
-- The region of the [Moluccas](/r/Moluccas) comprises the provinces of Maluku and North Maluku. There are subregions
-  for a number of islands: [Ambon](/r/Ambon), the [Aru Islands](/r/Aru_Islands), [Batjan](/r/Batjan),
+  each province and for numerous associated islands.
+- The region of the [Moluccas](/r/Moluccas) comprises the provinces of [Maluku](/r/Maluku) and
+  [North Maluku](/r/North_Maluku). There are subregions for a number of islands, including:
+  [Ambon](/r/Ambon), the [Aru Islands](/r/Aru_Islands), [Batjan](/r/Batjan),
   [Buru](/r/Buru), [Halmahera](/r/Halmahera), the [Kai Islands](/r/Kai_Islands), [Morotai](/r/Morotai),
   [Obi](/r/Obi), [Seram](/r/Seram), the [Sula Islands](/r/Sula_Islands), [Ternate](/r/Ternate), [Tidore](/r/Tidore),
   the [Tanimbar Islands](/r/Tanimbar_Islands), and the [Banda Islands](/r/Banda_Islands).
 - The Indonesian part of New Guinea with associated islands forms the region of
-  [Western New Guinea](/r/Western_New_Guinea). The
+  [Western New Guinea](/r/Western_New_Guinea). It is divided into the provinces of [West Papua](/r/West_Papua)
+  and [Papua](/r/Papua). Among others, the
   offshore islands of [Biak-Supiori](/r/Biak-Supiori), [Japen](/r/Japen), and [Waigeo](/r/Waigeo) form subregions.
 
 ### [Southern Asia](/r/Southern_Asia)

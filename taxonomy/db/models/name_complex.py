@@ -273,19 +273,19 @@ class SpeciesNameComplex(BaseModel):
 
     @classmethod
     def first_declension(
-        cls, stem: str, auto_apply: bool = True, comment: Optional[str] = None
+        cls, stem: str, auto_apply: bool = False, comment: Optional[str] = None
     ) -> "SpeciesNameComplex":
         return cls.adjective(stem, comment, "us", "a", "um", auto_apply=auto_apply)
 
     @classmethod
     def third_declension(
-        cls, stem: str, auto_apply: bool = True, comment: Optional[str] = None
+        cls, stem: str, auto_apply: bool = False, comment: Optional[str] = None
     ) -> "SpeciesNameComplex":
         return cls.adjective(stem, comment, "is", "is", "e", auto_apply=auto_apply)
 
     @classmethod
     def invariant(
-        cls, stem: str, auto_apply: bool = True, comment: Optional[str] = None
+        cls, stem: str, auto_apply: bool = False, comment: Optional[str] = None
     ) -> "SpeciesNameComplex":
         return cls.adjective(stem, comment, "", "", "", auto_apply=auto_apply)
 

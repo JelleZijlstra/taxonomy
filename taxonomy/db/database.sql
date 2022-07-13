@@ -58,6 +58,7 @@ CREATE TABLE `name` (
     `type_tags` text default null,
     `citation_group` INT UNSIGNED DEFAULT NULL,
     `author_tags` text default null,
+    `original_rank` integer default null,
     PRIMARY KEY(`id`),
     INDEX(`original_name`),
     INDEX(`root_name`),
