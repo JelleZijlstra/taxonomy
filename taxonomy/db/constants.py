@@ -643,6 +643,9 @@ class SpecimenOrgan(enum.IntEnum):
     skeleton = 42  # full skeleton
     limb = 43
     girdle = 44
+    scapulocoracoid = 45
+    carpometacarpal = 46
+    patella = 47
 
 
 class AltitudeUnit(enum.IntEnum):

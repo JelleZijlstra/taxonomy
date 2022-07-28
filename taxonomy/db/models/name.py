@@ -291,6 +291,8 @@ class Name(BaseModel):
             .replace("aff.", "")
             .replace("()", "")
             .replace("æ", "ae")
+            .replace('"', "")
+            .replace("'", "")
             .strip()
         )
         if self.group is Group.species:
@@ -298,8 +300,14 @@ class Name(BaseModel):
         handcleaned_name = re.sub(r"\s+", " ", handcleaned_name)
         handcleaned_name = handcleaned_name[0].upper() + handcleaned_name[1:]
         if self.corrected_original_name != handcleaned_name:
-            if self.group is Group.species and " var. " in handcleaned_name:
-                return Rank.variety
+            if self.group is Group.species:
+                if " var. " in handcleaned_name:
+                    return Rank.variety
+                if self.corrected_original_name.count(" ") == 1 and self.original_name.count(" ") >= 1:
+                    return Rank.species
+            elif self.group is Group.genus:
+                if re.search(rf"^[A-Z][a-z]+ \({self.corrected_original_name}\)$", self.original_name):
+                    return Rank.subgenus
             return None
         if self.group is Group.species:
             spaces = self.corrected_original_name.count(" ")
@@ -324,7 +332,7 @@ class Name(BaseModel):
                     return Rank.genus
         return None
 
-    def autoset_original_rank(self, interactive: bool = False) -> bool:
+    def autoset_original_rank(self, interactive: bool = False, quiet: bool = True, dry_run: bool = False) -> bool:
         if self.original_rank is not None:
             return False
         inferred = self.infer_original_rank()
@@ -332,10 +340,12 @@ class Name(BaseModel):
             print(
                 f"{self}: inferred original_rank to be {inferred!r} from {self.original_name!r}"
             )
-            self.original_rank = inferred
+            if not dry_run:
+                self.original_rank = inferred
             return True
         else:
-            print(f"{self}: could not infer original rank from {self.original_name!r}")
+            if not quiet:
+                print(f"{self}: could not infer original rank from {self.original_name!r}")
             if interactive:
                 self.display()
                 self.open_description()
@@ -434,20 +444,20 @@ class Name(BaseModel):
                     default = self.original_name
                 return super().get_value_for_field(field, default=default)
         elif field == "original_rank":
-            inferred = self.infer_original_rank()
-            if inferred is not None:
-                print(
-                    f"inferred original_rank to be {inferred!r} from {self.original_name!r}"
-                )
-                return inferred
+            if self.original_rank is None:
+                inferred = self.infer_original_rank()
+                if inferred is not None:
+                    print(
+                        f"inferred original_rank to be {inferred!r} from {self.original_name!r}"
+                    )
+                    return inferred
+            if self.group is Group.species:
+                default = Rank.species
+            elif default is Group.genus:
+                default = Rank.genus
             else:
-                if self.group is Group.species:
-                    default = Rank.species
-                elif default is Group.genus:
-                    default = Rank.genus
-                else:
-                    default = None
-                return super().get_value_for_field(field, default=default)
+                default = None
+            return super().get_value_for_field(field, default=default)
         elif field == "type_tags":
             if self.type_locality is not None:
                 print(repr(self.type_locality))

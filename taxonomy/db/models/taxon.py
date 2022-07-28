@@ -545,6 +545,12 @@ class Taxon(BaseModel):
             "display_occurrences": lambda: self.display(
                 full=False, show_occurrences=True
             ),
+            "add_type_identical": lambda: self.base_name.add_type_identical(),
+            "stats": self.stats,
+            "fill_citation_group": self.fill_citation_group,
+            "fill_data_for_names": self.fill_data_for_names,
+            "fill_field_for_names": self.fill_field_for_names,
+            "names_missing_field": self.print_names_missing_field,
         }
 
     def add(self) -> Optional["Taxon"]:
@@ -1029,6 +1035,17 @@ class Taxon(BaseModel):
             for name in self.all_names(age=age, min_year=min_year, exclude=exclude)
             if getattr(name, field) is None and field in name.get_required_fields()
         }
+    
+    def print_names_missing_field(self) -> None:
+        field = getinput.get_with_completion(
+            models.Name.get_field_names(),
+            message="field> ",
+            history_key=(type(self), "fill_field_for_names"),
+            disallow_other=True,
+        )
+        nams = self.names_missing_field(field)
+        for nam in sorted(nams, lambda nam: nam.sort_key()):
+            nam.display(full=False)
 
     def stats(
         self,
@@ -1165,10 +1182,18 @@ class Taxon(BaseModel):
 
     def fill_field_for_names(
         self,
-        field: str,
+        field: Optional[str] = None,
         exclude: Container["Taxon"] = frozenset(),
         min_year: Optional[int] = None,
     ) -> None:
+        if field is None:
+            field = getinput.get_with_completion(
+                models.Name.get_field_names(),
+                message="field> ",
+                history_key=(type(self), "fill_field_for_names"),
+                disallow_other=True,
+            )
+
         for name in sorted(
             self.all_names(exclude=exclude, min_year=min_year),
             key=lambda nam: (nam.taxonomic_authority(), nam.year or ""),

@@ -425,6 +425,7 @@ def detect_original_rank(
     interactive: bool = False,
     ignore_failure: bool = False,
     limit: Optional[int] = None,
+    quiet: bool = True,
 ) -> Iterable[Name]:
     total = successful = 0
     for nam in (
@@ -433,7 +434,7 @@ def detect_original_rank(
         .limit(limit)
     ):
         total += 1
-        success = nam.autoset_original_rank()
+        success = nam.autoset_original_rank(quiet=quiet, dry_run=dry_run)
         if success:
             successful += 1
         elif not ignore_failure:
@@ -1954,6 +1955,13 @@ def fill_data_random(
                 continue
             if result:
                 done += 1
+
+
+@command
+def fill_data_for_names() -> None:
+    taxon = Taxon.getter(None).get_one("taxon> ")
+    level = getinput.get_enum_member(FillDataLevel, "level> ")
+    taxon.fill_data_for_names(level=level)
 
 
 @command

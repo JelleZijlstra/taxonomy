@@ -708,6 +708,8 @@ class BaseModel(Model):
             default = ""
         else:
             default = getattr(default_obj, foreign_cls.label_field)
+            if default is None:
+                default = ""
         getter = foreign_cls.getter(None)
         creators = foreign_cls.get_interactive_creators()
         while True:

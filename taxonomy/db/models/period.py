@@ -182,7 +182,7 @@ class Period(BaseModel):
                     full=full, depth=depth + 2, file=file, locations=locations
                 )
             for period in sorted(
-                Period.filter(Period.max_period == self, Period.min_period == self),
+                Period.select_valid().filter(Period.max_period == self, Period.min_period == self),
                 key=period_sort_key,
             ):
                 period.display(
