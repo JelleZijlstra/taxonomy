@@ -1,5 +1,8 @@
 from dataclasses import dataclass, field
 import enum
+import itertools
+import textwrap
+import traceback
 
 from collections.abc import Sequence
 
@@ -12,8 +15,8 @@ from typing_extensions import Self, assert_never
 
 from taxonomy.db.models.name import TypeTag
 
-SOURCE = Source("expt/checklist.txt", "Testudines (TTWG 2021).pdf")
-REFS = Source("refs.txt", "Testudines (TTWG 2021).pdf")
+SOURCE = Source("expt/recolumnized.txt", "Testudines (TTWG 2021).pdf")
+REFS = Source("expt/refs.txt", "Testudines (TTWG 2021).pdf")
 RefKey = tuple[tuple[str, ...], str]
 DRY_RUN = True
 VERBOSE = True
@@ -49,6 +52,9 @@ OVERRIDES = {
         "Willemsen",
         "Goudsmit",
     ),
+    ("Turtle", "Taxonomy", "Working", "Group"): ("TTWG",),
+    ("Carvalho",): ("Carvalho", "de", "M."),
+    ("Blainville",): ("Blainville", "de"),
 }
 
 
@@ -113,7 +119,7 @@ class NameDetails:
             comment = None
 
         if ":" in year_plus:
-            year_key, page = year_plus.strip(",").split(":")
+            year_key, page = year_plus.strip(",").split(":", maxsplit=1)
         else:
             year_key = year_plus
             page = None
@@ -123,10 +129,13 @@ class NameDetails:
         try:
             ref = refs_dict[key]
         except KeyError:
-            if not in_author_bits:
-                raise
-            key = _make_key(in_author_bits, year_key)
-            ref = refs_dict[key]
+            if in_author_bits:
+                key = _make_key(in_author_bits, year_key)
+                ref = refs_dict.get(key)
+            else:
+                ref = None
+        if ref is None:
+            print("Failed to extract author for", stripped)
 
         return cls(" ".join(name_bits), author_bits, year, ref, page, comment)
 
@@ -175,40 +184,60 @@ def parse_refs() -> dict[RefKey, str]:
     refs: dict[RefKey, str] = {}
     current_key: RefKey | None = None
     current_lines: list[str] = []
-    for line in get_text(REFS):
-        if not line.strip():
+    text = get_text(REFS)
+    pages = extract_pages(text)
+    lines = []
+    for i, page_lines in pages:
+        page_lines = textwrap.dedent("\n".join(page_lines)).splitlines()
+        lines += split_lines(page_lines, i, dedent_right=False)
+    lines = itertools.dropwhile(
+        lambda l: l.strip() != "• IUCN Red List Assessments", lines
+    )
+
+    ref_list = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped == "CBFTT ACCOUNTS":
+            break
+        if stripped == "• IUCN Red List Assessments":
             continue
-        if (
-            (line[0].isupper() or line.startswith("van der"))
-            and "," in line
-            and (
-                m := re.search(
-                    r"^(.*?\.) \b((17|18|19|20)\d\d[a-z]?)( \[[^\]]+\])?\.", line
-                )
-            )
-        ):
-            if current_lines:
-                assert current_key is not None
-                refs[current_key] = clean_string(" ".join(current_lines))
-                current_lines = []
-            current_lines = [line]
-            authors = m.group(1)
-            year = m.group(2)
-            authors = re.sub(r" \[[^\]]+\]\.", "", authors)
-            authors = re.sub(r" (de|von|zu|da Silva|van|da|\(Ed\.\))\.", "", authors)
-            authors = re.sub(r" (de|von|zu|da Silva)\,", ",", authors)
-            authors = re.sub(r", [JS]r\.", "", authors)
-            authors = re.sub(r", ([A-Z]\.-?)+", "", authors)
-            authors = re.sub(r",? and ", ", ", authors)
-            authors = authors.replace("Boeadi.", "Boeadi")
-            current_key = tuple(" ".join(authors.split(", ")).split()), year
-
+        if not stripped:
+            continue
+        if line.startswith(" "):
+            ref_list[-1].append(line)
         else:
-            current_lines.append(line)
+            ref_list.append([line])
 
-    if current_lines:
-        assert current_key is not None
+    for ref in ref_list:
+        ref_text = (
+            "\t".join([line.strip() for line in ref])
+            .replace("-\t", "-")
+            .replace("/\t", "/")
+            .replace("\t", " ")
+        )
+
+        m = re.search(
+            r"^(.*?\.(?: de| \(Eds\.\))?) \b((15|16|17|18|19|20)\d\d[a-z]?)( \[[^\]]+\])?\.",
+            ref_text,
+        )
+        assert m is not None, ref_text
+        authors = m.group(1)
+        year = m.group(2)
+        authors = authors.replace(",", ", ")
+        authors = re.sub(r"\s+", " ", authors)
+        authors = re.sub(r" \[[^\]]+\]\.", "", authors)
+        authors = re.sub(r" (de|von|zu|da Silva|van|da|\(Ed\.\))\.", "", authors)
+        authors = re.sub(r" (de|von|zu|da Silva)\,", ",", authors)
+        authors = re.sub(r", [JS]r\.", "", authors)
+        authors = re.sub(r", ([A-Z]\.-?)+", "", authors)
+        authors = re.sub(r",? and ", ", ", authors)
+        authors = authors.replace("Boeadi.", "Boeadi")
+        current_key = tuple(" ".join(authors.split(", ")).split()), year
         refs[current_key] = clean_string(" ".join(current_lines))
+
+    with open("data_import/data/expt/ref_keys.txt", "w") as f:
+        for key in sorted(refs):
+            print(key, file=f)
     return refs
 
 
@@ -217,7 +246,7 @@ def indentation_of(line: str) -> int:
 
 
 def is_sentence_end(line: str) -> bool:
-    if line.endswith('.”'):
+    if line.endswith(".”"):
         return True
     return line.endswith(".") and not line.endswith(" et al.")
 
@@ -227,73 +256,18 @@ class TaxaParser:
     lines: list[Line] = field(default_factory=list)
     taxa: list[Taxon] = field(default_factory=list)
     refs: dict[RefKey, str] = field(default_factory=dict)
+    in_synonymy: bool = False
 
     def run(self) -> None:
-        refs = parse_refs()
+        self.refs = parse_refs()
 
-        text = get_text(SOURCE)
-        pages = extract_pages(text)
-
-        lines = [line for i, page_lines in pages for line in split_lines(page_lines, i)]
-        lines = self.merge_lines(lines)
+        lines = get_text(SOURCE)
         for line in lines:
-            print(line)
-            # self.parse_line(line)
-
-    def merge_lines(self, lines: list[str]) -> list[str]:
-        new_lines = []
-        must_merge = False
-        previous_indentation = -1
-        waiting_for_period = False
-        for line in lines:
-            line = line.replace("*", "").rstrip()
-            if not line:
-                continue
-            if " / " in line and "Tahanaoute" not in line and "68.5858" not in line:
-                continue
-            stripped = line.strip()
-            if must_merge:
-                new_lines[-1] += stripped
-                must_merge = False
-                if is_sentence_end(stripped):
-                    waiting_for_period = False
-            else:
-                if line.endswith("-"):
-                    line = line.removesuffix("-")
-                    stripped = stripped.removesuffix("-")
-                    must_merge = True
-                elif line.endswith(","):
-                    line += " "
-                    stripped += " "
-                    must_merge = True
-
-                indentation = indentation_of(line)
-                if (
-                    indentation == previous_indentation
-                    and ":" not in line
-                    and not stripped[0].isupper()
-                    and stripped[0] != "“"
-                ):
-                    new_lines[-1] += " " + stripped
-                    continue
-                if waiting_for_period:
-                    new_lines[-1] += " " + stripped
-                    if is_sentence_end(stripped):
-                        waiting_for_period = False
-                    continue
-                new_lines.append(line)
-                previous_indentation = indentation
-                if stripped.startswith(
-                    (
-                        "Comment:",
-                        "Type locality:",
-                        "Type specimen:",
-                        "Type specimens:",
-                        "Geologic age:",
-                    )
-                ) and not is_sentence_end(stripped):
-                    waiting_for_period = True
-        return new_lines
+            try:
+                self.parse_line(line)
+            except Exception as e:
+                traceback.print_exc()
+                print("Failed to parse:", line, "due to", repr(e))
 
     def parse_line(self, line: str) -> None:
         line = line.rstrip().replace("\t", "    ")
@@ -302,25 +276,34 @@ class TaxaParser:
             return
         leading_spaces = len(line) - len(stripped)
         if leading_spaces == 0:
-            if not any(c.isdigit() for c in line) and stripped.endswith("Turtle"):
-                print(stripped)
-                return
             kind = LineKind.taxon
+            # For genus names, there's no "Synonymy" header
+            first_char = re.sub(r" \([A-Za-z]+\)", "", line).split()[1][0]
+            self.in_synonymy = first_char.isupper()
         else:
+            if stripped == "Synonymy:":
+                self.in_synonymy = True
+                return
             if stripped.startswith("Type species:"):
+                assert self.in_synonymy, line
                 kind = LineKind.type_species
             elif stripped.startswith("Type locality:"):
+                assert self.in_synonymy, line
                 kind = LineKind.type_locality
             elif stripped.startswith("Comment:"):
+                assert self.in_synonymy, line
                 kind = LineKind.comment
-            elif stripped.startswith(("Type specimen", "Type specimens")):
+            elif stripped.startswith("Type specimen"):
+                assert self.in_synonymy, line
                 kind = LineKind.type_specimen
-            elif lines[-1].kind is LineKind.taxon and not any(
-                c.isdigit() for c in line
-            ):
-                kind = LineKind.vernacular_name
-            else:
+            elif stripped.startswith("Geologic age:"):
+                return
+            elif not self.in_synonymy:
+                return
+            elif re.search(r"\d", line):
                 kind = LineKind.synonym
+            else:
+                return
         self.lines.append(Line(line, kind))
 
         match kind:
@@ -337,7 +320,7 @@ class TaxaParser:
                     repr(self.taxa[-1].names),
                     line,
                 )
-                taxa[-1].names[-1].type_specimen = stripped.strip()
+                self.taxa[-1].names[-1].type_specimen = stripped.strip()
             case LineKind.comment:
                 assert self.taxa[-1].names[-1].comment is None, (
                     repr(self.taxa[-1].names),
@@ -352,15 +335,15 @@ class TaxaParser:
                     line,
                 )
                 self.taxa[-1].names[-1].type_species = stripped.removeprefix(
-                    "Type locality:"
+                    "Type species:"
                 ).strip()
             case LineKind.vernacular_name:
-                assert self.taxa[-1].vernacular_name is None, repr(taxa[-1])
-                self.taxa[-1].vernacular_name = stripped
+                pass
             case LineKind.synonym:
                 try:
-                    details = NameDetails.parse(stripped, refs)
+                    details = NameDetails.parse(stripped, self.refs)
                 except Exception as e:
+                    traceback.print_exc()
                     print(f"Failed to parse {stripped}: {e!r}")
                     details = None
                 self.taxa[-1].names.append(Name(stripped, details=details))
@@ -405,7 +388,6 @@ class TaxaParser:
                 while parent is not None and parent.rank <= rank:
                     parent = parent.parent
                 name = " ".join(name_words)
-                print("new taxon:", name)
                 taxon = Taxon(line, rank, name, authority, parent=parent)
                 self.taxa.append(taxon)
             case _:
@@ -432,9 +414,11 @@ def maybe_add(nam: models.Name, attr: str, value: object) -> None:
             if left == right:
                 return
         if attr == "verbatim_citation":
+            if value is None:
+                return
             if value in current:
                 return
-            new_value = f"{current} [From {{{SOURCE.inputfile}}}: {value}]"
+            new_value = f"{current} [From {{{SOURCE.source}}}: {value}]"
             if VERBOSE:
                 print(f"{nam}: set verbatim_citation to {new_value}")
             if not DRY_RUN:
@@ -518,6 +502,7 @@ def handle_taxon(taxon: Taxon) -> None:
 def main() -> None:
     taxa = get_taxa()
     for taxon in taxa:
+        break
         handle_taxon(taxon)
 
 
