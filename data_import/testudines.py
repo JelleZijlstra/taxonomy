@@ -4,7 +4,7 @@ import enum
 from collections.abc import Sequence
 
 from functools import cached_property
-from data_import.lib import Source, clean_string, get_text
+from data_import.lib import Source, clean_string, get_text, extract_pages, split_lines
 import re
 from taxonomy.db.constants import Rank
 from taxonomy.db import models
@@ -12,11 +12,11 @@ from typing_extensions import Self, assert_never
 
 from taxonomy.db.models.name import TypeTag
 
-SOURCE = Source("testudines.txt", "Testudines (TTWG 2017).pdf")
-REFS = Source("refs.txt", "Testudines (TTWG 2017).pdf")
+SOURCE = Source("expt/checklist.txt", "Testudines (TTWG 2021).pdf")
+REFS = Source("refs.txt", "Testudines (TTWG 2021).pdf")
 RefKey = tuple[tuple[str, ...], str]
 DRY_RUN = True
-VERBOSE = False
+VERBOSE = True
 
 
 class LineKind(enum.Enum):
@@ -25,6 +25,8 @@ class LineKind(enum.Enum):
     type_species = 3
     type_locality = 4
     vernacular_name = 5
+    type_specimen = 6
+    comment = 7
 
 
 @dataclass
@@ -133,7 +135,9 @@ class NameDetails:
 class Name:
     name_line: str
     type_locality: str | None = None
+    type_specimen: str | None = None
     type_species: str | None = None
+    comment: str | None = None
     details: NameDetails | None = None
 
 
@@ -208,58 +212,158 @@ def parse_refs() -> dict[RefKey, str]:
     return refs
 
 
-def get_taxa() -> list[Taxon]:
-    refs = parse_refs()
-    lines: list[Line] = []
-    taxa: list[Taxon] = []
-    for line in get_text(SOURCE):
+def indentation_of(line: str) -> int:
+    return len(line) - len(line.lstrip())
+
+
+def is_sentence_end(line: str) -> bool:
+    if line.endswith('.”'):
+        return True
+    return line.endswith(".") and not line.endswith(" et al.")
+
+
+@dataclass
+class TaxaParser:
+    lines: list[Line] = field(default_factory=list)
+    taxa: list[Taxon] = field(default_factory=list)
+    refs: dict[RefKey, str] = field(default_factory=dict)
+
+    def run(self) -> None:
+        refs = parse_refs()
+
+        text = get_text(SOURCE)
+        pages = extract_pages(text)
+
+        lines = [line for i, page_lines in pages for line in split_lines(page_lines, i)]
+        lines = self.merge_lines(lines)
+        for line in lines:
+            print(line)
+            # self.parse_line(line)
+
+    def merge_lines(self, lines: list[str]) -> list[str]:
+        new_lines = []
+        must_merge = False
+        previous_indentation = -1
+        waiting_for_period = False
+        for line in lines:
+            line = line.replace("*", "").rstrip()
+            if not line:
+                continue
+            if " / " in line and "Tahanaoute" not in line and "68.5858" not in line:
+                continue
+            stripped = line.strip()
+            if must_merge:
+                new_lines[-1] += stripped
+                must_merge = False
+                if is_sentence_end(stripped):
+                    waiting_for_period = False
+            else:
+                if line.endswith("-"):
+                    line = line.removesuffix("-")
+                    stripped = stripped.removesuffix("-")
+                    must_merge = True
+                elif line.endswith(","):
+                    line += " "
+                    stripped += " "
+                    must_merge = True
+
+                indentation = indentation_of(line)
+                if (
+                    indentation == previous_indentation
+                    and ":" not in line
+                    and not stripped[0].isupper()
+                    and stripped[0] != "“"
+                ):
+                    new_lines[-1] += " " + stripped
+                    continue
+                if waiting_for_period:
+                    new_lines[-1] += " " + stripped
+                    if is_sentence_end(stripped):
+                        waiting_for_period = False
+                    continue
+                new_lines.append(line)
+                previous_indentation = indentation
+                if stripped.startswith(
+                    (
+                        "Comment:",
+                        "Type locality:",
+                        "Type specimen:",
+                        "Type specimens:",
+                        "Geologic age:",
+                    )
+                ) and not is_sentence_end(stripped):
+                    waiting_for_period = True
+        return new_lines
+
+    def parse_line(self, line: str) -> None:
         line = line.rstrip().replace("\t", "    ")
         stripped = line.strip()
         if not stripped:
-            continue
+            return
         leading_spaces = len(line) - len(stripped)
         if leading_spaces == 0:
+            if not any(c.isdigit() for c in line) and stripped.endswith("Turtle"):
+                print(stripped)
+                return
             kind = LineKind.taxon
         else:
             if stripped.startswith("Type species:"):
                 kind = LineKind.type_species
             elif stripped.startswith("Type locality:"):
                 kind = LineKind.type_locality
+            elif stripped.startswith("Comment:"):
+                kind = LineKind.comment
+            elif stripped.startswith(("Type specimen", "Type specimens")):
+                kind = LineKind.type_specimen
             elif lines[-1].kind is LineKind.taxon and not any(
                 c.isdigit() for c in line
             ):
                 kind = LineKind.vernacular_name
             else:
                 kind = LineKind.synonym
-        lines.append(Line(line, kind))
+        self.lines.append(Line(line, kind))
 
         match kind:
             case LineKind.type_locality:
-                assert taxa[-1].names[-1].type_locality is None, (
-                    repr(taxa[-1].names),
+                assert self.taxa[-1].names[-1].type_locality is None, (
+                    repr(self.taxa[-1].names),
                     line,
                 )
-                taxa[-1].names[-1].type_locality = stripped.removeprefix(
+                self.taxa[-1].names[-1].type_locality = stripped.removeprefix(
                     "Type locality:"
                 ).strip()
-            case LineKind.type_species:
-                assert taxa[-1].names[-1].type_species is None, (
-                    repr(taxa[-1].names),
+            case LineKind.type_specimen:
+                assert self.taxa[-1].names[-1].type_specimen is None, (
+                    repr(self.taxa[-1].names),
                     line,
                 )
-                taxa[-1].names[-1].type_species = stripped.removeprefix(
+                taxa[-1].names[-1].type_specimen = stripped.strip()
+            case LineKind.comment:
+                assert self.taxa[-1].names[-1].comment is None, (
+                    repr(self.taxa[-1].names),
+                    line,
+                )
+                self.taxa[-1].names[-1].comment = stripped.removeprefix(
+                    "Comment:"
+                ).strip()
+            case LineKind.type_species:
+                assert self.taxa[-1].names[-1].type_species is None, (
+                    repr(self.taxa[-1].names),
+                    line,
+                )
+                self.taxa[-1].names[-1].type_species = stripped.removeprefix(
                     "Type locality:"
                 ).strip()
             case LineKind.vernacular_name:
-                assert taxa[-1].vernacular_name is None, repr(taxa[-1])
-                taxa[-1].vernacular_name = stripped
+                assert self.taxa[-1].vernacular_name is None, repr(taxa[-1])
+                self.taxa[-1].vernacular_name = stripped
             case LineKind.synonym:
                 try:
                     details = NameDetails.parse(stripped, refs)
                 except Exception as e:
-                    print(f"Failed to parse {stripped}: {e}")
+                    print(f"Failed to parse {stripped}: {e!r}")
                     details = None
-                taxa[-1].names.append(Name(stripped, details=details))
+                self.taxa[-1].names.append(Name(stripped, details=details))
             case LineKind.taxon:
                 words = line.split()
                 assert len(words) >= 3, line
@@ -294,19 +398,24 @@ def get_taxa() -> list[Taxon]:
                         rank = Rank.order
                     else:
                         rank = Rank.genus
-                if taxa:
-                    parent = taxa[-1]
+                if self.taxa:
+                    parent = self.taxa[-1]
                 else:
                     parent = None
                 while parent is not None and parent.rank <= rank:
                     parent = parent.parent
-                taxon = Taxon(
-                    line, rank, " ".join(name_words), authority, parent=parent
-                )
-                taxa.append(taxon)
+                name = " ".join(name_words)
+                print("new taxon:", name)
+                taxon = Taxon(line, rank, name, authority, parent=parent)
+                self.taxa.append(taxon)
             case _:
                 assert_never(kind)
-    return taxa
+
+
+def get_taxa() -> list[Taxon]:
+    parser = TaxaParser()
+    parser.run()
+    return parser.taxa
 
 
 def maybe_add(nam: models.Name, attr: str, value: object) -> None:
