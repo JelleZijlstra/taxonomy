@@ -224,6 +224,9 @@ class CitationGroup(BaseModel):
 
     def _display_nams(self, nams: Iterable["models.Name"], depth: int = 0) -> None:
         for nam in sorted(nams, key=lambda nam: nam.sort_key()):
+            # Make it easier to see names that don't have a citation yet
+            if nam.original_citation is not None:
+                continue
             print(f"{' ' * (depth + 4)}{nam}")
             print(f"{' ' * (depth + 8)}{nam.verbatim_citation}")
 

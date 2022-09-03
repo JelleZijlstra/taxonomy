@@ -4,22 +4,36 @@ import itertools
 import textwrap
 import traceback
 
+from collections import Counter
 from collections.abc import Sequence
 
-from functools import cached_property
+from functools import cached_property, cache
+from itertools import islice
 from data_import.lib import Source, clean_string, get_text, extract_pages, split_lines
 import re
-from taxonomy.db.constants import Rank
-from taxonomy.db import models
+from taxonomy.db.constants import Rank, Group, SpeciesGroupType
+from taxonomy.db import models, helpers
+from taxonomy import getinput
 from typing_extensions import Self, assert_never
 
 from taxonomy.db.models.name import TypeTag
 
 SOURCE = Source("expt/recolumnized.txt", "Testudines (TTWG 2021).pdf")
 REFS = Source("expt/refs.txt", "Testudines (TTWG 2021).pdf")
+COLLECTIONS = Source("turtle2021collections.txt", "Testudines (TTWG 2021).pdf")
 RefKey = tuple[tuple[str, ...], str]
-DRY_RUN = True
+DRY_RUN = False
 VERBOSE = True
+SKIP_NAMES = False
+
+MISMATCHED_COLLECTIONS = {
+    "TMP": "TM",
+    "RSM": "NMS",
+    "PUM": "PUA",
+    "NMB": "NM",  # Bloemfontein, not Basel
+    "AMS": "AM",
+    "NHMUK": "BMNH",
+}
 
 
 class LineKind(enum.Enum):
@@ -135,9 +149,24 @@ class NameDetails:
             else:
                 ref = None
         if ref is None:
-            print("Failed to extract author for", stripped)
+            if key == (("Auffenberg",), "1988"):
+                ref = "Auffenberg, W. 1988. A new species of <i>Geochelone</i> (Testudinata: Testudinidae) from the Pleistocene of Florida (U.S.A.). Acta Zoologica Cracoviensia 31(23):591-604."
+            else:
+                print("Failed to extract author for", stripped, key)
 
         return cls(" ".join(name_bits), author_bits, year, ref, page, comment)
+
+
+@cache
+def get_collections() -> dict[str, str]:
+    out = {}
+    for line in get_text(COLLECTIONS):
+        line = line.strip()
+        if not line:
+            continue
+        key, _ = line.split(" = ", maxsplit=1)
+        out[key] = line
+    return out
 
 
 @dataclass
@@ -148,6 +177,36 @@ class Name:
     type_species: str | None = None
     comment: str | None = None
     details: NameDetails | None = None
+
+    def parse_type_specimen(
+        self,
+    ) -> tuple[str | None, str | None, str | None, SpeciesGroupType | None]:
+        type_specimen = None
+        collection = None
+        detail = None
+        type_kind = None
+        if self.type_specimen is not None:
+            match = re.match(
+                r"^Type specimen: (?P<type_specimen>(?P<collection>[A-Z]+) [A-Z]*[\d\.a-z]+), (?P<kind>holotype|lectotype|neotype)",
+                self.type_specimen,
+            )
+            if match is not None:
+                type_specimen = match.group("type_specimen")
+                collection = match.group("collection")
+                type_kind = SpeciesGroupType[match.group("kind")]
+                # Skip the most common ones
+                if collection not in ("MNHN", "NHMUK", "USNM", "UF", "MCZ"):
+                    coll_details = get_collections()
+                    try:
+                        detail = coll_details[collection]
+                    except KeyError:
+                        print("Invalid collection:", collection)
+        if collection in MISMATCHED_COLLECTIONS:
+            type_specimen = type_specimen.replace(
+                collection, MISMATCHED_COLLECTIONS[collection]
+            )
+            collection = MISMATCHED_COLLECTIONS[collection]
+        return type_specimen, collection, detail, type_kind
 
 
 @dataclass
@@ -164,12 +223,19 @@ class Taxon:
     def get_models_taxon(self) -> models.Taxon | None:
         if self.models_taxon is not None:
             return self.models_taxon
-        name = self.name
+        name = self.name.replace("“", "").replace("?", "").replace("”", "")
         if self.rank in (Rank.species, Rank.subspecies):
             name = re.sub(r" \([^\)]+\)", "", name)
+        elif self.rank is Rank.subgenus:
+            name = re.sub(r"[A-Z][a-z]+ \(([A-Z][a-z]+)\)", r"\1", name)
+        rank = self.rank
+        if name == "Trionychoidea":
+            # Trionychoidea is a redundant taxon and we do not include it
+            name = "Trionychidae"
+            rank = Rank.family
         candidates = list(
-            models.Taxon.filter(
-                models.Taxon.valid_name == name, models.Taxon.rank == self.rank
+            models.Taxon.select_valid().filter(
+                models.Taxon.valid_name == name, models.Taxon.rank == rank
             )
         )
         if len(candidates) > 1:
@@ -233,7 +299,7 @@ def parse_refs() -> dict[RefKey, str]:
         authors = re.sub(r",? and ", ", ", authors)
         authors = authors.replace("Boeadi.", "Boeadi")
         current_key = tuple(" ".join(authors.split(", ")).split()), year
-        refs[current_key] = clean_string(" ".join(current_lines))
+        refs[current_key] = clean_string(ref_text)
 
     with open("data_import/data/expt/ref_keys.txt", "w") as f:
         for key in sorted(refs):
@@ -373,8 +439,12 @@ class TaxaParser:
                         rank = Rank.subfamily
                     elif name.endswith("idae"):
                         rank = Rank.family
-                    elif name.endswith("oidea"):
+                    elif name.endswith("oidea") and name != "Emydoidea":
                         rank = Rank.superfamily
+                    elif name in ("Durocryptodira", "Trionychia"):
+                        rank = Rank.infraorder
+                    elif name == "Meiolaniformes":
+                        rank = Rank.unranked
                     elif name.endswith("odira"):
                         rank = Rank.suborder
                     elif name == "Testudines":
@@ -448,14 +518,50 @@ def fill_name(nam: models.Name, name: Name) -> None:
         maybe_add(nam, "verbatim_citation", name.details.ref)
         if name.details.page is not None:
             maybe_add(nam, "page_described", name.details.page)
-        if name.details.comment is not None and name.details.comment.strip().startswith(
-            "("
-        ):
-            tag = TypeTag.NomenclatureDetail(name.details.comment, art)
+        if name.comment is not None and name.comment.strip().startswith("("):
+            tag = TypeTag.NomenclatureDetail(name.comment, art)
             if VERBOSE:
                 print(f"{nam}: add tag {tag}")
             if not DRY_RUN:
                 nam.add_type_tag(tag)
+        if name.type_specimen is not None:
+            tag = TypeTag.SpecimenDetail(name.type_specimen, art)
+            if VERBOSE:
+                print(f"{nam}: add tag {tag}")
+            if not DRY_RUN:
+                nam.add_type_tag(tag)
+            type_specimen, collection, detail, type_kind = name.parse_type_specimen()
+            if type_specimen is not None:
+                maybe_add(nam, "type_specimen", type_specimen)
+            if collection is not None:
+                try:
+                    candidate = (
+                        models.Collection.select_valid()
+                        .filter(models.Collection.label == collection)
+                        .get()
+                    )
+                except models.Collection.DoesNotExist:
+                    pass
+                else:
+                    maybe_add(nam, "collection", candidate)
+            if detail is not None:
+                tag = TypeTag.CollectionDetail(detail, art)
+                if VERBOSE:
+                    print(f"{nam}: add tag {tag}")
+                if not DRY_RUN:
+                    nam.add_type_tag(tag)
+            if type_kind is not None:
+                maybe_add(nam, "species_type_kind", type_kind)
+
+
+def key_for_name(nam: Name, include_tussenvoegsel: bool = False) -> tuple[object, ...]:
+    names = []
+    if nam.author_tags:
+        for t in nam.author_tags:
+            if include_tussenvoegsel and t.person.tussenvoegsel is not None:
+                names.append(t.person.tussenvoegsel)
+            names += t.person.family_name.split()
+    return (nam.root_name, tuple(names), nam.year)
 
 
 def handle_taxon(taxon: Taxon) -> None:
@@ -479,20 +585,57 @@ def handle_taxon(taxon: Taxon) -> None:
                 models_taxon = parent_model.add_static(taxon.rank, taxon.name)
     elif VERBOSE:
         print(f"Taxon: Associate {taxon.rank.name} {taxon.name} with {models_taxon}")
-    if models_taxon is None or not taxon.names:
+    if SKIP_NAMES or models_taxon is None or not taxon.names:
         return
-    fill_name(models_taxon.base_name, taxon.names[0])
-    for name in taxon.names[1:]:
-        assert name.details is not None, repr(name)
-        nam = models_taxon.syn(
-            name.details.root_name,
-            year=name.details.year,
-            author_tags=name.details.author_tags,
-        )
+    names = {key_for_name(nam): nam for nam in models_taxon.get_names()}
+    for name in taxon.names:
+        root_name = name.details.root_name.replace("è", "e")
+        key = (root_name, tuple(name.details.authority), name.details.year)
+        nam = names.get(key)
         if nam is None:
-            print(f"Add new name for {name}")
-            if not DRY_RUN:
-                nam = models_taxon.add_syn(name.details.root_name, interactive=False)
+            if helpers.group_of_rank(taxon.rank) is Group.family:
+                short_key = tuple(name.details.authority), name.details.year
+                possible_names = models.Name.select_valid().filter(
+                    (models.Name.original_name == name.details.original_name)
+                    | (
+                        models.Name.original_name
+                        == name.details.original_name.replace("ae", "æ")
+                    ),
+                    models.Name.year == name.details.year,
+                )
+                possible_names = [
+                    nam
+                    for nam in possible_names
+                    if key_for_name(nam)[1:] == short_key
+                    or key_for_name(nam, include_tussenvoegsel=True)[1:] == short_key
+                ]
+            else:
+                possible_names = models.Name.select_valid().filter(
+                    models.Name.root_name == root_name,
+                    models.Name.year == name.details.year,
+                )
+                keys = [
+                    (
+                        nam,
+                        key_for_name(nam),
+                        key_for_name(nam, include_tussenvoegsel=True),
+                    )
+                    for nam in possible_names
+                ]
+                possible_names = [
+                    nam
+                    for nam in possible_names
+                    if key_for_name(nam) == key
+                    or key_for_name(nam, include_tussenvoegsel=True) == key
+                ]
+            if len(possible_names) >= 1:
+                nam = possible_names[0]
+            else:
+                print(f"Add new name for {name}", possible_names, key)
+                if not DRY_RUN:
+                    nam = models_taxon.add_syn(
+                        name.details.root_name, interactive=False
+                    )
         elif VERBOSE:
             print(f"Name: Associate {nam} with {name}")
         if nam is not None:
@@ -502,7 +645,7 @@ def handle_taxon(taxon: Taxon) -> None:
 def main() -> None:
     taxa = get_taxa()
     for taxon in taxa:
-        break
+        getinput.print_header(taxon.name)
         handle_taxon(taxon)
 
 

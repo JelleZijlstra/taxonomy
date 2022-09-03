@@ -1035,7 +1035,7 @@ class Taxon(BaseModel):
             for name in self.all_names(age=age, min_year=min_year, exclude=exclude)
             if getattr(name, field) is None and field in name.get_required_fields()
         }
-    
+
     def print_names_missing_field(self) -> None:
         field = getinput.get_with_completion(
             models.Name.get_field_names(),
@@ -1044,7 +1044,7 @@ class Taxon(BaseModel):
             disallow_other=True,
         )
         nams = self.names_missing_field(field)
-        for nam in sorted(nams, lambda nam: nam.sort_key()):
+        for nam in sorted(nams, key=lambda nam: nam.sort_key()):
             nam.display(full=False)
 
     def stats(
@@ -1269,7 +1269,7 @@ _finished_papers: Set[Tuple[str, FillDataLevel]] = set()
 
 def _name_sort_key(nam: "models.Name") -> Tuple[str, int]:
     try:
-        return ("", int(nam.page_described))
+        return ("", nam.numeric_page_described())
     except (TypeError, ValueError):
         return (nam.page_described or "", 0)
 

@@ -304,9 +304,10 @@ class BaseModel(Model):
 
     def __str__(self) -> str:
         if hasattr(self, "label_field"):
-            return getattr(self, self.label_field)
-        else:
-            return BaseModel.__repr__(self)
+            label = getattr(self, self.label_field)
+            if isinstance(label, str):
+                return label
+        return BaseModel.__repr__(self)
 
     def __repr__(self) -> str:
         return "{}({})".format(
@@ -938,7 +939,7 @@ class _NameGetter(Generic[ModelT]):
         self._encoded_data = None
         cache = derived_data.load_cached_data()
         key = self._cache_key()
-        del cache[key]
+        cache.pop(key, None)
 
     def rewarm_cache(self) -> None:
         self.clear_cache()

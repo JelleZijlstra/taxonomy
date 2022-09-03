@@ -303,10 +303,16 @@ class Name(BaseModel):
             if self.group is Group.species:
                 if " var. " in handcleaned_name:
                     return Rank.variety
-                if self.corrected_original_name.count(" ") == 1 and self.original_name.count(" ") >= 1:
+                if (
+                    self.corrected_original_name.count(" ") == 1
+                    and self.original_name.count(" ") >= 1
+                ):
                     return Rank.species
             elif self.group is Group.genus:
-                if re.search(rf"^[A-Z][a-z]+ \({self.corrected_original_name}\)$", self.original_name):
+                if re.search(
+                    rf"^[A-Z][a-z]+ \({self.corrected_original_name}\)$",
+                    self.original_name,
+                ):
                     return Rank.subgenus
             return None
         if self.group is Group.species:
@@ -332,7 +338,9 @@ class Name(BaseModel):
                     return Rank.genus
         return None
 
-    def autoset_original_rank(self, interactive: bool = False, quiet: bool = True, dry_run: bool = False) -> bool:
+    def autoset_original_rank(
+        self, interactive: bool = False, quiet: bool = True, dry_run: bool = False
+    ) -> bool:
         if self.original_rank is not None:
             return False
         inferred = self.infer_original_rank()
@@ -345,7 +353,9 @@ class Name(BaseModel):
             return True
         else:
             if not quiet:
-                print(f"{self}: could not infer original rank from {self.original_name!r}")
+                print(
+                    f"{self}: could not infer original rank from {self.original_name!r}"
+                )
             if interactive:
                 self.display()
                 self.open_description()
@@ -511,7 +521,21 @@ class Name(BaseModel):
             "level": self.print_fill_data_level,
             "set_nos": self.set_nos,
             "validate": self.validate,
+            "merge": self._merge,
+            "remove_duplicate": self._remove_duplicate,
         }
+
+    def _merge(self) -> None:
+        other = Name.getter(None).get_one("name to merge into> ")
+        if other is None:
+            return
+        self.merge(other)
+
+    def _remove_duplicate(self) -> None:
+        other = Name.getter(None).get_one("name to remove> ")
+        if other is None:
+            return
+        other.merge(self)
 
     def print_fill_data_level(self) -> None:
         level, reason = self.fill_data_level()
@@ -1212,7 +1236,7 @@ class Name(BaseModel):
         ):
             return (
                 FillDataLevel.needs_basic_data,
-                "'assumed' name_complexf or name with original_citation",
+                "'assumed' name_complex for name with original_citation",
             )
         missing_fields = set(self.get_empty_required_fields())
         required_details_tags = list(self.get_required_details_tags())
@@ -1317,11 +1341,7 @@ class Name(BaseModel):
                     yield (TypeTag.CollectedBy, TypeTag.NoCollector, TypeTag.Involved)
                     yield (TypeTag.Age, TypeTag.NoAge)
                     yield (TypeTag.Gender, TypeTag.NoGender)
-            if (
-                self.has_type_tag(TypeTag.EtymologyDetail)
-                and self.is_patronym()
-                and not self.nomenclature_status.is_variant()
-            ):
+            if self.is_patronym() and not self.nomenclature_status.is_variant():
                 yield (TypeTag.NamedAfter,)
             if self.type_specimen and self.species_type_kind and not self.collection:
                 yield (TypeTag.ProbableRepository,)
@@ -1353,8 +1373,7 @@ class Name(BaseModel):
 
         yield "author_tags"
         yield "year"
-        if self.nomenclature_status != NomenclatureStatus.as_emended:
-            yield "page_described"
+        yield "page_described"
         yield "original_citation"
         if self.original_citation is None:
             yield "verbatim_citation"

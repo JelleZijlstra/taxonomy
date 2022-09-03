@@ -112,7 +112,9 @@ class DerivedField(Generic[T]):
             return None
         if isinstance(typ, type):
             if issubclass(typ, models.base.BaseModel):
-                return typ.select_valid().filter(typ.id == serialized).get()
+                # Not select_valid(), we'll filter out deleted names the next time
+                # we regenerate the derived data.
+                return typ.select().filter(typ.id == serialized).get()
             elif issubclass(typ, enum.Enum):
                 return typ(serialized)
         if (

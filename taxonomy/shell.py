@@ -3807,15 +3807,18 @@ def write_derived_data() -> None:
 
 @command
 def warm_all_caches() -> None:
+    keys = set(derived_data.load_derived_data())
     for model in models.BaseModel.__subclasses__():
         if hasattr(model, "label_field"):
             print(f"{model}: warming None getter")
-            model.getter(None)._warm_cache()
+            model.getter(None).rewarm_cache()
         for name, field in model._meta.fields.items():
-            if isinstance(field, peewee.CharField):
+            getter = model.getter(name)
+            if isinstance(field, peewee.CharField) or getter._cache_key() in keys:
                 print(f"{model}: warming {name} ({field})")
-                model.getter(name)._warm_cache()
+                getter.rewarm_cache()
     fill_data_from_folder("", only_fill_cache=True)
+    write_derived_data()
 
 
 @command

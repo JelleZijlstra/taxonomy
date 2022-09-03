@@ -174,8 +174,9 @@ In more detail:
   [Obi](/r/Obi), [Seram](/r/Seram), the [Sula Islands](/r/Sula_Islands), [Ternate](/r/Ternate), [Tidore](/r/Tidore),
   the [Tanimbar Islands](/r/Tanimbar_Islands), and the [Banda Islands](/r/Banda_Islands).
 - The Indonesian part of New Guinea with associated islands forms the region of
-  [Western New Guinea](/r/Western_New_Guinea). It is divided into the provinces of [West Papua](/r/West_Papua)
-  and [Papua](/r/Papua). Among others, the
+  [Western New Guinea](/r/Western_New_Guinea). It is divided into the provinces of [West Papua](/r/West_Papua),
+  [Papua](/r/Papua), [Central Papua](/r/Central_Papua), [Highland Papua](/r/Highland_Papua), and
+  [South Papua](/r/South_Papua). Among others, the
   offshore islands of [Biak-Supiori](/r/Biak-Supiori), [Japen](/r/Japen), and [Waigeo](/r/Waigeo) form subregions.
 
 ### [Southern Asia](/r/Southern_Asia)

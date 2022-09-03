@@ -373,7 +373,7 @@ def get_adt_list(
         elif not member:
             print(f"new tags: {out}")
             return tuple(out)
-        elif member.isnumeric():
+        elif member.isnumeric() or (member.startswith("-") and member[1:].isnumeric()):
             index = int(member)
             if index >= len(out):
                 print(f"{index} is out of range")

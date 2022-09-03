@@ -341,6 +341,9 @@ class Rank(enum.IntEnum):
     variety = 216
     form = 217
     infrasubspecific = 218
+    synonym = (
+        219  # for original rank; if the name was not treated as valid when created
+    )
 
 
 class RegionKind(enum.IntEnum):
