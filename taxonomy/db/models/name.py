@@ -108,10 +108,6 @@ class Name(BaseModel):
     year = CharField(null=True)  # redundant with data for the publication itself
 
     # Gender and stem
-    stem = CharField(null=True)  # redundant with name complex
-    name_gender = EnumField(
-        constants.GrammaticalGender, null=True, db_column="gender"
-    )  # for genus group; redundant with name complex
     name_complex = ForeignKeyField(NameComplex, null=True, related_name="names")
     species_name_complex = ForeignKeyField(
         SpeciesNameComplex, null=True, related_name="names"
@@ -1098,12 +1094,7 @@ class Name(BaseModel):
             statuses.append(self.nomenclature_status)
         if statuses:
             out += f' ({", ".join(status.name for status in statuses)})'
-        if full and (
-            self.original_name is not None
-            or self.stem is not None
-            or self.name_gender is not None
-            or self.definition is not None
-        ):
+        if full and (self.original_name is not None or self.definition is not None):
             parts = []
             if self.original_name is not None:
                 parts.append(f"root: {self.root_name}")
@@ -1116,11 +1107,6 @@ class Name(BaseModel):
                 parts.append(f"name complex: {self.name_complex}")
             elif self.species_name_complex is not None:
                 parts.append(f"name complex: {self.species_name_complex}")
-            else:
-                if self.stem is not None:
-                    parts.append("stem: %s" % self.stem)
-                if self.name_gender is not None:
-                    parts.append(constants.GrammaticalGender(self.name_gender).name)
             if self.definition is not None:
                 parts.append(str(self.definition))
             out += " (%s)" % "; ".join(parts)
@@ -1431,10 +1417,6 @@ class Name(BaseModel):
                     yield "type"
                 if self.type is not None:
                     yield "genus_type_kind"
-
-    def get_deprecated_fields(self) -> Iterable[str]:
-        yield "stem"
-        yield "name_gender"
 
     def validate_as_child(self, status: Status = Status.valid) -> Taxon:
         if self.taxon.rank is Rank.species:

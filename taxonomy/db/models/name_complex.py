@@ -404,16 +404,10 @@ class NameComplex(BaseModel):
         print(f"found {len(names)} names with -{ending} to apply {self}")
         output = []
         for name in names:
-            if name.name_gender is not None and name.name_gender != self.gender:
-                print(
-                    f"ignoring {name} because its gender {name.name_gender} does not match"
-                )
-                output.append(name)
-            else:
-                print(name)
-                if not dry_run:
-                    name.name_complex = self
-                    name.save()
+            print(name)
+            if not dry_run:
+                name.name_complex = self
+                name.save()
         if not dry_run:
             saved_endings = list(self.endings)
             if not any(e.ending == ending for e in saved_endings):

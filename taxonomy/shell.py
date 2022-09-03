@@ -509,7 +509,7 @@ def check_corrected_original_name() -> Iterator[Tuple[Name, str]]:
                 yield make_message(nam, "does not end with a valid family-group suffix")
                 continue
             if nam.type is not None:
-                stem = nam.type.get_stem() or nam.type.stem
+                stem = nam.type.get_stem()
                 if stem is not None:
                     possibilities = {
                         f"{stem}{suffix}" for suffix in helpers.VALID_SUFFIXES
@@ -570,10 +570,7 @@ def detect_types_from_root_names(max_count: Optional[int] = None) -> None:
     """Detects types for family-group names on the basis of the root_name."""
 
     def detect_from_root_name(name: Name, root_name: str) -> bool:
-        candidates = Name.select_valid().filter(
-            Name.group == Group.genus,
-            (Name.stem == root_name) | (Name.stem == root_name + "i"),
-        )
+        candidates = Name.select_valid().filter(Name.group == Group.genus)
         candidates = list(filter(lambda c: c.taxon.is_child_of(name.taxon), candidates))
         if len(candidates) == 1:
             print("Detected type for name {}: {}".format(name, candidates[0]))
@@ -623,7 +620,7 @@ def endswith(end: str) -> List[Name]:
 
 
 @command
-def detect_complexes(allow_ignoring: bool = True) -> None:
+def detect_complexes() -> None:
     endings = list(models.NameEnding.select())
     for name in Name.select_valid().filter(
         Name.group == Group.genus, Name.name_complex >> None
@@ -632,17 +629,6 @@ def detect_complexes(allow_ignoring: bool = True) -> None:
         if inferred is None:
             continue
         stem = inferred.get_stem_from_name(name.root_name)
-        if allow_ignoring:
-            if name.stem is not None and name.stem != stem:
-                print(
-                    f"ignoring {inferred} for {name} because {inferred.stem} != {stem}"
-                )
-                continue
-            if name.name_gender is not None and name.name_gender != inferred.gender:
-                print(
-                    f"ignoring {inferred} for {name} because {inferred.gender} != {name.name_gender}"
-                )
-                continue
         print(f"Inferred stem and complex for {name}: {stem}, {inferred}")
         name.name_complex = inferred
         name.save()
@@ -856,30 +842,6 @@ def generate_word_list() -> Set[str]:
 
 
 @generator_command
-def stem_mismatch(autofix: bool = False) -> Iterable[Name]:
-    for nam in Name.select_valid().filter(
-        Name.group == Group.genus, ~(Name.name_complex >> None)
-    ):
-        if nam.stem is None:
-            continue
-        if nam.stem != nam.get_stem():
-            print(f"Stem mismatch for {nam}: {nam.stem} vs. {nam.get_stem()}")
-            if autofix:
-                nam.stem = nam.get_stem()
-                nam.save()
-            yield nam
-
-
-@generator_command
-def complexless_stems() -> Iterable[Name]:
-    for nam in Name.select_valid().filter(
-        Name.group == Group.genus, Name.name_complex == None, Name.stem != None
-    ):
-        if nam.nomenclature_status.requires_name_complex():
-            yield nam
-
-
-@generator_command
 def correct_species_root_names(dry_run: bool = True) -> Iterable[Name]:
     for nam in Name.select_valid().filter(
         Name.group == Group.species, Name.species_name_complex != None
@@ -921,7 +883,7 @@ def root_name_mismatch(interactive: bool = False) -> Iterable[Name]:
     ):
         if name.is_unavailable():
             continue
-        stem_name = name.type.stem
+        stem_name = name.type.get_stem()
         if stem_name is None:
             continue
         if name.root_name == stem_name:
@@ -1038,32 +1000,6 @@ def dup_names() -> List[
         )
         original_year[key].append(name)
     return [original_year]
-
-
-@command
-def stem_statistics() -> None:
-    stem = (
-        Name.select_valid()
-        .filter(Name.group == Group.genus, ~(Name.stem >> None))
-        .count()
-    )
-    gender = (
-        Name.select_valid()
-        .filter(Name.group == Group.genus, ~(Name.name_gender >> None))
-        .count()
-    )
-    total = Name.select_valid().filter(Name.group == Group.genus).count()
-    print("Genus-group names:")
-    print("stem: {}/{} ({:.02f}%)".format(stem, total, stem / total * 100))
-    print("gender: {}/{} ({:.02f}%)".format(gender, total, gender / total * 100))
-    print("Family-group names:")
-    total = Name.select_valid().filter(Name.group == Group.family).count()
-    typ = (
-        Name.select_valid()
-        .filter(Name.group == Group.family, ~(Name.type >> None))
-        .count()
-    )
-    print("type: {}/{} ({:.02f}%)".format(typ, total, typ / total * 100))
 
 
 class ScoreHolder:
@@ -1540,8 +1476,6 @@ def extract_id(text: str, call_sign: str) -> int | None:
 
 
 ATTRIBUTES_BY_GROUP = {
-    "stem": (Group.genus,),
-    "name_gender": (Group.genus,),
     "name_complex": (Group.genus,),
     "species_name_complex": (Group.species,),
     "type": (Group.family, Group.genus),
@@ -1656,7 +1590,7 @@ def bad_page_described() -> None:
 
 @command
 def field_counts() -> None:
-    for field in ("verbatim_citation", "verbatim_type", "stem", "name_gender"):
+    for field in ("verbatim_citation", "verbatim_type"):
         print(field, Name.select_valid().filter(getattr(Name, field) != None).count())
     print("Total", Name.select_valid().count())
 
@@ -1676,52 +1610,6 @@ def clean_column(
             if not dry_run:
                 setattr(obj, column, new_value)
                 obj.save()
-
-
-@generator_command
-def clean_up_gender(dry_run: bool = False) -> Iterable[Name]:
-    count = 0
-    for nam in Name.bfind(
-        Name.name_gender != None, Name.name_complex != None, quiet=True, sort=False
-    ):
-        if nam.name_gender == nam.name_complex.gender:
-            print(
-                f"remove gender from {nam} (gender={nam.name_gender!r}, NC={nam.name_complex})"
-            )
-            if not dry_run:
-                nam.name_gender = None
-            count += 1
-        else:
-            print(f"{nam}: gender mismatch {nam.name_gender!r} vs. {nam.name_complex}")
-            yield nam
-        getinput.flush()
-    print(f"{count} cleaned up")
-
-
-@generator_command
-def clean_up_stem(dry_run: bool = False) -> Iterable[Name]:
-    count = 0
-    for nam in Name.bfind(
-        Name.stem != None, Name.name_complex != None, quiet=True, sort=False
-    ):
-        try:
-            inferred = nam.name_complex.get_stem_from_name(nam.corrected_original_name)
-        except ValueError as e:
-            print(f"{nam}: cannot infer stem from {nam.name_complex} because of {e}")
-            yield nam
-            continue
-        if nam.stem == inferred:
-            print(f"remove stem from {nam} (stem={nam.stem!r}, NC={nam.name_complex})")
-            if not dry_run:
-                nam.stem = None
-            count += 1
-        else:
-            print(
-                f"{nam}: stem mismatch {nam.stem!r} vs. {inferred!r} from {nam.name_complex}"
-            )
-            yield nam
-        getinput.flush()
-    print(f"{count} cleaned up")
 
 
 @command
@@ -3299,8 +3187,6 @@ def run_maintenance(skip_slow: bool = True) -> Dict[Any, Any]:
         recent_names_without_verbatim,
         enforce_must_have_series,
         check_period_ranks,
-        clean_up_stem,
-        clean_up_gender,
         check_corrected_original_name,
         check_root_name,
         Person.autodelete,
