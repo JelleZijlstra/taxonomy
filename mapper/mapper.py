@@ -249,7 +249,7 @@ def decode_source(raw_source: str | int, *, cite_style: str = "paper") -> str:
     else:
         query = query.filter(Article.name == raw_source)
     art: Article = query.get()
-    return art.cite(cite_style)
+    return art.cite(cite_style).removeprefix("*")
 
 
 def source_from_locality(locality: Locality, cite_style: str = "paper") -> str | None:
@@ -327,8 +327,17 @@ LOCALITY_REPORT_TEMPLATE = {
 FORMAT_TO_STYLE = {ReportFormat.markdown: "paper", ReportFormat.wiki: "normal"}
 
 
-def print_report(map_data: MapData, format: ReportFormat) -> None:
+def print_report(map_data: MapData, format: ReportFormat, only_unsourced: bool) -> None:
     for group in map_data["data"]:
+        localities = group["localities"]
+        if only_unsourced:
+            localities = [
+                locality
+                for locality in localities
+                if "source" not in locality and "raw_source" not in locality
+            ]
+        if not localities:
+            continue
         print()
         name = group["group_name"]
         match format:
@@ -337,7 +346,7 @@ def print_report(map_data: MapData, format: ReportFormat) -> None:
             case ReportFormat.wiki:
                 print(f"=== {name} ===")
         print()
-        for locality in group["localities"]:
+        for locality in localities:
             template = LOCALITY_REPORT_TEMPLATE[format]
             if "comment" in locality:
                 maybe_comment = f". Comment: {locality['comment']}"
@@ -375,13 +384,19 @@ def main() -> None:
         default=False,
         help="Output a markdown source report",
     )
+    parser.add_argument(
+        "--only-unsourced",
+        action="store_true",
+        default=False,
+        help="Only report localities without sources",
+    )
     args = parser.parse_args()
     with Path(args.datafile).open(encoding="utf-8") as f:
         map_data = json.load(f)
     if args.wiki_report:
-        print_report(map_data, ReportFormat.wiki)
+        print_report(map_data, ReportFormat.wiki, args.only_unsourced)
     elif args.markdown_report:
-        print_report(map_data, ReportFormat.markdown)
+        print_report(map_data, ReportFormat.markdown, args.only_unsourced)
     else:
         root_dir = Path(__file__).parent
         map_to_svg(map_data, root_dir)
