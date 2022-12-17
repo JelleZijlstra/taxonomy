@@ -304,6 +304,11 @@ class Name(BaseModel):
                     and self.original_name.count(" ") >= 1
                 ):
                     return Rank.species
+                if (
+                    self.corrected_original_name.count(" ") == 3
+                    and self.nomenclature_status is NomenclatureStatus.infrasubspecific
+                ):
+                    return Rank.infrasubspecific
             elif self.group is Group.genus:
                 if re.search(
                     rf"^[A-Z][a-z]+ \({self.corrected_original_name}\)$",
@@ -517,6 +522,8 @@ class Name(BaseModel):
             "level": self.print_fill_data_level,
             "set_nos": self.set_nos,
             "validate": self.validate,
+            "validate_as_child": self.validate_as_child,
+            "add_nominate": lambda: self.taxon.add_nominate(),
             "merge": self._merge,
             "remove_duplicate": self._remove_duplicate,
         }
@@ -1469,12 +1476,12 @@ class Name(BaseModel):
         new_taxon = Taxon.create(
             rank=rank, parent=parent, age=old_taxon.age, valid_name=""
         )
-        new_taxon.base_name = self
-        new_taxon.valid_name = new_taxon.compute_valid_name()
-        new_taxon.save()
         self.taxon = new_taxon
         self.status = status  # type: ignore
+        new_taxon.base_name = self
+        new_taxon.save()
         self.save()
+        new_taxon.recompute_name()
         return new_taxon
 
     def merge(self, into: "Name", allow_valid: bool = False) -> None:
@@ -1809,6 +1816,27 @@ class Name(BaseModel):
                     nams.add(nam)
         return arts, nams
 
+    @classmethod
+    def add_hmw_tags(cls, family: str) -> None:
+        while True:
+            nam = Name.getter("corrected_original_name").get_one()
+            if nam is None:
+                break
+            taxon = nam.taxon
+            if taxon.rank is Rank.subspecies:
+                taxon = taxon.parent_of_rank(Rank.species)
+            taxon.display()
+            number = getinput.get_line("number> ")
+            if not number:
+                break
+            default = taxon.valid_name
+            hmw_name = getinput.get_line(f"name> ", default=default)
+            if not hmw_name:
+                hmw_name = default
+            tag = NameTag.HMW(number=f"{family}{number}", name=hmw_name)
+            nam.add_tag(tag)
+            print(f"Added tag {tag} to {nam}")
+
 
 class NameComment(BaseModel):
     call_sign = "NCO"
@@ -1990,6 +2018,7 @@ class NameTag(adt.ADT):
     JustifiedEmendationOf(  # type: ignore
         name=Name, justification=EmendationJustification, comment=str, tag=19
     )
+    HMW(number=str, name=str, tag=20)  # type: ignore
 
 
 STATUS_TO_TAG = {

@@ -116,27 +116,25 @@ def _reconnect() -> None:
     database.connect()
 
 
-ns = _ShellNamespace(
-    {
-        "constants": constants,
-        "helpers": helpers,
-        "definition": definition,
-        "Branch": definition.Branch,
-        "Node": definition.Node,
-        "Apomorphy": definition.Apomorphy,
-        "Other": definition.Other,
-        "N": Name.getter("root_name"),
-        "O": Name.getter("corrected_original_name"),
-        "reconnect": _reconnect,
-        "NameTag": models.NameTag,
-        "PersonLevel": PersonLevel,
-        "TypeTag": models.TypeTag,
-        "Counter": collections.Counter,
-        "defaultdict": defaultdict,
-        "getinput": getinput,
-        "models": models,
-    }
-)
+ns = {
+    "constants": constants,
+    "helpers": helpers,
+    "definition": definition,
+    "Branch": definition.Branch,
+    "Node": definition.Node,
+    "Apomorphy": definition.Apomorphy,
+    "Other": definition.Other,
+    "N": Name.getter("root_name"),
+    "O": Name.getter("corrected_original_name"),
+    "reconnect": _reconnect,
+    "NameTag": models.NameTag,
+    "PersonLevel": PersonLevel,
+    "TypeTag": models.TypeTag,
+    "Counter": collections.Counter,
+    "defaultdict": defaultdict,
+    "getinput": getinput,
+    "models": models,
+}
 ns.update(constants.__dict__)
 
 for model in models.BaseModel.__subclasses__():
@@ -1754,6 +1752,7 @@ def fill_data_from_paper(
     paper: Optional[models.Article] = None,
     level: FillDataLevel = DEFAULT_LEVEL,
     ask_before_opening: bool = True,
+    should_open: bool = True,
 ) -> None:
     if paper is None:
         paper = models.BaseModel.get_value_for_foreign_class(
@@ -1761,7 +1760,10 @@ def fill_data_from_paper(
         )
     assert paper is not None, "paper needs to be specified"
     models.taxon.fill_data_from_paper(
-        paper, level=level, ask_before_opening=ask_before_opening
+        paper,
+        level=level,
+        ask_before_opening=ask_before_opening,
+        should_open=should_open,
     )
 
 

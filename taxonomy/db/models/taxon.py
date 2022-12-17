@@ -273,11 +273,12 @@ class Taxon(BaseModel):
                 taxon = taxon.parent
         return result
 
-    def display_extant(self) -> None:
+    def display_extant(self, max_depth: Optional[int] = 100) -> None:
         self.display(
             exclude_fn=lambda t: t.age != AgeClass.extant
             or t.base_name.status != Status.valid,
             name_exclude_fn=lambda n: n.status == Status.synonym,
+            max_depth=max_depth,
         )
 
     def display(
@@ -535,6 +536,7 @@ class Taxon(BaseModel):
             "add_syn": self.add_syn,
             "switch_basename": self.switch_basename,
             "synonymize": self.synonymize,
+            "synonymize_all_children": self.synonymize_all_children,
             "recompute_name": self.recompute_name,
             "display_type_localities": self.display_type_localities,
             "display_citation_groups": self.display_citation_groups,
@@ -551,6 +553,9 @@ class Taxon(BaseModel):
             "fill_data_for_names": self.fill_data_for_names,
             "fill_field_for_names": self.fill_field_for_names,
             "names_missing_field": self.print_names_missing_field,
+            "add_nominate": self.add_nominate,
+            "edit_all_names": self.edit_all_names,
+            "edit_all_children": self.edit_all_children,
         }
 
     def add(self) -> Optional["Taxon"]:
@@ -778,10 +783,23 @@ class Taxon(BaseModel):
             )
 
         taxon = Taxon.create(age=self.age, rank=rank, parent=self)
-        taxon.base_name = self.base_name
-        taxon.base_name.taxon = taxon
+        base_name = self.base_name
+        taxon.base_name = base_name
+        base_name.taxon = taxon
+        base_name.save()
         taxon.recompute_name()
+        taxon.save()
         return taxon
+
+    def edit_all_names(self) -> None:
+        for nam in self.sorted_names():
+            nam.display()
+            nam.edit()
+
+    def edit_all_children(self) -> None:
+        for child in self.sorted_children():
+            child.display()
+            child.edit()
 
     def syn(self, name: Optional[str] = None, **kwargs: Any) -> Optional["models.Name"]:
         """Find a synonym matching the given arguments."""
@@ -947,6 +965,14 @@ class Taxon(BaseModel):
             reason=f"Synonymized into {to_taxon} (T#{to_taxon.id})", remove_names=False
         )
         return models.Name.get(models.Name.id == nam.id)
+
+    def synonymize_all_children(self) -> None:
+        self.display()
+        if not getinput.yes_no("Synonymize all? "):
+            return
+        for taxon in self.children:
+            print(taxon)
+            taxon.synonymize(self)
 
     def make_species_group(self) -> "Taxon":
         return self.make_parent_of_rank(Rank.species_group)
@@ -1283,12 +1309,24 @@ def _get_names(paper: Article) -> List["models.Name"]:
     )
 
 
+def level_for_paper(paper: Article) -> Optional[FillDataLevel]:
+    nams = list(
+        models.Name.filter(
+            models.Name.original_citation == paper, models.Name.status != Status.removed
+        )
+    )
+    if not nams:
+        return None
+    return min(nam.get_derived_field("fill_data_level") for nam in nams)
+
+
 def fill_data_from_paper(
     paper: Article,
     level: FillDataLevel = DEFAULT_LEVEL,
     only_fill_cache: bool = False,
     ask_before_opening: bool = False,
     finish_what_you_start: bool = True,
+    should_open: bool = True,
 ) -> bool:
     if (paper.name, level) in _finished_papers:
         return True
@@ -1310,7 +1348,7 @@ def fill_data_from_paper(
     if nams_below_level:
         print(f"{paper.name}: {len(nams_below_level)} names (fill_data_from_paper)")
         if ask_before_opening and not only_fill_cache:
-            edit_names_interactive(paper)
+            edit_names_interactive(paper, should_open=should_open)
             if paper.has_tag(ArticleTag.NeedsTranslation):
                 print(f"{paper.name}: skipping because of NeedsTranslation tag")
                 _finished_papers.add((paper.name, level))
@@ -1326,7 +1364,8 @@ def fill_data_from_paper(
                     nam.display()
                     if not opened:
                         getinput.add_to_clipboard(paper.name)
-                        paper.openf()
+                        if should_open:
+                            paper.openf()
                         paper.add_to_history()
                         print(f"filling data from {paper.name}")
                         paper.specify_authors()
@@ -1455,9 +1494,10 @@ def display_names(
 
 
 def edit_names_interactive(
-    art: Article, field: str = "corrected_original_name"
+    art: Article, field: str = "corrected_original_name", *, should_open: bool = True
 ) -> None:
-    art.openf()
+    if should_open:
+        art.openf()
     art.add_to_history()
     art.specify_authors()
     while True:

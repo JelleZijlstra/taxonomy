@@ -569,7 +569,7 @@ class BaseModel(Model):
             )
         elif isinstance(typ, type):
             if issubclass(typ, enum.Enum):
-                return getinput.get_enum_member(typ, f"name> ", allow_empty=is_optional)
+                return getinput.get_enum_member(typ, f"{name}> ", allow_empty=is_optional)
             elif issubclass(typ, BaseModel) and typ is not BaseModel:
                 return typ.getter(None).get_one(f"{name}> ", allow_empty=is_optional)
         if param.default is not inspect.Parameter.empty:

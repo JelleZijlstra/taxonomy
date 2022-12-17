@@ -312,3 +312,22 @@ CREATE TABLE `book` (
     `data` text default null,
     `category` varchar(255) DEFAULT NULL
 );
+
+CREATE TABLE `specimen` (
+    `id` integer NOT NULL PRIMARY KEY AUTOINCREMENT,
+    `taxon_id` INT UNSIGNED NOT NULL,
+    `region_id` INT UNSIGNED NOT NULL,
+    `taxon_text` VARCHAR(255),
+    `location_text` VARCHAR(255),
+    `date` VARCHAR(255),
+    `description` VARCHAR(2047),
+    `link` VARCHAR(255) DEFAULT NULL
+);
+
+CREATE TABLE `specimen_comment` (
+    `id` integer primary key,
+    `specimen_id` integer not null,
+    `date` integer,
+    `text` text
+);
+CREATE INDEX "idx_specimen" ON "specimen_comment" (`specimen_id`);
