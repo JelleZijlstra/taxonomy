@@ -1,0 +1,1299 @@
+{
+    "outfile": "Myotis_alcathoe_range_1-23-2013_1.svg",
+    "name": "Myotis alcathoe",
+    "map": "Europe",
+    "marker_size": 9,
+    "data": [
+        {
+            "group_name": "England",
+            "color": "red",
+            "localities": [
+                {
+                    "name": "Ryedale (WP coordinates)",
+                    "latitude": "54.139",
+                    "longitude": "-0.79"
+                },
+                {
+                    "name": "Sussex (WP coordinates for West Sussex)",
+                    "latitude": "51.05840",
+                    "longitude": "-0.69006"
+                }
+            ]
+        },
+        {
+            "group_name": "Sweden",
+            "color": "red",
+            "localities": [
+                {
+                    "name": "Allarps bjar 1",
+                    "latitude": "55.9942",
+                    "longitude": "13.4251"
+                },
+                {
+                    "name": "Allarps bjar 2",
+                    "latitude": "55.9943",
+                    "longitude": "13.4246"
+                },
+                {
+                    "name": "Kungapasset",
+                    "latitude": "55.5943",
+                    "longitude": "13.7679"
+                },
+                {
+                    "name": "Liljetorpet",
+                    "latitude": "56.1593",
+                    "longitude": "15.0129"
+                },
+                {
+                    "name": "Kakmohejan",
+                    "latitude": "56.1801",
+                    "longitude": "14.9836"
+                }
+            ]
+        },
+        {
+            "group_name": "Albania",
+            "color": "red",
+            "localities": [
+                {
+                    "name": "Tepelene",
+                    "latitude": "40.17",
+                    "longitude": "20.01"
+                }
+            ]
+        },
+        {
+            "group_name": "Bulgaria",
+            "color": "red",
+            "localities": [
+                {
+                    "name": "Lovech",
+                    "latitude": "42.73",
+                    "longitude": "24.09"
+                },
+                {
+                    "name": "Peyo Yavorov",
+                    "latitude": "41.76",
+                    "longitude": "23.15"
+                },
+                {
+                    "name": "Burgas",
+                    "latitude": "42.30",
+                    "longitude": "27.07"
+                },
+                {
+                    "name": "Izdremets",
+                    "latitude": "43.01",
+                    "longitude": "23.44"
+                },
+                {
+                    "name": "Sokolskata peshtera",
+                    "latitude": "43.16",
+                    "longitude": "23.44"
+                },
+                {
+                    "name": "Bratanovata peshetera",
+                    "latitude": "42.01",
+                    "longitude": "27.42"
+                }
+            ]
+        },
+        {
+            "group_name": "Greece",
+            "color": "red",
+            "localities": [
+                {
+                    "name": "Kleistos",
+                    "latitude": "39.05",
+                    "longitude": "21.49"
+                },
+                {
+                    "name": "Nestos, Sideroneron",
+                    "latitude": "41.21",
+                    "longitude": "24.13"
+                },
+                {
+                    "name": "Loutropigi",
+                    "latitude": "39.07",
+                    "longitude": "22.01"
+                },
+                {
+                    "name": "Arkoudorrema, Dipotama",
+                    "latitude": "41.21",
+                    "longitude": "24.35"
+                },
+                {
+                    "name": "Loutra Thermia",
+                    "latitude": "41.24",
+                    "longitude": "24.28"
+                },
+                {
+                    "name": "Tauropos, Karpenision",
+                    "latitude": "38.55",
+                    "longitude": "21.41"
+                },
+                {
+                    "name": "Trikeriotis",
+                    "latitude": "38.48",
+                    "longitude": "21.53"
+                },
+                {
+                    "name": "NE Echinos",
+                    "latitude": "41.19",
+                    "longitude": "25.05"
+                },
+                {
+                    "name": "Melivoia",
+                    "latitude": "41.20",
+                    "longitude": "24.53"
+                },
+                {
+                    "name": "Chaliki, Aspropotamos",
+                    "latitude": "39.39",
+                    "longitude": "21.13"
+                },
+                {
+                    "name": "Pentalofos",
+                    "latitude": "40.11",
+                    "longitude": "21.11"
+                },
+                {
+                    "name": "Pindos, Portaikos river",
+                    "latitude": "39.26",
+                    "longitude": "21.32"
+                }
+            ]
+        },
+        {
+            "group_name": "Hungary",
+            "color": "red",
+            "localities": [
+                {
+                    "name": "Attila-kuti Lake",
+                    "latitude": "47.47",
+                    "longitude": "20.27"
+                },
+                {
+                    "name": "Napsugar-piheno",
+                    "latitude": "48",
+                    "longitude": "20.25"
+                },
+                {
+                    "name": "Pesko Valley",
+                    "latitude": "48.02",
+                    "longitude": "20.25"
+                },
+                {
+                    "name": "Kacs",
+                    "latitude": "47.95",
+                    "longitude": "20.62"
+                },
+                {
+                    "name": "Parad",
+                    "latitude": "47.91",
+                    "longitude": "20.03"
+                },
+                {
+                    "name": "Istvan Spring",
+                    "latitude": "48.24",
+                    "longitude": "21.24"
+                },
+                {
+                    "name": "Meller Valley",
+                    "latitude": "48",
+                    "longitude": "20.25"
+                },
+                {
+                    "name": "Felsotarkanyi Lake",
+                    "latitude": "47.58",
+                    "longitude": "20.26"
+                },
+                {
+                    "name": "Repas Valley",
+                    "latitude": "47.58",
+                    "longitude": "20.27"
+                },
+                {
+                    "name": "Zagyva Spring",
+                    "latitude": "48.08",
+                    "longitude": "19.52"
+                },
+                {
+                    "name": "Lok-volgyi Cave",
+                    "latitude": "48.01",
+                    "longitude": "20.28"
+                },
+                {
+                    "name": "Fekete Cave",
+                    "latitude": "48.06",
+                    "longitude": "20.33"
+                },
+                {
+                    "name": "Jaspis Cave",
+                    "latitude": "48.06",
+                    "longitude": "20.34"
+                },
+                {
+                    "name": "Attila-kuti Lake (2)",
+                    "latitude": "47.95",
+                    "longitude": "20.46"
+                }
+            ]
+        },
+        {
+            "group_name": "Poland",
+            "color": "red",
+            "localities": [
+                {
+                    "name": "Mroczna",
+                    "latitude": "49.58",
+                    "longitude": "21.32"
+                },
+                {
+                    "name": "Niedzwiedzia Cave",
+                    "latitude": "49.48",
+                    "longitude": "20.78"
+                },
+                {
+                    "name": "Lopien Cave",
+                    "latitude": "49.70",
+                    "longitude": "20.28"
+                },
+                {
+                    "name": "Czarna Cave",
+                    "latitude": "49.23",
+                    "longitude": "19.87"
+                },
+                {
+                    "name": "Lezczok 1",
+                    "latitude": "50 07 36",
+                    "longitude": "18 15 53"
+                },
+                {
+                    "name": "Lezczok 2",
+                    "latitude": "50 08 14",
+                    "longitude": "18 16 19"
+                },
+                {
+                    "name": "Gorki Male 1",
+                    "latitude": "49 46 57",
+                    "longitude": "18 50 55"
+                },
+                {
+                    "name": "Gorki Male 2",
+                    "latitude": "49 46 40",
+                    "longitude": "18 49 53"
+                },
+                {
+                    "name": "Nasiczne Cave",
+                    "latitude": "49 10 45",
+                    "longitude": "22 36 50"
+                },
+                {
+                    "name": "Hylaty stream",
+                    "latitude": "49 11 07",
+                    "longitude": "22 33 02"
+                },
+                {
+                    "name": "Roztocze Upland 1",
+                    "latitude": "50 34 12",
+                    "longitude": "23 02 58"
+                },
+                {
+                    "name": "Roztocze Upland 2",
+                    "latitude": "50 34 30",
+                    "longitude": "23 01 26"
+                }
+            ]
+        },
+        {
+            "group_name": "Ukraine",
+            "color": "red",
+            "localities": [
+                {
+                    "name": "Beregove",
+                    "latitude": "48 13 51",
+                    "longitude": "22 37 01"
+                }
+            ]
+        },
+        {
+            "group_name": "Slovakia",
+            "color": "red",
+            "localities": [
+                {
+                    "name": "Stepova jaskyna cave",
+                    "latitude": "48.21",
+                    "longitude": "19.91"
+                }
+            ]
+        },
+        {
+            "group_name": "Switzerland",
+            "color": "red",
+            "localities": [
+                {
+                    "name": "Col du Marchairuz (WP coordinates)",
+                    "latitude": "46 33 9.57",
+                    "longitude": "6 15 1.6"
+                }
+            ]
+        },
+        {
+            "group_name": "Turkey",
+            "color": "red",
+            "localities": [
+                {
+                    "name": "Ferko's Garden",
+                    "latitude": "41.79",
+                    "longitude": "27.80"
+                },
+                {
+                    "name": "Dunisa Cave",
+                    "latitude": "41.84",
+                    "longitude": "27.56"
+                }
+            ]
+        },
+        {
+            "group_name": "France",
+            "color": "red",
+            "localities": [
+                {
+                    "name": "Haguenau",
+                    "latitude": "48.42",
+                    "longitude": "7.79"
+                },
+                {
+                    "name": "Auriac",
+                    "latitude": "43.45",
+                    "longitude": "-0.31"
+                },
+                {
+                    "name": "Auvergne 1",
+                    "latitude": "46.41",
+                    "longitude": "3.05"
+                },
+                {
+                    "name": "Auvergne 2",
+                    "latitude": "45.11",
+                    "longitude": "2.87"
+                },
+                {
+                    "name": "Auvergne 3",
+                    "latitude": "45.14",
+                    "longitude": "3.81"
+                },
+                {
+                    "name": "Auvergne 4",
+                    "latitude": "45.78",
+                    "longitude": "3.08"
+                },
+                {
+                    "name": "Ouilly-du-Houley",
+                    "latitude": "49.17",
+                    "longitude": "0.33"
+                },
+                {
+                    "name": "Tordouet",
+                    "latitude": "49.05",
+                    "longitude": "0.33"
+                },
+                {
+                    "name": "Champ-du-Boult",
+                    "latitude": "48.79",
+                    "longitude": "-1.01"
+                },
+                {
+                    "name": "Fumichoun",
+                    "latitude": "49.17",
+                    "longitude": "0.37"
+                },
+                {
+                    "name": "Saint-Julien-de-Mailloc",
+                    "latitude": "49.08",
+                    "longitude": "0.33"
+                },
+                {
+                    "name": "Pretreville",
+                    "latitude": "49.07",
+                    "longitude": "0.25"
+                },
+                {
+                    "name": "Cordebugle",
+                    "latitude": "49.11",
+                    "longitude": "0.38"
+                },
+                {
+                    "name": "Montviette",
+                    "latitude": "49",
+                    "longitude": "0.1"
+                },
+                {
+                    "name": "Ducey",
+                    "latitude": "48.62",
+                    "longitude": "-1.29"
+                },
+                {
+                    "name": "Lingeard",
+                    "latitude": "48.56",
+                    "longitude": "-1.02"
+                },
+                {
+                    "name": "Feings",
+                    "latitude": "48.55",
+                    "longitude": "0.63"
+                },
+                {
+                    "name": "Pontchardon",
+                    "latitude": "48.93",
+                    "longitude": "0.27"
+                },
+                {
+                    "name": "St-Evroult-Notre-Dame-des-Bois",
+                    "latitude": "48.79",
+                    "longitude": "0.47"
+                },
+                {
+                    "name": "Montilly-sur-Noireau",
+                    "latitude": "48.82",
+                    "longitude": "-0.57"
+                },
+                {
+                    "name": "Vaux-Saules",
+                    "latitude": "47.47",
+                    "longitude": "4.80"
+                },
+                {
+                    "name": "Saint-Nicolas-les-Citeaux",
+                    "latitude": "47.12",
+                    "longitude": "5.05"
+                },
+                {
+                    "name": "Bourgogne",
+                    "latitude": "47.44",
+                    "longitude": "4.79"
+                },
+                {
+                    "name": "Saint-Nicolas-du-Pelem",
+                    "latitude": "48.31",
+                    "longitude": "-3.16"
+                },
+                {
+                    "name": "Mezieres sur Couesnon",
+                    "latitude": "48.30",
+                    "longitude": "-1.43"
+                },
+                {
+                    "name": "Antrain",
+                    "latitude": "48.46",
+                    "longitude": "-1.48"
+                },
+                {
+                    "name": "Saint Brice en Cogles",
+                    "latitude": "48.41",
+                    "longitude": "-1.37"
+                },
+                {
+                    "name": "Gahard",
+                    "latitude": "48.30",
+                    "longitude": "-1.52"
+                },
+                {
+                    "name": "Champeaux",
+                    "latitude": "48.15",
+                    "longitude": "-1.31"
+                },
+                {
+                    "name": "Saint Aubin du Cormier",
+                    "latitude": "48.26",
+                    "longitude": "-1.40"
+                },
+                {
+                    "name": "Sainte-Marie de Redon",
+                    "latitude": "47.69",
+                    "longitude": "-2"
+                },
+                {
+                    "name": "Loutehel",
+                    "latitude": "47.94",
+                    "longitude": "-2.08"
+                },
+                {
+                    "name": "Saint-Ouen la Rouerie",
+                    "latitude": "48.46",
+                    "longitude": "-1.44"
+                },
+                {
+                    "name": "Vieux Vysur Couesnon",
+                    "latitude": "48.34",
+                    "longitude": "-1.49"
+                },
+                {
+                    "name": "Liffre",
+                    "latitude": "48.21",
+                    "longitude": "-1.51"
+                },
+                {
+                    "name": "Fougeres",
+                    "latitude": "48.35",
+                    "longitude": "-1.20"
+                },
+                {
+                    "name": "Severac",
+                    "latitude": "47.55",
+                    "longitude": "-2.08"
+                },
+                {
+                    "name": "Sarzeau",
+                    "latitude": "47.53",
+                    "longitude": "-2.77"
+                },
+                {
+                    "name": "Remungol",
+                    "latitude": "47.93",
+                    "longitude": "-2.90"
+                },
+                {
+                    "name": "Berne",
+                    "latitude": "47.99",
+                    "longitude": "-3.39"
+                },
+                {
+                    "name": "La Gacilly",
+                    "latitude": "47.77",
+                    "longitude": "-2.13"
+                },
+                {
+                    "name": "Cournon",
+                    "latitude": "47.75",
+                    "longitude": "-2.10"
+                },
+                {
+                    "name": "Malansac",
+                    "latitude": "47.68",
+                    "longitude": "-2.30"
+                },
+                {
+                    "name": "Priziac",
+                    "latitude": "48.06",
+                    "longitude": "-3.41"
+                },
+                {
+                    "name": "Thehillac",
+                    "latitude": "47.57",
+                    "longitude": "-2.11"
+                },
+                {
+                    "name": "La Gacilly",
+                    "latitude": "47.77",
+                    "longitude": "-2.13"
+                },
+                {
+                    "name": "Peillac",
+                    "latitude": "47.71",
+                    "longitude": "-2.22"
+                },
+                {
+                    "name": "Niherne",
+                    "latitude": "46.83",
+                    "longitude": "-1.56"
+                },
+                {
+                    "name": "Chemery-sur-Bar",
+                    "latitude": "49.60",
+                    "longitude": "4.87"
+                },
+                {
+                    "name": "Chevillon",
+                    "latitude": "48.53",
+                    "longitude": "5.13"
+                },
+                {
+                    "name": "Vienne le Chateau",
+                    "latitude": "49.19",
+                    "longitude": "4.89"
+                },
+                {
+                    "name": "Belval en Argonne",
+                    "latitude": "48.95",
+                    "longitude": "5"
+                },
+                {
+                    "name": "Flammerecourt",
+                    "latitude": "48.36",
+                    "longitude": "5.04"
+                },
+                {
+                    "name": "St. Ciergues",
+                    "latitude": "47.88",
+                    "longitude": "5.25"
+                },
+                {
+                    "name": "Eclaron-Braucourt-Sainte-Liviere",
+                    "latitude": "48.59",
+                    "longitude": "4.86"
+                },
+                {
+                    "name": "Trigny",
+                    "latitude": "49.30",
+                    "longitude": "3.90"
+                },
+                {
+                    "name": "Glannes",
+                    "latitude": "48.71",
+                    "longitude": "4.54"
+                },
+                {
+                    "name": "Chateauvillain",
+                    "latitude": "48",
+                    "longitude": "4.92"
+                },
+                {
+                    "name": "Vertus",
+                    "latitude": "48.91",
+                    "longitude": "4.01"
+                },
+                {
+                    "name": "Loges au chevres",
+                    "latitude": "48.27",
+                    "longitude": "4.41"
+                },
+                {
+                    "name": "Bossancourt",
+                    "latitude": "48.28",
+                    "longitude": "4.6"
+                },
+                {
+                    "name": "Boult aux Bois",
+                    "latitude": "49.43",
+                    "longitude": "4.84"
+                },
+                {
+                    "name": "Rimogne",
+                    "latitude": "49.84",
+                    "longitude": "4.54"
+                },
+                {
+                    "name": "Le Mont-Dieu",
+                    "latitude": "49.55",
+                    "longitude": "4.87"
+                },
+                {
+                    "name": "Gennes",
+                    "latitude": "47.25",
+                    "longitude": "6.12"
+                },
+                {
+                    "name": "Montfaucon",
+                    "latitude": "47.24",
+                    "longitude": "6.08"
+                },
+                {
+                    "name": "Amange",
+                    "latitude": "47.17",
+                    "longitude": "5.56"
+                },
+                {
+                    "name": "Moissey",
+                    "latitude": "47.20",
+                    "longitude": "5.52"
+                },
+                {
+                    "name": "Calmoutier",
+                    "latitude": "47.65",
+                    "longitude": "6.28"
+                },
+                {
+                    "name": "Beaumotte-les-Pin",
+                    "latitude": "47.32",
+                    "longitude": "5.83"
+                },
+                {
+                    "name": "St-Sylvestre-de-Cormeilles",
+                    "latitude": "49.24",
+                    "longitude": "0.4"
+                },
+                {
+                    "name": "Bailleul-la-Vallee",
+                    "latitude": "49.2",
+                    "longitude": "0.43"
+                },
+                {
+                    "name": "Harcourt",
+                    "latitude": "49.17",
+                    "longitude": "0.79"
+                },
+                {
+                    "name": "Marais-Vernier",
+                    "latitude": "49.42",
+                    "longitude": "0.45"
+                },
+                {
+                    "name": "St-Aubin-de-Scellon",
+                    "latitude": "49.17",
+                    "longitude": "0.47"
+                },
+                {
+                    "name": "Elbeuf-sur-Andelle",
+                    "latitude": "49.47",
+                    "longitude": "1.4"
+                },
+                {
+                    "name": "Genainville",
+                    "latitude": "49.12",
+                    "longitude": "1.75"
+                },
+                {
+                    "name": "Chaussy",
+                    "latitude": "49.12",
+                    "longitude": "1.69"
+                },
+                {
+                    "name": "St Pierre de Nogaret",
+                    "latitude": "44.47",
+                    "longitude": "3.14"
+                },
+                {
+                    "name": "Montjezieux",
+                    "latitude": "44.43",
+                    "longitude": "3.20"
+                },
+                {
+                    "name": "St Germain du Teil",
+                    "latitude": "44.48",
+                    "longitude": "3.17"
+                },
+                {
+                    "name": "Chirac",
+                    "latitude": "44.52",
+                    "longitude": "3.27"
+                },
+                {
+                    "name": "Trelans",
+                    "latitude": "44.50",
+                    "longitude": "3.09"
+                },
+                {
+                    "name": "Les Hermaux",
+                    "latitude": "44.51",
+                    "longitude": "3.13"
+                },
+                {
+                    "name": "Limousin",
+                    "latitude": "45.83",
+                    "longitude": "1.26"
+                },
+                {
+                    "name": "Brauviliers",
+                    "latitude": "48.58",
+                    "longitude": "5.15"
+                },
+                {
+                    "name": "Nord-Pas de Calais",
+                    "latitude": "50.51",
+                    "longitude": "2.13"
+                },
+                {
+                    "name": "Tournehem-sur-la-Hem",
+                    "latitude": "50.81",
+                    "longitude": "2.05"
+                },
+                {
+                    "name": "Mauves-sur-Loire",
+                    "latitude": "47.30",
+                    "longitude": "-1.40"
+                },
+                {
+                    "name": "Pays de la Loire 1",
+                    "latitude": "48",
+                    "longitude": "0.2"
+                },
+                {
+                    "name": "Pays de la Loire 2",
+                    "latitude": "46.67",
+                    "longitude": "-1.43"
+                },
+                {
+                    "name": "Broc",
+                    "latitude": "47.58",
+                    "longitude": "0.17"
+                },
+                {
+                    "name": "Fontaine Guerin",
+                    "latitude": "47.49",
+                    "longitude": "-0.19"
+                },
+                {
+                    "name": "Saint Georges du bois",
+                    "latitude": "47.50",
+                    "longitude": "-0.22"
+                },
+                {
+                    "name": "Fontaine-Milon",
+                    "latitude": "47.50",
+                    "longitude": "-0.25"
+                },
+                {
+                    "name": "Cuon",
+                    "latitude": "47.48",
+                    "longitude": "-0.1"
+                },
+                {
+                    "name": "Le Guedeniau",
+                    "latitude": "47.5",
+                    "longitude": "-0.05"
+                },
+                {
+                    "name": "Picardie",
+                    "latitude": "49.38",
+                    "longitude": "2.41"
+                },
+                {
+                    "name": "Poitou-Charentes",
+                    "latitude": "45.82",
+                    "longitude": "-0.79"
+                },
+                {
+                    "name": "La Mothe Saint-Heray",
+                    "latitude": "46.36",
+                    "longitude": "-0.11"
+                },
+                {
+                    "name": "Chize",
+                    "latitude": "46.12",
+                    "longitude": "-0.35"
+                },
+                {
+                    "name": "Champdeniers",
+                    "latitude": "46.49",
+                    "longitude": "-0.41"
+                },
+                {
+                    "name": "Vitre",
+                    "latitude": "46.28",
+                    "longitude": "-0.20"
+                },
+                {
+                    "name": "Gap",
+                    "latitude": "44.56",
+                    "longitude": "6.08"
+                },
+                {
+                    "name": "Bairols",
+                    "latitude": "43.98",
+                    "longitude": "7.13"
+                },
+                {
+                    "name": "Ruoms",
+                    "latitude": "44.45",
+                    "longitude": "4.34"
+                },
+                {
+                    "name": "Sainte Eulalie en Royans",
+                    "latitude": "45.05",
+                    "longitude": "5.34"
+                },
+                {
+                    "name": "Lupe",
+                    "latitude": "45.37",
+                    "longitude": "4.7"
+                }
+            ]
+        },
+        {
+            "group_name": "Austria",
+            "color": "red",
+            "localities": [
+                {
+                    "name": "Deutsch Ehrensdorf",
+                    "latitude": "47 06",
+                    "longitude": "16 25"
+                },
+                {
+                    "name": "Punitz",
+                    "latitude": "47 07",
+                    "longitude": "16 21"
+                }
+            ]
+        },
+        {
+            "group_name": "Czech Republic",
+            "color": "red",
+            "localities": [
+                {
+                    "name": "Havraniky",
+                    "latitude": "48 48.5",
+                    "longitude": "15 59"
+                },
+                {
+                    "name": "Klicava Dam",
+                    "latitude": "50 04",
+                    "longitude": "13 54"
+                },
+                {
+                    "name": "Ochozy Forest",
+                    "latitude": "49 23",
+                    "longitude": "17 37"
+                },
+                {
+                    "name": "Vuznice",
+                    "latitude": "50 1",
+                    "longitude": "13 59"
+                },
+                {
+                    "name": "Zbecno",
+                    "latitude": "50 3",
+                    "longitude": "13 55"
+                },
+                {
+                    "name": "Tvorihraz",
+                    "latitude": "48 54",
+                    "longitude": "16 7"
+                },
+                {
+                    "name": "Cizov",
+                    "latitude": "48 51",
+                    "longitude": "15 52"
+                },
+                {
+                    "name": "Kostelecky Forest",
+                    "latitude": "49 24",
+                    "longitude": "17 32"
+                },
+                {
+                    "name": "Vlkov pond",
+                    "latitude": "48 56",
+                    "longitude": "16 54"
+                },
+                {
+                    "name": "Pasohlavky",
+                    "latitude": "48 54 5",
+                    "longitude": "16 35 5"
+                },
+                {
+                    "name": "Volensky fishpond",
+                    "latitude": "49 46 59",
+                    "longitude": "18 22 6"
+                },
+                {
+                    "name": "Hodonovice",
+                    "latitude": "49 37 49",
+                    "longitude": "18 21 34"
+                }
+            ]
+        },
+        {
+            "group_name": "Italy",
+            "color": "red",
+            "localities": [
+                {
+                    "name": "Majella National Park (WP coordinates)",
+                    "latitude": "42 4 55",
+                    "longitude": "14 3 36"
+                }
+            ]
+        },
+        {
+            "group_name": "Romania",
+            "color": "red",
+            "localities": [
+                {
+                    "name": "Cheile Varghisului (from Google Maps)",
+                    "latitude": "46.300394",
+                    "longitude": "25.542297"
+                },
+                {
+                    "name": "Near village of Poiana",
+                    "latitude": "46 22 9.08",
+                    "longitude": "23 36 11.97"
+                }
+            ]
+        },
+        {
+            "group_name": "Spain",
+            "color": "red",
+            "localities": [
+                {
+                    "name": "Fragas do Eume (WP coordinates)",
+                    "latitude": "43 25 3",
+                    "longitude": "-8.0683333333333"
+                },
+                {
+                    "name": "La Rioja 1 (Google Maps est.)",
+                    "latitude": "42.337704",
+                    "longitude": "-2.980042"
+                },
+                {
+                    "name": "La Rioja 2 (Google Maps est.)",
+                    "latitude": "42.24831",
+                    "longitude": "-2.862396"
+                },
+                {
+                    "name": "La Rioja 3 (Google Maps est.)",
+                    "latitude": "42.181181",
+                    "longitude": "-2.769013"
+                },
+                {
+                    "name": "Aiantsoroka Erreka",
+                    "latitude": "43.151143201338705",
+                    "longitude": "-1.6040259083979858"
+                },
+                {
+                    "name": "Artesiago",
+                    "latitude": "43.05204564052446",
+                    "longitude": "-1.5376744093926895"
+                },
+                {
+                    "name": "Errekaundia",
+                    "latitude": "43.14184859935959",
+                    "longitude": "-1.6038808290916544"
+                },
+                {
+                    "name": "Larrainzar",
+                    "latitude": "42.996170667204915",
+                    "longitude": "-1.6940267263391902"
+                },
+                {
+                    "name": "Urkiaga",
+                    "latitude": "43.045948307683034",
+                    "longitude": "-1.46808284458353"
+                },
+                {
+                    "name": "Sorogain",
+                    "latitude": "42.99038278191897",
+                    "longitude": "-1.4069908690246506"
+                },
+                {
+                    "name": "Zaldazain",
+                    "latitude": "43.015227349403816",
+                    "longitude": "-1.6401070035749186"
+                },
+                {
+                    "name": "Catalonia 1 (GM est.)",
+                    "latitude": "42.426912",
+                    "longitude": "2.877502"
+                },
+                {
+                    "name": "Catalonia 2 (GM est.)",
+                    "latitude": "42.373696",
+                    "longitude": "2.888489"
+                },
+                {
+                    "name": "Catalonia 3 (GM est.)",
+                    "latitude": "42.320918",
+                    "longitude": "2.690735"
+                },
+                {
+                    "name": "Catalonia 4 (GM est.)",
+                    "latitude": "41.737435",
+                    "longitude": "2.602844"
+                },
+                {
+                    "name": "Catalonia 5 (GM est.)",
+                    "latitude": "41.794796",
+                    "longitude": "2.531433"
+                },
+                {
+                    "name": "Catalonia 6 (GM est.)",
+                    "latitude": "41.876651",
+                    "longitude": "2.416077"
+                }
+            ]
+        },
+        {
+            "group_name": "Germany",
+            "color": "red",
+            "localities": [
+                {
+                    "name": "Geissenwald, BW",
+                    "latitude": "48.64",
+                    "longitude": "7.95"
+                },
+                {
+                    "name": "Griesheim, BW",
+                    "latitude": "48.51",
+                    "longitude": "7.91"
+                },
+                {
+                    "name": "Kyffhaeuser, Thu",
+                    "latitude": "51.38",
+                    "longitude": "11.04"
+                },
+                {
+                    "name": "Questenberg, SA",
+                    "latitude": "51 30 2.05",
+                    "longitude": "11 8 14.81"
+                },
+                {
+                    "name": "Stolberg, SA",
+                    "latitude": "51 34 41.10",
+                    "longitude": "10 56 46.09"
+                },
+                {
+                    "name": "Ziegelroda, SA",
+                    "latitude": "51 20 31.68",
+                    "longitude": "11 30 17.16"
+                },
+                {
+                    "name": "Othal, SA",
+                    "latitude": "51 28 4.91",
+                    "longitude": "11 22 13.09"
+                },
+                {
+                    "name": "Questenberg, SA",
+                    "latitude": "51 29 47.95",
+                    "longitude": "11 7 36.12"
+                },
+                {
+                    "name": "Oechlitz, SA",
+                    "latitude": "51 19 26.18",
+                    "longitude": "11 45 13.12"
+                },
+                {
+                    "name": "Drebsdorf, SA",
+                    "latitude": "51 29 45.93",
+                    "longitude": "11 11 7.65"
+                },
+                {
+                    "name": "Rottleberode, SA",
+                    "latitude": "51 30 59.50",
+                    "longitude": "10 56 7.81"
+                },
+                {
+                    "name": "Wettelrode, SA",
+                    "latitude": "51 31 19.29",
+                    "longitude": "11 15 41.53"
+                },
+                {
+                    "name": "Pölsfeld, SA",
+                    "latitude": "51 31 34.07",
+                    "longitude": "11 21 58.50"
+                },
+                {
+                    "name": "Uftrungen, SA",
+                    "latitude": "51 31 2.73",
+                    "longitude": "10 59 31.15"
+                },
+                {
+                    "name": "Blankenburg/Harz, SA",
+                    "latitude": "51 48 49.78",
+                    "longitude": "10 56 1.86"
+                },
+                {
+                    "name": "Rottleberode, SA",
+                    "latitude": "51 30 1.67",
+                    "longitude": "10 56 59.28"
+                },
+                {
+                    "name": "Kossweda, SA",
+                    "latitude": "50 59 30.76",
+                    "longitude": "12 1 31.11"
+                },
+                {
+                    "name": "Herzog-Alexis-Erbstollen, SA",
+                    "latitude": "51 39 54.08",
+                    "longitude": "11 9 30.20"
+                },
+                {
+                    "name": "Braupfanne, Zeitzer Forst, TH (estimate; source is not precise)",
+                    "latitude": "50.963934",
+                    "longitude": "12.034721"
+                },
+                {
+                    "name": "Colditzer Forst, Sachsen",
+                    "latitude": "51 7 9.09",
+                    "longitude": "12 46 16.17"
+                },
+                {
+                    "name": "Chemnitz, Sachsen",
+                    "latitude": "50 49 55.29",
+                    "longitude": "12 55 13.19"
+                },
+                {
+                    "name": "Stöckigt-Wald, Sachsen",
+                    "latitude": "51 33 46.37",
+                    "longitude": "12 33 0.56"
+                }
+            ]
+        },
+        {
+            "group_name": "Caucasus (M. cf. alcathoe)",
+            "color": "green",
+            "localities": [
+                {
+                    "name": "Tyapsinskiy 1",
+                    "latitude": "44.38",
+                    "longitude": "38.63"
+                },
+                {
+                    "name": "Novorossiysk",
+                    "latitude": "44.73",
+                    "longitude": "37.49"
+                },
+                {
+                    "name": "Sochi 1",
+                    "latitude": "44.02",
+                    "longitude": "39.38"
+                },
+                {
+                    "name": "Sochi 2",
+                    "latitude": "44.02",
+                    "longitude": "39.35"
+                },
+                {
+                    "name": "Ceverskiy",
+                    "latitude": "44.69",
+                    "longitude": "38.86"
+                },
+                {
+                    "name": "Goryachiy Klyuch",
+                    "latitude": "44.47",
+                    "longitude": "38.98"
+                },
+                {
+                    "name": "Sochi 3",
+                    "latitude": "43.53",
+                    "longitude": "40.01"
+                },
+                {
+                    "name": "Abinskiy",
+                    "latitude": "44.59",
+                    "longitude": "38.39"
+                },
+                {
+                    "name": "Tyapsinskiy 2",
+                    "latitude": "44.30",
+                    "longitude": "38.97"
+                }
+            ]
+        },
+        {
+            "group_name": "Slovenia",
+            "color": "red",
+            "localities": [
+                {
+                    "name": "Slovenia 1 (GM estimate)",
+                    "latitude": "45.751171",
+                    "longitude": "14.934997"
+                }
+            ]
+        },
+        {
+            "group_name": "Croatia",
+            "color": "red",
+            "localities": [
+                {
+                    "name": "Kuselj",
+                    "latitude": "44 56 52",
+                    "longitude": "15 32 03"
+                },
+                {
+                    "name": "Pljesivica",
+                    "latitude": "44 43 29",
+                    "longitude": "15 48 24"
+                }
+            ]
+        }
+    ]
+}
