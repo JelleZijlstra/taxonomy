@@ -1,6 +1,7 @@
 import argparse
 from collections.abc import Callable
 from dataclasses import dataclass
+import enum
 import json
 import math
 from pathlib import Path
@@ -9,6 +10,34 @@ from typing_extensions import NotRequired
 
 Mapper = Callable[[float, float], tuple[float, float]]
 DEFAULT_MARKER_SIZE = 4.3493844
+
+
+class ReportFormat(enum.Enum):
+    markdown = 1
+    wiki = 2
+
+
+class Locality(TypedDict):
+    name: str
+    latitude: str
+    longitude: str
+    # taxonomy database, either an Article name or id
+    raw_source: NotRequired[str | int]
+    source: NotRequired[str]
+    comment: NotRequired[str]
+
+
+class Group(TypedDict):
+    group_name: str
+    color: NotRequired[str]
+    localities: list[Locality]
+
+
+class MapData(TypedDict):
+    outfile: str
+    data: list[Group]
+    map: str
+    marker_size: NotRequired[float]
 
 
 def square_mapper(
@@ -186,28 +215,6 @@ def degrees_to_decimal(degrees: str) -> float:
     return out
 
 
-class Locality(TypedDict):
-    name: str
-    latitude: str
-    longitude: str
-    # taxonomy database, either an Article name or id
-    raw_source: NotRequired[str | int]
-    source: NotRequired[str]
-
-
-class Group(TypedDict):
-    group_name: str
-    color: NotRequired[str]
-    localities: list[Locality]
-
-
-class MapData(TypedDict):
-    outfile: str
-    data: list[Group]
-    map: str
-    marker_size: NotRequired[float]
-
-
 def hex_color_of_group(group: Group) -> str:
     if "color" not in group:
         return "#40a040"  # green
@@ -233,16 +240,24 @@ LOCALITY_TEMPLATE = """\t\t<path
 """
 
 
-def decode_source(raw_source: str | int) -> str:
+def decode_source(raw_source: str | int, *, cite_style: str = "paper") -> str:
     from taxonomy.db.models import Article
 
     query = Article.select_valid()
     if isinstance(raw_source, int):
-        query = query.filter(Article.id == raw_source)
+        query = query.filter(Article.id == raw_source)  # type: ignore
     else:
         query = query.filter(Article.name == raw_source)
     art: Article = query.get()
-    return art.cite()
+    return art.cite(cite_style)
+
+
+def source_from_locality(locality: Locality, cite_style: str = "paper") -> str | None:
+    if "source" in locality:
+        return locality["source"]
+    if "raw_source" in locality:
+        return decode_source(locality["raw_source"], cite_style=cite_style)
+    return None
 
 
 def locality_to_svg(
@@ -253,13 +268,11 @@ def locality_to_svg(
     map_latitude, map_longitude = map.converter(dlat, dlong)
     shifted_longitude = map_longitude + marker_size / 2
     double_size = 2 * marker_size
-    if "source" in locality:
-        maybe_source = "; source: " + locality["source"]
+    source_str = source_from_locality(locality)
+    if source_str is not None:
+        maybe_source = f"; source: {source_str}"
     else:
-        if "raw_source" in locality:
-            maybe_source = "; source: " + decode_source(locality["raw_source"])
-        else:
-            maybe_source = ""
+        maybe_source = ""
     return LOCALITY_TEMPLATE.format(
         color=color,
         shifted_longitude=shifted_longitude,
@@ -307,14 +320,71 @@ def map_to_svg(map_data: MapData, root_dir: Path) -> None:
     out_path.write_text("".join(pieces))
 
 
+LOCALITY_REPORT_TEMPLATE = {
+    ReportFormat.markdown: "* **{name}** ({latitude}, {longitude}){maybe_comment}{maybe_source}",
+    ReportFormat.wiki: "* '''{name}''' ({latitude}, {longitude}){maybe_comment}{maybe_source}",
+}
+FORMAT_TO_STYLE = {ReportFormat.markdown: "paper", ReportFormat.wiki: "normal"}
+
+
+def print_report(map_data: MapData, format: ReportFormat) -> None:
+    for group in map_data["data"]:
+        print()
+        name = group["group_name"]
+        match format:
+            case ReportFormat.markdown:
+                print(f"## {name}")
+            case ReportFormat.wiki:
+                print(f"=== {name} ===")
+        print()
+        for locality in group["localities"]:
+            template = LOCALITY_REPORT_TEMPLATE[format]
+            if "comment" in locality:
+                maybe_comment = f". Comment: {locality['comment']}"
+            else:
+                maybe_comment = ""
+            source_str = source_from_locality(
+                locality, cite_style=FORMAT_TO_STYLE[format]
+            )
+            if source_str is None:
+                maybe_source = ""
+            else:
+                maybe_source = f". Source: {source_str}"
+            line = template.format(
+                name=locality["name"],
+                latitude=locality["latitude"],
+                longitude=locality["longitude"],
+                maybe_comment=maybe_comment,
+                maybe_source=maybe_source,
+            )
+            print(line)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser("Add locality markers to an SVG file")
     parser.add_argument("datafile", help="Path to a datafile")
+    parser.add_argument(
+        "--wiki-report",
+        action="store_true",
+        default=False,
+        help="Output a wikitext source report",
+    )
+    parser.add_argument(
+        "--markdown-report",
+        action="store_true",
+        default=False,
+        help="Output a markdown source report",
+    )
     args = parser.parse_args()
     with Path(args.datafile).open(encoding="utf-8") as f:
         map_data = json.load(f)
-    root_dir = Path(__file__).parent
-    map_to_svg(map_data, root_dir)
+    if args.wiki_report:
+        print_report(map_data, ReportFormat.wiki)
+    elif args.markdown_report:
+        print_report(map_data, ReportFormat.markdown)
+    else:
+        root_dir = Path(__file__).parent
+        map_to_svg(map_data, root_dir)
 
 
 if __name__ == "__main__":
