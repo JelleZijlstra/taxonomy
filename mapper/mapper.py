@@ -2,6 +2,7 @@ import argparse
 from collections.abc import Callable
 from dataclasses import dataclass
 import enum
+import functools
 import json
 import math
 from pathlib import Path
@@ -240,6 +241,7 @@ LOCALITY_TEMPLATE = """\t\t<path
 """
 
 
+@functools.cache
 def decode_source(raw_source: str | int, *, cite_style: str = "paper") -> str:
     from taxonomy.db.models import Article
 

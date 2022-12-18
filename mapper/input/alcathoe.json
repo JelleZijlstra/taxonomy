@@ -1,8 +1,8 @@
 {
-    "outfile": "Myotis_alcathoe_range_1-23-2013_1.svg",
+    "outfile": "Myotis_alcathoe_range.svg",
     "name": "Myotis alcathoe",
     "map": "Europe",
-    "marker_size": 9,
+    "marker_size": 7.5,
     "data": [
         {
             "group_name": "England",
@@ -372,6 +372,7 @@
                     "name": "Nasiczne Cave",
                     "latitude": "49 10 45",
                     "longitude": "22 36 50",
+                    "comment": "See also {Chiroptera Poland Bieszczady.pdf}",
                     "raw_source": "Myotis alcathoe Poland, Ukraine.pdf"
                 },
                 {
@@ -391,6 +392,61 @@
                     "latitude": "50 34 30",
                     "longitude": "23 01 26",
                     "raw_source": "Myotis alcathoe Poland, Ukraine.pdf"
+                },
+                {
+                    "name": "Dalkowskie Jary",
+                    "latitude": "51 39 02.4",
+                    "longitude": "15 52 34.6",
+                    "raw_source": "Myotis alcathoe Poland (Kmiecik et al. 2020).pdf"
+                },
+                {
+                    "name": "Łęgi Źródliskowe koło Przemkowa",
+                    "latitude": "51 32 10.59",
+                    "longitude": "15 45 4.28",
+                    "raw_source": "Myotis alcathoe Poland (Kmiecik et al. 2020).pdf"
+                },
+                {
+                    "name": "Chodlewo near Żmigród",
+                    "latitude": "51 30 59.06",
+                    "longitude": "16 50 21.61",
+                    "raw_source": "Myotis alcathoe Poland (Kmiecik et al. 2020).pdf"
+                },
+                {
+                    "name": "Głębowice near Wołów",
+                    "latitude": "51 27 3.86",
+                    "longitude": "16 44 28.56",
+                    "raw_source": "Myotis alcathoe Poland (Kmiecik et al. 2020).pdf"
+                },
+                {
+                    "name": "Złotopieńska Dziura",
+                    "latitude": "20 16 01",
+                    "longitude": "49 42 11",
+                    "raw_source": "Myotis alcathoe Poland (Sachanowicz et al. 2012).pdf"
+                },
+                {
+                    "name": "Dolna w Nasicznem",
+                    "latitude": "22 36 51",
+                    "longitude": "49 10 46",
+                    "raw_source": "Myotis alcathoe Poland (Sachanowicz et al. 2012).pdf"
+                },
+                {
+                    "name": "abandoned sandstone adits in Senderki",
+                    "latitude": "23 03 04",
+                    "longitude": "50 32 24",
+                    "raw_source": "Myotis alcathoe Poland (Sachanowicz et al. 2012).pdf"
+                },
+                {
+                    "name": "abandoned mining adit 'nad PKP II', Szklarska Poręba Dolna, the Western Sudety Mts",
+                    "latitude": "15 33 21",
+                    "longitude": "50 50 59",
+                    "raw_source": "Myotis alcathoe Poland (Sachanowicz et al. 2012).pdf"
+                },
+                {
+                    "name": "mouth of the Wielka Sucha Valley, the right side valley of the Chochołowska Valley",
+                    "latitude": "49.2666798",
+                    "longitude": "19.8245786",
+                    "comment": "Coordinates from Google Maps",
+                    "raw_source": "Rhinolophus, Myotis Poland Tatra.pdf"
                 }
             ]
         },
@@ -403,6 +459,27 @@
                     "latitude": "48 13 51",
                     "longitude": "22 37 01",
                     "raw_source": "Myotis alcathoe Poland, Ukraine.pdf"
+                },
+                {
+                    "name": "Kremenets'",
+                    "latitude": "50.1049466",
+                    "longitude": "25.7054634",
+                    "raw_source": "Chiroptera Ukraine Kremenetski Hory.pdf",
+                    "comment": "Coordinates from Google Maps"
+                },
+                {
+                    "name": "Medova Cave",
+                    "latitude": "49 49 16.3",
+                    "longitude": "24 05 23",
+                    "raw_source": "Myotis alcathoe Ukraine Lviv.pdf",
+                    "region": "Lviv"
+                },
+                {
+                    "name": "Pivnichne Podillya",
+                    "latitude": "49.9381333",
+                    "longitude": "24.9884661",
+                    "raw_source": "Chiroptera Ukraine Pivnicne Podillia.pdf",
+                    "region": "Lviv"
                 }
             ]
         },
@@ -547,6 +624,12 @@
                     "latitude": "48 49",
                     "longitude": "15 59",
                     "raw_source": "Myotis mystacinus group Caucasus.pdf"
+                },
+                {
+                    "name": "Jasov, Jasovská jaskyňa cave",
+                    "latitude": "48 41",
+                    "longitude": "20 59",
+                    "raw_source": "Chiroptera Slovakia-ectoparasites.pdf"
                 }
             ]
         },
@@ -560,6 +643,12 @@
                     "longitude": "6 15 1.6",
                     "raw_source": "Myotis Africa-cyt b phylogeny.pdf",
                     "comment": "Coordinates from Wikipedia. The cited source only says 'Vaud, Switzerland'. For Col du Marchairuz specifically, I cited an article I no longer have access to: Helversen, O. von. 2004. Myotis alcathoe v. Helversen und Heller, 2001 – Nymphenfledermaus. Pp. 1159–1167 in Niethammer, J. and Krapp, F. (eds.). Handbuch der Säugetiere Europas, Volume 4: Fledertiere, Part II: Chiroptera II (Vespertilionidae 2, Molossidae, Nycteridae). Wiebelsheim, Germany: Aula-Verlag, pp. x + 605–1186 (in German). ISBN 3-89104-639-1"
+                },
+                {
+                    "name": "Jura mountains",
+                    "latitude": "46 32 12.62",
+                    "longitude": "06 10 32.84",
+                    "raw_source": "Chiroptera, Spinturnicidae Europe-cophylogeny.pdf"
                 }
             ]
         },
@@ -1232,6 +1321,27 @@
                     "latitude": "45.37",
                     "longitude": "4.7",
                     "raw_source": "Myotis alcathoe-biogeography.pdf"
+                },
+                {
+                    "name": "Lalacelle",
+                    "region": "Orne",
+                    "raw_source": "Myotis alcathoe, Nyctalus leisleri France Mayenne.pdf",
+                    "latitude": "48.4693879",
+                    "longitude": "-0.1423721"
+                },
+                {
+                    "name": "Grotte du Mammouth, Louverné",
+                    "region": "Mayenne",
+                    "raw_source": "Myotis alcathoe, Nyctalus leisleri France Mayenne.pdf",
+                    "latitude": "48.1256217",
+                    "longitude": "-0.7836581"
+                },
+                {
+                    "name": "Champfrémont",
+                    "region": "Mayenne",
+                    "raw_source": "Myotis alcathoe, Nyctalus leisleri France Mayenne.pdf",
+                    "latitude": "48.433022",
+                    "longitude": "-0.1236928"
                 }
             ]
         },
@@ -1354,6 +1464,43 @@
                     "longitude": "14 3 36",
                     "comment": "Coordinates from Wikipedia",
                     "raw_source": "Myotis alcathoe Italy.pdf"
+                },
+                {
+                    "name": "Marsico Nuovo, Appennino Lucano Val d’Agri Lagonegrese National Park",
+                    "region": "Basilicata",
+                    "latitude": "40.4229923",
+                    "longitude": "15.7302518",
+                    "comment": "Coordinates from Google Maps",
+                    "raw_source": "Myotis alcathoe Italy Basilicata.pdf"
+                },
+                {
+                    "name": "Calvello, Appennino Lucano Val d’Agri Lagonegrese National Park",
+                    "region": "Basilicata",
+                    "latitude": "40.4750569",
+                    "longitude": "15.8341321",
+                    "comment": "Coordinates from Google Maps",
+                    "raw_source": "Myotis alcathoe Italy Basilicata.pdf"
+                },
+                {
+                    "name": "Villavallelonga (AQ) MIB:ZPL:01230",
+                    "raw_source": "Chiroptera Italy-IOTUs.pdf",
+                    "comment": "See Table S5 for locations. Google Maps coordinates for Villavallelonga, L'Aquila",
+                    "latitude": "41.8706692",
+                    "longitude": "13.6020776"
+                },
+                {
+                    "name": "Corleto Monforte (SA) MIB:ZPL:01281",
+                    "raw_source": "Chiroptera Italy-IOTUs.pdf",
+                    "comment": "See Table S5 for locations. Google Maps coordinates for Corleto Monforte, Salerno.",
+                    "latitude": "40.4374765",
+                    "longitude": "15.3777588"
+                },
+                {
+                    "name": "Felitto (SA) MIB:ZPL:01287, 01289",
+                    "raw_source": "Chiroptera Italy-IOTUs.pdf",
+                    "comment": "See Table S5 for locations. Google Maps coordinates for Felitto, Salerno.",
+                    "latitude": "40.37303",
+                    "longitude": "15.2429693"
                 }
             ]
         },
@@ -1373,6 +1520,27 @@
                     "latitude": "46 22 9.08",
                     "longitude": "23 36 11.97",
                     "raw_source": "Myotis alcathoe Romania (Ohlendorf & Hoffmann 2009).pdf"
+                },
+                {
+                    "name": "Muntele Puciosu",
+                    "latitude": "45.0330",
+                    "longitude": "25.4365",
+                    "comment": "Coordinates in Table S1",
+                    "raw_source": "Babesia vesperuginis (Corduneanu et al. 2017).pdf"
+                },
+                {
+                    "name": "Cheresig, Inferior Meadow of the Crișul Repede River natural protected area",
+                    "latitude": "47.033754",
+                    "longitude": "21.6753708",
+                    "raw_source": "Chiroptera Romania Crisul Repede.pdf",
+                    "comment": "Coordinates from Google Maps"
+                },
+                {
+                    "name": "Girișu de Criș, Inferior Meadow of the Crișul Repede River natural protected area",
+                    "latitude": "47.0648134",
+                    "longitude": "21.7328022",
+                    "raw_source": "Chiroptera Romania Crisul Repede.pdf",
+                    "comment": "Coordinates from Google Maps"
                 }
             ]
         },
@@ -1511,6 +1679,36 @@
                     "longitude": "2.416077",
                     "comment": "Google Maps estimate, based on map on p. 41",
                     "raw_source": "Chiroptera Catalonia-status.pdf"
+                },
+                {
+                    "name": "Albera",
+                    "raw_source": "Myotis alcathoe Catalonia Albera.pdf",
+                    "latitude": "42 28 55",
+                    "longitude": "2 56 46"
+                },
+                {
+                    "name": "Rao (Lugo)",
+                    "region": "Castilla y León",
+                    "raw_source": "Myotis alcathoe Castilla y Leon.pdf",
+                    "comment": "Coordinates from Google Maps",
+                    "latitude": "42.9515254",
+                    "longitude": "-6.873148"
+                },
+                {
+                    "name": "valle de Suertes en la vertiente leonesa de la sierra de Ancares (Candín, León)",
+                    "region": "Castilla y León",
+                    "raw_source": "Myotis alcathoe Castilla y Leon.pdf",
+                    "comment": "Coordinates from Google Maps",
+                    "latitude": "42.8374527",
+                    "longitude": "-6.7329172"
+                },
+                {
+                    "name": "Suárbol (Candín, León)",
+                    "region": "Castilla y León",
+                    "raw_source": "Myotis alcathoe Castilla y Leon.pdf",
+                    "comment": "Coordinates from Google Maps",
+                    "latitude": "42.8671671",
+                    "longitude": "-6.8522252"
                 }
             ]
         },
@@ -1676,6 +1874,19 @@
             ]
         },
         {
+            "group_name": "Germany (subfossil)",
+            "color": "darkgreen",
+            "localities": [
+                {
+                    "name": "Ziegentempel bei Brilon-Rösenbeck, Hochsauerlandkreis",
+                    "region": "Nordrhein-Westfalen",
+                    "raw_source": "Myotis alcathoe NRW Sauerland Holocene.pdf",
+                    "latitude": "51.4088203",
+                    "longitude": "8.6779652"
+                }
+            ]
+        },
+        {
             "group_name": "Russian Caucasus (M. alcathoe circassicus)",
             "color": "green",
             "localities": [
@@ -1792,11 +2003,11 @@
             "color": "red",
             "localities": [
                 {
-                    "name": "Slovenia 1",
-                    "latitude": "45.751171",
-                    "longitude": "14.934997",
-                    "comment": "Google Maps estimate, based on map on p. 100",
-                    "raw_source": "Chiroptera Slovenia-monitoring.pdf"
+                    "name": "Rdeči kamen",
+                    "latitude": "45.7425141",
+                    "longitude": "14.9601341",
+                    "comment": "Coordinates from Google Maps",
+                    "raw_source": "Myotis alcathoe Slovenia (Presetnik 2012).pdf"
                 }
             ]
         },
@@ -1823,10 +2034,74 @@
             "color": "red",
             "localities": [
                 {
-                    "name": "Stabna, Plužine Dist.",
-                    "latitude": "43 10",
-                    "longitude": "18 46",
-                    "raw_source": "Myotis mystacinus group Caucasus.pdf"
+                    "name": "Vrbnica river, 3 km SE of Stabna (5 km W of Plužine)",
+                    "latitude": "43.1620",
+                    "longitude": "18.7795",
+                    "raw_source": "Chiroptera Montenegro.pdf"
+                }
+            ]
+        },
+        {
+            "group_name": "Belgium",
+            "color": "red",
+            "localities": [
+                {
+                    "name": "Bois de Saint-Rémy",
+                    "latitude": "50.2047436",
+                    "longitude": "5.1872209",
+                    "comment": "Coordinates from Google Maps",
+                    "raw_source": "Myotis alcathoe Belgium.pdf"
+                },
+                {
+                    "name": "Grotte touristique de Rochefort",
+                    "latitude": "50.1552839",
+                    "longitude": "5.2260531",
+                    "comment": "Google Maps coordinates for Grotte de Lorette-Rochefort",
+                    "raw_source": "Myotis alcathoe Belgium.pdf"
+                },
+                {
+                    "name": "Etang des Prés de Virelles",
+                    "latitude": "50.0655919",
+                    "longitude": "4.33261",
+                    "comment": "Google Maps coordinates for Virelles",
+                    "raw_source": "Myotis alcathoe Belgium.pdf"
+                }
+            ]
+        },
+        {
+            "group_name": "Portugal",
+            "color": "red",
+            "localities": [
+                {
+                    "name": "Peneda Gerês National Park",
+                    "raw_source": "Chiroptera Portugal-DNA barcoding.pdf",
+                    "latitude": "41.8386601",
+                    "longitude": "-8.2437795",
+                    "comment": "Coordinates from Google Maps"
+                }
+            ]
+        },
+        {
+            "group_name": "Luxembourg",
+            "color": "red",
+            "localities": [
+                {
+                    "name": "Langengrund bei der Ortschaft Rumelange (Gemeinde Kayl) auf ca. 330 m Höhe ü. NN. (UTM: 32U 283390 5483730)",
+                    "latitude": "49.467547",
+                    "longitude": "6.010229",
+                    "raw_source": "Myotis alcathoe, dasycneme Luxembourg.pdf"
+                }
+            ]
+        },
+        {
+            "group_name": "Bosnia and Herzegovina",
+            "color": "red",
+            "localities": [
+                {
+                    "name": "Kozija ćuprija",
+                    "latitude": "43.85314",
+                    "longitude": "18.45790",
+                    "raw_source": "Myotis alcathoe Bosnia.pdf"
                 }
             ]
         }
