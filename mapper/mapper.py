@@ -276,7 +276,6 @@ STYLE_TO_TEMPLATE = {
 
 @functools.cache
 def decode_source(raw_source: str | int, *, cite_style: str = "paper") -> str:
-    return ""
     from taxonomy.db.models import Article
 
     query = Article.select_valid()
@@ -367,7 +366,7 @@ LOCALITY_REPORT_TEMPLATE = {
     ReportFormat.markdown: "* **{name}** ({latitude}, {longitude}){maybe_comment}{maybe_source}",
     ReportFormat.wiki: "* '''{name}''' ({latitude}, {longitude}){maybe_comment}{maybe_source}",
 }
-FORMAT_TO_STYLE = {ReportFormat.markdown: "paper", ReportFormat.wiki: "normal"}
+FORMAT_TO_STYLE = {ReportFormat.markdown: "paper", ReportFormat.wiki: "commons"}
 
 
 def print_report(map_data: MapData, format: ReportFormat, only_unsourced: bool) -> None:

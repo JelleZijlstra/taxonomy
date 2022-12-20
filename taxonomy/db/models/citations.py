@@ -10,7 +10,7 @@ from ..constants import ArticleType
 def wikify(s: str) -> str:
     """Wikifies text (e.g., turns <i> into '')."""
     s = s.replace("'", "<nowiki>'</nowiki>")
-    s = re.sub(r"<\/?i>", "'", s)
+    s = re.sub(r"<\/?i>", "''", s)
     return re.sub(r"(?<!')<nowiki>'<\/nowiki>(?!')", "'", s)
 
 
@@ -513,8 +513,13 @@ def citezootaxa(article: Article) -> str:
     return out
 
 
+@register_cite_function("commons")
+def citecommons(article: Article) -> str:
+    return citewp(article, commons=True)
+
+
 @register_cite_function("wp")
-def citewp(article: Article) -> str:
+def citewp(article: Article, *, commons: bool = False) -> str:
     # cites according to {{cite journal}} etc.
     # stuff related to {{cite doi}} and friends
     # determines whether only one citation is returned or two if
@@ -526,17 +531,7 @@ def citewp(article: Article) -> str:
     else:
         doi = ""
     out1 = ""
-    jstor = article.getIdentifier(ArticleTag.JSTOR)
     hdl = article.getIdentifier(ArticleTag.HDL)
-    if doi:
-        # {{cite doi}}
-        out1 = "{{cite doi|" + doi + "}}"
-    elif jstor:
-        # {{cite jstor}}
-        out1 = "{{cite jstor|" + jstor + "}}"
-    elif hdl:
-        # {{cite hdl}}
-        out1 = "{{cite hdl|" + hdl + "}}"
     if article.type == ArticleType.JOURNAL:
         label = "journal"
     elif article.type in (ArticleType.BOOK, ArticleType.CHAPTER):
@@ -544,24 +539,32 @@ def citewp(article: Article) -> str:
     elif article.type == ArticleType.THESIS:
         label = "thesis"
     elif article.type == ArticleType.MISCELLANEOUS:
-        return out1
+        label = "web"
+    elif article.type == ArticleType.WEB:
+        label = "web"
     else:
-        raise RuntimeError(f"unrecognized type {article.type}")
+        raise RuntimeError(f"unrecognized type {article.type!r}")
     paras: Dict[str, Optional[str]] = {}
     # authors
-    coauthors: List[str] = []
-    for i, author in enumerate(article.get_authors()):
-        if i < 9:
-            # templates only support up to 9 authors
-            paras[f"last{i + 1}"] = author.family_name
-            if author.given_names:
-                paras[f"first{i + 1}"] = author.given_names
-            elif author.initials:
-                paras[f"first{i + 1}"] = author.initials
-        else:
-            coauthors.append(author.get_full_name(family_first=True))
-    if coauthors:
-        paras["coauthors"] = "; ".join(coauthors)
+    if commons:
+        # commons doesn't have last1 etc.
+        paras["authors"] = "; ".join(
+            author.get_full_name(family_first=True) for author in article.get_authors()
+        )
+    else:
+        coauthors: List[str] = []
+        for i, author in enumerate(article.get_authors()):
+            if i < 9:
+                # templates only support up to 9 authors
+                paras[f"last{i + 1}"] = author.family_name
+                if author.given_names:
+                    paras[f"first{i + 1}"] = author.given_names
+                elif author.initials:
+                    paras[f"first{i + 1}"] = author.initials
+            else:
+                coauthors.append(author.get_full_name(family_first=True))
+        if coauthors:
+            paras["coauthors"] = "; ".join(coauthors)
     # easy stuff we need in all classes
     paras["year"] = article.year
     if hdl:
