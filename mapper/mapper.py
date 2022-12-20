@@ -219,15 +219,27 @@ def degrees_to_decimal(degrees: str) -> float:
 def hex_color_of_group(group: Group) -> str:
     if "color" not in group:
         return "#40a040"  # green
+    # https://commons.wikimedia.org/wiki/Commons:Creating_accessible_illustrations
+    # except for "darkgreen" and "red", retained for compatibility
     match group["color"]:
         case "darkgreen":
             return "#40a040"
         case "red":
             return "#FF0000"
+        case "skyblue":
+            return "#56B439"
         case "blue":
-            return "#0000FF"
+            return "0072B2"
         case "green":
-            return "#00FF00"
+            return "#009E73"
+        case "orange":
+            return "#E69F00"
+        case "yellow":
+            return "F0E442"
+        case "vermilion":
+            return "D55E00"
+        case "purple":
+            return "CC79A7"
         case _:
             return group["color"]
 
