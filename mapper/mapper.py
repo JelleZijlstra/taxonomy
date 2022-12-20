@@ -31,6 +31,7 @@ class Locality(TypedDict):
 class Group(TypedDict):
     group_name: str
     color: NotRequired[str]
+    style: NotRequired[str]
     localities: list[Locality]
 
 
@@ -227,7 +228,7 @@ def hex_color_of_group(group: Group) -> str:
         case "red":
             return "#FF0000"
         case "skyblue":
-            return "#56B439"
+            return "#56B4E9"
         case "blue":
             return "0072B2"
         case "green":
@@ -244,17 +245,38 @@ def hex_color_of_group(group: Group) -> str:
             return group["color"]
 
 
-LOCALITY_TEMPLATE = """\t\t<circle
+CIRCLE_TEMPLATE = """\t\t<circle
 \t\t\tstyle="fill:{color};fill-opacity:1;fill-rule:evenodd;stroke:none;display:inline;enable-background:new"
 \t\t\tcy="{map_latitude}" cx="{map_longitude}" r="{marker_size}">
 \t\t\t<title>{name}</title>
 \t\t\t<!-- Latitude: {dlat}; longitude: {dlong}{maybe_source}-->
 \t\t</circle>
 """
+OPEN_CIRCLE_TEMPLATE = """\t\t<circle
+\t\t\tstyle="stroke:{color};stroke-width:{stroke_width};fill-opacity:0;display:inline;enable-background:new"
+\t\t\tcy="{map_latitude}" cx="{map_longitude}" r="{marker_size}">
+\t\t\t<title>{name}</title>
+\t\t\t<!-- Latitude: {dlat}; longitude: {dlong}{maybe_source}-->
+\t\t</circle>
+"""
+CROSS_TEMPLATE = """\t\t<path
+\t\t\tstyle="fill:{color};fill-opacity:1;fill-rule:evenodd;stroke:none;display:inline;enable-background:new"
+\t\t\td="M {map_longitude},{map_latitude} m {cross_size},0 h {cross_size} v -{cross_size} h {cross_size} v -{cross_size} h -{cross_size} v -{cross_size} h -{cross_size} v {cross_size} h -{cross_size} v {cross_size} h {cross_size} v {cross_size} z">
+\t\t\t<title>{name}</title>
+\t\t\t<!-- Latitude: {dlat}; longitude: {dlong}{maybe_source}-->
+\t\t</path>
+"""
+
+STYLE_TO_TEMPLATE = {
+    "circle": CIRCLE_TEMPLATE,
+    "open": OPEN_CIRCLE_TEMPLATE,
+    "cross": CROSS_TEMPLATE,
+}
 
 
 @functools.cache
 def decode_source(raw_source: str | int, *, cite_style: str = "paper") -> str:
+    return ""
     from taxonomy.db.models import Article
 
     query = Article.select_valid()
@@ -275,23 +297,30 @@ def source_from_locality(locality: Locality, cite_style: str = "paper") -> str |
 
 
 def locality_to_svg(
-    locality: Locality, color: str, map: Map, marker_size: float = DEFAULT_MARKER_SIZE
+    locality: Locality,
+    color: str,
+    style: str,
+    map: Map,
+    marker_size: float = DEFAULT_MARKER_SIZE,
 ) -> str:
     dlat = degrees_to_decimal(locality["latitude"])
     dlong = degrees_to_decimal(locality["longitude"])
     map_latitude, map_longitude = map.converter(dlat, dlong)
     double_size = 2 * marker_size
     source_str = source_from_locality(locality)
+    cross_size = double_size / 3
     if source_str is not None:
         maybe_source = f"; source: {source_str}"
     else:
         maybe_source = ""
-    return LOCALITY_TEMPLATE.format(
+    return STYLE_TO_TEMPLATE[style].format(
         color=color,
         map_longitude=map_longitude,
         map_latitude=map_latitude,
         marker_size=marker_size,
         double_size=double_size,
+        cross_size=cross_size,
+        stroke_width=marker_size / 2,
         name=locality["name"],
         dlat=dlat,
         dlong=dlong,
@@ -313,8 +342,9 @@ def group_to_svg(
     group: Group, map: Map, marker_size: float = DEFAULT_MARKER_SIZE
 ) -> str:
     color = hex_color_of_group(group)
+    style = group.get("style", "circle")
     localities = [
-        locality_to_svg(locality, color, map, marker_size)
+        locality_to_svg(locality, color, style, map, marker_size)
         for locality in group["localities"]
     ]
     return GROUP_TEMPLATE.format(
