@@ -244,12 +244,12 @@ def hex_color_of_group(group: Group) -> str:
             return group["color"]
 
 
-LOCALITY_TEMPLATE = """\t\t<path
+LOCALITY_TEMPLATE = """\t\t<circle
 \t\t\tstyle="fill:{color};fill-opacity:1;fill-rule:evenodd;stroke:none;display:inline;enable-background:new"
-\t\t\td="m {shifted_longitude},{map_latitude} a {marker_size},{marker_size} 0 1 1 -{double_size}, 0 {marker_size},{marker_size} 0 1 1 {double_size},0 z">
+\t\t\tcy="{map_latitude}" cx="{map_longitude}" r="{marker_size}">
 \t\t\t<title>{name}</title>
 \t\t\t<!-- Latitude: {dlat}; longitude: {dlong}{maybe_source}-->
-\t\t</path>
+\t\t</circle>
 """
 
 
@@ -280,7 +280,6 @@ def locality_to_svg(
     dlat = degrees_to_decimal(locality["latitude"])
     dlong = degrees_to_decimal(locality["longitude"])
     map_latitude, map_longitude = map.converter(dlat, dlong)
-    shifted_longitude = map_longitude + marker_size / 2
     double_size = 2 * marker_size
     source_str = source_from_locality(locality)
     if source_str is not None:
@@ -289,7 +288,7 @@ def locality_to_svg(
         maybe_source = ""
     return LOCALITY_TEMPLATE.format(
         color=color,
-        shifted_longitude=shifted_longitude,
+        map_longitude=map_longitude,
         map_latitude=map_latitude,
         marker_size=marker_size,
         double_size=double_size,
