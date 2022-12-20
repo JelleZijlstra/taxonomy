@@ -313,6 +313,46 @@
                     "latitude": "47.95",
                     "longitude": "20.46",
                     "raw_source": "Myotis alcathoe-biogeography.pdf"
+                },
+                {
+                    "name": "Noszvaj",
+                    "region": "Heves",
+                    "raw_source": "Chiroptera Europe-bat flies.pdf",
+                    "comment": "Coordinates from Google Maps",
+                    "latitude": "47.936226",
+                    "longitude": "20.4608945"
+                },
+                {
+                    "name": "Felsőtárkány",
+                    "region": "Heves",
+                    "raw_source": "Chiroptera Europe-bat flies.pdf",
+                    "comment": "Coordinates from Google Maps",
+                    "latitude": "47.9984911",
+                    "longitude": "20.3997898"
+                },
+                {
+                    "name": "Egerbakta",
+                    "region": "Heves",
+                    "raw_source": "Chiroptera Europe-bat flies.pdf",
+                    "comment": "Coordinates from Google Maps",
+                    "latitude": "47.936481",
+                    "longitude": "20.270905"
+                },
+                {
+                    "name": "Egerbocs",
+                    "region": "Heves",
+                    "raw_source": "Chiroptera Europe-bat flies.pdf",
+                    "comment": "Coordinates from Google Maps",
+                    "latitude": "48.0139506",
+                    "longitude": "20.2298699"
+                },
+                {
+                    "name": "Miskolc",
+                    "region": "Borsod-Abaúj-Zemplén",
+                    "raw_source": "Chiroptera Europe-bat flies.pdf",
+                    "comment": "Coordinates from Google Maps",
+                    "latitude": "48.0892992",
+                    "longitude": "20.5356699"
                 }
             ]
         },
@@ -667,6 +707,13 @@
                     "latitude": "41.84",
                     "longitude": "27.56",
                     "raw_source": "Myotis alcathoe-biogeography.pdf"
+                },
+                {
+                    "name": "Bursa",
+                    "comment": "Source only says 'a forested area, Bursa Province'. Coordinates for Bursa city.",
+                    "latitude": "40 11",
+                    "longitude": "29 03",
+                    "raw_source": "Myotis alcathoe, daubentonii Turkey-helminths.pdf"
                 }
             ]
         },
@@ -1364,6 +1411,14 @@
                     "raw_source": "Myotis alcathoe Austria.pdf",
                     "comment": "p. 6",
                     "region": "Burgenland"
+                },
+                {
+                    "name": "Thayatal",
+                    "region": "Niederösterreich",
+                    "raw_source": "Chiroptera Lower Austria Thayatal.pdf",
+                    "comment": "Coordinates from German Wikipedia",
+                    "latitude": "48 51 0",
+                    "longitude": "15 54 0"
                 }
             ]
         },
@@ -1451,6 +1506,13 @@
                     "latitude": "49 22",
                     "longitude": "17 45",
                     "raw_source": "Myotis mystacinus group Caucasus.pdf"
+                },
+                {
+                    "name": "Podyjí",
+                    "raw_source": "Chiroptera Lower Austria Thayatal.pdf",
+                    "comment": "Coordinates from German Wikipedia",
+                    "latitude": "48 50 52",
+                    "longitude": "15 53 50"
                 }
             ]
         },
@@ -1883,6 +1945,20 @@
                     "raw_source": "Myotis alcathoe NRW Sauerland Holocene.pdf",
                     "latitude": "51.4088203",
                     "longitude": "8.6779652"
+                }
+            ]
+        },
+        {
+            "group_name": "Austria (subfossil)",
+            "color": "darkgreen",
+            "localities": [
+                {
+                    "name": "Ritzlkesselhöhle, Dürrenstein",
+                    "region": "Niederösterreich",
+                    "comment": "Coordinates from Google Maps",
+                    "raw_source": "Myotis alcathoe Austria Ritzlkesselhoehle Holocene.pdf",
+                    "latitude": "47.7833468",
+                    "longitude": "15.0149811"
                 }
             ]
         },
