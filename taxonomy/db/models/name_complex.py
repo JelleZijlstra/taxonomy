@@ -410,7 +410,6 @@ class NameComplex(BaseModel):
             if name.root_name.endswith(ending)
         ]
         print(f"found {len(names)} names with -{ending} to apply {self}")
-        output = []
         for name in names:
             print(name)
             if not dry_run:
@@ -421,7 +420,7 @@ class NameComplex(BaseModel):
             if not any(e.ending == ending for e in saved_endings):
                 print(f"saving ending {ending}")
                 self.make_ending(ending)
-        return output
+        return names
 
     def get_stem_from_name(self, name: str) -> str:
         """Applies the group to a genus name to get the name's stem."""

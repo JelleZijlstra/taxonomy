@@ -463,12 +463,12 @@ class Name(BaseModel):
                     )
                     return inferred
             if self.group is Group.species:
-                default = Rank.species
-            elif default is Group.genus:
-                default = Rank.genus
+                rank_default = Rank.species
+            elif self.group is Group.genus:
+                rank_default = Rank.genus
             else:
-                default = None
-            return super().get_value_for_field(field, default=default)
+                rank_default = None
+            return super().get_value_for_field(field, default=rank_default)
         elif field == "type_tags":
             if self.type_locality is not None:
                 print(repr(self.type_locality))
@@ -1439,6 +1439,15 @@ class Name(BaseModel):
                     yield "type"
                 if self.type is not None:
                     yield "genus_type_kind"
+
+    def lint(self) -> Iterable[str]:
+        try:
+            desc = self.get_description(full=True, include_taxon=True)
+        except Exception as e:
+            yield f"{self.id}: cannot display due to {e}"
+            return
+        if self.status is Status.removed:
+            return
 
     def validate_as_child(self, status: Status = Status.valid) -> Taxon:
         if self.taxon.rank is Rank.species:

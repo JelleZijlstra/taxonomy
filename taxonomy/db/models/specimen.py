@@ -28,7 +28,7 @@ class Specimen(BaseModel):
         db_table = "specimen"
 
     @classmethod
-    def create_interactively(cls) -> Optional["Specimen"]:
+    def create_interactively(cls, **kwargs: object) -> Optional["Specimen"]:
         taxon_text = Specimen.getter("taxon_text").get_one_key("taxon_text> ")
         if taxon_text is None:
             return None
@@ -106,6 +106,7 @@ class SpecimenComment(BaseModel):
         cls,
         specimen: Optional[Specimen] = None,
         text: Optional[str] = None,
+        **kwargs: object,
     ) -> Optional["SpecimenComment"]:
         if specimen is None:
             specimen = cls.get_value_for_foreign_key_field_on_class(

@@ -109,7 +109,8 @@ def get_line(
         if not allow_none and line == "":
             continue
         if allow_clear and line == "clear":
-            history.strings = [""]
+            # TODO: Does this work? Do we need a replacement?
+            history.strings = [""]  # type: ignore
         return line
 
 
@@ -317,13 +318,13 @@ _ADT_LIST_BUILTINS = ["r", "remove_all", "h", "undo"]
 def get_adt_list(
     adt_cls: Type[adt.ADT],
     *,
-    existing: Optional[Iterable[adt.ADT]] = None,
+    existing: Optional[Iterable[ADTOrInstance]] = None,
     completers: CompleterMap = {},
     callbacks: CallbackMap = {},
     show_existing: bool = False,
     prompt: Optional[str] = None,
     get_existing: Optional[Callable[[], Iterable[ADTOrInstance]]] = None,
-    set_existing: Optional[Callable[[Tuple[ADTOrInstance, ...]], None]] = None,
+    set_existing: Optional[Callable[[Sequence[ADTOrInstance]], None]] = None,
 ) -> Tuple[ADTOrInstance, ...]:
     if prompt is None:
         prompt = adt_cls.__name__

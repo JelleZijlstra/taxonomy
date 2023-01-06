@@ -49,8 +49,7 @@ _log_f = open(_log_path, "a", encoding="utf-8")
 if settings.use_sqlite:
 
     class LoggingDatabase(SqliteDatabase):
-        def execute_sql(self, sql, *args: Any, **kwargs: Any) -> Any:
-
+        def execute_sql(self, sql: str, *args: Any, **kwargs: Any) -> Any:
             start = time.time()
             try:
                 return super().execute_sql(sql, *args, **kwargs)
@@ -158,7 +157,7 @@ class BaseModel(Model):
     @classmethod
     def lint_all(cls: Type[ModelT]) -> List[Tuple[ModelT, List[str]]]:
         bad = []
-        for obj in cls.select():
+        for obj in getinput.print_every_n(cls.select(), label=f"{cls.__name__}s"):
             messages = list(obj.lint())
             if messages:
                 bad.append((obj, messages))
@@ -446,7 +445,7 @@ class BaseModel(Model):
     ) -> Optional[ModelT]:
         return cls.getter(field).get_one(prompt, allow_empty=allow_empty)
 
-    def get_value_for_field(self, field: str, default: Optional[str] = None) -> Any:
+    def get_value_for_field(self, field: str, default: Optional[Any] = None) -> Any:
         field_obj = getattr(type(self), field)
         prompt = f"{field}> "
         current_value = getattr(self, field)
@@ -458,7 +457,7 @@ class BaseModel(Model):
             def get_existing() -> List[getinput.ADTOrInstance]:
                 return getattr(self, field) or []
 
-            def set_existing(adts: Tuple[getinput.ADTOrInstance, ...]) -> None:
+            def set_existing(adts: Sequence[getinput.ADTOrInstance]) -> None:
                 setattr(self, field, adts)
 
             return getinput.get_adt_list(
@@ -532,8 +531,8 @@ class BaseModel(Model):
 
     def call(self) -> None:
         """Call an arbitrary method interactively."""
-        options = {name: self._get_possible_callable(name) for name in dir(self)}
-        options = {name: data for name, data in options.items() if data is not None}
+        raw_options = {name: self._get_possible_callable(name) for name in dir(self)}
+        options = {name: data for name, data in raw_options.items() if data is not None}
         name = getinput.get_with_completion(
             options, message="method to call> ", disallow_other=True
         )
@@ -551,7 +550,7 @@ class BaseModel(Model):
         result = obj(**args)
         print("Result:", result)
 
-    def _fill_param(self, name: str, param: inspect.Parameter):
+    def _fill_param(self, name: str, param: inspect.Parameter) -> object:
         if param.kind not in (
             inspect.Parameter.POSITIONAL_OR_KEYWORD,
             inspect.Parameter.KEYWORD_ONLY,
@@ -571,13 +570,14 @@ class BaseModel(Model):
         elif typ is str:
             return getinput.get_line(name, allow_none=is_optional)
         elif typ is int:
-            return int(
-                getinput.get_line(
-                    name,
-                    allow_none=is_optional,
-                    validate=lambda value: value.isnumeric(),
-                )
+            line = getinput.get_line(
+                name,
+                allow_none=is_optional,
+                validate=lambda value: value.isnumeric(),
             )
+            if line is None:
+                return None
+            return int(line)
         elif isinstance(typ, type):
             if issubclass(typ, enum.Enum):
                 return getinput.get_enum_member(

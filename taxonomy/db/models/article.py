@@ -1075,11 +1075,12 @@ class ArticleComment(BaseModel):
 
 
 Citer = Callable[[Article], str]
+CiterT = TypeVar("CiterT", bound=Citer)
 _CITE_FUNCTIONS: Dict[str, Citer] = {}
 
 
-def register_cite_function(name: str) -> Callable[[Citer], Citer]:
-    def decorator(citer: Citer) -> Citer:
+def register_cite_function(name: str) -> Callable[[CiterT], CiterT]:
+    def decorator(citer: CiterT) -> CiterT:
         _CITE_FUNCTIONS[name] = citer
         return citer
 

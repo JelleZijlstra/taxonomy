@@ -127,7 +127,7 @@ class Book(BaseModel):
                 ol_id = author["key"].split("/")[2]
                 person = Person.get_or_create_from_ol_id(ol_id)
                 author_tags.append(AuthorTag.Author(person=person))
-            self.author_tags = author_tags
+            self.author_tags = author_tags  # type: ignore
         for language in data.get("languages", []):
             identifier = language["key"].split("/")[2]
             if identifier == "mul":

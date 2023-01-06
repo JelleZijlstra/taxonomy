@@ -668,7 +668,7 @@ class Taxon(BaseModel):
             )
         except peewee.IntegrityError:
             print("DUPLICATE OCCURRENCE")
-            return self.at(location)
+            return self.at(location)  # type: ignore
 
     def edit_occurrence(self) -> None:
         occs = {occ.location.name: occ for occ in self.occurrences}
@@ -1079,6 +1079,8 @@ class Taxon(BaseModel):
             history_key=(type(self), "fill_field_for_names"),
             disallow_other=True,
         )
+        if field is None:
+            return
         nams = self.names_missing_field(field)
         for nam in sorted(nams, key=lambda nam: nam.sort_key()):
             nam.display(full=False)
@@ -1229,6 +1231,8 @@ class Taxon(BaseModel):
                 history_key=(type(self), "fill_field_for_names"),
                 disallow_other=True,
             )
+        if field is None:
+            return
 
         for name in sorted(
             self.all_names(exclude=exclude, min_year=min_year),

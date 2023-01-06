@@ -89,31 +89,6 @@ T = TypeVar("T")
 gc.disable()
 
 
-class _ShellNamespace(dict):  # type: ignore
-    def __missing__(self, key: str) -> object:
-        try:
-            return getattr(__builtins__, key)
-        except AttributeError:
-            # make names accessible
-            return taxon_of_name(key)
-
-    def keys(self) -> Set[str]:  # type: ignore
-        keys = set(super().keys())
-        keys |= set(dir(__builtins__))
-        return keys
-
-    def __delitem__(self, key: str) -> None:
-        if super().__contains__(key):
-            super().__delitem__(key)
-
-    def clear_cache(self) -> None:
-        del self._names
-
-    def add_name(self, taxon: Taxon) -> None:
-        if hasattr(self, "_names") and taxon.valid_name is not None:
-            self._names.add(taxon.valid_name.replace(" ", "_"))
-
-
 def _reconnect() -> None:
     database.close()
     database.connect()
@@ -175,15 +150,6 @@ def generator_command(fn: Callable[..., Iterable[T]]) -> Callable[..., List[T]]:
 
     ns[fn.__name__] = wrapper
     return wrapper
-
-
-# Shell internal commands
-
-
-@command
-def clear_cache() -> None:
-    """Clears the autocomplete cache."""
-    ns.clear_cache()
 
 
 # Lookup
@@ -1848,6 +1814,8 @@ def fill_data_random(
 @command
 def fill_data_for_names() -> None:
     taxon = Taxon.getter(None).get_one("taxon> ")
+    if taxon is None:
+        return
     level = getinput.get_enum_member(FillDataLevel, "level> ")
     taxon.fill_data_for_names(level=level)
 
@@ -2385,7 +2353,7 @@ def reassign_references(
 
 
 @command
-def doubled_authors(autofix: bool = False) -> None:
+def doubled_authors(autofix: bool = False) -> list[Name]:
     nams = Name.select_valid().filter(Name.author_tags != None)
     bad_nams = []
     for nam in nams:
@@ -3737,7 +3705,7 @@ def cg_report(
         min_year = datetime.date.today().year - 3
     query = Article.select_valid().filter(Article.citation_group == cg)
     # {volume: {issue: [articles]}}
-    arts = defaultdict(lambda: defaultdict(list))
+    arts: dict[str, dict[str, list[Article]]] = defaultdict(lambda: defaultdict(list))
     for art in query:
         if art.numeric_year() >= min_year:
             arts[art.volume][art.issue].append(art)

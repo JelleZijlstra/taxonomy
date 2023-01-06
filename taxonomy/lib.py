@@ -336,17 +336,17 @@ def edit_names(
             nam.edit()
 
 
-def make_genus():
+def make_genus() -> Taxon | None:
     parent = Taxon.getter(None).get_one("parent> ")
     if parent is None:
-        return
+        return None
     name = Taxon.getter("valid_name").get_one_key("name> ")
     if name is None:
-        return
+        return None
     try:
         existing = Taxon.select_valid().filter(Taxon.valid_name == name).get()
         print(f"{existing} already exists")
-        return
+        return None
     except Taxon.DoesNotExist:
         pass
     authors = []
@@ -357,7 +357,7 @@ def make_genus():
         authors.append(author)
     year = Name.getter("year").get_one_key("year> ")
     if year is None:
-        return
+        return None
     people = [Person.get_or_create_unchecked(name) for name in authors]
     tags = [AuthorTag.Author(person=person) for person in people]
     new_taxon = parent.add_static(Rank.genus, name, year, author_tags=tags)
@@ -365,19 +365,19 @@ def make_genus():
     return new_taxon
 
 
-def make_species():
+def make_species() -> Taxon | None:
     parent = Taxon.getter(None).get_one("parent> ")
     if parent is None or parent.rank is not Rank.genus:
-        return
+        return None
     original_name = Name.getter("original_name").get_one_key("name> ")
     if original_name is None:
-        return
+        return None
     root_name = root_name_of_name(original_name, Rank.species)
     name = f"{parent.valid_name} {root_name}"
     try:
         existing = Taxon.select_valid().filter(Taxon.valid_name == name).get()
         print(f"{existing} already exists")
-        return
+        return None
     except Taxon.DoesNotExist:
         pass
     authors = []
@@ -388,7 +388,7 @@ def make_species():
         authors.append(author)
     year = Name.getter("year").get_one_key("year> ")
     if year is None:
-        return
+        return None
     clean_year = re.sub(r" .*", "", year)
     page = Name.getter("page_described").get_one_key("page> ")
     location = getinput.get_line("location> ")
@@ -404,7 +404,7 @@ def make_species():
         tuple(name.lower().replace("von ", "").replace("du ", "") for name in authors),
         year,
     )
-    verbatim_citation = refs.get(key)
+    verbatim_citation = refs.get(key)  # type: ignore
     if verbatim_citation is not None:
         print(f"found cite: {verbatim_citation}")
     tags = [AuthorTag.Author(person=person) for person in people]
@@ -453,7 +453,7 @@ def clean_regions(kind: RegionKind, print_only: bool = False) -> None:
         if new_kind:
             for child in children:
                 print(child)
-                child.kind = new_kind
+                child.kind = new_kind  # type: ignore
             print("Perform fixup")
             Region.getter(None).get_and_edit()
         else:
