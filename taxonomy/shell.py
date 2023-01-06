@@ -2632,158 +2632,17 @@ def check_justified_emendations() -> Iterable[Tuple[Name, str]]:
 
 
 @generator_command
-def check_tags(dry_run: bool = True) -> Iterable[Tuple[Name, str]]:
-    """Looks at all tags set on names and applies related changes."""
-    status_to_priority = {}
-    for priority, statuses in enumerate(NomenclatureStatus.hierarchy()):
-        for status in statuses:
-            status_to_priority[status] = priority
-
-    def maybe_adjust_status(nam: Name, status: NomenclatureStatus, tag: object) -> None:
-        current_priority = status_to_priority[nam.nomenclature_status]
-        new_priority = status_to_priority[status]
-        if current_priority > new_priority:
-            comment = f"Status automatically changed from {nam.nomenclature_status.name} to {status.name} because of {tag}"
-            print(f"changing status of {nam} and adding comment {comment!r}")
-            if not dry_run:
-                nam.add_static_comment(constants.CommentKind.automatic_change, comment)
-                nam.nomenclature_status = status  # type: ignore
-                nam.save()
-
-    names_by_tag: Dict[Type[Any], Set[Name]] = defaultdict(set)
-    for nam in Name.select_valid().filter(Name.tags != None):
-        try:
-            tags = nam.tags
-        except Exception:
-            yield nam, "could not deserialize tags"
-            continue
-        for tag in tags:
-            names_by_tag[type(tag)].add(nam)
-            if isinstance(tag, NameTag.PreoccupiedBy):
-                maybe_adjust_status(nam, NomenclatureStatus.preoccupied, tag)
-                senior_name = tag.name
-                if nam.group != senior_name.group:
-                    print(
-                        f"{nam} is of a different group than supposed senior name {senior_name}"
-                    )
-                    yield nam, "homonym of different group"
-                if (
-                    senior_name.nomenclature_status
-                    is NomenclatureStatus.subsequent_usage
-                ):
-                    for senior_name_tag in senior_name.get_tags(
-                        senior_name.tags, NameTag.SubsequentUsageOf
-                    ):
-                        senior_name = senior_name_tag.name
-                if nam.effective_year() < senior_name.effective_year():
-                    print(f"{nam} predates supposed senior name {senior_name}")
-                    yield nam, "antedates homonym"
-                # TODO apply this check to species too by handling gender endings correctly.
-                if nam.group != Group.species:
-                    if nam.root_name != tag.name.root_name:
-                        print(
-                            f"{nam} has a different root name than supposed senior name {senior_name}"
-                        )
-                        yield nam, "differently-named homonym"
-            elif isinstance(
-                tag,
-                (
-                    NameTag.UnjustifiedEmendationOf,
-                    NameTag.IncorrectSubsequentSpellingOf,
-                    NameTag.VariantOf,
-                    NameTag.NomenNovumFor,
-                    NameTag.JustifiedEmendationOf,
-                ),
-            ):
-                for status, tag_cls in models.STATUS_TO_TAG.items():
-                    if isinstance(tag, tag_cls):
-                        maybe_adjust_status(nam, status, tag)
-                if nam.effective_year() < tag.name.effective_year():
-                    print(f"{nam} predates supposed original name {tag.name}")
-                    yield nam, "antedates original name"
-                if nam.taxon != tag.name.taxon:
-                    print(f"{nam} is not assigned to the same name as {tag.name}")
-                    yield nam, "not synonym of original name"
-            elif isinstance(tag, NameTag.PartiallySuppressedBy):
-                maybe_adjust_status(nam, NomenclatureStatus.partially_suppressed, tag)
-            elif isinstance(tag, NameTag.FullySuppressedBy):
-                maybe_adjust_status(nam, NomenclatureStatus.fully_suppressed, tag)
-            elif isinstance(tag, NameTag.Conserved):
-                if nam.nomenclature_status not in (
-                    NomenclatureStatus.available,
-                    NomenclatureStatus.as_emended,
-                    NomenclatureStatus.nomen_novum,
-                ):
-                    print(
-                        f"{nam} is on the Official List, but is not marked as available."
-                    )
-                    yield nam, "unavailable listed name"
-            # haven't handled TakesPriorityOf, NomenOblitum, MandatoryChangeOf
-
-    for status, tag_cls in models.STATUS_TO_TAG.items():
-        tagged_names = names_by_tag[tag_cls]
-        for nam in Name.select_valid().filter(Name.nomenclature_status == status):
-            if nam not in tagged_names:
-                yield nam, f"has status {status.name} but no corresponding tag"
+def check_tags(dry_run: bool = True) -> Iterable[tuple[Name, list[str]]]:
+    linter = functools.partial(models.name_lint.check_tags_for_name, dry_run=dry_run)
+    return Name.lint_all(linter)
 
 
 @generator_command
-def check_type_tags(
-    dry_run: bool = False, require_type_designations: bool = False
-) -> Iterable[Tuple[Name, str]]:
-    for nam in getinput.print_every_n(
-        Name.select_valid().filter(Name.type_tags != None), label="names"
-    ):
-        for message in models.name_lint.check_type_tags_for_name(nam, dry_run):
-            yield nam, message
-    getinput.flush()
-    if not require_type_designations:
-        return
-    for nam in getinput.print_every_n(
-        Name.select_valid().filter(
-            Name.genus_type_kind
-            == constants.TypeSpeciesDesignation.subsequent_designation
-        ),
-        label="names with subsequent designations",
-    ):
-        for tag in nam.type_tags or ():
-            if isinstance(tag, TypeTag.TypeDesignation) and tag.type == nam.type:
-                break
-        else:
-            print(f"{nam} is missing a reference for its type designation")
-            yield nam, "missing type designation reference"
-    for nam in getinput.print_every_n(
-        Name.select_valid().filter(
-            Name.species_type_kind == constants.SpeciesGroupType.lectotype
-        ),
-        label="names with lectotypes",
-    ):
-        if nam.collection and nam.collection.name in ("lost", "untraced"):
-            continue
-        for tag in nam.type_tags or ():
-            if (
-                isinstance(tag, TypeTag.LectotypeDesignation)
-                and tag.lectotype == nam.type_specimen
-            ):
-                break
-        else:
-            print(f"{nam} is missing a reference for its lectotype designation")
-            yield nam, "missing lectotype designation reference"
-    for nam in getinput.print_every_n(
-        Name.select_valid().filter(
-            Name.species_type_kind == constants.SpeciesGroupType.neotype
-        ),
-        label="names with neotypes",
-    ):
-        for tag in nam.type_tags or ():
-            if (
-                isinstance(tag, TypeTag.NeotypeDesignation)
-                and tag.neotype == nam.type_specimen
-            ):
-                break
-        else:
-            print(f"{nam} is missing a reference for its neotype designation")
-            yield nam, "missing neotype designation reference"
+def check_type_tags(dry_run: bool = False) -> Iterable[tuple[Name, list[str]]]:
+    linter = functools.partial(
+        models.name_lint.check_type_tags_for_name, dry_run=dry_run
+    )
+    return Name.lint_all(linter)
 
 
 @generator_command
@@ -2997,6 +2856,7 @@ def run_maintenance(skip_slow: bool = True) -> Dict[Any, Any]:
         check_period_ranks,
         check_corrected_original_name,
         check_root_name,
+        check_justified_emendations,
         Person.autodelete,
         Person.find_duplicates,
         Person.resolve_redirects,

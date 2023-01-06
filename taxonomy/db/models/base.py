@@ -168,6 +168,8 @@ class BaseModel(Model):
         for obj in getinput.print_every_n(query, label=f"{cls.__name__}s"):
             messages = list(linter(obj))
             if messages:
+                for message in messages:
+                    print(message)
                 bad.append((obj, messages))
         return bad
 

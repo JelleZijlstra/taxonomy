@@ -6,9 +6,17 @@ Lint steps for Names.
 from collections.abc import Iterable
 import re
 from typing import TypeVar
-from .name import Name, TypeTag
+from .name import Name, NameTag, TypeTag, STATUS_TO_TAG
 from .article import Article
-from ..constants import ArticleKind, TypeSpeciesDesignation, CommentKind, Status
+from ..constants import (
+    ArticleKind,
+    TypeSpeciesDesignation,
+    CommentKind,
+    Group,
+    NomenclatureStatus,
+    Status,
+    SpeciesGroupType,
+)
 from .. import helpers
 from ... import adt, getinput
 
@@ -157,6 +165,128 @@ def check_type_tags_for_name(nam: Name, dry_run: bool = False) -> Iterable[str]:
             nam.type_tags = tags  # type: ignore
 
 
+def check_type_designations_present(nam: Name) -> Iterable[str]:
+    if nam.genus_type_kind is TypeSpeciesDesignation.subsequent_designation:
+        if not any(
+            tag.type == nam.type
+            for tag in nam.get_tags(nam.type_tags, TypeTag.TypeDesignation)
+        ):
+            yield f"{nam}: missing a reference for type species designation"
+    if (
+        nam.species_type_kind is SpeciesGroupType.lectotype
+        and nam.type_specimen is not None
+    ):
+        if not any(
+            tag.lectotype == nam.type_specimen
+            for tag in nam.get_tags(nam.type_tags, TypeTag.LectotypeDesignation)
+        ):
+            yield f"{nam}: missing a reference for lectotype designation"
+    if (
+        nam.species_type_kind is SpeciesGroupType.neotype
+        and nam.type_specimen is not None
+    ):
+        if not any(
+            tag.neotype == nam.type_specimen
+            for tag in nam.get_tags(nam.type_tags, TypeTag.NeotypeDesignation)
+        ):
+            yield f"{nam}: missing a reference for neotype designation"
+
+
+def check_tags_for_name(nam: Name, dry_run: bool = True) -> Iterable[str]:
+    """Looks at all tags set on names and applies related changes."""
+    try:
+        tags = nam.tags
+    except Exception:
+        yield f"{nam}: could not deserialize tags"
+        return
+    if not tags:
+        return
+
+    status_to_priority = {}
+    for priority, statuses in enumerate(NomenclatureStatus.hierarchy()):
+        for status in statuses:
+            status_to_priority[status] = priority
+
+    def maybe_adjust_status(nam: Name, status: NomenclatureStatus, tag: object) -> None:
+        current_priority = status_to_priority[nam.nomenclature_status]
+        new_priority = status_to_priority[status]
+        if current_priority > new_priority:
+            comment = f"Status automatically changed from {nam.nomenclature_status.name} to {status.name} because of {tag}"
+            print(f"changing status of {nam} and adding comment {comment!r}")
+            if not dry_run:
+                nam.add_static_comment(CommentKind.automatic_change, comment)
+                nam.nomenclature_status = status  # type: ignore
+                nam.save()
+
+    for tag in tags:
+        if isinstance(tag, NameTag.PreoccupiedBy):
+            maybe_adjust_status(nam, NomenclatureStatus.preoccupied, tag)
+            senior_name = tag.name
+            if nam.group != senior_name.group:
+                yield (
+                    f"{nam}: is of a different group than supposed senior name {senior_name}"
+                )
+            if senior_name.nomenclature_status is NomenclatureStatus.subsequent_usage:
+                for senior_name_tag in senior_name.get_tags(
+                    senior_name.tags, NameTag.SubsequentUsageOf
+                ):
+                    senior_name = senior_name_tag.name
+            if nam.effective_year() < senior_name.effective_year():
+                yield f"{nam}: predates supposed senior name {senior_name}"
+            # TODO apply this check to species too by handling gender endings correctly.
+            if nam.group is not Group.species:
+                if nam.root_name != tag.name.root_name:
+                    yield (
+                        f"{nam}: has a different root name than supposed senior name {senior_name}"
+                    )
+        elif isinstance(
+            tag,
+            (
+                NameTag.UnjustifiedEmendationOf,
+                NameTag.IncorrectSubsequentSpellingOf,
+                NameTag.VariantOf,
+                NameTag.NomenNovumFor,
+                NameTag.JustifiedEmendationOf,
+                NameTag.SubsequentUsageOf,
+            ),
+        ):
+            for status, tag_cls in STATUS_TO_TAG.items():
+                if isinstance(tag, tag_cls):
+                    maybe_adjust_status(nam, status, tag)
+            if nam.effective_year() < tag.name.effective_year():
+                yield f"{nam}: predates supposed original name {tag.name}"
+            if not isinstance(tag, NameTag.SubsequentUsageOf):
+                if nam.taxon != tag.name.taxon:
+                    yield f"{nam} is not assigned to the same name as {tag.name}"
+        elif isinstance(tag, NameTag.PartiallySuppressedBy):
+            maybe_adjust_status(nam, NomenclatureStatus.partially_suppressed, tag)
+        elif isinstance(tag, NameTag.FullySuppressedBy):
+            maybe_adjust_status(nam, NomenclatureStatus.fully_suppressed, tag)
+        elif isinstance(tag, NameTag.Conserved):
+            if nam.nomenclature_status not in (
+                NomenclatureStatus.available,
+                NomenclatureStatus.as_emended,
+                NomenclatureStatus.nomen_novum,
+            ):
+                yield f"{nam} is on the Official List, but is not marked as available."
+        # haven't handled TakesPriorityOf, NomenOblitum, MandatoryChangeOf
+
+
+def check_required_tags(nam: Name) -> Iterable[str]:
+    if nam.nomenclature_status not in STATUS_TO_TAG:
+        return
+    tag_cls = STATUS_TO_TAG[nam.nomenclature_status]
+    tags = list(nam.get_tags(nam.tags, tag_cls))
+    if not tags:
+        yield f"{nam}: has status {nam.nomenclature_status.name} but no corresponding tag"
+
+
 LINTERS = [
     check_type_tags_for_name,
+    check_type_designations_present,
+    check_required_tags,
+    check_tags_for_name,
+]
+DISABLED_LINTERS = [
+    check_type_designations_present,  # too many missing
 ]
