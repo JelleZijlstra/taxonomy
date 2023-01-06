@@ -204,7 +204,7 @@ class BaseModel(Model):
             except Exception as e:
                 yield f"{self.id} ({type(self).__name__}): cannot get field {field} due to {e}"
 
-    def check_outbound_references(self, autofix: bool = False) -> None:
+    def check_outbound_references(self, autofix: bool = False) -> Iterable[str]:
         if self.is_invalid():
             target = self.get_redirect_target()
             if target is not None:
@@ -220,16 +220,14 @@ class BaseModel(Model):
             if isinstance(field_obj, ForeignKeyField):
                 target = value.get_redirect_target()
                 if target is not None:
-                    message = (
-                        f"{self}: references redirected object {value} -> {target}"
-                    )
+                    message = f"{self}: references redirected object {value} -> {target} in field {field}"
                     if autofix:
                         print(message)
                         setattr(self, field, target)
                     else:
                         yield message
                 elif value.is_invalid():
-                    yield f"{self}: references invalid object {value}"
+                    yield f"{self}: references invalid object {value} in field {field}"
             elif isinstance(field_obj, ADTField):
                 if autofix:
                     new_tags = []

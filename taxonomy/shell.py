@@ -2798,28 +2798,12 @@ def apply_author_synonyms(dry_run: bool = False) -> None:
 
 @command
 def resolve_redirects(dry_run: bool = False) -> None:
-    for nam in getinput.print_every_n(
-        Name.filter(Name.type_tags != None), label="names"
-    ):
-
-        def map_fn(source: Article) -> Article:
-            if source is None:
-                return None
-            if source.kind == constants.ArticleKind.redirect:
-                print(f"{nam}: {source} -> {source.parent}")
-                if not dry_run:
-                    return source.parent
-            return source
-
-        nam.map_type_tags_by_type(Article, map_fn)
-    for nam in getinput.print_every_n(
-        Name.filter(Name.original_citation != None),
-        label="names with original citations",
-    ):
-        if nam.original_citation.kind == constants.ArticleKind.redirect:
-            print(f"{nam}: {nam.original_citation} -> {nam.original_citation.parent}")
-            if not dry_run:
-                nam.original_citation = nam.original_citation.parent
+    for model_cls in models.BaseModel.__subclasses__():
+        for obj in getinput.print_every_n(
+            model_cls.select(), label=f"{model_cls.__name__}s"
+        ):
+            for _ in obj.check_outbound_references(autofix=not dry_run):
+                pass
 
 
 @command
@@ -2860,7 +2844,6 @@ def run_maintenance(skip_slow: bool = True) -> Dict[Any, Any]:
         Person.autodelete,
         Person.find_duplicates,
         Person.resolve_redirects,
-        Person.lint_all,
     ]
     # these each take >60 s
     slow: List[Callable[[], Any]] = [
@@ -2872,6 +2855,7 @@ def run_maintenance(skip_slow: bool = True) -> Dict[Any, Any]:
         check_age_parents,
         name_mismatches,
         resolve_redirects,
+        *[cls.lint_all for cls in models.BaseModel.__subclasses__()],
     ]
     if not skip_slow:
         fns += slow

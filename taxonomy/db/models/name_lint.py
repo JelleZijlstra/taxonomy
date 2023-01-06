@@ -288,5 +288,5 @@ LINTERS = [
     check_tags_for_name,
 ]
 DISABLED_LINTERS = [
-    check_type_designations_present,  # too many missing
+    check_type_designations_present,  # too many missing (about 580)
 ]
