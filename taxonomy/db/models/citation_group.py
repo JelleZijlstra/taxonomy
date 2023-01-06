@@ -35,6 +35,12 @@ class CitationGroup(BaseModel):
     def should_skip(self) -> bool:
         return self.deleted
 
+    def get_redirect_target(self) -> "CitationGroup | None":
+        return self.target
+
+    def is_invalid(self) -> bool:
+        return self.deleted or self.target is not None
+
     @classmethod
     def create_interactively(
         cls, name: Optional[str] = None, **kwargs: Any

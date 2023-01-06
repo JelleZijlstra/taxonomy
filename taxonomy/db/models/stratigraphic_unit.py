@@ -76,6 +76,9 @@ class StratigraphicUnit(BaseModel):
     def add_validity_check(cls, query: Any) -> Any:
         return query.filter(StratigraphicUnit.deleted != True)
 
+    def is_invalid(self) -> bool:
+        return self.deleted
+
     def should_skip(self) -> bool:
         return self.deleted
 

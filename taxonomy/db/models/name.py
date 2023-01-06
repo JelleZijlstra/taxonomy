@@ -1888,6 +1888,9 @@ class NameComment(BaseModel):
     def add_validity_check(cls, query: Any) -> Any:
         return query.filter(NameComment.kind != constants.CommentKind.removed)
 
+    def is_invalid(self) -> bool:
+        return self.kind is constants.CommentKind.removed
+
     def should_skip(self) -> bool:
         return self.kind in (
             constants.CommentKind.removed,

@@ -239,6 +239,16 @@ class Person(BaseModel):
     def add_validity_check(cls, query: Any) -> Any:
         return query.filter(Person.type != PersonType.deleted)
 
+    def get_redirect_target(self) -> "Person | None":
+        return self.target
+
+    def is_invalid(self) -> bool:
+        return self.type in (
+            PersonType.deleted,
+            PersonType.hard_redirect,
+            PersonType.soft_redirect,
+        )
+
     def should_skip(self) -> bool:
         return self.type is not PersonType.deleted
 
@@ -362,6 +372,11 @@ class Person(BaseModel):
             self.type.name,
         )
 
+    def lint_invalid(self) -> Iterable[str]:
+        if self.type in (PersonType.hard_redirect, PersonType.soft_redirect):
+            if not self.target:
+                yield f"{self}: redirect has no target"
+
     def lint(self) -> Iterable[str]:
         for field_name, field_obj in self._meta.fields.items():
             if isinstance(field_obj, CharField):
@@ -371,9 +386,6 @@ class Person(BaseModel):
                     print(f"{self}: clean {field_name} from {value!r} to {cleaned!r}")
                     setattr(self, field_name, cleaned)
 
-        if self.type in (PersonType.hard_redirect, PersonType.soft_redirect):
-            if not self.target:
-                yield f"{self}: redirect has no target"
         if self.type in (
             PersonType.deleted,
             PersonType.hard_redirect,

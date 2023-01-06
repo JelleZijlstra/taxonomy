@@ -60,6 +60,14 @@ class Location(BaseModel):
     def should_skip(self) -> bool:
         return self.deleted
 
+    def get_redirect_target(self) -> "Location | None":
+        if self.deleted is LocationStatus.alias:
+            return self.parent
+        return None
+
+    def is_invalid(self) -> bool:
+        return self.deleted is not LocationStatus.valid
+
     @classmethod
     def make(
         cls,

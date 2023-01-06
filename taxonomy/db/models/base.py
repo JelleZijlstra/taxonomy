@@ -160,7 +160,7 @@ class BaseModel(Model):
     ) -> List[Tuple[ModelT, List[str]]]:
         if linter is None:
             query = cls.select()
-            linter = cls.lint
+            linter = cls.general_lint
         else:
             # For specific linters, only worry about valid names
             query = cls.select_valid()
@@ -174,7 +174,7 @@ class BaseModel(Model):
         return bad
 
     def lint_wrapper(self) -> bool:
-        messages = list(self.lint())
+        messages = list(self.general_lint())
         if not messages:
             print("Everything clean")
             return True
@@ -182,8 +182,96 @@ class BaseModel(Model):
             print(message)
         return False
 
+    def general_lint(self) -> Iterable[str]:
+        unrenderable = list(self.check_renderable())
+        if unrenderable:
+            yield from unrenderable
+            return
+        yield from self.check_outbound_references()
+        if self.is_invalid():
+            yield from self.lint_invalid()
+        else:
+            yield from self.lint()
+
+    def check_renderable(self) -> Iterable[str]:
+        try:
+            repr(self)
+        except Exception as e:
+            yield f"{self.id} ({type(self).__name__}): cannot repr() due to {e}"
+        for field in self.fields():
+            try:
+                repr(getattr(self, field))
+            except Exception as e:
+                yield f"{self.id} ({type(self).__name__}): cannot get field {field} due to {e}"
+
+    def check_outbound_references(self, autofix: bool = False) -> None:
+        if self.is_invalid():
+            target = self.get_redirect_target()
+            if target is not None:
+                secondary_target = target.get_redirect_target()
+                if secondary_target is not None:
+                    yield f"{self}: double redirect to {target} -> {secondary_target}"
+            return
+        for field in self.fields():
+            value = getattr(self, field)
+            if value is None:
+                continue
+            field_obj = getattr(type(self), field)
+            if isinstance(field_obj, ForeignKeyField):
+                target = value.get_redirect_target()
+                if target is not None:
+                    message = (
+                        f"{self}: references redirected object {value} -> {target}"
+                    )
+                    if autofix:
+                        print(message)
+                        setattr(self, field, target)
+                    else:
+                        yield message
+                elif value.is_invalid():
+                    yield f"{self}: references invalid object {value}"
+            elif isinstance(field_obj, ADTField):
+                if autofix:
+                    new_tags = []
+                    made_change = False
+                    for tag in value:
+                        tag_type = type(tag)
+                        overrides = {}
+                        for attr_name in tag_type._attributes:
+                            value = getattr(tag, attr_name)
+                            if not isinstance(value, BaseModel):
+                                continue
+                            target = value.get_redirect_target()
+                            if target is not None:
+                                print(
+                                    f"{self}: references redirected object {value} -> {target}"
+                                )
+                                overrides[attr_name] = target
+                            elif value.is_invalid():
+                                yield f"{self}: references invalid object {value} in {field} tag {tag}"
+                        if overrides:
+                            made_change = True
+                            new_tags.append(adt.replace(tag, **overrides))
+                        else:
+                            new_tags.append(tag)
+                    if made_change:
+                        setattr(self, field, tuple(new_tags))
+                else:
+                    for tag in value:
+                        tag_type = type(tag)
+                        for attr_name in tag_type._attributes:
+                            value = getattr(tag, attr_name)
+                            if not isinstance(value, BaseModel):
+                                continue
+                            if value.is_invalid():
+                                yield f"{self}: references invalid object {value} in {field} tag {tag}"
+
     def lint(self) -> Iterable[str]:
         """Yield messages if something is wrong with this object."""
+        return []
+
+    def lint_invalid(self) -> Iterable[str]:
+        """Like lint() but only called if is_invalid() returned True."""
         return []
 
     def prepared(self) -> None:
@@ -431,6 +519,14 @@ class BaseModel(Model):
     def add_validity_check(cls, query: Any) -> Any:
         """Add a filter to the query that removes invalid objects."""
         return query
+
+    def get_redirect_target(self: ModelT) -> Optional[ModelT]:
+        """Return the object this object redirects to, if any."""
+        return None
+
+    def is_invalid(self) -> bool:
+        """If True, no valid object should have a reference to this object."""
+        return False
 
     def should_skip(self) -> bool:
         return False

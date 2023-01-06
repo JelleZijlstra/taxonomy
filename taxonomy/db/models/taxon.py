@@ -111,6 +111,9 @@ class Taxon(BaseModel):
     def add_validity_check(cls, query: Any) -> Any:
         return query.filter(Taxon.age != AgeClass.removed)
 
+    def is_invalid(self) -> bool:
+        return self.age is AgeClass.removed
+
     def should_skip(self) -> bool:
         return self.age is AgeClass.removed
 

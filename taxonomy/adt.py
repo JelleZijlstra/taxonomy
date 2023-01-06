@@ -264,3 +264,15 @@ class ADT(_ADTBase, metaclass=_ADTMeta):
         else:
             args = ", ".join(map(repr, self._get_attributes()))
             return f"{member_name}({args})"
+
+
+def replace(adt: _ADTT, **overrides: Any) -> _ADTT:
+    args = {}
+    tag_type = type(adt)
+    for arg_name in tag_type._attributes:
+        try:
+            val = overrides[arg_name]
+        except KeyError:
+            val = getattr(adt, arg_name)
+        args[arg_name] = val
+    return tag_type(**args)

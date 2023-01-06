@@ -151,3 +151,6 @@ class Collection(BaseModel):
             nam.collection = other
             nam.save()
         self.delete_instance()
+
+    def is_invalid(self) -> bool:
+        return self.removed

@@ -294,6 +294,14 @@ class Article(BaseModel):
             cls.kind != ArticleKind.redirect, cls.kind != ArticleKind.removed
         )
 
+    def get_redirect_target(self) -> "Article | None":
+        if self.kind is ArticleKind.redirect:
+            return self.parent
+        return None
+
+    def is_invalid(self) -> bool:
+        return self.kind in (ArticleKind.redirect, ArticleKind.removed)
+
     def should_skip(self) -> bool:
         return self.kind is ArticleKind.redirect
 
