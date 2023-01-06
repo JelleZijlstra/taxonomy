@@ -17,14 +17,17 @@ Possible ones to add:
 import collections
 from collections import defaultdict
 import csv
+import datetime
 import functools
 import gc
 from itertools import groupby
 import logging
+import os
 import os.path
 from pathlib import Path
 import peewee
 import re
+import shutil
 from typing import (
     Any,
     Callable,
@@ -283,7 +286,7 @@ def make_county_regions(
 
 @generator_command
 def bad_stratigraphy(dry_run: bool = True) -> Iterable[models.Location]:
-    for loc in models.Location.select():
+    for loc in models.Location.select_valid():
         if loc.min_period is None and loc.max_period is not None:
             print(f"=== {loc.name}: missing min_period ===")
             loc.display()
@@ -375,7 +378,7 @@ def add_types() -> None:
 
 @generator_command
 def find_rank_mismatch() -> Iterable[Taxon]:
-    for taxon in Taxon.select_valid():
+    for taxon in getinput.print_every_n(Taxon.select_valid(), label="taxa"):
         expected_group = helpers.group_of_rank(taxon.rank)
         if expected_group != taxon.base_name.group:
             rank = taxon.rank.name
@@ -449,7 +452,7 @@ def check_root_name() -> Iterator[Tuple[Name, str]]:
         print(message)
         return (nam, message)
 
-    for nam in Name.select_valid():
+    for nam in getinput.print_every_n(Name.select_valid(), label="names", n=10_000):
         if nam.nomenclature_status.permissive_corrected_original_name():
             continue
         if nam.group in (Group.high, Group.genus, Group.family):
@@ -471,7 +474,11 @@ def check_corrected_original_name() -> Iterator[Tuple[Name, str]]:
         print(message)
         return (nam, message)
 
-    for nam in Name.select_valid().filter(Name.corrected_original_name != None):
+    for nam in getinput.print_every_n(
+        Name.select_valid().filter(Name.corrected_original_name != None),
+        label="names",
+        n=10_000,
+    ):
         if nam.nomenclature_status.permissive_corrected_original_name():
             continue
         inferred = nam.infer_corrected_original_name()
@@ -506,28 +513,6 @@ def check_corrected_original_name() -> Iterator[Tuple[Name, str]]:
             if not nam.corrected_original_name.endswith(tuple(helpers.VALID_SUFFIXES)):
                 yield make_message(nam, "does not end with a valid family-group suffix")
                 continue
-            if nam.type is not None:
-                stem = nam.type.get_stem()
-                if stem is not None:
-                    possibilities = {
-                        f"{stem}{suffix}" for suffix in helpers.VALID_SUFFIXES
-                    }
-                    if stem.endswith("id"):  # allow eliding -id-
-                        possibilities |= {
-                            f"{stem[:-2]}{suffix}" for suffix in helpers.VALID_SUFFIXES
-                        }
-                    if nam.type.name_complex is not None:
-                        if (
-                            nam.type.name_complex.id == 95
-                        ):  # ops_masculine: allow -ops- and -op-
-                            possibilities |= {
-                                f"{stem}s{suffix}" for suffix in helpers.VALID_SUFFIXES
-                            }
-                    if nam.corrected_original_name not in possibilities:
-                        yield make_message(
-                            nam, f"does not match expected stem {stem!r}"
-                        )
-                        continue
         elif nam.group is Group.species:
             parts = nam.corrected_original_name.split(" ")
             if len(parts) not in (2, 3, 4):
@@ -881,7 +866,12 @@ def root_name_mismatch(interactive: bool = False) -> Iterable[Name]:
     ):
         if name.is_unavailable():
             continue
-        stem_name = name.type.get_stem()
+        try:
+            stem_name = name.type.get_stem()
+        except ValueError:
+            print(f"{name.type} has bad name complex: {name.type.name_complex}")
+            yield name
+            continue
         if stem_name is None:
             continue
         if name.root_name == stem_name:
@@ -896,6 +886,8 @@ def root_name_mismatch(interactive: bool = False) -> Iterable[Name]:
                 name.save()
                 break
         if name.root_name != stem_name:
+            if name.has_type_tag(TypeTag.IncorrectGrammar):
+                continue
             print(f"Stem mismatch for {name}: {name.root_name} vs. {stem_name}")
             if interactive:
                 name.display()
@@ -1144,7 +1136,9 @@ def name_mismatches(
             # subspecies, or they have become nomina dubia (in which case we use the
             # corrected original name). For family-group names we don't always trust the
             # computed name, because stems may be arbitrary.
-            if correct_undoubted and taxon.base_name.group == Group.species:
+            if correct_undoubted and (
+                taxon.base_name.group == Group.species or taxon.is_nominate_subgenus()
+            ):
                 taxon.recompute_name()
             elif correct:
                 taxon.recompute_name()
@@ -1238,8 +1232,12 @@ def correct_type_taxon(
 ) -> List[Name]:
     count = 0
     out = []
-    for nam in Name.select_valid().filter(
-        Name.group << (Group.genus, Group.family), Name.type != None
+    for nam in getinput.print_every_n(
+        Name.select_valid().filter(
+            Name.group << (Group.genus, Group.family), Name.type != None
+        ),
+        label="names",
+        n=10_000,
     ):
         if nam.taxon == nam.type.taxon:
             continue
@@ -2896,10 +2894,8 @@ def check_type_tags_for_name(
         # TODO: for lectotype and subsequent designations, ensure the earliest valid one is used.
     tags = sorted(set(tags))
     if tags != original_tags:
-        print(f"changing tags for {nam}")
-        if set(tags) == set(original_tags):
-            print("reordering only")
-        else:
+        if set(tags) != set(original_tags):
+            print(f"changing tags for {nam}")
             getinput.print_diff(sorted(original_tags), tags)
         if not dry_run:
             nam.type_tags = tags  # type: ignore
@@ -2909,17 +2905,19 @@ def check_type_tags_for_name(
 def check_type_tags(
     dry_run: bool = False, require_type_designations: bool = False
 ) -> Iterable[Tuple[Name, str]]:
-    for i, nam in enumerate(
-        Name.select_valid().filter(Name.type_tags != None), start=1
+    for nam in getinput.print_every_n(
+        Name.select_valid().filter(Name.type_tags != None), label="names"
     ):
-        if i % 1000 == 0:
-            print(f"{i} names...")
         yield from check_type_tags_for_name(nam, dry_run)
     getinput.flush()
     if not require_type_designations:
         return
-    for nam in Name.select_valid().filter(
-        Name.genus_type_kind == constants.TypeSpeciesDesignation.subsequent_designation
+    for nam in getinput.print_every_n(
+        Name.select_valid().filter(
+            Name.genus_type_kind
+            == constants.TypeSpeciesDesignation.subsequent_designation
+        ),
+        label="names with subsequent designations",
     ):
         for tag in nam.type_tags or ():
             if isinstance(tag, TypeTag.TypeDesignation) and tag.type == nam.type:
@@ -2927,8 +2925,11 @@ def check_type_tags(
         else:
             print(f"{nam} is missing a reference for its type designation")
             yield nam, "missing type designation reference"
-    for nam in Name.select_valid().filter(
-        Name.species_type_kind == constants.SpeciesGroupType.lectotype
+    for nam in getinput.print_every_n(
+        Name.select_valid().filter(
+            Name.species_type_kind == constants.SpeciesGroupType.lectotype
+        ),
+        label="names with lectotypes",
     ):
         if nam.collection and nam.collection.name in ("lost", "untraced"):
             continue
@@ -2941,8 +2942,11 @@ def check_type_tags(
         else:
             print(f"{nam} is missing a reference for its lectotype designation")
             yield nam, "missing lectotype designation reference"
-    for nam in Name.select_valid().filter(
-        Name.species_type_kind == constants.SpeciesGroupType.neotype
+    for nam in getinput.print_every_n(
+        Name.select_valid().filter(
+            Name.species_type_kind == constants.SpeciesGroupType.neotype
+        ),
+        label="names with neotypes",
     ):
         for tag in nam.type_tags or ():
             if (
@@ -2957,8 +2961,8 @@ def check_type_tags(
 
 @generator_command
 def move_to_lowest_rank(dry_run: bool = False) -> Iterable[Tuple[Name, str]]:
-    for nam in Name.select_valid():
-        query = Taxon.select_valid().filter(Taxon._base_name_id == nam)
+    for nam in getinput.print_every_n(Name.select_valid(), label="names"):
+        query = Taxon.select_valid().filter(Taxon.base_name == nam)
         if query.count() < 2:
             continue
         if nam.group == Group.high:
@@ -2983,38 +2987,21 @@ def move_to_lowest_rank(dry_run: bool = False) -> Iterable[Tuple[Name, str]]:
 
 AUTHOR_SYNONYMS = {
     "Afanasiev": helpers.romanize_russian("Афанасьев"),
-    "Barret-Hamilton": "Barrett-Hamilton",
     "Belayeva": helpers.romanize_russian("Беляева"),
     "Beliaeva": helpers.romanize_russian("Беляева"),
     "Beliajeva": helpers.romanize_russian("Беляева"),
     "Beljaeva": helpers.romanize_russian("Беляева"),
     "Belyayeva": helpers.romanize_russian("Беляева"),
     "Belyaeva": helpers.romanize_russian("Беляева"),
-    "Blainville": "de Blainville",
     "Bobrinskii": helpers.romanize_russian("Бобринской"),
     "Bobrinskoi": helpers.romanize_russian("Бобринской"),
-    "Boeskorov": "Boyeskorov",
     "Bogatschev": helpers.romanize_russian("Богачев"),
-    "C. Hamilton Smith": "C.H. Smith",
-    "C.F. Major": "Forsyth Major",
-    "C. Smith": "C.H. Smith",
-    "C.E.H. Smith": "C.H. Smith",
     "Chabaeva": helpers.romanize_russian("Хабаева"),
     "Chernyavskii": helpers.romanize_russian("Чернявский"),
-    "Christol": "de Christol",
     "Crawford Cabral": "Crawford-Cabral",
     "Czersky": helpers.romanize_russian("Черский"),
-    "De Blainville": "de Blainville",
-    "De Beaux": "de Beaux",
-    "De Christol": "de Christol",
-    "de Miranda Ribeiro": "Miranda-Ribeiro",
-    "de Miranda-Ribeiro": "Miranda-Ribeiro",
-    "De Muizon": "de Muizon",
     "de Selys-Longchamps": "de Sélys Longchamps",
-    "De Winton": "de Winton",
-    "du Chaillu": "Du Chaillu",
     "Degerbol": "Degerbøl",
-    "DuChaillu": "Du Chaillu",
     "Dukelskaia": helpers.romanize_russian("Дукельская"),
     "Dukelski": "Dukelskiy",
     "Dukelsky": "Dukelskiy",
@@ -3023,13 +3010,7 @@ AUTHOR_SYNONYMS = {
     "Ehik": "Éhik",
     "Formosov": "Formozov",
     "Geoffroy": "Geoffroy Saint-Hilaire",
-    "Gunther": "Günther",
-    "H. Smith": "C.H. Smith",
     "Habaeva": helpers.romanize_russian("Хабаева"),
-    "Hamilton Smith": "C.H. Smith",
-    "Hamilton-Smith": "C.H. Smith",
-    "I. Geoffroy": "I. Geoffroy Saint-Hilaire",
-    "J. Gray": "J.E. Gray",
     "Kolossow": helpers.romanize_russian("Колосов"),
     "Kortchagin": helpers.romanize_russian("Корчагин"),
     "Kortshagin": helpers.romanize_russian("Корчагин"),
@@ -3041,17 +3022,13 @@ AUTHOR_SYNONYMS = {
     "Krassowsky": helpers.romanize_russian("Красовский"),
     "Lacepede": "Lacépède",
     "Le Soeuf": "Le Souef",
-    "LeConte": "Le Conte",
-    "Leconte": "Le Conte",
     "Lonnberg": "Lönnberg",
     "Lychev": helpers.romanize_russian("Лычев"),
     "Lytschev": helpers.romanize_russian("Лычев"),
     "Lytshev": helpers.romanize_russian("Лычев"),
-    "Major": "Forsyth Major",
     "Milne Edwards": "Milne-Edwards",
     "Miranda Ribeiro": "Miranda-Ribeiro",  # {Miranda-Ribeiro-biography.pdf}
     "Morosova-Turova": helpers.romanize_russian("Морозова-Турова"),
-    "Muizon": "de Muizon",
     "Naumoff": helpers.romanize_russian("Наумов"),
     "Peron": "Péron",
     "Petenyi": "Petényi",
@@ -3064,7 +3041,6 @@ AUTHOR_SYNONYMS = {
     "Ruppell": "Rüppell",
     "Scalon": helpers.romanize_russian("Скалон"),
     "Selewin": helpers.romanize_russian("Селевин"),
-    "Serres": "de Serres",
     "Severtsow": helpers.romanize_russian("Северцов"),
     "Severtzov": helpers.romanize_russian("Северцов"),
     "Severtzow": helpers.romanize_russian("Северцов"),
@@ -3090,8 +3066,6 @@ AUTHOR_SYNONYMS = {
     "Von Meyer": "von Meyer",
     "Vorontzov": "Vorontsov",
     "Wasiljewa": helpers.romanize_russian("Васильева"),
-    "Wied": "Wied-Neuwied",
-    "Winton": "de Winton",
     "Worobiev": helpers.romanize_russian("Воробьев"),
     "Zalkin": helpers.romanize_russian("Цалкин"),
     "É. Geoffroy": "É. Geoffroy Saint-Hilaire",
@@ -3138,7 +3112,9 @@ def apply_author_synonyms(dry_run: bool = False) -> None:
 
 @command
 def resolve_redirects(dry_run: bool = False) -> None:
-    for nam in Name.filter(Name.type_tags != None):
+    for nam in getinput.print_every_n(
+        Name.filter(Name.type_tags != None), label="names"
+    ):
 
         def map_fn(source: Article) -> Article:
             if source is None:
@@ -3150,7 +3126,10 @@ def resolve_redirects(dry_run: bool = False) -> None:
             return source
 
         nam.map_type_tags_by_type(Article, map_fn)
-    for nam in Name.filter(Name.original_citation != None):
+    for nam in getinput.print_every_n(
+        Name.filter(Name.original_citation != None),
+        label="names with original citations",
+    ):
         if nam.original_citation.kind == constants.ArticleKind.redirect:
             print(f"{nam}: {nam.original_citation} -> {nam.original_citation.parent}")
             if not dry_run:
@@ -3717,6 +3696,61 @@ def show_queries(on: bool) -> None:
         logger.setLevel(logging.DEBUG)
     else:
         logger.setLevel(logging.INFO)
+
+
+@command
+def rename_specimen_photos(dry_run: bool = True) -> None:
+    base_path = models.base.settings.photos_path
+    for dirname, _, paths in os.walk(base_path):
+        for filename in paths:
+            path = Path(dirname) / filename
+            if path.suffix != ".jpg":
+                continue
+            match = re.match(r"^(JSZ \d+)( .*)?", path.parts[-2])
+            if match is None:
+                continue
+            specimen_number = match.group(1)
+            if filename.startswith(specimen_number):
+                continue
+            new_path = path.parent / f"{specimen_number} {path.name}"
+            print(f"rename {path} -> {new_path}")
+            if not dry_run:
+                shutil.move(path, new_path)
+
+
+def _sort_key(volume_or_issue: Optional[str]) -> tuple[object, ...]:
+    if volume_or_issue is None:
+        return (float("inf"), "")
+    try:
+        return (int(volume_or_issue), "")
+    except ValueError:
+        return (float("inf"), volume_or_issue)
+
+
+@command
+def cg_report(
+    cg: Optional[CitationGroup] = None, min_year: Optional[int] = None
+) -> None:
+    if cg is None:
+        cg = CitationGroup.getter(None).get_one("citation group> ")
+    if min_year is None:
+        min_year = datetime.date.today().year - 3
+    query = Article.select_valid().filter(Article.citation_group == cg)
+    # {volume: {issue: [articles]}}
+    arts = defaultdict(lambda: defaultdict(list))
+    for art in query:
+        if art.numeric_year() >= min_year:
+            arts[art.volume][art.issue].append(art)
+    getinput.print_header(f"{cg} ({min_year}–present)")
+    for volume in sorted(arts, key=_sort_key):
+        print(f"=== Volume {volume}")
+        volume_data = arts[volume]
+        for issue in sorted(volume_data, key=_sort_key):
+            print(f"    === Issue {issue}")
+            for art in sorted(
+                volume_data[issue], key=lambda art: art.numeric_start_page()
+            ):
+                print(f"         {art!r}")
 
 
 def run_shell() -> None:

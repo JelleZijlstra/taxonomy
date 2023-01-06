@@ -159,6 +159,7 @@ class NomenclatureStatus(enum.IntEnum):
             NomenclatureStatus.variant,
             NomenclatureStatus.incorrect_original_spelling,
             NomenclatureStatus.incorrect_subsequent_spelling,
+            NomenclatureStatus.subsequent_usage,
         }
 
     def can_preoccupy(self) -> bool:
@@ -200,6 +201,7 @@ class NomenclatureStatus(enum.IntEnum):
             NomenclatureStatus.informal,
             NomenclatureStatus.not_intended_as_a_scientific_name,
             NomenclatureStatus.not_nominative_singular,
+            NomenclatureStatus.not_based_on_a_generic_name,
         }
 
     @classmethod
@@ -725,6 +727,8 @@ class NamingConvention(enum.IntEnum):
     chinese = 15  # Chinese-style names, but not in pinyin
     korean = 16
     mongolian = 17
+    ukrainian = 18
+    other = 19  # unusual language; we don't check the name for validity
 
 
 class PersonType(enum.IntEnum):

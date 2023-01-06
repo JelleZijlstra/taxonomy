@@ -17,6 +17,7 @@ class Options(NamedTuple):
     db_filename: Path = Path()
     derived_data_filename: Path = Path()
     cached_data_filename: Path = Path()
+    photos_path: Path = Path()
 
     db_server: str = ""
     db_username: str = ""
@@ -78,6 +79,7 @@ def parse_config_file(filename: Path) -> Options:
                 section, "derived_data_filename", base_path
             ),
             cached_data_filename=parse_path(section, "cached_data_filename", base_path),
+            photos_path=parse_path(section, "photos_path", base_path),
             db_filename=db_filename,
             db_server=section.get("db_server", ""),
             db_username=section.get("db_username", ""),

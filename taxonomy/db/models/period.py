@@ -295,6 +295,7 @@ class Period(BaseModel):
             PeriodSystem.alma,
             PeriodSystem.salma,
             PeriodSystem.aulma,
+            PeriodSystem.aflma,
         ):
             if self.rank is PeriodRank.age:
                 return RequirednessLevel.disallowed

@@ -134,6 +134,8 @@ lower = C(
             "ä",
             "å",
             "ā",
+            "ặ",
+            "ầ",
             "æ",
             "ç",
             "è",
@@ -164,14 +166,17 @@ lower = C(
             "ė",
             "ę",
             "ě",
+            "ế",
             "ğ",
             "ı",
             "ľ",
             "ł",
             "ń",
             "ň",
+            "ṅ",
             "ō",
             "ő",
+            "ọ",
             "ř",
             "ś",
             "ş",
@@ -223,6 +228,7 @@ special_initials = {
 }
 initial = ((L("Mc") + latin_upper) | OneOf.from_strs(special_initials) | upper) + L(".")
 name_infixes = {
+    "al ",
     "d'",
     "da ",
     "dal ",
@@ -243,7 +249,6 @@ name_infixes = {
     "ten ",
     "ul ",
     "von ",
-    "della " "e ",
     "van ",
     "van der ",
     "von der ",
@@ -274,6 +279,7 @@ name_prefixes = {
     "L'",
     "N'",
     "de",
+    "de-",
     "vander",
     "Vander",
     "Vande",
@@ -365,19 +371,35 @@ chinese_given_names = chinese_name + Optional(
     (L("-") | L(" ")) + Optional(latin_upper) + OneOrMore(chinese_lower)
 )
 
-russian_name = (cyrillic_upper + OneOrMore(cyrillic_lower)) | (
+russian_upper = cyrillic_upper | L("Ё")
+russian_lower = cyrillic_lower | L("ё")
+russian_name = (russian_upper + OneOrMore(russian_lower)) | (
     latin_upper + OneOrMore(latin_lower | Literal("'"))
 )
-russian_family_name = russian_name + Optional(L("-") + russian_name)
+russian_family_name = russian_name + ZeroOrMore(L("-") + russian_name)
 russian_initial = (
-    cyrillic_upper
-    | latin_upper
-    | OneOf.from_strs({"Yu", "Ya", "Sh", "Dzh", "Zh", "Ts"})
+    russian_upper | latin_upper | OneOf.from_strs({"Yu", "Ya", "Sh", "Dzh", "Zh", "Ts"})
 )
 russian_given_names = russian_name + Optional(
     L(" ") + (russian_name | (russian_initial + L(".")))
 )
 russian_initials = russian_initial + L(".") + Optional(russian_initial + L("."))
+
+ukrainian_upper = cyrillic_upper | L("Ґ") | L("Є") | L("І") | L("Ї")
+ukrainian_lower = cyrillic_lower | L("ґ") | L("є") | L("і") | L("ї")
+ukrainian_name = (ukrainian_upper + OneOrMore(ukrainian_lower)) | (
+    latin_upper + OneOrMore(latin_lower | Literal("'"))
+)
+ukrainian_family_name = russian_name + Optional(L("-") + ukrainian_name)
+ukrainian_initial = (
+    ukrainian_upper
+    | latin_upper
+    | OneOf.from_strs({"Yu", "Ya", "Sh", "Dzh", "Zh", "Ts"})
+)
+ukrainian_given_names = ukrainian_name + Optional(
+    L(" ") + (ukrainian_name | (ukrainian_initial + L(".")))
+)
+ukrainian_initials = ukrainian_initial + L(".") + Optional(ukrainian_initial + L("."))
 
 burmese_name = latin_upper + ZeroOrMore(latin_lower)
 burmese_names = burmese_name + ZeroOrMore(L(" ") + burmese_name)
@@ -389,6 +411,10 @@ given_names_pattern = given_names.compile()
 russian_family_name_pattern = russian_family_name.compile()
 russian_given_names_pattern = russian_given_names.compile()
 russian_initials_pattern = russian_initials.compile()
+
+ukrainian_family_name_pattern = ukrainian_family_name.compile()
+ukrainian_given_names_pattern = ukrainian_given_names.compile()
+ukrainian_initials_pattern = ukrainian_initials.compile()
 
 burmese_names_pattern = burmese_names.compile()
 

@@ -157,6 +157,8 @@ class Taxon(BaseModel):
 
     def full_name(self) -> str:
         if self.rank == Rank.subgenus:
+            if self.is_nominate_subgenus():
+                return self.valid_name
             return self.parent.valid_name + " (" + self.valid_name + ")"
         if self.rank == Rank.species_group:
             return self.parent.full_name() + " (" + self.base_name.root_name + ")"
@@ -816,6 +818,12 @@ class Taxon(BaseModel):
     def open_description(self) -> bool:
         return self.base_name.open_description()
 
+    def is_nominate_subgenus(self) -> bool:
+        if self.rank is not Rank.subgenus:
+            return False
+        genus = self.parent_of_rank(Rank.genus)
+        return genus.base_name == self.base_name
+
     def compute_valid_name(self) -> str:
         name = self.base_name
         if name is None:
@@ -824,6 +832,8 @@ class Taxon(BaseModel):
             )
         if self.rank == Rank.division:
             return "%s Division" % name.root_name
+        elif self.is_nominate_subgenus():
+            return f"{name.root_name} ({name.root_name})"
         elif name.group in (Group.genus, Group.high):
             return name.root_name
         elif name.group == Group.family:
@@ -919,7 +929,7 @@ class Taxon(BaseModel):
                 nam.taxon = into
                 nam.save()
 
-        self._merge_fields(into, exclude={"id", "_base_name_id"})
+        self._merge_fields(into, exclude={"id", "base_name"})
         self.base_name.merge(into.base_name, allow_valid=True)
         self.remove(reason=f"Merged into {into} (T#{into.id})")
 

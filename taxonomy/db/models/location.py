@@ -55,7 +55,7 @@ class Location(BaseModel):
 
     @classmethod
     def add_validity_check(cls, query: Any) -> Any:
-        return query.filter(Location.deleted != True)
+        return query.filter(Location.deleted == LocationStatus.valid)
 
     def should_skip(self) -> bool:
         return self.deleted
@@ -239,14 +239,14 @@ class Location(BaseModel):
             return False
         return True
 
-    def lint(self) -> bool:
-        if self.deleted == LocationStatus.alias and not self.parent:
-            print(f"{self}: alias location has no parent")
-            return False
+    def lint(self) -> Iterable[str]:
+        if self.deleted == LocationStatus.alias:
+            if not self.parent:
+                yield f"{self}: alias location has no parent"
+            if not self.is_empty():
+                yield f"{self}: alias location has references"
         if self.deleted != LocationStatus.valid and not self.is_empty():
-            print(f"{self}: deleted location has references")
-            return False
-        return True
+            yield f"{self}: deleted location has references"
 
     @classmethod
     def fix_references(cls) -> None:

@@ -67,15 +67,16 @@ class SpeciesNameComplex(BaseModel):
         if self.comment:
             space = " " * (depth + 12)
             file.write(f"{space}Comment: {self.comment}\n")
-        nams = list(self.names)
-        models.name.write_names(
-            nams,
-            depth=depth,
-            full=full,
-            organized=organized,
-            file=file,
-            tag_classes=(models.name.TypeTag.EtymologyDetail,),
-        )
+        if full:
+            nams = list(self.names)
+            models.name.write_names(
+                nams,
+                depth=depth,
+                full=full,
+                organized=organized,
+                file=file,
+                tag_classes=(models.name.TypeTag.EtymologyDetail,),
+            )
 
     def self_apply(self, dry_run: bool = True) -> List["models.Name"]:
         return self.apply_to_ending(self.label, dry_run=dry_run)
@@ -363,7 +364,13 @@ class NameComplex(BaseModel):
         db_table = "name_complex"
 
     def __repr__(self) -> str:
-        return f'{self.label} ({self.code_article.name}, {self.gender.name}, -{self.stem_remove or ""}+{self.stem_add or ""})'
+        return f"{self.label} ({self.code_article.name}, {self.gender.name}, -{self.get_stem_remove()}+{self.get_stem_add()})"
+
+    def get_stem_remove(self) -> str:
+        return self.stem_remove or ""
+
+    def get_stem_add(self) -> str:
+        return self.stem_add or ""
 
     def display(
         self,
@@ -377,15 +384,16 @@ class NameComplex(BaseModel):
         if self.comment:
             space = " " * (depth + 12)
             file.write(f"{space}Comment: {self.comment}\n")
-        nams = list(self.names)
-        models.name.write_names(
-            nams,
-            depth=depth,
-            full=full,
-            organized=organized,
-            file=file,
-            tag_classes=(models.name.TypeTag.EtymologyDetail,),
-        )
+        if full:
+            nams = list(self.names)
+            models.name.write_names(
+                nams,
+                depth=depth,
+                full=full,
+                organized=organized,
+                file=file,
+                tag_classes=(models.name.TypeTag.EtymologyDetail,),
+            )
 
     def self_apply(self, dry_run: bool = True) -> List["models.Name"]:
         return self.apply_to_ending(self.label, dry_run=dry_run)
@@ -417,11 +425,12 @@ class NameComplex(BaseModel):
 
     def get_stem_from_name(self, name: str) -> str:
         """Applies the group to a genus name to get the name's stem."""
-        if self.stem_remove:
-            if not name.endswith(self.stem_remove):
-                raise ValueError(f"{name} does not end with {self.stem_remove}")
-            name = name[: -len(self.stem_remove)]
-        return name + self.stem_add
+        stem_remove = self.get_stem_remove()
+        if stem_remove:
+            if not name.endswith(stem_remove):
+                raise ValueError(f"{name} does not end with {stem_remove}")
+            name = name[: -len(stem_remove)]
+        return name + self.get_stem_add()
 
     def make_ending(self, ending: str, comment: Optional[str] = "") -> "NameEnding":
         return NameEnding.create(name_complex=self, ending=ending, comment=comment)
@@ -782,6 +791,10 @@ class NameComplex(BaseModel):
             base_label += "_stem"
         if stem_remove:
             base_label += f"_{stem_remove}"
+        elif stem_add:
+            # Otherwise stems with only stem_remove and ones with only stem_add
+            # result in the same label.
+            base_label += "_"
         if stem_add:
             base_label += f"_{stem_add}"
         return base_label

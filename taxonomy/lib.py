@@ -7,7 +7,7 @@ Contents overlap with shell.py, which defines "commands".
 """
 from collections import defaultdict
 from functools import partial
-from pathlib import Path
+import os
 import re
 from taxonomy.db.models.name import TypeTag
 from typing import Any, Container, Dict, Iterable, List, Optional, Tuple, Type, Union
@@ -38,6 +38,7 @@ from taxonomy.db.models import (
     Region,
     Taxon,
 )
+from taxonomy.db.models.person import AuthorTag
 
 
 def biggest_citation_groups_no_region(
@@ -362,12 +363,6 @@ def make_genus():
     new_taxon = parent.add_static(Rank.genus, name, year, author_tags=tags)
     new_taxon.display()
     return new_taxon
-
-
-from data_import import geoplanidae
-
-refs = geoplanidae.parse_refs(Path("data_import/data/geoplanidae-refs.html"))
-from taxonomy.db.models.person import AuthorTag
 
 
 def make_species():

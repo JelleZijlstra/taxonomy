@@ -156,16 +156,26 @@ class BaseModel(Model):
         return result
 
     @classmethod
-    def lint_all(cls: Type[ModelT]) -> List[ModelT]:
+    def lint_all(cls: Type[ModelT]) -> List[Tuple[ModelT, List[str]]]:
         bad = []
-        for person in cls.select():
-            if not person.lint():
-                bad.append(person)
+        for obj in cls.select():
+            messages = list(obj.lint())
+            if messages:
+                bad.append((obj, messages))
         return bad
 
-    def lint(self) -> bool:
-        """Return False if something is wrong with this object."""
-        return True
+    def lint_wrapper(self) -> bool:
+        messages = list(self.lint())
+        if not messages:
+            print("Everything clean")
+            return True
+        for message in messages:
+            print(message)
+        return False
+
+    def lint(self) -> Iterable[str]:
+        """Yield messages if something is wrong with this object."""
+        return []
 
     def prepared(self) -> None:
         super().prepared()
@@ -517,6 +527,7 @@ class BaseModel(Model):
             "empty": self.empty,
             "full_data": self.full_data,
             "call": self.call,
+            "lint": self.lint_wrapper,
         }
 
     def call(self) -> None:
@@ -569,7 +580,9 @@ class BaseModel(Model):
             )
         elif isinstance(typ, type):
             if issubclass(typ, enum.Enum):
-                return getinput.get_enum_member(typ, f"{name}> ", allow_empty=is_optional)
+                return getinput.get_enum_member(
+                    typ, f"{name}> ", allow_empty=is_optional
+                )
             elif issubclass(typ, BaseModel) and typ is not BaseModel:
                 return typ.getter(None).get_one(f"{name}> ", allow_empty=is_optional)
         if param.default is not inspect.Parameter.empty:

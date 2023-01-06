@@ -49,7 +49,7 @@ ALLOWED_TUSSENVOEGSELS = {
     },
     NamingConvention.german: {"von", "von den", "von der", "zu"},
     # French, Italian, Portuguese
-    NamingConvention.western: {"de", "du", "dos", "da", "de la", "del", "do"},
+    NamingConvention.western: {"de", "du", "dos", "da", "de la", "del", "do", "von"},
     NamingConvention.spanish: {"de", "del", "de la", "de los", "de las"},
 }
 ALLOWED_TUSSENVOEGSELS[NamingConvention.unspecified] = set.union(
@@ -362,7 +362,7 @@ class Person(BaseModel):
             self.type.name,
         )
 
-    def lint(self) -> bool:
+    def lint(self) -> Iterable[str]:
         for field_name, field_obj in self._meta.fields.items():
             if isinstance(field_obj, CharField):
                 value = getattr(self, field_name)
@@ -371,108 +371,101 @@ class Person(BaseModel):
                     print(f"{self}: clean {field_name} from {value!r} to {cleaned!r}")
                     setattr(self, field_name, cleaned)
 
+        if self.type in (PersonType.hard_redirect, PersonType.soft_redirect):
+            if not self.target:
+                yield f"{self}: redirect has no target"
         if self.type in (
             PersonType.deleted,
             PersonType.hard_redirect,
             PersonType.soft_redirect,
         ):
             if self.total_references() > 0:
-                print(f"{self}: deleted person has references")
-                return False
-            return True
+                yield f"{self}: deleted person has references"
+            return
         if (
             self.type is PersonType.checked
             and self.naming_convention is NamingConvention.unspecified
         ):
-            print(f"{self}: checked but naming convention not set")
-            return False
+            yield f"{self}: checked but naming convention not set"
         if self.type is PersonType.unchecked:
             if self.bio:
-                print(f"{self}: unchecked but bio set")
-                return False
+                yield f"{self}: unchecked but bio set"
             if self.tags:
-                print(f"{self}: unchecked but tags set")
-                return False
+                yield f"{self}: unchecked but tags set"
             if self.birth:
-                print(f"{self}: unchecked but year of birth set")
-                return False
+                yield f"{self}: unchecked but year of birth set"
             if self.death:
-                print(f"{self}: unchecked but year of death set")
-                return False
+                yield f"{self}: unchecked but year of death set"
+        if self.naming_convention is NamingConvention.other:
+            return
         if self.tussenvoegsel:
             allowed = ALLOWED_TUSSENVOEGSELS.get(self.naming_convention, set())
             if self.tussenvoegsel not in allowed:
-                print(f"{self}: disallowed tussenvoegsel {self.tussenvoegsel!r}")
-                return False
+                yield f"{self}: disallowed tussenvoegsel {self.tussenvoegsel!r}"
         if self.initials and not self.given_names:
             if self.naming_convention is NamingConvention.russian:
                 grammar = parsing.russian_initials_pattern
+            elif self.naming_convention is NamingConvention.ukrainian:
+                grammar = parsing.ukrainian_initials_pattern
             else:
                 grammar = parsing.initials_pattern
             if not parsing.matches_grammar(self.initials, grammar):
-                print(f"{self}: invalid initials: {self.initials!r}")
-                return False
+                yield f"{self}: invalid initials: {self.initials!r}"
         if self.naming_convention is NamingConvention.organization:
             if self.given_names:
-                print(f"{self}: given_names set for organization")
-                return False
+                yield f"{self}: given_names set for organization"
             if self.initials:
-                print(f"{self}: initials set for organization")
-                return False
+                yield f"{self}: initials set for organization"
             if self.suffix:
-                print(f"{self}: suffix set for organization")
-                return False
+                yield f"{self}: suffix set for organization"
         elif self.naming_convention is NamingConvention.pinyin:
             if self.given_names:
                 if not parsing.matches_grammar(
                     self.given_names, parsing.pinyin_given_names_pattern
                 ):
-                    print(
+                    yield (
                         f"{self}: invalid pinyin in given names: {self.given_names!r}"
                     )
-                    return False
                 if not parsing.matches_grammar(
                     self.given_names.lower(),
                     parsing.pinyin_given_names_lowercased_pattern,
                 ):
-                    print(
+                    yield (
                         f"{self}: invalid pinyin in given names: {self.given_names!r}"
                     )
-                    return False
             if not parsing.matches_grammar(
                 self.family_name, parsing.chinese_family_name_pattern
             ):
-                print(f"{self}: invalid pinyin in family name: {self.family_name!r}")
-                return False
+                yield f"{self}: invalid pinyin in family name: {self.family_name!r}"
             if not parsing.matches_grammar(
                 self.family_name.lower(), parsing.pinyin_family_name_lowercased_pattern
             ):
-                print(f"{self}: invalid pinyin in family name: {self.family_name!r}")
-                return False
+                yield f"{self}: invalid pinyin in family name: {self.family_name!r}"
 
         else:
             if self.given_names:
                 if self.naming_convention is NamingConvention.russian:
                     grammar = parsing.russian_given_names_pattern
+                elif self.naming_convention is NamingConvention.ukrainian:
+                    grammar = parsing.ukrainian_given_names_pattern
                 elif self.naming_convention is NamingConvention.chinese:
                     grammar = parsing.chinese_given_names_pattern
                 else:
                     grammar = parsing.given_names_pattern
                 if not parsing.matches_grammar(self.given_names, grammar):
-                    print(f"{self}: invalid given names: {self.given_names!r}")
-                    return False
+                    yield f"{self}: invalid given names: {self.given_names!r}"
             if self.naming_convention is NamingConvention.chinese:
                 grammar = parsing.chinese_family_name_pattern
             elif self.naming_convention is NamingConvention.russian:
                 grammar = parsing.russian_family_name_pattern
+            elif self.naming_convention is NamingConvention.ukrainian:
+                grammar = parsing.ukrainian_family_name_pattern
             elif self.naming_convention is NamingConvention.burmese:
                 grammar = parsing.burmese_names_pattern
             else:
                 grammar = parsing.family_name_pattern
             if not parsing.matches_grammar(self.family_name, grammar):
-                print(f"{self}: invalid family name: {self.family_name!r}")
-                return False
-        return True
+                yield f"{self}: invalid family name: {self.family_name!r}"
 
     @classmethod
     def fix_bad_suffixes(cls) -> None:
@@ -624,13 +617,26 @@ class Person(BaseModel):
             "i": lambda: self.display(full=True, include_detail=True),
             "r": self.reassign_references,
             "reassign_references": self.reassign_references,
-            "lint": self.lint,
             "rio": self.reassign_initials_only,
             "reassign_initials_only": self.reassign_initials_only,
             "move": self.move_all_references,
             "soft": self.make_soft_redirect,
             "hard": self.make_hard_redirect,
+            "print_character_names": self.print_character_names,
         }
+
+    def print_character_names(self) -> None:
+        print("=== family name ===")
+        helpers.print_character_names(self.family_name)
+        if self.given_names:
+            print("=== given names ===")
+            helpers.print_character_names(self.given_names)
+        if self.initials:
+            print("=== initials ===")
+            helpers.print_character_names(self.initials)
+        if self.tussenvoegsel:
+            print("=== tussenvoegsel ===")
+            helpers.print_character_names(self.tussenvoegsel)
 
     def maybe_reassign_references(self) -> None:
         num_refs = self.total_references()
@@ -804,7 +810,7 @@ class Person(BaseModel):
         kwargs.setdefault("naming_convention", NamingConvention.unspecified)
         person = cls.create(family_name=family_name, **kwargs)
         person.edit()
-        while not person.lint():
+        while not person.lint_wrapper():
             person.edit()
         return person
 
@@ -825,7 +831,7 @@ class Person(BaseModel):
         for field in ("initials", "given_names", "suffix", "tussenvoegsel"):
             kwargs[field] = cls.getter(field).get_one_key(f"{field}> ")
         person = cls.get_or_create_unchecked(family_name, **kwargs)
-        while not person.lint():
+        while not person.lint_wrapper():
             person.edit()
         return person
 
@@ -835,7 +841,7 @@ class Person(BaseModel):
         if family_name is None:
             return None
         person = cls.get_or_create_unchecked(family_name)
-        while not person.lint():
+        while not person.lint_wrapper():
             person.edit()
         return person
 

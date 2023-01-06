@@ -724,12 +724,15 @@ class Name(BaseModel):
             new_tag = fn(tag)
             if new_tag is not None:
                 new_tags.append(new_tag)
-        self.type_tags = tuple(new_tags)  # type: ignore
+        if type_tags != tuple(new_tags):
+            self.type_tags = tuple(new_tags)  # type: ignore
 
     def map_type_tags_by_type(self, typ: Type[Any], fn: Callable[[Any], Any]) -> None:
         def map_fn(tag: TypeTag) -> TypeTag:
             new_args = []
             tag_type = type(tag)
+            if not tag_type._attributes:
+                return tag
             for arg_name, arg_type in tag_type._attributes.items():
                 val = getattr(tag, arg_name)
                 if arg_type is typ:
@@ -801,8 +804,10 @@ class Name(BaseModel):
     def description(self) -> str:
         if self.original_name:
             out = self.original_name
-        else:
+        elif self.root_name:
             out = self.root_name
+        else:
+            out = "<no name>"
         if self.author_tags:
             out += " %s" % self.taxonomic_authority()
         if self.year:
@@ -810,11 +815,20 @@ class Name(BaseModel):
         if self.page_described:
             out += f":{self.page_described}"
         parenthesized_bits = []
-        if self.taxon.valid_name != self.original_name:
-            parenthesized_bits.append(f"= {self.taxon.valid_name}")
-        if self.nomenclature_status != NomenclatureStatus.available:
+        try:
+            taxon = self.taxon
+        except Taxon.DoesNotExist:
+            parenthesized_bits.append("= <invalid taxon>")
+        else:
+            if taxon.valid_name != self.original_name:
+                parenthesized_bits.append(f"= {taxon.valid_name}")
+        if self.nomenclature_status is None:
+            parenthesized_bits.append("<no nomenclature status>")
+        elif self.nomenclature_status != NomenclatureStatus.available:
             parenthesized_bits.append(self.nomenclature_status.name)
-        if self.status != Status.valid:
+        if self.status is None:
+            parenthesized_bits.append("<no status>")
+        elif self.status != Status.valid:
             parenthesized_bits.append(self.status.name)
         if parenthesized_bits:
             out += f" ({', '.join(parenthesized_bits)})"
@@ -1130,7 +1144,8 @@ class Name(BaseModel):
         if full:
             data: Dict[str, Any] = {}
             level, reason = self.fill_data_level()
-            data["level"] = f"{level.name.upper()} ({reason})"
+            if level is not FillDataLevel.nothing_needed:
+                data["level"] = f"{level.name.upper()} ({reason})"
             if self.type_locality is not None:
                 data["locality"] = repr(self.type_locality)
             type_info = []
@@ -1278,7 +1293,7 @@ class Name(BaseModel):
                 return (FillDataLevel.missing_detail, tag_list(missing_details_tags))
             elif missing_derived_tags:
                 return (FillDataLevel.missing_detail, tag_list(missing_derived_tags))
-            elif required_details_tags or required_derived_tags:
+            elif required_details_tags:
                 return (
                     FillDataLevel.no_data_from_original,
                     "has all required tags, but no data from original",
@@ -2035,7 +2050,8 @@ STATUS_TO_TAG = {
 
 
 class TypeTag(adt.ADT):
-    # 1 used to be Collector, removed
+    # 1 used to be Collector, kept for compatibility with some deleted names
+    _RawCollector(text=str, tag=1)  # type: ignore
     Date(date=str, tag=2)  # type: ignore
     Gender(gender=constants.SpecimenGender, tag=3)  # type: ignore
     Age(age=constants.SpecimenAge, tag=4)  # type: ignore
@@ -2099,6 +2115,9 @@ class TypeTag(adt.ADT):
     # Arbitrary text about nomenclature
     NomenclatureDetail(text=str, source=Article, tag=41)  # type: ignore
     TextualOriginalRank(text=str, tag=42)  # type: ignore
+    # Denotes that this name does something grammatically incorrect. A published
+    # paper should correct it.
+    IncorrectGrammar(text=str, tag=43)  # type: ignore
 
 
 SOURCE_TAGS = (

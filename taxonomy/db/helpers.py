@@ -600,3 +600,8 @@ def to_int(string: Optional[str]) -> int:
         return int(match.group(1))
     else:
         return 0
+
+
+def print_character_names(string: str) -> None:
+    for i, c in enumerate(string):
+        print(f"{i} {c} – {unicodedata.name(c)}")

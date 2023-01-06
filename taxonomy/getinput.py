@@ -15,6 +15,7 @@ from typing import (
     Any,
     Callable,
     Dict,
+    Iterator,
     Iterable,
     List,
     Mapping,
@@ -427,6 +428,8 @@ def display_tags(
             yield f"{spacing}{index}{type(tag).__name__}\n"
             for attr in tag._attributes:
                 value = getattr(tag, attr)
+                if value is None or value == "":
+                    continue
                 if isinstance(value, str):
                     value = re.sub(r"\s+", " ", value).strip()
                 yield f"{spacing}  {attr}: {value!s}\n"
@@ -571,3 +574,12 @@ def print_diff(a: Sequence[Any], b: Sequence[Any]) -> None:
             print(f"- {a[i]}")
         for i in range(b_lo, b_hi):
             print(f"+ {b[i]}")
+
+
+def print_every_n(it: Iterable[T], *, label: str, n: int = 1000) -> Iterator[T]:
+    i = 0
+    for i, obj in enumerate(it, start=1):
+        if i % n == 0:
+            print(f"{i} {label}...")
+        yield obj
+    print(f"Finished processing {i} {label}")
