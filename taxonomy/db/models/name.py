@@ -21,7 +21,7 @@ from typing import (
 
 from peewee import CharField, ForeignKeyField, IntegerField, TextField
 
-from .. import constants, helpers
+from .. import constants, helpers, models
 from ... import adt, events, getinput
 from ..constants import (
     EmendationJustification,
@@ -1022,6 +1022,8 @@ class Name(BaseModel):
         return bad
 
     def check_authors(self, autofix: bool = True, quiet: bool = False) -> bool:
+        if self.author_tags is None:
+            return True
         if self.has_type_tag(TypeTag.DifferentAuthority):
             return True
         citation = self.original_citation
@@ -1235,7 +1237,7 @@ class Name(BaseModel):
                 self.add_type_tag(new_tag)
 
     def fill_data_level(self) -> Tuple[FillDataLevel, str]:
-        if not self.check_authors():
+        if not self.check_authors(quiet=True):
             return FillDataLevel.needs_basic_data, "author mismatch"
         if (
             self.name_complex is not None
@@ -1442,12 +1444,16 @@ class Name(BaseModel):
 
     def lint(self) -> Iterable[str]:
         try:
-            desc = self.get_description(full=True, include_taxon=True)
+            self.get_description(full=True, include_taxon=True)
         except Exception as e:
             yield f"{self.id}: cannot display due to {e}"
             return
         if self.status is Status.removed:
             return
+        for linter in models.name_lint.LINTERS:
+            yield from linter(self)
+        if not self.check_authors():
+            yield f"{self}: discrepancy in authors"
 
     def validate_as_child(self, status: Status = Status.valid) -> Taxon:
         if self.taxon.rank is Rank.species:

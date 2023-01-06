@@ -155,10 +155,18 @@ class BaseModel(Model):
         return result
 
     @classmethod
-    def lint_all(cls: Type[ModelT]) -> List[Tuple[ModelT, List[str]]]:
+    def lint_all(
+        cls: Type[ModelT], linter: Callable[[ModelT], Iterable[str]] | None = None
+    ) -> List[Tuple[ModelT, List[str]]]:
+        if linter is None:
+            query = cls.select()
+            linter = cls.lint
+        else:
+            # For specific linters, only worry about valid names
+            query = cls.select_valid()
         bad = []
-        for obj in getinput.print_every_n(cls.select(), label=f"{cls.__name__}s"):
-            messages = list(obj.lint())
+        for obj in getinput.print_every_n(query, label=f"{cls.__name__}s"):
+            messages = list(linter(obj))
             if messages:
                 bad.append((obj, messages))
         return bad
