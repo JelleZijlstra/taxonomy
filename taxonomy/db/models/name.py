@@ -1863,6 +1863,7 @@ class Name(BaseModel):
 class NameComment(BaseModel):
     call_sign = "NCO"
     grouping_field = "kind"
+    fields_may_be_invalid = {"name"}
 
     name = ForeignKeyField(Name, related_name="comments", db_column="name_id")
     kind = EnumField(constants.CommentKind)

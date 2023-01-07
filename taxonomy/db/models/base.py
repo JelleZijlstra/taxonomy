@@ -135,6 +135,7 @@ class BaseModel(Model):
     derived_fields: List["derived_data.DerivedField[Any]"] = []
     _name_to_derived_field: Dict[str, "derived_data.DerivedField[Any]"] = {}
     call_sign_to_model: ClassVar[Dict[str, Type["BaseModel"]]] = {}
+    fields_may_be_invalid: ClassVar[set[str]] = set()
 
     class Meta(object):
         database = database
@@ -227,6 +228,8 @@ class BaseModel(Model):
                     yield f"{self}: double redirect to {target} -> {secondary_target}"
             return
         for field in self.fields():
+            if field in self.fields_may_be_invalid:
+                continue
             value = getattr(self, field)
             if value is None:
                 continue

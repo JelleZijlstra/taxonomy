@@ -495,6 +495,7 @@ LINTERS: list[Linter] = [
     check_root_name,
     check_family_root_name,
     correct_type_taxon,
+    clean_up_verbatim,
 ]
 DISABLED_LINTERS: list[Linter] = [
     check_type_designations_present,  # too many missing (about 580)
