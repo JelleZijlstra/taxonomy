@@ -673,7 +673,6 @@ class Article(BaseModel):
         self.author_tags = [
             AuthorTag.Author(person=person) for person in reversed(authors)  # type: ignore
         ]
-        self.save()
 
     def countAuthors(self) -> int:
         return len(self.get_authors())

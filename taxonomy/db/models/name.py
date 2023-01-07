@@ -597,7 +597,6 @@ class Name(BaseModel):
             status=self.status,
         )
         self.type = result.base_name
-        self.save()
         if locality is not None:
             result.add_occurrence(locality)
         result.base_name.s(**kwargs)
@@ -663,7 +662,6 @@ class Name(BaseModel):
             data["additional"] = []
         data["additional"].append(new_data)
         self.data = json.dumps(data)
-        self.save()
 
     def add_data(self, field: str, value: Any, concat_duplicate: bool = False) -> None:
         data = self._load_data()
@@ -761,7 +759,6 @@ class Name(BaseModel):
 
         self.map_type_tags(map_fn)
         self.original_citation = new_citation
-        self.save()
 
     def add_included(self, species: "Name", comment: str = "") -> None:
         assert isinstance(species, Name)
@@ -898,7 +895,6 @@ class Name(BaseModel):
             return
         self.add_tag(STATUS_TO_TAG[status](name=of_name, comment=comment))
         self.nomenclature_status = status  # type: ignore
-        self.save()
 
     def add_variant(
         self,
@@ -951,7 +947,6 @@ class Name(BaseModel):
             self.nomenclature_status = NomenclatureStatus.preoccupied  # type: ignore
         else:
             print(f"not changing status because it is {self.nomenclature_status}")
-        self.save()
 
     def conserve(self, opinion: str, comment: Optional[str] = None) -> None:
         self.add_tag(NameTag.Conserved(opinion, comment))
@@ -1512,8 +1507,6 @@ class Name(BaseModel):
         self.taxon = new_taxon
         self.status = status  # type: ignore
         new_taxon.base_name = self
-        new_taxon.save()
-        self.save()
         new_taxon.recompute_name()
         return new_taxon
 
@@ -1538,7 +1531,6 @@ class Name(BaseModel):
     def remove(self, reason: Optional[str] = None) -> None:
         print("Deleting name: " + self.description())
         self.status = Status.removed  # type: ignore
-        self.save()
         if reason:
             self.add_comment(constants.CommentKind.removal, reason, None, "")
 
@@ -1571,7 +1563,6 @@ class Name(BaseModel):
             print(f"Modifying root_name for {self}: {self.root_name} -> {computed}")
             if not dry_run:
                 self.root_name = computed
-                self.save()
             return False
         return True
 
@@ -1621,7 +1612,6 @@ class Name(BaseModel):
                 setattr(self, label, value)
         self.s(**kwargs)
         self.fill_required_fields()
-        self.save()
 
     def detect_and_set_type(
         self, verbatim_type: Optional[str] = None, verbose: bool = False
@@ -1641,7 +1631,6 @@ class Name(BaseModel):
             if verbose:
                 print("Detected type: %s" % candidates[0])
             self.type = candidates[0]
-            self.save()
             return True
         else:
             print(

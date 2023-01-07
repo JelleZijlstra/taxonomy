@@ -171,7 +171,6 @@ class SpeciesNameComplex(BaseModel):
         for nam in self.get_names():
             print("removing name complex from", nam)
             nam.species_name_complex = None
-            nam.save()
         for ending in self.endings:
             print("removing ending", ending)
             ending.delete_instance()
@@ -414,7 +413,6 @@ class NameComplex(BaseModel):
             print(name)
             if not dry_run:
                 name.name_complex = self
-                name.save()
         if not dry_run:
             saved_endings = list(self.endings)
             if not any(e.ending == ending for e in saved_endings):

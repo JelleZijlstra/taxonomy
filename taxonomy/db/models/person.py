@@ -346,7 +346,6 @@ class Person(BaseModel):
         new_tags, new_person = self.edit_tag_sequence(obj, tags, tag_cls, target)
         if new_tags is not None:
             setattr(obj, field_name, new_tags)
-            obj.save()
             if new_person is not None:
                 self.move_reference(new_person, derived_field_name, obj)
             return new_person
@@ -754,7 +753,6 @@ class Person(BaseModel):
         print(f"Autodeleting {self!r}")
         if not dry_run:
             self.type = PersonType.deleted  # type: ignore
-            self.save()
 
     def is_more_specific_than(self, other: "Person") -> bool:
         if other.type in (PersonType.hard_redirect, PersonType.soft_redirect):

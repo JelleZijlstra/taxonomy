@@ -137,7 +137,6 @@ class Book(BaseModel):
         if data.get("publish_places"):
             place = data["publish_places"][0]
             self.citation_group = CitationGroup.get_or_create_city(place)
-        self.save()
 
     def edit(self) -> None:
         self.fill_field("tags")

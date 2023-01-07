@@ -51,6 +51,10 @@ if settings.use_sqlite:
 
     class LoggingDatabase(SqliteDatabase):
         def execute_sql(self, sql: str, *args: Any, **kwargs: Any) -> Any:
+            if sql.startswith("UPDATE"):
+                _log_f.write(f"--- Write query: {sql}\n")
+                traceback.print_stack(file=_log_f)
+                _log_f.flush()
             start = time.time()
             try:
                 return super().execute_sql(sql, *args, **kwargs)
@@ -102,9 +106,15 @@ def _descriptor_set(self: FieldAccessor, instance: Model, value: Any) -> None:
     we are not concerned about the performance implications of saving often.
 
     """
+    has_old_value = self.name in instance.__data__
+    old_value = instance.__data__.get(self.name)
     instance.__data__[self.name] = value
     # Otherwise this gets called in the constructor.
-    if getattr(instance, "_is_prepared", False):
+    if (
+        has_old_value
+        and old_value != value
+        and getattr(instance, "_is_prepared", False)
+    ):
         instance._dirty.add(self.name)
         instance.save()
 
@@ -387,7 +397,6 @@ class BaseModel(Model):
         for name, value in kwargs.items():
             assert hasattr(self, name), "Invalid attribute %s" % name
             setattr(self, name, value)
-        self.save()
 
     def __hash__(self) -> int:
         return self.id
@@ -443,7 +452,6 @@ class BaseModel(Model):
                 setattr(into, field, my_data)
             elif my_data != into_data:
                 print(f"warning: dropping {field}: {my_data}")
-        into.save()
 
     @classmethod
     def mlist(cls, attribute: str) -> Dict[Any, int]:
@@ -731,7 +739,6 @@ class BaseModel(Model):
         if sibling is not None:
             sibling.display()
             sibling.edit()
-            sibling.save()
 
     def edit_sibling_by_field(self) -> None:
         field = getinput.get_with_completion(
@@ -746,7 +753,6 @@ class BaseModel(Model):
         if sibling is not None:
             sibling.display()
             sibling.edit()
-            sibling.save()
 
     def edit_foreign(self) -> None:
         options = {
@@ -784,7 +790,6 @@ class BaseModel(Model):
             return
         print(f"Current value: {value}")
         setattr(self, chosen, None)
-        self.save()
 
     def edit(self) -> None:
         getinput.get_with_completion(
@@ -878,7 +883,6 @@ class BaseModel(Model):
 
     def fill_field(self, field: str) -> None:
         setattr(self, field, self.get_value_for_field(field))
-        self.save()
 
     @classmethod
     def get_field_names(cls) -> List[str]:

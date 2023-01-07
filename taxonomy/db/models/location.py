@@ -309,7 +309,6 @@ class Location(BaseModel):
         print(f"Autodeleting {self!r}")
         if not dry_run:
             self.deleted = LocationStatus.deleted  # type: ignore
-            self.save()
 
     @classmethod
     def get_interactive_creators(cls) -> Dict[str, Callable[[], Any]]:

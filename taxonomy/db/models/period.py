@@ -128,7 +128,6 @@ class Period(BaseModel):
         else:
             self.comment = f"{self.comment} – {new_comment}"
         self.deleted = True
-        self.save()
 
     @staticmethod
     def _filter_none(seq: Iterable[Optional[T]]) -> Iterable[T]:
@@ -181,7 +180,6 @@ class Period(BaseModel):
         )
         if next is not None:
             next.prev = period
-            next.save()
         return period
 
     def display(

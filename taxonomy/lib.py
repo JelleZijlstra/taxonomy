@@ -139,13 +139,11 @@ def move_localities(period: Period) -> None:
     ):
         location.min_period = location.max_period = None
         location.stratigraphic_unit = period
-        location.save()
 
 
 def move_to_stratigraphy(loc: Location, period: Period) -> None:
     loc.stratigraphic_unit = period
     loc.min_period = loc.max_period = None
-    loc.save()
 
 
 def count_field(model: Type[BaseModel], field: str) -> List[Tuple[Any, int]]:

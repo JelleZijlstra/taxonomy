@@ -91,7 +91,6 @@ class StratigraphicUnit(BaseModel):
         else:
             self.comment = f"{self.comment} – {new_comment}"
         self.deleted = True
-        self.save()
 
     @staticmethod
     def _filter_none(seq: Iterable[Optional[T]]) -> Iterable[T]:
@@ -151,7 +150,6 @@ class StratigraphicUnit(BaseModel):
         if "next" in kwargs:
             next_period = kwargs["next"]
             next_period.prev = period
-            next_period.save()
         return period
 
     def display(

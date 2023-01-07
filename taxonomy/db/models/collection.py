@@ -149,7 +149,6 @@ class Collection(BaseModel):
     def merge(self, other: "Collection") -> None:
         for nam in self.type_specimens:
             nam.collection = other
-            nam.save()
         self.delete_instance()
 
     def is_invalid(self) -> bool:

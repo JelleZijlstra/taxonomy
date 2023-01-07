@@ -190,7 +190,6 @@ class CitationGroup(BaseModel):
         for nam in self.get_names():
             print(f"Changing CG on {nam}")
             nam.citation_group = other
-            nam.save()
         for art in self.get_articles():
             print(f"Changing CG on {art}")
             art.citation_group = other
@@ -199,11 +198,9 @@ class CitationGroup(BaseModel):
                     art.series = series
                 else:
                     print(f"Warning: skipping {art} because it has series {art.series}")
-            art.save()
         for book in self.get_books():
             print(f"Changing CG on {book}")
             book.citation_group = other
-            book.save()
         if other.region is None and self.region is not None:
             print(f"Setting region: {self.region}")
             other.region = self.region

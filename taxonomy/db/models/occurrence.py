@@ -23,7 +23,6 @@ class Occurrence(BaseModel):
             self.comment = new_comment
         else:
             self.comment += " " + new_comment
-        self.save()
 
     def __repr__(self) -> str:
         out = "{} in {} ({}{})".format(

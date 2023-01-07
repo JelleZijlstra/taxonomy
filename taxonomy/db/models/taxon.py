@@ -566,9 +566,7 @@ class Taxon(BaseModel):
         if "status" not in kwargs:
             kwargs["status"] = Status.valid
         name_obj = models.Name.create(taxon=taxon, year=year, **kwargs)
-        name_obj.save()
         taxon.base_name = name_obj
-        taxon.save()
         return taxon
 
     def get_adt_callbacks(self) -> getinput.CallbackMap:
@@ -628,7 +626,6 @@ class Taxon(BaseModel):
             nomenclature_status=NomenclatureStatus.available,
         )
         taxon.base_name = name_obj
-        taxon.save()
         name_obj.fill_required_fields()
         return taxon
 
@@ -831,9 +828,7 @@ class Taxon(BaseModel):
         base_name = self.base_name
         taxon.base_name = base_name
         base_name.taxon = taxon
-        base_name.save()
         taxon.recompute_name()
-        taxon.save()
         return taxon
 
     def edit_all_names(self) -> None:
@@ -961,16 +956,13 @@ class Taxon(BaseModel):
         if new_name != self.valid_name and new_name is not None:
             print(f"Changing valid name: {self.valid_name} -> {new_name}")
             self.valid_name = new_name
-            self.save()
 
     def merge(self, into: "Taxon") -> None:
         for child in self.get_children():
             child.parent = into
-            child.save()
         for nam in self.get_names():
             if nam != self.base_name:
                 nam.taxon = into
-                nam.save()
 
         self._merge_fields(into, exclude={"id", "base_name"})
         self.base_name.merge(into.base_name, allow_valid=True)
@@ -989,20 +981,16 @@ class Taxon(BaseModel):
         original_to_status = to_taxon.base_name.status
         for child in self.get_children():
             child.parent = to_taxon
-            child.save()
         nam = self.base_name
         if nam != to_taxon.base_name:
             nam.status = Status.synonym
-            nam.save()
         for name in self.get_names():
             name.taxon = to_taxon
-            name.save()
         for occ in self.occurrences:
             occ.taxon = to_taxon
             comment = occ.comment
             try:
                 occ.add_comment("Previously under _%s_." % self.name)
-                occ.save()
             except peewee.IntegrityError:
                 print("dropping duplicate occurrence %s" % occ)
                 existing = to_taxon.at(occ.location)
@@ -1039,7 +1027,6 @@ class Taxon(BaseModel):
         new_taxon.base_name = self.base_name
         new_taxon.recompute_name()
         self.parent = new_taxon
-        self.save()
         return new_taxon
 
     def run_on_self_and_children(self, callback: Callable[["Taxon"], object]) -> None:
@@ -1060,7 +1047,6 @@ class Taxon(BaseModel):
         self.age = AgeClass.removed  # type: ignore
         if reason is not None:
             self.data = reason
-        self.save()
 
     def all_names(
         self,

@@ -385,7 +385,6 @@ def detect_types_from_root_names(max_count: Optional[int] = None) -> None:
         if len(candidates) == 1:
             print("Detected type for name {}: {}".format(name, candidates[0]))
             name.type = candidates[0]
-            name.save()
             return True
         else:
             if candidates:
@@ -441,7 +440,6 @@ def detect_complexes() -> None:
         stem = inferred.get_stem_from_name(name.root_name)
         print(f"Inferred stem and complex for {name}: {stem}, {inferred}")
         name.name_complex = inferred
-        name.save()
 
 
 @command
@@ -478,7 +476,6 @@ def detect_species_name_complexes(dry_run: bool = False) -> None:
         success += 1
         if not dry_run:
             name.species_name_complex = inferred
-            name.save()
     print(f"{success}/{total} inferred")
 
 
@@ -1114,7 +1111,6 @@ def fossilize(
         if taxon.age != from_status:
             continue
         taxon.age = to_status  # type: ignore
-        taxon.save()
         for child in taxon.children:
             fossilize(child, to_status=to_status, from_status=from_status)
 
@@ -1173,7 +1169,6 @@ def clean_column(
             )
             if not dry_run:
                 setattr(obj, column, new_value)
-                obj.save()
 
 
 @command
@@ -1247,7 +1242,6 @@ def set_empty_to_none(
         print(f"{obj}: set {field} to None")
         if not dry_run:
             setattr(obj, field, None)
-            obj.save()
 
 
 @command
@@ -1409,7 +1403,6 @@ def fill_citation_group_for_type(
         if not dry_run:
             print(f"set {art} {cg}")
             art.citation_group = cg
-            art.save()
 
 
 @command
@@ -1456,7 +1449,6 @@ def fill_citation_groups(
                         f"Inferred group with '{pattern.pattern}': {pattern.citation_group}"
                     )
                     nam.citation_group = pattern.citation_group
-                    nam.save()
 
     if not interactive:
         return
@@ -2121,7 +2113,6 @@ def move_to_lowest_rank(dry_run: bool = False) -> Iterable[Tuple[Name, str]]:
             print(f"changing taxon of {nam} to {lowest}")
             if not dry_run:
                 nam.taxon = lowest
-                nam.save()
 
 
 AUTHOR_SYNONYMS = {
@@ -2685,7 +2676,6 @@ def occ(
         if replace_source and o.source != source:
             o.source = source
             o.s(**kwargs)
-            o.save()
             print("Replaced source: %s" % o)
     return o
 

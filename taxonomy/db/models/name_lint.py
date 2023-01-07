@@ -218,7 +218,6 @@ def check_tags_for_name(nam: Name, autofix: bool) -> Iterable[str]:
             if autofix:
                 nam.add_static_comment(CommentKind.automatic_change, comment)
                 nam.nomenclature_status = status  # type: ignore
-                nam.save()
 
     for tag in tags:
         if isinstance(tag, NameTag.PreoccupiedBy):
@@ -409,7 +408,6 @@ def check_family_root_name(nam: Name, autofix: bool = True) -> Iterable[str]:
             print(f"Autocorrecting root name: {nam.root_name} -> {stem_name}")
             if autofix:
                 nam.root_name = stem_name
-                nam.save()
             break
     if nam.root_name != stem_name:
         if nam.has_type_tag(TypeTag.IncorrectGrammar):
@@ -454,7 +452,6 @@ def clean_up_verbatim(nam: Name, autofix: bool = True) -> Iterable[str]:
             print(message)
             nam.add_data("verbatim_type", nam.verbatim_type, concat_duplicate=True)
             nam.verbatim_type = None
-            nam.save()
         else:
             yield message
     if (
@@ -467,7 +464,6 @@ def clean_up_verbatim(nam: Name, autofix: bool = True) -> Iterable[str]:
             print(message)
             nam.add_data("verbatim_type", nam.verbatim_type, concat_duplicate=True)
             nam.verbatim_type = None
-            nam.save()
         else:
             yield message
     if nam.verbatim_citation is not None and nam.original_citation is not None:
@@ -478,7 +474,6 @@ def clean_up_verbatim(nam: Name, autofix: bool = True) -> Iterable[str]:
                 "verbatim_citation", nam.verbatim_citation, concat_duplicate=True
             )
             nam.verbatim_citation = None
-            nam.save()
         else:
             yield message
     if nam.citation_group is not None and nam.original_citation is not None:
