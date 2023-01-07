@@ -2465,6 +2465,7 @@ def fill_data_from_citation_group(
 
 @generator_command
 def check_expected_base_name() -> Iterable[Taxon]:
+    """Finds cases where a Taxon's base name is not the oldest available name."""
     for txn in Taxon.select_valid().filter(Taxon.rank <= Rank.superfamily):
         if not txn.check_expected_base_name():
             yield txn
@@ -2641,33 +2642,6 @@ AUTHOR_SYNONYMS = {
     "Worobiev": helpers.romanize_russian("Воробьев"),
     "Zalkin": helpers.romanize_russian("Цалкин"),
     "É. Geoffroy": "É. Geoffroy Saint-Hilaire",
-}
-AMBIGUOUS_AUTHORS = {
-    "Allen",
-    "Peters",
-    "Thomas",
-    "Geoffroy Saint-Hilaire",
-    "Cuvier",
-    "Howell",
-    "Smith",
-    "Grandidier",
-    "Ameghino",
-    "Major",
-    "Petter",
-    "Verheyen",
-    "Gervais",
-    "Andersen",
-    "Gray",
-    "Owen",
-    "Martin",
-    "Russell",
-    "Leakey",
-    "Anderson",
-    "Bryant",
-    "Merriam",
-    "Heller",
-    "Wood",
-    "Wilson",
 }
 
 
