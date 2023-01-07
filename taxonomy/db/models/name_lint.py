@@ -3,7 +3,7 @@
 Lint steps for Names.
 
 """
-from collections.abc import Iterable
+from collections.abc import Iterable, Callable
 import re
 from typing import TypeVar
 from .name import Name, NameTag, TypeTag, STATUS_TO_TAG
@@ -21,6 +21,8 @@ from .. import helpers
 from ... import adt, getinput
 
 T = TypeVar("T")
+
+Linter = Callable[[Name, bool], Iterable[str]]
 
 
 def replace_arg(tag: adt.ADT, arg: str, val: object) -> adt.ADT:
@@ -296,13 +298,34 @@ def check_year(nam: Name, autofix: bool = True) -> Iterable[str]:
     yield f"{nam}: has invalid year {nam.year!r}"
 
 
-LINTERS = [
+ATTRIBUTES_BY_GROUP = {
+    "name_complex": (Group.genus,),
+    "species_name_complex": (Group.species,),
+    "type": (Group.family, Group.genus),
+    "type_locality": (Group.species,),
+    "type_specimen": (Group.species,),
+    "collection": (Group.species,),
+    "genus_type_kind": (Group.genus,),
+    "species_type_kind": (Group.species,),
+}
+
+
+def check_disallowed_attributes(nam: Name, autofix: bool = True) -> Iterable[str]:
+    for field, groups in ATTRIBUTES_BY_GROUP.items():
+        if nam.group not in groups:
+            value = getattr(nam, field)
+            if value is not None:
+                yield f"{nam}: should not have attribute {field} (value {value})"
+
+
+LINTERS: list[Linter] = [
     check_type_tags_for_name,
     check_type_designations_present,
     check_required_tags,
     check_tags_for_name,
     check_year,
+    check_disallowed_attributes,
 ]
-DISABLED_LINTERS = [
+DISABLED_LINTERS: list[Linter] = [
     check_type_designations_present,  # too many missing (about 580)
 ]

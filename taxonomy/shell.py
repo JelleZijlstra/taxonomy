@@ -1318,27 +1318,6 @@ def print_percentages() -> None:
             print("{}: {} ({:.2f}%)".format(attribute, data[attribute], percentage))
 
 
-ATTRIBUTES_BY_GROUP = {
-    "name_complex": (Group.genus,),
-    "species_name_complex": (Group.species,),
-    "type": (Group.family, Group.genus),
-    "type_locality": (Group.species,),
-    "type_specimen": (Group.species,),
-    "collection": (Group.species,),
-    "genus_type_kind": (Group.genus,),
-    "species_type_kind": (Group.species,),
-}
-
-
-@generator_command
-def disallowed_attribute() -> Iterable[Tuple[Name, str]]:
-    for field, groups in ATTRIBUTES_BY_GROUP.items():
-        for nam in Name.select_valid().filter(
-            getattr(Name, field) != None, ~(Name.group << groups)
-        ):
-            yield nam, field
-
-
 @command
 def autoset_original_name() -> None:
     for nam in Name.select_valid().filter(
@@ -2280,103 +2259,6 @@ def reassign_authors(
         nam.check_authors()
 
 
-PersonParams = Optional[Dict[str, Optional[str]]]
-
-_UPPER = r"[A-ZŠİŞÖČÓА-Я]"
-_LOWER = r"[a-záéíãěäóèìğñüúöšýčç'а-я]{2,}"
-_SIMPLE_FAMILY = rf"((Ma?c|De|La|Le|D'|d'|Du|O')?{_UPPER}{_LOWER})"
-_FAMILY = (
-    rf"((von |de |de la |De la |du |del |de La )?{_SIMPLE_FAMILY}(-{_SIMPLE_FAMILY})?)"
-)
-_SUFFIX_GROUP = r"(?P<suffix>,? (jr|Jr|Sr)\.?)?"
-_INITIALS_GROUP = rf"(?P<initials>\[?((Mc|de )?{_UPPER}h?\.-?\s?)+\]?( {_FAMILY})*)"
-
-
-def _initials(name: str) -> PersonParams:
-    if "Expedition" in name:
-        return None
-    match = re.match(
-        rf"^{_INITIALS_GROUP}\s*(?P<family>{_FAMILY}){_SUFFIX_GROUP}$", name
-    )
-    if match:
-        return {
-            "family_name": match.group("family"),
-            "initials": re.sub(
-                rf"\.(?={_FAMILY})",
-                ". ",
-                re.sub(r"\s", "", match.group("initials").strip("[]")),
-            ),
-            "suffix": _parse_suffix(match.group("suffix")),
-        }
-    return None
-
-
-def _parse_suffix(suffix: Optional[str]) -> Optional[str]:
-    if not suffix:
-        return None
-    suffix = suffix.strip(",. ")
-    return suffix + "."
-
-
-def _full_name(name: str) -> PersonParams:
-    if "Expedition" in name or "Miss " in name:
-        return None
-    match = re.match(
-        rf"^(?P<given_names>{_FAMILY}( {_UPPER}\.)*) (?P<family_name>{_FAMILY}){_SUFFIX_GROUP}$",
-        name,
-    )
-    if match:
-        return {
-            "family_name": match.group("family_name"),
-            "given_names": match.group("given_names"),
-            "suffix": _parse_suffix(match.group("suffix")),
-        }
-    return None
-
-
-def _last_name_only(name: str) -> PersonParams:
-    match = re.match(rf"^{_FAMILY}$", name)
-    if match:
-        return {"family_name": name}
-    return None
-
-
-def _cyrillic(name: str) -> PersonParams:
-    match = re.match(
-        r"^(?P<family_name>[А-Я][а-я]+) (?P<initials>([А-Я]\.? ?)+)$", name
-    )
-    if match:
-        return {
-            "family_name": match.group("family_name"),
-            "initials": "".join(
-                c + "."
-                for c in match.group("initials").replace(" ", "").replace(".", "")
-            ),
-        }
-    return None
-
-
-def _van(name: str) -> PersonParams:
-    match = re.match(
-        rf"^{_INITIALS_GROUP}\s+van\s+(?P<family_name>{_FAMILY}){_SUFFIX_GROUP}$", name
-    )
-    if match:
-        return {
-            "family_name": match.group("family_name"),
-            "initials": re.sub(
-                rf"\.(?={_FAMILY})",
-                ". ",
-                re.sub(r"\s", "", match.group("initials").strip("[]")),
-            ),
-            "suffix": _parse_suffix(match.group("suffix")),
-            "tussenvoegsel": "van",
-        }
-    return None
-
-
-MATCHERS = [_initials, _full_name, _last_name_only, _cyrillic, _van]
-
-
 @command
 def most_common(model_cls: Type[models.BaseModel], field: str) -> Counter[Any]:
     objects = model_cls.select_valid().filter(getattr(model_cls, field) != None)
@@ -2675,7 +2557,6 @@ def run_maintenance(skip_slow: bool = True) -> Dict[Any, Any]:
         root_name_mismatch,
         detect_complexes,
         detect_species_name_complexes,
-        disallowed_attribute,
         autoset_original_name,
         apply_author_synonyms,
         detect_corrected_original_names,

@@ -378,7 +378,7 @@ class Person(BaseModel):
                 yield f"{self}: redirect has no target"
                 if autofix:
                     print(f"{self}: resetting type to unchecked")
-                    self.type = PersonType.unchecked
+                    self.type = PersonType.unchecked  # type: ignore
 
     def lint(self, autofix: bool = True) -> Iterable[str]:
         for field_name, field_obj in self._meta.fields.items():
