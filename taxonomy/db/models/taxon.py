@@ -117,6 +117,14 @@ class Taxon(BaseModel):
     def should_skip(self) -> bool:
         return self.age is AgeClass.removed
 
+    def lint(self) -> Iterable[str]:
+        if self.parent is None and self.id != 1:
+            yield f"{self}: missing parent"
+        if self.parent is not None and self.age < self.parent.age:
+            yield (
+                f"{self}: is {self.age!r}, but its parent {self.parent} is {self.parent.age!r}"
+            )
+
     def group(self) -> Group:
         return helpers.group_of_rank(self.rank)
 

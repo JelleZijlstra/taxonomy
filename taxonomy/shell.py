@@ -1370,12 +1370,6 @@ def bad_parents() -> Iterable[Name]:
 
 
 @generator_command
-def parentless_taxa() -> Iterable[Taxon]:
-    # exclude root
-    return (t for t in Taxon.select_valid().filter(Taxon.parent >> None) if t.id != 1)
-
-
-@generator_command
 def bad_occurrences() -> Iterable[models.Occurrence]:
     return models.Occurrence.raw(
         "SELECT * FROM occurrence WHERE taxon_id NOT IN (SELECT id FROM taxon)"
@@ -1477,17 +1471,6 @@ def fossilize(
         taxon.save()
         for child in taxon.children:
             fossilize(child, to_status=to_status, from_status=from_status)
-
-
-@generator_command
-def check_age_parents() -> Iterable[Taxon]:
-    """Extant taxa should not have fossil parents."""
-    for taxon in Taxon.select_valid():
-        if taxon.parent is not None and taxon.age < taxon.parent.age:
-            print(
-                f"{taxon} is {taxon.age}, but its parent {taxon.parent} is {taxon.parent.age}"
-            )
-            yield taxon
 
 
 @command
@@ -2811,7 +2794,6 @@ def run_maintenance(skip_slow: bool = True) -> Dict[Any, Any]:
     """Runs maintenance checks that are expected to pass for the entire database."""
     fns: List[Callable[[], Any]] = [
         clean_up_verbatim,
-        parentless_taxa,
         bad_parents,
         bad_taxa,
         bad_base_names,
@@ -2852,7 +2834,6 @@ def run_maintenance(skip_slow: bool = True) -> Dict[Any, Any]:
         move_to_lowest_rank,
         check_tags,  # except for this one at 27 s
         check_type_tags,
-        check_age_parents,
         name_mismatches,
         resolve_redirects,
         *[cls.lint_all for cls in models.BaseModel.__subclasses__()],
