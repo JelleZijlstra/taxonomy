@@ -1,5 +1,6 @@
 from collections import Counter, defaultdict
 import enum
+import functools
 from functools import partial
 import inspect
 import json
@@ -102,9 +103,9 @@ def _descriptor_set(self: FieldAccessor, instance: Model, value: Any) -> None:
 
     """
     instance.__data__[self.name] = value
-    instance._dirty.add(self.name)
     # Otherwise this gets called in the constructor.
     if getattr(instance, "_is_prepared", False):
+        instance._dirty.add(self.name)
         instance.save()
 
 
@@ -510,6 +511,17 @@ class BaseModel(Model):
     @classmethod
     def unserialize(cls: Type[ModelT], data: int) -> ModelT:
         return cls.get(id=data)
+
+    @classmethod
+    def get_quick(cls: type[ModelT], data: int) -> ModelT:
+        # TODO: This is actually slower, why? It seems to trigger more queries, maybe
+        # peewee caches the instance?
+        query, fields = get_query_and_fields(cls)
+        cursor = database.execute_sql(query, (data,))
+        kwargs = {
+            field: value for field, value in zip(fields, cursor.fetchone(), strict=True)
+        }
+        return cls(**kwargs)
 
     @classmethod
     def select_valid(cls, *args: Any) -> Any:
@@ -964,13 +976,21 @@ class _ADTDescriptor(FieldAccessor):
     ) -> None:
         super().__init__(model, field, name)
         self.adt_cls = adt_cls
+        self.field_name = name
 
     def __get__(self, instance: Any, instance_type: Any = None) -> Any:
         value = super().__get__(instance, instance_type=instance_type)
         if isinstance(value, str) and value:
+            if not hasattr(instance, "_adt_cache"):
+                instance._adt_cache = {}
+            key = (self.field_name, value)
+            if key in instance._adt_cache:
+                return instance._adt_cache[key]
             if not isinstance(self.adt_cls, type):
                 self.adt_cls = self.adt_cls()
-            return tuple(self.adt_cls.unserialize(val) for val in json.loads(value))
+            tags = tuple(self.adt_cls.unserialize(val) for val in json.loads(value))
+            instance._adt_cache[key] = tags
+            return tags
         else:
             return value
 
@@ -1247,3 +1267,11 @@ def get_tag_based_derived_field(
         compute_all=compute_all,
         pull_on_miss=False,
     )
+
+
+@functools.cache
+def get_query_and_fields(cls: type[Model]) -> tuple[str, list[str]]:
+    fields = [field.column_name for field in cls._meta.fields.values()]
+    columns = ", ".join(f'"{field}"' for field in fields)
+    query = f'SELECT {columns} FROM "{cls._meta.table_name}" WHERE ("{cls._meta.table_name}"."id" = ?)'
+    return query, fields
