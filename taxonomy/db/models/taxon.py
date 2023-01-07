@@ -124,12 +124,7 @@ class Taxon(BaseModel):
             yield (
                 f"{self}: is {self.age!r}, but its parent {self.parent} is {self.parent.age!r}"
             )
-        if self.base_name.status not in (
-            Status.valid,
-            Status.nomen_dubium,
-            Status.species_inquirenda,
-            Status.spurious,
-        ):
+        if not self.base_name.status.is_base_name():
             yield f"{self}: base name has invalid status {self.base_name.status}"
         expected_group = helpers.group_of_rank(self.rank)
         if expected_group != self.base_name.group:

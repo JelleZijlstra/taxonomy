@@ -865,6 +865,8 @@ class Article(BaseModel):
     def set_multi(self, data: Dict[str, Any]) -> None:
         for key, value in clean_strings_recursively(data).items():
             self.set_from_raw(key, value)
+        # Somehow this doesn't always autosave
+        self.save()
 
     def set_from_raw(self, attr: str, value: Any) -> None:
         if attr == "author_tags":

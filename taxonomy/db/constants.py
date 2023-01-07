@@ -81,6 +81,14 @@ class Status(enum.IntEnum):
     # Name was removed; should not be used, but we keep it around to avoid breaking references.
     removed = 6
 
+    def is_base_name(self) -> bool:
+        return self in (
+            Status.valid,
+            Status.nomen_dubium,
+            Status.species_inquirenda,
+            Status.spurious,
+        )
+
 
 class NomenclatureStatus(enum.IntEnum):
     available = 1
@@ -385,9 +393,15 @@ class PeriodRank(enum.IntEnum):
     period = 7
     era = 8
     eon = 9
+    _bed = 20  # deprecated
+    _member = 21  # deprecated
+    _formation = 22  # deprecated
+    _group = 23  # deprecated
+    _supergroup = 24  # deprecated
     other_chronostratigraphy = 28
     subage = 29  # e.g., the Lysitean
     biozone = 30  # e.g., Pu1
+    _subgroup = 31  # deprecated
     zonation = 32  # "Period" encompassing a whole zonation system.
 
 

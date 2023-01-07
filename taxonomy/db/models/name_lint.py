@@ -485,6 +485,11 @@ def clean_up_verbatim(nam: Name, autofix: bool = True) -> Iterable[str]:
             yield message
 
 
+def check_correct_status(nam: Name, autofix: bool = True) -> Iterable[str]:
+    if nam.status.is_base_name() and nam != nam.taxon.base_name:
+        yield f"{nam}: is of status {nam.status!r} and should be base name of {nam.taxon}"
+
+
 LINTERS: list[Linter] = [
     check_type_tags_for_name,
     check_required_tags,
@@ -496,6 +501,7 @@ LINTERS: list[Linter] = [
     check_family_root_name,
     correct_type_taxon,
     clean_up_verbatim,
+    check_correct_status,
 ]
 DISABLED_LINTERS: list[Linter] = [
     check_type_designations_present,  # too many missing (about 580)

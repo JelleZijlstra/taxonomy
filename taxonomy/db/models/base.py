@@ -37,6 +37,7 @@ from peewee import (
     SqliteDatabase,
     TextField,
     FieldAccessor,
+    ForeignKeyAccessor,
 )
 
 from ... import adt, config, events, getinput
@@ -120,6 +121,28 @@ def _descriptor_set(self: FieldAccessor, instance: Model, value: Any) -> None:
 
 
 FieldAccessor.__set__ = _descriptor_set
+
+_real_foreign_key_set = ForeignKeyAccessor.__set__
+
+
+def _foreign_key_set(self: ForeignKeyAccessor, instance: Model, value: Any) -> None:
+    """Same for ForeignKeyAccessor, which has its own __set__."""
+    is_dirty = self.name in instance._dirty
+    has_old_value = self.name in instance.__data__
+    old_value = instance.__data__.get(self.name)
+    _real_foreign_key_set(self, instance, value)
+    if (
+        has_old_value
+        and old_value != value
+        and getattr(instance, "_is_prepared", False)
+    ):
+        instance._dirty.add(self.name)
+        instance.save()
+    else:
+        instance._dirty.discard(self.name)
+
+
+ForeignKeyAccessor.__set__ = _foreign_key_set
 
 
 class BaseModel(Model):
@@ -220,13 +243,7 @@ class BaseModel(Model):
                 yield f"{self.id} ({type(self).__name__}): cannot get field {field} due to {e!r}"
 
     def check_outbound_references(self, autofix: bool = False) -> Iterable[str]:
-        if self.is_invalid():
-            target = self.get_redirect_target()
-            if target is not None:
-                secondary_target = target.get_redirect_target()
-                if secondary_target is not None:
-                    yield f"{self}: double redirect to {target} -> {secondary_target}"
-            return
+        is_invalid = self.is_invalid()
         for field in self.fields():
             if field in self.fields_may_be_invalid:
                 continue
@@ -243,7 +260,8 @@ class BaseModel(Model):
                         setattr(self, field, target)
                     else:
                         yield message
-                elif value.is_invalid():
+                # We don't care if invalid objects reference other invalid objects
+                elif not is_invalid and value.is_invalid():
                     yield f"{self}: references invalid object {value} in field {field}"
             elif isinstance(field_obj, ADTField):
                 if autofix:
@@ -262,7 +280,7 @@ class BaseModel(Model):
                                     f"{self}: references redirected object {value} -> {target}"
                                 )
                                 overrides[attr_name] = target
-                            elif value.is_invalid():
+                            elif not is_invalid and value.is_invalid():
                                 yield f"{self}: references invalid object {value} in {field} tag {tag}"
                         if overrides:
                             made_change = True
@@ -278,8 +296,14 @@ class BaseModel(Model):
                             value = getattr(tag, attr_name)
                             if not isinstance(value, BaseModel):
                                 continue
-                            if value.is_invalid():
+                            if not is_invalid and value.is_invalid():
                                 yield f"{self}: references invalid object {value} in {field} tag {tag}"
+        if is_invalid:
+            target = self.get_redirect_target()
+            if target is not None:
+                secondary_target = target.get_redirect_target()
+                if secondary_target is not None:
+                    yield f"{self}: double redirect to {target} -> {secondary_target}"
 
     def lint(self, autofix: bool = True) -> Iterable[str]:
         """Yield messages if something is wrong with this object."""
