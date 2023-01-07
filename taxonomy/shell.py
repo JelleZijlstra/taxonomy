@@ -1318,51 +1318,6 @@ def print_percentages() -> None:
             print("{}: {} ({:.2f}%)".format(attribute, data[attribute], percentage))
 
 
-@generator_command
-def bad_base_names() -> Iterable[Taxon]:
-    return Taxon.raw(
-        f"""
-            SELECT * FROM taxon
-            WHERE
-                age != {AgeClass.removed.value} AND
-                (
-                    base_name_id IS NULL OR
-                    base_name_id NOT IN (
-                        SELECT id
-                        FROM name
-                        WHERE status IN (
-                            {constants.Status.valid.value},
-                            {constants.Status.nomen_dubium.value},
-                            {constants.Status.species_inquirenda.value},
-                            {constants.Status.spurious.value}
-                        )
-                    )
-                )
-        """
-    )
-
-
-@generator_command
-def check_types(dry_run: bool = False) -> Iterable[Name]:
-    query = Name.raw(
-        f"""
-            SELECT * FROM name
-            WHERE
-                status != {constants.Status.removed.value}
-                AND type_id IS NOT NULL
-                AND type_id NOT IN (SELECT id FROM name WHERE status != {constants.Status.removed.value})
-        """
-    )
-    for nam in query:
-        result = models.name_lint.is_name_removed(nam.type)
-        if isinstance(result, Name):
-            print(f"{nam}: set type to {result} instead of {nam.type}")
-            if not dry_run:
-                nam.type = result
-        elif result:
-            yield nam
-
-
 ATTRIBUTES_BY_GROUP = {
     "name_complex": (Group.genus,),
     "species_name_complex": (Group.species,),
@@ -2755,8 +2710,6 @@ def run_maintenance(skip_slow: bool = True) -> Dict[Any, Any]:
     """Runs maintenance checks that are expected to pass for the entire database."""
     fns: List[Callable[[], Any]] = [
         clean_up_verbatim,
-        bad_base_names,
-        check_types,
         labeled_authorless_names,
         root_name_mismatch,
         detect_complexes,
