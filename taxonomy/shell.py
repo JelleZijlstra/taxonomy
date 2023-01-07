@@ -2250,7 +2250,6 @@ def run_maintenance(skip_slow: bool = True) -> Dict[Any, Any]:
     # these each take >60 s
     slow: List[Callable[[], Any]] = [
         move_to_lowest_rank,
-        resolve_redirects,
         *[cls.lint_all for cls in models.BaseModel.__subclasses__()],
     ]
     if not skip_slow:
