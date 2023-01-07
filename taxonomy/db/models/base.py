@@ -111,10 +111,8 @@ def _descriptor_set(self: FieldAccessor, instance: Model, value: Any) -> None:
     old_value = instance.__data__.get(self.name)
     instance.__data__[self.name] = value
     # Otherwise this gets called in the constructor.
-    if (
-        has_old_value
-        and old_value != value
-        and getattr(instance, "_is_prepared", False)
+    if (not has_old_value or old_value != value) and getattr(
+        instance, "_is_prepared", False
     ):
         instance._dirty.add(self.name)
         instance.save()
@@ -131,14 +129,12 @@ def _foreign_key_set(self: ForeignKeyAccessor, instance: Model, value: Any) -> N
     has_old_value = self.name in instance.__data__
     old_value = instance.__data__.get(self.name)
     _real_foreign_key_set(self, instance, value)
-    if (
-        has_old_value
-        and old_value != value
-        and getattr(instance, "_is_prepared", False)
+    if (not has_old_value or old_value != value) and getattr(
+        instance, "_is_prepared", False
     ):
         instance._dirty.add(self.name)
         instance.save()
-    else:
+    elif not is_dirty:
         instance._dirty.discard(self.name)
 
 
@@ -215,6 +211,14 @@ class BaseModel(Model):
         messages = list(self.general_lint())
         if not messages:
             print("Everything clean")
+            return True
+        for message in messages:
+            print(message)
+        return False
+
+    def is_lint_clean(self) -> bool:
+        messages = list(self.general_lint())
+        if not messages:
             return True
         for message in messages:
             print(message)
@@ -337,6 +341,11 @@ class BaseModel(Model):
             except Exception:
                 traceback.print_exc()
                 print(f"{field}: could not get value")
+
+    def debug_data(self) -> None:
+        self.full_data()
+        print("Data:", self.__data__)
+        print("Dict:", self.__dict__)
 
     def display(self, *, full: bool = False) -> None:
         """Print data about this object.
@@ -679,6 +688,7 @@ class BaseModel(Model):
             "edit_sibling_by_field": self.edit_sibling_by_field,
             "empty": self.empty,
             "full_data": self.full_data,
+            "debug": self.debug_data,
             "call": self.call,
             "lint": self.lint_wrapper,
         }

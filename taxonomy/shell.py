@@ -1358,6 +1358,7 @@ def fill_data_reverse_order(
     level: FillDataLevel = FillDataLevel.max_level(),
     ask_before_opening: bool = True,
     max_count: Optional[int] = 500,
+    include_lint: bool = True,
 ) -> None:
     done = 0
     for i, art in enumerate(Article.select_valid().order_by(Article.id.desc())):
@@ -1377,6 +1378,13 @@ def fill_data_reverse_order(
             )
         except getinput.StopException:
             continue
+        if include_lint:
+            for nam in art.new_names:
+                if nam.is_lint_clean():
+                    continue
+                nam.display()
+                while not nam.is_lint_clean():
+                    nam.edit()
         if result:
             done += 1
 

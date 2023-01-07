@@ -1092,6 +1092,7 @@ class Name(BaseModel):
         depth: int = 0,
         include_data: bool = False,
         include_taxon: bool = False,
+        skip_lint: bool = False,
     ) -> str:
         if self.original_name is None:
             out = self.root_name
@@ -1143,6 +1144,10 @@ class Name(BaseModel):
         result = " " * ((depth + 1) * 4) + intro_line + "\n"
         if full:
             data: Dict[str, Any] = {}
+            if not skip_lint:
+                lints = "; ".join(self.lint())
+                if lints:
+                    data["lint"] = lints
             level, reason = self.fill_data_level()
             if level is not FillDataLevel.nothing_needed:
                 data["level"] = f"{level.name.upper()} ({reason})"
@@ -1235,8 +1240,6 @@ class Name(BaseModel):
                 self.add_type_tag(new_tag)
 
     def fill_data_level(self) -> Tuple[FillDataLevel, str]:
-        if not self.check_authors(quiet=True):
-            return FillDataLevel.needs_basic_data, "author mismatch"
         if (
             self.name_complex is not None
             and self.original_citation is not None
@@ -1442,7 +1445,7 @@ class Name(BaseModel):
 
     def lint(self, autofix: bool = True) -> Iterable[str]:
         try:
-            self.get_description(full=True, include_taxon=True)
+            self.get_description(full=True, include_taxon=True, skip_lint=True)
         except Exception as e:
             yield f"{self.id}: cannot display due to {e}"
             return

@@ -460,7 +460,7 @@ def clean_up_verbatim(nam: Name, autofix: bool = True) -> Iterable[str]:
         and nam.verbatim_type is not None
         and nam.type_specimen is not None
     ):
-        message = f"{nam}: {nam.type_specimen}, {nam.verbatim_type}"
+        message = f"{nam}: cleaning up verbatim type: {nam.type_specimen}, {nam.verbatim_type}"
         if autofix:
             print(message)
             nam.add_data("verbatim_type", nam.verbatim_type, concat_duplicate=True)
@@ -468,7 +468,7 @@ def clean_up_verbatim(nam: Name, autofix: bool = True) -> Iterable[str]:
         else:
             yield message
     if nam.verbatim_citation is not None and nam.original_citation is not None:
-        message = f"{nam}: {nam.original_citation.name}, {nam.verbatim_citation}"
+        message = f"{nam}: cleaning up verbatim citation: {nam.original_citation.name}, {nam.verbatim_citation}"
         if autofix:
             print(message)
             nam.add_data(
@@ -478,7 +478,7 @@ def clean_up_verbatim(nam: Name, autofix: bool = True) -> Iterable[str]:
         else:
             yield message
     if nam.citation_group is not None and nam.original_citation is not None:
-        message = f"{nam}: {nam.original_citation.name}, {nam.citation_group}"
+        message = f"{nam}: cleaning up citation group: {nam.original_citation.name}, {nam.citation_group}"
         if autofix:
             print(message)
             nam.citation_group = None
