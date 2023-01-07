@@ -268,6 +268,7 @@ def check_tags_for_name(nam: Name, autofix: bool) -> Iterable[str]:
                 NomenclatureStatus.available,
                 NomenclatureStatus.as_emended,
                 NomenclatureStatus.nomen_novum,
+                NomenclatureStatus.preoccupied,
             ):
                 yield f"{nam} is on the Official List, but is not marked as available."
         # haven't handled TakesPriorityOf, NomenOblitum, MandatoryChangeOf
