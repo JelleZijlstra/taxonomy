@@ -254,6 +254,9 @@ class Name(BaseModel):
     def add_validity_check(cls, query: Any) -> Any:
         return query.filter(Name.status != Status.removed)
 
+    def is_invalid(self) -> bool:
+        return self.status is Status.removed
+
     def should_skip(self) -> bool:
         return self.status is Status.removed
 

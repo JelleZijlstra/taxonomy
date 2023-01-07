@@ -250,46 +250,6 @@ def make_county_regions(
     more_precise(state)
 
 
-@generator_command
-def bad_stratigraphy(dry_run: bool = True) -> Iterable[models.Location]:
-    for loc in models.Location.select_valid():
-        if loc.min_period is None and loc.max_period is not None:
-            print(f"=== {loc.name}: missing min_period ===")
-            loc.display()
-            yield loc
-        if loc.max_period is None and loc.min_period is not None:
-            print(f"=== {loc.name}: missing max_period ===")
-            loc.display()
-            yield loc
-
-
-@generator_command
-def check_period_ranks() -> Iterable[models.Period]:
-    for period in Period.select_valid():
-        if period.system is None:
-            print(f"{period} is missing a system")
-            yield period
-            continue
-        if period.rank is None:
-            print(f"{period} is missing a rank")
-            yield period
-            continue
-        if period.rank not in constants.SYSTEM_TO_ALLOWED_RANKS[period.system]:
-            print(
-                f"{period} is of rank {period.rank}, which is not allowed for {period.system}"
-            )
-            yield period
-        requires_parent = period.requires_parent()
-        if period.parent is None:
-            if requires_parent is RequirednessLevel.required:
-                print(f"{period} must have a parent")
-                yield period
-        else:
-            if requires_parent is RequirednessLevel.disallowed:
-                print(f"{period} may not have a parent")
-                yield period
-
-
 @command
 def infer_min_max_age(dry_run: bool = True) -> None:
     for period in Period.select_valid().filter(Period.min_age == None):
@@ -340,17 +300,6 @@ def add_types() -> None:
             f"Name {name} is missing type, but has original citation {name.original_citation.name}"
         )
         models.taxon.fill_data_from_paper(name.original_citation)
-
-
-@generator_command
-def find_rank_mismatch() -> Iterable[Taxon]:
-    for taxon in getinput.print_every_n(Taxon.select_valid(), label="taxa"):
-        expected_group = helpers.group_of_rank(taxon.rank)
-        if expected_group != taxon.base_name.group:
-            rank = taxon.rank.name
-            group = taxon.base_name.group.name
-            print(f"Group mismatch for {taxon}: rank {rank} but group {group}")
-            yield taxon
 
 
 @generator_command
@@ -407,94 +356,6 @@ def detect_original_rank(
         elif not ignore_failure:
             yield nam
     print(f"Success: {successful}/{total}")
-
-
-@generator_command
-def check_root_name() -> Iterator[Tuple[Name, str]]:
-    """Check that root_names are correct."""
-
-    def make_message(nam: Name, text: str) -> Tuple[Name, str]:
-        message = f"{nam}: root name {nam.root_name!r} {text}"
-        print(message)
-        return (nam, message)
-
-    for nam in getinput.print_every_n(Name.select_valid(), label="names", n=10_000):
-        if nam.nomenclature_status.permissive_corrected_original_name():
-            continue
-        if nam.group in (Group.high, Group.genus, Group.family):
-            if not re.match(r"^[A-Z][a-z]+$", nam.root_name):
-                yield make_message(nam, "contains unexpected characters")
-        elif nam.group is Group.species:
-            if not re.match(r"^[a-z]+$", nam.root_name):
-                yield make_message(nam, "contains unexpected characters")
-
-
-@generator_command
-def check_corrected_original_name() -> Iterator[Tuple[Name, str]]:
-    """Check that corrected_original_names are correct."""
-
-    def make_message(nam: Name, text: str) -> Tuple[Name, str]:
-        message = (
-            f"{nam}: corrected original name {nam.corrected_original_name!r} {text}"
-        )
-        print(message)
-        return (nam, message)
-
-    for nam in getinput.print_every_n(
-        Name.select_valid().filter(Name.corrected_original_name != None),
-        label="names",
-        n=10_000,
-    ):
-        if nam.nomenclature_status.permissive_corrected_original_name():
-            continue
-        inferred = nam.infer_corrected_original_name()
-        if inferred is not None and inferred != nam.corrected_original_name:
-            yield make_message(
-                nam,
-                f"inferred name {inferred!r} does not match current name {nam.corrected_original_name!r}",
-            )
-        if not re.match(r"^[A-Z][a-z ]+$", nam.corrected_original_name):
-            yield make_message(nam, "contains unexpected characters")
-            continue
-        if nam.group in (Group.high, Group.genus):
-            if " " in nam.corrected_original_name:
-                yield make_message(nam, "contains whitespace")
-                continue
-            if nam.corrected_original_name != nam.root_name:
-                yield make_message(nam, f"does not match root_name {nam.root_name!r}")
-                continue
-        elif nam.group is Group.family:
-            if (
-                nam.nomenclature_status
-                is NomenclatureStatus.not_based_on_a_generic_name
-            ):
-                possibilities = {
-                    f"{nam.root_name}{suffix}" for suffix in helpers.VALID_SUFFIXES
-                }
-                if nam.corrected_original_name not in {nam.root_name} | possibilities:
-                    yield make_message(
-                        nam, f"does not match root_name {nam.root_name!r}"
-                    )
-                continue
-            if not nam.corrected_original_name.endswith(tuple(helpers.VALID_SUFFIXES)):
-                yield make_message(nam, "does not end with a valid family-group suffix")
-                continue
-        elif nam.group is Group.species:
-            parts = nam.corrected_original_name.split(" ")
-            if len(parts) not in (2, 3, 4):
-                yield make_message(nam, "is not a valid species or subspecies name")
-                continue
-            if parts[-1] != nam.root_name:
-                if nam.species_name_complex is not None:
-                    try:
-                        forms = list(nam.species_name_complex.get_forms(nam.root_name))
-                    except ValueError as e:
-                        yield make_message(nam, f"has invalid name complex: {e!r}")
-                        continue
-                    if parts[-1] in forms:
-                        continue
-                yield make_message(nam, f"does not match root_name {nam.root_name!r}")
-                continue
 
 
 @command
@@ -825,43 +686,6 @@ def species_root_name_mismatch() -> Iterable[Name]:
                 yield nam
 
 
-@generator_command
-def root_name_mismatch(interactive: bool = False) -> Iterable[Name]:
-    for name in Name.select_valid().filter(
-        Name.group == Group.family, ~(Name.type >> None)
-    ):
-        if name.is_unavailable():
-            continue
-        try:
-            stem_name = name.type.get_stem()
-        except ValueError:
-            print(f"{name.type} has bad name complex: {name.type.name_complex}")
-            yield name
-            continue
-        if stem_name is None:
-            continue
-        if name.root_name == stem_name:
-            continue
-        if name.root_name + "id" == stem_name:
-            # The Code allows eliding -id- from the stem.
-            continue
-        for stripped in helpers.name_with_suffixes_removed(name.root_name):
-            if stripped == stem_name or stripped + "i" == stem_name:
-                print(f"Autocorrecting root name: {name.root_name} -> {stem_name}")
-                name.root_name = stem_name
-                name.save()
-                break
-        if name.root_name != stem_name:
-            if name.has_type_tag(TypeTag.IncorrectGrammar):
-                continue
-            print(f"Stem mismatch for {name}: {name.root_name} vs. {stem_name}")
-            if interactive:
-                name.display()
-                if getinput.yes_no("correct? "):
-                    name.root_name = stem_name
-            yield name
-
-
 def _duplicate_finder(
     fn: Callable[..., Iterable[Mapping[Any, Sequence[T]]]]
 ) -> Callable[..., Optional[List[Sequence[T]]]]:
@@ -1082,37 +906,6 @@ def get_scores_for_period(
 
 
 @generator_command
-def name_mismatches(
-    max_count: Optional[int] = None,
-    correct: bool = False,
-    correct_undoubted: bool = True,
-) -> Iterable[Taxon]:
-    count = 0
-    for taxon in Taxon.select_valid():
-        computed = taxon.compute_valid_name()
-        if computed is not None and taxon.valid_name != computed:
-            print(
-                "Mismatch for %s: %s (actual) vs. %s (computed)"
-                % (taxon, taxon.valid_name, computed)
-            )
-            yield taxon
-            count += 1
-            # For species-group taxa, we always trust the computed name. Usually these
-            # have been reassigned to a different genus, or changed between species and
-            # subspecies, or they have become nomina dubia (in which case we use the
-            # corrected original name). For family-group names we don't always trust the
-            # computed name, because stems may be arbitrary.
-            if correct_undoubted and (
-                taxon.base_name.group == Group.species or taxon.is_nominate_subgenus()
-            ):
-                taxon.recompute_name()
-            elif correct:
-                taxon.recompute_name()
-            if max_count is not None and count == max_count:
-                return
-
-
-@generator_command
 def authorless_names(
     root_taxon: Taxon,
     attribute: str = "author_tags",
@@ -1190,46 +983,6 @@ def labeled_authorless_names(attribute: str = "author_tags") -> List[LabeledName
     return [
         label_name(name) for name in nams if attribute in name.get_required_fields()
     ]
-
-
-@command
-def correct_type_taxon(
-    max_count: Optional[int] = None, dry_run: bool = False, only_if_child: bool = True
-) -> List[Name]:
-    count = 0
-    out = []
-    for nam in getinput.print_every_n(
-        Name.select_valid().filter(
-            Name.group << (Group.genus, Group.family), Name.type != None
-        ),
-        label="names",
-        n=10_000,
-    ):
-        if nam.taxon == nam.type.taxon:
-            continue
-        expected_taxon = nam.type.taxon.parent
-        while (
-            expected_taxon.base_name.group != nam.group and expected_taxon != nam.taxon
-        ):
-            expected_taxon = expected_taxon.parent
-            if expected_taxon is None:
-                break
-        if expected_taxon is None:
-            continue
-        if nam.taxon != expected_taxon:
-            count += 1
-            print(f"maybe changing taxon of {nam} from {nam.taxon} to {expected_taxon}")
-            if not dry_run:
-                if only_if_child:
-                    if not expected_taxon.is_child_of(nam.taxon):
-                        print(f"skipping non-parent: {nam}")
-                        out.append(nam)
-                        continue
-                nam.taxon = expected_taxon
-                nam.save()
-            if max_count is not None and count > max_count:
-                break
-    return out
 
 
 # Statistics
@@ -1421,69 +1174,6 @@ def clean_column(
             if not dry_run:
                 setattr(obj, column, new_value)
                 obj.save()
-
-
-@command
-def clean_up_verbatim(dry_run: bool = False, slow: bool = False) -> None:
-    def _maybe_clean_verbatim(nam: Name) -> None:
-        print(f"{nam}: {nam.type}, {nam.verbatim_type}")
-        if not dry_run:
-            nam.add_data("verbatim_type", nam.verbatim_type, concat_duplicate=True)
-            nam.verbatim_type = None
-            nam.save()
-
-    famgen_type_count = species_type_count = citation_count = citation_group_count = 0
-    for nam in Name.select_valid().filter(
-        Name.group << (Group.family, Group.genus),
-        Name.verbatim_type != None,
-        Name.type != None,
-    ):
-        famgen_type_count += 1
-        _maybe_clean_verbatim(nam)
-    if slow:
-        for nam in Name.select_valid().filter(
-            Name.group << (Group.family, Group.genus), Name.verbatim_type != None
-        ):
-            if "type" not in nam.get_required_fields():
-                famgen_type_count += 1
-                _maybe_clean_verbatim(nam)
-    for nam in Name.select_valid().filter(
-        Name.group == Group.species,
-        Name.verbatim_type != None,
-        Name.type_specimen != None,
-    ):
-        print(f"{nam}: {nam.type_specimen}, {nam.verbatim_type}")
-        species_type_count += 1
-        if not dry_run:
-            nam.add_data("verbatim_type", nam.verbatim_type, concat_duplicate=True)
-            nam.verbatim_type = None
-            nam.save()
-    for nam in Name.select_valid().filter(
-        Name.verbatim_citation != None, Name.original_citation != None
-    ):
-        print(f"{nam}: {nam.original_citation.name}, {nam.verbatim_citation}")
-        citation_count += 1
-        if not dry_run:
-            nam.add_data(
-                "verbatim_citation", nam.verbatim_citation, concat_duplicate=True
-            )
-            nam.verbatim_citation = None
-            nam.save()
-    for nam in Name.select_valid().filter(
-        Name.citation_group != None, Name.original_citation != None
-    ):
-        print(f"{nam}: {nam.original_citation.name}, {nam.citation_group}")
-        citation_group_count += 1
-        if not dry_run:
-            nam.citation_group = None
-    if famgen_type_count:
-        print(f"Family/genera type count: {famgen_type_count}")
-    if species_type_count:
-        print(f"Species type count: {species_type_count}")
-    if citation_count:
-        print(f"Citation count: {citation_count}")
-    if citation_group_count:
-        print(f"Citation group count: {citation_group_count}")
 
 
 @command
@@ -2400,18 +2090,12 @@ def check_justified_emendations() -> Iterable[Tuple[Name, str]]:
 
 @generator_command
 def check_tags(dry_run: bool = True) -> Iterable[tuple[Name, list[str]]]:
-    linter = functools.partial(
-        models.name_lint.check_tags_for_name, autofix=not dry_run
-    )
-    return Name.lint_all(linter)
+    return Name.lint_all(models.name_lint.check_tags_for_name, autofix=not dry_run)
 
 
 @generator_command
 def check_type_tags(dry_run: bool = False) -> Iterable[tuple[Name, list[str]]]:
-    linter = functools.partial(
-        models.name_lint.check_type_tags_for_name, autofix=not dry_run
-    )
-    return Name.lint_all(linter)
+    return Name.lint_all(models.name_lint.check_type_tags_for_name, autofix=not dry_run)
 
 
 @generator_command
@@ -2552,9 +2236,7 @@ def resolve_redirects(dry_run: bool = False) -> None:
 def run_maintenance(skip_slow: bool = True) -> Dict[Any, Any]:
     """Runs maintenance checks that are expected to pass for the entire database."""
     fns: List[Callable[[], Any]] = [
-        clean_up_verbatim,
         labeled_authorless_names,
-        root_name_mismatch,
         detect_complexes,
         detect_species_name_complexes,
         autoset_original_name,
@@ -2564,15 +2246,11 @@ def run_maintenance(skip_slow: bool = True) -> Dict[Any, Any]:
         # dup_names,
         # dup_genus,
         # dup_taxa,
-        bad_stratigraphy,
         set_citation_group_for_matching_citation,
         enforce_must_have,
         fix_citation_group_redirects,
         recent_names_without_verbatim,
         enforce_must_have_series,
-        check_period_ranks,
-        check_corrected_original_name,
-        check_root_name,
         check_justified_emendations,
         Person.autodelete,
         Person.find_duplicates,
@@ -2580,12 +2258,7 @@ def run_maintenance(skip_slow: bool = True) -> Dict[Any, Any]:
     ]
     # these each take >60 s
     slow: List[Callable[[], Any]] = [
-        correct_type_taxon,
-        find_rank_mismatch,
         move_to_lowest_rank,
-        check_tags,  # except for this one at 27 s
-        check_type_tags,
-        name_mismatches,
         resolve_redirects,
         *[cls.lint_all for cls in models.BaseModel.__subclasses__()],
     ]

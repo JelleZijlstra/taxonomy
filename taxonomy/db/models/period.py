@@ -6,7 +6,12 @@ from typing import IO, Any, Dict, Iterable, List, Optional, Set, Tuple, TypeVar
 from peewee import BooleanField, CharField, ForeignKeyField, IntegerField
 
 from .. import models
-from ..constants import PeriodRank, PeriodSystem, RequirednessLevel
+from ..constants import (
+    PeriodRank,
+    PeriodSystem,
+    RequirednessLevel,
+    SYSTEM_TO_ALLOWED_RANKS,
+)
 from ..derived_data import DerivedField
 from ... import events, getinput
 
@@ -94,6 +99,23 @@ class Period(BaseModel):
 
     def should_skip(self) -> bool:
         return self.deleted
+
+    def lint(self, autofix: bool = True) -> Iterable[str]:
+        if self.system is None:
+            yield f"{self}: missing a system"
+        if self.rank is None:
+            yield f"{self}: missing a rank"
+        if self.rank not in SYSTEM_TO_ALLOWED_RANKS[self.system]:
+            yield (
+                f"{self}: is of rank {self.rank}, which is not allowed for {self.system}"
+            )
+        requires_parent = self.requires_parent()
+        if self.parent is None:
+            if requires_parent is RequirednessLevel.required:
+                yield f"{self}: must have a parent"
+        else:
+            if requires_parent is RequirednessLevel.disallowed:
+                yield f"{self}: may not have a parent"
 
     def merge(self, other: "Period") -> None:
         for loc in self.locations_min:

@@ -131,6 +131,31 @@ class Taxon(BaseModel):
             Status.spurious,
         ):
             yield f"{self}: base name has invalid status {self.base_name.status}"
+        expected_group = helpers.group_of_rank(self.rank)
+        if expected_group != self.base_name.group:
+            rank = self.rank.name
+            group = self.base_name.group.name
+            yield f"{self}: group mismatch: rank {rank} but group {group}"
+        yield from self.check_valid_name(autofix=autofix)
+
+    def check_valid_name(self, autofix: bool = True) -> Iterable[str]:
+        computed = self.compute_valid_name()
+        if computed is None or self.valid_name == computed:
+            return
+        message = f"{self}: valid name mismatch: {self.valid_name} (actual) vs. {computed} (computed)"
+        # For species-group taxa, we always trust the computed name. Usually these
+        # have been reassigned to a different genus, or changed between species and
+        # subspecies, or they have become nomina dubia (in which case we use the
+        # corrected original name). For family-group names we don't always trust the
+        # computed name, because stems may be arbitrary.
+        can_fix = autofix and (
+            self.base_name.group == Group.species or self.is_nominate_subgenus()
+        )
+        if can_fix:
+            print(message)
+            self.recompute_name()
+        else:
+            yield message
 
     def group(self) -> Group:
         return helpers.group_of_rank(self.rank)

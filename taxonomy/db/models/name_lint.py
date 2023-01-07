@@ -318,13 +318,188 @@ def check_disallowed_attributes(nam: Name, autofix: bool = True) -> Iterable[str
                 yield f"{nam}: should not have attribute {field} (value {value})"
 
 
+def _make_con_messsage(nam: Name, text: str) -> str:
+    return f"{nam}: corrected original name {nam.corrected_original_name!r} {text}"
+
+
+def check_corrected_original_name(nam: Name, autofix: bool = True) -> Iterable[str]:
+    """Check that corrected_original_names are correct."""
+    if nam.corrected_original_name is None:
+        return
+    if nam.nomenclature_status.permissive_corrected_original_name():
+        return
+    inferred = nam.infer_corrected_original_name()
+    if inferred is not None and inferred != nam.corrected_original_name:
+        yield _make_con_messsage(
+            nam,
+            f"inferred name {inferred!r} does not match current name {nam.corrected_original_name!r}",
+        )
+    if not re.match(r"^[A-Z][a-z ]+$", nam.corrected_original_name):
+        yield _make_con_messsage(nam, "contains unexpected characters")
+        return
+    if nam.group in (Group.high, Group.genus):
+        if " " in nam.corrected_original_name:
+            yield _make_con_messsage(nam, "contains whitespace")
+        elif nam.corrected_original_name != nam.root_name:
+            yield _make_con_messsage(nam, f"does not match root_name {nam.root_name!r}")
+    elif nam.group is Group.family:
+        if nam.nomenclature_status is NomenclatureStatus.not_based_on_a_generic_name:
+            possibilities = {
+                f"{nam.root_name}{suffix}" for suffix in helpers.VALID_SUFFIXES
+            }
+            if nam.corrected_original_name not in {nam.root_name} | possibilities:
+                yield _make_con_messsage(
+                    nam, f"does not match root_name {nam.root_name!r}"
+                )
+        elif not nam.corrected_original_name.endswith(tuple(helpers.VALID_SUFFIXES)):
+            yield _make_con_messsage(
+                nam, "does not end with a valid family-group suffix"
+            )
+    elif nam.group is Group.species:
+        parts = nam.corrected_original_name.split(" ")
+        if len(parts) not in (2, 3, 4):
+            yield _make_con_messsage(nam, "is not a valid species or subspecies name")
+        elif parts[-1] != nam.root_name:
+            if nam.species_name_complex is not None:
+                try:
+                    forms = list(nam.species_name_complex.get_forms(nam.root_name))
+                except ValueError as e:
+                    yield _make_con_messsage(nam, f"has invalid name complex: {e!r}")
+                    return
+                if parts[-1] in forms:
+                    return
+            yield _make_con_messsage(nam, f"does not match root_name {nam.root_name!r}")
+
+
+def _make_rn_message(nam: Name, text: str) -> str:
+    return f"{nam}: root name {nam.root_name!r} {text}"
+
+
+def check_root_name(nam: Name, autofix: bool = True) -> Iterable[str]:
+    """Check that root_names are correct."""
+    if nam.nomenclature_status.permissive_corrected_original_name():
+        return
+    if nam.group in (Group.high, Group.genus, Group.family):
+        if not re.match(r"^[A-Z][a-z]+$", nam.root_name):
+            yield _make_rn_message(nam, "contains unexpected characters")
+    elif nam.group is Group.species:
+        if not re.match(r"^[a-z]+$", nam.root_name):
+            yield _make_rn_message(nam, "contains unexpected characters")
+
+
+def check_family_root_name(nam: Name, autofix: bool = True) -> Iterable[str]:
+    if nam.group is not Group.family or nam.type is None:
+        return
+    if nam.is_unavailable():
+        return
+    try:
+        stem_name = nam.type.get_stem()
+    except ValueError:
+        yield f"{nam.type} has bad name complex: {nam.type.name_complex}"
+        return
+    if stem_name is None:
+        return
+    if nam.root_name == stem_name:
+        return
+    if nam.root_name + "id" == stem_name:
+        # The Code allows eliding -id- from the stem.
+        return
+    for stripped in helpers.name_with_suffixes_removed(nam.root_name):
+        if stripped == stem_name or stripped + "i" == stem_name:
+            print(f"Autocorrecting root name: {nam.root_name} -> {stem_name}")
+            if autofix:
+                nam.root_name = stem_name
+                nam.save()
+            break
+    if nam.root_name != stem_name:
+        if nam.has_type_tag(TypeTag.IncorrectGrammar):
+            return
+        yield f"{nam}: Stem mismatch: {nam.root_name} vs. {stem_name}"
+
+
+def correct_type_taxon(nam: Name, autofix: bool = True) -> Iterable[str]:
+    """Check that a name's type belongs to a child of the name's taxon."""
+    if nam.group not in (Group.genus, Group.family):
+        return
+    if nam.type is None:
+        return
+    if nam.taxon == nam.type.taxon:
+        return
+    expected_taxon = nam.type.taxon.parent
+    while (
+        expected_taxon is not None
+        and expected_taxon.base_name.group != nam.group
+        and expected_taxon != nam.taxon
+    ):
+        expected_taxon = expected_taxon.parent
+    if expected_taxon is None:
+        return
+    if nam.taxon != expected_taxon:
+        message = f"{nam}: expected taxon to be {expected_taxon} not {nam.taxon}"
+        if autofix and expected_taxon.is_child_of(nam.taxon):
+            print(message)
+            nam.taxon = expected_taxon
+        else:
+            yield message
+
+
+def clean_up_verbatim(nam: Name, autofix: bool = True) -> Iterable[str]:
+    if (
+        nam.group in (Group.family, Group.genus)
+        and nam.verbatim_type is not None
+        and (nam.type is not None or "type" not in nam.get_required_fields())
+    ):
+        message = f"{nam}: cleaning up verbatim type: {nam.type}, {nam.verbatim_type}"
+        if autofix:
+            print(message)
+            nam.add_data("verbatim_type", nam.verbatim_type, concat_duplicate=True)
+            nam.verbatim_type = None
+            nam.save()
+        else:
+            yield message
+    if (
+        nam.group is Group.species
+        and nam.verbatim_type is not None
+        and nam.type_specimen is not None
+    ):
+        message = f"{nam}: {nam.type_specimen}, {nam.verbatim_type}"
+        if autofix:
+            print(message)
+            nam.add_data("verbatim_type", nam.verbatim_type, concat_duplicate=True)
+            nam.verbatim_type = None
+            nam.save()
+        else:
+            yield message
+    if nam.verbatim_citation is not None and nam.original_citation is not None:
+        message = f"{nam}: {nam.original_citation.name}, {nam.verbatim_citation}"
+        if autofix:
+            print(message)
+            nam.add_data(
+                "verbatim_citation", nam.verbatim_citation, concat_duplicate=True
+            )
+            nam.verbatim_citation = None
+            nam.save()
+        else:
+            yield message
+    if nam.citation_group is not None and nam.original_citation is not None:
+        message = f"{nam}: {nam.original_citation.name}, {nam.citation_group}"
+        if autofix:
+            print(message)
+            nam.citation_group = None
+        else:
+            yield message
+
+
 LINTERS: list[Linter] = [
     check_type_tags_for_name,
-    check_type_designations_present,
     check_required_tags,
     check_tags_for_name,
     check_year,
     check_disallowed_attributes,
+    check_corrected_original_name,
+    check_root_name,
+    check_family_root_name,
+    correct_type_taxon,
 ]
 DISABLED_LINTERS: list[Linter] = [
     check_type_designations_present,  # too many missing (about 580)

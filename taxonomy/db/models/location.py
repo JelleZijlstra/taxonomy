@@ -247,7 +247,7 @@ class Location(BaseModel):
             return False
         return True
 
-    def lint(self, autofix: bool = True) -> Iterable[str]:
+    def lint_invalid(self, autofix: bool = True) -> Iterable[str]:
         if self.deleted == LocationStatus.alias:
             if not self.parent:
                 yield f"{self}: alias location has no parent"
@@ -255,6 +255,12 @@ class Location(BaseModel):
                 yield f"{self}: alias location has references"
         if self.deleted != LocationStatus.valid and not self.is_empty():
             yield f"{self}: deleted location has references"
+
+    def lint(self, autofix: bool = True) -> Iterable[str]:
+        if self.min_period is None and self.max_period is not None:
+            yield f"{self}: missing min_period"
+        if self.max_period is None and self.min_period is not None:
+            yield f"{self}: missing max_period"
 
     @classmethod
     def fix_references(cls) -> None:
