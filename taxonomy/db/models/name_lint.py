@@ -281,11 +281,27 @@ def check_required_tags(nam: Name, autofix: bool = True) -> Iterable[str]:
         yield f"{nam}: has status {nam.nomenclature_status.name} but no corresponding tag"
 
 
+_single_year = re.compile(r"^\d{4}$")
+_multi_year = re.compile(r"^\d{4}-\d{4}$")
+
+
+def check_year(nam: Name, autofix: bool = True) -> Iterable[str]:
+    if (
+        nam.year is None
+        or nam.year == "in press"
+        or _single_year.match(nam.year)
+        or _multi_year.match(nam.year)
+    ):
+        return
+    yield f"{nam}: has invalid year {nam.year!r}"
+
+
 LINTERS = [
     check_type_tags_for_name,
     check_type_designations_present,
     check_required_tags,
     check_tags_for_name,
+    check_year,
 ]
 DISABLED_LINTERS = [
     check_type_designations_present,  # too many missing (about 580)

@@ -2464,19 +2464,6 @@ def fill_data_from_citation_group(
 
 
 @generator_command
-def check_year() -> Iterable[Name]:
-    single_year = re.compile(r"^\d{4}$")
-    multi_year = re.compile(r"^\d{4}-\d{4}$")
-    for nam in Name.select_valid().filter(Name.year != None, Name.year != "in press"):
-        if single_year.match(nam.year):
-            continue
-        if multi_year.match(nam.year):
-            continue
-        print(f"{nam} has invalid year {nam.year!r}")
-        yield nam
-
-
-@generator_command
 def check_expected_base_name() -> Iterable[Taxon]:
     for txn in Taxon.select_valid().filter(Taxon.rank <= Rank.superfamily):
         if not txn.check_expected_base_name():
@@ -2714,7 +2701,6 @@ def run_maintenance(skip_slow: bool = True) -> Dict[Any, Any]:
         root_name_mismatch,
         detect_complexes,
         detect_species_name_complexes,
-        check_year,
         disallowed_attribute,
         autoset_original_name,
         apply_author_synonyms,
