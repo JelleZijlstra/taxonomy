@@ -247,7 +247,7 @@ class Location(BaseModel):
             return False
         return True
 
-    def lint(self) -> Iterable[str]:
+    def lint(self, autofix: bool = True) -> Iterable[str]:
         if self.deleted == LocationStatus.alias:
             if not self.parent:
                 yield f"{self}: alias location has no parent"

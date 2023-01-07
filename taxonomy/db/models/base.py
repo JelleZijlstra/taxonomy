@@ -156,7 +156,10 @@ class BaseModel(Model):
 
     @classmethod
     def lint_all(
-        cls: Type[ModelT], linter: Callable[[ModelT], Iterable[str]] | None = None
+        cls: Type[ModelT],
+        linter: Callable[[ModelT, bool], Iterable[str]] | None = None,
+        *,
+        autofix: bool = True,
     ) -> List[Tuple[ModelT, List[str]]]:
         if linter is None:
             query = cls.select()
@@ -166,7 +169,7 @@ class BaseModel(Model):
             query = cls.select_valid()
         bad = []
         for obj in getinput.print_every_n(query, label=f"{cls.__name__}s"):
-            messages = list(linter(obj))
+            messages = list(linter(obj, autofix))
             if messages:
                 for message in messages:
                     print(message)
@@ -182,16 +185,16 @@ class BaseModel(Model):
             print(message)
         return False
 
-    def general_lint(self) -> Iterable[str]:
+    def general_lint(self, autofix: bool = True) -> Iterable[str]:
         unrenderable = list(self.check_renderable())
         if unrenderable:
             yield from unrenderable
             return
-        yield from self.check_outbound_references()
+        yield from self.check_outbound_references(autofix)
         if self.is_invalid():
-            yield from self.lint_invalid()
+            yield from self.lint_invalid(autofix)
         else:
-            yield from self.lint()
+            yield from self.lint(autofix)
 
     def check_renderable(self) -> Iterable[str]:
         try:
@@ -264,11 +267,11 @@ class BaseModel(Model):
                             if value.is_invalid():
                                 yield f"{self}: references invalid object {value} in {field} tag {tag}"
 
-    def lint(self) -> Iterable[str]:
+    def lint(self, autofix: bool = True) -> Iterable[str]:
         """Yield messages if something is wrong with this object."""
         return []
 
-    def lint_invalid(self) -> Iterable[str]:
+    def lint_invalid(self, autofix: bool = True) -> Iterable[str]:
         """Like lint() but only called if is_invalid() returned True."""
         return []
 

@@ -1343,47 +1343,6 @@ def bad_base_names() -> Iterable[Taxon]:
 
 
 @generator_command
-def bad_taxa() -> Iterable[Name]:
-    return Name.raw(
-        f"""
-        SELECT * FROM name
-        WHERE
-            status != {constants.Status.removed.value}
-            AND (
-                taxon_id IS NULL
-                OR taxon_id NOT IN (SELECT id FROM taxon WHERE age != {constants.AgeClass.removed.value})
-            )
-        """
-    )
-
-
-@generator_command
-def bad_parents() -> Iterable[Name]:
-    return Name.raw(
-        f"""
-        SELECT * FROM taxon
-        WHERE
-            age != {constants.AgeClass.removed.value}
-            AND parent_id NOT IN (SELECT id FROM taxon WHERE age != {constants.AgeClass.removed.value})
-        """
-    )
-
-
-@generator_command
-def bad_occurrences() -> Iterable[models.Occurrence]:
-    return models.Occurrence.raw(
-        "SELECT * FROM occurrence WHERE taxon_id NOT IN (SELECT id FROM taxon)"
-    )
-
-
-@generator_command
-def bad_types() -> Iterable[Name]:
-    return Name.raw(
-        "SELECT * FROM name WHERE type_id IS NOT NULL AND type_id NOT IN (SELECT id FROM name)"
-    )
-
-
-@generator_command
 def check_types(dry_run: bool = False) -> Iterable[Name]:
     query = Name.raw(
         f"""
@@ -2616,14 +2575,16 @@ def check_justified_emendations() -> Iterable[Tuple[Name, str]]:
 
 @generator_command
 def check_tags(dry_run: bool = True) -> Iterable[tuple[Name, list[str]]]:
-    linter = functools.partial(models.name_lint.check_tags_for_name, dry_run=dry_run)
+    linter = functools.partial(
+        models.name_lint.check_tags_for_name, autofix=not dry_run
+    )
     return Name.lint_all(linter)
 
 
 @generator_command
 def check_type_tags(dry_run: bool = False) -> Iterable[tuple[Name, list[str]]]:
     linter = functools.partial(
-        models.name_lint.check_type_tags_for_name, dry_run=dry_run
+        models.name_lint.check_type_tags_for_name, autofix=not dry_run
     )
     return Name.lint_all(linter)
 
@@ -2794,11 +2755,7 @@ def run_maintenance(skip_slow: bool = True) -> Dict[Any, Any]:
     """Runs maintenance checks that are expected to pass for the entire database."""
     fns: List[Callable[[], Any]] = [
         clean_up_verbatim,
-        bad_parents,
-        bad_taxa,
         bad_base_names,
-        bad_occurrences,
-        bad_types,
         check_types,
         labeled_authorless_names,
         root_name_mismatch,

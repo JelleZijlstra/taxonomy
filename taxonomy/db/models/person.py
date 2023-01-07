@@ -372,19 +372,23 @@ class Person(BaseModel):
             self.type.name,
         )
 
-    def lint_invalid(self) -> Iterable[str]:
+    def lint_invalid(self, autofix: bool = True) -> Iterable[str]:
         if self.type in (PersonType.hard_redirect, PersonType.soft_redirect):
             if not self.target:
                 yield f"{self}: redirect has no target"
+                if autofix:
+                    print(f"{self}: resetting type to unchecked")
+                    self.type = PersonType.unchecked
 
-    def lint(self) -> Iterable[str]:
+    def lint(self, autofix: bool = True) -> Iterable[str]:
         for field_name, field_obj in self._meta.fields.items():
             if isinstance(field_obj, CharField):
                 value = getattr(self, field_name)
                 if value is not None and not helpers.is_clean_string(value):
                     cleaned = helpers.clean_string(value)
                     print(f"{self}: clean {field_name} from {value!r} to {cleaned!r}")
-                    setattr(self, field_name, cleaned)
+                    if autofix:
+                        setattr(self, field_name, cleaned)
 
         if self.type in (
             PersonType.deleted,

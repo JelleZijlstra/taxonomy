@@ -117,7 +117,7 @@ class Taxon(BaseModel):
     def should_skip(self) -> bool:
         return self.age is AgeClass.removed
 
-    def lint(self) -> Iterable[str]:
+    def lint(self, autofix: bool = True) -> Iterable[str]:
         if self.parent is None and self.id != 1:
             yield f"{self}: missing parent"
         if self.parent is not None and self.age < self.parent.age:

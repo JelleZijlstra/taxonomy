@@ -64,7 +64,7 @@ def get_tag_fields_of_type(tag: adt.ADT, typ: type[T]) -> Iterable[tuple[str, T]
             yield arg_name, val
 
 
-def check_type_tags_for_name(nam: Name, dry_run: bool = False) -> Iterable[str]:
+def check_type_tags_for_name(nam: Name, autofix: bool) -> Iterable[str]:
     if not nam.type_tags:
         return
     tags: list[TypeTag] = []
@@ -78,13 +78,13 @@ def check_type_tags_for_name(nam: Name, dry_run: bool = False) -> Iterable[str]:
                 print(f"{nam} references a redirected Article in {tag} -> {art.parent}")
                 if art.parent is None or art.parent.should_skip():
                     yield f"bad redirected article in tag {tag}"
-                elif not dry_run:
+                elif autofix:
                     tag = replace_arg(tag, arg_name, art.parent)
         for arg_name, tag_nam in get_tag_fields_of_type(tag, Name):
             result = is_name_removed(tag_nam)
             if isinstance(result, Name):
                 print(f"{nam} references a merged name")
-                if not dry_run:
+                if autofix:
                     tag = replace_arg(tag, arg_name, result)
             elif result:
                 print(f"{nam} references a removed Name in {tag}")
@@ -95,7 +95,7 @@ def check_type_tags_for_name(nam: Name, dry_run: bool = False) -> Iterable[str]:
                 print(
                     f"{nam} has {nam.type} as its type, but the Commission has designated {tag.type}"
                 )
-                if not dry_run:
+                if autofix:
                     nam.type = tag.type
             if (
                 nam.genus_type_kind
@@ -104,7 +104,7 @@ def check_type_tags_for_name(nam: Name, dry_run: bool = False) -> Iterable[str]:
                 print(
                     f"{nam} has {nam.genus_type_kind}, but its type was set by the Commission"
                 )
-                if not dry_run:
+                if autofix:
                     nam.genus_type_kind = (
                         TypeSpeciesDesignation.designated_by_the_commission  # type: ignore
                     )
@@ -161,11 +161,11 @@ def check_type_tags_for_name(nam: Name, dry_run: bool = False) -> Iterable[str]:
         if set(tags) != set(original_tags):
             print(f"changing tags for {nam}")
             getinput.print_diff(sorted(original_tags), tags)
-        if not dry_run:
+        if autofix:
             nam.type_tags = tags  # type: ignore
 
 
-def check_type_designations_present(nam: Name) -> Iterable[str]:
+def check_type_designations_present(nam: Name, autofix: bool = True) -> Iterable[str]:
     if nam.genus_type_kind is TypeSpeciesDesignation.subsequent_designation:
         if not any(
             tag.type == nam.type
@@ -192,7 +192,7 @@ def check_type_designations_present(nam: Name) -> Iterable[str]:
             yield f"{nam}: missing a reference for neotype designation"
 
 
-def check_tags_for_name(nam: Name, dry_run: bool = True) -> Iterable[str]:
+def check_tags_for_name(nam: Name, autofix: bool) -> Iterable[str]:
     """Looks at all tags set on names and applies related changes."""
     try:
         tags = nam.tags
@@ -213,7 +213,7 @@ def check_tags_for_name(nam: Name, dry_run: bool = True) -> Iterable[str]:
         if current_priority > new_priority:
             comment = f"Status automatically changed from {nam.nomenclature_status.name} to {status.name} because of {tag}"
             print(f"changing status of {nam} and adding comment {comment!r}")
-            if not dry_run:
+            if autofix:
                 nam.add_static_comment(CommentKind.automatic_change, comment)
                 nam.nomenclature_status = status  # type: ignore
                 nam.save()
@@ -272,7 +272,7 @@ def check_tags_for_name(nam: Name, dry_run: bool = True) -> Iterable[str]:
         # haven't handled TakesPriorityOf, NomenOblitum, MandatoryChangeOf
 
 
-def check_required_tags(nam: Name) -> Iterable[str]:
+def check_required_tags(nam: Name, autofix: bool = True) -> Iterable[str]:
     if nam.nomenclature_status not in STATUS_TO_TAG:
         return
     tag_cls = STATUS_TO_TAG[nam.nomenclature_status]
