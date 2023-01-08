@@ -46,6 +46,11 @@ Information about the objects in the database:
 - [Stratigraphic unit](/docs/stratigraphic-unit)
 - [Taxon](/docs/taxon)
 
+Source code:
+
+- [Frontend](https://github.com/JelleZijlstra/hesperomys/)
+- [Backend](https://github.com/JelleZijlstra/taxonomy/)
+
 # Contact
 
 If you have feedback or comments, or if you have something to contribute to the database,
