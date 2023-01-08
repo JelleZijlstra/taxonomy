@@ -1,5 +1,6 @@
 from taxonomy.db.models.base import BaseModel, EnumField, ADTField
-from taxonomy.db.models import Period, Location
+from taxonomy.db.models import Period, Location, NameComment
+from taxonomy.db.constants import CommentKind
 from taxonomy.db.derived_data import DerivedField
 from taxonomy.adt import ADT
 from typing import Type, Any, Dict, List as TList, Optional, Tuple
@@ -277,6 +278,13 @@ def build_reverse_rel_field(
         query = apply_ordering(getattr(model, name))
         query = query.limit(first + _decode_after(after) + 1)
         query = foreign_model.add_validity_check(query)
+        if foreign_model is NameComment:
+            query = query.filter(
+                ~(
+                    NameComment.kind
+                    << (CommentKind.structured_quote, CommentKind.automatic_change)
+                )
+            )
         cache = info.context["request"]
         ret = []
         for obj in query:

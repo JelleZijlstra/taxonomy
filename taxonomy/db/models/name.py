@@ -1893,6 +1893,9 @@ class NameComment(BaseModel):
             constants.CommentKind.structured_quote,
         )
 
+    def get_page_title(self) -> str:
+        return f"Comment on {self.name}"
+
     @classmethod
     def make(
         cls,
