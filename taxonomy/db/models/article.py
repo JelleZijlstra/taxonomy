@@ -779,7 +779,7 @@ class Article(BaseModel):
         return f"[{authors} ({self.year})](/a/{name})"
 
     def markdown_link(self) -> str:
-        cite = self.cite().replace("<i>", "_").replace("</i>", "_")
+        cite = self.cite()
         return f"[{cite}](/a/{self.id})"
 
     def cite(self, citetype: str = "paper") -> str:

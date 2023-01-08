@@ -8,9 +8,8 @@ from ..constants import ArticleType
 
 
 def wikify(s: str) -> str:
-    """Wikifies text (e.g., turns <i> into '')."""
-    s = s.replace("'", "<nowiki>'</nowiki>")
-    s = re.sub(r"<\/?i>", "''", s)
+    """Wikifies text (e.g., turns _ into '')."""
+    s = s.replace("'", "<nowiki>'</nowiki>").replace("_", "''")
     return re.sub(r"(?<!')<nowiki>'<\/nowiki>(?!')", "'", s)
 
 
@@ -460,7 +459,8 @@ def citebibtex(article: Article) -> str:
     # stuff that goes in every citation type
     add("author", authors, True)
     add("year", article.year, True)
-    title = "{" + article.title.replace("<i>", "\textit{").replace("</i>", "}") + "}"
+    title = re.sub(r"_([^_]+)_", r"\textit{\1}", article.title)
+    title = f"{{{title}}}"
     add("title", title, True)
     if article.type == ArticleType.THESIS:
         add("school", article.institution, True)
