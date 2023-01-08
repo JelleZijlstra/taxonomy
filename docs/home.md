@@ -17,11 +17,12 @@ the geography at [Earth](/r/Earth)
 
 The database currently contains:
 
-- 86919 [names](/docs/name), of which 74524 are [mammals](/t/Mammalia)
-- 18456 [locations](/docs/location) grouped into 4268 [regions](/docs/region) and 1992 [periods](/docs/period)
-- 47129 [citations](/docs/article)
-- Type localities for 46887 names
-- Type specimens for 31379 names
+- 95050 [names](/docs/name), of which 75275 are [mammals](/t/Mammalia)
+- 10021 [locations](/docs/location) grouped into 4430 [regions](/docs/region), 367 [periods](/docs/period),
+  and 2047 [stratigraphic units](/docs/stratigraphic-unit)
+- 51981 [citations](/docs/article)
+- Type localities for 56086 names
+- Type specimens for 38197 names
 
 # Documentation
 
