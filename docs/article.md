@@ -10,8 +10,7 @@ Articles have the following fields:
 
 - _name_: Unique name for the citation. This matches the file name for files in my
   electronic library, but mostly does not appear in the web version of the database.
-- _authors_: The authors of the article, in the form
-  "Lastname, I.N.I.T.I.A.L.S.; Otherlastname, F.I.".
+- _author_tags_: The authors of the article, as references to [persons](/docs/person).
 - _year_: Year the article was published
 - _title_: Title of the article
 - _citation group_: Reference to the [citation group](/docs/citation-group) the article

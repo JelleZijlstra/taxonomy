@@ -14,6 +14,9 @@ Collections have the following fields:
   the Universities of Ankara, Antananarivo, and Arizona share the abbreviation
   UA, so their collections are distinguished as [UA (Ankara)](</c/UA_(Ankara)>),
   [UA (Antananarivo)](</c/UA_(Antananarivo)>) and [UA (Arizona)](</c/UA_(Arizona)>).
+  For some collections (usually associated with European universities), the
+  city name is used as the label instead, because there is no well-established
+  abbreviation (e.g. [Göttingen]</c/Göttingen>).
 - _name_: The full English name of the institution. If the name is written in
   the Latin alphabet, the native name may be used instead.
 - _location_: The [Region](region) in which the collection is physically located.

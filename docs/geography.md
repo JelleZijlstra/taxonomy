@@ -1,7 +1,7 @@
 # Geography
 
 In the database, all localities are labeled with the geographical region they are in. We use
-a system that is largely based on political boundaries, aiming at giving precise geographical
+a system that is largely based on political boundaries, aimed at giving precise geographical
 information while using only stable, well-understood geographical names.
 
 Type localities for extant species are listed only as the region they are in. Type localities
@@ -276,7 +276,7 @@ In more detail:
 
 ### [Caribbean](/r/Caribbean)
 
-In accordance the UN geoscheme, the Caribbean includes some island groups that are
+In accordance with the UN geoscheme, the Caribbean includes some island groups that are
 technically outside the Caribbean Sea, such as the [Bahamas](/r/Bahamas). In addition to a number
 of independent countries, this region includes dependent territories of the Netherlands
 ([Aruba](/r/Aruba), [Curaçao](/r/Curaçao), [Bonaire](/r/Bonaire), [Saba](/r/Saba),

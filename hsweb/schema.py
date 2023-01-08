@@ -557,12 +557,6 @@ class Query(ObjectType):
 schema = Schema(query=Query, types=TYPES)
 
 
-class MutationRoot(ObjectType):
-    locals().update(get_model_creators())
-
-mutable_schema = Schema(query=Query, types=TYPES)
-
-
 def get_schema_string(schema: Schema) -> str:
     # Graphene has a bug in the str() of its schema, where it puts multiple interfaces
     # as "A, B" instead of "A & B". Hacky workaround (that will work only as long as

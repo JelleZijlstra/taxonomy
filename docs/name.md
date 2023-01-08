@@ -14,12 +14,12 @@ their limits are subjective in nature.
 ## Basic data
 
 - _group_: The group (as determined by the Code) under which the name falls.
-  The code regulates the family group (roughly, superfamilies through
+  The Code regulates the family group (roughly, superfamilies through
   subtribes), genus group (genera and subgenera), and species group (species
   and subspecies). Names above the family group are largely unregulated; in
   this database they are labeled as the _high group_. This group also includes
   unranked taxa interpolated between regulated ranks (for example, the
-  unranked taxon Oryzomyalia between the subfamily Sigmodontinae and its
+  unranked taxon [Oryzomyalia](/t/Oryzomyalia) between the subfamily Sigmodontinae and its
   constituent tribes).
 - _root name_: The name to be used as a root to form a valid taxon name from
   this name. For high- and genus-group names, this is simply the name. For
@@ -39,7 +39,7 @@ their limits are subjective in nature.
   unambiguously allocated to a biologically real taxon, for example because
   its type specimen is lost or uninformative. A species inquirenda is a name
   (not necessarily a species name) that has not been shown to be valid, a
-  synonym, or a nomen dubium, but which, for whatever reason, I believe there
+  synonym, or a nomen dubium, but for which I believe there
   is insufficient evidence that it represents a real taxon. Usually, this
   situation arises with names published long ago that have been ignored in
   subsequent studies. For example, Kretzoi (1941) named a species
@@ -65,13 +65,8 @@ their limits are subjective in nature.
 
 ## Citation and authority
 
-- _authority_: The author or authors who established the name. This should be
-  of the form "Smith", "Smith & Jones", or "Smith, Jones & Dupont". Initials
-  (e.g., "J.A. Allen") may be added to prevent ambiguity. There are a few
-  authority of the form "Smith et al." in the database, but this form is
-  deprecated. If the name was established in a work by other authors, the
-  authority field should still just have the name of the author of the name
-  (not "Smith in Jones" or similar).
+- _author tags_: Reference to the [person(s)](/docs/person) who created this
+  name.
 - _original citation_: Reference to the publication (in the [Article](/docs/article) table) in
   which the name was first made available. This is usually set only if I own a
   copy (e.g., a PDF) of the publication.
@@ -106,14 +101,9 @@ their limits are subjective in nature.
   complexes. A name complex may encompass names based on a specific Latin
   or Greek root word, or names whose treatment is stipulated by a specific
   article in the Code (for example, "names whose gender is explicitly specified
-  as masculine"). See the [name complex](/docs/name-complex) documentation for
+  as masculine"). See the [name complex](/docs/name-complex) and
+  [species name complex](/docs/species-name-complex) documentation for
   more.
-- _stem_: For genus-group names only, the stem to be used to form a
-  family-group name from this name. Deprecated; this should be inferred from
-  the name complex.
-- _gender_: For genus-group names only, the grammatical gender of the name
-  (masculine, feminine, or neuter). Deprecated; this should be inferred from
-  the name complex.
 
 ## Types
 
@@ -130,9 +120,6 @@ their limits are subjective in nature.
   specimen involved.
 - _collection_: Reference to the collection in which the type specimen is
   located (in the [Collection](/docs/collection) table).
-- _type specimen source_: Reference to the publication in which information
-  about the type specimen was found. Deprecated; type specimens should be
-  supported by SpecimenDetail tags (see below) instead.
 - _genus type kind_: For genus-group taxa, the way the type species was
   designated (original designation, original monotypy, tautonymy, Linnaean
   tautonymy, subsequent designation).

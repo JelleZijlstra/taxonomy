@@ -144,6 +144,14 @@ Non-Latin writing systems:
   or the Latin alphabet. If written in the Latin alphabet, initials may contain
   multiple letters if they reflect Cyrillic letters that cannot be
   transliterated to Latin one-to-one (e.g., "Yu" for Ю).
+- _ukrainian_: The Ukrainian language uses a slightly different alphabet than
+  Russian.
+
+A catch all:
+
+- _other_: Used for names in rare languages with unusual requirements. Names
+  using this convention are exempt from most checks that restrict what
+  characters may appear in a name.
 
 ## Which name to use
 

@@ -2,7 +2,7 @@
 
 A name complex is a group of genus names that share the same grammatical
 characteristics, such as grammatical gender and stem. For example, all
-names in _-therium_ form the [_therium_](/nc/therium) name complex; they
+names ending with _-therium_ form the [_therium_](/nc/therium) name complex; they
 are all neuter and have a stem ending with _-theri-_.
 
 ## Fields
