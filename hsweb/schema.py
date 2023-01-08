@@ -43,6 +43,7 @@ DOCS_ROOT = Path(__file__).parent.parent / "docs"
 class Model(Interface):
     oid = Int(required=True)
     call_sign = String(required=True)
+    page_title = String(required=True)
 
 
 @lru_cache()
@@ -446,6 +447,12 @@ def build_object_type_from_model(model_cls: Type[BaseModel]) -> Type[ObjectType]
         String, required=True, resolver=lambda *args: model_cls.call_sign
     )
     namespace["get_node"] = classmethod(get_node)
+
+    def page_title_resolver(parent: ObjectType, info: ResolveInfo) -> str:
+        model = get_model(model_cls, parent, info)
+        return model.get_page_title()
+
+    namespace["page_title"] = Field(String, required=True, resolver=page_title_resolver)
 
     return type(model_cls.__name__, (ObjectType,), namespace)
 

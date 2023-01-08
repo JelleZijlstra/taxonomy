@@ -1027,6 +1027,9 @@ class Article(BaseModel):
                     current_tl = nam.type_locality
                 print(f"{' ' * 8}{nam.get_description()}", end="")
 
+    def get_page_title(self) -> str:
+        return self.cite()
+
     def __str__(self) -> str:
         return f"{{{self.name}}}"
 

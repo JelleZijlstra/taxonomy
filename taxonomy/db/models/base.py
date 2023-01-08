@@ -454,6 +454,11 @@ class BaseModel(Model):
         yield from cls._meta.fields.keys()
 
     def short_description(self) -> str:
+        """Used as the prompt when editing this object."""
+        return str(self)
+
+    def get_page_title(self) -> str:
+        """Page title used in the web interface."""
         return str(self)
 
     def __str__(self) -> str:
