@@ -46,12 +46,17 @@ from .. import derived_data, helpers
 settings = config.get_options()
 
 _log_path = settings.new_path / "log" / "queries.txt"
-_log_f = open(_log_path, "a", encoding="utf-8")
+if _log_path.exists():
+    _log_f = open(_log_path, "a", encoding="utf-8")
+else:
+    _log_f = None
 
 if settings.use_sqlite:
 
     class LoggingDatabase(SqliteDatabase):
         def execute_sql(self, sql: str, *args: Any, **kwargs: Any) -> Any:
+            if _log_f is None:
+                return super().execute_sql(sql, *args, **kwargs)
             if sql.startswith("UPDATE"):
                 _log_f.write(f"--- Write query: {sql}\n")
                 traceback.print_stack(file=_log_f)
