@@ -491,6 +491,149 @@ def check_correct_status(nam: Name, autofix: bool = True) -> Iterable[str]:
         yield f"{nam}: is of status {nam.status!r} and should be base name of {nam.taxon}"
 
 
+def _find_as_emended_by(nam: Name) -> Name | None:
+    for synonym in nam.taxon.sorted_names():
+        if synonym.nomenclature_status is not NomenclatureStatus.justified_emendation:
+            continue
+        ios = synonym.get_tag_target(NameTag.JustifiedEmendationOf)
+        if ios is None:
+            continue
+        as_emended = ios.get_tag_target(NameTag.IncorrectOriginalSpellingOf)
+        if as_emended == nam:
+            return synonym
+    return None
+
+
+def _check_names_match(
+    nam: Name, other: Name, *, include_page_described: bool
+) -> Iterable[str]:
+    if nam.author_tags != other.author_tags:
+        yield f"{nam}: authors do not match {other}"
+    if nam.year != other.year:
+        yield f"{nam}: year does not match {other}"
+    if nam.original_citation != other.original_citation:
+        yield f"{nam}: original_citation does not match {other}"
+    if nam.verbatim_citation != other.verbatim_citation:
+        yield f"{nam}: verbatim_citation does not match {other}"
+    if nam.citation_group != other.citation_group:
+        yield f"{nam}: citation_group does not match {other}"
+    if include_page_described:
+        if nam.page_described != other.page_described:
+            yield f"{nam}: page_described does not match {other}"
+
+
+def _check_as_emended_name(nam: Name, autofix: bool = True) -> Iterable[str]:
+    if nam.nomenclature_status not in (
+        NomenclatureStatus.nomen_novum,
+        NomenclatureStatus.preoccupied,
+        NomenclatureStatus.as_emended,
+    ):
+        yield f"{nam}: expected status to be as_emended"
+    as_emended_target = nam.get_tag_target(NameTag.AsEmendedBy)
+    if as_emended_target is None:
+        message = f"{nam}: as_emended without an AsEmendedBy tag"
+        if not autofix:
+            yield message
+            return
+        target = _find_as_emended_by(nam)
+        if target is None:
+            yield message + " (could not infer target)"
+            return
+        print(f"{message} (inferred target {target})")
+        nam.add_tag(NameTag.AsEmendedBy(name=target, comment=""))
+        return
+    if as_emended_target.taxon != nam.taxon:
+        yield f"{nam}: target {as_emended_target} does not belong to the same taxon"
+    if as_emended_target.root_name != nam.root_name:
+        yield f"{nam}: root name {nam.root_name} does not match target {as_emended_target.root_name}"
+    if (
+        as_emended_target.nomenclature_status
+        is not NomenclatureStatus.justified_emendation
+    ):
+        yield f"{nam}: target {as_emended_target} is not a justified_emendation"
+        return
+    ios = as_emended_target.get_tag_target(NameTag.JustifiedEmendationOf)
+    if ios is None:
+        yield f"{nam}: as_emended target {as_emended_target} lacks a justified emendation tag"
+        return
+    if ios.nomenclature_status is not NomenclatureStatus.incorrect_original_spelling:
+        yield f"{nam}: incorrect original spelling {ios} is not marked as such"
+        return
+    yield from _check_names_match(nam, ios, include_page_described=True)
+    original = ios.get_tag_target(NameTag.IncorrectOriginalSpellingOf)
+    if original != nam:
+        yield f"{nam}: incorrect original spelling traces back to {original}, not this name"
+
+
+def _check_correctable_ios(nam: Name, autofix: bool = True) -> Iterable[str]:
+    """Check an incorrect original spelling that should be part of a triple."""
+    ios_target = nam.get_tag_target(NameTag.IncorrectOriginalSpellingOf)
+    if ios_target is None:
+        yield f"{nam}: missing IncorrectOriginalSpellingOf tag"
+        return
+    yield from _check_as_emended_name(ios_target, autofix)
+
+
+def check_justified_emendations(nam: Name, autofix: bool = True) -> Iterable[str]:
+    """Check for issues around justified emendations.
+
+    Justified emendations are complex to handle because they involve multiple Names
+    that are coupled together and require a very specific set of tags. See
+    docs/name.md for an explanation of how these names should be organized.
+
+    Some of the errors produced by this linter apply to a different name than the
+    one that requires the change, or the same lint may be emitted multiple times for
+    different names. This is to ensure we don't miss any issues while keeping the
+    code relatively simple.
+
+    """
+    if nam.nomenclature_status is NomenclatureStatus.as_emended:
+        yield from _check_as_emended_name(nam, autofix)
+    elif nam.nomenclature_status is NomenclatureStatus.justified_emendation:
+        target = nam.get_tag_target(NameTag.JustifiedEmendationOf)
+        if target is None:
+            yield f"{nam}: justified_emendation without a JustifiedEmendationOf tag"
+            return
+        if target.taxon != nam.taxon:
+            yield f"{nam}: target {target} does not belong to the same taxon"
+        if target.nomenclature_status is NomenclatureStatus.incorrect_original_spelling:
+            # Now we must have an IOS/JE/as_emended triple.
+            if target.root_name == nam.root_name:
+                yield f"{nam}: supposed incorrect spelling {target} has identical root name {nam.root_name}"
+            yield from _check_correctable_ios(target, autofix)
+        elif target.nomenclature_status not in (
+            NomenclatureStatus.available,
+            NomenclatureStatus.nomen_novum,
+            NomenclatureStatus.preoccupied,
+            NomenclatureStatus.partially_suppressed,
+            NomenclatureStatus.fully_suppressed,
+        ):
+            yield f"{nam}: emended name {target} has unexpected status"
+        else:
+            # Else it should be a justified emendation for something straightforward
+            # (e.g., removing diacritics), so the CON and root_name should match.
+            if nam.root_name != target.root_name:
+                yield f"{nam}: root name {nam.root_name} does not match emended name {target}"
+    elif nam.nomenclature_status is NomenclatureStatus.incorrect_original_spelling:
+        ios_target = nam.get_tag_target(NameTag.IncorrectOriginalSpellingOf)
+        if ios_target is None:
+            yield f"{nam}: missing IncorrectOriginalSpellingOf tag"
+            return
+        # Incorrect original spellings come in two kinds:
+        # - Where there are multiple spellings in the original publication, and one is
+        #   selected as valid. Then both names should have the same author etc. (but
+        #   not necessarily the same page_described).
+        # - Where the original spelling is incorrect in some way and is later fixed.
+        #   Then the target name should be an as_emended.
+        if (
+            ios_target.nomenclature_status is NomenclatureStatus.as_emended
+            or ios_target.get_tag_target(NameTag.AsEmendedBy)
+        ):
+            yield from _check_correctable_ios(nam, autofix)
+        else:
+            yield from _check_names_match(nam, ios_target, include_page_described=False)
+
+
 LINTERS: list[Linter] = [
     check_type_tags_for_name,
     check_required_tags,
@@ -503,6 +646,7 @@ LINTERS: list[Linter] = [
     correct_type_taxon,
     clean_up_verbatim,
     check_correct_status,
+    check_justified_emendations,
 ]
 DISABLED_LINTERS: list[Linter] = [
     check_type_designations_present,  # too many missing (about 580)

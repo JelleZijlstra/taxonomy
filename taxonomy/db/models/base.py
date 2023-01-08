@@ -196,13 +196,16 @@ class BaseModel(Model):
         linter: Callable[[ModelT, bool], Iterable[str]] | None = None,
         *,
         autofix: bool = True,
+        query: Iterable[ModelT] | None = None,
     ) -> List[Tuple[ModelT, List[str]]]:
+        if query is None:
+            if linter is None:
+                query = cls.select()
+            else:
+                # For specific linters, only worry about valid names
+                query = cls.select_valid()
         if linter is None:
-            query = cls.select()
             linter = cls.general_lint
-        else:
-            # For specific linters, only worry about valid names
-            query = cls.select_valid()
         bad = []
         for obj in getinput.print_every_n(query, label=f"{cls.__name__}s"):
             messages = list(linter(obj, autofix))

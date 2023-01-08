@@ -2043,11 +2043,13 @@ class NameTag(adt.ADT):
     ReversalOfPriority(over=Name, opinion=Article, comment=str, tag=17)  # type: ignore
     # Placed on the Official Index, but without being suppressed.
     Rejected(opinion=Article, comment=str, tag=18)  # type: ignore
-    # See discussion in docs/name.rst
+    # See discussion in docs/name.md
     JustifiedEmendationOf(  # type: ignore
         name=Name, justification=EmendationJustification, comment=str, tag=19
     )
     HMW(number=str, name=str, tag=20)  # type: ignore
+    # Not required, used when the name can't have the "as_emended" nomenclature status
+    AsEmendedBy(name=Name, comment=str, tag=21)  # type: ignore
 
 
 STATUS_TO_TAG = {

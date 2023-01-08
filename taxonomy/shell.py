@@ -2043,49 +2043,30 @@ def check_expected_base_name() -> Iterable[Taxon]:
             yield txn
 
 
-@generator_command
-def check_justified_emendations() -> Iterable[Tuple[Name, str]]:
-    """Checks that justified emendations are treated correctly.
-
-    See documentation in name.rst.
-
-    """
-    justified_emendations = Name.bfind(
-        nomenclature_status=NomenclatureStatus.justified_emendation, quiet=True
+@command
+def fix_justified_emendations() -> None:
+    query = Name.select_valid().filter(
+        Name.nomenclature_status
+        << (
+            NomenclatureStatus.as_emended,
+            NomenclatureStatus.justified_emendation,
+            NomenclatureStatus.incorrect_original_spelling,
+        )
     )
-    as_emendeds = set(
-        Name.bfind(nomenclature_status=NomenclatureStatus.as_emended, quiet=True)
-    )
-    for nam in justified_emendations:
-        target = nam.get_tag_target(NameTag.JustifiedEmendationOf)
-        if target is None:
-            yield nam, "justified_emendation without a JustifiedEmendationOf tag"
-            continue
-        ios_target = target.get_tag_target(NameTag.IncorrectOriginalSpellingOf)
-        if ios_target is None:
-            yield target, "missing IncorrectOriginalSpellingOf tag"
-        elif (
-            target.nomenclature_status is NomenclatureStatus.incorrect_original_spelling
-        ):
-            if ios_target.nomenclature_status is not NomenclatureStatus.as_emended:
-                yield ios_target, f"should be as_emended because {target} is an IOS"
-            elif ios_target in as_emendeds:
-                as_emendeds.remove(ios_target)
-            if nam.root_name == target.root_name:
-                yield nam, f"root_name should be different from {target}"
-            if nam.root_name != ios_target.root_name:
-                yield nam, f"root_name should match {ios_target}"
-        elif target.nomenclature_status is NomenclatureStatus.available:
-            if ios_target is not None:
-                yield target, "unexpected IncorrectOriginalSpellingOf tag"
-            if target.root_name != nam.root_name:
-                yield nam, f"root_name does not match ({nam.root_name} vs. {target.root_name} in {target})"
-            elif target.original_name == target.corrected_original_name:
-                yield nam, f"justified emendation but there is nothing to emend in {target}"
-        else:
-            yield nam, f"unexpected status in target {target}"
-    for nam in as_emendeds:
-        yield nam, "as_emended without a justified_emendation"
+    bad = Name.lint_all(models.name_lint.check_justified_emendations, query=query)
+    print(f"Found {len(bad)} issues")
+    if not bad:
+        return
+    for nam, messages in getinput.print_every_n(bad, label="issues", n=5):
+        nam = nam.reload()
+        getinput.print_header(nam)
+        nam.display()
+        nam.taxon.display()
+        for message in messages:
+            print(message)
+        while not nam.is_lint_clean():
+            nam.edit()
+            nam = nam.reload()
 
 
 @generator_command
@@ -2250,7 +2231,6 @@ def run_maintenance(skip_slow: bool = True) -> Dict[Any, Any]:
         fix_citation_group_redirects,
         recent_names_without_verbatim,
         enforce_must_have_series,
-        check_justified_emendations,
         Person.autodelete,
         Person.find_duplicates,
         Person.resolve_redirects,
