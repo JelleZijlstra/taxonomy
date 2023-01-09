@@ -3,16 +3,13 @@
 Install the taxonomy package.
 
 """
-try:
-    from setuptools import setup
-except ImportError:
-    from distutils.core import setup
+from setuptools import setup
 
 
 setup(
     name="taxonomy",
     version="0.0",
-    description="A tool for maintaining a taxonomical database.",
+    description="A tool for maintaining a taxonomic database.",
     keywords="taxonomy",
     author="Jelle Zijlstra",
     author_email="jelle.zijlstra@gmail.com",
@@ -44,6 +41,6 @@ setup(
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
         "Programming Language :: Python",
-        "Programming Language :: Python :: 3.6",
+        "Programming Language :: Python :: 3.11",
     ],
 )
