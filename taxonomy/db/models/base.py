@@ -82,6 +82,7 @@ else:
 
 
 ModelT = TypeVar("ModelT", bound="BaseModel")
+Linter = Callable[[ModelT, bool], Iterable[str]]
 _getters: Dict[Tuple[Type[Model], Optional[str]], "_NameGetter[Any]"] = {}
 
 
@@ -193,7 +194,7 @@ class BaseModel(Model):
     @classmethod
     def lint_all(
         cls: Type[ModelT],
-        linter: Callable[[ModelT, bool], Iterable[str]] | None = None,
+        linter: Linter[ModelT] | None = None,
         *,
         autofix: bool = True,
         query: Iterable[ModelT] | None = None,

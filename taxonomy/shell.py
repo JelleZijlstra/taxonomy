@@ -54,8 +54,6 @@ import requests
 import unidecode
 from traitlets.config.loader import Config
 
-from taxonomy import adt
-
 from . import getinput
 from .db import constants, definition, derived_data, helpers, models
 from .db.constants import (
@@ -64,7 +62,6 @@ from .db.constants import (
     NomenclatureStatus,
     Rank,
     ArticleKind,
-    RequirednessLevel,
     FillDataLevel,
 )
 from .db.models import (
@@ -81,6 +78,7 @@ from .db.models import (
     TypeTag,
     database,
 )
+from .db.models.base import ModelT, Linter
 from .db.models.person import PersonLevel
 from .db.models.taxon import DEFAULT_LEVEL
 
@@ -302,60 +300,23 @@ def add_types() -> None:
         models.taxon.fill_data_from_paper(name.original_citation)
 
 
-@generator_command
-def detect_corrected_original_names(
-    dry_run: bool = False,
-    interactive: bool = False,
-    ignore_failure: bool = False,
-    aggressive: bool = False,
-) -> Iterable[Name]:
-    total = successful = 0
-    for nam in Name.select_valid().filter(
+@command
+def detect_corrected_original_names(aggressive: bool = False) -> None:
+    query = Name.select_valid().filter(
         Name.original_name != None, Name.corrected_original_name == None
-    ):
-        if "corrected_original_name" not in nam.get_required_fields():
-            continue
-        total += 1
-        inferred = nam.infer_corrected_original_name(aggressive=aggressive)
-        if inferred:
-            successful += 1
-            print(
-                f"{nam}: inferred corrected_original_name to be {inferred!r} from {nam.original_name!r}"
-            )
-            if not dry_run:
-                nam.corrected_original_name = inferred
-        elif not ignore_failure:
-            print(
-                f"{nam}: could not infer corrected original name from {nam.original_name!r}"
-            )
-            if interactive:
-                nam.display()
-                nam.fill_field("corrected_original_name")
-            yield nam
-    print(f"Success: {successful}/{total}")
+    )
+    linter = functools.partial(
+        models.name_lint.autoset_corrected_original_name, aggressive=aggressive
+    )
+    run_linter_and_fix(Name, linter, query)
 
 
-@generator_command
-def detect_original_rank(
-    dry_run: bool = False,
-    interactive: bool = False,
-    ignore_failure: bool = False,
-    limit: Optional[int] = None,
-    quiet: bool = True,
-) -> Iterable[Name]:
-    total = successful = 0
-    for nam in (
-        Name.select_valid()
-        .filter(Name.corrected_original_name != None, Name.original_rank == None)
-        .limit(limit)
-    ):
-        total += 1
-        success = nam.autoset_original_rank(quiet=quiet, dry_run=dry_run)
-        if success:
-            successful += 1
-        elif not ignore_failure:
-            yield nam
-    print(f"Success: {successful}/{total}")
+@command
+def detect_original_rank() -> None:
+    query = Name.select_valid().filter(
+        Name.corrected_original_name != None, Name.original_rank == None
+    )
+    run_linter_and_fix(Name, models.name_lint.autoset_original_rank, query)
 
 
 @command
@@ -2053,20 +2014,26 @@ def fix_justified_emendations() -> None:
             NomenclatureStatus.incorrect_original_spelling,
         )
     )
-    bad = Name.lint_all(models.name_lint.check_justified_emendations, query=query)
+    run_linter_and_fix(Name, models.name_lint.check_justified_emendations, query)
+
+
+def run_linter_and_fix(
+    model_cls: type[ModelT], linter: Linter[ModelT], query: Iterable[ModelT]
+) -> None:
+    """Helper for running a lint on a subset of objects and fixing the issues."""
+    bad = model_cls.lint_all(linter, query=query)
     print(f"Found {len(bad)} issues")
     if not bad:
         return
-    for nam, messages in getinput.print_every_n(bad, label="issues", n=5):
-        nam = nam.reload()
-        getinput.print_header(nam)
-        nam.display()
-        nam.taxon.display()
+    for obj, messages in getinput.print_every_n(bad, label="issues", n=5):
+        obj = obj.reload()
+        getinput.print_header(obj)
+        obj.display()
         for message in messages:
             print(message)
-        while not nam.is_lint_clean():
-            nam.edit()
-            nam = nam.reload()
+        while not obj.is_lint_clean():
+            obj.edit()
+            obj = obj.reload()
 
 
 @generator_command
@@ -2221,7 +2188,6 @@ def run_maintenance(skip_slow: bool = True) -> Dict[Any, Any]:
         detect_species_name_complexes,
         autoset_original_name,
         apply_author_synonyms,
-        detect_corrected_original_names,
         dup_collections,
         # dup_names,
         # dup_genus,

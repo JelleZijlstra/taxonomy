@@ -7,10 +7,11 @@ from collections.abc import Iterable, Callable
 import re
 from typing import TypeVar
 from .name import Name, NameTag, TypeTag, STATUS_TO_TAG
-from .article import Article
+from .article import Article, ArticleTag
 from ..constants import (
     ArticleKind,
     TypeSpeciesDesignation,
+    FillDataLevel,
     CommentKind,
     Group,
     NomenclatureStatus,
@@ -634,6 +635,43 @@ def check_justified_emendations(nam: Name, autofix: bool = True) -> Iterable[str
             yield from _check_names_match(nam, ios_target, include_page_described=False)
 
 
+def autoset_original_rank(nam: Name, autofix: bool = True) -> Iterable[str]:
+    nam.autoset_original_rank(dry_run=not autofix)
+    return []
+
+
+def autoset_corrected_original_name(
+    nam: Name, autofix: bool = True, aggressive: bool = False
+) -> Iterable[str]:
+    if nam.original_name is None or nam.corrected_original_name is not None:
+        return
+    if "corrected_original_name" not in nam.get_required_fields():
+        return
+    inferred = nam.infer_corrected_original_name(aggressive=aggressive)
+    if inferred:
+        message = f"{nam}: inferred corrected_original_name to be {inferred!r} from {nam.original_name!r}"
+        if autofix:
+            print(message)
+            nam.corrected_original_name = inferred
+        else:
+            yield message
+    else:
+        yield (
+            f"{nam}: could not infer corrected original name from {nam.original_name!r}"
+        )
+
+
+def check_fill_data_level(nam: Name, autofix: bool = True) -> Iterable[str]:
+    if nam.original_citation is None:
+        return
+    level, reason = nam.fill_data_level()
+    if level > FillDataLevel.missing_required_fields:
+        return
+    if nam.original_citation.has_tag(ArticleTag.NeedsTranslation):
+        return
+    yield f"{nam}: missing basic data: {reason}"
+
+
 LINTERS: list[Linter] = [
     check_type_tags_for_name,
     check_required_tags,
@@ -647,6 +685,8 @@ LINTERS: list[Linter] = [
     clean_up_verbatim,
     check_correct_status,
     check_justified_emendations,
+    autoset_original_rank,
+    autoset_corrected_original_name,
 ]
 DISABLED_LINTERS: list[Linter] = [
     check_type_designations_present,  # too many missing (about 580)
