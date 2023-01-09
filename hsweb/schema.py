@@ -1,5 +1,5 @@
 from taxonomy.db.models.base import BaseModel, EnumField, ADTField
-from taxonomy.db.models import Period, Location, NameComment
+from taxonomy.db.models import Period, Location, NameComment, Article
 from taxonomy.db.constants import CommentKind
 from taxonomy.db.derived_data import DerivedField
 from taxonomy.adt import ADT
@@ -39,6 +39,21 @@ TYPES: TList[ObjectType] = []
 CALL_SIGN_TO_MODEL = {model.call_sign: model for model in BaseModel.__subclasses__()}
 
 DOCS_ROOT = Path(__file__).parent.parent / "docs"
+
+
+def _match_to_md_ref(match: re.Match[str]) -> str:
+    ref = match.group(1)
+    try:
+        art = Article.select().filter(Article.name == ref).get()
+    except Article.DoesNotExist:
+        return match.group()
+    return art.resolve_redirect().concise_markdown_link()
+
+
+@lru_cache(8192)
+def parse_refs_into_markdown(text: str) -> str:
+    """Turn '{x.pdf}' into '[A & B (2016](/a/123)'."""
+    return re.sub(r"\{([^}]+)\}", _match_to_md_ref, text)
 
 
 class Model(Interface):
@@ -104,9 +119,11 @@ def build_adt(adt_cls: Type[ADT]) -> Type[Interface]:
     return interface
 
 
-def translate_adt_arg(arg: Any) -> Any:
+def translate_adt_arg(arg: Any, attr_name: str) -> Any:
     if isinstance(arg, BaseModel):
         return build_object_type_from_model(type(arg))(id=arg.id, oid=arg.id)
+    elif attr_name == "comment" and isinstance(arg, str):
+        return parse_refs_into_markdown(arg)
     else:
         return arg
 
@@ -166,7 +183,7 @@ def build_graphene_field(
                     out.append(
                         graphene_cls(
                             **{
-                                key: translate_adt_arg(value)
+                                key: translate_adt_arg(value, key)
                                 for key, value in adt.__dict__.items()
                             }
                         )
@@ -174,6 +191,17 @@ def build_graphene_field(
             return out
 
         return List(NonNull(build_adt(adt_cls)), required=True, resolver=adt_resolver)
+    elif (
+        isinstance(peewee_field, peewee.TextField) or name in model_cls.markdown_fields
+    ):
+
+        def md_resolver(parent: ObjectType, info: ResolveInfo) -> Optional[str]:
+            value = getattr(get_model(model_cls, parent, info), name)
+            if value is None:
+                return None
+            return parse_refs_into_markdown(value)
+
+        return Field(String, required=not peewee_field.null, resolver=md_resolver)
     elif type(peewee_field) in SCALAR_FIELD_TO_GRAPHENE:
         return Field(
             SCALAR_FIELD_TO_GRAPHENE[type(peewee_field)],

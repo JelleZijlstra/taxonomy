@@ -78,6 +78,7 @@ class Name(BaseModel):
         "status": Status.valid,
     }
     excluded_fields = {"data"}
+    markdown_fields = {"verbatim_citation"}
 
     # Basic data
     group = EnumField(Group)

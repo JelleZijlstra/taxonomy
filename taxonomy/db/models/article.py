@@ -769,14 +769,18 @@ class Article(BaseModel):
         else:
             return None
 
+    def resolve_redirect(self) -> "Article":
+        if target := self.get_redirect_target():
+            return target
+        return self
+
     def concise_markdown_link(self) -> str:
         authors_list = self.get_authors()
         if len(authors_list) > 2:
             authors = f"{authors_list[0].taxonomic_authority()} et al."
         else:
             authors, _ = self.taxonomicAuthority()
-        name = self.name.replace(" ", "_")
-        return f"[{authors} ({self.year})](/a/{name})"
+        return f"[{authors} ({self.year})](/a/{self.id})"
 
     def markdown_link(self) -> str:
         cite = self.cite()
