@@ -79,7 +79,7 @@ from .db.models import (
 )
 from .db.models.base import ModelT, Linter
 from .db.models.person import PersonLevel
-from .db.models.taxon import DEFAULT_LEVEL
+from .db.models.fill_data import DEFAULT_LEVEL
 
 T = TypeVar("T")
 
@@ -296,7 +296,7 @@ def add_types() -> None:
         print(
             f"Name {name} is missing type, but has original citation {name.original_citation.name}"
         )
-        models.taxon.fill_data_from_paper(name.original_citation)
+        models.fill_data.fill_data_from_paper(name.original_citation)
 
 
 @command
@@ -1216,7 +1216,7 @@ def fill_data_from_paper(
             "paper", models.Article, allow_none=False
         )
     assert paper is not None, "paper needs to be specified"
-    models.taxon.fill_data_from_paper(
+    models.fill_data.fill_data_from_paper(
         paper,
         level=level,
         ask_before_opening=ask_before_opening,
@@ -1236,7 +1236,7 @@ def fill_data_from_author(
     if author is None:
         return
     arts = author.get_sorted_derived_field("articles")
-    models.taxon.fill_data_from_articles(
+    models.fill_data.fill_data_from_articles(
         sorted(arts, key=lambda art: art.path),
         level=level,
         only_fill_cache=only_fill_cache,
@@ -1261,14 +1261,14 @@ def fill_data_for_children(
         Article.select_valid().filter(Article.parent == paper),
         key=lambda child: (child.numeric_start_page(), child.name),
     )
-    models.taxon.fill_data_from_articles(
+    models.fill_data.fill_data_from_articles(
         children,
         level=level,
         ask_before_opening=True,
         skip_nofile=skip_nofile,
         only_fill_cache=only_fill_cache,
     )
-    models.taxon.fill_data_from_paper(
+    models.fill_data.fill_data_from_paper(
         paper, level=level, only_fill_cache=only_fill_cache
     )
 
@@ -1291,11 +1291,11 @@ def fill_data_random(
             else:
                 percentage = 0.0
             getinput.show(f"({count}; {percentage:.03}%) {art.name}")
-            result = models.taxon.fill_data_from_paper(
+            result = models.fill_data.fill_data_from_paper(
                 art, level=level, only_fill_cache=True
             )
             try:
-                models.taxon.fill_data_from_paper(
+                models.fill_data.fill_data_from_paper(
                     art, level=level, ask_before_opening=ask_before_opening
                 )
             except getinput.StopException:
@@ -1329,11 +1329,11 @@ def fill_data_reverse_order(
         else:
             percentage = 0.0
         getinput.show(f"({i}; {percentage:.03}%) {art.name}")
-        result = models.taxon.fill_data_from_paper(
+        result = models.fill_data.fill_data_from_paper(
             art, level=level, only_fill_cache=True
         )
         try:
-            models.taxon.fill_data_from_paper(
+            models.fill_data.fill_data_from_paper(
                 art, level=level, ask_before_opening=ask_before_opening
             )
         except getinput.StopException:
@@ -1594,7 +1594,7 @@ def fix_general_type_localities_for_region(region: models.Region) -> None:
             continue
         if loc.type_localities.count() == 0:
             continue
-        models.taxon.fill_data_for_names(
+        models.fill_data.fill_data_for_names(
             list(loc.type_localities), level=FillDataLevel.incomplete_detail
         )
         getinput.print_header(loc)
@@ -1954,7 +1954,7 @@ def fill_data_from_folder(
     if folder is None:
         folder = Article.getter("path").get_one_key() or ""
     arts = Article.bfind(Article.path.startswith(folder), quiet=True)
-    models.taxon.fill_data_from_articles(
+    models.fill_data.fill_data_from_articles(
         sorted(arts, key=lambda art: art.path),
         level=level,
         only_fill_cache=only_fill_cache,
@@ -1986,7 +1986,7 @@ def fill_data_from_citation_group(
         return (year, volume, start_page)
 
     arts = sorted(cg.get_articles(), key=sort_key)
-    models.taxon.fill_data_from_articles(
+    models.fill_data.fill_data_from_articles(
         arts,
         level=level,
         only_fill_cache=only_fill_cache,
@@ -2594,7 +2594,7 @@ def edit_names_interactive(
         if art is None:
             return
     art.display_names()
-    models.taxon.edit_names_interactive(art, field=field)
+    models.fill_data.edit_names_interactive(art, field=field)
     fill_data_from_paper(art)
 
 
@@ -2775,7 +2775,7 @@ def cg_recent_report(
 def most_common_authors_without_verbatim_citation(
     print_n: int = 20,
 ) -> dict[Person, int]:
-    data: Counter[int] = Counter()
+    data: Counter[Person] = Counter()
     for nam in getinput.print_every_n(
         Name.select_valid().filter(
             Name.verbatim_citation == None, Name.original_citation == None

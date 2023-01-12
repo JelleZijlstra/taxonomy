@@ -332,7 +332,7 @@ class SpeciesNameComplex(BaseModel):
             },
             key=lambda art: (art.path, art.name),
         )
-        models.taxon.fill_data_from_articles(
+        models.fill_data.fill_data_from_articles(
             citations,
             level=level,
             ask_before_opening=ask_before_opening,

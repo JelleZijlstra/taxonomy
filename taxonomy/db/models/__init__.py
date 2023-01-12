@@ -35,4 +35,4 @@ from .taxon import Taxon as Taxon  # noqa: F401
 from .person import Person as Person  # noqa: F401
 from .book import Book as Book  # noqa: F401
 from .specimen import Specimen as Specimen  # noqa: F401
-from . import tags, name_lint
+from . import tags, name_lint, fill_data
