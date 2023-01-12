@@ -13,3 +13,7 @@ mapper/base_maps/
 notes/
 .vscode/
 .ipynb_checkpoints/
+aws/
+taxonomy.ini
+taxonomy-public.ini
+taxonomy.sh
