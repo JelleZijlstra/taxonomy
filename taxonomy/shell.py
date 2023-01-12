@@ -79,11 +79,14 @@ from .db.models import (
 )
 from .db.models.base import ModelT, Linter
 from .db.models.person import PersonLevel
-from .db.models.fill_data import DEFAULT_LEVEL
 
 T = TypeVar("T")
 
 gc.disable()
+
+COMMAND_SETS = [
+    models.fill_data.CS,
+]
 
 
 def _reconnect() -> None:
@@ -1205,151 +1208,6 @@ def set_empty_to_none(
 
 
 @command
-def fill_data_from_paper(
-    paper: Optional[models.Article] = None,
-    level: FillDataLevel = DEFAULT_LEVEL,
-    ask_before_opening: bool = True,
-    should_open: bool = True,
-) -> None:
-    if paper is None:
-        paper = models.BaseModel.get_value_for_foreign_class(
-            "paper", models.Article, allow_none=False
-        )
-    assert paper is not None, "paper needs to be specified"
-    models.fill_data.fill_data_from_paper(
-        paper,
-        level=level,
-        ask_before_opening=ask_before_opening,
-        should_open=should_open,
-    )
-
-
-@command
-def fill_data_from_author(
-    author: Optional[Person] = None,
-    level: FillDataLevel = DEFAULT_LEVEL,
-    only_fill_cache: bool = False,
-    skip_nofile: bool = True,
-) -> None:
-    if author is None:
-        author = Person.getter(None).get_one()
-    if author is None:
-        return
-    arts = author.get_sorted_derived_field("articles")
-    models.fill_data.fill_data_from_articles(
-        sorted(arts, key=lambda art: art.path),
-        level=level,
-        only_fill_cache=only_fill_cache,
-        ask_before_opening=True,
-        skip_nofile=skip_nofile,
-    )
-
-
-@command
-def fill_data_for_children(
-    paper: Optional[models.Article] = None,
-    level: FillDataLevel = FillDataLevel.max_level(),
-    skip_nofile: bool = False,
-    only_fill_cache: bool = False,
-) -> None:
-    if paper is None:
-        paper = models.BaseModel.get_value_for_foreign_class(
-            "paper", models.Article, allow_none=False
-        )
-    assert paper is not None, "paper needs to be specified"
-    children = sorted(
-        Article.select_valid().filter(Article.parent == paper),
-        key=lambda child: (child.numeric_start_page(), child.name),
-    )
-    models.fill_data.fill_data_from_articles(
-        children,
-        level=level,
-        ask_before_opening=True,
-        skip_nofile=skip_nofile,
-        only_fill_cache=only_fill_cache,
-    )
-    models.fill_data.fill_data_from_paper(
-        paper, level=level, only_fill_cache=only_fill_cache
-    )
-
-
-@command
-def fill_data_random(
-    batch_size: int = 20,
-    level: FillDataLevel = DEFAULT_LEVEL,
-    ask_before_opening: bool = True,
-) -> None:
-    count = -1
-    done = 0
-    while True:
-        for count, art in enumerate(
-            Article.select_valid().order_by(peewee.fn.Random()).limit(batch_size),
-            start=count + 1,
-        ):
-            if count > 0:
-                percentage = (done / count) * 100
-            else:
-                percentage = 0.0
-            getinput.show(f"({count}; {percentage:.03}%) {art.name}")
-            result = models.fill_data.fill_data_from_paper(
-                art, level=level, only_fill_cache=True
-            )
-            try:
-                models.fill_data.fill_data_from_paper(
-                    art, level=level, ask_before_opening=ask_before_opening
-                )
-            except getinput.StopException:
-                continue
-            if result:
-                done += 1
-
-
-@command
-def fill_data_for_names() -> None:
-    taxon = Taxon.getter(None).get_one("taxon> ")
-    if taxon is None:
-        return
-    level = getinput.get_enum_member(FillDataLevel, "level> ")
-    taxon.fill_data_for_names(level=level)
-
-
-@command
-def fill_data_reverse_order(
-    level: FillDataLevel = FillDataLevel.max_level(),
-    ask_before_opening: bool = True,
-    max_count: Optional[int] = 500,
-    include_lint: bool = True,
-) -> None:
-    done = 0
-    for i, art in enumerate(Article.select_valid().order_by(Article.id.desc())):
-        if max_count is not None and i > max_count:
-            return
-        if i > 0:
-            percentage = (done / i) * 100
-        else:
-            percentage = 0.0
-        getinput.show(f"({i}; {percentage:.03}%) {art.name}")
-        result = models.fill_data.fill_data_from_paper(
-            art, level=level, only_fill_cache=True
-        )
-        try:
-            models.fill_data.fill_data_from_paper(
-                art, level=level, ask_before_opening=ask_before_opening
-            )
-        except getinput.StopException:
-            continue
-        if include_lint:
-            for nam in art.new_names:
-                if nam.is_lint_clean():
-                    continue
-                nam.display()
-                while not nam.is_lint_clean():
-                    nam.edit()
-        if result:
-            done += 1
-
-
-@command
 def fill_citation_group_for_type(
     article_type: constants.ArticleType, field: str, dry_run: bool = False
 ) -> None:
@@ -1943,58 +1801,6 @@ def most_common_citation_groups_after(year: int) -> Dict[CitationGroup, int]:
     return Counter(nam.citation_group for nam in nams)
 
 
-@command
-def fill_data_from_folder(
-    folder: Optional[str] = None,
-    level: FillDataLevel = DEFAULT_LEVEL,
-    only_fill_cache: bool = False,
-    ask_before_opening: bool = True,
-    skip_nofile: bool = True,
-) -> None:
-    if folder is None:
-        folder = Article.getter("path").get_one_key() or ""
-    arts = Article.bfind(Article.path.startswith(folder), quiet=True)
-    models.fill_data.fill_data_from_articles(
-        sorted(arts, key=lambda art: art.path),
-        level=level,
-        only_fill_cache=only_fill_cache,
-        ask_before_opening=ask_before_opening,
-        skip_nofile=skip_nofile,
-    )
-
-
-@command
-def fill_data_from_citation_group(
-    cg: Optional[CitationGroup] = None,
-    level: FillDataLevel = DEFAULT_LEVEL,
-    only_fill_cache: bool = False,
-    ask_before_opening: bool = True,
-    skip_nofile: bool = True,
-) -> None:
-    if cg is None:
-        cg = CitationGroup.getter("name").get_one()
-    if cg is None:
-        return
-
-    def sort_key(art: Article) -> Tuple[int, int, int]:
-        year = art.numeric_year()
-        try:
-            volume = int(art.volume)
-        except (TypeError, ValueError):
-            volume = 0
-        start_page = art.numeric_start_page()
-        return (year, volume, start_page)
-
-    arts = sorted(cg.get_articles(), key=sort_key)
-    models.fill_data.fill_data_from_articles(
-        arts,
-        level=level,
-        only_fill_cache=only_fill_cache,
-        ask_before_opening=ask_before_opening,
-        skip_nofile=skip_nofile,
-    )
-
-
 @generator_command
 def check_expected_base_name() -> Iterable[Taxon]:
     """Finds cases where a Taxon's base name is not the oldest available name."""
@@ -2586,19 +2392,6 @@ def print_parent() -> Optional[Taxon]:
 
 
 @command
-def edit_names_interactive(
-    art: Optional[Article] = None, field: str = "corrected_original_name"
-) -> None:
-    if art is None:
-        art = Article.getter("name").get_one()
-        if art is None:
-            return
-    art.display_names()
-    models.fill_data.edit_names_interactive(art, field=field)
-    fill_data_from_paper(art)
-
-
-@command
 def occ(
     t: Optional[Taxon] = None,
     loc: Optional[models.Location] = None,
@@ -2702,7 +2495,6 @@ def warm_all_caches() -> None:
             if isinstance(field, peewee.CharField) or getter._cache_key() in keys:
                 print(f"{model}: warming {name} ({field})")
                 getter.rewarm_cache()
-    fill_data_from_folder("", only_fill_cache=True)
     write_derived_data()
 
 
@@ -2792,6 +2584,9 @@ def most_common_authors_without_verbatim_citation(
 def run_shell() -> None:
     # GC does bad things on my current setup for some reason
     gc.disable()
+    for cs in COMMAND_SETS:
+        for cmd in cs.commands:
+            command(cmd)
     config = Config()
     config.InteractiveShell.confirm_exit = False
     config.TerminalIPythonApp.display_banner = False

@@ -1210,6 +1210,7 @@ class Taxon(BaseModel):
 
     def fill_data_for_names(
         self,
+        *,
         only_with_original: bool = True,
         min_year: Optional[int] = None,
         age: Optional[AgeClass] = None,
@@ -1225,7 +1226,6 @@ class Taxon(BaseModel):
         fill_data_for_names(
             all_names,
             min_year=min_year,
-            age=age,
             field=field,
             level=level,
             ask_before_opening=ask_before_opening,
