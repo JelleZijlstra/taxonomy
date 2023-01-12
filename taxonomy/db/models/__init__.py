@@ -5,7 +5,6 @@ Definitions of various models.
 """
 from .base import BaseModel as BaseModel, database as database  # noqa: F401
 from .article import Article as Article, ArticleComment as ArticleComment  # noqa: F401
-from . import citations as citations  # noqa: F401
 from .collection import Collection as Collection  # noqa: F401
 from .location import Location as Location  # noqa: F401
 from .citation_group import (  # noqa: F401

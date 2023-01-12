@@ -29,20 +29,20 @@ from typing import (
     cast,
 )
 
-from .base import (
+from ..base import (
     ADTField,
     BaseModel,
     EnumField,
     get_completer,
     get_tag_based_derived_field,
 )
-from ..constants import ArticleCommentKind, ArticleKind, ArticleType, SourceLanguage
-from ..helpers import to_int, clean_string, clean_strings_recursively
-from .. import models
-from ... import config, events, adt, getinput, parsing
+from ...constants import ArticleCommentKind, ArticleKind, ArticleType, SourceLanguage
+from ...helpers import to_int, clean_string, clean_strings_recursively
+from ... import models
+from .... import config, events, adt, getinput, parsing
 
-from .citation_group import CitationGroup
-from .person import AuthorTag, Person, PersonLevel, get_new_authors_list
+from ..citation_group import CitationGroup
+from ..person import AuthorTag, Person, PersonLevel, get_new_authors_list
 
 T = TypeVar("T", bound="Article")
 

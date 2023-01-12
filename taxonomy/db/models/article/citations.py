@@ -4,7 +4,7 @@ import re
 from typing import Dict, List, Optional
 
 from .article import Article, ArticleTag, register_cite_function
-from ..constants import ArticleType
+from ...constants import ArticleType
 
 
 def wikify(s: str) -> str:
