@@ -606,3 +606,10 @@ def to_int(string: Optional[str]) -> int:
 def print_character_names(string: str) -> None:
     for i, c in enumerate(string):
         print(f"{i} {c} – {unicodedata.name(c)}")
+
+
+def trimdoi(doi: str) -> str:
+    """Cleans up a DOI."""
+    doi = doi.strip()
+    doi = re.sub(r"[\.;\(]$|^:|^doi:|^http:\/\/dx\.doi\.org\/", "", doi)
+    return doi.strip()

@@ -1,4 +1,4 @@
-from .helpers import romanize_russian
+from .helpers import romanize_russian, trimdoi
 
 
 def assert_romanizes(cyrillic: str, latin: str) -> None:
@@ -91,3 +91,8 @@ def test_romanize_russian() -> None:
     assert_romanizes("Брянск", "Bryansk")
     assert_romanizes("Вяртсиля", "Vyartsilya")
     assert_romanizes("Ташчишма", "Tashchishma")
+
+
+def test_trimdoi() -> None:
+    assert trimdoi("10.1234/452. ") == "10.1234/452"
+    assert trimdoi(" doi:10.1234/567 ") == "10.1234/567"
