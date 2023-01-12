@@ -606,17 +606,3 @@ def to_int(string: Optional[str]) -> int:
 def print_character_names(string: str) -> None:
     for i, c in enumerate(string):
         print(f"{i} {c} – {unicodedata.name(c)}")
-
-
-def _match_to_md_ref(match: re.Match[str]) -> str:
-    ref = match.group(1)
-    try:
-        art = Article.select().filter(Article.name == ref).get()
-    except Article.DoesNotExist:
-        return match.group()
-
-
-@lru_cache(8192)
-def parse_refs_into_markdown(text: str) -> str:
-    """Turn '{x.pdf}' into '[A & B (2016](/a/123)'."""
-    return re.sub(r"\{([^}]+)\}", _match_to_md_ref, text)

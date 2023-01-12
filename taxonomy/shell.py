@@ -2775,7 +2775,7 @@ def cg_recent_report(
 def most_common_authors_without_verbatim_citation(
     print_n: int = 20,
 ) -> dict[Person, int]:
-    data = Counter()
+    data: Counter[int] = Counter()
     for nam in getinput.print_every_n(
         Name.select_valid().filter(
             Name.verbatim_citation == None, Name.original_citation == None

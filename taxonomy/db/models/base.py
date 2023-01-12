@@ -14,6 +14,7 @@ from typing import (
     Container,
     Dict,
     Generic,
+    IO,
     Iterable,
     List,
     Optional,
@@ -46,6 +47,7 @@ from .. import derived_data, helpers
 settings = config.get_options()
 
 _log_path = settings.new_path / "log" / "queries.txt"
+_log_f: IO[str] | None
 if _log_path.exists():
     _log_f = open(_log_path, "a", encoding="utf-8")
 else:
