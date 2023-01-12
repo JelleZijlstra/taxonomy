@@ -516,6 +516,7 @@ class Name(BaseModel):
             "add_syn": self._add_syn_callback,
             "make_variant": self.make_variant,
             "add_variant": self.add_variant,
+            "add_nomen_nudum": lambda: self.add_nomen_nudum(interactive=True),
             "preoccupied_by": self.preoccupied_by,
             "display_type_locality": lambda: self.type_locality.display(),
             "fill_required_fields": lambda: self.fill_required_fields(
@@ -793,8 +794,18 @@ class Name(BaseModel):
     ) -> "Taxon":
         return self.taxon.add_static(rank, name, age=age, **kwargs)
 
-    def add_nomen_nudum(self) -> "Name":
+    def add_nomen_nudum(self, interactive: bool = True) -> "Name":
         """Adds a nomen nudum similar to this name."""
+        if interactive:
+            paper = self.get_value_for_foreign_class("paper", Article)
+            if paper is not None:
+                return self.taxon.syn_from_paper(
+                    paper=paper,
+                    root_name=self.root_name,
+                    original_name=self.original_name,
+                    author_tags=self.author_tags,
+                    nomenclature_status=NomenclatureStatus.nomen_nudum,
+                )
         return self.taxon.add_syn(
             root_name=self.root_name,
             original_name=self.original_name,

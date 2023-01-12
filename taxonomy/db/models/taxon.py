@@ -41,7 +41,7 @@ from .base import BaseModel, EnumField
 from .article import Article, ArticleTag
 
 
-DEFAULT_LEVEL = FillDataLevel.needs_basic_data
+DEFAULT_LEVEL = FillDataLevel.missing_required_fields
 
 
 class _OccurrenceGetter(object):
@@ -750,7 +750,8 @@ class Taxon(BaseModel):
             kwargs["group"] = group
         result.s(**kwargs)
         if interactive:
-            result.fill_required_fields()
+            if not result.fill_required_fields():
+                result.edit()
         return result
 
     def from_paper(
@@ -798,7 +799,8 @@ class Taxon(BaseModel):
             age=age,
         )
         result.base_name.s(**override_kwargs)
-        result.base_name.fill_required_fields()
+        if not result.base_name.fill_required_fields():
+            result.base_name.edit()
         return result
 
     def add_nominate(self) -> "Taxon":

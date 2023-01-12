@@ -252,7 +252,7 @@ class BaseModel(Model):
             yield f"{self.id} ({type(self).__name__}): cannot repr() due to {e!r}"
         for field in self.fields():
             try:
-                repr(getattr(self, field))
+                getattr(self, field)
             except Exception as e:
                 yield f"{self.id} ({type(self).__name__}): cannot get field {field} due to {e!r}"
 

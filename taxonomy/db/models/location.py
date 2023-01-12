@@ -302,7 +302,7 @@ class Location(BaseModel):
             loc.maybe_autodelete(dry_run=dry_run)
 
     def maybe_autodelete(self, dry_run: bool = True) -> None:
-        if self.status is LocationStatus.alias or not self.is_empty():
+        if self.deleted is LocationStatus.alias or not self.is_empty():
             return
         print(f"Autodeleting {self!r}")
         if not dry_run:

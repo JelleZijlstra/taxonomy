@@ -73,7 +73,6 @@ from .db.models import (
     Name,
     Period,
     Person,
-    NameTag,
     Taxon,
     TypeTag,
     database,
@@ -1391,7 +1390,7 @@ def fill_citation_groups(
     interactive: bool = True,
     only_with_hints: bool = False,
     skip_inference: bool = False,
-    show_hints: bool = True,
+    show_hints: bool = False,
 ) -> None:
     book_cg = CitationGroup.get(CitationGroup.name == "book")
     if book:
@@ -2747,7 +2746,7 @@ def _sort_key(volume_or_issue: Optional[str]) -> tuple[object, ...]:
 
 
 @command
-def cg_report(
+def cg_recent_report(
     cg: Optional[CitationGroup] = None, min_year: Optional[int] = None
 ) -> None:
     if cg is None:
@@ -2770,6 +2769,24 @@ def cg_report(
                 volume_data[issue], key=lambda art: art.numeric_start_page()
             ):
                 print(f"         {art!r}")
+
+
+@command
+def most_common_authors_without_verbatim_citation(
+    print_n: int = 20,
+) -> dict[Person, int]:
+    data = Counter()
+    for nam in getinput.print_every_n(
+        Name.select_valid().filter(
+            Name.verbatim_citation == None, Name.original_citation == None
+        ),
+        label="names",
+    ):
+        for author in nam.get_authors():
+            data[author] += 1
+    for author, count in data.most_common(print_n):
+        print(count, author)
+    return data
 
 
 def run_shell() -> None:
