@@ -449,6 +449,12 @@ class Article(BaseModel):
     def isredirect(self) -> bool:
         return self.kind == ArticleKind.redirect
 
+    def is_in_press(self) -> bool:
+        return self.start_page == "in press"
+
+    def is_full_issue(self) -> bool:
+        return any(self.get_tags(self.tags, ArticleTag.FullIssue))
+
     def numeric_year(self) -> int:
         return to_int(self.year)
 

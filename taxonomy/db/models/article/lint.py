@@ -7,6 +7,7 @@ from collections.abc import Iterable, Callable
 import re
 import urllib.parse
 from typing import Any
+import unicodedata
 from .article import Article, ArticleTag
 from .name_parser import get_name_parser
 from ..citation_group import CitationGroup
@@ -15,7 +16,12 @@ from ...constants import ArticleKind, ArticleType
 Linter = Callable[[Article, bool], Iterable[str]]
 
 
-def check_name_parser(art: Article, autofix: bool = True) -> Iterable[str]:
+def check_name(art: Article, autofix: bool = True) -> Iterable[str]:
+    # Names are restricted to printable ASCII because a long time ago I stored
+    # files on a file system that didn't handle non-ASCII properly. It's probably
+    # safe to lift this restriction by now though.
+    if not re.fullmatch(r"^[ -~]+$", art.name):
+        yield f"{art}: name contains invalid characters"
     parser = get_name_parser(art.name)
     if parser.errorOccurred():
         parser.printErrors()
@@ -269,6 +275,63 @@ def check_citation_group(art: Article, autofix: bool = True) -> Iterable[str]:
         yield f"{art}: should not have a citation group (type {art.type!r})"
 
 
+def _clean_string_field(value: str) -> str:
+    value = unicodedata.normalize("NFC", value)
+    value = re.sub(r"([`’‘]|&apos;)", "'", value)
+    value = re.sub(r"[“”]", '"', value)
+    value = value.replace("&amp;", "&")
+    return re.sub(r"\s+", " ", value)
+
+
+def check_string_fields(art: Article, autofix: bool = True) -> Iterable[str]:
+    for field in art.fields():
+        value = getattr(art, field)
+        if not isinstance(value, str):
+            continue
+        cleaned = _clean_string_field(value)
+        yield from _maybe_clean(art, field, cleaned, autofix)
+        if "??" in value:
+            yield f"{art}: double question mark in field {field}: {value!r}"
+
+
+def check_required_fields(art: Article, autofix: bool = True) -> Iterable[str]:
+    if art.title is None and not art.is_full_issue():
+        yield f"{art}: missing title"
+    if (
+        not art.author_tags
+        and art.type is not ArticleType.SUPPLEMENT
+        and not art.is_full_issue()
+        # TODO these should also have authors
+        and art.kind is not ArticleKind.no_copy
+    ):
+        yield f"{art}: missing author_tags"
+
+
+def check_journal(art: Article, autofix: bool = True) -> Iterable[str]:
+    if art.type is not ArticleType.JOURNAL:
+        return
+    if art.volume is not None:
+        if "/" in art.volume:
+            yield f"{art}: slash in volume"
+        if ":" in art.volume:
+            yield f"{art}: colon in volume"
+        volume = art.volume.replace("-", "–")
+        yield from _maybe_clean(art, "volume", volume, autofix)
+    else:
+        if not art.is_in_press():
+            yield f"{art}: missing volume"
+    if art.issue is not None:
+        if "/" in art.issue:
+            yield f"{art}: slash in issue: {art.issue!r}"
+        issue = re.sub(r"[-_]", "–", art.issue)
+        issue = re.sub(r"^(\d+)/(\d+)$", r"\1–\2", issue)
+        yield from _maybe_clean(art, "issue", issue, autofix)
+    if art.start_page is None and not art.is_full_issue():
+        yield f"{art}: missing start page"
+    if art.is_in_press() and art.end_page is not None:
+        yield f"{art}: in press article has end_page"
+
+
 def _maybe_clean(
     art: Article, field: str, cleaned: Any, autofix: bool
 ) -> Iterable[str]:
@@ -283,11 +346,14 @@ def _maybe_clean(
 
 
 LINTERS: list[Linter] = [
-    check_name_parser,
+    check_name,
     check_path,
     check_type_and_kind,
     check_year,
     clean_up_url,
     check_title,
     journal_specific_cleanup,
+    check_string_fields,
+    check_required_fields,
+    check_journal,
 ]
