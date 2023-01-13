@@ -8,10 +8,11 @@ from functools import lru_cache
 import re
 import requests
 from typing import Any, Sequence
+import urllib.parse
 
 from .article import Article
 from ...constants import ArticleType
-from ...helpers import clean_string
+from ...helpers import clean_string, trimdoi
 from .... import config, parsing
 
 _options = config.get_options()
@@ -120,6 +121,43 @@ def expand_doi(doi: str) -> RawData:
     return data
 
 
+def extract_doi(art: Article) -> str | None:
+    pdfcontent = art.getpdfcontent()
+    matches = re.findall(
+        r"(doi|DOI)\s*(\/((full|abs|pdf)\/)?|:|\.org\/)?\s*(?!URL:)([^\s]*?)(,?\s|â|$)",
+        pdfcontent,
+        re.DOTALL,
+    )
+    if not matches:
+        return None
+    print("Detected possible DOI.")
+    # reverse the list because some chapters first put the book DOI and then the chapter DOI
+    for match in reversed(matches):
+        doi = trimdoi(match[4])
+        # PNAS tends to return this
+        if re.search(r"^10.\d{4}\/?$", doi):
+            doi = re.sub(r".*?10\.(\d{4})\/? ([^\s]+).*", r"10.\1/\2", pdfcontent)
+        # Elsevier accepted manuscripts
+        if doi in ("Reference:", "Accepted Manuscript"):
+            match = re.search(r"Accepted date: [^\s]+ ([^\s]+)", pdfcontent, re.DOTALL)
+            if match:
+                doi = match.group(1)
+            else:
+                print("Could not find DOI")
+                return None
+        # get rid of false positive DOIs containing only letters or numbers, or containing line breaks
+        if doi and not re.search(r"^([a-z\(\)]*|\d*)$", doi) and "\n" not in doi:
+            # remove final period
+            doi = doi.rstrip(".")
+            # get rid of urlencoded stuff
+            doi = urllib.parse.unquote(doi)
+            print("Found DOI: " + doi)
+            return doi
+        else:
+            print(f"Could not find DOI: {doi}.")
+    return None
+
+
 def get_jstor_data(art: Article) -> RawData:
     pdfcontent = art.getpdfcontent()
     if not re.search(
@@ -214,6 +252,42 @@ def get_jstor_data(art: Article) -> RawData:
     data["author_tags"] = fmtauth
     # if it isn't, this code fails miserably anyway
     data["type"] = ArticleType.JOURNAL
+    return data
+
+
+def get_zootaxa_data(art: Article) -> RawData:
+    pdfcontent = art.getpdfcontent()
+    if "ZOOTAXA" not in pdfcontent:
+        return {}
+    print("Detected Zootaxa file")
+    zootaxa_rgx = re.compile(
+        r"""
+            \s*Zootaxa\s+
+            (?P<volume>\d+):\s+(?P<start_page>\d+)[-–](?P<end_page>\d+)\s+\((?P<year>\d+)\)
+            \n.*ISSN\s1175-5334\s\(online\sedition\)\s\s(ZOOTAXA\n\n)?
+            (?P<title>.+)
+            \n(?P<authors>[A-Z][^\n]+[A-Z]\d+)\n
+        """,
+        re.DOTALL | re.VERBOSE,
+    )
+    match = zootaxa_rgx.match(pdfcontent)
+    data: RawData = {}
+    if not match:
+        print("failed to find match")
+        return data
+    data["type"] = ArticleType.JOURNAL
+    data["title"] = match.group("title")
+    data["year"] = match.group("year")
+    data["journal"] = "Zootaxa"
+    data["volume"] = match.group("volume")
+    data["start_page"] = match.group("start_page")
+    data["end_page"] = match.group("end_page")
+    authors_str = re.sub(r"\d+(, ?\d+)*", "", match.group("authors"))
+    authors = []
+    for author in re.split(r", ?|\s?& ?", authors_str):
+        first_names, last_name = author.rsplit(maxsplit=1)
+        authors.append({"family_name": last_name.title(), "given_names": first_names})
+    data["author_tags"] = authors
     return data
 
 
