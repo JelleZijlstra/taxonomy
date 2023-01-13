@@ -175,12 +175,12 @@ def _infer_doi_from_url(url: str) -> str | None:
 def _infer_hdl_from_url(url: str) -> str | None:
     if url.startswith("http://hdl.handle.net/"):
         return url[22:]
-
     if match := re.search(
         r"^http:\/\/(digitallibrary\.amnh\.org\/dspace|deepblue\.lib\.umich\.edu)\/handle\/(.*)$",
         url,
     ):
         return match.group(2)
+    return None
 
 
 # remove final period and curly quotes, italicize cyt b, other stuff

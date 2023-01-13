@@ -853,6 +853,13 @@ class BaseModel(Model):
             callbacks=self.get_adt_callbacks(),
         )
 
+    def edit_until_clean(self, initial_edit: bool = False) -> None:
+        if initial_edit:
+            self.edit()
+        while not self.is_lint_clean():
+            self.display()
+            self.edit()
+
     def get_completers_for_adt_field(self, field: str) -> getinput.CompleterMap:
         return {}
 

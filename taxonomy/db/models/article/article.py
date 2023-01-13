@@ -10,7 +10,6 @@ from peewee import (
     IntegerField,
     TextField,
 )
-import re
 import requests
 import subprocess
 import time
@@ -22,7 +21,6 @@ from typing import (
     List,
     NamedTuple,
     Optional,
-    Sequence,
     Set,
     Tuple,
     Type,
@@ -40,7 +38,7 @@ from ..base import (
 from ...constants import ArticleCommentKind, ArticleKind, ArticleType, SourceLanguage
 from ...helpers import to_int, clean_strings_recursively
 from ... import models
-from .... import config, events, adt, getinput
+from .... import config, events, adt, getinput, uitools
 
 from ..citation_group import CitationGroup
 from ..person import AuthorTag, Person, PersonLevel, get_new_authors_list
@@ -307,6 +305,23 @@ class Article(BaseModel):
     def edit(self) -> None:
         self.fill_field("tags")
 
+    def edittitle(self) -> None:
+        def save_handler(new_title: str, full: bool = True) -> None:
+            self.title = new_title
+            self.lint_wrapper()
+            print("New title: " + self.title)
+            self.edit_until_clean()
+
+        return uitools.edittitle(
+            self.title or "",
+            save_handler=save_handler,
+            callbacks=[
+                uitools.Callback("o", "Open this file", self.openf),
+                uitools.Callback("f", "Edit this file", self.edit),
+            ],
+            get_title=lambda: self.title or "",
+        )
+
     @classmethod
     def bfind(
         cls,
@@ -529,9 +544,6 @@ class Article(BaseModel):
             ["pdftotext", str(self.get_path()), "-", "-l", "1"], stdout=subprocess.PIPE
         ).stdout.decode("utf-8", "replace")
 
-    def get_jstor_data(self) -> Dict[str, Any]:
-        return models.article.add_data.get_jstor_data(self)
-
     # Authors
 
     def get_authors(self) -> List[Person]:
@@ -715,7 +727,7 @@ class Article(BaseModel):
             ):
                 del data[key]
         if set_fields:
-            self.set_multi(data)
+            models.article.add_data.set_multi(self, data, only_new=False)
         return data
 
     def set_multi(self, data: Dict[str, Any]) -> None:
@@ -803,7 +815,7 @@ class Article(BaseModel):
             for author in self.get_authors()
         ):
             return
-        data = self.get_jstor_data()
+        data = models.article.add_data.get_jstor_data(self)
         self._recompute_authors_from_data(data, confirm)
 
     def recompute_authors_from_doi(
@@ -828,8 +840,8 @@ class Article(BaseModel):
         ):
             print(f"Skipping because of length mismatch in {data}")
             return
-        self.set_author_tags_from_raw(
-            data["author_tags"], confirm_creation=confirm, confirm_replacement=confirm
+        models.article.add_data.set_author_tags_from_raw(
+            self, data["author_tags"], only_new=False, interactive=confirm
         )
 
     @classmethod

@@ -5,15 +5,20 @@ Adding data to (usually new) files.
 """
 from bs4 import BeautifulSoup
 from functools import lru_cache
+from pathlib import Path
 import re
 import requests
+import traceback
 from typing import Any, Sequence
 import urllib.parse
 
 from .article import Article
-from ...constants import ArticleType
-from ...helpers import clean_string, trimdoi
-from .... import config, parsing
+from .lint import is_valid_doi
+from ..citation_group import CitationGroup
+from ..person import AuthorTag, Person
+from ...constants import ArticleType, ArticleKind
+from ...helpers import clean_string, trimdoi, clean_strings_recursively
+from .... import config, parsing, getinput, uitools
 
 _options = config.get_options()
 
@@ -156,6 +161,13 @@ def extract_doi(art: Article) -> str | None:
         else:
             print(f"Could not find DOI: {doi}.")
     return None
+
+
+def get_doi_data(art: Article) -> RawData:
+    doi = extract_doi(art)
+    if doi is not None:
+        return expand_doi(doi)
+    return {}
 
 
 def get_jstor_data(art: Article) -> RawData:
@@ -301,3 +313,177 @@ def clean_up_author(family_name: str, names: Sequence[str]) -> dict[str, str]:
 
 def unspace_initials(authority: str) -> str:
     return re.sub(r"([A-Z]\.) (?=[A-Z]\.)", r"\1", authority).strip()
+
+
+_REUSE_NOFILE_EXCLUDED = ("addmonth", "addday", "addyear", "adddate", "name", "path")
+
+
+def reuse_nofile(art: Article) -> bool:
+    while True:
+        nofile = Article.getter(None).get_one("Citation handle to reuse: ")
+        if nofile is None:
+            return False
+        if nofile.isfile():
+            print(f"{nofile} is a file")
+            continue
+        break
+    data = {
+        field: getattr(nofile, field)
+        for field in Article.fields()
+        if field not in _REUSE_NOFILE_EXCLUDED
+    }
+    set_multi(art, data)
+    nofile.merge(art)
+    print("Data copied.")
+    art.edit_until_clean(initial_edit=True)
+    return True
+
+
+def set_multi(art: Article, data: RawData, *, only_new: bool = True) -> None:
+    for attr, value in clean_strings_recursively(data).items():
+        if attr == "author_tags":
+            set_author_tags_from_raw(art, value, only_new=only_new)
+        elif attr == "journal":
+            if art.citation_group is not None and only_new:
+                print(f"{art}: ignoring journal {value}")
+                continue
+            print(f"{art}: set citation group to {value}")
+            art.citation_group = CitationGroup.get_or_create(value)
+        elif attr in Article.fields():
+            current = getattr(art, attr)
+            if current and only_new:
+                print(f"{art}: ignore field {attr} (new: {value}; existing: {current})")
+                continue
+            print(f"{art}: set {attr} to {value}")
+            setattr(art, attr, value)
+    # Somehow this doesn't always autosave
+    art.save()
+
+
+def set_author_tags_from_raw(
+    art: Article, value: Any, *, only_new: bool = True, interactive: bool = False
+) -> None:
+    if art.author_tags and only_new:
+        print(f"{art}: dropping authors {value} (existing: {art.author_tags})")
+        return
+    for params in value:
+        if params["family_name"].isupper():
+            params["family_name"] = params["family_name"].title()
+    new_tags = [
+        AuthorTag.Author(person=Person.get_or_create_unchecked(**params))
+        for params in value
+    ]
+    if art.author_tags is not None:
+        if len(art.author_tags) == len(new_tags):
+            new_tags = [
+                existing if existing.person.is_more_specific_than(new.person) else new
+                for existing, new in zip(art.author_tags, new_tags)
+            ]
+        getinput.print_diff(art.author_tags, new_tags)
+    if interactive:
+        if not getinput.yes_no("Replace authors? "):
+            art.fill_field("author_tags")
+            return
+    art.author_tags = new_tags  # type: ignore
+
+
+def doi_input(art: Article) -> bool:
+    def processcommand(cmd: str) -> tuple[str | None, object]:
+        if cmd in ("o", "r"):
+            return cmd, None
+        try:
+            typ = _string_to_type[cmd]
+        except KeyError:
+            pass
+        else:
+            if typ:
+                return "t", typ
+        cmd = trimdoi(cmd)
+        if is_valid_doi(cmd):
+            return "d", cmd
+        return None, None
+
+    def reuse(cmd: str, data: object) -> bool:
+        return not reuse_nofile(art)
+
+    def set_type(cmd: str, data: object) -> bool:
+        art.type = data  # type: ignore
+        return False
+
+    def set_doi(cmd: str, data: object) -> bool:
+        art.doi = data
+        return not art.expand_doi(set_fields=True)
+
+    def opener(cmd: str, data: object) -> bool:
+        art.openf()
+        return True
+
+    result, _ = uitools.menu(
+        head="If this file has a DOI or AMNH handle, please enter it. Otherwise, enter the type of the file.",
+        helpinfo=(
+            "In addition to the regular commands, the following synonyms are accepted for the several types:\n"
+            + _get_type_synonyms_as_string()
+        ),
+        options={
+            "o": "open the file",
+            "r": "re-use a citation from a NOFILE entry",
+            "p": "print PDF content",
+            # fake commands:
+            # 't': 'set type',
+            # 'd': 'enter doi',
+        },
+        processcommand=processcommand,
+        validfunction=lambda *args: True,
+        process={"o": opener, "r": reuse, "t": set_type, "d": set_doi},
+    )
+    return result in ("r", "h", "d")
+
+
+_string_to_type: dict[str, ArticleType] = {
+    "misc": ArticleType.MISCELLANEOUS,
+    **{t.name[0].lower(): t for t in ArticleType},
+    **{t.name.lower(): t for t in ArticleType},
+    **{t.name: t for t in ArticleType},
+}
+
+
+def _get_type_synonyms_as_string() -> str:
+    arr: dict[ArticleType, list[str]] = {}
+    for key, value in _string_to_type.items():
+        if isinstance(key, str):
+            arr.setdefault(value, []).append(key)
+    out = ""
+    for typ, aliases in arr.items():
+        out += f'{typ.name.lower().title()}: {", ".join(aliases)}\n'
+    return out
+
+
+AUTO_ADDERS = [get_jstor_data, get_zootaxa_data, get_doi_data]
+
+
+def add_data_for_new_file(art: Article) -> bool:
+    if art.kind is None:
+        art.fill_field("kind")
+    if art.kind is ArticleKind.redirect:
+        return True
+    successful = False
+    if Path(art.name).suffix in (".pdf", ".PDF"):
+        for adder in AUTO_ADDERS:
+            try:
+                data = adder(art)
+            except Exception:
+                traceback.print_exc()
+                print(f"Failed to automatically extract data using {adder}")
+            else:
+                set_multi(art, data)
+                successful = True
+                break
+    if not successful:
+        successful = doi_input(art)
+    if not successful:
+        successful = art.trymanual()
+    art.lint_wrapper()
+    art.save()
+    getinput.add_to_clipboard(art.name)
+    art.edittitle()
+    return successful
