@@ -823,9 +823,7 @@ class Person(BaseModel):
         kwargs.setdefault("type", PersonType.checked)
         kwargs.setdefault("naming_convention", NamingConvention.unspecified)
         person = cls.create(family_name=family_name, **kwargs)
-        person.edit()
-        while not person.lint_wrapper():
-            person.edit()
+        person.edit_until_clean(initial_edit=True)
         return person
 
     @classmethod
@@ -845,8 +843,7 @@ class Person(BaseModel):
         for field in ("initials", "given_names", "suffix", "tussenvoegsel"):
             kwargs[field] = cls.getter(field).get_one_key(f"{field}> ")
         person = cls.get_or_create_unchecked(family_name, **kwargs)
-        while not person.lint_wrapper():
-            person.edit()
+        person.edit_until_clean()
         return person
 
     @classmethod
@@ -855,8 +852,7 @@ class Person(BaseModel):
         if family_name is None:
             return None
         person = cls.get_or_create_unchecked(family_name)
-        while not person.lint_wrapper():
-            person.edit()
+        person.edit_until_clean()
         return person
 
     @classmethod

@@ -7,7 +7,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TypeVar
 
-Command = Callable[[], object]
+Command = Callable[..., object]
 CommandT = TypeVar("CommandT", bound=Command)
 
 

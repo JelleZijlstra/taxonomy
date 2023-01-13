@@ -11,6 +11,7 @@ from peewee import (
     TextField,
 )
 import requests
+import shutil
 import subprocess
 import time
 from typing import (
@@ -138,6 +139,7 @@ class Article(BaseModel):
     citation_group = ForeignKeyField(CitationGroup, null=True)
 
     folder_tree: ClassVar[FolderTree] = FolderTree()
+    save_event.on(folder_tree.add)
     derived_fields = [
         get_tag_based_derived_field(
             "partially_suppressed_names",
@@ -311,7 +313,7 @@ class Article(BaseModel):
     def edittitle(self) -> None:
         def save_handler(new_title: str, full: bool = True) -> None:
             self.title = new_title
-            self.lint_wrapper()
+            self.format()
             print("New title: " + self.title)
             self.edit_until_clean()
 
@@ -360,6 +362,8 @@ class Article(BaseModel):
             "edittitle": self.edittitle,
             "change_folder": self.change_folder,
             "move": self.move,
+            "add_to_clipboard": self.add_to_clipboard,
+            "removefirstpage": self.removefirstpage,
         }
 
     def modernize_in_press(self) -> None:
@@ -375,6 +379,9 @@ class Article(BaseModel):
         super().full_data()
         if self.kind == ArticleKind.electronic:
             subprocess.call(["ls", "-l", str(self.get_path())])
+
+    def add_to_clipboard(self) -> None:
+        getinput.add_to_clipboard(self.name)
 
     def remove(self, force: bool = False) -> None:
         """Remove a file. If force is True, do not ask for confirmation."""
@@ -444,6 +451,31 @@ class Article(BaseModel):
             self.name = newname
         # make redirect
         self.create_redirect_static(oldname, self)
+
+    def removefirstpage(self) -> bool:
+        temp_path = self.get_path().parent / "tmp.pdf"
+        path = self.get_path()
+        subprocess.check_call(
+            [
+                "gs",
+                "-dBATCH",
+                "-dNOPAUSE",
+                "-q",
+                "-sDEVICE=pdfwrite",
+                "-dFirstPage=2",
+                f"-sOUTPUTFILE={temp_path}",
+                str(path),
+            ]
+        )
+        # open files for review
+        subprocess.check_call(["open", str(temp_path)])
+        self.openf()
+        if getinput.yes_no("Do you want to replace the file?"):
+            shutil.move(str(temp_path), str(path))
+            return True
+        else:
+            os.unlink(temp_path)
+            return False
 
     def get_value_to_show_for_field(self, field: Optional[str]) -> str:
         if field is None:
@@ -685,6 +717,10 @@ class Article(BaseModel):
     def markdown_link(self) -> str:
         cite = self.cite()
         return f"[{cite}](/a/{self.id})"
+
+    def format(self) -> bool:
+        self.specify_authors()
+        return super().format()
 
     def lint(self, autofix: bool = True) -> Iterable[str]:
         try:

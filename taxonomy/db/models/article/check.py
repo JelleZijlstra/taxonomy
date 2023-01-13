@@ -538,3 +538,17 @@ def open_dir() -> None:
     if path:
         full_path = _options.library_path / "/".join(path)
         subprocess.check_call(["open", full_path])
+
+
+@CS.register
+def rename_regex(pattern: str, replacement: str, force: bool = False) -> bool:
+    """Rename all files matching the given regex."""
+    rgx = re.compile(pattern)
+
+    for e in Article.select_valid():
+        if rgx.search(e.name):
+            newTitle = rgx.sub(replacement, e.name)
+            if force or getinput.yes_no(f'Rename "{e.name}" to "{newTitle}"?'):
+                e.move(newTitle)
+
+    return True

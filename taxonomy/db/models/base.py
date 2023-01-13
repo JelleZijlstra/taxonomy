@@ -219,7 +219,7 @@ class BaseModel(Model):
                 bad.append((obj, messages))
         return bad
 
-    def lint_wrapper(self) -> bool:
+    def format(self) -> bool:
         messages = list(self.general_lint())
         if not messages:
             print("Everything clean")
@@ -577,7 +577,8 @@ class BaseModel(Model):
     def get_quick(cls: type[ModelT], data: int) -> ModelT:
         # TODO: This is actually slower, why? It seems to trigger more queries, maybe
         # peewee caches the instance?
-        query, fields = get_query_and_fields(cls)
+        # mypy thinks fields aren't hashable
+        query, fields = get_query_and_fields(cls)  # type: ignore
         cursor = database.execute_sql(query, (data,))
         kwargs = {
             field: value for field, value in zip(fields, cursor.fetchone(), strict=True)
@@ -707,7 +708,7 @@ class BaseModel(Model):
             "full_data": self.full_data,
             "debug": self.debug_data,
             "call": self.call,
-            "lint": self.lint_wrapper,
+            "lint": self.format,
         }
 
     def call(self) -> None:

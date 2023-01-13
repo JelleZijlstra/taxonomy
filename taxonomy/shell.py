@@ -1033,6 +1033,39 @@ def print_percentages() -> None:
 
 
 @command
+def article_stats(includefoldertree: bool = False) -> None:
+    results: Counter[str] = Counter()
+    nredirects = nnonfiles = 0
+    for file in Article.select():
+        if file.isredirect():
+            nredirects += 1
+        else:
+            for prop in file.get_field_names():
+                value = getattr(file, prop)
+                if value:
+                    results[prop] += 1
+                if isinstance(value, dict):
+                    for key, prop in value.items():
+                        if prop:
+                            results[key] += 1
+
+            if file.kind != ArticleKind.electronic:
+                nnonfiles += 1
+
+    total = Article.select().count()
+    print(
+        f"Total number of files is {total}. Of these, {nredirects} are redirects and {nnonfiles} are not actual files."
+    )
+    total -= nredirects
+    for field, number in results.most_common():
+        pct = number / total * 100
+        print(f"{field}: {number} of {total} ({pct:.02f}%)")
+
+    if includefoldertree:
+        Article.get_foldertree().count_tree.display()
+
+
+@command
 def autoset_original_name() -> None:
     for nam in Name.select_valid().filter(
         Name.original_name >> None, Name.group << (Group.genus, Group.high)

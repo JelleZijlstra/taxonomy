@@ -492,6 +492,21 @@ def citejvp(article: Article) -> str:
     return out
 
 
+def getrefname(art: Article) -> str:
+    # generate refname, which should usually be unique with this method
+    authors = art.get_authors()
+    if authors:
+        author = authors[0].family_name
+    else:
+        author = ""
+    refname = author + art.year + art.volume + art.start_page
+    if refname == "":
+        refname = art.title
+    if refname.isnumeric():
+        refname = "ref" + refname
+    return refname.replace("'", "")
+
+
 @register_cite_function("bibtex")
 def citebibtex(article: Article) -> str:
     out = "@"
@@ -520,7 +535,7 @@ def citebibtex(article: Article) -> str:
             out += "misc"
     else:
         out += "misc"
-    out += "{" + article.getrefname() + ",\n"
+    out += "{" + getrefname(article) + ",\n"
     authors = format_authors(article, spaceInitials=True, separator=" and")
     # stuff that goes in every citation type
     add("author", authors, True)
@@ -708,3 +723,34 @@ def citewp(article: Article, *, commons: bool = False) -> str:
     # final cleanup
     out = re.sub(r"\s+", " ", re.sub(r"(?<!\.)\.\.(?!\.)", ".", wikify(out)))
     return f"{sfn + out1}\n{out}" if out1 else out
+
+
+def getsfn(art: Article) -> str:
+    sfn = "{{Sfn|"
+    auts = art.get_authors()
+    for aut in auts[:4]:
+        sfn += aut.family_name + "|"
+    sfn += art.year + "}}"
+    return sfn
+
+
+def getharvard(art: Article, mode: str = "normal") -> str:
+    # get a Harvard citation
+    # TODO: implement getting both Zijlstra et al. (2010) and (Zijlstra et al., 2010)
+    authors = art.get_authors()
+    out = ""
+    num_authors = len(authors)
+    if num_authors == 0:
+        return ""  # incomplete info
+    elif num_authors == 1:
+        out += authors[0].family_name
+    elif num_authors == 2:
+        out += authors[0].family_name + " and " + authors[1].family_name
+    else:
+        out += authors[0].family_name
+        if mode == "jpal":
+            out += " <i>et al.</i>"
+        else:
+            out += " et al."
+    out += " (" + art.year + ")"
+    return out

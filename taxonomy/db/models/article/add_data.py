@@ -482,7 +482,7 @@ def add_data_for_new_file(art: Article) -> None:
         successful = doi_input(art)
     if not successful:
         art.trymanual()
-    art.lint_wrapper()
+    art.format()
     art.save()
     getinput.add_to_clipboard(art.name)
     art.edittitle()
