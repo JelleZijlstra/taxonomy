@@ -461,11 +461,11 @@ def _get_type_synonyms_as_string() -> str:
 AUTO_ADDERS = [get_jstor_data, get_zootaxa_data, get_doi_data]
 
 
-def add_data_for_new_file(art: Article) -> bool:
+def add_data_for_new_file(art: Article) -> None:
     if art.kind is None:
         art.fill_field("kind")
     if art.kind is ArticleKind.redirect:
-        return True
+        return
     successful = False
     if Path(art.name).suffix in (".pdf", ".PDF"):
         for adder in AUTO_ADDERS:
@@ -481,9 +481,9 @@ def add_data_for_new_file(art: Article) -> bool:
     if not successful:
         successful = doi_input(art)
     if not successful:
-        successful = art.trymanual()
+        art.trymanual()
     art.lint_wrapper()
     art.save()
     getinput.add_to_clipboard(art.name)
     art.edittitle()
-    return successful
+    print("Added to catalog!")

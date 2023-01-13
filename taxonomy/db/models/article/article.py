@@ -353,6 +353,8 @@ class Article(BaseModel):
             "open_url": self.openurl,
             "remove": self.remove,
             "merge": self.merge,
+            "add_child": self.add_child,
+            "edittitle": self.edittitle,
         }
 
     def modernize_in_press(self) -> None:
@@ -903,6 +905,75 @@ class Article(BaseModel):
 
     def __repr__(self) -> str:
         return f"{{{self.name}: {self.cite()}}}"
+
+    def add_child(self) -> "Article | None":
+        return self.create_interactively(
+            kind=ArticleKind.part, type=ArticleType.CHAPTER, parent=self
+        )
+
+    @classmethod
+    def has(cls, file: str) -> bool:
+        """Returns whether an entry of this name exists."""
+        return cls.select().filter(name=file).count() > 0
+
+    @classmethod
+    def create_interactively(
+        cls, name: str | None = None, **kwargs: Any
+    ) -> "Article | None":
+        if name is None:
+            name = cls.getter("name").get_one_key("name> ")
+        if name is None:
+            return None
+
+        article = cls.create_nofile_static(name, **kwargs)
+        if article is None:
+            return None
+        models.article.add_data.add_data_for_new_file(article)
+        return article
+
+    @classmethod
+    def create_redirect(
+        cls, name: str | None = None, target: "Article | None" = None
+    ) -> "Article | None":
+        if name is None:
+            name = cls.getter("name").get_one_key("name> ")
+        if name is None:
+            return None
+        if cls.has(name):
+            print(f"{name} already exists")
+            return None
+        if target is None:
+            target = cls.getter("name").get_one("redirect target> ")
+        if target is None:
+            return None
+        return cls.create_redirect_static(name, target)
+
+    @classmethod
+    def create_redirect_static(cls, name: str, target: "Article") -> "Article":
+        return cls.make(
+            name, kind=ArticleKind.redirect, type=ArticleType.REDIRECT, parent=target
+        )
+
+    @classmethod
+    def create_nofile_static(cls, name: str, **kwargs: Any) -> "Article | None":
+        if cls.has(name):
+            print(f"{name} already exists")
+            return None
+        if Path(name).suffix:
+            print(f"{name}: NOFILE path may not have a suffix")
+            return None
+        return cls.make(name, kind=ArticleKind.no_copy, **kwargs)
+
+    @classmethod
+    def make(cls, name: str, **values: Any) -> "Article":
+        dt = datetime.datetime.now()
+        return cls.create(
+            name=name,
+            addmonth=str(dt.month),
+            addday=str(dt.day),
+            addyear=str(dt.year),
+            **values,
+        )
 
 
 class ArticleComment(BaseModel):
