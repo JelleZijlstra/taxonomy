@@ -646,108 +646,11 @@ class Article(BaseModel):
             return []
         return [author.person for author in self.author_tags]
 
-    def getAuthors(
-        self,
-        separator: str = ";",  # Text between two authors
-        lastSeparator: Optional[str] = None,  # Text between last two authors
-        separatorWithTwoAuthors: Optional[
-            str
-        ] = None,  # Text between authors if there are only two
-        capitalizeNames: bool = False,  # Whether to capitalize names
-        spaceInitials: bool = False,  # Whether to space initials
-        initialsBeforeName: bool = False,  # Whether to place initials before the surname
-        firstInitialsBeforeName: bool = False,  # Whether to place the first author's initials before their surname
-        includeInitials: bool = True,  # Whether to include initials
-    ) -> str:
-        if lastSeparator is None:
-            lastSeparator = separator
-        if separatorWithTwoAuthors is None:
-            separatorWithTwoAuthors = lastSeparator
-        array = self.get_authors()
-        out = ""
-        num_authors = len(array)
-        for i, author in enumerate(array):
-            # Separators
-            if i > 0:
-                if i < num_authors - 1:
-                    out += f"{separator} "
-                elif i == 1:
-                    out += f"{separatorWithTwoAuthors} "
-                else:
-                    out += f"{lastSeparator} "
-
-            # Process author
-            if capitalizeNames:
-                family_name = author.family_name.upper()
-            else:
-                family_name = author.family_name
-            initials = author.get_initials()
-
-            if spaceInitials and initials:
-                initials = re.sub(r"\.(?![- ]|$)", ". ", initials)
-
-            if initials and includeInitials:
-                if firstInitialsBeforeName if i == 0 else initialsBeforeName:
-                    author_str = f"{initials} {family_name}"
-                else:
-                    author_str = f"{family_name}, {initials}"
-                if author.suffix:
-                    author_str += ", " + author.suffix
-            else:
-                author_str = family_name
-            out += author_str
-        return out
-
-    @staticmethod
-    def explode_authors(input: str) -> List[Sequence[str]]:
-        authors = input.split("; ")
-
-        def map_fn(author: str) -> Sequence[str]:
-            arr = author.split(", ")
-            if len(arr) > 1:
-                return arr
-            else:
-                return (author, "")
-
-        return [map_fn(author) for author in authors]
-
     def reverse_authors(self) -> None:
         authors = self.get_authors()
         self.author_tags = [
             AuthorTag.Author(person=person) for person in reversed(authors)  # type: ignore
         ]
-
-    def countAuthors(self) -> int:
-        return len(self.get_authors())
-
-    def getPaleoBioDBAuthors(self) -> Dict[str, str]:
-        authors = self.get_authors()
-
-        def author_fn(author: Person) -> Tuple[str, str]:
-            name = author.family_name
-            if author.suffix:
-                name += ", " + author.suffix
-            return (author.get_initials() or "", name)
-
-        author_pairs = [author_fn(author) for author in authors]
-        output = {
-            "author1init": "",
-            "author1last": "",
-            "author2init": "",
-            "author2last": "",
-            "otherauthors": "",
-        }
-        if len(authors) > 0:
-            output["author1init"] = author_pairs[0][0]
-            output["author1last"] = author_pairs[0][1]
-        if len(authors) > 1:
-            output["author2init"] = author_pairs[1][0]
-            output["author2last"] = author_pairs[1][1]
-        if len(authors) > 2:
-            output["otherauthors"] = ", ".join(
-                " ".join(author) for author in author_pairs[2:]
-            )
-        return output
 
     def taxonomicAuthority(self) -> Tuple[str, str]:
         return (Person.join_authors(self.get_authors()), self.year)

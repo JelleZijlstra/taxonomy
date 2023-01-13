@@ -29,6 +29,59 @@ def page_range(article: Article) -> str:
         return ""
 
 
+def format_authors(
+    art: Article,
+    separator: str = ";",  # Text between two authors
+    lastSeparator: Optional[str] = None,  # Text between last two authors
+    separatorWithTwoAuthors: Optional[
+        str
+    ] = None,  # Text between authors if there are only two
+    capitalizeNames: bool = False,  # Whether to capitalize names
+    spaceInitials: bool = False,  # Whether to space initials
+    initialsBeforeName: bool = False,  # Whether to place initials before the surname
+    firstInitialsBeforeName: bool = False,  # Whether to place the first author's initials before their surname
+    includeInitials: bool = True,  # Whether to include initials
+) -> str:
+    if lastSeparator is None:
+        lastSeparator = separator
+    if separatorWithTwoAuthors is None:
+        separatorWithTwoAuthors = lastSeparator
+    array = art.get_authors()
+    out = ""
+    num_authors = len(array)
+    for i, author in enumerate(array):
+        # Separators
+        if i > 0:
+            if i < num_authors - 1:
+                out += f"{separator} "
+            elif i == 1:
+                out += f"{separatorWithTwoAuthors} "
+            else:
+                out += f"{lastSeparator} "
+
+        # Process author
+        if capitalizeNames:
+            family_name = author.family_name.upper()
+        else:
+            family_name = author.family_name
+        initials = author.get_initials()
+
+        if spaceInitials and initials:
+            initials = re.sub(r"\.(?![- ]|$)", ". ", initials)
+
+        if initials and includeInitials:
+            if firstInitialsBeforeName if i == 0 else initialsBeforeName:
+                author_str = f"{initials} {family_name}"
+            else:
+                author_str = f"{family_name}, {initials}"
+            if author.suffix:
+                author_str += ", " + author.suffix
+        else:
+            author_str = family_name
+        out += author_str
+    return out
+
+
 @register_cite_function("paper")
 def citepaper(article: Article) -> str:
     # like citenormal(), but without WP style links and things
@@ -49,7 +102,7 @@ def _citenormal(article: Article, *, mw: bool) -> str:
     else:
         out = ""
     # replace last ; with ", and"; others with ","
-    out += article.getAuthors(separator=",", lastSeparator=" and")
+    out += format_authors(article, separator=",", lastSeparator=" and")
     out += f". {article.year}. "
     if mw:
         url = article.geturl()
@@ -82,7 +135,7 @@ def _citenormal(article: Article, *, mw: bool) -> str:
             out += " in Unknown"
         else:
             out += " in "
-            out += enclosing.getAuthors(separator=",", lastSeparator=" and")
+            out += format_authors(enclosing, separator=",", lastSeparator=" and")
             out += " (eds.). "
             out += f"{enclosing.title}. {enclosing.publisher}"
             if enclosing.pages:
@@ -106,7 +159,9 @@ def _citenormal(article: Article, *, mw: bool) -> str:
 
 @register_cite_function("lemurnews")
 def citelemurnews(article: Article) -> str:
-    authors = article.getAuthors()
+    authors = format_authors(
+        article,
+    )
     if article.type == ArticleType.JOURNAL:
         cg = article.citation_group.name if article.citation_group else ""
         out = f"{authors}. {article.year}. {article.title}. {cg} {article.volume}: {article.start_page}–{article.end_page}."
@@ -146,7 +201,7 @@ def citebzn(article: Article) -> str:
     # cites according to BZN citation style
     # replace last ; with " &"; others with ","
     out = "<b>"
-    out += article.getAuthors(separator=",", lastSeparator=" &")
+    out += format_authors(article, separator=",", lastSeparator=" &")
     out += "</b> " + article.year + ". "
     if article.type == ArticleType.JOURNAL:
         out += article.title
@@ -163,7 +218,9 @@ def citebzn(article: Article) -> str:
         enclosing = article.getEnclosing()
         if enclosing is not None:
             out += " <i>in</i> "
-            out += enclosing.getAuthors().replace("(Ed", "(ed")
+            out += format_authors(
+                enclosing,
+            ).replace("(Ed", "(ed")
             out += ", <i>" + enclosing.title + "</i>. "
             out += enclosing.pages + " pp. " + enclosing.publisher
             if enclosing.place_of_publication:
@@ -184,7 +241,7 @@ def citebzn(article: Article) -> str:
 
 @register_cite_function("jhe")
 def citejhe(article: Article) -> str:
-    out = article.getAuthors(separator=",")
+    out = format_authors(article, separator=",")
     out += ", " + article.year + ". "
     out += article.title + ". "
     if article.type == ArticleType.JOURNAL:
@@ -199,7 +256,7 @@ def citejhe(article: Article) -> str:
         enclosing = article.getEnclosing()
         if enclosing is not None:
             out += "In: "
-            out += enclosing.getAuthors(separator=",")
+            out += format_authors(enclosing, separator=",")
             out += " (Eds.), "
             out += (
                 enclosing.title
@@ -229,8 +286,12 @@ def citepalaeontology(article: Article) -> str:
     # this is going to be the citation
     out = ""
 
-    out += article.getAuthors(
-        capitalizeNames=True, spaceInitials=True, separator=", ", lastSeparator=" and"
+    out += format_authors(
+        article,
+        capitalizeNames=True,
+        spaceInitials=True,
+        separator=", ",
+        lastSeparator=" and",
     )
     out += f". {article.year}. "
     if article.type == ArticleType.JOURNAL:
@@ -248,7 +309,8 @@ def citepalaeontology(article: Article) -> str:
         enclosing = article.getEnclosing()
         if enclosing is not None:
             out += " <i>In</i> "
-            out += enclosing.getAuthors(
+            out += format_authors(
+                enclosing,
                 capitalizeNames=True,
                 spaceInitials=True,
                 separator=", ",
@@ -277,7 +339,8 @@ def citepalaeontology(article: Article) -> str:
 def citejpal(article: Article) -> str:
     # this is going to be the citation
     out = ""
-    out += article.getAuthors(
+    out += format_authors(
+        article,
         capitalizeNames=True,
         initialsBeforeName=True,
         separator=",",
@@ -297,7 +360,8 @@ def citejpal(article: Article) -> str:
         enclosing = article.getEnclosing()
         if enclosing is not None:
             out += " <i>In</i> "
-            bauthors = enclosing.getAuthors(
+            bauthors = format_authors(
+                enclosing,
                 capitalizeNames=True,
                 firstInitialsBeforeName=True,
                 initialsBeforeName=True,
@@ -331,8 +395,8 @@ def citejpal(article: Article) -> str:
 def citepalevol(article: Article) -> str:
     # this is going to be the citation
     out = ""
-    out += article.getAuthors(
-        initialsBeforeName=False, separator=",", spaceInitials=False
+    out += format_authors(
+        article, initialsBeforeName=False, separator=",", spaceInitials=False
     )
     out += f", {article.year}. {article.title}"
     if article.type == ArticleType.JOURNAL:
@@ -345,8 +409,8 @@ def citepalevol(article: Article) -> str:
         enclosing = article.getEnclosing()
         if enclosing is not None:
             out += ". In: "
-            bauthors = enclosing.getAuthors(
-                initialsBeforeName=False, separator=",", spaceInitials=False
+            bauthors = format_authors(
+                enclosing, initialsBeforeName=False, separator=",", spaceInitials=False
             )
             out += bauthors
             if bauthors.count(",") > 2:
@@ -377,7 +441,8 @@ def citepalevol(article: Article) -> str:
 def citejvp(article: Article) -> str:
     # this is going to be the citation
     out = ""
-    out += article.getAuthors(
+    out += format_authors(
+        article,
         initialsBeforeName=True,
         separator=",",
         lastSeparator=", and",
@@ -396,7 +461,8 @@ def citejvp(article: Article) -> str:
         enclosing = article.getEnclosing()
         if enclosing is not None:
             out += " in "
-            bauthors = enclosing.getAuthors(
+            bauthors = format_authors(
+                enclosing,
                 initialsBeforeName=False,
                 separator=",",
                 lastSeparator=", and",
@@ -455,7 +521,7 @@ def citebibtex(article: Article) -> str:
     else:
         out += "misc"
     out += "{" + article.getrefname() + ",\n"
-    authors = article.getAuthors(spaceInitials=True, separator=" and")
+    authors = format_authors(article, spaceInitials=True, separator=" and")
     # stuff that goes in every citation type
     add("author", authors, True)
     add("year", article.year, True)
@@ -484,7 +550,7 @@ def citebibtex(article: Article) -> str:
 def citezootaxa(article: Article) -> str:
     # this is going to be the citation
     out = ""
-    out += article.getAuthors(separator=",", lastSeparator=" &")
+    out += format_authors(article, separator=",", lastSeparator=" &")
     out += f" ({article.year}) "
     if article.type == ArticleType.JOURNAL:
         out += article.title + ". <i>" + article.citation_group.name + "</i>, "
@@ -494,7 +560,7 @@ def citezootaxa(article: Article) -> str:
         enclosing = article.getEnclosing()
         if enclosing is not None:
             out += " <i>In</i>: "
-            out += enclosing.getAuthors(separator=",", lastSeparator=" &")
+            out += format_authors(enclosing, separator=",", lastSeparator=" &")
             out += " (Eds), <i>" + enclosing.title + "</i>. "
             out += enclosing.publisher + ", " + enclosing.place_of_publication
             out += ", pp. " + page_range(article)
