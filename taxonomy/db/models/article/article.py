@@ -1,6 +1,7 @@
 from bs4 import BeautifulSoup
 import datetime
 from functools import lru_cache
+import os
 from pathlib import Path
 from peewee import (
     CharField,
@@ -334,6 +335,9 @@ class Article(BaseModel):
             "display_names": self.display_names,
             "display_type_localities": self.display_type_localities,
             "modernize_in_press": self.modernize_in_press,
+            "open_url": self.openurl,
+            "remove": self.remove,
+            "merge": self.merge,
         }
 
     def modernize_in_press(self) -> None:
@@ -343,6 +347,41 @@ class Article(BaseModel):
         self.start_page = None
         self.end_page = None
         self.expand_doi(verbose=True, set_fields=True)
+
+    def full_data(self) -> None:
+        """Provide information for a file."""
+        super().full_data()
+        if self.kind == ArticleKind.electronic:
+            subprocess.call(["ls", "-l", str(self.get_path())])
+
+    def remove(self, force: bool = False) -> None:
+        """Remove a file. If force is True, do not ask for confirmation."""
+        if not force:
+            if not getinput.yes_no(
+                f"Are you sure you want to remove file {self.name}?"
+            ):
+                return
+        if self.kind == ArticleKind.electronic and self.path:
+            os.unlink(self.get_path())
+        print(f"File {self.name} removed.")
+        self.kind = ArticleKind.removed  # type: ignore
+
+    def merge(self, target: Optional["Article"] = None, force: bool = False) -> None:
+        """Merges this file into another file."""
+        if target is None:
+            target = self.getter(None).get_one("merge target> ")
+        if self.kind == ArticleKind.electronic:
+            if not force:
+                force = getinput.yes_no(
+                    f"Are you sure you want to remove the electronic copy of {self.name}?"
+                )
+            if force:
+                os.unlink(self.get_path())
+            else:
+                return
+        self.kind = ArticleKind.redirect  # type: ignore
+        self.path = None
+        self.parent = target
 
     def get_value_to_show_for_field(self, field: Optional[str]) -> str:
         if field is None:
@@ -619,7 +658,7 @@ class Article(BaseModel):
         initialsBeforeName: bool = False,  # Whether to place initials before the surname
         firstInitialsBeforeName: bool = False,  # Whether to place the first author's initials before their surname
         includeInitials: bool = True,  # Whether to include initials
-    ) -> Any:
+    ) -> str:
         if lastSeparator is None:
             lastSeparator = separator
         if separatorWithTwoAuthors is None:
