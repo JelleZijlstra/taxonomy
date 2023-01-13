@@ -1,3 +1,4 @@
+import functools
 import itertools
 import re
 from pathlib import Path
@@ -13,6 +14,8 @@ from typing import (
     TypeVar,
     Union,
 )
+from taxonomy.config import get_options
+
 
 T = TypeVar("T", bound="NameParser")
 
@@ -573,3 +576,9 @@ class NameParser:
         # valid name forms
         if not _NAME_VALIDATOR.match(name):
             self.addError("Invalid name: " + name)
+
+
+@functools.lru_cache(8192)
+def get_name_parser(name: str) -> NameParser:
+    options = get_options()
+    return NameParser(name, options.parserdata_path)

@@ -126,9 +126,7 @@ class Article(BaseModel):
     pages = CharField(null=True)  # number of pages in book
     misc_data = CharField()  # miscellaneous data
 
-    path = CharField(
-        null=True
-    )  # path to file (contains NOFILE if "file" is not a file)
+    path = CharField(null=True)  # path to file (contains None if "file" is not a file)
     ids = CharField(
         null=True
     )  # array of properties for various less-common identifiers
@@ -785,6 +783,17 @@ class Article(BaseModel):
     def markdown_link(self) -> str:
         cite = self.cite()
         return f"[{cite}](/a/{self.id})"
+
+    def lint(self, autofix: bool = True) -> Iterable[str]:
+        try:
+            repr(self)
+        except Exception as e:
+            yield f"{self.id}: cannot display due to {e}"
+            return
+        if self.kind is ArticleKind.removed:
+            return
+        for linter in models.article.lint.LINTERS:
+            yield from linter(self, autofix)
 
     def cite(self, citetype: str = "paper") -> str:
         if self.issupplement():

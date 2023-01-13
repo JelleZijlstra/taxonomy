@@ -1,4 +1,5 @@
 import configparser
+import functools
 import json
 import os
 import socket
@@ -57,6 +58,7 @@ def parse_path(
         return path
 
 
+@functools.cache
 def parse_config_file(filename: Path) -> Options:
     parser = configparser.ConfigParser()
     parser.read(filename)
