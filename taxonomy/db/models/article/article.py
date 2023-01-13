@@ -962,6 +962,13 @@ class Article(BaseModel):
         return cls.select().filter(name=file).count() > 0
 
     @classmethod
+    def maybe_get(cls, file: str) -> "Article | None":
+        try:
+            return cls.get(name=file)
+        except cls.DoesNotExist:
+            return None
+
+    @classmethod
     def create_interactively(
         cls, name: str | None = None, **kwargs: Any
     ) -> "Article | None":

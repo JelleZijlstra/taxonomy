@@ -12,3 +12,4 @@ from . import citations
 from . import lint
 from . import add_data
 from . import set_path
+from . import check
