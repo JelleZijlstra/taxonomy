@@ -11,3 +11,4 @@ from .article import (
 from . import citations
 from . import lint
 from . import add_data
+from . import set_path

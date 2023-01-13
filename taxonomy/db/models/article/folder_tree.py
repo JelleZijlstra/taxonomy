@@ -190,3 +190,6 @@ class FolderTree:
         suggs = self.full_path_suggestions[_get_name_key(article)]
         ctr = Counter({key: len(names) for key, names in suggs.items()})
         return [sugg for sugg, _ in ctr.most_common()]
+
+    def is_empty(self) -> bool:
+        return not self.full_path_suggestions

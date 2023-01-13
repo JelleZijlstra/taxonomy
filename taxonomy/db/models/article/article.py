@@ -16,6 +16,7 @@ import time
 from typing import (
     Any,
     Callable,
+    ClassVar,
     Dict,
     Iterable,
     List,
@@ -42,6 +43,7 @@ from .... import config, events, adt, getinput, uitools
 
 from ..citation_group import CitationGroup
 from ..person import AuthorTag, Person, PersonLevel, get_new_authors_list
+from .folder_tree import FolderTree
 
 T = TypeVar("T", bound="Article")
 
@@ -135,6 +137,7 @@ class Article(BaseModel):
     tags = ADTField(lambda: ArticleTag, null=True)
     citation_group = ForeignKeyField(CitationGroup, null=True)
 
+    folder_tree: ClassVar[FolderTree] = FolderTree()
     derived_fields = [
         get_tag_based_derived_field(
             "partially_suppressed_names",
@@ -355,6 +358,8 @@ class Article(BaseModel):
             "merge": self.merge,
             "add_child": self.add_child,
             "edittitle": self.edittitle,
+            "change_folder": self.change_folder,
+            "move": self.move,
         }
 
     def modernize_in_press(self) -> None:
@@ -399,6 +404,46 @@ class Article(BaseModel):
         self.kind = ArticleKind.redirect  # type: ignore
         self.path = None
         self.parent = target
+
+    def change_folder(self) -> None:
+        if self.kind is not ArticleKind.electronic:
+            return
+        old_path = self.get_path()
+        if not models.article.set_path.folder_suggestions(self, allow_skip=True):
+            return
+        new_path = self.get_path()
+        if old_path != new_path:
+            subprocess.check_call(["mv", "-n", str(old_path), str(new_path)])
+
+    def move(self, newname: str | None = None) -> None:
+        while newname is None:
+            newname = self.getter("name").get_one_key(
+                default=self.name, prompt="New name: "
+            )
+            if newname is None:
+                return
+            if self.has(newname):
+                print(f"New name already exists: {newname}")
+                newname = None
+        oldname = self.name
+        if oldname == newname:
+            return
+        if self.kind is ArticleKind.electronic:
+            oldpath = self.get_path()
+            # change the name internally
+            self.name = newname
+            # Move the physical file first. This may fail if the physical file was moved to a different
+            # directory, so do it first lest we leave the catalog in an inconsistent state.
+            try:
+                newpath = self.get_path()
+                subprocess.check_call(["mv", "-n", str(oldpath), str(newpath)])
+            except BaseException:
+                self.name = oldname
+                raise
+        else:
+            self.name = newname
+        # make redirect
+        self.create_redirect_static(oldname, self)
 
     def get_value_to_show_for_field(self, field: Optional[str]) -> str:
         if field is None:
@@ -974,6 +1019,15 @@ class Article(BaseModel):
             addyear=str(dt.year),
             **values,
         )
+
+    @classmethod
+    def get_foldertree(cls) -> FolderTree:
+        if not cls.folder_tree.is_empty():
+            return cls.folder_tree
+        for file in cls.select_valid():
+            if file.path:
+                cls.folder_tree.add(file)
+        return cls.folder_tree
 
 
 class ArticleComment(BaseModel):
