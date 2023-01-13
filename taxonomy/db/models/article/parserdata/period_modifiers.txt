@@ -1,0 +1,12 @@
+# Temporal modifiers (e.g., early, late)
+E
+M
+L
+EE
+LE
+EM
+MM
+LM
+EL
+ML
+LL

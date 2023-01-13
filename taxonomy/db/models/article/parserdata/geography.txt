@@ -1,0 +1,904 @@
+# List of geographic terms in filenames
+Earth
+
+# Continents
+Asia
+Europe
+Africa
+Antarctica
+North America
+South America
+Oceania
+
+# Major regions
+Old World
+Southern Hemisphere
+Northern Hemisphere
+Americas
+Latin America
+Gondwana
+Laurasia
+
+# Oceans
+Indian Ocean
+Pacific
+Atlantic
+Arctic
+Indo-Pacific
+
+# Seas
+North Sea
+Red Sea
+Sea of Okhotsk
+Black Sea
+Sea of Cortez
+Laptev Sea
+
+# Countries
+Afghanistan
+Albania
+Algeria
+Andorra
+Angola
+Antigua and Barbuda
+Argentina
+Armenia
+Australia
+Austria
+Azerbaijan
+Bahamas
+Bahrain
+Bangladesh
+Barbados
+Belarus
+Belgium
+Belize
+Benin
+Bhutan
+Bolivia
+Bosnia and Herzegovina
+Botswana
+Brazil
+Brunei
+Bulgaria
+Burkina
+Burundi
+Cambodia
+Cameroon
+Canada
+Cape Verde
+# Central African Republic - use CAR instead
+Chad
+Chile
+China
+Colombia
+Comoros
+Congo
+# DR Congo - use DRC instead
+Costa Rica
+Croatia
+Cuba
+Cyprus
+Czech Republic
+Denmark
+Djibouti
+Dominica
+# Dominican Republic - use DR instead
+East Timor
+Ecuador
+Egypt
+El Salvador
+Equatorial Guinea
+Eritrea
+Estonia
+Ethiopia
+Fiji
+Finland
+France
+Gabon
+Gambia
+Georgia
+Germany
+Ghana
+Greece
+Grenada
+Guatemala
+Guinea
+Guinea-Bissau
+Guyana
+Haiti
+Honduras
+Hungary
+Iceland
+India
+Indonesia
+Iran
+Iraq
+Ireland
+Israel
+Italy
+Ivory Coast  # and not Cote d'Ivoire
+Jamaica
+Japan
+Jordan
+Kazakhstan
+Kenya
+Kiribati
+North Korea
+South Korea
+Kosovo
+Kuwait
+Kyrgyzstan
+Laos
+Latvia
+Lebanon
+Lesotho
+Liberia
+Libya
+Liechtenstein
+Lithuania
+Luxembourg
+Macedonia
+Madagascar
+Malawi
+Malaysia
+Maldives
+Mali
+Malta
+# Marshall Islands - use Marshall Is
+Mauritania
+Mauritius
+Mexico
+Micronesia
+Moldova
+Monaco
+Mongolia
+Montenegro
+Morocco
+Mozambique
+# 7 use Myanmar, none use Burma or Birma for the country, so let's keep it
+Myanmar
+Namibia
+Nauru
+Nepal
+Netherlands
+New Zealand
+Nicaragua
+Niger
+Nigeria
+Norway
+Oman
+Pakistan
+Palau
+Panama
+# Papua New Guinea - use PNG
+Paraguay
+Peru
+Philippines
+Poland
+Portugal
+Qatar
+Romania
+Russia
+Rwanda
+St Kitts and Nevis
+St Lucia
+St Vincent and the Grenadines
+Samoa
+San Marino
+Sao Tome and Principe
+Saudi Arabia
+Senegal
+Serbia
+Seychelles
+Sierra Leone
+Singapore
+Slovakia
+Slovenia
+# Solomon Islands - use Solomon Is
+Somalia
+South Africa
+South Sudan
+Spain
+Sri Lanka
+Sudan
+Suriname
+Swaziland
+Sweden
+Switzerland
+Syria
+Taiwan
+Tajikistan
+Tanzania
+Thailand
+Togo
+Tonga
+Trinidad and Tobago
+Tunisia
+Turkey
+Turkmenistan
+Tuvalu
+Uganda
+Ukraine
+# United Arab Emirates - use UAE
+# United Kingdom - use UK
+# United States - use USA
+Uruguay
+Uzbekistan
+Vanuatu
+# Vatican City - use Vatican
+Venezuela
+Vietnam
+Yemen
+Zambia
+Zimbabwe
+# Country abbreviations
+Bosnia
+Dominican Rep
+CAR
+DR
+DRC
+Marshall Is
+PNG
+Solomon Is
+UAE
+UK
+USA
+Vatican
+
+# Almost countries
+Taiwan
+Palestine
+Western Sahara
+
+# Major biogeographic regions
+Neotropic
+Nearctic
+Palearctic
+Indomalaya
+Australasia
+Indo-Australia
+Holarctic
+
+# European (and vicinity) regions
+Iberia
+Pyrenees
+Balkan
+Caucasus
+Paratethys
+Mediterranean
+Scandinavia
+# And not "Soviet Union"
+USSR
+Eurasia
+
+# Asia
+Middle East
+Arabia
+Arabian Peninsula
+Siwalik
+Korea
+Far East
+Beringia
+
+# Australasia
+Melanesia
+Polynesia
+
+# Americas
+America
+Rocky Mountains
+Rockies
+Great Plains
+New England
+Mesoamerica
+Guianas
+Amazonia
+Patagonia
+
+# Caribbean regions
+Caribbean
+West Indies
+Greater Antilles
+Lesser Antilles
+Virgin Is
+
+# Africa
+Sahara
+Sahel
+
+# Canadian provinces
+Alberta
+British Columbia
+Manitoba
+New Brunswick
+Newfoundland and Labrador
+Nova Scotia
+Northwest Territories
+Nunavut
+Ontario
+Prince Edward Island
+Quebec
+Saskatchewan
+Yukon
+
+# Abbreviations
+BC
+Newfoundland
+Labrador
+NWT
+PEI
+
+# US states
+Alabama
+Alaska
+Arizona
+Arkansas
+California
+Colorado
+Connecticut
+Delaware
+Florida
+Georgia
+Hawaii
+Idaho
+Illinois
+Indiana
+Iowa
+Kansas
+Kentucky
+Louisiana
+Maine
+Maryland
+Massachusetts
+Michigan
+Minnesota
+Mississippi
+Missouri
+Montana
+Nebraska
+Nevada
+New Hampshire
+New Jersey
+New Mexico
+New York
+North Carolina
+North Dakota
+Ohio
+Oklahoma
+Oregon
+Pennsylvania
+Rhode Island
+South Carolina
+South Dakota
+Tennessee
+Texas
+Utah
+Vermont
+Virginia
+Washington
+West Virginia
+Wisconsin
+Wyoming
+
+# US dependencies
+DC
+Puerto Rico
+American Samoa
+US Virgin Islands
+US Virgin Is
+Guam
+Northern Marianas
+Marianas
+
+# Mexican states
+Aguascalientes
+Baja California
+Baja California Sur
+Campeche
+Chiapas
+Chihuahua
+Coahuila
+Colima
+Distrito Federal
+Durango
+Guanajuato
+Guerrero
+Hidalgo
+Jalisco
+Mexico
+Michoacan
+Morelos
+Nayarit
+Nuevo Leon
+Oaxaca
+Puebla
+Queretaro
+Quintana Roo
+San Luis Potosi
+Sinaloa
+Sonora
+Tabasco
+Tamaulipas
+Tlaxcala
+Veracruz
+Yucatan
+Zacatecas
+
+# Some Caribbean islands
+Hispaniola
+Trinidad
+Tobago
+Antigua
+Barbuda
+Nevis
+St Kitts
+St Vincent
+Grenadines
+Cozumel
+
+# Major island group
+Galapagos
+
+# Brazilian states
+Acre
+Alagoas
+Amapa
+Amazonas
+Bahia
+Ceara
+Distrito Federal
+Espirito Santo
+Goias
+Maranhao
+Mato Grosso
+Mato Grosso do Sul
+Minas Gerais
+Para
+Paraiba
+Parana
+Pernambuco
+Piaui
+Rio de Janeiro
+Rio Grande do Norte
+Rio Grande do Sul
+Rondonia
+Roraima
+Santa Catarina
+Sao Paulo
+Sergipe
+Tocantins
+# And an island I especially like
+Noronha
+
+# Argentinean provinces
+# Ignore the city of Buenos Aires, for us it's just the province
+Buenos Aires
+Catamarca
+Chaco
+Chubut
+Cordoba
+Corrientes
+Entre Rios
+Formosa
+Jujuy
+La Pampa
+La Rioja
+Mendoza
+Misiones
+Neuquen
+Rio Negro
+Salta
+San Juan
+San Luis
+Santa Cruz
+Santa Fe
+Santiago del Estero
+Tierra del Fuego
+Tucuman
+
+# UK constituent countries
+England
+Northern Ireland
+Scotland
+Wales
+
+# UK crown dependencies, territories, etcetera
+Isle of Man
+Channel Islands
+Guernsey
+Jersey
+Anguilla
+Turks and Caicos
+Cayman Islands
+Caymans
+Bermuda
+Gibraltar
+Akrotiri and Dhekelia
+# and not "British Virgin Islands" or similar
+BVI
+Montserrat
+Pitcairn
+Chagos
+Falklands
+St Helena
+Ascension
+Tristan da Cunha
+
+# Norway territories
+Bouvet
+Svalbard
+Jan Mayen
+
+# Denmark territories
+Greenland
+Faroe
+
+# Netherlands Caribbean islands
+ABC islands
+Curacao
+Aruba
+Bonaire
+St Maarten
+St Eustatius
+Saba
+
+# Germany states
+# Baden-Wuerttemberg - use BW
+Bavaria
+Berlin
+Brandenburg
+Bremen
+Hamburg
+Hessen
+Niedersachsen
+Mecklenburg-Vorpommern
+# Nordrhein-Westfalen - use NRW
+Rheinland-Pfalz
+Saarland
+Sachsen-Anhalt
+Sachsen
+Schleswig-Holstein
+Thuringia
+
+# Abbreviations
+BW
+NRW
+
+# Austrian states (English names preferred)
+Vorarlberg
+Tirol
+Salzburg
+Burgenland
+Upper Austria
+Lower Austria
+Vienna
+Styria
+Tyrol
+Carinthia
+
+# French regions
+Alsace
+Aquitaine
+Auvergne
+Bretagne
+Bourgogne
+Centre
+Champagne-Ardenne
+Franche-Comte
+Ile-de-France
+Languedoc-Roussillon
+Limousin
+Lorraine
+Basse-Normandie
+Midi-Pyrenees
+Nord-Pas-de-Calais
+Pays de la Loire
+Picardie
+Poitou-Charentes
+Provence-Alpes-Cote d'Azur
+Rhone-Alpes
+Haute-Normandie
+
+# French dependencies
+Corsica
+French Guiana
+Guadeloupe
+St Pierre and Miquelon
+Martinique
+St Barts
+St Martin
+Reunion
+Mayotte
+New Caledonia
+Wallis and Futuna
+French Polynesia
+Kerguelen
+Clipperton
+
+# Spanish autonomous communities
+Andalusia
+Basque Country
+Galicia
+Catalonia
+Aragon
+Asturias
+Baleares
+Canary Is
+Cantabria
+Castilla-La Mancha
+Castilla y Leon
+Extremadura
+La Rioja
+Madrid
+Murcia
+Navarra
+Valencia
+Ceuta
+Melilla
+
+# Provinces (some conflicts with Argentina here...)
+A Coruna
+Corunna
+Alava
+Albacete
+Alicante
+Almeria
+Asturias
+Avila
+Badajoz
+Baleares
+Barcelona
+Biscay
+Burgos
+Caceres
+Cadiz
+Cantabria
+Castellon
+Ciudad Real
+Cordoba
+Cuenca
+Gipuzkoa
+Girona
+Granada
+Guadalajara
+Huelva
+Huesca
+Jaen
+La Rioja
+Las Palmas
+Leon
+Lleida
+Lugo
+Madrid
+Malaga
+Murcia
+Navarre
+Ourense
+Palencia
+Pontevedra
+Salamanca
+Santa Cruz de Tenerife
+Segovia
+Seville
+Soria
+Tarragona
+Teruel
+Toledo
+Valencia
+Valladolid
+Zamora
+Zaragoza
+
+# Major islands
+Mallorca
+Tenerife
+
+# Portugal islands
+Azores
+Madeira
+
+# Italian major islands. Don't think we're doing regions yet.
+Sardinia
+Sicily
+
+# Major regions in assorted Eastern European countries
+Crete
+Vojvodina
+Crimea
+Anatolia
+
+# Pakistan provinces
+Khyber-Pakhtunkhwa
+Punjab
+Sindh
+Balochistan
+Azad Kashmir
+Gilgit-Baltistan
+
+# India states
+Andhra Pradesh
+Arunachal Pradesh
+Assam
+Bihar
+Chhattisgarh
+Goa
+Gujarat
+Haryana
+Himachal Pradesh
+Jammu and Kashmir
+Jharkhand
+Karnataka
+Kerala
+Madhya Pradesh
+Maharashtra
+Manipur
+Meghalaya
+Mizoram
+Nagaland
+Orissa
+Punjab
+Rajasthan
+Sikkim
+Tamil Nadu
+Telangana
+Tripura
+Uttar Pradesh
+Uttarakhand
+West Bengal
+Andaman and Nicobar Islands
+Chandigarh
+Dadra and Nagar Haveli
+Daman and Diu
+Lakshadweep
+Delhi
+Pondicherry
+
+# Alternatives for India
+Kashmir
+Andamans
+Nicobars
+Andamans and Nicobars
+Arunachal
+Andhra
+Himachal
+UP
+J&K
+
+# China provinces
+Anhui
+Beijing
+Chongqing
+Fujian
+Gansu
+Guangdong
+Guangxi
+Guizhou
+Hainan
+Hebei
+Heilongjiang
+Henan
+Hong Kong
+Hubei
+Hunan
+Inner Mongolia
+# Alternative
+Nei Mongol
+Jiangsu
+Jiangxi
+Jilin
+Liaoning
+Macau
+Ningxia
+Qinghai
+Shaanxi
+Shandong
+Shanghai
+Shanxi
+Sichuan
+Tianjin
+Tibet
+Xinjiang
+Yunnan
+Zhejiang
+
+# Japan major islands
+Honshu
+Hokkaido
+Kyushu
+Shikoku
+Ryukyus
+Okinawa
+
+# Russia assorted geography
+Siberia
+Sakhalin
+Kurils
+
+# Philippines major islands
+Luzon
+Mindanao
+Mindoro
+Palawan
+Cebu
+Negros
+Camiguin
+Bohol
+Leyte
+Samar
+
+# Malaysia important states
+Sarawak
+Sabah
+
+# Indonesia (and vicinity) major islands
+Sumatra
+Java
+Borneo
+Bali
+Lesser Sundas
+Greater Sundas
+Sunda Shelf
+Wallacea
+Nusa Tenggara
+Mentawai
+Bali
+Flores
+Sumba
+Sumbawa
+Timor
+Sulawesi
+Maluku
+New Guinea
+Papua
+
+# PNG major islands
+New Britain
+New Ireland
+Bismarcks
+
+# Australia states and territories
+Christmas Island
+Cocos Is
+Norfolk
+Northern Territory
+Western Australia
+South Australia
+Queensland
+New South Wales
+Victoria
+Tasmania
+
+# New Zealand dependencies
+Cook Is
+Niue
+Tokelau
+
+# Abbreviations
+NT
+NSW
+Qld
+SA
+WA
+
+# South Africa provinces
+Eastern Cape
+Free State
+Gauteng
+KwaZulu-Natal
+Limpopo
+Mpumalanga
+North West
+Northern Cape
+Western Cape
+# Former province
+Transvaal
+
+# Some major islands
+Sao Tome
+Bioko
+Principe
+Grand Comoro
+Anjouan
+Moheli
+Mascarenes

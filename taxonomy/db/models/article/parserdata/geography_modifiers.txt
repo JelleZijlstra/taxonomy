@@ -1,0 +1,14 @@
+# Modifiers (e.g., north)
+N
+S
+W
+E
+C
+NW
+NE
+SW
+SE
+NC
+SC
+EC
+WC
