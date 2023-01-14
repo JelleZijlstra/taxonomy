@@ -1165,7 +1165,8 @@ class ArticleTag(adt.ADT):
     HDL(text=str, tag=3)  # type: ignore
     JSTOR(text=str, tag=4)  # type: ignore
     PMID(text=str, tag=5)  # type: ignore
-    ISSN(text=str, tag=6)  # type: ignore
+    # TODO: Why does this exist? Should be on the CitationGroup
+    ArticleISSN(text=str, tag=6)  # type: ignore
     PMC(text=str, tag=7)  # type: ignore
 
     # other

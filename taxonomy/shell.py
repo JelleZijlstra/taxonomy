@@ -651,16 +651,43 @@ def species_root_name_mismatch() -> Iterable[Name]:
 
 
 def _duplicate_finder(
-    fn: Callable[..., Iterable[Mapping[Any, Sequence[T]]]]
-) -> Callable[..., Optional[List[Sequence[T]]]]:
+    fn: Callable[[], Iterable[Mapping[Any, Sequence[ModelT]]]]
+) -> Callable[[bool], Optional[list[Sequence[ModelT]]]]:
     @generator_command
     @functools.wraps(fn)
-    def wrapper(*args: Any, **kwargs: Any) -> Iterable[Sequence[T]]:
-        for dups_dict in fn(*args, **kwargs):
+    def wrapper(interactive: bool = False) -> Iterable[Sequence[ModelT]]:
+        for dups_dict in fn():
             for key, entries_list in dups_dict.items():
                 if len(entries_list) > 1:
                     print("Duplicate:", key, len(entries_list))
                     yield entries_list
+                    if interactive:
+                        getinput.print_header(key)
+                        for entry in entries_list:
+                            print("-----------------------------")
+                            entry.display(full=True)
+                            entry.add_to_history(None)
+                            entry.add_to_history(entry.label_field)
+                        name_to_art = {
+                            getattr(art, art.label_field): art for art in entries_list
+                        }
+                        options = ["f", "d", *name_to_art]
+
+                        while True:
+                            choice = getinput.get_with_completion(
+                                options, history_key=key, disallow_other=True
+                            )
+                            if not choice:
+                                break
+                            if choice == "f":
+                                for art in entries_list:
+                                    getinput.print_header(art)
+                                    art.full_data()
+                            elif choice == "d":
+                                for art in entries_list:
+                                    print(repr(art))
+                            elif choice in name_to_art:
+                                name_to_art[choice].edit()
 
     return wrapper
 

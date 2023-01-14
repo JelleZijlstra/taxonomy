@@ -186,7 +186,29 @@ class CitationGroup(BaseModel):
         ), f"cannot delete {self} because it contains articles"
         self.deleted = True
 
+    def edit(self) -> None:
+        self.fill_field("tags")
+
+    def get_adt_callbacks(self) -> getinput.CallbackMap:
+        return {
+            **super().get_adt_callbacks(),
+            "delete": self.delete,
+            "merge": self.merge_interactive,
+            "display_organized": self.display_organized,
+            "display_full": lambda: self.display(full=True, include_articles=True),
+        }
+
+    def merge_interactive(self) -> None:
+        other = self.getter(None).get_one("merge target> ")
+        if other is None:
+            return
+        series = models.Article.getter("series").get_one_key("series (optional)> ")
+        self.merge(other, series)
+
     def merge(self, other: "CitationGroup", series: Optional[str] = None) -> None:
+        if self == other:
+            print("Cannot merge into yourself")
+            return
         for nam in self.get_names():
             print(f"Changing CG on {nam}")
             nam.citation_group = other
@@ -274,3 +296,7 @@ class CitationGroupTag(adt.ADT):
     MustHaveSeries(comment=str, tag=11)  # type: ignore
     # Information on where to find it.
     OnlineRepository(url=str, comment=str, tag=12)  # type: ignore
+    ISSN(text=str, tag=13)  # type: ignore
+    # ISSN for online edition
+    ISSNOnline(text=str, tag=15)  # type: ignore
+    BHLBibliography(text=str, tag=14)  # type: ignore
