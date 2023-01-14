@@ -106,13 +106,20 @@ class Taxon(BaseModel):
 
     @classmethod
     def add_validity_check(cls, query: Any) -> Any:
-        return query.filter(Taxon.age != AgeClass.removed)
+        return query.filter(
+            Taxon.age != AgeClass.removed, Taxon.age != AgeClass.redirect
+        )
+
+    def get_redirect_target(self) -> "Taxon | None":
+        if self.age is AgeClass.redirect:
+            return self.parent
+        return None
 
     def is_invalid(self) -> bool:
-        return self.age is AgeClass.removed
+        return self.age in (AgeClass.removed, AgeClass.redirect)
 
     def should_skip(self) -> bool:
-        return self.age is AgeClass.removed
+        return self.age in (AgeClass.removed, AgeClass.redirect)
 
     def lint(self, autofix: bool = True) -> Iterable[str]:
         if self.parent is None and self.id != 1:
@@ -153,7 +160,7 @@ class Taxon(BaseModel):
         return helpers.group_of_rank(self.rank)
 
     def get_names(self) -> Iterable["models.Name"]:
-        return self.names.filter(models.Name.status != Status.removed)
+        return models.Name.add_validity_check(self.names)
 
     def sorted_names(self, exclude_valid: bool = False) -> List["models.Name"]:
         names: Iterable[models.Name] = self.get_names()
@@ -170,7 +177,7 @@ class Taxon(BaseModel):
         return sorted(names, key=sort_key)
 
     def get_children(self) -> Iterable["Taxon"]:
-        return self.children.filter(Taxon.age != AgeClass.removed)
+        return self.add_validity_check(self.children)
 
     def sorted_children(self) -> List["Taxon"]:
         return sorted(
@@ -818,9 +825,8 @@ class Taxon(BaseModel):
                 self, self.rank.name
             )
 
-        taxon = Taxon.create(age=self.age, rank=rank, parent=self)
         base_name = self.base_name
-        taxon.base_name = base_name
+        taxon = Taxon.make_or_revalidate(rank, base_name, self.age, self)
         base_name.taxon = taxon
         taxon.recompute_name()
         return taxon
@@ -960,7 +966,8 @@ class Taxon(BaseModel):
 
         self._merge_fields(into, exclude={"id", "base_name"})
         self.base_name.merge(into.base_name, allow_valid=True)
-        self.remove(reason=f"Merged into {into} (T#{into.id})")
+        self.parent = into
+        self.age = AgeClass.redirect  # type: ignore
 
     def synonymize(self, to_taxon: Optional["Taxon"] = None) -> "models.Name":
         if to_taxon is None:
@@ -996,9 +1003,8 @@ class Taxon(BaseModel):
                 existing.add_comment(additional_comment)
         to_taxon = to_taxon.reload()
         to_taxon.base_name.status = original_to_status
-        self.remove(
-            reason=f"Synonymized into {to_taxon} (T#{to_taxon.id})", remove_names=False
-        )
+        self.parent = to_taxon
+        self.status = AgeClass.redirect
         return models.Name.get(models.Name.id == nam.id)
 
     def synonymize_all_children(self) -> None:
@@ -1017,11 +1023,25 @@ class Taxon(BaseModel):
             parent = self.parent.parent
         else:
             parent = self.parent
-        new_taxon = Taxon.create(rank=rank, age=self.age, parent=parent)
-        new_taxon.base_name = self.base_name
+        new_taxon = self.make_or_revalidate(rank, self.base_name, self.age, parent)
         new_taxon.recompute_name()
         self.parent = new_taxon
         return new_taxon
+
+    @classmethod
+    def make_or_revalidate(
+        cls, rank: Rank, base_name: "models.Name", age: AgeClass, parent: "Taxon"
+    ) -> "Taxon":
+        try:
+            existing = (
+                cls.select().filter(cls.rank == rank, cls.base_name == base_name).get()
+            )
+        except cls.DoesNotExist:
+            return cls.create(rank=rank, base_name=base_name, age=age, parent=parent)
+        else:
+            existing.age = age
+            existing.parent = parent
+            return existing
 
     def run_on_self_and_children(self, callback: Callable[["Taxon"], object]) -> None:
         callback(self)

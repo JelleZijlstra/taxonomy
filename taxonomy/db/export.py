@@ -63,7 +63,7 @@ def export_names(
     print("collecting names...")
     names = taxon.all_names(age=age)
     if group is not None:
-        names = [name for name in names if name.group is group]
+        names = {name for name in names if name.group is group}
     print(f"done, {len(names)} found")
 
     with open(filename, "w") as f:
@@ -159,7 +159,7 @@ def export_occurrences(filename: str) -> None:
             writer.writerow(data_for_occ(occ))
 
 
-def data_for_occ(occ: Occurrence):
+def data_for_occ(occ: Occurrence) -> OccurrenceData:
     return {
         "taxon": occ.taxon.valid_name,
         "taxon_link": occ.taxon.get_absolute_url(),

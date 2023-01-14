@@ -762,8 +762,8 @@ def dup_articles(
         by_key[val].append(art)
     dup_groups = {key: arts for key, arts in by_key.items() if len(arts) > 1}
     print(f"Found {len(dup_groups)} groups")
-    for key, arts in dup_groups.items():
-        getinput.print_header(key)
+    for key_val, arts in dup_groups.items():
+        getinput.print_header(key_val)
         for art in arts:
             print(repr(art))
             art.add_to_history(None)  # for merge()
@@ -773,7 +773,7 @@ def dup_articles(
 
             while True:
                 choice = getinput.get_with_completion(
-                    options, history_key=key, disallow_other=True
+                    options, history_key=key_val, disallow_other=True
                 )
                 if not choice:
                     break

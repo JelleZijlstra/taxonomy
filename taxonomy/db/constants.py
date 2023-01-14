@@ -27,6 +27,7 @@ class AgeClass(enum.IntEnum):
     coprolite = 7
     burrow = 8
     bite_trace = 9
+    redirect = 10  # merged into another Taxon
 
     def is_ichno(self) -> bool:
         return self in (

@@ -1516,12 +1516,9 @@ class Name(BaseModel):
                 rank = old_taxon.rank
             if parent is None:
                 parent = old_taxon.parent
-        new_taxon = Taxon.create(
-            rank=rank, parent=parent, age=old_taxon.age, valid_name=""
-        )
+        new_taxon = Taxon.make_or_revalidate(rank, self, old_taxon.age, parent)
         self.taxon = new_taxon
         self.status = status  # type: ignore
-        new_taxon.base_name = self
         new_taxon.recompute_name()
         return new_taxon
 
