@@ -63,6 +63,7 @@ from .db.constants import (
     NomenclatureStatus,
     Rank,
     ArticleKind,
+    ArticleType,
     FillDataLevel,
 )
 from .db.models import (
@@ -752,6 +753,8 @@ def dup_articles(
     by_key = defaultdict(list)
     for art in getinput.print_every_n(Article.select_valid(), label="articles"):
         if art.get_redirect_target() is not None:
+            continue
+        if art.type is ArticleType.SUPPLEMENT and art.parent is not None:
             continue
         val = key(art)
         if val is None:
@@ -2076,6 +2079,7 @@ def run_maintenance(skip_slow: bool = True) -> Dict[Any, Any]:
         # dup_names,
         # dup_genus,
         # dup_taxa,
+        dup_articles,
         set_citation_group_for_matching_citation,
         enforce_must_have,
         fix_citation_group_redirects,

@@ -3,7 +3,7 @@
 Exporting data.
 
 """
-from .models import Taxon, Name, Article
+from .models import Taxon, Name, Article, Occurrence
 from .models.name import TypeTag
 from ..command_set import CommandSet
 from .. import getinput
@@ -135,3 +135,38 @@ def stringify_detail_tag(tag: DetailTag) -> str:
     authors, year = tag.source.taxonomicAuthority()
     url = tag.source.get_absolute_url()
     return f'"{tag.text}" ({authors}, {year}, {url})'
+
+
+class OccurrenceData(TypedDict):
+    taxon: str
+    taxon_link: str
+    region: str
+    region_link: str
+    source: str
+    source_link: str
+    status: str
+    comment: str
+
+
+@CS.register
+def export_occurrences(filename: str) -> None:
+    with open(filename, "w") as f:
+        writer = csv.DictWriter(f, list(OccurrenceData.__annotations__))
+        writer.writeheader()
+        for occ in getinput.print_every_n(
+            Occurrence.select_valid(), label="occurrences", n=100
+        ):
+            writer.writerow(data_for_occ(occ))
+
+
+def data_for_occ(occ: Occurrence):
+    return {
+        "taxon": occ.taxon.valid_name,
+        "taxon_link": occ.taxon.get_absolute_url(),
+        "region": occ.location.name,
+        "region_link": occ.location.get_absolute_url(),
+        "source": occ.source.cite() if occ.source else "",
+        "source_link": occ.source.get_absolute_url() if occ.source else "",
+        "status": occ.status.name,
+        "comment": occ.comment or "",
+    }

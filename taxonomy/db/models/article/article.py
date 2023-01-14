@@ -409,6 +409,9 @@ class Article(BaseModel):
             target = self.getter(None).get_one("merge target> ")
         if target is None:
             return
+        if self == target:
+            print("Can't merge into yourself")
+            return
         if self.kind == ArticleKind.electronic:
             if not force:
                 if not getinput.yes_no(
@@ -425,6 +428,9 @@ class Article(BaseModel):
         if target is None:
             target = self.getter(None).get_one("target> ")
         if target is None:
+            return
+        if self == target:
+            print("Can't merge into yourself")
             return
         self.kind = ArticleKind.alternative_version  # type: ignore
         self.parent = target
@@ -568,7 +574,7 @@ class Article(BaseModel):
         return out
 
     def openf(self, place: str = "catalog") -> None:
-        if self.kind != ArticleKind.electronic:
+        if self.kind not in (ArticleKind.electronic, ArticleKind.alternative_version):
             if self.parent is not None:
                 self.parent.openf()
             else:

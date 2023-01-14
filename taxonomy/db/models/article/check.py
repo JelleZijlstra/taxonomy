@@ -84,7 +84,9 @@ def build_csvlist() -> FileList:
     print("acquiring database list... ", end="", flush=True)
     csvlist = {
         f.name: f
-        for f in Article.select_valid().filter(Article.kind == ArticleKind.electronic)
+        for f in Article.select_valid().filter(
+            Article.kind << (ArticleKind.electronic, ArticleKind.alternative_version)
+        )
     }
     Article.folder_tree.reset()
     for f in csvlist.values():
@@ -108,12 +110,7 @@ def check(dry_run: bool = False) -> None:
     if not lslist:
         print("found no files in lslist")
         return
-    print("acquiring database list... ", end="", flush=True)
-    csvlist = {
-        f.name: f
-        for f in Article.select_valid().filter(Article.kind == ArticleKind.electronic)
-    }
-    print(f"done ({len(csvlist)} found)")
+    csvlist = build_csvlist()
     try:
         # check whether all files in the actual library are in the catalog
         lscheck(lslist, csvlist, dry_run=dry_run)
