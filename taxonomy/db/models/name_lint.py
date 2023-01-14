@@ -31,33 +31,6 @@ def replace_arg(tag: adt.ADT, arg: str, val: object) -> adt.ADT:
     return type(tag)(**kwargs)
 
 
-def extract_id(text: str, call_sign: str) -> int | None:
-    rgx = rf"{call_sign}#(\d+)"
-    if match := re.search(rgx, text):
-        return int(match.group(1))
-    return None
-
-
-def is_name_removed(nam: Name) -> bool | Name:
-    """Is a name removed?
-
-    Return False if not, True if yes but we don't know what it was merged
-    into, and a Name if it was merged into something else.
-
-    """
-    if nam.status is not Status.removed:
-        return False
-    for comment in nam.comments:
-        if comment.kind is CommentKind.removal:
-            if id := extract_id(comment.text, "N"):
-                replacement = Name.get(id=id)
-                if replacement.status is not Status.removed:
-                    return replacement
-                else:
-                    print(f"Ignoring {replacement} as it is itself removed")
-    return True
-
-
 def get_tag_fields_of_type(tag: adt.ADT, typ: type[T]) -> Iterable[tuple[str, T]]:
     tag_type = type(tag)
     for arg_name, arg_type in tag_type._attributes.items():
@@ -84,12 +57,7 @@ def check_type_tags_for_name(nam: Name, autofix: bool) -> Iterable[str]:
                 elif autofix:
                     tag = replace_arg(tag, arg_name, art.parent)
         for arg_name, tag_nam in get_tag_fields_of_type(tag, Name):
-            result = is_name_removed(tag_nam)
-            if isinstance(result, Name):
-                print(f"{nam} references a merged name")
-                if autofix:
-                    tag = replace_arg(tag, arg_name, result)
-            elif result:
+            if tag_nam.is_invalid():
                 print(f"{nam} references a removed Name in {tag}")
                 yield f"bad name in tag {tag}"
 
