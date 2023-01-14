@@ -60,6 +60,7 @@ class Model(Interface):
     oid = Int(required=True)
     call_sign = String(required=True)
     page_title = String(required=True)
+    redirect_url = String(required=False)
 
 
 @lru_cache()
@@ -218,7 +219,10 @@ def get_model(model_cls: Type[BaseModel], parent: Any, info: ResolveInfo) -> Bas
     cache = info.context["request"]
     key = (model_cls.call_sign, parent.oid)
     if key not in cache:
-        cache[key] = model_cls.select_valid().filter(model_cls.id == parent.oid).get()
+        obj = model_cls.select().filter(model_cls.id == parent.oid).get()
+        if obj.is_invalid() and not obj.get_redirect_target():
+            raise ValueError(f"No {model_cls} with id {obj.id}")
+        cache[key] = obj
     return cache[key]
 
 
@@ -489,6 +493,17 @@ def build_object_type_from_model(model_cls: Type[BaseModel]) -> Type[ObjectType]
         return model.get_page_title()
 
     namespace["page_title"] = Field(String, required=True, resolver=page_title_resolver)
+
+    def redirect_url_resolver(parent: ObjectType, info: ResolveInfo) -> str | None:
+        model = get_model(model_cls, parent, info)
+        target = model.get_redirect_target()
+        if target is None:
+            return None
+        return target.get_url()
+
+    namespace["redirect_url"] = Field(
+        String, required=False, resolver=redirect_url_resolver
+    )
 
     return type(model_cls.__name__, (ObjectType,), namespace)
 
