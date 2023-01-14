@@ -34,6 +34,7 @@ from typing import (
     Counter,
     Dict,
     Generic,
+    Hashable,
     Iterable,
     Iterator,
     List,
@@ -55,7 +56,7 @@ import unidecode
 from traitlets.config.loader import Config
 
 from . import getinput
-from .db import constants, definition, derived_data, helpers, models
+from .db import constants, definition, derived_data, helpers, models, export
 from .db.constants import (
     AgeClass,
     Group,
@@ -87,6 +88,7 @@ gc.disable()
 COMMAND_SETS = [
     models.fill_data.CS,
     models.article.check.CS,
+    export.CS,
 ]
 
 
@@ -741,6 +743,49 @@ def dup_names() -> List[
         )
         original_year[key].append(name)
     return [original_year]
+
+
+@command
+def dup_articles(
+    key: Callable[[Article], Hashable] = lambda art: art.doi, interactive: bool = False
+) -> None:
+    by_key = defaultdict(list)
+    for art in getinput.print_every_n(Article.select_valid(), label="articles"):
+        if art.get_redirect_target() is not None:
+            continue
+        val = key(art)
+        if val is None:
+            continue
+        by_key[val].append(art)
+    dup_groups = {key: arts for key, arts in by_key.items() if len(arts) > 1}
+    print(f"Found {len(dup_groups)} groups")
+    for key, arts in dup_groups.items():
+        getinput.print_header(key)
+        for art in arts:
+            print(repr(art))
+            art.add_to_history(None)  # for merge()
+        if interactive:
+            name_to_art = {art.name: art for art in arts}
+            options = ["o", "f", "d", *[art.name for art in arts]]
+
+            while True:
+                choice = getinput.get_with_completion(
+                    options, history_key=key, disallow_other=True
+                )
+                if not choice:
+                    break
+                if choice == "o":
+                    for art in arts:
+                        art.openf()
+                elif choice == "f":
+                    for art in arts:
+                        getinput.print_header(art)
+                        art.full_data()
+                elif choice == "d":
+                    for art in arts:
+                        print(repr(art))
+                elif choice in name_to_art:
+                    name_to_art[choice].edit()
 
 
 class ScoreHolder:

@@ -297,7 +297,10 @@ class Article(BaseModel):
         )
 
     def get_redirect_target(self) -> "Article | None":
-        if self.kind is ArticleKind.redirect:
+        if (
+            self.kind is ArticleKind.redirect
+            or self.kind is ArticleKind.alternative_version
+        ):
             return self.parent
         return None
 
@@ -358,12 +361,17 @@ class Article(BaseModel):
             "open_url": self.openurl,
             "remove": self.remove,
             "merge": self.merge,
+            "make_alternative_version": self.make_alternative_version,
             "add_child": self.add_child,
             "edittitle": self.edittitle,
             "change_folder": self.change_folder,
             "move": self.move,
             "add_to_clipboard": self.add_to_clipboard,
             "removefirstpage": self.removefirstpage,
+            "edit_name": lambda: models.Name.getter(
+                "corrected_original_name"
+            ).get_and_edit(),
+            "edit_taxon": lambda: models.Taxon.getter(None).get_and_edit(),
         }
 
     def modernize_in_press(self) -> None:
@@ -399,17 +407,26 @@ class Article(BaseModel):
         """Merges this file into another file."""
         if target is None:
             target = self.getter(None).get_one("merge target> ")
+        if target is None:
+            return
         if self.kind == ArticleKind.electronic:
             if not force:
-                force = getinput.yes_no(
+                if not getinput.yes_no(
                     f"Are you sure you want to remove the electronic copy of {self.name}?"
-                )
-            if force:
-                os.unlink(self.get_path())
-            else:
-                return
+                ):
+                    return
+            os.unlink(self.get_path())
         self.kind = ArticleKind.redirect  # type: ignore
         self.path = None
+        self.parent = target
+
+    def make_alternative_version(self, target: Optional["Article"] = None) -> None:
+        """Make this version into an alternative version of another file."""
+        if target is None:
+            target = self.getter(None).get_one("target> ")
+        if target is None:
+            return
+        self.kind = ArticleKind.alternative_version  # type: ignore
         self.parent = target
 
     def change_folder(self) -> None:

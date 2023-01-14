@@ -713,6 +713,7 @@ class ArticleKind(enum.IntEnum):
     redirect = 5  # it's a redirect
     removed = 6  # it has been removed
     reference = 7  # reference to an online resource
+    alternative_version = 11  # e.g., in press version. Backed by a physical file but should not have references.
 
 
 class ArticleCommentKind(enum.IntEnum):

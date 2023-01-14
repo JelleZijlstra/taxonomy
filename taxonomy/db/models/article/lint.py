@@ -59,6 +59,13 @@ def check_type_and_kind(art: Article, autofix: bool = True) -> Iterable[str]:
         yield f"{art}: conflicting signals on whether it is a redirect"
     if art.type is ArticleType.ERROR:
         yield f"{art}: type is ERROR"
+    if (
+        art.kind in (ArticleKind.redirect, ArticleKind.alternative_version)
+        and art.parent is None
+    ):
+        yield f"{art}: is {art.kind.name} but has no parent"
+    if art.type in (ArticleType.SUPPLEMENT, ArticleType.CHAPTER) and art.parent is None:
+        yield f"{art}: is {art.type.name} but has no parent"
 
 
 def check_year(art: Article, autofix: bool = True) -> Iterable[str]:

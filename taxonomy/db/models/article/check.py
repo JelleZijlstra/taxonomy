@@ -80,6 +80,19 @@ def build_newlist(path: Path | None = None) -> LsFileList:
     return out
 
 
+def build_csvlist() -> FileList:
+    print("acquiring database list... ", end="", flush=True)
+    csvlist = {
+        f.name: f
+        for f in Article.select_valid().filter(Article.kind == ArticleKind.electronic)
+    }
+    Article.folder_tree.reset()
+    for f in csvlist.values():
+        Article.folder_tree.add(f)
+    print(f"done ({len(csvlist)} found)")
+    return csvlist
+
+
 @CS.register
 def check(dry_run: bool = False) -> None:
     """Checks the catalog for things to be changed:

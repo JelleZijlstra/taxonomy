@@ -485,7 +485,7 @@ def _get_history(key: object) -> prompt_toolkit.history.InMemoryHistory:
 
 
 def _append(history: prompt_toolkit.history.InMemoryHistory, entry: str) -> None:
-    history.store_string(entry)
+    history.append_string(entry)
 
 
 class _FixedValidator(prompt_toolkit.validation.Validator):

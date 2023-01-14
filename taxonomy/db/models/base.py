@@ -420,6 +420,9 @@ class BaseModel(Model):
     def get_url(self) -> str:
         return f"/{self.call_sign.lower()}/{self.id}"
 
+    def get_absolute_url(self) -> str:
+        return f"http://hesperomys.com{self.get_url()}"
+
     @classmethod
     def select_for_field(cls, field: Optional[str]) -> Any:
         if field is not None:
@@ -994,6 +997,7 @@ class BaseModel(Model):
     def add_to_history(self, field: Optional[str] = None) -> None:
         """Add this object to the history for its label field."""
         getter = self.getter(field)
+        getter.add_name(self)
         getinput.append_history(getter, self.get_value_to_show_for_field(field))
 
     @classmethod

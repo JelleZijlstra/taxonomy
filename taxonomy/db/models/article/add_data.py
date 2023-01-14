@@ -475,15 +475,19 @@ def add_data_for_new_file(art: Article) -> None:
                 traceback.print_exc()
                 print(f"Failed to automatically extract data using {adder}")
             else:
-                set_multi(art, data)
-                successful = True
-                break
+                if data:
+                    set_multi(art, data)
+                    successful = True
+                    break
     if not successful:
         successful = doi_input(art)
     if not successful:
         art.trymanual()
     art.format()
     art.save()
+    art.add_to_history()
+    art.add_to_history("name")
     getinput.add_to_clipboard(art.name)
     art.edittitle()
+    art.edit_until_clean()
     print("Added to catalog!")
