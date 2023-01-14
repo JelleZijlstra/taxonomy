@@ -81,6 +81,8 @@ class Status(enum.IntEnum):
     spurious = 5
     # Name was removed; should not be used, but we keep it around to avoid breaking references.
     removed = 6
+    # Merged into another name
+    redirect = 7
 
     def is_base_name(self) -> bool:
         return self in (

@@ -95,6 +95,10 @@ class Name(BaseModel):
     nomenclature_status = EnumField(
         NomenclatureStatus, default=NomenclatureStatus.available
     )
+    # for redirects
+    target = ForeignKeyField(
+        "self", null=True, db_column="target", related_name="redirects"
+    )
 
     # Citation and authority
     author_tags = ADTField(lambda: AuthorTag, null=True)
@@ -253,13 +257,18 @@ class Name(BaseModel):
 
     @classmethod
     def add_validity_check(cls, query: Any) -> Any:
-        return query.filter(Name.status != Status.removed)
+        return query.filter(
+            Name.status != Status.removed, Name.status != Status.redirect
+        )
+
+    def get_redirect_target(self) -> "Name | None":
+        return self.target
 
     def is_invalid(self) -> bool:
-        return self.status is Status.removed
+        return self.status not in (Status.removed, Status.redirect)
 
     def should_skip(self) -> bool:
-        return self.status is Status.removed
+        return self.status not in (Status.removed, Status.redirect)
 
     def get_stem(self) -> Optional[str]:
         if self.group != Group.genus or self.name_complex is None:
@@ -1531,7 +1540,8 @@ class Name(BaseModel):
         if self.type_tags and into.type_tags:
             into.type_tags += self.type_tags
         self._merge_fields(into, exclude={"id"})
-        self.remove(reason=f"Removed because it was merged into {into} (N#{into.id})")
+        self.status = Status.redirect
+        self.target = into
 
     def open_description(self) -> bool:
         if self.original_citation is None:
