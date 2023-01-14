@@ -5,9 +5,7 @@ import os
 import socket
 import sys
 from pathlib import Path
-from typing import Mapping, NamedTuple
-
-from mypy_extensions import NoReturn
+from typing import Mapping, NamedTuple, NoReturn
 
 
 class Options(NamedTuple):
@@ -31,6 +29,11 @@ class Options(NamedTuple):
     crossrefid: str = ""
 
     paleobiodb_cookie: Mapping[str, str] = {}
+
+    taxonomy_repo: Path = Path()
+    hesperomys_repo: Path = Path()
+    pem_file: Path = Path()
+    hesperomys_host: str = ""
 
     @property
     def burst_path(self) -> Path:
@@ -96,6 +99,10 @@ def parse_config_file(filename: Path) -> Options:
                 if "paleobiodb_cookie" in section
                 else {}
             ),
+            taxonomy_repo=parse_path(section, "taxonomy_repo", base_path),
+            hesperomys_repo=parse_path(section, "hesperomys_repo", base_path),
+            pem_file=parse_path(section, "pem_file", base_path),
+            hesperomys_host=section.get("hesperomys_host", ""),
         )
 
 

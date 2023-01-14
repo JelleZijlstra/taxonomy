@@ -15,7 +15,7 @@ the geography at [Earth](/r/Earth)
 
 # Size
 
-The database currently contains:
+As of January 2023, the database contains:
 
 - 95050 [names](/docs/name), of which 75275 are [mammals](/t/Mammalia)
 - 10021 [locations](/docs/location) grouped into 4430 [regions](/docs/region), 367 [periods](/docs/period),
@@ -26,6 +26,7 @@ The database currently contains:
 
 # Documentation
 
+- [Release notes](/docs/release_notes)
 - [About me](/docs/about)
 - [Geography](/docs/geography)
 - [Chronology](/docs/chronology)
