@@ -652,7 +652,7 @@ def species_root_name_mismatch() -> Iterable[Name]:
 
 def _duplicate_finder(
     fn: Callable[[], Iterable[Mapping[Any, Sequence[ModelT]]]]
-) -> Callable[[bool], Optional[list[Sequence[ModelT]]]]:
+) -> Callable[[], Optional[list[Sequence[ModelT]]]]:
     @generator_command
     @functools.wraps(fn)
     def wrapper(interactive: bool = False) -> Iterable[Sequence[ModelT]]:
@@ -664,7 +664,9 @@ def _duplicate_finder(
                     if interactive:
                         getinput.print_header(key)
                         for entry in entries_list:
-                            print("-----------------------------")
+                            print(
+                                f"----------------------------- {entry.call_sign}#{entry.id}"
+                            )
                             entry.display(full=True)
                             entry.add_to_history(None)
                             entry.add_to_history(entry.label_field)
@@ -693,12 +695,16 @@ def _duplicate_finder(
 
 
 @_duplicate_finder
-def dup_citation_groups() -> List[Dict[str, List[CitationGroup]]]:
-    cgs: Dict[str, List[CitationGroup]] = defaultdict(list)
+def dup_citation_groups() -> list[dict[object, list[CitationGroup]]]:
+    cgs: dict[object, list[CitationGroup]] = defaultdict(list)
     for cg in CitationGroup.select_valid():
         if cg.type == constants.ArticleType.REDIRECT:
             continue
-        cgs[helpers.simplify_string(cg.name)].append(cg)
+        issns = {tag.text for tag in cg.get_tags(cg.tags, CitationGroupTag.ISSN)} | {
+            tag.text for tag in cg.get_tags(cg.tags, CitationGroupTag.ISSNOnline)
+        }
+        key = (helpers.simplify_string(cg.name), tuple(sorted(issns)))
+        cgs[key].append(cg)
     return [cgs]
 
 
@@ -2103,6 +2109,7 @@ def run_maintenance(skip_slow: bool = True) -> Dict[Any, Any]:
         autoset_original_name,
         apply_author_synonyms,
         dup_collections,
+        dup_citation_groups,
         # dup_names,
         # dup_genus,
         # dup_taxa,

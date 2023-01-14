@@ -297,6 +297,7 @@ class CitationGroupTag(adt.ADT):
     # Information on where to find it.
     OnlineRepository(url=str, comment=str, tag=12)  # type: ignore
     ISSN(text=str, tag=13)  # type: ignore
+    BHLBibliography(text=str, tag=14)  # type: ignore
     # ISSN for online edition
     ISSNOnline(text=str, tag=15)  # type: ignore
-    BHLBibliography(text=str, tag=14)  # type: ignore
+    CitationGroupURL(text=str, tag=16)  # type: ignore
