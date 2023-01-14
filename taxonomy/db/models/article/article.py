@@ -672,6 +672,12 @@ class Article(BaseModel):
     ) -> Optional["ArticleComment"]:
         return ArticleComment.create_interactively(article=self, kind=kind, text=text)
 
+    def add_misc_data(self, text: str) -> None:
+        if self.misc_data is None:
+            self.misc_data = text
+        else:
+            self.misc_data = f"{self.misc_data} {text}"
+
     def add_tag(self, tag: adt.ADT) -> None:
         if self.tags is None:
             self.tags = [tag]
@@ -805,6 +811,14 @@ class Article(BaseModel):
         result = models.article.add_data.get_doi_information(self.doi)
         if result:
             print(result.prettify())
+
+    def maybe_remove_corrupt_doi(self) -> None:
+        if self.doi is None:
+            return
+        if not models.article.add_data.is_doi_valid(self.doi):
+            print(f"{self}: remove invalid DOI: {self.doi}")
+            self.add_misc_data(f"Removed invalid doi: {self.doi}.")
+            self.doi = None
 
     def expand_doi(
         self, overwrite: bool = False, verbose: bool = False, set_fields: bool = False

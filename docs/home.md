@@ -26,7 +26,7 @@ As of January 2023, the database contains:
 
 # Documentation
 
-- [Release notes](/docs/release_notes)
+- [Release notes](/docs/release-notes)
 - [About me](/docs/about)
 - [Geography](/docs/geography)
 - [Chronology](/docs/chronology)

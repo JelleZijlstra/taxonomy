@@ -9,9 +9,14 @@ they will also apply to the database itself.
 - Database
     - Clean up about 300 duplicate articles with the same DOI
     - Clean up a few dozen duplicate citation groups
+    - Clean up some unresolvable DOIs
+    - Add ISSN to over 600 journals
 - Frontend
     - Display links to various identifiers (ISSN, ISBN, etc.) on
       article and citation group pages
+    - Redirect merged entities into their target entity
+- Backend
+    - Support redirecting Taxon and Name entities to others
 
 # Previous
 

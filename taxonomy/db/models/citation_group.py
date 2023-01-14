@@ -89,6 +89,12 @@ class CitationGroup(BaseModel):
                 return tag
         return None
 
+    def add_tag(self, tag: adt.ADT) -> None:
+        if self.tags is None:
+            self.tags = [tag]
+        else:
+            self.tags = self.tags + (tag,)
+
     def apply_to_patterns(self) -> None:
         getinput.add_to_clipboard(self.name)
         while True:
@@ -196,6 +202,7 @@ class CitationGroup(BaseModel):
             "merge": self.merge_interactive,
             "display_organized": self.display_organized,
             "display_full": lambda: self.display(full=True, include_articles=True),
+            "add_alias": self.add_alias,
         }
 
     def merge_interactive(self) -> None:
@@ -228,6 +235,14 @@ class CitationGroup(BaseModel):
             other.region = self.region
         self.target = other
         self.type = constants.ArticleType.REDIRECT  # type: ignore
+
+    def add_alias(self) -> "CitationGroup | None":
+        alias_name = self.getter("name").get_one_key("alias> ")
+        if alias_name is None:
+            return None
+        return CitationGroup.create(
+            name=alias_name, type=constants.ArticleType.REDIRECT, target=self
+        )
 
     def get_books(self) -> Any:
         return models.Book.select_valid().filter(models.Book.citation_group == self)

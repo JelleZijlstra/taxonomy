@@ -26,23 +26,23 @@ CREATE TABLE `name` (
     `original_name` VARCHAR(512) DEFAULT NULL,
     `corrected_original_name` VARCHAR(512) DEFAULT NULL,
     `root_name` VARCHAR(512) NOT NULL,
-    `authority` VARCHAR(1024) DEFAULT NULL,
+    `authority` VARCHAR(1024) DEFAULT NULL, -- unused
     `year` VARCHAR(255) DEFAULT NULL,
     `page_described` VARCHAR(255) DEFAULT NULL,
-    `original_citation` VARCHAR(512) DEFAULT NULL,
+    `original_citation` VARCHAR(512) DEFAULT NULL, -- unused
     `original_citation_id` INT UNSIGNED DEFAULT NULL,
     `verbatim_type` VARCHAR(1024) DEFAULT NULL,
     `verbatim_citation` VARCHAR(1024) DEFAULT NULL,
     `type_id` INT UNSIGNED DEFAULT NULL, -- ID of type genus/species for family, genus group
-    `nomenclature_comments` VARCHAR(65535) DEFAULT NULL,
-    `taxonomy_comments` VARCHAR(65535) DEFAULT NULL,
-    `other_comments` VARCHAR(65535) DEFAULT NULL,
+    `nomenclature_comments` VARCHAR(65535) DEFAULT NULL, -- unused
+    `taxonomy_comments` VARCHAR(65535) DEFAULT NULL, -- unused
+    `other_comments` VARCHAR(65535) DEFAULT NULL, -- unused
     `data` TEXT DEFAULT NULL, -- Arbitrary data in JSON form
     `stem` VARCHAR(512) DEFAULT NULL,
     `gender` TINYINT UNSIGNED DEFAULT NULL,
     `definition` VARCHAR(1024) DEFAULT NULL,
     `type_locality_id` int(10) UNSIGNED DEFAULT NULL,
-    `type_locality_description` MEDIUMTEXT,
+    `type_locality_description` MEDIUMTEXT, -- unused
     `type_specimen` varchar(1024) DEFAULT NULL,
     `nomenclature_status` INT NOT NULL DEFAULT 1, -- available or not
     `name_complex_id` INT UNSIGNED DEFAULT NULL,
@@ -51,7 +51,7 @@ CREATE TABLE `name` (
     `type_description` varchar(65535) default null,
     `type_specimen_source` varchar(512) default null, -- unused
     `type_specimen_source_id` INT UNSIGNED DEFAULT NULL, -- unused
-    `type_kind` integer default null, -- don't want it, drop this once I figure out the SQLite syntax
+    `type_kind` integer default null, -- unused
     `tags` varchar(65535) default null,
     `genus_type_kind` integer default null,
     `species_type_kind` integer default null,
@@ -59,6 +59,7 @@ CREATE TABLE `name` (
     `citation_group` INT UNSIGNED DEFAULT NULL,
     `author_tags` text default null,
     `original_rank` integer default null,
+    `target` integer default null,
     PRIMARY KEY(`id`),
     INDEX(`original_name`),
     INDEX(`root_name`),
@@ -331,3 +332,10 @@ CREATE TABLE `specimen_comment` (
     `text` text
 );
 CREATE INDEX "idx_specimen" ON "specimen_comment" (`specimen_id`);
+
+CREATE TABLE `url_cache` (
+    `domain` INT UNSIGNED NOT NULL,
+    `key` VARCHAR(128),
+    `content` TEXT
+);
+CREATE UNIQUE INDEX `full_key` on `url_cache` (`domain`, `key`);

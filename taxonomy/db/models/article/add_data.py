@@ -4,7 +4,9 @@ Adding data to (usually new) files.
 
 """
 from bs4 import BeautifulSoup
+import enum
 from functools import lru_cache
+import json
 from pathlib import Path
 import re
 import requests
@@ -12,18 +14,51 @@ import traceback
 from typing import Any, Sequence
 import urllib.parse
 
-from .article import Article
+from .article import Article, ArticleTag
 from .lint import is_valid_doi
-from ..citation_group import CitationGroup
+from ..citation_group import CitationGroup, CitationGroupTag
 from ..person import AuthorTag, Person
 from ...constants import ArticleType, ArticleKind
 from ...helpers import clean_string, trimdoi, clean_strings_recursively
-from .... import config, parsing, getinput, uitools
+from ...url_cache import cached, CacheDomain
+from .... import config, parsing, getinput, uitools, command_set
 
 _options = config.get_options()
 
+CS = command_set.CommandSet("add_data", "Commands for adding data to articles")
 
 RawData = dict[str, Any]
+
+
+@lru_cache()
+def get_doi_json(doi: str) -> dict[str, Any] | None:
+    try:
+        return json.loads(get_doi_json_cached(doi))
+    except Exception:
+        traceback.print_exc()
+        print(f"Could not resolve DOI {doi}")
+        return None
+
+
+@cached(CacheDomain.doi)
+def get_doi_json_cached(doi: str) -> str:
+    # "Good manners" section in https://api.crossref.org/swagger-ui/index.html
+    url = f"https://api.crossref.org/works/{urllib.parse.quote(doi)}?mailto=jelle.zijlstra@gmail.com"
+    response = requests.get(url)
+    response.raise_for_status()
+    return response.text
+
+
+def is_doi_valid(doi: str) -> bool:
+    try:
+        get_doi_json_cached(doi)
+    except requests.exceptions.HTTPError as e:
+        if "404 Client Error: Not Found" not in str(e):
+            traceback.print_exc()
+            print(f"ignoring unexpected error")
+            return True
+        return False
+    return True
 
 
 @lru_cache()
@@ -46,6 +81,111 @@ def get_doi_information(doi: str) -> BeautifulSoup | None:
     return None
 
 
+# values from http://www.crossref.org/schema/queryResultSchema/crossref_query_output2.0.xsd
+doi_type_to_article_type = {
+    "journal_title": ArticleType.JOURNAL,
+    "journal_issue": ArticleType.JOURNAL,
+    "journal_volume": ArticleType.JOURNAL,
+    "journal_article": ArticleType.JOURNAL,
+    "conference_paper": ArticleType.CHAPTER,
+    "component": ArticleType.CHAPTER,
+    "book_content": ArticleType.CHAPTER,
+    "dissertation": ArticleType.THESIS,
+    "conference_title": ArticleType.BOOK,
+    "conference_series": ArticleType.BOOK,
+    "book_title": ArticleType.BOOK,
+    "book_series": ArticleType.BOOK,
+    "report-paper_title": ArticleType.MISCELLANEOUS,
+    "report-paper_series": ArticleType.MISCELLANEOUS,
+    "report-paper_content": ArticleType.MISCELLANEOUS,
+    "standard_title": ArticleType.MISCELLANEOUS,
+    "standard_series": ArticleType.MISCELLANEOUS,
+    "standard_content": ArticleType.MISCELLANEOUS,
+}
+for _key, _value in list(doi_type_to_article_type.items()):
+    # usage seems to be inconsistent, let's just use both
+    doi_type_to_article_type[_key.replace("-", "_")] = _value
+    doi_type_to_article_type[_key.replace("_", "-")] = _value
+
+
+def expand_doi_json(doi: str) -> RawData:
+    result = get_doi_json(doi)
+    if result is None:
+        return {}
+    work = result["message"]
+    data: RawData = {"doi": doi}
+    typ = ArticleType.ERROR
+    if work["type"] in doi_type_to_article_type:
+        data["type"] = typ = doi_type_to_article_type[work["type"]]
+
+    if titles := work.get("title"):
+        title = titles[0]
+        if title.isupper():
+            # all uppercase title; let's clean it up a bit
+            # this won't give correct capitalization, but it'll be better than all-uppercase
+            title = title[0] + title[1:].lower()
+        data["title"] = clean_string(title)
+
+    if author_raw := work.get("author"):
+        authors = []
+        for author in author_raw:
+            info = {"family_name": clean_string(author["family"])}
+            if given := author["given"]:
+                given_names = clean_string(given.title())
+                if given_names[-1].isupper():
+                    given_names = given_names + "."
+                if parsing.matches_grammar(
+                    given_names.replace(" ", ""), parsing.initials_pattern
+                ):
+                    info["initials"] = given_names.replace(" ", "")
+                else:
+                    info["given_names"] = re.sub(r"\. ([A-Z]\.)", r".\1", given_names)
+            authors.append(info)
+        data["author_tags"] = authors
+
+    if volume := work.get("volume"):
+        data["volume"] = volume.removeprefix("0")
+    if issue := work.get("issue"):
+        data["issue"] = issue.removeprefix("0")
+
+    if page := work.get("page"):
+        if typ in (ArticleType.JOURNAL, ArticleType.CHAPTER):
+            if match := re.fullmatch(r"^(\d+)-(\d+)", page):
+                data["start_page"] = match.group(1)
+                data["end_page"] = match.group(2)
+            elif page.isnumeric():
+                data["start_page"] = data["end_page"] = page
+            else:
+                data["start_page"] = page
+        else:
+            data["pages"] = page
+    if date := work.get("published", {}).get("date-parts"):
+        data["year"] = str(date[0][0])
+
+    if isbns := work.get("ISBN"):
+        isbn = isbns[0]
+    else:
+        isbn = None
+
+    if typ is ArticleType.BOOK:
+        data["isbn"] = isbn
+
+    if container_title := get_container_title(work):
+        if typ is ArticleType.JOURNAL:
+            data["journal"] = container_title
+        elif typ is ArticleType.CHAPTER:
+            data["parent_info"] = {"title": container_title, "isbn": isbn}
+
+    return data
+
+
+def get_container_title(work: dict[str, Any]) -> str | None:
+    if container_title := work.get("container-title"):
+        title = container_title[0]
+        return title.replace("&amp;", "&").replace("’", "'")
+    return None
+
+
 def expand_doi(doi: str) -> RawData:
     result = get_doi_information(doi)
     if not result:
@@ -53,27 +193,6 @@ def expand_doi(doi: str) -> RawData:
     data: RawData = {"doi": doi}
 
     doiType = result.doi["type"]
-    # values from http:#www.crossref.org/schema/queryResultSchema/crossref_query_output2.0.xsd
-    doi_type_to_article_type = {
-        "journal_title": ArticleType.JOURNAL,
-        "journal_issue": ArticleType.JOURNAL,
-        "journal_volume": ArticleType.JOURNAL,
-        "journal_article": ArticleType.JOURNAL,
-        "conference_paper": ArticleType.CHAPTER,
-        "component": ArticleType.CHAPTER,
-        "book_content": ArticleType.CHAPTER,
-        "dissertation": ArticleType.THESIS,
-        "conference_title": ArticleType.BOOK,
-        "conference_series": ArticleType.BOOK,
-        "book_title": ArticleType.BOOK,
-        "book_series": ArticleType.BOOK,
-        "report-paper_title": ArticleType.MISCELLANEOUS,
-        "report-paper_series": ArticleType.MISCELLANEOUS,
-        "report-paper_content": ArticleType.MISCELLANEOUS,
-        "standard_title": ArticleType.MISCELLANEOUS,
-        "standard_series": ArticleType.MISCELLANEOUS,
-        "standard_content": ArticleType.MISCELLANEOUS,
-    }
     if doiType not in doi_type_to_article_type:
         return {}
     data["type"] = doi_type_to_article_type[doiType]
@@ -166,8 +285,112 @@ def extract_doi(art: Article) -> str | None:
 def get_doi_data(art: Article) -> RawData:
     doi = extract_doi(art)
     if doi is not None:
-        return expand_doi(doi)
+        return expand_doi_json(doi)
     return {}
+
+
+class ISSNKind(enum.Enum):
+    print = 1
+    electronic = 2
+    other = 3
+
+
+def get_issns(
+    doi: str, verbose: bool = False
+) -> tuple[str, list[tuple[str, ISSNKind]]] | None:
+    data = get_doi_json(doi)
+    if data is None:
+        if verbose:
+            print(f"{doi}: found no information")
+        return None
+    work = data["message"]
+    journal = get_container_title(work)
+    if journal is None:
+        if verbose:
+            print(f"{doi}: no container title")
+        return None
+    raw_issns = work.get("ISSN", [])
+    typed_issns = work.get("issn-type", [])
+
+    pairs = []
+    seen_issns = set()
+    for typed in typed_issns:
+        issn = typed["value"]
+        if typed["type"] == "print":
+            pairs.append((ISSNKind.print, issn))
+        elif typed["type"] == "electronic":
+            pairs.append((ISSNKind.electronic, issn))
+        else:
+            print("unexpected ISSN type:", typed["type"])
+            pairs.append((ISSNKind.other, issn))
+        seen_issns.add(issn)
+    for issn in raw_issns:
+        if issn not in seen_issns:
+            pairs.append((ISSNKind.other, issn))
+    return journal, pairs
+
+
+def get_cg_by_name(name: str) -> CitationGroup | None:
+    try:
+        cg = CitationGroup.select().filter(CitationGroup.name == name).get()
+    except CitationGroup.DoesNotExist:
+        return None
+    if target := cg.get_redirect_target():
+        return target
+    return cg
+
+
+@CS.register
+def fill_issns(limit: int | None = None, verbose: bool = False) -> None:
+    for art in (
+        Article.select_valid()
+        .filter(
+            Article.type == ArticleType.JOURNAL,
+            Article.doi != None,
+            Article.citation_group != None,
+        )
+        .limit(limit)
+    ):
+        cg = art.citation_group
+        existing_issn = cg.get_tag(CitationGroupTag.ISSN)
+        existing_issn_online = cg.get_tag(CitationGroupTag.ISSNOnline)
+        if existing_issn or existing_issn_online:
+            if verbose:
+                print(f"{cg}: ignoring because it has an ISSN")
+            continue
+        issns = get_issns(art.doi, verbose=verbose)
+        if issns is None:
+            art.maybe_remove_corrupt_doi()
+            if verbose:
+                print(f"{art}: ignoring because there was no ISSN information")
+            continue
+        if verbose:
+            print(f"{art}: got ISSN information {issns}")
+        journal_name, pairs = issns
+        if not pairs:
+            if verbose:
+                print(f"{art}: no ISSNs")
+            continue
+        found_cg = get_cg_by_name(journal_name)
+        if found_cg is None:
+            print(
+                f"{art} ({cg.name}): Ignoring ISSNs {pairs} because {journal_name} is not a known citation group"
+            )
+            continue
+        if found_cg != cg:
+            print(f"{art}: Ignoring ISSNs {pairs} because {journal_name} != {cg.name}")
+            continue
+        for kind, issn in pairs:
+            if kind is ISSNKind.electronic:
+                tag = CitationGroupTag.ISSNOnline(issn)
+            else:
+                tag = CitationGroupTag.ISSN(issn)
+            if journal_name != cg.name:
+                extra = f" (using name {journal_name})"
+            else:
+                extra = ""
+            print(f"{cg}{extra}: adding tag {tag}")
+            cg.add_tag(tag)
 
 
 def get_jstor_data(art: Article) -> RawData:
@@ -349,13 +572,27 @@ def set_multi(art: Article, data: RawData, *, only_new: bool = True) -> None:
                 continue
             print(f"{art}: set citation group to {value}")
             art.citation_group = CitationGroup.get_or_create(value)
+        elif attr == "isbn":
+            existing = art.getIdentifier(ArticleTag.ISBN)
+            if existing:
+                if existing == value:
+                    continue
+                if only_new:
+                    print(f"{art}: ignoring ISBN {value}")
+                    continue
+            art.add_tag(ArticleTag.ISBN(text=value))
         elif attr in Article.fields():
             current = getattr(art, attr)
             if current and only_new:
-                print(f"{art}: ignore field {attr} (new: {value}; existing: {current})")
+                if current != value:
+                    print(
+                        f"{art}: ignore field {attr} (new: {value}; existing: {current})"
+                    )
                 continue
             print(f"{art}: set {attr} to {value}")
             setattr(art, attr, value)
+        else:
+            print(f"warning: ignoring field {attr}: {value}")
     # Somehow this doesn't always autosave
     art.save()
 

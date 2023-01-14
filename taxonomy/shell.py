@@ -90,6 +90,7 @@ COMMAND_SETS = [
     models.fill_data.CS,
     models.article.check.CS,
     export.CS,
+    models.article.add_data.CS,
 ]
 
 
