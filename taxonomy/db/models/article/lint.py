@@ -10,7 +10,7 @@ from typing import Any
 import unicodedata
 from .article import Article, ArticleTag
 from .name_parser import get_name_parser
-from ..citation_group import CitationGroup
+from ..citation_group import CitationGroup, CitationGroupTag
 from ...constants import ArticleKind, ArticleType
 
 Linter = Callable[[Article, bool], Iterable[str]]
@@ -228,6 +228,8 @@ def journal_specific_cleanup(art: Article, autofix: bool = True) -> Iterable[str
     cg = art.citation_group
     if cg is None:
         return
+    if message := cg.is_year_in_range(art.numeric_year()):
+        yield f"{art}: {message}"
     if cg.name == "Proceedings of the Zoological Society of London":
         year = art.numeric_year()
         if year is None:

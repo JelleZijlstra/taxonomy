@@ -5,7 +5,7 @@ from peewee import BooleanField, CharField, ForeignKeyField, IntegrityError
 from .. import constants, helpers, models
 from ... import adt, events, getinput
 
-from .base import BaseModel, EnumField, ADTField
+from .base import BaseModel, EnumField, ADTField, get_completer
 from .region import Region
 
 
@@ -205,6 +205,11 @@ class CitationGroup(BaseModel):
             "add_alias": self.add_alias,
         }
 
+    def get_completers_for_adt_field(self, field: str) -> getinput.CompleterMap:
+        return {
+            (CitationGroupTag.Predecessor, "cg"): get_completer(CitationGroup, None)
+        }
+
     def merge_interactive(self) -> None:
         other = self.getter(None).get_one("merge target> ")
         if other is None:
@@ -253,8 +258,18 @@ class CitationGroup(BaseModel):
         )
 
     def get_names(self) -> List["models.Name"]:
-        names = self.names.filter(models.Name.status != constants.Status.removed)
+        names = models.Name.add_validity_check(self.names)
         return sorted(names, key=lambda nam: nam.sort_key())
+
+    def is_year_in_range(self, year: int) -> str | None:
+        year_range = self.get_tag(CitationGroupTag.YearRange)
+        if not year_range:
+            return None
+        if year_range.start and year < int(year_range.start):
+            return f"{year} is before start of {year_range} for {self}"
+        if year_range.end and year > int(year_range.end):
+            return f"{year} is after end of {year_range} for {self}"
+        return None
 
     def display_organized(self, depth: int = 0) -> None:
         region_str = f" ({self.region.name})" if self.region else ""
@@ -316,3 +331,7 @@ class CitationGroupTag(adt.ADT):
     # ISSN for online edition
     ISSNOnline(text=str, tag=15)  # type: ignore
     CitationGroupURL(text=str, tag=16)  # type: ignore
+    # The journal existed during this period
+    YearRange(start=str, end=str, tag=17)  # type: ignore
+    # If a journal got renamed, a reference to the previous name
+    Predecessor(cg=CitationGroup, tag=18)  # type: ignore

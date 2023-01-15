@@ -17,6 +17,8 @@ they will also apply to the database itself.
     - Redirect merged entities into their target entity
 - Backend
     - Support redirecting Taxon and Name entities to others
+    - Add support for marking the valid year range on journals
+      (documented in [Tricky journals](/docs/tricky-journals))
 
 # Previous
 

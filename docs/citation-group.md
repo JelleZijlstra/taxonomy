@@ -36,3 +36,5 @@ The following are a few guidelines for organizing journal citation groups:
 - If a journal was renamed, use the historical name of the journal at the time each individual article was published. Minor variations may be ignored (e.g., "Zoölogy" versus "Zoology"); if so, standardize on the more recent name. Perhaps eventually we'll have a system to merge renamed journals into the same internal journal, and automatically select the right name depending on time period.
 - For journal names not in the Latin alphabet, I don't have a well-developed policy. If there is an established Latin-alphabet name (e.g., "[Vertebrata PalAsiatica](/cg/Vertebrata_PalAsiatica)"), use it. Otherwise, we should use the native name, with redirects for common Latin-alphabet renderings. (In practice this mostly affects Russian and some Japanese journals. Chinese journals tend to have well-established English names.)
 - For the citation_group field on names, it's OK to guess at the journal name or use an abbreviation. We'll clean up the names eventually.
+
+See [Tricky journals](/docs/tricky-journals) for some tricky cases.

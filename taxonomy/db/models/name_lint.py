@@ -640,6 +640,13 @@ def check_fill_data_level(nam: Name, autofix: bool = True) -> Iterable[str]:
     yield f"{nam}: missing basic data: {reason}"
 
 
+def check_citation_group(nam: Name, autofix: bool = True) -> Iterable[str]:
+    if nam.citation_group is None or nam.year is None:
+        return
+    if message := nam.citation_group.is_year_in_range(nam.numeric_year()):
+        yield f"{nam}: {message}"
+
+
 LINTERS: list[Linter] = [
     check_type_tags_for_name,
     check_required_tags,
@@ -655,6 +662,7 @@ LINTERS: list[Linter] = [
     check_justified_emendations,
     autoset_original_rank,
     autoset_corrected_original_name,
+    check_citation_group,
 ]
 DISABLED_LINTERS: list[Linter] = [
     check_type_designations_present,  # too many missing (about 580)
