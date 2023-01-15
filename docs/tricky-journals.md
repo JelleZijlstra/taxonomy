@@ -21,6 +21,8 @@ objects to help with tricky cases:
 
 # Specific cases
 
+Below "v." stands for "volume".
+
 ## University of California Geology
 
 The University of California's geological series has gone through a confusing
@@ -74,7 +76,7 @@ _Abhandlungen_ and _Monatshefte_, each of which has had its own set of renamings
     - [Neues Jahrbuch für Geologie und Paläontologie. Monatshefte](/cg/786) (1950-2006)
 - Abhandlungen
     - Neues Jahrbuch für Mineralogie, Geologie und Paläontologie. Beilage-band (1881-1942, included in [CG#810](/cg/810))
-    - [Neues Jahrbuch für Mineralogie, Geologie und Paläontologie. Abhandlungen](/cg/1635) (1943-1950, CG#1635)
+    - [Neues Jahrbuch für Mineralogie, Geologie und Paläontologie. Abhandlungen](/cg/1635) (1943-1950)
     - [Neues Jahrbuch für Geologie und Paläontologie. Abhandlungen](/cg/711) (1950-present)
 - Post-1950 there is also a separate Neues Jahrbuch für Mineralogie.
 
@@ -85,3 +87,92 @@ Sources:
 - https://searchworks.stanford.edu/view/487499
 - https://searchworks.stanford.edu/view/497423
 - https://www.biodiversitylibrary.org/bibliography/51831#/summary
+
+## Comptes Rendus
+
+The proceedings of the Paris Academy are another venerable journal. Their most
+confusing aspect is the proliferation of series in the late 20th century. Series that are
+relevant to the database are *italicized*.
+
+- The Stanford catalog notes that before 1835 there was a "Proces-verbaux des seances de l'Academie",
+  but I have not encountered this name in my research
+- [Comptes rendus hebdomadaires des séances de l'Académie des sciences](/cg/1598) (1835–1978)
+    - No series (v. 1–261, 1835–1965)
+    - Same name (and therefore same citation group), but split into series (v. 262-287, 1966-1978)
+        - Série A - Sciences mathématiques et Série B - Sciences physiques (apparently combined
+        and sometimes split)
+        - Série C - Sciences chimiques
+        - *Série D* - Sciences naturelles
+- [Comptes rendus des séances de l'Académie des sciences](/cg/4698) (1979–1983)
+    - Continuing series A–D as before (v. 288–291, 1979–1980)
+    - New set of series (v. 292–297, 1981–1983)
+        - Série I, Mathématique
+        - Série II, Mécanique, physique, chimie, sciences de la terre, sciences de l'univers
+        - *Série III*, Sciences de la vie
+- [Comptes rendus de l'Académie des sciences](/cg/47) (1984–2001)
+    - Série I, Mathématique (v. 298–333, 1984–2001)
+    - *Série II*, Mécanique, physique, chimie, sciences de l'univers, sciences de la terre (v. 298–317, 1984–1993)
+    - *Série II*, Sciences de la terre et des planètes (v. 318–333, 1994–2001)
+        - Sometimes called "IIa", which I'll stick with since there were two Série II sequences
+    - Série II, Mécanique, physique, chimie, astronomie (v. 318–325, 1994–1997) (properly IIb)
+    - Série IIb, Mécanique, physique, astronomie (v. 326–327, 1998–1999)
+    - Série IIc, Chimie (v. 1–4, 1998–2001)
+    - *Série III*, Sciences de la vie (v. 298–324, 1984–2001)
+    - Série IV, Physique, astrophysique (v. 1–2, 2000–2001)
+    - I think a series for "Mécanique" also showed up at some point but I lost track
+- Split into different journals (2002–present)
+    - *[Comptes Rendus Biologies](/cg/1322)* (v. 325-, 2002-)
+    - Comptes Rendus Chimie (v. 5–, 2002–)
+    - Comptes Rendus Géoscience (v. 334–, 2002–)
+    - Comptes Rendus Mathématique (v. 334–, 2002–)
+    - *[Comptes Rendus Palevol](/cg/730)* (v. 1–, 2002–)
+    - Comptes Rendus Physique (v. 3–, 2002–)
+
+Sources:
+- https://www.academie-sciences.fr/fr/Transmettre-les-connaissances/comptes-rendus-de-l-academie-des-sciences-numerisees-sur-le-site-de-la-bibliotheque-nationale-de-france.html (from the Académie itself, but the list is an oversimplification)
+- https://searchworks.stanford.edu/view/13433202
+
+## Muséum national d'histoire naturelle
+
+The Paris Museum has published and frequently renamed several journals. They seem to fall in three groups.
+
+- The "old" group, frequently renamed and now defunct
+    - [Annales du Muséum d'histoire naturelle](/cg/1365) (v. 1–21, 1802–1813, [Stanford](https://searchworks.stanford.edu/view/373356))
+    - [Mémoires du Muséum d'histoire naturelle](/cg/1683) (v. 1–20, 1815–1832, [Stanford](https://searchworks.stanford.edu/view/373360))
+    - [Nouvelles annales du Muséum d'histoire naturelle](/cg/1345) (v. 1–4, 1832–1835, [Stanford](https://searchworks.stanford.edu/view/373363))
+    - [Archives du Muséum d'histoire naturelle](/cg/342) (v. 1–10, 1836–1861, [Stanford](https://searchworks.stanford.edu/view/5791298))
+    - [Nouvelles archives du Muséum d'histoire naturelle](/cg/1952) (1865–1914, [Stanford](https://searchworks.stanford.edu/view/9318862))
+        - Ser. 1 (v. 1–10, 1865–1874)
+        - Ser. 2 (v. 1–10, 1878-1888)
+        - Ser. 3 (v. 1–10, 1889–1898)
+        - Ser. 4 (v. 1–10, 1899–1908)
+        - Ser. 5 (v. 1–6, 1909–1914)
+    - [Archives du Muséum national d'histoire naturelle](/cg/2226) (1926–1970, [Stanford](https://searchworks.stanford.edu/view/373357), [BHL](https://www.biodiversitylibrary.org/bibliography/168894))
+        - Ser. 6 (v. 1–19, 1926–1942)
+        - Ser. 7 (v. 1–10, 1952–1970)
+- The "Bulletin" group, now Zoosystema and Geodiversitas
+    - [Bulletin du Muséum d'histoire naturelle](/cg/4701) (v. 1-12, 1895–1906, [BHL](https://www.biodiversitylibrary.org/bibliography/68686))
+    - [Bulletin du Muséum national d'histoire naturelle](/cg/740) ([BHL](https://www.biodiversitylibrary.org/bibliography/5943))
+        - Series 1 (v. 13-34, 1907–1928)
+        - Series 2 (v. 1-42, 1929–1970)
+        - Series 3 (1971–1978) was divided into named sections
+            - Zoologie ([BHL](https://www.biodiversitylibrary.org/bibliography/149559))
+            - Sciences de la terre ([BHL](https://www.biodiversitylibrary.org/bibliography/145272))
+            - Botanique, Écologie générale, Sciences de l'homme, Sciences physico-chimiques (not of concern here)
+        - Series 4 (v. 1–18, 1979–1996) was divided into lettered sections
+            - Section A Zoologie, biologie et écologie animales (v. 1–18, 1979–1996, [BHL](https://www.biodiversitylibrary.org/bibliography/158834))
+            - Section B was named "Botanique, biologie et écologie végétales, phytochimie" in 1979–80 ([BHL](https://www.biodiversitylibrary.org/bibliography/14109)) and then "Adansonia" in 1981–1996 ([BHL](https://www.biodiversitylibrary.org/bibliography/13855))
+            - Section C Sciences de la terre, paléontologie, géologie, minéralogie (v. 1–18, 1979–1996, [BHL](https://www.biodiversitylibrary.org/bibliography/146268))
+    - Then split into different journals (1997–present)
+        - [Zoosystema](/cg/1075) (succeeding section A)
+        - Adansonia (succeeding section B)
+        - [Geodiversitas](/cg/468) (succeeding section C)
+- The "Mémoires" group, for longer papers, always named [Mémoires du Muséum national d'histoire naturelle](/cg/892)
+    - The "nouvelle série" of 1936–1950 ([MNHN](https://sciencepress.mnhn.fr/fr/collections/memoires-du-museum-national-d-histoire-naturelle-nouvelle-serie-1935-1950))
+    - Three thematic series (1950–1992)
+        - Série A Zoologie (v. 1–154, 1950–1992, [BHL](https://www.biodiversitylibrary.org/bibliography/155000))
+        - Série B Botanique (v. 1–32, 1950–1990, [BHL](https://www.biodiversitylibrary.org/bibliography/158815))
+        - Série C Sciences de la terre (v. 1–56, 1950–1990, [BHL](https://www.biodiversitylibrary.org/bibliography/160082), one volume was "Géologie" instead)
+    - Reunified into a single series (v. 155–, 1993–, [BHL](https://www.biodiversitylibrary.org/bibliography/162187))
+
+Note that there are also some similarly named publications by the Lyon museum (e.g. [Nouvelles archives du Muséum d'histoire naturelle de Lyon](/cg/1733)).

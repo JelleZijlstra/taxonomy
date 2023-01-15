@@ -265,10 +265,10 @@ class Name(BaseModel):
         return self.target
 
     def is_invalid(self) -> bool:
-        return self.status not in (Status.removed, Status.redirect)
+        return self.status in (Status.removed, Status.redirect)
 
     def should_skip(self) -> bool:
-        return self.status not in (Status.removed, Status.redirect)
+        return self.status in (Status.removed, Status.redirect)
 
     def get_stem(self) -> Optional[str]:
         if self.group != Group.genus or self.name_complex is None:

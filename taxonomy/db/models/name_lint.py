@@ -15,7 +15,6 @@ from ..constants import (
     CommentKind,
     Group,
     NomenclatureStatus,
-    Status,
     SpeciesGroupType,
 )
 from .. import helpers

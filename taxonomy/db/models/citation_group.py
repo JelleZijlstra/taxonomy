@@ -195,6 +195,14 @@ class CitationGroup(BaseModel):
     def edit(self) -> None:
         self.fill_field("tags")
 
+    def edit_all_members(self) -> None:
+        for nam in self.get_names():
+            nam.display()
+            nam.edit()
+        for art in self.get_articles():
+            art.display()
+            art.edit()
+
     def get_adt_callbacks(self) -> getinput.CallbackMap:
         return {
             **super().get_adt_callbacks(),
@@ -203,6 +211,8 @@ class CitationGroup(BaseModel):
             "display_organized": self.display_organized,
             "display_full": lambda: self.display(full=True, include_articles=True),
             "add_alias": self.add_alias,
+            "edit_all_members": self.edit_all_members,
+            "print_series": self.print_series,
         }
 
     def get_completers_for_adt_field(self, field: str) -> getinput.CompleterMap:
@@ -277,6 +287,14 @@ class CitationGroup(BaseModel):
         nams = [(repr(nam), nam.taxon) for nam in self.get_names()]
         models.taxon.display_organized(nams)
 
+    def print_series(self) -> None:
+        by_series: dict[str, list[models.Article]] = {}
+        for art in self.get_articles():
+            if art.series is not None:
+                by_series.setdefault(art.series, []).append(art)
+        for series, arts in sorted(by_series.items()):
+            print(f"- {series} ({len(arts)})")
+
     def _display_nams(self, nams: Iterable["models.Name"], depth: int = 0) -> None:
         for nam in sorted(nams, key=lambda nam: nam.sort_key()):
             # Make it easier to see names that don't have a citation yet
@@ -335,3 +353,5 @@ class CitationGroupTag(adt.ADT):
     YearRange(start=str, end=str, tag=17)  # type: ignore
     # If a journal got renamed, a reference to the previous name
     Predecessor(cg=CitationGroup, tag=18)  # type: ignore
+    # Series may be present and must conform to the regex in the tag
+    SeriesRegex(text=str, tag=19)  # type: ignore

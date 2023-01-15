@@ -718,6 +718,9 @@ class ArticleKind(enum.IntEnum):
     reference = 7  # reference to an online resource
     alternative_version = 11  # e.g., in press version. Backed by a physical file but should not have references.
 
+    def is_electronic(self) -> bool:
+        """Is it backed by an electronic file?"""
+        return self in (ArticleKind.electronic, ArticleKind.alternative_version)
 
 class ArticleCommentKind(enum.IntEnum):
     dating = 1

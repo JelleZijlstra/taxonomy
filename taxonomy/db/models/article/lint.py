@@ -27,15 +27,15 @@ def check_name(art: Article, autofix: bool = True) -> Iterable[str]:
         parser.printErrors()
         yield f"{art}: name failed to parse"
     if parser.extension:
-        if art.kind is not ArticleKind.electronic:
+        if not art.kind.is_electronic():
             yield f"{art}: non-electronic article (kind {art.kind!r}) should not have a file extension"
     else:
-        if art.kind is ArticleKind.electronic:
+        if art.kind.is_electronic():
             yield f"{art}: electronic article should have a file extension"
 
 
 def check_path(art: Article, autofix: bool = True) -> Iterable[str]:
-    if art.kind is ArticleKind.electronic:
+    if art.kind.is_electronic():
         if art.path is None or art.path == "NOFILE":
             yield f"{art}: electronic article should have a path"
     else:
@@ -230,6 +230,17 @@ def journal_specific_cleanup(art: Article, autofix: bool = True) -> Iterable[str
         return
     if message := cg.is_year_in_range(art.numeric_year()):
         yield f"{art}: {message}"
+    if art.series is None and cg.get_tag(CitationGroupTag.MustHaveSeries):
+        yield f"{art}: missing a series, but {cg} requires one"
+    if cg.type is ArticleType.JOURNAL:
+        if may_have_series := cg.get_tag(CitationGroupTag.SeriesRegex):
+            if art.series is not None and not re.fullmatch(
+                may_have_series.text, art.series
+            ):
+                yield f"{art}: series {art.series} does not match regex {may_have_series.text} for {cg}"
+        else:
+            if art.series is not None:
+                yield f"{art}: is in {cg}, which does not support series"
     if cg.name == "Proceedings of the Zoological Society of London":
         year = art.numeric_year()
         if year is None:
