@@ -10,6 +10,7 @@ from .name import Name, NameTag, TypeTag, STATUS_TO_TAG
 from .article import Article, ArticleTag
 from ..constants import (
     ArticleKind,
+    ArticleType,
     TypeSpeciesDesignation,
     FillDataLevel,
     CommentKind,
@@ -646,6 +647,21 @@ def check_citation_group(nam: Name, autofix: bool = True) -> Iterable[str]:
         yield f"{nam}: {message}"
 
 
+def check_matches_citation(nam: Name, autofix: bool = True) -> Iterable[str]:
+    if nam.original_citation is None:
+        return
+    art = nam.original_citation
+    if nam.page_described and nam.page_described.isnumeric():
+        if art.type in (ArticleType.JOURNAL, ArticleType.CHAPTER):
+            start_page = art.numeric_start_page()
+            end_page = art.numeric_end_page()
+            if start_page and end_page:
+                page_range = range(art.numeric_start_page(), art.numeric_end_page() + 1)
+                if nam.numeric_page_described() not in page_range:
+                    yield f"{nam}: {nam.page_described} is not in {page_range} for {art}"
+    # TODO check year
+
+
 LINTERS: list[Linter] = [
     check_type_tags_for_name,
     check_required_tags,
@@ -662,6 +678,7 @@ LINTERS: list[Linter] = [
     autoset_original_rank,
     autoset_corrected_original_name,
     check_citation_group,
+    check_matches_citation,
 ]
 DISABLED_LINTERS: list[Linter] = [
     check_type_designations_present,  # too many missing (about 580)

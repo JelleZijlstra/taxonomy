@@ -617,6 +617,9 @@ class Article(BaseModel):
     def numeric_start_page(self) -> int:
         return to_int(self.start_page)
 
+    def numeric_end_page(self) -> int:
+        return to_int(self.end_page)
+
     def ispdf(self) -> bool:
         return self.kind is ArticleKind.electronic and self.name.endswith(".pdf")
 

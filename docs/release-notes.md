@@ -11,6 +11,7 @@ they will also apply to the database itself.
     - Clean up a few dozen duplicate citation groups
     - Clean up some unresolvable DOIs
     - Add ISSN to over 600 journals
+    - Fix numerous incorrect page fields on names and articles
 - Frontend
     - Display links to various identifiers (ISSN, ISBN, etc.) on
       article and citation group pages
@@ -19,6 +20,8 @@ they will also apply to the database itself.
     - Support redirecting Taxon and Name entities to others
     - Add support for marking the valid year range on journals
       (documented in [Tricky journals](/docs/tricky-journals))
+    - Check that the *page_described* field for names is within
+      the page range of their original citation
 
 # Previous
 

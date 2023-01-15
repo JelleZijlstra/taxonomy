@@ -218,6 +218,11 @@ def lscheck(lslist: LsFileList, csvlist: FileList, dry_run: bool = False) -> boo
                 subprocess.check_call(["open", path])
                 return True
 
+            def dir_opener(cmd: str, data: object) -> bool:
+                path = _options.library_path / lsfile.path
+                subprocess.check_call(["open", path])
+                return True
+
             cmd, _ = uitools.menu(
                 head=header,
                 options={
@@ -227,11 +232,13 @@ def lscheck(lslist: LsFileList, csvlist: FileList, dry_run: bool = False) -> boo
                     "m": "move to the next component of the catalog",
                     "r": "remove this file",
                     "o": "open this file",
+                    "d": "open this directory",
                 },
                 process={
                     "q": uitools.stop_callback("lscheck"),
                     "r": remover,
                     "o": opener,
+                    "d": dir_opener,
                     "a": add,
                 },
             )
