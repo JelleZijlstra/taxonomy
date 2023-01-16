@@ -61,7 +61,7 @@ class Location(BaseModel):
         return query.filter(Location.deleted == LocationStatus.valid)
 
     def should_skip(self) -> bool:
-        return self.deleted
+        return self.deleted is not LocationStatus.valid
 
     def get_redirect_target(self) -> Location | None:
         if self.deleted is LocationStatus.alias:

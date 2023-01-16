@@ -492,7 +492,7 @@ class Person(BaseModel):
     @classmethod
     def find_duplicates(cls, autofix: bool = False) -> list[list[Person]]:
         by_key: dict[tuple[str | None, ...], list[Person]] = defaultdict(list)
-        for person in cls.select_valid().filter(cls.type << UNCHECKED_TYPES):
+        for person in cls.select_valid().filter(Person.type << UNCHECKED_TYPES):
             key = (
                 person.family_name,
                 None if person.given_names is not None else person.initials,
@@ -786,7 +786,7 @@ class Person(BaseModel):
     @classmethod
     def resolve_redirects(cls) -> None:
         for person in cls.select_valid().filter(
-            cls.type << (PersonType.soft_redirect, PersonType.hard_redirect)
+            Person.type << (PersonType.soft_redirect, PersonType.hard_redirect)
         ):
             refs = person.total_references()
             if refs > 0:
@@ -804,7 +804,7 @@ class Person(BaseModel):
     @classmethod
     def autodelete(cls, dry_run: bool = False) -> None:
         cls.compute_all_derived_fields()
-        for person in cls.select_valid().filter(cls.type == PersonType.unchecked):
+        for person in cls.select_valid().filter(Person.type == PersonType.unchecked):
             person.maybe_autodelete(dry_run=dry_run)
 
     @classmethod

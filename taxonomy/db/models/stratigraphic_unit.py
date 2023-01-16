@@ -61,7 +61,7 @@ class StratigraphicUnit(BaseModel):
             parts.append(f"part of {self.parent.name}")
         if self.region is not None:
             parts.append(f"located in {self.region.name}")
-        if self.max_period is not None:
+        if self.max_period is not None and self.min_period is not None:
             if self.min_period == self.max_period:
                 parts.append(f"correlated to {self.min_period.name}")
             else:

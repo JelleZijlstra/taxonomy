@@ -163,17 +163,21 @@ def fill_data_for_names(
             getattr(nam, field) is not None or field not in nam.get_required_fields()
         ):
             return False
-        if min_year is not None:
+        if min_year is not None and nam.year is not None:
             try:
                 year = int(nam.year)
-            except (ValueError, TypeError):
+            except ValueError:
                 return True
             return min_year <= year
         else:
             return True
 
     citations = sorted(
-        {nam.original_citation for nam in nams if should_include(nam)},
+        {
+            nam.original_citation
+            for nam in nams
+            if should_include(nam) and nam.original_citation is not None
+        },
         key=lambda art: (art.path or "NOFILE", art.name),
     )
     fill_data_from_articles(
@@ -420,16 +424,7 @@ def fill_data_from_citation_group(
     if cg is None:
         return
 
-    def sort_key(art: Article) -> tuple[int, int, int]:
-        year = art.numeric_year()
-        try:
-            volume = int(art.volume)
-        except (TypeError, ValueError):
-            volume = 0
-        start_page = art.numeric_start_page()
-        return (year, volume, start_page)
-
-    arts = sorted(cg.get_articles(), key=sort_key)
+    arts = sorted(cg.get_articles(), key=_article_sort_key)
     fill_data_from_articles(
         arts,
         level=level,
@@ -437,6 +432,19 @@ def fill_data_from_citation_group(
         ask_before_opening=ask_before_opening,
         skip_nofile=skip_nofile,
     )
+
+
+def _article_sort_key(art: Article) -> tuple[int, int, int]:
+    year = art.numeric_year()
+    if art.volume:
+        try:
+            volume = int(art.volume)
+        except ValueError:
+            volume = 0
+    else:
+        volume = 0
+    start_page = art.numeric_start_page()
+    return (year, volume, start_page)
 
 
 @CS.register

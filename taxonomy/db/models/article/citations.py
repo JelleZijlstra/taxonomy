@@ -75,7 +75,7 @@ def format_authors(
             else:
                 author_str = f"{family_name}, {initials}"
             if author.suffix:
-                author_str += ", " + author.suffix
+                author_str += f", {author.suffix}"
         else:
             author_str = family_name
         out += author_str
@@ -122,11 +122,12 @@ def _citenormal(article: Article, *, mw: bool) -> str:
             out += f"{article.citation_group.name} "
         if article.series:
             # need to catch "double series"
-            out += "(" + str(article.series).replace(";", ") (") + ")"
+            series = str(article.series).replace(";", ") (")
+            out += f"({series})"
         out += str(article.volume)
         if article.issue:
             out += f"({article.issue})"
-        out += ":" + page_range(article) + "."
+        out += f":{page_range(article)}."
     elif article.type == ArticleType.CHAPTER:
         if article.start_page == article.end_page:
             out += f"P. {article.start_page}"
@@ -210,35 +211,35 @@ def citebzn(article: Article) -> str:
     # replace last ; with " &"; others with ","
     out = "<b>"
     out += format_authors(article, separator=",", lastSeparator=" &")
-    out += "</b> " + article.year + ". "
+    out += f"</b> {article.year}. "
     if article.type == ArticleType.JOURNAL:
-        out += article.title
-        out += ". "
+        out += f"{article.title}. "
         if article.citation_group:
             out += f"<i>{article.citation_group.name}</i>, "
         if article.series:
             # need to catch "double series"
-            out += "(" + article.series.replace(";", ") (") + ")"
-        out += "<b>" + article.volume + "</b>: "
-        out += page_range(article) + "."
+            series = article.series.replace(";", ") (")
+            out += f"({series})"
+        out += f"<b>{article.volume}</b>: "
+        out += f"{page_range(article)}."
     elif article.type == ArticleType.CHAPTER:
         out += f"{article.title}."
         enclosing = article.getEnclosing()
         if enclosing is not None:
             out += " <i>in</i> "
             out += format_authors(enclosing).replace("(Ed", "(ed")
-            out += ", <i>" + enclosing.title + "</i>. "
-            out += enclosing.pages + " pp. " + enclosing.publisher
+            out += f", <i>{enclosing.title}</i>. "
+            out += f"{enclosing.pages} pp. {enclosing.publisher}"
             if enclosing.place_of_publication:
-                out += ", " + enclosing.place_of_publication
+                out += f", {enclosing.place_of_publication}"
             out += "."
     elif article.type == ArticleType.BOOK:
-        out += "<i>" + article.title + ".</i>"
+        out += f"<i>{article.title}.</i>"
         if article.pages:
-            out += " " + article.pages + " pp."
-        out += " " + article.publisher
+            out += f" {article.pages} pp."
+        out += f" {article.publisher}"
         if article.place_of_publication:
-            out += ", " + article.place_of_publication
+            out += f", {article.place_of_publication}"
         out += "."
     # final cleanup
     out = out.replace("  ", " ").replace("..", ".")
@@ -248,16 +249,16 @@ def citebzn(article: Article) -> str:
 @register_cite_function("jhe")
 def citejhe(article: Article) -> str:
     out = format_authors(article, separator=",")
-    out += ", " + article.year + ". "
-    out += article.title + ". "
-    if article.type == ArticleType.JOURNAL:
+    out += f", {article.year}. "
+    out += f"{article.title}. "
+    if article.type == ArticleType.JOURNAL and article.citation_group is not None:
         out += article.citation_group.name
         if article.is_in_press():
             out += ", in press"
         else:
-            out += " " + article.volume + ", " + page_range(article)
+            out += f" {article.volume}, {page_range(article)}"
     elif article.type == ArticleType.BOOK:
-        out += article.publisher + ", " + article.place_of_publication
+        out += f"{article.publisher}, {article.place_of_publication}"
     elif article.type == ArticleType.CHAPTER:
         enclosing = article.getEnclosing()
         if enclosing is not None:
@@ -265,19 +266,14 @@ def citejhe(article: Article) -> str:
             out += format_authors(enclosing, separator=",")
             out += " (Eds.), "
             out += (
-                enclosing.title
-                + ". "
-                + enclosing.publisher
-                + ", "
-                + enclosing.place_of_publication
-                + ", pp. "
+                f"{enclosing.title}. {enclosing.publisher},"
+                f" {enclosing.place_of_publication}, pp. "
             )
             out += page_range(article)
     elif article.type == ArticleType.THESIS:
         out += (
-            article.thesis_gettype(periods=True)
-            + " Dissertation, "
-            + article.institution
+            f"{article.thesis_gettype(periods=True)} Dissertation,"
+            f" {article.institution}"
         )
     else:
         out += "<!--Unknown citation type; fallback citation-->"
@@ -300,16 +296,16 @@ def citepalaeontology(article: Article) -> str:
         lastSeparator=" and",
     )
     out += f". {article.year}. "
-    if article.type == ArticleType.JOURNAL:
-        out += article.title + ". <i>" + article.citation_group.name + "</i>, "
+    if article.type == ArticleType.JOURNAL and article.citation_group is not None:
+        out += f"{article.title}. <i>{article.citation_group.name}</i>, "
         # TODO: series
-        out += "<b>" + article.volume + "</b>, " + page_range(article)
+        out += f"<b>{article.volume}</b>, {page_range(article)}"
     elif article.type == ArticleType.BOOK:
-        out += "<i>" + article.title + ".</i> "
-        out += article.publisher + ", "
+        out += f"<i>{article.title}.</i> "
+        out += f"{article.publisher}, "
         if article.place_of_publication:
-            out += article.place_of_publication + ", "
-        out += article.pages + " pp."
+            out += f"{article.place_of_publication}, "
+        out += f"{article.pages} pp."
     elif article.type == ArticleType.CHAPTER:
         out += f"{article.title}."
         enclosing = article.getEnclosing()
@@ -322,18 +318,18 @@ def citepalaeontology(article: Article) -> str:
                 separator=", ",
                 lastSeparator=" and",
             )
-            out += " (eds). " + enclosing.title + ".</i> "
-            out += enclosing.publisher + ", "
+            out += f" (eds). {enclosing.title}.</i> "
+            out += f"{enclosing.publisher}, "
             if enclosing.place_of_publication:
-                out += enclosing.place_of_publication + ", "
-            out += enclosing.pages + " pp."
+                out += f"{enclosing.place_of_publication}, "
+            out += f"{enclosing.pages} pp."
     elif article.type == ArticleType.THESIS:
-        out += "<i>" + article.title + "</i>. Unpublished "
+        out += f"<i>{article.title}</i>. Unpublished "
         out += article.thesis_gettype(periods=True)
         out += f" thesis, {article.institution}"
         out += f", {article.pages} pp."
     else:
-        out += article.title + ". "
+        out += f"{article.title}. "
         out += "<!--Unknown citation type; fallback citation-->"
     # final cleanup
     out += "."
@@ -354,15 +350,15 @@ def citejpal(article: Article) -> str:
         separatorWithTwoAuthors=" and",
         spaceInitials=True,
     )
-    out += " " + article.year + ". " + article.title
+    out += f" {article.year}. {article.title}"
     if article.type == ArticleType.JOURNAL:
         if article.citation_group:
             out += f". {article.citation_group.name}, "
         if article.series:
             out += f"ser. {article.series}, "
-        out += article.volume + ":" + page_range(article)
+        out += f"{article.volume}:{page_range(article)}"
     elif article.type == ArticleType.CHAPTER:
-        out += ", " + page_range(article) + "."
+        out += f", {page_range(article)}."
         enclosing = article.getEnclosing()
         if enclosing is not None:
             out += " <i>In</i> "
@@ -381,15 +377,16 @@ def citejpal(article: Article) -> str:
                 out += " (eds.), "
             else:
                 out += " (ed.), "
-            out += enclosing.title
+            if enclosing.title:
+                out += enclosing.title
     elif article.type == ArticleType.BOOK:
-        out += ". " + article.publisher
+        out += f". {article.publisher}"
         if article.place_of_publication:
-            out += ", " + article.place_of_publication
+            out += f", {article.place_of_publication}"
         if article.pages:
-            out += ", " + article.pages + " p."
+            out += f", {article.pages} p."
     else:
-        out += article.title + ". "
+        out += f"{article.title}. "
         out += "<!--Unknown citation type; fallback citation-->"
     # final cleanup
     out += "."
@@ -405,11 +402,11 @@ def citepalevol(article: Article) -> str:
         article, initialsBeforeName=False, separator=",", spaceInitials=False
     )
     out += f", {article.year}. {article.title}"
-    if article.type == ArticleType.JOURNAL:
-        out += ". " + article.citation_group.name + " "
+    if article.type == ArticleType.JOURNAL and article.citation_group is not None:
+        out += f". {article.citation_group.name} "
         if article.series:
-            out += "ser. " + article.series + ", "
-        out += article.volume + ", " + page_range(article)
+            out += f"ser. {article.series}, "
+        out += f"{article.volume}, {page_range(article)}"
     elif article.type == ArticleType.CHAPTER:
         out += "."
         enclosing = article.getEnclosing()
@@ -423,19 +420,18 @@ def citepalevol(article: Article) -> str:
                 out += " (Eds.), "
             else:
                 out += " (Ed.), "
-            out += enclosing.title
-            out += ", " + enclosing.publisher
+            out += f"{enclosing.title}, {enclosing.publisher}"
             if enclosing.place_of_publication:
-                out += ", " + enclosing.place_of_publication
-            out += ", " + page_range(article) + "."
+                out += f", {enclosing.place_of_publication}"
+            out += f", {page_range(article)}."
     elif article.type == ArticleType.BOOK:
-        out += ", " + article.publisher
+        out += f", {article.publisher}"
         if article.place_of_publication:
-            out += ", " + article.place_of_publication
+            out += f", {article.place_of_publication}"
         if article.pages:
-            out += ", " + article.pages + " p."
+            out += f", {article.pages} p."
     else:
-        out += article.title + ". "
+        out += f"{article.title}. "
         out += "<!--Unknown citation type; fallback citation-->"
     # final cleanup
     out += "."
@@ -455,15 +451,15 @@ def citejvp(article: Article) -> str:
         spaceInitials=True,
         firstInitialsBeforeName=False,
     )
-    out += ". " + article.year + ". " + article.title
+    out += f". {article.year}. {article.title}"
     if article.type == ArticleType.JOURNAL:
         if article.citation_group:
             out += f". {article.citation_group.name} "
         if article.series:
             out += f"ser. {article.series}, "
-        out += article.volume + ":" + page_range(article)
+        out += f"{article.volume}:{page_range(article)}"
     elif article.type == ArticleType.CHAPTER:
-        out += "; pp. " + page_range(article)
+        out += f"; pp. {page_range(article)}"
         enclosing = article.getEnclosing()
         if enclosing is not None:
             out += " in "
@@ -479,18 +475,17 @@ def citejvp(article: Article) -> str:
                 out += " (eds.), "
             else:
                 out += " (ed.), "
-            out += enclosing.title
-            out += ". " + enclosing.publisher
+            out += f"{enclosing.title}. {enclosing.publisher}"
             if enclosing.place_of_publication:
-                out += ", " + enclosing.place_of_publication
+                out += f", {enclosing.place_of_publication}"
     elif article.type == ArticleType.BOOK:
-        out += ", " + article.publisher
+        out += f", {article.publisher}"
         if article.place_of_publication:
-            out += ", " + article.place_of_publication
+            out += f", {article.place_of_publication}"
         if article.pages:
-            out += ", " + article.pages + " pp."
+            out += f", {article.pages} pp."
     else:
-        out += article.title + ". "
+        out += f"{article.title}. "
         out += "<!--Unknown citation type; fallback citation-->"
     # final cleanup
     out += "."
@@ -505,11 +500,11 @@ def getrefname(art: Article) -> str:
         author = authors[0].family_name
     else:
         author = ""
-    refname = author + art.year + art.volume + art.start_page
+    refname = f"{author}{art.year}{art.volume}{art.start_page}"
     if refname == "":
-        refname = art.title
+        refname = art.title or ""
     if refname.isnumeric():
-        refname = "ref" + refname
+        refname = f"ref{refname}"
     return refname.replace("'", "")
 
 
@@ -521,9 +516,9 @@ def citebibtex(article: Article) -> str:
         nonlocal out
         if not value:
             if mandatory:
-                print("Bibtex error: required property " + key + " is empty")
+                print(f"Bibtex error: required property {key} is empty")
             return
-        out += "\t" + key + ' = "' + value + '",\n'
+        out += f'\t{key} = "{value}",\n'
 
     if article.type == ArticleType.JOURNAL:
         out += "article"
@@ -541,14 +536,15 @@ def citebibtex(article: Article) -> str:
             out += "misc"
     else:
         out += "misc"
-    out += "{" + getrefname(article) + ",\n"
+    out += f"{getrefname(article)},\n"
     authors = format_authors(article, spaceInitials=True, separator=" and")
     # stuff that goes in every citation type
     add("author", authors, True)
     add("year", article.year, True)
-    title = re.sub(r"_([^_]+)_", r"\textit{\1}", article.title)
-    title = f"{{{title}}}"
-    add("title", title, True)
+    if article.title is not None:
+        title = re.sub(r"_([^_]+)_", r"\textit{\1}", article.title)
+        title = f"{{{title}}}"
+        add("title", title, True)
     if article.type == ArticleType.THESIS:
         add("school", article.institution, True)
     elif article.type == ArticleType.JOURNAL:
@@ -556,13 +552,13 @@ def citebibtex(article: Article) -> str:
             add("journal", article.citation_group.name, True)
         add("volume", article.volume)
         add("number", article.issue)
-        add("pages", article.start_page + "--" + article.end_page)
+        add("pages", f"{article.start_page}--{article.end_page}")
     elif article.type == ArticleType.BOOK:
         add("publisher", article.publisher, True)
         add("address", article.place_of_publication)
     isbn = article.getIdentifier(ArticleTag.ISBN)
     if isbn:
-        add("note", "{ISBN} " + isbn)
+        add("note", f"ISBN {isbn}")
     out += "}"
     return out
 
@@ -573,26 +569,26 @@ def citezootaxa(article: Article) -> str:
     out = ""
     out += format_authors(article, separator=",", lastSeparator=" &")
     out += f" ({article.year}) "
-    if article.type == ArticleType.JOURNAL:
-        out += article.title + ". <i>" + article.citation_group.name + "</i>, "
-        out += article.volume + ", " + page_range(article)
+    if article.type == ArticleType.JOURNAL and article.citation_group is not None:
+        out += f"{article.title}. <i>{article.citation_group.name}</i>, "
+        out += f"{article.volume}, {page_range(article)}"
     elif article.type == ArticleType.CHAPTER:
-        out += article.title + "."
+        out += f"{article.title}."
         enclosing = article.getEnclosing()
         if enclosing is not None:
             out += " <i>In</i>: "
             out += format_authors(enclosing, separator=",", lastSeparator=" &")
-            out += " (Eds), <i>" + enclosing.title + "</i>. "
-            out += enclosing.publisher + ", " + enclosing.place_of_publication
-            out += ", pp. " + page_range(article)
+            out += f" (Eds), <i>{enclosing.title}</i>. "
+            out += f"{enclosing.publisher}, {enclosing.place_of_publication}"
+            out += f", pp. {page_range(article)}"
     elif article.type == ArticleType.BOOK:
-        out += "<i>" + article.title + "</i>. " + article.publisher
+        out += f"<i>{article.title}</i>. {article.publisher}"
         if article.place_of_publication:
-            out += ", " + article.place_of_publication
+            out += f", {article.place_of_publication}"
         if article.pages:
             out += f", {article.pages} pp."
     else:
-        out += article.title + ". "
+        out += f"{article.title}. "
         out += "<!--Unknown citation type; fallback citation-->"
     # final cleanup
     out += "."
@@ -655,7 +651,7 @@ def citewp(article: Article, *, commons: bool = False) -> str:
     # easy stuff we need in all classes
     paras["year"] = article.year
     if hdl:
-        paras["id"] = "{{hdl|" + hdl + "}}"
+        paras["id"] = f"{{hdl|{hdl}}}"
     paras["jstor"] = article.getIdentifier(ArticleTag.JSTOR)
     paras["pmid"] = article.getIdentifier(ArticleTag.PMID)
     paras["url"] = article.url
@@ -698,14 +694,12 @@ def citewp(article: Article, *, commons: bool = False) -> str:
                     # putting the remaining editors in |editor4-last=
                     if i == 4:
                         del paras["editor4-first"]
-                        paras["editor4-last"] = (
-                            bauthors[3].get_full_name(family_first=True) + "; "
-                        )
+                        paras[
+                            "editor4-last"
+                        ] = f"{bauthors[3].get_full_name(family_first=True)}; "
                     paras["editor4-last"] = (
-                        (paras["editor4-last"] or "")
-                        + bauthors[4].get_full_name(family_first=True)
-                        + "; "
-                    )
+                        paras["editor4-last"] or ""
+                    ) + f"{bauthors[4].get_full_name(family_first=True)}; "
             # double period bug
             if "editor4-last" in paras and ";" in (paras["editor4-last"] or ""):
                 paras["editor4-last"] = re.sub(
@@ -723,20 +717,20 @@ def citewp(article: Article, *, commons: bool = False) -> str:
         paras["title"] = article.title
         paras["publisher"] = article.publisher
     out = sfn = ""
-    out += "{{cite " + label + " | "
+    out += f"{{cite {label} | "
     out += " | ".join(f"{key} = {value}" for key, value in paras.items() if value)
     out += "}}"
     # final cleanup
     out = re.sub(r"\s+", " ", re.sub(r"(?<!\.)\.\.(?!\.)", ".", wikify(out)))
-    return f"{sfn + out1}\n{out}" if out1 else out
+    return f"{sfn}{out1}\n{out}" if out1 else out
 
 
 def getsfn(art: Article) -> str:
     sfn = "{{Sfn|"
     auts = art.get_authors()
     for aut in auts[:4]:
-        sfn += aut.family_name + "|"
-    sfn += art.year + "}}"
+        sfn += f"{aut.family_name}|"
+    sfn += f"{art.year}}}"
     return sfn
 
 
@@ -751,12 +745,12 @@ def getharvard(art: Article, mode: str = "normal") -> str:
     elif num_authors == 1:
         out += authors[0].family_name
     elif num_authors == 2:
-        out += authors[0].family_name + " and " + authors[1].family_name
+        out += f"{authors[0].family_name} and {authors[1].family_name}"
     else:
         out += authors[0].family_name
         if mode == "jpal":
             out += " <i>et al.</i>"
         else:
             out += " et al."
-    out += " (" + art.year + ")"
+    out += f" ({art.year})"
     return out

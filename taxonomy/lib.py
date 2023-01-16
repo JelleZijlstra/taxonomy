@@ -362,11 +362,11 @@ def print_prefix(prefix: str) -> None:
 def clean_regions(kind: RegionKind, print_only: bool = False) -> None:
     regions = Region.bfind(kind=kind, quiet=True)
     print(f"{len(regions)} total")
-    by_parent: dict[Region, list[Region]] = defaultdict(list)
+    by_parent: dict[Region | None, list[Region]] = defaultdict(list)
     for region in regions:
         by_parent[region.parent].append(region)
-    for region, children in by_parent.items():
-        print(f"== {region} ==")
+    for maybe_region, children in by_parent.items():
+        print(f"== {maybe_region} ==")
         print(", ".join(child.name for child in children))
         if print_only:
             continue

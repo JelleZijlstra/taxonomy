@@ -986,6 +986,8 @@ def is_high_quality(taxon: Taxon) -> bool:
         return True
     elif taxon.valid_name in LOW_QUALITY:
         return False
+    elif taxon.parent is None:
+        return False
     else:
         return is_high_quality(taxon.parent)
 
@@ -1055,7 +1057,7 @@ def print_percentages() -> None:
             return parent_of_taxon[taxon.id]
         else:
             result: int
-            if taxon.is_page_root:
+            if taxon.is_page_root or taxon.parent is None:
                 result = taxon.id
             else:
                 result = _find_parent(taxon.parent)
@@ -1275,6 +1277,7 @@ def set_citation_group_for_matching_citation(
     cite_to_group: dict[str, set[CitationGroup]] = defaultdict(set)
     count = 0
     for nam in Name.bfind(Name.verbatim_citation != None, quiet=True):
+        assert nam.verbatim_citation is not None
         cite_to_nams[nam.verbatim_citation].append(nam)
         if nam.citation_group is not None:
             cite_to_group[nam.verbatim_citation].add(nam.citation_group)
@@ -1366,6 +1369,8 @@ def fill_citation_groups(
 
     if not book and not skip_inference:
         for nam in names:
+            if nam.verbatim_citation is None:
+                continue
             citation = helpers.simplify_string(nam.verbatim_citation)
             for pattern in patterns:
                 if pattern.pattern in citation:
@@ -1417,11 +1422,13 @@ def field_by_year(field: str | None = None) -> None:
         for nam in Name.bfind(
             Name.original_citation == None, Name.year != None, quiet=True
         ):
+            assert nam.year is not None
             by_year_total[nam.year] += 1
             if nam.verbatim_citation:
                 by_year_cited[nam.year] += 1
     else:
         for nam in Name.bfind(Name.year != None, quiet=True):
+            assert nam.year is not None
             required_fields = nam.get_required_fields()
             if field not in required_fields:
                 continue
@@ -1451,6 +1458,7 @@ def type_localities_like(substring: str, full: bool = False) -> None:
             nam.taxon.valid_name,
         ),
     ):
+        assert nam.type_locality is not None
         print(f"{nam.type_locality}, {nam.type_locality.region}: {nam}")
         if full:
             nam.display()
@@ -1475,7 +1483,7 @@ def names_with_location_detail_without_type_loc(
         ]
     nams_with_key = []
     for nam in nams:
-        tags = [tag for tag in nam.type_tags if isinstance(tag, TypeTag.LocationDetail)]
+        tags = list(nam.get_tags(nam.type_tags, TypeTag.LocationDetail))
         if not tags:
             continue
         if "type_locality" not in nam.get_required_fields():
@@ -1514,9 +1522,7 @@ def names_with_type_detail_without_type(taxon: Taxon | None = None) -> Iterable[
         ]
     nams_with_key = []
     for nam in nams:
-        tags = [
-            tag for tag in nam.type_tags if isinstance(tag, TypeTag.TypeSpeciesDetail)
-        ]
+        tags = list(nam.get_tags(nam.type_tags, TypeTag.TypeSpeciesDetail))
         if not tags:
             continue
         if "type" not in nam.get_required_fields():
@@ -2274,6 +2280,7 @@ def enforce_must_have(fix: bool = True) -> Iterator[Name]:
             if after_tag is not None and nam.numeric_year() < int(after_tag.year):
                 continue
             if not found_any:
+                assert nam.citation_group is not None
                 getinput.print_header(nam.citation_group.name)
             print(f"{nam} is in {cg}, but has no original_citation")
             nam.display()

@@ -281,7 +281,7 @@ class Name(BaseModel):
             self._definition = defn.serialize()
 
     def infer_original_rank(self) -> constants.Rank | None:
-        if self.corrected_original_name is None:
+        if self.corrected_original_name is None or self.original_name is None:
             return None
         handcleaned_name = (
             self.original_name.lower()
@@ -524,7 +524,8 @@ class Name(BaseModel):
             "add_variant": self.add_variant,
             "add_nomen_nudum": lambda: self.add_nomen_nudum(interactive=True),
             "preoccupied_by": self.preoccupied_by,
-            "display_type_locality": lambda: self.type_locality.display(),
+            "display_type_locality": lambda: self.type_locality
+            and self.type_locality.display(),
             "fill_required_fields": lambda: self.fill_required_fields(
                 skip_fields={"type_tags"}
             ),
@@ -700,7 +701,7 @@ class Name(BaseModel):
         tags = self.tags
         if tags:
             for tag in tags:
-                if isinstance(tag, tag_cls):
+                if isinstance(tag, tag_cls) and hasattr(tag, "name"):
                     return tag.name
         return None
 
@@ -805,7 +806,7 @@ class Name(BaseModel):
     ) -> Taxon:
         return self.taxon.add_static(rank, name, age=age, **kwargs)
 
-    def add_nomen_nudum(self, interactive: bool = True) -> Name:
+    def add_nomen_nudum(self, interactive: bool = True) -> Name | None:
         """Adds a nomen nudum similar to this name."""
         if interactive:
             paper = self.get_value_for_foreign_class("paper", Article)
@@ -856,6 +857,11 @@ class Name(BaseModel):
         if parenthesized_bits:
             out += f" ({', '.join(parenthesized_bits)})"
         return out
+
+    def get_default_valid_name(self) -> str:
+        if self.corrected_original_name is not None:
+            return self.corrected_original_name
+        return self.root_name
 
     def is_unavailable(self) -> bool:
         return not self.nomenclature_status.can_preoccupy()
@@ -926,7 +932,7 @@ class Name(BaseModel):
         self,
         root_name: str | None = None,
         status: NomenclatureStatus | None = None,
-        paper: str | None = None,
+        paper: Article | None = None,
         page_described: str | None = None,
         original_name: str | None = None,
         *,
@@ -945,6 +951,8 @@ class Name(BaseModel):
 
         if paper is not None:
             nam = self.taxon.syn_from_paper(root_name, paper, interactive=False)
+            if nam is None:
+                return None
             nam.original_name = original_name
             nam.nomenclature_status = status
         else:
@@ -954,6 +962,8 @@ class Name(BaseModel):
                 original_name=original_name,
                 interactive=False,
             )
+            if nam is None:
+                return None
         tag_cls = CONSTRUCTABLE_STATUS_TO_TAG[status]
         nam.page_described = page_described
         nam.add_tag(tag_cls(self, ""))
@@ -1034,6 +1044,7 @@ class Name(BaseModel):
             authors = citation.parent.author_tags
         else:
             authors = citation.author_tags
+        assert authors is not None, f"missing authors for {citation}"
         if self.author_tags:
             getinput.print_diff(self.author_tags, authors)
         else:
@@ -1067,7 +1078,7 @@ class Name(BaseModel):
             else lambda message: print(f"{self}: {message}")
         )
         name_authors = self.get_authors()
-        article_authors = self.original_citation.get_authors()
+        article_authors = citation.get_authors()
         if name_authors == article_authors:
             return True  # can happen with supplements
         if len(name_authors) != len(article_authors):
@@ -1303,6 +1314,8 @@ class Name(BaseModel):
                     f"missing {', '.join(sorted(crucial_missing))}",
                 )
             orig = self.original_citation
+            if orig is None:
+                return (FillDataLevel.needs_basic_data, "missing original_citation")
             missing_sourced_tags = [
                 (tag, no_tag)
                 for tag, no_tag in required_details_tags
@@ -1540,6 +1553,7 @@ class Name(BaseModel):
                 rank = old_taxon.rank
             if parent is None:
                 parent = old_taxon.parent
+        assert parent is not None, f"found no parent for {self}"
         new_taxon = Taxon.make_or_revalidate(rank, self, old_taxon.age, parent)
         self.taxon = new_taxon
         self.status = status  # type: ignore
@@ -1707,6 +1721,8 @@ class Name(BaseModel):
         ]
         if verbatim_type is None:
             verbatim_type = self.verbatim_type
+        if not verbatim_type:
+            return []
         candidates = None
         for step in steps:
             new_verbatim = cleanup(step(verbatim_type))
@@ -1994,6 +2010,8 @@ class NameComment(BaseModel):
 
 def has_data_from_original(nam: Name) -> bool:
     if not nam.original_citation or not nam.get_raw_tags_field("type_tags"):
+        return False
+    if not nam.type_tags:
         return False
     for tag in nam.type_tags:
         if isinstance(tag, SOURCE_TAGS) and tag.source == nam.original_citation:

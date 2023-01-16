@@ -259,8 +259,8 @@ def journal_specific_cleanup(art: Article, autofix: bool = True) -> Iterable[str
                 yield f"{art}: is in {cg}, which does not support series"
     if cg.name == "Proceedings of the Zoological Society of London":
         year = art.numeric_year()
-        if year is None:
-            return
+        if year is None or art.volume is None:
+            return  # other checks will complain
         try:
             volume = int(art.volume)
         except ValueError:
@@ -398,8 +398,8 @@ def check_start_end_page(art: Article, autofix: bool = True) -> Iterable[str]:
         return  # error emitted in check_journal()
     if art.is_full_issue():
         return
-    start_page: str = art.start_page
-    end_page: str = art.end_page
+    start_page: str | None = art.start_page
+    end_page: str | None = art.end_page
     if start_page is None:
         yield f"{art}: missing start page"
         return

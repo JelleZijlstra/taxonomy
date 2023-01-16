@@ -648,7 +648,7 @@ class Article(BaseModel):
         ]
 
     def taxonomicAuthority(self) -> tuple[str, str]:
-        return (Person.join_authors(self.get_authors()), self.year)
+        return (Person.join_authors(self.get_authors()), self.year or "")
 
     def author_set(self) -> set[int]:
         return {pair[1] for pair in self.get_raw_tags_field("author_tags")}
@@ -750,7 +750,7 @@ class Article(BaseModel):
             yield from linter(self, autofix)
 
     def cite(self, citetype: str = "paper") -> str:
-        if self.issupplement():
+        if self.issupplement() and self.parent is not None:
             return self.parent.cite(citetype=citetype)
         if citetype in _CITE_FUNCTIONS:
             return _CITE_FUNCTIONS[citetype](self)

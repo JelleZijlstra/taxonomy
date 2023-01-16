@@ -190,7 +190,9 @@ class Taxon(BaseModel):
         print(self.sorted_occurrences())
 
     def full_name(self) -> str:
-        if self.rank == Rank.subgenus:
+        if self.parent is None:
+            return self.valid_name
+        elif self.rank == Rank.subgenus:
             if self.is_nominate_subgenus():
                 return self.valid_name
             return self.parent.valid_name + " (" + self.valid_name + ")"
@@ -238,11 +240,16 @@ class Taxon(BaseModel):
             original_taxon = self
         if self.rank > rank and self.rank != Rank.unranked:
             raise ValueError(
-                "%s (id = %s) has no ancestor of rank %s"
-                % (original_taxon, original_taxon.id, rank.name)
+                f"{original_taxon} (id = {original_taxon.id}) has no ancestor of rank"
+                f" {rank.name}"
             )
         elif self.rank == rank:
             return self
+        elif self.parent is None:
+            raise ValueError(
+                f"{original_taxon} (id = {original_taxon.id}) has no ancestor of rank"
+                f" {rank.name}"
+            )
         else:
             return self.parent.parent_of_rank(rank, original_taxon=original_taxon)
 
@@ -449,7 +456,8 @@ class Taxon(BaseModel):
                 nams, key=lambda nam: (nam.numeric_year(), nam.numeric_page_described())
             ):
                 print(f"    {nam}")
-                print(f"        {helpers.clean_string(nam.verbatim_citation)}")
+                if nam.verbatim_citation:
+                    print(f"        {helpers.clean_string(nam.verbatim_citation)}")
         getinput.flush()
 
     def display_type_localities(
@@ -866,7 +874,7 @@ class Taxon(BaseModel):
         else:
             assert name.group == Group.species
             if name.status != Status.valid:
-                return name.corrected_original_name
+                return name.get_default_valid_name()
             try:
                 genus = self.parent_of_rank(Rank.genus)
             except ValueError:
@@ -876,7 +884,7 @@ class Taxon(BaseModel):
                     "Taxon %s should have a genus parent" % self
                 )
                 # default to the corrected original name
-                return name.corrected_original_name
+                return name.get_default_valid_name()
             else:
                 if self.rank == Rank.species_group:
                     return f"{genus.base_name.root_name} ({name.root_name})"
@@ -1006,10 +1014,11 @@ class Taxon(BaseModel):
         return self.make_parent_of_rank(Rank.species_group)
 
     def make_parent_of_rank(self, rank: Rank) -> Taxon:
-        if self.parent.rank == rank:
+        if self.parent is not None and self.parent.rank == rank:
             parent = self.parent.parent
         else:
             parent = self.parent
+        assert parent is not None, "found no parent to attach"
         new_taxon = self.make_or_revalidate(rank, self.base_name, self.age, parent)
         new_taxon.recompute_name()
         self.parent = new_taxon

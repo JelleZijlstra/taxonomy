@@ -73,14 +73,14 @@ class Period(BaseModel):
             parts.append(f"part of {self.parent.name}")
         if self.region is not None:
             parts.append(f"located in {self.region.name}")
-        if self.max_period is not None:
+        if self.max_period is not None and self.min_period is not None:
             if self.min_period == self.max_period:
                 parts.append(f"correlated to {self.min_period.name}")
             else:
                 parts.append(
                     f"correlated to {self.max_period.name}—{self.min_period.name}"
                 )
-        if self.max_age is not None:
+        if self.max_age is not None and self.min_age is not None:
             parts.append(
                 f"dated to {display_age(self.max_age)}—{display_age(self.min_age)}"
             )

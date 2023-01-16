@@ -8,8 +8,8 @@ preview = true
 all = true
 
 [tool.pyanalyze]
-treat_class_attribute_as_any = [
-  "taxonomy.pyanalyze_config.treat_class_attribute_as_any"
+class_attribute_transformers = [
+  "taxonomy.pyanalyze_config.class_attribute_transformer"
 ]
 undefined_name = false
 
