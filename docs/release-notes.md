@@ -12,7 +12,9 @@ they will also apply to the database itself.
   - Clean up some unresolvable DOIs
   - Add ISSN to over 600 journals
   - Fix numerous incorrect page fields on names and articles
-  - Clean up many journal citations
+  - Clean up many journal citations (adding missing end pages,
+    correcting incorrect pages, standardizing formats)
+  - Add a few new taxa and articles
 - Frontend
   - Display links to various identifiers (ISSN, ISBN, etc.) on
     article and citation group pages
@@ -24,7 +26,8 @@ they will also apply to the database itself.
   - Check that the _page_described_ field for names is within
     the page range of their original citation
   - Validate the _series_, _volume_, _issue_, _start_page_,
-    and _end_page_ fields on journal articles.
+    and _end_page_ fields on journal articles. Documented
+    in [Citation group](/docs/citation-group)
 
 # Previous
 

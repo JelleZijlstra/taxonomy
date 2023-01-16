@@ -47,7 +47,7 @@ See [Tricky journals](/docs/tricky-journals) for some tricky cases.
 ## Series, volume, issue, pages
 
 The five fields _series_, _volume_, _issue_, _start_page_, and _end_page_
-on [articles](/docs/articles) indicate where in the journal the article is to
+on [articles](/docs/article) indicate where in the journal the article is to
 be found.
 
 ### Series
