@@ -52,7 +52,7 @@ def test_citejhe() -> None:
         citations.citejhe(article)
         == "Zijlstra, J.S., Madern, P.A., Hoek Ostende, L.W. van den, 2010. New genus"
         " and two new species of Pleistocene oryzomyines (Cricetidae: Sigmodontinae)"
-        " from Bonaire, Netherlands Antilles. J Mamm 91, 860-873."
+        " from Bonaire, Netherlands Antilles. Journal of Mammalogy 91, 860-873."
     )
 
 
@@ -84,7 +84,7 @@ def test_citepalevol() -> None:
         citations.citepalevol(article)
         == "Zijlstra, J.S., Madern, P.A., Hoek Ostende, L.W. van den, 2010. New genus"
         " and two new species of Pleistocene oryzomyines (Cricetidae: Sigmodontinae)"
-        " from Bonaire, Netherlands Antilles. J Mamm 91, 860-873."
+        " from Bonaire, Netherlands Antilles. Journal of Mammalogy 91, 860-873."
     )
 
 
@@ -130,12 +130,10 @@ def test_citewp() -> None:
     article = utils.make_journal_article()
     assert (
         citations.citewp(article)
-        == "<!--{{Sfn|Zijlstra|Madern|Hoek Ostende|2010}}-->{{cite"
-        " doi|10.1644/09-MAMM-A-208.1}}\n<!--{{Sfn|Zijlstra|Madern|Hoek"
-        " Ostende|2010}}-->{{cite journal | last1 = Zijlstra | first1 = J.S. | last2"
-        " = Madern | first2 = P.A. | last3 = Hoek Ostende | first3 = L.W. van den |"
+        == "{{cite journal | last1 = Zijlstra | first1 = Jelle S. | last2 = Madern |"
+        " first2 = Paulina A. | last3 = Hoek Ostende | first3 = Lars W. |"
         " year = 2010 | doi = 10.1644/09-MAMM-A-208.1 | pages = 860-873 | title ="
         " New genus and two new species of Pleistocene oryzomyines (Cricetidae:"
         " Sigmodontinae) from Bonaire, Netherlands Antilles | journal = Journal of"
-        " Mammalogy | volume = 91 | issue = 4 | ref = harv}}"
+        " Mammalogy | volume = 91 | issue = 4}}"
     )

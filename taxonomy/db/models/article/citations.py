@@ -68,6 +68,8 @@ def format_authors(
 
         if spaceInitials and initials:
             initials = re.sub(r"\.(?![- ]|$)", ". ", initials)
+        if initials and author.tussenvoegsel:
+            initials += f" {author.tussenvoegsel}"
 
         if initials and includeInitials:
             if firstInitialsBeforeName if i == 0 else initialsBeforeName:
@@ -247,8 +249,8 @@ def citejhe(article: Article) -> str:
     out += ", " + article.year + ". "
     out += article.title + ". "
     if article.type == ArticleType.JOURNAL:
-        out += article.abbreviatedJournal()
-        if article.isinpress():
+        out += article.citation_group.name
+        if article.is_in_press():
             out += ", in press"
         else:
             out += " " + article.volume + ", " + page_range(article)
@@ -402,7 +404,7 @@ def citepalevol(article: Article) -> str:
     )
     out += f", {article.year}. {article.title}"
     if article.type == ArticleType.JOURNAL:
-        out += ". " + article.abbreviatedJournal() + " "
+        out += ". " + article.citation_group.name + " "
         if article.series:
             out += "ser. " + article.series + ", "
         out += article.volume + ", " + page_range(article)

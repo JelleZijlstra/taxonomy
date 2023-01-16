@@ -1,7 +1,36 @@
 """Helpers for creating Articles and similar objects."""
 
-from ..constants import ArticleType
+from ...constants import ArticleType
 from .article import Article
+from ..person import Person, AuthorTag
+
+from dataclasses import dataclass
+from types import SimpleNamespace
+from typing import Any
+
+
+@dataclass
+class FakeArticle(Article):
+    __data__: dict[str, Any]
+    _dirty: bool = False
+
+    def __getattribute__(self, attr: str) -> Any:
+        data = object.__getattribute__(self, "__data__")
+        if attr in data:
+            return data[attr]
+        return super().__getattribute__(attr)
+
+
+@dataclass
+class FakePerson(Person):
+    __data__: dict[str, Any]
+    _dirty: bool = False
+
+    def __getattribute__(self, attr: str) -> Any:
+        data = object.__getattribute__(self, "__data__")
+        if attr in data:
+            return data[attr]
+        return super().__getattribute__(attr)
 
 
 def make_journal_article() -> Article:
@@ -24,5 +53,23 @@ def make_journal_article() -> Article:
         "type": ArticleType.JOURNAL,
         "volume": "91",
         "year": "2010",
+        "citation_group": SimpleNamespace(name="Journal of Mammalogy"),
+        "author_tags": [
+            AuthorTag.Author(
+                FakePerson({"family_name": "Zijlstra", "given_names": "Jelle S."})
+            ),
+            AuthorTag.Author(
+                FakePerson({"family_name": "Madern", "given_names": "Paulina A."})
+            ),
+            AuthorTag.Author(
+                FakePerson(
+                    {
+                        "family_name": "Hoek Ostende",
+                        "given_names": "Lars W.",
+                        "tussenvoegsel": "van den",
+                    }
+                )
+            ),
+        ],
     }
-    return Article(data)
+    return FakeArticle(data)

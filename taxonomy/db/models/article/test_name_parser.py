@@ -12,7 +12,7 @@ def check(
     extension: str = "pdf",
     expect_errors: bool = False,
 ) -> None:
-    data_path = Path(__file__).parent.parent.parent.parent / "Catalog" / "parserdata"
+    data_path = Path(__file__).parent / "parserdata"
     parser = NameParser(raw_name, data_path)
     assert expect_errors == bool(parser.errorDescription)
     assert parser.extension == extension
