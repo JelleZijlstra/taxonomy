@@ -1,0 +1,45 @@
+[tool.black]
+target-version = ['py311']
+include = '\.pyi?$'
+skip-magic-trailing-comma = true
+preview = true
+
+[project]
+name = "taxonomy"
+description = "Taxonomic database management software."
+requires-python = ">=3.11"
+authors = [
+  { name = "Jelle Zijlstra", email = "jelle.zijlstra@gmail.com" },
+]
+keywords = [
+  "taxonomy",
+  "hesperomys",
+]
+classifiers = [
+  "Operating System :: OS Independent",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.11",
+]
+dependencies = [
+    "peewee==3.13.3",
+    "IPython<7",
+    "prompt_toolkit<2",
+    "PyMySQL",
+    "requests",
+    "unidecode",
+    "python-levenshtein",
+    "bs4",
+    "mypy",
+    "flake8",
+    "pytest",
+    "aiohttp",
+    "aiohttp_graphql",
+    "graphene",
+    "typing_inspect",
+    "types-requests",
+]
+
+[project.urls]
+Changelog = "https://github.com/JelleZijlstra/taxonomy/blob/master/docs/release-notes.md"
+Homepage = "http://hesperomys.com/"
