@@ -714,8 +714,18 @@ class BaseModel(Model):
             return lambda: self.fill_field(field)
 
         field_editors = {field: callback(field) for field in self.get_field_names()}
+
+        def make_editor(cls: type[BaseModel]) -> Callable[[], None]:
+            return lambda: cls.getter(None).get_and_edit(f"{cls.__name__}> ")
+
+        sibling_editors = {
+            f"edit_{cls.__name__.lower()}": make_editor(cls)
+            for cls in BaseModel.__subclasses__()
+            if hasattr(cls, "label_field")
+        }
         return {
             **field_editors,
+            **sibling_editors,
             "d": self.display,
             "f": lambda: self.display(full=True),
             "edit_foreign": self.edit_foreign,
@@ -1267,9 +1277,9 @@ class _NameGetter(Generic[ModelT]):
                 return self.cls.get(id=int(oid))
             return self.get_or_choose(key)
 
-    def get_and_edit(self) -> None:
+    def get_and_edit(self, prompt: str = "> ") -> None:
         while True:
-            obj = self.get_one()
+            obj = self.get_one(prompt)
             if obj is None:
                 return
             obj.display()

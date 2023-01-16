@@ -369,10 +369,6 @@ class Article(BaseModel):
             "move": self.move,
             "add_to_clipboard": self.add_to_clipboard,
             "removefirstpage": self.removefirstpage,
-            "edit_name": lambda: models.Name.getter(
-                "corrected_original_name"
-            ).get_and_edit(),
-            "edit_taxon": lambda: models.Taxon.getter(None).get_and_edit(),
         }
 
     def modernize_in_press(self) -> None:
