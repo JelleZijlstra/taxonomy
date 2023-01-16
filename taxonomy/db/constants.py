@@ -50,6 +50,7 @@ class AgeClass(enum.IntEnum):
             self.coprolite: "💩",
             self.burrow: "🕳️",
             self.bite_trace: "😋",
+            self.redirect: "→",
         }[self]
 
 

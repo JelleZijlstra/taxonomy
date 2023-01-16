@@ -993,8 +993,8 @@ class Taxon(BaseModel):
                 existing.add_comment(additional_comment)
         to_taxon = to_taxon.reload()
         to_taxon.base_name.status = original_to_status
+        self.age = AgeClass.redirect  # type: ignore
         self.parent = to_taxon
-        self.status = AgeClass.redirect
         return models.Name.get(models.Name.id == nam.id)
 
     def synonymize_all_children(self) -> None:

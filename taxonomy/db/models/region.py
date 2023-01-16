@@ -64,6 +64,14 @@ class Region(BaseModel):
         out += f" ({self.kind.name})"
         return out
 
+    def get_adt_callbacks(self) -> getinput.CallbackMap:
+        return {
+            **super().get_adt_callbacks(),
+            "display_collections": self.display_collections,
+            "display_citation_groups": self.display_citation_groups,
+            "display_periods": self.display_periods,
+        }
+
     def get_general_localities(self) -> list["models.Location"]:
         name_field = models.Location.name
         my_name = self.name
@@ -104,9 +112,9 @@ class Region(BaseModel):
         full: bool = False,
         depth: int = 0,
         file: IO[str] = sys.stdout,
-        children: bool = True,
+        children: bool = False,
         skip_empty: bool = True,
-        locations: bool = True,
+        locations: bool = False,
     ) -> None:
         if skip_empty and self.is_empty():
             return
@@ -114,12 +122,12 @@ class Region(BaseModel):
         file.write("{}{}\n".format(" " * (depth + 4), repr(self)))
         if self.comment:
             file.write("{}Comment: {}\n".format(" " * (depth + 12), self.comment))
-        if locations:
+        if locations or full:
             for location in self.sorted_locations():
                 if skip_empty and location.type_localities.count() == 0:
                     continue
                 location.display(full=full, depth=depth + 4, file=file)
-        if children:
+        if children or full:
             for child in self.sorted_children():
                 child.display(
                     full=full,

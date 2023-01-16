@@ -694,7 +694,7 @@ class BaseModel(Model):
             return lambda: cls.getter(None).get_and_edit(f"{cls.__name__}> ")
 
         sibling_editors = {
-            f"edit_{cls.__name__.lower()}": make_editor(cls)
+            f"{cls.__name__.lower()}_edit": make_editor(cls)
             for cls in BaseModel.__subclasses__()
             if hasattr(cls, "label_field")
         }
@@ -703,9 +703,9 @@ class BaseModel(Model):
             **sibling_editors,
             "d": self.display,
             "f": lambda: self.display(full=True),
-            "edit_foreign": self.edit_foreign,
-            "edit_sibling": self.edit_sibling,
-            "edit_sibling_by_field": self.edit_sibling_by_field,
+            "foreign_edit": self.edit_foreign,
+            "sibling_edit": self.edit_sibling,
+            "sibling_edit_by_field": self.edit_sibling_by_field,
             "empty": self.empty,
             "full_data": self.full_data,
             "debug": self.debug_data,
