@@ -67,7 +67,9 @@ def export_names(
     print(f"done, {len(names)} found")
 
     with open(filename, "w") as f:
-        writer = csv.DictWriter(f, list(NameData.__annotations__))
+        writer: "csv.DictWriter[str]" = csv.DictWriter(
+            f, list(NameData.__annotations__)
+        )
         writer.writeheader()
         for name in getinput.print_every_n(names, label="names"):
             writer.writerow(data_for_name(name))
@@ -151,7 +153,9 @@ class OccurrenceData(TypedDict):
 @CS.register
 def export_occurrences(filename: str) -> None:
     with open(filename, "w") as f:
-        writer = csv.DictWriter(f, list(OccurrenceData.__annotations__))
+        writer: "csv.DictWriter[str]" = csv.DictWriter(
+            f, list(OccurrenceData.__annotations__)
+        )
         writer.writeheader()
         for occ in getinput.print_every_n(
             Occurrence.select_valid(), label="occurrences", n=100

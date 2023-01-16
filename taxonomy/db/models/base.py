@@ -322,7 +322,7 @@ class BaseModel(Model):
         super().prepared()
         self._is_prepared = True
 
-    def save(self, *args: Any, **kwargs: Any) -> None:
+    def save(self, *args: Any, **kwargs: Any) -> int:
         result = super().save(*args, **kwargs)
         if hasattr(self, "save_event"):
             self.save_event.trigger(self)

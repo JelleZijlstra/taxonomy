@@ -23,10 +23,10 @@ _IGNORED_FIRST_WORDS = {
 class Entry(Protocol):
     @property
     def name(self) -> str:
-        pass
+        raise NotImplementedError
 
     def path_list(self) -> list[str]:
-        pass
+        raise NotImplementedError
 
 
 class TreeSizeData(NamedTuple):

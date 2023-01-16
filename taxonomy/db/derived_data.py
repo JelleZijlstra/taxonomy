@@ -31,17 +31,17 @@ class SetLater:
 
 class SingleComputeFunc(Protocol[T_co]):
     def __call__(self, model: "taxonomy.db.models.base.BaseModel") -> T_co:
-        ...
+        raise NotImplementedError
 
 
 class ComputeAllFunc(Protocol[T]):
     def __call__(self) -> dict[int, T]:
-        ...
+        raise NotImplementedError
 
 
 class _LazyTypeArg(Protocol[T_co]):
     def __call__(self) -> type[T_co]:
-        ...
+        raise NotImplementedError
 
 
 @dataclass
@@ -143,8 +143,9 @@ class DerivedField(Generic[T]):
                 if self.name in object_data:
                     del object_data[self.name]
         else:
-            assert self.compute is not None
-            field_data = {obj.id: self.compute(obj) for obj in model_cls.select_valid()}
+            compute_func = self.compute
+            assert compute_func is not None
+            field_data = {obj.id: compute_func(obj) for obj in model_cls.select_valid()}
         for model_id, value in field_data.items():
             object_data = model_data.setdefault(model_id, {})
             object_data[self.name] = self.serialize(value)

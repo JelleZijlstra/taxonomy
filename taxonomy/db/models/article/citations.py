@@ -108,10 +108,12 @@ def _citenormal(article: Article, *, mw: bool) -> str:
         url = article.geturl()
         if url:
             out += f"[{url} "
+    else:
+        url = None
     # just in case it's None
     out += str(article.title)
     # TODO: guess whether "subscription required" is needed based on URL
-    if mw and url:
+    if url:
         out += "] (subscription required)"
     out += ". "
     if article.type == ArticleType.JOURNAL:
@@ -171,6 +173,8 @@ def citelemurnews(article: Article) -> str:
             f"{authors}. {article.year}. {article.title}. {article.publisher},"
             f" {article.place_of_publication}."
         )
+    else:
+        raise NotImplementedError(article.type)
     # TODO: support non-journal citations
     # Ranaivoarisoa, J.F.; Ramanamahefa, R.; Louis, Jr., E.E.; Brenneman, R.A. 2006. Range extension
     # of Perrier’s sifaka, <i>Propithecus perrieri</i>, in the Andrafiamena Classified Forest. Lemur

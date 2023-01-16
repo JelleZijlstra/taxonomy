@@ -323,7 +323,7 @@ class NameParser:
         # Except for MN7-8, that is, which we'll have to hard-code
         out: dict[str, Any] = {}
         times: list[tuple[str | None, str | None]] = []
-        time: tuple[str | None, str | None]
+        time: tuple[str | None, str | None] = (None, None)
         inRange = False
         while True:
             firstWord, rest = self.getFirstWord(input)

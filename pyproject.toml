@@ -7,6 +7,12 @@ preview = true
 [tool.pycln]
 all = true
 
+[tool.pyanalyze]
+treat_class_attribute_as_any = [
+  "taxonomy.pyanalyze_config.treat_class_attribute_as_any"
+]
+undefined_name = false
+
 [project]
 name = "taxonomy"
 version = "0.0"
