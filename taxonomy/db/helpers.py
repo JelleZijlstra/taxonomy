@@ -613,3 +613,28 @@ def trimdoi(doi: str) -> str:
     doi = doi.strip()
     doi = re.sub(r"[\.;\(]$|^:|^doi:|^http:\/\/dx\.doi\.org\/", "", doi)
     return doi.strip()
+
+
+def is_valid_year(year: str, *, allow_empty: bool = True) -> str | None:
+    if not year:
+        if allow_empty:
+            return None
+        else:
+            return "year is empty"
+    if not year.isnumeric() or len(year) != 4:
+        return f"{year} does not look like a year"
+    numeric_year = int(year)
+    # a generous range of years that could appear in the database
+    if 1500 <= numeric_year <= 2100:
+        return None
+    return f"{numeric_year} is out of range"
+
+
+def is_valid_regex(rgx: str) -> str | None:
+    try:
+        re.compile(rgx)
+    except re.error as e:
+        return f"regex {rgx!r} failed to compile: {e!r}"
+    if re.match(r"(?!\\)\.", rgx):
+        return f"regex {rgx!r} contains unescaped dot"
+    return None

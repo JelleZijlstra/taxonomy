@@ -17,7 +17,7 @@ Articles have the following fields:
   belongs to: the journal for journal articles, city of publication for books, and university
   for dissertations.
 - _series_: Series of publication, used with some journals. Also used for the name of the
-  degree (e.g., "PhD") for dissertations.
+  degree (e.g., "PhD") for dissertations. See [the citation group documentation](/docs/citation-group) for more detail on how to use this and the next few fields.
 - _volume_: Volume of publication for journals
 - _issue_: Issue of publication for journals
 - _start page_: First page of a journal article

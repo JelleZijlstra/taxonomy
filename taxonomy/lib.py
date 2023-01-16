@@ -224,24 +224,26 @@ def h(
     arts = []
     for aut in authors:
         for art in aut.get_sorted_derived_field("articles"):
-            if art.numeric_year() == year:
-                arts.append(art)
+            if art.numeric_year() != year:
+                continue
+            if page is not None and not art.is_page_in_range(page):
+                continue
+            arts.append(art)
         for nam in aut.get_sorted_derived_field("names"):
-            if nam.numeric_year() == year:
-                nams.append(nam)
+            if nam.numeric_year() != year:
+                continue
+            if page is not None and (
+                nam.page_described is None or str(page) not in nam.page_described
+            ):
+                continue
+            if uncited_only and nam.original_citation is not None:
+                continue
+            nams.append(nam)
     getinput.print_header(f"Articles by {author} ({year})")
     for art in arts:
-        if page is not None and not art.is_page_in_range(page):
-            continue
         print(repr(art))
     getinput.print_header(f"Names by {author} ({year})")
     for nam in nams:
-        if page is not None and (
-            nam.page_described is None or str(page) not in nam.page_described
-        ):
-            continue
-        if uncited_only and nam.original_citation is not None:
-            continue
         nam.display(full=False)
         indent = " " * 8
         if nam.verbatim_citation:

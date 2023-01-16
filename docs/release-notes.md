@@ -12,6 +12,7 @@ they will also apply to the database itself.
     - Clean up some unresolvable DOIs
     - Add ISSN to over 600 journals
     - Fix numerous incorrect page fields on names and articles
+    - Clean up many journal citations
 - Frontend
     - Display links to various identifiers (ISSN, ISBN, etc.) on
       article and citation group pages
@@ -22,6 +23,8 @@ they will also apply to the database itself.
       (documented in [Tricky journals](/docs/tricky-journals))
     - Check that the *page_described* field for names is within
       the page range of their original citation
+    - Validate the *series*, *volume*, *issue*, *start_page*,
+      and *end_page* fields on journal articles.
 
 # Previous
 

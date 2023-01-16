@@ -799,18 +799,22 @@ class BaseModel(Model):
             sibling.edit()
 
     def edit_sibling_by_field(self) -> None:
-        field = getinput.get_with_completion(
-            self.get_field_names(),
-            message="field> ",
-            history_key=(type(self), "edit_sibling_by_field"),
-            disallow_other=True,
-        )
+        field = self.prompt_for_field_name()
         if field is None:
             return
         sibling = self.getter(field).get_one()
         if sibling is not None:
             sibling.display()
             sibling.edit()
+
+    @classmethod
+    def prompt_for_field_name(cls, prompt: str = "field> ") -> str | None:
+        return getinput.get_with_completion(
+            cls.get_field_names(),
+            message=prompt,
+            history_key=(cls, "edit_sibling_by_field"),
+            disallow_other=True,
+        )
 
     def edit_foreign(self) -> None:
         options = {
@@ -834,12 +838,7 @@ class BaseModel(Model):
         value.edit()
 
     def empty(self) -> None:
-        chosen = getinput.get_with_completion(
-            self._meta.fields,
-            "field to empty> ",
-            history_key=(type(self), "empty"),
-            disallow_other=True,
-        )
+        chosen = self.prompt_for_field_name("field to empty> ")
         if not chosen:
             return
         value = getattr(self, chosen)

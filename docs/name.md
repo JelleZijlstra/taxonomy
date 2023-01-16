@@ -75,7 +75,14 @@ their limits are subjective in nature.
   plate or figure. Where relevant, the page should be the location of a heading
   like "_Aus bus_, sp. nov.", not necessarily the first mention of the name. If
   there is no such heading, the page should be the first page on which the name
-  appears.
+  appears. Special cases:
+    - Some articles have multiple paginations (e.g., one for the volume and
+      one for the individual work). In such cases, use the higher page number,
+      because it is less likely to be ambiguous.
+    - Sometimes page numbers are misprinted. In that case, specify the page
+      number like "2 [as 1]", where "2" is the true page number that would be
+      used if the pagination of the work was correct, and "1" is the page number
+      that actually appears on the page.
 - _verbatim citation_: A free-form text specifying the original place of
   publication of the name, used when I do not have the full paper (so that
   _original citation_ is not set). This is a place for rough notes that will

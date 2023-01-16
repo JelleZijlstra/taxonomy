@@ -10,6 +10,7 @@ from peewee import (
     IntegerField,
     TextField,
 )
+import pprint
 import requests
 import shutil
 import subprocess
@@ -811,9 +812,9 @@ class Article(BaseModel):
     def print_doi_information(self) -> None:
         if not self.doi:
             return
-        result = models.article.add_data.get_doi_information(self.doi)
+        result = models.article.add_data.get_doi_json(self.doi)
         if result:
-            print(result.prettify())
+            pprint.pprint(result)
 
     def maybe_remove_corrupt_doi(self) -> None:
         if self.doi is None:

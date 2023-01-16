@@ -1939,7 +1939,9 @@ def fix_justified_emendations() -> None:
 
 
 def run_linter_and_fix(
-    model_cls: type[ModelT], linter: Linter[ModelT], query: Iterable[ModelT]
+    model_cls: type[ModelT],
+    linter: Linter[ModelT] | None = None,
+    query: Iterable[ModelT] | None = None,
 ) -> None:
     """Helper for running a lint on a subset of objects and fixing the issues."""
     bad = model_cls.lint_all(linter, query=query)
@@ -2119,7 +2121,6 @@ def run_maintenance(skip_slow: bool = True) -> Dict[Any, Any]:
         enforce_must_have,
         fix_citation_group_redirects,
         recent_names_without_verbatim,
-        enforce_must_have_series,
         Person.autodelete,
         Person.find_duplicates,
         Person.resolve_redirects,
@@ -2296,24 +2297,6 @@ def enforce_must_have(fix: bool = True) -> Iterator[Name]:
             yield nam
         if found_any:
             find_potential_citations_for_group(cg, fix=fix)
-
-
-@generator_command
-def enforce_must_have_series(fix: bool = True) -> Iterator[Article]:
-    cgs = [
-        cg
-        for cg in CitationGroup.select_valid()
-        if cg.get_tag(CitationGroupTag.MustHaveSeries)
-    ]
-    for cg in cgs:
-        getinput.print_header(cg)
-        for art in cg.article_set:
-            if not art.series:
-                art.display()
-                print(f"{art} is in {cg}, but is missing a series")
-                yield art
-                if fix:
-                    art.e.series
 
 
 @generator_command

@@ -209,6 +209,8 @@ _TITLE_REGEXES = [
     (r"<i>([,:();]+)", r"\1<i>"),
     (r"<\/i>\s+<i>|\s+", " "),
     (r"</?i>", "_"),
+    (r"_([^_]+) _", r"_\1_ "),
+    (r"\s+", " "),
 ]
 
 
@@ -220,8 +222,10 @@ def check_title(art: Article, autofix: bool = True) -> Iterable[str]:
         new_title = re.sub(regex, replacement, new_title)
     yield from _maybe_clean(art, "title", new_title, autofix)
     # DOI titles tend to produce this kind of mess
-    if re.search(r"[A-Z] [A-Z] [A-Z]", art.title):
+    if re.search(r"[A-Z] [A-Z] [A-Z]", new_title):
         yield f"{art}: spaced caps in title {art.title!r}"
+    if re.search("<(?!sub|sup|/sub|/sup)", new_title):
+        yield f"{art}: possible HTML tag in {art.title!r}"
 
 
 def journal_specific_cleanup(art: Article, autofix: bool = True) -> Iterable[str]:
@@ -268,6 +272,20 @@ def journal_specific_cleanup(art: Article, autofix: bool = True) -> Iterable[str
                 "Annals and Magazine of Natural History"
             )
             print(message)
+        else:
+            yield message
+    if (
+        cg.name == "American Museum Novitates"
+        or (
+            cg.name == "Bulletin of the American Museum of Natural History"
+            and art.numeric_year() > 1990
+        )
+        and art.issue
+    ):
+        message = f"{art}: {cg} article should not have issue {art.issue}"
+        if autofix:
+            print(message)
+            art.issue = None
         else:
             yield message
 
@@ -327,29 +345,91 @@ def check_required_fields(art: Article, autofix: bool = True) -> Iterable[str]:
         yield f"{art}: missing author_tags"
 
 
+DEFAULT_VOLUME_REGEX = r"(Suppl\. )?\d{1,4}"
+DEFAULT_ISSUE_REGEX = r"\d{1,3}|\d{1,2}-\d{1,2}|Suppl\. \d{1,2}"
+
+
 def check_journal(art: Article, autofix: bool = True) -> Iterable[str]:
     if art.type is not ArticleType.JOURNAL:
         return
+    cg = art.citation_group
+    if cg is None:
+        yield f"{art}: journal article must have a citation group"
+        return
     if art.volume is not None:
-        if "/" in art.volume:
-            yield f"{art}: slash in volume"
-        if ":" in art.volume:
-            yield f"{art}: colon in volume"
-        volume = art.volume.replace("-", "–")
+        volume = art.volume.replace("–", "-")
         yield from _maybe_clean(art, "volume", volume, autofix)
+        tag = cg.get_tag(CitationGroupTag.VolumeRegex)
+        rgx = tag.text if tag else DEFAULT_VOLUME_REGEX
+        if not re.fullmatch(rgx, volume):
+            message = f"regex {tag.text!r}" if tag else "default volume regex"
+            yield f"{art}: volume {volume!r} does not match {message} (CG {cg})"
     else:
         if not art.is_in_press():
             yield f"{art}: missing volume"
     if art.issue is not None:
-        if "/" in art.issue:
-            yield f"{art}: slash in issue: {art.issue!r}"
-        issue = re.sub(r"[-_]", "–", art.issue)
+        issue = re.sub(r"[–_]", "-", art.issue)
         issue = re.sub(r"^(\d+)/(\d+)$", r"\1–\2", issue)
         yield from _maybe_clean(art, "issue", issue, autofix)
-    if art.start_page is None and not art.is_full_issue():
+        tag = cg.get_tag(CitationGroupTag.IssueRegex)
+        rgx = tag.text if tag else DEFAULT_ISSUE_REGEX
+        if not re.fullmatch(rgx, issue):
+            message = f"regex {tag.text!r}" if tag else "default issue regex"
+            yield f"{art}: issue {issue!r} does not match {message} (CG {cg})"
+
+
+def check_start_end_page(art: Article, autofix: bool = True) -> Iterable[str]:
+    if art.type is not ArticleType.JOURNAL:
+        return  # TODO similar check for chapters
+    cg = art.citation_group
+    if cg is None:
+        return  # error emitted in check_journal()
+    if art.is_full_issue():
+        return
+    start_page: str = art.start_page
+    end_page: str = art.end_page
+    if start_page is None:
         yield f"{art}: missing start page"
-    if art.is_in_press() and art.end_page is not None:
-        yield f"{art}: in press article has end_page"
+        return
+    if art.is_in_press():
+        if end_page is not None:
+            yield f"{art}: in press article has end_page"
+        return
+    tag = cg.get_tag(CitationGroupTag.PageRegex)
+    allow_standard = tag is None or tag.allow_standard
+
+    # Standard pages: both numeric, at most 4 digits, end >= start
+    if (
+        allow_standard
+        and end_page is not None
+        and start_page.isnumeric()
+        and len(start_page) <= 4
+        and end_page.isnumeric()
+        and len(end_page) <= 4
+    ):
+        if int(end_page) < int(start_page):
+            yield f"{art}: end page is before start page: {start_page}"
+        return
+    if tag is None:
+        yield f"{art}: invalid start and end page {start_page}-{end_page}"
+        return
+
+    if end_page is None:
+        if not tag.start_page_regex:
+            yield f"{art}: missing end_page"
+            return
+        if not re.fullmatch(tag.start_page_regex, start_page):
+            yield f"{art}: start page {start_page} does not match regex {tag.start_page_regex} for {cg}"
+        return
+
+    if not tag.pages_regex:
+        yield f"{art}: invalid start and end page {start_page}-{end_page}"
+        return
+
+    if not re.fullmatch(tag.pages_regex, start_page):
+        yield f"{art}: start page {start_page} does not match regex {tag.pages_regex} for {cg}"
+    if not re.fullmatch(tag.pages_regex, end_page):
+        yield f"{art}: end page {end_page} does not match regex {tag.pages_regex} for {cg}"
 
 
 def _maybe_clean(
@@ -376,4 +456,5 @@ LINTERS: list[Linter] = [
     check_string_fields,
     check_required_fields,
     check_journal,
+    check_start_end_page,
 ]

@@ -1,6 +1,8 @@
+from collections import Counter
 from typing import Any, Iterable, List, Optional, Type
 
 from peewee import BooleanField, CharField, ForeignKeyField, IntegrityError
+import re
 
 from .. import constants, helpers, models
 from ... import adt, events, getinput
@@ -75,6 +77,79 @@ class CitationGroup(BaseModel):
             constants.ArticleType.REDIRECT,
         ):
             yield "region"
+
+    def lint(self, autofix: bool = True) -> Iterable[str]:
+        if not self.tags:
+            return
+        for tag in self.tags:
+            if tag is CitationGroupTag.MustHave or isinstance(
+                tag, CitationGroupTag.MustHaveAfter
+            ):
+                if (
+                    not self.archive
+                    and not self.get_tag(CitationGroupTag.CitationGroupURL)
+                    and not self.get_tag(CitationGroupTag.BHLBibliography)
+                ):
+                    yield f"{self}: has MustHave tag but no URL"
+            if isinstance(tag, CitationGroupTag.MustHaveAfter):
+                if issue := helpers.is_valid_year(tag.year):
+                    yield f"{self}: invalid MustHaveAfterTag {tag}: {issue}"
+            if isinstance(tag, CitationGroupTag.MustHaveSeries) and not self.get_tag(
+                CitationGroupTag.SeriesRegex
+            ):
+                yield f"{self}: MustHaveSeries tag but no SeriesRegex tag"
+            if isinstance(tag, CitationGroupTag.OnlineRepository):
+                yield f"{self}: use of deprecated OnlineRepository tag"
+            if isinstance(tag, (CitationGroupTag.ISSN, CitationGroupTag.ISSNOnline)):
+                # TODO check that the checksum digit is right
+                if not re.fullmatch(r"^\d{4}-\d{3}[X\d]$", tag.text):
+                    yield f"{self}: invalid ISSN {tag}"
+            if isinstance(tag, CitationGroupTag.BHLBibliography):
+                if not tag.text.isnumeric():
+                    yield f"{self}: invalid BHL tag {tag}"
+            if isinstance(tag, CitationGroupTag.YearRange):
+                if issue := helpers.is_valid_year(tag.start):
+                    yield f"{self}: invalid start year in {tag}: {issue}"
+                if issue := helpers.is_valid_year(tag.end):
+                    yield f"{self}: invalid end year in {tag}: {issue}"
+                if tag.start and tag.end and int(tag.start) > int(tag.end):
+                    yield f"{self}: {tag}: start is after end"
+            # TODO if there is a Predecessor, check that the YearRange tags make sense
+            if isinstance(
+                tag,
+                (
+                    CitationGroupTag.SeriesRegex,
+                    CitationGroupTag.VolumeRegex,
+                    CitationGroupTag.IssueRegex,
+                ),
+            ):
+                if issue := helpers.is_valid_regex(tag.text):
+                    yield f"{self}: invalid tag {tag}: {issue}"
+            if isinstance(tag, CitationGroupTag.PageRegex):
+                if issue := helpers.is_valid_regex(tag.start_page_regex):
+                    yield f"{self}: invalid start_page_regex in tag {tag}: {issue}"
+                if issue := helpers.is_valid_regex(tag.pages_regex):
+                    yield f"{self}: invalid pages_regex in tag {tag}: {issue}"
+
+        tags = sorted(set(self.tags))
+        counts = Counter(type(tag) for tag in tags)
+        for tag_type, count in counts.items():
+            if count > 1 and tag_type not in (
+                CitationGroupTag.Predecessor,
+                CitationGroupTag.CitationGroupURL,
+                CitationGroupTag.ISSN,
+                CitationGroupTag.ISSNOnline,
+            ):
+                yield f"{self}: multiple {tag_type} tags"
+
+        if tuple(tags) != tuple(self.tags):
+            message = f"{self}: changing tags"
+            getinput.print_diff(sorted(self.tags), tags)
+            if autofix:
+                print(message)
+                self.tags = tags  # type: ignore
+            else:
+                yield message
 
     def has_tag(self, tag: adt.ADT) -> bool:
         if self.tags is None:
@@ -212,7 +287,11 @@ class CitationGroup(BaseModel):
             "display_full": lambda: self.display(full=True, include_articles=True),
             "add_alias": self.add_alias,
             "edit_all_members": self.edit_all_members,
-            "print_series": self.print_series,
+            "print_field_value_for_articles": self.print_field_value_for_articles,
+            "lint_articles": lambda: models.Article.lint_all(query=self.get_articles()),
+            "lint_names": lambda: models.Name.lint_all(
+                query=models.Name.add_validity_check(self.names)
+            ),
         }
 
     def get_completers_for_adt_field(self, field: str) -> getinput.CompleterMap:
@@ -287,12 +366,17 @@ class CitationGroup(BaseModel):
         nams = [(repr(nam), nam.taxon) for nam in self.get_names()]
         models.taxon.display_organized(nams)
 
-    def print_series(self) -> None:
-        by_series: dict[str, list[models.Article]] = {}
+    def print_field_value_for_articles(self, field: str | None = None) -> None:
+        if field is None:
+            field = models.Article.prompt_for_field_name()
+        if not field:
+            return
+        by_value: dict[str, list[models.Article]] = {}
         for art in self.get_articles():
-            if art.series is not None:
-                by_series.setdefault(art.series, []).append(art)
-        for series, arts in sorted(by_series.items()):
+            value = getattr(art, field)
+            if value is not None:
+                by_value.setdefault(value, []).append(art)
+        for series, arts in sorted(by_value.items()):
             print(f"- {series} ({len(arts)})")
 
     def _display_nams(self, nams: Iterable["models.Name"], depth: int = 0) -> None:
@@ -355,3 +439,9 @@ class CitationGroupTag(adt.ADT):
     Predecessor(cg=CitationGroup, tag=18)  # type: ignore
     # Series may be present and must conform to the regex in the tag
     SeriesRegex(text=str, tag=19)  # type: ignore
+    # Volumes must conform to this regex
+    VolumeRegex(text=str, tag=20)  # type: ignore
+    # Issues must conform to this regex
+    IssueRegex(text=str, tag=21)  # type: ignore
+    # Control start and end page (see citation-group.md)
+    PageRegex(start_page_regex=str, pages_regex=str, allow_standard=bool, tag=22)  # type: ignore
