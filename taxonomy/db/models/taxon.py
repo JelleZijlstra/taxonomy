@@ -3,12 +3,7 @@ from functools import lru_cache
 import operator
 import re
 import sys
-from typing import (
-    cast,
-    IO,
-    Any,
-    Optional,
-)
+from typing import cast, IO, Any, Optional
 from collections import Counter
 from collections.abc import Callable, Container, Iterable, Sequence
 
@@ -437,9 +432,7 @@ class Taxon(BaseModel):
         if self.parent is not None:
             self.parent.display_parents(max_depth=max_depth, file=file)
 
-        file.write(
-            f"{self.rank.name} {self.full_name()} ({self.age.name})\n"
-        )
+        file.write(f"{self.rank.name} {self.full_name()} ({self.age.name})\n")
         file.write(self.base_name.get_description(depth=1))
 
     def get_citation_groups(self) -> dict["models.CitationGroup", list["models.Name"]]:
@@ -1045,9 +1038,7 @@ class Taxon(BaseModel):
         for child in self.get_children():
             child.run_on_self_and_children(callback)
 
-    def remove(
-        self, reason: str | None = None, *, remove_names: bool = True
-    ) -> None:
+    def remove(self, reason: str | None = None, *, remove_names: bool = True) -> None:
         for _ in self.get_children():
             print("Cannot remove %s since it has unremoved children" % self)
             return

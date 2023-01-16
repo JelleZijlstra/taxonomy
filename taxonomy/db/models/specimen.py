@@ -103,10 +103,7 @@ class SpecimenComment(BaseModel):
 
     @classmethod
     def create_interactively(
-        cls,
-        specimen: Specimen | None = None,
-        text: str | None = None,
-        **kwargs: object,
+        cls, specimen: Specimen | None = None, text: str | None = None, **kwargs: object
     ) -> Optional["SpecimenComment"]:
         if specimen is None:
             specimen = cls.get_value_for_foreign_key_field_on_class(

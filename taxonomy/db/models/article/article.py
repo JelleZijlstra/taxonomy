@@ -15,14 +15,7 @@ import requests
 import shutil
 import subprocess
 import time
-from typing import (
-    Any,
-    ClassVar,
-    NamedTuple,
-    Optional,
-    TypeVar,
-    cast,
-)
+from typing import Any, ClassVar, NamedTuple, Optional, TypeVar, cast
 from collections.abc import Callable, Iterable
 
 from ..base import (

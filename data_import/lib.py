@@ -6,10 +6,7 @@ import re
 import unicodedata
 from collections import defaultdict
 from pathlib import Path
-from typing import (
-    Any,
-    NamedTuple,
-)
+from typing import Any, NamedTuple
 from collections import Counter
 from collections.abc import Callable, Container, Iterable, Mapping, Sequence
 
@@ -849,10 +846,7 @@ def genus_of_name(name: models.Name) -> models.Taxon | None:
 
 
 def find_name(
-    original_name: str,
-    authority: str,
-    max_distance: int = 3,
-    year: str | None = None,
+    original_name: str, authority: str, max_distance: int = 3, year: str | None = None
 ) -> models.Name | None:
     # Exact match
     query = models.Name.filter(

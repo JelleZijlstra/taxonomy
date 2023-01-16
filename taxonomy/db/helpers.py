@@ -5,10 +5,7 @@ import datetime
 import json
 import re
 import time
-from typing import (
-    cast,
-    TypeVar,
-)
+from typing import cast, TypeVar
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 import unicodedata
 import unidecode

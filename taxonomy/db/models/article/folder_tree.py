@@ -2,9 +2,7 @@
 
 from collections import defaultdict
 import re
-from typing import (
-    NamedTuple,
-)
+from typing import NamedTuple
 from collections import Counter
 from collections.abc import Callable, Iterable, Sequence
 from typing import Protocol
@@ -79,9 +77,8 @@ class CountTreeNode:
     def display(
         self,
         min_size: int | None = None,
-        should_include: None | (
-            Callable[["CountTreeNode", Sequence[str]], bool]
-        ) = None,
+        should_include: None
+        | (Callable[["CountTreeNode", Sequence[str]], bool]) = None,
     ) -> None:
         self.collect_tree_size_data()
 

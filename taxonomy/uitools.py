@@ -7,10 +7,7 @@ Deprecated; prefer getinput.py for new code.
 """
 import functools
 import re
-from typing import (
-    Any,
-    NamedTuple,
-)
+from typing import Any, NamedTuple
 from collections.abc import Callable, Iterable, Sequence
 
 import prompt_toolkit

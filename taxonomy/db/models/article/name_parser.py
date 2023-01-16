@@ -2,11 +2,7 @@ import functools
 import itertools
 import re
 from pathlib import Path
-from typing import (
-    Any,
-    ClassVar,
-    TypeVar,
-)
+from typing import Any, ClassVar, TypeVar
 from collections.abc import Sequence
 from taxonomy.config import get_options
 

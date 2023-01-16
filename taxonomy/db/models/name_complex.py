@@ -243,9 +243,7 @@ class SpeciesNameComplex(BaseModel):
         return cls._get_or_create(kind.name, kind=kind)
 
     @classmethod
-    def ambiguous(
-        cls, stem: str, comment: str | None = None
-    ) -> "SpeciesNameComplex":
+    def ambiguous(cls, stem: str, comment: str | None = None) -> "SpeciesNameComplex":
         """For groups of names that are ambiguously nouns in apposition (Art. 31.2.2).
         """
         return cls._get_or_create(

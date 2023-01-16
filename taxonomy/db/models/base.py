@@ -8,13 +8,7 @@ import re
 import time
 import traceback
 from types import NoneType
-from typing import (
-    Any,
-    ClassVar,
-    Generic,
-    IO,
-    TypeVar,
-)
+from typing import Any, ClassVar, Generic, IO, TypeVar
 from collections.abc import Callable, Container, Iterable, Sequence
 import typing_inspect
 

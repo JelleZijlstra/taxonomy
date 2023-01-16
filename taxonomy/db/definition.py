@@ -28,9 +28,7 @@ class DefinitionType(enum.Enum):
 
 
 class Definition:
-    def __init__(
-        self, typ: DefinitionType, arguments: Iterable[str | _Taxon]
-    ) -> None:
+    def __init__(self, typ: DefinitionType, arguments: Iterable[str | _Taxon]) -> None:
         self.type = typ
         self.arguments: list[Any] = list(arguments)
 

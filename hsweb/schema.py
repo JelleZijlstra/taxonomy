@@ -307,10 +307,7 @@ def build_reverse_rel_field(
             return query
 
     def resolver(
-        parent: ObjectType,
-        info: ResolveInfo,
-        first: int = 10,
-        after: str | None = None,
+        parent: ObjectType, info: ResolveInfo, first: int = 10, after: str | None = None
     ) -> TList[ObjectType]:
         model = get_model(model_cls, parent, info)
         object_type = build_object_type_from_model(foreign_model)

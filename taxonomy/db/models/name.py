@@ -4,11 +4,7 @@ import json
 import re
 import sys
 import time
-from typing import (
-    Any,
-    IO,
-    Optional,
-)
+from typing import Any, IO, Optional
 from collections.abc import Callable, Iterable, Sequence
 
 from peewee import CharField, ForeignKeyField, IntegerField, TextField

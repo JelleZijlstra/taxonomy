@@ -2,11 +2,7 @@ import builtins
 import enum
 import functools
 import sys
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    TypeVar,
-)
+from typing import TYPE_CHECKING, Any, TypeVar
 from collections.abc import Callable, Iterable, Iterator, MutableMapping
 
 BASIC_TYPES: tuple[type[Any], ...] = (int, str, float, bool, list)

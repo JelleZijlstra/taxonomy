@@ -28,13 +28,7 @@ from pathlib import Path
 import peewee
 import re
 import shutil
-from typing import (
-    Any,
-    Generic,
-    NamedTuple,
-    TypeVar,
-    cast,
-)
+from typing import Any, Generic, NamedTuple, TypeVar, cast
 from collections import Counter
 from collections.abc import Callable, Hashable, Iterable, Iterator, Mapping, Sequence
 
@@ -750,20 +744,13 @@ def dup_genus() -> list[dict[str, list[Name]]]:
 def dup_names() -> (
     list[
         dict[
-            tuple[
-                str | None,
-                str | None,
-                constants.NomenclatureStatus,
-                str | None,
-            ],
+            tuple[str | None, str | None, constants.NomenclatureStatus, str | None],
             list[Name],
         ]
     ]
 ):
     original_year: dict[
-        tuple[
-            str | None, str | None, constants.NomenclatureStatus, str | None
-        ],
+        tuple[str | None, str | None, constants.NomenclatureStatus, str | None],
         list[Name],
     ] = defaultdict(list)
     for name in Name.select_valid().filter(
@@ -933,10 +920,7 @@ def get_scores(
 
 @command
 def get_scores_for_period(
-    rank: Rank,
-    period: Period,
-    focus_field: str | None = None,
-    graphical: bool = False,
+    rank: Rank, period: Period, focus_field: str | None = None, graphical: bool = False
 ) -> ScoreHolder:
     taxa = set()
     for nam in period.all_type_localities():
@@ -1515,9 +1499,7 @@ def fill_type_locality_from_location_detail(
         nam.fill_field("type_locality")
 
 
-def names_with_type_detail_without_type(
-    taxon: Taxon | None = None,
-) -> Iterable[Name]:
+def names_with_type_detail_without_type(taxon: Taxon | None = None) -> Iterable[Name]:
     if taxon is None:
         nams = Name.select_valid().filter(
             Name.type_tags != None, Name.type >> None, Name.group == Group.genus
@@ -1846,9 +1828,7 @@ def doubled_authors(autofix: bool = False) -> list[Name]:
 
 @command
 def reassign_authors(
-    taxon: Taxon | None = None,
-    skip_family: bool = False,
-    skip_initials: bool = False,
+    taxon: Taxon | None = None, skip_family: bool = False, skip_initials: bool = False
 ) -> None:
     if taxon is None:
         taxon = Taxon.getter(None).get_one()

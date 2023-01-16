@@ -1,11 +1,7 @@
 from collections import defaultdict
 import enum
 import sys
-from typing import (
-    IO,
-    Any,
-    Optional,
-)
+from typing import IO, Any, Optional
 from collections.abc import Callable, Iterable, Mapping, Sequence
 
 from peewee import CharField, DeferredForeignKey, TextField
