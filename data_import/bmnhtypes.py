@@ -1,7 +1,7 @@
 import csv
-from typing import Iterable, Set
+import re
+from typing import Iterable
 
-from taxonomy import shell
 from taxonomy.db import models
 from taxonomy.db.models import Name
 
@@ -9,7 +9,8 @@ from . import arctostypes, lib
 from .lib import DataT
 
 SOURCE = lib.Source("BMNH-types.tsv", "VertNet-catalog")
-IGNORED: Set[str] = set()
+IGNORED: set[str] = set()
+DISABLED = True
 
 
 def extract_names(lines: Iterable[str]) -> DataT:
@@ -18,11 +19,14 @@ def extract_names(lines: Iterable[str]) -> DataT:
 
 def split_fields(names: DataT) -> DataT:
     for name in names:
-        # name['raw_text'] = dict(name)
-        # name['type_specimen'] = re.sub(r'^([^:]+):[^:]+:([^:]+)$', r'\1 \2', name['GUID'])
-        # name['original_name'] = name['SCIENTIFIC_NAME']
-        # name['authority'] = ''
-        # name['collection_name'] = name['type_specimen'].split()[0]
+        if not DISABLED:
+            name["raw_text"] = dict(name)
+            name["type_specimen"] = re.sub(
+                r"^([^:]+):[^:]+:([^:]+)$", r"\1 \2", name["GUID"]
+            )
+            name["original_name"] = name["SCIENTIFIC_NAME"]
+            name["authority"] = ""
+            name["collection_name"] = name["type_specimen"].split()[0]
         yield name
 
 
