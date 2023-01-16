@@ -170,7 +170,9 @@ class _ADTMeta(type):
                 )
                 new_ns: dict[str, Any] = {}
                 exec(code, {}, new_ns)
-                member_ns["__init__"] = new_ns["__init__"]
+                init = new_ns["__init__"]
+                init.__annotations__.update(attrs)
+                member_ns["__init__"] = init
             member_cls: Any = functools.total_ordering(
                 type(member.name, (new_cls,), member_ns)
             )
