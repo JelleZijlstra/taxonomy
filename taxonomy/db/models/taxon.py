@@ -578,7 +578,7 @@ class Taxon(BaseModel):
             "display_occurrences": lambda: self.display(
                 full=False, show_occurrences=True
             ),
-            "add_type_identical": lambda: self.base_name.add_type_identical(),
+            "add_type_identical": lambda: self.base_name._add_type_identical_callback(),
             "stats": self.stats,
             "fill_citation_group": self.fill_citation_group,
             "fill_data_for_names": self.fill_data_for_names,
