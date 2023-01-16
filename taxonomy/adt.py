@@ -140,6 +140,7 @@ class _ADTMeta(type):
                 "__lt__": _adt_member_lt,
                 "__hash__": _adt_member_hash,
                 "replace": _adt_member_replace,
+                "__annotations__": attrs,
             }
             if has_args:
                 for key, value in member.kwargs.items():
