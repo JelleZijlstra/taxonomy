@@ -1,4 +1,4 @@
-from collections import Counter, defaultdict
+from collections import defaultdict
 import enum
 import functools
 from functools import partial
@@ -318,10 +318,6 @@ class BaseModel(Model):
         """Like lint() but only called if is_invalid() returned True."""
         return []
 
-    def prepared(self) -> None:
-        super().prepared()
-        self._is_prepared = True
-
     def save(self, *args: Any, **kwargs: Any) -> int:
         result = super().save(*args, **kwargs)
         if hasattr(self, "save_event"):
@@ -483,7 +479,7 @@ class BaseModel(Model):
         )
 
     def _merge_fields(
-        self: ModelT, into: ModelT, exclude: Container[peewee.Field] = set()
+        self: ModelT, into: ModelT, exclude: Container[str] = set()
     ) -> None:
         for field in self.fields():
             if field in exclude:
@@ -497,15 +493,6 @@ class BaseModel(Model):
                 setattr(into, field, my_data)
             elif my_data != into_data:
                 print(f"warning: dropping {field}: {my_data}")
-
-    @classmethod
-    def mlist(cls, attribute: str) -> dict[Any, int]:
-        sql = f"""
-            SELECT {attribute}, COUNT(*)
-            FROM {cls._meta.db_table}
-            GROUP BY {attribute}
-        """
-        return Counter(dict(database.execute_sql(sql)))
 
     @classmethod
     def bfind(
@@ -1077,13 +1064,6 @@ class ADTField(TextField):
         super().__init__(**kwargs)
         self.adt_cls = adt_cls
         self.accessor_class = partial(_ADTDescriptor, adt_cls=adt_cls)
-
-    def add_to_class(self, model_class: type[BaseModel], name: str) -> None:
-        super().add_to_class(model_class, name)
-        setattr(
-            model_class, name, _ADTDescriptor(model_class, self, name, self.adt_cls)
-        )
-        setattr(model_class, f"_raw_{name}", FieldAccessor(model_class, self, name))
 
     def get_adt(self) -> type[Any]:
         return self.adt_cls()
