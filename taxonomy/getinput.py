@@ -110,7 +110,7 @@ def get_line(
             continue
         if allow_clear and line == "clear":
             # TODO: Does this work? Do we need a replacement?
-            history.strings = [""]  # type: ignore
+            history.strings = [""]
         return line
 
 
@@ -416,7 +416,7 @@ def display_tags(
     if show_indexes:
         tags = tags
     else:
-        tags = sorted(tags)  # type: ignore
+        tags = sorted(tags)
     for i, tag in enumerate(tags):
         if show_indexes:
             index = f"{i}: "

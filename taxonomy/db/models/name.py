@@ -1555,7 +1555,7 @@ class Name(BaseModel):
         if self.type_tags and into.type_tags:
             into.type_tags += self.type_tags
         self._merge_fields(into, exclude={"id"})
-        self.status = Status.redirect
+        self.status = Status.redirect  # type: ignore
         self.target = into
 
     def open_description(self) -> bool:

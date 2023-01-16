@@ -281,7 +281,7 @@ def decode_source(raw_source: str | int, *, cite_style: str = "paper") -> str:
 
     query = Article.select_valid()
     if isinstance(raw_source, int):
-        query = query.filter(Article.id == raw_source)  # type: ignore
+        query = query.filter(Article.id == raw_source)
     else:
         query = query.filter(Article.name == raw_source)
     art: Article = query.get()

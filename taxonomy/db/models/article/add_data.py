@@ -297,7 +297,7 @@ class ISSNKind(enum.Enum):
 
 def get_issns(
     doi: str, verbose: bool = False
-) -> tuple[str, list[tuple[str, ISSNKind]]] | None:
+) -> tuple[str, list[tuple[ISSNKind, str]]] | None:
     data = get_doi_json(doi)
     if data is None:
         if verbose:

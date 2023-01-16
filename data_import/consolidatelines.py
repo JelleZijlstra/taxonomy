@@ -22,7 +22,7 @@ COLON_REMOVE = SAFE_REMOVE | {"just to keep it non-empty"}
 
 
 def consolidate_lines(lines: list[str]) -> list[str]:
-    new_lines = []
+    new_lines: list[str] = []
     for line in lines:
         if (
             line.strip()
@@ -97,7 +97,7 @@ def remove_lines(lines: list[str]) -> list[str]:
 
 def clean_up_lines(lines: list[str]) -> list[str]:
     lines = [line.rstrip() for line in lines]
-    new_lines = []
+    new_lines: list[str] = []
     for line in lines:
         if new_lines and (not line) and (not new_lines[-1]):
             continue

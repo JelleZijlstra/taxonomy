@@ -93,7 +93,7 @@ def try_manual(names: DataT) -> DataT:
         if name.get("name_obj"):
             nam = name["name_obj"]
             if nam.original_citation and int(nam.year) > 1945:
-                shell.fill_data_from_paper(nam.original_citation)
+                models.fill_data.fill_data_from_paper(nam.original_citation)
         yield name
 
 

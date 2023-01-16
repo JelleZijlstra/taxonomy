@@ -7,6 +7,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from functools import cache, cached_property
 
+from typing import Any
 from typing_extensions import Self, assert_never
 
 from data_import.lib import Source, clean_string, extract_pages, get_text, split_lines
@@ -69,7 +70,7 @@ OVERRIDES = {
 }
 
 
-def _make_key(authors: Sequence[str], year_key: str):
+def _make_key(authors: Sequence[str], year_key: str) -> tuple[tuple[str, ...], str]:
     authors = tuple(authors)
     return OVERRIDES.get(authors, authors), year_key
 
@@ -79,7 +80,7 @@ class NameDetails:
     original_name: str
     authority: list[str]
     year: str
-    ref: str
+    ref: str | None
     page: str | None
     comment: str | None = None
 
@@ -96,7 +97,7 @@ class NameDetails:
         return tuple(models.person.AuthorTag.Author(p) for p in self.author_people)
 
     @classmethod
-    def parse(cls, stripped: str, refs_dict: dict[RefKey, str]) -> Self:
+    def parse(cls, stripped: str, refs_dict: dict[RefKey, str]) -> Self:  # type: ignore
         pieces = stripped.split()
         name_bits = [pieces[0]]
         idx = 1
@@ -137,6 +138,7 @@ class NameDetails:
         year = year_key[:4]
 
         key = _make_key(author_bits, year_key)
+        ref: str | None
         try:
             ref = refs_dict[key]
         except KeyError:
@@ -206,9 +208,10 @@ class Name:
                     except KeyError:
                         print("Invalid collection:", collection)
         if collection in MISMATCHED_COLLECTIONS:
-            type_specimen = type_specimen.replace(
-                collection, MISMATCHED_COLLECTIONS[collection]
-            )
+            if type_specimen is not None:
+                type_specimen = type_specimen.replace(
+                    collection, MISMATCHED_COLLECTIONS[collection]
+                )
             collection = MISMATCHED_COLLECTIONS[collection]
         return type_specimen, collection, detail, type_kind
 
@@ -259,11 +262,11 @@ def parse_refs() -> dict[RefKey, str]:
     for i, page_lines in pages:
         page_lines = textwrap.dedent("\n".join(page_lines)).splitlines()
         lines += split_lines(page_lines, i, dedent_right=False)
-    lines = itertools.dropwhile(
-        lambda l: l.strip() != "• IUCN Red List Assessments", lines
+    lines = list(
+        itertools.dropwhile(lambda l: l.strip() != "• IUCN Red List Assessments", lines)
     )
 
-    ref_list = []
+    ref_list: list[list[str]] = []
     for line in lines:
         stripped = line.strip()
         if stripped == "CBFTT ACCOUNTS":
@@ -476,7 +479,7 @@ def get_taxa() -> list[Taxon]:
     return parser.taxa
 
 
-def maybe_add(nam: models.Name, attr: str, value: object) -> None:
+def maybe_add(nam: models.Name, attr: str, value: Any) -> None:
     current = getattr(nam, attr)
     if not current:
         if VERBOSE:
@@ -560,7 +563,9 @@ def fill_name(nam: models.Name, name: Name) -> None:
                 maybe_add(nam, "species_type_kind", type_kind)
 
 
-def key_for_name(nam: Name, include_tussenvoegsel: bool = False) -> tuple[object, ...]:
+def key_for_name(
+    nam: models.Name, include_tussenvoegsel: bool = False
+) -> tuple[object, ...]:
     names = []
     if nam.author_tags:
         for t in nam.author_tags:
@@ -595,6 +600,7 @@ def handle_taxon(taxon: Taxon) -> None:
         return
     names = {key_for_name(nam): nam for nam in models_taxon.get_names()}
     for name in taxon.names:
+        assert name.details is not None
         root_name = name.details.root_name.replace("è", "e")
         key = (root_name, tuple(name.details.authority), name.details.year)
         nam = names.get(key)

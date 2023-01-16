@@ -5,7 +5,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict
 from typing import List as TList
-from typing import Optional, Tuple, Type
+from typing import Optional, Tuple, Type, cast
 
 import peewee
 import typing_inspect
@@ -44,6 +44,9 @@ CALL_SIGN_TO_MODEL = {model.call_sign: model for model in BaseModel.__subclasses
 
 DOCS_ROOT = Path(__file__).parent.parent / "docs"
 
+# work around mypy bug where it doesn't think types are hashable
+cache = cast(Any, lru_cache())
+
 
 def _match_to_md_ref(match: re.Match[str]) -> str:
     ref = match.group(1)
@@ -67,7 +70,7 @@ class Model(Interface):
     redirect_url = String(required=False)
 
 
-@lru_cache()
+@cache
 def make_enum(python_enum: Type[enum.Enum]) -> Type[Enum]:
     return Enum.from_enum(python_enum)
 
@@ -87,7 +90,7 @@ def build_graphene_field_from_adt_arg(typ: Type[Any]) -> Field:
         assert False, f"failed to translate {typ}"
 
 
-@lru_cache()
+@cache
 def build_adt_member(adt_cls: Type[ADT], adt: ADT) -> Type[ObjectType]:
     namespace = {}
     for name, typ in adt._attributes.items():
@@ -108,7 +111,7 @@ def build_adt_member(adt_cls: Type[ADT], adt: ADT) -> Type[ObjectType]:
     return type(name, (ObjectType,), namespace)
 
 
-@lru_cache()
+@cache
 def build_adt_interface(adt_cls: Type[ADT]) -> Type[Interface]:
     # These interfaces are empty, but graphene complains if we actually leave it empty
     return type(
@@ -116,7 +119,7 @@ def build_adt_interface(adt_cls: Type[ADT]) -> Type[Interface]:
     )
 
 
-@lru_cache()
+@cache
 def build_adt(adt_cls: Type[ADT]) -> Type[Interface]:
     interface = build_adt_interface(adt_cls)
     for member in adt_cls._tag_to_member.values():
@@ -230,7 +233,7 @@ def get_model(model_cls: Type[BaseModel], parent: Any, info: ResolveInfo) -> Bas
     return cache[key]
 
 
-@lru_cache()
+@cache
 def build_connection(object_type: Type[ObjectType]) -> Type[Connection]:
     class Meta:
         node = object_type
@@ -450,7 +453,7 @@ def build_derived_count_field(
     return None
 
 
-@lru_cache()
+@cache
 def build_object_type_from_model(model_cls: Type[BaseModel]) -> Type[ObjectType]:
     namespace = {}
     for name, peewee_field in model_cls._meta.fields.items():

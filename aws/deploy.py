@@ -21,7 +21,7 @@ def run_ssh(options: Options, command: str) -> None:
 def run_scp(
     options: Options, local_path: Path, remote_path: str, *, is_directory: bool
 ) -> None:
-    command = ["scp"]
+    command: list[str | Path] = ["scp"]
     if is_directory:
         command.append("-r")
     command += [
