@@ -87,13 +87,15 @@ def align_columns(pages: PagesT) -> PagesT:
             lines = lib.split_lines(lines, page, min_column=15, dedent_right=False)
         except lib.NoSplitFound:
             # Separately split the parts before and after the "Order ..." line.
+            lineno = 0
             for i, line in enumerate(lines):
                 if line.lstrip().startswith(ORDER):
+                    lineno = i
                     break
             else:
                 assert False, f"could not find order in {page}"
-            before = lines[:i]
-            after = lines[i + 1 :]
+            before = lines[:lineno]
+            after = lines[lineno + 1 :]
             lines = lib.split_lines(before, page) + lib.split_lines(after, page)
         yield page, lines
 

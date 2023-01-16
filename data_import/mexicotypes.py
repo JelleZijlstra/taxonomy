@@ -52,7 +52,7 @@ def split_text(names: DataT) -> DataT:
         try:
             name_author, rest = re.split(r"(?<=[,\.] \d{4})\. ", text, maxsplit=1)
         except ValueError:
-            raise ValueError(f"failed to parse {text}")
+            raise ValueError(f"failed to parse {text}") from None
         match = re.search(r"\. \(([A-Za-z ]+)\)\.?$", rest)
         if match:
             current_name = match.group(1)

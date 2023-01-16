@@ -10,6 +10,7 @@ import pickle
 from typing import Any, Dict, Generic, Optional, TypeVar, Type, Union
 from typing_extensions import Protocol
 import typing_inspect
+import taxonomy
 
 from .. import config
 
@@ -29,7 +30,7 @@ class SetLater:
 
 
 class SingleComputeFunc(Protocol[T_co]):
-    def __call__(self, model: "models.base.BaseModel") -> T_co:
+    def __call__(self, model: "taxonomy.db.models.base.BaseModel") -> T_co:
         ...
 
 
@@ -57,7 +58,7 @@ class DerivedField(Generic[T]):
     pull_on_miss: bool = True
 
     def get_value(
-        self, model: "models.base.BaseModel", force_recompute: bool = False
+        self, model: "taxonomy.db.models.base.BaseModel", force_recompute: bool = False
     ) -> T:
         data = load_derived_data()
         model_data = data.setdefault(model.call_sign, {})
@@ -75,7 +76,7 @@ class DerivedField(Generic[T]):
             return self.deserialize(object_data.get(self.name), self.get_type())
 
     def get_raw_value(
-        self, model: "models.base.BaseModel", force_recompute: bool = False
+        self, model: "taxonomy.db.models.base.BaseModel", force_recompute: bool = False
     ) -> T:
         data = load_derived_data()
         model_data = data.setdefault(model.call_sign, {})
@@ -92,7 +93,7 @@ class DerivedField(Generic[T]):
         else:
             return object_data.get(self.name)  # type: ignore
 
-    def set_value(self, model: "models.base.BaseModel", value: T) -> None:
+    def set_value(self, model: "taxonomy.db.models.base.BaseModel", value: T) -> None:
         data = load_derived_data()
         data.setdefault(model.call_sign, {}).setdefault(model.id, {})[
             self.name
@@ -103,7 +104,7 @@ class DerivedField(Generic[T]):
             return [self.serialize(elt) for elt in value]
         if isinstance(value, enum.Enum):
             return value.value
-        if isinstance(value, models.base.BaseModel):
+        if isinstance(value, taxonomy.db.models.base.BaseModel):
             return value.id
         return value
 
@@ -111,7 +112,7 @@ class DerivedField(Generic[T]):
         if serialized is None:
             return None
         if isinstance(typ, type):
-            if issubclass(typ, models.base.BaseModel):
+            if issubclass(typ, taxonomy.db.models.base.BaseModel):
                 # Not select_valid(), we'll filter out deleted names the next time
                 # we regenerate the derived data.
                 return typ.select().filter(typ.id == serialized).get()
@@ -130,7 +131,9 @@ class DerivedField(Generic[T]):
             self.typ = self.typ.typ()
         return self.typ
 
-    def compute_and_store_all(self, model_cls: Type["models.base.BaseModel"]) -> None:
+    def compute_and_store_all(
+        self, model_cls: Type["taxonomy.db.models.base.BaseModel"]
+    ) -> None:
         data = load_derived_data()
         model_data = data.setdefault(model_cls.call_sign, {})
         if self.compute_all is not None:
@@ -173,6 +176,3 @@ def load_cached_data() -> CachedData:
 def write_cached_data(data: CachedData) -> None:
     with settings.cached_data_filename.open("wb") as f:
         pickle.dump(data, f)
-
-
-from . import models

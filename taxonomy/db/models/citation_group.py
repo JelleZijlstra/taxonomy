@@ -416,7 +416,7 @@ class CitationGroupPattern(BaseModel):
             if existing.citation_group != citation_group:
                 raise ValueError(
                     f"Conflicting CG for existing pattern: {existing.citation_group}"
-                )
+                ) from None
             return existing
 
 

@@ -3,16 +3,16 @@
 Definitions of various models.
 
 """
-from .base import BaseModel as BaseModel, database as database  # noqa: F401
-from .article import Article as Article, ArticleComment as ArticleComment  # noqa: F401
-from .collection import Collection as Collection  # noqa: F401
-from .location import Location as Location  # noqa: F401
-from .citation_group import (  # noqa: F401
+from .base import BaseModel as BaseModel, database as database
+from .article import Article as Article, ArticleComment as ArticleComment
+from .collection import Collection as Collection
+from .location import Location as Location
+from .citation_group import (
     CitationGroup as CitationGroup,
     CitationGroupPattern as CitationGroupPattern,
     CitationGroupTag as CitationGroupTag,
 )
-from .name import (  # noqa: F401
+from .name import (
     Name as Name,
     NameComment as NameComment,
     TypeTag as TypeTag,
@@ -20,18 +20,18 @@ from .name import (  # noqa: F401
     STATUS_TO_TAG as STATUS_TO_TAG,
     has_data_from_original as has_data_from_original,
 )
-from .name_complex import (  # noqa: F401
+from .name_complex import (
     NameComplex as NameComplex,
     SpeciesNameComplex as SpeciesNameComplex,
     NameEnding as NameEnding,
     SpeciesNameEnding as SpeciesNameEnding,
 )
-from .occurrence import Occurrence as Occurrence  # noqa: F401
-from .period import Period as Period  # noqa: F401
-from .region import Region as Region  # noqa: F401
-from .stratigraphic_unit import StratigraphicUnit as StratigraphicUnit  # noqa: F401
-from .taxon import Taxon as Taxon  # noqa: F401
-from .person import Person as Person  # noqa: F401
-from .book import Book as Book  # noqa: F401
-from .specimen import Specimen as Specimen  # noqa: F401
-from . import tags, name_lint, fill_data
+from .occurrence import Occurrence as Occurrence
+from .period import Period as Period
+from .region import Region as Region
+from .stratigraphic_unit import StratigraphicUnit as StratigraphicUnit
+from .taxon import Taxon as Taxon
+from .person import Person as Person
+from .book import Book as Book
+from .specimen import Specimen as Specimen
+from . import tags as tags, name_lint as name_lint, fill_data as fill_data

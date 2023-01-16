@@ -30,7 +30,7 @@ def run() -> None:
     parsed = wikitextparser.parse(text)
     table = parsed.tables[0]
     for row in table.data():
-        name = re.sub("['\[\]]", "", row[0])
+        name = re.sub(r"['\[\]]", "", row[0])
         ref = wikitextparser.parse(row[-1])
         if name in all_names() or name in all_taxa():
             continue

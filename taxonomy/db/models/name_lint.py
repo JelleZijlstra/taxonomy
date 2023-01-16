@@ -58,7 +58,7 @@ def check_type_tags_for_name(nam: Name, autofix: bool) -> Iterable[str]:
                     tag = replace_arg(tag, arg_name, art.parent)
         for arg_name, tag_nam in get_tag_fields_of_type(tag, Name):
             if tag_nam.is_invalid():
-                print(f"{nam} references a removed Name in {tag}")
+                print(f"{nam} references a removed Name in argument {arg_name} to {tag}")
                 yield f"bad name in tag {tag}"
 
         if isinstance(tag, TypeTag.CommissionTypeDesignation):

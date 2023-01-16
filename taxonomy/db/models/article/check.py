@@ -185,65 +185,71 @@ def csvcheck(lslist: LsFileList, csvlist: FileList, dry_run: bool = False) -> bo
     return True
 
 
+def _lscheck_name(
+    name: str, lsfile: LsFile, csvlist: FileList, dry_run: bool = False
+) -> bool:
+    """Return whether lscheck() should return immediately."""
+    if name in csvlist:
+        return False
+    print()
+    header = f"Could not find file {name} in catalog"
+    if dry_run:
+        print(header)
+        return False
+
+    def add(cmd: str, data: object) -> bool:
+        existing = Article.maybe_get(name)
+        if existing is not None and existing.isredirect():
+            print("There is already a redirect here.")
+            return True
+        file = Article.make(name=name, path=lsfile.path, kind=ArticleKind.electronic)
+        add_data_for_new_file(file)
+        return False
+
+    def remover(cmd: str, data: object) -> bool:
+        path = _options.library_path / lsfile.path / lsfile.name
+        path.unlink()
+        return False
+
+    def opener(cmd: str, data: object) -> bool:
+        path = _options.library_path / lsfile.path / lsfile.name
+        subprocess.check_call(["open", path])
+        return True
+
+    def dir_opener(cmd: str, data: object) -> bool:
+        path = _options.library_path / lsfile.path
+        subprocess.check_call(["open", path])
+        return True
+
+    cmd, _ = uitools.menu(
+        head=header,
+        options={
+            "a": "add the file to the catalog",
+            "s": "skip this file",
+            "q": "quit the program",
+            "m": "move to the next component of the catalog",
+            "r": "remove this file",
+            "o": "open this file",
+            "d": "open this directory",
+        },
+        process={
+            "q": uitools.stop_callback("lscheck"),
+            "r": remover,
+            "o": opener,
+            "d": dir_opener,
+            "a": add,
+        },
+    )
+    return cmd == "m"
+
+
 def lscheck(lslist: LsFileList, csvlist: FileList, dry_run: bool = False) -> bool:
     # check LS list for errors
     # - Detect articles in the library that are not in the catalog.
     print("checking whether articles in library are in catalog... ")
     for name, lsfile in lslist.items():
-        if name not in csvlist:
-            print()
-            header = f"Could not find file {name} in catalog"
-            if dry_run:
-                print(header)
-                continue
-
-            def add(cmd: str, data: object) -> bool:
-                existing = Article.maybe_get(name)
-                if existing is not None and existing.isredirect():
-                    print("There is already a redirect here.")
-                    return True
-                file = Article.make(
-                    name=name, path=lsfile.path, kind=ArticleKind.electronic
-                )
-                add_data_for_new_file(file)
-                return False
-
-            def remover(cmd: str, data: object) -> bool:
-                path = _options.library_path / lsfile.path / lsfile.name
-                path.unlink()
-                return False
-
-            def opener(cmd: str, data: object) -> bool:
-                path = _options.library_path / lsfile.path / lsfile.name
-                subprocess.check_call(["open", path])
-                return True
-
-            def dir_opener(cmd: str, data: object) -> bool:
-                path = _options.library_path / lsfile.path
-                subprocess.check_call(["open", path])
-                return True
-
-            cmd, _ = uitools.menu(
-                head=header,
-                options={
-                    "a": "add the file to the catalog",
-                    "s": "skip this file",
-                    "q": "quit the program",
-                    "m": "move to the next component of the catalog",
-                    "r": "remove this file",
-                    "o": "open this file",
-                    "d": "open this directory",
-                },
-                process={
-                    "q": uitools.stop_callback("lscheck"),
-                    "r": remover,
-                    "o": opener,
-                    "d": dir_opener,
-                    "a": add,
-                },
-            )
-            if cmd == "m":
-                return True
+        if _lscheck_name(name, lsfile, csvlist, dry_run=dry_run):
+            return True
     print("done")
     return True
 
@@ -446,7 +452,7 @@ def check_for_existing_file(lsfile: LsFile) -> str | None:
 
 def burst(lsfile: LsFile) -> bool:
     # bursts a PDF file into several files
-    print(f'Bursting file "{lsfile.name}". Opening file.')
+    print(f"Bursting file {lsfile.name!r}. Opening file.")
     full_path = _options.burst_path / lsfile.name
     subprocess.check_call(["open", str(full_path)])
 
@@ -552,7 +558,7 @@ def rename_regex(pattern: str, replacement: str, force: bool = False) -> bool:
     for e in Article.select_valid():
         if rgx.search(e.name):
             newTitle = rgx.sub(replacement, e.name)
-            if force or getinput.yes_no(f'Rename "{e.name}" to "{newTitle}"?'):
+            if force or getinput.yes_no(f"Rename {e.name!r} to {newTitle!r}?"):
                 e.move(newTitle)
 
     return True

@@ -49,7 +49,7 @@ def split_fields(names: DataT) -> DataT:
                 r"([A-Z][a-z A-Z]+\.?(?<!Mammals)(?<!Bunken|Jyurui| Mamm\.): )", text
             )
             name["verbatim_citation"], *parts = parts
-            for label, value in zip(parts[::2], parts[1::2]):
+            for label, value in zip(parts[::2], parts[1::2], strict=False):
                 name[label.strip().rstrip(":.")] = value
         else:
             print(f"failed to match {text!r}")

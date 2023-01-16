@@ -1,5 +1,4 @@
 import collections
-from functools import lru_cache
 import sys
 from typing import IO, Dict, Iterable, List, Optional
 
@@ -60,8 +59,8 @@ class Region(BaseModel):
     def __repr__(self) -> str:
         out = self.name
         if self.parent:
-            out += ", %s" % self.parent.name
-        out += " (%s)" % self.kind
+            out += f", {self.parent.name}"
+        out += f" ({self.kind.name})"
         return out
 
     def get_general_localities(self) -> List["models.Location"]:
@@ -275,7 +274,6 @@ class Region(BaseModel):
         for child in self.children:
             child.add_cities()
 
-    @lru_cache(maxsize=2048)
     def has_parent(self, parent: "Region") -> bool:
         if self == parent:
             return True

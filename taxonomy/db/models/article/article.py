@@ -642,14 +642,10 @@ class Article(BaseModel):
         else:
             return False
 
-    @lru_cache()
     def getpdfcontent(self) -> str:
         if not self.ispdf() or self.isredirect():
             raise ValueError(f"attempt to get PDF content for non-file {self}")
-        # only get first page
-        return subprocess.run(
-            ["pdftotext", str(self.get_path()), "-", "-l", "1"], stdout=subprocess.PIPE
-        ).stdout.decode("utf-8", "replace")
+        return _getpdfcontent(str(self.get_path()))
 
     # Authors
 
@@ -894,7 +890,7 @@ class Article(BaseModel):
                     existing
                     if existing.person.is_more_specific_than(new.person)
                     else new
-                    for existing, new in zip(self.author_tags, new_tags)
+                    for existing, new in zip(self.author_tags, new_tags, strict=True)
                 ]
             getinput.print_diff(self.author_tags, new_tags)
         if confirm_replacement:
@@ -911,7 +907,7 @@ class Article(BaseModel):
         if self.has_tag(ArticleTag.InitialsOnly):
             return
         opened = False
-        for i, author in enumerate(self.get_authors()):
+        for author in self.get_authors():
             if level is not None and author.get_level() is not level:
                 continue
             if not opened and should_open:
@@ -1201,3 +1197,11 @@ class ArticleTag(adt.ADT):
     # We can't fill_data_from_paper() because the article is in a language
     # I don't understand.
     NeedsTranslation(language=SourceLanguage, tag=12)  # type: ignore
+
+
+@lru_cache()
+def _getpdfcontent(path: str) -> str:
+    # only get first page
+    return subprocess.run(
+        ["pdftotext", path, "-", "-l", "1"], stdout=subprocess.PIPE
+    ).stdout.decode("utf-8", "replace")

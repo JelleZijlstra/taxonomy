@@ -3,11 +3,9 @@ import itertools
 import re
 import textwrap
 import traceback
-from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from functools import cache, cached_property
-from itertools import islice
 
 from typing_extensions import Self, assert_never
 
@@ -255,7 +253,6 @@ class Taxon:
 def parse_refs() -> dict[RefKey, str]:
     refs: dict[RefKey, str] = {}
     current_key: RefKey | None = None
-    current_lines: list[str] = []
     text = get_text(REFS)
     pages = extract_pages(text)
     lines = []
@@ -623,14 +620,6 @@ def handle_taxon(taxon: Taxon) -> None:
                     models.Name.root_name == root_name,
                     models.Name.year == name.details.year,
                 )
-                keys = [
-                    (
-                        nam,
-                        key_for_name(nam),
-                        key_for_name(nam, include_tussenvoegsel=True),
-                    )
-                    for nam in possible_names
-                ]
                 possible_names = [
                     nam
                     for nam in possible_names

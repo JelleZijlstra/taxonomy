@@ -98,7 +98,7 @@ def get_line(
                 completer=completer,
             )
         except EOFError:
-            raise StopException()
+            raise StopException from None
         if line in callbacks:
             callbacks[line]()
             continue
@@ -371,7 +371,7 @@ def get_adt_list(
             if undo_stack:
                 out = undo_stack.pop()
             else:
-                print(f"already at earliest edit")
+                print("already at earliest edit")
         elif not member:
             print(f"new tags: {out}")
             return tuple(out)

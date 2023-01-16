@@ -99,7 +99,7 @@ def menu(
             return
         print("Options available:")
         for cmd, desc in options.items():
-            print(f"-'{cmd}': {desc}")
+            print(f"- {cmd!r}: {desc}")
 
     history = _get_history((head, prompt, tuple(options)))
     message = head if headasprompt else prompt
@@ -167,7 +167,7 @@ def get_line(
             message=message, default=default, history=history, completer=completer
         )
     except EOFError:
-        raise EndOfInput()
+        raise EndOfInput() from None
 
 
 class _Completer(prompt_toolkit.completion.Completer):

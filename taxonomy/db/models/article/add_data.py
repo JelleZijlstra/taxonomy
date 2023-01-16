@@ -55,7 +55,7 @@ def is_doi_valid(doi: str) -> bool:
     except requests.exceptions.HTTPError as e:
         if "404 Client Error: Not Found" not in str(e):
             traceback.print_exc()
-            print(f"ignoring unexpected error")
+            print("ignoring unexpected error")
             return True
         return False
     return True
@@ -619,7 +619,7 @@ def set_author_tags_from_raw(
         if len(art.author_tags) == len(new_tags):
             new_tags = [
                 existing if existing.person.is_more_specific_than(new.person) else new
-                for existing, new in zip(art.author_tags, new_tags)
+                for existing, new in zip(art.author_tags, new_tags, strict=True)
             ]
         getinput.print_diff(art.author_tags, new_tags)
     if interactive:

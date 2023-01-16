@@ -188,9 +188,9 @@ class _ADTMeta(type):
                 cls_obj = member_cls
                 member_cls = cls_obj()
 
-                def make_init(member_cls: object) -> Callable[[object], None]:
+                def make_init(inner_member_cls: object) -> Callable[[object], None]:
                     def __init__(self: object) -> None:
-                        raise TypeError(f"cannot instantiate {member_cls}")
+                        raise TypeError(f"cannot instantiate {inner_member_cls}")
 
                     return __init__
 
@@ -243,7 +243,9 @@ class ADT(_ADTBase, metaclass=_ADTMeta):
         member_cls = cls._tag_to_member[tag]
         if member_cls._has_args:
             args: List[Any] = []
-            for arg_type, serialized in zip(member_cls._attributes.values(), value[1:]):
+            for arg_type, serialized in zip(
+                member_cls._attributes.values(), value[1:], strict=True
+            ):
                 if hasattr(arg_type, "unserialize"):
                     if serialized is None:
                         args.append(None)

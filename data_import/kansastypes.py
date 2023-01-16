@@ -90,7 +90,7 @@ def split_fields(names: DataT) -> DataT:
                 try:
                     date, name["collector"] = rear.split(", by ")
                 except ValueError:
-                    raise ValueError(rear)
+                    raise ValueError(rear) from None
                 if date.strip():
                     name["date"] = date.strip()
             else:

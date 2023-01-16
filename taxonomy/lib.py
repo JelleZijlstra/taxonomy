@@ -7,7 +7,6 @@ Contents overlap with shell.py, which defines "commands".
 """
 from collections import defaultdict
 from functools import partial
-import os
 import re
 from taxonomy.db.models.name import TypeTag
 from typing import Any, Container, Dict, Iterable, List, Optional, Tuple, Type, Union

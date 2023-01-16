@@ -8,8 +8,8 @@ from .article import (
     ArticleComment as ArticleComment,
     ArticleTag as ArticleTag,
 )
-from . import citations
-from . import lint
-from . import add_data
-from . import set_path
-from . import check
+from . import citations as citations
+from . import lint as lint
+from . import add_data as add_data
+from . import set_path as set_path
+from . import check as check

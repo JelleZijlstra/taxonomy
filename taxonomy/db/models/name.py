@@ -1082,7 +1082,7 @@ class Name(BaseModel):
             return False
         new_authors = list(self.author_tags)
         for i, (name_author, article_author) in enumerate(
-            zip(name_authors, article_authors)
+            zip(name_authors, article_authors, strict=True)
         ):
             if name_author == article_author:
                 continue
@@ -1819,7 +1819,7 @@ class Name(BaseModel):
         ]
         if not similar:
             return 0
-        similar_art_sets, similar_nam_sets = zip(*similar)
+        similar_art_sets, similar_nam_sets = zip(*similar, strict=True)
         similar_arts = set.intersection(*similar_art_sets)
         if similar_arts:
             print(f"=== {len(similar_arts)} similar articles")
@@ -1889,7 +1889,7 @@ class Name(BaseModel):
             if not number:
                 break
             default = taxon.valid_name
-            hmw_name = getinput.get_line(f"name> ", default=default)
+            hmw_name = getinput.get_line("name> ", default=default)
             if not hmw_name:
                 hmw_name = default
             tag = NameTag.HMW(number=f"{family}{number}", name=hmw_name)

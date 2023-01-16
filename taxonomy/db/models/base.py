@@ -7,6 +7,7 @@ import json
 import re
 import time
 import traceback
+from types import NoneType
 from typing import (
     Any,
     Callable,
@@ -759,7 +760,7 @@ class BaseModel(Model):
         is_optional = False
         if typing_inspect.is_optional_type(typ):
             args = typing_inspect.get_args(typ)
-            if len(args) == 2 and args[1] is type(None):
+            if len(args) == 2 and isinstance(args[1], NoneType):
                 typ = args[0]
                 is_optional = True
 

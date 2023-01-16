@@ -1400,7 +1400,7 @@ def fill_citation_groups(
                     print("===", nam)
                     print(nam.verbatim_citation)
                     print(
-                        f"Inferred group with '{pattern.pattern}':"
+                        f"Inferred group with {pattern.pattern!r}:"
                         f" {pattern.citation_group}"
                     )
                     nam.citation_group = pattern.citation_group
@@ -1573,33 +1573,34 @@ def fix_general_type_localities() -> None:
     fix_general_type_localities_for_region(region)
 
 
+def fix_general_type_localities_for_location(loc: models.Location) -> None:
+    if not loc.has_tag(models.location.LocationTag.General):
+        return
+    if loc.type_localities.count() == 0:
+        return
+    models.fill_data.fill_data_for_names(
+        list(loc.type_localities), level=FillDataLevel.incomplete_detail
+    )
+    getinput.print_header(loc)
+    loc.display(full=True)
+    while True:
+        obj = models.Name.getter("corrected_original_name").get_one(
+            prompt="corrected_original_name> ",
+            callbacks={"d": lambda: loc.display(), "f": lambda: loc.display(full=True)},
+        )
+        if obj is None:
+            break
+        obj.display()
+        obj.edit()
+
+    more_precise_type_localities(loc)
+
+
 def fix_general_type_localities_for_region(region: models.Region) -> None:
     getinput.print_header(region)
     region.display()
     for loc in region.locations:
-        if not loc.has_tag(models.location.LocationTag.General):
-            continue
-        if loc.type_localities.count() == 0:
-            continue
-        models.fill_data.fill_data_for_names(
-            list(loc.type_localities), level=FillDataLevel.incomplete_detail
-        )
-        getinput.print_header(loc)
-        loc.display(full=True)
-        while True:
-            obj = models.Name.getter("corrected_original_name").get_one(
-                prompt="corrected_original_name> ",
-                callbacks={
-                    "d": lambda: loc.display(),
-                    "f": lambda: loc.display(full=True),
-                },
-            )
-            if obj is None:
-                break
-            obj.display()
-            obj.edit()
-
-        more_precise_type_localities(loc)
+        fix_general_type_localities_for_location(loc)
 
     for child in region.children:
         fix_general_type_localities_for_region(child)

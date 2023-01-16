@@ -32,8 +32,8 @@ def plot_years(
 ) -> None:
     series = [get_years(taxon, age, group) for age in ages]
     fig, ax = plt.subplots()
-    for age, pairs in zip(ages, series):
-        x, y = zip(*pairs)
+    for age, pairs in zip(ages, series, strict=True):
+        x, y = zip(*pairs, strict=True)
         if age is None:
             label = "all names"
         else:

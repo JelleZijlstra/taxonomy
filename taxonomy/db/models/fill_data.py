@@ -322,27 +322,24 @@ def fill_data_random(
     level: FillDataLevel = DEFAULT_LEVEL,
     ask_before_opening: bool = True,
 ) -> None:
-    count = -1
     done = 0
-    while True:
-        for count, art in enumerate(
-            Article.select_valid().order_by(peewee.fn.Random()).limit(batch_size),
-            start=count + 1,
-        ):
-            if count > 0:
-                percentage = (done / count) * 100
-            else:
-                percentage = 0.0
-            getinput.show(f"({count}; {percentage:.03}%) {art.name}")
-            result = fill_data_from_paper(art, level=level, only_fill_cache=True)
-            try:
-                fill_data_from_paper(
-                    art, level=level, ask_before_opening=ask_before_opening
-                )
-            except getinput.StopException:
-                continue
-            if result:
-                done += 1
+    for count, art in enumerate(
+        Article.select_valid().order_by(peewee.fn.Random()).limit(batch_size)
+    ):
+        if count > 0:
+            percentage = (done / count) * 100
+        else:
+            percentage = 0.0
+        getinput.show(f"({count}; {percentage:.03}%) {art.name}")
+        result = fill_data_from_paper(art, level=level, only_fill_cache=True)
+        try:
+            fill_data_from_paper(
+                art, level=level, ask_before_opening=ask_before_opening
+            )
+        except getinput.StopException:
+            continue
+        if result:
+            done += 1
 
 
 @CS.register

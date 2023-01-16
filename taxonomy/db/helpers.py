@@ -2,7 +2,6 @@
 
 from contextlib import contextmanager
 import datetime
-from functools import lru_cache
 import json
 import re
 import time
@@ -159,7 +158,7 @@ def rank_of_string(s: str) -> Rank:
     try:
         return _RANKS[s]  # type: ignore
     except KeyError:
-        raise ValueError("Unknown rank: " + s)
+        raise ValueError(f"Unknown rank: {s}") from None
 
 
 def root_name_of_name(s: str, rank: Rank) -> str:
