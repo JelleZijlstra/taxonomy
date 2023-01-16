@@ -2,7 +2,7 @@ import enum
 import itertools
 import re
 from collections import deque
-from typing import Any, Deque
+from typing import Any
 from collections.abc import Iterable
 
 from taxonomy import shell
@@ -79,7 +79,7 @@ def extract_names(pages: Iterable[tuple[int, list[str]]]) -> DataT:
     current_name: dict[str, Any] = {}
     current_lines: list[str] = []
     current_label = ""
-    line_kinds: Deque[LineKind] = deque([], 5)
+    line_kinds: deque[LineKind] = deque([], 5)
 
     def start_label(label: str, line: str) -> None:
         label = re.sub(r"\s+", " ", label.strip())

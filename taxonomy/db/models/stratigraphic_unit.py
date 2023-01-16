@@ -1,6 +1,7 @@
+from __future__ import annotations
 from functools import lru_cache
 import sys
-from typing import IO, Any, Optional, TypeVar
+from typing import IO, Any, TypeVar
 from collections.abc import Iterable
 
 from peewee import BooleanField, CharField, ForeignKeyField
@@ -83,7 +84,7 @@ class StratigraphicUnit(BaseModel):
     def should_skip(self) -> bool:
         return self.deleted
 
-    def merge(self, other: "StratigraphicUnit") -> None:
+    def merge(self, other: StratigraphicUnit) -> None:
         for loc in self.locations:
             loc.stratigraphic_unit = other
         new_comment = f"Merged into {other} (P#{other.id})"
@@ -122,7 +123,7 @@ class StratigraphicUnit(BaseModel):
         name: str | None = None,
         rank: StratigraphicUnitRank | None = None,
         **kwargs: Any,
-    ) -> "StratigraphicUnit":
+    ) -> StratigraphicUnit:
         if name is None:
             name = getinput.get_line("name> ")
         assert name is not None
@@ -139,10 +140,10 @@ class StratigraphicUnit(BaseModel):
         cls,
         name: str,
         rank: StratigraphicUnitRank,
-        period: Optional["models.Period"] = None,
-        parent: Optional["StratigraphicUnit"] = None,
+        period: models.Period | None = None,
+        parent: StratigraphicUnit | None = None,
         **kwargs: Any,
-    ) -> "StratigraphicUnit":
+    ) -> StratigraphicUnit:
         if period is not None:
             kwargs["max_period"] = kwargs["min_period"] = period
         period = cls.create(
@@ -171,12 +172,12 @@ class StratigraphicUnit(BaseModel):
                     full=full, depth=depth + 2, file=file, locations=locations
                 )
 
-    def all_localities(self) -> Iterable["models.Location"]:
+    def all_localities(self) -> Iterable[models.Location]:
         yield from self.locations
         for child in self.children:
             yield from child.all_localities()
 
-    def all_type_localities(self, include_children: bool = True) -> list["models.Name"]:
+    def all_type_localities(self, include_children: bool = True) -> list[models.Name]:
         if include_children:
             locs = self.all_localities()
         else:
@@ -203,7 +204,7 @@ class StratigraphicUnit(BaseModel):
         else:
             return False
 
-    def set_period(self, period: Optional["models.Period"]) -> None:
+    def set_period(self, period: models.Period | None) -> None:
         self.min_period = self.max_period = period
 
     def fill_field(self, field: str) -> None:

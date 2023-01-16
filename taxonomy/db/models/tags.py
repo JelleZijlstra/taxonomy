@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 
 Tag classes that need to defined after all models for import cycle reasons.

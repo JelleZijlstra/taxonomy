@@ -1,5 +1,5 @@
+from __future__ import annotations
 from peewee import CharField, ForeignKeyField, IntegerField, TextField
-from typing import Optional
 import time
 import datetime
 
@@ -28,7 +28,7 @@ class Specimen(BaseModel):
         db_table = "specimen"
 
     @classmethod
-    def create_interactively(cls, **kwargs: object) -> Optional["Specimen"]:
+    def create_interactively(cls, **kwargs: object) -> Specimen | None:
         taxon_text = Specimen.getter("taxon_text").get_one_key("taxon_text> ")
         if taxon_text is None:
             return None
@@ -69,7 +69,7 @@ class Specimen(BaseModel):
             print("==================================")
             specimen.edit()
 
-    def add_comment(self, text: str | None = None) -> Optional["SpecimenComment"]:
+    def add_comment(self, text: str | None = None) -> SpecimenComment | None:
         return SpecimenComment.create_interactively(specimen=self, text=text)
 
     def display(self, full: bool = False) -> None:
@@ -98,13 +98,13 @@ class SpecimenComment(BaseModel):
         db_table = "specimen_comment"
 
     @classmethod
-    def make(cls, specimen: Specimen, text: str) -> "SpecimenComment":
+    def make(cls, specimen: Specimen, text: str) -> SpecimenComment:
         return cls.create(specimen=specimen, text=text, date=int(time.time()))
 
     @classmethod
     def create_interactively(
         cls, specimen: Specimen | None = None, text: str | None = None, **kwargs: object
-    ) -> Optional["SpecimenComment"]:
+    ) -> SpecimenComment | None:
         if specimen is None:
             specimen = cls.get_value_for_foreign_key_field_on_class(
                 "specimen", allow_none=False

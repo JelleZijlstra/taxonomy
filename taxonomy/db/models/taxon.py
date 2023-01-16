@@ -1,9 +1,10 @@
+from __future__ import annotations
 from collections import defaultdict
 from functools import lru_cache
 import operator
 import re
 import sys
-from typing import cast, IO, Any, Optional
+from typing import cast, IO, Any
 from collections import Counter
 from collections.abc import Callable, Container, Iterable, Sequence
 
@@ -38,10 +39,10 @@ class _OccurrenceGetter:
     def __init__(self, instance: Any = None) -> None:
         self.instance = instance
 
-    def __get__(self, instance: Any, instance_type: Any) -> "_OccurrenceGetter":
+    def __get__(self, instance: Any, instance_type: Any) -> _OccurrenceGetter:
         return self.__class__(instance)
 
-    def __getattr__(self, loc_name: str) -> "models.Occurrence":
+    def __getattr__(self, loc_name: str) -> models.Occurrence:
         return self(
             models.Location.get(
                 models.Location.name == loc_name.replace("_", " "),
@@ -49,7 +50,7 @@ class _OccurrenceGetter:
             )
         )
 
-    def __call__(self, loc: "models.Location") -> "models.Occurrence":
+    def __call__(self, loc: models.Location) -> models.Occurrence:
         return self.instance.occurrences.filter(models.Occurrence.location == loc).get()
 
     def __dir__(self) -> list[str]:
@@ -57,7 +58,7 @@ class _OccurrenceGetter:
 
 
 def _make_parent_getter(index: int) -> Any:
-    def _get_ranked_parent(taxon: "Taxon") -> Optional["Taxon"]:
+    def _get_ranked_parent(taxon: Taxon) -> Taxon | None:
         return ranked_parents(taxon)[index]
 
     return _get_ranked_parent
@@ -97,7 +98,7 @@ class Taxon(BaseModel):
             Taxon.age != AgeClass.removed, Taxon.age != AgeClass.redirect
         )
 
-    def get_redirect_target(self) -> "Taxon | None":
+    def get_redirect_target(self) -> Taxon | None:
         if self.age is AgeClass.redirect:
             return self.parent
         return None
@@ -150,15 +151,15 @@ class Taxon(BaseModel):
     def group(self) -> Group:
         return helpers.group_of_rank(self.rank)
 
-    def get_names(self) -> Iterable["models.Name"]:
+    def get_names(self) -> Iterable[models.Name]:
         return models.Name.add_validity_check(self.names)
 
-    def sorted_names(self, exclude_valid: bool = False) -> list["models.Name"]:
+    def sorted_names(self, exclude_valid: bool = False) -> list[models.Name]:
         names: Iterable[models.Name] = self.get_names()
         if exclude_valid:
             names = filter(lambda name: name.status != Status.valid, names)
 
-        def sort_key(nam: "models.Name") -> tuple[bool, str, str]:
+        def sort_key(nam: models.Name) -> tuple[bool, str, str]:
             return (
                 nam.status not in (Status.valid, Status.nomen_dubium),
                 nam.root_name,
@@ -167,15 +168,15 @@ class Taxon(BaseModel):
 
         return sorted(names, key=sort_key)
 
-    def get_children(self) -> Iterable["Taxon"]:
+    def get_children(self) -> Iterable[Taxon]:
         return self.add_validity_check(self.children)
 
-    def sorted_children(self) -> list["Taxon"]:
+    def sorted_children(self) -> list[Taxon]:
         return sorted(
             self.get_children(), key=operator.attrgetter("rank", "valid_name")
         )
 
-    def sorted_occurrences(self) -> list["models.Occurrence"]:
+    def sorted_occurrences(self) -> list[models.Occurrence]:
         return sorted(self.occurrences, key=lambda o: o.location.name)
 
     def root_name(self) -> str:
@@ -232,9 +233,7 @@ class Taxon(BaseModel):
                 self._needs_is = False
         return self._needs_is
 
-    def parent_of_rank(
-        self, rank: Rank, original_taxon: Optional["Taxon"] = None
-    ) -> "Taxon":
+    def parent_of_rank(self, rank: Rank, original_taxon: Taxon | None = None) -> Taxon:
         if original_taxon is None:
             original_taxon = self
         if self.rank > rank and self.rank != Rank.unranked:
@@ -255,7 +254,7 @@ class Taxon(BaseModel):
         else:
             return True
 
-    def is_child_of(self, taxon: "Taxon") -> bool:
+    def is_child_of(self, taxon: Taxon) -> bool:
         if self == taxon:
             return True
         elif self.parent is None:
@@ -263,9 +262,7 @@ class Taxon(BaseModel):
         else:
             return self.parent.is_child_of(taxon)
 
-    def children_of_rank(
-        self, rank: Rank, age: AgeClass | None = None
-    ) -> list["Taxon"]:
+    def children_of_rank(self, rank: Rank, age: AgeClass | None = None) -> list[Taxon]:
         if self.rank < rank:
             return []
         elif self.rank == rank:
@@ -279,7 +276,7 @@ class Taxon(BaseModel):
                 out += child.children_of_rank(rank, age=age)
             return out
 
-    def names_like(self, root_name: str) -> list["models.Name"]:
+    def names_like(self, root_name: str) -> list[models.Name]:
         """Find names matching root_name within this taxon."""
         pattern = re.compile(root_name)
         nams = self.all_names()
@@ -287,7 +284,7 @@ class Taxon(BaseModel):
 
     def find_names(
         self, root_name: str, group: Group | None = None, fuzzy: bool = True
-    ) -> list["models.Name"]:
+    ) -> list[models.Name]:
         """Find instances of the given root_name within the given container taxon."""
         if fuzzy:
             query = models.Name.root_name % root_name  # LIKE
@@ -322,9 +319,9 @@ class Taxon(BaseModel):
         max_depth: int | None = 2,
         file: IO[str] = sys.stdout,
         depth: int = 0,
-        exclude: Container["Taxon"] = set(),
-        exclude_fn: Callable[["Taxon"], bool] | None = None,
-        name_exclude_fn: Callable[["models.Name"], bool] | None = None,
+        exclude: Container[Taxon] = set(),
+        exclude_fn: Callable[[Taxon], bool] | None = None,
+        name_exclude_fn: Callable[[models.Name], bool] | None = None,
         show_occurrences: bool | None = None,
     ) -> None:
         if show_occurrences is None:
@@ -400,14 +397,14 @@ class Taxon(BaseModel):
 
     def _display_children(
         self,
-        children: list["Taxon"],
+        children: list[Taxon],
         full: bool,
         max_depth: int | None,
         file: IO[str],
         depth: int,
-        exclude: Container["Taxon"],
-        exclude_fn: Callable[["Taxon"], bool] | None,
-        name_exclude_fn: Callable[["models.Name"], bool] | None,
+        exclude: Container[Taxon],
+        exclude_fn: Callable[[Taxon], bool] | None,
+        name_exclude_fn: Callable[[models.Name], bool] | None,
         show_occurrences: bool,
     ) -> None:
         for child in sorted(children, key=lambda t: (t.rank, t.valid_name)):
@@ -435,7 +432,7 @@ class Taxon(BaseModel):
         file.write(f"{self.rank.name} {self.full_name()} ({self.age.name})\n")
         file.write(self.base_name.get_description(depth=1))
 
-    def get_citation_groups(self) -> dict["models.CitationGroup", list["models.Name"]]:
+    def get_citation_groups(self) -> dict[models.CitationGroup, list[models.Name]]:
         nams = self.all_names()
         by_cg: dict[models.CitationGroup, list[models.Name]] = defaultdict(list)
         for nam in nams:
@@ -459,8 +456,8 @@ class Taxon(BaseModel):
         self,
         full: bool = False,
         geographically: bool = False,
-        region: Optional["models.Region"] = None,
-        exclude: Container["Taxon"] = frozenset(),
+        region: models.Region | None = None,
+        exclude: Container[Taxon] = frozenset(),
         file: IO[str] = sys.stdout,
     ) -> None:
         nams = self.all_names(exclude=exclude)
@@ -545,7 +542,7 @@ class Taxon(BaseModel):
         year: None | str | int = None,
         age: AgeClass | None = None,
         **kwargs: Any,
-    ) -> "Taxon":
+    ) -> Taxon:
         if age is None:
             age = self.age
         taxon = Taxon.create(valid_name=name, age=age, rank=rank, parent=self)
@@ -589,7 +586,7 @@ class Taxon(BaseModel):
             "edit_all_children": self.edit_all_children,
         }
 
-    def add(self) -> Optional["Taxon"]:
+    def add(self) -> Taxon | None:
         rank = getinput.get_enum_member(
             Rank,
             default=Rank.genus if self.rank > Rank.genus else Rank.species,
@@ -628,7 +625,7 @@ class Taxon(BaseModel):
         nomenclature_status: NomenclatureStatus = NomenclatureStatus.available,
         interactive: bool = True,
         **kwargs: Any,
-    ) -> Optional["models.Name"]:
+    ) -> models.Name | None:
         if root_name is None:
             root_name = models.Name.getter("root_name").get_one_key("root_name> ")
         if root_name is None:
@@ -653,16 +650,16 @@ class Taxon(BaseModel):
         self,
         name: str,
         page_described: None | int | str = None,
-        locality: Optional["models.Location"] = None,
+        locality: models.Location | None = None,
         **kwargs: Any,
-    ) -> "Taxon":
+    ) -> Taxon:
         """Convenience method to add a type species described in the same paper as the genus.
         """
         return self.base_name.add_type_identical(
             name, page_described=page_described, locality=locality, **kwargs
         )
 
-    def switch_basename(self, name: Optional["models.Name"] = None) -> None:
+    def switch_basename(self, name: models.Name | None = None) -> None:
         if name is None:
             name = models.Name.getter(None).get_one()
             if name is None:
@@ -678,11 +675,11 @@ class Taxon(BaseModel):
 
     def add_occurrence(
         self,
-        location: Optional["models.Location"] = None,
+        location: models.Location | None = None,
         paper: Article | None = None,
         comment: str | None = None,
         status: OccurrenceStatus = OccurrenceStatus.valid,
-    ) -> "models.Occurrence":
+    ) -> models.Occurrence:
         if location is None:
             location = models.Location.getter(None).get_one("location> ")
         if paper is None:
@@ -718,7 +715,7 @@ class Taxon(BaseModel):
         age: AgeClass | None = None,
         interactive: bool = True,
         **kwargs: Any,
-    ) -> Optional["models.Name"]:
+    ) -> models.Name | None:
         if root_name is None:
             root_name = models.Name.getter("root_name").get_one_key("root_name> ")
         if root_name is None:
@@ -756,7 +753,7 @@ class Taxon(BaseModel):
         page_described: None | int | str = None,
         status: Status = Status.valid,
         **override_kwargs: Any,
-    ) -> Optional["Taxon"]:
+    ) -> Taxon | None:
         if rank is None:
             rank = getinput.get_enum_member(Rank, "rank> ")
         if rank is None:
@@ -797,7 +794,7 @@ class Taxon(BaseModel):
             result.base_name.edit()
         return result
 
-    def add_nominate(self) -> "Taxon":
+    def add_nominate(self) -> Taxon:
         if self.rank == Rank.species:
             rank = Rank.subspecies
         elif self.rank == Rank.genus:
@@ -831,7 +828,7 @@ class Taxon(BaseModel):
             child.display()
             child.edit()
 
-    def syn(self, name: str | None = None, **kwargs: Any) -> Optional["models.Name"]:
+    def syn(self, name: str | None = None, **kwargs: Any) -> models.Name | None:
         """Find a synonym matching the given arguments."""
         if name is not None:
             kwargs["root_name"] = name
@@ -896,7 +893,7 @@ class Taxon(BaseModel):
                         name.root_name,
                     )
 
-    def expected_base_name(self) -> Optional["models.Name"]:
+    def expected_base_name(self) -> models.Name | None:
         """Finds the name that is expected to be the base name for this name."""
         if self.base_name.nomenclature_status == NomenclatureStatus.informal:
             return self.base_name
@@ -935,7 +932,7 @@ class Taxon(BaseModel):
         else:
             return True
 
-    def check_base_names(self) -> Iterable["Taxon"]:
+    def check_base_names(self) -> Iterable[Taxon]:
         if not self.check_expected_base_name():
             yield self
         for child in self.get_children():
@@ -947,7 +944,7 @@ class Taxon(BaseModel):
             print(f"Changing valid name: {self.valid_name} -> {new_name}")
             self.valid_name = new_name
 
-    def merge(self, into: "Taxon") -> None:
+    def merge(self, into: Taxon) -> None:
         for child in self.get_children():
             child.parent = into
         for nam in self.get_names():
@@ -959,7 +956,7 @@ class Taxon(BaseModel):
         self.parent = into
         self.age = AgeClass.redirect  # type: ignore
 
-    def synonymize(self, to_taxon: Optional["Taxon"] = None) -> "models.Name":
+    def synonymize(self, to_taxon: Taxon | None = None) -> models.Name:
         if to_taxon is None:
             to_taxon = Taxon.getter(None).get_one()
             if to_taxon is None:
@@ -1005,10 +1002,10 @@ class Taxon(BaseModel):
             print(taxon)
             taxon.synonymize(self)
 
-    def make_species_group(self) -> "Taxon":
+    def make_species_group(self) -> Taxon:
         return self.make_parent_of_rank(Rank.species_group)
 
-    def make_parent_of_rank(self, rank: Rank) -> "Taxon":
+    def make_parent_of_rank(self, rank: Rank) -> Taxon:
         if self.parent.rank == rank:
             parent = self.parent.parent
         else:
@@ -1020,8 +1017,8 @@ class Taxon(BaseModel):
 
     @classmethod
     def make_or_revalidate(
-        cls, rank: Rank, base_name: "models.Name", age: AgeClass, parent: "Taxon"
-    ) -> "Taxon":
+        cls, rank: Rank, base_name: models.Name, age: AgeClass, parent: Taxon
+    ) -> Taxon:
         try:
             existing = (
                 cls.select().filter(cls.rank == rank, cls.base_name == base_name).get()
@@ -1033,7 +1030,7 @@ class Taxon(BaseModel):
             existing.parent = parent
             return existing
 
-    def run_on_self_and_children(self, callback: Callable[["Taxon"], object]) -> None:
+    def run_on_self_and_children(self, callback: Callable[[Taxon], object]) -> None:
         callback(self)
         for child in self.get_children():
             child.run_on_self_and_children(callback)
@@ -1053,12 +1050,12 @@ class Taxon(BaseModel):
     def all_names(
         self,
         age: AgeClass | None = None,
-        exclude: Container["Taxon"] = frozenset(),
+        exclude: Container[Taxon] = frozenset(),
         min_year: int | None = None,
-    ) -> set["models.Name"]:
+    ) -> set[models.Name]:
         if self in exclude:
             return set()
-        names: set["models.Name"]
+        names: set[models.Name]
         if age is not None:
             if self.age > age:
                 return set()
@@ -1077,9 +1074,9 @@ class Taxon(BaseModel):
     def all_authors(
         self,
         age: AgeClass | None = None,
-        exclude: Container["Taxon"] = frozenset(),
+        exclude: Container[Taxon] = frozenset(),
         min_year: int | None = None,
-    ) -> set["models.Person"]:
+    ) -> set[models.Person]:
         nams = self.all_names(age=age, exclude=exclude, min_year=min_year)
         return {author for nam in nams for author in nam.get_authors()}
 
@@ -1095,8 +1092,8 @@ class Taxon(BaseModel):
         field: str,
         age: AgeClass | None = None,
         min_year: int | None = None,
-        exclude: Container["Taxon"] = frozenset(),
-    ) -> set["models.Name"]:
+        exclude: Container[Taxon] = frozenset(),
+    ) -> set[models.Name]:
         return {
             name
             for name in self.all_names(age=age, min_year=min_year, exclude=exclude)
@@ -1121,7 +1118,7 @@ class Taxon(BaseModel):
         age: AgeClass | None = None,
         graphical: bool = False,
         focus_field: str | None = None,
-        exclude: Container["Taxon"] = frozenset(),
+        exclude: Container[Taxon] = frozenset(),
         min_year: int | None = None,
     ) -> dict[str, float]:
         names = self.all_names(age=age, min_year=min_year, exclude=exclude)
@@ -1252,7 +1249,7 @@ class Taxon(BaseModel):
     def fill_field_for_names(
         self,
         field: str | None = None,
-        exclude: Container["Taxon"] = frozenset(),
+        exclude: Container[Taxon] = frozenset(),
         min_year: int | None = None,
     ) -> None:
         if field is None:
@@ -1302,7 +1299,7 @@ class Taxon(BaseModel):
     def __repr__(self) -> str:
         return str(self)
 
-    def __getattr__(self, attr: str) -> "models.Name":
+    def __getattr__(self, attr: str) -> models.Name:
         """Returns a name belonging to this taxon with the given root_name or original_name.
         """
         if attr.startswith("_"):

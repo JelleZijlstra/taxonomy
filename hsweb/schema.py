@@ -3,9 +3,7 @@ import enum
 import re
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
-from typing import List as TList
-from typing import cast
+from typing import Any, cast
 
 import peewee
 import typing_inspect
@@ -39,7 +37,7 @@ SCALAR_FIELD_TO_GRAPHENE = {
     peewee.IntegerField: Int,
 }
 TYPE_TO_GRAPHENE = {str: String, bool: Boolean, int: Int}
-TYPES: TList[ObjectType] = []
+TYPES: list[ObjectType] = []
 CALL_SIGN_TO_MODEL = {model.call_sign: model for model in BaseModel.__subclasses__()}
 
 DOCS_ROOT = Path(__file__).parent.parent / "docs"
@@ -176,7 +174,7 @@ def build_graphene_field(
     elif isinstance(peewee_field, ADTField):
         adt_cls = peewee_field.adt_cls()
 
-        def adt_resolver(parent: ObjectType, info: ResolveInfo) -> TList[ObjectType]:
+        def adt_resolver(parent: ObjectType, info: ResolveInfo) -> list[ObjectType]:
             model = get_model(model_cls, parent, info)
             adts = getattr(model, name)
             if not adts:
@@ -244,7 +242,7 @@ def build_connection(object_type: type[ObjectType]) -> type[Connection]:
 def build_reverse_rel_count_field(
     model_cls: type[BaseModel], name: str, peewee_field: peewee.ForeignKeyField
 ) -> Field:
-    def resolver(parent: ObjectType, info: ResolveInfo) -> TList[ObjectType]:
+    def resolver(parent: ObjectType, info: ResolveInfo) -> list[ObjectType]:
         model = get_model(model_cls, parent, info)
         query = getattr(model, name)
         return query.count()
@@ -271,7 +269,7 @@ def _get_locations(
 
 def locations_resolver(
     parent: ObjectType, info: ResolveInfo, first: int = 10, after: str | None = None
-) -> TList[ObjectType]:
+) -> list[ObjectType]:
     object_type = build_object_type_from_model(Location)
     query = _get_locations(parent, info, first, after)
     cache = info.context["request"]
@@ -308,7 +306,7 @@ def build_reverse_rel_field(
 
     def resolver(
         parent: ObjectType, info: ResolveInfo, first: int = 10, after: str | None = None
-    ) -> TList[ObjectType]:
+    ) -> list[ObjectType]:
         model = get_model(model_cls, parent, info)
         object_type = build_object_type_from_model(foreign_model)
         query = apply_ordering(getattr(model, name))
@@ -524,7 +522,7 @@ def build_model_field(model_cls: type[BaseModel]) -> tuple[Field, Field | None]:
 
         def by_label_resolver(
             parent: ObjectType, info: ResolveInfo, label: str
-        ) -> TList[ObjectType]:
+        ) -> list[ObjectType]:
             objects = model_cls.select_valid().filter(label_field == label)
             return [object_type(id=obj.id, oid=obj.id) for obj in objects]
 
@@ -547,7 +545,7 @@ def get_model_resolvers() -> dict[str, Field]:
 
 def resolve_by_call_sign(
     parent: ObjectType, info: ResolveInfo, call_sign: str, oid: str
-) -> TList[ObjectType]:
+) -> list[ObjectType]:
     model_cls = CALL_SIGN_TO_MODEL[call_sign.upper()]
     object_type = build_object_type_from_model(model_cls)
     if oid.isnumeric():
@@ -574,7 +572,7 @@ def resolve_documentation(
 
 def resolve_autocompletions(
     parent: "ModelCls", info: ResolveInfo, field: str | None = None
-) -> TList[str]:
+) -> list[str]:
     model_cls = BaseModel.call_sign_to_model[parent.call_sign]
     if field is None:
         field = model_cls.label_field

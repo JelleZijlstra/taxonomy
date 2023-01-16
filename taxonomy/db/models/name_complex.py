@@ -1,4 +1,5 @@
-from typing import Any, Optional, IO
+from __future__ import annotations
+from typing import Any, IO
 from collections.abc import Iterable
 import sys
 
@@ -82,7 +83,7 @@ class SpeciesNameComplex(BaseModel):
                 tag_classes=(models.name.TypeTag.EtymologyDetail,),
             )
 
-    def self_apply(self, dry_run: bool = True) -> list["models.Name"]:
+    def self_apply(self, dry_run: bool = True) -> list[models.Name]:
         return self.apply_to_ending(self.label, dry_run=dry_run)
 
     def apply_to_ending(
@@ -91,7 +92,7 @@ class SpeciesNameComplex(BaseModel):
         dry_run: bool = True,
         interactive: bool = False,
         full_name_only: bool = True,
-    ) -> list["models.Name"]:
+    ) -> list[models.Name]:
         """Adds the name complex to all names with a specific ending."""
         names = [
             name
@@ -158,12 +159,12 @@ class SpeciesNameComplex(BaseModel):
         else:
             yield name
 
-    def get_names(self) -> list["models.Name"]:
+    def get_names(self) -> list[models.Name]:
         return list(self.names)
 
     def make_ending(
         self, ending: str, comment: str | None = "", full_name_only: bool = False
-    ) -> "SpeciesNameEnding":
+    ) -> SpeciesNameEnding:
         return SpeciesNameEnding.get_or_create(
             name_complex=self,
             ending=ending,
@@ -192,7 +193,7 @@ class SpeciesNameComplex(BaseModel):
         masculine_ending: str = "",
         feminine_ending: str = "",
         neuter_ending: str = "",
-    ) -> "SpeciesNameComplex":
+    ) -> SpeciesNameComplex:
         return cls.create(
             label=label,
             stem=stem,
@@ -214,7 +215,7 @@ class SpeciesNameComplex(BaseModel):
         masculine_ending: str = "",
         feminine_ending: str = "",
         neuter_ending: str = "",
-    ) -> "SpeciesNameComplex":
+    ) -> SpeciesNameComplex:
         try:
             return cls.get(cls.label == label, cls.stem == stem, cls.kind == kind)
         except peewee.DoesNotExist:
@@ -230,7 +231,7 @@ class SpeciesNameComplex(BaseModel):
             )
 
     @classmethod
-    def by_label(cls, label: str) -> "SpeciesNameComplex":
+    def by_label(cls, label: str) -> SpeciesNameComplex:
         complexes = list(cls.filter(cls.label == label))
         if len(complexes) == 1:
             return complexes[0]
@@ -238,12 +239,12 @@ class SpeciesNameComplex(BaseModel):
             raise ValueError(f"found {complexes} with label {label}")
 
     @classmethod
-    def of_kind(cls, kind: SpeciesNameKind) -> "SpeciesNameComplex":
+    def of_kind(cls, kind: SpeciesNameKind) -> SpeciesNameComplex:
         """Indeclinable name of a particular kind."""
         return cls._get_or_create(kind.name, kind=kind)
 
     @classmethod
-    def ambiguous(cls, stem: str, comment: str | None = None) -> "SpeciesNameComplex":
+    def ambiguous(cls, stem: str, comment: str | None = None) -> SpeciesNameComplex:
         """For groups of names that are ambiguously nouns in apposition (Art. 31.2.2).
         """
         return cls._get_or_create(
@@ -259,7 +260,7 @@ class SpeciesNameComplex(BaseModel):
         feminine_ending: str,
         neuter_ending: str,
         auto_apply: bool = False,
-    ) -> "SpeciesNameComplex":
+    ) -> SpeciesNameComplex:
         """Name based on a Latin adjective."""
         snc = cls._get_or_create(
             stem,
@@ -277,23 +278,23 @@ class SpeciesNameComplex(BaseModel):
     @classmethod
     def first_declension(
         cls, stem: str, auto_apply: bool = False, comment: str | None = None
-    ) -> "SpeciesNameComplex":
+    ) -> SpeciesNameComplex:
         return cls.adjective(stem, comment, "us", "a", "um", auto_apply=auto_apply)
 
     @classmethod
     def third_declension(
         cls, stem: str, auto_apply: bool = False, comment: str | None = None
-    ) -> "SpeciesNameComplex":
+    ) -> SpeciesNameComplex:
         return cls.adjective(stem, comment, "is", "is", "e", auto_apply=auto_apply)
 
     @classmethod
     def invariant(
         cls, stem: str, auto_apply: bool = False, comment: str | None = None
-    ) -> "SpeciesNameComplex":
+    ) -> SpeciesNameComplex:
         return cls.adjective(stem, comment, "", "", "", auto_apply=auto_apply)
 
     @classmethod
-    def create_interactively(cls, **kwargs: Any) -> Optional["SpeciesNameComplex"]:
+    def create_interactively(cls, **kwargs: Any) -> SpeciesNameComplex | None:
         kind = getinput.get_with_completion(
             [
                 "ambiguous",
@@ -400,10 +401,10 @@ class NameComplex(BaseModel):
                 tag_classes=(models.name.TypeTag.EtymologyDetail,),
             )
 
-    def self_apply(self, dry_run: bool = True) -> list["models.Name"]:
+    def self_apply(self, dry_run: bool = True) -> list[models.Name]:
         return self.apply_to_ending(self.label, dry_run=dry_run)
 
-    def apply_to_ending(self, ending: str, dry_run: bool = True) -> list["models.Name"]:
+    def apply_to_ending(self, ending: str, dry_run: bool = True) -> list[models.Name]:
         """Adds the name complex to all names with a specific ending."""
         names = [
             name
@@ -435,10 +436,10 @@ class NameComplex(BaseModel):
             name = name[: -len(stem_remove)]
         return name + self.get_stem_add()
 
-    def make_ending(self, ending: str, comment: str | None = "") -> "NameEnding":
+    def make_ending(self, ending: str, comment: str | None = "") -> NameEnding:
         return NameEnding.create(name_complex=self, ending=ending, comment=comment)
 
-    def get_names(self) -> list["models.Name"]:
+    def get_names(self) -> list[models.Name]:
         return list(self.names)
 
     @classmethod
@@ -453,7 +454,7 @@ class NameComplex(BaseModel):
         comment: str | None = None,
         stem_remove: str = "",
         stem_add: str = "",
-    ) -> "NameComplex":
+    ) -> NameComplex:
         return cls.create(
             label=label,
             stem=stem,
@@ -477,7 +478,7 @@ class NameComplex(BaseModel):
         comment: str | None = None,
         stem_remove: str = "",
         stem_add: str = "",
-    ) -> "NameComplex":
+    ) -> NameComplex:
         try:
             return cls.get(
                 cls.label == label,
@@ -499,7 +500,7 @@ class NameComplex(BaseModel):
             )
 
     @classmethod
-    def by_label(cls, label: str) -> "NameComplex":
+    def by_label(cls, label: str) -> NameComplex:
         complexes = list(cls.filter(cls.label == label))
         if len(complexes) == 1:
             return complexes[0]
@@ -514,7 +515,7 @@ class NameComplex(BaseModel):
         comment: str | None = None,
         stem_remove: str = "",
         stem_add: str = "",
-    ) -> "NameComplex":
+    ) -> NameComplex:
         """Name based on a word found in a Latin dictionary with a specific gender."""
         return cls._get_or_create(
             stem,
@@ -535,7 +536,7 @@ class NameComplex(BaseModel):
         comment: str | None = None,
         stem_remove: str = "",
         stem_add: str = "",
-    ) -> "NameComplex":
+    ) -> NameComplex:
         """Name based on a word of unknown etymology, but of obvious grammatical behavior.
         """
         return cls._get_or_create(
@@ -557,7 +558,7 @@ class NameComplex(BaseModel):
         comment: str | None = None,
         stem_remove: str = "",
         stem_add: str = "",
-    ) -> "NameComplex":
+    ) -> NameComplex:
         """Name based on a word found in a Greek dictionary with a specific gender."""
         return cls._get_or_create(
             stem,
@@ -578,7 +579,7 @@ class NameComplex(BaseModel):
         comment: str | None = None,
         stem_remove: str = "",
         stem_add: str = "",
-    ) -> "NameComplex":
+    ) -> NameComplex:
         """Name based on a word found in a Greek dictionary, but with a changed suffix.
         """
         return cls._get_or_create(
@@ -600,7 +601,7 @@ class NameComplex(BaseModel):
         comment: str | None = None,
         stem_remove: str = "",
         stem_add: str = "",
-    ) -> "NameComplex":
+    ) -> NameComplex:
         """Name based on a Greek word, but with incorrect transliteration."""
         return cls._get_or_create(
             stem,
@@ -621,7 +622,7 @@ class NameComplex(BaseModel):
         comment: str | None = None,
         stem_remove: str = "",
         stem_add: str = "",
-    ) -> "NameComplex":
+    ) -> NameComplex:
         """Name of common gender in Latin, which defaults to masculine."""
         return cls._get_or_create(
             stem,
@@ -640,7 +641,7 @@ class NameComplex(BaseModel):
         stem: str,
         gender: GrammaticalGender = GrammaticalGender.masculine,
         comment: str | None = None,
-    ) -> "NameComplex":
+    ) -> NameComplex:
         """Names ending in -oides and a few other endings default to masculine unless the author treated it otherwise.
         """
         if stem not in ("ites", "oides", "ides", "odes", "istes"):
@@ -668,7 +669,7 @@ class NameComplex(BaseModel):
         comment: str | None = None,
         stem_remove: str = "",
         stem_add: str = "",
-    ) -> "NameComplex":
+    ) -> NameComplex:
         """Based on a Latin word with a changed ending. Comment must specify the original word.
         """
         return cls._get_or_create(
@@ -685,7 +686,7 @@ class NameComplex(BaseModel):
     @classmethod
     def stem_expressly_set(
         cls, gender: GrammaticalGender, stem_remove: str = "", stem_add: str = ""
-    ) -> "NameComplex":
+    ) -> NameComplex:
         """Stem expressly set to a specific value."""
         label = cls._make_label(
             f"stem_expressly_set_{gender.name}", stem_remove, stem_add
@@ -702,7 +703,7 @@ class NameComplex(BaseModel):
     @classmethod
     def expressly_specified(
         cls, gender: GrammaticalGender, stem_remove: str = "", stem_add: str = ""
-    ) -> "NameComplex":
+    ) -> NameComplex:
         """Gender expressly specified by the author."""
         label = cls._make_label(
             f"expressly_specified_{gender.name}", stem_remove, stem_add
@@ -719,7 +720,7 @@ class NameComplex(BaseModel):
     @classmethod
     def indicated(
         cls, gender: GrammaticalGender, stem_remove: str = "", stem_add: str = ""
-    ) -> "NameComplex":
+    ) -> NameComplex:
         """Gender indicated by an adjectival species name."""
         label = cls._make_label(f"indicated_{gender.name}", stem_remove, stem_add)
         return cls._get_or_create(
@@ -734,7 +735,7 @@ class NameComplex(BaseModel):
     @classmethod
     def assumed(
         cls, gender: GrammaticalGender, stem_remove: str = "", stem_add: str = ""
-    ) -> "NameComplex":
+    ) -> NameComplex:
         """Gender indicated by an adjectival species name."""
         label = cls._make_label(f"assumed_{gender.name}", stem_remove, stem_add)
         return cls._get_or_create(
@@ -749,7 +750,7 @@ class NameComplex(BaseModel):
     @classmethod
     def defaulted_masculine(
         cls, stem_remove: str = "", stem_add: str = ""
-    ) -> "NameComplex":
+    ) -> NameComplex:
         """Defaulted to masculine as a non-Western name."""
         label = cls._make_label("defaulted_masculine", stem_remove, stem_add)
         return cls._get_or_create(
@@ -768,7 +769,7 @@ class NameComplex(BaseModel):
         ending: str,
         stem_remove: str = "",
         stem_add: str = "",
-    ) -> "NameComplex":
+    ) -> NameComplex:
         """Defaulted to feminine or neuter as a non-Western name with a specific ending.
         """
         if gender == GrammaticalGender.masculine:
@@ -808,7 +809,7 @@ class NameComplex(BaseModel):
         return base_label
 
     @classmethod
-    def create_interactively(cls, **kwargs: Any) -> "NameComplex":
+    def create_interactively(cls, **kwargs: Any) -> NameComplex:
         kind = getinput.get_with_completion(
             [
                 "latin_stem",
@@ -926,7 +927,7 @@ class SpeciesNameEnding(BaseModel):
         ending: str,
         comment: str | None = None,
         full_name_only: bool = False,
-    ) -> "SpeciesNameEnding":
+    ) -> SpeciesNameEnding:
         try:
             return cls.get(
                 cls.name_complex == name_complex,

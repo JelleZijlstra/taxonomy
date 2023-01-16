@@ -1,7 +1,8 @@
+from __future__ import annotations
 from collections import defaultdict
 from functools import lru_cache
 import sys
-from typing import IO, Any, Optional, TypeVar
+from typing import IO, Any, TypeVar
 from collections.abc import Iterable
 
 from peewee import BooleanField, CharField, ForeignKeyField, IntegerField
@@ -119,7 +120,7 @@ class Period(BaseModel):
             if requires_parent is RequirednessLevel.disallowed:
                 yield f"{self}: may not have a parent"
 
-    def merge(self, other: "Period") -> None:
+    def merge(self, other: Period) -> None:
         for loc in self.locations_min:
             loc.min_period = other
         for loc in self.locations_max:
@@ -161,12 +162,12 @@ class Period(BaseModel):
         system: PeriodSystem,
         rank: PeriodRank,
         *,
-        parent: Optional["Period"] = None,
-        next: Optional["Period"] = None,
+        parent: Period | None = None,
+        next: Period | None = None,
         min_age: int | None = None,
         max_age: int | None = None,
         **kwargs: Any,
-    ) -> "Period":
+    ) -> Period:
         if max_age is None and next is not None:
             max_age = next.min_age
         period = cls.create(
@@ -216,22 +217,22 @@ class Period(BaseModel):
                     full=full, depth=depth + 2, file=file, locations=locations
                 )
 
-    def max_only_localities(self) -> Iterable["models.Location"]:
+    def max_only_localities(self) -> Iterable[models.Location]:
         return models.Location.select_valid().filter(
             models.Location.max_period == self, models.Location.min_period != self
         )
 
-    def period_localities(self) -> Iterable["models.Location"]:
+    def period_localities(self) -> Iterable[models.Location]:
         return models.Location.select_valid().filter(
             models.Location.max_period == self, models.Location.min_period == self
         )
 
-    def make_locality(self, region: "Region") -> "models.Location":
+    def make_locality(self, region: Region) -> models.Location:
         return models.Location.make(self.name, region, self)
 
     def all_localities(
         self, include_children: bool = True, include_partial: bool = False
-    ) -> set["models.Location"]:
+    ) -> set[models.Location]:
         if include_partial:
             locations = {*self.locations_min, *self.locations_max}
         else:
@@ -254,7 +255,7 @@ class Period(BaseModel):
 
     def all_type_localities(
         self, include_children: bool = True, include_partial: bool = False
-    ) -> list["models.Name"]:
+    ) -> list[models.Name]:
         return [
             nam
             for loc in self.all_localities(
@@ -288,7 +289,7 @@ class Period(BaseModel):
         else:
             return False
 
-    def set_period(self, period: Optional["Period"]) -> None:
+    def set_period(self, period: Period | None) -> None:
         self.min_period = self.max_period = period
 
     def fill_field(self, field: str) -> None:

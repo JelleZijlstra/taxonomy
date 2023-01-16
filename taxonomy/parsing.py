@@ -1,6 +1,6 @@
+from __future__ import annotations
 from dataclasses import dataclass
 from functools import partial
-from typing import Optional as TOptional
 from collections.abc import Iterable
 from re import Pattern
 import re
@@ -17,10 +17,10 @@ class Element:
     def compile(self) -> Pattern[str]:
         return re.compile(f"^{self.to_regex()}$")
 
-    def __or__(self, other: "Element") -> "OneOf":
+    def __or__(self, other: Element) -> OneOf:
         return OneOf([self, other])
 
-    def __add__(self, other: "Element") -> "And":
+    def __add__(self, other: Element) -> And:
         return And([self, other])
 
 
@@ -45,7 +45,7 @@ class OneOf(Element):
     alternatives: list[Element]
 
     @classmethod
-    def from_strs(cls, strs: Iterable[str]) -> "OneOf":
+    def from_strs(cls, strs: Iterable[str]) -> OneOf:
         return cls([Literal(s) for s in strs])
 
     def to_regex(self) -> str:
@@ -63,8 +63,8 @@ class And(Element):
 @dataclass
 class Repetition(Element):
     elt: Element
-    min: TOptional[int] = None
-    max: TOptional[int] = None
+    min: int | None = None
+    max: int | None = None
 
     def to_regex(self) -> str:
         return f"({self.elt.to_regex()}){{{self.min or ''},{self.max or ''}}}"

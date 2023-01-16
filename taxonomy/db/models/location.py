@@ -1,7 +1,8 @@
+from __future__ import annotations
 import enum
 import sys
 import re
-from typing import Any, IO, Optional
+from typing import Any, IO
 from collections import Counter
 from collections.abc import Callable, Iterable
 
@@ -62,7 +63,7 @@ class Location(BaseModel):
     def should_skip(self) -> bool:
         return self.deleted
 
-    def get_redirect_target(self) -> "Location | None":
+    def get_redirect_target(self) -> Location | None:
         if self.deleted is LocationStatus.alias:
             return self.parent
         return None
@@ -78,7 +79,7 @@ class Location(BaseModel):
         period: Period,
         comment: str | None = None,
         stratigraphic_unit: StratigraphicUnit | None = None,
-    ) -> "Location":
+    ) -> Location:
         return cls.create(
             name=name,
             min_period=period,
@@ -96,7 +97,7 @@ class Location(BaseModel):
         period: Period | None = None,
         comment: str | None = None,
         **kwargs: Any,
-    ) -> "Location":
+    ) -> Location:
         if name is None:
             name = getinput.get_line("name> ")
         assert name is not None
@@ -168,7 +169,7 @@ class Location(BaseModel):
                 for occurrence in sorted(taxa, key=lambda occ: occ.taxon.valid_name):
                     file.write("{}{}\n".format(" " * (depth + 12), occurrence))
 
-    def merge(self, other: Optional["Location"] = None) -> None:
+    def merge(self, other: Location | None = None) -> None:
         if other is None:
             other = self.getter(None).get_one()
             if other is None:
@@ -177,7 +178,7 @@ class Location(BaseModel):
         self.deleted = LocationStatus.alias  # type: ignore
         self.parent = other
 
-    def add_alias(self) -> Optional["Location"]:
+    def add_alias(self) -> Location | None:
         name = self.getter("name").get_one()
         if name is None:
             return None
@@ -192,7 +193,7 @@ class Location(BaseModel):
     def edit(self) -> None:
         self.fill_field("tags")
 
-    def reassign_references(self, other: "Location") -> None:
+    def reassign_references(self, other: Location) -> None:
         print(f"{self}: reassign references to {other}")
         for taxon in self.type_localities:
             taxon.type_locality = other
@@ -269,7 +270,7 @@ class Location(BaseModel):
                 alias.reassign_references(alias.parent)
 
     @classmethod
-    def get_or_create_general(cls, region: Region, period: Period) -> "Location":
+    def get_or_create_general(cls, region: Region, period: Period) -> Location:
         if period.name == "Recent":
             name = region.name
         elif period.name == "Phanerozoic":

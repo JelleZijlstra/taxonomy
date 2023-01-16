@@ -1,6 +1,7 @@
+from __future__ import annotations
 import collections
 import sys
-from typing import IO, Optional
+from typing import IO
 from collections.abc import Iterable
 
 from peewee import CharField, ForeignKeyField
@@ -47,8 +48,8 @@ class Region(BaseModel):
 
     @classmethod
     def make(
-        cls, name: str, kind: constants.RegionKind, parent: Optional["Region"] = None
-    ) -> "Region":
+        cls, name: str, kind: constants.RegionKind, parent: Region | None = None
+    ) -> Region:
         region = cls.create(name=name, kind=kind, parent=parent)
         models.Location.make(
             name=name,
@@ -72,7 +73,7 @@ class Region(BaseModel):
             "display_periods": self.display_periods,
         }
 
-    def get_general_localities(self) -> list["models.Location"]:
+    def get_general_localities(self) -> list[models.Location]:
         name_field = models.Location.name
         my_name = self.name
         return models.Location.bfind(
@@ -162,26 +163,26 @@ class Region(BaseModel):
                 return False
         return True
 
-    def sorted_children(self) -> list["Region"]:
+    def sorted_children(self) -> list[Region]:
         return sorted(self.children, key=lambda c: c.name)
 
-    def sorted_locations(self) -> list["models.Location"]:
+    def sorted_locations(self) -> list[models.Location]:
         return sorted(
             self.locations.filter(models.Location.deleted != True),
             key=models.Location.sort_key,
         )
 
-    def get_location(self) -> "models.Location":
+    def get_location(self) -> models.Location:
         """Returns the corresponding Recent Location."""
         return models.Location.get(region=self, name=self.name, deleted=False)
 
-    def all_parents(self) -> Iterable["Region"]:
+    def all_parents(self) -> Iterable[Region]:
         """Returns all parent regions of this region."""
         if self.parent is not None:
             yield self.parent
             yield from self.parent.all_parents()
 
-    def all_citation_groups(self) -> Iterable["models.CitationGroup"]:
+    def all_citation_groups(self) -> Iterable[models.CitationGroup]:
         yield from self.citation_groups
         for child in self.children:
             yield from child.all_citation_groups()
@@ -203,7 +204,7 @@ class Region(BaseModel):
             return
         print(" " * depth + self.name)
         by_type: dict[
-            constants.ArticleType, list["models.CitationGroup"]
+            constants.ArticleType, list[models.CitationGroup]
         ] = collections.defaultdict(list)
         for group in sorted(self.citation_groups, key=lambda cg: cg.name):
             if type is not None and group.type is not type:
@@ -231,7 +232,7 @@ class Region(BaseModel):
         if only_nonempty and not self.has_collections():
             return
         print(" " * depth + self.name)
-        by_city: dict[str, list["models.Collection"]] = collections.defaultdict(list)
+        by_city: dict[str, list[models.Collection]] = collections.defaultdict(list)
         cities = set()
         for collection in sorted(self.collections, key=lambda c: c.label):
             by_city[collection.city or ""].append(collection)
@@ -283,7 +284,7 @@ class Region(BaseModel):
         for child in self.children:
             child.add_cities()
 
-    def has_parent(self, parent: "Region") -> bool:
+    def has_parent(self, parent: Region) -> bool:
         if self == parent:
             return True
         elif self.parent is None:

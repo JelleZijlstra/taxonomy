@@ -1,7 +1,8 @@
+from __future__ import annotations
 import json
 from taxonomy import getinput
 from peewee import CharField, ForeignKeyField, TextField
-from typing import Any, Optional, TypeVar
+from typing import Any, TypeVar
 from collections.abc import Iterable
 
 from .base import ADTField, BaseModel
@@ -42,7 +43,7 @@ class Book(BaseModel):
     @classmethod
     def create_interactively(
         cls, title: str | None = None, **kwargs: Any
-    ) -> Optional["Book"]:
+    ) -> Book | None:
         if title is None:
             title = cls.getter("title").get_one_key("title> ")
         if title is None:
@@ -83,7 +84,7 @@ class Book(BaseModel):
                         book.edit()
 
     @classmethod
-    def create_from_isbn(cls, isbn: str | None = None) -> Optional["Book"]:
+    def create_from_isbn(cls, isbn: str | None = None) -> Book | None:
         if isbn is None:
             isbn = cls.getter("isbn").get_one_key("isbn for new book> ")
         if isbn is None:
