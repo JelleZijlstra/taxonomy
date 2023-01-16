@@ -3,7 +3,6 @@
 Adding data to (usually new) files.
 
 """
-from bs4 import BeautifulSoup
 import enum
 from functools import lru_cache
 import json
@@ -60,26 +59,6 @@ def is_doi_valid(doi: str) -> bool:
             return True
         return False
     return True
-
-
-@lru_cache
-def get_doi_information(doi: str) -> BeautifulSoup | None:
-    """Retrieves information for this DOI from the API."""
-    response = requests.get(
-        "http://www.crossref.org/openurl/",
-        {"pid": _options.crossrefid, "id": f"doi:{doi}", "noredirect": "true"},
-    )
-    if response.ok:
-        soup = BeautifulSoup(response.text, "xml")
-        if soup.query_result:
-            query = soup.query_result.body.query
-            if query["status"] != "resolved":
-                print(f"Could not resolve DOI {doi}")
-                return None
-            print(f"Retrieved data for DOI {doi}")
-            return query
-    print(f"Could not retrieve data for DOI {doi}")
-    return None
 
 
 # values from http://www.crossref.org/schema/queryResultSchema/crossref_query_output2.0.xsd
@@ -185,65 +164,6 @@ def get_container_title(work: dict[str, Any]) -> str | None:
         title = container_title[0]
         return title.replace("&amp;", "&").replace("’", "'")
     return None
-
-
-def expand_doi(doi: str) -> RawData:
-    result = get_doi_information(doi)
-    if not result:
-        return {}
-    data: RawData = {"doi": doi}
-
-    doiType = result.doi["type"]
-    if doiType not in doi_type_to_article_type:
-        return {}
-    data["type"] = doi_type_to_article_type[doiType]
-    # kill leading zeroes
-    if result.volume is not None:
-        data["volume"] = re.sub(r"^0", "", result.volume.text)
-    if result.issue is not None:
-        data["issue"] = re.sub(r"^0", "", result.issue.text)
-    if result.first_page is not None:
-        data["start_page"] = re.sub(r"^0", "", result.first_page.text)
-    if result.last_page is not None:
-        data["end_page"] = re.sub(r"^0", "", result.last_page.text)
-    if result.year is not None:
-        data["year"] = result.year.text
-    if result.article_title is not None:
-        title = result.article_title.text
-        if title.upper() == title:
-            # all uppercase title; let's clean it up a bit
-            # this won't give correct punctuation, but it'll be better than all-uppercase
-            title = title[0] + title[1:].lower()
-        data["title"] = clean_string(title)
-    if result.journal_title is not None:
-        data["journal"] = result.journal_title.text
-    if result.isbn is not None:
-        data["isbn"] = result.isbn.text
-    if result.contributors is not None:
-        authors = []
-        for author in result.contributors.children:
-            info = {"family_name": clean_string(author.surname.text)}
-            if author.given_name:
-                given_names = clean_string(author.given_name.text.title())
-                if given_names[-1].isupper():
-                    given_names = given_names + "."
-                if parsing.matches_grammar(
-                    given_names.replace(" ", ""), parsing.initials_pattern
-                ):
-                    info["initials"] = given_names.replace(" ", "")
-                else:
-                    info["given_names"] = re.sub(r"\. ([A-Z]\.)", r".\1", given_names)
-            authors.append(info)
-        data["author_tags"] = authors
-    if result.volume_title is not None:
-        booktitle = result.volume_title.text
-        if data["type"] == ArticleType.BOOK:
-            data["title"] = booktitle
-        else:  # chapter
-            data["parent_info"] = {"title": booktitle, "isbn": data["isbn"]}
-            if result.article_title is not None:
-                data["title"] = result.article_title.text
-    return data
 
 
 def extract_doi(art: Article) -> str | None:

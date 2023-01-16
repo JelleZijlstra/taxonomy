@@ -811,7 +811,7 @@ class Article(BaseModel):
     ) -> dict[str, Any]:
         if not self.doi:
             return {}
-        data = models.article.add_data.expand_doi(self.doi)
+        data = models.article.add_data.expand_doi_json(self.doi)
         for key, value in list(data.items()):
             # print differences if verbose is set
             if hasattr(self, key):
@@ -935,7 +935,7 @@ class Article(BaseModel):
             for author in self.get_authors()
         ):
             return
-        data = models.article.add_data.expand_doi(self.doi)
+        data = models.article.add_data.expand_doi_json(self.doi)
         self._recompute_authors_from_data(data, confirm)
 
     def _recompute_authors_from_data(self, data: dict[str, Any], confirm: bool) -> None:
