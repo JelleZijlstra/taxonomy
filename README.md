@@ -3,14 +3,12 @@ database of mammals and other animals. It is focused on providing comprehensive 
 about the nomenclature of each name: type specimens, type localities, citations, type
 species, and much more.
 
-This is a personal project and so far I haven't spent any effort to make it usable by
-other people. It will probably work if you `pip install` it from source, but you'll have
-to make a database yourself.
+The database is publicly accessible at [hesperomys.com](http://hesperomys.com). The
+frontend is maintained in the separate [hesperomys](htttps://github.com/JelleZijlstra/hesperomys)
+project.
 
-The database is currently in SQLite format because that's the most convenient for my
-current setup, but this isn't essential to the project. It was previously in a MYSQL
-database (which worked mostly fine), and before that in a set of spreadsheets (which I'm
-glad I no longer need).
-
-In the future I plan to extend this project with a website enabling people to browse the
-taxonomy.
+Main entry points:
+- `python -m hsweb` will run a GraphQL server that the `hesperomys` frontend
+  can communicate with to render the web app
+- `python -m taxonomy.shell` will open a shell that enables editing the database.
+  This is my primary interface for working with the database.
