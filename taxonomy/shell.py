@@ -1441,7 +1441,7 @@ def field_by_year(field: str | None = None) -> None:
 @command
 def type_localities_like(substring: str, full: bool = False) -> None:
     nams = Name.bfind(
-        Name._raw_type_tags.contains(substring), Name.type_locality != None, quiet=True
+        Name.type_tags.contains(substring), Name.type_locality != None, quiet=True
     )
     for nam in sorted(
         nams,
@@ -2203,12 +2203,14 @@ def moreau(nam: Name) -> None:
     nam.e.type_tags
 
 
-def fgsyn(off: Name | None = None) -> Name:
+def fgsyn(off: Name | None = None) -> Name | None:
     """Adds a family-group synonym."""
     if off is not None:
         taxon = off.taxon
     else:
-        taxon = Taxon.get_one_by("valid_name", prompt="taxon> ", allow_empty=False)
+        taxon = Taxon.get_one_by("valid_name", prompt="taxon> ")
+        if taxon is None:
+            return None
     root_name = Name.getter("corrected_original_name").get_one_key(
         "name> ", allow_empty=False
     )

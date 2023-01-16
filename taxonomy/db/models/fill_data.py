@@ -348,6 +348,8 @@ def fill_data_on_taxon() -> None:
     if taxon is None:
         return
     level = getinput.get_enum_member(FillDataLevel, "level> ")
+    if level is None:
+        return
     taxon.fill_data_for_names(level=level)
 
 

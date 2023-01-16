@@ -1,6 +1,6 @@
 import builtins
 from collections import Counter
-from typing import Any
+from typing import Any, TypeVar
 from collections.abc import Iterable
 
 from peewee import BooleanField, CharField, ForeignKeyField, IntegrityError
@@ -11,6 +11,8 @@ from ... import adt, events, getinput
 
 from .base import BaseModel, EnumField, ADTField, get_completer
 from .region import Region
+
+CGTagT = TypeVar("CGTagT", bound="CitationGroupTag")
 
 
 class CitationGroup(BaseModel):
@@ -158,7 +160,7 @@ class CitationGroup(BaseModel):
             return False
         return any(my_tag is tag for my_tag in self.tags)
 
-    def get_tag(self, tag_cls: builtins.type[adt.ADT]) -> adt.ADT | None:
+    def get_tag(self, tag_cls: builtins.type[CGTagT]) -> CGTagT | None:
         if self.tags is None:
             return None
         for tag in self.tags:

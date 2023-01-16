@@ -28,92 +28,14 @@ from taxonomy.db.models import (
     Article,
     BaseModel,
     Book,
-    CitationGroup,
-    Collection,
     Location,
     Name,
-    Occurrence,
     Period,
     Person,
     Region,
     Taxon,
 )
 from taxonomy.db.models.person import AuthorTag
-
-
-def biggest_citation_groups_no_region(
-    limit: int = 50,
-) -> list[tuple[CitationGroup, int]]:
-    query = (
-        CitationGroup.select(
-            CitationGroup, peewee.fn.Count(CitationGroup.id).alias("num_names")
-        )
-        .filter(CitationGroup.region == None)
-        .join(Name, peewee.JOIN_LEFT_OUTER)
-        .group_by(CitationGroup.id)
-        .order_by(peewee.fn.Count(CitationGroup.id).desc())
-        .limit(limit)
-    )
-    return list(reversed([(t, t.num_names) for t in query]))
-
-
-def biggest_citation_groups(limit: int = 50) -> list[tuple[CitationGroup, int]]:
-    query = (
-        CitationGroup.select(
-            CitationGroup, peewee.fn.Count(CitationGroup.id).alias("num_names")
-        )
-        .join(Name, peewee.JOIN_LEFT_OUTER)
-        .group_by(CitationGroup.id)
-        .order_by(peewee.fn.Count(CitationGroup.id).desc())
-        .limit(limit)
-    )
-    return list(reversed([(t, t.num_names) for t in query]))
-
-
-def biggest_localities(limit: int = 50) -> list[tuple[Location, int]]:
-    query = (
-        Location.select(
-            Location, peewee.fn.Count(Occurrence.id).alias("num_occurrences")
-        )
-        .join(Occurrence, peewee.JOIN_LEFT_OUTER)
-        .group_by(Location.id)
-        .order_by(peewee.fn.Count(Occurrence.id).desc())
-        .limit(limit)
-    )
-    return list(reversed([(t, t.num_occurrences) for t in query]))
-
-
-def most_type_localities(limit: int = 50) -> list[tuple[Location, int]]:
-    query = (
-        Location.select(Location, peewee.fn.Count(Name.id).alias("num_occurrences"))
-        .join(Name, peewee.JOIN_LEFT_OUTER)
-        .group_by(Location.id)
-        .order_by(peewee.fn.Count(Name.id).desc())
-        .limit(limit)
-    )
-    return list(reversed([(t, t.num_occurrences) for t in query]))
-
-
-def biggest_ranges(limit: int = 50) -> list[tuple[Taxon, int]]:
-    query = (
-        Taxon.select(Taxon, peewee.fn.Count(Occurrence.id).alias("num_occurrences"))
-        .join(Occurrence, peewee.JOIN_LEFT_OUTER)
-        .group_by(Taxon.id)
-        .order_by(peewee.fn.Count(Occurrence.id).desc())
-        .limit(limit)
-    )
-    return list(reversed([(t, t.num_occurrences) for t in query]))
-
-
-def most_type_specimens(limit: int = 50) -> list[tuple[Collection, int]]:
-    query = (
-        Collection.select(Collection, peewee.fn.Count(Name.id).alias("num_types"))
-        .join(Name, peewee.JOIN_LEFT_OUTER)
-        .group_by(Collection.id)
-        .order_by(peewee.fn.Count(Name.id).desc())
-        .limit(limit)
-    )
-    return list(reversed([(t, t.num_types) for t in query]))
 
 
 def unrecorded_taxa(root: Taxon) -> None:

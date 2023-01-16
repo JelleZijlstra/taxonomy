@@ -71,21 +71,15 @@ _RANKS = {
     "Subclass": Rank.subclass,
     "Infraclassis": Rank.infraclass,
     "Infraclass": Rank.infraclass,
-    "Superlegion": 89,
-    "Legion": 88,
-    "Sublegion": 87,
     "Supracohors": Rank.supercohort,
     "Supercohors": Rank.supercohort,
     "Supercohort": Rank.supercohort,
     "Cohors": Rank.cohort,
     "Cohort": Rank.cohort,
     "Subcohors": Rank.subcohort,
-    "Magnorder": 72,
-    "Grandorder": 71,
     "Superordo": Rank.superorder,
     "Supraordo": Rank.superorder,
     "Superorder": Rank.superorder,
-    "Mirorder": 69,
     "Ordo": Rank.order,
     "Order": Rank.order,
     "Subordo": Rank.suborder,
@@ -97,12 +91,10 @@ _RANKS = {
     "Superfamilia": Rank.superfamily,
     "Suprafamilia": Rank.superfamily,
     "Superfamily": Rank.superfamily,
-    "Clade": 43,  # Hack to allow for Eumuroida and Spalacodonta
     "Familia": Rank.family,
     "Family": Rank.family,
     "Subfamilia": Rank.subfamily,
     "Subfamily": Rank.subfamily,
-    "Infrafamily": 34,
     "Tribus": Rank.tribe,
     "Tribe": Rank.tribe,
     "Subtribus": Rank.subtribe,
@@ -147,7 +139,7 @@ def suffix_of_rank(rank: Rank) -> str:
 
 def rank_of_string(s: str) -> Rank:
     try:
-        return _RANKS[s]  # type: ignore
+        return _RANKS[s]
     except KeyError:
         raise ValueError(f"Unknown rank: {s}") from None
 

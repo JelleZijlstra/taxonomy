@@ -1275,7 +1275,7 @@ def write_to_db(
                     )
                 else:
                     nam.add_tag(
-                        models.STATUS_TO_TAG[name["variant_kind"]](
+                        models.name.CONSTRUCTABLE_STATUS_TO_TAG[name["variant_kind"]](
                             name=name["variant_target"], comment=comment
                         )
                     )

@@ -131,12 +131,12 @@ def menu(
         ):
             if new_cmd in process:
                 if not process[new_cmd](new_cmd, data):
-                    break
+                    return new_cmd, data
             else:
-                break
+                return new_cmd, data
         else:
             print(f"Invalid value {cmd}")
-    return new_cmd, data
+    assert False, "should never get here"
 
 
 def get_line(

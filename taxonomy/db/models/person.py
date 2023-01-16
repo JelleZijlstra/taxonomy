@@ -276,7 +276,11 @@ class Person(BaseModel):
         if tags is None:
             return 0, None
         for i, tag in enumerate(tags):
-            if isinstance(tag, tag_cls) and tag.person == self:
+            if (
+                isinstance(tag, tag_cls)
+                and hasattr(tag, "person")
+                and tag.person == self
+            ):
                 return i, tag
         return 0, None
 

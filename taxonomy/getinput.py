@@ -11,7 +11,7 @@ import re
 import shutil
 import subprocess
 import sys
-from typing import Any, TypeVar, Union
+from typing import Any, TypeVar, Union, Literal
 from typing_extensions import overload
 from collections.abc import Callable, Iterator, Iterable, Mapping, Sequence
 
@@ -99,6 +99,7 @@ def get_line(
             # TODO: Does this work? Do we need a replacement?
             history.strings = [""]
         return line
+    assert False, "should never get here"
 
 
 def yes_no(
@@ -247,32 +248,31 @@ def get_with_completion(
 EnumT = TypeVar("EnumT", bound=enum.Enum)
 
 
-# return type is not Optional; this is not strictly true because the user could pass in
-# allow_empty=True, but it is good enough until we have literal types.
 @overload
 def get_enum_member(
     enum_cls: type[EnumT],
     prompt: str = "> ",
     *,
     default: EnumT | None = None,
-    allow_empty: bool,
+    allow_empty: Literal[False],
     callbacks: CallbackMap = {},
 ) -> EnumT:
-    ...  # noqa
+    raise NotImplementedError
 
 
-@overload  # noqa
+@overload
 def get_enum_member(
     enum_cls: type[EnumT],
     prompt: str = "> ",
     *,
     default: EnumT | None = None,
+    allow_empty: bool = ...,
     callbacks: CallbackMap = {},
 ) -> EnumT | None:
-    ...  # noqa
+    raise NotImplementedError
 
 
-def get_enum_member(  # noqa
+def get_enum_member(
     enum_cls: type[EnumT],
     prompt: str = "> ",
     *,
@@ -390,6 +390,7 @@ def get_adt_list(
             print(f"unrecognized command: {member}")
         if set_existing is not None:
             set_existing(out)
+    assert False, "should never get here"
 
 
 def display_tags(

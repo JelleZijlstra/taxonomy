@@ -3,7 +3,7 @@ import enum
 import functools
 import operator
 import sys
-from typing import TYPE_CHECKING, Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar, Literal
 from collections.abc import Callable, Iterable, Iterator, MutableMapping
 
 BASIC_TYPES: tuple[type[Any], ...] = (int, str, float, bool, list)
@@ -178,7 +178,6 @@ class _ADTMeta(type):
             member_cls: Any = functools.total_ordering(
                 type(member.name, (new_cls,), member_ns)
             )
-            constructors.append(member_cls)
             if not has_args:
                 cls_obj = member_cls
                 member_cls = cls_obj()
@@ -190,6 +189,7 @@ class _ADTMeta(type):
                     return __init__
 
                 cls_obj.__init__ = make_init(member_cls)
+            constructors.append(Literal[member_cls])
             new_cls._tag_to_member[member.tag] = member_cls  # type: ignore
             setattr(new_cls, member.name, member_cls)
         if constructors:

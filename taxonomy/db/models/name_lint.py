@@ -22,11 +22,12 @@ from .. import helpers
 from ... import adt, getinput
 
 T = TypeVar("T")
+ADTT = TypeVar("ADTT", bound=adt.ADT)
 
 Linter = Callable[[Name, bool], Iterable[str]]
 
 
-def replace_arg(tag: adt.ADT, arg: str, val: object) -> adt.ADT:
+def replace_arg(tag: ADTT, arg: str, val: object) -> ADTT:
     kwargs = {**tag.__dict__, arg: val}
     return type(tag)(**kwargs)
 

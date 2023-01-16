@@ -707,7 +707,8 @@ class Article(BaseModel):
 
     def getIdentifier(self, identifier: builtins.type[adt.ADT]) -> str | None:
         for tag in self.get_tags(self.tags, identifier):
-            return tag.text
+            if hasattr(tag, "text"):
+                return tag.text
         return None
 
     def getEnclosing(self: T) -> T | None:

@@ -29,7 +29,6 @@ __all__ = [
     "SpeciesNameComplex",
     "SpeciesNameEnding",
     "Specimen",
-    "STATUS_TO_TAG",
     "StratigraphicUnit",
     "tags",
     "Taxon",
@@ -49,7 +48,6 @@ from .name import (
     NameComment as NameComment,
     TypeTag as TypeTag,
     NameTag as NameTag,
-    STATUS_TO_TAG as STATUS_TO_TAG,
     has_data_from_original as has_data_from_original,
 )
 from .name_complex import (

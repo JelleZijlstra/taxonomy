@@ -6,7 +6,7 @@ import json
 import re
 import sys
 import time
-from typing import Any, IO
+from typing import Any, IO, TYPE_CHECKING, TypeAlias
 from collections.abc import Callable, Iterable, Sequence
 
 from peewee import CharField, ForeignKeyField, IntegerField, TextField
@@ -637,7 +637,7 @@ class Name(BaseModel):
                             completer = get_str_completer(Name, "type_specimen")
                         else:
                             completer = None
-                        if completer is not None:
+                        if completer is not None and isinstance(tag, type):
                             completers[(tag, attribute)] = completer
                 return completers
         return {}
@@ -696,7 +696,7 @@ class Name(BaseModel):
         else:
             return json.loads(self.data)
 
-    def get_tag_target(self, tag_cls: builtins.type[adt.ADT]) -> Name | None:
+    def get_tag_target(self, tag_cls: Tag._Constructor) -> Name | None:  # type: ignore
         tags = self.tags
         if tags:
             for tag in tags:
@@ -704,21 +704,21 @@ class Name(BaseModel):
                     return tag.name
         return None
 
-    def add_tag(self, tag: adt.ADT) -> None:
+    def add_tag(self, tag: NameTag) -> None:
         tags = self.tags
         if tags is None:
             self.tags = [tag]
         else:
             self.tags = tags + (tag,)
 
-    def add_type_tag(self, tag: adt.ADT) -> None:
+    def add_type_tag(self, tag: TypeTag) -> None:
         type_tags = self.type_tags
         if type_tags is None:
             self.type_tags = [tag]
         else:
             self.type_tags = type_tags + (tag,)
 
-    def has_type_tag(self, tag_cls: builtins.type[adt.ADT]) -> bool:
+    def has_type_tag(self, tag_cls: TypeTagCons) -> bool:
         tag_id = tag_cls._tag
         for tag in self.get_raw_tags_field("type_tags"):
             if tag[0] == tag_id:
@@ -758,6 +758,8 @@ class Name(BaseModel):
     def replace_original_citation(self, new_citation: Article | None = None) -> None:
         if new_citation is None:
             new_citation = Article.get_one_by("name", allow_empty=False)
+        if new_citation is None:
+            return
         existing = self.original_citation
 
         def map_fn(tag: TypeTag) -> TypeTag:
@@ -915,7 +917,9 @@ class Name(BaseModel):
             of_name = Name.getter("corrected_original_name").get_one(prompt="of_name> ")
         if of_name is None:
             return
-        self.add_tag(STATUS_TO_TAG[status](name=of_name, comment=comment))
+        self.add_tag(
+            CONSTRUCTABLE_STATUS_TO_TAG[status](name=of_name, comment=comment or "")
+        )
         self.nomenclature_status = status  # type: ignore
 
     def add_variant(
@@ -950,7 +954,7 @@ class Name(BaseModel):
                 original_name=original_name,
                 interactive=False,
             )
-        tag_cls = STATUS_TO_TAG[status]
+        tag_cls = CONSTRUCTABLE_STATUS_TO_TAG[status]
         nam.page_described = page_described
         nam.add_tag(tag_cls(self, ""))
         if interactive:
@@ -964,14 +968,14 @@ class Name(BaseModel):
             name = Name.getter("corrected_original_name").get_one(prompt="name> ")
         if name is None:
             return
-        self.add_tag(NameTag.PreoccupiedBy(name, comment))
+        self.add_tag(NameTag.PreoccupiedBy(name, comment or ""))
         if self.nomenclature_status == NomenclatureStatus.available:
             self.nomenclature_status = NomenclatureStatus.preoccupied  # type: ignore
         else:
             print(f"not changing status because it is {self.nomenclature_status}")
 
-    def conserve(self, opinion: str, comment: str | None = None) -> None:
-        self.add_tag(NameTag.Conserved(opinion, comment))
+    def conserve(self, opinion: Article, comment: str | None = None) -> None:
+        self.add_tag(NameTag.Conserved(opinion, comment or ""))
 
     @classmethod
     def infer_author_tags(cls, authority: str) -> list[AuthorTag] | None:
@@ -985,14 +989,15 @@ class Name(BaseModel):
         else:
             authors = re.split(r", | & ", re.sub(r"et al\.$", "", authority))
             params_by_name = [cls._author_to_person(author) for author in authors]
-        if all(params_by_name):
-            print(f"Authors: {authority!r} -> {params_by_name}")
-            return [
+        tags = []
+        for params in params_by_name:
+            if params is None:
+                return None
+            tags.append(
                 AuthorTag.Author(person=Person.get_or_create_unchecked(**params))
-                for params in params_by_name
-            ]
-        else:
-            return None
+            )
+        print(f"Authors: {authority!r} -> {params_by_name}")
+        return tags
 
     @staticmethod
     def _author_to_person(author: str) -> dict[str, str] | None:
@@ -1263,6 +1268,7 @@ class Name(BaseModel):
             if len(group) >= 2:
                 new_tag = group[1]
                 print(f"Adding tag: {new_tag!r}")
+                assert isinstance(new_tag, TypeTag)
                 self.add_type_tag(new_tag)
 
     def fill_data_level(self) -> tuple[FillDataLevel, str]:
@@ -1281,9 +1287,13 @@ class Name(BaseModel):
         required_derived_tags = list(self.get_required_derived_tags())
         missing_derived_tags = list(self.get_missing_tags(required_derived_tags))
 
-        def tag_list(tags: Iterable[tuple[TypeTag, ...]]) -> str:
+        def tag_list(tags: Iterable[tuple[TypeTagCons, ...]]) -> str:
             # display only the first one in the group; no need to mention NoEtymology c.s.
-            return f"missing {', '.join(group[0].__name__ for group in tags)}"
+            firsts = [group[0] for group in tags]
+            return (
+                "missing"
+                f" {', '.join(first.__name__ if hasattr(first, '__name__') else repr(first) for first in firsts)}"
+            )
 
         if has_data_from_original(self):
             crucial_missing = _CRUCIAL_MISSING_FIELDS[self.group] & missing_fields
@@ -1330,7 +1340,7 @@ class Name(BaseModel):
             else:
                 return (FillDataLevel.nothing_needed, "")
 
-    def has_tag_from_source(self, tag_cls: TypeTag, source: Article) -> bool:
+    def has_tag_from_source(self, tag_cls: TypeTagCons, source: Article) -> bool:
         tag_id = tag_cls._tag
         for tag in self.get_raw_tags_field("type_tags"):
             if tag[0] == tag_id and tag[2] == source.id:
@@ -1352,7 +1362,7 @@ class Name(BaseModel):
         else:
             return False
 
-    def get_required_details_tags(self) -> Iterable[tuple[TypeTag, TypeTag]]:
+    def get_required_details_tags(self) -> Iterable[tuple[TypeTagCons, TypeTagCons]]:
         if self.requires_etymology():
             yield (TypeTag.EtymologyDetail, TypeTag.NoEtymology)
         if (
@@ -1363,7 +1373,7 @@ class Name(BaseModel):
             yield (TypeTag.LocationDetail, TypeTag.NoLocation)
             yield (TypeTag.SpecimenDetail, TypeTag.NoSpecimen)
 
-    def get_required_derived_tags(self) -> Iterable[tuple[TypeTag, ...]]:
+    def get_required_derived_tags(self) -> Iterable[tuple[TypeTagCons, ...]]:
         if self.group is Group.species:
             if self.collection and self.collection.id == 366:  # multiple
                 yield (TypeTag.Repository,)
@@ -1390,8 +1400,8 @@ class Name(BaseModel):
             yield (TypeTag.TextualOriginalRank,)
 
     def get_missing_tags(
-        self, required_tags: Iterable[tuple[TypeTag, ...]]
-    ) -> Iterable[tuple[TypeTag, ...]]:
+        self, required_tags: Iterable[tuple[TypeTagCons, ...]]
+    ) -> Iterable[tuple[TypeTagCons, ...]]:
         for group in required_tags:
             if not any(self.has_type_tag(tag) for tag in group):
                 yield group
@@ -2075,9 +2085,8 @@ class NameTag(adt.ADT):
     AsEmendedBy(name=Name, comment=str, tag=21)  # type: ignore
 
 
-STATUS_TO_TAG = {
+CONSTRUCTABLE_STATUS_TO_TAG = {
     NomenclatureStatus.unjustified_emendation: NameTag.UnjustifiedEmendationOf,
-    NomenclatureStatus.justified_emendation: NameTag.JustifiedEmendationOf,
     NomenclatureStatus.incorrect_subsequent_spelling: NameTag.IncorrectSubsequentSpellingOf,
     NomenclatureStatus.variant: NameTag.VariantOf,
     NomenclatureStatus.mandatory_change: NameTag.MandatoryChangeOf,
@@ -2085,6 +2094,10 @@ STATUS_TO_TAG = {
     NomenclatureStatus.incorrect_original_spelling: NameTag.IncorrectOriginalSpellingOf,
     NomenclatureStatus.subsequent_usage: NameTag.SubsequentUsageOf,
     NomenclatureStatus.preoccupied: NameTag.PreoccupiedBy,
+}
+STATUS_TO_TAG = {
+    **CONSTRUCTABLE_STATUS_TO_TAG,
+    NomenclatureStatus.justified_emendation: NameTag.JustifiedEmendationOf,
 }
 
 
@@ -2168,6 +2181,11 @@ SOURCE_TAGS = (
     TypeTag.DefinitionDetail,
     TypeTag.TypeSpeciesDetail,
 )
+
+if TYPE_CHECKING:
+    TypeTagCons: TypeAlias = Any
+else:
+    TypeTagCons = TypeTag._Constructors
 
 
 def write_names(

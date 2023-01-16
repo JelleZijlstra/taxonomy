@@ -59,6 +59,7 @@ class LoggingDatabase(SqliteDatabase):
 database = LoggingDatabase(str(settings.db_filename))
 
 
+ADTT = TypeVar("ADTT", bound=adt.ADT)
 ModelT = TypeVar("ModelT", bound="BaseModel")
 Linter = Callable[[ModelT, bool], Iterable[str]]
 _getters: dict[tuple[type[Model], str | None], "_NameGetter[Any]"] = {}
@@ -440,6 +441,7 @@ class BaseModel(Model):
     def __lt__(self, other: object) -> bool:
         if not isinstance(other, type(self)):
             return NotImplemented
+        assert isinstance(other, BaseModel)
         return self.id < other.id
 
     def __del__(self) -> None:
@@ -928,6 +930,7 @@ class BaseModel(Model):
                         continue
                     else:
                         return None
+        assert False, "should never get here"
 
     def fill_field(self, field: str) -> None:
         setattr(self, field, self.get_value_for_field(field))
@@ -970,8 +973,8 @@ class BaseModel(Model):
         return edited_any
 
     def get_tags(
-        self, tags: Sequence[adt.ADT] | None, tag_cls: type[adt.ADT]
-    ) -> Iterable[adt.ADT]:
+        self, tags: Sequence[adt.ADT] | None, tag_cls: type[ADTT]
+    ) -> Iterable[ADTT]:
         if tags is None:
             return
         for tag in tags:
@@ -1013,6 +1016,7 @@ class _EnumFieldDescriptor(FieldAccessor, Generic[EnumT]):
 
     def __set__(self, instance: Any, value: int | EnumT) -> None:
         if isinstance(value, self.enum_cls):
+            assert isinstance(value, enum.Enum)
             value = value.value
         super().__set__(instance, value)
 
@@ -1215,6 +1219,7 @@ class _NameGetter(Generic[ModelT]):
             except self.cls.DoesNotExist:
                 print(f"{key!r} does not exist")
                 continue
+        assert False, "should never get here"
 
     def _get_data(self) -> set[str]:
         self._warm_cache()
