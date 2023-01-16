@@ -1,6 +1,7 @@
 import re
 import sys
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
+from collections.abc import Iterable
 
 from taxonomy.db import constants
 
@@ -22,12 +23,12 @@ CS_RGX = re.compile(
 )
 
 
-def extract_names(pages: Iterable[Tuple[int, List[str]]]) -> DataT:
+def extract_names(pages: Iterable[tuple[int, list[str]]]) -> DataT:
     """Extracts names from the text, as dictionaries."""
     found_first = False
-    current_name: Optional[Dict[str, Any]] = None
-    current_label: Optional[str] = None
-    current_lines: List[str] = []
+    current_name: dict[str, Any] | None = None
+    current_label: str | None = None
+    current_lines: list[str] = []
     in_headings = True
 
     def start_label(label: str, line: str) -> None:
@@ -220,7 +221,7 @@ def translate_type_localities(names: DataT) -> DataT:
             text = name["loc"].rstrip(".")
             text = re.sub(r"\[.*?: ([^\]]+)\]", r"\1", text)
             text = text.replace("[", "").replace("]", "")
-            parts: List[List[str]] = [
+            parts: list[list[str]] = [
                 list(filter(None, re.split(r"[()]", part))) for part in text.split(", ")
             ]
             type_loc = lib.extract_region(list(reversed(parts)))

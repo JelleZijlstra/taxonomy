@@ -1,5 +1,6 @@
 import re
-from typing import Iterable, List, Tuple
+from typing import List, Tuple
+from collections.abc import Iterable
 
 from taxonomy.db.constants import NomenclatureStatus
 
@@ -16,10 +17,10 @@ SPLIT_REGEXES = [
 ]
 
 
-def extract_pages(lines: Iterable[str]) -> Iterable[Tuple[int, List[str]]]:
+def extract_pages(lines: Iterable[str]) -> Iterable[tuple[int, list[str]]]:
     """Split the text into pages."""
     current_page = 0
-    current_lines: List[str] = []
+    current_lines: list[str] = []
     for line in lines:
         if line.startswith("\x0c"):
             yield current_page, current_lines
@@ -34,7 +35,7 @@ def extract_pages(lines: Iterable[str]) -> Iterable[Tuple[int, List[str]]]:
 
 
 def extract_names(pages: PagesT) -> DataT:
-    current_name: List[str] = []
+    current_name: list[str] = []
     start_page = 0
     for page, lines in pages:
         for line in lines:

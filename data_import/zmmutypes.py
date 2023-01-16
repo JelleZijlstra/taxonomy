@@ -1,7 +1,8 @@
 import copy
 import re
 import unicodedata
-from typing import Any, Dict, Iterable, List, Tuple
+from typing import Any, Dict, List, Tuple
+from collections.abc import Iterable
 
 from taxonomy.db import constants, models
 
@@ -40,7 +41,7 @@ KEY_TO_KIND = {
 }
 
 
-def make_translation_table() -> Dict[str, str]:
+def make_translation_table() -> dict[str, str]:
     out = {}
     with open("data_import/data/zmmu-transcribe.txt") as f:
         for line in f:
@@ -57,9 +58,9 @@ def translate_chars(lines: Iterable[str]) -> Iterable[str]:
         yield line.translate(table)
 
 
-def extract_pages(lines: Iterable[str]) -> Iterable[List[str]]:
+def extract_pages(lines: Iterable[str]) -> Iterable[list[str]]:
     """Split the text into pages."""
-    current_lines: List[str] = []
+    current_lines: list[str] = []
     for line in lines:
         if line.startswith("\x0c"):
             yield current_lines
@@ -69,7 +70,7 @@ def extract_pages(lines: Iterable[str]) -> Iterable[List[str]]:
     yield current_lines
 
 
-def label_pages(pages: Iterable[List[str]]) -> PagesT:
+def label_pages(pages: Iterable[list[str]]) -> PagesT:
     for i, lines in enumerate(pages):
         if i < 164 or i > 240:
             continue  # Before mammal section
@@ -101,9 +102,9 @@ def align_columns(pages: PagesT) -> PagesT:
 
 
 def extract_names(pages: PagesT) -> DataT:
-    current_name: Dict[str, Any] = {}
-    current_section: Dict[str, Any] = {}
-    current_lines: List[str] = []
+    current_name: dict[str, Any] = {}
+    current_section: dict[str, Any] = {}
+    current_lines: list[str] = []
     current_label = ""
 
     def start_label(label: str, line: str) -> None:
@@ -164,7 +165,7 @@ def extract_names(pages: PagesT) -> DataT:
     yield current_name
 
 
-def extract_references(pages: PagesT) -> Iterable[List[str]]:
+def extract_references(pages: PagesT) -> Iterable[list[str]]:
     current_lines = []
     for _, lines in pages:
         for line in lines:
@@ -179,7 +180,7 @@ def extract_references(pages: PagesT) -> Iterable[List[str]]:
     yield current_lines
 
 
-def make_references_dict(refs: Iterable[List[str]]) -> Dict[Tuple[str, str], str]:
+def make_references_dict(refs: Iterable[list[str]]) -> dict[tuple[str, str], str]:
     out = {}
     for ref in refs:
         text = lib.clean_line_list(ref)
@@ -194,7 +195,7 @@ def make_references_dict(refs: Iterable[List[str]]) -> Dict[Tuple[str, str], str
     return out
 
 
-def handle_specimen(data: Dict[str, Any]) -> Dict[str, Any]:
+def handle_specimen(data: dict[str, Any]) -> dict[str, Any]:
     detail = data[data["label"].split()[0]]
     match = re.match(r"^(\(\?\) )?(S-\d+) Пол: (\??m\.|f\.|\?,?) (.*)$", detail)
     if not match:
@@ -237,7 +238,7 @@ def handle_specimen(data: Dict[str, Any]) -> Dict[str, Any]:
     return data
 
 
-def split_fields(names: DataT, refs_dict: Dict[Tuple[str, str], str]) -> DataT:
+def split_fields(names: DataT, refs_dict: dict[tuple[str, str], str]) -> DataT:
     for name in names:
         name["raw_text"] = copy.deepcopy(name)
         match = NAME_LINE.match(name["name_line"].replace(" [sic!]", ""))

@@ -9,15 +9,13 @@ import functools
 import re
 from typing import (
     Any,
-    Callable,
     Dict,
-    Iterable,
     List,
     NamedTuple,
     Optional,
-    Sequence,
     Tuple,
 )
+from collections.abc import Callable, Iterable, Sequence
 
 import prompt_toolkit
 
@@ -41,7 +39,7 @@ class EndOfInput(Exception):
     pass
 
 
-def _default_valid_function(command: str, options: Dict[str, str]) -> bool:
+def _default_valid_function(command: str, options: dict[str, str]) -> bool:
     if options:
         return command in options
     else:
@@ -71,25 +69,25 @@ def menu(
     *,
     prompt: str = "> ",  # prompt to show to user
     headasprompt: bool = False,  # whether to use the heading as the prompt
-    options: Dict[str, str] = {},  # dictionary of option to description
-    helpinfo: Optional[str] = None,  # information to show when the user types help
+    options: dict[str, str] = {},  # dictionary of option to description
+    helpinfo: str | None = None,  # information to show when the user types help
     # Whether to make the help command available. (If set to true, commands beginning with "help"
     # will not get returned.)
     helpcommand: bool = True,
     # Function to determine validity of command
-    validfunction: Callable[[str, Dict[str, str]], bool] = _default_valid_function,
+    validfunction: Callable[[str, dict[str, str]], bool] = _default_valid_function,
     # Array of callbacks to execute when a given option is called. These function take the
     # command given and the data produced by processcommand as arguments and they should return
     # either true (indicating that menu should continue) or false (indicating that menu should
     # return).
-    process: Dict[str, Processor] = {},
+    process: dict[str, Processor] = {},
     # Function used to process the command after input. This function may take a second
     # reference argument of data that is given to processcommand or to the caller. This function
     # may return None if the command is invalid.
-    processcommand: Optional[Callable[[str], Tuple[Optional[str], Any]]] = None,
+    processcommand: Callable[[str], tuple[str | None, Any]] | None = None,
     initialtext: str = "",  # Initial text shown in the menu
     completions: Iterable[str] = (),  # Strings we should autocomplete
-) -> Tuple[str, Any]:
+) -> tuple[str, Any]:
     if not headasprompt:
         if head:
             print(head)
@@ -152,10 +150,10 @@ def get_line(
     message: str = "> ",
     *,
     default: str = "",
-    history: Optional[prompt_toolkit.history.History] = None,
-    options: Optional[Iterable[str]] = None,
+    history: prompt_toolkit.history.History | None = None,
+    options: Iterable[str] | None = None,
 ) -> str:
-    completer: Optional[_Completer]
+    completer: _Completer | None
     if options is not None:
         completer = _Completer(options)
     else:
@@ -205,7 +203,7 @@ def edittitle(
     print("Current title: " + existing_title)
 
     # function to create the internal title array
-    def make_split(title: str) -> List[str]:
+    def make_split(title: str) -> list[str]:
         split_title = title.split()
         for i, word in enumerate(split_title):
             print(f"{i}: {word}")
@@ -215,7 +213,7 @@ def edittitle(
     split_title = make_split(existing_title)
 
     # and another to convert it back into a good title
-    def unite(split_title: List[str]) -> str:
+    def unite(split_title: list[str]) -> str:
         return re.sub(r"\s+", " ", " ".join(split_title).strip())
 
     # smartly convert a word to lowercase
@@ -245,7 +243,7 @@ def edittitle(
 
         return handler
 
-    def processcommand(cmd: str) -> Tuple[Optional[str], Any]:
+    def processcommand(cmd: str) -> tuple[str | None, Any]:
         cmd = cmd.strip()
         if cmd.isalpha():
             return cmd, []
@@ -400,7 +398,7 @@ def edit_whole_title(new: str, *, save_handler: _SaveHandler) -> bool:
         "e": "Edit title",
     }
 
-    def processcommand(cmd: str) -> Tuple[Optional[str], Any]:
+    def processcommand(cmd: str) -> tuple[str | None, Any]:
         if cmd in options:
             return (cmd, None)
         else:
@@ -438,7 +436,7 @@ def edit_whole_title(new: str, *, save_handler: _SaveHandler) -> bool:
     return result in ("r", "b")
 
 
-@functools.lru_cache(maxsize=None)
+@functools.cache
 def _get_history(key: object) -> prompt_toolkit.history.InMemoryHistory:
     history = prompt_toolkit.history.InMemoryHistory()
     history.store_string("")

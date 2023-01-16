@@ -1,6 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
-from typing import Awaitable, Callable, Optional
+from typing import Optional
+from collections.abc import Awaitable, Callable
 
 from aiohttp import web
 from aiohttp_graphql import GraphQLView
@@ -10,7 +11,7 @@ from . import schema
 HESPEROMYS_ROOT = Path("/Users/jelle/py/hesperomys")
 
 
-@lru_cache()
+@lru_cache
 def get_static_file_contents(hesperomys_dir: Path, path: str) -> bytes:
     return (hesperomys_dir / "build" / path).read_bytes()
 
@@ -32,7 +33,7 @@ async def on_prepare(request: web.Request, response: web.Response) -> None:
     response.headers["Access-Control-Allow-Headers"] = "*"
 
 
-def make_app(build_root: Optional[str] = None) -> web.Application:
+def make_app(build_root: str | None = None) -> web.Application:
     if build_root is None:
         hesperomys_dir = HESPEROMYS_ROOT
     else:

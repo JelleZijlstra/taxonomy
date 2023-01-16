@@ -1,6 +1,7 @@
 import itertools
 import re
-from typing import Dict, Iterable, List, Tuple
+from typing import Dict, List, Tuple
+from collections.abc import Iterable
 
 from taxonomy.db import constants
 
@@ -8,12 +9,12 @@ from . import lib
 from .lib import DataT
 
 SOURCE = lib.Source("sam.txt", "South America.pdf")
-RefsDictT = Dict[Tuple[str, str], str]
+RefsDictT = dict[tuple[str, str], str]
 
 
-def extract_names(pages: Iterable[Tuple[int, List[str]]]) -> DataT:
-    current_lines: List[str] = []
-    current_pages: List[int] = []
+def extract_names(pages: Iterable[tuple[int, list[str]]]) -> DataT:
+    current_lines: list[str] = []
+    current_pages: list[int] = []
     in_synonymy = False
     found_references = False
     last_author = ""
@@ -181,7 +182,7 @@ def split_text(names: DataT) -> DataT:
 
 def split_name_authority(
     name_authority: str, *, try_harder: bool = False, quiet: bool = False
-) -> Dict[str, str]:
+) -> dict[str, str]:
     name_authority = re.sub(
         r"([A-Za-z][a-z]*)\[([a-z?]+( \([A-Z][a-z]+\))?)\]\.", r"\1\2", name_authority
     )

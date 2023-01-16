@@ -8,14 +8,11 @@ import time
 from typing import (
     cast,
     Dict,
-    Iterable,
-    Iterator,
-    Mapping,
     Optional,
-    Sequence,
     Tuple,
     TypeVar,
 )
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 import unicodedata
 import unidecode
 
@@ -171,7 +168,7 @@ def root_name_of_name(s: str, rank: Rank) -> str:
 
 
 def strip_rank(name: str, rank: Rank, quiet: bool = False) -> str:
-    def strip_of_suffix(name: str, suffix: str) -> Optional[str]:
+    def strip_of_suffix(name: str, suffix: str) -> str | None:
         if re.search(suffix + "$", name):
             return re.sub(suffix + "$", "", name)
         else:
@@ -221,7 +218,7 @@ _T1 = TypeVar("_T1")
 _T2 = TypeVar("_T2")
 
 
-def remove_null(d: Mapping[_T1, Optional[_T2]]) -> Dict[_T1, _T2]:
+def remove_null(d: Mapping[_T1, _T2 | None]) -> dict[_T1, _T2]:
     out = {}
     for k, v in d.items():
         if v is not None:
@@ -229,7 +226,7 @@ def remove_null(d: Mapping[_T1, Optional[_T2]]) -> Dict[_T1, _T2]:
     return out
 
 
-def fix_data(data: str) -> Optional[str]:
+def fix_data(data: str) -> str | None:
     if data:
         data = json.dumps(remove_null(json.loads(data)))
         if data == "{}":
@@ -279,7 +276,7 @@ def _canonicalize_gender(name: str) -> str:
         return name
 
 
-def standardize_date(date: str) -> Optional[str]:
+def standardize_date(date: str) -> str | None:
     """Fixes the format of date fields."""
     if date in ("unknown date", "on unknown date", "on an unknown date"):
         return None
@@ -399,7 +396,7 @@ def standardize_coordinates(text: str, *, is_latitude: bool) -> str:
     return text
 
 
-def extract_coordinates(text: str) -> Optional[Tuple[str, str]]:
+def extract_coordinates(text: str) -> tuple[str, str] | None:
     """Attempts to extract latitude and longitude from a location description."""
     match = LATLONG.search(text)
     if match:
@@ -594,7 +591,7 @@ def clean_strings_recursively(obj: T) -> T:
         return obj
 
 
-def to_int(string: Optional[str]) -> int:
+def to_int(string: str | None) -> int:
     """Convert a usually int-like string to a number, to be used as a sort key."""
     if string is None:
         return 0

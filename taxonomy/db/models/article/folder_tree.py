@@ -3,20 +3,18 @@
 from collections import defaultdict
 import re
 from typing import (
-    Callable,
-    Counter,
     Dict,
-    Iterable,
     List,
     NamedTuple,
     Optional,
-    Sequence,
     Set,
     Tuple,
 )
-from typing_extensions import Protocol
+from collections import Counter
+from collections.abc import Callable, Iterable, Sequence
+from typing import Protocol
 
-_ArticlePath = Tuple[str, ...]
+_ArticlePath = tuple[str, ...]
 _IGNORED_FIRST_WORDS = {
     "MS",
     "Mammalia",
@@ -34,7 +32,7 @@ class Entry(Protocol):
     def name(self) -> str:
         pass
 
-    def path_list(self) -> List[str]:
+    def path_list(self) -> list[str]:
         pass
 
 
@@ -59,12 +57,12 @@ def _get_name_key(article: Entry) -> str:
 
 
 class CountTreeNode:
-    entries: Set[str]  # maintain the names to deduplicate
-    children: Dict[str, "CountTreeNode"]
+    entries: set[str]  # maintain the names to deduplicate
+    children: dict[str, "CountTreeNode"]
     tree_size_data: TreeSizeData
 
     def __init__(self) -> None:
-        self.entries: Set[str] = set()
+        self.entries: set[str] = set()
         self.children = defaultdict(CountTreeNode)
 
     def get_tree(self, path: Sequence[str]) -> "CountTreeNode":
@@ -76,8 +74,8 @@ class CountTreeNode:
     def walk(
         self,
         *,
-        path: Tuple[str, ...] = (),
-        callback: Callable[["CountTreeNode", Tuple[str, ...]], None],
+        path: tuple[str, ...] = (),
+        callback: Callable[["CountTreeNode", tuple[str, ...]], None],
     ) -> None:
         callback(self, path)
         for name, child in sorted(self.children.items()):
@@ -85,10 +83,10 @@ class CountTreeNode:
 
     def display(
         self,
-        min_size: Optional[int] = None,
-        should_include: Optional[
+        min_size: int | None = None,
+        should_include: None | (
             Callable[["CountTreeNode", Sequence[str]], bool]
-        ] = None,
+        ) = None,
     ) -> None:
         self.collect_tree_size_data()
 
@@ -123,7 +121,7 @@ class CountTreeNode:
 
         self.walk(callback=callback)
 
-    def print_if_too_big(self, limit: int = 100) -> List[Sequence[str]]:
+    def print_if_too_big(self, limit: int = 100) -> list[Sequence[str]]:
         oversized = []
 
         def callback(node: CountTreeNode, path: Sequence[str]) -> None:
@@ -145,8 +143,8 @@ class CountTreeNode:
         self.tree_size_data = TreeSizeData(count, max_path_length)
         return self.tree_size_data
 
-    def get_all_dirs(self) -> Dict[str, List[_ArticlePath]]:
-        result: Dict[str, List[_ArticlePath]] = defaultdict(list)
+    def get_all_dirs(self) -> dict[str, list[_ArticlePath]]:
+        result: dict[str, list[_ArticlePath]] = defaultdict(list)
         for child, child_tree in self.children.items():
             result[child].append((child,))
             child_dirs = child_tree.get_all_dirs()
@@ -157,8 +155,8 @@ class CountTreeNode:
 
 
 class FolderTree:
-    full_path_suggestions: Dict[str, Dict[_ArticlePath, Set[str]]]
-    folder_name_occurrences: Dict[str, Set[_ArticlePath]]
+    full_path_suggestions: dict[str, dict[_ArticlePath, set[str]]]
+    folder_name_occurrences: dict[str, set[_ArticlePath]]
     count_tree: CountTreeNode
 
     def __init__(self, articles: Iterable[Entry] = ()) -> None:

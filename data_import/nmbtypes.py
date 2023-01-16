@@ -1,5 +1,6 @@
 import re
-from typing import Any, Dict, Iterable, List
+from typing import Any, Dict, List
+from collections.abc import Iterable
 
 from taxonomy.db import constants
 
@@ -11,8 +12,8 @@ MARKER = "==="
 
 
 def extract_names(lines: Iterable[str]) -> DataT:
-    current_name: Dict[str, Any] = {}
-    current_lines: List[str] = []
+    current_name: dict[str, Any] = {}
+    current_lines: list[str] = []
 
     def start_label(label: str, line: str) -> None:
         nonlocal current_lines

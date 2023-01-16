@@ -1,5 +1,6 @@
 import re
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
+from collections.abc import Iterable
 
 from taxonomy.db import constants, models
 
@@ -9,11 +10,11 @@ from .lib import DataT
 SOURCE = lib.Source("kansastypes.txt", "Kansas-mammal types.pdf")
 
 
-def extract_names(pages: Iterable[Tuple[int, List[str]]]) -> DataT:
+def extract_names(pages: Iterable[tuple[int, list[str]]]) -> DataT:
     """Extracts names from the text, as dictionaries."""
-    current_name: Optional[Dict[str, Any]] = None
-    current_label: Optional[str] = None
-    current_lines: List[str] = []
+    current_name: dict[str, Any] | None = None
+    current_label: str | None = None
+    current_lines: list[str] = []
 
     def start_label(label: str, line: str) -> None:
         nonlocal current_label, current_lines

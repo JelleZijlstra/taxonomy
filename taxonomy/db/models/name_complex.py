@@ -1,4 +1,5 @@
-from typing import Any, Iterable, List, Optional, IO
+from typing import Any, List, Optional, IO
+from collections.abc import Iterable
 import sys
 
 import peewee
@@ -39,7 +40,7 @@ class SpeciesNameComplex(BaseModel):
     neuter_ending = CharField()
     comment = CharField(null=True)
 
-    class Meta(object):
+    class Meta:
         db_table = "species_name_complex"
 
     def __repr__(self) -> str:
@@ -81,7 +82,7 @@ class SpeciesNameComplex(BaseModel):
                 tag_classes=(models.name.TypeTag.EtymologyDetail,),
             )
 
-    def self_apply(self, dry_run: bool = True) -> List["models.Name"]:
+    def self_apply(self, dry_run: bool = True) -> list["models.Name"]:
         return self.apply_to_ending(self.label, dry_run=dry_run)
 
     def apply_to_ending(
@@ -90,7 +91,7 @@ class SpeciesNameComplex(BaseModel):
         dry_run: bool = True,
         interactive: bool = False,
         full_name_only: bool = True,
-    ) -> List["models.Name"]:
+    ) -> list["models.Name"]:
         """Adds the name complex to all names with a specific ending."""
         names = [
             name
@@ -157,11 +158,11 @@ class SpeciesNameComplex(BaseModel):
         else:
             yield name
 
-    def get_names(self) -> List["models.Name"]:
+    def get_names(self) -> list["models.Name"]:
         return list(self.names)
 
     def make_ending(
-        self, ending: str, comment: Optional[str] = "", full_name_only: bool = False
+        self, ending: str, comment: str | None = "", full_name_only: bool = False
     ) -> "SpeciesNameEnding":
         return SpeciesNameEnding.get_or_create(
             name_complex=self,
@@ -185,9 +186,9 @@ class SpeciesNameComplex(BaseModel):
         cls,
         label: str,
         *,
-        stem: Optional[str] = None,
+        stem: str | None = None,
         kind: SpeciesNameKind,
-        comment: Optional[str] = None,
+        comment: str | None = None,
         masculine_ending: str = "",
         feminine_ending: str = "",
         neuter_ending: str = "",
@@ -207,9 +208,9 @@ class SpeciesNameComplex(BaseModel):
         cls,
         label: str,
         *,
-        stem: Optional[str] = None,
+        stem: str | None = None,
         kind: SpeciesNameKind,
-        comment: Optional[str] = None,
+        comment: str | None = None,
         masculine_ending: str = "",
         feminine_ending: str = "",
         neuter_ending: str = "",
@@ -243,7 +244,7 @@ class SpeciesNameComplex(BaseModel):
 
     @classmethod
     def ambiguous(
-        cls, stem: str, comment: Optional[str] = None
+        cls, stem: str, comment: str | None = None
     ) -> "SpeciesNameComplex":
         """For groups of names that are ambiguously nouns in apposition (Art. 31.2.2).
         """
@@ -255,7 +256,7 @@ class SpeciesNameComplex(BaseModel):
     def adjective(
         cls,
         stem: str,
-        comment: Optional[str],
+        comment: str | None,
         masculine_ending: str,
         feminine_ending: str,
         neuter_ending: str,
@@ -277,19 +278,19 @@ class SpeciesNameComplex(BaseModel):
 
     @classmethod
     def first_declension(
-        cls, stem: str, auto_apply: bool = False, comment: Optional[str] = None
+        cls, stem: str, auto_apply: bool = False, comment: str | None = None
     ) -> "SpeciesNameComplex":
         return cls.adjective(stem, comment, "us", "a", "um", auto_apply=auto_apply)
 
     @classmethod
     def third_declension(
-        cls, stem: str, auto_apply: bool = False, comment: Optional[str] = None
+        cls, stem: str, auto_apply: bool = False, comment: str | None = None
     ) -> "SpeciesNameComplex":
         return cls.adjective(stem, comment, "is", "is", "e", auto_apply=auto_apply)
 
     @classmethod
     def invariant(
-        cls, stem: str, auto_apply: bool = False, comment: Optional[str] = None
+        cls, stem: str, auto_apply: bool = False, comment: str | None = None
     ) -> "SpeciesNameComplex":
         return cls.adjective(stem, comment, "", "", "", auto_apply=auto_apply)
 
@@ -363,7 +364,7 @@ class NameComplex(BaseModel):
     stem_remove = CharField(null=False)
     stem_add = CharField(null=False)
 
-    class Meta(object):
+    class Meta:
         db_table = "name_complex"
 
     def __repr__(self) -> str:
@@ -401,10 +402,10 @@ class NameComplex(BaseModel):
                 tag_classes=(models.name.TypeTag.EtymologyDetail,),
             )
 
-    def self_apply(self, dry_run: bool = True) -> List["models.Name"]:
+    def self_apply(self, dry_run: bool = True) -> list["models.Name"]:
         return self.apply_to_ending(self.label, dry_run=dry_run)
 
-    def apply_to_ending(self, ending: str, dry_run: bool = True) -> List["models.Name"]:
+    def apply_to_ending(self, ending: str, dry_run: bool = True) -> list["models.Name"]:
         """Adds the name complex to all names with a specific ending."""
         names = [
             name
@@ -436,10 +437,10 @@ class NameComplex(BaseModel):
             name = name[: -len(stem_remove)]
         return name + self.get_stem_add()
 
-    def make_ending(self, ending: str, comment: Optional[str] = "") -> "NameEnding":
+    def make_ending(self, ending: str, comment: str | None = "") -> "NameEnding":
         return NameEnding.create(name_complex=self, ending=ending, comment=comment)
 
-    def get_names(self) -> List["models.Name"]:
+    def get_names(self) -> list["models.Name"]:
         return list(self.names)
 
     @classmethod
@@ -447,11 +448,11 @@ class NameComplex(BaseModel):
         cls,
         label: str,
         *,
-        stem: Optional[str] = None,
+        stem: str | None = None,
         source_language: SourceLanguage = SourceLanguage.other,
         code_article: GenderArticle,
         gender: GrammaticalGender,
-        comment: Optional[str] = None,
+        comment: str | None = None,
         stem_remove: str = "",
         stem_add: str = "",
     ) -> "NameComplex":
@@ -471,11 +472,11 @@ class NameComplex(BaseModel):
         cls,
         label: str,
         *,
-        stem: Optional[str] = None,
+        stem: str | None = None,
         source_language: SourceLanguage,
         code_article: GenderArticle,
         gender: GrammaticalGender,
-        comment: Optional[str] = None,
+        comment: str | None = None,
         stem_remove: str = "",
         stem_add: str = "",
     ) -> "NameComplex":
@@ -512,7 +513,7 @@ class NameComplex(BaseModel):
         cls,
         stem: str,
         gender: GrammaticalGender,
-        comment: Optional[str] = None,
+        comment: str | None = None,
         stem_remove: str = "",
         stem_add: str = "",
     ) -> "NameComplex":
@@ -533,7 +534,7 @@ class NameComplex(BaseModel):
         cls,
         stem: str,
         gender: GrammaticalGender,
-        comment: Optional[str] = None,
+        comment: str | None = None,
         stem_remove: str = "",
         stem_add: str = "",
     ) -> "NameComplex":
@@ -555,7 +556,7 @@ class NameComplex(BaseModel):
         cls,
         stem: str,
         gender: GrammaticalGender,
-        comment: Optional[str] = None,
+        comment: str | None = None,
         stem_remove: str = "",
         stem_add: str = "",
     ) -> "NameComplex":
@@ -576,7 +577,7 @@ class NameComplex(BaseModel):
         cls,
         stem: str,
         gender: GrammaticalGender,
-        comment: Optional[str] = None,
+        comment: str | None = None,
         stem_remove: str = "",
         stem_add: str = "",
     ) -> "NameComplex":
@@ -598,7 +599,7 @@ class NameComplex(BaseModel):
         cls,
         stem: str,
         gender: GrammaticalGender,
-        comment: Optional[str] = None,
+        comment: str | None = None,
         stem_remove: str = "",
         stem_add: str = "",
     ) -> "NameComplex":
@@ -619,7 +620,7 @@ class NameComplex(BaseModel):
         cls,
         stem: str,
         gender: GrammaticalGender = GrammaticalGender.masculine,
-        comment: Optional[str] = None,
+        comment: str | None = None,
         stem_remove: str = "",
         stem_add: str = "",
     ) -> "NameComplex":
@@ -640,7 +641,7 @@ class NameComplex(BaseModel):
         cls,
         stem: str,
         gender: GrammaticalGender = GrammaticalGender.masculine,
-        comment: Optional[str] = None,
+        comment: str | None = None,
     ) -> "NameComplex":
         """Names ending in -oides and a few other endings default to masculine unless the author treated it otherwise.
         """
@@ -666,7 +667,7 @@ class NameComplex(BaseModel):
         cls,
         stem: str,
         gender: GrammaticalGender,
-        comment: Optional[str] = None,
+        comment: str | None = None,
         stem_remove: str = "",
         stem_add: str = "",
     ) -> "NameComplex":
@@ -900,7 +901,7 @@ class NameEnding(BaseModel):
     ending = CharField()
     comment = CharField()
 
-    class Meta(object):
+    class Meta:
         db_table = "name_ending"
 
 
@@ -917,7 +918,7 @@ class SpeciesNameEnding(BaseModel):
     comment = CharField()
     full_name_only = BooleanField(default=False)
 
-    class Meta(object):
+    class Meta:
         db_table = "species_name_ending"
 
     @classmethod
@@ -925,7 +926,7 @@ class SpeciesNameEnding(BaseModel):
         cls,
         name_complex: SpeciesNameComplex,
         ending: str,
-        comment: Optional[str] = None,
+        comment: str | None = None,
         full_name_only: bool = False,
     ) -> "SpeciesNameEnding":
         try:

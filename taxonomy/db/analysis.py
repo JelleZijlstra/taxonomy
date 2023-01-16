@@ -5,15 +5,17 @@ Module for high-level analysis of the database.
 """
 
 import collections
-from typing import Counter, Dict, Iterable, Optional, Sequence
+from typing import Dict, Optional
+from collections import Counter
+from collections.abc import Iterable, Sequence
 
 from . import constants, models
 from .models import CitationGroup, Taxon
 
 
-class _SuffixTree(object):
+class _SuffixTree:
     def __init__(self, names: Iterable[str] = ()) -> None:
-        self.dictionary: Dict[str, _SuffixTree] = collections.defaultdict(_SuffixTree)
+        self.dictionary: dict[str, _SuffixTree] = collections.defaultdict(_SuffixTree)
         self.count = 0
         for name in names:
             self._add(list(reversed(name)))
@@ -29,8 +31,8 @@ class _SuffixTree(object):
         self,
         max_depth: int = 1,
         depth: int = 0,
-        most_common: Optional[int] = None,
-        min_count: Optional[int] = None,
+        most_common: int | None = None,
+        min_count: int | None = None,
     ) -> None:
         print(self.count)
         if max_depth == 0:
@@ -70,9 +72,9 @@ def genus_suffix_tree(no_complex_only: bool = False) -> _SuffixTree:
 
 
 def count_citation_groups(
-    taxon: Taxon, age: Optional[constants.AgeClass] = None
-) -> Counter[Optional[CitationGroup]]:
-    counts: Counter[Optional[CitationGroup]] = Counter()
+    taxon: Taxon, age: constants.AgeClass | None = None
+) -> Counter[CitationGroup | None]:
+    counts: Counter[CitationGroup | None] = Counter()
     for nam in taxon.all_names(age=age):
         if nam.citation_group is not None:
             counts[nam.citation_group] += 1

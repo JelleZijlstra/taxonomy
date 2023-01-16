@@ -1,7 +1,8 @@
 import csv
 import functools
 import re
-from typing import Dict, Iterable
+from typing import Dict
+from collections.abc import Iterable
 
 from taxonomy import shell
 from taxonomy.db import models
@@ -41,8 +42,8 @@ def extract_names(lines: Iterable[str]) -> DataT:
     yield from csv.DictReader(lines)
 
 
-@functools.lru_cache()
-def types_of_collection(collection_name: str) -> Dict[str, models.Name]:
+@functools.lru_cache
+def types_of_collection(collection_name: str) -> dict[str, models.Name]:
     if collection_name == "UAM":
         collection_name = "UAM (Alaska)"
     elif collection_name == "UCM":

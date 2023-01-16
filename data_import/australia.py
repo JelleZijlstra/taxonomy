@@ -2,7 +2,8 @@ import enum
 import itertools
 import re
 from collections import deque
-from typing import Any, Deque, Dict, Iterable, List, Tuple
+from typing import Any, Deque, Dict, List, Tuple
+from collections.abc import Iterable
 
 from taxonomy import shell
 
@@ -12,7 +13,7 @@ from .lib import DataT
 SOURCE = lib.Source(
     "australia-decolumnized.txt", "Australia (Jackson & Groves 2015).pdf"
 )
-RefsDictT = Dict[Tuple[str, str], str]
+RefsDictT = dict[tuple[str, str], str]
 COMMON_NAME_RGX = re.compile(r"^[A-Z][a-z\-]+( [A-Z][a-z\-]+)*$")
 RANK_WORDS = {
     "Subtribe",
@@ -72,11 +73,11 @@ def can_be_name_header(line: str) -> bool:
     return bool(match) and (line[0].isupper() or line[0] in ("[", "Φ", "$", "†", "Ω"))
 
 
-def extract_names(pages: Iterable[Tuple[int, List[str]]]) -> DataT:
+def extract_names(pages: Iterable[tuple[int, list[str]]]) -> DataT:
     found_references = False
     found_beginning = False
-    current_name: Dict[str, Any] = {}
-    current_lines: List[str] = []
+    current_name: dict[str, Any] = {}
+    current_lines: list[str] = []
     current_label = ""
     line_kinds: Deque[LineKind] = deque([], 5)
 

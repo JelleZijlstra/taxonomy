@@ -11,7 +11,8 @@ from pathlib import Path
 import re
 import requests
 import traceback
-from typing import Any, Sequence
+from typing import Any
+from collections.abc import Sequence
 import urllib.parse
 
 from .article import Article, ArticleTag
@@ -30,7 +31,7 @@ CS = command_set.CommandSet("add_data", "Commands for adding data to articles")
 RawData = dict[str, Any]
 
 
-@lru_cache()
+@lru_cache
 def get_doi_json(doi: str) -> dict[str, Any] | None:
     try:
         return json.loads(get_doi_json_cached(doi))
@@ -61,7 +62,7 @@ def is_doi_valid(doi: str) -> bool:
     return True
 
 
-@lru_cache()
+@lru_cache
 def get_doi_information(doi: str) -> BeautifulSoup | None:
     """Retrieves information for this DOI from the API."""
     response = requests.get(

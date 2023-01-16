@@ -11,7 +11,9 @@ import enum
 import json
 import re
 from pathlib import Path
-from typing import Any, Counter, Dict, Iterable, List, Optional, Tuple, Type
+from typing import Any, Dict, List, Optional, Tuple, Type
+from collections import Counter
+from collections.abc import Iterable
 
 import Levenshtein
 import unidecode
@@ -44,10 +46,10 @@ MDY = re.compile(f'({"|".join(MONTHS)})\\s+\\d+,\\s+\\d{{4}}')  # January 10, 20
 MY = re.compile(f'({"|".join(MONTHS)})\\s+\\d{{4}}')  # January 2018
 REMOVE_PARENS = re.compile(r" \([A-Z][a-z]+\)")
 
-DataT = Iterable[Dict[str, Any]]
+DataT = Iterable[dict[str, Any]]
 
 
-def find_name(original_name: str, authority: str) -> Optional[models.Name]:
+def find_name(original_name: str, authority: str) -> models.Name | None:
     try:
         return models.Name.get(
             models.Name.original_name == original_name,
@@ -82,7 +84,7 @@ def find_name(original_name: str, authority: str) -> Optional[models.Name]:
     return None
 
 
-def name_variants(original_name: str, authority: str) -> Iterable[Tuple[str, str]]:
+def name_variants(original_name: str, authority: str) -> Iterable[tuple[str, str]]:
     yield original_name, authority
     original_authority = authority
     authority = re.sub(r"([A-Z]\.)+ ", "", authority).strip()
@@ -135,7 +137,7 @@ def name_variants(original_name: str, authority: str) -> Iterable[Tuple[str, str
             yield original_name.replace(used, correct), authority
 
 
-def extract_altitude(text: str) -> Optional[Tuple[str, constants.AltitudeUnit]]:
+def extract_altitude(text: str) -> tuple[str, constants.AltitudeUnit] | None:
     # Try feet first because feet are often given with a conversion into meters, and we
     # want the original measurement.
     match = re.search(r"(\d+(-\d+)?) ft", text)
@@ -149,7 +151,7 @@ def extract_altitude(text: str) -> Optional[Tuple[str, constants.AltitudeUnit]]:
     return None
 
 
-def extract_date(text: str) -> Optional[str]:
+def extract_date(text: str) -> str | None:
     for rgx in (DMY, MDY, MY):
         match = rgx.search(text)
         if match:
@@ -157,12 +159,12 @@ def extract_date(text: str) -> Optional[str]:
     return None
 
 
-def extract_geographical_components(text: str) -> List[Tuple[str, ...]]:
+def extract_geographical_components(text: str) -> list[tuple[str, ...]]:
     # replace B(ritish) C(olumbia) -> British Columbia
     text = re.sub(r"([A-Z])\(([a-z]+)\)", r"\1\2", text)
     parts = re.split(r"[():,;\.]+", text)
     parts = list(filter(None, (part.strip() for part in parts)))
-    out: List[Any] = []
+    out: list[Any] = []
     for part in parts:
         if part.startswith("=") and out:
             out[-1] = (out[-1], part[1:].strip())
@@ -200,7 +202,7 @@ def get_possible_names(names: Iterable[str]) -> Iterable[str]:
             yield without_diacritics
 
 
-def get_region_from_name(raw_names: Iterable[str]) -> Optional[models.Region]:
+def get_region_from_name(raw_names: Iterable[str]) -> models.Region | None:
     for name in get_possible_names(raw_names):
         name = lib.NAME_SYNONYMS.get(name, name)
         try:
@@ -210,7 +212,7 @@ def get_region_from_name(raw_names: Iterable[str]) -> Optional[models.Region]:
     return None
 
 
-def extract_region(text: str) -> Optional[models.Location]:
+def extract_region(text: str) -> models.Location | None:
     components = extract_geographical_components(text)
     possible_region = get_region_from_name(components[0])
     if possible_region is None:
@@ -244,7 +246,7 @@ IN_ALCOHOL = TypeTag.Organ(SpecimenOrgan.in_alcohol, "", "")
 SKELETON = TypeTag.Organ(SpecimenOrgan.postcranial_skeleton, "", "")
 
 
-def enum_has_member(enum_cls: Type[enum.Enum], member: str) -> bool:
+def enum_has_member(enum_cls: type[enum.Enum], member: str) -> bool:
     try:
         enum_cls[member]
     except KeyError:
@@ -253,9 +255,9 @@ def enum_has_member(enum_cls: Type[enum.Enum], member: str) -> bool:
         return True
 
 
-def extract_type_specimen(text: str) -> Dict[str, Any]:
+def extract_type_specimen(text: str) -> dict[str, Any]:
     sentences = text.split(".")
-    out: Dict[str, Any] = {}
+    out: dict[str, Any] = {}
     out["type_specimen"] = f"AMNH {sentences[0]}"
     organs = sentences[1].strip().lower()
     if organs in ("skin and skull", "skin and cranium"):
@@ -310,7 +312,7 @@ AUTHOR_NAME_RGX = re.compile(
 )
 
 
-def extract_name_and_author(text: str) -> Dict[str, str]:
+def extract_name_and_author(text: str) -> dict[str, str]:
     match = AUTHOR_NAME_RGX.match(text.replace(" [sic]", ""))
     assert match, f"failed to match {text}"
     authority = (
@@ -329,7 +331,7 @@ FILE_PATH = DATA_DIR / "lawrence1993-layout.txt"
 SOURCE = "AMNH-types.pdf"
 
 
-def extract_pages() -> Iterable[Tuple[int, List[str]]]:
+def extract_pages() -> Iterable[tuple[int, list[str]]]:
     """Split the text into pages."""
     current_page = None
     current_lines = []
@@ -357,7 +359,7 @@ def extract_pages() -> Iterable[Tuple[int, List[str]]]:
         yield current_page, current_lines
 
 
-def align_columns() -> Iterable[Tuple[int, List[str]]]:
+def align_columns() -> Iterable[tuple[int, list[str]]]:
     """Rearrange the text to separate the two columns on each page."""
     for page, lines in extract_pages():
         # find a position that is blank in every line
@@ -376,11 +378,11 @@ def align_columns() -> Iterable[Tuple[int, List[str]]]:
         yield page, first_column + second_column
 
 
-def extract_names() -> Iterable[Dict[str, Any]]:
+def extract_names() -> Iterable[dict[str, Any]]:
     """Extracts names from the text, as dictionaries."""
-    current_name: Optional[Dict[str, Any]] = None
-    current_label: Optional[str] = None
-    current_lines: List[str] = []
+    current_name: dict[str, Any] | None = None
+    current_label: str | None = None
+    current_lines: list[str] = []
 
     def start_label(label: str, line: str) -> None:
         nonlocal current_label, current_lines
@@ -435,7 +437,7 @@ def extract_names() -> Iterable[Dict[str, Any]]:
     yield current_name
 
 
-def clean_text() -> Iterable[Dict[str, Any]]:
+def clean_text() -> Iterable[dict[str, Any]]:
     """Puts each field into a single line and undoes line breaks within words."""
     for name in extract_names():
         new_name = {}
@@ -455,7 +457,7 @@ def clean_text() -> Iterable[Dict[str, Any]]:
 # next: change data into a format resembling what we want in the DB.
 
 
-def extract_data() -> Iterable[Dict[str, Any]]:
+def extract_data() -> Iterable[dict[str, Any]]:
     """Extract raw data into a format closer to what the DB wants."""
     for name in clean_text():
         name["raw_text"] = dict(name)
@@ -498,7 +500,7 @@ def extract_data() -> Iterable[Dict[str, Any]]:
         yield name
 
 
-def associate_names() -> Iterable[Dict[str, Any]]:
+def associate_names() -> Iterable[dict[str, Any]]:
     total = 0
     found = 0
     for name in extract_data():

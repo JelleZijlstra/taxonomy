@@ -1,5 +1,6 @@
 import re
-from typing import Any, Dict, Iterable
+from typing import Any, Dict
+from collections.abc import Iterable
 
 from taxonomy import shell
 from taxonomy.db import models
@@ -30,7 +31,7 @@ IGNORED = {
 
 
 def extract_names(lines: Iterable[str]) -> DataT:
-    current_name: Dict[str, Any] = {}
+    current_name: dict[str, Any] = {}
 
     for line in lines:
         line = line.strip()

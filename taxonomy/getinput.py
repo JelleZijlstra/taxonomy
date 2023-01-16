@@ -13,20 +13,16 @@ import subprocess
 import sys
 from typing import (
     Any,
-    Callable,
     Dict,
-    Iterator,
-    Iterable,
     List,
-    Mapping,
     Optional,
-    Sequence,
     Tuple,
     Type,
     TypeVar,
     Union,
     overload,
 )
+from collections.abc import Callable, Iterator, Iterable, Mapping, Sequence
 
 import prompt_toolkit
 
@@ -35,9 +31,9 @@ from . import adt
 
 T = TypeVar("T")
 Completer = Callable[[str, Any], T]
-CompleterMap = Mapping[Tuple[Type[adt.ADT], str], Completer[Any]]
+CompleterMap = Mapping[tuple[type[adt.ADT], str], Completer[Any]]
 CallbackMap = Mapping[str, Callable[[], object]]
-ADTOrInstance = Union[adt.ADT, Type[adt.ADT]]
+ADTOrInstance = Union[adt.ADT, type[adt.ADT]]
 
 RED = 31
 GREEN = 32
@@ -49,11 +45,11 @@ class StopException(Exception):
 
 
 def _color(code: int) -> str:
-    return "{}[{}m".format(chr(27), code)
+    return f"{chr(27)}[{code}m"
 
 
 def _colored_text(text: str, code: int) -> str:
-    return "{}{}{}".format(_color(code), text, _color(0))
+    return f"{_color(code)}{text}{_color(0)}"
 
 
 def red(text: str) -> str:
@@ -70,17 +66,17 @@ def blue(text: str) -> str:
 
 def get_line(
     prompt: str,
-    validate: Optional[Callable[[str], bool]] = None,
+    validate: Callable[[str], bool] | None = None,
     callbacks: CallbackMap = {},
     should_stop: Callable[[str], bool] = lambda _: False,
     allow_none: bool = True,
     mouse_support: bool = False,
     default: str = "",
-    history_key: Optional[object] = None,
-    validator: Optional[prompt_toolkit.validation.Validator] = None,
-    completer: Optional[prompt_toolkit.completion.Completer] = None,
+    history_key: object | None = None,
+    validator: prompt_toolkit.validation.Validator | None = None,
+    completer: prompt_toolkit.completion.Completer | None = None,
     allow_clear: bool = True,
-) -> Optional[str]:
+) -> str | None:
     if history_key is None:
         history_key = prompt
     history = _get_history(history_key)
@@ -115,7 +111,7 @@ def get_line(
 
 
 def yes_no(
-    prompt: str, default: Optional[bool] = None, callbacks: CallbackMap = {}
+    prompt: str, default: bool | None = None, callbacks: CallbackMap = {}
 ) -> bool:
     positive = {"y", "yes"}
     negative = {"n", "no"}
@@ -136,7 +132,7 @@ def choose_one(
     allow_empty: bool = True,
     display_fn: Callable[[T], str] = str,
     history_key: object = None,
-) -> Optional[T]:
+) -> T | None:
     for i, option in enumerate(options):
         print(f"{i}: {display_fn(option)}")
     choices = [str(i) for i in range(len(options))]
@@ -206,8 +202,8 @@ def get_with_lazy_completion(
     disallow_other: bool = False,
     allow_empty: bool = True,
     callbacks: CallbackMap = {},
-) -> Optional[str]:
-    validator: Optional[prompt_toolkit.validation.Validator]
+) -> str | None:
+    validator: prompt_toolkit.validation.Validator | None
     if disallow_other:
 
         def callback(text: str) -> bool:
@@ -232,14 +228,14 @@ def get_with_completion(
     message: str = "> ",
     *,
     default: str = "",
-    history_key: Optional[object] = None,
+    history_key: object | None = None,
     disallow_other: bool = False,
     allow_empty: bool = True,
     callbacks: CallbackMap = {},
-) -> Optional[str]:
+) -> str | None:
     if history_key is None:
         history_key = (tuple(options), message)
-    validator: Optional[prompt_toolkit.validation.Validator]
+    validator: prompt_toolkit.validation.Validator | None
     if disallow_other:
         validator = _FixedValidator(
             [*options, *callbacks, ""] if allow_empty else [*options, *callbacks]
@@ -264,10 +260,10 @@ EnumT = TypeVar("EnumT", bound=enum.Enum)
 # allow_empty=True, but it is good enough until we have literal types.
 @overload
 def get_enum_member(
-    enum_cls: Type[EnumT],
+    enum_cls: type[EnumT],
     prompt: str = "> ",
     *,
-    default: Optional[EnumT] = None,
+    default: EnumT | None = None,
     allow_empty: bool,
     callbacks: CallbackMap = {},
 ) -> EnumT:
@@ -276,23 +272,23 @@ def get_enum_member(
 
 @overload  # noqa
 def get_enum_member(
-    enum_cls: Type[EnumT],
+    enum_cls: type[EnumT],
     prompt: str = "> ",
     *,
-    default: Optional[EnumT] = None,
+    default: EnumT | None = None,
     callbacks: CallbackMap = {},
-) -> Optional[EnumT]:
+) -> EnumT | None:
     ...  # noqa
 
 
 def get_enum_member(  # noqa
-    enum_cls: Type[EnumT],
+    enum_cls: type[EnumT],
     prompt: str = "> ",
     *,
-    default: Optional[EnumT] = None,
+    default: EnumT | None = None,
     allow_empty: bool = True,
     callbacks: CallbackMap = {},
-) -> Optional[EnumT]:
+) -> EnumT | None:
     if default is None:
         default_str = ""
     else:
@@ -316,24 +312,24 @@ _ADT_LIST_BUILTINS = ["r", "remove_all", "h", "undo"]
 
 
 def get_adt_list(
-    adt_cls: Type[adt.ADT],
+    adt_cls: type[adt.ADT],
     *,
-    existing: Optional[Iterable[ADTOrInstance]] = None,
+    existing: Iterable[ADTOrInstance] | None = None,
     completers: CompleterMap = {},
     callbacks: CallbackMap = {},
     show_existing: bool = False,
-    prompt: Optional[str] = None,
-    get_existing: Optional[Callable[[], Iterable[ADTOrInstance]]] = None,
-    set_existing: Optional[Callable[[Sequence[ADTOrInstance]], None]] = None,
-) -> Tuple[ADTOrInstance, ...]:
+    prompt: str | None = None,
+    get_existing: Callable[[], Iterable[ADTOrInstance]] | None = None,
+    set_existing: Callable[[Sequence[ADTOrInstance]], None] | None = None,
+) -> tuple[ADTOrInstance, ...]:
     if prompt is None:
         prompt = adt_cls.__name__
     name_to_cls = {}
     for member_name in adt_cls._members:
         name_to_cls[member_name.lower()] = getattr(adt_cls, member_name)
-    undo_stack: List[List[ADTOrInstance]] = []
+    undo_stack: list[list[ADTOrInstance]] = []
     while True:
-        out: List[ADTOrInstance] = []
+        out: list[ADTOrInstance] = []
         if existing is None and get_existing is not None:
             existing = get_existing()
         if existing is not None:
@@ -407,7 +403,7 @@ def get_adt_list(
 
 def display_tags(
     spacing: str,
-    tags: Optional[Iterable[Union[adt.ADT, Type[adt.ADT]]]],
+    tags: Iterable[adt.ADT | type[adt.ADT]] | None,
     show_indexes: bool = False,
 ) -> Iterable[str]:
     if tags is None:
@@ -437,13 +433,13 @@ def display_tags(
 
 
 def _get_adt_member(
-    member_cls: Type[adt.ADT],
-    existing: Optional[ADTOrInstance] = None,
+    member_cls: type[adt.ADT],
+    existing: ADTOrInstance | None = None,
     completers: CompleterMap = {},
 ) -> ADTOrInstance:
     if not member_cls._has_args:
         return member_cls
-    args: Dict[str, Any] = {}
+    args: dict[str, Any] = {}
     for arg_name, typ in member_cls._attributes.items():
         existing_value = getattr(existing, arg_name, None)
         if (member_cls, arg_name) in completers:
@@ -477,7 +473,7 @@ def append_history(key: object, history_entry: str) -> None:
     _append(_get_history(key), history_entry)
 
 
-@functools.lru_cache(maxsize=None)
+@functools.cache
 def _get_history(key: object) -> prompt_toolkit.history.InMemoryHistory:
     history = prompt_toolkit.history.InMemoryHistory()
     _append(history, "")
@@ -538,7 +534,7 @@ def show(obj: object) -> None:
     print(obj, flush=True)
 
 
-def print_scores(data: Sequence[Tuple[str, float]]) -> None:
+def print_scores(data: Sequence[tuple[str, float]]) -> None:
     if not data:
         return
     width = shutil.get_terminal_size().columns

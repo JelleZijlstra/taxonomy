@@ -4,7 +4,7 @@ Setting the path on a newly added file.
 
 """
 from itertools import islice
-from typing import Sequence
+from collections.abc import Sequence
 
 from .article import Article
 from .... import uitools, getinput

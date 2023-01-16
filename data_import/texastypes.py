@@ -17,9 +17,9 @@ NAME_LINE_RGX = re.compile(
 
 
 def extract_names(pages: PagesT) -> DataT:
-    current_name: Dict[str, Any] = {}
-    current_label: Optional[str] = None
-    current_lines: List[str] = []
+    current_name: dict[str, Any] = {}
+    current_label: str | None = None
+    current_lines: list[str] = []
 
     def start_label(label: str, line: str) -> None:
         nonlocal current_label, current_lines

@@ -5,18 +5,15 @@ import sys
 from typing import (
     TYPE_CHECKING,
     Any,
-    Callable,
     Dict,
-    Iterable,
-    Iterator,
     List,
-    MutableMapping,
     Tuple,
     Type,
     TypeVar,
 )
+from collections.abc import Callable, Iterable, Iterator, MutableMapping
 
-BASIC_TYPES: Tuple[Type[Any], ...] = (int, str, float, bool, list)
+BASIC_TYPES: tuple[type[Any], ...] = (int, str, float, bool, list)
 
 
 class _ADTMember:
@@ -24,7 +21,7 @@ class _ADTMember:
         self.name = name
         self.called = False
 
-    def __call__(self, *, tag: int, **kwargs: Type[Any]) -> None:
+    def __call__(self, *, tag: int, **kwargs: type[Any]) -> None:
         self.tag = tag
         self.kwargs = kwargs
         self.called = True
@@ -34,9 +31,9 @@ class _ADTMember:
 
 
 class _ADTNamespace(MutableMapping[str, Any]):
-    def __init__(self, globals_dict: Dict[str, Any]) -> None:
+    def __init__(self, globals_dict: dict[str, Any]) -> None:
         self._globals = globals_dict
-        self._mapping: Dict[str, _ADTMember] = {}
+        self._mapping: dict[str, _ADTMember] = {}
 
     def __getitem__(self, key: str) -> Any:
         if key in self._mapping:
@@ -140,7 +137,7 @@ class _ADTMeta(type):
             if not member.called:
                 raise TypeError(f"incomplete member {member}")
             has_args = bool(member.kwargs)
-            attrs: Dict[str, Type[Any]] = {}
+            attrs: dict[str, type[Any]] = {}
             member_ns = {
                 "_attributes": attrs,
                 "_tag": member.tag,
@@ -178,7 +175,7 @@ class _ADTMeta(type):
                 code = (
                     f'def __init__(self, {", ".join(member.kwargs.keys())}):\n{lines}'
                 )
-                new_ns: Dict[str, Any] = {}
+                new_ns: dict[str, Any] = {}
                 exec(code, {}, new_ns)
                 member_ns["__init__"] = new_ns["__init__"]
             member_cls: Any = functools.total_ordering(
@@ -214,10 +211,10 @@ else:
 
 
 class ADT(_ADTBase, metaclass=_ADTMeta):
-    _attributes: Dict[str, Any]
+    _attributes: dict[str, Any]
     _has_args: bool
     _tag: int
-    _tag_to_member: Dict[int, Type[Any]]
+    _tag_to_member: dict[int, type[Any]]
 
     def _get_attributes(self) -> Iterable[Any]:
         for attr in self._attributes.keys():
@@ -238,11 +235,11 @@ class ADT(_ADTBase, metaclass=_ADTMeta):
             return [self._tag]
 
     @classmethod
-    def unserialize(cls: Type[_ADTT], value: List[Any]) -> _ADTT:
+    def unserialize(cls: type[_ADTT], value: list[Any]) -> _ADTT:
         tag = value[0]
         member_cls = cls._tag_to_member[tag]
         if member_cls._has_args:
-            args: List[Any] = []
+            args: list[Any] = []
             for arg_type, serialized in zip(
                 member_cls._attributes.values(), value[1:], strict=True
             ):

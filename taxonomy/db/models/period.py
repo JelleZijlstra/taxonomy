@@ -1,7 +1,8 @@
 from collections import defaultdict
 from functools import lru_cache
 import sys
-from typing import IO, Any, Dict, Iterable, List, Optional, Set, Tuple, TypeVar
+from typing import IO, Any, Dict, List, Optional, Set, Tuple, TypeVar
+from collections.abc import Iterable
 
 from peewee import BooleanField, CharField, ForeignKeyField, IntegerField
 
@@ -131,13 +132,13 @@ class Period(BaseModel):
         self.deleted = True
 
     @staticmethod
-    def _filter_none(seq: Iterable[Optional[T]]) -> Iterable[T]:
+    def _filter_none(seq: Iterable[T | None]) -> Iterable[T]:
         return (elt for elt in seq if elt is not None)
 
-    def sort_key(self) -> Tuple[int, int, int, str]:
+    def sort_key(self) -> tuple[int, int, int, str]:
         return period_sort_key(self)
 
-    def get_min_age(self) -> Optional[int]:
+    def get_min_age(self) -> int | None:
         if self.min_age is not None:
             return self.min_age
         return min(
@@ -145,7 +146,7 @@ class Period(BaseModel):
             default=None,
         )
 
-    def get_max_age(self) -> Optional[int]:
+    def get_max_age(self) -> int | None:
         if self.max_age is not None:
             return self.max_age
         return max(
@@ -162,8 +163,8 @@ class Period(BaseModel):
         *,
         parent: Optional["Period"] = None,
         next: Optional["Period"] = None,
-        min_age: Optional[int] = None,
-        max_age: Optional[int] = None,
+        min_age: int | None = None,
+        max_age: int | None = None,
         **kwargs: Any,
     ) -> "Period":
         if max_age is None and next is not None:
@@ -230,7 +231,7 @@ class Period(BaseModel):
 
     def all_localities(
         self, include_children: bool = True, include_partial: bool = False
-    ) -> Set["models.Location"]:
+    ) -> set["models.Location"]:
         if include_partial:
             locations = {*self.locations_min, *self.locations_max}
         else:
@@ -253,7 +254,7 @@ class Period(BaseModel):
 
     def all_type_localities(
         self, include_children: bool = True, include_partial: bool = False
-    ) -> List["models.Name"]:
+    ) -> list["models.Name"]:
         return [
             nam
             for loc in self.all_localities(
@@ -272,7 +273,7 @@ class Period(BaseModel):
             organized=True,
         )
 
-    def all_regions(self) -> Set[Region]:
+    def all_regions(self) -> set[Region]:
         return {loc.region for loc in self.all_localities()}
 
     def autoset_region(self) -> bool:
@@ -346,7 +347,7 @@ def display_age(age: int) -> str:
 
 
 @lru_cache(maxsize=1024)
-def period_sort_key(period: Period) -> Tuple[int, int, int, str]:
+def period_sort_key(period: Period) -> tuple[int, int, int, str]:
     """The sort key consists of four parts.
 
     - The maximum age of the period, or of its first parent that has a minimum
@@ -373,14 +374,14 @@ def period_sort_key(period: Period) -> Tuple[int, int, int, str]:
     return (0, 0, 0, period.name)
 
 
-def _get_from_parent(period: Period, parent: Period) -> Tuple[int, int, int, str]:
+def _get_from_parent(period: Period, parent: Period) -> tuple[int, int, int, str]:
     age, parents, _, _ = period_sort_key(parent)
     return _apply_next_correction(period, age, parents)
 
 
 def _apply_next_correction(
     period: Period, age: int, parents: int
-) -> Tuple[int, int, int, str]:
+) -> tuple[int, int, int, str]:
     if period.next is not None:
         next_age, next_parents, next_siblings, _ = period_sort_key(period.next)
         if (next_age, next_parents) == (age, parents + 1):
@@ -390,13 +391,13 @@ def _apply_next_correction(
 
 def display_period_tree(
     min_count: int = 0,
-    system: Optional[PeriodSystem] = None,
+    system: PeriodSystem | None = None,
     full: bool = False,
     include_taxa: bool = False,
 ) -> None:
-    max_parent_to_periods: Dict[Period, int] = defaultdict(int)
-    parent_to_periods: Dict[Period, List[Period]] = defaultdict(list)
-    period_to_max_parent: Dict[Period, Period] = {}
+    max_parent_to_periods: dict[Period, int] = defaultdict(int)
+    parent_to_periods: dict[Period, list[Period]] = defaultdict(list)
+    period_to_max_parent: dict[Period, Period] = {}
 
     def add_period(period: Period) -> Period:
         if period in period_to_max_parent:

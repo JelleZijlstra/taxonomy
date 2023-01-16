@@ -21,7 +21,7 @@ COLLECTION_TO_LABEL = {
 
 
 def extract_names(pages: PagesT) -> DataT:
-    current_name: List[str] = []
+    current_name: list[str] = []
     current_page = None
     collection_of_name = None
     for page, lines in pages:

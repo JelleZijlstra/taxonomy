@@ -8,12 +8,12 @@ from typing import (
     Dict,
     List,
     Optional,
-    Sequence,
     Set,
     Tuple,
     TypeVar,
     Union,
 )
+from collections.abc import Sequence
 from taxonomy.config import get_options
 
 
@@ -33,15 +33,15 @@ _NAME_VALIDATOR = re.compile(
 
 
 class NameParser:
-    geographicTerms: ClassVar[Set[str]]
-    geographicModifiers: ClassVar[Set[str]]
-    geographicWords: ClassVar[Set[str]]
-    periodTerms: ClassVar[Set[str]]
-    periodModifiers: ClassVar[Set[str]]
-    periodWords: ClassVar[Set[str]]
+    geographicTerms: ClassVar[set[str]]
+    geographicModifiers: ClassVar[set[str]]
+    geographicWords: ClassVar[set[str]]
+    periodTerms: ClassVar[set[str]]
+    periodModifiers: ClassVar[set[str]]
+    periodWords: ClassVar[set[str]]
 
     # Whether an error occurred, and a description.
-    errorDescription: List[str]
+    errorDescription: list[str]
 
     rawName: str  # The raw file name parsed
     extension: str  # The file extension (e.g., "pdf").
@@ -52,12 +52,12 @@ class NameParser:
     # a string with the name of an author if one author is given, an array with
     # multiple elements if multiple authors are given, and an array with a
     # single element if "et al." is given. The second element is the year.
-    authorship: Tuple[Union[None, str, List[str]], Optional[str]]
+    authorship: tuple[None | str | list[str], str | None]
 
     # baseName is an array with elements representing parts of the title. The
     # keys may be "nov" or "normal", representing <nov-phrase> and
     # <normal-name>.
-    baseName: Dict[str, Any]
+    baseName: dict[str, Any]
 
     def __init__(self, name: str, data_path: Path) -> None:
         self.errorDescription = []
@@ -197,7 +197,7 @@ class NameParser:
         # year
         year = match[2]
         raw_authors = match[1].strip()
-        authors: Union[None, str, List[str]]
+        authors: None | str | list[str]
         if raw_authors:
             # <authors> may be "A", "A & B" or "A et al."
             if raw_authors.endswith(" et al."):
@@ -292,7 +292,7 @@ class NameParser:
     #      'topic' => (array of topics)
 
     def parseNormalName(self, input: str) -> None:
-        out: Dict[str, Any] = {}
+        out: dict[str, Any] = {}
         # first, consume names until we find a geographic or period term
         names = ""
         while True:
@@ -323,17 +323,17 @@ class NameParser:
             out["names"] = self.parse_names(names.strip())
         self.baseName["normal"] = out
 
-    def parseNormalAtTopic(self, input: str) -> Dict[str, Any]:
+    def parseNormalAtTopic(self, input: str) -> dict[str, Any]:
         # input begins with -
         topic = input[1:].split(", ")
         return {"topic": topic}
 
-    def parseNormalAtTime(self, input: str) -> Dict[str, Any]:
+    def parseNormalAtTime(self, input: str) -> dict[str, Any]:
         # Here we can assume that period terms are always one word
         # Except for MN7-8, that is, which we'll have to hard-code
-        out: Dict[str, Any] = {}
-        times: List[Tuple[Optional[str], Optional[str]]] = []
-        time: Tuple[Optional[str], Optional[str]]
+        out: dict[str, Any] = {}
+        times: list[tuple[str | None, str | None]] = []
+        time: tuple[str | None, str | None]
         inRange = False
         while True:
             firstWord, rest = self.getFirstWord(input)
@@ -383,11 +383,11 @@ class NameParser:
             out["times"] = times
         return out
 
-    def parseNormalAtGeography(self, input: str) -> Dict[str, Any]:
+    def parseNormalAtGeography(self, input: str) -> dict[str, Any]:
         # first find a major term, then minor terms
-        out: Dict[str, Any] = {}
+        out: dict[str, Any] = {}
         places = []
-        currentMajor: List[str] = []
+        currentMajor: list[str] = []
         currentMinor = ""
         while True:
             if currentMinor == "":
@@ -452,7 +452,7 @@ class NameParser:
         if cls.didBuildLists:
             return
 
-        def getData(fileName: str) -> Set[str]:
+        def getData(fileName: str) -> set[str]:
             path = data_path / fileName
             with path.open() as f:
                 lines = (re.sub(r"#.*$", "", line).strip() for line in f.readlines())
@@ -471,7 +471,7 @@ class NameParser:
 
     # Helper methods.
     @staticmethod
-    def getFirstWord(input: str) -> Tuple[str, str]:
+    def getFirstWord(input: str) -> tuple[str, str]:
         output = re.split(r"[ \-,]", input, maxsplit=1)
         # simplify life for callers
         if len(output) == 1:
@@ -503,7 +503,7 @@ class NameParser:
     # Returns an array of the haystack without the word plus the word, or
     # None on failure to find a word.
     @classmethod
-    def find_term(cls, haystack: str, terms: Set[str]) -> Optional[Tuple[str, str]]:
+    def find_term(cls, haystack: str, terms: set[str]) -> tuple[str, str] | None:
         for term in terms:
             if haystack.startswith(term):
                 new_hay = haystack[len(term) :]
@@ -512,10 +512,10 @@ class NameParser:
         return None
 
     # Parse a listing of scientific names.
-    def parse_names(self, input: str) -> List[str]:
+    def parse_names(self, input: str) -> list[str]:
         out = []
         names = input.split(", ")
-        lastName: Optional[str] = None
+        lastName: str | None = None
         for name in names:
             if name.islower():
                 if not lastName:

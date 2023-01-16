@@ -8,7 +8,8 @@ Generally follows Article 9 of the PhyloCode: http://www.ohio.edu/phylocode/art9
 
 import enum
 import json
-from typing import TYPE_CHECKING, Any, Iterable, List, Union
+from typing import TYPE_CHECKING, Any, List, Union
+from collections.abc import Iterable
 
 if TYPE_CHECKING:
     from .models.taxon import Taxon  # noqa: F401
@@ -28,10 +29,10 @@ class DefinitionType(enum.Enum):
 
 class Definition:
     def __init__(
-        self, typ: DefinitionType, arguments: Iterable[Union[str, _Taxon]]
+        self, typ: DefinitionType, arguments: Iterable[str | _Taxon]
     ) -> None:
         self.type = typ
-        self.arguments: List[Any] = list(arguments)
+        self.arguments: list[Any] = list(arguments)
 
     def serialize(self) -> str:
         arguments = [

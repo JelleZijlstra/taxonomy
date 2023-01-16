@@ -119,9 +119,9 @@ Vespertilio villosissimus   É. Geoffroy Saint-Hilaire   1806    MNHN
 if __name__ == "__main__":
     data = [line.split("\t") for line in raw_data.splitlines()]
 
-    raw_names: List[Dict[str, Any]] = []
+    raw_names: list[dict[str, Any]] = []
     for line in data:
-        name: Dict[str, Any] = {
+        name: dict[str, Any] = {
             "original_name": line[0],
             "authority": line[1],
             "year": line[2],

@@ -8,20 +8,16 @@ from collections import defaultdict
 from pathlib import Path
 from typing import (
     Any,
-    Callable,
-    Container,
-    Counter,
     Dict,
-    Iterable,
     List,
-    Mapping,
     NamedTuple,
     Optional,
-    Sequence,
     Set,
     Tuple,
     Type,
 )
+from collections import Counter
+from collections.abc import Callable, Container, Iterable, Mapping, Sequence
 
 import Levenshtein
 import unidecode
@@ -242,8 +238,8 @@ NAME_SYNONYMS = {
 }
 REMOVE_PARENS = re.compile(r" \([A-Z][a-z]+\)")
 
-DataT = Iterable[Dict[str, Any]]
-PagesT = Iterable[Tuple[int, List[str]]]
+DataT = Iterable[dict[str, Any]]
+PagesT = Iterable[tuple[int, list[str]]]
 
 
 class Source(NamedTuple):
@@ -257,7 +253,7 @@ class Source(NamedTuple):
 class NameConfig(NamedTuple):
     original_name_fixes: Mapping[str, str] = {}
     authority_fixes: Mapping[str, str] = {}
-    ignored_names: Set[Tuple[str, str]] = set()
+    ignored_names: set[tuple[str, str]] = set()
 
 
 def initial_count(s: str, char: str) -> int:
@@ -271,7 +267,7 @@ def initial_count(s: str, char: str) -> int:
     return count
 
 
-def dedent_lines(lines: List[str]) -> List[str]:
+def dedent_lines(lines: list[str]) -> list[str]:
     dedent_by = min(
         (initial_count(line, " ") for line in lines if line.rstrip()), default=0
     )
@@ -313,7 +309,7 @@ def extract_pages(lines: Iterable[str]) -> PagesT:
 
 
 def validate_pages(pages: PagesT, verbose: bool = True, check: bool = True) -> PagesT:
-    current_page: Optional[int] = None
+    current_page: int | None = None
     for page, lines in pages:
         if verbose:
             print(f"got page {page}")
@@ -333,13 +329,13 @@ class NoSplitFound(Exception):
 
 
 def split_lines(
-    lines: List[str],
+    lines: list[str],
     page: int,
     single_column_pages: Container[int] = frozenset(),
     use_first: bool = False,
     min_column: int = 0,
     dedent_right: bool = True,
-) -> List[str]:
+) -> list[str]:
     if not any(line.rstrip() for line in lines):
         return []
     # find a position that is blank in every line
@@ -399,7 +395,7 @@ def clean_text(names: DataT, clean_labels: bool = True) -> DataT:
         yield clean_text_dict(name, clean_labels=clean_labels)
 
 
-def clean_text_dict(name: Dict[str, Any], clean_labels: bool = True) -> Dict[str, Any]:
+def clean_text_dict(name: dict[str, Any], clean_labels: bool = True) -> dict[str, Any]:
     new_name = {}
     for key, value in name.items():
         if key == "pages" or not isinstance(value, list):
@@ -449,7 +445,7 @@ def clean_text_simple(names: DataT) -> DataT:
 
 def split_name_authority(
     name_authority: str, *, try_harder: bool = False, quiet: bool = False
-) -> Dict[str, str]:
+) -> dict[str, str]:
     name_authority = re.sub(
         r"([A-Za-z][a-z]*)\[([a-z?]+( \([A-Z][a-z]+\))?)\]\.", r"\1\2", name_authority
     )
@@ -502,11 +498,11 @@ def split_name_authority(
 
 def translate_to_db(
     names: DataT,
-    collection_name: Optional[str] = None,
-    source: Optional[Source] = None,
+    collection_name: str | None = None,
+    source: Source | None = None,
     verbose: bool = False,
 ) -> DataT:
-    coll: Optional[models.Collection]
+    coll: models.Collection | None
     if collection_name is not None:
         coll = models.Collection.by_label(collection_name)
     else:
@@ -535,7 +531,7 @@ def translate_to_db(
         if "species_type_kind" in name:
             if coll is not None and "collection" not in name:
                 name["collection"] = coll
-        type_tags: List[models.TypeTag] = name.get("type_tags", [])
+        type_tags: list[models.TypeTag] = name.get("type_tags", [])
         for field in ("age_gender", "gender_age", "gender"):
             if field in name:
                 gender_age = extract_gender_age(name[field])
@@ -647,7 +643,7 @@ AUTHOR_NAME_RGX = re.compile(
 )
 
 
-def extract_name_and_author(text: str) -> Dict[str, str]:
+def extract_name_and_author(text: str) -> dict[str, str]:
     if text == "Sus oi Miller":
         return {"original_name": "Sus oi", "authority": "Miller"}
     text = re.sub(r" \[sic\.?\]", "", text)
@@ -665,7 +661,7 @@ def extract_name_and_author(text: str) -> Dict[str, str]:
     return {"original_name": match.group("name"), "authority": authority}
 
 
-def enum_has_member(enum_cls: Type[enum.Enum], member: str) -> bool:
+def enum_has_member(enum_cls: type[enum.Enum], member: str) -> bool:
     try:
         enum_cls[member]
     except KeyError:
@@ -674,7 +670,7 @@ def enum_has_member(enum_cls: Type[enum.Enum], member: str) -> bool:
         return True
 
 
-def extract_species_type_kind(text: str) -> Optional[constants.SpeciesGroupType]:
+def extract_species_type_kind(text: str) -> constants.SpeciesGroupType | None:
     text = text.lower()
     if enum_has_member(constants.SpeciesGroupType, text):
         return constants.SpeciesGroupType[text]
@@ -687,7 +683,7 @@ def extract_species_type_kind(text: str) -> Optional[constants.SpeciesGroupType]
         return None
 
 
-def extract_gender_age(text: str) -> List[TypeTag]:
+def extract_gender_age(text: str) -> list[TypeTag]:
     text = re.sub(r"\[.*?: ([^\]]+)\]", r"\1", text)
     text = text.strip().lower().replace("macho", "male").replace("hembra", "female")
     out = []
@@ -733,7 +729,7 @@ IN_ALCOHOL = TypeTag.Organ(constants.SpecimenOrgan.in_alcohol, "", "")
 SKELETON = TypeTag.Organ(constants.SpecimenOrgan.postcranial_skeleton, "", "")
 
 
-def extract_body_parts(organs: str) -> List[TypeTag]:
+def extract_body_parts(organs: str) -> list[TypeTag]:
     organs = organs.lower().replace("[", "").replace("]", "")
     organs = re.sub(r"sk..?ll", "skull", organs).replace("skufl", "skull").strip()
     if (
@@ -812,7 +808,7 @@ def get_possible_names(names: Iterable[str]) -> Iterable[str]:
             yield without_diacritics
 
 
-def get_region_from_name(raw_names: Sequence[str]) -> Optional[models.Region]:
+def get_region_from_name(raw_names: Sequence[str]) -> models.Region | None:
     for name in get_possible_names(raw_names):
         name = NAME_SYNONYMS.get(name, name)
         try:
@@ -822,7 +818,7 @@ def get_region_from_name(raw_names: Sequence[str]) -> Optional[models.Region]:
     return None
 
 
-def extract_region(components: Sequence[Sequence[str]]) -> Optional[models.Location]:
+def extract_region(components: Sequence[Sequence[str]]) -> models.Location | None:
     possible_region = get_region_from_name(components[0])
     if possible_region is None:
         # print(f'could not extract region from {components}')
@@ -844,14 +840,14 @@ def extract_region(components: Sequence[Sequence[str]]) -> Optional[models.Locat
     return region.get_location()
 
 
-def genus_name_of_name(name: models.Name) -> Optional[str]:
+def genus_name_of_name(name: models.Name) -> str | None:
     try:
         return name.taxon.parent_of_rank(constants.Rank.genus).valid_name
     except ValueError:
         return None
 
 
-def genus_of_name(name: models.Name) -> Optional[models.Taxon]:
+def genus_of_name(name: models.Name) -> models.Taxon | None:
     try:
         return name.taxon.parent_of_rank(constants.Rank.genus)
     except ValueError:
@@ -862,8 +858,8 @@ def find_name(
     original_name: str,
     authority: str,
     max_distance: int = 3,
-    year: Optional[str] = None,
-) -> Optional[models.Name]:
+    year: str | None = None,
+) -> models.Name | None:
     # Exact match
     query = models.Name.filter(
         models.Name.original_name == original_name, models.Name.authority == authority
@@ -953,10 +949,10 @@ def find_name(
 
 @functools.lru_cache(maxsize=1024)
 def build_original_name_map(
-    root_name: str, authority: str, year: Optional[str] = None
-) -> Tuple[List[Tuple[models.Name, models.Taxon]], Dict[models.Taxon, Set[str]]]:
-    nams: List[Tuple[models.Name, models.Taxon]] = []
-    genus_to_orig_genera: Dict[models.Taxon, Set[str]] = {}
+    root_name: str, authority: str, year: str | None = None
+) -> tuple[list[tuple[models.Name, models.Taxon]], dict[models.Taxon, set[str]]]:
+    nams: list[tuple[models.Name, models.Taxon]] = []
+    genus_to_orig_genera: dict[models.Taxon, set[str]] = {}
     query = models.Name.filter(
         models.Name.group == constants.Group.species,
         models.Name.original_name >> None,
@@ -977,7 +973,7 @@ def build_original_name_map(
 
 
 @functools.lru_cache(maxsize=1024)
-def get_original_genera_of_genus(genus: models.Taxon) -> Set[str]:
+def get_original_genera_of_genus(genus: models.Taxon) -> set[str]:
     return {
         helpers.genus_name_of_name(nam.original_name)
         for nam in genus.all_names()
@@ -989,7 +985,7 @@ def unspace_initials(authority: str) -> str:
     return re.sub(r"([A-Z]\.) (?=[A-Z]\.)", r"\1", authority).strip()
 
 
-def name_variants(original_name: str, authority: str) -> Iterable[Tuple[str, str]]:
+def name_variants(original_name: str, authority: str) -> Iterable[tuple[str, str]]:
     authority = authority.replace(" and ", " & ")
     yield original_name, authority
     original_authority = authority
@@ -1037,9 +1033,9 @@ def name_variants(original_name: str, authority: str) -> Iterable[Tuple[str, str
         yield original_name, helpers.unsplit_authors(authors_list)
 
 
-@functools.lru_cache()
-def get_initials_map() -> Dict[str, Set[str]]:
-    result: Dict[str, Set[str]] = defaultdict(set)
+@functools.lru_cache
+def get_initials_map() -> dict[str, set[str]]:
+    result: dict[str, set[str]] = defaultdict(set)
     for nam in models.Name.filter(models.Name.authority.contains(". ")):
         for author in nam.get_authors():
             if ". " in author:
@@ -1105,8 +1101,8 @@ def identify_name(
     quiet: bool = False,
     max_distance: int = 3,
     use_taxon_match: bool = False,
-    year: Optional[str] = None,
-) -> Optional[models.Name]:
+    year: str | None = None,
+) -> models.Name | None:
     author = author.replace(" and ", " & ").replace(", & ", " & ")
     if (orig_name, author) in name_config.ignored_names:
         return None
@@ -1137,7 +1133,7 @@ def identify_name(
         return None
 
 
-def manually_associate_name(name: Dict[str, Any]) -> Optional[models.Name]:
+def manually_associate_name(name: dict[str, Any]) -> models.Name | None:
     print(name["raw_text"])
 
     taxon_getter = models.Taxon.getter("valid_name")
@@ -1175,7 +1171,7 @@ def manually_associate_name(name: Dict[str, Any]) -> Optional[models.Name]:
 def associate_names(
     names: DataT,
     name_config: NameConfig = NameConfig(),
-    start_at: Optional[str] = None,
+    start_at: str | None = None,
     name_field: str = "original_name",
     quiet: bool = False,
     try_manual: bool = False,
@@ -1236,7 +1232,7 @@ def associate_names(
     print(f"found: {found + ignored}/{total} (ignored: {ignored})")
 
 
-def maybe_add_iss(name: Dict[str, Any]) -> Optional[models.Name]:
+def maybe_add_iss(name: dict[str, Any]) -> models.Name | None:
     if "variant_target" not in name:
         return None
     root_name = helpers.root_name_of_name(name["original_name"], constants.Rank.species)
@@ -1256,7 +1252,7 @@ def write_to_db(
     source: Source,
     dry_run: bool = True,
     edit_if_no_holotype: bool = True,
-    edit_if: Callable[[Dict[str, Any]], bool] = lambda _: False,
+    edit_if: Callable[[dict[str, Any]], bool] = lambda _: False,
     always_edit: bool = False,
     skip_fields: Container[str] = frozenset(),
 ) -> DataT:

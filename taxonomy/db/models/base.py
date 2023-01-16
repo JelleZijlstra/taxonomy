@@ -10,22 +10,19 @@ import traceback
 from types import NoneType
 from typing import (
     Any,
-    Callable,
     ClassVar,
-    Container,
     Dict,
     Generic,
     IO,
-    Iterable,
     List,
     Optional,
-    Sequence,
     Set,
     Tuple,
     Type,
     TypeVar,
     Union,
 )
+from collections.abc import Callable, Container, Iterable, Sequence
 import typing_inspect
 
 import peewee
@@ -77,10 +74,10 @@ database = LoggingDatabase(str(settings.db_filename))
 
 ModelT = TypeVar("ModelT", bound="BaseModel")
 Linter = Callable[[ModelT, bool], Iterable[str]]
-_getters: Dict[Tuple[Type[Model], Optional[str]], "_NameGetter[Any]"] = {}
+_getters: dict[tuple[type[Model], str | None], "_NameGetter[Any]"] = {}
 
 
-class _FieldEditor(object):
+class _FieldEditor:
     """For easily editing fields. This is exposed as object.e."""
 
     def __init__(self, instance: Any = None) -> None:
@@ -96,7 +93,7 @@ class _FieldEditor(object):
             self.instance.fill_field(field)
         return None
 
-    def __dir__(self) -> List[str]:
+    def __dir__(self) -> list[str]:
         return ["all"] + sorted(self.instance._meta.fields.keys())
 
 
@@ -145,19 +142,19 @@ class BaseModel(Model):
     label_field: str
     label_field_has_underscores = False
     # If given, lists are separated into groups based on this field.
-    grouping_field: Optional[str] = None
+    grouping_field: str | None = None
     call_sign: str
     creation_event: events.Event[Any]
     save_event: events.Event[Any]
-    field_defaults: Dict[str, Any] = {}
-    excluded_fields: Set[str] = set()
-    derived_fields: List["derived_data.DerivedField[Any]"] = []
-    _name_to_derived_field: Dict[str, "derived_data.DerivedField[Any]"] = {}
-    call_sign_to_model: ClassVar[Dict[str, Type["BaseModel"]]] = {}
+    field_defaults: dict[str, Any] = {}
+    excluded_fields: set[str] = set()
+    derived_fields: list["derived_data.DerivedField[Any]"] = []
+    _name_to_derived_field: dict[str, "derived_data.DerivedField[Any]"] = {}
+    call_sign_to_model: ClassVar[dict[str, type["BaseModel"]]] = {}
     fields_may_be_invalid: ClassVar[set[str]] = set()
     markdown_fields: ClassVar[set[str]] = set()
 
-    class Meta(object):
+    class Meta:
         database = database
 
     e = _FieldEditor()
@@ -176,7 +173,7 @@ class BaseModel(Model):
         self._is_prepared = True
 
     @classmethod
-    def create(cls: Type[ModelT], **kwargs: Any) -> ModelT:
+    def create(cls: type[ModelT], **kwargs: Any) -> ModelT:
         kwargs = {
             key: helpers.clean_string(value) if isinstance(value, str) else value
             for key, value in kwargs.items()
@@ -188,12 +185,12 @@ class BaseModel(Model):
 
     @classmethod
     def lint_all(
-        cls: Type[ModelT],
+        cls: type[ModelT],
         linter: Linter[ModelT] | None = None,
         *,
         autofix: bool = True,
         query: Iterable[ModelT] | None = None,
-    ) -> List[Tuple[ModelT, List[str]]]:
+    ) -> list[tuple[ModelT, list[str]]]:
         if query is None:
             if linter is None:
                 query = cls.select()
@@ -429,14 +426,14 @@ class BaseModel(Model):
         return f"http://hesperomys.com{self.get_url()}"
 
     @classmethod
-    def select_for_field(cls, field: Optional[str]) -> Any:
+    def select_for_field(cls, field: str | None) -> Any:
         if field is not None:
             field_obj = getattr(cls, field)
             return cls.select_valid(field_obj).filter(field_obj != None)
         else:
             return cls.select_valid()
 
-    def get_value_to_show_for_field(self, field: Optional[str]) -> str:
+    def get_value_to_show_for_field(self, field: str | None) -> str:
         if field is None:
             return f"{self} ({self.get_url()})"
         return getattr(self, field)
@@ -492,7 +489,7 @@ class BaseModel(Model):
         return "{}({})".format(
             self.__class__.__name__,
             ", ".join(
-                "{}={}".format(field, getattr(self, field))
+                f"{field}={getattr(self, field)}"
                 for field in self.fields()
                 if getattr(self, field) is not None
             ),
@@ -515,7 +512,7 @@ class BaseModel(Model):
                 print(f"warning: dropping {field}: {my_data}")
 
     @classmethod
-    def mlist(cls, attribute: str) -> Dict[Any, int]:
+    def mlist(cls, attribute: str) -> dict[Any, int]:
         sql = f"""
             SELECT {attribute}, COUNT(*)
             FROM {cls._meta.db_table}
@@ -525,13 +522,13 @@ class BaseModel(Model):
 
     @classmethod
     def bfind(
-        cls: Type[ModelT],
+        cls: type[ModelT],
         *args: Any,
         quiet: bool = False,
-        sort_key: Optional[Callable[[ModelT], Any]] = None,
+        sort_key: Callable[[ModelT], Any] | None = None,
         sort: bool = True,
         **kwargs: Any,
-    ) -> List[ModelT]:
+    ) -> list[ModelT]:
         filters = [*args]
         fields = cls._meta.fields
         for key, value in kwargs.items():
@@ -559,7 +556,7 @@ class BaseModel(Model):
         return objs
 
     @classmethod
-    def select_one(cls: Type[ModelT], *args: Any, **kwargs: Any) -> Optional[ModelT]:
+    def select_one(cls: type[ModelT], *args: Any, **kwargs: Any) -> ModelT | None:
         rows = cls.bfind(
             *args,
             *[getattr(cls, key) == value for key, value in kwargs.items()],
@@ -578,7 +575,7 @@ class BaseModel(Model):
         return self.id
 
     @classmethod
-    def unserialize(cls: Type[ModelT], data: int) -> ModelT:
+    def unserialize(cls: type[ModelT], data: int) -> ModelT:
         return cls.get(id=data)
 
     @classmethod
@@ -603,7 +600,7 @@ class BaseModel(Model):
         """Add a filter to the query that removes invalid objects."""
         return query
 
-    def get_redirect_target(self: ModelT) -> Optional[ModelT]:
+    def get_redirect_target(self: ModelT) -> ModelT | None:
         """Return the object this object redirects to, if any."""
         return None
 
@@ -615,7 +612,7 @@ class BaseModel(Model):
         return False
 
     @classmethod
-    def getter(cls: Type[ModelT], attr: Optional[str]) -> "_NameGetter[ModelT]":
+    def getter(cls: type[ModelT], attr: str | None) -> "_NameGetter[ModelT]":
         key = (cls, attr)
         if key in _getters:
             return _getters[key]
@@ -626,15 +623,15 @@ class BaseModel(Model):
 
     @classmethod
     def get_one_by(
-        cls: Type[ModelT],
-        field: Optional[str],
+        cls: type[ModelT],
+        field: str | None,
         *,
         prompt: str = "> ",
         allow_empty: bool = True,
-    ) -> Optional[ModelT]:
+    ) -> ModelT | None:
         return cls.getter(field).get_one(prompt, allow_empty=allow_empty)
 
-    def get_value_for_field(self, field: str, default: Optional[Any] = None) -> Any:
+    def get_value_for_field(self, field: str, default: Any | None = None) -> Any:
         field_obj = getattr(type(self), field)
         prompt = f"{field}> "
         current_value = getattr(self, field)
@@ -643,7 +640,7 @@ class BaseModel(Model):
             return self.get_value_for_foreign_key_field(field, callbacks=callbacks)
         elif isinstance(field_obj, ADTField):
 
-            def get_existing() -> List[getinput.ADTOrInstance]:
+            def get_existing() -> list[getinput.ADTOrInstance]:
                 return getattr(self, field) or []
 
             def set_existing(adts: Sequence[getinput.ADTOrInstance]) -> None:
@@ -697,7 +694,7 @@ class BaseModel(Model):
             raise ValueError(f"don't know how to fill {field}")
 
     @classmethod
-    def get_interactive_creators(cls) -> Dict[str, Callable[[], Any]]:
+    def get_interactive_creators(cls) -> dict[str, Callable[[], Any]]:
         return {"n": cls.create_interactively}
 
     def get_adt_callbacks(self) -> getinput.CallbackMap:
@@ -790,7 +787,7 @@ class BaseModel(Model):
 
     def _get_possible_callable(
         self, name: str
-    ) -> Optional[Tuple[Callable[..., Any], inspect.Signature]]:
+    ) -> tuple[Callable[..., Any], inspect.Signature] | None:
         if name.startswith("_"):
             return None
         try:
@@ -883,7 +880,7 @@ class BaseModel(Model):
         self,
         field: str,
         *,
-        default_obj: Optional[Any] = None,
+        default_obj: Any | None = None,
         callbacks: getinput.CallbackMap = {},
     ) -> Any:
         if default_obj is None:
@@ -897,7 +894,7 @@ class BaseModel(Model):
         cls,
         field: str,
         *,
-        default_obj: Optional[Any] = None,
+        default_obj: Any | None = None,
         callbacks: getinput.CallbackMap = {},
         allow_none: bool = True,
     ) -> Any:
@@ -913,9 +910,9 @@ class BaseModel(Model):
     @staticmethod
     def get_value_for_foreign_class(
         label: str,
-        foreign_cls: Type["BaseModel"],
+        foreign_cls: type["BaseModel"],
         *,
-        default_obj: Optional[Any] = None,
+        default_obj: Any | None = None,
         callbacks: getinput.CallbackMap = {},
         allow_none: bool = True,
     ) -> Any:
@@ -962,7 +959,7 @@ class BaseModel(Model):
         setattr(self, field, self.get_value_for_field(field))
 
     @classmethod
-    def get_field_names(cls) -> List[str]:
+    def get_field_names(cls) -> list[str]:
         return [field for field in cls._meta.fields.keys() if field != "id"]
 
     def get_required_fields(self) -> Iterable[str]:
@@ -999,7 +996,7 @@ class BaseModel(Model):
         return edited_any
 
     def get_tags(
-        self, tags: Optional[Sequence[adt.ADT]], tag_cls: Type[adt.ADT]
+        self, tags: Sequence[adt.ADT] | None, tag_cls: type[adt.ADT]
     ) -> Iterable[adt.ADT]:
         if tags is None:
             return
@@ -1007,14 +1004,14 @@ class BaseModel(Model):
             if isinstance(tag, tag_cls):
                 yield tag
 
-    def add_to_history(self, field: Optional[str] = None) -> None:
+    def add_to_history(self, field: str | None = None) -> None:
         """Add this object to the history for its label field."""
         getter = self.getter(field)
         getter.add_name(self)
         getinput.append_history(getter, self.get_value_to_show_for_field(field))
 
     @classmethod
-    def create_interactively(cls: Type[ModelT], **kwargs: Any) -> Optional[ModelT]:
+    def create_interactively(cls: type[ModelT], **kwargs: Any) -> ModelT | None:
         obj = cls.create(**kwargs)
         obj.fill_required_fields()
         return obj
@@ -1026,10 +1023,10 @@ EnumT = TypeVar("EnumT", bound=enum.Enum)
 class _EnumFieldDescriptor(FieldAccessor, Generic[EnumT]):
     def __init__(
         self,
-        model: Type[BaseModel],
+        model: type[BaseModel],
         field: peewee.Field,
         name: str,
-        enum_cls: Type[EnumT],
+        enum_cls: type[EnumT],
     ) -> None:
         super().__init__(model, field, name)
         self.enum_cls = enum_cls
@@ -1040,14 +1037,14 @@ class _EnumFieldDescriptor(FieldAccessor, Generic[EnumT]):
             value = self.enum_cls(value)
         return value
 
-    def __set__(self, instance: Any, value: Union[int, EnumT]) -> None:
+    def __set__(self, instance: Any, value: int | EnumT) -> None:
         if isinstance(value, self.enum_cls):
             value = value.value
         super().__set__(instance, value)
 
 
 class EnumField(IntegerField):
-    def __init__(self, enum_cls: Type[enum.Enum], **kwargs: Any) -> None:
+    def __init__(self, enum_cls: type[enum.Enum], **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.enum_cls = enum_cls
         self.accessor_class = partial(_EnumFieldDescriptor, enum_cls=enum_cls)
@@ -1055,7 +1052,7 @@ class EnumField(IntegerField):
 
 class _ADTDescriptor(FieldAccessor):
     def __init__(
-        self, model: Type[BaseModel], field: peewee.Field, name: str, adt_cls: Any
+        self, model: type[BaseModel], field: peewee.Field, name: str, adt_cls: Any
     ) -> None:
         super().__init__(model, field, name)
         self.adt_cls = adt_cls
@@ -1089,29 +1086,29 @@ class _ADTDescriptor(FieldAccessor):
 
 
 class ADTField(TextField):
-    def __init__(self, adt_cls: Callable[[], Type[Any]], **kwargs: Any) -> None:
+    def __init__(self, adt_cls: Callable[[], type[Any]], **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.adt_cls = adt_cls
         self.accessor_class = partial(_ADTDescriptor, adt_cls=adt_cls)
 
-    def add_to_class(self, model_class: Type[BaseModel], name: str) -> None:
+    def add_to_class(self, model_class: type[BaseModel], name: str) -> None:
         super().add_to_class(model_class, name)
         setattr(
             model_class, name, _ADTDescriptor(model_class, self, name, self.adt_cls)
         )
         setattr(model_class, f"_raw_{name}", FieldAccessor(model_class, self, name))
 
-    def get_adt(self) -> Type[Any]:
+    def get_adt(self) -> type[Any]:
         return self.adt_cls()
 
 
 class _NameGetter(Generic[ModelT]):
-    def __init__(self, cls: Type[ModelT], field: Optional[str] = None) -> None:
+    def __init__(self, cls: type[ModelT], field: str | None = None) -> None:
         self.cls = cls
         self.field = field
         self.field_obj = getattr(cls, field if field is not None else cls.label_field)
-        self._data: Optional[Set[str]] = None
-        self._encoded_data: Optional[Set[str]] = None
+        self._data: set[str] | None = None
+        self._encoded_data: set[str] | None = None
         if hasattr(cls, "creation_event"):
             cls.creation_event.on(self.add_name)
         if hasattr(cls, "save_event"):
@@ -1120,16 +1117,16 @@ class _NameGetter(Generic[ModelT]):
     def __repr__(self) -> str:
         return f"_NameGetter({self.cls}, {self.field})"
 
-    def __dir__(self) -> Set[str]:
+    def __dir__(self) -> set[str]:
         result = set(super().__dir__())
         self._warm_cache()
         assert self._encoded_data is not None
         return result | self._encoded_data
 
-    def __getattr__(self, name: str) -> Optional[ModelT]:
+    def __getattr__(self, name: str) -> ModelT | None:
         return self._get_from_key(getinput.decode_name(name))
 
-    def __call__(self, name: Optional[str] = None) -> Optional[ModelT]:
+    def __call__(self, name: str | None = None) -> ModelT | None:
         if name is not None:
             return self._get_from_key(name)
         else:
@@ -1194,7 +1191,7 @@ class _NameGetter(Generic[ModelT]):
         default: str = "",
         callbacks: getinput.CallbackMap = {},
         allow_empty: bool = True,
-    ) -> Optional[str]:
+    ) -> str | None:
         self._warm_cache()
         callbacks = {**callbacks, "clear_cache": self.rewarm_cache}
         key = getinput.get_with_lazy_completion(
@@ -1217,7 +1214,7 @@ class _NameGetter(Generic[ModelT]):
         default: str = "",
         callbacks: getinput.CallbackMap = {},
         allow_empty: bool = True,
-    ) -> Optional[ModelT]:
+    ) -> ModelT | None:
         self._warm_cache()
         creators = self.cls.get_interactive_creators()
         callbacks = {**callbacks, "clear_cache": self.rewarm_cache}
@@ -1252,12 +1249,12 @@ class _NameGetter(Generic[ModelT]):
                 print(f"{key!r} does not exist")
                 continue
 
-    def _get_data(self) -> Set[str]:
+    def _get_data(self) -> set[str]:
         self._warm_cache()
         assert self._data is not None
         return self._data
 
-    def _get_from_key(self, key: str) -> Optional[ModelT]:
+    def _get_from_key(self, key: str) -> ModelT | None:
         if key.isnumeric():
             return self.cls.get(id=int(key))
         else:
@@ -1276,7 +1273,7 @@ class _NameGetter(Generic[ModelT]):
             obj.display()
             obj.edit()
 
-    def get_all(self) -> List[str]:
+    def get_all(self) -> list[str]:
         self._warm_cache()
         assert self._data is not None
         return sorted(self._data)
@@ -1298,8 +1295,8 @@ class _NameGetter(Generic[ModelT]):
 
 
 def get_completer(
-    cls: Type[ModelT], field: Optional[str]
-) -> Callable[[str, Optional[str]], Optional[ModelT]]:
+    cls: type[ModelT], field: str | None
+) -> Callable[[str, str | None], ModelT | None]:
     def completer(prompt: str, default: Any) -> Any:
         if isinstance(default, BaseModel):
             default = str(default.id)
@@ -1313,9 +1310,9 @@ def get_completer(
 
 
 def get_str_completer(
-    cls: Type[Model], field: Optional[str]
-) -> Callable[[str, Optional[str]], Optional[str]]:
-    def completer(prompt: str, default: Optional[str]) -> Any:
+    cls: type[Model], field: str | None
+) -> Callable[[str, str | None], str | None]:
+    def completer(prompt: str, default: str | None) -> Any:
         return cls.getter(field).get_one_key(prompt, default=default or "")
 
     return completer
@@ -1323,15 +1320,15 @@ def get_str_completer(
 
 def get_tag_based_derived_field(
     name: str,
-    lazy_model_cls: Callable[[], Type[BaseModel]],
+    lazy_model_cls: Callable[[], type[BaseModel]],
     tag_field: str,
-    lazy_tag_cls: Callable[[], Type[adt.ADT]],
+    lazy_tag_cls: Callable[[], type[adt.ADT]],
     field_index: int,
     skip_filter: bool = False,
-) -> derived_data.DerivedField[List[Any]]:
-    def compute_all() -> Dict[int, List[BaseModel]]:
+) -> derived_data.DerivedField[list[Any]]:
+    def compute_all() -> dict[int, list[BaseModel]]:
         model_cls = lazy_model_cls()
-        out: Dict[int, List[BaseModel]] = defaultdict(list)
+        out: dict[int, list[BaseModel]] = defaultdict(list)
         tag_id = lazy_tag_cls()._tag
         field_obj = getattr(model_cls, tag_field)
         if skip_filter:
@@ -1346,7 +1343,7 @@ def get_tag_based_derived_field(
 
     return derived_data.DerivedField(
         name,
-        derived_data.LazyType(lambda: List[lazy_model_cls()]),  # type: ignore
+        derived_data.LazyType(lambda: list[lazy_model_cls()]),  # type: ignore
         compute_all=compute_all,
         pull_on_miss=False,
     )

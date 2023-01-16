@@ -1,7 +1,9 @@
 import enum
 import sys
 import re
-from typing import Any, Callable, Dict, IO, Iterable, Optional, Type, Union, Counter
+from typing import Any, Dict, IO, Optional, Type, Union
+from collections import Counter
+from collections.abc import Callable, Iterable
 
 from peewee import CharField, ForeignKeyField, IntegerField, TextField
 
@@ -74,8 +76,8 @@ class Location(BaseModel):
         name: str,
         region: Region,
         period: Period,
-        comment: Optional[str] = None,
-        stratigraphic_unit: Optional[StratigraphicUnit] = None,
+        comment: str | None = None,
+        stratigraphic_unit: StratigraphicUnit | None = None,
     ) -> "Location":
         return cls.create(
             name=name,
@@ -89,10 +91,10 @@ class Location(BaseModel):
     @classmethod
     def create_interactively(
         cls,
-        name: Optional[str] = None,
-        region: Optional[Region] = None,
-        period: Optional[Period] = None,
-        comment: Optional[str] = None,
+        name: str | None = None,
+        region: Region | None = None,
+        period: Period | None = None,
+        comment: str | None = None,
         **kwargs: Any,
     ) -> "Location":
         if name is None:
@@ -197,7 +199,7 @@ class Location(BaseModel):
         for occ in self.taxa:
             occ.location = other
 
-    def set_period(self, period: Optional[Period]) -> None:
+    def set_period(self, period: Period | None) -> None:
         self.min_period = self.max_period = period
 
     def fill_field(self, field: str) -> None:
@@ -219,7 +221,7 @@ class Location(BaseModel):
         yield "stratigraphic_unit"
         yield "region"
 
-    def has_tag(self, tag_cls: Union[adt.ADT, Type[adt.ADT]]) -> bool:
+    def has_tag(self, tag_cls: adt.ADT | type[adt.ADT]) -> bool:
         tag_id = tag_cls._tag
         for tag in self.get_raw_tags_field("tags"):
             if tag[0] == tag_id:
@@ -309,8 +311,8 @@ class Location(BaseModel):
             self.deleted = LocationStatus.deleted  # type: ignore
 
     @classmethod
-    def get_interactive_creators(cls) -> Dict[str, Callable[[], Any]]:
-        def callback() -> Optional[Location]:
+    def get_interactive_creators(cls) -> dict[str, Callable[[], Any]]:
+        def callback() -> Location | None:
             region = models.Region.getter(None).get_one("region> ")
             if region is None:
                 return None

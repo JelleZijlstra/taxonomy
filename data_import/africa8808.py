@@ -8,7 +8,7 @@ SOURCE = lib.Source("africa8808.txt", "Africa 1988-2008.pdf")
 
 
 def extract_names(pages: PagesT) -> DataT:
-    current_name: List[str] = []
+    current_name: list[str] = []
     starting_page = 0
     for page, lines in pages:
         for line in lines:

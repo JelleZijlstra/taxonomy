@@ -1,5 +1,6 @@
 import re
-from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
+from collections.abc import Iterable
 
 from . import lib
 from .lib import DataT
@@ -21,10 +22,10 @@ HARDCODED = {
 }
 
 
-def extract_pages(lines: Iterable[str]) -> Iterable[Tuple[int, List[str]]]:
+def extract_pages(lines: Iterable[str]) -> Iterable[tuple[int, list[str]]]:
     """Split the text into pages."""
     current_page = None
-    current_lines: List[str] = []
+    current_lines: list[str] = []
     for line in lines:
         match = re.match(r"^(\d+) U\. S\. NATIONAL MUSEUM BULLETIN 205\s*$", line)
         if match:
@@ -46,14 +47,14 @@ def extract_pages(lines: Iterable[str]) -> Iterable[Tuple[int, List[str]]]:
     yield current_page, current_lines
 
 
-def _make_taxon(heading: str, rank: str, page: int) -> Dict[str, Any]:
+def _make_taxon(heading: str, rank: str, page: int) -> dict[str, Any]:
     return {"rank": rank, "heading": heading, "names": [], "pages": [page]}
 
 
-def extract_taxa(pages: Iterable[Tuple[int, List[str]]]) -> DataT:
-    current_taxon: Dict[str, Any] = {}
-    current_name: List[str] = []
-    type_loc_lines: List[str] = []
+def extract_taxa(pages: Iterable[tuple[int, list[str]]]) -> DataT:
+    current_taxon: dict[str, Any] = {}
+    current_name: list[str] = []
+    type_loc_lines: list[str] = []
     range_marker = "Range. —"
 
     def _assert_no_type_loc() -> None:
@@ -155,10 +156,10 @@ def extract_taxa(pages: Iterable[Tuple[int, List[str]]]) -> DataT:
     yield current_taxon
 
 
-def name_of_text(text: str, is_genus: bool) -> Dict[str, Any]:
+def name_of_text(text: str, is_genus: bool) -> dict[str, Any]:
     match = NAME_REGEX.match(text)
     assert match, f"failed to match {text}"
-    name: Dict[str, Any] = {
+    name: dict[str, Any] = {
         key: value for key, value in match.groupdict().items() if value
     }
     name["is_genus"] = is_genus
@@ -185,7 +186,7 @@ def name_of_text(text: str, is_genus: bool) -> Dict[str, Any]:
     return name
 
 
-def get_taxon_root_name(heading: str) -> Optional[str]:
+def get_taxon_root_name(heading: str) -> str | None:
     match = re.match(
         (
             r"^([A-Z][a-z]+( [a-z]+){1,2}) (von |de )?(([A-Z]\."
@@ -207,7 +208,7 @@ def taxa_to_names(taxa: DataT) -> DataT:
     for taxon in taxa:
         is_genus = taxon["rank"] == "genus"
         names = [name_of_text(name, is_genus=is_genus) for name in taxon["names"]]
-        seen_root_names: Set[str] = set()
+        seen_root_names: set[str] = set()
         is_singleton = len(names) == 1
         if not is_genus:
             taxon_root_name = get_taxon_root_name(taxon["heading"])

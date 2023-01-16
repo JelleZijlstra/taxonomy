@@ -1,5 +1,6 @@
 from collections import Counter
-from typing import Any, Iterable, List, Optional, Type
+from typing import Any, List, Optional, Type
+from collections.abc import Iterable
 
 from peewee import BooleanField, CharField, ForeignKeyField, IntegrityError
 import re
@@ -27,7 +28,7 @@ class CitationGroup(BaseModel):
     tags = ADTField(lambda: CitationGroupTag, null=True)
     archive = CharField(null=True)
 
-    class Meta(object):
+    class Meta:
         db_table = "citation_group"
 
     @classmethod
@@ -45,7 +46,7 @@ class CitationGroup(BaseModel):
 
     @classmethod
     def create_interactively(
-        cls, name: Optional[str] = None, **kwargs: Any
+        cls, name: str | None = None, **kwargs: Any
     ) -> "CitationGroup":
         if name is None:
             name = cls.getter("name").get_one_key("name> ", allow_empty=False)
@@ -156,7 +157,7 @@ class CitationGroup(BaseModel):
             return False
         return any(my_tag is tag for my_tag in self.tags)
 
-    def get_tag(self, tag_cls: Type[adt.ADT]) -> Optional[adt.ADT]:
+    def get_tag(self, tag_cls: type[adt.ADT]) -> adt.ADT | None:
         if self.tags is None:
             return None
         for tag in self.tags:
@@ -196,10 +197,10 @@ class CitationGroup(BaseModel):
     def for_years(
         self,
         start_year: int,
-        end_year: Optional[int] = None,
-        author: Optional[str] = None,
+        end_year: int | None = None,
+        author: str | None = None,
         include_articles: bool = False,
-    ) -> List["models.Name"]:
+    ) -> list["models.Name"]:
         def condition(year: int) -> bool:
             if end_year is not None:
                 return year in range(start_year, end_year)
@@ -248,7 +249,7 @@ class CitationGroup(BaseModel):
             for art in sorted(arts, key=lambda art: (art.numeric_year(), art.name)):
                 print(f"{' ' * (depth + 4)}{{{art.name}}}: {art.cite()}")
 
-    def count_and_range(self, objs: List[Any]) -> str:
+    def count_and_range(self, objs: list[Any]) -> str:
         years = [obj.numeric_year() for obj in objs]
         years = [year for year in years if year != 0]
         if not objs:
@@ -306,7 +307,7 @@ class CitationGroup(BaseModel):
         series = models.Article.getter("series").get_one_key("series (optional)> ")
         self.merge(other, series)
 
-    def merge(self, other: "CitationGroup", series: Optional[str] = None) -> None:
+    def merge(self, other: "CitationGroup", series: str | None = None) -> None:
         if self == other:
             print("Cannot merge into yourself")
             return
@@ -346,7 +347,7 @@ class CitationGroup(BaseModel):
             models.Article.citation_group == self
         )
 
-    def get_names(self) -> List["models.Name"]:
+    def get_names(self) -> list["models.Name"]:
         names = models.Name.add_validity_check(self.names)
         return sorted(names, key=lambda nam: nam.sort_key())
 

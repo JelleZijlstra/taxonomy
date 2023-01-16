@@ -1,6 +1,8 @@
 import json
 import re
-from typing import Any, Counter, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
+from collections import Counter
+from collections.abc import Iterable
 
 from taxonomy import getinput
 from taxonomy.db import constants, helpers, models
@@ -17,9 +19,9 @@ def get_text() -> Iterable[str]:
         yield from f
 
 
-def extract_names(pages: Iterable[Tuple[int, List[str]]]) -> Iterable[Dict[str, Any]]:
-    current_name: Optional[Dict[str, Any]] = None
-    current_lines: List[str] = []
+def extract_names(pages: Iterable[tuple[int, list[str]]]) -> Iterable[dict[str, Any]]:
+    current_name: dict[str, Any] | None = None
+    current_lines: list[str] = []
 
     for page, lines in pages:
         if current_name is not None:

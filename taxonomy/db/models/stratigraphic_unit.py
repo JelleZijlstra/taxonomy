@@ -1,6 +1,7 @@
 from functools import lru_cache
 import sys
-from typing import IO, Any, Iterable, List, Optional, Set, Tuple, TypeVar
+from typing import IO, Any, List, Optional, Set, Tuple, TypeVar
+from collections.abc import Iterable
 
 from peewee import BooleanField, CharField, ForeignKeyField
 
@@ -45,7 +46,7 @@ class StratigraphicUnit(BaseModel):
         DerivedField("has_locations", bool, lambda unit: unit.has_locations())
     ]
 
-    class Meta(object):
+    class Meta:
         db_table = "stratigraphic_unit"
 
     def has_locations(self) -> bool:
@@ -93,13 +94,13 @@ class StratigraphicUnit(BaseModel):
         self.deleted = True
 
     @staticmethod
-    def _filter_none(seq: Iterable[Optional[T]]) -> Iterable[T]:
+    def _filter_none(seq: Iterable[T | None]) -> Iterable[T]:
         return (elt for elt in seq if elt is not None)
 
-    def sort_key(self) -> Tuple[int, int, str]:
+    def sort_key(self) -> tuple[int, int, str]:
         return unit_sort_key(self)
 
-    def get_min_age(self) -> Optional[int]:
+    def get_min_age(self) -> int | None:
         if self.min_age is not None:
             return self.min_age
         return min(
@@ -107,7 +108,7 @@ class StratigraphicUnit(BaseModel):
             default=None,
         )
 
-    def get_max_age(self) -> Optional[int]:
+    def get_max_age(self) -> int | None:
         if self.max_age is not None:
             return self.max_age
         return max(
@@ -118,8 +119,8 @@ class StratigraphicUnit(BaseModel):
     @classmethod
     def create_interactively(
         cls,
-        name: Optional[str] = None,
-        rank: Optional[StratigraphicUnitRank] = None,
+        name: str | None = None,
+        rank: StratigraphicUnitRank | None = None,
         **kwargs: Any,
     ) -> "StratigraphicUnit":
         if name is None:
@@ -175,7 +176,7 @@ class StratigraphicUnit(BaseModel):
         for child in self.children:
             yield from child.all_localities()
 
-    def all_type_localities(self, include_children: bool = True) -> List["models.Name"]:
+    def all_type_localities(self, include_children: bool = True) -> list["models.Name"]:
         if include_children:
             locs = self.all_localities()
         else:
@@ -187,7 +188,7 @@ class StratigraphicUnit(BaseModel):
             self.all_type_localities(include_children=include_children), organized=True
         )
 
-    def all_regions(self) -> Set[Region]:
+    def all_regions(self) -> set[Region]:
         return {loc.region for loc in self.all_localities()}
 
     def autoset_region(self) -> bool:
@@ -231,7 +232,7 @@ class StratigraphicUnit(BaseModel):
 
 
 @lru_cache(maxsize=1024)
-def unit_sort_key(unit: StratigraphicUnit) -> Tuple[int, int, str]:
+def unit_sort_key(unit: StratigraphicUnit) -> tuple[int, int, str]:
     """The sort key consists of three parts.
 
     - The number of recursive parents.

@@ -5,7 +5,8 @@ Evolution of Tertiary Mammals in North America (ETMNA).
 
 """
 
-from typing import Iterable, Optional
+from typing import Optional
+from collections.abc import Iterable
 
 from taxonomy import getinput
 from taxonomy.db.models import Location, Region
@@ -49,7 +50,7 @@ def run_for_region(region: Region) -> None:
         etmna_location(loc)
 
 
-def run_all(start_at: Optional[Region] = None) -> None:
+def run_all(start_at: Region | None = None) -> None:
     regions = [
         Region.get(name="Canada"),
         Region.get(name="United States"),

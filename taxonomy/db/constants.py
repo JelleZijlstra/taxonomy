@@ -217,7 +217,7 @@ class NomenclatureStatus(enum.IntEnum):
         }
 
     @classmethod
-    def hierarchy(cls) -> List[List["NomenclatureStatus"]]:
+    def hierarchy(cls) -> list[list["NomenclatureStatus"]]:
         """Hierarchy of the severity of various problems with a name.
 
         Listed from most to least severe. If multiple conditions apply to a name (e.g., it is both

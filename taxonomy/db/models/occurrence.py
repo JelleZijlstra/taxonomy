@@ -37,5 +37,5 @@ class Occurrence(BaseModel):
             "; " + self.comment if self.comment else "",
         )
         if self.status != OccurrenceStatus.valid:
-            out = "[{}] {}".format(self.status.name.upper(), out)
+            out = f"[{self.status.name.upper()}] {out}"
         return out

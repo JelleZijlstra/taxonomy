@@ -8,7 +8,7 @@ SOURCE = lib.Source("gymnophiona.txt", "Gymnophiona-names (Smith & Smith 1972).p
 
 
 def extract_names(pages: PagesT) -> DataT:
-    current_name: List[str] = []
+    current_name: list[str] = []
     current_page = 0
     for page, lines in pages:
         for line in lines:

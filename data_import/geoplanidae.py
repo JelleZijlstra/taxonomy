@@ -2,20 +2,21 @@ import pprint
 import re
 import sys
 from pathlib import Path
-from typing import Dict, Iterable, List, Tuple
+from typing import Dict, List, Tuple
+from collections.abc import Iterable
 
 from bs4 import BeautifulSoup
 
 from taxonomy.db import helpers
 
-Key = Tuple[Tuple[str, ...], str]
+Key = tuple[tuple[str, ...], str]
 
 
-def extract_raw_refs(filename: Path) -> List[List[str]]:
+def extract_raw_refs(filename: Path) -> list[list[str]]:
     html_doc = filename.read_text()
     soup = BeautifulSoup(html_doc, "html.parser")
     started_refs = False
-    refs: List[List[str]] = []
+    refs: list[list[str]] = []
     for span in soup.find_all("span"):
         if span.get("style") != 'font-size:4px;font-family:"Times"':
             continue
@@ -51,13 +52,13 @@ def extract_raw_refs(filename: Path) -> List[List[str]]:
     return refs
 
 
-def clean_up_refs(refs: List[List[str]]) -> Iterable[str]:
+def clean_up_refs(refs: list[list[str]]) -> Iterable[str]:
     for ref in refs:
         yield helpers.clean_string(" ".join(ref))
 
 
-def make_dict(refs: Iterable[str]) -> Dict[Key, str]:
-    out: Dict[Key, str] = {}
+def make_dict(refs: Iterable[str]) -> dict[Key, str]:
+    out: dict[Key, str] = {}
     for ref in refs:
         match = re.match(r"^([^\d]+),? (\d{4}(-\d{4})?( [a-z])?)\. (.*)$", ref)
         assert match, ref
@@ -82,7 +83,7 @@ def make_dict(refs: Iterable[str]) -> Dict[Key, str]:
     return out
 
 
-def parse_refs(filename: Path) -> Dict[Key, str]:
+def parse_refs(filename: Path) -> dict[Key, str]:
     raw_refs = extract_raw_refs(filename)
     half_cooked = clean_up_refs(raw_refs)
     out = make_dict(half_cooked)

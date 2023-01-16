@@ -4,16 +4,13 @@ import sys
 from typing import (
     IO,
     Any,
-    Callable,
     Dict,
     List,
-    Iterable,
-    Mapping,
     Optional,
-    Sequence,
     Tuple,
     Type,
 )
+from collections.abc import Callable, Iterable, Mapping, Sequence
 
 from peewee import CharField, DeferredForeignKey, TextField
 
@@ -190,7 +187,7 @@ class Person(BaseModel):
                 parts.append(", " + self.suffix)
         return "".join(parts)
 
-    def get_initials(self) -> Optional[str]:
+    def get_initials(self) -> str | None:
         if self.initials:
             return self.initials
         if not self.given_names:
@@ -232,7 +229,7 @@ class Person(BaseModel):
         else:
             return self.family_name
 
-    def get_value_to_show_for_field(self, field: Optional[str]) -> str:
+    def get_value_to_show_for_field(self, field: str | None) -> str:
         if field is None:
             return self.get_description(family_first=True, url=True)
         return getattr(self, field)
@@ -280,8 +277,8 @@ class Person(BaseModel):
                             file.write(f"{double_indented_onset}{nam!r}\n")
 
     def find_tag(
-        self, tags: Optional[Sequence[adt.ADT]], tag_cls: Type[adt.ADT]
-    ) -> Tuple[int, Optional[adt.ADT]]:
+        self, tags: Sequence[adt.ADT] | None, tag_cls: type[adt.ADT]
+    ) -> tuple[int, adt.ADT | None]:
         if tags is None:
             return 0, None
         for i, tag in enumerate(tags):
@@ -300,10 +297,10 @@ class Person(BaseModel):
     def edit_tag_sequence(
         self,
         obj: BaseModel,
-        tags: Optional[Sequence[adt.ADT]],
-        tag_cls: Type[adt.ADT],
+        tags: Sequence[adt.ADT] | None,
+        tag_cls: type[adt.ADT],
         target: Optional["Person"] = None,
-    ) -> Tuple[Optional[Sequence[adt.ADT]], Optional["Person"]]:
+    ) -> tuple[Sequence[adt.ADT] | None, Optional["Person"]]:
         if tags is None:
             return None, None
         matching_idx, matching_tag = self.find_tag(tags, tag_cls)
@@ -336,7 +333,7 @@ class Person(BaseModel):
         self,
         obj: BaseModel,
         field_name: str,
-        tag_cls: Type[adt.ADT],
+        tag_cls: type[adt.ADT],
         derived_field_name: str,
         target: Optional["Person"] = None,
     ) -> Optional["Person"]:
@@ -362,7 +359,7 @@ class Person(BaseModel):
     def edit(self) -> None:
         self.fill_field("tags")
 
-    def sort_key(self) -> Tuple[str, ...]:
+    def sort_key(self) -> tuple[str, ...]:
         return (
             self.family_name,
             self.get_initials() or "",
@@ -495,8 +492,8 @@ class Person(BaseModel):
                 person.maybe_reassign_references()
 
     @classmethod
-    def find_duplicates(cls, autofix: bool = False) -> List[List["Person"]]:
-        by_key: Dict[Tuple[Optional[str], ...], List[Person]] = defaultdict(list)
+    def find_duplicates(cls, autofix: bool = False) -> list[list["Person"]]:
+        by_key: dict[tuple[str | None, ...], list[Person]] = defaultdict(list)
         for person in cls.select_valid().filter(cls.type << UNCHECKED_TYPES):
             key = (
                 person.family_name,
@@ -509,8 +506,8 @@ class Person(BaseModel):
         return cls.display_duplicates(by_key, autofix=autofix)
 
     @classmethod
-    def find_near_duplicates(cls, min_count: int = 20) -> List[List["Person"]]:
-        by_key: Dict[str, List[Person]] = defaultdict(list)
+    def find_near_duplicates(cls, min_count: int = 20) -> list[list["Person"]]:
+        by_key: dict[str, list[Person]] = defaultdict(list)
         for person in cls.select_valid():
             key = helpers.simplify_string(
                 person.get_full_name().replace("-", ""), clean_words=False
@@ -526,10 +523,10 @@ class Person(BaseModel):
     @classmethod
     def display_duplicates(
         cls,
-        by_key: Mapping[Any, List["Person"]],
+        by_key: Mapping[Any, list["Person"]],
         autofix: bool = False,
         min_count: int = 0,
-    ) -> List[List["Person"]]:
+    ) -> list[list["Person"]]:
         out = []
         for key, group in sorted(
             by_key.items(), key=lambda pair: sum(p.total_references() for p in pair[1])
@@ -550,7 +547,7 @@ class Person(BaseModel):
         return out
 
     @classmethod
-    def maybe_merge_group(cls, group: List["Person"]) -> None:
+    def maybe_merge_group(cls, group: list["Person"]) -> None:
         group = sorted(group, key=lambda person: (-person.get_level().value, person.id))
 
         def all_the_same(group: Iterable[Person], field: str) -> bool:
@@ -587,7 +584,7 @@ class Person(BaseModel):
                 person.reassign_references(target=group[0])
                 person.type = PersonType.deleted  # type: ignore
 
-    def num_references(self) -> Dict[str, int]:
+    def num_references(self) -> dict[str, int]:
         num_refs = {}
         for field in self.derived_fields:
             refs = self.get_raw_derived_field(field.name)
@@ -620,7 +617,7 @@ class Person(BaseModel):
                     obj, tag_name, tag_cls, field_name, target=target
                 )
 
-    def get_sorted_derived_field(self, field_name: str) -> List[Any]:
+    def get_sorted_derived_field(self, field_name: str) -> list[Any]:
         objs = self.get_derived_field(field_name)
         if objs is None:
             return []
@@ -814,7 +811,7 @@ class Person(BaseModel):
 
     @classmethod
     def create_interactively(
-        cls, family_name: Optional[str] = None, **kwargs: Any
+        cls, family_name: str | None = None, **kwargs: Any
     ) -> Optional["Person"]:
         if family_name is None:
             family_name = cls.getter("family_name").get_one_key("family_name> ")
@@ -829,7 +826,7 @@ class Person(BaseModel):
         return person
 
     @classmethod
-    def get_interactive_creators(cls) -> Dict[str, Callable[[], Any]]:
+    def get_interactive_creators(cls) -> dict[str, Callable[[], Any]]:
         return {
             **super().get_interactive_creators(),
             "u": cls.make_unchecked,
@@ -888,10 +885,10 @@ class Person(BaseModel):
         cls,
         family_name: str,
         *,
-        initials: Optional[str] = None,
-        given_names: Optional[str] = None,
-        suffix: Optional[str] = None,
-        tussenvoegsel: Optional[str] = None,
+        initials: str | None = None,
+        given_names: str | None = None,
+        suffix: str | None = None,
+        tussenvoegsel: str | None = None,
     ) -> "Person":
         family_name = helpers.clean_string(family_name)
         if initials is not None:
@@ -947,12 +944,12 @@ class Person(BaseModel):
     def get_completers_for_adt_field(self, field: str) -> getinput.CompleterMap:
         for field_name, tag_cls in [("tags", models.tags.PersonTag)]:
             if field == field_name:
-                completers: Dict[
-                    Tuple[Type[adt.ADT], str], getinput.Completer[Any]
+                completers: dict[
+                    tuple[type[adt.ADT], str], getinput.Completer[Any]
                 ] = {}
                 for tag in tag_cls._tag_to_member.values():
                     for attribute, typ in tag._attributes.items():
-                        completer: Optional[getinput.Completer[Any]]
+                        completer: getinput.Completer[Any] | None
                         if typ is Collection:
                             completer = get_completer(Collection, None)
                         elif typ is Region:
@@ -992,7 +989,7 @@ class AuthorTag(adt.ADT):
     Author(person=Person, tag=2)  # type: ignore
 
 
-def get_new_authors_list() -> List[AuthorTag]:
+def get_new_authors_list() -> list[AuthorTag]:
     authors = []
     while True:
         author = Person.getter(None).get_one("author> ")
@@ -1002,7 +999,7 @@ def get_new_authors_list() -> List[AuthorTag]:
     return authors
 
 
-def _display_year(year: Optional[str]) -> str:
+def _display_year(year: str | None) -> str:
     if year is None:
         return ""
     try:

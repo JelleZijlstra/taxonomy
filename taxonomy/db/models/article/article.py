@@ -17,10 +17,8 @@ import subprocess
 import time
 from typing import (
     Any,
-    Callable,
     ClassVar,
     Dict,
-    Iterable,
     List,
     NamedTuple,
     Optional,
@@ -30,6 +28,7 @@ from typing import (
     TypeVar,
     cast,
 )
+from collections.abc import Callable, Iterable
 
 from ..base import (
     ADTField,
@@ -95,7 +94,7 @@ _TYPE_TO_FIELDS = {
 
 class LsFile(NamedTuple):
     name: str
-    path: List[str]
+    path: list[str]
 
 
 class Article(BaseModel):
@@ -271,7 +270,7 @@ class Article(BaseModel):
     ]
 
     @property
-    def place_of_publication(self) -> Optional[str]:
+    def place_of_publication(self) -> str | None:
         if self.type not in (ArticleType.BOOK, ArticleType.WEB):
             return None
         if self.citation_group is not None:
@@ -280,7 +279,7 @@ class Article(BaseModel):
             return None
 
     @property
-    def institution(self) -> Optional[str]:
+    def institution(self) -> str | None:
         if self.type != ArticleType.THESIS:
             return None
         if self.citation_group is not None:
@@ -336,10 +335,10 @@ class Article(BaseModel):
         cls,
         *args: Any,
         quiet: bool = False,
-        sort_key: Optional[Callable[["Article"], Any]] = None,
-        journal: Optional[str] = None,
+        sort_key: Callable[["Article"], Any] | None = None,
+        journal: str | None = None,
         **kwargs: Any,
-    ) -> List["Article"]:
+    ) -> list["Article"]:
         if journal is not None:
             args = (*args, cls.citation_group == CitationGroup.get(name=journal))
         return super().bfind(*args, quiet=quiet, sort_key=sort_key, **kwargs)
@@ -498,12 +497,12 @@ class Article(BaseModel):
             os.unlink(temp_path)
             return False
 
-    def get_value_to_show_for_field(self, field: Optional[str]) -> str:
+    def get_value_to_show_for_field(self, field: str | None) -> str:
         if field is None:
             return self.name
         return getattr(self, field)
 
-    def get_value_for_field(self, field: str, default: Optional[str] = None) -> Any:
+    def get_value_for_field(self, field: str, default: str | None = None) -> Any:
         if field == "author_tags" and not self.author_tags:
             return get_new_authors_list()
         else:
@@ -523,12 +522,12 @@ class Article(BaseModel):
     def get_completers_for_adt_field(self, field: str) -> getinput.CompleterMap:
         for field_name, tag_cls in [("author_tags", AuthorTag)]:
             if field == field_name:
-                completers: Dict[
-                    Tuple[Type[adt.ADT], str], getinput.Completer[Any]
+                completers: dict[
+                    tuple[type[adt.ADT], str], getinput.Completer[Any]
                 ] = {}
                 for tag in tag_cls._tag_to_member.values():
                     for attribute, typ in tag._attributes.items():
-                        completer: Optional[getinput.Completer[Any]]
+                        completer: getinput.Completer[Any] | None
                         if typ is Article:
                             completer = get_completer(Article, "name")
                         elif typ is Person:
@@ -555,7 +554,7 @@ class Article(BaseModel):
         out = self.relative_path()
         return _options.library_path / out / self.name
 
-    def path_list(self) -> List[str]:
+    def path_list(self) -> list[str]:
         if self.path is None:
             return []
         else:
@@ -645,7 +644,7 @@ class Article(BaseModel):
 
     # Authors
 
-    def get_authors(self) -> List[Person]:
+    def get_authors(self) -> list[Person]:
         if self.type is ArticleType.SUPPLEMENT and self.parent is not None:
             return self.parent.get_authors()
         if self.author_tags is None:
@@ -658,14 +657,14 @@ class Article(BaseModel):
             AuthorTag.Author(person=person) for person in reversed(authors)  # type: ignore
         ]
 
-    def taxonomicAuthority(self) -> Tuple[str, str]:
+    def taxonomicAuthority(self) -> tuple[str, str]:
         return (Person.join_authors(self.get_authors()), self.year)
 
-    def author_set(self) -> Set[int]:
+    def author_set(self) -> set[int]:
         return {pair[1] for pair in self.get_raw_tags_field("author_tags")}
 
     def add_comment(
-        self, kind: Optional[ArticleCommentKind] = None, text: Optional[str] = None
+        self, kind: ArticleCommentKind | None = None, text: str | None = None
     ) -> Optional["ArticleComment"]:
         return ArticleComment.create_interactively(article=self, kind=kind, text=text)
 
@@ -681,14 +680,14 @@ class Article(BaseModel):
         else:
             self.tags = self.tags + (tag,)
 
-    def has_tag(self, tag_cls: Type[adt.ADT]) -> bool:
+    def has_tag(self, tag_cls: type[adt.ADT]) -> bool:
         tag_id = tag_cls._tag
         for tag in self.get_raw_tags_field("tags"):
             if tag[0] == tag_id:
                 return True
         return False
 
-    def geturl(self) -> Optional[str]:
+    def geturl(self) -> str | None:
         # get the URL for this file from the data given
         if self.url:
             return self.url
@@ -716,12 +715,12 @@ class Article(BaseModel):
             subprocess.check_call(["open", url])
             return True
 
-    def getIdentifier(self, identifier: Type[adt.ADT]) -> Optional[str]:
+    def getIdentifier(self, identifier: type[adt.ADT]) -> str | None:
         for tag in self.get_tags(self.tags, identifier):
             return tag.text
         return None
 
-    def getEnclosing(self: T) -> Optional[T]:
+    def getEnclosing(self: T) -> T | None:
         if self.parent is not None:
             return cast(T, self.parent)
         else:
@@ -819,7 +818,7 @@ class Article(BaseModel):
 
     def expand_doi(
         self, overwrite: bool = False, verbose: bool = False, set_fields: bool = False
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         if not self.doi:
             return {}
         data = models.article.add_data.expand_doi(self.doi)
@@ -848,7 +847,7 @@ class Article(BaseModel):
             models.article.add_data.set_multi(self, data, only_new=False)
         return data
 
-    def set_multi(self, data: Dict[str, Any]) -> None:
+    def set_multi(self, data: dict[str, Any]) -> None:
         for key, value in clean_strings_recursively(data).items():
             self.set_from_raw(key, value)
         # Somehow this doesn't always autosave
@@ -897,7 +896,7 @@ class Article(BaseModel):
 
     def specify_authors(
         self,
-        level: Optional[PersonLevel] = PersonLevel.initials_only,
+        level: PersonLevel | None = PersonLevel.initials_only,
         should_open: bool = True,
     ) -> None:
         if self.has_tag(ArticleTag.InitialsOnly):
@@ -949,7 +948,7 @@ class Article(BaseModel):
         data = models.article.add_data.expand_doi(self.doi)
         self._recompute_authors_from_data(data, confirm)
 
-    def _recompute_authors_from_data(self, data: Dict[str, Any], confirm: bool) -> None:
+    def _recompute_authors_from_data(self, data: dict[str, Any], confirm: bool) -> None:
         if not data or "author_tags" not in data:
             print(f"Skipping because of no authors in {data}")
             return
@@ -963,7 +962,7 @@ class Article(BaseModel):
         )
 
     @classmethod
-    def recompute_all_incomplete_authors(cls, limit: Optional[int] = None) -> None:
+    def recompute_all_incomplete_authors(cls, limit: int | None = None) -> None:
         for art in (
             cls.select_valid().filter(cls.doi != None, cls.doi != "").limit(limit)
         ):
@@ -1006,7 +1005,7 @@ class Article(BaseModel):
         )
         if new_names:
             print(f"New names ({len(new_names)}):")
-            current_tl: Optional[models.Location] = None
+            current_tl: models.Location | None = None
             for nam in new_names:
                 if nam.type_locality != current_tl:
                     print(f"    {nam.type_locality!r}")
@@ -1130,9 +1129,9 @@ class ArticleComment(BaseModel):
     @classmethod
     def create_interactively(
         cls,
-        article: Optional[Article] = None,
-        kind: Optional[ArticleCommentKind] = None,
-        text: Optional[str] = None,
+        article: Article | None = None,
+        kind: ArticleCommentKind | None = None,
+        text: str | None = None,
         **kwargs: Any,
     ) -> "ArticleComment":
         if article is None:
@@ -1159,7 +1158,7 @@ class ArticleComment(BaseModel):
 
 Citer = Callable[[Article], str]
 CiterT = TypeVar("CiterT", bound=Citer)
-_CITE_FUNCTIONS: Dict[str, Citer] = {}
+_CITE_FUNCTIONS: dict[str, Citer] = {}
 
 
 def register_cite_function(name: str) -> Callable[[CiterT], CiterT]:
@@ -1195,7 +1194,7 @@ class ArticleTag(adt.ADT):
     NeedsTranslation(language=SourceLanguage, tag=12)  # type: ignore
 
 
-@lru_cache()
+@lru_cache
 def _getpdfcontent(path: str) -> str:
     # only get first page
     return subprocess.run(

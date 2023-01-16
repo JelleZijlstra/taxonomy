@@ -12,16 +12,16 @@ from . import readwiki
 NAME = "Список_видів_ссавців,_описаних_у_XXI_ст."
 
 
-@functools.lru_cache()
-def all_names() -> Set[str]:
+@functools.lru_cache
+def all_names() -> set[str]:
     return {
         nam.corrected_original_name
         for nam in Name.select_for_field("corrected_original_name")
     }
 
 
-@functools.lru_cache()
-def all_taxa() -> Set[str]:
+@functools.lru_cache
+def all_taxa() -> set[str]:
     return {taxon.valid_name for taxon in Taxon.select_for_field("valid_name")}
 
 

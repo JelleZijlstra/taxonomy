@@ -12,9 +12,9 @@ SOURCE = lib.Source("amtypes.txt", "AM-types.pdf")
 
 def extract_names(pages: PagesT) -> DataT:
     """Extracts names from the text, as dictionaries."""
-    current_name: Dict[str, Any] = {}
-    current_label: Optional[str] = None
-    current_lines: List[str] = []
+    current_name: dict[str, Any] = {}
+    current_label: str | None = None
+    current_lines: list[str] = []
     in_figure = False
 
     def start_label(label: str, line: str) -> None:
@@ -109,12 +109,12 @@ def split_fields(names: DataT, verbose: bool = False) -> DataT:
             else:
                 name["type_specimen"] = f'AM {match.group("type_specimen")}'
                 parts = match.group("data").split(", ")
-                tags: List[models.TypeTag] = []
+                tags: list[models.TypeTag] = []
                 for part in parts:
                     part = re.sub(r"[\(\[].*$", "", part.lower()).strip()
                     if not part:
                         continue
-                    enums: List[Tuple[Type[Enum], models.TypeTag]] = [
+                    enums: list[tuple[type[Enum], models.TypeTag]] = [
                         (constants.SpecimenGender, models.TypeTag.Gender),
                         (constants.SpecimenAge, models.TypeTag.Age),
                         (constants.SpecimenOrgan, models.TypeTag.Organ),

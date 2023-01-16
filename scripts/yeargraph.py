@@ -1,4 +1,6 @@
-from typing import Counter, Iterable, List, Optional, Sequence, Tuple
+from typing import List, Optional, Tuple
+from collections import Counter
+from collections.abc import Iterable, Sequence
 
 from matplotlib import pyplot as plt
 
@@ -7,8 +9,8 @@ from taxonomy.db.models import Taxon
 
 
 def get_years(
-    taxon: Taxon, age: Optional[AgeClass] = None, group: Optional[Group] = None
-) -> List[Tuple[int, int]]:
+    taxon: Taxon, age: AgeClass | None = None, group: Group | None = None
+) -> list[tuple[int, int]]:
     names = taxon.all_names(age=age)
     if group is not None:
         names = {nam for nam in names if nam.group is group}
@@ -17,7 +19,7 @@ def get_years(
     return list(interpolate_zeroes(counts))
 
 
-def interpolate_zeroes(counts: "Counter[int]") -> Iterable[Tuple[int, int]]:
+def interpolate_zeroes(counts: "Counter[int]") -> Iterable[tuple[int, int]]:
     min_year = min(counts)
     max_year = max(counts)
     for year in range(min_year, max_year + 1):
@@ -26,9 +28,9 @@ def interpolate_zeroes(counts: "Counter[int]") -> Iterable[Tuple[int, int]]:
 
 def plot_years(
     taxon: Taxon,
-    ages: Sequence[Optional[AgeClass]],
-    title: Optional[str] = None,
-    group: Optional[Group] = None,
+    ages: Sequence[AgeClass | None],
+    title: str | None = None,
+    group: Group | None = None,
 ) -> None:
     series = [get_years(taxon, age, group) for age in ages]
     fig, ax = plt.subplots()

@@ -6,7 +6,8 @@ r"""TODO:
 
 """
 import re
-from typing import Iterable, List, Tuple
+from typing import List, Tuple
+from collections.abc import Iterable
 
 from . import lib
 from .lib import DataT
@@ -30,10 +31,10 @@ NAME_RGX = re.compile(
 )
 
 
-def extract_pages(lines: Iterable[str]) -> Iterable[Tuple[int, List[str]]]:
+def extract_pages(lines: Iterable[str]) -> Iterable[tuple[int, list[str]]]:
     """Split the text into pages."""
     current_page = None
-    current_lines: List[str] = []
+    current_lines: list[str] = []
     for line in lines:
         if line.startswith("\x0c"):
             last_line = current_lines.pop().strip()
@@ -57,9 +58,9 @@ def extract_pages(lines: Iterable[str]) -> Iterable[Tuple[int, List[str]]]:
     yield current_page, current_lines
 
 
-def extract_names(pages: Iterable[Tuple[int, List[str]]]) -> DataT:
-    current_lines: List[str] = []
-    current_pages: List[int] = []
+def extract_names(pages: Iterable[tuple[int, list[str]]]) -> DataT:
+    current_lines: list[str] = []
+    current_pages: list[int] = []
     for page, lines in pages:
         if current_pages:
             current_pages.append(page)

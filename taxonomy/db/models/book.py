@@ -1,7 +1,8 @@
 import json
 from taxonomy import getinput
 from peewee import CharField, ForeignKeyField, TextField
-from typing import Any, Dict, Iterable, List, Optional, Tuple, Type, TypeVar
+from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar
+from collections.abc import Iterable
 
 from .base import ADTField, BaseModel
 from ..constants import SOURCE_LANGUAGE_SYNONYMS, SourceLanguage
@@ -40,7 +41,7 @@ class Book(BaseModel):
 
     @classmethod
     def create_interactively(
-        cls, title: Optional[str] = None, **kwargs: Any
+        cls, title: str | None = None, **kwargs: Any
     ) -> Optional["Book"]:
         if title is None:
             title = cls.getter("title").get_one_key("title> ")
@@ -82,7 +83,7 @@ class Book(BaseModel):
                         book.edit()
 
     @classmethod
-    def create_from_isbn(cls, isbn: Optional[str] = None) -> Optional["Book"]:
+    def create_from_isbn(cls, isbn: str | None = None) -> Optional["Book"]:
         if isbn is None:
             isbn = cls.getter("isbn").get_one_key("isbn for new book> ")
         if isbn is None:
@@ -95,7 +96,7 @@ class Book(BaseModel):
         book.fill_required_fields()
         return book
 
-    def expand_open_library_data(self, data: Dict[str, Any]) -> None:
+    def expand_open_library_data(self, data: dict[str, Any]) -> None:
         if data.get("subtitle"):
             self.subtitle = data["subtitle"]
         if data.get("publishers"):
@@ -132,12 +133,12 @@ class Book(BaseModel):
     def edit(self) -> None:
         self.fill_field("tags")
 
-    def get_authors(self) -> List[Person]:
+    def get_authors(self) -> list[Person]:
         if self.author_tags is None:
             return []
         return [author.person for author in self.author_tags]
 
-    def get_value_for_field(self, field: str, default: Optional[str] = None) -> Any:
+    def get_value_for_field(self, field: str, default: str | None = None) -> Any:
         if field == "author_tags" and not self.author_tags:
             return get_new_authors_list()
         else:
@@ -159,7 +160,7 @@ class Book(BaseModel):
         else:
             self.tags = self.tags + (tag,)
 
-    def has_tag(self, tag_cls: Type[adt.ADT]) -> bool:
+    def has_tag(self, tag_cls: type[adt.ADT]) -> bool:
         tag_id = tag_cls._tag
         for tag in self.get_raw_tags_field("tags"):
             if tag[0] == tag_id:
@@ -188,7 +189,7 @@ class BookTag(adt.ADT):
     BookEdition(text=str, tag=3)  # type: ignore
 
 
-def sort_key(book: Book) -> Tuple[str, ...]:
+def sort_key(book: Book) -> tuple[str, ...]:
     return (
         book.dewey or "",
         ", ".join(repr(author.sort_key()) for author in book.get_authors()),

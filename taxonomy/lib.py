@@ -9,7 +9,8 @@ from collections import defaultdict
 from functools import partial
 import re
 from taxonomy.db.models.name import TypeTag
-from typing import Any, Container, Dict, Iterable, List, Optional, Tuple, Type, Union
+from typing import Any, Dict, List, Optional, Tuple, Type, Union
+from collections.abc import Container, Iterable
 
 import peewee
 
@@ -42,7 +43,7 @@ from taxonomy.db.models.person import AuthorTag
 
 def biggest_citation_groups_no_region(
     limit: int = 50,
-) -> List[Tuple[CitationGroup, int]]:
+) -> list[tuple[CitationGroup, int]]:
     query = (
         CitationGroup.select(
             CitationGroup, peewee.fn.Count(CitationGroup.id).alias("num_names")
@@ -56,7 +57,7 @@ def biggest_citation_groups_no_region(
     return list(reversed([(t, t.num_names) for t in query]))
 
 
-def biggest_citation_groups(limit: int = 50) -> List[Tuple[CitationGroup, int]]:
+def biggest_citation_groups(limit: int = 50) -> list[tuple[CitationGroup, int]]:
     query = (
         CitationGroup.select(
             CitationGroup, peewee.fn.Count(CitationGroup.id).alias("num_names")
@@ -69,7 +70,7 @@ def biggest_citation_groups(limit: int = 50) -> List[Tuple[CitationGroup, int]]:
     return list(reversed([(t, t.num_names) for t in query]))
 
 
-def biggest_localities(limit: int = 50) -> List[Tuple[Location, int]]:
+def biggest_localities(limit: int = 50) -> list[tuple[Location, int]]:
     query = (
         Location.select(
             Location, peewee.fn.Count(Occurrence.id).alias("num_occurrences")
@@ -82,7 +83,7 @@ def biggest_localities(limit: int = 50) -> List[Tuple[Location, int]]:
     return list(reversed([(t, t.num_occurrences) for t in query]))
 
 
-def most_type_localities(limit: int = 50) -> List[Tuple[Location, int]]:
+def most_type_localities(limit: int = 50) -> list[tuple[Location, int]]:
     query = (
         Location.select(Location, peewee.fn.Count(Name.id).alias("num_occurrences"))
         .join(Name, peewee.JOIN_LEFT_OUTER)
@@ -93,7 +94,7 @@ def most_type_localities(limit: int = 50) -> List[Tuple[Location, int]]:
     return list(reversed([(t, t.num_occurrences) for t in query]))
 
 
-def biggest_ranges(limit: int = 50) -> List[Tuple[Taxon, int]]:
+def biggest_ranges(limit: int = 50) -> list[tuple[Taxon, int]]:
     query = (
         Taxon.select(Taxon, peewee.fn.Count(Occurrence.id).alias("num_occurrences"))
         .join(Occurrence, peewee.JOIN_LEFT_OUTER)
@@ -104,7 +105,7 @@ def biggest_ranges(limit: int = 50) -> List[Tuple[Taxon, int]]:
     return list(reversed([(t, t.num_occurrences) for t in query]))
 
 
-def most_type_specimens(limit: int = 50) -> List[Tuple[Collection, int]]:
+def most_type_specimens(limit: int = 50) -> list[tuple[Collection, int]]:
     query = (
         Collection.select(Collection, peewee.fn.Count(Name.id).alias("num_types"))
         .join(Name, peewee.JOIN_LEFT_OUTER)
@@ -145,7 +146,7 @@ def move_to_stratigraphy(loc: Location, period: Period) -> None:
     loc.min_period = loc.max_period = None
 
 
-def count_field(model: Type[BaseModel], field: str) -> List[Tuple[Any, int]]:
+def count_field(model: type[BaseModel], field: str) -> list[tuple[Any, int]]:
     field_obj = getattr(model, field)
     return [
         (getattr(t, field), t.num)
@@ -158,10 +159,10 @@ def count_field(model: Type[BaseModel], field: str) -> List[Tuple[Any, int]]:
 def locless_names(
     genus: Taxon,
     attribute: str = "type_locality",
-    age: Optional[AgeClass] = AgeClass.removed,
-    min_year: Optional[int] = None,
+    age: AgeClass | None = AgeClass.removed,
+    min_year: int | None = None,
     exclude: Container["Taxon"] = frozenset(),
-) -> List[Name]:
+) -> list[Name]:
     if age is AgeClass.removed:
         age = genus.age
     nams = list(
@@ -177,9 +178,9 @@ def locless_names(
 def names_with_attribute(
     txn: Taxon,
     attribute: str,
-    age: Optional[AgeClass] = None,
+    age: AgeClass | None = None,
     exclude: Container["Taxon"] = frozenset(),
-) -> List[Name]:
+) -> list[Name]:
     nams = [
         name
         for name in txn.all_names(age=age, exclude=exclude)
@@ -191,7 +192,7 @@ def names_with_attribute(
 
 
 def f(
-    nams: Union[Name, Taxon, List[Name], List[Taxon]],
+    nams: Name | Taxon | list[Name] | list[Taxon],
     skip_fields: Container[str] = frozenset(),
     always_edit: bool = False,
 ) -> None:
@@ -216,8 +217,8 @@ g = partial(
 
 
 def h(
-    author: str, year: int, page: Optional[int] = None, uncited_only: bool = False
-) -> Tuple[List[Article], List[Name]]:
+    author: str, year: int, page: int | None = None, uncited_only: bool = False
+) -> tuple[list[Article], list[Name]]:
     authors = Person.select_valid().filter(Person.family_name == author)
     nams = []
     arts = []
@@ -262,10 +263,10 @@ def set_page(nams: Iterable[Name]) -> None:
 
 class _NamesGetter:
     def __init__(self, group: Group) -> None:
-        self._cache: Optional[Dict[str, List[Name]]] = None
+        self._cache: dict[str, list[Name]] | None = None
         self._group = group
 
-    def __getattr__(self, attr: str) -> List[Name]:
+    def __getattr__(self, attr: str) -> list[Name]:
         return list(
             Name.filter(
                 Name.group == self._group,

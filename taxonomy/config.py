@@ -5,7 +5,8 @@ import os
 import socket
 import sys
 from pathlib import Path
-from typing import Mapping, NamedTuple
+from typing import NamedTuple
+from collections.abc import Mapping
 
 
 class Options(NamedTuple):

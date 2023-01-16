@@ -1,5 +1,6 @@
 import re
-from typing import Counter, List
+from typing import List
+from collections import Counter
 
 from . import lib
 from .lib import DataT, PagesT
@@ -8,7 +9,7 @@ SOURCE = lib.Source("africa-layout.txt", "Africa.pdf")
 
 
 def extract_names(pages: PagesT) -> DataT:
-    current_name: List[str] = []
+    current_name: list[str] = []
     starting_page = 0
     for page, lines in pages:
         for line in lines:

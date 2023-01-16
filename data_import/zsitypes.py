@@ -10,8 +10,8 @@ SOURCE = lib.Source("zsitypes.txt", "ZSI-types.pdf")
 
 
 def extract_names(pages: PagesT) -> DataT:
-    current_name: Dict[str, Any] = {}
-    current_lines: List[str] = []
+    current_name: dict[str, Any] = {}
+    current_lines: list[str] = []
 
     def start_label(label: str, line: str) -> None:
         nonlocal current_lines

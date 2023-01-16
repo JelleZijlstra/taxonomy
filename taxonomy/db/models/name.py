@@ -6,18 +6,16 @@ import sys
 import time
 from typing import (
     Any,
-    Callable,
     Dict,
     IO,
-    Iterable,
     List,
     Optional,
-    Sequence,
     Set,
     Tuple,
     Type,
     Union,
 )
+from collections.abc import Callable, Iterable, Sequence
 
 from peewee import CharField, ForeignKeyField, IntegerField, TextField
 
@@ -52,7 +50,7 @@ from .location import Location
 from .name_complex import NameComplex, SpeciesNameComplex
 from .person import Person, AuthorTag, get_new_authors_list
 
-_CRUCIAL_MISSING_FIELDS: Dict[Group, Set[str]] = {
+_CRUCIAL_MISSING_FIELDS: dict[Group, set[str]] = {
     Group.species: {
         "species_name_complex",
         "original_name",
@@ -143,7 +141,7 @@ class Name(BaseModel):
     _definition = CharField(null=True, db_column="definition")
     tags = ADTField(lambda: NameTag, null=True)
 
-    class Meta(object):
+    class Meta:
         db_table = "name"
 
     derived_fields = [
@@ -245,7 +243,7 @@ class Name(BaseModel):
     ]
 
     @classmethod
-    def with_tag_of_type(cls, tag_cls: Type[adt.ADT]) -> List["Name"]:
+    def with_tag_of_type(cls, tag_cls: type[adt.ADT]) -> list["Name"]:
         names = cls.select_valid().filter(Name.type_tags.contains(f"[{tag_cls._tag},"))
         return [
             name
@@ -270,13 +268,13 @@ class Name(BaseModel):
     def should_skip(self) -> bool:
         return self.status in (Status.removed, Status.redirect)
 
-    def get_stem(self) -> Optional[str]:
+    def get_stem(self) -> str | None:
         if self.group != Group.genus or self.name_complex is None:
             return None
         return self.name_complex.get_stem_from_name(self.root_name)
 
     @property
-    def definition(self) -> Optional[Definition]:
+    def definition(self) -> Definition | None:
         data = self._definition
         if data is None:
             return None
@@ -290,7 +288,7 @@ class Name(BaseModel):
         else:
             self._definition = defn.serialize()
 
-    def infer_original_rank(self) -> Optional[constants.Rank]:
+    def infer_original_rank(self) -> constants.Rank | None:
         if self.corrected_original_name is None:
             return None
         handcleaned_name = (
@@ -377,7 +375,7 @@ class Name(BaseModel):
                 self.fill_field("original_rank")
             return False
 
-    def infer_corrected_original_name(self, aggressive: bool = False) -> Optional[str]:
+    def infer_corrected_original_name(self, aggressive: bool = False) -> str | None:
         if not self.original_name:
             return None
         original_name = clean_original_name(self.original_name)
@@ -441,7 +439,7 @@ class Name(BaseModel):
                     return name
         return None
 
-    def get_value_for_field(self, field: str, default: Optional[str] = None) -> Any:
+    def get_value_for_field(self, field: str, default: str | None = None) -> Any:
         if (
             field == "collection"
             and self.collection is None
@@ -592,8 +590,8 @@ class Name(BaseModel):
     def add_type_identical(
         self,
         name: str,
-        page_described: Union[None, int, str] = None,
-        locality: Optional[Location] = None,
+        page_described: None | int | str = None,
+        locality: Location | None = None,
         **kwargs: Any,
     ) -> "Taxon":
         """Convenience method to add a type species described in the same paper as the genus.
@@ -629,12 +627,12 @@ class Name(BaseModel):
             ("author_tags", AuthorTag),
         ]:
             if field == field_name:
-                completers: Dict[
-                    Tuple[Type[adt.ADT], str], getinput.Completer[Any]
+                completers: dict[
+                    tuple[type[adt.ADT], str], getinput.Completer[Any]
                 ] = {}
                 for tag in tag_cls._tag_to_member.values():  # type: ignore
                     for attribute, typ in tag._attributes.items():
-                        completer: Optional[getinput.Completer[Any]]
+                        completer: getinput.Completer[Any] | None
                         if typ is Name:
                             completer = get_completer(Name, None)
                         elif typ is Collection:
@@ -700,13 +698,13 @@ class Name(BaseModel):
         data = self._load_data()
         return data[field]
 
-    def _load_data(self) -> Dict[str, Any]:
+    def _load_data(self) -> dict[str, Any]:
         if self.data is None or self.data == "":
             return {}
         else:
             return json.loads(self.data)
 
-    def get_tag_target(self, tag_cls: Type[adt.ADT]) -> Optional["Name"]:
+    def get_tag_target(self, tag_cls: type[adt.ADT]) -> Optional["Name"]:
         tags = self.tags
         if tags:
             for tag in tags:
@@ -728,7 +726,7 @@ class Name(BaseModel):
         else:
             self.type_tags = type_tags + (tag,)
 
-    def has_type_tag(self, tag_cls: Type[adt.ADT]) -> bool:
+    def has_type_tag(self, tag_cls: type[adt.ADT]) -> bool:
         tag_id = tag_cls._tag
         for tag in self.get_raw_tags_field("type_tags"):
             if tag[0] == tag_id:
@@ -747,7 +745,7 @@ class Name(BaseModel):
         if type_tags != tuple(new_tags):
             self.type_tags = tuple(new_tags)  # type: ignore
 
-    def map_type_tags_by_type(self, typ: Type[Any], fn: Callable[[Any], Any]) -> None:
+    def map_type_tags_by_type(self, typ: type[Any], fn: Callable[[Any], Any]) -> None:
         def map_fn(tag: TypeTag) -> TypeTag:
             new_args = []
             tag_type = type(tag)
@@ -763,7 +761,7 @@ class Name(BaseModel):
 
         self.map_type_tags(map_fn)
 
-    def replace_original_citation(self, new_citation: Optional[Article] = None) -> None:
+    def replace_original_citation(self, new_citation: Article | None = None) -> None:
         if new_citation is None:
             new_citation = Article.get_one_by("name", allow_empty=False)
         existing = self.original_citation
@@ -787,8 +785,8 @@ class Name(BaseModel):
         self,
         kind: constants.CommentKind,
         text: str,
-        source: Optional[Article] = None,
-        page: Optional[str] = None,
+        source: Article | None = None,
+        page: str | None = None,
     ) -> "NameComment":
         return NameComment.make(
             name=self, kind=kind, text=text, source=source, page=page
@@ -796,10 +794,10 @@ class Name(BaseModel):
 
     def add_comment(
         self,
-        kind: Optional[constants.CommentKind] = None,
-        text: Optional[str] = None,
-        source: Optional[Article] = None,
-        page: Optional[str] = None,
+        kind: constants.CommentKind | None = None,
+        text: str | None = None,
+        source: Article | None = None,
+        page: str | None = None,
         interactive: bool = True,
     ) -> Optional["NameComment"]:
         return NameComment.create_interactively(
@@ -807,7 +805,7 @@ class Name(BaseModel):
         )
 
     def add_child_taxon(
-        self, rank: Rank, name: str, age: Optional[AgeClass] = None, **kwargs: Any
+        self, rank: Rank, name: str, age: AgeClass | None = None, **kwargs: Any
     ) -> "Taxon":
         return self.taxon.add_static(rank, name, age=age, **kwargs)
 
@@ -869,7 +867,7 @@ class Name(BaseModel):
     def numeric_page_described(self) -> int:
         return helpers.to_int(self.page_described)
 
-    def extract_page_described(self) -> Optional[int]:
+    def extract_page_described(self) -> int | None:
         """Attempts to extract a page that appears in the original description, if at all possible.
         """
         page_described = self.numeric_page_described()
@@ -897,7 +895,7 @@ class Name(BaseModel):
             except ValueError:
                 return 0
 
-    def sort_key(self) -> Tuple[Any, ...]:
+    def sort_key(self) -> tuple[Any, ...]:
         return (
             self.numeric_year(),
             self.numeric_page_described(),
@@ -907,9 +905,9 @@ class Name(BaseModel):
 
     def make_variant(
         self,
-        status: Optional[NomenclatureStatus] = None,
+        status: NomenclatureStatus | None = None,
         of_name: Optional["Name"] = None,
-        comment: Optional[str] = None,
+        comment: str | None = None,
     ) -> None:
         if self.nomenclature_status != NomenclatureStatus.available:
             raise ValueError(f"{self} is {self.nomenclature_status.name}")
@@ -928,11 +926,11 @@ class Name(BaseModel):
 
     def add_variant(
         self,
-        root_name: Optional[str] = None,
-        status: Optional[NomenclatureStatus] = None,
-        paper: Optional[str] = None,
-        page_described: Optional[str] = None,
-        original_name: Optional[str] = None,
+        root_name: str | None = None,
+        status: NomenclatureStatus | None = None,
+        paper: str | None = None,
+        page_described: str | None = None,
+        original_name: str | None = None,
         *,
         interactive: bool = True,
     ) -> Optional["Name"]:
@@ -966,7 +964,7 @@ class Name(BaseModel):
         return nam
 
     def preoccupied_by(
-        self, name: Optional["Name"] = None, comment: Optional[str] = None
+        self, name: Optional["Name"] = None, comment: str | None = None
     ) -> None:
         if name is None:
             name = Name.getter("corrected_original_name").get_one(prompt="name> ")
@@ -978,12 +976,12 @@ class Name(BaseModel):
         else:
             print(f"not changing status because it is {self.nomenclature_status}")
 
-    def conserve(self, opinion: str, comment: Optional[str] = None) -> None:
+    def conserve(self, opinion: str, comment: str | None = None) -> None:
         self.add_tag(NameTag.Conserved(opinion, comment))
 
     @classmethod
-    def infer_author_tags(cls, authority: str) -> Optional[List[AuthorTag]]:
-        params_by_name: List[Optional[Dict[str, str]]]
+    def infer_author_tags(cls, authority: str) -> list[AuthorTag] | None:
+        params_by_name: list[dict[str, str] | None]
         if "et al." in authority:
             params_by_name = [None]
         elif authority == "H.E. Wood, 2nd":
@@ -1003,7 +1001,7 @@ class Name(BaseModel):
             return None
 
     @staticmethod
-    def _author_to_person(author: str) -> Optional[Dict[str, str]]:
+    def _author_to_person(author: str) -> dict[str, str] | None:
         match = re.match(
             (
                 r"^((?P<initials>([A-ZÉ]\.)+) )?((?P<tussenvoegsel>de|von|van|van"
@@ -1017,10 +1015,10 @@ class Name(BaseModel):
             return match.groupdict()
         return None
 
-    def author_set(self) -> Set[int]:
+    def author_set(self) -> set[int]:
         return {pair[1] for pair in self.get_raw_tags_field("author_tags")}
 
-    def get_authors(self) -> List[Person]:
+    def get_authors(self) -> list[Person]:
         if self.author_tags is None:
             return []
         return [author.person for author in self.author_tags]
@@ -1046,7 +1044,7 @@ class Name(BaseModel):
     @classmethod
     def check_all_authors(
         cls, autofix: bool = True, quiet: bool = True
-    ) -> List["Name"]:
+    ) -> list["Name"]:
         bad = []
         for nam in cls.select_valid().filter(cls.author_tags != None):
             if not nam.check_authors(autofix=autofix, quiet=quiet):
@@ -1179,7 +1177,7 @@ class Name(BaseModel):
             intro_line = getinput.green(out)
         result = " " * ((depth + 1) * 4) + intro_line + "\n"
         if full:
-            data: Dict[str, Any] = {}
+            data: dict[str, Any] = {}
             if not skip_lint:
                 lints = "; ".join(self.lint())
                 if lints:
@@ -1275,7 +1273,7 @@ class Name(BaseModel):
                 print(f"Adding tag: {new_tag!r}")
                 self.add_type_tag(new_tag)
 
-    def fill_data_level(self) -> Tuple[FillDataLevel, str]:
+    def fill_data_level(self) -> tuple[FillDataLevel, str]:
         if (
             self.name_complex is not None
             and self.original_citation is not None
@@ -1291,7 +1289,7 @@ class Name(BaseModel):
         required_derived_tags = list(self.get_required_derived_tags())
         missing_derived_tags = list(self.get_missing_tags(required_derived_tags))
 
-        def tag_list(tags: Iterable[Tuple[TypeTag, ...]]) -> str:
+        def tag_list(tags: Iterable[tuple[TypeTag, ...]]) -> str:
             # display only the first one in the group; no need to mention NoEtymology c.s.
             return f"missing {', '.join(group[0].__name__ for group in tags)}"
 
@@ -1362,7 +1360,7 @@ class Name(BaseModel):
         else:
             return False
 
-    def get_required_details_tags(self) -> Iterable[Tuple["TypeTag", "TypeTag"]]:
+    def get_required_details_tags(self) -> Iterable[tuple["TypeTag", "TypeTag"]]:
         if self.requires_etymology():
             yield (TypeTag.EtymologyDetail, TypeTag.NoEtymology)
         if (
@@ -1373,7 +1371,7 @@ class Name(BaseModel):
             yield (TypeTag.LocationDetail, TypeTag.NoLocation)
             yield (TypeTag.SpecimenDetail, TypeTag.NoSpecimen)
 
-    def get_required_derived_tags(self) -> Iterable[Tuple["TypeTag", ...]]:
+    def get_required_derived_tags(self) -> Iterable[tuple["TypeTag", ...]]:
         if self.group is Group.species:
             if self.collection and self.collection.id == 366:  # multiple
                 yield (TypeTag.Repository,)
@@ -1400,8 +1398,8 @@ class Name(BaseModel):
             yield (TypeTag.TextualOriginalRank,)
 
     def get_missing_tags(
-        self, required_tags: Iterable[Tuple["TypeTag", ...]]
-    ) -> Iterable[Tuple["TypeTag", ...]]:
+        self, required_tags: Iterable[tuple["TypeTag", ...]]
+    ) -> Iterable[tuple["TypeTag", ...]]:
         for group in required_tags:
             if not any(self.has_type_tag(tag) for tag in group):
                 yield group
@@ -1510,8 +1508,8 @@ class Name(BaseModel):
     def validate(
         self,
         status: Status = Status.valid,
-        parent: Optional[Taxon] = None,
-        rank: Optional[Rank] = None,
+        parent: Taxon | None = None,
+        rank: Rank | None = None,
     ) -> Taxon:
         assert self.status not in (
             Status.valid,
@@ -1565,7 +1563,7 @@ class Name(BaseModel):
             self.original_citation.openf()
         return True
 
-    def remove(self, reason: Optional[str] = None) -> None:
+    def remove(self, reason: str | None = None) -> None:
         print("Deleting name: " + self.description())
         self.status = Status.removed  # type: ignore
         if reason:
@@ -1614,9 +1612,9 @@ class Name(BaseModel):
 
     def set_paper(
         self,
-        paper: Optional[Article] = None,
-        page_described: Union[None, int, str] = None,
-        original_name: Optional[int] = None,
+        paper: Article | None = None,
+        page_described: None | int | str = None,
+        original_name: int | None = None,
         force: bool = False,
         **kwargs: Any,
     ) -> None:
@@ -1651,7 +1649,7 @@ class Name(BaseModel):
         self.fill_required_fields()
 
     def detect_and_set_type(
-        self, verbatim_type: Optional[str] = None, verbose: bool = False
+        self, verbatim_type: str | None = None, verbose: bool = False
     ) -> bool:
         if verbatim_type is None:
             verbatim_type = self.verbatim_type
@@ -1677,8 +1675,8 @@ class Name(BaseModel):
             return False
 
     def detect_type(
-        self, verbatim_type: Optional[str] = None, verbose: bool = False
-    ) -> List["Name"]:
+        self, verbatim_type: str | None = None, verbose: bool = False
+    ) -> list["Name"]:
         def cleanup(name: str) -> str:
             return re.sub(
                 r"\s+",
@@ -1720,7 +1718,7 @@ class Name(BaseModel):
         return []
 
     @staticmethod
-    def _split_authority(verbatim_type: str) -> Tuple[str, Optional[str]]:
+    def _split_authority(verbatim_type: str) -> tuple[str, str | None]:
         # if there is an uppercase letter following an all-lowercase word (the species name),
         # the authority is included
         find_authority = re.match(r"^(.* [a-z]+) ([A-Z+].+)$", verbatim_type)
@@ -1729,10 +1727,10 @@ class Name(BaseModel):
         else:
             return verbatim_type, None
 
-    def detect_type_from_verbatim_type(self, verbatim_type: str) -> List["Name"]:
+    def detect_type_from_verbatim_type(self, verbatim_type: str) -> list["Name"]:
         def _filter_by_authority(
-            candidates: List["Name"], authority: Optional[str]
-        ) -> List["Name"]:
+            candidates: list["Name"], authority: str | None
+        ) -> list["Name"]:
             if authority is None:
                 return candidates
             split = re.split(r", (?=\d)", authority, maxsplit=1)
@@ -1857,7 +1855,7 @@ class Name(BaseModel):
 
     def get_similar_names_and_papers_for_author(
         self, author_name: str
-    ) -> Tuple[Set[Article], Set["Name"]]:
+    ) -> tuple[set[Article], set["Name"]]:
         authors = Person.select_valid().filter(Person.family_name == author_name)
         nams = set()
         arts = set()
@@ -1936,8 +1934,8 @@ class NameComment(BaseModel):
         name: Name,
         kind: constants.CommentKind,
         text: str,
-        source: Optional[Article] = None,
-        page: Optional[str] = None,
+        source: Article | None = None,
+        page: str | None = None,
     ) -> "NameComment":
         return cls.create(
             name=name,
@@ -1951,11 +1949,11 @@ class NameComment(BaseModel):
     @classmethod
     def create_interactively(
         cls,
-        name: Optional[Name] = None,
-        kind: Optional[constants.CommentKind] = None,
-        text: Optional[str] = None,
-        source: Optional[Article] = None,
-        page: Optional[str] = None,
+        name: Name | None = None,
+        kind: constants.CommentKind | None = None,
+        text: str | None = None,
+        source: Article | None = None,
+        page: str | None = None,
         **kwargs: Any,
     ) -> Optional["NameComment"]:
         if name is None:
@@ -2187,7 +2185,7 @@ def write_names(
     full: bool = False,
     organized: bool = False,
     file: IO[str] = sys.stdout,
-    tag_classes: Tuple[Type[TypeTag]] = (TypeTag.LocationDetail,),
+    tag_classes: tuple[type[TypeTag]] = (TypeTag.LocationDetail,),
 ) -> None:
     if not nams:
         return

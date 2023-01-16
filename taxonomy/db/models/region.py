@@ -1,6 +1,7 @@
 import collections
 import sys
-from typing import IO, Dict, Iterable, List, Optional
+from typing import IO, Dict, List, Optional
+from collections.abc import Iterable
 
 from peewee import CharField, ForeignKeyField
 
@@ -63,7 +64,7 @@ class Region(BaseModel):
         out += f" ({self.kind.name})"
         return out
 
-    def get_general_localities(self) -> List["models.Location"]:
+    def get_general_localities(self) -> list["models.Location"]:
         name_field = models.Location.name
         my_name = self.name
         return models.Location.bfind(
@@ -74,7 +75,7 @@ class Region(BaseModel):
             | (name_field.endswith(f"({my_name})")),
         )
 
-    def rename(self, new_name: Optional[str] = None) -> None:
+    def rename(self, new_name: str | None = None) -> None:
         old_name = self.name
         if new_name is None:
             new_name = self.getter("name").get_one_key(
@@ -153,10 +154,10 @@ class Region(BaseModel):
                 return False
         return True
 
-    def sorted_children(self) -> List["Region"]:
+    def sorted_children(self) -> list["Region"]:
         return sorted(self.children, key=lambda c: c.name)
 
-    def sorted_locations(self) -> List["models.Location"]:
+    def sorted_locations(self) -> list["models.Location"]:
         return sorted(
             self.locations.filter(models.Location.deleted != True),
             key=models.Location.sort_key,
@@ -177,7 +178,7 @@ class Region(BaseModel):
         for child in self.children:
             yield from child.all_citation_groups()
 
-    def has_citation_groups(self, type: Optional[constants.ArticleType] = None) -> bool:
+    def has_citation_groups(self, type: constants.ArticleType | None = None) -> bool:
         for cg in self.citation_groups:
             if type is None or cg.type is type:
                 return True
@@ -188,13 +189,13 @@ class Region(BaseModel):
         full: bool = False,
         only_nonempty: bool = True,
         depth: int = 0,
-        type: Optional[constants.ArticleType] = None,
+        type: constants.ArticleType | None = None,
     ) -> None:
         if only_nonempty and not self.has_citation_groups(type=type):
             return
         print(" " * depth + self.name)
-        by_type: Dict[
-            constants.ArticleType, List["models.CitationGroup"]
+        by_type: dict[
+            constants.ArticleType, list["models.CitationGroup"]
         ] = collections.defaultdict(list)
         for group in sorted(self.citation_groups, key=lambda cg: cg.name):
             if type is not None and group.type is not type:
@@ -222,7 +223,7 @@ class Region(BaseModel):
         if only_nonempty and not self.has_collections():
             return
         print(" " * depth + self.name)
-        by_city: Dict[str, List["models.Collection"]] = collections.defaultdict(list)
+        by_city: dict[str, list["models.Collection"]] = collections.defaultdict(list)
         cities = set()
         for collection in sorted(self.collections, key=lambda c: c.label):
             by_city[collection.city or ""].append(collection)

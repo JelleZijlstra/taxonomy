@@ -8,7 +8,7 @@ import enum
 from functools import lru_cache
 import pickle
 from typing import Any, Dict, Generic, Optional, TypeVar, Type, Union
-from typing_extensions import Protocol
+from typing import Protocol
 import typing_inspect
 import taxonomy
 
@@ -19,10 +19,10 @@ T_co = TypeVar("T_co", covariant=True)
 
 settings = config.get_options()
 
-ObjectData = Dict[str, Any]  # derived data for a single object, keys are field names
-ModelData = Dict[int, ObjectData]  # keys are object ids
-DerivedData = Dict[str, ModelData]  # keys are model call signs
-CachedData = Dict[str, Any]
+ObjectData = dict[str, Any]  # derived data for a single object, keys are field names
+ModelData = dict[int, ObjectData]  # keys are object ids
+DerivedData = dict[str, ModelData]  # keys are model call signs
+CachedData = dict[str, Any]
 
 
 class SetLater:
@@ -35,12 +35,12 @@ class SingleComputeFunc(Protocol[T_co]):
 
 
 class ComputeAllFunc(Protocol[T]):
-    def __call__(self) -> Dict[int, T]:
+    def __call__(self) -> dict[int, T]:
         ...
 
 
 class _LazyTypeArg(Protocol[T_co]):
-    def __call__(self) -> Type[T_co]:
+    def __call__(self) -> type[T_co]:
         ...
 
 
@@ -52,9 +52,9 @@ class LazyType(Generic[T]):
 @dataclass
 class DerivedField(Generic[T]):
     name: str
-    typ: Union[Type[T], LazyType[T]]
-    compute: Optional[SingleComputeFunc[T]] = None
-    compute_all: Optional[ComputeAllFunc[T]] = None
+    typ: type[T] | LazyType[T]
+    compute: SingleComputeFunc[T] | None = None
+    compute_all: ComputeAllFunc[T] | None = None
     pull_on_miss: bool = True
 
     def get_value(
@@ -126,13 +126,13 @@ class DerivedField(Generic[T]):
             return [self.deserialize(elt, arg_type) for elt in serialized]
         return serialized
 
-    def get_type(self) -> Type[T]:
+    def get_type(self) -> type[T]:
         if isinstance(self.typ, LazyType):
             self.typ = self.typ.typ()
         return self.typ
 
     def compute_and_store_all(
-        self, model_cls: Type["taxonomy.db.models.base.BaseModel"]
+        self, model_cls: type["taxonomy.db.models.base.BaseModel"]
     ) -> None:
         data = load_derived_data()
         model_data = data.setdefault(model_cls.call_sign, {})
@@ -150,7 +150,7 @@ class DerivedField(Generic[T]):
             object_data[self.name] = self.serialize(value)
 
 
-@lru_cache()
+@lru_cache
 def load_derived_data() -> DerivedData:
     try:
         with settings.derived_data_filename.open("rb") as f:
@@ -164,7 +164,7 @@ def write_derived_data(data: DerivedData) -> None:
         pickle.dump(data, f)
 
 
-@lru_cache()
+@lru_cache
 def load_cached_data() -> CachedData:
     try:
         with settings.cached_data_filename.open("rb") as f:

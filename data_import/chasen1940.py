@@ -8,7 +8,7 @@ SOURCE = lib.Source("chasen1940.txt", "Greater Sundas (Chasen 1940).pdf")
 
 
 def extract_names(pages: PagesT) -> DataT:
-    current_name: List[str] = []
+    current_name: list[str] = []
     starting_page = 0
     in_distribution = False
     for page, lines in pages:
@@ -38,7 +38,7 @@ def split_names(names: DataT) -> DataT:
     for name in names:
         seen_colon = False
         seen_period = False
-        current_name: List[str] = []
+        current_name: list[str] = []
         last_indentation = 0
         for line in name["raw_text"]:
             indentation = lib.initial_count(line, " ")

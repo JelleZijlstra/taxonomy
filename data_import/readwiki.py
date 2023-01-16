@@ -3,7 +3,8 @@ import subprocess
 from dataclasses import dataclass
 from itertools import chain
 from pathlib import Path
-from typing import Dict, Iterable, Optional, Set, Tuple
+from typing import Dict, Optional, Set, Tuple
+from collections.abc import Iterable
 
 import requests
 import wikitextparser
@@ -46,17 +47,17 @@ ONLY_IN_TABLE = True
 @dataclass
 class Template:
     template_name: str
-    args: Dict[str, str]
-    heading: Optional[str]
-    subheading: Optional[str]
+    args: dict[str, str]
+    heading: str | None
+    subheading: str | None
     in_table: bool
 
     @classmethod
     def from_wtp_template(
         cls,
         template: wikitextparser.Template,
-        heading: Optional[str],
-        subheading: Optional[str],
+        heading: str | None,
+        subheading: str | None,
         in_table: bool,
     ) -> "Template":
         return cls(
@@ -82,7 +83,7 @@ def get_text(name: str, language: str = "en") -> str:
 
 def get_templates_wtp(text: str) -> Iterable[Template]:
     parsed = wikitextparser.parse(text)
-    seen_templates: Set[str] = set()
+    seen_templates: set[str] = set()
     for section in parsed.sections:
         heading = section.title
         for subsection in section.sections:
@@ -127,14 +128,14 @@ def simplify_string(text: str) -> str:
     return helpers.clean_string(text)
 
 
-@functools.lru_cache()
-def get_dois() -> Set[str]:
+@functools.lru_cache
+def get_dois() -> set[str]:
     articles = Article.select_valid().filter(Article.doi != None)
     return {article.doi.lower() for article in articles}
 
 
-@functools.lru_cache()
-def get_titles() -> Set[Tuple[str, str]]:
+@functools.lru_cache
+def get_titles() -> set[tuple[str, str]]:
     articles = Article.select_valid()
     return {
         (simplify_string(article.title or ""), article.year or "")

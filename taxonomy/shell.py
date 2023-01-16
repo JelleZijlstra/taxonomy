@@ -30,18 +30,11 @@ import re
 import shutil
 from typing import (
     Any,
-    Callable,
-    Counter,
     Dict,
     Generic,
-    Hashable,
-    Iterable,
-    Iterator,
     List,
-    Mapping,
     NamedTuple,
     Optional,
-    Sequence,
     Set,
     Tuple,
     Type,
@@ -49,6 +42,8 @@ from typing import (
     Union,
     cast,
 )
+from collections import Counter
+from collections.abc import Callable, Hashable, Iterable, Iterator, Mapping, Sequence
 
 import IPython
 import requests
@@ -145,9 +140,9 @@ def command(fn: CallableT) -> CallableT:
     return cast(CallableT, wrapper)
 
 
-def generator_command(fn: Callable[..., Iterable[T]]) -> Callable[..., List[T]]:
+def generator_command(fn: Callable[..., Iterable[T]]) -> Callable[..., list[T]]:
     @functools.wraps(fn)
-    def wrapper(*args: Any, **kwargs: Any) -> List[T]:
+    def wrapper(*args: Any, **kwargs: Any) -> list[T]:
         try:
             return list(fn(*args, **kwargs))
         except getinput.StopException:
@@ -179,7 +174,7 @@ def n(name: str) -> Iterable[Name]:
 
 
 # Maintenance
-_MissingDataProducer = Callable[..., Iterable[Tuple[Name, str]]]
+_MissingDataProducer = Callable[..., Iterable[tuple[Name, str]]]
 
 
 def _add_missing_data(fn: _MissingDataProducer) -> Callable[..., None]:
@@ -196,7 +191,7 @@ def _add_missing_data(fn: _MissingDataProducer) -> Callable[..., None]:
 
 @command
 @_add_missing_data
-def add_original_names() -> Iterable[Tuple[Name, str]]:
+def add_original_names() -> Iterable[tuple[Name, str]]:
     for name in (
         Name.select_valid()
         .filter(Name.original_citation != None, Name.original_name >> None)
@@ -213,7 +208,7 @@ def add_original_names() -> Iterable[Tuple[Name, str]]:
 
 @command
 @_add_missing_data
-def add_page_described() -> Iterable[Tuple[Name, str]]:
+def add_page_described() -> Iterable[tuple[Name, str]]:
     for name in (
         Name.select_valid()
         .filter(
@@ -234,7 +229,7 @@ def add_page_described() -> Iterable[Tuple[Name, str]]:
 
 @command
 def make_county_regions(
-    state: models.Region, name: Optional[str] = None, dry_run: bool = True
+    state: models.Region, name: str | None = None, dry_run: bool = True
 ) -> None:
     if name is None:
         name = state.name
@@ -331,7 +326,7 @@ def detect_original_rank() -> None:
 
 
 @command
-def detect_types(max_count: Optional[int] = None, verbose: bool = False) -> None:
+def detect_types(max_count: int | None = None, verbose: bool = False) -> None:
     """Converts verbatim_types into references to the actual names."""
     count = 0
     successful_count = 0
@@ -348,14 +343,14 @@ def detect_types(max_count: Optional[int] = None, verbose: bool = False) -> None
 
 
 @command
-def detect_types_from_root_names(max_count: Optional[int] = None) -> None:
+def detect_types_from_root_names(max_count: int | None = None) -> None:
     """Detects types for family-group names on the basis of the root_name."""
 
     def detect_from_root_name(name: Name, root_name: str) -> bool:
         candidates = Name.select_valid().filter(Name.group == Group.genus)
         candidates = list(filter(lambda c: c.taxon.is_child_of(name.taxon), candidates))
         if len(candidates) == 1:
-            print("Detected type for name {}: {}".format(name, candidates[0]))
+            print(f"Detected type for name {name}: {candidates[0]}")
             name.type = candidates[0]
             return True
         else:
@@ -393,7 +388,7 @@ def detect_types_from_root_names(max_count: Optional[int] = None) -> None:
 
 
 @command
-def endswith(end: str) -> List[Name]:
+def endswith(end: str) -> list[Name]:
     return list(
         Name.select_valid().filter(
             Name.group == Group.genus, Name.root_name % ("%%%s" % end)
@@ -418,7 +413,7 @@ def detect_complexes() -> None:
 @command
 def detect_species_name_complexes(dry_run: bool = False) -> None:
     endings_tree: SuffixTree[models.SpeciesNameEnding] = SuffixTree()
-    full_names: Dict[str, Tuple[models.SpeciesNameComplex, str]] = {}
+    full_names: dict[str, tuple[models.SpeciesNameComplex, str]] = {}
     for ending in models.SpeciesNameEnding.select():
         for form in ending.name_complex.get_forms(ending.ending):
             if ending.full_name_only:
@@ -454,8 +449,8 @@ def detect_species_name_complexes(dry_run: bool = False) -> None:
 
 class SuffixTree(Generic[T]):
     def __init__(self) -> None:
-        self.children: Dict[str, SuffixTree[T]] = defaultdict(SuffixTree)
-        self.values: List[T] = []
+        self.children: dict[str, SuffixTree[T]] = defaultdict(SuffixTree)
+        self.values: list[T] = []
 
     def add(self, key: str, value: T) -> None:
         self._add(iter(reversed(key)), value)
@@ -486,10 +481,10 @@ class SuffixTree(Generic[T]):
 
 
 @command
-def find_patronyms(dry_run: bool = True, min_length: int = 4) -> Dict[str, int]:
+def find_patronyms(dry_run: bool = True, min_length: int = 4) -> dict[str, int]:
     """Finds names based on patronyms of authors in the database."""
     authors = set()
-    species_name_to_names: Dict[str, List[Name]] = defaultdict(list)
+    species_name_to_names: dict[str, list[Name]] = defaultdict(list)
     for name in Name.select_valid():
         if name.author_tags:
             for author in name.author_set():
@@ -535,11 +530,11 @@ def find_patronyms(dry_run: bool = True, min_length: int = 4) -> Dict[str, int]:
 
 
 @command
-def find_first_declension_adjectives(dry_run: bool = True) -> Dict[str, int]:
+def find_first_declension_adjectives(dry_run: bool = True) -> dict[str, int]:
     adjectives = get_pages_in_wiki_category(
         "en.wiktionary.org", "Latin first and second declension adjectives"
     )
-    species_name_to_names: Dict[str, List[Name]] = defaultdict(list)
+    species_name_to_names: dict[str, list[Name]] = defaultdict(list)
     for name in Name.select_valid().filter(
         Name.group == Group.species, Name.species_name_complex >> None
     ):
@@ -592,7 +587,7 @@ def get_pages_in_wiki_category(domain: str, category_name: str) -> Iterable[str]
 
 def find_ending(
     name: Name, endings: Iterable[models.NameEnding]
-) -> Optional[models.NameComplex]:
+) -> models.NameComplex | None:
     for ending in endings:
         if name.root_name.endswith(ending.ending):
             return ending.name_complex
@@ -600,7 +595,7 @@ def find_ending(
 
 
 @command
-def generate_word_list() -> Set[str]:
+def generate_word_list() -> set[str]:
     strings = set()
     for nam in Name.select_valid():
         for attr in ("original_name", "root_name", "verbatim_citation"):
@@ -658,7 +653,7 @@ def species_root_name_mismatch() -> Iterable[Name]:
 
 def _duplicate_finder(
     fn: Callable[[], Iterable[Mapping[Any, Sequence[ModelT]]]]
-) -> Callable[[], Optional[list[Sequence[ModelT]]]]:
+) -> Callable[[], list[Sequence[ModelT]] | None]:
     @generator_command
     @functools.wraps(fn)
     def wrapper(interactive: bool = False) -> Iterable[Sequence[ModelT]]:
@@ -716,16 +711,16 @@ def dup_citation_groups() -> list[dict[object, list[CitationGroup]]]:
 
 
 @_duplicate_finder
-def dup_collections() -> List[Dict[str, List[Collection]]]:
-    colls: Dict[str, List[Collection]] = defaultdict(list)
+def dup_collections() -> list[dict[str, list[Collection]]]:
+    colls: dict[str, list[Collection]] = defaultdict(list)
     for coll in Collection.select():
         colls[coll.label].append(coll)
     return [colls]
 
 
 @_duplicate_finder
-def dup_taxa() -> List[Dict[str, List[Taxon]]]:
-    taxa: Dict[str, List[Taxon]] = defaultdict(list)
+def dup_taxa() -> list[dict[str, list[Taxon]]]:
+    taxa: dict[str, list[Taxon]] = defaultdict(list)
     for txn in Taxon.select_valid():
         if txn.rank == Rank.subgenus and taxa[txn.valid_name]:
             continue
@@ -744,8 +739,8 @@ def dup_taxa() -> List[Dict[str, List[Taxon]]]:
 
 
 @_duplicate_finder
-def dup_genus() -> List[Dict[str, List[Name]]]:
-    names: Dict[str, List[Name]] = defaultdict(list)
+def dup_genus() -> list[dict[str, list[Name]]]:
+    names: dict[str, list[Name]] = defaultdict(list)
     for name in Name.select_valid().filter(Name.group == Group.genus):
         if name.original_citation is not None:
             citation = name.original_citation.name
@@ -760,23 +755,23 @@ def dup_genus() -> List[Dict[str, List[Name]]]:
 
 @_duplicate_finder
 def dup_names() -> (
-    List[
-        Dict[
-            Tuple[
-                Optional[str],
-                Optional[str],
+    list[
+        dict[
+            tuple[
+                str | None,
+                str | None,
                 constants.NomenclatureStatus,
-                Optional[str],
+                str | None,
             ],
-            List[Name],
+            list[Name],
         ]
     ]
 ):
-    original_year: Dict[
-        Tuple[
-            Optional[str], Optional[str], constants.NomenclatureStatus, Optional[str]
+    original_year: dict[
+        tuple[
+            str | None, str | None, constants.NomenclatureStatus, str | None
         ],
-        List[Name],
+        list[Name],
     ] = defaultdict(list)
     for name in Name.select_valid().filter(
         Name.original_name != None, Name.year != None
@@ -837,7 +832,7 @@ def dup_articles(
 
 
 class ScoreHolder:
-    def __init__(self, data: Dict[Taxon, Dict[str, Any]]) -> None:
+    def __init__(self, data: dict[Taxon, dict[str, Any]]) -> None:
         self.data = data
 
     def by_field(
@@ -855,8 +850,8 @@ class ScoreHolder:
         )
 
         def sort_key(
-            pair: Tuple[Any, Dict[str, Tuple[float, int, int]]]
-        ) -> Tuple[Any, ...]:
+            pair: tuple[Any, dict[str, tuple[float, int, int]]]
+        ) -> tuple[Any, ...]:
             _, data = pair
             percentage, count, required_count = data.get(field, (100, 0, 0))
             return (percentage, required_count, data["total"])
@@ -896,7 +891,7 @@ class ScoreHolder:
             "count",
             "score",
         }
-        counts: Dict[str, int] = defaultdict(int)
+        counts: dict[str, int] = defaultdict(int)
         for data in self.data.values():
             for field in fields:
                 if field not in data or data[field][0] == 100:
@@ -909,10 +904,10 @@ class ScoreHolder:
     def from_taxa(
         cls,
         taxa: Iterable[Taxon],
-        age: Optional[AgeClass] = None,
+        age: AgeClass | None = None,
         graphical: bool = False,
-        focus_field: Optional[str] = None,
-        min_year: Optional[int] = None,
+        focus_field: str | None = None,
+        min_year: int | None = None,
     ) -> "ScoreHolder":
         data = {}
         for taxon in taxa:
@@ -928,11 +923,11 @@ class ScoreHolder:
 @command
 def get_scores(
     rank: Rank,
-    within_taxon: Optional[Taxon] = None,
-    age: Optional[AgeClass] = None,
+    within_taxon: Taxon | None = None,
+    age: AgeClass | None = None,
     graphical: bool = False,
-    focus_field: Optional[str] = None,
-    min_year: Optional[int] = None,
+    focus_field: str | None = None,
+    min_year: int | None = None,
 ) -> ScoreHolder:
     if within_taxon is not None:
         taxa = within_taxon.children_of_rank(rank)
@@ -947,7 +942,7 @@ def get_scores(
 def get_scores_for_period(
     rank: Rank,
     period: Period,
-    focus_field: Optional[str] = None,
+    focus_field: str | None = None,
     graphical: bool = False,
 ) -> ScoreHolder:
     taxa = set()
@@ -963,7 +958,7 @@ def get_scores_for_period(
 def authorless_names(
     root_taxon: Taxon,
     attribute: str = "author_tags",
-    predicate: Optional[Callable[[Name], bool]] = None,
+    predicate: Callable[[Name], bool] | None = None,
 ) -> Iterable[Name]:
     for nam in root_taxon.names:
         if (not predicate) or predicate(nam):
@@ -986,8 +981,8 @@ def complexless_genera(root_taxon: Taxon) -> Iterable[Name]:
 
 class LabeledName(NamedTuple):
     name: Name
-    order: Optional[Taxon]
-    family: Optional[Taxon]
+    order: Taxon | None
+    family: Taxon | None
     is_high_quality: bool
 
 
@@ -1032,7 +1027,7 @@ def label_name(name: Name) -> LabeledName:
 
 
 @command
-def labeled_authorless_names(attribute: str = "author_tags") -> List[LabeledName]:
+def labeled_authorless_names(attribute: str = "author_tags") -> list[LabeledName]:
     nams = Name.select_valid().filter(getattr(Name, attribute) >> None)
     return [
         label_name(name) for name in nams if attribute in name.get_required_fields()
@@ -1050,7 +1045,7 @@ def type_locality_tree() -> None:
         print(line)
 
 
-def _tl_count(region: models.Region) -> Tuple[int, List[str]]:
+def _tl_count(region: models.Region) -> tuple[int, list[str]]:
     print(f"processing {region}")
     count = 0
     lines = []
@@ -1076,7 +1071,7 @@ def print_percentages() -> None:
         "author_tags",
         "year",
     ]
-    parent_of_taxon: Dict[int, int] = {}
+    parent_of_taxon: dict[int, int] = {}
 
     def _find_parent(taxon: Taxon) -> int:
         if taxon.id in parent_of_taxon:
@@ -1096,7 +1091,7 @@ def print_percentages() -> None:
 
     print("Finished collecting parents for taxa")
 
-    counts_of_parent: Dict[int, Dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    counts_of_parent: dict[int, dict[str, int]] = defaultdict(lambda: defaultdict(int))
     for name in Name.select_valid():
         try:
             parent_id = parent_of_taxon[name.taxon.id]
@@ -1122,7 +1117,7 @@ def print_percentages() -> None:
         print("Total", total)
         for attribute in attributes:
             percentage = data[attribute] * 100.0 / total
-            print("{}: {} ({:.2f}%)".format(attribute, data[attribute], percentage))
+            print(f"{attribute}: {data[attribute]} ({percentage:.2f}%)")
 
 
 @command
@@ -1209,10 +1204,10 @@ def fossilize(
 @command
 def sorted_field_values(
     field: str,
-    model_cls: Type[models.BaseModel] = Name,
+    model_cls: type[models.BaseModel] = Name,
     *,
     filters: Iterable[Any] = [],
-    exclude_fn: Optional[Callable[[Any], bool]] = None,
+    exclude_fn: Callable[[Any], bool] | None = None,
 ) -> None:
     nams = model_cls.bfind(
         getattr(model_cls, field) != None, *filters, quiet=True, sort=False
@@ -1248,7 +1243,7 @@ def field_counts() -> None:
 
 @command
 def clean_column(
-    cls: Type[models.BaseModel], column: str, dry_run: bool = True
+    cls: type[models.BaseModel], column: str, dry_run: bool = True
 ) -> None:
     for obj in cls.select_valid().filter(getattr(cls, column) != None):
         old_value = getattr(obj, column)
@@ -1299,8 +1294,8 @@ def _set_name_complex_for_names(nams: Sequence[Name]) -> None:
 def set_citation_group_for_matching_citation(
     dry_run: bool = False, fix: bool = False
 ) -> None:
-    cite_to_nams: Dict[str, List[Name]] = defaultdict(list)
-    cite_to_group: Dict[str, Set[CitationGroup]] = defaultdict(set)
+    cite_to_nams: dict[str, list[Name]] = defaultdict(list)
+    cite_to_group: dict[str, set[CitationGroup]] = defaultdict(set)
     count = 0
     for nam in Name.bfind(Name.verbatim_citation != None, quiet=True):
         cite_to_nams[nam.verbatim_citation].append(nam)
@@ -1327,7 +1322,7 @@ def set_citation_group_for_matching_citation(
 
 @command
 def set_empty_to_none(
-    model_cls: Type[models.BaseModel], field: str, dry_run: bool = False
+    model_cls: type[models.BaseModel], field: str, dry_run: bool = False
 ) -> None:
     for obj in model_cls.filter(getattr(model_cls, field) == ""):
         print(f"{obj}: set {field} to None")
@@ -1438,9 +1433,9 @@ def fill_citation_groups(
 
 
 @command
-def field_by_year(field: Optional[str] = None) -> None:
-    by_year_cited: Dict[str, int] = defaultdict(int)
-    by_year_total: Dict[str, int] = defaultdict(int)
+def field_by_year(field: str | None = None) -> None:
+    by_year_cited: dict[str, int] = defaultdict(int)
+    by_year_total: dict[str, int] = defaultdict(int)
     if field is None:
         for nam in Name.bfind(
             Name.original_citation == None, Name.year != None, quiet=True
@@ -1485,7 +1480,7 @@ def type_localities_like(substring: str, full: bool = False) -> None:
 
 
 def names_with_location_detail_without_type_loc(
-    taxon: Optional[Taxon] = None, *, substring: Optional[str] = None
+    taxon: Taxon | None = None, *, substring: str | None = None
 ) -> Iterable[Name]:
     if taxon is None:
         nams = Name.select_valid().filter(
@@ -1521,14 +1516,14 @@ def names_with_location_detail_without_type_loc(
 
 @command
 def fill_type_locality_from_location_detail(
-    taxon: Optional[Taxon] = None, substring: Optional[str] = None
+    taxon: Taxon | None = None, substring: str | None = None
 ) -> None:
     for nam in names_with_location_detail_without_type_loc(taxon, substring=substring):
         nam.fill_field("type_locality")
 
 
 def names_with_type_detail_without_type(
-    taxon: Optional[Taxon] = None,
+    taxon: Taxon | None = None,
 ) -> Iterable[Name]:
     if taxon is None:
         nams = Name.select_valid().filter(
@@ -1560,7 +1555,7 @@ def names_with_type_detail_without_type(
 
 
 @command
-def fill_type_from_type_detail(taxon: Optional[Taxon] = None) -> None:
+def fill_type_from_type_detail(taxon: Taxon | None = None) -> None:
     for nam in names_with_type_detail_without_type(taxon):
         nam.fill_field("type")
 
@@ -1608,7 +1603,7 @@ def fix_general_type_localities_for_region(region: models.Region) -> None:
 
 @command
 def more_precise_type_localities(
-    loc: models.Location, *, substring: Optional[str] = None
+    loc: models.Location, *, substring: str | None = None
 ) -> None:
     if substring is not None:
         substring = helpers.simplify_string(substring)
@@ -1632,7 +1627,7 @@ def more_precise_type_localities(
 @command
 def more_precise_periods(
     period: models.Period,
-    region: Optional[models.Region] = None,
+    region: models.Region | None = None,
     include_children: bool = False,
     set_stratigraphy: bool = True,
 ) -> None:
@@ -1747,8 +1742,8 @@ def type_locality_without_detail() -> Iterable[Name]:
 @command
 def most_common_unchecked_names(
     num_to_display: int = 10,
-    max_level: Optional[PersonLevel] = PersonLevel.has_given_name,
-    max_num_names: Optional[int] = None,
+    max_level: PersonLevel | None = PersonLevel.has_given_name,
+    max_num_names: int | None = None,
 ) -> Counter[str]:
     counter: Counter[str] = Counter()
     name_counter: Counter[str] = Counter()
@@ -1789,8 +1784,8 @@ def most_common_initials() -> Counter[Person]:
 @command
 def biggest_names(
     num_to_display: int = 10,
-    max_level: Optional[PersonLevel] = PersonLevel.has_given_name,
-    family_name: Optional[str] = None,
+    max_level: PersonLevel | None = PersonLevel.has_given_name,
+    family_name: str | None = None,
 ) -> Counter[Person]:
     counter: Counter[Person] = Counter()
     query = Person.select_valid()
@@ -1818,9 +1813,9 @@ def rio_taxon() -> None:
 
 @command
 def reassign_references(
-    family_name: Optional[str] = None,
+    family_name: str | None = None,
     substring: bool = True,
-    max_level: Optional[PersonLevel] = PersonLevel.has_given_name,
+    max_level: PersonLevel | None = PersonLevel.has_given_name,
 ) -> None:
     if family_name is None:
         family_name = Person.getter("family_name").get_one_key()
@@ -1858,7 +1853,7 @@ def doubled_authors(autofix: bool = False) -> list[Name]:
 
 @command
 def reassign_authors(
-    taxon: Optional[Taxon] = None,
+    taxon: Taxon | None = None,
     skip_family: bool = False,
     skip_initials: bool = False,
 ) -> None:
@@ -1898,7 +1893,7 @@ def reassign_authors(
 
 
 @command
-def most_common(model_cls: Type[models.BaseModel], field: str) -> Counter[Any]:
+def most_common(model_cls: type[models.BaseModel], field: str) -> Counter[Any]:
     objects = model_cls.select_valid().filter(getattr(model_cls, field) != None)
     counter: Counter[Any] = Counter()
     for obj in objects:
@@ -1910,7 +1905,7 @@ def most_common(model_cls: Type[models.BaseModel], field: str) -> Counter[Any]:
 
 @command
 def most_common_mapped(
-    model_cls: Type[models.BaseModel],
+    model_cls: type[models.BaseModel],
     field: str,
     mapper: Callable[[Any], Any],
     num_to_display: int = 10,
@@ -1926,7 +1921,7 @@ def most_common_mapped(
 
 
 @command
-def most_common_citation_groups_after(year: int) -> Dict[CitationGroup, int]:
+def most_common_citation_groups_after(year: int) -> dict[CitationGroup, int]:
     nams = Name.bfind(Name.citation_group != None, Name.year > year, quiet=True)
     return Counter(nam.citation_group for nam in nams)
 
@@ -1984,7 +1979,7 @@ def check_type_tags(dry_run: bool = False) -> Iterable[tuple[Name, list[str]]]:
 
 
 @generator_command
-def move_to_lowest_rank(dry_run: bool = False) -> Iterable[Tuple[Name, str]]:
+def move_to_lowest_rank(dry_run: bool = False) -> Iterable[tuple[Name, str]]:
     for nam in getinput.print_every_n(Name.select_valid(), label="names"):
         query = Taxon.select_valid().filter(Taxon.base_name == nam)
         if query.count() < 2:
@@ -2117,9 +2112,9 @@ def resolve_redirects(dry_run: bool = False) -> None:
 
 
 @command
-def run_maintenance(skip_slow: bool = True) -> Dict[Any, Any]:
+def run_maintenance(skip_slow: bool = True) -> dict[Any, Any]:
     """Runs maintenance checks that are expected to pass for the entire database."""
-    fns: List[Callable[[], Any]] = [
+    fns: list[Callable[[], Any]] = [
         labeled_authorless_names,
         detect_complexes,
         detect_species_name_complexes,
@@ -2140,7 +2135,7 @@ def run_maintenance(skip_slow: bool = True) -> Dict[Any, Any]:
         Person.resolve_redirects,
     ]
     # these each take >60 s
-    slow: List[Callable[[], Any]] = [
+    slow: list[Callable[[], Any]] = [
         move_to_lowest_rank,
         *[cls.lint_all for cls in models.BaseModel.__subclasses__()],
     ]
@@ -2161,7 +2156,7 @@ def run_maintenance(skip_slow: bool = True) -> Dict[Any, Any]:
     return out
 
 
-def names_of_author(author: str, include_partial: bool) -> List[Name]:
+def names_of_author(author: str, include_partial: bool) -> list[Name]:
     persons = Person.select_valid().filter(
         Person.family_name.contains(author)
         if include_partial
@@ -2173,7 +2168,7 @@ def names_of_author(author: str, include_partial: bool) -> List[Name]:
 
 
 @command
-def names_of_authority(author: str, year: int, edit: bool = False) -> List[Name]:
+def names_of_authority(author: str, year: int, edit: bool = False) -> list[Name]:
     nams = names_of_author(author, include_partial=False)
     nams = [nam for nam in nams if nam.year == year]
 
@@ -2200,8 +2195,8 @@ def names_of_authority(author: str, year: int, edit: bool = False) -> List[Name]
 
 @command
 def find_multiple_repository_names(
-    filter: Optional[str] = None, edit: bool = False
-) -> List[Name]:
+    filter: str | None = None, edit: bool = False
+) -> list[Name]:
     all_nams = Name.select_valid().filter(
         Name.type_specimen.contains(", "),
         Name.collection != Collection.by_label("multiple"),
@@ -2235,7 +2230,7 @@ def moreau(nam: Name) -> None:
     nam.e.type_tags
 
 
-def fgsyn(off: Optional[Name] = None) -> Name:
+def fgsyn(off: Name | None = None) -> Name:
     """Adds a family-group synonym."""
     if off is not None:
         taxon = off.taxon
@@ -2255,14 +2250,14 @@ def fgsyn(off: Optional[Name] = None) -> Name:
 
 @command
 def author_report(
-    author: str, partial: bool = False, missing_attribute: Optional[str] = None
-) -> List[Name]:
+    author: str, partial: bool = False, missing_attribute: str | None = None
+) -> list[Name]:
     nams = names_of_author(author, include_partial=partial)
     if not missing_attribute:
         nams = [nam for nam in nams if nam.original_citation is None]
 
-    by_year: Dict[str, List[Name]] = defaultdict(list)
-    no_year: List[Name] = []
+    by_year: dict[str, list[Name]] = defaultdict(list)
+    no_year: list[Name] = []
     for nam in nams:
         if (
             missing_attribute is not None
@@ -2277,7 +2272,7 @@ def author_report(
     if not by_year and not no_year:
         return []
     print(f"years: {min(by_year)}–{max(by_year)}")
-    out: List[Name] = []
+    out: list[Name] = []
     for year, year_nams in sorted(by_year.items()):
         out += year_nams
         print(f"{year} ({len(year_nams)})")
@@ -2323,7 +2318,7 @@ def archive_for_must_have(fix: bool = True) -> Iterator[CitationGroup]:
             yield cg
 
 
-def _must_have_citation_groups() -> List[CitationGroup]:
+def _must_have_citation_groups() -> list[CitationGroup]:
     return [
         cg
         for cg in CitationGroup.select_valid()
@@ -2334,7 +2329,7 @@ def _must_have_citation_groups() -> List[CitationGroup]:
 
 @command
 def find_potential_citations(
-    fix: bool = False, region: Optional[models.Region] = None, aggressive: bool = False
+    fix: bool = False, region: models.Region | None = None, aggressive: bool = False
 ) -> int:
     if region is None:
         cgs = CitationGroup.select_valid()
@@ -2348,7 +2343,7 @@ def find_potential_citations(
     return count
 
 
-def _author_names(obj: Union[Article, Name]) -> Set[str]:
+def _author_names(obj: Article | Name) -> set[str]:
     return {person.family_name for person in obj.get_authors()}
 
 
@@ -2499,7 +2494,7 @@ def reset_db() -> None:
 
 
 @command
-def print_parent() -> Optional[Taxon]:
+def print_parent() -> Taxon | None:
     taxon = Taxon.getter("valid_name").get_one()
     if taxon:
         return taxon.parent
@@ -2508,12 +2503,12 @@ def print_parent() -> Optional[Taxon]:
 
 @command
 def occ(
-    t: Optional[Taxon] = None,
-    loc: Optional[models.Location] = None,
-    source: Optional[Article] = None,
+    t: Taxon | None = None,
+    loc: models.Location | None = None,
+    source: Article | None = None,
     replace_source: bool = False,
     **kwargs: Any,
-) -> Optional[models.Occurrence]:
+) -> models.Occurrence | None:
     if t is None:
         t = Taxon.getter(None).get_one("taxon> ")
     if t is None:
@@ -2542,8 +2537,8 @@ def occ(
 
 @command
 def mocc(
-    t: Optional[Taxon] = None,
-    source: Optional[Article] = None,
+    t: Taxon | None = None,
+    source: Article | None = None,
     replace_source: bool = False,
     **kwargs: Any,
 ) -> None:
@@ -2564,8 +2559,8 @@ def mocc(
 
 @command
 def multi_taxon(
-    loc: Optional[models.Location] = None,
-    source: Optional[Article] = None,
+    loc: models.Location | None = None,
+    source: Article | None = None,
     replace_source: bool = False,
     **kwargs: Any,
 ) -> None:
@@ -2643,7 +2638,7 @@ def rename_specimen_photos(dry_run: bool = True) -> None:
                 shutil.move(path, new_path)
 
 
-def _sort_key(volume_or_issue: Optional[str]) -> tuple[object, ...]:
+def _sort_key(volume_or_issue: str | None) -> tuple[object, ...]:
     if volume_or_issue is None:
         return (float("inf"), "")
     try:
@@ -2654,7 +2649,7 @@ def _sort_key(volume_or_issue: Optional[str]) -> tuple[object, ...]:
 
 @command
 def cg_recent_report(
-    cg: Optional[CitationGroup] = None, min_year: Optional[int] = None
+    cg: CitationGroup | None = None, min_year: int | None = None
 ) -> None:
     if cg is None:
         cg = CitationGroup.getter(None).get_one("citation group> ")

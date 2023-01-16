@@ -8,7 +8,8 @@ Motivating use case: caching CrossRef API responses.
 import datetime
 import enum
 import functools
-from typing import Any, Callable
+from typing import Any
+from collections.abc import Callable
 
 from . import models
 

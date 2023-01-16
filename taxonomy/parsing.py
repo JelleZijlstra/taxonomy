@@ -1,10 +1,12 @@
 from dataclasses import dataclass
 from functools import partial
-from typing import Set, Iterable, Pattern, List, Optional as TOptional
+from typing import Set, List, Optional as TOptional
+from collections.abc import Iterable
+from re import Pattern
 import re
 
 
-def unicode_range(start: str, end: str) -> Set[str]:
+def unicode_range(start: str, end: str) -> set[str]:
     return {chr(i) for i in range(ord(start), ord(end) + 1)}
 
 
@@ -24,7 +26,7 @@ class Element:
 
 @dataclass
 class Char(Element):
-    alternatives: List[str]
+    alternatives: list[str]
 
     def to_regex(self) -> str:
         return f"[{''.join(self.alternatives)}]"
@@ -40,7 +42,7 @@ class Literal(Element):
 
 @dataclass
 class OneOf(Element):
-    alternatives: List[Element]
+    alternatives: list[Element]
 
     @classmethod
     def from_strs(cls, strs: Iterable[str]) -> "OneOf":
@@ -52,7 +54,7 @@ class OneOf(Element):
 
 @dataclass
 class And(Element):
-    pieces: List[Element]
+    pieces: list[Element]
 
     def to_regex(self) -> str:
         return "".join(f"({e.to_regex()})" for e in self.pieces)

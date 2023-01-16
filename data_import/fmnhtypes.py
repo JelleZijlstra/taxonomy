@@ -11,8 +11,8 @@ SOURCE = lib.Source("fmnhtypes.txt", "FMNH-types (Sanborn 1947).pdf")
 
 def extract_names(pages: PagesT) -> DataT:
     """Extracts names from the text, as dictionaries."""
-    current_name: Dict[str, Any] = {}
-    current_lines: List[str] = []
+    current_name: dict[str, Any] = {}
+    current_lines: list[str] = []
 
     def start_label(label: str, line: str) -> None:
         assert current_name is not None

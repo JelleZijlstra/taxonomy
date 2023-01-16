@@ -1,5 +1,6 @@
 import re
-from typing import Any, Dict, Iterable, List, Tuple
+from typing import Any, Dict, List, Tuple
+from collections.abc import Iterable
 
 from taxonomy.db import constants
 
@@ -9,9 +10,9 @@ from .lib import DataT
 SOURCE = lib.Source("utahtypes.txt", "Utah-types.pdf")
 
 
-def extract_names(pages: Iterable[Tuple[int, List[str]]]) -> Iterable[Dict[str, Any]]:
-    current_name: Dict[str, Any] = {"pages": []}
-    current_lines: List[str] = []
+def extract_names(pages: Iterable[tuple[int, list[str]]]) -> Iterable[dict[str, Any]]:
+    current_name: dict[str, Any] = {"pages": []}
+    current_lines: list[str] = []
 
     for page, lines in pages:
         current_name["pages"].append(page)

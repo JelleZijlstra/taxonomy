@@ -16,7 +16,7 @@ from taxonomy.db.models.location import Location, LocationTag
 ROOT = Path(__file__).parent.parent
 
 
-def load_locs() -> List[Dict[str, str]]:
+def load_locs() -> list[dict[str, str]]:
     with (ROOT / "data_import/data/nowlocs.tsv").open("r") as f:
         rows = csv.DictReader(f, delimiter="\t")
         return [dict(row) for row in rows]

@@ -69,7 +69,7 @@ class Specimen(BaseModel):
             print("==================================")
             specimen.edit()
 
-    def add_comment(self, text: Optional[str] = None) -> Optional["SpecimenComment"]:
+    def add_comment(self, text: str | None = None) -> Optional["SpecimenComment"]:
         return SpecimenComment.create_interactively(specimen=self, text=text)
 
     def display(self, full: bool = False) -> None:
@@ -104,8 +104,8 @@ class SpecimenComment(BaseModel):
     @classmethod
     def create_interactively(
         cls,
-        specimen: Optional[Specimen] = None,
-        text: Optional[str] = None,
+        specimen: Specimen | None = None,
+        text: str | None = None,
         **kwargs: object,
     ) -> Optional["SpecimenComment"]:
         if specimen is None:

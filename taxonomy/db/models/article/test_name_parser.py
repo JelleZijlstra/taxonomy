@@ -1,5 +1,6 @@
 from pathlib import Path
-from typing import Any, List, Mapping, Optional, Tuple, Union
+from typing import Any, List, Optional, Tuple, Union
+from collections.abc import Mapping
 
 from .name_parser import NameParser
 
@@ -7,7 +8,7 @@ from .name_parser import NameParser
 def check(
     raw_name: str,
     base_name: Mapping[str, Any] = {},
-    authorship: Tuple[Union[None, str, List[str]], Optional[str]] = (None, None),
+    authorship: tuple[None | str | list[str], str | None] = (None, None),
     modifier: str = "",
     extension: str = "pdf",
     expect_errors: bool = False,

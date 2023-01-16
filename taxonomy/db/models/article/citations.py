@@ -32,10 +32,10 @@ def page_range(article: Article) -> str:
 def format_authors(
     art: Article,
     separator: str = ";",  # Text between two authors
-    lastSeparator: Optional[str] = None,  # Text between last two authors
-    separatorWithTwoAuthors: Optional[
+    lastSeparator: str | None = None,  # Text between last two authors
+    separatorWithTwoAuthors: None | (
         str
-    ] = None,  # Text between authors if there are only two
+    ) = None,  # Text between authors if there are only two
     capitalizeNames: bool = False,  # Whether to capitalize names
     spaceInitials: bool = False,  # Whether to space initials
     initialsBeforeName: bool = False,  # Whether to place initials before the surname
@@ -515,7 +515,7 @@ def getrefname(art: Article) -> str:
 def citebibtex(article: Article) -> str:
     out = "@"
 
-    def add(key: str, value: Optional[str], mandatory: bool = False) -> None:
+    def add(key: str, value: str | None, mandatory: bool = False) -> None:
         nonlocal out
         if not value:
             if mandatory:
@@ -629,7 +629,7 @@ def citewp(article: Article, *, commons: bool = False) -> str:
         label = "web"
     else:
         raise RuntimeError(f"unrecognized type {article.type!r}")
-    paras: Dict[str, Optional[str]] = {}
+    paras: dict[str, str | None] = {}
     # authors
     if commons:
         # commons doesn't have last1 etc.
@@ -637,7 +637,7 @@ def citewp(article: Article, *, commons: bool = False) -> str:
             author.get_full_name(family_first=True) for author in article.get_authors()
         )
     else:
-        coauthors: List[str] = []
+        coauthors: list[str] = []
         for i, author in enumerate(article.get_authors()):
             if i < 9:
                 # templates only support up to 9 authors

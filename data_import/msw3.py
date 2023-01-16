@@ -69,7 +69,7 @@ def translate_to_db(names: DataT) -> DataT:
         yield name
 
 
-def main(argv: List[str]) -> DataT:
+def main(argv: list[str]) -> DataT:
     lines = lib.get_text(SOURCE)
     reader = csv.DictReader(lines)
     names = translate_to_db(reader)

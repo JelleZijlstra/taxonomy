@@ -45,7 +45,7 @@ CALL_SIGN_TO_MODEL = {model.call_sign: model for model in BaseModel.__subclasses
 DOCS_ROOT = Path(__file__).parent.parent / "docs"
 
 # work around mypy bug where it doesn't think types are hashable
-cache = cast(Any, lru_cache())
+cache = cast(Any, lru_cache)
 
 
 def _match_to_md_ref(match: re.Match[str]) -> str:
@@ -71,11 +71,11 @@ class Model(Interface):
 
 
 @cache
-def make_enum(python_enum: Type[enum.Enum]) -> Type[Enum]:
+def make_enum(python_enum: type[enum.Enum]) -> type[Enum]:
     return Enum.from_enum(python_enum)
 
 
-def build_graphene_field_from_adt_arg(typ: Type[Any]) -> Field:
+def build_graphene_field_from_adt_arg(typ: type[Any]) -> Field:
     if typ is str:
         return Field(String)
     elif typ is int:
@@ -91,7 +91,7 @@ def build_graphene_field_from_adt_arg(typ: Type[Any]) -> Field:
 
 
 @cache
-def build_adt_member(adt_cls: Type[ADT], adt: ADT) -> Type[ObjectType]:
+def build_adt_member(adt_cls: type[ADT], adt: ADT) -> type[ObjectType]:
     namespace = {}
     for name, typ in adt._attributes.items():
         graphene_field = build_graphene_field_from_adt_arg(typ)
@@ -112,7 +112,7 @@ def build_adt_member(adt_cls: Type[ADT], adt: ADT) -> Type[ObjectType]:
 
 
 @cache
-def build_adt_interface(adt_cls: Type[ADT]) -> Type[Interface]:
+def build_adt_interface(adt_cls: type[ADT]) -> type[Interface]:
     # These interfaces are empty, but graphene complains if we actually leave it empty
     return type(
         adt_cls.__name__, (Interface,), {"__ignored": Field(ID, required=False)}
@@ -120,7 +120,7 @@ def build_adt_interface(adt_cls: Type[ADT]) -> Type[Interface]:
 
 
 @cache
-def build_adt(adt_cls: Type[ADT]) -> Type[Interface]:
+def build_adt(adt_cls: type[ADT]) -> type[Interface]:
     interface = build_adt_interface(adt_cls)
     for member in adt_cls._tag_to_member.values():
         TYPES.append(build_adt_member(adt_cls, member))
@@ -137,7 +137,7 @@ def translate_adt_arg(arg: Any, attr_name: str) -> Any:
 
 
 def build_graphene_field(
-    model_cls: Type[BaseModel], name: str, peewee_field: peewee.Field
+    model_cls: type[BaseModel], name: str, peewee_field: peewee.Field
 ) -> Field:
     if isinstance(peewee_field, EnumField):
         return Field(
@@ -150,7 +150,7 @@ def build_graphene_field(
     elif isinstance(peewee_field, peewee.ForeignKeyField):
         call_sign = getattr(model_cls, name).rel_model.call_sign
 
-        def fk_resolver(parent: ObjectType, info: ResolveInfo) -> Optional[ObjectType]:
+        def fk_resolver(parent: ObjectType, info: ResolveInfo) -> ObjectType | None:
             model = get_model(model_cls, parent, info)
             oid = model.__data__[name]
             if oid is None:
@@ -203,7 +203,7 @@ def build_graphene_field(
         isinstance(peewee_field, peewee.TextField) or name in model_cls.markdown_fields
     ):
 
-        def md_resolver(parent: ObjectType, info: ResolveInfo) -> Optional[str]:
+        def md_resolver(parent: ObjectType, info: ResolveInfo) -> str | None:
             value = getattr(get_model(model_cls, parent, info), name)
             if value is None:
                 return None
@@ -222,7 +222,7 @@ def build_graphene_field(
         assert False, f"failed to translate {peewee_field}"
 
 
-def get_model(model_cls: Type[BaseModel], parent: Any, info: ResolveInfo) -> BaseModel:
+def get_model(model_cls: type[BaseModel], parent: Any, info: ResolveInfo) -> BaseModel:
     cache = info.context["request"]
     key = (model_cls.call_sign, parent.oid)
     if key not in cache:
@@ -234,7 +234,7 @@ def get_model(model_cls: Type[BaseModel], parent: Any, info: ResolveInfo) -> Bas
 
 
 @cache
-def build_connection(object_type: Type[ObjectType]) -> Type[Connection]:
+def build_connection(object_type: type[ObjectType]) -> type[Connection]:
     class Meta:
         node = object_type
 
@@ -242,7 +242,7 @@ def build_connection(object_type: Type[ObjectType]) -> Type[Connection]:
 
 
 def build_reverse_rel_count_field(
-    model_cls: Type[BaseModel], name: str, peewee_field: peewee.ForeignKeyField
+    model_cls: type[BaseModel], name: str, peewee_field: peewee.ForeignKeyField
 ) -> Field:
     def resolver(parent: ObjectType, info: ResolveInfo) -> TList[ObjectType]:
         model = get_model(model_cls, parent, info)
@@ -253,7 +253,7 @@ def build_reverse_rel_count_field(
 
 
 def _get_locations(
-    parent: ObjectType, info: ResolveInfo, first: int = 10, after: Optional[str] = None
+    parent: ObjectType, info: ResolveInfo, first: int = 10, after: str | None = None
 ) -> Any:
     model = get_model(Period, parent, info)
     query = (
@@ -270,7 +270,7 @@ def _get_locations(
 
 
 def locations_resolver(
-    parent: ObjectType, info: ResolveInfo, first: int = 10, after: Optional[str] = None
+    parent: ObjectType, info: ResolveInfo, first: int = 10, after: str | None = None
 ) -> TList[ObjectType]:
     object_type = build_object_type_from_model(Location)
     query = _get_locations(parent, info, first, after)
@@ -283,14 +283,14 @@ def locations_resolver(
 
 
 def num_locations_resolver(
-    parent: ObjectType, info: ResolveInfo, first: int = 10, after: Optional[str] = None
+    parent: ObjectType, info: ResolveInfo, first: int = 10, after: str | None = None
 ) -> int:
     query = _get_locations(parent, info, first, after)
     return query.count()
 
 
 def build_reverse_rel_field(
-    model_cls: Type[BaseModel], name: str, peewee_field: peewee.ForeignKeyField
+    model_cls: type[BaseModel], name: str, peewee_field: peewee.ForeignKeyField
 ) -> Field:
     foreign_model = peewee_field.model
     call_sign = foreign_model.call_sign
@@ -310,7 +310,7 @@ def build_reverse_rel_field(
         parent: ObjectType,
         info: ResolveInfo,
         first: int = 10,
-        after: Optional[str] = None,
+        after: str | None = None,
     ) -> TList[ObjectType]:
         model = get_model(model_cls, parent, info)
         object_type = build_object_type_from_model(foreign_model)
@@ -337,14 +337,14 @@ def build_reverse_rel_field(
     )
 
 
-def _decode_after(after: Optional[str]) -> int:
+def _decode_after(after: str | None) -> int:
     if after:
         return int(base64.b64decode(after).split(b":")[1]) + 1
     else:
         return 0
 
 
-def make_location_connection() -> Type[Connection]:
+def make_location_connection() -> type[Connection]:
     return build_connection(build_object_type_from_model(Location))
 
 
@@ -359,13 +359,13 @@ CUSTOM_FIELDS = {
 
 
 def build_derived_field(
-    model_cls: Type[BaseModel], derived_field: DerivedField[Any]
+    model_cls: type[BaseModel], derived_field: DerivedField[Any]
 ) -> Field:
     field_name = derived_field.name
     typ = derived_field.get_type()
     if isinstance(typ, type) and issubclass(typ, BaseModel):
 
-        def fk_resolver(parent: ObjectType, info: ResolveInfo) -> Optional[ObjectType]:
+        def fk_resolver(parent: ObjectType, info: ResolveInfo) -> ObjectType | None:
             model = get_model(model_cls, parent, info)
             foreign_model_oid = model.get_raw_derived_field(field_name)
             if foreign_model_oid is None:
@@ -399,14 +399,14 @@ def build_derived_field(
         (arg_type,) = typing_inspect.get_args(typ)
         if issubclass(arg_type, BaseModel):
 
-            def elt_type() -> Type[Connection]:
+            def elt_type() -> type[Connection]:
                 return build_connection(build_object_type_from_model(arg_type))
 
             def list_resolver(
                 parent: ObjectType,
                 info: ResolveInfo,
                 first: int = 10,
-                after: Optional[str] = None,
+                after: str | None = None,
             ) -> Any:
                 model = get_model(model_cls, parent, info)
                 foreign_model_oids = model.get_raw_derived_field(field_name)
@@ -422,7 +422,7 @@ def build_derived_field(
                 parent: ObjectType,
                 info: ResolveInfo,
                 first: int = 10,
-                after: Optional[str] = None,
+                after: str | None = None,
             ) -> Any:
                 model = get_model(model_cls, parent, info)
                 return model.get_derived_field(field_name)
@@ -435,8 +435,8 @@ def build_derived_field(
 
 
 def build_derived_count_field(
-    model_cls: Type[BaseModel], derived_field: DerivedField[Any]
-) -> Optional[Field]:
+    model_cls: type[BaseModel], derived_field: DerivedField[Any]
+) -> Field | None:
     field_name = derived_field.name
     typ = derived_field.get_type()
     if typing_inspect.is_generic_type(typ) and typing_inspect.get_origin(typ) is list:
@@ -454,7 +454,7 @@ def build_derived_count_field(
 
 
 @cache
-def build_object_type_from_model(model_cls: Type[BaseModel]) -> Type[ObjectType]:
+def build_object_type_from_model(model_cls: type[BaseModel]) -> type[ObjectType]:
     namespace = {}
     for name, peewee_field in model_cls._meta.fields.items():
         if name == "id":
@@ -480,7 +480,7 @@ def build_object_type_from_model(model_cls: Type[BaseModel]) -> Type[ObjectType]
     class Meta:
         interfaces = (Node, Model)
 
-    def get_node(cls: Type[ObjectType], info: ResolveInfo, id: int) -> ObjectType:
+    def get_node(cls: type[ObjectType], info: ResolveInfo, id: int) -> ObjectType:
         return cls(oid=id, id=id)
 
     namespace["Meta"] = Meta
@@ -515,13 +515,13 @@ def build_object_type_from_model(model_cls: Type[BaseModel]) -> Type[ObjectType]
     return type(model_cls.__name__, (ObjectType,), namespace)
 
 
-def build_model_field(model_cls: Type[BaseModel]) -> Tuple[Field, Optional[Field]]:
+def build_model_field(model_cls: type[BaseModel]) -> tuple[Field, Field | None]:
     object_type = build_object_type_from_model(model_cls)
 
     def resolver(parent: ObjectType, info: ResolveInfo, oid: int) -> ObjectType:
         return object_type(oid=oid, id=oid)
 
-    by_label_field: Optional[Field] = None
+    by_label_field: Field | None = None
     if hasattr(model_cls, "label_field"):
         label_field = getattr(model_cls, model_cls.label_field)
 
@@ -536,7 +536,7 @@ def build_model_field(model_cls: Type[BaseModel]) -> Tuple[Field, Optional[Field
     return Field(object_type, oid=Int(), resolver=resolver), by_label_field
 
 
-def get_model_resolvers() -> Dict[str, Field]:
+def get_model_resolvers() -> dict[str, Field]:
     resolvers = {}
     for model_cls in BaseModel.__subclasses__():
         field, by_label_field = build_model_field(model_cls)
@@ -566,7 +566,7 @@ def resolve_by_call_sign(
 
 def resolve_documentation(
     parent: ObjectType, info: ResolveInfo, path: str
-) -> Optional[str]:
+) -> str | None:
     if not re.match(r"^[a-zA-Z\-\d]+$", path):
         return None
     full_path = DOCS_ROOT / (path + ".md")
@@ -576,7 +576,7 @@ def resolve_documentation(
 
 
 def resolve_autocompletions(
-    parent: "ModelCls", info: ResolveInfo, field: Optional[str] = None
+    parent: "ModelCls", info: ResolveInfo, field: str | None = None
 ) -> TList[str]:
     model_cls = BaseModel.call_sign_to_model[parent.call_sign]
     if field is None:

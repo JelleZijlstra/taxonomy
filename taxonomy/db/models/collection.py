@@ -63,7 +63,7 @@ class Collection(BaseModel):
 
     @classmethod
     def get_or_create(
-        cls, label: str, name: str, location: Region, comment: Optional[str] = None
+        cls, label: str, name: str, location: Region, comment: str | None = None
     ) -> "Collection":
         try:
             return cls.by_label(label)
@@ -72,15 +72,15 @@ class Collection(BaseModel):
                 label=label, name=name, location=location, comment=comment
             )
 
-    def get_required_fields(self) -> List[str]:
+    def get_required_fields(self) -> list[str]:
         return ["label", "name", "location", "city"]
 
     @classmethod
     def create_interactively(
-        cls: Type[ModelT],
-        label: Optional[str] = None,
-        name: Optional[str] = None,
-        location: Optional[Region] = None,
+        cls: type[ModelT],
+        label: str | None = None,
+        name: str | None = None,
+        location: Region | None = None,
         **kwargs: Any,
     ) -> ModelT:
         if label is None:
@@ -122,7 +122,7 @@ class Collection(BaseModel):
 
     def get_partial(
         self, display: bool = False
-    ) -> Tuple[List["models.name.Name"], List["models.name.Name"]]:
+    ) -> tuple[list["models.name.Name"], list["models.name.Name"]]:
         multiple = []
         probable_repo = []
         for nam in models.Name.with_tag_of_type(models.name.TypeTag.Repository):
