@@ -199,7 +199,9 @@ def associate_names(names: DataT) -> DataT:
         lib.NameConfig(
             {"Savage & Wyman": "Savage"},
             {
-                "Hesperomys sonoriensis nebrascensis": "Hesperomys sonoriensis var. nebrascensis"
+                "Hesperomys sonoriensis nebrascensis": (
+                    "Hesperomys sonoriensis var. nebrascensis"
+                )
             },
         ),
     )

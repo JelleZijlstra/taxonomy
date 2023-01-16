@@ -1,16 +1,7 @@
 import json
 from taxonomy import getinput
 from peewee import CharField, ForeignKeyField, TextField
-from typing import (
-    Any,
-    Dict,
-    Iterable,
-    List,
-    Optional,
-    Tuple,
-    Type,
-    TypeVar,
-)
+from typing import Any, Dict, Iterable, List, Optional, Tuple, Type, TypeVar
 
 from .base import ADTField, BaseModel
 from ..constants import SOURCE_LANGUAGE_SYNONYMS, SourceLanguage

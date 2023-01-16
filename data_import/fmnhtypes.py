@@ -32,8 +32,10 @@ def extract_names(pages: PagesT) -> DataT:
             if re.match(r"\s+(Order|Family) +[A-Z]+$", line):
                 continue
             match = re.match(
-                r"^(?P<original_name>[A-Z][a-z]+( +\([A-Z][a-z]+\))?( +[a-z\-]+(\[[a-z]+\])?){1,2}) +"
-                r"(?P<authority>([A-Z]\. +)*[A-Z][a-z]+( +and +[A-Z][a-z]+)?) *(?P<type_kind>Cotypes|Lectotype)?$",
+                r"^(?P<original_name>[A-Z][a-z]+( +\([A-Z][a-z]+\))?("
+                r" +[a-z\-]+(\[[a-z]+\])?){1,2}) +"
+                r"(?P<authority>([A-Z]\. +)*[A-Z][a-z]+( +and +[A-Z][a-z]+)?)"
+                r" *(?P<type_kind>Cotypes|Lectotype)?$",
                 line,
             )
             if match:
@@ -66,8 +68,10 @@ def split_fields(names: DataT) -> DataT:
         name["raw_text"] = dict(name)
         text = name["specimen_detail"]
         match = re.match(
-            r"^(?P<specimen>\d+)\. +(?P<body_parts>[^\.]+)\. +(?P<age_gender>[^\.]+)\. +"
-            r"(?P<loc>.*?)\. +(Altitude +(?P<altitude>[\d,\-]+ +(feet|meters))\. +)?((?P<date>([A-Z][a-z]+( \d+)?, )?\d{4})\. +)?"
+            r"^(?P<specimen>\d+)\. +(?P<body_parts>[^\.]+)\."
+            r" +(?P<age_gender>[^\.]+)\. +"
+            r"(?P<loc>.*?)\. +(Altitude +(?P<altitude>[\d,\-]+ +(feet|meters))\."
+            r" +)?((?P<date>([A-Z][a-z]+( \d+)?, )?\d{4})\. +)?"
             r"(Received from |Presented by |Collected by|Purchased |Found by)",
             text,
         )

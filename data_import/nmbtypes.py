@@ -70,7 +70,10 @@ def split_fields(names: DataT) -> DataT:
         if type_kind in ("holotype", "lectotype"):
             text = name["type_specimens"].split(MARKER)[0].strip()
             match = re.match(
-                r"^[^ ]+ (?P<type_specimen>NMB ?[\dM\-]+)( \([^\)]+\)){0,2} 1(?P<gender>[MF\?]) (?P<body_parts>[^:]+): (?P<loc>.*)$",
+                (
+                    r"^[^ ]+ (?P<type_specimen>NMB ?[\dM\-]+)( \([^\)]+\)){0,2}"
+                    r" 1(?P<gender>[MF\?]) (?P<body_parts>[^:]+): (?P<loc>.*)$"
+                ),
                 text,
             )
             if match:

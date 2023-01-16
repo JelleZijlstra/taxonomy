@@ -11,8 +11,7 @@ from itertools import islice
 
 from typing_extensions import Self, assert_never
 
-from data_import.lib import (Source, clean_string, extract_pages, get_text,
-                             split_lines)
+from data_import.lib import Source, clean_string, extract_pages, get_text, split_lines
 from taxonomy import getinput
 from taxonomy.db import helpers, models
 from taxonomy.db.constants import Group, Rank, SpeciesGroupType
@@ -150,7 +149,11 @@ class NameDetails:
                 ref = None
         if ref is None:
             if key == (("Auffenberg",), "1988"):
-                ref = "Auffenberg, W. 1988. A new species of <i>Geochelone</i> (Testudinata: Testudinidae) from the Pleistocene of Florida (U.S.A.). Acta Zoologica Cracoviensia 31(23):591-604."
+                ref = (
+                    "Auffenberg, W. 1988. A new species of <i>Geochelone</i>"
+                    " (Testudinata: Testudinidae) from the Pleistocene of Florida"
+                    " (U.S.A.). Acta Zoologica Cracoviensia 31(23):591-604."
+                )
             else:
                 print("Failed to extract author for", stripped, key)
 
@@ -187,7 +190,10 @@ class Name:
         type_kind = None
         if self.type_specimen is not None:
             match = re.match(
-                r"^Type specimen: (?P<type_specimen>(?P<collection>[A-Z]+) [A-Z]*[\d\.a-z]+), (?P<kind>holotype|lectotype|neotype)",
+                (
+                    r"^Type specimen: (?P<type_specimen>(?P<collection>[A-Z]+)"
+                    r" [A-Z]*[\d\.a-z]+), (?P<kind>holotype|lectotype|neotype)"
+                ),
                 self.type_specimen,
             )
             if match is not None:
@@ -283,7 +289,10 @@ def parse_refs() -> dict[RefKey, str]:
         )
 
         m = re.search(
-            r"^(.*?\.(?: de| \(Eds\.\))?) \b((15|16|17|18|19|20)\d\d[a-z]?)( \[[^\]]+\])?\.",
+            (
+                r"^(.*?\.(?: de| \(Eds\.\))?) \b((15|16|17|18|19|20)\d\d[a-z]?)("
+                r" \[[^\]]+\])?\."
+            ),
             ref_text,
         )
         assert m is not None, ref_text

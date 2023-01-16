@@ -364,8 +364,12 @@ def map_to_svg(map_data: MapData, root_dir: Path) -> None:
 
 
 LOCALITY_REPORT_TEMPLATE = {
-    ReportFormat.markdown: "* **{name}** ({latitude}, {longitude}){maybe_comment}{maybe_source}",
-    ReportFormat.wiki: "* '''{name}''' ({latitude}, {longitude}){maybe_comment}{maybe_source}",
+    ReportFormat.markdown: (
+        "* **{name}** ({latitude}, {longitude}){maybe_comment}{maybe_source}"
+    ),
+    ReportFormat.wiki: (
+        "* '''{name}''' ({latitude}, {longitude}){maybe_comment}{maybe_source}"
+    ),
 }
 FORMAT_TO_STYLE = {ReportFormat.markdown: "paper", ReportFormat.wiki: "commons"}
 

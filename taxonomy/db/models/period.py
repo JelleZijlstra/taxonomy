@@ -107,7 +107,8 @@ class Period(BaseModel):
             yield f"{self}: missing a rank"
         if self.rank not in SYSTEM_TO_ALLOWED_RANKS[self.system]:
             yield (
-                f"{self}: is of rank {self.rank}, which is not allowed for {self.system}"
+                f"{self}: is of rank {self.rank}, which is not allowed for"
+                f" {self.system}"
             )
         requires_parent = self.requires_parent()
         if self.parent is None:

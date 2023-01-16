@@ -18,9 +18,7 @@ SAFE_REMOVE = {
     "Previously",
     "Introduced",
 }
-COLON_REMOVE = SAFE_REMOVE | {
-    "just to keep it non-empty",
-}
+COLON_REMOVE = SAFE_REMOVE | {"just to keep it non-empty"}
 
 
 def consolidate_lines(lines: list[str]) -> list[str]:
@@ -61,7 +59,8 @@ def remove_lines(lines: list[str]) -> list[str]:
             should_remove = True
             safe = True
         if line.startswith(
-            "Conservation Biology of Freshwater Turtles and Tortoises • Chelonian Research Monographs, No. 8"
+            "Conservation Biology of Freshwater Turtles and Tortoises • Chelonian"
+            " Research Monographs, No. 8"
         ):
             should_remove = True
             safe = True

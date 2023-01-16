@@ -68,7 +68,10 @@ def extract_names(pages: PagesT) -> DataT:
 def split_fields(names: DataT) -> DataT:
     for name in names:
         match = re.match(
-            r"([A-Z][a-z]+( [a-z-]+){1,2}(, f\. fulva)?) ([A-Z][a-zA-Z \.,&]+), (\d{4})",
+            (
+                r"([A-Z][a-z]+( [a-z-]+){1,2}(, f\. fulva)?) ([A-Z][a-zA-Z \.,&]+),"
+                r" (\d{4})"
+            ),
             name["name_line"],
         )
         if match:

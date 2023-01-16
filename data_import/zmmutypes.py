@@ -297,9 +297,13 @@ def main() -> DataT:
     conf = lib.NameConfig(
         original_name_fixes={
             "Neomys fodiens brachyotis": "Neomys fodiens brachyotus",
-            "Lepus mandshuricus sbph. melanotus": "Lepus mandschuricus subphasa melanonotus",
+            "Lepus mandshuricus sbph. melanotus": (
+                "Lepus mandschuricus subphasa melanonotus"
+            ),
             "Lepus timidus transbaikalensis": "Lepus timidus transbaicalicus",
-            "Citellus (Urocitellus) eversmanni incertedens": "Citellus (Urocitellus) eversmanni intercedens",
+            "Citellus (Urocitellus) eversmanni incertedens": (
+                "Citellus (Urocitellus) eversmanni intercedens"
+            ),
             "Gulo gulo camtshaticus": "Gulo gulo kamtschaticus",
             "A.[lticola] a.[rgentatus] tarasovi": "Alticola argentatus tarasovi",
             "Microtus oeconomus": "Microtus oeconomus naumovi",
@@ -307,8 +311,12 @@ def main() -> DataT:
         },
         authority_fixes={
             "Vorontsov & Boyeskorov et al.": "Vorontsov, Boyeskorov & Mezhzherin",
-            "Lavrenchenko, Likhnova, Baskevich & Bekele": "Lavrenchenko, Likhnova & Baskevich",
-            "Vorontsov, Boyeskorov & Lyapunova et al.": "Vorontsov, Boyeskorov, Lyapunova & Revin",
+            "Lavrenchenko, Likhnova, Baskevich & Bekele": (
+                "Lavrenchenko, Likhnova & Baskevich"
+            ),
+            "Vorontsov, Boyeskorov & Lyapunova et al.": (
+                "Vorontsov, Boyeskorov, Lyapunova & Revin"
+            ),
         },
     )
     names = lib.associate_names(names, conf, max_distance=2)

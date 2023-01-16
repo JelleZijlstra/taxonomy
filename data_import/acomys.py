@@ -7,7 +7,6 @@ SOURCE = lib.Source("acomys.txt", "Acomys-distribution (Bates 1994).pdf")
 
 
 def extract_names(pages: PagesT) -> DataT:
-
     for page, lines in pages:
         for line in lines:
             if line.strip() == "REFERENCES":
@@ -19,7 +18,10 @@ def extract_names(pages: PagesT) -> DataT:
 def split_fields(names: DataT) -> DataT:
     for name in names:
         match = re.match(
-            r"^(?P<orig_name_author>[^,]+), (?P<year>\d{4}) ?[a-d]?: (?P<page_described>[^;]+); (?P<loc>.*)$",
+            (
+                r"^(?P<orig_name_author>[^,]+), (?P<year>\d{4}) ?[a-d]?:"
+                r" (?P<page_described>[^;]+); (?P<loc>.*)$"
+            ),
             name["raw_text"],
         )
         if match:

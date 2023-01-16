@@ -64,7 +64,8 @@ def check_type_tags_for_name(nam: Name, autofix: bool) -> Iterable[str]:
         if isinstance(tag, TypeTag.CommissionTypeDesignation):
             if nam.type != tag.type:
                 print(
-                    f"{nam} has {nam.type} as its type, but the Commission has designated {tag.type}"
+                    f"{nam} has {nam.type} as its type, but the Commission has"
+                    f" designated {tag.type}"
                 )
                 if autofix:
                     nam.type = tag.type
@@ -73,7 +74,8 @@ def check_type_tags_for_name(nam: Name, autofix: bool) -> Iterable[str]:
                 != TypeSpeciesDesignation.designated_by_the_commission
             ):
                 print(
-                    f"{nam} has {nam.genus_type_kind}, but its type was set by the Commission"
+                    f"{nam} has {nam.genus_type_kind}, but its type was set by the"
+                    " Commission"
                 )
                 if autofix:
                     nam.genus_type_kind = (
@@ -182,7 +184,10 @@ def check_tags_for_name(nam: Name, autofix: bool) -> Iterable[str]:
         current_priority = status_to_priority[nam.nomenclature_status]
         new_priority = status_to_priority[status]
         if current_priority > new_priority:
-            comment = f"Status automatically changed from {nam.nomenclature_status.name} to {status.name} because of {tag}"
+            comment = (
+                f"Status automatically changed from {nam.nomenclature_status.name} to"
+                f" {status.name} because of {tag}"
+            )
             print(f"changing status of {nam} and adding comment {comment!r}")
             if autofix:
                 nam.add_static_comment(CommentKind.automatic_change, comment)
@@ -194,7 +199,8 @@ def check_tags_for_name(nam: Name, autofix: bool) -> Iterable[str]:
             senior_name = tag.name
             if nam.group != senior_name.group:
                 yield (
-                    f"{nam}: is of a different group than supposed senior name {senior_name}"
+                    f"{nam}: is of a different group than supposed senior name"
+                    f" {senior_name}"
                 )
             if senior_name.nomenclature_status is NomenclatureStatus.subsequent_usage:
                 for senior_name_tag in senior_name.get_tags(
@@ -207,7 +213,8 @@ def check_tags_for_name(nam: Name, autofix: bool) -> Iterable[str]:
             if nam.group is not Group.species:
                 if nam.root_name != tag.name.root_name:
                     yield (
-                        f"{nam}: has a different root name than supposed senior name {senior_name}"
+                        f"{nam}: has a different root name than supposed senior name"
+                        f" {senior_name}"
                     )
         elif isinstance(
             tag,
@@ -249,7 +256,9 @@ def check_required_tags(nam: Name, autofix: bool = True) -> Iterable[str]:
     tag_cls = STATUS_TO_TAG[nam.nomenclature_status]
     tags = list(nam.get_tags(nam.tags, tag_cls))
     if not tags:
-        yield f"{nam}: has status {nam.nomenclature_status.name} but no corresponding tag"
+        yield (
+            f"{nam}: has status {nam.nomenclature_status.name} but no corresponding tag"
+        )
 
 
 _single_year = re.compile(r"^\d{4}$")
@@ -301,7 +310,10 @@ def check_corrected_original_name(nam: Name, autofix: bool = True) -> Iterable[s
     if inferred is not None and inferred != nam.corrected_original_name:
         yield _make_con_messsage(
             nam,
-            f"inferred name {inferred!r} does not match current name {nam.corrected_original_name!r}",
+            (
+                f"inferred name {inferred!r} does not match current name"
+                f" {nam.corrected_original_name!r}"
+            ),
         )
     if not re.match(r"^[A-Z][a-z ]+$", nam.corrected_original_name):
         yield _make_con_messsage(nam, "contains unexpected characters")
@@ -429,7 +441,10 @@ def clean_up_verbatim(nam: Name, autofix: bool = True) -> Iterable[str]:
         and nam.verbatim_type is not None
         and nam.type_specimen is not None
     ):
-        message = f"{nam}: cleaning up verbatim type: {nam.type_specimen}, {nam.verbatim_type}"
+        message = (
+            f"{nam}: cleaning up verbatim type: {nam.type_specimen},"
+            f" {nam.verbatim_type}"
+        )
         if autofix:
             print(message)
             nam.add_data("verbatim_type", nam.verbatim_type, concat_duplicate=True)
@@ -437,7 +452,10 @@ def clean_up_verbatim(nam: Name, autofix: bool = True) -> Iterable[str]:
         else:
             yield message
     if nam.verbatim_citation is not None and nam.original_citation is not None:
-        message = f"{nam}: cleaning up verbatim citation: {nam.original_citation.name}, {nam.verbatim_citation}"
+        message = (
+            f"{nam}: cleaning up verbatim citation: {nam.original_citation.name},"
+            f" {nam.verbatim_citation}"
+        )
         if autofix:
             print(message)
             nam.add_data(
@@ -447,7 +465,10 @@ def clean_up_verbatim(nam: Name, autofix: bool = True) -> Iterable[str]:
         else:
             yield message
     if nam.citation_group is not None and nam.original_citation is not None:
-        message = f"{nam}: cleaning up citation group: {nam.original_citation.name}, {nam.citation_group}"
+        message = (
+            f"{nam}: cleaning up citation group: {nam.original_citation.name},"
+            f" {nam.citation_group}"
+        )
         if autofix:
             print(message)
             nam.citation_group = None
@@ -457,7 +478,9 @@ def clean_up_verbatim(nam: Name, autofix: bool = True) -> Iterable[str]:
 
 def check_correct_status(nam: Name, autofix: bool = True) -> Iterable[str]:
     if nam.status.is_base_name() and nam != nam.taxon.base_name:
-        yield f"{nam}: is of status {nam.status!r} and should be base name of {nam.taxon}"
+        yield (
+            f"{nam}: is of status {nam.status!r} and should be base name of {nam.taxon}"
+        )
 
 
 def _find_as_emended_by(nam: Name) -> Name | None:
@@ -514,7 +537,10 @@ def _check_as_emended_name(nam: Name, autofix: bool = True) -> Iterable[str]:
     if as_emended_target.taxon != nam.taxon:
         yield f"{nam}: target {as_emended_target} does not belong to the same taxon"
     if as_emended_target.root_name != nam.root_name:
-        yield f"{nam}: root name {nam.root_name} does not match target {as_emended_target.root_name}"
+        yield (
+            f"{nam}: root name {nam.root_name} does not match target"
+            f" {as_emended_target.root_name}"
+        )
     if (
         as_emended_target.nomenclature_status
         is not NomenclatureStatus.justified_emendation
@@ -523,7 +549,10 @@ def _check_as_emended_name(nam: Name, autofix: bool = True) -> Iterable[str]:
         return
     ios = as_emended_target.get_tag_target(NameTag.JustifiedEmendationOf)
     if ios is None:
-        yield f"{nam}: as_emended target {as_emended_target} lacks a justified emendation tag"
+        yield (
+            f"{nam}: as_emended target {as_emended_target} lacks a justified"
+            " emendation tag"
+        )
         return
     if ios.nomenclature_status is not NomenclatureStatus.incorrect_original_spelling:
         yield f"{nam}: incorrect original spelling {ios} is not marked as such"
@@ -531,7 +560,10 @@ def _check_as_emended_name(nam: Name, autofix: bool = True) -> Iterable[str]:
     yield from _check_names_match(nam, ios, include_page_described=True)
     original = ios.get_tag_target(NameTag.IncorrectOriginalSpellingOf)
     if original != nam:
-        yield f"{nam}: incorrect original spelling traces back to {original}, not this name"
+        yield (
+            f"{nam}: incorrect original spelling traces back to {original}, not this"
+            " name"
+        )
 
 
 def _check_correctable_ios(nam: Name, autofix: bool = True) -> Iterable[str]:
@@ -568,7 +600,10 @@ def check_justified_emendations(nam: Name, autofix: bool = True) -> Iterable[str
         if target.nomenclature_status is NomenclatureStatus.incorrect_original_spelling:
             # Now we must have an IOS/JE/as_emended triple.
             if target.root_name == nam.root_name:
-                yield f"{nam}: supposed incorrect spelling {target} has identical root name {nam.root_name}"
+                yield (
+                    f"{nam}: supposed incorrect spelling {target} has identical root"
+                    f" name {nam.root_name}"
+                )
             yield from _check_correctable_ios(target, autofix)
         elif target.nomenclature_status not in (
             NomenclatureStatus.available,
@@ -582,7 +617,10 @@ def check_justified_emendations(nam: Name, autofix: bool = True) -> Iterable[str
             # Else it should be a justified emendation for something straightforward
             # (e.g., removing diacritics), so the CON and root_name should match.
             if nam.root_name != target.root_name:
-                yield f"{nam}: root name {nam.root_name} does not match emended name {target}"
+                yield (
+                    f"{nam}: root name {nam.root_name} does not match emended name"
+                    f" {target}"
+                )
     elif nam.nomenclature_status is NomenclatureStatus.incorrect_original_spelling:
         ios_target = nam.get_tag_target(NameTag.IncorrectOriginalSpellingOf)
         if ios_target is None:
@@ -617,7 +655,10 @@ def autoset_corrected_original_name(
         return
     inferred = nam.infer_corrected_original_name(aggressive=aggressive)
     if inferred:
-        message = f"{nam}: inferred corrected_original_name to be {inferred!r} from {nam.original_name!r}"
+        message = (
+            f"{nam}: inferred corrected_original_name to be {inferred!r} from"
+            f" {nam.original_name!r}"
+        )
         if autofix:
             print(message)
             nam.corrected_original_name = inferred
@@ -658,7 +699,9 @@ def check_matches_citation(nam: Name, autofix: bool = True) -> Iterable[str]:
             if start_page and end_page:
                 page_range = range(art.numeric_start_page(), art.numeric_end_page() + 1)
                 if nam.numeric_page_described() not in page_range:
-                    yield f"{nam}: {nam.page_described} is not in {page_range} for {art}"
+                    yield (
+                        f"{nam}: {nam.page_described} is not in {page_range} for {art}"
+                    )
     # TODO check year
 
 
@@ -681,5 +724,5 @@ LINTERS: list[Linter] = [
     check_matches_citation,
 ]
 DISABLED_LINTERS: list[Linter] = [
-    check_type_designations_present,  # too many missing (about 580)
+    check_type_designations_present  # too many missing (about 580)
 ]

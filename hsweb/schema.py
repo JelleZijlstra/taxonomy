@@ -9,8 +9,20 @@ from typing import Optional, Tuple, Type
 
 import peewee
 import typing_inspect
-from graphene import (ID, Boolean, Enum, Field, Int, Interface, List, NonNull,
-                      ObjectType, ResolveInfo, Schema, String)
+from graphene import (
+    ID,
+    Boolean,
+    Enum,
+    Field,
+    Int,
+    Interface,
+    List,
+    NonNull,
+    ObjectType,
+    ResolveInfo,
+    Schema,
+    String,
+)
 from graphene.relay import Connection, ConnectionField, Node
 from graphene.utils.str_converters import to_snake_case
 

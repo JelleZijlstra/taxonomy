@@ -360,7 +360,8 @@ class Name(BaseModel):
         inferred = self.infer_original_rank()
         if inferred is not None:
             print(
-                f"{self}: inferred original_rank to be {inferred!r} from {self.original_name!r}"
+                f"{self}: inferred original_rank to be {inferred!r} from"
+                f" {self.original_name!r}"
             )
             if not dry_run:
                 self.original_rank = inferred
@@ -425,7 +426,11 @@ class Name(BaseModel):
                 genus, species = original_name.split()
                 return f"{genus} {species.lower()}"
             match = re.match(
-                r"^(?P<genus>[A-Z][a-z]+)( \([A-Z][a-z]+\))? (?P<species>[A-Z]?[a-z]+)((,? var\.)? (?P<subspecies>[A-Z]?[a-z]+))?$",
+                (
+                    r"^(?P<genus>[A-Z][a-z]+)( \([A-Z][a-z]+\))?"
+                    r" (?P<species>[A-Z]?[a-z]+)((,? var\.)?"
+                    r" (?P<subspecies>[A-Z]?[a-z]+))?$"
+                ),
                 original_name,
             )
             if match:
@@ -458,7 +463,8 @@ class Name(BaseModel):
             inferred = self.infer_corrected_original_name()
             if inferred is not None:
                 print(
-                    f"inferred corrected_original_name to be {inferred!r} from {self.original_name!r}"
+                    f"inferred corrected_original_name to be {inferred!r} from"
+                    f" {self.original_name!r}"
                 )
                 return inferred
             else:
@@ -472,7 +478,8 @@ class Name(BaseModel):
                 inferred = self.infer_original_rank()
                 if inferred is not None:
                     print(
-                        f"inferred original_rank to be {inferred!r} from {self.original_name!r}"
+                        f"inferred original_rank to be {inferred!r} from"
+                        f" {self.original_name!r}"
                     )
                     return inferred
             if self.group is Group.species:
@@ -589,7 +596,8 @@ class Name(BaseModel):
         locality: Optional[Location] = None,
         **kwargs: Any,
     ) -> "Taxon":
-        """Convenience method to add a type species described in the same paper as the genus."""
+        """Convenience method to add a type species described in the same paper as the genus.
+        """
         assert self.taxon.rank == Rank.genus
         assert self.type is None
         full_name = f"{self.corrected_original_name} {name}"
@@ -862,7 +870,8 @@ class Name(BaseModel):
         return helpers.to_int(self.page_described)
 
     def extract_page_described(self) -> Optional[int]:
-        """Attempts to extract a page that appears in the original description, if at all possible."""
+        """Attempts to extract a page that appears in the original description, if at all possible.
+        """
         page_described = self.numeric_page_described()
         if page_described != 0:
             return page_described
@@ -996,7 +1005,12 @@ class Name(BaseModel):
     @staticmethod
     def _author_to_person(author: str) -> Optional[Dict[str, str]]:
         match = re.match(
-            r"^((?P<initials>([A-ZÉ]\.)+) )?((?P<tussenvoegsel>de|von|van|van der|van den|van de) )?(?P<family_name>(d'|de|de la |zur |du |dos |del |di |ul-|von der |da |vander|dal |delle |ul )?[ÄÉÜÁÖŞA-Z].*)(, (?P<suffix>2nd))?$",
+            (
+                r"^((?P<initials>([A-ZÉ]\.)+) )?((?P<tussenvoegsel>de|von|van|van"
+                r" der|van den|van de) )?(?P<family_name>(d'|de|de la |zur |du |dos"
+                r" |del |di |ul-|von der |da |vander|dal |delle |ul )?[ÄÉÜÁÖŞA-Z].*)(,"
+                r" (?P<suffix>2nd))?$"
+            ),
             author,
         )
         if match is not None:
@@ -1082,7 +1096,8 @@ class Name(BaseModel):
                     name_author.move_reference(article_author, "names", self)
             else:
                 maybe_print(
-                    f"author {i}: {article_author} (article) does not match {name_author} (name)"
+                    f"author {i}: {article_author} (article) does not match"
+                    f" {name_author} (name)"
                 )
         getinput.print_diff(self.author_tags, new_authors)
         if autofix:
@@ -1990,11 +2005,7 @@ def has_data_from_original(nam: Name) -> bool:
                 TypeTag.GenusCoelebs,
                 TypeTag.TextualOriginalRank,
             ),
-        ) or tag in (
-            TypeTag.NoEtymology,
-            TypeTag.NoLocation,
-            TypeTag.NoSpecimen,
-        ):
+        ) or tag in (TypeTag.NoEtymology, TypeTag.NoLocation, TypeTag.NoSpecimen):
             return True
     return False
 

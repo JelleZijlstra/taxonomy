@@ -63,7 +63,10 @@ def can_be_name_header(line: str) -> bool:
     if len(line) > 100:
         return False
     match = re.match(
-        r"^.* [A-Z].*, \d{4}[a-z]?: (Table |Plate |Text to Plate |col\. )?([ivxlc]+|\d+)(, (\d+|footnote))*\.$",
+        (
+            r"^.* [A-Z].*, \d{4}[a-z]?: (Table |Plate |Text to Plate |col\."
+            r" )?([ivxlc]+|\d+)(, (\d+|footnote))*\.$"
+        ),
         line,
     )
     return bool(match) and (line[0].isupper() or line[0] in ("[", "Φ", "$", "†", "Ω"))
@@ -208,7 +211,8 @@ def extract_names(pages: Iterable[Tuple[int, List[str]]]) -> DataT:
                     line_kinds.append(LineKind.taxon_header)
                 elif re.match(
                     r"^ +([†Φ] )?(Suborder |Subfamily |Family |Cohort |Superorder )?"
-                    r"[A-Z][a-z]+( [a-z]+){0,2} +\(?([A-Z]\. )?[A-Z](cK)?[a-zé]+(-[A-Z][a-z]+)?"
+                    r"[A-Z][a-z]+( [a-z]+){0,2} +\(?([A-Z]\."
+                    r" )?[A-Z](cK)?[a-zé]+(-[A-Z][a-z]+)?"
                     r"( & [A-Z](cK)?[a-z]+)?( et al\.)?, \d{4}\)?$",
                     line,
                 ):
@@ -228,7 +232,10 @@ def build_refs_dict(refs: DataT) -> RefsDictT:
 
         text = ref["raw_text"]
         match = re.match(
-            r"(?P<authors>[^\(]+)( \(eds?\.\))? \((?P<year>\d{4}(–\d{4})?[a-z]?( \[[\d–-]+\])?)\)",
+            (
+                r"(?P<authors>[^\(]+)( \(eds?\.\))? \((?P<year>\d{4}(–\d{4})?[a-z]?("
+                r" \[[\d–-]+\])?)\)"
+            ),
             text,
         )
         assert match, f"failed to match {text}"
@@ -239,7 +246,10 @@ def build_refs_dict(refs: DataT) -> RefsDictT:
             authors = _translate_single_author(raw_authors)
         elif num_commas == 1:
             author1, author2 = raw_authors.split(", ")
-            authors = f"{_translate_single_author(author1)} & {_translate_single_author(author2)}"
+            authors = (
+                f"{_translate_single_author(author1)} &"
+                f" {_translate_single_author(author2)}"
+            )
         else:
             authors = raw_authors
         key = authors, year
@@ -292,7 +302,10 @@ def split_text(names: DataT) -> DataT:
         if "sensu Misonne, 1969" in name_line:
             continue
         match = re.match(
-            r"^(?P<orig_name_author>[^,]+)(, in [^,]+)?, (?P<raw_year>\d{4}[^:]*): (?P<page_described>.*)$",
+            (
+                r"^(?P<orig_name_author>[^,]+)(, in [^,]+)?, (?P<raw_year>\d{4}[^:]*):"
+                r" (?P<page_described>.*)$"
+            ),
             name_line,
         )
         assert match, name_line

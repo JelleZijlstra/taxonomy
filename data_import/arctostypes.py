@@ -79,7 +79,8 @@ def filter_known(names: DataT, verbose: bool = False) -> DataT:
         if name["type_specimen"] in types:
             if verbose:
                 print(
-                    f'ignoring {types[name["type_specimen"]]} (type = {name["type_specimen"]})'
+                    f'ignoring {types[name["type_specimen"]]} (type ='
+                    f' {name["type_specimen"]})'
                 )
             continue
         else:

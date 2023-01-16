@@ -159,14 +159,18 @@ def _citenormal(article: Article, *, mw: bool) -> str:
 
 @register_cite_function("lemurnews")
 def citelemurnews(article: Article) -> str:
-    authors = format_authors(
-        article,
-    )
+    authors = format_authors(article)
     if article.type == ArticleType.JOURNAL:
         cg = article.citation_group.name if article.citation_group else ""
-        out = f"{authors}. {article.year}. {article.title}. {cg} {article.volume}: {article.start_page}–{article.end_page}."
+        out = (
+            f"{authors}. {article.year}. {article.title}. {cg} {article.volume}:"
+            f" {article.start_page}–{article.end_page}."
+        )
     elif article.type == ArticleType.BOOK:
-        out = f"{authors}. {article.year}. {article.title}. {article.publisher}, {article.place_of_publication}."
+        out = (
+            f"{authors}. {article.year}. {article.title}. {article.publisher},"
+            f" {article.place_of_publication}."
+        )
     # TODO: support non-journal citations
     # Ranaivoarisoa, J.F.; Ramanamahefa, R.; Louis, Jr., E.E.; Brenneman, R.A. 2006. Range extension
     # of Perrier’s sifaka, <i>Propithecus perrieri</i>, in the Andrafiamena Classified Forest. Lemur
@@ -218,9 +222,7 @@ def citebzn(article: Article) -> str:
         enclosing = article.getEnclosing()
         if enclosing is not None:
             out += " <i>in</i> "
-            out += format_authors(
-                enclosing,
-            ).replace("(Ed", "(ed")
+            out += format_authors(enclosing).replace("(Ed", "(ed")
             out += ", <i>" + enclosing.title + "</i>. "
             out += enclosing.pages + " pp. " + enclosing.publisher
             if enclosing.place_of_publication:

@@ -40,7 +40,8 @@ def split_fields(names: DataT) -> DataT:
                 name["rest"] = tail.strip()
             match = re.match(
                 r"^(?P<orig_name_author>[^,]+(, +var\.[^,]+|(?<=[A-Z]), [^,]+)?), ?"
-                r"(?P<verbatim_citation>.+?\d{4}(, in part|, characters given| \([a-zA-Z\.\' ]+\))?)"
+                r"(?P<verbatim_citation>.+?\d{4}(, in part|, characters given|"
+                r" \([a-zA-Z\.\' ]+\))?)"
                 r"(; (?P<nomenclature>[^;]+))?\.?$",
                 head.strip(),
             )
@@ -53,7 +54,8 @@ def split_fields(names: DataT) -> DataT:
         else:
             match = re.match(
                 r"^(?P<orig_name_author>[^,]+(, +var\.[^,]+|(?<=[A-Z]), [^,]+)?), ?"
-                r"(?P<verbatim_citation>.+?\d{4}(, in part|, characters given| \([a-zA-Z\.\' ]+\))?)"
+                r"(?P<verbatim_citation>.+?\d{4}(, in part|, characters given|"
+                r" \([a-zA-Z\.\' ]+\))?)"
                 r"(; (?P<nomenclature>[^\.\(\)]+|\([^\)]+\)))?\.(?P<rest>.*)$",
                 text,
             )

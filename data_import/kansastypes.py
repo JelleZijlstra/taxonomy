@@ -68,7 +68,10 @@ def split_fields(names: DataT) -> DataT:
             name["specimen_detail"] = name["Holotype"]
             name["species_type_kind"] = constants.SpeciesGroupType.holotype
             match = re.match(
-                r"[-—]?(.*), (KU \d+)( \(originally [^\)]+\))?, from (.*)[,;] obtained (.*?)\.?$",
+                (
+                    r"[-—]?(.*), (KU \d+)( \(originally [^\)]+\))?, from (.*)[,;]"
+                    r" obtained (.*?)\.?$"
+                ),
                 name["Holotype"],
             )
             assert match is not None, f'failed to match {name["Holotype"]}'

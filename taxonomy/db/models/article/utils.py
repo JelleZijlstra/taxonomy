@@ -17,7 +17,10 @@ def make_journal_article() -> Article:
         "journal": "Journal of Mammalogy",
         "name": "Agathaeromys nov.pdf",
         "start_page": "860",
-        "title": "New genus and two new species of Pleistocene oryzomyines (Cricetidae: Sigmodontinae) from Bonaire, Netherlands Antilles",
+        "title": (
+            "New genus and two new species of Pleistocene oryzomyines (Cricetidae:"
+            " Sigmodontinae) from Bonaire, Netherlands Antilles"
+        ),
         "type": ArticleType.JOURNAL,
         "volume": "91",
         "year": "2010",

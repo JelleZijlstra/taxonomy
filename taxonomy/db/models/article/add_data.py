@@ -374,7 +374,8 @@ def fill_issns(limit: int | None = None, verbose: bool = False) -> None:
         found_cg = get_cg_by_name(journal_name)
         if found_cg is None:
             print(
-                f"{art} ({cg.name}): Ignoring ISSNs {pairs} because {journal_name} is not a known citation group"
+                f"{art} ({cg.name}): Ignoring ISSNs {pairs} because {journal_name} is"
+                " not a known citation group"
             )
             continue
         if found_cg != cg:
@@ -396,14 +397,14 @@ def fill_issns(limit: int | None = None, verbose: bool = False) -> None:
 def get_jstor_data(art: Article) -> RawData:
     pdfcontent = art.getpdfcontent()
     if not re.search(
-        r"(Stable URL: https?:\/\/www\.jstor\.org\/stable\/| Accessed: )",
-        pdfcontent,
+        r"(Stable URL: https?:\/\/www\.jstor\.org\/stable\/| Accessed: )", pdfcontent
     ):
         return {}
     print("Detected JSTOR file; extracting data.")
     head_text = (
         pdfcontent.split(
-            "\nYour use of the JSTOR archive indicates your acceptance of JSTOR's Terms and Conditions of Use"
+            "\nYour use of the JSTOR archive indicates your acceptance of JSTOR's Terms"
+            " and Conditions of Use"
         )[0]
         .split("\nJSTOR is a not-for-profit service that helps scholars")[0]
         .strip()
@@ -417,7 +418,10 @@ def get_jstor_data(art: Article) -> RawData:
 
     # split into fields
     head = re.split(
-        r"(\s*Author\(s\): |\s*(Reviewed work\(s\):.*)?\s*Source: |\s*Published by: |\s*Stable URL: |( \.)?\s*Accessed: )",
+        (
+            r"(\s*Author\(s\): |\s*(Reviewed work\(s\):.*)?\s*Source: |\s*Published by:"
+            r" |\s*Stable URL: |( \.)?\s*Accessed: )"
+        ),
         head_text,
     )
 
@@ -586,7 +590,8 @@ def set_multi(art: Article, data: RawData, *, only_new: bool = True) -> None:
             if current and only_new:
                 if current != value:
                     print(
-                        f"{art}: ignore field {attr} (new: {value}; existing: {current})"
+                        f"{art}: ignore field {attr} (new: {value}; existing:"
+                        f" {current})"
                     )
                 continue
             print(f"{art}: set {attr} to {value}")
@@ -656,9 +661,13 @@ def doi_input(art: Article) -> bool:
         return True
 
     result, _ = uitools.menu(
-        head="If this file has a DOI or AMNH handle, please enter it. Otherwise, enter the type of the file.",
+        head=(
+            "If this file has a DOI or AMNH handle, please enter it. Otherwise, enter"
+            " the type of the file."
+        ),
         helpinfo=(
-            "In addition to the regular commands, the following synonyms are accepted for the several types:\n"
+            "In addition to the regular commands, the following synonyms are accepted"
+            " for the several types:\n"
             + _get_type_synonyms_as_string()
         ),
         options={

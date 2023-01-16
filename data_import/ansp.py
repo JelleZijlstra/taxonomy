@@ -116,7 +116,10 @@ def split_fields(names: DataT) -> DataT:
             if "rest" in name:
                 print(name["rest"])
                 match = re.match(
-                    r"^\. ([^,]+), collected by (.*?) at (.*), (in )?([A-Z][a-z]+ \d+, \d{4})\.? *$",
+                    (
+                        r"^\. ([^,]+), collected by (.*?) at (.*), (in )?([A-Z][a-z]+"
+                        r" \d+, \d{4})\.? *$"
+                    ),
                     name["rest"],
                 )
                 if match:

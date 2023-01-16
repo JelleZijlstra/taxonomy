@@ -51,7 +51,11 @@ def extract_names(pages: Iterable[Tuple[int, List[str]]]) -> DataT:
                 elif not in_synonymy:
                     pass
                 elif re.match(
-                    r" +([a-z] ){5,}| +This subspecies| +This is|KEY TO| +The | +Endemic to| +Additional| +Distribution:| +Although| +In South| +A gray| +Known primarily|Map \d+",
+                    (
+                        r" +([a-z] ){5,}| +This subspecies| +This is|KEY TO| +The |"
+                        r" +Endemic to| +Additional| +Distribution:| +Although| +In"
+                        r" South| +A gray| +Known primarily|Map \d+"
+                    ),
                     line,
                 ):
                     in_synonymy = False
@@ -121,10 +125,10 @@ def build_refs_dict(refs: DataT) -> RefsDictT:
             authors = re.sub(r", and( [A-Z]\.)+", " and", authors)
             authors = re.sub(r", (.*) and ", r", \1, and ", authors)
         authors = authors.replace(", Jr", "")
-        assert (
-            authors,
-            year,
-        ) not in refs_dict, f"duplicate key ({authors!r}, {year!r}) (new: {text}, existing: {refs_dict[(authors, year)]}"
+        assert (authors, year) not in refs_dict, (
+            f"duplicate key ({authors!r}, {year!r}) (new: {text}, existing:"
+            f" {refs_dict[(authors, year)]}"
+        )
         refs_dict[(authors, year)] = text
     # for key, value in refs_dict.items():
     #     print(key)
@@ -136,17 +140,26 @@ def split_text(names: DataT) -> DataT:
     for name in names:
         # (?P<original_name>\[?[A-Z].*( [a-z-\[\],]{3,})):? (?P<authority>(de )?[A-Z].*?)
         match = re.match(
-            r"^(?P<name_authority>[^\d]+?),? (?P<year>\d{4}[a-z]?): ?(?P<page_described>[^;]+); (?P<rest>.*)$",
+            (
+                r"^(?P<name_authority>[^\d]+?),? (?P<year>\d{4}[a-z]?):"
+                r" ?(?P<page_described>[^;]+); (?P<rest>.*)$"
+            ),
             name["raw_text"],
         )
         if not match:
             match = re.match(
-                r"^(?P<name_authority>[^\d]+?),? (?P<year>\d{4}[a-z]?)[:,;] ?(?P<page_described>\d+)([;,:] (?P<rest>.*)|\.)$",
+                (
+                    r"^(?P<name_authority>[^\d]+?),? (?P<year>\d{4}[a-z]?)[:,;]"
+                    r" ?(?P<page_described>\d+)([;,:] (?P<rest>.*)|\.)$"
+                ),
                 name["raw_text"],
             )
             if not match:
                 match = re.match(
-                    r"^(?P<name_authority>[^\d]+?),? (?P<year>\d{4}[a-z]?)([:,] ?(?P<page_described>\d+))?; (?P<rest>.*)$",
+                    (
+                        r"^(?P<name_authority>[^\d]+?),? (?P<year>\d{4}[a-z]?)([:,]"
+                        r" ?(?P<page_described>\d+))?; (?P<rest>.*)$"
+                    ),
                     name["raw_text"],
                 )
                 if not match:
@@ -179,10 +192,19 @@ def split_name_authority(
         r"^\[[A-Z][a-z]+ \(\]([A-Z][a-z]+)\[\)\]", r"\1", name_authority
     )
     regexes = [
-        r"^(?P<original_name>[A-ZÑ][a-zëöiï]+) (?P<authority>(d\')?[A-ZÁ][a-zA-Z\-öáñ\.èç]+)$",
-        r"^(?P<original_name>[A-ZÑ][a-zëöiï]+( \([A-Z][a-z]+\))?( [a-z]{3,}){1,2}) (?P<authority>(d\'|de la )?[A-ZÁ][a-zA-Z\-öáéèíñç\.,\' ]+)$",
+        (
+            r"^(?P<original_name>[A-ZÑ][a-zëöiï]+)"
+            r" (?P<authority>(d\')?[A-ZÁ][a-zA-Z\-öáñ\.èç]+)$"
+        ),
+        (
+            r"^(?P<original_name>[A-ZÑ][a-zëöiï]+( \([A-Z][a-z]+\))?( [a-z]{3,}){1,2})"
+            r" (?P<authority>(d\'|de la )?[A-ZÁ][a-zA-Z\-öáéèíñç\.,\' ]+)$"
+        ),
         r"^(?P<original_name>.*?) (?P<authority>[A-ZÉ]\. .*)$",
-        r"^(?P<original_name>[A-ZÑ][a-zëöíï]+) (?P<authority>(d\'|de la )?[A-ZÁ][a-zA-Z\-öáéíñ\., ]+ and [A-ZÁ][a-zA-Z\-öáéèíñç]+)$",
+        (
+            r"^(?P<original_name>[A-ZÑ][a-zëöíï]+) (?P<authority>(d\'|de la"
+            r" )?[A-ZÁ][a-zA-Z\-öáéíñ\., ]+ and [A-ZÁ][a-zA-Z\-öáéèíñç]+)$"
+        ),
     ]
     if try_harder:
         regexes += [
@@ -313,7 +335,9 @@ def main() -> None:
             "V[sic, = D(idelphis).]. Flavescens": "Didelphis Flavescens",
             "Metachirus melanurus": "Metachirus opossum melanurus",
             "D. opossum": "Didelphis Opossum",
-            "[Glossophaga (]Ch[oeronycteris)]. peruana": "Glossophaga (Choeronycteris) peruana",
+            "[Glossophaga (]Ch[oeronycteris)]. peruana": (
+                "Glossophaga (Choeronycteris) peruana"
+            ),
         },
         authority_fixes={
             "Zimmerman": "Zimmermann",

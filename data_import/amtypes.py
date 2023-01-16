@@ -73,7 +73,10 @@ def split_fields(names: DataT, verbose: bool = False) -> DataT:
         name["raw_text"] = dict(name)
         text = name["name"]
         match = re.match(
-            r"^(?P<orig_name_author>\D*) (?P<year>\d{4})[a-z]? (?P<verbatim_citation>.*)$",
+            (
+                r"^(?P<orig_name_author>\D*) (?P<year>\d{4})[a-z]?"
+                r" (?P<verbatim_citation>.*)$"
+            ),
             text,
         )
         if match:

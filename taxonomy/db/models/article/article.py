@@ -416,7 +416,8 @@ class Article(BaseModel):
         if self.kind == ArticleKind.electronic:
             if not force:
                 if not getinput.yes_no(
-                    f"Are you sure you want to remove the electronic copy of {self.name}?"
+                    "Are you sure you want to remove the electronic copy of"
+                    f" {self.name}?"
                 ):
                     return
             os.unlink(self.get_path())
@@ -837,7 +838,8 @@ class Article(BaseModel):
                 if verbose:
                     if value != existing:
                         print(
-                            f"Different data from expanddoi(). File {self.name}; var {key}"
+                            f"Different data from expanddoi(). File {self.name}; var"
+                            f" {key}"
                         )
                         print(f"Existing data: {existing}")
                         print(f"New data: {value}")

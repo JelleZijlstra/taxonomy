@@ -388,7 +388,10 @@ class CitationGroup(BaseModel):
             print(f"{' ' * (depth + 8)}{nam.verbatim_citation}")
 
     def __repr__(self) -> str:
-        return f"{self.name} ({self.type.name}; {self.region.name if self.region else '(unknown)'})"
+        return (
+            f"{self.name} ({self.type.name};"
+            f" {self.region.name if self.region else '(unknown)'})"
+        )
 
 
 class CitationGroupPattern(BaseModel):

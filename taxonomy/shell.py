@@ -202,8 +202,11 @@ def add_original_names() -> Iterable[Tuple[Name, str]]:
         .filter(Name.original_citation != None, Name.original_name >> None)
         .order_by(Name.original_name)
     ):
-        message = "Name {} is missing an original name, but has original citation {{{}}}:{}".format(
-            name.description(), name.original_citation.name, name.page_described
+        message = (
+            "Name {} is missing an original name, but has original citation {{{}}}:{}"
+            .format(
+                name.description(), name.original_citation.name, name.page_described
+            )
         )
         yield name, message
 
@@ -302,7 +305,8 @@ def add_types() -> None:
             continue
         name.taxon.display(full=True, max_depth=1)
         print(
-            f"Name {name} is missing type, but has original citation {name.original_citation.name}"
+            f"Name {name} is missing type, but has original citation"
+            f" {name.original_citation.name}"
         )
         models.fill_data.fill_data_from_paper(name.original_citation)
 
@@ -357,7 +361,8 @@ def detect_types_from_root_names(max_count: Optional[int] = None) -> None:
         else:
             if candidates:
                 print(
-                    f"found multiple candidates for {name} using root {root_name}: {candidates}"
+                    f"found multiple candidates for {name} using root {root_name}:"
+                    f" {candidates}"
                 )
             return False
 
@@ -666,7 +671,8 @@ def _duplicate_finder(
                         getinput.print_header(key)
                         for entry in entries_list:
                             print(
-                                f"----------------------------- {entry.call_sign}#{entry.id}"
+                                "-----------------------------"
+                                f" {entry.call_sign}#{entry.id}"
                             )
                             entry.display(full=True)
                             entry.add_to_history(None)
@@ -753,14 +759,19 @@ def dup_genus() -> List[Dict[str, List[Name]]]:
 
 
 @_duplicate_finder
-def dup_names() -> List[
-    Dict[
-        Tuple[
-            Optional[str], Optional[str], constants.NomenclatureStatus, Optional[str]
-        ],
-        List[Name],
+def dup_names() -> (
+    List[
+        Dict[
+            Tuple[
+                Optional[str],
+                Optional[str],
+                constants.NomenclatureStatus,
+                Optional[str],
+            ],
+            List[Name],
+        ]
     ]
-]:
+):
     original_year: Dict[
         Tuple[
             Optional[str], Optional[str], constants.NomenclatureStatus, Optional[str]
@@ -1136,7 +1147,8 @@ def article_stats(includefoldertree: bool = False) -> None:
 
     total = Article.select().count()
     print(
-        f"Total number of files is {total}. Of these, {nredirects} are redirects and {nnonfiles} are not actual files."
+        f"Total number of files is {total}. Of these, {nredirects} are redirects and"
+        f" {nnonfiles} are not actual files."
     )
     total -= nredirects
     for field, number in results.most_common():
@@ -1388,7 +1400,8 @@ def fill_citation_groups(
                     print("===", nam)
                     print(nam.verbatim_citation)
                     print(
-                        f"Inferred group with '{pattern.pattern}': {pattern.citation_group}"
+                        f"Inferred group with '{pattern.pattern}':"
+                        f" {pattern.citation_group}"
                     )
                     nam.citation_group = pattern.citation_group
 

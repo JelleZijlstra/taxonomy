@@ -540,7 +540,8 @@ def write_to_db(dry_run: bool = True) -> None:
                     new_value = f"{current_value} [From {{{SOURCE}}}: {new_value}]"
                 else:
                     print(
-                        f"value for {attr} differs: (new) {new_value} vs. (current) {current_value}"
+                        f"value for {attr} differs: (new) {new_value} vs. (current)"
+                        f" {current_value}"
                     )
                 if attr == "type_tags":
                     new_tags = set(new_value) - set(current_value)
@@ -576,7 +577,8 @@ def write_to_db(dry_run: bool = True) -> None:
                             if not dry_run:
                                 nam.open_description()
                                 if getinput.yes_no(
-                                    f"Is the original spelling {nam.original_name} correct? "
+                                    "Is the original spelling"
+                                    f" {nam.original_name} correct? "
                                 ):
                                     nam.add_variant(
                                         new_root_name,

@@ -54,7 +54,10 @@ def extract_names(pages: Iterable[Tuple[int, List[str]]]) -> DataT:
                 continue
             # ignore family/genus headers
             if re.match(
-                r"^\s*(Genus|Family|Subfamily|Suborder|Order) [A-Z][a-zA-Z]+ [a-zA-Z\.’, \-]+(, \d{4})?$",
+                (
+                    r"^\s*(Genus|Family|Subfamily|Suborder|Order) [A-Z][a-zA-Z]+"
+                    r" [a-zA-Z\.’, \-]+(, \d{4})?$"
+                ),
                 line,
             ):
                 in_headings = True
@@ -158,7 +161,11 @@ def split_fields(names: DataT) -> DataT:
                 data = re.sub(r"^as designated.*?: ", "", data)
                 # TODO handle field starting with "Lectotype as designated by ..."
                 match = re.match(
-                    r"^(USNM [\d/]+)\. ([^\.]+)\. ([^\.]+)\. (Collected|Received|Leg\. \(Collected\)) (.*) by (.*)\. (Original [Nn]umbers? .+|No original number.*)\.$",
+                    (
+                        r"^(USNM [\d/]+)\. ([^\.]+)\. ([^\.]+)\."
+                        r" (Collected|Received|Leg\. \(Collected\)) (.*) by (.*)\."
+                        r" (Original [Nn]umbers? .+|No original number.*)\.$"
+                    ),
                     data,
                 )
                 if match is None:
@@ -254,19 +261,25 @@ def main() -> DataT:
     config = lib.NameConfig(
         {
             "Deleuil & Labbe": "Deleuil & Labbé",
-            "Tavares, Gardner, Ramirez-Chaves & Velazco": "Tavares, Gardner, Ramírez-Chaves & Velazco",
+            "Tavares, Gardner, Ramirez-Chaves & Velazco": (
+                "Tavares, Gardner, Ramírez-Chaves & Velazco"
+            ),
             "Miller & Allen": "Miller & G.M. Allen",
             "Robinson & Lyon": "W. Robinson & Lyon",
             "Goldman & Gardner": "Goldman & M.C. Gardner",
             "Miller.": "Miller",
             "Anderson & Gutierrez": "Anderson & Gutiérrez",
             "Garcia-Perea": "García-Perea",
-            "Dalebout, Mead, Baker, Baker & van Helden": "Dalebout, Mead, Baker, Baker & Van Helden",
+            "Dalebout, Mead, Baker, Baker & van Helden": (
+                "Dalebout, Mead, Baker, Baker & Van Helden"
+            ),
             "Wilson Wilson et al.": "Wilson",
         },
         {
             "Tana tana besara": "Tupaia tana besara",
-            "Arvicola (Pitymys) pinetorum quasiater": "Arvicola (Pitymys) pinetorum var. quasiater",
+            "Arvicola (Pitymys) pinetorum quasiater": (
+                "Arvicola (Pitymys) pinetorum var. quasiater"
+            ),
             "Tamias asiaticus borealis": "Tamias asiaticus, var. borealis",
             "Tamias quadrivittatus pallidus": "Tamias quadrivittatus, var. pallidus",
             "Citellus washingtoni washingtoni": "Citellus washingtoni",

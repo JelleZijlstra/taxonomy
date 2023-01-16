@@ -28,7 +28,10 @@ def check_name(art: Article, autofix: bool = True) -> Iterable[str]:
         yield f"{art}: name failed to parse"
     if parser.extension:
         if not art.kind.is_electronic():
-            yield f"{art}: non-electronic article (kind {art.kind!r}) should not have a file extension"
+            yield (
+                f"{art}: non-electronic article (kind {art.kind!r}) should not have a"
+                " file extension"
+            )
     else:
         if art.kind.is_electronic():
             yield f"{art}: electronic article should have a file extension"
@@ -40,7 +43,10 @@ def check_path(art: Article, autofix: bool = True) -> Iterable[str]:
             yield f"{art}: electronic article should have a path"
     else:
         if art.path is not None:
-            message = f"{art}: non-electronic article (kind {art.kind!r}) should have no path, but has {art.path}"
+            message = (
+                f"{art}: non-electronic article (kind {art.kind!r}) should have no"
+                f" path, but has {art.path}"
+            )
             if autofix:
                 print(message)
                 art.path = None
@@ -153,7 +159,10 @@ def clean_up_url(art: Article, autofix: bool = True) -> Iterable[str]:
         if art.doi is not None:
             if art.doi.startswith(_JSTOR_DOI_PREFIX):
                 jstor_id = art.doi.removeprefix(_JSTOR_DOI_PREFIX).removeprefix("/")
-                message = f"{art}: inferred JStor id {jstor_id} from doi {art.doi} (CG {art.citation_group})"
+                message = (
+                    f"{art}: inferred JStor id {jstor_id} from doi {art.doi} (CG"
+                    f" {art.citation_group})"
+                )
                 if autofix:
                     print(message)
                     art.add_tag(ArticleTag.JSTOR(jstor_id))
@@ -241,7 +250,10 @@ def journal_specific_cleanup(art: Article, autofix: bool = True) -> Iterable[str
             if art.series is not None and not re.fullmatch(
                 may_have_series.text, art.series
             ):
-                yield f"{art}: series {art.series} does not match regex {may_have_series.text} for {cg}"
+                yield (
+                    f"{art}: series {art.series} does not match regex"
+                    f" {may_have_series.text} for {cg}"
+                )
         else:
             if art.series is not None:
                 yield f"{art}: is in {cg}, which does not support series"
@@ -419,7 +431,10 @@ def check_start_end_page(art: Article, autofix: bool = True) -> Iterable[str]:
             yield f"{art}: missing end_page"
             return
         if not re.fullmatch(tag.start_page_regex, start_page):
-            yield f"{art}: start page {start_page} does not match regex {tag.start_page_regex} for {cg}"
+            yield (
+                f"{art}: start page {start_page} does not match regex"
+                f" {tag.start_page_regex} for {cg}"
+            )
         return
 
     if not tag.pages_regex:
@@ -427,9 +442,15 @@ def check_start_end_page(art: Article, autofix: bool = True) -> Iterable[str]:
         return
 
     if not re.fullmatch(tag.pages_regex, start_page):
-        yield f"{art}: start page {start_page} does not match regex {tag.pages_regex} for {cg}"
+        yield (
+            f"{art}: start page {start_page} does not match regex {tag.pages_regex} for"
+            f" {cg}"
+        )
     if not re.fullmatch(tag.pages_regex, end_page):
-        yield f"{art}: end page {end_page} does not match regex {tag.pages_regex} for {cg}"
+        yield (
+            f"{art}: end page {end_page} does not match regex {tag.pages_regex} for"
+            f" {cg}"
+        )
 
 
 def _maybe_clean(

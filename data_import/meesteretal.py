@@ -38,7 +38,8 @@ def split_fields(names: DataT) -> DataT:
             if tail.strip():
                 name["rest"] = tail.strip()
             match = re.match(
-                r"^(?P<year>\d{4})\.\s+(?P<orig_name_author>[^,]+(, +var\.[^,]+|(?<=[A-Z]), [^,]+)?), "
+                r"^(?P<year>\d{4})\.\s+(?P<orig_name_author>[^,]+(,"
+                r" +var\.[^,]+|(?<=[A-Z]), [^,]+)?), "
                 r"(?P<verbatim_citation>.*)$",
                 head.strip(),
             )
@@ -50,7 +51,8 @@ def split_fields(names: DataT) -> DataT:
                 print(f"failed to match {text}")
         else:
             match = re.match(
-                r"^(?P<year>\d{4})\.\s+(?P<orig_name_author>[^,]+(, +var\.[^,]+|(?<=[A-Z]), [^,]+)?(, Morrison-Scott & Hayman)?), "
+                r"^(?P<year>\d{4})\.\s+(?P<orig_name_author>[^,]+(,"
+                r" +var\.[^,]+|(?<=[A-Z]), [^,]+)?(, Morrison-Scott & Hayman)?), "
                 r"(?P<rest>.*)$",
                 text,
             )
@@ -59,7 +61,8 @@ def split_fields(names: DataT) -> DataT:
                 name["orig_name_author"] = match.group("orig_name_author")
                 rest = match.group("rest")
                 match = re.match(
-                    r"(?P<verbatim_citation>.+?(: ?[,\d IBgo\-]+| (fig|pl)\. [I\d]+| and text|, footnote))"
+                    r"(?P<verbatim_citation>.+?(: ?[,\d IBgo\-]+| (fig|pl)\. [I\d]+|"
+                    r" and text|, footnote))"
                     r"\. (?P<rest>.*)$",
                     rest,
                 )

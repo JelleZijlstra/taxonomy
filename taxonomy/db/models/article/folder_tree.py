@@ -101,7 +101,8 @@ class CountTreeNode:
             label = path[-1] if path else "root"
             num_children = len(node.entries) + len(node.children)
             print(
-                f"{spaces}{label}: {num_children}/{node.tree_size_data.total_count}/{node.tree_size_data.max_path_length}"
+                f"{spaces}{label}:"
+                f" {num_children}/{node.tree_size_data.total_count}/{node.tree_size_data.max_path_length}"
             )
 
         self.walk(callback=callback)
@@ -116,7 +117,8 @@ class CountTreeNode:
             if node.tree_size_data.total_count < limit and node.children:
                 path_str = "/".join(path)
                 print(
-                    f"{path_str}: {node.tree_size_data.total_count}, {len(node.children)} children"
+                    f"{path_str}: {node.tree_size_data.total_count},"
+                    f" {len(node.children)} children"
                 )
 
         self.walk(callback=callback)

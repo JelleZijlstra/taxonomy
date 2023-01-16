@@ -31,7 +31,8 @@ def extract_raw_refs(filename: Path) -> List[List[str]]:
             break
         if not started_refs:
             if (
-                "REFERENCES FOR THE GEOPLANINAE, CAENOPLANINAE AND PELMATOPLANINAE INDICES"
+                "REFERENCES FOR THE GEOPLANINAE, CAENOPLANINAE AND PELMATOPLANINAE"
+                " INDICES"
                 in text
             ):
                 started_refs = True

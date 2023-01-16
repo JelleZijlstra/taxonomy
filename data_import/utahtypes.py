@@ -56,7 +56,10 @@ def split_fields(names: DataT) -> DataT:
         name["verbatim_citation"] = match.group(4)
 
         match = re.match(
-            r"^([A-Za-z ]+), ([A-Za-z, ]+), (UU \d+), from ([^;]+); obtained (.*?) by (.*?), original number .*$",
+            (
+                r"^([A-Za-z ]+), ([A-Za-z, ]+), (UU \d+), from ([^;]+); obtained (.*?)"
+                r" by (.*?), original number .*$"
+            ),
             name["holotype"],
         )
         assert match is not None, f'failed to match {name["holotype"]}'

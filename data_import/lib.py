@@ -6,8 +6,22 @@ import re
 import unicodedata
 from collections import defaultdict
 from pathlib import Path
-from typing import (Any, Callable, Container, Counter, Dict, Iterable, List,
-                    Mapping, NamedTuple, Optional, Sequence, Set, Tuple, Type)
+from typing import (
+    Any,
+    Callable,
+    Container,
+    Counter,
+    Dict,
+    Iterable,
+    List,
+    Mapping,
+    NamedTuple,
+    Optional,
+    Sequence,
+    Set,
+    Tuple,
+    Type,
+)
 
 import Levenshtein
 import unidecode
@@ -452,13 +466,23 @@ def split_name_authority(
     regexes = [
         # Lets us manually put | in to separate original name and authority in hard cases
         r"^(?P<original_name>[^\|]+) \| (?P<authority>.*)$",
-        r"^(?P<original_name>[A-ZÑ][a-zëöiïü]+) (?P<authority>(d\')?[A-ZÁ][a-zA-Z\-âöáéüšñ\.èç]+)$",
         (
-            r"^(?P<original_name>(\? )?[A-ZÑ][a-zëöiïü]+\??( \([A-Z][a-z]+\.?\??\))?((,? var\.| \(\?\)| \?)? [a-z]{3,}(-[a-z]{3,})?){1,2}) "
-            r"(?P<authority>de Beaux|de Blainville|de Winton|de Beerst|von Bloeker|de Selys Longchamps|de Filippi|(d\'|de la )?[A-ZÁ][a-zA-Z\-âöüášéèíñç\.,\'& ]+)( \(ex [^\)]+\))?$"
+            r"^(?P<original_name>[A-ZÑ][a-zëöiïü]+)"
+            r" (?P<authority>(d\')?[A-ZÁ][a-zA-Z\-âöáéüšñ\.èç]+)$"
+        ),
+        (
+            r"^(?P<original_name>(\? )?[A-ZÑ][a-zëöiïü]+\??("
+            r" \([A-Z][a-z]+\.?\??\))?((,? var\.| \(\?\)| \?)?"
+            r" [a-z]{3,}(-[a-z]{3,})?){1,2}) "
+            r"(?P<authority>de Beaux|de Blainville|de Winton|de Beerst|von Bloeker|de"
+            r" Selys Longchamps|de Filippi|(d\'|de la )?[A-ZÁ][a-zA-Z\-âöüášéèíñç\.,\'&"
+            r" ]+)( \(ex [^\)]+\))?$"
         ),
         r"^(?P<original_name>(\? )?.*?) (?P<authority>[A-ZÉ]\.[\- ].*)$",
-        r"^(?P<original_name>(\? )?[A-ZÑ][a-zëöíïü]+) (?P<authority>(d\'|de la )?[A-ZÁ][a-zA-Z\-öáéšíñ\., ]+ (and|&) [A-ZÁ][a-zA-Z\-âöüáéèíñç]+)$",
+        (
+            r"^(?P<original_name>(\? )?[A-ZÑ][a-zëöíïü]+) (?P<authority>(d\'|de la"
+            r" )?[A-ZÁ][a-zA-Z\-öáéšíñ\., ]+ (and|&) [A-ZÁ][a-zA-Z\-âöüáéèíñç]+)$"
+        ),
         r"^(?P<original_name>[A-Z][a-z]+) (?P<authority>Hamilton Smith|Von Dueben)$",
     ]
     if try_harder:
@@ -772,7 +796,10 @@ def get_possible_names(names: Iterable[str]) -> Iterable[str]:
             yield fixed
             yield NAME_SYNONYMS.get(fixed, fixed)
         without_direction = re.sub(
-            r"^(North|South|West|East|NE|SE|NW|SW|Republic of|Central|Middle)-?(west|east)?(ern)? (central )?",
+            (
+                r"^(North|South|West|East|NE|SE|NW|SW|Republic"
+                r" of|Central|Middle)-?(west|east)?(ern)? (central )?"
+            ),
             "",
             name,
             flags=re.IGNORECASE,
@@ -1104,7 +1131,8 @@ def identify_name(
         if not quiet and (orig_name, author) not in name_config.ignored_names:
             print(f"--- finding name {orig_name} -- {author}")
             print(
-                f"could not find name {orig_name} -- {author} (tried variants {list(name_variants(orig_name, author))})"
+                f"could not find name {orig_name} -- {author} (tried variants"
+                f" {list(name_variants(orig_name, author))})"
             )
         return None
 
@@ -1348,7 +1376,8 @@ def write_to_db(
                 else:
                     print("---")
                     print(
-                        f"value for {attr} differs: (new) {new_value} vs. (current) {current_value}"
+                        f"value for {attr} differs: (new) {new_value} vs. (current)"
+                        f" {current_value}"
                     )
 
                 if attr == "original_name":
@@ -1376,7 +1405,8 @@ def write_to_db(
                             if not dry_run:
                                 nam.open_description()
                                 if getinput.yes_no(
-                                    f"Is the original spelling {nam.original_name} correct? "
+                                    "Is the original spelling"
+                                    f" {nam.original_name} correct? "
                                 ):
                                     if "pages" in name:
                                         page_described = name["pages"][0]

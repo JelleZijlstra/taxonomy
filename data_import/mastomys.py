@@ -20,7 +20,10 @@ def extract_names(names: DataT) -> DataT:
     for name in names:
         line = name["raw_text"]
         match = re.match(
-            r"\s*\d+ +(?P<original_name>[A-Z][a-zA-Z\(\) ]+? [a-z]{3,}) (?P<authority>[^\da-z]+)(?P<year>\d{4}) {2,}(?P<type_specimen>.*)$",
+            (
+                r"\s*\d+ +(?P<original_name>[A-Z][a-zA-Z\(\) ]+? [a-z]{3,})"
+                r" (?P<authority>[^\da-z]+)(?P<year>\d{4}) {2,}(?P<type_specimen>.*)$"
+            ),
             line,
         )
         assert match, line

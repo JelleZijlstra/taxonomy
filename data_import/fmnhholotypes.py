@@ -44,7 +44,10 @@ def extract_names(lines: Iterable[str]) -> DataT:
             continue
         else:
             match = re.match(
-                r'^.*<span class="views-label[^"]+">([^<]+)</span> +<span class="field-content">(<a href=[^>]+>)?([^<]+)(</a>)?</span>',
+                (
+                    r'^.*<span class="views-label[^"]+">([^<]+)</span> +<span'
+                    r' class="field-content">(<a href=[^>]+>)?([^<]+)(</a>)?</span>'
+                ),
                 line,
             )
             if match:
@@ -76,7 +79,8 @@ def filter_known(names: DataT, verbose: bool = False) -> DataT:
         if name["type_specimen"] in types:
             if verbose:
                 print(
-                    f'ignoring {types[name["type_specimen"]]} (type = {name["type_specimen"]})'
+                    f'ignoring {types[name["type_specimen"]]} (type ='
+                    f' {name["type_specimen"]})'
                 )
             continue
         else:

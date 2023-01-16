@@ -67,7 +67,10 @@ def split_fields(names: DataT) -> DataT:
     for name in names:
         text = name["raw_text"]
         match = re.match(
-            r'^(?P<orig_name_author>[^\d,]+)(, | in )(?P<verbatim_citation>.*?): (?=[A-Z"\(nbrwmotfupsld\?])(?P<loc>.*)$',
+            (
+                r"^(?P<orig_name_author>[^\d,]+)(, | in )(?P<verbatim_citation>.*?):"
+                r' (?=[A-Z"\(nbrwmotfupsld\?])(?P<loc>.*)$'
+            ),
             text,
         )
         if match:

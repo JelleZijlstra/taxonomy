@@ -294,7 +294,10 @@ def _standardize_inner(date: str) -> str:
     date = re.sub(r"\]", "", date)
     date = re.sub(r"\[[A-Z a-n]+: ", "", date)
     date = re.sub(
-        r", not [\dA-Za-z]+( [A-Z][a-z][a-z])? as( given)? in original description(, ?|$)",
+        (
+            r", not [\dA-Za-z]+( [A-Z][a-z][a-z])? as( given)? in original"
+            r" description(, ?|$)"
+        ),
         "",
         date,
     )

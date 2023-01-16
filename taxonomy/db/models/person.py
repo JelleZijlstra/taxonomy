@@ -226,7 +226,9 @@ class Person(BaseModel):
             self.tussenvoegsel is not None
             and self.naming_convention is NamingConvention.dutch
         ):
-            return f"{self.tussenvoegsel[0].upper()}{self.tussenvoegsel[1:]} {self.family_name}"
+            return (
+                f"{self.tussenvoegsel[0].upper()}{self.tussenvoegsel[1:]} {self.family_name}"
+            )
         else:
             return self.family_name
 

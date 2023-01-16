@@ -67,7 +67,11 @@ def extract_names(pages: Iterable[Tuple[int, List[str]]]) -> DataT:
                 elif not in_synonymy:
                     pass
                 elif re.match(
-                    r" +([a-z] ){5,}| +This subspecies| +This is|KEY TO| +The | +Endemic to| +Additional| +Distribution:| +Although| +In South| +A gray| +Known primarily|Map \d+",
+                    (
+                        r" +([a-z] ){5,}| +This subspecies| +This is|KEY TO| +The |"
+                        r" +Endemic to| +Additional| +Distribution:| +Although| +In"
+                        r" South| +A gray| +Known primarily|Map \d+"
+                    ),
                     line,
                 ):
                     in_synonymy = False
@@ -147,10 +151,10 @@ def build_refs_dict(refs: DataT) -> RefsDictT:
         authors = authors.replace(", Jr", "")
         if "———" in text:
             text = text.replace("———", raw_authors)
-        assert (
-            authors,
-            year,
-        ) not in refs_dict, f"duplicate key ({authors!r}, {year!r}) (new: {text}, existing: {refs_dict[(authors, year)]}"
+        assert (authors, year) not in refs_dict, (
+            f"duplicate key ({authors!r}, {year!r}) (new: {text}, existing:"
+            f" {refs_dict[(authors, year)]}"
+        )
         refs_dict[(authors, year)] = text
     # for key, value in refs_dict.items():
     #     print(key)
@@ -162,17 +166,26 @@ def split_text(names: DataT) -> DataT:
     for name in names:
         # (?P<original_name>\[?[A-Z].*( [a-z-\[\],]{3,})):? (?P<authority>(de )?[A-Z].*?)
         match = re.match(
-            r"^(?P<name_authority>[^\d]+?),? (?P<year>\d{4}[a-z]?): ?(?P<page_described>[^;]+?)(, (?=type locality )|; )(?P<rest>.*)$",
+            (
+                r"^(?P<name_authority>[^\d]+?),? (?P<year>\d{4}[a-z]?):"
+                r" ?(?P<page_described>[^;]+?)(, (?=type locality )|; )(?P<rest>.*)$"
+            ),
             name["raw_text"],
         )
         if not match:
             match = re.match(
-                r"^(?P<name_authority>[^\d]+?),? (?P<year>\d{4}[a-z]?)[:,;] ?(?P<page_described>\d+)([;,:] (?P<rest>.*)|\.)$",
+                (
+                    r"^(?P<name_authority>[^\d]+?),? (?P<year>\d{4}[a-z]?)[:,;]"
+                    r" ?(?P<page_described>\d+)([;,:] (?P<rest>.*)|\.)$"
+                ),
                 name["raw_text"],
             )
             if not match:
                 match = re.match(
-                    r"^(?P<name_authority>[^\d]+?),? (?P<year>\d{4}[a-z]?)([:,] ?(?P<page_described>\d+))?; (?P<rest>.*)$",
+                    (
+                        r"^(?P<name_authority>[^\d]+?),? (?P<year>\d{4}[a-z]?)([:,]"
+                        r" ?(?P<page_described>\d+))?; (?P<rest>.*)$"
+                    ),
                     name["raw_text"],
                 )
                 if not match:
@@ -207,10 +220,19 @@ def split_name_authority(
         r"^\[[A-Z][a-z]+ \(\]([A-Z][a-z]+)\[\)\]", r"\1", name_authority
     )
     regexes = [
-        r"^(?P<original_name>[A-ZÑ][a-zëöiï]+) (?P<authority>(d\')?[A-ZÁ][a-zA-Z\-öáñ\.èç]+)$",
-        r"^(?P<original_name>[A-ZÑ][a-zëöiï]+( \([A-Z][a-z]+\))?( [a-z]{3,}){1,2}) (?P<authority>(d\'|de la )?[A-ZÁ][a-zA-Z\-öáéèíñç\.,\' ]+)$",
+        (
+            r"^(?P<original_name>[A-ZÑ][a-zëöiï]+)"
+            r" (?P<authority>(d\')?[A-ZÁ][a-zA-Z\-öáñ\.èç]+)$"
+        ),
+        (
+            r"^(?P<original_name>[A-ZÑ][a-zëöiï]+( \([A-Z][a-z]+\))?( [a-z]{3,}){1,2})"
+            r" (?P<authority>(d\'|de la )?[A-ZÁ][a-zA-Z\-öáéèíñç\.,\' ]+)$"
+        ),
         r"^(?P<original_name>.*?) (?P<authority>[A-ZÉ]\.[\- ].*)$",
-        r"^(?P<original_name>[A-ZÑ][a-zëöíï]+) (?P<authority>(d\'|de la )?[A-ZÁ][a-zA-Z\-öáéíñ\., ]+ and [A-ZÁ][a-zA-Z\-öáéèíñç]+)$",
+        (
+            r"^(?P<original_name>[A-ZÑ][a-zëöíï]+) (?P<authority>(d\'|de la"
+            r" )?[A-ZÁ][a-zA-Z\-öáéíñ\., ]+ and [A-ZÁ][a-zA-Z\-öáéèíñç]+)$"
+        ),
     ]
     if try_harder:
         regexes += [
@@ -239,9 +261,11 @@ def split_fields(names: DataT, refs_dict: RefsDictT) -> DataT:
             if text == "nomen nudum":
                 name["nomenclature_status"] = constants.NomenclatureStatus.nomen_nudum
             match = re.search(
-                r"(preoccupied by|incorrect subsequent spelling or invalid emendation of|incorrect subsequent spelling( of)?(, but not)?|"
+                r"(preoccupied by|incorrect subsequent spelling or invalid emendation"
+                r" of|incorrect subsequent spelling( of)?(, but not)?|"
                 r"unjustified emendation of|replacement name for|lapsus calami for) "
-                r"([^;\d=]+?)(, \d{4}|;|$| \(preoccupied\)|, on the assumption|\(but to be|\(see Remarks|\[preoccupied by|\(preoccupied by)",
+                r"([^;\d=]+?)(, \d{4}|;|$| \(preoccupied\)|, on the assumption|\(but to"
+                r" be|\(see Remarks|\[preoccupied by|\(preoccupied by)",
                 text,
             )
             if match:
@@ -272,7 +296,10 @@ def split_fields(names: DataT, refs_dict: RefsDictT) -> DataT:
                 name["loc"] = text
             elif text.startswith("type species"):
                 match = re.match(
-                    r"type species (?P<type_name>.*?)( \([^\)]+\))?(, (?P<type_year>\d{4}[a-z]?))?, ?by (?P<type_kind>.*)(;|$)",
+                    (
+                        r"type species (?P<type_name>.*?)( \([^\)]+\))?(,"
+                        r" (?P<type_year>\d{4}[a-z]?))?, ?by (?P<type_kind>.*)(;|$)"
+                    ),
                     text,
                 )
                 if match:

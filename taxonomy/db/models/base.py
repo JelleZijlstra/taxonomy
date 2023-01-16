@@ -256,7 +256,10 @@ class BaseModel(Model):
             try:
                 getattr(self, field)
             except Exception as e:
-                yield f"{self.id} ({type(self).__name__}): cannot get field {field} due to {e!r}"
+                yield (
+                    f"{self.id} ({type(self).__name__}): cannot get field {field} due"
+                    f" to {e!r}"
+                )
 
     def check_outbound_references(self, autofix: bool = False) -> Iterable[str]:
         is_invalid = self.is_invalid()
@@ -270,7 +273,10 @@ class BaseModel(Model):
             if isinstance(field_obj, ForeignKeyField):
                 target = value.get_redirect_target()
                 if target is not None:
-                    message = f"{self}: references redirected object {value} -> {target} in field {field}"
+                    message = (
+                        f"{self}: references redirected object {value} -> {target} in"
+                        f" field {field}"
+                    )
                     if autofix:
                         print(message)
                         setattr(self, field, target)
@@ -293,11 +299,15 @@ class BaseModel(Model):
                             target = value.get_redirect_target()
                             if target is not None:
                                 print(
-                                    f"{self}: references redirected object {value} -> {target}"
+                                    f"{self}: references redirected object {value} ->"
+                                    f" {target}"
                                 )
                                 overrides[attr_name] = target
                             elif not is_invalid and value.is_invalid():
-                                yield f"{self}: references invalid object {value} in {field} tag {tag}"
+                                yield (
+                                    f"{self}: references invalid object {value} in"
+                                    f" {field} tag {tag}"
+                                )
                         if overrides:
                             made_change = True
                             new_tags.append(adt.replace(tag, **overrides))
@@ -313,7 +323,10 @@ class BaseModel(Model):
                             if not isinstance(value, BaseModel):
                                 continue
                             if not is_invalid and value.is_invalid():
-                                yield f"{self}: references invalid object {value} in {field} tag {tag}"
+                                yield (
+                                    f"{self}: references invalid object {value} in"
+                                    f" {field} tag {tag}"
+                                )
         if is_invalid:
             target = self.get_redirect_target()
             if target is not None:
@@ -756,9 +769,7 @@ class BaseModel(Model):
             return getinput.get_line(name, allow_none=is_optional)
         elif typ is int:
             line = getinput.get_line(
-                name,
-                allow_none=is_optional,
-                validate=lambda value: value.isnumeric(),
+                name, allow_none=is_optional, validate=lambda value: value.isnumeric()
             )
             if line is None:
                 return None
@@ -976,7 +987,8 @@ class BaseModel(Model):
         )
 
     def fill_required_fields(self, skip_fields: Container[str] = frozenset()) -> bool:
-        """Edit all required fields that are empty. Returns whether any field was edited."""
+        """Edit all required fields that are empty. Returns whether any field was edited.
+        """
         edited_any = False
         for field in self.get_empty_required_fields():
             if field not in skip_fields:
@@ -1342,5 +1354,8 @@ def get_tag_based_derived_field(
 def get_query_and_fields(cls: type[Model]) -> tuple[str, list[str]]:
     fields = [field.column_name for field in cls._meta.fields.values()]
     columns = ", ".join(f'"{field}"' for field in fields)
-    query = f'SELECT {columns} FROM "{cls._meta.table_name}" WHERE ("{cls._meta.table_name}"."id" = ?)'
+    query = (
+        f'SELECT {columns} FROM "{cls._meta.table_name}" WHERE'
+        f' ("{cls._meta.table_name}"."id" = ?)'
+    )
     return query, fields

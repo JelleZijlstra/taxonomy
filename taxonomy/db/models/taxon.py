@@ -126,7 +126,8 @@ class Taxon(BaseModel):
             yield f"{self}: missing parent"
         if self.parent is not None and self.age < self.parent.age:
             yield (
-                f"{self}: is {self.age!r}, but its parent {self.parent} is {self.parent.age!r}"
+                f"{self}: is {self.age!r}, but its parent {self.parent} is"
+                f" {self.parent.age!r}"
             )
         if not self.base_name.status.is_base_name():
             yield f"{self}: base name has invalid status {self.base_name.status}"
@@ -141,7 +142,10 @@ class Taxon(BaseModel):
         computed = self.compute_valid_name()
         if computed is None or self.valid_name == computed:
             return
-        message = f"{self}: valid name mismatch: {self.valid_name} (actual) vs. {computed} (computed)"
+        message = (
+            f"{self}: valid name mismatch: {self.valid_name} (actual) vs."
+            f" {computed} (computed)"
+        )
         # For species-group taxa, we always trust the computed name. Usually these
         # have been reassigned to a different genus, or changed between species and
         # subspecies, or they have become nomina dubia (in which case we use the
@@ -667,7 +671,8 @@ class Taxon(BaseModel):
         locality: Optional["models.Location"] = None,
         **kwargs: Any,
     ) -> "Taxon":
-        """Convenience method to add a type species described in the same paper as the genus."""
+        """Convenience method to add a type species described in the same paper as the genus.
+        """
         return self.base_name.add_type_identical(
             name, page_described=page_described, locality=locality, **kwargs
         )
@@ -1315,7 +1320,8 @@ class Taxon(BaseModel):
         return str(self)
 
     def __getattr__(self, attr: str) -> "models.Name":
-        """Returns a name belonging to this taxon with the given root_name or original_name."""
+        """Returns a name belonging to this taxon with the given root_name or original_name.
+        """
         if attr.startswith("_"):
             raise AttributeError(attr)
         candidates = [

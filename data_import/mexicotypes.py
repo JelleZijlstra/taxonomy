@@ -188,7 +188,8 @@ def write_to_db(names: DataT, dry_run: bool = True) -> None:
             if nam.type_locality != name["type_locality"]:
                 if nam.type_locality is not None:
                     print(
-                        f'value for type locality differs: (new) {name["type_locality"]} vs. (current) {nam.type_locality}'
+                        "value for type locality differs: (new)"
+                        f' {name["type_locality"]} vs. (current) {nam.type_locality}'
                     )
                     print(name["loc"])
                     print(name["state"])

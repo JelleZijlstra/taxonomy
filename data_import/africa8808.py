@@ -38,7 +38,10 @@ def split_fields(names: DataT) -> DataT:
     for name in names:
         text = name["raw_text"]
         match = re.match(
-            r"^(?P<orig_name_author>\D+), (?P<year>\d{4}): (?P<page_described>[^\.]+)\. (?P<loc>.*?)( \[[^\]]+\])?$",
+            (
+                r"^(?P<orig_name_author>\D+), (?P<year>\d{4}):"
+                r" (?P<page_described>[^\.]+)\. (?P<loc>.*?)( \[[^\]]+\])?$"
+            ),
             text,
         )
         if match:

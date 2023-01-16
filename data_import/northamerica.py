@@ -57,9 +57,10 @@ def extract_taxa(pages: Iterable[Tuple[int, List[str]]]) -> DataT:
     range_marker = "Range. —"
 
     def _assert_no_type_loc() -> None:
-        assert (
-            not type_loc_lines
-        ), f"duplicate type loc while processing {current_taxon} / {line} / {type_loc_lines}"
+        assert not type_loc_lines, (
+            f"duplicate type loc while processing {current_taxon} / {line} /"
+            f" {type_loc_lines}"
+        )
         assert (
             "type_locality" not in current_taxon
         ), f"duplicate type loc while processing {current_taxon} / {line}"
@@ -103,11 +104,18 @@ def extract_taxa(pages: Iterable[Tuple[int, List[str]]]) -> DataT:
                 or line.endswith("•")
                 or re.search(r'\* \([A-Za-z,\. \-\'"]+\)$', line)
                 or re.match(
-                    r"^[A-Z][a-z]+( [a-z]+){1,2} (von |de )?([A-Z]\. )*(Mc)?[A-Z][a-z]+(-[A-Z][a-z]+)?( and ([A-Z]\. )*[A-Z][a-z]+)?$",
+                    (
+                        r"^[A-Z][a-z]+( [a-z]+){1,2} (von |de )?([A-Z]\."
+                        r" )*(Mc)?[A-Z][a-z]+(-[A-Z][a-z]+)?( and ([A-Z]\."
+                        r" )*[A-Z][a-z]+)?$"
+                    ),
                     line,
                 )
                 or re.match(
-                    r"^[A-Z][a-z]+( [a-z]+){1,2} \(([A-Z]\. )*[A-Z][a-z]+(-[A-Z][a-z]+)?\)$",
+                    (
+                        r"^[A-Z][a-z]+( [a-z]+){1,2} \(([A-Z]\."
+                        r" )*[A-Z][a-z]+(-[A-Z][a-z]+)?\)$"
+                    ),
                     line,
                 )
             ):
@@ -179,7 +187,10 @@ def name_of_text(text: str, is_genus: bool) -> Dict[str, Any]:
 
 def get_taxon_root_name(heading: str) -> Optional[str]:
     match = re.match(
-        r"^([A-Z][a-z]+( [a-z]+){1,2}) (von |de )?(([A-Z]\. )*[A-Z][a-z]+|\([A-Za-z\. \-]{3,}\))",
+        (
+            r"^([A-Z][a-z]+( [a-z]+){1,2}) (von |de )?(([A-Z]\."
+            r" )*[A-Z][a-z]+|\([A-Za-z\. \-]{3,}\))"
+        ),
         heading,
     )
     if match:

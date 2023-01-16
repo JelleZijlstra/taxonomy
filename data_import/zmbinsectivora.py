@@ -35,7 +35,10 @@ def extract_names(pages: PagesT) -> DataT:
                 continue
             if " | " in line:
                 match = re.match(
-                    r"(?P<original_name>[^|]+) \| (?P<authority>[^,]+), (?P<year>\d{4})$",
+                    (
+                        r"(?P<original_name>[^|]+) \| (?P<authority>[^,]+),"
+                        r" (?P<year>\d{4})$"
+                    ),
                     line,
                 )
             else:

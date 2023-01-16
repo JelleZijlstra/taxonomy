@@ -286,10 +286,7 @@ def add_new_file(file: LsFile) -> bool:
         if Article.has(newname):
             print("Warning: file already exists")
         file = LsFile(newname)
-        shutil.move(
-            str(_options.new_path / oldname),
-            str(_options.new_path / newname),
-        )
+        shutil.move(str(_options.new_path / oldname), str(_options.new_path / newname))
         return True
 
     def opener(cmd: str, data: object) -> bool:
@@ -299,8 +296,7 @@ def add_new_file(file: LsFile) -> bool:
     def archiver(cmd: str, data: object) -> bool:
         new_path = _options.new_path
         shutil.move(
-            str(new_path / file.name),
-            str(new_path / "Not to be cataloged" / file.name),
+            str(new_path / file.name), str(new_path / "Not to be cataloged" / file.name)
         )
         return False
 
@@ -355,12 +351,7 @@ def add_new_file(file: LsFile) -> bool:
         print("Unable to determine folder")
         return False
     subprocess.check_call(
-        [
-            "mv",
-            "-n",
-            str(_options.new_path / file.name),
-            str(article.get_path()),
-        ]
+        ["mv", "-n", str(_options.new_path / file.name), str(article.get_path())]
     )
     add_data_for_new_file(article)
     return True
@@ -465,7 +456,8 @@ def burst(lsfile: LsFile) -> bool:
         else:
             if Article.has(cmd):
                 if not getinput.yes_no(
-                    "A file with this name already exists. Do you want to continue anyway?"
+                    "A file with this name already exists. Do you want to continue"
+                    " anyway?"
                 ):
                     return "i", cmd
             return "a", cmd
@@ -475,12 +467,7 @@ def burst(lsfile: LsFile) -> bool:
 
     def continuer(cmd: str, data: object) -> bool:
         subprocess.check_call(
-            [
-                "mv",
-                "-n",
-                str(full_path),
-                str(_options.burst_path / "Old" / lsfile.name),
-            ]
+            ["mv", "-n", str(full_path), str(_options.burst_path / "Old" / lsfile.name)]
         )
         if full_path.exists():
             print("File still exists: oldPath")
