@@ -1,4 +1,6 @@
+from __future__ import annotations
 from bs4 import BeautifulSoup
+import builtins
 import datetime
 from functools import lru_cache
 import os
@@ -15,7 +17,7 @@ import requests
 import shutil
 import subprocess
 import time
-from typing import Any, ClassVar, NamedTuple, Optional, TypeVar, cast
+from typing import Any, ClassVar, NamedTuple, TypeVar, cast
 from collections.abc import Callable, Iterable
 
 from ..base import (
@@ -284,7 +286,7 @@ class Article(BaseModel):
             cls.kind != ArticleKind.redirect, cls.kind != ArticleKind.removed
         )
 
-    def get_redirect_target(self) -> "Article | None":
+    def get_redirect_target(self) -> Article | None:
         if (
             self.kind is ArticleKind.redirect
             or self.kind is ArticleKind.alternative_version
@@ -323,10 +325,10 @@ class Article(BaseModel):
         cls,
         *args: Any,
         quiet: bool = False,
-        sort_key: Callable[["Article"], Any] | None = None,
+        sort_key: Callable[[Article], Any] | None = None,
         journal: str | None = None,
         **kwargs: Any,
-    ) -> list["Article"]:
+    ) -> list[Article]:
         if journal is not None:
             args = (*args, cls.citation_group == CitationGroup.get(name=journal))
         return super().bfind(*args, quiet=quiet, sort_key=sort_key, **kwargs)
@@ -387,7 +389,7 @@ class Article(BaseModel):
         print(f"File {self.name} removed.")
         self.kind = ArticleKind.removed  # type: ignore
 
-    def merge(self, target: Optional["Article"] = None, force: bool = False) -> None:
+    def merge(self, target: Article | None = None, force: bool = False) -> None:
         """Merges this file into another file."""
         if target is None:
             target = self.getter(None).get_one("merge target> ")
@@ -408,7 +410,7 @@ class Article(BaseModel):
         self.path = None
         self.parent = target
 
-    def make_alternative_version(self, target: Optional["Article"] = None) -> None:
+    def make_alternative_version(self, target: Article | None = None) -> None:
         """Make this version into an alternative version of another file."""
         if target is None:
             target = self.getter(None).get_one("target> ")
@@ -653,7 +655,7 @@ class Article(BaseModel):
 
     def add_comment(
         self, kind: ArticleCommentKind | None = None, text: str | None = None
-    ) -> Optional["ArticleComment"]:
+    ) -> ArticleComment | None:
         return ArticleComment.create_interactively(article=self, kind=kind, text=text)
 
     def add_misc_data(self, text: str) -> None:
@@ -668,7 +670,7 @@ class Article(BaseModel):
         else:
             self.tags = self.tags + (tag,)
 
-    def has_tag(self, tag_cls: type[adt.ADT]) -> bool:
+    def has_tag(self, tag_cls: builtins.type[adt.ADT]) -> bool:
         tag_id = tag_cls._tag
         for tag in self.get_raw_tags_field("tags"):
             if tag[0] == tag_id:
@@ -703,7 +705,7 @@ class Article(BaseModel):
             subprocess.check_call(["open", url])
             return True
 
-    def getIdentifier(self, identifier: type[adt.ADT]) -> str | None:
+    def getIdentifier(self, identifier: builtins.type[adt.ADT]) -> str | None:
         for tag in self.get_tags(self.tags, identifier):
             return tag.text
         return None
@@ -714,7 +716,7 @@ class Article(BaseModel):
         else:
             return None
 
-    def resolve_redirect(self) -> "Article":
+    def resolve_redirect(self) -> Article:
         if target := self.get_redirect_target():
             return target
         return self
@@ -1009,7 +1011,7 @@ class Article(BaseModel):
     def __repr__(self) -> str:
         return f"{{{self.name}: {self.cite()}}}"
 
-    def add_child(self) -> "Article | None":
+    def add_child(self) -> Article | None:
         return self.create_interactively(
             kind=ArticleKind.part, type=ArticleType.CHAPTER, parent=self
         )
@@ -1020,7 +1022,7 @@ class Article(BaseModel):
         return cls.select().filter(name=file).count() > 0
 
     @classmethod
-    def maybe_get(cls, file: str) -> "Article | None":
+    def maybe_get(cls, file: str) -> Article | None:
         try:
             return cls.get(name=file)
         except cls.DoesNotExist:
@@ -1029,7 +1031,7 @@ class Article(BaseModel):
     @classmethod
     def create_interactively(
         cls, name: str | None = None, **kwargs: Any
-    ) -> "Article | None":
+    ) -> Article | None:
         if name is None:
             name = cls.getter("name").get_one_key("name> ")
         if name is None:
@@ -1043,8 +1045,8 @@ class Article(BaseModel):
 
     @classmethod
     def create_redirect(
-        cls, name: str | None = None, target: "Article | None" = None
-    ) -> "Article | None":
+        cls, name: str | None = None, target: Article | None = None
+    ) -> Article | None:
         if name is None:
             name = cls.getter("name").get_one_key("name> ")
         if name is None:
@@ -1059,13 +1061,13 @@ class Article(BaseModel):
         return cls.create_redirect_static(name, target)
 
     @classmethod
-    def create_redirect_static(cls, name: str, target: "Article") -> "Article":
+    def create_redirect_static(cls, name: str, target: Article) -> Article:
         return cls.make(
             name, kind=ArticleKind.redirect, type=ArticleType.REDIRECT, parent=target
         )
 
     @classmethod
-    def create_nofile_static(cls, name: str, **kwargs: Any) -> "Article | None":
+    def create_nofile_static(cls, name: str, **kwargs: Any) -> Article | None:
         if cls.has(name):
             print(f"{name} already exists")
             return None
@@ -1075,7 +1077,7 @@ class Article(BaseModel):
         return cls.make(name, kind=ArticleKind.no_copy, **kwargs)
 
     @classmethod
-    def make(cls, name: str, **values: Any) -> "Article":
+    def make(cls, name: str, **values: Any) -> Article:
         dt = datetime.datetime.now()
         return cls.create(
             name=name,
@@ -1109,7 +1111,7 @@ class ArticleComment(BaseModel):
     @classmethod
     def make(
         cls, article: Article, kind: ArticleCommentKind, text: str, **kwargs: Any
-    ) -> "ArticleComment":
+    ) -> ArticleComment:
         return cls.create(
             article=article, kind=kind, text=text, date=int(time.time()), **kwargs
         )
@@ -1121,7 +1123,7 @@ class ArticleComment(BaseModel):
         kind: ArticleCommentKind | None = None,
         text: str | None = None,
         **kwargs: Any,
-    ) -> "ArticleComment":
+    ) -> ArticleComment:
         if article is None:
             article = cls.get_value_for_foreign_key_field_on_class(
                 "article", allow_none=False

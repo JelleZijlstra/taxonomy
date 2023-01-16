@@ -1,7 +1,9 @@
+from __future__ import annotations
+import builtins
 from collections import defaultdict
 import enum
 import sys
-from typing import IO, Any, Optional
+from typing import IO, Any
 from collections.abc import Callable, Iterable, Mapping, Sequence
 
 from peewee import CharField, DeferredForeignKey, TextField
@@ -201,7 +203,7 @@ class Person(BaseModel):
         return "".join(name_to_initial(name) for name in names)
 
     @classmethod
-    def join_authors(cls, authors: Sequence["Person"]) -> str:
+    def join_authors(cls, authors: Sequence[Person]) -> str:
         if len(authors) <= 2:
             return " & ".join(author.taxonomic_authority() for author in authors)
         return (
@@ -230,7 +232,7 @@ class Person(BaseModel):
     def add_validity_check(cls, query: Any) -> Any:
         return query.filter(Person.type != PersonType.deleted)
 
-    def get_redirect_target(self) -> "Person | None":
+    def get_redirect_target(self) -> Person | None:
         return self.target
 
     def is_invalid(self) -> bool:
@@ -269,7 +271,7 @@ class Person(BaseModel):
                             file.write(f"{double_indented_onset}{nam!r}\n")
 
     def find_tag(
-        self, tags: Sequence[adt.ADT] | None, tag_cls: type[adt.ADT]
+        self, tags: Sequence[adt.ADT] | None, tag_cls: builtins.type[adt.ADT]
     ) -> tuple[int, adt.ADT | None]:
         if tags is None:
             return 0, None
@@ -290,9 +292,9 @@ class Person(BaseModel):
         self,
         obj: BaseModel,
         tags: Sequence[adt.ADT] | None,
-        tag_cls: type[adt.ADT],
-        target: Optional["Person"] = None,
-    ) -> tuple[Sequence[adt.ADT] | None, Optional["Person"]]:
+        tag_cls: builtins.type[adt.ADT],
+        target: Person | None = None,
+    ) -> tuple[Sequence[adt.ADT] | None, Person | None]:
         if tags is None:
             return None, None
         matching_idx, matching_tag = self.find_tag(tags, tag_cls)
@@ -325,10 +327,10 @@ class Person(BaseModel):
         self,
         obj: BaseModel,
         field_name: str,
-        tag_cls: type[adt.ADT],
+        tag_cls: builtins.type[adt.ADT],
         derived_field_name: str,
-        target: Optional["Person"] = None,
-    ) -> Optional["Person"]:
+        target: Person | None = None,
+    ) -> Person | None:
         tags = getattr(obj, field_name)
         matching_idx, tag = self.find_tag(tags, tag_cls)
         if tag is None:
@@ -343,7 +345,7 @@ class Person(BaseModel):
         return None
 
     def move_reference(
-        self, new_person: "Person", derived_field_name: str, obj: BaseModel
+        self, new_person: Person, derived_field_name: str, obj: BaseModel
     ) -> None:
         self.remove_from_derived_field(derived_field_name, obj)
         new_person.add_to_derived_field(derived_field_name, obj)
@@ -484,7 +486,7 @@ class Person(BaseModel):
                 person.maybe_reassign_references()
 
     @classmethod
-    def find_duplicates(cls, autofix: bool = False) -> list[list["Person"]]:
+    def find_duplicates(cls, autofix: bool = False) -> list[list[Person]]:
         by_key: dict[tuple[str | None, ...], list[Person]] = defaultdict(list)
         for person in cls.select_valid().filter(cls.type << UNCHECKED_TYPES):
             key = (
@@ -498,7 +500,7 @@ class Person(BaseModel):
         return cls.display_duplicates(by_key, autofix=autofix)
 
     @classmethod
-    def find_near_duplicates(cls, min_count: int = 20) -> list[list["Person"]]:
+    def find_near_duplicates(cls, min_count: int = 20) -> list[list[Person]]:
         by_key: dict[str, list[Person]] = defaultdict(list)
         for person in cls.select_valid():
             key = helpers.simplify_string(
@@ -515,10 +517,10 @@ class Person(BaseModel):
     @classmethod
     def display_duplicates(
         cls,
-        by_key: Mapping[Any, list["Person"]],
+        by_key: Mapping[Any, list[Person]],
         autofix: bool = False,
         min_count: int = 0,
-    ) -> list[list["Person"]]:
+    ) -> list[list[Person]]:
         out = []
         for key, group in sorted(
             by_key.items(), key=lambda pair: sum(p.total_references() for p in pair[1])
@@ -539,7 +541,7 @@ class Person(BaseModel):
         return out
 
     @classmethod
-    def maybe_merge_group(cls, group: list["Person"]) -> None:
+    def maybe_merge_group(cls, group: list[Person]) -> None:
         group = sorted(group, key=lambda person: (-person.get_level().value, person.id))
 
         def all_the_same(group: Iterable[Person], field: str) -> bool:
@@ -593,7 +595,7 @@ class Person(BaseModel):
             art = art.reload()
             art.specify_authors()
 
-    def reassign_references(self, target: Optional["Person"] = None) -> None:
+    def reassign_references(self, target: Person | None = None) -> None:
         for field_name, tag_name, tag_cls in [
             ("books", "author_tags", AuthorTag.Author),
             ("articles", "author_tags", AuthorTag.Author),
@@ -701,7 +703,7 @@ class Person(BaseModel):
             if new_target is not None:
                 verbatim_to_target[nam.verbatim_citation] = new_target
 
-    def move_all_references(self, target: Optional["Person"] = None) -> None:
+    def move_all_references(self, target: Person | None = None) -> None:
         if target is None:
             target = Person.getter(None).get_one("target > ")
         if target is None:
@@ -711,7 +713,7 @@ class Person(BaseModel):
             return
         self.reassign_references(target=target)
 
-    def make_soft_redirect(self, target: Optional["Person"] = None) -> None:
+    def make_soft_redirect(self, target: Person | None = None) -> None:
         if target is None:
             target = Person.getter(None).get_one("target > ")
         if target is None:
@@ -723,7 +725,7 @@ class Person(BaseModel):
         self.target = target
         self.reassign_references(target=target)
 
-    def make_hard_redirect(self, target: Optional["Person"] = None) -> None:
+    def make_hard_redirect(self, target: Person | None = None) -> None:
         if target is None:
             target = Person.getter(None).get_one("target > ")
         if target is None:
@@ -745,7 +747,7 @@ class Person(BaseModel):
         if not dry_run:
             self.type = PersonType.deleted  # type: ignore
 
-    def is_more_specific_than(self, other: "Person") -> bool:
+    def is_more_specific_than(self, other: Person) -> bool:
         if other.type in (PersonType.hard_redirect, PersonType.soft_redirect):
             return other.target == self
         if self.family_name != other.family_name:
@@ -766,7 +768,7 @@ class Person(BaseModel):
                 return True
         return False
 
-    def _has_more_specific_initials(self, other: "Person") -> bool:
+    def _has_more_specific_initials(self, other: Person) -> bool:
         my_initials = self.get_initials()
         other_initials = other.get_initials()
         return (
@@ -804,7 +806,7 @@ class Person(BaseModel):
     @classmethod
     def create_interactively(
         cls, family_name: str | None = None, **kwargs: Any
-    ) -> Optional["Person"]:
+    ) -> Person | None:
         if family_name is None:
             family_name = cls.getter("family_name").get_one_key("family_name> ")
         if family_name is None:
@@ -826,7 +828,7 @@ class Person(BaseModel):
         }
 
     @classmethod
-    def make_unchecked(cls) -> Optional["Person"]:
+    def make_unchecked(cls) -> Person | None:
         family_name = cls.getter("family_name").get_one_key("family_name> ")
         if family_name is None:
             return None
@@ -838,7 +840,7 @@ class Person(BaseModel):
         return person
 
     @classmethod
-    def make_family_name(cls) -> Optional["Person"]:
+    def make_family_name(cls) -> Person | None:
         family_name = cls.getter("family_name").get_one_key("family_name> ")
         if family_name is None:
             return None
@@ -847,7 +849,7 @@ class Person(BaseModel):
         return person
 
     @classmethod
-    def get_or_create_from_ol_id(cls, ol_id: str) -> "Person":
+    def get_or_create_from_ol_id(cls, ol_id: str) -> Person:
         person = cls.select_one(ol_id=ol_id)
         if person is None:
             data = get_author(ol_id)
@@ -881,7 +883,7 @@ class Person(BaseModel):
         given_names: str | None = None,
         suffix: str | None = None,
         tussenvoegsel: str | None = None,
-    ) -> "Person":
+    ) -> Person:
         family_name = helpers.clean_string(family_name)
         if initials is not None:
             initials = helpers.clean_string(initials)

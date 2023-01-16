@@ -1,5 +1,6 @@
+import builtins
 from collections import Counter
-from typing import Any, Optional
+from typing import Any
 from collections.abc import Iterable
 
 from peewee import BooleanField, CharField, ForeignKeyField, IntegrityError
@@ -55,7 +56,7 @@ class CitationGroup(BaseModel):
         return obj
 
     @classmethod
-    def get_or_create(cls, name: str) -> Optional["CitationGroup"]:
+    def get_or_create(cls, name: str) -> "CitationGroup | None":
         try:
             return cls.get(name=name)
         except cls.DoesNotExist:
@@ -63,7 +64,7 @@ class CitationGroup(BaseModel):
             return cls.getter("name").get_one()
 
     @classmethod
-    def get_or_create_city(cls, name: str) -> Optional["CitationGroup"]:
+    def get_or_create_city(cls, name: str) -> "CitationGroup | None":
         cg = cls.select_one(name=name, type=constants.ArticleType.BOOK)
         if cg is None:
             print(f"Creating CitationGroup for {name}")
@@ -157,7 +158,7 @@ class CitationGroup(BaseModel):
             return False
         return any(my_tag is tag for my_tag in self.tags)
 
-    def get_tag(self, tag_cls: type[adt.ADT]) -> adt.ADT | None:
+    def get_tag(self, tag_cls: builtins.type[adt.ADT]) -> adt.ADT | None:
         if self.tags is None:
             return None
         for tag in self.tags:

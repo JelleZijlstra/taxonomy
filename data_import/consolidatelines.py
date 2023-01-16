@@ -26,7 +26,7 @@ def consolidate_lines(lines: list[str]) -> list[str]:
     for line in lines:
         if (
             line.strip()
-            and (not line.startswith(("\t", "")))
+            and (not line.startswith(("\t", "\f")))
             and new_lines
             and new_lines[-1]
             and new_lines[-1].startswith(("\t", "("))

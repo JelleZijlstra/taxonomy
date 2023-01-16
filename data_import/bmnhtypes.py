@@ -1,6 +1,6 @@
 import csv
 import re
-from typing import Iterable
+from collections.abc import Iterable
 
 from taxonomy.db import models
 from taxonomy.db.models import Name
