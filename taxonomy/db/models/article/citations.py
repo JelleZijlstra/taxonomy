@@ -536,7 +536,7 @@ def citebibtex(article: Article) -> str:
             out += "misc"
     else:
         out += "misc"
-    out += f"{getrefname(article)},\n"
+    out += f"{{{getrefname(article)},\n"
     authors = format_authors(article, spaceInitials=True, separator=" and")
     # stuff that goes in every citation type
     add("author", authors, True)
@@ -717,7 +717,7 @@ def citewp(article: Article, *, commons: bool = False) -> str:
         paras["title"] = article.title
         paras["publisher"] = article.publisher
     out = sfn = ""
-    out += f"{{cite {label} | "
+    out += f"{{{{cite {label} | "
     out += " | ".join(f"{key} = {value}" for key, value in paras.items() if value)
     out += "}}"
     # final cleanup
