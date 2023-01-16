@@ -1,7 +1,9 @@
+from typing import Counter, Iterable, List, Optional, Sequence, Tuple
+
 from matplotlib import pyplot as plt
-from taxonomy.db.models import Taxon
+
 from taxonomy.db.constants import AgeClass, Group
-from typing import Counter, Optional, List, Tuple, Sequence, Iterable
+from taxonomy.db.models import Taxon
 
 
 def get_years(

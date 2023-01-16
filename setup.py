@@ -5,7 +5,6 @@ Install the taxonomy package.
 """
 from setuptools import setup
 
-
 setup(
     name="taxonomy",
     version="0.0",

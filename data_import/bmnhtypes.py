@@ -1,12 +1,11 @@
 import csv
 from typing import Iterable, Set
 
+from taxonomy import shell
 from taxonomy.db import models
 from taxonomy.db.models import Name
-from taxonomy import shell
 
-from . import arctostypes
-from . import lib
+from . import arctostypes, lib
 from .lib import DataT
 
 SOURCE = lib.Source("BMNH-types.tsv", "VertNet-catalog")

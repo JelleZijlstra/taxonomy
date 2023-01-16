@@ -1,27 +1,13 @@
-from collections import defaultdict
 import enum
 import functools
 import itertools
 import json
 import re
 import unicodedata
+from collections import defaultdict
 from pathlib import Path
-from typing import (
-    Any,
-    Callable,
-    Container,
-    Counter,
-    Dict,
-    Iterable,
-    List,
-    Mapping,
-    NamedTuple,
-    Optional,
-    Sequence,
-    Set,
-    Tuple,
-    Type,
-)
+from typing import (Any, Callable, Container, Counter, Dict, Iterable, List,
+                    Mapping, NamedTuple, Optional, Sequence, Set, Tuple, Type)
 
 import Levenshtein
 import unidecode

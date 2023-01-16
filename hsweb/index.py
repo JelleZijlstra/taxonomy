@@ -1,7 +1,8 @@
-from aiohttp import web
 from functools import lru_cache
 from pathlib import Path
 from typing import Awaitable, Callable, Optional
+
+from aiohttp import web
 from aiohttp_graphql import GraphQLView
 
 from . import schema

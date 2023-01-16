@@ -1,15 +1,16 @@
-from dataclasses import dataclass
 import functools
+import subprocess
+from dataclasses import dataclass
 from itertools import chain
 from pathlib import Path
-import requests
-import subprocess
 from typing import Dict, Iterable, Optional, Set, Tuple
-from taxonomy.db import helpers
-from taxonomy.db.models import Article
-from taxonomy import getinput
+
+import requests
 import wikitextparser
 
+from taxonomy import getinput
+from taxonomy.db import helpers
+from taxonomy.db.models import Article
 
 CACHE_DIR = Path(__file__).parent / "wikicache"
 EXCLUDED_HEADERS = {

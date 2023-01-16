@@ -1,7 +1,7 @@
-from collections import deque
 import enum
 import itertools
 import re
+from collections import deque
 from typing import Any, Deque, Dict, Iterable, List, Tuple
 
 from taxonomy import shell

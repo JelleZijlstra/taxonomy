@@ -1,32 +1,24 @@
-from taxonomy.db.models.base import BaseModel, EnumField, ADTField
-from taxonomy.db.models import Period, Location, NameComment, Article
-from taxonomy.db.constants import CommentKind
-from taxonomy.db.derived_data import DerivedField
-from taxonomy.adt import ADT
-from typing import Type, Any, Dict, List as TList, Optional, Tuple
-import typing_inspect
 import base64
 import enum
-from functools import lru_cache
-from graphene import (
-    Boolean,
-    Enum,
-    ObjectType,
-    Field,
-    ID,
-    Interface,
-    List,
-    NonNull,
-    String,
-    Int,
-    ResolveInfo,
-    Schema,
-)
-from graphene.relay import Node, Connection, ConnectionField
-from graphene.utils.str_converters import to_snake_case
-from pathlib import Path
-import peewee
 import re
+from functools import lru_cache
+from pathlib import Path
+from typing import Any, Dict
+from typing import List as TList
+from typing import Optional, Tuple, Type
+
+import peewee
+import typing_inspect
+from graphene import (ID, Boolean, Enum, Field, Int, Interface, List, NonNull,
+                      ObjectType, ResolveInfo, Schema, String)
+from graphene.relay import Connection, ConnectionField, Node
+from graphene.utils.str_converters import to_snake_case
+
+from taxonomy.adt import ADT
+from taxonomy.db.constants import CommentKind
+from taxonomy.db.derived_data import DerivedField
+from taxonomy.db.models import Article, Location, NameComment, Period
+from taxonomy.db.models.base import ADTField, BaseModel, EnumField
 
 SCALAR_FIELD_TO_GRAPHENE = {
     peewee.CharField: String,

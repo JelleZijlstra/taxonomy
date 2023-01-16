@@ -1,12 +1,13 @@
 import argparse
-from collections.abc import Callable
-from dataclasses import dataclass
 import enum
 import functools
 import json
 import math
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TypedDict
+
 from typing_extensions import NotRequired
 
 Mapper = Callable[[float, float], tuple[float, float]]

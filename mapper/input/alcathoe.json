@@ -1,2188 +1,2188 @@
 {
-    "outfile": "Myotis_alcathoe_range.svg",
-    "name": "Myotis alcathoe",
-    "map": "Europe",
-    "marker_size": 7.5,
-    "data": [
+  "outfile": "Myotis_alcathoe_range.svg",
+  "name": "Myotis alcathoe",
+  "map": "Europe",
+  "marker_size": 7.5,
+  "data": [
+    {
+      "group_name": "England",
+      "color": "orange",
+      "localities": [
         {
-            "group_name": "England",
-            "color": "orange",
-            "localities": [
-                {
-                    "name": "Ryedale",
-                    "latitude": "54.139",
-                    "longitude": "-0.79",
-                    "comment": "Coordinates from Wikipedia",
-                    "raw_source": "Myotis alcathoe England.pdf"
-                },
-                {
-                    "name": "Sussex",
-                    "latitude": "51.05840",
-                    "longitude": "-0.69006",
-                    "comment": "Wikipedia coordinates for West Sussex",
-                    "raw_source": "Myotis alcathoe England.pdf"
-                }
-            ]
+          "name": "Ryedale",
+          "latitude": "54.139",
+          "longitude": "-0.79",
+          "comment": "Coordinates from Wikipedia",
+          "raw_source": "Myotis alcathoe England.pdf"
         },
         {
-            "group_name": "Sweden",
-            "color": "orange",
-            "style": "open",
-            "localities": [
-                {
-                    "name": "Allarps bjär 1",
-                    "latitude": "55.9942",
-                    "longitude": "13.4251",
-                    "comment": "Table on p. 15",
-                    "raw_source": "Myotis alcathoe Sweden.pdf",
-                    "region": "Skåne"
-                },
-                {
-                    "name": "Allarps bjär 2",
-                    "latitude": "55.9943",
-                    "longitude": "13.4246",
-                    "comment": "Table on p. 15",
-                    "raw_source": "Myotis alcathoe Sweden.pdf",
-                    "region": "Skåne"
-                },
-                {
-                    "name": "Kungapasset, Fyledalen",
-                    "latitude": "55.5943",
-                    "longitude": "13.7679",
-                    "comment": "Table on p. 15",
-                    "raw_source": "Myotis alcathoe Sweden.pdf",
-                    "region": "Skåne"
-                },
-                {
-                    "name": "Liljetorpet, Eriksberg",
-                    "latitude": "56.1593",
-                    "longitude": "15.0129",
-                    "comment": "Table on p. 15",
-                    "raw_source": "Myotis alcathoe Sweden.pdf",
-                    "region": "Blekinge"
-                },
-                {
-                    "name": "Kakmohejan, Eriksberg",
-                    "latitude": "56.1801",
-                    "longitude": "14.9836",
-                    "comment": "Table on p. 15",
-                    "raw_source": "Myotis alcathoe Sweden.pdf",
-                    "region": "Blekinge"
-                }
-            ]
-        },
-        {
-            "group_name": "Albania",
-            "color": "orange",
-            "localities": [
-                {
-                    "name": "Tepelene",
-                    "latitude": "40.17",
-                    "longitude": "20.01",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                }
-            ]
-        },
-        {
-            "group_name": "Bulgaria",
-            "color": "orange",
-            "localities": [
-                {
-                    "name": "Stara planina Mt., Vodnite Dupki, Severen Dzhendem Reserve, Distr. Lovech",
-                    "latitude": "42.73",
-                    "longitude": "24.09",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Kresna gorge, Distr. Blagoevgrad, near rw. station Peyo Yavorov",
-                    "latitude": "41.76",
-                    "longitude": "23.15",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Primorsko, Ropotamo Reserve, Distr. Burgas",
-                    "latitude": "42.30",
-                    "longitude": "27.07",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Western Stara planina Mt., Bov, Distr. Svoge, Izdremets mine gallery",
-                    "latitude": "43.01",
-                    "longitude": "23.44",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Vrachanska Stara planina Mt., Lyutadjik, Distr. Varshets, Sokolskata peshtera cave",
-                    "latitude": "43.16",
-                    "longitude": "23.44",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Strandja Mt., Brashlyan, Distr. Malko Tarnovo, Bratanovata peshtera cave",
-                    "latitude": "42.01",
-                    "longitude": "27.42",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Gorna Breznica, Blagoevgrad Prov.",
-                    "latitude": "41 45",
-                    "longitude": "23 07",
-                    "raw_source": "Myotis mystacinus group Caucasus.pdf"
-                },
-                {
-                    "name": "Malko Târnovo, Burgas Prov.",
-                    "latitude": "42 00",
-                    "longitude": "27 31",
-                    "raw_source": "Myotis mystacinus group Caucasus.pdf"
-                },
-                {
-                    "name": "Kaleto Cave, Mladežko, Burgas Prov.",
-                    "latitude": "42 09",
-                    "longitude": "27 21",
-                    "raw_source": "Myotis mystacinus group Caucasus.pdf"
-                }
-            ]
-        },
-        {
-            "group_name": "Greece",
-            "color": "orange",
-            "localities": [
-                {
-                    "name": "Kleistos",
-                    "latitude": "39.05",
-                    "longitude": "21.49",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Nestos, Sideroneron",
-                    "latitude": "41.21",
-                    "longitude": "24.13",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Loutropigi",
-                    "latitude": "39.07",
-                    "longitude": "22.01",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Arkoudorrema, Dipotama",
-                    "latitude": "41.21",
-                    "longitude": "24.35",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Loutra Thermia",
-                    "latitude": "41.24",
-                    "longitude": "24.28",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Tauropos, Karpenision",
-                    "latitude": "38.55",
-                    "longitude": "21.41",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Trikeriotis",
-                    "latitude": "38.48",
-                    "longitude": "21.53",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Between Medousa and and Kottani, NE of Echinos",
-                    "latitude": "41.19",
-                    "longitude": "25.05",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Melivoia",
-                    "latitude": "41.20",
-                    "longitude": "24.53",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Chaliki, Aspropotamos",
-                    "latitude": "39.39",
-                    "longitude": "21.13",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Pentalofos",
-                    "latitude": "40.11",
-                    "longitude": "21.11",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Pindos, Portaikos river",
-                    "latitude": "39.26",
-                    "longitude": "21.32",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                }
-            ]
-        },
-        {
-            "group_name": "Hungary",
-            "color": "orange",
-            "localities": [
-                {
-                    "name": "Bükk Mts., Attila-kúti Lake",
-                    "latitude": "47.47",
-                    "longitude": "20.27",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Bükk Mts., Napsugár-pihenö",
-                    "latitude": "48.00",
-                    "longitude": "20.25",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Bükk Mts., Peskö Valley",
-                    "latitude": "48.02",
-                    "longitude": "20.25",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Bükk Mts., Kacs",
-                    "latitude": "47.95",
-                    "longitude": "20.62",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Matra Mts., Parád",
-                    "latitude": "47.91",
-                    "longitude": "20.03",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Zemplén Mts., István Spring",
-                    "latitude": "48.24",
-                    "longitude": "21.24",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Bükk Mts., Mellér Valley",
-                    "latitude": "48.00",
-                    "longitude": "20.25",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Bükk Mts., Napsugár-pihenö",
-                    "latitude": "48.00",
-                    "longitude": "20.25",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Bükk Mts., Felsötárkányi Lake",
-                    "latitude": "47.58",
-                    "longitude": "20.26",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Bükk Mts., Répás Valley",
-                    "latitude": "47.58",
-                    "longitude": "20.27",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Medves Mts., Zagyva Spring",
-                    "latitude": "48.08",
-                    "longitude": "19.52",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Bükk Mts., Lök-völgyi Cave",
-                    "latitude": "48.01",
-                    "longitude": "20.28",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Bükk Mts., Fekete Cave",
-                    "latitude": "48.06",
-                    "longitude": "20.33",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Bükk Mts., Jáspis Cave",
-                    "latitude": "48.06",
-                    "longitude": "20.34",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Attila-kúti Lake (2)",
-                    "latitude": "47.95",
-                    "longitude": "20.46",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Noszvaj",
-                    "region": "Heves",
-                    "raw_source": "Chiroptera Europe-bat flies.pdf",
-                    "comment": "Coordinates from Google Maps",
-                    "latitude": "47.936226",
-                    "longitude": "20.4608945"
-                },
-                {
-                    "name": "Felsőtárkány",
-                    "region": "Heves",
-                    "raw_source": "Chiroptera Europe-bat flies.pdf",
-                    "comment": "Coordinates from Google Maps",
-                    "latitude": "47.9984911",
-                    "longitude": "20.3997898"
-                },
-                {
-                    "name": "Egerbakta",
-                    "region": "Heves",
-                    "raw_source": "Chiroptera Europe-bat flies.pdf",
-                    "comment": "Coordinates from Google Maps",
-                    "latitude": "47.936481",
-                    "longitude": "20.270905"
-                },
-                {
-                    "name": "Egerbocs",
-                    "region": "Heves",
-                    "raw_source": "Chiroptera Europe-bat flies.pdf",
-                    "comment": "Coordinates from Google Maps",
-                    "latitude": "48.0139506",
-                    "longitude": "20.2298699"
-                },
-                {
-                    "name": "Miskolc",
-                    "region": "Borsod-Abaúj-Zemplén",
-                    "raw_source": "Chiroptera Europe-bat flies.pdf",
-                    "comment": "Coordinates from Google Maps",
-                    "latitude": "48.0892992",
-                    "longitude": "20.5356699"
-                }
-            ]
-        },
-        {
-            "group_name": "Poland",
-            "color": "orange",
-            "localities": [
-                {
-                    "name": "Kornuty Reserve, Mroczna Cave in Kornuty",
-                    "latitude": "49.58",
-                    "longitude": "21.32",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Beskid S1decki Mountain Range, Wierch above Kamień, Niedżwiedzia Cave",
-                    "latitude": "49.48",
-                    "longitude": "20.78",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Beskid Wyspowy Mountain, Range, Mt. Łopieñ, Zbójecka in Łopień Cave",
-                    "latitude": "49.70",
-                    "longitude": "20.28",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Tatra Mts, Organy Massif, Kościeliska Valley, Czarna Cave",
-                    "latitude": "49.23",
-                    "longitude": "19.87",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Lężczok 1",
-                    "latitude": "50 07 36",
-                    "longitude": "18 15 53",
-                    "raw_source": "Myotis alcathoe Poland, Ukraine.pdf"
-                },
-                {
-                    "name": "Lężczok 2",
-                    "latitude": "50 08 14",
-                    "longitude": "18 16 19",
-                    "raw_source": "Myotis alcathoe Poland, Ukraine.pdf"
-                },
-                {
-                    "name": "Górki Male, Bucze Mountain 1",
-                    "latitude": "49 46 57",
-                    "longitude": "18 50 55",
-                    "raw_source": "Myotis alcathoe Poland, Ukraine.pdf"
-                },
-                {
-                    "name": "Górki Male, Bucze Mountain 2",
-                    "latitude": "49 46 40",
-                    "longitude": "18 49 53",
-                    "raw_source": "Myotis alcathoe Poland, Ukraine.pdf"
-                },
-                {
-                    "name": "Nasiczne Cave",
-                    "latitude": "49 10 45",
-                    "longitude": "22 36 50",
-                    "comment": "See also {Chiroptera Poland Bieszczady.pdf}",
-                    "raw_source": "Myotis alcathoe Poland, Ukraine.pdf"
-                },
-                {
-                    "name": "Hylaty stream",
-                    "latitude": "49 11 07",
-                    "longitude": "22 33 02",
-                    "raw_source": "Myotis alcathoe Poland, Ukraine.pdf"
-                },
-                {
-                    "name": "Roztocze Upland 1",
-                    "latitude": "50 34 12",
-                    "longitude": "23 02 58",
-                    "raw_source": "Myotis alcathoe Poland, Ukraine.pdf"
-                },
-                {
-                    "name": "Roztocze Upland 2",
-                    "latitude": "50 34 30",
-                    "longitude": "23 01 26",
-                    "raw_source": "Myotis alcathoe Poland, Ukraine.pdf"
-                },
-                {
-                    "name": "Dalkowskie Jary",
-                    "latitude": "51 39 02.4",
-                    "longitude": "15 52 34.6",
-                    "raw_source": "Myotis alcathoe Poland (Kmiecik et al. 2020).pdf"
-                },
-                {
-                    "name": "Łęgi Źródliskowe koło Przemkowa",
-                    "latitude": "51 32 10.59",
-                    "longitude": "15 45 4.28",
-                    "raw_source": "Myotis alcathoe Poland (Kmiecik et al. 2020).pdf"
-                },
-                {
-                    "name": "Chodlewo near Żmigród",
-                    "latitude": "51 30 59.06",
-                    "longitude": "16 50 21.61",
-                    "raw_source": "Myotis alcathoe Poland (Kmiecik et al. 2020).pdf"
-                },
-                {
-                    "name": "Głębowice near Wołów",
-                    "latitude": "51 27 3.86",
-                    "longitude": "16 44 28.56",
-                    "raw_source": "Myotis alcathoe Poland (Kmiecik et al. 2020).pdf"
-                },
-                {
-                    "name": "Złotopieńska Dziura",
-                    "latitude": "20 16 01",
-                    "longitude": "49 42 11",
-                    "raw_source": "Myotis alcathoe Poland (Sachanowicz et al. 2012).pdf"
-                },
-                {
-                    "name": "Dolna w Nasicznem",
-                    "latitude": "22 36 51",
-                    "longitude": "49 10 46",
-                    "raw_source": "Myotis alcathoe Poland (Sachanowicz et al. 2012).pdf"
-                },
-                {
-                    "name": "abandoned sandstone adits in Senderki",
-                    "latitude": "23 03 04",
-                    "longitude": "50 32 24",
-                    "raw_source": "Myotis alcathoe Poland (Sachanowicz et al. 2012).pdf"
-                },
-                {
-                    "name": "abandoned mining adit 'nad PKP II', Szklarska Poręba Dolna, the Western Sudety Mts",
-                    "latitude": "15 33 21",
-                    "longitude": "50 50 59",
-                    "raw_source": "Myotis alcathoe Poland (Sachanowicz et al. 2012).pdf"
-                },
-                {
-                    "name": "mouth of the Wielka Sucha Valley, the right side valley of the Chochołowska Valley",
-                    "latitude": "49.2666798",
-                    "longitude": "19.8245786",
-                    "comment": "Coordinates from Google Maps",
-                    "raw_source": "Rhinolophus, Myotis Poland Tatra.pdf"
-                }
-            ]
-        },
-        {
-            "group_name": "Ukraine",
-            "color": "orange",
-            "localities": [
-                {
-                    "name": "Transcarpathian lowland, vicinity of Beregove town, Chizay",
-                    "latitude": "48 13 51",
-                    "longitude": "22 37 01",
-                    "raw_source": "Myotis alcathoe Poland, Ukraine.pdf"
-                },
-                {
-                    "name": "Kremenets'",
-                    "latitude": "50.1049466",
-                    "longitude": "25.7054634",
-                    "raw_source": "Chiroptera Ukraine Kremenetski Hory.pdf",
-                    "comment": "Coordinates from Google Maps"
-                },
-                {
-                    "name": "Medova Cave",
-                    "latitude": "49 49 16.3",
-                    "longitude": "24 05 23",
-                    "raw_source": "Myotis alcathoe Ukraine Lviv.pdf",
-                    "region": "Lviv"
-                },
-                {
-                    "name": "Pivnichne Podillya",
-                    "latitude": "49.9381333",
-                    "longitude": "24.9884661",
-                    "raw_source": "Chiroptera Ukraine Pivnicne Podillia.pdf",
-                    "region": "Lviv"
-                }
-            ]
-        },
-        {
-            "group_name": "Slovakia",
-            "color": "orange",
-            "localities": [
-                {
-                    "name": "Pohansk hrad, Stépová jaskyna cave",
-                    "latitude": "48 12 23",
-                    "longitude": "19 54 37",
-                    "raw_source": "Myotis alcathoe Slovakia.pdf"
-                },
-                {
-                    "name": "Rákoš, Standorina",
-                    "latitude": "48 38 45.3",
-                    "longitude": "21 26 49.7",
-                    "raw_source": "Myotis alcathoe Slovakia (Danko et al. 2010).pdf"
-                },
-                {
-                    "name": "Slanská Huta",
-                    "latitude": "48 34 59.5",
-                    "longitude": "21 29 07.7",
-                    "raw_source": "Myotis alcathoe Slovakia (Danko et al. 2010).pdf"
-                },
-                {
-                    "name": "Jovsa",
-                    "latitude": "48 50 07.7",
-                    "longitude": "22 04 55.5",
-                    "raw_source": "Myotis alcathoe Slovakia (Danko et al. 2010).pdf"
-                },
-                {
-                    "name": "Priekopa",
-                    "latitude": "48 45 22.9",
-                    "longitude": "22 16 59.7",
-                    "raw_source": "Myotis alcathoe Slovakia (Danko et al. 2010).pdf"
-                },
-                {
-                    "name": "Čaklov-Hámre",
-                    "latitude": "48 53 26.4",
-                    "longitude": "21 35 36.4",
-                    "raw_source": "Myotis alcathoe Slovakia (Danko et al. 2010).pdf"
-                },
-                {
-                    "name": "Ladmovce",
-                    "latitude": "48 25 53.5",
-                    "longitude": "21 46 41.3",
-                    "raw_source": "Myotis alcathoe Slovakia (Danko et al. 2010).pdf"
-                },
-                {
-                    "name": "Dargov-Holá hora",
-                    "latitude": "48 45 14.4",
-                    "longitude": "21 33 24.1",
-                    "raw_source": "Myotis alcathoe Slovakia (Danko et al. 2010).pdf"
-                },
-                {
-                    "name": "Byšta",
-                    "latitude": "48 31 48.7",
-                    "longitude": "21 31 34.1",
-                    "raw_source": "Myotis alcathoe Slovakia (Danko et al. 2010).pdf"
-                },
-                {
-                    "name": "Ďurkov",
-                    "latitude": "48 41 44.5",
-                    "longitude": "21 29 11.7",
-                    "raw_source": "Myotis alcathoe Slovakia (Danko et al. 2010).pdf"
-                },
-                {
-                    "name": "Boťany",
-                    "latitude": "48 28 02.0",
-                    "longitude": "22 06 22.7",
-                    "raw_source": "Myotis alcathoe Slovakia (Danko et al. 2010).pdf"
-                },
-                {
-                    "name": "Strážske",
-                    "latitude": "48 52 03.1",
-                    "longitude": "21 47 51.8",
-                    "raw_source": "Myotis alcathoe Slovakia (Danko et al. 2010).pdf"
-                },
-                {
-                    "name": "Brestov",
-                    "latitude": "48 59 02.6",
-                    "longitude": "21 53 28.3",
-                    "raw_source": "Myotis alcathoe Slovakia (Danko et al. 2010).pdf"
-                },
-                {
-                    "name": "Juskova Voľa 1",
-                    "latitude": "48 52 02.7",
-                    "longitude": "21 33 14.3",
-                    "raw_source": "Myotis alcathoe Slovakia (Danko et al. 2010).pdf"
-                },
-                {
-                    "name": "Juskova Voľa 2",
-                    "latitude": "48 52 29.5",
-                    "longitude": "21 35 42.4",
-                    "raw_source": "Myotis alcathoe Slovakia (Danko et al. 2010).pdf"
-                },
-                {
-                    "name": "Koňuš",
-                    "latitude": "48 46 26.1",
-                    "longitude": "22 16 56.1",
-                    "raw_source": "Myotis alcathoe Slovakia (Danko et al. 2010).pdf"
-                },
-                {
-                    "name": "Brezina-Torkoš",
-                    "latitude": "48 34 23.0",
-                    "longitude": "21 30 36.0",
-                    "raw_source": "Myotis alcathoe Slovakia (Danko et al. 2010).pdf"
-                },
-                {
-                    "name": "Oreské",
-                    "latitude": "48 51 47.7",
-                    "longitude": "21 55 46.0",
-                    "raw_source": "Myotis alcathoe Slovakia (Danko et al. 2010).pdf"
-                },
-                {
-                    "name": "Remetské Hámre",
-                    "latitude": "48 51 18.8",
-                    "longitude": "22 11 19.7",
-                    "raw_source": "Myotis alcathoe Slovakia (Danko et al. 2010).pdf"
-                },
-                {
-                    "name": "Pozdišovce",
-                    "latitude": "48 44 44.7",
-                    "longitude": "21 50 14.7",
-                    "raw_source": "Myotis alcathoe Slovakia (Danko et al. 2010).pdf"
-                },
-                {
-                    "name": "Kalša, water reservoir",
-                    "latitude": "48 36 14.6",
-                    "longitude": "21 31 14.2",
-                    "raw_source": "Myotis alcathoe Slovakia (Danko et al. 2010).pdf"
-                },
-                {
-                    "name": "Priekopa, garden",
-                    "latitude": "48 45 06.4",
-                    "longitude": "22 16 43.1",
-                    "raw_source": "Myotis alcathoe Slovakia (Danko et al. 2010).pdf"
-                },
-                {
-                    "name": "Baštův Mill, Havraníky, Znojmo Dist.",
-                    "latitude": "48 49",
-                    "longitude": "15 59",
-                    "raw_source": "Myotis mystacinus group Caucasus.pdf"
-                },
-                {
-                    "name": "Jasov, Jasovská jaskyňa cave",
-                    "latitude": "48 41",
-                    "longitude": "20 59",
-                    "raw_source": "Chiroptera Slovakia-ectoparasites.pdf"
-                }
-            ]
-        },
-        {
-            "group_name": "Switzerland",
-            "color": "orange",
-            "localities": [
-                {
-                    "name": "Col du Marchairuz",
-                    "latitude": "46 33 9.57",
-                    "longitude": "6 15 1.6",
-                    "raw_source": "Myotis Africa-cyt b phylogeny.pdf",
-                    "comment": "Coordinates from Wikipedia. The cited source only says 'Vaud, Switzerland'. For Col du Marchairuz specifically, I cited an article I no longer have access to: Helversen, O. von. 2004. Myotis alcathoe v. Helversen und Heller, 2001 – Nymphenfledermaus. Pp. 1159–1167 in Niethammer, J. and Krapp, F. (eds.). Handbuch der Säugetiere Europas, Volume 4: Fledertiere, Part II: Chiroptera II (Vespertilionidae 2, Molossidae, Nycteridae). Wiebelsheim, Germany: Aula-Verlag, pp. x + 605–1186 (in German). ISBN 3-89104-639-1"
-                },
-                {
-                    "name": "Jura mountains",
-                    "latitude": "46 32 12.62",
-                    "longitude": "06 10 32.84",
-                    "raw_source": "Chiroptera, Spinturnicidae Europe-cophylogeny.pdf"
-                }
-            ]
-        },
-        {
-            "group_name": "Turkey",
-            "color": "orange",
-            "localities": [
-                {
-                    "name": "Ferko’s Garden, Biçki Stream, Demirköy/Kirklareli",
-                    "latitude": "41.79",
-                    "longitude": "27.80",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Dunisa Cave, Sarpdere village, Demirköy/Kirklareli",
-                    "latitude": "41.84",
-                    "longitude": "27.56",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Bursa",
-                    "comment": "Source only says 'a forested area, Bursa Province'. Coordinates for Bursa city.",
-                    "latitude": "40 11",
-                    "longitude": "29 03",
-                    "raw_source": "Myotis alcathoe, daubentonii Turkey-helminths.pdf"
-                }
-            ]
-        },
-        {
-            "group_name": "France",
-            "color": "orange",
-            "localities": [
-                {
-                    "name": "Haguenau",
-                    "latitude": "48.42",
-                    "longitude": "7.79",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Auriac",
-                    "latitude": "43.45",
-                    "longitude": "-0.31",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Auvergne 1",
-                    "latitude": "46.41",
-                    "longitude": "3.05",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Auvergne 2",
-                    "latitude": "45.11",
-                    "longitude": "2.87",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Auvergne 3",
-                    "latitude": "45.14",
-                    "longitude": "3.81",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Auvergne 4",
-                    "latitude": "45.78",
-                    "longitude": "3.08",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Ouilly-du-Houley",
-                    "latitude": "49.17",
-                    "longitude": "0.33",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Tordouet",
-                    "latitude": "49.05",
-                    "longitude": "0.33",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Champ-du-Boult",
-                    "latitude": "48.79",
-                    "longitude": "-1.01",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Fumichoun",
-                    "latitude": "49.17",
-                    "longitude": "0.37",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Saint-Julien-de-Mailloc",
-                    "latitude": "49.08",
-                    "longitude": "0.33",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Pretreville",
-                    "latitude": "49.07",
-                    "longitude": "0.25",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Cordebugle",
-                    "latitude": "49.11",
-                    "longitude": "0.38",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Montviette",
-                    "latitude": "49",
-                    "longitude": "0.1",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Ducey",
-                    "latitude": "48.62",
-                    "longitude": "-1.29",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Lingeard",
-                    "latitude": "48.56",
-                    "longitude": "-1.02",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Feings",
-                    "latitude": "48.55",
-                    "longitude": "0.63",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Pontchardon",
-                    "latitude": "48.93",
-                    "longitude": "0.27",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "St-Evroult-Notre-Dame-des-Bois",
-                    "latitude": "48.79",
-                    "longitude": "0.47",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Montilly-sur-Noireau",
-                    "latitude": "48.82",
-                    "longitude": "-0.57",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Vaux-Saules",
-                    "latitude": "47.47",
-                    "longitude": "4.80",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Saint-Nicolas-les-Citeaux",
-                    "latitude": "47.12",
-                    "longitude": "5.05",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Bourgogne",
-                    "latitude": "47.44",
-                    "longitude": "4.79",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Saint-Nicolas-du-Pelem",
-                    "latitude": "48.31",
-                    "longitude": "-3.16",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Mezieres sur Couesnon",
-                    "latitude": "48.30",
-                    "longitude": "-1.43",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Antrain",
-                    "latitude": "48.46",
-                    "longitude": "-1.48",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Saint Brice en Cogles",
-                    "latitude": "48.41",
-                    "longitude": "-1.37",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Gahard",
-                    "latitude": "48.30",
-                    "longitude": "-1.52",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Champeaux",
-                    "latitude": "48.15",
-                    "longitude": "-1.31",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Saint Aubin du Cormier",
-                    "latitude": "48.26",
-                    "longitude": "-1.40",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Sainte-Marie de Redon",
-                    "latitude": "47.69",
-                    "longitude": "-2",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Loutehel",
-                    "latitude": "47.94",
-                    "longitude": "-2.08",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Saint-Ouen la Rouerie",
-                    "latitude": "48.46",
-                    "longitude": "-1.44",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Vieux Vysur Couesnon",
-                    "latitude": "48.34",
-                    "longitude": "-1.49",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Liffre",
-                    "latitude": "48.21",
-                    "longitude": "-1.51",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Fougeres",
-                    "latitude": "48.35",
-                    "longitude": "-1.20",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Severac",
-                    "latitude": "47.55",
-                    "longitude": "-2.08",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Sarzeau",
-                    "latitude": "47.53",
-                    "longitude": "-2.77",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Remungol",
-                    "latitude": "47.93",
-                    "longitude": "-2.90",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Berne",
-                    "latitude": "47.99",
-                    "longitude": "-3.39",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "La Gacilly",
-                    "latitude": "47.77",
-                    "longitude": "-2.13",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Cournon",
-                    "latitude": "47.75",
-                    "longitude": "-2.10",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Malansac",
-                    "latitude": "47.68",
-                    "longitude": "-2.30",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Priziac",
-                    "latitude": "48.06",
-                    "longitude": "-3.41",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Thehillac",
-                    "latitude": "47.57",
-                    "longitude": "-2.11",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "La Gacilly",
-                    "latitude": "47.77",
-                    "longitude": "-2.13",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Peillac",
-                    "latitude": "47.71",
-                    "longitude": "-2.22",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Niherne",
-                    "latitude": "46.83",
-                    "longitude": "-1.56",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Chemery-sur-Bar",
-                    "latitude": "49.60",
-                    "longitude": "4.87",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Chevillon",
-                    "latitude": "48.53",
-                    "longitude": "5.13",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Vienne le Chateau",
-                    "latitude": "49.19",
-                    "longitude": "4.89",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Belval en Argonne",
-                    "latitude": "48.95",
-                    "longitude": "5",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Flammerecourt",
-                    "latitude": "48.36",
-                    "longitude": "5.04",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "St. Ciergues",
-                    "latitude": "47.88",
-                    "longitude": "5.25",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Eclaron-Braucourt-Sainte-Liviere",
-                    "latitude": "48.59",
-                    "longitude": "4.86",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Trigny",
-                    "latitude": "49.30",
-                    "longitude": "3.90",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Glannes",
-                    "latitude": "48.71",
-                    "longitude": "4.54",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Chateauvillain",
-                    "latitude": "48",
-                    "longitude": "4.92",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Vertus",
-                    "latitude": "48.91",
-                    "longitude": "4.01",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Loges au chevres",
-                    "latitude": "48.27",
-                    "longitude": "4.41",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Bossancourt",
-                    "latitude": "48.28",
-                    "longitude": "4.6",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Boult aux Bois",
-                    "latitude": "49.43",
-                    "longitude": "4.84",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Rimogne",
-                    "latitude": "49.84",
-                    "longitude": "4.54",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Le Mont-Dieu",
-                    "latitude": "49.55",
-                    "longitude": "4.87",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Gennes",
-                    "latitude": "47.25",
-                    "longitude": "6.12",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Montfaucon",
-                    "latitude": "47.24",
-                    "longitude": "6.08",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Amange",
-                    "latitude": "47.17",
-                    "longitude": "5.56",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Moissey",
-                    "latitude": "47.20",
-                    "longitude": "5.52",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Calmoutier",
-                    "latitude": "47.65",
-                    "longitude": "6.28",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Beaumotte-les-Pin",
-                    "latitude": "47.32",
-                    "longitude": "5.83",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "St-Sylvestre-de-Cormeilles",
-                    "latitude": "49.24",
-                    "longitude": "0.4",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Bailleul-la-Vallee",
-                    "latitude": "49.2",
-                    "longitude": "0.43",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Harcourt",
-                    "latitude": "49.17",
-                    "longitude": "0.79",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Marais-Vernier",
-                    "latitude": "49.42",
-                    "longitude": "0.45",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "St-Aubin-de-Scellon",
-                    "latitude": "49.17",
-                    "longitude": "0.47",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Elbeuf-sur-Andelle",
-                    "latitude": "49.47",
-                    "longitude": "1.4",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Genainville",
-                    "latitude": "49.12",
-                    "longitude": "1.75",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Chaussy",
-                    "latitude": "49.12",
-                    "longitude": "1.69",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "St Pierre de Nogaret",
-                    "latitude": "44.47",
-                    "longitude": "3.14",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Montjezieux",
-                    "latitude": "44.43",
-                    "longitude": "3.20",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "St Germain du Teil",
-                    "latitude": "44.48",
-                    "longitude": "3.17",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Chirac",
-                    "latitude": "44.52",
-                    "longitude": "3.27",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Trelans",
-                    "latitude": "44.50",
-                    "longitude": "3.09",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Les Hermaux",
-                    "latitude": "44.51",
-                    "longitude": "3.13",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Limousin",
-                    "latitude": "45.83",
-                    "longitude": "1.26",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Brauviliers",
-                    "latitude": "48.58",
-                    "longitude": "5.15",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Nord-Pas de Calais",
-                    "latitude": "50.51",
-                    "longitude": "2.13",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Tournehem-sur-la-Hem",
-                    "latitude": "50.81",
-                    "longitude": "2.05",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Mauves-sur-Loire",
-                    "latitude": "47.30",
-                    "longitude": "-1.40",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Pays de la Loire 1",
-                    "latitude": "48",
-                    "longitude": "0.2",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Pays de la Loire 2",
-                    "latitude": "46.67",
-                    "longitude": "-1.43",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Broc",
-                    "latitude": "47.58",
-                    "longitude": "0.17",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Fontaine Guerin",
-                    "latitude": "47.49",
-                    "longitude": "-0.19",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Saint Georges du bois",
-                    "latitude": "47.50",
-                    "longitude": "-0.22",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Fontaine-Milon",
-                    "latitude": "47.50",
-                    "longitude": "-0.25",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Cuon",
-                    "latitude": "47.48",
-                    "longitude": "-0.1",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Le Guedeniau",
-                    "latitude": "47.5",
-                    "longitude": "-0.05",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Picardie",
-                    "latitude": "49.38",
-                    "longitude": "2.41",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Poitou-Charentes",
-                    "latitude": "45.82",
-                    "longitude": "-0.79",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "La Mothe Saint-Heray",
-                    "latitude": "46.36",
-                    "longitude": "-0.11",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Chize",
-                    "latitude": "46.12",
-                    "longitude": "-0.35",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Champdeniers",
-                    "latitude": "46.49",
-                    "longitude": "-0.41",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Vitre",
-                    "latitude": "46.28",
-                    "longitude": "-0.20",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Gap",
-                    "latitude": "44.56",
-                    "longitude": "6.08",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Bairols",
-                    "latitude": "43.98",
-                    "longitude": "7.13",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Ruoms",
-                    "latitude": "44.45",
-                    "longitude": "4.34",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Sainte Eulalie en Royans",
-                    "latitude": "45.05",
-                    "longitude": "5.34",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Lupe",
-                    "latitude": "45.37",
-                    "longitude": "4.7",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Lalacelle",
-                    "region": "Orne",
-                    "raw_source": "Myotis alcathoe, Nyctalus leisleri France Mayenne.pdf",
-                    "latitude": "48.4693879",
-                    "longitude": "-0.1423721"
-                },
-                {
-                    "name": "Grotte du Mammouth, Louverné",
-                    "region": "Mayenne",
-                    "raw_source": "Myotis alcathoe, Nyctalus leisleri France Mayenne.pdf",
-                    "latitude": "48.1256217",
-                    "longitude": "-0.7836581"
-                },
-                {
-                    "name": "Champfrémont",
-                    "region": "Mayenne",
-                    "raw_source": "Myotis alcathoe, Nyctalus leisleri France Mayenne.pdf",
-                    "latitude": "48.433022",
-                    "longitude": "-0.1236928"
-                }
-            ]
-        },
-        {
-            "group_name": "Austria",
-            "color": "orange",
-            "localities": [
-                {
-                    "name": "Deutsch Ehrensdorf",
-                    "latitude": "47 06",
-                    "longitude": "16 25",
-                    "raw_source": "Myotis alcathoe Austria.pdf",
-                    "comment": "p. 5",
-                    "region": "Burgenland"
-                },
-                {
-                    "name": "Punitz",
-                    "latitude": "47 07",
-                    "longitude": "16 21",
-                    "raw_source": "Myotis alcathoe Austria.pdf",
-                    "comment": "p. 6",
-                    "region": "Burgenland"
-                },
-                {
-                    "name": "Thayatal",
-                    "region": "Niederösterreich",
-                    "raw_source": "Chiroptera Lower Austria Thayatal.pdf",
-                    "comment": "Coordinates from German Wikipedia",
-                    "latitude": "48 51 0",
-                    "longitude": "15 54 0"
-                }
-            ]
-        },
-        {
-            "group_name": "Czech Republic",
-            "color": "orange",
-            "localities": [
-                {
-                    "name": "Havraníky – Devět mlýnů",
-                    "latitude": "48 48.5",
-                    "longitude": "15 59",
-                    "raw_source": "Myotis alcathoe Czech Republic.pdf"
-                },
-                {
-                    "name": "Klíčava Dam",
-                    "latitude": "50 04",
-                    "longitude": "13 54",
-                    "raw_source": "Myotis alcathoe Czech Republic.pdf"
-                },
-                {
-                    "name": "Bílavsko, Ochozy Forest",
-                    "latitude": "49 23",
-                    "longitude": "17 37",
-                    "raw_source": "Myotis alcathoe Czech Republic.pdf"
-                },
-                {
-                    "name": "Vůznice Natural Reserve",
-                    "latitude": "50 1",
-                    "longitude": "13 59",
-                    "raw_source": "Myotis alcathoe Czech Republic.pdf"
-                },
-                {
-                    "name": "Zbečno",
-                    "latitude": "50 3",
-                    "longitude": "13 55",
-                    "raw_source": "Myotis alcathoe Czech Republic.pdf"
-                },
-                {
-                    "name": "Tvořihráz, Purkrábka",
-                    "latitude": "48 54",
-                    "longitude": "16 7",
-                    "raw_source": "Myotis alcathoe Czech Republic.pdf"
-                },
-                {
-                    "name": "Čížov, Ledové sluje",
-                    "latitude": "48 51",
-                    "longitude": "15 52",
-                    "raw_source": "Myotis alcathoe Czech Republic.pdf"
-                },
-                {
-                    "name": "Líšná, Kostelecký Forest",
-                    "latitude": "49 24",
-                    "longitude": "17 32",
-                    "raw_source": "Myotis alcathoe Czech Republic.pdf"
-                },
-                {
-                    "name": "Šumná, Vlkov pond",
-                    "latitude": "48 56",
-                    "longitude": "16 54",
-                    "raw_source": "Myotis alcathoe Czech Republic.pdf"
-                },
-                {
-                    "name": "Pasohlávky",
-                    "latitude": "48 54 5",
-                    "longitude": "16 35 5",
-                    "raw_source": "Myotis alcathoe Czech Republic S Moravia.pdf",
-                    "region": "Břeclav"
-                },
-                {
-                    "name": "Volenský fishpond at Šenov",
-                    "latitude": "49 46 59",
-                    "longitude": "18 22 6",
-                    "raw_source": "Myotis alcathoe Czech Republic S Moravia.pdf",
-                    "region": "Frýdek-Místek"
-                },
-                {
-                    "name": "Hodoňovice in the Ostravice river valley",
-                    "latitude": "49 37 49",
-                    "longitude": "18 21 34",
-                    "raw_source": "Myotis alcathoe Czech Republic S Moravia.pdf",
-                    "region": "Frýdek-Místek"
-                },
-                {
-                    "name": "Smrdutá Reserve, Chvalčov, Kroměříž Dist.",
-                    "latitude": "49 22",
-                    "longitude": "17 45",
-                    "raw_source": "Myotis mystacinus group Caucasus.pdf"
-                },
-                {
-                    "name": "Podyjí",
-                    "raw_source": "Chiroptera Lower Austria Thayatal.pdf",
-                    "comment": "Coordinates from German Wikipedia",
-                    "latitude": "48 50 52",
-                    "longitude": "15 53 50"
-                }
-            ]
-        },
-        {
-            "group_name": "Italy",
-            "color": "orange",
-            "localities": [
-                {
-                    "name": "Majella National Park",
-                    "latitude": "42 4 55",
-                    "longitude": "14 3 36",
-                    "comment": "Coordinates from Wikipedia",
-                    "raw_source": "Myotis alcathoe Italy.pdf"
-                },
-                {
-                    "name": "Marsico Nuovo, Appennino Lucano Val d’Agri Lagonegrese National Park",
-                    "region": "Basilicata",
-                    "latitude": "40.4229923",
-                    "longitude": "15.7302518",
-                    "comment": "Coordinates from Google Maps",
-                    "raw_source": "Myotis alcathoe Italy Basilicata.pdf"
-                },
-                {
-                    "name": "Calvello, Appennino Lucano Val d’Agri Lagonegrese National Park",
-                    "region": "Basilicata",
-                    "latitude": "40.4750569",
-                    "longitude": "15.8341321",
-                    "comment": "Coordinates from Google Maps",
-                    "raw_source": "Myotis alcathoe Italy Basilicata.pdf"
-                },
-                {
-                    "name": "Villavallelonga (AQ) MIB:ZPL:01230",
-                    "raw_source": "Chiroptera Italy-IOTUs.pdf",
-                    "comment": "See Table S5 for locations. Google Maps coordinates for Villavallelonga, L'Aquila",
-                    "latitude": "41.8706692",
-                    "longitude": "13.6020776"
-                },
-                {
-                    "name": "Corleto Monforte (SA) MIB:ZPL:01281",
-                    "raw_source": "Chiroptera Italy-IOTUs.pdf",
-                    "comment": "See Table S5 for locations. Google Maps coordinates for Corleto Monforte, Salerno.",
-                    "latitude": "40.4374765",
-                    "longitude": "15.3777588"
-                },
-                {
-                    "name": "Felitto (SA) MIB:ZPL:01287, 01289",
-                    "raw_source": "Chiroptera Italy-IOTUs.pdf",
-                    "comment": "See Table S5 for locations. Google Maps coordinates for Felitto, Salerno.",
-                    "latitude": "40.37303",
-                    "longitude": "15.2429693"
-                }
-            ]
-        },
-        {
-            "group_name": "Romania",
-            "color": "orange",
-            "localities": [
-                {
-                    "name": "Vârghiș Gorge, Orbán Balázs Cave, Cheile Vârghișului Nature Reserve",
-                    "latitude": "46.300394",
-                    "longitude": "25.542297",
-                    "comment": "Coordinates from Google Maps",
-                    "raw_source": "Myotis alcathoe Romania.pdf"
-                },
-                {
-                    "name": "Near village of Poiana",
-                    "latitude": "46 22 9.08",
-                    "longitude": "23 36 11.97",
-                    "raw_source": "Myotis alcathoe Romania (Ohlendorf & Hoffmann 2009).pdf"
-                },
-                {
-                    "name": "Muntele Puciosu",
-                    "latitude": "45.0330",
-                    "longitude": "25.4365",
-                    "comment": "Coordinates in Table S1",
-                    "raw_source": "Babesia vesperuginis (Corduneanu et al. 2017).pdf"
-                },
-                {
-                    "name": "Cheresig, Inferior Meadow of the Crișul Repede River natural protected area",
-                    "latitude": "47.033754",
-                    "longitude": "21.6753708",
-                    "raw_source": "Chiroptera Romania Crisul Repede.pdf",
-                    "comment": "Coordinates from Google Maps"
-                },
-                {
-                    "name": "Girișu de Criș, Inferior Meadow of the Crișul Repede River natural protected area",
-                    "latitude": "47.0648134",
-                    "longitude": "21.7328022",
-                    "raw_source": "Chiroptera Romania Crisul Repede.pdf",
-                    "comment": "Coordinates from Google Maps"
-                }
-            ]
-        },
-        {
-            "group_name": "Spain",
-            "color": "orange",
-            "localities": [
-                {
-                    "name": "Valle del Eume",
-                    "latitude": "43.4552084",
-                    "longitude": "-7.721538",
-                    "comment": "Coordinates from Google Maps. The river is quite long and the source is not precise.",
-                    "raw_source": "Chiroptera Galicia.pdf",
-                    "region": "Galicia"
-                },
-                {
-                    "name": "Sierra de Ancares",
-                    "latitude": "42.8038865",
-                    "longitude": "-6.8679544",
-                    "comment": "Coordinates from Google Maps",
-                    "raw_source": "Chiroptera Galicia.pdf",
-                    "region": "Galicia"
-                },
-                {
-                    "name": "Serra do Courel",
-                    "latitude": "42.5955536",
-                    "longitude": "-7.1860891",
-                    "comment": "Coordinates from Google Maps",
-                    "raw_source": "Chiroptera Galicia.pdf",
-                    "region": "Galicia"
-                },
-                {
-                    "name": "El Rasillo",
-                    "latitude": "42.1957758",
-                    "longitude": "-2.7058931",
-                    "region": "La Rioja",
-                    "comment": "Coordinates from Google Maps",
-                    "raw_source": "Myotis alcathoe La Rioja.pdf"
-                },
-                {
-                    "name": "Anguiano",
-                    "latitude": "42.263144",
-                    "longitude": "-2.7694973",
-                    "region": "La Rioja",
-                    "comment": "Coordinates from Google Maps",
-                    "raw_source": "Myotis alcathoe La Rioja.pdf"
-                },
-                {
-                    "name": "Ojacastro",
-                    "latitude": "42.3463077",
-                    "longitude": "-3.0100229",
-                    "region": "La Rioja",
-                    "comment": "Coordinates from Google Maps",
-                    "raw_source": "Myotis alcathoe La Rioja.pdf"
-                },
-                {
-                    "name": "Aiantsoroka Erreka",
-                    "latitude": "43.151143201338705",
-                    "longitude": "-1.6040259083979858",
-                    "raw_source": "Myotis alcathoe, Pipistrellus pygmaeus Navarra.pdf"
-                },
-                {
-                    "name": "Artesiago",
-                    "latitude": "43.05204564052446",
-                    "longitude": "-1.5376744093926895",
-                    "raw_source": "Myotis alcathoe, Pipistrellus pygmaeus Navarra.pdf"
-                },
-                {
-                    "name": "Errekaundia",
-                    "latitude": "43.14184859935959",
-                    "longitude": "-1.6038808290916544",
-                    "raw_source": "Myotis alcathoe, Pipistrellus pygmaeus Navarra.pdf"
-                },
-                {
-                    "name": "Larrainzar",
-                    "latitude": "42.996170667204915",
-                    "longitude": "-1.6940267263391902",
-                    "raw_source": "Myotis alcathoe, Pipistrellus pygmaeus Navarra.pdf"
-                },
-                {
-                    "name": "Urkiaga",
-                    "latitude": "43.045948307683034",
-                    "longitude": "-1.46808284458353",
-                    "raw_source": "Myotis alcathoe, Pipistrellus pygmaeus Navarra.pdf"
-                },
-                {
-                    "name": "Sorogain",
-                    "latitude": "42.99038278191897",
-                    "longitude": "-1.4069908690246506",
-                    "raw_source": "Myotis alcathoe, Pipistrellus pygmaeus Navarra.pdf"
-                },
-                {
-                    "name": "Zaldazain",
-                    "latitude": "43.015227349403816",
-                    "longitude": "-1.6401070035749186",
-                    "raw_source": "Myotis alcathoe, Pipistrellus pygmaeus Navarra.pdf"
-                },
-                {
-                    "name": "Catalonia 1",
-                    "latitude": "42.426912",
-                    "longitude": "2.877502",
-                    "comment": "Google Maps estimate, based on map on p. 41",
-                    "raw_source": "Chiroptera Catalonia-status.pdf"
-                },
-                {
-                    "name": "Catalonia 2",
-                    "latitude": "42.373696",
-                    "longitude": "2.888489",
-                    "comment": "Google Maps estimate, based on map on p. 41",
-                    "raw_source": "Chiroptera Catalonia-status.pdf"
-                },
-                {
-                    "name": "Catalonia 3",
-                    "latitude": "42.320918",
-                    "longitude": "2.690735",
-                    "comment": "Google Maps estimate, based on map on p. 41",
-                    "raw_source": "Chiroptera Catalonia-status.pdf"
-                },
-                {
-                    "name": "Catalonia 4",
-                    "latitude": "41.737435",
-                    "longitude": "2.602844",
-                    "comment": "Google Maps estimate, based on map on p. 41",
-                    "raw_source": "Chiroptera Catalonia-status.pdf"
-                },
-                {
-                    "name": "Catalonia 5",
-                    "latitude": "41.794796",
-                    "longitude": "2.531433",
-                    "comment": "Google Maps estimate, based on map on p. 41",
-                    "raw_source": "Chiroptera Catalonia-status.pdf"
-                },
-                {
-                    "name": "Catalonia 6",
-                    "latitude": "41.876651",
-                    "longitude": "2.416077",
-                    "comment": "Google Maps estimate, based on map on p. 41",
-                    "raw_source": "Chiroptera Catalonia-status.pdf"
-                },
-                {
-                    "name": "Albera",
-                    "raw_source": "Myotis alcathoe Catalonia Albera.pdf",
-                    "latitude": "42 28 55",
-                    "longitude": "2 56 46"
-                },
-                {
-                    "name": "Rao (Lugo)",
-                    "region": "Castilla y León",
-                    "raw_source": "Myotis alcathoe Castilla y Leon.pdf",
-                    "comment": "Coordinates from Google Maps",
-                    "latitude": "42.9515254",
-                    "longitude": "-6.873148"
-                },
-                {
-                    "name": "valle de Suertes en la vertiente leonesa de la sierra de Ancares (Candín, León)",
-                    "region": "Castilla y León",
-                    "raw_source": "Myotis alcathoe Castilla y Leon.pdf",
-                    "comment": "Coordinates from Google Maps",
-                    "latitude": "42.8374527",
-                    "longitude": "-6.7329172"
-                },
-                {
-                    "name": "Suárbol (Candín, León)",
-                    "region": "Castilla y León",
-                    "raw_source": "Myotis alcathoe Castilla y Leon.pdf",
-                    "comment": "Coordinates from Google Maps",
-                    "latitude": "42.8671671",
-                    "longitude": "-6.8522252"
-                }
-            ]
-        },
-        {
-            "group_name": "Germany",
-            "color": "orange",
-            "localities": [
-                {
-                    "name": "Geißenwald, Rheinbischofsheim",
-                    "latitude": "48.64",
-                    "longitude": "7.95",
-                    "region": "Baden-Württemberg",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Griesheim N Offenburg, tunnel under highway",
-                    "latitude": "48.51",
-                    "longitude": "7.91",
-                    "region": "Baden-Württemberg",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Kyffhäuser",
-                    "latitude": "51.38",
-                    "longitude": "11.04",
-                    "region": "Thüringen",
-                    "raw_source": "Myotis alcathoe-biogeography.pdf"
-                },
-                {
-                    "name": "Questenberg, Dinsterbachdurchbruch, Kreis Mansfeld-Südharz",
-                    "region": "Sachsen-Anhalt",
-                    "latitude": "51 30 2.05",
-                    "longitude": "11 8 14.81",
-                    "raw_source": "Myotis alcathoe Sachsen-Anhalt (Ohlendorf & Funkel 2008).pdf"
-                },
-                {
-                    "name": "Stolberg, Zwieselberg, Hirschallee, Kreis Mansfeld-Südharz",
-                    "region": "Sachsen-Anhalt",
-                    "latitude": "51 34 41.10",
-                    "longitude": "10 56 46.09",
-                    "raw_source": "Myotis alcathoe Sachsen-Anhalt (Ohlendorf & Funkel 2008).pdf"
-                },
-                {
-                    "name": "Ziegelroda, Ziegelrodaer Forst, Hermannseck, Clapperborn, Saalekreis",
-                    "region": "Sachsen-Anhalt",
-                    "latitude": "51 20 31.68",
-                    "longitude": "11 30 17.16",
-                    "raw_source": "Myotis alcathoe Sachsen-Anhalt (Ohlendorf & Funkel 2008).pdf"
-                },
-                {
-                    "name": "Othal, NSG Othaler Wald, Tümpel, Kreis Mansfeld-Südharz",
-                    "region": "Sachsen-Anhalt",
-                    "latitude": "51 28 4.91",
-                    "longitude": "11 22 13.09",
-                    "raw_source": "Myotis alcathoe Sachsen-Anhalt (Ohlendorf & Funkel 2008).pdf"
-                },
-                {
-                    "name": "Questenberg, Dinsterbach, Kreis Mansfeld-Südharz",
-                    "region": "Sachsen-Anhalt",
-                    "latitude": "51 29 47.95",
-                    "longitude": "11 7 36.12",
-                    "raw_source": "Myotis alcathoe Sachsen-Anhalt (Ohlendorf & Funkel 2008).pdf"
-                },
-                {
-                    "name": "Oechlitz, Oechlitzer Grund, Saalekreis",
-                    "region": "Sachsen-Anhalt",
-                    "latitude": "51 19 26.18",
-                    "longitude": "11 45 13.12",
-                    "raw_source": "Myotis alcathoe Sachsen-Anhalt (Ohlendorf & Funkel 2008).pdf"
-                },
-                {
-                    "name": "Drebsdorf, Ankenbergschwinde, Kreis Mansfeld-Südharz",
-                    "region": "Sachsen-Anhalt",
-                    "latitude": "51 29 45.93",
-                    "longitude": "11 11 7.65",
-                    "raw_source": "Myotis alcathoe Sachsen-Anhalt (Ohlendorf & Funkel 2008).pdf"
-                },
-                {
-                    "name": "Rottleberode, unter der Graseburg, Thyra, Kreis Mansfeld-Südharz",
-                    "region": "Sachsen-Anhalt",
-                    "latitude": "51 30 59.50",
-                    "longitude": "10 56 7.81",
-                    "raw_source": "Myotis alcathoe Sachsen-Anhalt (Ohlendorf & Funkel 2008).pdf"
-                },
-                {
-                    "name": "Wettelrode, Kunstteich, Einlauf Bach, Kreis Mansfeld-Südharz",
-                    "region": "Sachsen-Anhalt",
-                    "latitude": "51 31 19.29",
-                    "longitude": "11 15 41.53",
-                    "raw_source": "Myotis alcathoe Sachsen-Anhalt (Ohlendorf & Funkel 2008).pdf"
-                },
-                {
-                    "name": "Pölsfeld, Eselgrund, Kreis Mansfeld-Südharz",
-                    "region": "Sachsen-Anhalt",
-                    "latitude": "51 31 34.07",
-                    "longitude": "11 21 58.50",
-                    "raw_source": "Myotis alcathoe Sachsen-Anhalt (Ohlendorf & Funkel 2008).pdf"
-                },
-                {
-                    "name": "Uftrungen, Haseltal, Harzkante, Kreis Mansfeld-Südharz",
-                    "region": "Sachsen-Anhalt",
-                    "latitude": "51 31 2.73",
-                    "longitude": "10 59 31.15",
-                    "raw_source": "Myotis alcathoe Sachsen-Anhalt (Ohlendorf & Funkel 2008).pdf"
-                },
-                {
-                    "name": "Blankenburg/Harz, Birkental, Tümpel, Harzkreis",
-                    "region": "Sachsen-Anhalt",
-                    "latitude": "51 48 49.78",
-                    "longitude": "10 56 1.86",
-                    "raw_source": "Myotis alcathoe Sachsen-Anhalt (Ohlendorf & Funkel 2008).pdf"
-                },
-                {
-                    "name": "Rottleberode, Entensumpf, Kreis Mansfeld-Südharz",
-                    "region": "Sachsen-Anhalt",
-                    "latitude": "51 30 1.67",
-                    "longitude": "10 56 59.28",
-                    "raw_source": "Myotis alcathoe Sachsen-Anhalt (Ohlendorf & Funkel 2008).pdf"
-                },
-                {
-                    "name": "Koßweda, Zeitzer Forst, Rauschbachtal, oberhalb Teich, Burgenlandkreis",
-                    "region": "Sachsen-Anhalt",
-                    "latitude": "50 59 30.76",
-                    "longitude": "12 1 31.11",
-                    "raw_source": "Myotis alcathoe Sachsen-Anhalt (Ohlendorf & Funkel 2008).pdf"
-                },
-                {
-                    "name": "Herzog-Alexis-Erbstollen",
-                    "region": "Sachsen-Anhalt",
-                    "latitude": "51 39 54.08",
-                    "longitude": "11 9 30.20",
-                    "raw_source": "Myotis alcathoe Sachsen-Anhalt Harz-winter activity.pdf"
-                },
-                {
-                    "name": "Braupfanne, Zeitzer Forst",
-                    "latitude": "50.963934",
-                    "longitude": "12.034721",
-                    "region": "Thüringen",
-                    "comment": "Estimate; source is not precise",
-                    "raw_source": "Myotis alcathoe E Thuringia.pdf"
-                },
-                {
-                    "name": "Colditzer Forst",
-                    "latitude": "51 7 9.09",
-                    "longitude": "12 46 16.17",
-                    "region": "Sachsen",
-                    "raw_source": "Myotis alcathoe Sachsen.pdf"
-                },
-                {
-                    "name": "Chemnitz",
-                    "latitude": "50 49 55.29",
-                    "longitude": "12 55 13.19",
-                    "region": "Sachsen",
-                    "raw_source": "Myotis alcathoe Sachsen.pdf"
-                },
-                {
-                    "name": "Stöckigt-Wald",
-                    "latitude": "51 33 46.37",
-                    "longitude": "12 33 0.56",
-                    "region": "Sachsen",
-                    "raw_source": "Myotis alcathoe Sachsen.pdf"
-                }
-            ]
-        },
-        {
-            "group_name": "Germany (subfossil)",
-            "style": "cross",
-            "color": "orange",
-            "localities": [
-                {
-                    "name": "Ziegentempel bei Brilon-Rösenbeck, Hochsauerlandkreis",
-                    "region": "Nordrhein-Westfalen",
-                    "raw_source": "Myotis alcathoe NRW Sauerland Holocene.pdf",
-                    "latitude": "51.4088203",
-                    "longitude": "8.6779652"
-                }
-            ]
-        },
-        {
-            "group_name": "Austria (subfossil)",
-            "color": "orange",
-            "style": "cross",
-            "localities": [
-                {
-                    "name": "Ritzlkesselhöhle, Dürrenstein",
-                    "region": "Niederösterreich",
-                    "comment": "Coordinates from Google Maps",
-                    "raw_source": "Myotis alcathoe Austria Ritzlkesselhoehle Holocene.pdf",
-                    "latitude": "47.7833468",
-                    "longitude": "15.0149811"
-                }
-            ]
-        },
-        {
-            "group_name": "Russian Caucasus (M. alcathoe circassicus)",
-            "color": "skyblue",
-            "localities": [
-                {
-                    "name": "Bol’šaâ Fanagorijskaâ Cave, Fanagorijskoe",
-                    "latitude": "44 28 09",
-                    "longitude": "38 58 40",
-                    "raw_source": "Myotis mystacinus group Caucasus.pdf",
-                    "region": "Krasnodar Krai",
-                    "comment": "Type locality of _M. alcathoe circassicus_."
-                },
-                {
-                    "name": "Psekabs River, Thamaha",
-                    "latitude": "44 39",
-                    "longitude": "38 54",
-                    "raw_source": "Myotis mystacinus group Caucasus.pdf",
-                    "region": "Krasnodar Krai"
-                },
-                {
-                    "name": "Gebeus Mt., Gešebs",
-                    "latitude": "44 23",
-                    "longitude": "38 36",
-                    "raw_source": "Myotis mystacinus group Caucasus.pdf",
-                    "region": "Krasnodar Krai"
-                },
-                {
-                    "name": "Aše",
-                    "latitude": "43 58",
-                    "longitude": "39 16",
-                    "raw_source": "Myotis mystacinus group Caucasus.pdf",
-                    "region": "Krasnodar Krai"
-                },
-                {
-                    "name": "Tahira Cave, Kalež",
-                    "latitude": "44 01",
-                    "longitude": "39 21",
-                    "raw_source": "Myotis mystacinus group Caucasus.pdf",
-                    "region": "Krasnodar Krai"
-                },
-                {
-                    "name": "Utriš Peninsula",
-                    "latitude": "44 47",
-                    "longitude": "37 24",
-                    "raw_source": "Myotis mystacinus group Caucasus.pdf",
-                    "region": "Krasnodar Krai"
-                },
-                {
-                    "name": "Tyapsinskiy 1",
-                    "latitude": "44.38",
-                    "longitude": "38.63",
-                    "raw_source": "Myotis cf. alcathoe Caucasus.pdf",
-                    "region": "Krasnodar Krai"
-                },
-                {
-                    "name": "Novorossiysk",
-                    "latitude": "44.73",
-                    "longitude": "37.49",
-                    "raw_source": "Myotis cf. alcathoe Caucasus.pdf",
-                    "region": "Krasnodar Krai"
-                },
-                {
-                    "name": "Sochi 1",
-                    "latitude": "44.02",
-                    "longitude": "39.38",
-                    "raw_source": "Myotis cf. alcathoe Caucasus.pdf",
-                    "region": "Krasnodar Krai"
-                },
-                {
-                    "name": "Sochi 2",
-                    "latitude": "44.02",
-                    "longitude": "39.35",
-                    "raw_source": "Myotis cf. alcathoe Caucasus.pdf",
-                    "region": "Krasnodar Krai"
-                },
-                {
-                    "name": "Ceverskiy",
-                    "latitude": "44.69",
-                    "longitude": "38.86",
-                    "raw_source": "Myotis cf. alcathoe Caucasus.pdf",
-                    "region": "Krasnodar Krai"
-                },
-                {
-                    "name": "Goryachiy Klyuch",
-                    "latitude": "44.47",
-                    "longitude": "38.98",
-                    "raw_source": "Myotis cf. alcathoe Caucasus.pdf",
-                    "region": "Krasnodar Krai"
-                },
-                {
-                    "name": "Sochi 3",
-                    "latitude": "43.53",
-                    "longitude": "40.01",
-                    "raw_source": "Myotis cf. alcathoe Caucasus.pdf",
-                    "region": "Krasnodar Krai"
-                },
-                {
-                    "name": "Abinskiy",
-                    "latitude": "44.59",
-                    "longitude": "38.39",
-                    "raw_source": "Myotis cf. alcathoe Caucasus.pdf",
-                    "region": "Krasnodar Krai"
-                },
-                {
-                    "name": "Tyapsinskiy 2",
-                    "latitude": "44.30",
-                    "longitude": "38.97",
-                    "raw_source": "Myotis cf. alcathoe Caucasus.pdf",
-                    "region": "Krasnodar Krai"
-                }
-            ]
-        },
-        {
-            "group_name": "Slovenia",
-            "color": "orange",
-            "localities": [
-                {
-                    "name": "Rdeči kamen",
-                    "latitude": "45.7425141",
-                    "longitude": "14.9601341",
-                    "comment": "Coordinates from Google Maps",
-                    "raw_source": "Myotis alcathoe Slovenia (Presetnik 2012).pdf"
-                }
-            ]
-        },
-        {
-            "group_name": "Croatia",
-            "color": "orange",
-            "localities": [
-                {
-                    "name": "Kuselj",
-                    "latitude": "44 56 52",
-                    "longitude": "15 32 03",
-                    "raw_source": "Myotis alcathoe Croatia.pdf"
-                },
-                {
-                    "name": "Plješivica mountains",
-                    "latitude": "44 43 29",
-                    "longitude": "15 48 24",
-                    "raw_source": "Myotis alcathoe Croatia.pdf"
-                }
-            ]
-        },
-        {
-            "group_name": "Montenegro",
-            "color": "orange",
-            "localities": [
-                {
-                    "name": "Vrbnica river, 3 km SE of Stabna (5 km W of Plužine)",
-                    "latitude": "43.1620",
-                    "longitude": "18.7795",
-                    "raw_source": "Chiroptera Montenegro.pdf"
-                }
-            ]
-        },
-        {
-            "group_name": "Belgium",
-            "color": "orange",
-            "localities": [
-                {
-                    "name": "Bois de Saint-Rémy",
-                    "latitude": "50.2047436",
-                    "longitude": "5.1872209",
-                    "comment": "Coordinates from Google Maps",
-                    "raw_source": "Myotis alcathoe Belgium.pdf"
-                },
-                {
-                    "name": "Grotte touristique de Rochefort",
-                    "latitude": "50.1552839",
-                    "longitude": "5.2260531",
-                    "comment": "Google Maps coordinates for Grotte de Lorette-Rochefort",
-                    "raw_source": "Myotis alcathoe Belgium.pdf"
-                },
-                {
-                    "name": "Etang des Prés de Virelles",
-                    "latitude": "50.0655919",
-                    "longitude": "4.33261",
-                    "comment": "Google Maps coordinates for Virelles",
-                    "raw_source": "Myotis alcathoe Belgium.pdf"
-                }
-            ]
-        },
-        {
-            "group_name": "Portugal",
-            "color": "orange",
-            "localities": [
-                {
-                    "name": "Peneda Gerês National Park",
-                    "raw_source": "Chiroptera Portugal-DNA barcoding.pdf",
-                    "latitude": "41.8386601",
-                    "longitude": "-8.2437795",
-                    "comment": "Coordinates from Google Maps"
-                }
-            ]
-        },
-        {
-            "group_name": "Luxembourg",
-            "color": "orange",
-            "localities": [
-                {
-                    "name": "Langengrund bei der Ortschaft Rumelange (Gemeinde Kayl) auf ca. 330 m Höhe ü. NN. (UTM: 32U 283390 5483730)",
-                    "latitude": "49.467547",
-                    "longitude": "6.010229",
-                    "raw_source": "Myotis alcathoe, dasycneme Luxembourg.pdf"
-                }
-            ]
-        },
-        {
-            "group_name": "Bosnia and Herzegovina",
-            "color": "orange",
-            "localities": [
-                {
-                    "name": "Kozija ćuprija",
-                    "latitude": "43.85314",
-                    "longitude": "18.45790",
-                    "raw_source": "Myotis alcathoe Bosnia.pdf"
-                }
-            ]
+          "name": "Sussex",
+          "latitude": "51.05840",
+          "longitude": "-0.69006",
+          "comment": "Wikipedia coordinates for West Sussex",
+          "raw_source": "Myotis alcathoe England.pdf"
         }
-    ]
+      ]
+    },
+    {
+      "group_name": "Sweden",
+      "color": "orange",
+      "style": "open",
+      "localities": [
+        {
+          "name": "Allarps bjär 1",
+          "latitude": "55.9942",
+          "longitude": "13.4251",
+          "comment": "Table on p. 15",
+          "raw_source": "Myotis alcathoe Sweden.pdf",
+          "region": "Skåne"
+        },
+        {
+          "name": "Allarps bjär 2",
+          "latitude": "55.9943",
+          "longitude": "13.4246",
+          "comment": "Table on p. 15",
+          "raw_source": "Myotis alcathoe Sweden.pdf",
+          "region": "Skåne"
+        },
+        {
+          "name": "Kungapasset, Fyledalen",
+          "latitude": "55.5943",
+          "longitude": "13.7679",
+          "comment": "Table on p. 15",
+          "raw_source": "Myotis alcathoe Sweden.pdf",
+          "region": "Skåne"
+        },
+        {
+          "name": "Liljetorpet, Eriksberg",
+          "latitude": "56.1593",
+          "longitude": "15.0129",
+          "comment": "Table on p. 15",
+          "raw_source": "Myotis alcathoe Sweden.pdf",
+          "region": "Blekinge"
+        },
+        {
+          "name": "Kakmohejan, Eriksberg",
+          "latitude": "56.1801",
+          "longitude": "14.9836",
+          "comment": "Table on p. 15",
+          "raw_source": "Myotis alcathoe Sweden.pdf",
+          "region": "Blekinge"
+        }
+      ]
+    },
+    {
+      "group_name": "Albania",
+      "color": "orange",
+      "localities": [
+        {
+          "name": "Tepelene",
+          "latitude": "40.17",
+          "longitude": "20.01",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        }
+      ]
+    },
+    {
+      "group_name": "Bulgaria",
+      "color": "orange",
+      "localities": [
+        {
+          "name": "Stara planina Mt., Vodnite Dupki, Severen Dzhendem Reserve, Distr. Lovech",
+          "latitude": "42.73",
+          "longitude": "24.09",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Kresna gorge, Distr. Blagoevgrad, near rw. station Peyo Yavorov",
+          "latitude": "41.76",
+          "longitude": "23.15",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Primorsko, Ropotamo Reserve, Distr. Burgas",
+          "latitude": "42.30",
+          "longitude": "27.07",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Western Stara planina Mt., Bov, Distr. Svoge, Izdremets mine gallery",
+          "latitude": "43.01",
+          "longitude": "23.44",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Vrachanska Stara planina Mt., Lyutadjik, Distr. Varshets, Sokolskata peshtera cave",
+          "latitude": "43.16",
+          "longitude": "23.44",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Strandja Mt., Brashlyan, Distr. Malko Tarnovo, Bratanovata peshtera cave",
+          "latitude": "42.01",
+          "longitude": "27.42",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Gorna Breznica, Blagoevgrad Prov.",
+          "latitude": "41 45",
+          "longitude": "23 07",
+          "raw_source": "Myotis mystacinus group Caucasus.pdf"
+        },
+        {
+          "name": "Malko Târnovo, Burgas Prov.",
+          "latitude": "42 00",
+          "longitude": "27 31",
+          "raw_source": "Myotis mystacinus group Caucasus.pdf"
+        },
+        {
+          "name": "Kaleto Cave, Mladežko, Burgas Prov.",
+          "latitude": "42 09",
+          "longitude": "27 21",
+          "raw_source": "Myotis mystacinus group Caucasus.pdf"
+        }
+      ]
+    },
+    {
+      "group_name": "Greece",
+      "color": "orange",
+      "localities": [
+        {
+          "name": "Kleistos",
+          "latitude": "39.05",
+          "longitude": "21.49",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Nestos, Sideroneron",
+          "latitude": "41.21",
+          "longitude": "24.13",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Loutropigi",
+          "latitude": "39.07",
+          "longitude": "22.01",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Arkoudorrema, Dipotama",
+          "latitude": "41.21",
+          "longitude": "24.35",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Loutra Thermia",
+          "latitude": "41.24",
+          "longitude": "24.28",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Tauropos, Karpenision",
+          "latitude": "38.55",
+          "longitude": "21.41",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Trikeriotis",
+          "latitude": "38.48",
+          "longitude": "21.53",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Between Medousa and and Kottani, NE of Echinos",
+          "latitude": "41.19",
+          "longitude": "25.05",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Melivoia",
+          "latitude": "41.20",
+          "longitude": "24.53",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Chaliki, Aspropotamos",
+          "latitude": "39.39",
+          "longitude": "21.13",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Pentalofos",
+          "latitude": "40.11",
+          "longitude": "21.11",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Pindos, Portaikos river",
+          "latitude": "39.26",
+          "longitude": "21.32",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        }
+      ]
+    },
+    {
+      "group_name": "Hungary",
+      "color": "orange",
+      "localities": [
+        {
+          "name": "Bükk Mts., Attila-kúti Lake",
+          "latitude": "47.47",
+          "longitude": "20.27",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Bükk Mts., Napsugár-pihenö",
+          "latitude": "48.00",
+          "longitude": "20.25",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Bükk Mts., Peskö Valley",
+          "latitude": "48.02",
+          "longitude": "20.25",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Bükk Mts., Kacs",
+          "latitude": "47.95",
+          "longitude": "20.62",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Matra Mts., Parád",
+          "latitude": "47.91",
+          "longitude": "20.03",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Zemplén Mts., István Spring",
+          "latitude": "48.24",
+          "longitude": "21.24",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Bükk Mts., Mellér Valley",
+          "latitude": "48.00",
+          "longitude": "20.25",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Bükk Mts., Napsugár-pihenö",
+          "latitude": "48.00",
+          "longitude": "20.25",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Bükk Mts., Felsötárkányi Lake",
+          "latitude": "47.58",
+          "longitude": "20.26",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Bükk Mts., Répás Valley",
+          "latitude": "47.58",
+          "longitude": "20.27",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Medves Mts., Zagyva Spring",
+          "latitude": "48.08",
+          "longitude": "19.52",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Bükk Mts., Lök-völgyi Cave",
+          "latitude": "48.01",
+          "longitude": "20.28",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Bükk Mts., Fekete Cave",
+          "latitude": "48.06",
+          "longitude": "20.33",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Bükk Mts., Jáspis Cave",
+          "latitude": "48.06",
+          "longitude": "20.34",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Attila-kúti Lake (2)",
+          "latitude": "47.95",
+          "longitude": "20.46",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Noszvaj",
+          "region": "Heves",
+          "raw_source": "Chiroptera Europe-bat flies.pdf",
+          "comment": "Coordinates from Google Maps",
+          "latitude": "47.936226",
+          "longitude": "20.4608945"
+        },
+        {
+          "name": "Felsőtárkány",
+          "region": "Heves",
+          "raw_source": "Chiroptera Europe-bat flies.pdf",
+          "comment": "Coordinates from Google Maps",
+          "latitude": "47.9984911",
+          "longitude": "20.3997898"
+        },
+        {
+          "name": "Egerbakta",
+          "region": "Heves",
+          "raw_source": "Chiroptera Europe-bat flies.pdf",
+          "comment": "Coordinates from Google Maps",
+          "latitude": "47.936481",
+          "longitude": "20.270905"
+        },
+        {
+          "name": "Egerbocs",
+          "region": "Heves",
+          "raw_source": "Chiroptera Europe-bat flies.pdf",
+          "comment": "Coordinates from Google Maps",
+          "latitude": "48.0139506",
+          "longitude": "20.2298699"
+        },
+        {
+          "name": "Miskolc",
+          "region": "Borsod-Abaúj-Zemplén",
+          "raw_source": "Chiroptera Europe-bat flies.pdf",
+          "comment": "Coordinates from Google Maps",
+          "latitude": "48.0892992",
+          "longitude": "20.5356699"
+        }
+      ]
+    },
+    {
+      "group_name": "Poland",
+      "color": "orange",
+      "localities": [
+        {
+          "name": "Kornuty Reserve, Mroczna Cave in Kornuty",
+          "latitude": "49.58",
+          "longitude": "21.32",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Beskid S1decki Mountain Range, Wierch above Kamień, Niedżwiedzia Cave",
+          "latitude": "49.48",
+          "longitude": "20.78",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Beskid Wyspowy Mountain, Range, Mt. Łopieñ, Zbójecka in Łopień Cave",
+          "latitude": "49.70",
+          "longitude": "20.28",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Tatra Mts, Organy Massif, Kościeliska Valley, Czarna Cave",
+          "latitude": "49.23",
+          "longitude": "19.87",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Lężczok 1",
+          "latitude": "50 07 36",
+          "longitude": "18 15 53",
+          "raw_source": "Myotis alcathoe Poland, Ukraine.pdf"
+        },
+        {
+          "name": "Lężczok 2",
+          "latitude": "50 08 14",
+          "longitude": "18 16 19",
+          "raw_source": "Myotis alcathoe Poland, Ukraine.pdf"
+        },
+        {
+          "name": "Górki Male, Bucze Mountain 1",
+          "latitude": "49 46 57",
+          "longitude": "18 50 55",
+          "raw_source": "Myotis alcathoe Poland, Ukraine.pdf"
+        },
+        {
+          "name": "Górki Male, Bucze Mountain 2",
+          "latitude": "49 46 40",
+          "longitude": "18 49 53",
+          "raw_source": "Myotis alcathoe Poland, Ukraine.pdf"
+        },
+        {
+          "name": "Nasiczne Cave",
+          "latitude": "49 10 45",
+          "longitude": "22 36 50",
+          "comment": "See also {Chiroptera Poland Bieszczady.pdf}",
+          "raw_source": "Myotis alcathoe Poland, Ukraine.pdf"
+        },
+        {
+          "name": "Hylaty stream",
+          "latitude": "49 11 07",
+          "longitude": "22 33 02",
+          "raw_source": "Myotis alcathoe Poland, Ukraine.pdf"
+        },
+        {
+          "name": "Roztocze Upland 1",
+          "latitude": "50 34 12",
+          "longitude": "23 02 58",
+          "raw_source": "Myotis alcathoe Poland, Ukraine.pdf"
+        },
+        {
+          "name": "Roztocze Upland 2",
+          "latitude": "50 34 30",
+          "longitude": "23 01 26",
+          "raw_source": "Myotis alcathoe Poland, Ukraine.pdf"
+        },
+        {
+          "name": "Dalkowskie Jary",
+          "latitude": "51 39 02.4",
+          "longitude": "15 52 34.6",
+          "raw_source": "Myotis alcathoe Poland (Kmiecik et al. 2020).pdf"
+        },
+        {
+          "name": "Łęgi Źródliskowe koło Przemkowa",
+          "latitude": "51 32 10.59",
+          "longitude": "15 45 4.28",
+          "raw_source": "Myotis alcathoe Poland (Kmiecik et al. 2020).pdf"
+        },
+        {
+          "name": "Chodlewo near Żmigród",
+          "latitude": "51 30 59.06",
+          "longitude": "16 50 21.61",
+          "raw_source": "Myotis alcathoe Poland (Kmiecik et al. 2020).pdf"
+        },
+        {
+          "name": "Głębowice near Wołów",
+          "latitude": "51 27 3.86",
+          "longitude": "16 44 28.56",
+          "raw_source": "Myotis alcathoe Poland (Kmiecik et al. 2020).pdf"
+        },
+        {
+          "name": "Złotopieńska Dziura",
+          "latitude": "20 16 01",
+          "longitude": "49 42 11",
+          "raw_source": "Myotis alcathoe Poland (Sachanowicz et al. 2012).pdf"
+        },
+        {
+          "name": "Dolna w Nasicznem",
+          "latitude": "22 36 51",
+          "longitude": "49 10 46",
+          "raw_source": "Myotis alcathoe Poland (Sachanowicz et al. 2012).pdf"
+        },
+        {
+          "name": "abandoned sandstone adits in Senderki",
+          "latitude": "23 03 04",
+          "longitude": "50 32 24",
+          "raw_source": "Myotis alcathoe Poland (Sachanowicz et al. 2012).pdf"
+        },
+        {
+          "name": "abandoned mining adit 'nad PKP II', Szklarska Poręba Dolna, the Western Sudety Mts",
+          "latitude": "15 33 21",
+          "longitude": "50 50 59",
+          "raw_source": "Myotis alcathoe Poland (Sachanowicz et al. 2012).pdf"
+        },
+        {
+          "name": "mouth of the Wielka Sucha Valley, the right side valley of the Chochołowska Valley",
+          "latitude": "49.2666798",
+          "longitude": "19.8245786",
+          "comment": "Coordinates from Google Maps",
+          "raw_source": "Rhinolophus, Myotis Poland Tatra.pdf"
+        }
+      ]
+    },
+    {
+      "group_name": "Ukraine",
+      "color": "orange",
+      "localities": [
+        {
+          "name": "Transcarpathian lowland, vicinity of Beregove town, Chizay",
+          "latitude": "48 13 51",
+          "longitude": "22 37 01",
+          "raw_source": "Myotis alcathoe Poland, Ukraine.pdf"
+        },
+        {
+          "name": "Kremenets'",
+          "latitude": "50.1049466",
+          "longitude": "25.7054634",
+          "raw_source": "Chiroptera Ukraine Kremenetski Hory.pdf",
+          "comment": "Coordinates from Google Maps"
+        },
+        {
+          "name": "Medova Cave",
+          "latitude": "49 49 16.3",
+          "longitude": "24 05 23",
+          "raw_source": "Myotis alcathoe Ukraine Lviv.pdf",
+          "region": "Lviv"
+        },
+        {
+          "name": "Pivnichne Podillya",
+          "latitude": "49.9381333",
+          "longitude": "24.9884661",
+          "raw_source": "Chiroptera Ukraine Pivnicne Podillia.pdf",
+          "region": "Lviv"
+        }
+      ]
+    },
+    {
+      "group_name": "Slovakia",
+      "color": "orange",
+      "localities": [
+        {
+          "name": "Pohansk hrad, Stépová jaskyna cave",
+          "latitude": "48 12 23",
+          "longitude": "19 54 37",
+          "raw_source": "Myotis alcathoe Slovakia.pdf"
+        },
+        {
+          "name": "Rákoš, Standorina",
+          "latitude": "48 38 45.3",
+          "longitude": "21 26 49.7",
+          "raw_source": "Myotis alcathoe Slovakia (Danko et al. 2010).pdf"
+        },
+        {
+          "name": "Slanská Huta",
+          "latitude": "48 34 59.5",
+          "longitude": "21 29 07.7",
+          "raw_source": "Myotis alcathoe Slovakia (Danko et al. 2010).pdf"
+        },
+        {
+          "name": "Jovsa",
+          "latitude": "48 50 07.7",
+          "longitude": "22 04 55.5",
+          "raw_source": "Myotis alcathoe Slovakia (Danko et al. 2010).pdf"
+        },
+        {
+          "name": "Priekopa",
+          "latitude": "48 45 22.9",
+          "longitude": "22 16 59.7",
+          "raw_source": "Myotis alcathoe Slovakia (Danko et al. 2010).pdf"
+        },
+        {
+          "name": "Čaklov-Hámre",
+          "latitude": "48 53 26.4",
+          "longitude": "21 35 36.4",
+          "raw_source": "Myotis alcathoe Slovakia (Danko et al. 2010).pdf"
+        },
+        {
+          "name": "Ladmovce",
+          "latitude": "48 25 53.5",
+          "longitude": "21 46 41.3",
+          "raw_source": "Myotis alcathoe Slovakia (Danko et al. 2010).pdf"
+        },
+        {
+          "name": "Dargov-Holá hora",
+          "latitude": "48 45 14.4",
+          "longitude": "21 33 24.1",
+          "raw_source": "Myotis alcathoe Slovakia (Danko et al. 2010).pdf"
+        },
+        {
+          "name": "Byšta",
+          "latitude": "48 31 48.7",
+          "longitude": "21 31 34.1",
+          "raw_source": "Myotis alcathoe Slovakia (Danko et al. 2010).pdf"
+        },
+        {
+          "name": "Ďurkov",
+          "latitude": "48 41 44.5",
+          "longitude": "21 29 11.7",
+          "raw_source": "Myotis alcathoe Slovakia (Danko et al. 2010).pdf"
+        },
+        {
+          "name": "Boťany",
+          "latitude": "48 28 02.0",
+          "longitude": "22 06 22.7",
+          "raw_source": "Myotis alcathoe Slovakia (Danko et al. 2010).pdf"
+        },
+        {
+          "name": "Strážske",
+          "latitude": "48 52 03.1",
+          "longitude": "21 47 51.8",
+          "raw_source": "Myotis alcathoe Slovakia (Danko et al. 2010).pdf"
+        },
+        {
+          "name": "Brestov",
+          "latitude": "48 59 02.6",
+          "longitude": "21 53 28.3",
+          "raw_source": "Myotis alcathoe Slovakia (Danko et al. 2010).pdf"
+        },
+        {
+          "name": "Juskova Voľa 1",
+          "latitude": "48 52 02.7",
+          "longitude": "21 33 14.3",
+          "raw_source": "Myotis alcathoe Slovakia (Danko et al. 2010).pdf"
+        },
+        {
+          "name": "Juskova Voľa 2",
+          "latitude": "48 52 29.5",
+          "longitude": "21 35 42.4",
+          "raw_source": "Myotis alcathoe Slovakia (Danko et al. 2010).pdf"
+        },
+        {
+          "name": "Koňuš",
+          "latitude": "48 46 26.1",
+          "longitude": "22 16 56.1",
+          "raw_source": "Myotis alcathoe Slovakia (Danko et al. 2010).pdf"
+        },
+        {
+          "name": "Brezina-Torkoš",
+          "latitude": "48 34 23.0",
+          "longitude": "21 30 36.0",
+          "raw_source": "Myotis alcathoe Slovakia (Danko et al. 2010).pdf"
+        },
+        {
+          "name": "Oreské",
+          "latitude": "48 51 47.7",
+          "longitude": "21 55 46.0",
+          "raw_source": "Myotis alcathoe Slovakia (Danko et al. 2010).pdf"
+        },
+        {
+          "name": "Remetské Hámre",
+          "latitude": "48 51 18.8",
+          "longitude": "22 11 19.7",
+          "raw_source": "Myotis alcathoe Slovakia (Danko et al. 2010).pdf"
+        },
+        {
+          "name": "Pozdišovce",
+          "latitude": "48 44 44.7",
+          "longitude": "21 50 14.7",
+          "raw_source": "Myotis alcathoe Slovakia (Danko et al. 2010).pdf"
+        },
+        {
+          "name": "Kalša, water reservoir",
+          "latitude": "48 36 14.6",
+          "longitude": "21 31 14.2",
+          "raw_source": "Myotis alcathoe Slovakia (Danko et al. 2010).pdf"
+        },
+        {
+          "name": "Priekopa, garden",
+          "latitude": "48 45 06.4",
+          "longitude": "22 16 43.1",
+          "raw_source": "Myotis alcathoe Slovakia (Danko et al. 2010).pdf"
+        },
+        {
+          "name": "Baštův Mill, Havraníky, Znojmo Dist.",
+          "latitude": "48 49",
+          "longitude": "15 59",
+          "raw_source": "Myotis mystacinus group Caucasus.pdf"
+        },
+        {
+          "name": "Jasov, Jasovská jaskyňa cave",
+          "latitude": "48 41",
+          "longitude": "20 59",
+          "raw_source": "Chiroptera Slovakia-ectoparasites.pdf"
+        }
+      ]
+    },
+    {
+      "group_name": "Switzerland",
+      "color": "orange",
+      "localities": [
+        {
+          "name": "Col du Marchairuz",
+          "latitude": "46 33 9.57",
+          "longitude": "6 15 1.6",
+          "raw_source": "Myotis Africa-cyt b phylogeny.pdf",
+          "comment": "Coordinates from Wikipedia. The cited source only says 'Vaud, Switzerland'. For Col du Marchairuz specifically, I cited an article I no longer have access to: Helversen, O. von. 2004. Myotis alcathoe v. Helversen und Heller, 2001 – Nymphenfledermaus. Pp. 1159–1167 in Niethammer, J. and Krapp, F. (eds.). Handbuch der Säugetiere Europas, Volume 4: Fledertiere, Part II: Chiroptera II (Vespertilionidae 2, Molossidae, Nycteridae). Wiebelsheim, Germany: Aula-Verlag, pp. x + 605–1186 (in German). ISBN 3-89104-639-1"
+        },
+        {
+          "name": "Jura mountains",
+          "latitude": "46 32 12.62",
+          "longitude": "06 10 32.84",
+          "raw_source": "Chiroptera, Spinturnicidae Europe-cophylogeny.pdf"
+        }
+      ]
+    },
+    {
+      "group_name": "Turkey",
+      "color": "orange",
+      "localities": [
+        {
+          "name": "Ferko’s Garden, Biçki Stream, Demirköy/Kirklareli",
+          "latitude": "41.79",
+          "longitude": "27.80",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Dunisa Cave, Sarpdere village, Demirköy/Kirklareli",
+          "latitude": "41.84",
+          "longitude": "27.56",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Bursa",
+          "comment": "Source only says 'a forested area, Bursa Province'. Coordinates for Bursa city.",
+          "latitude": "40 11",
+          "longitude": "29 03",
+          "raw_source": "Myotis alcathoe, daubentonii Turkey-helminths.pdf"
+        }
+      ]
+    },
+    {
+      "group_name": "France",
+      "color": "orange",
+      "localities": [
+        {
+          "name": "Haguenau",
+          "latitude": "48.42",
+          "longitude": "7.79",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Auriac",
+          "latitude": "43.45",
+          "longitude": "-0.31",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Auvergne 1",
+          "latitude": "46.41",
+          "longitude": "3.05",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Auvergne 2",
+          "latitude": "45.11",
+          "longitude": "2.87",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Auvergne 3",
+          "latitude": "45.14",
+          "longitude": "3.81",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Auvergne 4",
+          "latitude": "45.78",
+          "longitude": "3.08",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Ouilly-du-Houley",
+          "latitude": "49.17",
+          "longitude": "0.33",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Tordouet",
+          "latitude": "49.05",
+          "longitude": "0.33",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Champ-du-Boult",
+          "latitude": "48.79",
+          "longitude": "-1.01",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Fumichoun",
+          "latitude": "49.17",
+          "longitude": "0.37",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Saint-Julien-de-Mailloc",
+          "latitude": "49.08",
+          "longitude": "0.33",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Pretreville",
+          "latitude": "49.07",
+          "longitude": "0.25",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Cordebugle",
+          "latitude": "49.11",
+          "longitude": "0.38",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Montviette",
+          "latitude": "49",
+          "longitude": "0.1",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Ducey",
+          "latitude": "48.62",
+          "longitude": "-1.29",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Lingeard",
+          "latitude": "48.56",
+          "longitude": "-1.02",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Feings",
+          "latitude": "48.55",
+          "longitude": "0.63",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Pontchardon",
+          "latitude": "48.93",
+          "longitude": "0.27",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "St-Evroult-Notre-Dame-des-Bois",
+          "latitude": "48.79",
+          "longitude": "0.47",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Montilly-sur-Noireau",
+          "latitude": "48.82",
+          "longitude": "-0.57",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Vaux-Saules",
+          "latitude": "47.47",
+          "longitude": "4.80",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Saint-Nicolas-les-Citeaux",
+          "latitude": "47.12",
+          "longitude": "5.05",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Bourgogne",
+          "latitude": "47.44",
+          "longitude": "4.79",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Saint-Nicolas-du-Pelem",
+          "latitude": "48.31",
+          "longitude": "-3.16",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Mezieres sur Couesnon",
+          "latitude": "48.30",
+          "longitude": "-1.43",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Antrain",
+          "latitude": "48.46",
+          "longitude": "-1.48",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Saint Brice en Cogles",
+          "latitude": "48.41",
+          "longitude": "-1.37",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Gahard",
+          "latitude": "48.30",
+          "longitude": "-1.52",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Champeaux",
+          "latitude": "48.15",
+          "longitude": "-1.31",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Saint Aubin du Cormier",
+          "latitude": "48.26",
+          "longitude": "-1.40",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Sainte-Marie de Redon",
+          "latitude": "47.69",
+          "longitude": "-2",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Loutehel",
+          "latitude": "47.94",
+          "longitude": "-2.08",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Saint-Ouen la Rouerie",
+          "latitude": "48.46",
+          "longitude": "-1.44",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Vieux Vysur Couesnon",
+          "latitude": "48.34",
+          "longitude": "-1.49",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Liffre",
+          "latitude": "48.21",
+          "longitude": "-1.51",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Fougeres",
+          "latitude": "48.35",
+          "longitude": "-1.20",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Severac",
+          "latitude": "47.55",
+          "longitude": "-2.08",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Sarzeau",
+          "latitude": "47.53",
+          "longitude": "-2.77",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Remungol",
+          "latitude": "47.93",
+          "longitude": "-2.90",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Berne",
+          "latitude": "47.99",
+          "longitude": "-3.39",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "La Gacilly",
+          "latitude": "47.77",
+          "longitude": "-2.13",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Cournon",
+          "latitude": "47.75",
+          "longitude": "-2.10",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Malansac",
+          "latitude": "47.68",
+          "longitude": "-2.30",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Priziac",
+          "latitude": "48.06",
+          "longitude": "-3.41",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Thehillac",
+          "latitude": "47.57",
+          "longitude": "-2.11",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "La Gacilly",
+          "latitude": "47.77",
+          "longitude": "-2.13",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Peillac",
+          "latitude": "47.71",
+          "longitude": "-2.22",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Niherne",
+          "latitude": "46.83",
+          "longitude": "-1.56",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Chemery-sur-Bar",
+          "latitude": "49.60",
+          "longitude": "4.87",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Chevillon",
+          "latitude": "48.53",
+          "longitude": "5.13",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Vienne le Chateau",
+          "latitude": "49.19",
+          "longitude": "4.89",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Belval en Argonne",
+          "latitude": "48.95",
+          "longitude": "5",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Flammerecourt",
+          "latitude": "48.36",
+          "longitude": "5.04",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "St. Ciergues",
+          "latitude": "47.88",
+          "longitude": "5.25",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Eclaron-Braucourt-Sainte-Liviere",
+          "latitude": "48.59",
+          "longitude": "4.86",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Trigny",
+          "latitude": "49.30",
+          "longitude": "3.90",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Glannes",
+          "latitude": "48.71",
+          "longitude": "4.54",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Chateauvillain",
+          "latitude": "48",
+          "longitude": "4.92",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Vertus",
+          "latitude": "48.91",
+          "longitude": "4.01",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Loges au chevres",
+          "latitude": "48.27",
+          "longitude": "4.41",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Bossancourt",
+          "latitude": "48.28",
+          "longitude": "4.6",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Boult aux Bois",
+          "latitude": "49.43",
+          "longitude": "4.84",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Rimogne",
+          "latitude": "49.84",
+          "longitude": "4.54",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Le Mont-Dieu",
+          "latitude": "49.55",
+          "longitude": "4.87",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Gennes",
+          "latitude": "47.25",
+          "longitude": "6.12",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Montfaucon",
+          "latitude": "47.24",
+          "longitude": "6.08",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Amange",
+          "latitude": "47.17",
+          "longitude": "5.56",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Moissey",
+          "latitude": "47.20",
+          "longitude": "5.52",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Calmoutier",
+          "latitude": "47.65",
+          "longitude": "6.28",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Beaumotte-les-Pin",
+          "latitude": "47.32",
+          "longitude": "5.83",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "St-Sylvestre-de-Cormeilles",
+          "latitude": "49.24",
+          "longitude": "0.4",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Bailleul-la-Vallee",
+          "latitude": "49.2",
+          "longitude": "0.43",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Harcourt",
+          "latitude": "49.17",
+          "longitude": "0.79",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Marais-Vernier",
+          "latitude": "49.42",
+          "longitude": "0.45",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "St-Aubin-de-Scellon",
+          "latitude": "49.17",
+          "longitude": "0.47",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Elbeuf-sur-Andelle",
+          "latitude": "49.47",
+          "longitude": "1.4",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Genainville",
+          "latitude": "49.12",
+          "longitude": "1.75",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Chaussy",
+          "latitude": "49.12",
+          "longitude": "1.69",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "St Pierre de Nogaret",
+          "latitude": "44.47",
+          "longitude": "3.14",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Montjezieux",
+          "latitude": "44.43",
+          "longitude": "3.20",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "St Germain du Teil",
+          "latitude": "44.48",
+          "longitude": "3.17",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Chirac",
+          "latitude": "44.52",
+          "longitude": "3.27",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Trelans",
+          "latitude": "44.50",
+          "longitude": "3.09",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Les Hermaux",
+          "latitude": "44.51",
+          "longitude": "3.13",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Limousin",
+          "latitude": "45.83",
+          "longitude": "1.26",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Brauviliers",
+          "latitude": "48.58",
+          "longitude": "5.15",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Nord-Pas de Calais",
+          "latitude": "50.51",
+          "longitude": "2.13",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Tournehem-sur-la-Hem",
+          "latitude": "50.81",
+          "longitude": "2.05",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Mauves-sur-Loire",
+          "latitude": "47.30",
+          "longitude": "-1.40",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Pays de la Loire 1",
+          "latitude": "48",
+          "longitude": "0.2",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Pays de la Loire 2",
+          "latitude": "46.67",
+          "longitude": "-1.43",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Broc",
+          "latitude": "47.58",
+          "longitude": "0.17",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Fontaine Guerin",
+          "latitude": "47.49",
+          "longitude": "-0.19",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Saint Georges du bois",
+          "latitude": "47.50",
+          "longitude": "-0.22",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Fontaine-Milon",
+          "latitude": "47.50",
+          "longitude": "-0.25",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Cuon",
+          "latitude": "47.48",
+          "longitude": "-0.1",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Le Guedeniau",
+          "latitude": "47.5",
+          "longitude": "-0.05",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Picardie",
+          "latitude": "49.38",
+          "longitude": "2.41",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Poitou-Charentes",
+          "latitude": "45.82",
+          "longitude": "-0.79",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "La Mothe Saint-Heray",
+          "latitude": "46.36",
+          "longitude": "-0.11",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Chize",
+          "latitude": "46.12",
+          "longitude": "-0.35",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Champdeniers",
+          "latitude": "46.49",
+          "longitude": "-0.41",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Vitre",
+          "latitude": "46.28",
+          "longitude": "-0.20",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Gap",
+          "latitude": "44.56",
+          "longitude": "6.08",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Bairols",
+          "latitude": "43.98",
+          "longitude": "7.13",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Ruoms",
+          "latitude": "44.45",
+          "longitude": "4.34",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Sainte Eulalie en Royans",
+          "latitude": "45.05",
+          "longitude": "5.34",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Lupe",
+          "latitude": "45.37",
+          "longitude": "4.7",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Lalacelle",
+          "region": "Orne",
+          "raw_source": "Myotis alcathoe, Nyctalus leisleri France Mayenne.pdf",
+          "latitude": "48.4693879",
+          "longitude": "-0.1423721"
+        },
+        {
+          "name": "Grotte du Mammouth, Louverné",
+          "region": "Mayenne",
+          "raw_source": "Myotis alcathoe, Nyctalus leisleri France Mayenne.pdf",
+          "latitude": "48.1256217",
+          "longitude": "-0.7836581"
+        },
+        {
+          "name": "Champfrémont",
+          "region": "Mayenne",
+          "raw_source": "Myotis alcathoe, Nyctalus leisleri France Mayenne.pdf",
+          "latitude": "48.433022",
+          "longitude": "-0.1236928"
+        }
+      ]
+    },
+    {
+      "group_name": "Austria",
+      "color": "orange",
+      "localities": [
+        {
+          "name": "Deutsch Ehrensdorf",
+          "latitude": "47 06",
+          "longitude": "16 25",
+          "raw_source": "Myotis alcathoe Austria.pdf",
+          "comment": "p. 5",
+          "region": "Burgenland"
+        },
+        {
+          "name": "Punitz",
+          "latitude": "47 07",
+          "longitude": "16 21",
+          "raw_source": "Myotis alcathoe Austria.pdf",
+          "comment": "p. 6",
+          "region": "Burgenland"
+        },
+        {
+          "name": "Thayatal",
+          "region": "Niederösterreich",
+          "raw_source": "Chiroptera Lower Austria Thayatal.pdf",
+          "comment": "Coordinates from German Wikipedia",
+          "latitude": "48 51 0",
+          "longitude": "15 54 0"
+        }
+      ]
+    },
+    {
+      "group_name": "Czech Republic",
+      "color": "orange",
+      "localities": [
+        {
+          "name": "Havraníky – Devět mlýnů",
+          "latitude": "48 48.5",
+          "longitude": "15 59",
+          "raw_source": "Myotis alcathoe Czech Republic.pdf"
+        },
+        {
+          "name": "Klíčava Dam",
+          "latitude": "50 04",
+          "longitude": "13 54",
+          "raw_source": "Myotis alcathoe Czech Republic.pdf"
+        },
+        {
+          "name": "Bílavsko, Ochozy Forest",
+          "latitude": "49 23",
+          "longitude": "17 37",
+          "raw_source": "Myotis alcathoe Czech Republic.pdf"
+        },
+        {
+          "name": "Vůznice Natural Reserve",
+          "latitude": "50 1",
+          "longitude": "13 59",
+          "raw_source": "Myotis alcathoe Czech Republic.pdf"
+        },
+        {
+          "name": "Zbečno",
+          "latitude": "50 3",
+          "longitude": "13 55",
+          "raw_source": "Myotis alcathoe Czech Republic.pdf"
+        },
+        {
+          "name": "Tvořihráz, Purkrábka",
+          "latitude": "48 54",
+          "longitude": "16 7",
+          "raw_source": "Myotis alcathoe Czech Republic.pdf"
+        },
+        {
+          "name": "Čížov, Ledové sluje",
+          "latitude": "48 51",
+          "longitude": "15 52",
+          "raw_source": "Myotis alcathoe Czech Republic.pdf"
+        },
+        {
+          "name": "Líšná, Kostelecký Forest",
+          "latitude": "49 24",
+          "longitude": "17 32",
+          "raw_source": "Myotis alcathoe Czech Republic.pdf"
+        },
+        {
+          "name": "Šumná, Vlkov pond",
+          "latitude": "48 56",
+          "longitude": "16 54",
+          "raw_source": "Myotis alcathoe Czech Republic.pdf"
+        },
+        {
+          "name": "Pasohlávky",
+          "latitude": "48 54 5",
+          "longitude": "16 35 5",
+          "raw_source": "Myotis alcathoe Czech Republic S Moravia.pdf",
+          "region": "Břeclav"
+        },
+        {
+          "name": "Volenský fishpond at Šenov",
+          "latitude": "49 46 59",
+          "longitude": "18 22 6",
+          "raw_source": "Myotis alcathoe Czech Republic S Moravia.pdf",
+          "region": "Frýdek-Místek"
+        },
+        {
+          "name": "Hodoňovice in the Ostravice river valley",
+          "latitude": "49 37 49",
+          "longitude": "18 21 34",
+          "raw_source": "Myotis alcathoe Czech Republic S Moravia.pdf",
+          "region": "Frýdek-Místek"
+        },
+        {
+          "name": "Smrdutá Reserve, Chvalčov, Kroměříž Dist.",
+          "latitude": "49 22",
+          "longitude": "17 45",
+          "raw_source": "Myotis mystacinus group Caucasus.pdf"
+        },
+        {
+          "name": "Podyjí",
+          "raw_source": "Chiroptera Lower Austria Thayatal.pdf",
+          "comment": "Coordinates from German Wikipedia",
+          "latitude": "48 50 52",
+          "longitude": "15 53 50"
+        }
+      ]
+    },
+    {
+      "group_name": "Italy",
+      "color": "orange",
+      "localities": [
+        {
+          "name": "Majella National Park",
+          "latitude": "42 4 55",
+          "longitude": "14 3 36",
+          "comment": "Coordinates from Wikipedia",
+          "raw_source": "Myotis alcathoe Italy.pdf"
+        },
+        {
+          "name": "Marsico Nuovo, Appennino Lucano Val d’Agri Lagonegrese National Park",
+          "region": "Basilicata",
+          "latitude": "40.4229923",
+          "longitude": "15.7302518",
+          "comment": "Coordinates from Google Maps",
+          "raw_source": "Myotis alcathoe Italy Basilicata.pdf"
+        },
+        {
+          "name": "Calvello, Appennino Lucano Val d’Agri Lagonegrese National Park",
+          "region": "Basilicata",
+          "latitude": "40.4750569",
+          "longitude": "15.8341321",
+          "comment": "Coordinates from Google Maps",
+          "raw_source": "Myotis alcathoe Italy Basilicata.pdf"
+        },
+        {
+          "name": "Villavallelonga (AQ) MIB:ZPL:01230",
+          "raw_source": "Chiroptera Italy-IOTUs.pdf",
+          "comment": "See Table S5 for locations. Google Maps coordinates for Villavallelonga, L'Aquila",
+          "latitude": "41.8706692",
+          "longitude": "13.6020776"
+        },
+        {
+          "name": "Corleto Monforte (SA) MIB:ZPL:01281",
+          "raw_source": "Chiroptera Italy-IOTUs.pdf",
+          "comment": "See Table S5 for locations. Google Maps coordinates for Corleto Monforte, Salerno.",
+          "latitude": "40.4374765",
+          "longitude": "15.3777588"
+        },
+        {
+          "name": "Felitto (SA) MIB:ZPL:01287, 01289",
+          "raw_source": "Chiroptera Italy-IOTUs.pdf",
+          "comment": "See Table S5 for locations. Google Maps coordinates for Felitto, Salerno.",
+          "latitude": "40.37303",
+          "longitude": "15.2429693"
+        }
+      ]
+    },
+    {
+      "group_name": "Romania",
+      "color": "orange",
+      "localities": [
+        {
+          "name": "Vârghiș Gorge, Orbán Balázs Cave, Cheile Vârghișului Nature Reserve",
+          "latitude": "46.300394",
+          "longitude": "25.542297",
+          "comment": "Coordinates from Google Maps",
+          "raw_source": "Myotis alcathoe Romania.pdf"
+        },
+        {
+          "name": "Near village of Poiana",
+          "latitude": "46 22 9.08",
+          "longitude": "23 36 11.97",
+          "raw_source": "Myotis alcathoe Romania (Ohlendorf & Hoffmann 2009).pdf"
+        },
+        {
+          "name": "Muntele Puciosu",
+          "latitude": "45.0330",
+          "longitude": "25.4365",
+          "comment": "Coordinates in Table S1",
+          "raw_source": "Babesia vesperuginis (Corduneanu et al. 2017).pdf"
+        },
+        {
+          "name": "Cheresig, Inferior Meadow of the Crișul Repede River natural protected area",
+          "latitude": "47.033754",
+          "longitude": "21.6753708",
+          "raw_source": "Chiroptera Romania Crisul Repede.pdf",
+          "comment": "Coordinates from Google Maps"
+        },
+        {
+          "name": "Girișu de Criș, Inferior Meadow of the Crișul Repede River natural protected area",
+          "latitude": "47.0648134",
+          "longitude": "21.7328022",
+          "raw_source": "Chiroptera Romania Crisul Repede.pdf",
+          "comment": "Coordinates from Google Maps"
+        }
+      ]
+    },
+    {
+      "group_name": "Spain",
+      "color": "orange",
+      "localities": [
+        {
+          "name": "Valle del Eume",
+          "latitude": "43.4552084",
+          "longitude": "-7.721538",
+          "comment": "Coordinates from Google Maps. The river is quite long and the source is not precise.",
+          "raw_source": "Chiroptera Galicia.pdf",
+          "region": "Galicia"
+        },
+        {
+          "name": "Sierra de Ancares",
+          "latitude": "42.8038865",
+          "longitude": "-6.8679544",
+          "comment": "Coordinates from Google Maps",
+          "raw_source": "Chiroptera Galicia.pdf",
+          "region": "Galicia"
+        },
+        {
+          "name": "Serra do Courel",
+          "latitude": "42.5955536",
+          "longitude": "-7.1860891",
+          "comment": "Coordinates from Google Maps",
+          "raw_source": "Chiroptera Galicia.pdf",
+          "region": "Galicia"
+        },
+        {
+          "name": "El Rasillo",
+          "latitude": "42.1957758",
+          "longitude": "-2.7058931",
+          "region": "La Rioja",
+          "comment": "Coordinates from Google Maps",
+          "raw_source": "Myotis alcathoe La Rioja.pdf"
+        },
+        {
+          "name": "Anguiano",
+          "latitude": "42.263144",
+          "longitude": "-2.7694973",
+          "region": "La Rioja",
+          "comment": "Coordinates from Google Maps",
+          "raw_source": "Myotis alcathoe La Rioja.pdf"
+        },
+        {
+          "name": "Ojacastro",
+          "latitude": "42.3463077",
+          "longitude": "-3.0100229",
+          "region": "La Rioja",
+          "comment": "Coordinates from Google Maps",
+          "raw_source": "Myotis alcathoe La Rioja.pdf"
+        },
+        {
+          "name": "Aiantsoroka Erreka",
+          "latitude": "43.151143201338705",
+          "longitude": "-1.6040259083979858",
+          "raw_source": "Myotis alcathoe, Pipistrellus pygmaeus Navarra.pdf"
+        },
+        {
+          "name": "Artesiago",
+          "latitude": "43.05204564052446",
+          "longitude": "-1.5376744093926895",
+          "raw_source": "Myotis alcathoe, Pipistrellus pygmaeus Navarra.pdf"
+        },
+        {
+          "name": "Errekaundia",
+          "latitude": "43.14184859935959",
+          "longitude": "-1.6038808290916544",
+          "raw_source": "Myotis alcathoe, Pipistrellus pygmaeus Navarra.pdf"
+        },
+        {
+          "name": "Larrainzar",
+          "latitude": "42.996170667204915",
+          "longitude": "-1.6940267263391902",
+          "raw_source": "Myotis alcathoe, Pipistrellus pygmaeus Navarra.pdf"
+        },
+        {
+          "name": "Urkiaga",
+          "latitude": "43.045948307683034",
+          "longitude": "-1.46808284458353",
+          "raw_source": "Myotis alcathoe, Pipistrellus pygmaeus Navarra.pdf"
+        },
+        {
+          "name": "Sorogain",
+          "latitude": "42.99038278191897",
+          "longitude": "-1.4069908690246506",
+          "raw_source": "Myotis alcathoe, Pipistrellus pygmaeus Navarra.pdf"
+        },
+        {
+          "name": "Zaldazain",
+          "latitude": "43.015227349403816",
+          "longitude": "-1.6401070035749186",
+          "raw_source": "Myotis alcathoe, Pipistrellus pygmaeus Navarra.pdf"
+        },
+        {
+          "name": "Catalonia 1",
+          "latitude": "42.426912",
+          "longitude": "2.877502",
+          "comment": "Google Maps estimate, based on map on p. 41",
+          "raw_source": "Chiroptera Catalonia-status.pdf"
+        },
+        {
+          "name": "Catalonia 2",
+          "latitude": "42.373696",
+          "longitude": "2.888489",
+          "comment": "Google Maps estimate, based on map on p. 41",
+          "raw_source": "Chiroptera Catalonia-status.pdf"
+        },
+        {
+          "name": "Catalonia 3",
+          "latitude": "42.320918",
+          "longitude": "2.690735",
+          "comment": "Google Maps estimate, based on map on p. 41",
+          "raw_source": "Chiroptera Catalonia-status.pdf"
+        },
+        {
+          "name": "Catalonia 4",
+          "latitude": "41.737435",
+          "longitude": "2.602844",
+          "comment": "Google Maps estimate, based on map on p. 41",
+          "raw_source": "Chiroptera Catalonia-status.pdf"
+        },
+        {
+          "name": "Catalonia 5",
+          "latitude": "41.794796",
+          "longitude": "2.531433",
+          "comment": "Google Maps estimate, based on map on p. 41",
+          "raw_source": "Chiroptera Catalonia-status.pdf"
+        },
+        {
+          "name": "Catalonia 6",
+          "latitude": "41.876651",
+          "longitude": "2.416077",
+          "comment": "Google Maps estimate, based on map on p. 41",
+          "raw_source": "Chiroptera Catalonia-status.pdf"
+        },
+        {
+          "name": "Albera",
+          "raw_source": "Myotis alcathoe Catalonia Albera.pdf",
+          "latitude": "42 28 55",
+          "longitude": "2 56 46"
+        },
+        {
+          "name": "Rao (Lugo)",
+          "region": "Castilla y León",
+          "raw_source": "Myotis alcathoe Castilla y Leon.pdf",
+          "comment": "Coordinates from Google Maps",
+          "latitude": "42.9515254",
+          "longitude": "-6.873148"
+        },
+        {
+          "name": "valle de Suertes en la vertiente leonesa de la sierra de Ancares (Candín, León)",
+          "region": "Castilla y León",
+          "raw_source": "Myotis alcathoe Castilla y Leon.pdf",
+          "comment": "Coordinates from Google Maps",
+          "latitude": "42.8374527",
+          "longitude": "-6.7329172"
+        },
+        {
+          "name": "Suárbol (Candín, León)",
+          "region": "Castilla y León",
+          "raw_source": "Myotis alcathoe Castilla y Leon.pdf",
+          "comment": "Coordinates from Google Maps",
+          "latitude": "42.8671671",
+          "longitude": "-6.8522252"
+        }
+      ]
+    },
+    {
+      "group_name": "Germany",
+      "color": "orange",
+      "localities": [
+        {
+          "name": "Geißenwald, Rheinbischofsheim",
+          "latitude": "48.64",
+          "longitude": "7.95",
+          "region": "Baden-Württemberg",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Griesheim N Offenburg, tunnel under highway",
+          "latitude": "48.51",
+          "longitude": "7.91",
+          "region": "Baden-Württemberg",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Kyffhäuser",
+          "latitude": "51.38",
+          "longitude": "11.04",
+          "region": "Thüringen",
+          "raw_source": "Myotis alcathoe-biogeography.pdf"
+        },
+        {
+          "name": "Questenberg, Dinsterbachdurchbruch, Kreis Mansfeld-Südharz",
+          "region": "Sachsen-Anhalt",
+          "latitude": "51 30 2.05",
+          "longitude": "11 8 14.81",
+          "raw_source": "Myotis alcathoe Sachsen-Anhalt (Ohlendorf & Funkel 2008).pdf"
+        },
+        {
+          "name": "Stolberg, Zwieselberg, Hirschallee, Kreis Mansfeld-Südharz",
+          "region": "Sachsen-Anhalt",
+          "latitude": "51 34 41.10",
+          "longitude": "10 56 46.09",
+          "raw_source": "Myotis alcathoe Sachsen-Anhalt (Ohlendorf & Funkel 2008).pdf"
+        },
+        {
+          "name": "Ziegelroda, Ziegelrodaer Forst, Hermannseck, Clapperborn, Saalekreis",
+          "region": "Sachsen-Anhalt",
+          "latitude": "51 20 31.68",
+          "longitude": "11 30 17.16",
+          "raw_source": "Myotis alcathoe Sachsen-Anhalt (Ohlendorf & Funkel 2008).pdf"
+        },
+        {
+          "name": "Othal, NSG Othaler Wald, Tümpel, Kreis Mansfeld-Südharz",
+          "region": "Sachsen-Anhalt",
+          "latitude": "51 28 4.91",
+          "longitude": "11 22 13.09",
+          "raw_source": "Myotis alcathoe Sachsen-Anhalt (Ohlendorf & Funkel 2008).pdf"
+        },
+        {
+          "name": "Questenberg, Dinsterbach, Kreis Mansfeld-Südharz",
+          "region": "Sachsen-Anhalt",
+          "latitude": "51 29 47.95",
+          "longitude": "11 7 36.12",
+          "raw_source": "Myotis alcathoe Sachsen-Anhalt (Ohlendorf & Funkel 2008).pdf"
+        },
+        {
+          "name": "Oechlitz, Oechlitzer Grund, Saalekreis",
+          "region": "Sachsen-Anhalt",
+          "latitude": "51 19 26.18",
+          "longitude": "11 45 13.12",
+          "raw_source": "Myotis alcathoe Sachsen-Anhalt (Ohlendorf & Funkel 2008).pdf"
+        },
+        {
+          "name": "Drebsdorf, Ankenbergschwinde, Kreis Mansfeld-Südharz",
+          "region": "Sachsen-Anhalt",
+          "latitude": "51 29 45.93",
+          "longitude": "11 11 7.65",
+          "raw_source": "Myotis alcathoe Sachsen-Anhalt (Ohlendorf & Funkel 2008).pdf"
+        },
+        {
+          "name": "Rottleberode, unter der Graseburg, Thyra, Kreis Mansfeld-Südharz",
+          "region": "Sachsen-Anhalt",
+          "latitude": "51 30 59.50",
+          "longitude": "10 56 7.81",
+          "raw_source": "Myotis alcathoe Sachsen-Anhalt (Ohlendorf & Funkel 2008).pdf"
+        },
+        {
+          "name": "Wettelrode, Kunstteich, Einlauf Bach, Kreis Mansfeld-Südharz",
+          "region": "Sachsen-Anhalt",
+          "latitude": "51 31 19.29",
+          "longitude": "11 15 41.53",
+          "raw_source": "Myotis alcathoe Sachsen-Anhalt (Ohlendorf & Funkel 2008).pdf"
+        },
+        {
+          "name": "Pölsfeld, Eselgrund, Kreis Mansfeld-Südharz",
+          "region": "Sachsen-Anhalt",
+          "latitude": "51 31 34.07",
+          "longitude": "11 21 58.50",
+          "raw_source": "Myotis alcathoe Sachsen-Anhalt (Ohlendorf & Funkel 2008).pdf"
+        },
+        {
+          "name": "Uftrungen, Haseltal, Harzkante, Kreis Mansfeld-Südharz",
+          "region": "Sachsen-Anhalt",
+          "latitude": "51 31 2.73",
+          "longitude": "10 59 31.15",
+          "raw_source": "Myotis alcathoe Sachsen-Anhalt (Ohlendorf & Funkel 2008).pdf"
+        },
+        {
+          "name": "Blankenburg/Harz, Birkental, Tümpel, Harzkreis",
+          "region": "Sachsen-Anhalt",
+          "latitude": "51 48 49.78",
+          "longitude": "10 56 1.86",
+          "raw_source": "Myotis alcathoe Sachsen-Anhalt (Ohlendorf & Funkel 2008).pdf"
+        },
+        {
+          "name": "Rottleberode, Entensumpf, Kreis Mansfeld-Südharz",
+          "region": "Sachsen-Anhalt",
+          "latitude": "51 30 1.67",
+          "longitude": "10 56 59.28",
+          "raw_source": "Myotis alcathoe Sachsen-Anhalt (Ohlendorf & Funkel 2008).pdf"
+        },
+        {
+          "name": "Koßweda, Zeitzer Forst, Rauschbachtal, oberhalb Teich, Burgenlandkreis",
+          "region": "Sachsen-Anhalt",
+          "latitude": "50 59 30.76",
+          "longitude": "12 1 31.11",
+          "raw_source": "Myotis alcathoe Sachsen-Anhalt (Ohlendorf & Funkel 2008).pdf"
+        },
+        {
+          "name": "Herzog-Alexis-Erbstollen",
+          "region": "Sachsen-Anhalt",
+          "latitude": "51 39 54.08",
+          "longitude": "11 9 30.20",
+          "raw_source": "Myotis alcathoe Sachsen-Anhalt Harz-winter activity.pdf"
+        },
+        {
+          "name": "Braupfanne, Zeitzer Forst",
+          "latitude": "50.963934",
+          "longitude": "12.034721",
+          "region": "Thüringen",
+          "comment": "Estimate; source is not precise",
+          "raw_source": "Myotis alcathoe E Thuringia.pdf"
+        },
+        {
+          "name": "Colditzer Forst",
+          "latitude": "51 7 9.09",
+          "longitude": "12 46 16.17",
+          "region": "Sachsen",
+          "raw_source": "Myotis alcathoe Sachsen.pdf"
+        },
+        {
+          "name": "Chemnitz",
+          "latitude": "50 49 55.29",
+          "longitude": "12 55 13.19",
+          "region": "Sachsen",
+          "raw_source": "Myotis alcathoe Sachsen.pdf"
+        },
+        {
+          "name": "Stöckigt-Wald",
+          "latitude": "51 33 46.37",
+          "longitude": "12 33 0.56",
+          "region": "Sachsen",
+          "raw_source": "Myotis alcathoe Sachsen.pdf"
+        }
+      ]
+    },
+    {
+      "group_name": "Germany (subfossil)",
+      "style": "cross",
+      "color": "orange",
+      "localities": [
+        {
+          "name": "Ziegentempel bei Brilon-Rösenbeck, Hochsauerlandkreis",
+          "region": "Nordrhein-Westfalen",
+          "raw_source": "Myotis alcathoe NRW Sauerland Holocene.pdf",
+          "latitude": "51.4088203",
+          "longitude": "8.6779652"
+        }
+      ]
+    },
+    {
+      "group_name": "Austria (subfossil)",
+      "color": "orange",
+      "style": "cross",
+      "localities": [
+        {
+          "name": "Ritzlkesselhöhle, Dürrenstein",
+          "region": "Niederösterreich",
+          "comment": "Coordinates from Google Maps",
+          "raw_source": "Myotis alcathoe Austria Ritzlkesselhoehle Holocene.pdf",
+          "latitude": "47.7833468",
+          "longitude": "15.0149811"
+        }
+      ]
+    },
+    {
+      "group_name": "Russian Caucasus (M. alcathoe circassicus)",
+      "color": "skyblue",
+      "localities": [
+        {
+          "name": "Bol’šaâ Fanagorijskaâ Cave, Fanagorijskoe",
+          "latitude": "44 28 09",
+          "longitude": "38 58 40",
+          "raw_source": "Myotis mystacinus group Caucasus.pdf",
+          "region": "Krasnodar Krai",
+          "comment": "Type locality of _M. alcathoe circassicus_."
+        },
+        {
+          "name": "Psekabs River, Thamaha",
+          "latitude": "44 39",
+          "longitude": "38 54",
+          "raw_source": "Myotis mystacinus group Caucasus.pdf",
+          "region": "Krasnodar Krai"
+        },
+        {
+          "name": "Gebeus Mt., Gešebs",
+          "latitude": "44 23",
+          "longitude": "38 36",
+          "raw_source": "Myotis mystacinus group Caucasus.pdf",
+          "region": "Krasnodar Krai"
+        },
+        {
+          "name": "Aše",
+          "latitude": "43 58",
+          "longitude": "39 16",
+          "raw_source": "Myotis mystacinus group Caucasus.pdf",
+          "region": "Krasnodar Krai"
+        },
+        {
+          "name": "Tahira Cave, Kalež",
+          "latitude": "44 01",
+          "longitude": "39 21",
+          "raw_source": "Myotis mystacinus group Caucasus.pdf",
+          "region": "Krasnodar Krai"
+        },
+        {
+          "name": "Utriš Peninsula",
+          "latitude": "44 47",
+          "longitude": "37 24",
+          "raw_source": "Myotis mystacinus group Caucasus.pdf",
+          "region": "Krasnodar Krai"
+        },
+        {
+          "name": "Tyapsinskiy 1",
+          "latitude": "44.38",
+          "longitude": "38.63",
+          "raw_source": "Myotis cf. alcathoe Caucasus.pdf",
+          "region": "Krasnodar Krai"
+        },
+        {
+          "name": "Novorossiysk",
+          "latitude": "44.73",
+          "longitude": "37.49",
+          "raw_source": "Myotis cf. alcathoe Caucasus.pdf",
+          "region": "Krasnodar Krai"
+        },
+        {
+          "name": "Sochi 1",
+          "latitude": "44.02",
+          "longitude": "39.38",
+          "raw_source": "Myotis cf. alcathoe Caucasus.pdf",
+          "region": "Krasnodar Krai"
+        },
+        {
+          "name": "Sochi 2",
+          "latitude": "44.02",
+          "longitude": "39.35",
+          "raw_source": "Myotis cf. alcathoe Caucasus.pdf",
+          "region": "Krasnodar Krai"
+        },
+        {
+          "name": "Ceverskiy",
+          "latitude": "44.69",
+          "longitude": "38.86",
+          "raw_source": "Myotis cf. alcathoe Caucasus.pdf",
+          "region": "Krasnodar Krai"
+        },
+        {
+          "name": "Goryachiy Klyuch",
+          "latitude": "44.47",
+          "longitude": "38.98",
+          "raw_source": "Myotis cf. alcathoe Caucasus.pdf",
+          "region": "Krasnodar Krai"
+        },
+        {
+          "name": "Sochi 3",
+          "latitude": "43.53",
+          "longitude": "40.01",
+          "raw_source": "Myotis cf. alcathoe Caucasus.pdf",
+          "region": "Krasnodar Krai"
+        },
+        {
+          "name": "Abinskiy",
+          "latitude": "44.59",
+          "longitude": "38.39",
+          "raw_source": "Myotis cf. alcathoe Caucasus.pdf",
+          "region": "Krasnodar Krai"
+        },
+        {
+          "name": "Tyapsinskiy 2",
+          "latitude": "44.30",
+          "longitude": "38.97",
+          "raw_source": "Myotis cf. alcathoe Caucasus.pdf",
+          "region": "Krasnodar Krai"
+        }
+      ]
+    },
+    {
+      "group_name": "Slovenia",
+      "color": "orange",
+      "localities": [
+        {
+          "name": "Rdeči kamen",
+          "latitude": "45.7425141",
+          "longitude": "14.9601341",
+          "comment": "Coordinates from Google Maps",
+          "raw_source": "Myotis alcathoe Slovenia (Presetnik 2012).pdf"
+        }
+      ]
+    },
+    {
+      "group_name": "Croatia",
+      "color": "orange",
+      "localities": [
+        {
+          "name": "Kuselj",
+          "latitude": "44 56 52",
+          "longitude": "15 32 03",
+          "raw_source": "Myotis alcathoe Croatia.pdf"
+        },
+        {
+          "name": "Plješivica mountains",
+          "latitude": "44 43 29",
+          "longitude": "15 48 24",
+          "raw_source": "Myotis alcathoe Croatia.pdf"
+        }
+      ]
+    },
+    {
+      "group_name": "Montenegro",
+      "color": "orange",
+      "localities": [
+        {
+          "name": "Vrbnica river, 3 km SE of Stabna (5 km W of Plužine)",
+          "latitude": "43.1620",
+          "longitude": "18.7795",
+          "raw_source": "Chiroptera Montenegro.pdf"
+        }
+      ]
+    },
+    {
+      "group_name": "Belgium",
+      "color": "orange",
+      "localities": [
+        {
+          "name": "Bois de Saint-Rémy",
+          "latitude": "50.2047436",
+          "longitude": "5.1872209",
+          "comment": "Coordinates from Google Maps",
+          "raw_source": "Myotis alcathoe Belgium.pdf"
+        },
+        {
+          "name": "Grotte touristique de Rochefort",
+          "latitude": "50.1552839",
+          "longitude": "5.2260531",
+          "comment": "Google Maps coordinates for Grotte de Lorette-Rochefort",
+          "raw_source": "Myotis alcathoe Belgium.pdf"
+        },
+        {
+          "name": "Etang des Prés de Virelles",
+          "latitude": "50.0655919",
+          "longitude": "4.33261",
+          "comment": "Google Maps coordinates for Virelles",
+          "raw_source": "Myotis alcathoe Belgium.pdf"
+        }
+      ]
+    },
+    {
+      "group_name": "Portugal",
+      "color": "orange",
+      "localities": [
+        {
+          "name": "Peneda Gerês National Park",
+          "raw_source": "Chiroptera Portugal-DNA barcoding.pdf",
+          "latitude": "41.8386601",
+          "longitude": "-8.2437795",
+          "comment": "Coordinates from Google Maps"
+        }
+      ]
+    },
+    {
+      "group_name": "Luxembourg",
+      "color": "orange",
+      "localities": [
+        {
+          "name": "Langengrund bei der Ortschaft Rumelange (Gemeinde Kayl) auf ca. 330 m Höhe ü. NN. (UTM: 32U 283390 5483730)",
+          "latitude": "49.467547",
+          "longitude": "6.010229",
+          "raw_source": "Myotis alcathoe, dasycneme Luxembourg.pdf"
+        }
+      ]
+    },
+    {
+      "group_name": "Bosnia and Herzegovina",
+      "color": "orange",
+      "localities": [
+        {
+          "name": "Kozija ćuprija",
+          "latitude": "43.85314",
+          "longitude": "18.45790",
+          "raw_source": "Myotis alcathoe Bosnia.pdf"
+        }
+      ]
+    }
+  ]
 }

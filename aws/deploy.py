@@ -1,10 +1,11 @@
 #!/usr/bin/env python
 import argparse
 import datetime
-from pathlib import Path
 import subprocess
 import time
-from taxonomy.config import get_options, Options
+from pathlib import Path
+
+from taxonomy.config import Options, get_options
 
 STAGING_DIR = "/home/ec2-user/staging/"
 PYTHON = "/usr/local/bin/python3.11"

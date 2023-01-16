@@ -1,9 +1,11 @@
 import functools
 import re
 from typing import Set
+
 import wikitextparser
-from taxonomy.db.models import Name, Taxon
+
 from taxonomy import getinput
+from taxonomy.db.models import Name, Taxon
 
 from . import readwiki
 

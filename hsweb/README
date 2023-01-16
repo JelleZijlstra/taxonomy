@@ -3,5 +3,7 @@ To run:
 python -m hsweb
 
 (second tab)
+
 # go to hesperomys repo
+
 npm start

@@ -1,21 +1,21 @@
-from dataclasses import dataclass, field
 import enum
 import itertools
+import re
 import textwrap
 import traceback
-
 from collections import Counter
 from collections.abc import Sequence
-
-from functools import cached_property, cache
+from dataclasses import dataclass, field
+from functools import cache, cached_property
 from itertools import islice
-from data_import.lib import Source, clean_string, get_text, extract_pages, split_lines
-import re
-from taxonomy.db.constants import Rank, Group, SpeciesGroupType
-from taxonomy.db import models, helpers
-from taxonomy import getinput
+
 from typing_extensions import Self, assert_never
 
+from data_import.lib import (Source, clean_string, extract_pages, get_text,
+                             split_lines)
+from taxonomy import getinput
+from taxonomy.db import helpers, models
+from taxonomy.db.constants import Group, Rank, SpeciesGroupType
 from taxonomy.db.models.name import TypeTag
 
 SOURCE = Source("expt/recolumnized.txt", "Testudines (TTWG 2021).pdf")

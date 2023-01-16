@@ -1,6 +1,7 @@
 import re
-from taxonomy.db.constants import NomenclatureStatus
 from typing import Iterable, List, Tuple
+
+from taxonomy.db.constants import NomenclatureStatus
 
 from . import lib
 from .lib import DataT, PagesT

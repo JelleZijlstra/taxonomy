@@ -1,9 +1,11 @@
-from bs4 import BeautifulSoup
-from pathlib import Path
 import pprint
 import re
 import sys
+from pathlib import Path
 from typing import Dict, Iterable, List, Tuple
+
+from bs4 import BeautifulSoup
+
 from taxonomy.db import helpers
 
 Key = Tuple[Tuple[str, ...], str]

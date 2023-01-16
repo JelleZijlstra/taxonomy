@@ -1,8 +1,9 @@
-import re
 import copy
-from typing import Any, List, Dict, Iterable, Tuple
-from taxonomy.db import constants, models
+import re
 import unicodedata
+from typing import Any, Dict, Iterable, List, Tuple
+
+from taxonomy.db import constants, models
 
 from . import lib
 from .lib import DataT, PagesT

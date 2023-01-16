@@ -7,7 +7,6 @@ from taxonomy.db import constants
 from . import lib
 from .lib import DataT
 
-
 CS_RGX = re.compile(
     r"""
     ^(?P<number>[\d/]+)\.\s

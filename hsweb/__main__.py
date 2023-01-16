@@ -1,9 +1,9 @@
-from aiohttp import web
 import argparse
 import logging
 
-from . import index
+from aiohttp import web
 
+from . import index
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("hsweb")

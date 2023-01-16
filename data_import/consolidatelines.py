@@ -1,5 +1,5 @@
-import sys
 import re
+import sys
 from pathlib import Path
 
 SUFFIX = ".new"
