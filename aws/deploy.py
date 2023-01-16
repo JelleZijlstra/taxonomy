@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import argparse
 import datetime
+import shutil
 import subprocess
 import time
 from pathlib import Path
@@ -32,6 +33,14 @@ def run_scp(
     ]
     print(f"# {command}")
     subprocess.check_call(command)
+
+
+def save_data(options: Options, version: str) -> None:
+    saved_filename = (
+        options.db_filename.parent / f"{options.db_filename.name}.{version}"
+    )
+    assert not saved_filename.exists(), f"{saved_filename} already exists"
+    shutil.copy(options.db_filename, saved_filename)
 
 
 def deploy_data(options: Options) -> None:
@@ -116,6 +125,7 @@ def full_deploy(options: Options, version: str) -> None:
     push_taxonomy(options, version)
     push_hesperomys(options, version)
 
+    save_data(options, version)
     deploy_data(options)
     run_ssh(options, "mv /home/ec2-user/staging/* /home/ec2-user/")
     deploy_hesperomys(options)
