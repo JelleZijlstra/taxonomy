@@ -25,9 +25,8 @@ classifiers = [
 ]
 dependencies = [
     "peewee==3.13.3",
-    "IPython",
+    "IPython>8",
     "prompt_toolkit",
-    "PyMySQL",
     "requests",
     "unidecode",
     "python-levenshtein",

@@ -35,7 +35,6 @@ from peewee import (
     ForeignKeyField,
     IntegerField,
     Model,
-    MySQLDatabase,
     SqliteDatabase,
     TextField,
     FieldAccessor,
@@ -54,34 +53,26 @@ if _log_path.exists():
 else:
     _log_f = None
 
-if settings.use_sqlite:
 
-    class LoggingDatabase(SqliteDatabase):
-        def execute_sql(self, sql: str, *args: Any, **kwargs: Any) -> Any:
-            if _log_f is None:
-                return super().execute_sql(sql, *args, **kwargs)
-            if sql.startswith("UPDATE"):
-                _log_f.write(f"--- Write query: {sql}\n")
-                traceback.print_stack(file=_log_f)
+class LoggingDatabase(SqliteDatabase):
+    def execute_sql(self, sql: str, *args: Any, **kwargs: Any) -> Any:
+        if _log_f is None:
+            return super().execute_sql(sql, *args, **kwargs)
+        if sql.startswith("UPDATE"):
+            _log_f.write(f"--- Write query: {sql}\n")
+            traceback.print_stack(file=_log_f)
+            _log_f.flush()
+        start = time.time()
+        try:
+            return super().execute_sql(sql, *args, **kwargs)
+        finally:
+            end = time.time()
+            if end - start > 0.1:
+                _log_f.write(f"{end - start:.03f}: {sql}\n")
                 _log_f.flush()
-            start = time.time()
-            try:
-                return super().execute_sql(sql, *args, **kwargs)
-            finally:
-                end = time.time()
-                if end - start > 0.1:
-                    _log_f.write(f"{end - start:.03f}: {sql}\n")
-                    _log_f.flush()
 
-    database = LoggingDatabase(str(settings.db_filename))
-else:
-    database = MySQLDatabase(
-        settings.db_name,
-        user=settings.db_username,
-        passwd=settings.db_password,
-        charset="utf8",
-    )
-    database.get_conn().ping(True)
+
+database = LoggingDatabase(str(settings.db_filename))
 
 
 ModelT = TypeVar("ModelT", bound="BaseModel")
