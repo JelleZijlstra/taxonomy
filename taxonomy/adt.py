@@ -1,6 +1,7 @@
 import builtins
 import enum
 import functools
+import operator
 import sys
 from typing import TYPE_CHECKING, Any, TypeVar
 from collections.abc import Callable, Iterable, Iterator, MutableMapping
@@ -125,6 +126,7 @@ class _ADTMeta(type):
             has_self_cls = True
         else:
             has_self_cls = False
+        constructors = []
         for member in members.values():
             if not member.called:
                 raise TypeError(f"incomplete member {member}")
@@ -176,6 +178,7 @@ class _ADTMeta(type):
             member_cls: Any = functools.total_ordering(
                 type(member.name, (new_cls,), member_ns)
             )
+            constructors.append(member_cls)
             if not has_args:
                 cls_obj = member_cls
                 member_cls = cls_obj()
@@ -189,6 +192,8 @@ class _ADTMeta(type):
                 cls_obj.__init__ = make_init(member_cls)
             new_cls._tag_to_member[member.tag] = member_cls  # type: ignore
             setattr(new_cls, member.name, member_cls)
+        if constructors:
+            new_cls._Constructors = functools.reduce(operator.or_, constructors)  # type: ignore
         return new_cls
 
 

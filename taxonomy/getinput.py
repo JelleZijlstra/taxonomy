@@ -11,7 +11,8 @@ import re
 import shutil
 import subprocess
 import sys
-from typing import Any, TypeVar, Union, overload
+from typing import Any, TypeVar, Union
+from typing_extensions import overload
 from collections.abc import Callable, Iterator, Iterable, Mapping, Sequence
 
 import prompt_toolkit

@@ -670,7 +670,7 @@ class Article(BaseModel):
         else:
             self.tags = self.tags + (tag,)
 
-    def has_tag(self, tag_cls: builtins.type[adt.ADT]) -> bool:
+    def has_tag(self, tag_cls: ArticleTag._Constructor) -> bool:  # type: ignore
         tag_id = tag_cls._tag
         for tag in self.get_raw_tags_field("tags"):
             if tag[0] == tag_id:
