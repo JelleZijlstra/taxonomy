@@ -1,5 +1,5 @@
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 from collections.abc import Iterable
 
 from taxonomy.db import constants

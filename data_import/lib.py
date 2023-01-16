@@ -8,13 +8,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import (
     Any,
-    Dict,
-    List,
     NamedTuple,
-    Optional,
-    Set,
-    Tuple,
-    Type,
 )
 from collections import Counter
 from collections.abc import Callable, Container, Iterable, Mapping, Sequence

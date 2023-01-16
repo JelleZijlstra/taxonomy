@@ -1,10 +1,8 @@
 import csv
 import functools
 import re
-from typing import Dict
 from collections.abc import Iterable
 
-from taxonomy import shell
 from taxonomy.db import models
 from taxonomy.db.models import Name
 

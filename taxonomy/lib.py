@@ -9,7 +9,7 @@ from collections import defaultdict
 from functools import partial
 import re
 from taxonomy.db.models.name import TypeTag
-from typing import Any, Dict, List, Optional, Tuple, Type, Union
+from typing import Any
 from collections.abc import Container, Iterable
 
 import peewee

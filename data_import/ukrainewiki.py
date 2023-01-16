@@ -1,6 +1,5 @@
 import functools
 import re
-from typing import Set
 
 import wikitextparser
 

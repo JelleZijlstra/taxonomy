@@ -9,11 +9,7 @@ import functools
 import re
 from typing import (
     Any,
-    Dict,
-    List,
     NamedTuple,
-    Optional,
-    Tuple,
 )
 from collections.abc import Callable, Iterable, Sequence
 

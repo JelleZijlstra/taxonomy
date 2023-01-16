@@ -1,7 +1,6 @@
 """Enums for various fields."""
 
 import enum
-from typing import List
 
 
 class RequirednessLevel(enum.IntEnum):

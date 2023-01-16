@@ -1,6 +1,5 @@
 from functools import lru_cache
 from pathlib import Path
-from typing import Optional
 from collections.abc import Awaitable, Callable
 
 from aiohttp import web

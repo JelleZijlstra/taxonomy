@@ -1,6 +1,6 @@
 import collections
 import sys
-from typing import IO, Dict, List, Optional
+from typing import IO, Optional
 from collections.abc import Iterable
 
 from peewee import CharField, ForeignKeyField

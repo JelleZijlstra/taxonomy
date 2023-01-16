@@ -1,6 +1,6 @@
 import itertools
 import re
-from typing import Any, Dict, List
+from typing import Any
 
 from taxonomy.db import constants, models
 

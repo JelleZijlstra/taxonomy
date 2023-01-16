@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from functools import partial
-from typing import Set, List, Optional as TOptional
+from typing import Optional as TOptional
 from collections.abc import Iterable
 from re import Pattern
 import re

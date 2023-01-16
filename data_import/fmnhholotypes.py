@@ -1,8 +1,7 @@
 import re
-from typing import Any, Dict
+from typing import Any
 from collections.abc import Iterable
 
-from taxonomy import shell
 from taxonomy.db import models
 from taxonomy.db.models import Name
 

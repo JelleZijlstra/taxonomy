@@ -7,12 +7,7 @@ from typing import (
     cast,
     IO,
     Any,
-    Dict,
-    List,
     Optional,
-    Set,
-    Tuple,
-    Union,
 )
 from collections import Counter
 from collections.abc import Callable, Container, Iterable, Sequence

@@ -1,6 +1,6 @@
 import re
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple, Type
+from typing import Any
 
 from taxonomy.db import constants, models
 

@@ -1,4 +1,3 @@
-from typing import List, Optional, Tuple
 from collections import Counter
 from collections.abc import Iterable, Sequence
 

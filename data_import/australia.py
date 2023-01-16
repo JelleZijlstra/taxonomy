@@ -2,7 +2,7 @@ import enum
 import itertools
 import re
 from collections import deque
-from typing import Any, Deque, Dict, List, Tuple
+from typing import Any, Deque
 from collections.abc import Iterable
 
 from taxonomy import shell

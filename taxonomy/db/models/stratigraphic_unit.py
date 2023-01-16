@@ -1,6 +1,6 @@
 from functools import lru_cache
 import sys
-from typing import IO, Any, List, Optional, Set, Tuple, TypeVar
+from typing import IO, Any, Optional, TypeVar
 from collections.abc import Iterable
 
 from peewee import BooleanField, CharField, ForeignKeyField

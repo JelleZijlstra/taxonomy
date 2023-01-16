@@ -7,7 +7,7 @@ from dataclasses import dataclass
 import enum
 from functools import lru_cache
 import pickle
-from typing import Any, Dict, Generic, Optional, TypeVar, Type, Union
+from typing import Any, Generic, TypeVar
 from typing import Protocol
 import typing_inspect
 import taxonomy

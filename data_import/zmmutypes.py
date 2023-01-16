@@ -1,7 +1,7 @@
 import copy
 import re
 import unicodedata
-from typing import Any, Dict, List, Tuple
+from typing import Any
 from collections.abc import Iterable
 
 from taxonomy.db import constants, models

@@ -1,5 +1,4 @@
 import re
-from typing import List, Tuple
 from collections.abc import Iterable
 
 from taxonomy.db.constants import NomenclatureStatus

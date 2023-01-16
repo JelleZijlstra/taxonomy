@@ -5,7 +5,6 @@ Evolution of Tertiary Mammals in North America (ETMNA).
 
 """
 
-from typing import Optional
 from collections.abc import Iterable
 
 from taxonomy import getinput

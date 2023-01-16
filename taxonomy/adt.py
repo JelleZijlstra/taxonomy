@@ -5,10 +5,6 @@ import sys
 from typing import (
     TYPE_CHECKING,
     Any,
-    Dict,
-    List,
-    Tuple,
-    Type,
     TypeVar,
 )
 from collections.abc import Callable, Iterable, Iterator, MutableMapping

@@ -1,4 +1,4 @@
-from typing import Any, List, Optional, IO
+from typing import Any, Optional, IO
 from collections.abc import Iterable
 import sys
 

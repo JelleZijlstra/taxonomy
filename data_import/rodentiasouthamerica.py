@@ -1,6 +1,5 @@
 import itertools
 import re
-from typing import Dict, List, Tuple
 from collections.abc import Iterable
 
 from taxonomy import shell

@@ -1,4 +1,4 @@
-from typing import Any, Dict, List
+from typing import Any
 
 from data_import.lib import NameConfig, associate_names
 from taxonomy.db.constants import CommentKind

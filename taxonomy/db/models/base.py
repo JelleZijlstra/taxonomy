@@ -11,16 +11,9 @@ from types import NoneType
 from typing import (
     Any,
     ClassVar,
-    Dict,
     Generic,
     IO,
-    List,
-    Optional,
-    Set,
-    Tuple,
-    Type,
     TypeVar,
-    Union,
 )
 from collections.abc import Callable, Container, Iterable, Sequence
 import typing_inspect

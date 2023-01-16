@@ -8,7 +8,7 @@ Generally follows Article 9 of the PhyloCode: http://www.ohio.edu/phylocode/art9
 
 import enum
 import json
-from typing import TYPE_CHECKING, Any, List, Union
+from typing import TYPE_CHECKING, Any, Union
 from collections.abc import Iterable
 
 if TYPE_CHECKING:

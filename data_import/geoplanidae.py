@@ -2,7 +2,6 @@ import pprint
 import re
 import sys
 from pathlib import Path
-from typing import Dict, List, Tuple
 from collections.abc import Iterable
 
 from bs4 import BeautifulSoup

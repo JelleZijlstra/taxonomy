@@ -1,5 +1,5 @@
 from collections import Counter
-from typing import Any, List, Optional, Type
+from typing import Any, Optional
 from collections.abc import Iterable
 
 from peewee import BooleanField, CharField, ForeignKeyField, IntegrityError

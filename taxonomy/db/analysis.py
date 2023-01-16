@@ -5,7 +5,6 @@ Module for high-level analysis of the database.
 """
 
 import collections
-from typing import Dict, Optional
 from collections import Counter
 from collections.abc import Iterable, Sequence
 

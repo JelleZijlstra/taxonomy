@@ -4,11 +4,7 @@ import sys
 from typing import (
     IO,
     Any,
-    Dict,
-    List,
     Optional,
-    Tuple,
-    Type,
 )
 from collections.abc import Callable, Iterable, Mapping, Sequence
 

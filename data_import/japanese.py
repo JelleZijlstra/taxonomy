@@ -1,5 +1,4 @@
 import re
-from typing import List
 
 from taxonomy.db import constants, models
 

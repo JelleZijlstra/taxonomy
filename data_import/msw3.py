@@ -1,7 +1,6 @@
 import csv
 import re
 import sys
-from typing import List
 
 from . import lib
 from .lib import DataT

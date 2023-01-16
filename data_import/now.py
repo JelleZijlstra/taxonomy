@@ -8,7 +8,6 @@ http://pantodon.science.helsinki.fi/now/locality_list.php
 """
 import csv
 from pathlib import Path
-from typing import Dict, List
 
 from taxonomy.db.models import Period
 from taxonomy.db.models.location import Location, LocationTag

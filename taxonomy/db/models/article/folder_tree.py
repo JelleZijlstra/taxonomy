@@ -3,12 +3,7 @@
 from collections import defaultdict
 import re
 from typing import (
-    Dict,
-    List,
     NamedTuple,
-    Optional,
-    Set,
-    Tuple,
 )
 from collections import Counter
 from collections.abc import Callable, Iterable, Sequence

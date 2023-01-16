@@ -1,5 +1,4 @@
 import re
-from typing import List
 
 from . import lib
 from .lib import DataT, PagesT

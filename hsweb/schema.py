@@ -3,9 +3,9 @@ import enum
 import re
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 from typing import List as TList
-from typing import Optional, Tuple, Type, cast
+from typing import cast
 
 import peewee
 import typing_inspect

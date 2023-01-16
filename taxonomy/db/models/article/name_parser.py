@@ -5,13 +5,7 @@ from pathlib import Path
 from typing import (
     Any,
     ClassVar,
-    Dict,
-    List,
-    Optional,
-    Set,
-    Tuple,
     TypeVar,
-    Union,
 )
 from collections.abc import Sequence
 from taxonomy.config import get_options

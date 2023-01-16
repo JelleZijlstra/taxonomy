@@ -1,7 +1,7 @@
 import enum
 import sys
 import re
-from typing import Any, Dict, IO, Optional, Type, Union
+from typing import Any, IO, Optional
 from collections import Counter
 from collections.abc import Callable, Iterable
 
