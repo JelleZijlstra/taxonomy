@@ -76,13 +76,13 @@ their limits are subjective in nature.
   like "_Aus bus_, sp. nov.", not necessarily the first mention of the name. If
   there is no such heading, the page should be the first page on which the name
   appears. Special cases:
-    - Some articles have multiple paginations (e.g., one for the volume and
-      one for the individual work). In such cases, use the higher page number,
-      because it is less likely to be ambiguous.
-    - Sometimes page numbers are misprinted. In that case, specify the page
-      number like "2 [as 1]", where "2" is the true page number that would be
-      used if the pagination of the work was correct, and "1" is the page number
-      that actually appears on the page.
+  - Some articles have multiple paginations (e.g., one for the volume and
+    one for the individual work). In such cases, use the higher page number,
+    because it is less likely to be ambiguous.
+  - Sometimes page numbers are misprinted. In that case, specify the page
+    number like "2 [as 1]", where "2" is the true page number that would be
+    used if the pagination of the work was correct, and "1" is the page number
+    that actually appears on the page.
 - _verbatim citation_: A free-form text specifying the original place of
   publication of the name, used when I do not have the full paper (so that
   _original citation_ is not set). This is a place for rough notes that will
@@ -288,10 +288,10 @@ Arts. 32.5 and 33.2.3.1). In such cases, three names should be entered into the
 database:
 
 - The name as corrected, with its original author and date and with `nomenclature_status`
-  set to `as_emended`. The page_described field should be set to the page where the
+  set to `as_emended`. The page*described field should be set to the page where the
   original spelling was used. This name should have other standard nomenclatural
   information, like the type locality and type specimen. If its `nomenclature_status`
-  cannot be `as_emended` (for example because it is a `nomen_novum`), the _AsEmended_
+  cannot be `as_emended` (for example because it is a `nomen_novum`), the \_AsEmended*
   tag should be added instead, pointing to the justified emendation name.
 - The name as originally spelled, with its original author and date, but no other
   data (such as `type_tags`). It should have `nomenclature_status` set to

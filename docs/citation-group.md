@@ -46,13 +46,13 @@ See [Tricky journals](/docs/tricky-journals) for some tricky cases.
 
 ## Series, volume, issue, pages
 
-The five fields *series*, *volume*, *issue*, *start_page*, and *end_page*
+The five fields _series_, _volume_, _issue_, _start_page_, and _end_page_
 on [articles](/docs/articles) indicate where in the journal the article is to
 be found.
 
 ### Series
 
-The *series* is used for only some journals. It is used in two somewhat
+The _series_ is used for only some journals. It is used in two somewhat
 distinct cases:
 
 - Some journals (e.g. [Annals and Magazine of Natural History](/cg/33))
@@ -62,8 +62,8 @@ distinct cases:
   the abbreviation "n.s." (for "new series") or its German equivalent "N.F."
   ("Neue Folge") may be placed in the series field.
 - Some journals are divided into subjournals covering distinct subject
-  matter (e.g., [Comptes rendus de l'Académie des sciences](/cg/47)). Usually 
-  the volume numbers are kept the same across each subjournal. Most frequently 
+  matter (e.g., [Comptes rendus de l'Académie des sciences](/cg/47)). Usually
+  the volume numbers are kept the same across each subjournal. Most frequently
   the subjournals are referred to by capital letters (A, B, ...), but there
   are also journals that use Roman numerals (I, II, ...) or simply names
   (e.g., "Biology").
@@ -71,17 +71,17 @@ distinct cases:
 What both cases have in common is that a single volume number may refer
 to two different physical volumes. In a few journals, both kinds of series
 exist at the same time. In this case, the two series markers are placed
-together in the *series* field, separated by a semicolon (;).
+together in the _series_ field, separated by a semicolon (;).
 
-Journal articles are only allowed to set the *series* field if their
-citation group has the *SeriesRegex* tag. This tag provides a regular
-expression that all series fields must match. If the *MustHaveSeries*
+Journal articles are only allowed to set the _series_ field if their
+citation group has the _SeriesRegex_ tag. This tag provides a regular
+expression that all series fields must match. If the _MustHaveSeries_
 tag is also present, all articles in the citation group must have the
 field set.
 
 ### Volume
 
-The *volume* must be set for all journal articles, except for "in press"
+The _volume_ must be set for all journal articles, except for "in press"
 articles that have not yet been assigned to a volume.
 Most frequently, the volume is a single number that is continually
 increasing, often with a new volume number every year. However, there are
@@ -95,12 +95,12 @@ many variations. Common ones include:
 
 By default, all journal volume numbers should match the regular
 expression `(Suppl\. )?\d{1,4}`: 1 to 4 digits, optionally preceded
-by "Suppl.". Citation groups can set the *VolumeRegex* tag to
+by "Suppl.". Citation groups can set the _VolumeRegex_ tag to
 override this default and allow a different set of volume numbers.
 
 ### Issue
 
-The *issue* is optional. Normally, a volume is divided into
+The _issue_ is optional. Normally, a volume is divided into
 issues, each of which is published as a single physical journal.
 As with volumes, issues are normally written as single numbers.
 Often, multiple issues are combined and the combined issue is then
@@ -115,7 +115,7 @@ concept for new purposes.
 By default, issues must match the regular expression
 `\d{1,3}|\d{1,2}-\d{1,2}|Suppl\. \d{1,2}`: a 1 to 3-digit number;
 two 1 or 2-digit numbers around a hyphen; or "Suppl." followed
-by a 1 or 2-digit numbers. Citation groups can set the *IssueRegex*
+by a 1 or 2-digit numbers. Citation groups can set the _IssueRegex_
 tag to allow a different set of issue numbers.
 
 ### Start and end page
@@ -123,9 +123,9 @@ tag to allow a different set of issue numbers.
 Classically, the page numbering in a journal is continuous
 through the whole volume, and the start and end page are each
 numbers, the end page greater than or equal to the start page.
-These two numbers are placed in the *start_page* and *end_page*
+These two numbers are placed in the _start_page_ and _end_page_
 field in the database. For pre-publication "in press" articles,
-the *start_page* is set to "in press" and the *end_page* is left blank.
+the _start_page_ is set to "in press" and the _end_page_ is left blank.
 
 With online publication, this is no longer the case: often each
 article has independent page numbers. Articles are still labeled
@@ -134,27 +134,28 @@ Some examples of how these are treated in the database:
 
 - In [Biology Letters](/cg/748), each article has three numbers
   (e.g., "17", "12" and "20210533"). The first one is the volume,
-  the second one is the issue, and the third is placed in the *start_page*,
-  with the *end_page* left blank.
+  the second one is the issue, and the third is placed in the _start_page_,
+  with the _end_page_ left blank.
 - In [The Science of Nature](/cg/1374), each article has two numbers
-  (e.g., "108" and "23"), the volume and issue. The *start_page* is set to 1
-  and the *end_page* to the article's total page count.
+  (e.g., "108" and "23"), the volume and issue. The _start_page_ is set to 1
+  and the _end_page_ to the article's total page count.
 - In [Palaeontologia Electronica](/cg/736), in the past articles were
   labeled e.g. "21.2.28A 1-12" on the title page. We therefore set
-  *volume* to 21, *issue* to "2;28A", *start_page* to 1, and *end_page* to 12.
+  _volume_ to 21, _issue_ to "2;28A", _start_page_ to 1, and _end_page_ to 12.
   More recently the title page now says "24(2):a24", which we treat similarly
-  to _Biology Letters_, setting the *start_page* to "a24" and leaving the
-  *end_page* blank.
+  to _Biology Letters_, setting the _start_page_ to "a24" and leaving the
+  _end_page_ blank.
 
 By default, the database requires that the start and end page
 are both numeric and that the end page is greater than or equal to
 the start page, and that both are at most four digits.
-The *PageRegex* tag can be used to customize this behavior. It has
+The _PageRegex_ tag can be used to customize this behavior. It has
 three fields:
-- *start_page_regex*: If this is set, the *end_page* may be omitted;
-  if so, the *start_page* must match this regex.
-- *pages_regex*: If this is set, the start and end page must match this
+
+- _start_page_regex_: If this is set, the _end_page_ may be omitted;
+  if so, the _start_page_ must match this regex.
+- _pages_regex_: If this is set, the start and end page must match this
   regex.
-- *allow_standard*: If this flag is on, the start and end page are
+- _allow_standard_: If this flag is on, the start and end page are
   allowed if they follow the standard rules (both numeric), regardless
   of the values of the other two fields.
