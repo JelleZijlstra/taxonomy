@@ -4,6 +4,9 @@ include = '\.pyi?$'
 skip-magic-trailing-comma = true
 preview = true
 
+[tool.pycln]
+all = true
+
 [project]
 name = "taxonomy"
 version = "0.0"
