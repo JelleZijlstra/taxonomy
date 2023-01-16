@@ -6,8 +6,9 @@ preview = true
 
 [project]
 name = "taxonomy"
+version = "0.0"
 description = "Taxonomic database management software."
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 authors = [
   { name = "Jelle Zijlstra", email = "jelle.zijlstra@gmail.com" },
 ]
@@ -19,12 +20,13 @@ classifiers = [
   "Operating System :: OS Independent",
   "Programming Language :: Python",
   "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
 ]
 dependencies = [
     "peewee==3.13.3",
-    "IPython<7",
-    "prompt_toolkit<2",
+    "IPython",
+    "prompt_toolkit",
     "PyMySQL",
     "requests",
     "unidecode",
