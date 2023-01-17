@@ -746,8 +746,7 @@ class Article(BaseModel):
             return
         if self.kind is ArticleKind.removed:
             return
-        for linter in models.article.lint.LINTERS:
-            yield from linter(self, autofix)
+        yield from models.article.lint.run_linters(self, autofix)
 
     def cite(self, citetype: str = "paper") -> str:
         if self.issupplement() and self.parent is not None:
@@ -1183,6 +1182,8 @@ class ArticleTag(adt.ADT):
     # We can't fill_data_from_paper() because the article is in a language
     # I don't understand.
     NeedsTranslation(language=SourceLanguage, tag=12)  # type: ignore
+    # Ignore lints with a specific label
+    IgnoreLint(label=str, comment=str, tag=13)  # type: ignore
 
 
 @lru_cache

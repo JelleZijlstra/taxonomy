@@ -427,7 +427,7 @@ class Taxon(BaseModel):
             )
 
     def display_parents(
-        self, max_depth: int | None = None, file: IO[str] = sys.stdout
+        self, max_depth: int | None = 10, file: IO[str] = sys.stdout
     ) -> None:
         if max_depth == 0:
             return

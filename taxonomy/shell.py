@@ -1926,6 +1926,7 @@ def fix_justified_emendations() -> None:
     run_linter_and_fix(Name, models.name_lint.check_justified_emendations, query)
 
 
+@command
 def run_linter_and_fix(
     model_cls: type[ModelT],
     linter: Linter[ModelT] | None = None,
@@ -1943,7 +1944,10 @@ def run_linter_and_fix(
         for message in messages:
             print(message)
         while not obj.is_lint_clean():
-            obj.edit()
+            try:
+                obj.edit()
+            except getinput.StopException:
+                return
             obj = obj.reload()
 
 
@@ -2641,6 +2645,8 @@ def cg_recent_report(
     # {volume: {issue: [articles]}}
     arts: dict[str, dict[str, list[Article]]] = defaultdict(lambda: defaultdict(list))
     for art in query:
+        if art.kind is ArticleKind.alternative_version:
+            continue
         if art.numeric_year() >= min_year:
             arts[art.volume][art.issue].append(art)
     getinput.print_header(f"{cg} ({min_year}–present)")

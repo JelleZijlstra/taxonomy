@@ -241,7 +241,7 @@ class ADT(_ADTBase, metaclass=_ADTMeta):
         if member_cls._has_args:
             args: list[Any] = []
             for arg_type, serialized in zip(
-                member_cls._attributes.values(), value[1:], strict=True
+                member_cls._attributes.values(), value[1:], strict=False
             ):
                 if hasattr(arg_type, "unserialize"):
                     if serialized is None:

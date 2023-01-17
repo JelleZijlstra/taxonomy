@@ -590,7 +590,11 @@ def to_int(string: str | None) -> int:
 
 def print_character_names(string: str) -> None:
     for i, c in enumerate(string):
-        print(f"{i} {c} – {unicodedata.name(c)}")
+        try:
+            name = unicodedata.name(c)
+        except ValueError as e:
+            name = repr(e)
+        print(f"{i} {c!r} – {name}")
 
 
 def trimdoi(doi: str) -> str:

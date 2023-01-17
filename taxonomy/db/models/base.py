@@ -683,7 +683,12 @@ class BaseModel(Model):
             return lambda: cls.getter(None).get_and_edit(f"{cls.__name__}> ")
 
         sibling_editors = {
-            f"{cls.__name__.lower()}_edit": make_editor(cls)
+            # At first I had this as "edit_{name}", but that was annoying
+            # because it's a lot of typing before you get to the model.
+            # Then I had "{name}_edit", but that created too many conflicts
+            # where I ended up picking a location instead of adding a LocationDetail
+            # tag. Keeping the name uppercase requires few keystrokes but is unique.
+            cls.__name__: make_editor(cls)
             for cls in BaseModel.__subclasses__()
             if hasattr(cls, "label_field")
         }
@@ -692,14 +697,15 @@ class BaseModel(Model):
             **sibling_editors,
             "d": self.display,
             "f": lambda: self.display(full=True),
-            "foreign_edit": self.edit_foreign,
-            "sibling_edit": self.edit_sibling,
-            "sibling_edit_by_field": self.edit_sibling_by_field,
+            "foreign": self.edit_foreign,
+            "sibling": self.edit_sibling,
+            "sibling_by_field": self.edit_sibling_by_field,
             "empty": self.empty,
             "full_data": self.full_data,
             "debug": self.debug_data,
             "call": self.call,
             "lint": self.format,
+            "print_character_names": self.print_character_names_for_field,
         }
 
     def call(self) -> None:
@@ -801,6 +807,15 @@ class BaseModel(Model):
             history_key=(cls, "edit_sibling_by_field"),
             disallow_other=True,
         )
+
+    def print_character_names_for_field(self, field: str | None = None) -> None:
+        if field is None:
+            field = self.prompt_for_field_name()
+        if field is None:
+            return
+        value = getattr(self, field)
+        if isinstance(value, str):
+            helpers.print_character_names(value)
 
     def edit_foreign(self) -> None:
         options = {

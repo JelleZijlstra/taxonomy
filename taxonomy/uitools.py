@@ -199,7 +199,7 @@ def edittitle(
     def make_split(title: str) -> list[str]:
         split_title = title.split()
         for i, word in enumerate(split_title):
-            print(f"{i}: {word}")
+            print(f"{i}: {word!r}")
         return split_title
 
     # the array to hold the title
@@ -268,11 +268,26 @@ def edittitle(
         if not isinstance(data, tuple) or len(data) != 2:
             print("Invalid argument")
             return True
-        if data[0] >= len(split_title) or data[1] >= len(split_title):
+        start, end = data
+        if start >= len(split_title) or end >= len(split_title):
             print("Out of range")
             return True
-        split_title[data[0]] = "_" + split_title[data[0]]
-        split_title[data[1]] += "_"
+        for i in range(start, end + 1):
+            split_title[i] = split_title[i].replace("_", "")
+        split_title[start] = "_" + split_title[start]
+        split_title[end] += "_"
+        return True
+
+    def deitalicizer(cmd: str, data: Any) -> bool:
+        if not isinstance(data, tuple) or len(data) != 2:
+            print("Invalid argument")
+            return True
+        start, end = data
+        if start >= len(split_title) or end >= len(split_title):
+            print("Out of range")
+            return True
+        for i in range(start, end + 1):
+            split_title[i] = split_title[i].replace("_", "")
         return True
 
     def edit_word(cmd: str, data: Any) -> bool:
@@ -346,6 +361,7 @@ def edittitle(
             "l": "Make a word lowercase",
             "u": "Make a word uppercase",
             "i": "Italicize a word",
+            "j": "Remove italics from a word",
             "e": "Edit an individual word",
             "t": "Merge a word with the next word",
             "r": "Remove a word",
@@ -364,6 +380,7 @@ def edittitle(
             "l": looper(tolower),
             "u": looper(toupper),
             "i": italicizer,
+            "j": deitalicizer,
             "d": looper(lambda word: re.sub(r"^.*—", "", word)),
             "e": edit_word,
             "t": merge_words,
