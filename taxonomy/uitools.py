@@ -199,7 +199,7 @@ def edittitle(
     def make_split(title: str) -> list[str]:
         split_title = title.split()
         for i, word in enumerate(split_title):
-            print(f"{i}: {word!r}")
+            print(f"{i}: {word}")
         return split_title
 
     # the array to hold the title
