@@ -3,6 +3,9 @@
 This page discusses some possible future work on the database. No guarantees on when
 these will happen, if ever.
 
+If something on this list would be especially useful to you or if you have suggestions,
+please [let me know](mailto:jelle.zijlstra@gmail.com).
+
 ## Improving coverage
 
 This area will likely be my focus for a while.
@@ -22,6 +25,7 @@ This area will likely be my focus for a while.
   - PaleoBioDB
   - Wikipedia new species lists
 - Add more outbound links to articles (e.g., figure out more DOIs and article URLs)
+- Add more geographic coordinates for type localities
 
 ## Frontend
 
@@ -42,6 +46,12 @@ This area will likely be my focus for a while.
     but is not technically a publisher. For books, need to be able to record both the
     city of publication and the publisher.
 - Find more duplicate articles (those without DOIs)
+- Make the edittitle mechanism use getinput and provide _get_adt_callbacks_ so I don't
+  need to switch back and forth.
+- Detect more duplicate persons:
+  - Unchecked names that are almost the same as redirects
+  - Cases where we have both "Firstname M. Lastname" and "Firstname Middlename Lastname"
+- Make the editor not allow leaving required (non-null) fields empty (especially enums)
 
 ## New or disabled checks
 
@@ -63,6 +73,8 @@ This area will likely be my focus for a while.
     it. Or I don't have access to the source that did the designation.
   - Idea: Add a new tag to names that encompasses a verbatim_citation and
     citation_group, so we can track needed citations here.
+- Check that the gender of species names matches their genus (and maybe publish a paper
+  correcting all the wrong ones)
 
 ## New data not currently included
 
