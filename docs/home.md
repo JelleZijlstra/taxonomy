@@ -31,6 +31,7 @@ As of January 2023, the database contains:
 - [Geography](/docs/geography)
 - [Chronology](/docs/chronology)
 - [Scope of the database](/docs/scope)
+- [Possible future work](/docs/future-work)
 
 Information about the objects in the database:
 
