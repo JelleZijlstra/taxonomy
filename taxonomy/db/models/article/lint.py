@@ -119,23 +119,17 @@ def check_year(art: Article, autofix: bool = True) -> Iterable[str]:
     if not art.year:
         return
     # use en dashes
-    year = art.year.replace("-", "–")
-
-    # "November 2012" -> "2012"
-    if match := re.match(r"([a-zA-Z]+)\s+(\d{4})", year):
-        year = match.group(2)
+    year = art.year.replace("–", "-")
 
     # remove spaces around the dash
-    if match := re.match(r"(\d{4})\s+–\s+(\d{4})", year):
-        year = f"{match.group(1)}–{match.group(2)}"
-
-    # 2014-02-13 -> 2014
-    if match := re.match(r"(\d{4})–\d{2}–\d{2}", year):
-        year = match.group(1)
+    if match := re.match(r"(\d{4})\s+-\s+(\d{4})", year):
+        year = f"{match.group(1)}-{match.group(2)}"
 
     yield from _maybe_clean(art, "year", year, autofix)
 
-    if art.year != "undated" and not re.fullmatch(r"^\d{4}(–\d{4})?$", art.year):
+    if art.year != "undated" and not re.fullmatch(
+        r"^\d{4}(-\d{4}|-1?\d|-1?\d-[1-3]?\d)?$", art.year
+    ):
         yield f"invalid year {art.year!r}"
 
 

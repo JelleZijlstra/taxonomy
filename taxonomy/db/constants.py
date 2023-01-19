@@ -774,3 +774,10 @@ class FillDataLevel(enum.IntEnum):
     @classmethod
     def max_level(cls) -> "FillDataLevel":
         return cls.no_data_from_original
+
+
+class DateSource(enum.IntEnum):
+    internal = 1  # specified inside the publication itself
+    external = 2  # external source discussing date
+    doi_published_print = 3
+    doi_published_electronically = 4

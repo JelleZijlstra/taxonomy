@@ -27,7 +27,13 @@ from ..base import (
     get_completer,
     get_tag_based_derived_field,
 )
-from ...constants import ArticleCommentKind, ArticleKind, ArticleType, SourceLanguage
+from ...constants import (
+    ArticleCommentKind,
+    ArticleKind,
+    ArticleType,
+    SourceLanguage,
+    DateSource,
+)
 from ...helpers import to_int, clean_strings_recursively
 from ... import models
 from .... import config, events, adt, getinput, uitools
@@ -1184,6 +1190,8 @@ class ArticleTag(adt.ADT):
     NeedsTranslation(language=SourceLanguage, tag=12)  # type: ignore
     # Ignore lints with a specific label
     IgnoreLint(label=str, comment=str, tag=13)  # type: ignore
+
+    Date(source=DateSource, date=str, comment=str, tag=14)  # type: ignore
 
 
 @lru_cache
