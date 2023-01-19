@@ -538,6 +538,7 @@ class Name(BaseModel):
             "add_nominate": lambda: self.taxon.add_nominate(),
             "merge": self._merge,
             "remove_duplicate": self._remove_duplicate,
+            "edit_comments": self.edit_comments,
         }
 
     def _merge(self) -> None:
@@ -777,6 +778,11 @@ class Name(BaseModel):
     def add_included(self, species: Name, comment: str = "") -> None:
         assert isinstance(species, Name)
         self.add_type_tag(TypeTag.IncludedSpecies(species, comment))
+
+    def edit_comments(self) -> None:
+        for comment in self.comments:
+            comment.display()
+            comment.edit()
 
     def add_static_comment(
         self,
