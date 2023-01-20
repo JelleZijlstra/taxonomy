@@ -1191,8 +1191,8 @@ class ArticleTag(adt.ADT):
     # Ignore lints with a specific label
     IgnoreLint(label=str, comment=str, tag=13)  # type: ignore
 
-    Date(source=DateSource, date=str, comment=str, tag=14)  # type: ignore
-    LSID(text=str, tag=15)  # type: ignore
+    PublicationDate(source=DateSource, date=str, comment=str, tag=14)  # type: ignore
+    LSIDArticle(text=str, tag=15)  # type: ignore
 
 
 @lru_cache
