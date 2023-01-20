@@ -2194,6 +2194,7 @@ class TypeTag(adt.ADT):
     # Denotes that this name does something grammatically incorrect. A published
     # paper should correct it.
     IncorrectGrammar(text=str, tag=43)  # type: ignore
+    LSID(text=str, tag=44)  # type: ignore
 
 
 SOURCE_TAGS = (
