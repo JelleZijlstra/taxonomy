@@ -88,9 +88,6 @@ def build_csvlist() -> FileList:
             Article.kind << (ArticleKind.electronic, ArticleKind.alternative_version)
         )
     }
-    Article.folder_tree.reset()
-    for f in csvlist.values():
-        Article.folder_tree.add(f)
     print(f"done ({len(csvlist)} found)")
     return csvlist
 
@@ -141,6 +138,7 @@ def csvcheck(lslist: LsFileList, csvlist: FileList, dry_run: bool = False) -> bo
     # - detect articles in catalog that are not in the actual library
     # - correct filepaths
     print("checking whether cataloged articles are in library... ", end="")
+    Article.folder_tree.reset()
     for name, file in csvlist.items():
         # if file already exists in right place
         if name in lslist:
@@ -181,6 +179,7 @@ def csvcheck(lslist: LsFileList, csvlist: FileList, dry_run: bool = False) -> bo
                 break
             elif cmd == "m":
                 return False
+        Article.folder_tree.add(file)
     print("done")
     return True
 
