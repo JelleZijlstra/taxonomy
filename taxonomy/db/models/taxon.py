@@ -592,6 +592,7 @@ class Taxon(BaseModel):
             "add_nominate": self.add_nominate,
             "edit_all_names": self.edit_all_names,
             "edit_all_children": self.edit_all_children,
+            "make_parent_of_rank": self.make_parent_of_rank,
         }
 
     def add(self) -> Taxon | None:
@@ -1010,10 +1011,14 @@ class Taxon(BaseModel):
             print(taxon)
             taxon.synonymize(self)
 
-    def make_species_group(self) -> Taxon:
+    def make_species_group(self) -> Taxon | None:
         return self.make_parent_of_rank(Rank.species_group)
 
-    def make_parent_of_rank(self, rank: Rank) -> Taxon:
+    def make_parent_of_rank(self, rank: Rank | None = None) -> Taxon | None:
+        if rank is None:
+            rank = getinput.get_enum_member(Rank, "rank> ")
+            if rank is None:
+                return None
         if self.parent is not None and self.parent.rank == rank:
             parent = self.parent.parent
         else:
