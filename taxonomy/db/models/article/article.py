@@ -1080,7 +1080,8 @@ class Article(BaseModel):
         if Path(name).suffix:
             print(f"{name}: NOFILE path may not have a suffix")
             return None
-        return cls.make(name, kind=ArticleKind.no_copy, **kwargs)
+        kwargs.setdefault("kind", ArticleKind.no_copy)
+        return cls.make(name, **kwargs)
 
     @classmethod
     def make(cls, name: str, **values: Any) -> Article:
