@@ -984,9 +984,9 @@ class Taxon(BaseModel):
         for name in self.get_names():
             name.taxon = to_taxon
         for occ in self.occurrences:
+            comment = occ.comment
             try:
                 occ.taxon = to_taxon
-                comment = occ.comment
                 occ.add_comment("Previously under _%s_." % self.name)
             except peewee.IntegrityError:
                 print("dropping duplicate occurrence %s" % occ)
