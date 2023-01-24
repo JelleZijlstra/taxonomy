@@ -143,6 +143,7 @@ class CitationGroup(BaseModel):
                 CitationGroupTag.CitationGroupURL,
                 CitationGroupTag.ISSN,
                 CitationGroupTag.ISSNOnline,
+                CitationGroupTag.BHLBibliography,
             ):
                 yield f"{self}: multiple {tag_type} tags"
 
