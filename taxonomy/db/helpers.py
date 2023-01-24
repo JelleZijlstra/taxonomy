@@ -619,6 +619,22 @@ def is_valid_year(year: str, *, allow_empty: bool = True) -> str | None:
     return f"{numeric_year} is out of range"
 
 
+def is_valid_date(date: str) -> bool:
+    return bool(re.fullmatch(r"^\d{4}(-\d{4}|-[01]\d|-[01]\d-[0-3]\d)?$", date))
+
+
+def is_more_specific_date(left: str | None, right: str | None) -> bool:
+    if left is None:
+        return right is not None
+    return (
+        right is not None
+        and is_valid_date(left)
+        and is_valid_date(right)
+        and left != right
+        and left.startswith(right)
+    )
+
+
 def is_valid_regex(rgx: str) -> str | None:
     try:
         re.compile(rgx)

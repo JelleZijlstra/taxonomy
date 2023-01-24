@@ -13,6 +13,7 @@ from .article import Article, ArticleTag
 from .name_parser import get_name_parser
 from ..citation_group import CitationGroup, CitationGroupTag
 from ...constants import ArticleKind, ArticleType
+from ... import helpers
 
 Linter = Callable[[Article, bool], Iterable[str]]
 IgnorableLinter = Callable[[Article, bool], Generator[str, None, set[str]]]
@@ -127,9 +128,7 @@ def check_year(art: Article, autofix: bool = True) -> Iterable[str]:
 
     yield from _maybe_clean(art, "year", year, autofix)
 
-    if art.year != "undated" and not re.fullmatch(
-        r"^\d{4}(-\d{4}|-[01]\d|-[01]\d-[0-3]\d)?$", art.year
-    ):
+    if art.year != "undated" and not helpers.is_valid_date(art.year):
         yield f"invalid year {art.year!r}"
 
 

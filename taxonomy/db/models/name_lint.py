@@ -264,19 +264,23 @@ def check_required_tags(nam: Name, autofix: bool = True) -> Iterable[str]:
         )
 
 
-_single_year = re.compile(r"^\d{4}$")
-_multi_year = re.compile(r"^\d{4}-\d{4}$")
-
-
 def check_year(nam: Name, autofix: bool = True) -> Iterable[str]:
-    if (
-        nam.year is None
-        or nam.year == "in press"
-        or _single_year.match(nam.year)
-        or _multi_year.match(nam.year)
-    ):
-        return
-    yield f"{nam}: has invalid year {nam.year!r}"
+    if nam.year is not None and not helpers.is_valid_date(nam.year):
+        yield f"{nam}: has invalid year {nam.year!r}"
+
+
+def check_year_matches(nam: Name, autofix: bool = True) -> Iterable[str]:
+    if nam.original_citation is not None and nam.year != nam.original_citation.year:
+        if autofix and helpers.is_more_specific_date(
+            nam.original_citation.year, nam.year
+        ):
+            print(f"{nam}: fixing date {nam.year} -> {nam.original_citation.year}")
+            nam.year = nam.original_citation.year
+        else:
+            yield (
+                f"{nam}: year mismatch: {nam.year} (name) vs."
+                f" {nam.original_citation.year} (article)"
+            )
 
 
 ATTRIBUTES_BY_GROUP = {
