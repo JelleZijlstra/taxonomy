@@ -1394,7 +1394,7 @@ def fill_citation_groups(
         ),
         key=lambda nam: (
             nam.taxonomic_authority(),
-            nam.numeric_year(),
+            nam.get_date_object(),
             nam.verbatim_citation or "",
         ),
     ):

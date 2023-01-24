@@ -619,8 +619,40 @@ def is_valid_year(year: str, *, allow_empty: bool = True) -> str | None:
     return f"{numeric_year} is out of range"
 
 
+_DATE_REGEX = re.compile(
+    r"^(?P<year>\d{4})(-(?P<end_year>\d{4})|-(?P<month>[01]\d)|-(?P<month>[01]\d)-(?P<day>[0-3]\d))?$"
+)
+_DEFAULT_DATE = datetime.date(1, 1, 1)
+
+
 def is_valid_date(date: str) -> bool:
-    return bool(re.fullmatch(r"^\d{4}(-\d{4}|-[01]\d|-[01]\d-[0-3]\d)?$", date))
+    date_obj = get_date_object(date)
+    return date_obj is not _DEFAULT_DATE
+
+
+def get_date_object(date: str | None) -> datetime.date:
+    if date is None:
+        return _DEFAULT_DATE
+    match = _DATE_REGEX.fullmatch(date)
+    if match is None:
+        return _DEFAULT_DATE
+    # IZCN Art. 21.3, 21.6: If the date is not precisely known, use the last possible date
+    if match.group("end_year"):
+        year = int(match.group("end_year"))
+    else:
+        year = int(match.group("year"))
+    if match.group("month"):
+        month = int(match.group("month"))
+    else:
+        month = 12
+    if match.group("day"):
+        day = int(match.group("day"))
+    else:
+        day = 31
+    try:
+        return datetime.date(year, month, day)
+    except ValueError:
+        return _DEFAULT_DATE
 
 
 def is_more_specific_date(left: str | None, right: str | None) -> bool:

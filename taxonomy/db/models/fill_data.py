@@ -434,8 +434,8 @@ def fill_data_from_citation_group(
     )
 
 
-def _article_sort_key(art: Article) -> tuple[int, int, int]:
-    year = art.numeric_year()
+def _article_sort_key(art: Article) -> tuple[object, ...]:
+    date = art.get_date_object()
     if art.volume:
         try:
             volume = int(art.volume)
@@ -444,7 +444,7 @@ def _article_sort_key(art: Article) -> tuple[int, int, int]:
     else:
         volume = 0
     start_page = art.numeric_start_page()
-    return (year, volume, start_page)
+    return (date, volume, start_page)
 
 
 @CS.register

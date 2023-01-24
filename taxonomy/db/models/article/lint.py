@@ -384,7 +384,7 @@ def journal_specific_cleanup(art: Article, autofix: bool = True) -> Iterable[str
                 yield f"is in {cg}, which does not support series"
     if cg.name == "Proceedings of the Zoological Society of London":
         year = art.numeric_year()
-        if year is None or art.volume is None:
+        if art.volume is None:
             return  # other checks will complain
         try:
             volume = int(art.volume)

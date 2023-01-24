@@ -94,6 +94,14 @@ is potentially useful.
     - Autorecord this information when getting DOI data.
       - But is the publication date on CrossRef reliable? And the API returns lots of
         dates for when it was "published" or "issued" or what not: which do we pick?
+    - Specific work to do
+      - Figure out dates for "Monatsberichte": is _Ptenochirus_ actually from 1862?
+        Jackson & Groves cite Bauer AM, Gunther R, Klipfel M (1995) The herpetological
+        contributions of Wilhelm C.H. Peters (1815–1883). Society for the Study of
+        Amphibians and Reptiles in association with the Deutsche fur Herpetologie und
+        Terrarienkunde.
+      - Extract dates for PZSL, Annals & Magazine, etc. from papers discussing dating
+      - Jackson & Groves (2015: 493-494) have a useful list of references for dates
 - _ZooBank_ IDs for Names
   - Why would it help? Meant to be a standard reference for new names. Can help
     cross-link to more data.

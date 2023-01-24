@@ -210,7 +210,7 @@ def check_tags_for_name(nam: Name, autofix: bool) -> Iterable[str]:
                     senior_name.tags, NameTag.SubsequentUsageOf
                 ):
                     senior_name = senior_name_tag.name
-            if nam.effective_year() < senior_name.effective_year():
+            if nam.get_date_object() < senior_name.get_date_object():
                 yield f"{nam}: predates supposed senior name {senior_name}"
             # TODO apply this check to species too by handling gender endings correctly.
             if nam.group is not Group.species:
@@ -233,7 +233,7 @@ def check_tags_for_name(nam: Name, autofix: bool) -> Iterable[str]:
             for status, tag_cls in STATUS_TO_TAG.items():
                 if isinstance(tag, tag_cls):
                     maybe_adjust_status(nam, status, tag)
-            if nam.effective_year() < tag.name.effective_year():
+            if nam.get_date_object() < tag.name.get_date_object():
                 yield f"{nam}: predates supposed original name {tag.name}"
             if not isinstance(tag, NameTag.SubsequentUsageOf):
                 if nam.taxon != tag.name.taxon:

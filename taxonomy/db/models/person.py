@@ -694,7 +694,9 @@ class Person(BaseModel):
         if filter_for_name:
             query = self.family_name.lower()
             nams = [nam for nam in nams if query in nam.verbatim_citation.lower()]
-        nams = sorted(nams, key=lambda nam: (nam.numeric_year(), nam.verbatim_citation))
+        nams = sorted(
+            nams, key=lambda nam: (nam.get_date_object(), nam.verbatim_citation)
+        )
         verbatim_to_target: dict[str, Person] = {}
         for nam in nams:
             new_target = self.edit_tag_sequence_on_object(
@@ -1010,6 +1012,6 @@ def _display_year(year: str | None) -> str:
 
 def _display_sort_key(obj: BaseModel) -> Any:
     if isinstance(obj, (models.Name, models.Article)):
-        return (obj.numeric_year(), obj.sort_key())
+        return (obj.get_date_object(), obj.sort_key())
     else:
         return obj.sort_key()

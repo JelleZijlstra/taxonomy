@@ -34,7 +34,7 @@ from ...constants import (
     SourceLanguage,
     DateSource,
 )
-from ...helpers import to_int, clean_strings_recursively
+from ...helpers import to_int, clean_strings_recursively, get_date_object
 from ... import models
 from .... import config, events, adt, getinput, uitools
 
@@ -605,7 +605,10 @@ class Article(BaseModel):
         return any(self.get_tags(self.tags, ArticleTag.FullIssue))
 
     def numeric_year(self) -> int:
-        return to_int(self.year)
+        return self.get_date_object().year
+
+    def get_date_object(self) -> datetime.date:
+        return get_date_object(self.year)
 
     def numeric_start_page(self) -> int:
         return to_int(self.start_page)

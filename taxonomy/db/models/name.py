@@ -889,23 +889,15 @@ class Name(BaseModel):
                 return int(match.group(1))
         return None
 
-    def numeric_year(self) -> int:
-        if self.year is None:
-            return 0
-        elif "-" in self.year:
-            try:
-                return int(self.year.split("-")[-1])
-            except ValueError:
-                return 0
-        else:
-            try:
-                return int(self.year)
-            except ValueError:
-                return 0
+    def get_date_object(self) -> datetime.date:
+        return helpers.get_date_object(self.year)
 
-    def sort_key(self) -> tuple[Any, ...]:
+    def numeric_year(self) -> int:
+        return self.get_date_object().year
+
+    def sort_key(self) -> tuple[object, ...]:
         return (
-            self.numeric_year(),
+            self.get_date_object(),
             self.numeric_page_described(),
             self.corrected_original_name or "",
             self.root_name,
@@ -1115,24 +1107,6 @@ class Name(BaseModel):
         if autofix:
             self.author_tags = new_authors  # type: ignore
         return False
-
-    def effective_year(self) -> int:
-        """Returns the effective year of validity for this name.
-
-        Defaults to the year after the current year if the year is unknown or invalid.
-
-        """
-        if self.year is None:
-            return datetime.datetime.now().year + 1
-        if self.year == "in press":
-            return datetime.datetime.now().year
-        else:
-            year_str = self.year[-4:]
-            try:
-                return int(year_str)
-            except ValueError:
-                # invalid year
-                return datetime.datetime.now().year + 1
 
     def get_description(
         self,

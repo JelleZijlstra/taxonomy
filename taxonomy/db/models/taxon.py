@@ -453,7 +453,8 @@ class Taxon(BaseModel):
         for cg, nams in items:
             getinput.print_header(f"{cg} ({len(nams)})")
             for nam in sorted(
-                nams, key=lambda nam: (nam.numeric_year(), nam.numeric_page_described())
+                nams,
+                key=lambda nam: (nam.get_date_object(), nam.numeric_page_described()),
             ):
                 print(f"    {nam}")
                 if nam.verbatim_citation:
@@ -875,7 +876,10 @@ class Taxon(BaseModel):
         else:
             assert name.group == Group.species
             if name.status != Status.valid:
-                return name.get_default_valid_name()
+                if name.corrected_original_name is not None:
+                    return name.get_default_valid_name()
+                else:
+                    return self.valid_name
             try:
                 genus = self.parent_of_rank(Rank.genus)
             except ValueError:
@@ -885,7 +889,10 @@ class Taxon(BaseModel):
                     "Taxon %s should have a genus parent" % self
                 )
                 # default to the corrected original name
-                return name.get_default_valid_name()
+                if name.corrected_original_name is not None:
+                    return name.get_default_valid_name()
+                else:
+                    return self.valid_name
             else:
                 if self.rank == Rank.species_group:
                     return f"{genus.base_name.root_name} ({name.root_name})"
@@ -920,13 +927,13 @@ class Taxon(BaseModel):
             names = available_names
         if not names:
             return None
-        names_and_years = sorted(
-            [(nam, nam.effective_year()) for nam in names], key=lambda pair: pair[1]
+        names_and_dates = sorted(
+            [(nam, nam.get_date_object()) for nam in names], key=lambda pair: pair[1]
         )
-        selected_pair = names_and_years[0]
+        selected_pair = names_and_dates[0]
         if selected_pair[0] != self.base_name:
             possible = {
-                nam for nam, year in names_and_years if year == selected_pair[1]
+                nam for nam, date in names_and_dates if date == selected_pair[1]
             }
             if self.base_name in possible:
                 # If there are multiple names from the same year, assume we got the priority right
@@ -1288,7 +1295,7 @@ class Taxon(BaseModel):
             self.all_names(age=age),
             key=lambda nam: (
                 nam.taxonomic_authority(),
-                nam.numeric_year(),
+                nam.get_date_object(),
                 nam.numeric_page_described(),
             ),
         ):

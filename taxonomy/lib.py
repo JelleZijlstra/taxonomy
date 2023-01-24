@@ -242,7 +242,7 @@ def edit_names(
     level: FillDataLevel = FillDataLevel.incomplete_derived_tags,
 ) -> None:
     nams = sorted(
-        nam_iter, key=lambda nam: (nam.numeric_year(), nam.numeric_page_described())
+        nam_iter, key=lambda nam: (nam.get_date_object(), nam.numeric_page_described())
     )
     print(f"{len(nams)} total names")
     for i, nam in enumerate(nams):
