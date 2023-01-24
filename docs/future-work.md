@@ -33,6 +33,7 @@ This area will likely be my focus for a while.
 - Provide a search function that indexes everything
 - UI indication that names belong to a group with high-quality vs. low-quality coverage
   (so users don't expect insect families to list all genera)
+- Display ArticleComment in the frontend
 
 ## Backend
 
@@ -75,6 +76,8 @@ This area will likely be my focus for a while.
     citation_group, so we can track needed citations here.
 - Check that the gender of species names matches their genus (and maybe publish a paper
   correcting all the wrong ones)
+  - I appear to have done this before and made a number of incorrect changes. Perhaps
+    audit all the cases where the root_name doesn't match the corrected_original_name.
 
 ## New data not currently included
 
@@ -85,15 +88,16 @@ is potentially useful.
   - Why would it help? Sometimes matters for nomenclatural priority.
   - But it's a lot of work, and for most articles I have it won't matter. Minimum work
     perhaps:
-    - Define a format for storing dates (e.g. "2023-01" if we know the month,
+    - (done) Define a format for storing dates (e.g. "2023-01" if we know the month,
       "2023-01-17" if we know both the month and day)
-    - Relax linter to allow this format for the year field on citations and names
+    - (done) Relax linter to allow this format for the year field on citations and names
     - Autorecord this information when getting DOI data.
       - But is the publication date on CrossRef reliable? And the API returns lots of
         dates for when it was "published" or "issued" or what not: which do we pick?
 - _ZooBank_ IDs for Names
   - Why would it help? Meant to be a standard reference for new names. Can help
     cross-link to more data.
+  - DB now has the capability to add these, but no automated way to find them yet.
 - _ORCID_ IDs for Persons
   - Why would it help? Meant to be a standard identifier for researchers.
   - Complication: CrossRef API doesn't give me these IDs. Is there any API I can use to
@@ -102,6 +106,8 @@ is potentially useful.
   - Why would it help? Make it possible to look up any name you see in a source in the
     database.
   - Complications: It's a lot more work.
+- Add a new age class for taxa that went extinct post-1500, so we can better match MDD
+  and the Red List.
 
 ## New taxonomic groups
 
