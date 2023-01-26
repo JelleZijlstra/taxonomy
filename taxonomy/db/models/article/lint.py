@@ -11,6 +11,7 @@ from typing import Any
 import unicodedata
 from .article import Article, ArticleTag
 from .name_parser import get_name_parser
+from .utils import infer_publication_date_from_tags
 from ..citation_group import CitationGroup, CitationGroupTag
 from ...constants import ArticleKind, ArticleType
 from ... import helpers
@@ -130,6 +131,19 @@ def check_year(art: Article, autofix: bool = True) -> Iterable[str]:
 
     if art.year != "undated" and not helpers.is_valid_date(art.year):
         yield f"invalid year {art.year!r}"
+
+    inferred = infer_publication_date_from_tags(art.tags)
+    if inferred is not None and inferred != art.year:
+        is_more_specific = helpers.is_more_specific_date(inferred, art.year)
+        if is_more_specific:
+            message = f"tags yield more specific date {inferred} instead of {art.year}"
+        else:
+            message = f"year mismatch: inferred {inferred}, actual {art.year}"
+        if autofix and is_more_specific:
+            print(message)
+            art.year = inferred
+        else:
+            yield message
 
 
 _JSTOR_URL_PREFIX = "http://www.jstor.org/stable/"

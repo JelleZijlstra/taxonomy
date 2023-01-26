@@ -16,14 +16,13 @@ import urllib.parse
 
 from .article import Article, ArticleTag
 from .lint import is_valid_doi
+from .utils import infer_publication_date_from_tags
 from ..citation_group import CitationGroup, CitationGroupTag
 from ..person import AuthorTag, Person
-from ...constants import ArticleType, ArticleKind
+from ...constants import ArticleType, ArticleKind, DateSource
 from ...helpers import clean_string, trimdoi, clean_strings_recursively
 from ...url_cache import cached, CacheDomain
-from .... import config, parsing, getinput, uitools, command_set
-
-_options = config.get_options()
+from .... import parsing, getinput, uitools, command_set
 
 CS = command_set.CommandSet("add_data", "Commands for adding data to articles")
 
@@ -88,6 +87,14 @@ for _key, _value in list(doi_type_to_article_type.items()):
     doi_type_to_article_type[_key.replace("_", "-")] = _value
 
 
+FIELD_TO_DATE_SOURCE = {
+    "published": DateSource.doi_published,
+    "published-print": DateSource.doi_published_print,
+    "published-online": DateSource.doi_published_online,
+    "published-other": DateSource.doi_published_other,
+}
+
+
 def expand_doi_json(doi: str) -> RawData:
     result = get_doi_json(doi)
     if result is None:
@@ -139,8 +146,6 @@ def expand_doi_json(doi: str) -> RawData:
                 data["start_page"] = page
         else:
             data["pages"] = page
-    if date := work.get("published", {}).get("date-parts"):
-        data["year"] = str(date[0][0])
 
     if isbns := work.get("ISBN"):
         isbn = isbns[0]
@@ -156,6 +161,22 @@ def expand_doi_json(doi: str) -> RawData:
         elif typ is ArticleType.CHAPTER:
             data["parent_info"] = {"title": container_title, "isbn": isbn}
 
+    data["tags"] = []
+    for field, date_source in FIELD_TO_DATE_SOURCE.items():
+        if field in work:
+            parts = work[field]["date-parts"][0]
+            pieces = [str(parts[0])]
+            if len(parts) > 1:
+                pieces.append(f"{parts[1]:02}")
+            if len(parts) > 2:
+                pieces.append(f"{parts[2]:02}")
+            data["tags"].append(
+                ArticleTag.PublicationDate(
+                    source=date_source, date="-".join(pieces), comment=""
+                )
+            )
+    if year := infer_publication_date_from_tags(data["tags"]):
+        data["year"] = year
     return data
 
 
@@ -487,13 +508,16 @@ def reuse_nofile(art: Article) -> bool:
     return True
 
 
-def set_multi(art: Article, data: RawData, *, only_new: bool = True) -> None:
+def set_multi(
+    art: Article, data: RawData, *, only_new: bool = True, verbose: bool = True
+) -> None:
     for attr, value in clean_strings_recursively(data).items():
         if attr == "author_tags":
-            set_author_tags_from_raw(art, value, only_new=only_new)
+            set_author_tags_from_raw(art, value, only_new=only_new, verbose=verbose)
         elif attr == "journal":
             if art.citation_group is not None and only_new:
-                print(f"{art}: ignoring journal {value}")
+                if art.citation_group.name != value and verbose:
+                    print(f"{art}: ignoring journal {value}")
                 continue
             print(f"{art}: set citation group to {value}")
             art.citation_group = CitationGroup.get_or_create(value)
@@ -503,13 +527,25 @@ def set_multi(art: Article, data: RawData, *, only_new: bool = True) -> None:
                 if existing == value:
                     continue
                 if only_new:
-                    print(f"{art}: ignoring ISBN {value}")
+                    if verbose:
+                        print(f"{art}: ignoring ISBN {value}")
                     continue
+            print(f"{art}: add ISBN {value}")
             art.add_tag(ArticleTag.ISBN(text=value))
+        elif attr == "tags":
+            tags = set(art.tags or ())
+            for tag in value:
+                if tag not in tags:
+                    print(f"{art}: add tag {tag}")
+                    art.add_tag(tag)
         elif attr in Article.fields():
+            if value == "":
+                continue
+            if only_new and attr == "end_page" and art.start_page:
+                continue
             current = getattr(art, attr)
             if current and only_new:
-                if current != value:
+                if current != value and verbose:
                     print(
                         f"{art}: ignore field {attr} (new: {value}; existing:"
                         f" {current})"
@@ -524,11 +560,13 @@ def set_multi(art: Article, data: RawData, *, only_new: bool = True) -> None:
 
 
 def set_author_tags_from_raw(
-    art: Article, value: Any, *, only_new: bool = True, interactive: bool = False
+    art: Article,
+    value: Any,
+    *,
+    only_new: bool = True,
+    interactive: bool = False,
+    verbose: bool = True,
 ) -> None:
-    if art.author_tags and only_new:
-        print(f"{art}: dropping authors {value} (existing: {art.author_tags})")
-        return
     for params in value:
         if params["family_name"].isupper():
             params["family_name"] = params["family_name"].title()
@@ -537,6 +575,10 @@ def set_author_tags_from_raw(
         for params in value
     ]
     if art.author_tags is not None:
+        if only_new:
+            if art.author_tags != new_tags and verbose:
+                print(f"{art}: dropping authors {value} (existing: {art.author_tags})")
+            return
         if len(art.author_tags) == len(new_tags):
             new_tags = [
                 existing if existing.person.is_more_specific_than(new.person) else new

@@ -816,34 +816,15 @@ class Article(BaseModel):
             self.doi = None
 
     def expand_doi(
-        self, overwrite: bool = False, verbose: bool = False, set_fields: bool = False
+        self, overwrite: bool = False, verbose: bool = False, set_fields: bool = True
     ) -> dict[str, Any]:
         if not self.doi:
             return {}
         data = models.article.add_data.expand_doi_json(self.doi)
-        for key, value in list(data.items()):
-            # print differences if verbose is set
-            if hasattr(self, key):
-                existing = getattr(self, key)
-                if verbose:
-                    if value != existing:
-                        print(
-                            f"Different data from expanddoi(). File {self.name}; var"
-                            f" {key}"
-                        )
-                        print(f"Existing data: {existing}")
-                        print(f"New data: {value}")
-            else:
-                existing = False
-            # overwrite everything if overwrite is set; else only if no existing data
-            if (
-                existing
-                and not overwrite
-                and not (key == "type" and existing == ArticleType.ERROR)
-            ):
-                del data[key]
         if set_fields:
-            models.article.add_data.set_multi(self, data, only_new=False)
+            models.article.add_data.set_multi(
+                self, data, only_new=not overwrite, verbose=verbose
+            )
         return data
 
     def set_multi(self, data: dict[str, Any]) -> None:

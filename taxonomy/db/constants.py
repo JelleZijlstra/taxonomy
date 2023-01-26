@@ -781,5 +781,9 @@ class FillDataLevel(enum.IntEnum):
 class DateSource(enum.IntEnum):
     internal = 1  # specified inside the publication itself
     external = 2  # external source discussing date
+    # Map to similarly named fields in the CrossRef API
+    # https://api.crossref.org/swagger-ui/index.html#/Works/get_works__doi_
     doi_published_print = 3
-    doi_published_electronically = 4
+    doi_published_online = 4
+    doi_published_other = 5
+    doi_published = 6

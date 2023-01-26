@@ -1,16 +1,39 @@
-"""Helpers for creating Articles and similar objects."""
-
-from ...constants import ArticleType
-from .article import Article
+from ...constants import ArticleType, DateSource
+from .article import Article, ArticleTag
 from ..person import Person, AuthorTag
 
+from collections import defaultdict
 from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import Any
+from collections.abc import Sequence
+
+SOURCE_PRIORITY = [
+    DateSource.external,
+    DateSource.internal,
+    DateSource.doi_published,
+    DateSource.doi_published_online,
+    DateSource.doi_published_print,
+]
+
+
+def infer_publication_date_from_tags(tags: Sequence[ArticleTag] | None) -> str | None:
+    if not tags:
+        return None
+    by_source = defaultdict(list)
+    for tag in tags:
+        if isinstance(tag, ArticleTag.PublicationDate):
+            by_source[tag.source].append(tag)
+    for source in SOURCE_PRIORITY:
+        if tags_of_source := by_source[source]:
+            if len(tags_of_source) > 1:
+                return None
+            return tags_of_source[0].date
+    return None
 
 
 @dataclass
-class FakeArticle(Article):
+class _FakeArticle(Article):
     __data__: dict[str, Any]
     _dirty: bool = False
 
@@ -22,7 +45,7 @@ class FakeArticle(Article):
 
 
 @dataclass
-class FakePerson(Person):
+class _FakePerson(Person):
     __data__: dict[str, Any]
     _dirty: bool = False
 
@@ -34,6 +57,7 @@ class FakePerson(Person):
 
 
 def make_journal_article() -> Article:
+    """Make a dummy Article for testing."""
     data = {
         "addday": "13",
         "addmonth": "1",
@@ -56,13 +80,13 @@ def make_journal_article() -> Article:
         "citation_group": SimpleNamespace(name="Journal of Mammalogy"),
         "author_tags": [
             AuthorTag.Author(
-                FakePerson({"family_name": "Zijlstra", "given_names": "Jelle S."})
+                _FakePerson({"family_name": "Zijlstra", "given_names": "Jelle S."})
             ),
             AuthorTag.Author(
-                FakePerson({"family_name": "Madern", "given_names": "Paulina A."})
+                _FakePerson({"family_name": "Madern", "given_names": "Paulina A."})
             ),
             AuthorTag.Author(
-                FakePerson(
+                _FakePerson(
                     {
                         "family_name": "Hoek Ostende",
                         "given_names": "Lars W.",
@@ -72,4 +96,4 @@ def make_journal_article() -> Article:
             ),
         ],
     }
-    return FakeArticle(data)
+    return _FakeArticle(data)
