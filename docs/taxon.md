@@ -27,8 +27,9 @@ Taxa have the following fields:
     common cutoff for databases of extant taxa (e.g., the IUCN Red List and the Mammal
     Diversity Database), so keeping this separate from the next one (for earlier
     Holocene extinctions) makes it easier to compare taxonomies among these databases.
+    Example: [_Thylacinus cynocephalus_](/t/Thylacinus_cynocephalus).
   - _holocene_: The taxon survived into the [Holocene](/p/Holocene), but went extinct
-    before 1500. Example: [_Thylacinus cynocephalus_](/t/Thylacinus_cynocephalus).
+    before 1500. Example: [_Mammuthus primigenius_](/t/Mammuthus_primigenius).
   - _fossil_: The taxon is known only from pre-Holocene body fossils. Example:
     [_Tyrannosaurus rex_](/t/Tyrannosaurus_rex).
   - _egg_: The taxon is based on a fossil egg. Example:
