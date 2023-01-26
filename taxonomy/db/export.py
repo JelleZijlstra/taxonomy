@@ -11,6 +11,7 @@ from .constants import AgeClass, Group, Rank
 
 import csv
 from typing import TypedDict, Protocol
+from collections.abc import Container
 
 CS = CommandSet("export", "Exporting data")
 
@@ -20,12 +21,15 @@ class NameData(TypedDict):
     id: str
     # Link to Hesperomys page
     link: str
+    status: str
     class_: str
     order: str
     family: str
     genus: str
     species: str
     subspecies: str
+    taxon_name: str
+    taxon_link: str
     # Name as used in the original description
     original_name: str
     # Last part of the name, e.g. species name for species
@@ -56,15 +60,19 @@ class DetailTag(Protocol):
 def export_names(
     filename: str,
     taxon: Taxon,
-    age: AgeClass | None = AgeClass.extant,
+    ages: Container[AgeClass] | None = {AgeClass.extant, AgeClass.recently_extinct},
     group: Group | None = Group.species,
 ) -> None:
     """Export data about names to a CSV file."""
     print("collecting names...")
-    names = taxon.all_names(age=age)
-    if group is not None:
-        names = {name for name in names if name.group is group}
+    names = list(taxon.all_names())
     print(f"done, {len(names)} found")
+    print("filtering names...")
+    if group is not None:
+        names = [name for name in names if name.group is group]
+    if ages is not None:
+        names = [name for name in names if name.taxon.age in ages]
+    print(f"done, {len(names)} remaining")
 
     with open(filename, "w") as f:
         writer: "csv.DictWriter[str]" = csv.DictWriter(
@@ -103,13 +111,16 @@ def data_for_name(name: Name) -> NameData:
     return {
         "id": str(name.id),
         "link": name.get_absolute_url(),
+        "status": name.status.name,
         "class_": class_.valid_name if class_ else "",
         "order": order.valid_name if order else "",
         "family": family.valid_name if family else "",
         "genus": genus.valid_name if genus else "",
         "species": species.valid_name if species else "",
         "subspecies": taxon.valid_name if taxon.rank is Rank.subspecies else "",
-        "original_name": name.original_name or "",
+        "taxon_name": taxon.valid_name,
+        "taxon_link": taxon.get_absolute_url(),
+        "original_name": name.corrected_original_name or "",
         "root_name": name.root_name,
         "authors": name.taxonomic_authority(),
         "author_links": author_links,

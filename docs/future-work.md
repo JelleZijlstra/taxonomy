@@ -60,9 +60,6 @@ This area will likely be my focus for a while.
 - Make the editor not allow leaving required (non-null) fields empty (especially enums)
 - Export feature on release
   - Provide a documented interface for each table
-  - Use corrected original name, not original name
-  - Make sure name/taxon relation works
-    (https://github.com/globalbioticinteractions/nomer/issues/144#issuecomment-1405093373)
 
 ## New or disabled checks
 
