@@ -116,6 +116,10 @@ def expand_doi_json(doi: str) -> RawData:
     if author_raw := work.get("author"):
         authors = []
         for author in author_raw:
+            # doi:10.24272/j.issn.2095-8137.2020.132 has some stray authors that look like
+            # they should be affiliations.
+            if "family" not in author:
+                continue
             info = {"family_name": clean_string(author["family"])}
             if given := author["given"]:
                 given_names = clean_string(given.title())
