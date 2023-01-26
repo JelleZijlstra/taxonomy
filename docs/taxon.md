@@ -23,8 +23,12 @@ Taxa have the following fields:
 - _age_: The kind of material that this taxon is based on and whether it is still
   around. The most common options are _extant_ and _fossil_. The options are:
   - _extant_: The taxon is currently extant. Example: [_Homo sapiens_](/t/Homo_sapiens)
-  - _holocene_: The taxon survived into the [Holocene](/p/Holocene), but is now extinct.
-    Example: [_Thylacinus cynocephalus_](/t/Thylacinus_cynocephalus).
+  - _recently_extinct_: The taxon went extinct after the year 1500. This matches the
+    common cutoff for databases of extant taxa (e.g., the IUCN Red List and the Mammal
+    Diversity Database), so keeping this separate from the next one (for earlier
+    Holocene extinctions) makes it easier to compare taxonomies among these databases.
+  - _holocene_: The taxon survived into the [Holocene](/p/Holocene), but went extinct
+    before 1500. Example: [_Thylacinus cynocephalus_](/t/Thylacinus_cynocephalus).
   - _fossil_: The taxon is known only from pre-Holocene body fossils. Example:
     [_Tyrannosaurus rex_](/t/Tyrannosaurus_rex).
   - _egg_: The taxon is based on a fossil egg. Example:
@@ -39,5 +43,6 @@ Taxa have the following fields:
     [_Brutalichnus brutalis_](/t/Brutalichnus_brutalis).
   - _ichno_: Other kinds of trace fossils, such as the resting trace
     [_Ursalveolous carpathicus_](/t/Ursalveolous_carpathicus).
+  - _redirect_: The taxon was merged into another one in the database.
   - _removed_: The taxon has been removed from the database. (Such taxa are not actually
     removed to avoid breaking links.)

@@ -27,6 +27,7 @@ class AgeClass(enum.IntEnum):
     burrow = 8
     bite_trace = 9
     redirect = 10  # merged into another Taxon
+    recently_extinct = 11
 
     def is_ichno(self) -> bool:
         return self in (
@@ -41,7 +42,8 @@ class AgeClass(enum.IntEnum):
     def get_symbol(self) -> str:
         return {
             self.extant: "",
-            self.holocene: "☠",
+            self.holocene: "🦴",
+            self.recently_extinct: "☠",
             self.fossil: "†",
             self.ichno: "👻",
             self.removed: "!",

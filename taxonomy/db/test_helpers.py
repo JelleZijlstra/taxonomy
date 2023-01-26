@@ -1,4 +1,6 @@
-from .helpers import romanize_russian, trimdoi
+from datetime import date
+
+from .helpers import romanize_russian, trimdoi, get_date_object
 
 
 def assert_romanizes(cyrillic: str, latin: str) -> None:
@@ -96,3 +98,11 @@ def test_romanize_russian() -> None:
 def test_trimdoi() -> None:
     assert trimdoi("10.1234/452. ") == "10.1234/452"
     assert trimdoi(" doi:10.1234/567 ") == "10.1234/567"
+
+
+def test_get_date_object() -> None:
+    assert get_date_object("1990-1991") == date(1991, 12, 31)
+    assert get_date_object("1991") == date(1991, 12, 31)
+    assert get_date_object("1991-02") == date(1991, 2, 28)
+    assert get_date_object("1992-02") == date(1992, 2, 29)
+    assert get_date_object("1991-02-11") == date(1991, 2, 11)

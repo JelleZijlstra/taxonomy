@@ -14,12 +14,13 @@ will also apply to the database itself.
   - Fix numerous incorrect page fields on names and articles
   - Clean up many journal citations (adding missing end pages, correcting incorrect
     pages, standardizing formats, standardizing italics)
-  - Add a few new taxa and articles
+  - Add many new taxa and articles
 - Frontend
   - Display links to various identifiers (ISSN, ISBN, etc.) on article and citation
     group pages
   - Redirect merged entities into their target entity
   - Add [Future work](/docs/future-work) document
+  - Improve display of lists to make it more intuitive
 - Backend
   - Support redirecting Taxon and Name entities to others
   - Add support for marking the valid year range on journals (documented in
@@ -29,6 +30,7 @@ will also apply to the database itself.
   - Validate the _series_, _volume_, _issue_, _start_page_, and _end_page_ fields on
     journal articles. Documented in [Citation group](/docs/citation-group)
   - Check and restrict the use of italics in article titles
+  - Add new "recently_extinct" age class
 
 # Previous
 

@@ -1,6 +1,7 @@
 """Helper functions"""
 
 from contextlib import contextmanager
+import calendar
 import datetime
 import json
 import re
@@ -620,7 +621,7 @@ def is_valid_year(year: str, *, allow_empty: bool = True) -> str | None:
 
 
 _DATE_REGEX = re.compile(
-    r"^(?P<year>\d{4})(-(?P<end_year>\d{4})|-(?P<month>[01]\d)|-(?P<month>[01]\d)-(?P<day>[0-3]\d))?$"
+    r"^(?P<year>\d{4})(-(?P<end_year>\d{4})|-(?P<month>[01]\d)|-(?P<month2>[01]\d)-(?P<day>[0-3]\d))?$"
 )
 _DEFAULT_DATE = datetime.date(1, 1, 1)
 
@@ -643,12 +644,14 @@ def get_date_object(date: str | None) -> datetime.date:
         year = int(match.group("year"))
     if match.group("month"):
         month = int(match.group("month"))
+    elif match.group("month2"):
+        month = int(match.group("month2"))
     else:
         month = 12
     if match.group("day"):
         day = int(match.group("day"))
     else:
-        day = 31
+        _, day = calendar.monthrange(year, month)
     try:
         return datetime.date(year, month, day)
     except ValueError:

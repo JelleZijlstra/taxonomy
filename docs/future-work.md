@@ -30,10 +30,18 @@ This area will likely be my focus for a while.
 ## Frontend
 
 - Improve speed (server-side rendering? caching?)
+  - Sketch: An additional SQLite database on the server box that gets cleared on deploy
+    and stores (GQL query, args) -> result.
+    - Could be pre-filled if we want to
+    - Need to worry about filling up the disk
 - Provide a search function that indexes everything
 - UI indication that names belong to a group with high-quality vs. low-quality coverage
   (so users don't expect insect families to list all genera)
 - Display ArticleComment in the frontend
+- Fix "Justified emendation by" http://hesperomys.com/n/76985
+- Fix "Van den Hoek Ostende, L.W. van den" in citations
+- Make /a/nnnn pages include a copy-pastable citation
+- Add an SSL cert (maybe using AWS ELB?)
 
 ## Backend
 
