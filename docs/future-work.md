@@ -37,11 +37,8 @@ This area will likely be my focus for a while.
 - Provide a search function that indexes everything
 - UI indication that names belong to a group with high-quality vs. low-quality coverage
   (so users don't expect insect families to list all genera)
-- Display ArticleComment in the frontend
-- Fix "Justified emendation by" http://hesperomys.com/n/76985
-- Fix "Van den Hoek Ostende, L.W. van den" in citations
-- Make /a/nnnn pages include a copy-pastable citation
 - Add an SSL cert (maybe using AWS ELB?)
+- Display dates that include a month intelligently
 
 ## Backend
 
@@ -61,6 +58,11 @@ This area will likely be my focus for a while.
   - Unchecked names that are almost the same as redirects
   - Cases where we have both "Firstname M. Lastname" and "Firstname Middlename Lastname"
 - Make the editor not allow leaving required (non-null) fields empty (especially enums)
+- Export feature on release
+  - Provide a documented interface for each table
+  - Use corrected original name, not original name
+  - Make sure name/taxon relation works
+    (https://github.com/globalbioticinteractions/nomer/issues/144#issuecomment-1405093373)
 
 ## New or disabled checks
 
