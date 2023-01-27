@@ -36,6 +36,7 @@ class NameData(TypedDict):
     corrected_original_name: str
     # Last part of the name, e.g. species name for species
     root_name: str
+    original_rank: str
     group: str
     authors: str
     author_links: str
@@ -52,7 +53,15 @@ class NameData(TypedDict):
     species_type_kind: str
     collection_link: str
     type_specimen_detail: str
+    type_name: str
+    type_link: str
+    genus_type_kind: str
     nomenclature_status: str
+    name_complex: str
+    name_complex_link: str
+    species_name_complex: str
+    species_name_complex_link: str
+    tags: str
 
 
 class DetailTag(Protocol):
@@ -115,6 +124,11 @@ def data_for_name(name: Name) -> NameData:
         stringify_detail_tag(tag)
         for tag in name.get_tags(name.type_tags, TypeTag.SpecimenDetail)
     )
+    tags: list[object] = []
+    if name.tags:
+        tags += name.tags
+    if name.type_tags:
+        tags += name.type_tags
     return {
         "id": str(name.id),
         "link": name.get_absolute_url(),
@@ -130,6 +144,7 @@ def data_for_name(name: Name) -> NameData:
         "original_name": name.original_name or "",
         "corrected_original_name": name.corrected_original_name or "",
         "root_name": name.root_name,
+        "original_rank": name.original_rank.name if name.original_rank else "",
         "group": name.group.name,
         "authors": name.taxonomic_authority(),
         "author_links": author_links,
@@ -148,7 +163,21 @@ def data_for_name(name: Name) -> NameData:
         else "",
         "collection_link": coll.get_absolute_url() if coll else "",
         "type_specimen_detail": specimen_detail,
+        "type_name": str(name.type) if name.type else "",
+        "type_link": name.type.get_absolute_url() if name.type else "",
+        "genus_type_kind": name.genus_type_kind.name if name.genus_type_kind else "",
         "nomenclature_status": name.nomenclature_status.name,
+        "name_complex": str(name.name_complex) if name.name_complex else "",
+        "name_complex_link": name.name_complex.get_absolute_url()
+        if name.name_complex
+        else "",
+        "species_name_complex": str(name.species_name_complex)
+        if name.species_name_complex
+        else "",
+        "species_name_complex_link": name.species_name_complex.get_absolute_url()
+        if name.species_name_complex
+        else "",
+        "tags": repr(tags),
     }
 
 
