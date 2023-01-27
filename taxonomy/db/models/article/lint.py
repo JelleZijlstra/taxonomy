@@ -118,23 +118,35 @@ def check_type_and_kind(art: Article, autofix: bool = True) -> Iterable[str]:
         yield f"is {art.type.name} but has no parent"
 
 
-SOURCE_PRIORITY = [
-    DateSource.external,
-    DateSource.internal,
-    DateSource.doi_published,
-    DateSource.doi_published_online,
-    DateSource.doi_published_print,
-]
+SOURCE_PRIORITY = {
+    # Without an lsid, online publication doesn't count
+    False: [
+        DateSource.external,
+        DateSource.internal,
+        DateSource.doi_published_print,
+        DateSource.doi_published,
+    ],
+    True: [
+        DateSource.external,
+        DateSource.internal,
+        DateSource.doi_published,
+        DateSource.doi_published_online,
+        DateSource.doi_published_print,
+    ],
+}
 
 
 def infer_publication_date_from_tags(tags: Sequence[ArticleTag] | None) -> str | None:
     if not tags:
         return None
     by_source = defaultdict(list)
+    has_lsid = False
     for tag in tags:
         if isinstance(tag, ArticleTag.PublicationDate):
             by_source[tag.source].append(tag)
-    for source in SOURCE_PRIORITY:
+        elif isinstance(tag, ArticleTag.LSIDArticle):
+            has_lsid = True
+    for source in SOURCE_PRIORITY[has_lsid]:
         if tags_of_source := by_source[source]:
             if len(tags_of_source) > 1:
                 return None
