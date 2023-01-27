@@ -112,7 +112,9 @@ class Taxon(BaseModel):
     def lint(self, autofix: bool = True) -> Iterable[str]:
         if self.parent is None and self.id != 1:
             yield f"{self}: missing parent"
-        if self.parent is not None and self.age < self.parent.age:
+        if self.parent is not None and not self.age.can_have_parent_of_age(
+            self.parent.age
+        ):
             yield (
                 f"{self}: is {self.age!r}, but its parent {self.parent} is"
                 f" {self.parent.age!r}"

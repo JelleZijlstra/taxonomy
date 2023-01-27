@@ -1,6 +1,9 @@
+from __future__ import annotations
+
 """Enums for various fields."""
 
 import enum
+from functools import cache
 
 
 class RequirednessLevel(enum.IntEnum):
@@ -54,6 +57,31 @@ class AgeClass(enum.IntEnum):
             self.bite_trace: "😋",
             self.redirect: "→",
         }[self]
+
+    def can_have_parent_of_age(self, other: AgeClass) -> bool:
+        return other in _get_allowed_parents(self)
+
+
+_ALLOWED_AGE_PARENTS = {
+    AgeClass.recently_extinct: [AgeClass.extant],
+    AgeClass.holocene: [AgeClass.recently_extinct],
+    AgeClass.fossil: [AgeClass.holocene],
+    AgeClass.ichno: [AgeClass.fossil],
+    AgeClass.egg: [AgeClass.fossil],
+    AgeClass.track: [AgeClass.ichno],
+    AgeClass.coprolite: [AgeClass.ichno],
+    AgeClass.burrow: [AgeClass.ichno],
+    AgeClass.bite_trace: [AgeClass.ichno],
+}
+
+
+@cache
+def _get_allowed_parents(age: AgeClass) -> set[AgeClass]:
+    parents = _ALLOWED_AGE_PARENTS.get(age, [])
+    allowed = {age, *parents}
+    for parent in parents:
+        allowed |= _get_allowed_parents(parent)
+    return allowed
 
 
 class Status(enum.IntEnum):
@@ -219,7 +247,7 @@ class NomenclatureStatus(enum.IntEnum):
         }
 
     @classmethod
-    def hierarchy(cls) -> list[list["NomenclatureStatus"]]:
+    def hierarchy(cls) -> list[list[NomenclatureStatus]]:
         """Hierarchy of the severity of various problems with a name.
 
         Listed from most to least severe. If multiple conditions apply to a name (e.g., it is both
@@ -774,7 +802,7 @@ class FillDataLevel(enum.IntEnum):
     nothing_needed = 7
 
     @classmethod
-    def max_level(cls) -> "FillDataLevel":
+    def max_level(cls) -> FillDataLevel:
         return cls.no_data_from_original
 
 
