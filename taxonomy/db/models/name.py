@@ -895,6 +895,12 @@ class Name(BaseModel):
     def numeric_year(self) -> int:
         return self.get_date_object().year
 
+    def valid_numeric_year(self) -> int | None:
+        if helpers.is_valid_date(self.year):
+            return self.numeric_year()
+        else:
+            return None
+
     def sort_key(self) -> tuple[object, ...]:
         return (
             self.get_date_object(),

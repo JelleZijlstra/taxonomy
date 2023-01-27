@@ -1,35 +1,10 @@
-from ...constants import ArticleType, DateSource
-from .article import Article, ArticleTag
+from ...constants import ArticleType
+from .article import Article
 from ..person import Person, AuthorTag
 
-from collections import defaultdict
 from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import Any
-from collections.abc import Sequence
-
-SOURCE_PRIORITY = [
-    DateSource.external,
-    DateSource.internal,
-    DateSource.doi_published,
-    DateSource.doi_published_online,
-    DateSource.doi_published_print,
-]
-
-
-def infer_publication_date_from_tags(tags: Sequence[ArticleTag] | None) -> str | None:
-    if not tags:
-        return None
-    by_source = defaultdict(list)
-    for tag in tags:
-        if isinstance(tag, ArticleTag.PublicationDate):
-            by_source[tag.source].append(tag)
-    for source in SOURCE_PRIORITY:
-        if tags_of_source := by_source[source]:
-            if len(tags_of_source) > 1:
-                return None
-            return tags_of_source[0].date
-    return None
 
 
 @dataclass

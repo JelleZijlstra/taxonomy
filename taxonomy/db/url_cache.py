@@ -19,6 +19,10 @@ CachedCallable = Callable[[str], str]
 class CacheDomain(enum.Enum):
     test = 1  # test data
     doi = 2  # https://api.crossref.org/swagger-ui/index.html#/Works/get_works__doi_
+    zoobank_act = (
+        3  # e.g. https://zoobank.org/NomenclaturalActs.json/Pseudanthias_carlsoni
+    )
+    zoobank_publication = 4  # e.g. https://zoobank.org/References.json/427D7953-E8FC-41E8-BEA7-8AE644E6DE77
 
 
 _LOCAL_CACHE: dict[tuple[CacheDomain, str], str] = {}

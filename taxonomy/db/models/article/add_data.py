@@ -15,8 +15,7 @@ from collections.abc import Sequence
 import urllib.parse
 
 from .article import Article, ArticleTag
-from .lint import is_valid_doi
-from .utils import infer_publication_date_from_tags
+from .lint import is_valid_doi, infer_publication_date_from_tags
 from ..citation_group import CitationGroup, CitationGroupTag
 from ..person import AuthorTag, Person
 from ...constants import ArticleType, ArticleKind, DateSource
@@ -121,7 +120,7 @@ def expand_doi_json(doi: str) -> RawData:
             if "family" not in author:
                 continue
             info = {"family_name": clean_string(author["family"])}
-            if given := author["given"]:
+            if given := author.get("given"):
                 given_names = clean_string(given.title())
                 if given_names[-1].isupper():
                     given_names = given_names + "."

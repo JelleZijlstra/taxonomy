@@ -196,10 +196,11 @@ class BaseModel(Model):
                 bad.append((obj, messages))
         return bad
 
-    def format(self) -> bool:
+    def format(self, *, quiet: bool = False) -> bool:
         messages = list(self.general_lint())
         if not messages:
-            print("Everything clean")
+            if not quiet:
+                print("Everything clean")
             return True
         for message in messages:
             print(message)

@@ -27,7 +27,7 @@ from graphene.utils.str_converters import to_snake_case
 from taxonomy.adt import ADT
 from taxonomy.db.constants import CommentKind
 from taxonomy.db.derived_data import DerivedField
-from taxonomy.db.models import Article, Location, NameComment, Period
+from taxonomy.db.models import Article, Location, Name, NameComment, Period
 from taxonomy.db.models.base import ADTField, BaseModel, EnumField
 
 SCALAR_FIELD_TO_GRAPHENE = {
@@ -287,6 +287,18 @@ def num_locations_resolver(
     return query.count()
 
 
+def numeric_year_resolver_name(parent: ObjectType, info: ResolveInfo) -> int | None:
+    model = get_model(Name, parent, info)
+    assert isinstance(model, Name)
+    return model.valid_numeric_year()
+
+
+def numeric_year_resolver_article(parent: ObjectType, info: ResolveInfo) -> int | None:
+    model = get_model(Article, parent, info)
+    assert isinstance(model, Article)
+    return model.valid_numeric_year()
+
+
 def build_reverse_rel_field(
     model_cls: type[BaseModel], name: str, peewee_field: peewee.ForeignKeyField
 ) -> Field:
@@ -349,7 +361,11 @@ CUSTOM_FIELDS = {
             make_location_connection, resolver=locations_resolver
         ),
         "num_locations": Int(required=True, resolver=num_locations_resolver),
-    }
+    },
+    Name: {"numeric_year": Int(required=False, resolver=numeric_year_resolver_name)},
+    Article: {
+        "numeric_year": Int(required=False, resolver=numeric_year_resolver_article)
+    },
 }
 
 

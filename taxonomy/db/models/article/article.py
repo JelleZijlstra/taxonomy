@@ -34,7 +34,7 @@ from ...constants import (
     SourceLanguage,
     DateSource,
 )
-from ...helpers import to_int, clean_strings_recursively, get_date_object
+from ...helpers import to_int, clean_strings_recursively, get_date_object, is_valid_date
 from ... import models
 from .... import config, events, adt, getinput, uitools
 
@@ -610,6 +610,12 @@ class Article(BaseModel):
     def get_date_object(self) -> datetime.date:
         return get_date_object(self.year)
 
+    def valid_numeric_year(self) -> int | None:
+        if is_valid_date(self.year):
+            return self.numeric_year()
+        else:
+            return None
+
     def numeric_start_page(self) -> int:
         return to_int(self.start_page)
 
@@ -737,15 +743,15 @@ class Article(BaseModel):
             authors = f"{authors_list[0].taxonomic_authority()} et al."
         else:
             authors, _ = self.taxonomicAuthority()
-        return f"[{authors} ({self.year})](/a/{self.id})"
+        return f"[{authors} ({self.valid_numeric_year() or self.year})](/a/{self.id})"
 
     def markdown_link(self) -> str:
         cite = self.cite()
         return f"[{cite}](/a/{self.id})"
 
-    def format(self) -> bool:
+    def format(self, *, quiet: bool = False) -> bool:
         self.specify_authors()
-        return super().format()
+        return super().format(quiet=quiet)
 
     def lint(self, autofix: bool = True) -> Iterable[str]:
         try:

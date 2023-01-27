@@ -32,8 +32,11 @@ class NameData(TypedDict):
     taxon_link: str
     # Name as used in the original description
     original_name: str
+    # Same, but with diacritics/capitalization/etc. cleaned up
+    corrected_original_name: str
     # Last part of the name, e.g. species name for species
     root_name: str
+    group: str
     authors: str
     author_links: str
     year: str
@@ -41,8 +44,9 @@ class NameData(TypedDict):
     original_citation: str
     original_citation_link: str
     verbatim_citation: str
+    citation_group: str
     citation_group_link: str
-    type_locality_region: str
+    type_locality: str
     type_locality_detail: str
     type_specimen: str
     species_type_kind: str
@@ -59,13 +63,16 @@ class DetailTag(Protocol):
 @CS.register
 def export_names(
     filename: str,
-    taxon: Taxon,
+    taxon: Taxon | None = None,
     ages: Container[AgeClass] | None = {AgeClass.extant, AgeClass.recently_extinct},
     group: Group | None = Group.species,
 ) -> None:
     """Export data about names to a CSV file."""
     print("collecting names...")
-    names = list(taxon.all_names())
+    if taxon is None:
+        names = list(Name.select_valid())
+    else:
+        names = list(taxon.all_names())
     print(f"done, {len(names)} found")
     print("filtering names...")
     if group is not None:
@@ -76,7 +83,7 @@ def export_names(
 
     with open(filename, "w") as f:
         writer: "csv.DictWriter[str]" = csv.DictWriter(
-            f, list(NameData.__annotations__)
+            f, list(NameData.__annotations__), escapechar="\\"
         )
         writer.writeheader()
         for name in getinput.print_every_n(names, label="names"):
@@ -120,8 +127,10 @@ def data_for_name(name: Name) -> NameData:
         "subspecies": taxon.valid_name if taxon.rank is Rank.subspecies else "",
         "taxon_name": taxon.valid_name,
         "taxon_link": taxon.get_absolute_url(),
-        "original_name": name.corrected_original_name or "",
+        "original_name": name.original_name or "",
+        "corrected_original_name": name.corrected_original_name or "",
         "root_name": name.root_name,
+        "group": name.group.name,
         "authors": name.taxonomic_authority(),
         "author_links": author_links,
         "year": name.year or "",
@@ -129,8 +138,9 @@ def data_for_name(name: Name) -> NameData:
         "original_citation": citation.cite("paper") if citation else "",
         "original_citation_link": citation.get_absolute_url() if citation else "",
         "verbatim_citation": name.verbatim_citation or "",
+        "citation_group": cg.name if cg else "",
         "citation_group_link": cg.get_absolute_url() if cg else "",
-        "type_locality_region": name.type_locality.name if name.type_locality else "",
+        "type_locality": name.type_locality.name if name.type_locality else "",
         "type_locality_detail": loc_detail,
         "type_specimen": name.type_specimen or "",
         "species_type_kind": name.species_type_kind.name

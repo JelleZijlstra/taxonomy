@@ -3,7 +3,8 @@
 Lint steps for Articles.
 
 """
-from collections.abc import Iterable, Callable, Generator
+from collections.abc import Iterable, Callable, Generator, Sequence
+from collections import defaultdict
 import functools
 import re
 import urllib.parse
@@ -11,10 +12,11 @@ from typing import Any
 import unicodedata
 from .article import Article, ArticleTag
 from .name_parser import get_name_parser
-from .utils import infer_publication_date_from_tags
 from ..citation_group import CitationGroup, CitationGroupTag
-from ...constants import ArticleKind, ArticleType
+from ...constants import ArticleKind, ArticleType, DateSource
 from ... import helpers
+from .... import getinput
+from ....apis.zoobank import clean_lsid
 
 Linter = Callable[[Article, bool], Iterable[str]]
 IgnorableLinter = Callable[[Article, bool], Generator[str, None, set[str]]]
@@ -89,7 +91,7 @@ def check_path(art: Article, autofix: bool = True) -> Iterable[str]:
                 f" path, but has {art.path}"
             )
             if autofix:
-                print(f"{art}: message")
+                print(f"{art}: {message}")
                 art.path = None
             else:
                 yield message
@@ -116,6 +118,38 @@ def check_type_and_kind(art: Article, autofix: bool = True) -> Iterable[str]:
         yield f"is {art.type.name} but has no parent"
 
 
+SOURCE_PRIORITY = [
+    DateSource.external,
+    DateSource.internal,
+    DateSource.doi_published,
+    DateSource.doi_published_online,
+    DateSource.doi_published_print,
+]
+
+
+def infer_publication_date_from_tags(tags: Sequence[ArticleTag] | None) -> str | None:
+    if not tags:
+        return None
+    by_source = defaultdict(list)
+    for tag in tags:
+        if isinstance(tag, ArticleTag.PublicationDate):
+            by_source[tag.source].append(tag)
+    for source in SOURCE_PRIORITY:
+        if tags_of_source := by_source[source]:
+            if len(tags_of_source) > 1:
+                return None
+            return tags_of_source[0].date
+    return None
+
+
+def infer_publication_date(art: Article) -> str | None:
+    if parent := art.parent:
+        parent_inferred = infer_publication_date(parent)
+        if parent_inferred is not None:
+            return parent_inferred
+    return infer_publication_date_from_tags(art.tags)
+
+
 @make_linter("year")
 def check_year(art: Article, autofix: bool = True) -> Iterable[str]:
     if not art.year:
@@ -132,7 +166,7 @@ def check_year(art: Article, autofix: bool = True) -> Iterable[str]:
     if art.year != "undated" and not helpers.is_valid_date(art.year):
         yield f"invalid year {art.year!r}"
 
-    inferred = infer_publication_date_from_tags(art.tags)
+    inferred = infer_publication_date(art)
     if inferred is not None and inferred != art.year:
         is_more_specific = helpers.is_more_specific_date(inferred, art.year)
         if is_more_specific:
@@ -170,7 +204,7 @@ def clean_up_url(art: Article, autofix: bool = True) -> Iterable[str]:
         if doi is not None:
             message = f"inferred doi {doi} from url {art.url}"
             if autofix:
-                print(f"{art}: message")
+                print(f"{art}: {message}")
                 art.doi = doi
                 art.url = None
             else:
@@ -184,7 +218,7 @@ def clean_up_url(art: Article, autofix: bool = True) -> Iterable[str]:
         if hdl is not None:
             message = f"inferred HDL {hdl} from url {art.url}"
             if autofix:
-                print(f"{art}: message")
+                print(f"{art}: {message}")
                 art.add_tag(ArticleTag.HDL(hdl))
                 art.url = None
             else:
@@ -200,7 +234,7 @@ def clean_up_url(art: Article, autofix: bool = True) -> Iterable[str]:
                 jstor_id = art.url.removeprefix(_JSTOR_URL_PREFIX)
                 message = f"inferred JStor id {jstor_id} from url {art.url}"
                 if autofix:
-                    print(f"{art}: message")
+                    print(f"{art}: {message}")
                     art.add_tag(ArticleTag.JSTOR(jstor_id))
                     art.url = None
                 else:
@@ -213,7 +247,7 @@ def clean_up_url(art: Article, autofix: bool = True) -> Iterable[str]:
                     f" {art.citation_group})"
                 )
                 if autofix:
-                    print(f"{art}: message")
+                    print(f"{art}: {message}")
                     art.add_tag(ArticleTag.JSTOR(jstor_id))
                     art.doi = None
                 else:
@@ -422,7 +456,7 @@ def journal_specific_cleanup(art: Article, autofix: bool = True) -> Iterable[str
             art.citation_group = CitationGroup.get_or_create(
                 "Annals and Magazine of Natural History"
             )
-            print(f"{art}: message")
+            print(f"{art}: {message}")
         else:
             yield message
     if (
@@ -434,7 +468,7 @@ def journal_specific_cleanup(art: Article, autofix: bool = True) -> Iterable[str
     ) and art.issue:
         message = f"{cg} article should not have issue {art.issue}"
         if autofix:
-            print(f"{art}: message")
+            print(f"{art}: {message}")
             art.issue = None
         else:
             yield message
@@ -592,6 +626,27 @@ def check_start_end_page(art: Article, autofix: bool = True) -> Iterable[str]:
         )
     if not re.fullmatch(tag.pages_regex, end_page):
         yield f"end page {end_page} does not match regex {tag.pages_regex} for {cg}"
+
+
+@make_linter("tags")
+def check_tags(art: Article, autofix: bool = True) -> Iterable[str]:
+    if not art.tags:
+        return
+    tags: list[ArticleTag] = []
+    original_tags = list(art.tags)
+    for tag in original_tags:
+        if isinstance(tag, ArticleTag.LSIDArticle):
+            tag = ArticleTag.LSIDArticle(clean_lsid(tag.text))
+        tags.append(tag)
+    tags = sorted(set(tags))
+    if tags != original_tags:
+        if set(tags) != set(original_tags):
+            print(f"changing tags for {art}")
+            getinput.print_diff(sorted(original_tags), tags)
+        if autofix:
+            art.tags = tags  # type: ignore
+        else:
+            yield f"{art}: needs change to tags"
 
 
 def _maybe_clean(

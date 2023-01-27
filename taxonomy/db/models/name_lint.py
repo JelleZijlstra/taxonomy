@@ -20,6 +20,7 @@ from ..constants import (
 )
 from .. import helpers
 from ... import adt, getinput
+from ...apis.zoobank import clean_lsid, get_zoobank_data
 
 T = TypeVar("T")
 ADTT = TypeVar("ADTT", bound=adt.ADT)
@@ -129,6 +130,8 @@ def check_type_tags_for_name(nam: Name, autofix: bool) -> Iterable[str]:
                 yield f"invalid longitude {tag.longitude}"
                 longitude = tag.longitude
             tags.append(TypeTag.Coordinates(lat, longitude))
+        elif isinstance(tag, TypeTag.LSIDName):
+            tags.append(TypeTag.LSIDName(clean_lsid(tag.text)))
         else:
             tags.append(tag)
         # TODO: for lectotype and subsequent designations, ensure the earliest valid one is used.
@@ -262,6 +265,30 @@ def check_required_tags(nam: Name, autofix: bool = True) -> Iterable[str]:
         yield (
             f"{nam}: has status {nam.nomenclature_status.name} but no corresponding tag"
         )
+
+
+def check_for_lsid(nam: Name, autofix: bool = True) -> Iterable[str]:
+    # ICZN Art. 8.5.1: ZooBank is relevant to availability only starting in 2012
+    if (
+        nam.numeric_year() < 2012
+        or nam.corrected_original_name is None
+        or nam.original_citation is None
+    ):
+        return
+    if nam.has_type_tag(TypeTag.LSIDName):
+        return
+    zoobank_data = get_zoobank_data(nam.corrected_original_name)
+    if zoobank_data is None:
+        return
+    message = f"{nam}: Inferred Zoobank data: {zoobank_data}"
+    if autofix:
+        print(message)
+        nam.add_type_tag(TypeTag.LSIDName(zoobank_data.name_lsid))
+        nam.original_citation.add_tag(
+            ArticleTag.LSIDArticle(zoobank_data.citation_lsid)
+        )
+    else:
+        yield message
 
 
 def check_year(nam: Name, autofix: bool = True) -> Iterable[str]:
