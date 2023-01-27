@@ -22,6 +22,7 @@ class NameData(TypedDict):
     # Link to Hesperomys page
     link: str
     status: str
+    age_class: str
     class_: str
     order: str
     family: str
@@ -38,7 +39,7 @@ class NameData(TypedDict):
     root_name: str
     original_rank: str
     group: str
-    authors: str
+    authority: str
     author_links: str
     year: str
     page_described: str
@@ -133,6 +134,7 @@ def data_for_name(name: Name) -> NameData:
         "id": str(name.id),
         "link": name.get_absolute_url(),
         "status": name.status.name,
+        "age_class": taxon.age.name,
         "class_": class_.valid_name if class_ else "",
         "order": order.valid_name if order else "",
         "family": family.valid_name if family else "",
@@ -146,7 +148,7 @@ def data_for_name(name: Name) -> NameData:
         "root_name": name.root_name,
         "original_rank": name.original_rank.name if name.original_rank else "",
         "group": name.group.name,
-        "authors": name.taxonomic_authority(),
+        "authority": name.taxonomic_authority(),
         "author_links": author_links,
         "year": name.year or "",
         "page_described": name.page_described or "",
@@ -187,6 +189,64 @@ def stringify_detail_tag(tag: DetailTag) -> str:
     authors, year = tag.source.taxonomicAuthority()
     url = tag.source.get_absolute_url()
     return f'"{tag.text}" ({authors}, {year}, {url})'
+
+
+class TaxonData(TypedDict):
+    # Name ID in Hesperomys
+    id: str
+    # Link to Hesperomys page
+    link: str
+    status: str
+    age_class: str
+    class_: str
+    order: str
+    family: str
+    genus: str
+    rank: str
+    taxon_name: str
+    base_name_link: str
+    authority: str
+    year: str
+
+
+def data_for_taxon(taxon: Taxon) -> TaxonData:
+    name = taxon.base_name
+    class_ = taxon.get_derived_field("class_")
+    order = taxon.get_derived_field("order")
+    family = taxon.get_derived_field("family")
+    try:
+        genus = taxon.parent_of_rank(Rank.genus)
+    except ValueError:
+        genus = None
+    return {
+        "id": str(taxon.id),
+        "link": taxon.get_absolute_url(),
+        "status": name.status.name,
+        "age_class": taxon.age.name,
+        "class_": class_.valid_name if class_ else "",
+        "order": order.valid_name if order else "",
+        "family": family.valid_name if family else "",
+        "genus": genus.valid_name if genus else "",
+        "rank": taxon.rank.name,
+        "taxon_name": taxon.valid_name,
+        "base_name_link": name.get_absolute_url(),
+        "authority": name.taxonomic_authority(),
+        "year": name.year or "",
+    }
+
+
+@CS.register
+def export_taxa(filename: str, *, limit: int | None = None) -> None:
+    """Export data about taxa to a CSV file."""
+    taxa = Taxon.select_valid().limit(limit)
+
+    with open(filename, "w") as f:
+        writer: "csv.DictWriter[str]" = csv.DictWriter(
+            f, list(TaxonData.__annotations__), escapechar="\\"
+        )
+        writer.writeheader()
+        for taxon in getinput.print_every_n(taxa, label="taxa"):
+            writer.writerow(data_for_taxon(taxon))
 
 
 class OccurrenceData(TypedDict):

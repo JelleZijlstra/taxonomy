@@ -31,6 +31,8 @@ will also apply to the database itself.
     journal articles. Documented in [Citation group](/docs/citation-group)
   - Check and restrict the use of italics in article titles
   - Add new "recently_extinct" age class
+  - Support adding ZooBank links (LSIDs) to articles and names
+  - Support publication dates granular to the month or day level
 
 # Previous
 
