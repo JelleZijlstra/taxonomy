@@ -8,8 +8,6 @@ please [let me know](mailto:jelle.zijlstra@gmail.com).
 
 ## Improving coverage
 
-This area will likely be my focus for a while.
-
 - Fill in the _verbatim_citation_ field. This field should arguably be the bare minimum
   for validating that a name is real. Previously I worked to set this field for almost
   all post-1950 names. Tools:
@@ -26,6 +24,13 @@ This area will likely be my focus for a while.
   - Wikipedia new species lists
 - Add more outbound links to articles (e.g., figure out more DOIs and article URLs)
 - Add more geographic coordinates for type localities
+- Work to improve publication dates
+  - Figure out dates for "Monatsberichte": is _Ptenochirus_ actually from 1862? Jackson
+    & Groves cite Bauer AM, Gunther R, Klipfel M (1995) The herpetological contributions
+    of Wilhelm C.H. Peters (1815–1883). Society for the Study of Amphibians and Reptiles
+    in association with the Deutsche fur Herpetologie und Terrarienkunde.
+  - Extract dates for PZSL, Annals & Magazine, etc. from papers discussing dating
+  - Jackson & Groves (2015: 493-494) have a useful list of references for dates
 
 ## Frontend
 
@@ -38,7 +43,6 @@ This area will likely be my focus for a while.
 - UI indication that names belong to a group with high-quality vs. low-quality coverage
   (so users don't expect insect families to list all genera)
 - Add an SSL cert (maybe using AWS ELB?)
-- Display dates that include a month intelligently
 
 ## Backend
 
@@ -91,28 +95,6 @@ This area will likely be my focus for a while.
 This lists kinds of data that is not currently included in the database at all, but that
 is potentially useful.
 
-- More precise _publication dates_ (month, day).
-  - Why would it help? Sometimes matters for nomenclatural priority.
-  - But it's a lot of work, and for most articles I have it won't matter. Minimum work
-    perhaps:
-    - (done) Define a format for storing dates (e.g. "2023-01" if we know the month,
-      "2023-01-17" if we know both the month and day)
-    - (done) Relax linter to allow this format for the year field on citations and names
-    - Autorecord this information when getting DOI data.
-      - But is the publication date on CrossRef reliable? And the API returns lots of
-        dates for when it was "published" or "issued" or what not: which do we pick?
-    - Specific work to do
-      - Figure out dates for "Monatsberichte": is _Ptenochirus_ actually from 1862?
-        Jackson & Groves cite Bauer AM, Gunther R, Klipfel M (1995) The herpetological
-        contributions of Wilhelm C.H. Peters (1815–1883). Society for the Study of
-        Amphibians and Reptiles in association with the Deutsche fur Herpetologie und
-        Terrarienkunde.
-      - Extract dates for PZSL, Annals & Magazine, etc. from papers discussing dating
-      - Jackson & Groves (2015: 493-494) have a useful list of references for dates
-- _ZooBank_ IDs for Names
-  - Why would it help? Meant to be a standard reference for new names. Can help
-    cross-link to more data.
-  - DB now has the capability to add these, but no automated way to find them yet.
 - _ORCID_ IDs for Persons
   - Why would it help? Meant to be a standard identifier for researchers.
   - Complication: CrossRef API doesn't give me these IDs. Is there any API I can use to
@@ -121,8 +103,6 @@ is potentially useful.
   - Why would it help? Make it possible to look up any name you see in a source in the
     database.
   - Complications: It's a lot more work.
-- Add a new age class for taxa that went extinct post-1500, so we can better match MDD
-  and the Red List.
 
 ## New taxonomic groups
 
