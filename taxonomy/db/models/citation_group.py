@@ -9,7 +9,7 @@ import re
 from .. import constants, helpers, models
 from ... import adt, events, getinput
 
-from .base import BaseModel, EnumField, ADTField, get_completer
+from .base import BaseModel, EnumField, ADTField
 from .region import Region
 
 CGTagT = TypeVar("CGTagT", bound="CitationGroupTag")
@@ -297,11 +297,6 @@ class CitationGroup(BaseModel):
             "lint_names": lambda: models.Name.lint_all(
                 query=models.Name.add_validity_check(self.names)
             ),
-        }
-
-    def get_completers_for_adt_field(self, field: str) -> getinput.CompleterMap:
-        return {
-            (CitationGroupTag.Predecessor, "cg"): get_completer(CitationGroup, None)
         }
 
     def merge_interactive(self) -> None:

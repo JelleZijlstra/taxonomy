@@ -15,6 +15,7 @@ __all__ = [
     "database",
     "fill_data",
     "has_data_from_original",
+    "IssueDate",
     "Location",
     "name_lint",
     "Name",
@@ -43,6 +44,7 @@ from .citation_group import (
     CitationGroupPattern as CitationGroupPattern,
     CitationGroupTag as CitationGroupTag,
 )
+from .issue_date import IssueDate as IssueDate
 from .name import (
     Name as Name,
     NameComment as NameComment,

@@ -89,6 +89,9 @@ please [let me know](mailto:jelle.zijlstra@gmail.com).
   correcting all the wrong ones)
   - I appear to have done this before and made a number of incorrect changes. Perhaps
     audit all the cases where the root_name doesn't match the corrected_original_name.
+- Check that taxa don't have parents of the same rank (with some restrictions)
+  - Noticed that _Sminthopsis aitkeni_ was placed within _S. fuliginosa_ but not ranked
+    as a subspecies.
 
 ## New data not currently included
 

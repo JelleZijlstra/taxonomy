@@ -671,6 +671,41 @@ class BaseModel(Model):
             raise ValueError(f"don't know how to fill {field}")
 
     @classmethod
+    def get_value_for_field_on_class(cls, field: str, default: Any = "") -> Any:
+        field_obj = getattr(cls, field)
+        prompt = f"{field}> "
+        if isinstance(field_obj, ForeignKeyField):
+            return cls.get_value_for_foreign_key_field_on_class(field)
+        elif isinstance(field_obj, ADTField):
+            return getinput.get_adt_list(
+                field_obj.get_adt(),
+                prompt=prompt,
+                completers=cls.get_completers_for_adt_field(field),
+            )
+        elif isinstance(field_obj, CharField):
+            return cls.getter(field).get_one_key(prompt, default=default) or None
+        elif isinstance(field_obj, TextField):
+            return (
+                getinput.get_line(prompt, default=default, mouse_support=True) or None
+            )
+        elif isinstance(field_obj, EnumField):
+            if default is None and field in cls.field_defaults:
+                default = cls.field_defaults[field]
+            return getinput.get_enum_member(
+                field_obj.enum_cls, prompt=prompt, default=default
+            )
+        elif isinstance(field_obj, IntegerField):
+            result = getinput.get_line(prompt, default=default, mouse_support=True)
+            if result == "" or result is None:
+                return None
+            else:
+                return int(result)
+        elif isinstance(field_obj, BooleanField):
+            return getinput.yes_no(prompt, default=default)
+        else:
+            raise ValueError(f"don't know how to fill {field}")
+
+    @classmethod
     def get_interactive_creators(cls) -> dict[str, Callable[[], Any]]:
         return {"n": cls.create_interactively}
 
@@ -865,8 +900,18 @@ class BaseModel(Model):
             self.display()
             self.edit()
 
-    def get_completers_for_adt_field(self, field: str) -> getinput.CompleterMap:
-        return {}
+    @classmethod
+    def get_completers_for_adt_field(cls, field: str) -> getinput.CompleterMap:
+        field_obj = getattr(cls, field)
+        assert isinstance(field_obj, ADTField)
+        tag_cls = field_obj.adt_cls()
+        completers: dict[tuple[type[adt.ADT], str], getinput.Completer[Any]] = {}
+        for tag in tag_cls._tag_to_member.values():
+            for attribute, typ in tag._attributes.items():
+                if isinstance(typ, type) and issubclass(typ, BaseModel):
+                    completer = get_completer(typ, None)
+                    completers[(tag, attribute)] = completer
+        return completers
 
     def get_value_for_foreign_key_field(
         self,
@@ -1005,9 +1050,26 @@ class BaseModel(Model):
 
     @classmethod
     def create_interactively(cls: type[ModelT], **kwargs: Any) -> ModelT | None:
-        obj = cls.create(**kwargs)
-        obj.fill_required_fields()
+        data = {**kwargs}
+        for field in cls.fields():
+            if field not in data and field != "id":
+                try:
+                    data[field] = cls.get_value_for_field_on_class(field)
+                except getinput.StopException:
+                    return None
+        obj = cls.create(**data)
         return obj
+
+    @classmethod
+    def create_many(cls) -> None:
+        while True:
+            obj = cls.create_interactively()
+            if obj is None:
+                break
+            print(f"Created {cls.__name__}:")
+            obj.full_data()
+            print("==================================")
+            obj.edit()
 
 
 EnumT = TypeVar("EnumT", bound=enum.Enum)

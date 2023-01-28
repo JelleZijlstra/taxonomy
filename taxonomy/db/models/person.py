@@ -8,20 +8,12 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 
 from peewee import CharField, DeferredForeignKey, TextField
 
-from .collection import Collection
-from .region import Region
 from ..constants import NamingConvention, PersonType
 from .. import models, helpers
 from ..openlibrary import get_author
 from ... import adt, events, getinput, parsing
 
-from .base import (
-    BaseModel,
-    EnumField,
-    ADTField,
-    get_completer,
-    get_tag_based_derived_field,
-)
+from .base import BaseModel, EnumField, ADTField, get_tag_based_derived_field
 
 ALLOWED_TUSSENVOEGSELS = {
     NamingConvention.dutch: {
@@ -940,28 +932,6 @@ class Person(BaseModel):
             )
             print(f"Created {obj}")
             return obj
-
-    def get_completers_for_adt_field(self, field: str) -> getinput.CompleterMap:
-        for field_name, tag_cls in [("tags", models.tags.PersonTag)]:
-            if field == field_name:
-                completers: dict[
-                    tuple[type[adt.ADT], str], getinput.Completer[Any]
-                ] = {}
-                for tag in tag_cls._tag_to_member.values():
-                    for attribute, typ in tag._attributes.items():
-                        completer: getinput.Completer[Any] | None
-                        if typ is Collection:
-                            completer = get_completer(Collection, None)
-                        elif typ is Region:
-                            completer = get_completer(Region, None)
-                        elif typ is models.Article:
-                            completer = get_completer(models.Article, None)
-                        else:
-                            completer = None
-                        if completer is not None:
-                            completers[(tag, attribute)] = completer
-                return completers
-        return {}
 
     def get_level(self) -> PersonLevel:
         if self.type is PersonType.checked:

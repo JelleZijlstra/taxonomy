@@ -30,7 +30,6 @@ from .base import (
     BaseModel,
     EnumField,
     ADTField,
-    get_completer,
     get_str_completer,
     get_tag_based_derived_field,
 )
@@ -614,35 +613,21 @@ class Name(BaseModel):
         result.base_name.edit()
         return result
 
-    def get_completers_for_adt_field(self, field: str) -> getinput.CompleterMap:
+    @classmethod
+    def get_completers_for_adt_field(cls, field: str) -> getinput.CompleterMap:
+        completers = dict(super().get_completers_for_adt_field(field))
         for field_name, tag_cls in [
             ("type_tags", TypeTag),
             ("tags", NameTag),
             ("author_tags", AuthorTag),
         ]:
             if field == field_name:
-                completers: dict[
-                    tuple[type[adt.ADT], str], getinput.Completer[Any]
-                ] = {}
                 for tag in tag_cls._tag_to_member.values():  # type: ignore
                     for attribute, typ in tag._attributes.items():
-                        completer: getinput.Completer[Any] | None
-                        if typ is Name:
-                            completer = get_completer(Name, None)
-                        elif typ is Collection:
-                            completer = get_completer(Collection, None)
-                        elif typ is Article:
-                            completer = get_completer(Article, None)
-                        elif typ is Person:
-                            completer = get_completer(Person, None)
-                        elif typ is str and attribute in ("lectotype", "neotype"):
+                        if typ is str and attribute in ("lectotype", "neotype"):
                             completer = get_str_completer(Name, "type_specimen")
-                        else:
-                            completer = None
-                        if completer is not None and isinstance(tag, type):
                             completers[(tag, attribute)] = completer
-                return completers
-        return {}
+        return completers
 
     def get_empty_required_fields(self) -> Iterable[str]:
         fields = []
@@ -896,7 +881,7 @@ class Name(BaseModel):
         return self.get_date_object().year
 
     def valid_numeric_year(self) -> int | None:
-        if helpers.is_valid_date(self.year):
+        if self.year is not None and helpers.is_valid_date(self.year):
             return self.numeric_year()
         else:
             return None

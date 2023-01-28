@@ -20,13 +20,7 @@ import time
 from typing import Any, ClassVar, NamedTuple, TypeVar, cast
 from collections.abc import Callable, Iterable
 
-from ..base import (
-    ADTField,
-    BaseModel,
-    EnumField,
-    get_completer,
-    get_tag_based_derived_field,
-)
+from ..base import ADTField, BaseModel, EnumField, get_tag_based_derived_field
 from ...constants import (
     ArticleCommentKind,
     ArticleKind,
@@ -515,26 +509,6 @@ class Article(BaseModel):
         yield "name"
         yield from _TYPE_TO_FIELDS[self.type]
 
-    def get_completers_for_adt_field(self, field: str) -> getinput.CompleterMap:
-        for field_name, tag_cls in [("author_tags", AuthorTag)]:
-            if field == field_name:
-                completers: dict[
-                    tuple[type[adt.ADT], str], getinput.Completer[Any]
-                ] = {}
-                for tag in tag_cls._tag_to_member.values():
-                    for attribute, typ in tag._attributes.items():
-                        completer: getinput.Completer[Any] | None
-                        if typ is Article:
-                            completer = get_completer(Article, "name")
-                        elif typ is Person:
-                            completer = get_completer(Person, None)
-                        else:
-                            completer = None
-                        if completer is not None:
-                            completers[(tag, attribute)] = completer
-                return completers
-        return {}
-
     def trymanual(self) -> bool:
         fields = _TYPE_TO_FIELDS[self.type]
         for field in fields:
@@ -611,7 +585,7 @@ class Article(BaseModel):
         return get_date_object(self.year)
 
     def valid_numeric_year(self) -> int | None:
-        if is_valid_date(self.year):
+        if self.year is not None and is_valid_date(self.year):
             return self.numeric_year()
         else:
             return None

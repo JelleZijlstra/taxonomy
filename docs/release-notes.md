@@ -33,6 +33,9 @@ will also apply to the database itself.
   - Add new "recently_extinct" age class
   - Support adding ZooBank links (LSIDs) to articles and names
   - Support publication dates granular to the month or day level
+  - Add support for storing when each volume of a journal was published, and use this
+    information to correct many dates for
+    [_Proceedings of the Zoological Society of London_](/cg/1).
 
 # Previous
 
