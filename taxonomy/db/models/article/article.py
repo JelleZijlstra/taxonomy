@@ -1157,7 +1157,7 @@ class ArticleTag(adt.ADT):
     IgnoreLint(label=str, comment=str, tag=13)  # type: ignore
 
     PublicationDate(source=DateSource, date=str, comment=str, tag=14)  # type: ignore
-    LSIDArticle(text=str, tag=15)  # type: ignore
+    LSIDArticle(text=str, present_in_article=bool, tag=15)  # type: ignore
 
 
 @lru_cache

@@ -285,7 +285,8 @@ def check_for_lsid(nam: Name, autofix: bool = True) -> Iterable[str]:
         print(message)
         nam.add_type_tag(TypeTag.LSIDName(zoobank_data.name_lsid))
         nam.original_citation.add_tag(
-            ArticleTag.LSIDArticle(zoobank_data.citation_lsid)
+            # We assume it's present until we find evidence to the contrary
+            ArticleTag.LSIDArticle(zoobank_data.citation_lsid, present_in_article=True)
         )
     else:
         yield message

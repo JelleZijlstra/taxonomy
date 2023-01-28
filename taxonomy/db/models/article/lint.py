@@ -145,7 +145,7 @@ def infer_publication_date_from_tags(tags: Sequence[ArticleTag] | None) -> str |
     for tag in tags:
         if isinstance(tag, ArticleTag.PublicationDate):
             by_source[tag.source].append(tag)
-        elif isinstance(tag, ArticleTag.LSIDArticle):
+        elif isinstance(tag, ArticleTag.LSIDArticle) and tag.present_in_article:
             has_lsid = True
     for source in SOURCE_PRIORITY[has_lsid]:
         if tags_of_source := by_source[source]:
@@ -678,7 +678,7 @@ def check_tags(art: Article, autofix: bool = True) -> Iterable[str]:
     original_tags = list(art.tags)
     for tag in original_tags:
         if isinstance(tag, ArticleTag.LSIDArticle):
-            tag = ArticleTag.LSIDArticle(clean_lsid(tag.text))
+            tag = ArticleTag.LSIDArticle(clean_lsid(tag.text), tag.present_in_article)
         tags.append(tag)
     tags = sorted(set(tags))
     if tags != original_tags:
