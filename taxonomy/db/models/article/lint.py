@@ -181,7 +181,9 @@ def infer_publication_date(art: Article) -> str | None:
 def check_year(art: Article, autofix: bool = True) -> Iterable[str]:
     if not art.year:
         return
-    # use en dashes
+    if art.kind is ArticleKind.alternative_version:
+        return
+    # use hyphens
     year = art.year.replace("–", "-")
 
     # remove spaces around the dash
@@ -473,7 +475,8 @@ def journal_specific_cleanup(art: Article, autofix: bool = True) -> Iterable[str
         if 1901 <= volume <= 1905:
             yield "PZSL volume between 1901 and 1905 should have -I or -II"
         elif 1831 <= volume <= 1936:
-            if volume not in (year, year - 1):
+            # Some of the 1851 volume was published in 1854
+            if volume not in (year, year - 1, year - 2, year - 3):
                 yield (
                     f"PZSL article has mismatched volume and year: {volume} vs. {year}"
                 )

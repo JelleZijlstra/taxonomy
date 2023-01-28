@@ -358,7 +358,16 @@ class Article(BaseModel):
             "move": self.move,
             "add_to_clipboard": self.add_to_clipboard,
             "removefirstpage": self.removefirstpage,
+            "add_comment": self.add_comment,
+            "infer_year": self.infer_year,
         }
+
+    def infer_year(self) -> None:
+        inferred = models.article.lint.infer_publication_date(self)
+        if inferred is None or inferred == self.year:
+            return
+        print(f"Changing year: {self.year} -> {inferred}")
+        self.year = inferred
 
     def modernize_in_press(self) -> None:
         self.year = None

@@ -4,6 +4,7 @@ Lint steps for Names.
 
 """
 from collections.abc import Iterable, Callable
+from datetime import datetime
 import re
 from typing import TypeVar
 from .name import Name, NameTag, TypeTag, STATUS_TO_TAG
@@ -17,6 +18,7 @@ from ..constants import (
     Group,
     NomenclatureStatus,
     SpeciesGroupType,
+    DateSource,
 )
 from .. import helpers
 from ... import adt, getinput
@@ -740,6 +742,70 @@ def check_matches_citation(nam: Name, autofix: bool = True) -> Iterable[str]:
     # TODO check year
 
 
+_JG2015 = "{Australia (Jackson & Groves 2015).pdf}"
+_JG2015_RE = re.compile(rf"\[From {re.escape(_JG2015)}: [^\[\]]+ \[([A-Za-z\s\d]+)\]\]")
+_JG2015_RE2 = re.compile(rf" \[([A-Za-z\s\d]+)\]\ \[from {re.escape(_JG2015)}\]")
+
+
+def extract_date_from_verbatim(nam: Name, autofix: bool = True) -> Iterable[str]:
+    if nam.original_citation is None or not nam.data:
+        return
+    # Extract precise dates from references from Jackson & Groves (2015). This sometimes
+    # produces incorrect results if the names aren't associated correctly. In that case,
+    # edit the name that produced the bad tag to put "[error]" in its data field so the
+    # regexes above don't match.
+    try:
+        verbatim = nam.get_data("verbatim_citation")
+    except KeyError:
+        return
+    if isinstance(verbatim, str):
+        verbatim = [verbatim]
+    for option in verbatim:
+        for regex in _JG2015_RE, _JG2015_RE2:
+            match = regex.search(option)
+            if not match:
+                continue
+            date = match.group(1)
+            parsed = parse_date(date)
+            if parsed is None:
+                if not date.startswith("Published before "):
+                    yield f"{nam}: cannot parse date: {verbatim}"
+            else:
+                article = nam.original_citation
+                tag = ArticleTag.PublicationDate(
+                    DateSource.external, parsed, f'"{date}" {_JG2015}'
+                )
+                if tag in (article.tags or ()):
+                    continue
+                message = (
+                    f"{nam}: inferred date for {article} from verbatim citation:"
+                    f" {parsed}"
+                )
+                if autofix:
+                    print(message)
+                    article.add_tag(tag)
+                else:
+                    yield message
+
+
+def parse_date(date_str: str) -> str | None:
+    for month in ("%b", "%B"):
+        try:
+            dt = datetime.strptime(date_str, f"{month} %Y")
+        except ValueError:
+            pass
+        else:
+            return f"{dt.year}-{dt.month:02d}"
+        for prefix in ("", "0"):
+            try:
+                dt = datetime.strptime(date_str, f"{prefix}%d {month} %Y")
+            except ValueError:
+                pass
+            else:
+                return f"{dt.year}-{dt.month:02d}-{dt.day:02d}"
+    return None
+
+
 LINTERS: list[Linter] = [
     check_type_tags_for_name,
     check_required_tags,
@@ -757,6 +823,7 @@ LINTERS: list[Linter] = [
     autoset_corrected_original_name,
     check_citation_group,
     check_matches_citation,
+    extract_date_from_verbatim,
 ]
 DISABLED_LINTERS: list[Linter] = [
     check_type_designations_present  # too many missing (about 580)
