@@ -1943,7 +1943,7 @@ def run_linter_and_fix(
         obj.display()
         for message in messages:
             print(message)
-        while not obj.is_lint_clean():
+        while not obj.is_lint_clean(extra_linter=linter):
             try:
                 obj.edit()
             except getinput.StopException:

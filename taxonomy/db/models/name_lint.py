@@ -5,6 +5,7 @@ Lint steps for Names.
 """
 from collections.abc import Iterable, Callable
 from datetime import datetime
+import json
 import re
 from typing import TypeVar
 from .name import Name, NameTag, TypeTag, STATUS_TO_TAG
@@ -756,7 +757,7 @@ def extract_date_from_verbatim(nam: Name, autofix: bool = True) -> Iterable[str]
     # regexes above don't match.
     try:
         verbatim = nam.get_data("verbatim_citation")
-    except KeyError:
+    except (KeyError, TypeError, json.JSONDecodeError):
         return
     if isinstance(verbatim, str):
         verbatim = [verbatim]
@@ -806,6 +807,22 @@ def parse_date(date_str: str) -> str | None:
     return None
 
 
+def check_data(nam: Name, autofix: bool = True) -> Iterable[str]:
+    if not nam.data:
+        return
+    try:
+        data = json.loads(nam.data)
+    except json.JSONDecodeError:
+        yield f"{nam}: invalid data field: {nam.data!r}"
+        return
+    if not isinstance(data, dict):
+        yield f"{nam}: invalid data field: {nam.data!r}"
+        return
+    if "verbatim_citation" in data:
+        if not isinstance(data["verbatim_citation"], (str, list)):
+            yield f"{nam}: invalid verbatim_citation data: {data['verbatim_citation']}"
+
+
 LINTERS: list[Linter] = [
     check_type_tags_for_name,
     check_required_tags,
@@ -823,6 +840,7 @@ LINTERS: list[Linter] = [
     autoset_corrected_original_name,
     check_citation_group,
     check_matches_citation,
+    check_data,
     extract_date_from_verbatim,
 ]
 DISABLED_LINTERS: list[Linter] = [

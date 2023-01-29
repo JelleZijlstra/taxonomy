@@ -1024,6 +1024,17 @@ class Name(BaseModel):
     def taxonomic_authority(self) -> str:
         return Person.join_authors(self.get_authors())
 
+    def copy_year(self) -> None:
+        citation = self.original_citation
+        if citation is None:
+            print("No original citation; cannot copy year")
+            return
+        if self.year == citation.year:
+            print("Year already matches")
+            return
+        print(f"Setting year: {self.year!r} -> {citation.year!r}")
+        self.year = citation.year
+
     def copy_authors(self) -> None:
         citation = self.original_citation
         if citation is None:

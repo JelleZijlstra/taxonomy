@@ -206,8 +206,10 @@ class BaseModel(Model):
             print(message)
         return False
 
-    def is_lint_clean(self) -> bool:
+    def is_lint_clean(self: ModelT, extra_linter: Linter[ModelT] | None = None) -> bool:
         messages = list(self.general_lint())
+        if extra_linter is not None:
+            messages += extra_linter(self, True)
         if not messages:
             return True
         for message in messages:
