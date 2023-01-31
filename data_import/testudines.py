@@ -263,7 +263,9 @@ def parse_refs() -> dict[RefKey, str]:
         page_lines = textwrap.dedent("\n".join(page_lines)).splitlines()
         lines += split_lines(page_lines, i, dedent_right=False)
     lines = list(
-        itertools.dropwhile(lambda l: l.strip() != "• IUCN Red List Assessments", lines)
+        itertools.dropwhile(
+            lambda line: line.strip() != "• IUCN Red List Assessments", lines
+        )
     )
 
     ref_list: list[list[str]] = []
