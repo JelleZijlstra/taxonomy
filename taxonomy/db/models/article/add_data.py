@@ -140,7 +140,7 @@ def expand_doi_json(doi: str) -> RawData:
 
     if page := work.get("page"):
         if typ in (ArticleType.JOURNAL, ArticleType.CHAPTER):
-            if match := re.fullmatch(r"^(\d+)-(\d+)", page):
+            if match := re.fullmatch(r"^(\d+)-(\d+)$", page):
                 data["start_page"] = match.group(1)
                 data["end_page"] = match.group(2)
             elif page.isnumeric():
@@ -514,6 +514,7 @@ def reuse_nofile(art: Article) -> bool:
 def set_multi(
     art: Article, data: RawData, *, only_new: bool = True, verbose: bool = True
 ) -> None:
+    has_start_page = bool(art.start_page)
     for attr, value in clean_strings_recursively(data).items():
         if attr == "author_tags":
             set_author_tags_from_raw(art, value, only_new=only_new, verbose=verbose)
@@ -544,7 +545,9 @@ def set_multi(
         elif attr in Article.fields():
             if value == "":
                 continue
-            if only_new and attr == "end_page" and art.start_page:
+            # We check this before the loop because if we just added the start_page
+            # ourselves, it's fine.
+            if only_new and attr == "end_page" and has_start_page:
                 continue
             current = getattr(art, attr)
             if current and only_new:

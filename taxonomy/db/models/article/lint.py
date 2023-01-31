@@ -13,6 +13,7 @@ import unicodedata
 from .article import Article, ArticleTag
 from .name_parser import get_name_parser
 from ..citation_group import CitationGroup, CitationGroupTag
+from ..issue_date import IssueDate
 from ...constants import ArticleKind, ArticleType, DateSource
 from ... import helpers
 from .... import getinput
@@ -144,7 +145,7 @@ def infer_publication_date_from_tags(tags: Sequence[ArticleTag] | None) -> str |
     for tag in tags:
         if isinstance(tag, ArticleTag.PublicationDate):
             by_source[tag.source].append(tag)
-        elif isinstance(tag, ArticleTag.LSIDArticle):
+        elif isinstance(tag, ArticleTag.LSIDArticle) and tag.present_in_article:
             has_lsid = True
     for source in SOURCE_PRIORITY[has_lsid]:
         if tags_of_source := by_source[source]:
@@ -159,6 +160,20 @@ def infer_publication_date(art: Article) -> str | None:
         parent_inferred = infer_publication_date(parent)
         if parent_inferred is not None:
             return parent_inferred
+    if (
+        art.type is ArticleType.JOURNAL
+        and art.citation_group
+        and art.volume
+        and art.start_page
+        and art.end_page
+        and art.start_page.isnumeric()
+        and art.end_page.isnumeric()
+    ):
+        issue_date = IssueDate.find_matching_issue(
+            art.citation_group, art.volume, int(art.start_page), int(art.end_page)
+        )
+        if isinstance(issue_date, IssueDate):
+            return issue_date.date
     return infer_publication_date_from_tags(art.tags)
 
 
@@ -166,7 +181,9 @@ def infer_publication_date(art: Article) -> str | None:
 def check_year(art: Article, autofix: bool = True) -> Iterable[str]:
     if not art.year:
         return
-    # use en dashes
+    if art.kind is ArticleKind.alternative_version:
+        return
+    # use hyphens
     year = art.year.replace("–", "-")
 
     # remove spaces around the dash
@@ -180,6 +197,9 @@ def check_year(art: Article, autofix: bool = True) -> Iterable[str]:
 
     inferred = infer_publication_date(art)
     if inferred is not None and inferred != art.year:
+        # Ignore obviously wrong ones (though eventually we should retire this)
+        if inferred.startswith("20") and art.numeric_year() < 1990:
+            return
         is_more_specific = helpers.is_more_specific_date(inferred, art.year)
         if is_more_specific:
             message = f"tags yield more specific date {inferred} instead of {art.year}"
@@ -449,17 +469,30 @@ def journal_specific_cleanup(art: Article, autofix: bool = True) -> Iterable[str
         try:
             volume = int(art.volume)
         except ValueError:
-            yield f"unrecognized PZSL volume {art.volume}"
+            if not re.match(r"^190[1-5]-II?", art.volume):
+                yield f"unrecognized PZSL volume {art.volume}"
             return
-        if volume < 1800:
-            # PZSL volumes are numbered by year, but the web version numbers them starting
-            # with 1831 = 1.
-            new_volume = str(volume + 1830)
-            yield from _maybe_clean(art, "volume", new_volume, autofix)
-        elif year > 1980:
-            # This is not strictly correct because many issues were published
-            # later than their nominal year, but it is a lot closer to being correct than 2009.
-            yield from _maybe_clean(art, "year", art.volume, autofix)
+        if 1901 <= volume <= 1905:
+            yield "PZSL volume between 1901 and 1905 should have -I or -II"
+        elif 1831 <= volume <= 1936:
+            # Some of the 1851 volume was published in 1854
+            if volume not in (year, year - 1, year - 2, year - 3):
+                yield (
+                    f"PZSL article has mismatched volume and year: {volume} vs. {year}"
+                )
+        elif 107 <= volume <= 145:
+            if not (1937 <= year <= 1965):
+                yield (
+                    f"PZSL article has mismatched volume and year: {volume} vs. {year}"
+                )
+        else:
+            yield f"Invalid PZSL volume: {volume}"
+        if 107 <= volume <= 113:
+            if art.series not in ("A", "B"):
+                yield "PZSL articles in volumes 107–113 must have series"
+        else:
+            if art.series:
+                yield "PZSL article may not have series"
     jnh = "Journal of Natural History Series "
     if cg.name.startswith(jnh):
         message = "fixing Annals and Magazine citation group"
@@ -648,7 +681,7 @@ def check_tags(art: Article, autofix: bool = True) -> Iterable[str]:
     original_tags = list(art.tags)
     for tag in original_tags:
         if isinstance(tag, ArticleTag.LSIDArticle):
-            tag = ArticleTag.LSIDArticle(clean_lsid(tag.text))
+            tag = ArticleTag.LSIDArticle(clean_lsid(tag.text), tag.present_in_article)
         tags.append(tag)
     tags = sorted(set(tags))
     if tags != original_tags:

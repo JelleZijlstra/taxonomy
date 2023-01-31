@@ -339,3 +339,16 @@ CREATE TABLE `url_cache` (
     `content` TEXT
 );
 CREATE UNIQUE INDEX `full_key` on `url_cache` (`domain`, `key`);
+
+CREATE TABLE `issue_date` (
+    `id` integer primary key,
+    `citation_group_id` integer not null,
+    `series` VARCHAR(255),
+    `volume` VARCHAR(255),
+    `issue` VARCHAR(255),
+    `start_page` VARCHAR(255),
+    `end_page` VARCHAR(255),
+    `date` VARCHAR(255),
+    `tags` TEXT DEFAULT NULL
+);
+CREATE INDEX "cg" on "issue_date" (`citation_group_id`);

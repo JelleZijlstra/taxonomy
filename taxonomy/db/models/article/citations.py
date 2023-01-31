@@ -146,13 +146,28 @@ def _citenormal(article: Article, *, mw: bool) -> str:
         out += "."
     elif article.type == ArticleType.BOOK:
         out += f" {article.publisher}"
+        if article.citation_group is not None:
+            out += f", {article.citation_group.name}"
         if article.pages:
             out += f", {article.pages} pp"
         out += "."
-    elif article.type == ArticleType.WEB:
-        out += f" URL: {article.url}."
+    identifiers = []
+    if article.url is not None:
+        identifiers.append(f"URL: {article.url}")
     if not mw and article.doi:
-        out += f" doi:{article.doi}"
+        identifiers.append(f"doi:{article.doi}")
+    for tag in article.tags:
+        if isinstance(tag, ArticleTag.ISBN):
+            identifiers.append(f"ISBN {tag.text}")
+        elif isinstance(tag, ArticleTag.HDL):
+            identifiers.append(f"HDL {tag.text})")
+        elif isinstance(tag, ArticleTag.JSTOR):
+            identifiers.append(f"JSTOR {tag.text})")
+        elif isinstance(tag, ArticleTag.PMID):
+            identifiers.append(f"PMID {tag.text})")
+        elif isinstance(tag, ArticleTag.PMC):
+            identifiers.append(f"PMC {tag.text})")
+    out += "".join(f" {text}" for text in identifiers)
     # final cleanup
     out = re.sub(r"\s+", " ", out).replace("..", ".")
     if mw:

@@ -30,7 +30,6 @@ from .base import (
     BaseModel,
     EnumField,
     ADTField,
-    get_completer,
     get_str_completer,
     get_tag_based_derived_field,
 )
@@ -529,6 +528,7 @@ class Name(BaseModel):
             "fill_required_fields": lambda: self.fill_required_fields(
                 skip_fields={"type_tags"}
             ),
+            "copy_year": self.copy_year,
             "copy_authors": self.copy_authors,
             "check_authors": self.check_authors,
             "level": self.print_fill_data_level,
@@ -614,35 +614,21 @@ class Name(BaseModel):
         result.base_name.edit()
         return result
 
-    def get_completers_for_adt_field(self, field: str) -> getinput.CompleterMap:
+    @classmethod
+    def get_completers_for_adt_field(cls, field: str) -> getinput.CompleterMap:
+        completers = dict(super().get_completers_for_adt_field(field))
         for field_name, tag_cls in [
             ("type_tags", TypeTag),
             ("tags", NameTag),
             ("author_tags", AuthorTag),
         ]:
             if field == field_name:
-                completers: dict[
-                    tuple[type[adt.ADT], str], getinput.Completer[Any]
-                ] = {}
                 for tag in tag_cls._tag_to_member.values():  # type: ignore
                     for attribute, typ in tag._attributes.items():
-                        completer: getinput.Completer[Any] | None
-                        if typ is Name:
-                            completer = get_completer(Name, None)
-                        elif typ is Collection:
-                            completer = get_completer(Collection, None)
-                        elif typ is Article:
-                            completer = get_completer(Article, None)
-                        elif typ is Person:
-                            completer = get_completer(Person, None)
-                        elif typ is str and attribute in ("lectotype", "neotype"):
+                        if typ is str and attribute in ("lectotype", "neotype"):
                             completer = get_str_completer(Name, "type_specimen")
-                        else:
-                            completer = None
-                        if completer is not None and isinstance(tag, type):
                             completers[(tag, attribute)] = completer
-                return completers
-        return {}
+        return completers
 
     def get_empty_required_fields(self) -> Iterable[str]:
         fields = []
@@ -896,7 +882,7 @@ class Name(BaseModel):
         return self.get_date_object().year
 
     def valid_numeric_year(self) -> int | None:
-        if helpers.is_valid_date(self.year):
+        if self.year is not None and helpers.is_valid_date(self.year):
             return self.numeric_year()
         else:
             return None
@@ -1038,6 +1024,17 @@ class Name(BaseModel):
 
     def taxonomic_authority(self) -> str:
         return Person.join_authors(self.get_authors())
+
+    def copy_year(self) -> None:
+        citation = self.original_citation
+        if citation is None:
+            print("No original citation; cannot copy year")
+            return
+        if self.year == citation.year:
+            print("Year already matches")
+            return
+        print(f"Setting year: {self.year!r} -> {citation.year!r}")
+        self.year = citation.year
 
     def copy_authors(self) -> None:
         citation = self.original_citation

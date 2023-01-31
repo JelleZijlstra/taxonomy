@@ -22,6 +22,7 @@ import functools
 import gc
 from itertools import groupby
 import logging
+import operator
 import os
 import os.path
 from pathlib import Path
@@ -1943,7 +1944,7 @@ def run_linter_and_fix(
         obj.display()
         for message in messages:
             print(message)
-        while not obj.is_lint_clean():
+        while not obj.is_lint_clean(extra_linter=linter):
             try:
                 obj.edit()
             except getinput.StopException:
@@ -2677,6 +2678,35 @@ def most_common_authors_without_verbatim_citation(
     for author, count in data.most_common(print_n):
         print(count, author)
     return data
+
+
+@command
+def find_patronym_clusters() -> None:
+    clusters = {}
+    suffixes = ("i", "ae", "orum", "arum")
+    rgx = re.compile(rf"{'|'.join(suffixes)}$")
+    nams = Name.select_valid().filter(
+        Name.group == Group.species,
+        functools.reduce(
+            operator.or_, [Name.root_name.endswith(suffix) for suffix in suffixes]
+        ),
+    )
+    for nam in getinput.print_every_n(nams, label="names", n=100):
+        root_name = rgx.sub("", nam.root_name)
+        key = (nam.taxon, root_name)
+        possibilities = [root_name + suffix for suffix in suffixes]
+        cluster = []
+        unique_names = set()
+        for synonym in Name.add_validity_check(nam.taxon.names):
+            if synonym.root_name in possibilities:
+                cluster.append(synonym)
+                unique_names.add(synonym.root_name)
+        if len(unique_names) > 1:
+            clusters[key] = cluster
+    for key, cluster in clusters.items():
+        getinput.print_header(key)
+        for nam in cluster:
+            nam.display(full=False)
 
 
 def run_shell() -> None:

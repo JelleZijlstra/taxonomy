@@ -142,6 +142,31 @@ def choose_one(
     return options[int(choice)]
 
 
+def choose_one_by_name(
+    options: Sequence[T],
+    *,
+    message: str = "Choose one: ",
+    allow_empty: bool = True,
+    display_fn: Callable[[T], str] = str,
+    history_key: object = None,
+) -> T | None:
+    choices = {display_fn(option): option for option in options}
+    for display in choices:
+        print(display)
+    if history_key is None:
+        history_key = tuple(options)
+    choice = get_with_completion(
+        options=choices,
+        message=message,
+        disallow_other=True,
+        history_key=history_key,
+        allow_empty=allow_empty,
+    )
+    if not choice:
+        return None
+    return choices[choice]
+
+
 class _Completer(prompt_toolkit.completion.Completer):
     def __init__(self, strings: Iterable[str]) -> None:
         self.strings = sorted(strings)

@@ -58,17 +58,6 @@ class Specimen(BaseModel):
             link=link,
         )
 
-    @classmethod
-    def create_many(cls) -> None:
-        while True:
-            specimen = cls.create_interactively()
-            if specimen is None:
-                break
-            print("Created specimen:")
-            specimen.full_data()
-            print("==================================")
-            specimen.edit()
-
     def add_comment(self, text: str | None = None) -> SpecimenComment | None:
         return SpecimenComment.create_interactively(specimen=self, text=text)
 

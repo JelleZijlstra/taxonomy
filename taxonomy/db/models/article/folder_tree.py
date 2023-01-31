@@ -117,8 +117,12 @@ class CountTreeNode:
         oversized = []
 
         def callback(node: CountTreeNode, path: Sequence[str]) -> None:
+            if node.entries:
+                effective_limit = limit
+            else:
+                effective_limit = limit * 2
             count = len(node.entries) + len(node.children)
-            if count > limit:
+            if count > effective_limit:
                 print(f'{"/".join(path)}: {count}')
                 oversized.append(path)
 

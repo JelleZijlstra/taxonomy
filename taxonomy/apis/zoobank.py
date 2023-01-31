@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 import json
 import pprint
+import re
 import requests
 from typing import Any
 
@@ -8,6 +9,7 @@ from ..db.url_cache import cached, CacheDomain
 
 
 def clean_lsid(lsid: str) -> str:
+    lsid = re.sub(r"\s+", "", lsid.lower())
     if lsid.startswith("urn:"):
         *_, lsid = lsid.split(":")
     return lsid.upper()
