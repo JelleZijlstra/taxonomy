@@ -528,6 +528,7 @@ class Name(BaseModel):
             "fill_required_fields": lambda: self.fill_required_fields(
                 skip_fields={"type_tags"}
             ),
+            "copy_year": self.copy_year,
             "copy_authors": self.copy_authors,
             "check_authors": self.check_authors,
             "level": self.print_fill_data_level,

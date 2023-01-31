@@ -744,6 +744,7 @@ class BaseModel(Model):
             "call": self.call,
             "lint": self.format,
             "print_character_names": self.print_character_names_for_field,
+            "edit_reverse_rel": self.edit_reverse_rel,
         }
 
     def call(self) -> None:
@@ -821,6 +822,18 @@ class BaseModel(Model):
         except Exception:
             return None
         return obj, sig
+
+    def edit_reverse_rel(self) -> None:
+        options = [field.backref for field in self._meta.backrefs]
+        chosen = getinput.choose_one(options)
+        if chosen is None:
+            return
+        for obj in getattr(self, chosen):
+            obj.display()
+            try:
+                obj.edit()
+            except getinput.StopException:
+                return
 
     def edit_sibling(self) -> None:
         sibling = self.get_value_for_foreign_class(self.label_field, type(self))
