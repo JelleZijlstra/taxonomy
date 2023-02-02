@@ -56,8 +56,6 @@ please [let me know](mailto:jelle.zijlstra@gmail.com).
     but is not technically a publisher. For books, need to be able to record both the
     city of publication and the publisher.
 - Find more duplicate articles (those without DOIs)
-- Make the edittitle mechanism use getinput and provide _get_adt_callbacks_ so I don't
-  need to switch back and forth.
 - Detect more duplicate persons:
   - Unchecked names that are almost the same as redirects
   - Cases where we have both "Firstname M. Lastname" and "Firstname Middlename Lastname"
