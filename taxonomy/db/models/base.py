@@ -2,6 +2,7 @@ from collections import defaultdict
 import enum
 import functools
 from functools import partial
+import importlib
 import inspect
 import json
 import re
@@ -177,6 +178,7 @@ class BaseModel(Model):
         linter: Linter[ModelT] | None = None,
         *,
         autofix: bool = True,
+        interactive: bool = False,
         query: Iterable[ModelT] | None = None,
     ) -> list[tuple[ModelT, list[str]]]:
         if query is None:
@@ -186,7 +188,7 @@ class BaseModel(Model):
                 # For specific linters, only worry about valid names
                 query = cls.select_valid()
         if linter is None:
-            linter = cls.general_lint
+            linter = partial(cls.general_lint, interactive=interactive)
         bad = []
         for obj in getinput.print_every_n(query, label=f"{cls.__name__}s"):
             messages = list(linter(obj, autofix))
@@ -206,8 +208,12 @@ class BaseModel(Model):
             print(message)
         return False
 
-    def is_lint_clean(self: ModelT, extra_linter: Linter[ModelT] | None = None) -> bool:
-        messages = list(self.general_lint())
+    def is_lint_clean(
+        self: ModelT,
+        extra_linter: Linter[ModelT] | None = None,
+        interactive: bool = False,
+    ) -> bool:
+        messages = list(self.general_lint(interactive=interactive))
         if extra_linter is not None:
             messages += extra_linter(self, True)
         if not messages:
@@ -216,12 +222,14 @@ class BaseModel(Model):
             print(message)
         return False
 
-    def general_lint(self, autofix: bool = True) -> Iterable[str]:
+    def general_lint(
+        self, autofix: bool = True, interactive: bool = False
+    ) -> Iterable[str]:
         unrenderable = list(self.check_renderable())
         if unrenderable:
             yield from unrenderable
             return
-        yield from self.check_outbound_references(autofix)
+        yield from self.check_all_fields(autofix, interactive=interactive)
         if self.is_invalid():
             yield from self.lint_invalid(autofix)
         else:
@@ -241,7 +249,16 @@ class BaseModel(Model):
                     f" to {e!r}"
                 )
 
-    def check_outbound_references(self, autofix: bool = False) -> Iterable[str]:
+    def _edit_by_word(self, text: str) -> str:
+        callbacks: dict[str, Callable[[], object]] = {
+            **self.get_adt_callbacks(),
+            "reload_helpers": lambda: importlib.reload(helpers),
+        }
+        return getinput.edit_by_word(text, callbacks=callbacks)
+
+    def check_all_fields(
+        self, autofix: bool = False, interactive: bool = False
+    ) -> Iterable[str]:
         is_invalid = self.is_invalid()
         for field in self.fields():
             if field in self.fields_may_be_invalid:
@@ -274,20 +291,41 @@ class BaseModel(Model):
                         overrides = {}
                         for attr_name in tag_type._attributes:
                             value = getattr(tag, attr_name)
-                            if not isinstance(value, BaseModel):
-                                continue
-                            target = value.get_redirect_target()
-                            if target is not None:
-                                print(
-                                    f"{self}: references redirected object {value} ->"
-                                    f" {target}"
+                            if isinstance(value, BaseModel):
+                                target = value.get_redirect_target()
+                                if target is not None:
+                                    print(
+                                        f"{self}: references redirected object"
+                                        f" {value} -> {target}"
+                                    )
+                                    overrides[attr_name] = target
+                                elif not is_invalid and value.is_invalid():
+                                    yield (
+                                        f"{self}: references invalid object {value} in"
+                                        f" {field} tag {tag}"
+                                    )
+                            elif isinstance(value, str):
+                                cleaned = helpers.clean_string(
+                                    value, clean_whitespace=True
                                 )
-                                overrides[attr_name] = target
-                            elif not is_invalid and value.is_invalid():
-                                yield (
-                                    f"{self}: references invalid object {value} in"
-                                    f" {field} tag {tag}"
-                                )
+                                if cleaned != value:
+                                    print(
+                                        f"{self}: in tags: clean {value!r} ->"
+                                        f" {cleaned!r}"
+                                    )
+                                    overrides[attr_name] = cleaned
+                                if not cleaned.isprintable():
+                                    message = (
+                                        f"{self}: contains unprintable characters:"
+                                        f" {cleaned!r}"
+                                    )
+                                    if interactive:
+                                        self.display()
+                                        print(message)
+                                        overrides[attr_name] = self._edit_by_word(
+                                            cleaned
+                                        )
+                                    yield message
                         if overrides:
                             made_change = True
                             new_tags.append(adt.replace(tag, **overrides))
@@ -300,13 +338,67 @@ class BaseModel(Model):
                         tag_type = type(tag)
                         for attr_name in tag_type._attributes:
                             value = getattr(tag, attr_name)
-                            if not isinstance(value, BaseModel):
-                                continue
-                            if not is_invalid and value.is_invalid():
-                                yield (
-                                    f"{self}: references invalid object {value} in"
-                                    f" {field} tag {tag}"
+                            if isinstance(value, BaseModel):
+                                if not is_invalid and value.is_invalid():
+                                    yield (
+                                        f"{self}: references invalid object {value} in"
+                                        f" {field} tag {tag}"
+                                    )
+                            elif isinstance(value, str):
+                                cleaned = helpers.clean_string(
+                                    value, clean_whitespace=True
                                 )
+                                if cleaned != value:
+                                    yield (
+                                        f"{self}: in tags: clean {value!r} ->"
+                                        f" {cleaned!r}"
+                                    )
+                                if not cleaned.isprintable():
+                                    yield (
+                                        f"{self}: contains unprintable characters:"
+                                        f" {cleaned!r}"
+                                    )
+            elif isinstance(field_obj, (CharField, TextField)):
+                allow_newlines = isinstance(field_obj, TextField)
+                cleaned = helpers.clean_string(
+                    value, clean_whitespace=not allow_newlines
+                )
+                if cleaned != value:
+                    message = (
+                        f"{self} (#{self.id}): field {field}: clean {value!r} ->"
+                        f" {cleaned!r}"
+                    )
+                    if autofix:
+                        print(message)
+                        try:
+                            setattr(self, field, cleaned)
+                        except peewee.IntegrityError:
+                            if (
+                                self.get_redirect_target() is not None
+                                or field == "pattern"
+                            ):
+                                print(f"{self}: adding '(merged)'")
+                                setattr(self, field, f"{cleaned} (merged)")
+                            else:
+                                raise
+                    else:
+                        yield message
+                if not cleaned.isprintable():
+                    if allow_newlines and cleaned.replace("\n", "").isprintable():
+                        continue
+                    message = (
+                        f"{self}: field {field}: contains unprintable characters:"
+                        f" {cleaned!r}"
+                    )
+                    if interactive:
+                        self.display()
+                        print(message)
+                        if allow_newlines:
+                            self.fill_field(field)
+                        else:
+                            new_value = self._edit_by_word(cleaned)
+                            setattr(self, field, new_value)
+                    yield message
         if is_invalid:
             target = self.get_redirect_target()
             if target is not None:
@@ -1129,8 +1221,12 @@ class _ADTDescriptor(FieldAccessor):
         self.adt_cls = adt_cls
         self.field_name = name
 
-    def __get__(self, instance: Any, instance_type: Any = None) -> Any:
+    def __get__(
+        self, instance: Any, instance_type: Any = None, raw: bool = False
+    ) -> Any:
         value = super().__get__(instance, instance_type=instance_type)
+        if raw:
+            return value
         if isinstance(value, str) and value:
             if not hasattr(instance, "_adt_cache"):
                 instance._adt_cache = {}
@@ -1164,6 +1260,10 @@ class ADTField(TextField):
 
     def get_adt(self) -> type[Any]:
         return self.adt_cls()
+
+    def get_raw_value(self, instance: Any) -> str | None:
+        accessor = self.accessor_class(type(instance), self, self.name)
+        return accessor.__get__(instance, raw=True)
 
 
 class _NameGetter(Generic[ModelT]):

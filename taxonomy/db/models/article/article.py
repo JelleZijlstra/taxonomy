@@ -30,7 +30,7 @@ from ...constants import (
 )
 from ...helpers import to_int, clean_strings_recursively, get_date_object, is_valid_date
 from ... import models
-from .... import config, events, adt, getinput, uitools
+from .... import config, events, adt, getinput
 
 from ..citation_group import CitationGroup
 from ..person import AuthorTag, Person, PersonLevel, get_new_authors_list
@@ -304,21 +304,19 @@ class Article(BaseModel):
         self.fill_field("tags")
 
     def edittitle(self) -> None:
-        def save_handler(new_title: str, full: bool = True) -> None:
+        def save_handler(new_title: str) -> None:
             self.title = new_title
-            self.format()
-            print("New title: " + self.title)
-            self.edit_until_clean()
 
-        return uitools.edittitle(
+        new_title = getinput.edit_by_word(
             self.title or "",
             save_handler=save_handler,
-            callbacks=[
-                uitools.Callback("o", "Open this file", self.openf),
-                uitools.Callback("f", "Edit this file", self.edit),
-            ],
-            get_title=lambda: self.title or "",
+            callbacks=self.get_adt_callbacks(),
         )
+        self.title = new_title
+
+        self.format()
+        print("New title:", self.title)
+        self.edit_until_clean()
 
     @classmethod
     def bfind(
@@ -851,9 +849,11 @@ class Article(BaseModel):
         if self.author_tags is not None:
             if len(self.author_tags) == len(new_tags):
                 new_tags = [
-                    existing
-                    if existing.person.is_more_specific_than(new.person)
-                    else new
+                    (
+                        existing
+                        if existing.person.is_more_specific_than(new.person)
+                        else new
+                    )
                     for existing, new in zip(self.author_tags, new_tags, strict=True)
                 ]
             getinput.print_diff(self.author_tags, new_tags)

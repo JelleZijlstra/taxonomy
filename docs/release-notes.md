@@ -7,6 +7,8 @@ will also apply to the database itself.
 # Unreleased
 
 - Database
+  - Start harmonizing the taxonomy for living mammals with the
+    [Mammal Diversity Database](https://www.mammaldiversity.org/)
   - Clean up about 300 duplicate articles with the same DOI
   - Clean up a few dozen duplicate citation groups
   - Clean up some unresolvable DOIs
@@ -15,6 +17,8 @@ will also apply to the database itself.
   - Clean up many journal citations (adding missing end pages, correcting incorrect
     pages, standardizing formats, standardizing italics)
   - Add many new taxa and articles
+  - Clean up unprintable characters in strings
+  - Add geographic coordinates for more type localities
 - Frontend
   - Display links to various identifiers (ISSN, ISBN, etc.) on article and citation
     group pages

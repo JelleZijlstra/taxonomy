@@ -541,7 +541,7 @@ def is_clean_string(text: str) -> bool:
     return clean_string(text) == text
 
 
-def clean_string(text: str) -> str:
+def clean_string(text: str, *, clean_whitespace: bool = True) -> str:
     """Clean a string.
 
     This is intended as a safe operation that can be applied to any
@@ -552,9 +552,53 @@ def clean_string(text: str) -> str:
     text = text.replace(" \xad ", "")
     text = text.replace("\xad", "")
     text = text.replace("’", "'")
+    text = text.replace("′", "'")
     text = text.replace("‐", "-")  # use ASCII hyphen
+    text = text.replace("◦", "°")
     text = re.sub(r"[“”]", '"', text)
-    text = re.sub(r"\s+", " ", text)
+    text = re.sub(r"(\d)\x01(\d)", r"\1-\2", text)
+    text = re.sub(r"(\d)\x02(?!\d)", r"\1'", text)
+    text = re.sub(r"(\N{DEGREE SIGN}\s*\d+)\x01", r"\1'", text)
+    text = re.sub(r"('\s*\d+)\x01\x01", r'\1"', text)
+    text = re.sub(r"(\d)\x96(\d)", r"\1-\2", text)
+    text = text.replace("u€", "ü")
+    text = text.replace("o€", "ö")
+    text = text.replace("€a", "ä")
+    text = text.replace("\x18a", "à")
+    text = text.replace("\x18e", "è")
+    text = text.replace("\x19a", "á")
+    text = text.replace("\x19e", "é")
+    text = text.replace("\x19ı", "í")
+    text = text.replace("\x19o", "ó")
+    text = text.replace("\x19u", "ú")
+    text = text.replace("a\x18", "à")
+    text = text.replace("a\x19", "á")
+    text = text.replace("e\x19", "é")
+    text = text.replace("ı\x19", "í")
+    text = text.replace("o\x19", "ó")
+    text = text.replace("u\x19", "ú")
+    text = text.replace("e\x18", "è")
+    text = text.replace("\U0010ff4e", "'")
+    text = text.replace("*\U0010fc0d", "°")
+    text = text.replace("'\U0010fc01", "'")
+    text = text.replace('"\U0010fc08', '"')
+    text = text.replace("\U0010fc03[M]", "\N{MALE SIGN}")
+    text = text.replace("\U0010fe1f[M]", "\N{MALE SIGN}")
+    text = text.replace("\U0010fc00[M]", "\N{MALE SIGN}")
+    text = text.replace("\U0010fe20[F]", "\N{FEMALE SIGN}")
+    text = text.replace("\U0010fc04", "\N{MULTIPLICATION SIGN}")
+    text = text.replace("\U0010fc03+", "+")
+    text = text.replace("\x92", "'")
+    text = text.replace("\x94", '"')
+    text = text.replace("\x97", "–")
+    text = text.replace("\U0010fd79 ", "")
+    text = text.replace("\U0010fc25 ", "")
+    text = text.replace("\U0010fc44", "=")
+    text = text.replace("\U0010fc00", "=")
+    text = text.replace("\uf8e7", "\N{EM DASH}")
+    text = text.replace("\U0010fc94", "≈")
+    if clean_whitespace:
+        text = re.sub(r"\s+", " ", text)
     return text.strip()
 
 

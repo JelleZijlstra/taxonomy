@@ -160,9 +160,9 @@ def data_for_name(name: Name) -> NameData:
         "type_locality": name.type_locality.name if name.type_locality else "",
         "type_locality_detail": loc_detail,
         "type_specimen": name.type_specimen or "",
-        "species_type_kind": name.species_type_kind.name
-        if name.species_type_kind
-        else "",
+        "species_type_kind": (
+            name.species_type_kind.name if name.species_type_kind else ""
+        ),
         "collection_link": coll.get_absolute_url() if coll else "",
         "type_specimen_detail": specimen_detail,
         "type_name": str(name.type) if name.type else "",
@@ -170,15 +170,17 @@ def data_for_name(name: Name) -> NameData:
         "genus_type_kind": name.genus_type_kind.name if name.genus_type_kind else "",
         "nomenclature_status": name.nomenclature_status.name,
         "name_complex": str(name.name_complex) if name.name_complex else "",
-        "name_complex_link": name.name_complex.get_absolute_url()
-        if name.name_complex
-        else "",
-        "species_name_complex": str(name.species_name_complex)
-        if name.species_name_complex
-        else "",
-        "species_name_complex_link": name.species_name_complex.get_absolute_url()
-        if name.species_name_complex
-        else "",
+        "name_complex_link": (
+            name.name_complex.get_absolute_url() if name.name_complex else ""
+        ),
+        "species_name_complex": (
+            str(name.species_name_complex) if name.species_name_complex else ""
+        ),
+        "species_name_complex_link": (
+            name.species_name_complex.get_absolute_url()
+            if name.species_name_complex
+            else ""
+        ),
         "tags": repr(tags),
     }
 

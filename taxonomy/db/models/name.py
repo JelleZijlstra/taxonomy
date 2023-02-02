@@ -523,8 +523,9 @@ class Name(BaseModel):
             "add_variant": self.add_variant,
             "add_nomen_nudum": lambda: self.add_nomen_nudum(interactive=True),
             "preoccupied_by": self.preoccupied_by,
-            "display_type_locality": lambda: self.type_locality
-            and self.type_locality.display(),
+            "display_type_locality": (
+                lambda: self.type_locality and self.type_locality.display()
+            ),
             "fill_required_fields": lambda: self.fill_required_fields(
                 skip_fields={"type_tags"}
             ),
@@ -2088,7 +2089,9 @@ class NameTag(adt.ADT):
 
 CONSTRUCTABLE_STATUS_TO_TAG = {
     NomenclatureStatus.unjustified_emendation: NameTag.UnjustifiedEmendationOf,
-    NomenclatureStatus.incorrect_subsequent_spelling: NameTag.IncorrectSubsequentSpellingOf,
+    NomenclatureStatus.incorrect_subsequent_spelling: (
+        NameTag.IncorrectSubsequentSpellingOf
+    ),
     NomenclatureStatus.variant: NameTag.VariantOf,
     NomenclatureStatus.mandatory_change: NameTag.MandatoryChangeOf,
     NomenclatureStatus.nomen_novum: NameTag.NomenNovumFor,

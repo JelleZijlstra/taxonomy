@@ -1932,9 +1932,10 @@ def run_linter_and_fix(
     model_cls: type[ModelT],
     linter: Linter[ModelT] | None = None,
     query: Iterable[ModelT] | None = None,
+    interactive: bool = True,
 ) -> None:
     """Helper for running a lint on a subset of objects and fixing the issues."""
-    bad = model_cls.lint_all(linter, query=query)
+    bad = model_cls.lint_all(linter, query=query, interactive=interactive)
     print(f"Found {len(bad)} issues")
     if not bad:
         return
@@ -2091,7 +2092,7 @@ def resolve_redirects(dry_run: bool = False) -> None:
         for obj in getinput.print_every_n(
             model_cls.select(), label=f"{model_cls.__name__}s"
         ):
-            for _ in obj.check_outbound_references(autofix=not dry_run):
+            for _ in obj.check_all_fields(autofix=not dry_run):
                 pass
 
 

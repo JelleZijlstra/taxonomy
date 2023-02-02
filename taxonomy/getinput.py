@@ -3,6 +3,7 @@
 Helpers for retrieving user input.
 
 """
+from dataclasses import dataclass, field
 import difflib
 import enum
 import functools
@@ -322,6 +323,163 @@ def get_enum_member(
     if choice == "" or choice is None:
         return None
     return enum_cls[choice]
+
+
+def _make_split_title(title: str) -> list[str]:
+    split_title = title.split()
+    for i, word in enumerate(split_title):
+        if repr(word) != f"'{word}'":
+            print(f"{i}: {word} ({word!r})")
+        else:
+            print(f"{i}: {word}")
+    return split_title
+
+
+def _unite_title(split_title: Iterable[str]) -> str:
+    return re.sub(r"\s+", " ", " ".join(split_title).strip())
+
+
+def _smart_upper(word: str) -> str:
+    match = re.fullmatch(r"([_\(]*)(.)(.*)", word)
+    if match is None:
+        return word
+    return f"{match.group(1)}{match.group(2).upper()}{match.group(3)}"
+
+
+def _smart_divide(word: str) -> str:
+    # capital letter not at beginning of word
+    word = re.sub(r"(?<=[a-z,\.\)])(?=[A-Z])", " ", word)
+    # left parenthesis not at beginning of word
+    word = re.sub(r"(?<!^)(?=\()", " ", word)
+    # comma followed by letter
+    word = re.sub(r"(?<=,)(?=[a-zA-Z])", " ", word)
+    # right parenthesis not at end of word
+    word = re.sub(r"(?<=\))(?![$,])", " ", word)
+    return word
+
+
+_WordRangeCommand = Callable[[int, int], object]
+
+
+@dataclass(kw_only=True)
+class _WordEditor:
+    existing: str
+    save_handler: Callable[[str], object] | None
+    callbacks: CallbackMap
+    words: list[str] = field(init=False)
+    word_range_commands: dict[str, _WordRangeCommand] = field(init=False)
+
+    def __post_init__(self) -> None:
+        self.words = _make_split_title(self.existing)
+        self.word_range_commands = {
+            "l": self.make_looper(str.lower),
+            "u": self.make_looper(_smart_upper),
+            # Remove words
+            "r": self.make_looper(lambda word: ""),
+            # Remove text before a dash
+            "d": self.make_looper(lambda word: re.sub(r"^.*—", "", word)),
+            "v": self.make_looper(_smart_divide),
+            # deitalicize
+            "j": self.make_looper(lambda word: word.replace("_", "")),
+            "i": self.italicize_range,
+            "e": self.make_looper(self.edit_word),
+            "t": self.merge_words,
+        }
+        callbacks: dict[str, Callable[[], object]] = {
+            **self.callbacks,
+            "p": self.print_title,
+            "c": self.recompute,
+        }
+        if self.save_handler is not None:
+            callbacks["S"] = self.save_and_continue
+        self.callbacks = callbacks
+
+    def edit_word(self, word: str) -> str:
+        line = get_line(
+            "word> ", allow_none=False, callbacks=self.callbacks, default=word
+        )
+        if line is None:
+            return ""
+        # allow setting words that match commands
+        return line.lstrip("\\")
+
+    def merge_words(self, start: int, end: int) -> None:
+        if start == end:
+            end += 1
+        if end >= len(self.words):
+            print("Word out of range")
+            return
+        self.words[start] += "".join(self.words[start + 1 : end + 1])
+        for i in range(start + 1, end + 1):
+            self.words[i] = ""
+
+    def save_and_continue(self) -> None:
+        if self.save_handler is not None:
+            new_title = _unite_title(self.words)
+            print("New title:", new_title)
+            self.save_handler(new_title)
+
+    def print_title(self) -> None:
+        print(_unite_title(self.words))
+
+    def recompute(self) -> None:
+        self.words = _make_split_title(_unite_title(self.words))
+
+    def italicize_range(self, start: int, end: int) -> None:
+        for i in range(start, end + 1):
+            self.words[i] = self.words[i].replace("_", "")
+        self.words[start] = "_" + self.words[start]
+        self.words[end] += "_"
+
+    def make_looper(self, f: Callable[[str], str]) -> Callable[[int, int], None]:
+        def handler(start: int, end: int) -> None:
+            for i in range(start, end + 1):
+                self.words[i] = f(self.words[i])
+
+        return handler
+
+    def run(self) -> str:
+        print("Current title:", self.existing)
+        while True:
+            line = get_line(
+                prompt="edittitle> ", callbacks=self.callbacks, allow_none=False
+            )
+            if line is None:
+                continue
+            if line == "s":
+                new_title = _unite_title(self.words)
+                print("New title:", new_title)
+                return new_title
+            if line == "a":
+                return self.existing
+            if match := re.fullmatch(r"([a-z]+)(\d+)", line):
+                command = match.group(1)
+                index = int(match.group(2))
+                if command in self.word_range_commands:
+                    self.word_range_commands[command](index, index)
+                    continue
+            if match := re.fullmatch(r"([a-z]+)(\d+)-(\d+)", line):
+                command = match.group(1)
+                start = int(match.group(2))
+                end = int(match.group(3))
+                if start > end or start < 0 or end >= len(self.words):
+                    print(f"Invalid range: {start}-{end}")
+                    continue
+                if command in self.word_range_commands:
+                    self.word_range_commands[command](start, end)
+                    continue
+            print(f"Unrecognized command: {line!r}")
+
+
+def edit_by_word(
+    existing: str,
+    *,
+    save_handler: Callable[[str], object] | None = None,
+    callbacks: CallbackMap = {},
+) -> str:
+    return _WordEditor(
+        existing=existing, save_handler=save_handler, callbacks=callbacks
+    ).run()
 
 
 _ADT_LIST_BUILTINS = ["r", "remove_all", "h", "undo"]
