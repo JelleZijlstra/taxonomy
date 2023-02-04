@@ -1,3 +1,5 @@
+from __future__ import annotations
+import builtins
 from collections import defaultdict
 import enum
 import functools
@@ -63,7 +65,7 @@ database = LoggingDatabase(str(settings.db_filename))
 ADTT = TypeVar("ADTT", bound=adt.ADT)
 ModelT = TypeVar("ModelT", bound="BaseModel")
 Linter = Callable[[ModelT, bool], Iterable[str]]
-_getters: dict[tuple[type[Model], str | None], "_NameGetter[Any]"] = {}
+_getters: dict[tuple[type[Model], str | None], _NameGetter[Any]] = {}
 
 
 class _FieldEditor:
@@ -72,7 +74,7 @@ class _FieldEditor:
     def __init__(self, instance: Any = None) -> None:
         self.instance = instance
 
-    def __get__(self, instance: Any, instance_type: Any) -> "_FieldEditor":
+    def __get__(self, instance: Any, instance_type: Any) -> _FieldEditor:
         return self.__class__(instance)
 
     def __getattr__(self, field: str) -> None:
@@ -137,9 +139,9 @@ class BaseModel(Model):
     save_event: events.Event[Any]
     field_defaults: dict[str, Any] = {}
     excluded_fields: set[str] = set()
-    derived_fields: list["derived_data.DerivedField[Any]"] = []
-    _name_to_derived_field: dict[str, "derived_data.DerivedField[Any]"] = {}
-    call_sign_to_model: ClassVar[dict[str, type["BaseModel"]]] = {}
+    derived_fields: list[derived_data.DerivedField[Any]] = []
+    _name_to_derived_field: dict[str, derived_data.DerivedField[Any]] = {}
+    call_sign_to_model: ClassVar[dict[str, type[BaseModel]]] = {}
     fields_may_be_invalid: ClassVar[set[str]] = set()
     markdown_fields: ClassVar[set[str]] = set()
 
@@ -467,6 +469,38 @@ class BaseModel(Model):
             return []
         return json.loads(data)
 
+    def map_tags_field(
+        self, field: ADTField, fn: Callable[[adt.ADT], adt.ADT | None]
+    ) -> None:
+        existing_tags = getattr(self, field.name)
+        if existing_tags is None:
+            return
+        new_tags = []
+        for tag in existing_tags:
+            new_tag = fn(tag)
+            if new_tag is not None:
+                new_tags.append(new_tag)
+        if existing_tags != tuple(new_tags):
+            setattr(self, field.name, tuple(new_tags))
+
+    def map_tags_by_type(
+        self, field: ADTField, typ: builtins.type[Any], fn: Callable[[Any], Any]
+    ) -> None:
+        def map_fn(tag: adt.ADT) -> adt.ADT:
+            new_args = []
+            tag_type = type(tag)
+            if not tag_type._attributes:
+                return tag
+            for arg_name, arg_type in tag_type._attributes.items():
+                val = getattr(tag, arg_name)
+                if arg_type is typ:
+                    new_args.append(fn(val))
+                else:
+                    new_args.append(val)
+            return tag_type(*new_args)
+
+        self.map_tags_field(field, map_fn)
+
     @classmethod
     def compute_all_derived_fields(cls) -> None:
         if not cls.derived_fields:
@@ -683,7 +717,7 @@ class BaseModel(Model):
         return False
 
     @classmethod
-    def getter(cls: type[ModelT], attr: str | None) -> "_NameGetter[ModelT]":
+    def getter(cls: type[ModelT], attr: str | None) -> _NameGetter[ModelT]:
         key = (cls, attr)
         if key in _getters:
             return _getters[key]
@@ -1054,7 +1088,7 @@ class BaseModel(Model):
     @staticmethod
     def get_value_for_foreign_class(
         label: str,
-        foreign_cls: type["BaseModel"],
+        foreign_cls: type[BaseModel],
         *,
         default_obj: Any | None = None,
         callbacks: getinput.CallbackMap = {},
@@ -1146,7 +1180,10 @@ class BaseModel(Model):
         if tags is None:
             return
         for tag in tags:
-            if isinstance(tag, tag_cls):
+            if isinstance(tag_cls, type):
+                if isinstance(tag, tag_cls):
+                    yield tag
+            elif tag is tag_cls:
                 yield tag
 
     def add_to_history(self, field: str | None = None) -> None:

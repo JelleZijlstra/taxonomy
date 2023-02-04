@@ -1168,6 +1168,9 @@ class ArticleTag(adt.ADT):
     PublicationDate(source=DateSource, date=str, comment=str, tag=14)  # type: ignore
     LSIDArticle(text=str, present_in_article=bool, tag=15)  # type: ignore
 
+    # All references must be moved to children
+    MustUseChildren(tag=16)  # type: ignore
+
 
 @lru_cache
 def _getpdfcontent(path: str) -> str:

@@ -540,6 +540,7 @@ class Name(BaseModel):
             "merge": self._merge,
             "remove_duplicate": self._remove_duplicate,
             "edit_comments": self.edit_comments,
+            "replace_original_citation": self.replace_original_citation,
         }
 
     def _merge(self) -> None:
@@ -715,34 +716,12 @@ class Name(BaseModel):
         return False
 
     def map_type_tags(self, fn: Callable[[TypeTag], TypeTag | None]) -> None:
-        type_tags = self.type_tags
-        if type_tags is None:
-            return
-        new_tags = []
-        for tag in type_tags:
-            new_tag = fn(tag)
-            if new_tag is not None:
-                new_tags.append(new_tag)
-        if type_tags != tuple(new_tags):
-            self.type_tags = tuple(new_tags)  # type: ignore
+        self.map_tags_field(Name.type_tags, fn)
 
     def map_type_tags_by_type(
         self, typ: builtins.type[Any], fn: Callable[[Any], Any]
     ) -> None:
-        def map_fn(tag: TypeTag) -> TypeTag:
-            new_args = []
-            tag_type = type(tag)
-            if not tag_type._attributes:
-                return tag
-            for arg_name, arg_type in tag_type._attributes.items():
-                val = getattr(tag, arg_name)
-                if arg_type is typ:
-                    new_args.append(fn(val))
-                else:
-                    new_args.append(val)
-            return tag_type(*new_args)
-
-        self.map_type_tags(map_fn)
+        self.map_tags_by_type(Name.type_tags, typ, fn)
 
     def replace_original_citation(self, new_citation: Article | None = None) -> None:
         if new_citation is None:

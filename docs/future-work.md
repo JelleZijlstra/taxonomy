@@ -62,6 +62,9 @@ please [let me know](mailto:jelle.zijlstra@gmail.com).
 - Make the editor not allow leaving required (non-null) fields empty (especially enums)
 - Export feature on release
   - Provide a documented interface for each table
+- Reconsider valid name rules for nomina dubia and species without genera
+  - Currently they revert to the original name
+  - Should instead use the current genus or a recent well-known genus
 
 ## New or disabled checks
 

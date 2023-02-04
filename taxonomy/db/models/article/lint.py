@@ -10,10 +10,11 @@ import re
 import urllib.parse
 from typing import Any
 import unicodedata
-from .article import Article, ArticleTag
+from .article import Article, ArticleTag, ArticleComment
 from .name_parser import get_name_parser
 from ..citation_group import CitationGroup, CitationGroupTag
 from ..issue_date import IssueDate
+from ..base import BaseModel, ADTField
 from ...constants import ArticleKind, ArticleType, DateSource
 from ... import helpers
 from .... import getinput
@@ -692,6 +693,67 @@ def check_tags(art: Article, autofix: bool = True) -> Iterable[str]:
             art.tags = tags  # type: ignore
         else:
             yield f"{art}: needs change to tags"
+
+
+@make_linter("must_use_children")
+def check_must_use_children(
+    art: Article, autofix: bool = True, interactive: bool = False
+) -> Iterable[str]:
+    if not any(art.get_tags(art.tags, ArticleTag.MustUseChildren)):
+        return
+    for field in Article._meta.backrefs:
+        if field is Article.parent or field is ArticleComment.article:
+            continue
+        refs = list(getattr(art, field.backref))
+        if not refs:
+            continue
+        yield (
+            f"has references in {field.model.__name__}.{field.name} that should be"
+            f" moved to children: {refs}"
+        )
+        if interactive:
+            for ref in refs:
+                ref.display()
+                ref.fill_field(field.name)
+    for field in Article.derived_fields:
+        refs = art.get_derived_field(field.name)
+        if not refs:
+            continue
+        num_refs = [
+            get_num_referencing_tags(ref, art, interactive=interactive) for ref in refs
+        ]
+        refs = [ref for ref, num in zip(refs, num_refs, strict=True) if num > 0]
+        if not refs:
+            continue
+        yield (
+            f"has references in tags in {field.name} that should be moved to children:"
+            f" {refs}"
+        )
+
+
+def get_num_referencing_tags(
+    model: BaseModel, art: Article, interactive: bool = True
+) -> int:
+    num_references = 0
+    for field in model._meta.fields.values():
+        if not isinstance(field, ADTField):
+            continue
+
+        def map_fn(existing: Article) -> Article:
+            if existing != art:
+                return existing
+            nonlocal num_references
+            num_references += 1
+            if not interactive:
+                return existing
+            model.display()
+            choice = Article.getter(None).get_one(callbacks=model.get_adt_callbacks())
+            if choice is None:
+                return existing
+            return choice
+
+        model.map_tags_by_type(field, Article, map_fn)
+    return num_references
 
 
 def _maybe_clean(
