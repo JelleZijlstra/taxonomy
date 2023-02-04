@@ -20,7 +20,13 @@ import time
 from typing import Any, ClassVar, NamedTuple, TypeVar, cast
 from collections.abc import Callable, Iterable
 
-from ..base import ADTField, BaseModel, EnumField, get_tag_based_derived_field
+from ..base import (
+    ADTField,
+    BaseModel,
+    EnumField,
+    get_tag_based_derived_field,
+    LintConfig,
+)
 from ...constants import (
     ArticleCommentKind,
     ArticleKind,
@@ -734,7 +740,7 @@ class Article(BaseModel):
         self.specify_authors()
         return super().format(quiet=quiet)
 
-    def lint(self, autofix: bool = True) -> Iterable[str]:
+    def lint(self, cfg: LintConfig) -> Iterable[str]:
         try:
             repr(self)
         except Exception as e:
@@ -742,7 +748,7 @@ class Article(BaseModel):
             return
         if self.kind is ArticleKind.removed:
             return
-        yield from models.article.lint.run_linters(self, autofix)
+        yield from models.article.lint.run_linters(self, cfg)
 
     def cite(self, citetype: str = "paper") -> str:
         if self.issupplement() and self.parent is not None:

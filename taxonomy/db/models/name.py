@@ -32,6 +32,7 @@ from .base import (
     ADTField,
     get_str_completer,
     get_tag_based_derived_field,
+    LintConfig,
 )
 from .article import Article
 from .citation_group import CitationGroup
@@ -1453,7 +1454,9 @@ class Name(BaseModel):
                 if self.type is not None:
                     yield "genus_type_kind"
 
-    def lint(self, autofix: bool = True) -> Iterable[str]:
+    def lint(
+        self, cfg: LintConfig = LintConfig(autofix=False, interactive=False)
+    ) -> Iterable[str]:
         try:
             self.get_description(full=True, include_taxon=True, skip_lint=True)
         except Exception as e:
@@ -1462,7 +1465,7 @@ class Name(BaseModel):
         if self.status is Status.removed:
             return
         for linter in models.name_lint.LINTERS:
-            yield from linter(self, autofix)
+            yield from linter(self, cfg)
         if not self.check_authors():
             yield f"{self}: discrepancy in authors"
 

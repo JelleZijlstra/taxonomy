@@ -11,7 +11,7 @@ from peewee import CharField, ForeignKeyField, IntegerField, TextField
 from .. import models
 from ... import adt, events, getinput
 
-from .base import BaseModel, ADTField, EnumField
+from .base import BaseModel, ADTField, EnumField, LintConfig
 from .article import Article
 from .period import Period, period_sort_key
 from .region import Region
@@ -250,14 +250,14 @@ class Location(BaseModel):
             return False
         return True
 
-    def lint_invalid(self, autofix: bool = True) -> Iterable[str]:
+    def lint_invalid(self, cfg: LintConfig) -> Iterable[str]:
         if self.deleted is LocationStatus.alias:
             if not self.parent:
                 yield f"{self}: alias location has no parent"
             if not self.is_empty():
                 yield f"{self}: alias location has references"
 
-    def lint(self, autofix: bool = True) -> Iterable[str]:
+    def lint(self, cfg: LintConfig) -> Iterable[str]:
         if self.min_period is None and self.max_period is not None:
             yield f"{self}: missing min_period"
         if self.max_period is None and self.min_period is not None:

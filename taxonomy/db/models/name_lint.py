@@ -8,6 +8,7 @@ from datetime import datetime
 import json
 import re
 from typing import TypeVar
+from .base import LintConfig
 from .name import Name, NameTag, TypeTag, STATUS_TO_TAG
 from .article import Article, ArticleTag
 from ..constants import (
@@ -28,7 +29,7 @@ from ...apis.zoobank import clean_lsid, get_zoobank_data
 T = TypeVar("T")
 ADTT = TypeVar("ADTT", bound=adt.ADT)
 
-Linter = Callable[[Name, bool], Iterable[str]]
+Linter = Callable[[Name, LintConfig], Iterable[str]]
 
 
 def replace_arg(tag: ADTT, arg: str, val: object) -> ADTT:
@@ -45,7 +46,7 @@ def get_tag_fields_of_type(tag: adt.ADT, typ: type[T]) -> Iterable[tuple[str, T]
             yield arg_name, val
 
 
-def check_type_tags_for_name(nam: Name, autofix: bool) -> Iterable[str]:
+def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if not nam.type_tags:
         return
     tags: list[TypeTag] = []
@@ -59,7 +60,7 @@ def check_type_tags_for_name(nam: Name, autofix: bool) -> Iterable[str]:
                 print(f"{nam} references a redirected Article in {tag} -> {art.parent}")
                 if art.parent is None or art.parent.should_skip():
                     yield f"bad redirected article in tag {tag}"
-                elif autofix:
+                elif cfg.autofix:
                     tag = replace_arg(tag, arg_name, art.parent)
         for arg_name, tag_nam in get_tag_fields_of_type(tag, Name):
             if tag_nam.is_invalid():
@@ -74,7 +75,7 @@ def check_type_tags_for_name(nam: Name, autofix: bool) -> Iterable[str]:
                     f"{nam} has {nam.type} as its type, but the Commission has"
                     f" designated {tag.type}"
                 )
-                if autofix:
+                if cfg.autofix:
                     nam.type = tag.type
             if (
                 nam.genus_type_kind
@@ -84,7 +85,7 @@ def check_type_tags_for_name(nam: Name, autofix: bool) -> Iterable[str]:
                     f"{nam} has {nam.genus_type_kind}, but its type was set by the"
                     " Commission"
                 )
-                if autofix:
+                if cfg.autofix:
                     nam.genus_type_kind = (
                         TypeSpeciesDesignation.designated_by_the_commission  # type: ignore
                     )
@@ -143,11 +144,11 @@ def check_type_tags_for_name(nam: Name, autofix: bool) -> Iterable[str]:
         if set(tags) != set(original_tags):
             print(f"changing tags for {nam}")
             getinput.print_diff(sorted(original_tags), tags)
-        if autofix:
+        if cfg.autofix:
             nam.type_tags = tags  # type: ignore
 
 
-def check_type_designations_present(nam: Name, autofix: bool = True) -> Iterable[str]:
+def check_type_designations_present(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.genus_type_kind is TypeSpeciesDesignation.subsequent_designation:
         if not any(
             tag.type == nam.type
@@ -174,7 +175,7 @@ def check_type_designations_present(nam: Name, autofix: bool = True) -> Iterable
             yield f"{nam}: missing a reference for neotype designation"
 
 
-def check_tags_for_name(nam: Name, autofix: bool) -> Iterable[str]:
+def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
     """Looks at all tags set on names and applies related changes."""
     try:
         tags = nam.tags
@@ -198,7 +199,7 @@ def check_tags_for_name(nam: Name, autofix: bool) -> Iterable[str]:
                 f" {status.name} because of {tag}"
             )
             print(f"changing status of {nam} and adding comment {comment!r}")
-            if autofix:
+            if cfg.autofix:
                 nam.add_static_comment(CommentKind.automatic_change, comment)
                 nam.nomenclature_status = status  # type: ignore
 
@@ -259,7 +260,7 @@ def check_tags_for_name(nam: Name, autofix: bool) -> Iterable[str]:
         # haven't handled TakesPriorityOf, NomenOblitum, MandatoryChangeOf
 
 
-def check_required_tags(nam: Name, autofix: bool = True) -> Iterable[str]:
+def check_required_tags(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.nomenclature_status not in STATUS_TO_TAG:
         return
     tag_cls = STATUS_TO_TAG[nam.nomenclature_status]
@@ -270,7 +271,7 @@ def check_required_tags(nam: Name, autofix: bool = True) -> Iterable[str]:
         )
 
 
-def check_for_lsid(nam: Name, autofix: bool = True) -> Iterable[str]:
+def check_for_lsid(nam: Name, cfg: LintConfig) -> Iterable[str]:
     # ICZN Art. 8.5.1: ZooBank is relevant to availability only starting in 2012
     if (
         nam.numeric_year() < 2012
@@ -284,7 +285,7 @@ def check_for_lsid(nam: Name, autofix: bool = True) -> Iterable[str]:
     if zoobank_data is None:
         return
     message = f"{nam}: Inferred Zoobank data: {zoobank_data}"
-    if autofix:
+    if cfg.autofix:
         print(message)
         nam.add_type_tag(TypeTag.LSIDName(zoobank_data.name_lsid))
         nam.original_citation.add_tag(
@@ -295,14 +296,14 @@ def check_for_lsid(nam: Name, autofix: bool = True) -> Iterable[str]:
         yield message
 
 
-def check_year(nam: Name, autofix: bool = True) -> Iterable[str]:
+def check_year(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.year is not None and not helpers.is_valid_date(nam.year):
         yield f"{nam}: has invalid year {nam.year!r}"
 
 
-def check_year_matches(nam: Name, autofix: bool = True) -> Iterable[str]:
+def check_year_matches(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.original_citation is not None and nam.year != nam.original_citation.year:
-        if autofix and helpers.is_more_specific_date(
+        if cfg.autofix and helpers.is_more_specific_date(
             nam.original_citation.year, nam.year
         ):
             print(f"{nam}: fixing date {nam.year} -> {nam.original_citation.year}")
@@ -326,7 +327,7 @@ ATTRIBUTES_BY_GROUP = {
 }
 
 
-def check_disallowed_attributes(nam: Name, autofix: bool = True) -> Iterable[str]:
+def check_disallowed_attributes(nam: Name, cfg: LintConfig) -> Iterable[str]:
     for field, groups in ATTRIBUTES_BY_GROUP.items():
         if nam.group not in groups:
             value = getattr(nam, field)
@@ -338,7 +339,7 @@ def _make_con_messsage(nam: Name, text: str) -> str:
     return f"{nam}: corrected original name {nam.corrected_original_name!r} {text}"
 
 
-def check_corrected_original_name(nam: Name, autofix: bool = True) -> Iterable[str]:
+def check_corrected_original_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
     """Check that corrected_original_names are correct."""
     if nam.corrected_original_name is None:
         return
@@ -394,7 +395,7 @@ def _make_rn_message(nam: Name, text: str) -> str:
     return f"{nam}: root name {nam.root_name!r} {text}"
 
 
-def check_root_name(nam: Name, autofix: bool = True) -> Iterable[str]:
+def check_root_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
     """Check that root_names are correct."""
     if nam.nomenclature_status.permissive_corrected_original_name():
         return
@@ -406,7 +407,7 @@ def check_root_name(nam: Name, autofix: bool = True) -> Iterable[str]:
             yield _make_rn_message(nam, "contains unexpected characters")
 
 
-def check_family_root_name(nam: Name, autofix: bool = True) -> Iterable[str]:
+def check_family_root_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.group is not Group.family or nam.type is None:
         return
     if nam.is_unavailable():
@@ -426,7 +427,7 @@ def check_family_root_name(nam: Name, autofix: bool = True) -> Iterable[str]:
     for stripped in helpers.name_with_suffixes_removed(nam.root_name):
         if stripped == stem_name or stripped + "i" == stem_name:
             print(f"Autocorrecting root name: {nam.root_name} -> {stem_name}")
-            if autofix:
+            if cfg.autofix:
                 nam.root_name = stem_name
             break
     if nam.root_name != stem_name:
@@ -435,7 +436,7 @@ def check_family_root_name(nam: Name, autofix: bool = True) -> Iterable[str]:
         yield f"{nam}: Stem mismatch: {nam.root_name} vs. {stem_name}"
 
 
-def correct_type_taxon(nam: Name, autofix: bool = True) -> Iterable[str]:
+def correct_type_taxon(nam: Name, cfg: LintConfig) -> Iterable[str]:
     """Check that a name's type belongs to a child of the name's taxon."""
     if nam.group not in (Group.genus, Group.family):
         return
@@ -454,21 +455,21 @@ def correct_type_taxon(nam: Name, autofix: bool = True) -> Iterable[str]:
         return
     if nam.taxon != expected_taxon:
         message = f"{nam}: expected taxon to be {expected_taxon} not {nam.taxon}"
-        if autofix and expected_taxon.is_child_of(nam.taxon):
+        if cfg.autofix and expected_taxon.is_child_of(nam.taxon):
             print(message)
             nam.taxon = expected_taxon
         else:
             yield message
 
 
-def clean_up_verbatim(nam: Name, autofix: bool = True) -> Iterable[str]:
+def clean_up_verbatim(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if (
         nam.group in (Group.family, Group.genus)
         and nam.verbatim_type is not None
         and (nam.type is not None or "type" not in nam.get_required_fields())
     ):
         message = f"{nam}: cleaning up verbatim type: {nam.type}, {nam.verbatim_type}"
-        if autofix:
+        if cfg.autofix:
             print(message)
             nam.add_data("verbatim_type", nam.verbatim_type, concat_duplicate=True)
             nam.verbatim_type = None
@@ -483,7 +484,7 @@ def clean_up_verbatim(nam: Name, autofix: bool = True) -> Iterable[str]:
             f"{nam}: cleaning up verbatim type: {nam.type_specimen},"
             f" {nam.verbatim_type}"
         )
-        if autofix:
+        if cfg.autofix:
             print(message)
             nam.add_data("verbatim_type", nam.verbatim_type, concat_duplicate=True)
             nam.verbatim_type = None
@@ -494,7 +495,7 @@ def clean_up_verbatim(nam: Name, autofix: bool = True) -> Iterable[str]:
             f"{nam}: cleaning up verbatim citation: {nam.original_citation.name},"
             f" {nam.verbatim_citation}"
         )
-        if autofix:
+        if cfg.autofix:
             print(message)
             nam.add_data(
                 "verbatim_citation", nam.verbatim_citation, concat_duplicate=True
@@ -507,14 +508,14 @@ def clean_up_verbatim(nam: Name, autofix: bool = True) -> Iterable[str]:
             f"{nam}: cleaning up citation group: {nam.original_citation.name},"
             f" {nam.citation_group}"
         )
-        if autofix:
+        if cfg.autofix:
             print(message)
             nam.citation_group = None
         else:
             yield message
 
 
-def check_correct_status(nam: Name, autofix: bool = True) -> Iterable[str]:
+def check_correct_status(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.status.is_base_name() and nam != nam.taxon.base_name:
         yield (
             f"{nam}: is of status {nam.status!r} and should be base name of {nam.taxon}"
@@ -552,7 +553,7 @@ def _check_names_match(
             yield f"{nam}: page_described does not match {other}"
 
 
-def _check_as_emended_name(nam: Name, autofix: bool = True) -> Iterable[str]:
+def _check_as_emended_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.nomenclature_status not in (
         NomenclatureStatus.nomen_novum,
         NomenclatureStatus.preoccupied,
@@ -562,7 +563,7 @@ def _check_as_emended_name(nam: Name, autofix: bool = True) -> Iterable[str]:
     as_emended_target = nam.get_tag_target(NameTag.AsEmendedBy)
     if as_emended_target is None:
         message = f"{nam}: as_emended without an AsEmendedBy tag"
-        if not autofix:
+        if not cfg.autofix:
             yield message
             return
         target = _find_as_emended_by(nam)
@@ -604,16 +605,16 @@ def _check_as_emended_name(nam: Name, autofix: bool = True) -> Iterable[str]:
         )
 
 
-def _check_correctable_ios(nam: Name, autofix: bool = True) -> Iterable[str]:
+def _check_correctable_ios(nam: Name, cfg: LintConfig) -> Iterable[str]:
     """Check an incorrect original spelling that should be part of a triple."""
     ios_target = nam.get_tag_target(NameTag.IncorrectOriginalSpellingOf)
     if ios_target is None:
         yield f"{nam}: missing IncorrectOriginalSpellingOf tag"
         return
-    yield from _check_as_emended_name(ios_target, autofix)
+    yield from _check_as_emended_name(ios_target, cfg)
 
 
-def check_justified_emendations(nam: Name, autofix: bool = True) -> Iterable[str]:
+def check_justified_emendations(nam: Name, cfg: LintConfig) -> Iterable[str]:
     """Check for issues around justified emendations.
 
     Justified emendations are complex to handle because they involve multiple Names
@@ -627,7 +628,7 @@ def check_justified_emendations(nam: Name, autofix: bool = True) -> Iterable[str
 
     """
     if nam.nomenclature_status is NomenclatureStatus.as_emended:
-        yield from _check_as_emended_name(nam, autofix)
+        yield from _check_as_emended_name(nam, cfg)
     elif nam.nomenclature_status is NomenclatureStatus.justified_emendation:
         target = nam.get_tag_target(NameTag.JustifiedEmendationOf)
         if target is None:
@@ -642,7 +643,7 @@ def check_justified_emendations(nam: Name, autofix: bool = True) -> Iterable[str
                     f"{nam}: supposed incorrect spelling {target} has identical root"
                     f" name {nam.root_name}"
                 )
-            yield from _check_correctable_ios(target, autofix)
+            yield from _check_correctable_ios(target, cfg)
         elif target.nomenclature_status not in (
             NomenclatureStatus.available,
             NomenclatureStatus.nomen_novum,
@@ -674,18 +675,18 @@ def check_justified_emendations(nam: Name, autofix: bool = True) -> Iterable[str
             ios_target.nomenclature_status is NomenclatureStatus.as_emended
             or ios_target.get_tag_target(NameTag.AsEmendedBy)
         ):
-            yield from _check_correctable_ios(nam, autofix)
+            yield from _check_correctable_ios(nam, cfg)
         else:
             yield from _check_names_match(nam, ios_target, include_page_described=False)
 
 
-def autoset_original_rank(nam: Name, autofix: bool = True) -> Iterable[str]:
-    nam.autoset_original_rank(dry_run=not autofix)
+def autoset_original_rank(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    nam.autoset_original_rank(dry_run=not cfg.autofix)
     return []
 
 
 def autoset_corrected_original_name(
-    nam: Name, autofix: bool = True, aggressive: bool = False
+    nam: Name, cfg: LintConfig, aggressive: bool = False
 ) -> Iterable[str]:
     if nam.original_name is None or nam.corrected_original_name is not None:
         return
@@ -697,7 +698,7 @@ def autoset_corrected_original_name(
             f"{nam}: inferred corrected_original_name to be {inferred!r} from"
             f" {nam.original_name!r}"
         )
-        if autofix:
+        if cfg.autofix:
             print(message)
             nam.corrected_original_name = inferred
         else:
@@ -708,7 +709,7 @@ def autoset_corrected_original_name(
         )
 
 
-def check_fill_data_level(nam: Name, autofix: bool = True) -> Iterable[str]:
+def check_fill_data_level(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.original_citation is None:
         return
     level, reason = nam.fill_data_level()
@@ -719,14 +720,14 @@ def check_fill_data_level(nam: Name, autofix: bool = True) -> Iterable[str]:
     yield f"{nam}: missing basic data: {reason}"
 
 
-def check_citation_group(nam: Name, autofix: bool = True) -> Iterable[str]:
+def check_citation_group(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.citation_group is None or nam.year is None:
         return
     if message := nam.citation_group.is_year_in_range(nam.numeric_year()):
         yield f"{nam}: {message}"
 
 
-def check_matches_citation(nam: Name, autofix: bool = True) -> Iterable[str]:
+def check_matches_citation(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.original_citation is None:
         return
     art = nam.original_citation
@@ -748,7 +749,7 @@ _JG2015_RE = re.compile(rf"\[From {re.escape(_JG2015)}: [^\[\]]+ \[([A-Za-z\s\d]
 _JG2015_RE2 = re.compile(rf" \[([A-Za-z\s\d]+)\]\ \[from {re.escape(_JG2015)}\]")
 
 
-def extract_date_from_verbatim(nam: Name, autofix: bool = True) -> Iterable[str]:
+def extract_date_from_verbatim(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.original_citation is None or not nam.data:
         return
     # Extract precise dates from references from Jackson & Groves (2015). This sometimes
@@ -782,7 +783,7 @@ def extract_date_from_verbatim(nam: Name, autofix: bool = True) -> Iterable[str]
                     f"{nam}: inferred date for {article} from verbatim citation:"
                     f" {parsed}"
                 )
-                if autofix:
+                if cfg.autofix:
                     print(message)
                     article.add_tag(tag)
                 else:
@@ -807,7 +808,7 @@ def parse_date(date_str: str) -> str | None:
     return None
 
 
-def check_data(nam: Name, autofix: bool = True) -> Iterable[str]:
+def check_data(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if not nam.data:
         return
     try:

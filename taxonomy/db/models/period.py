@@ -17,7 +17,7 @@ from ..constants import (
 from ..derived_data import DerivedField
 from ... import events, getinput
 
-from .base import BaseModel, EnumField
+from .base import BaseModel, EnumField, LintConfig
 from .region import Region
 
 
@@ -102,7 +102,7 @@ class Period(BaseModel):
     def should_skip(self) -> bool:
         return self.deleted
 
-    def lint(self, autofix: bool = True) -> Iterable[str]:
+    def lint(self, cfg: LintConfig) -> Iterable[str]:
         if self.system is None:
             yield f"{self}: missing a system"
         if self.rank is None:

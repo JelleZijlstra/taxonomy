@@ -13,7 +13,13 @@ from .. import models, helpers
 from ..openlibrary import get_author
 from ... import adt, events, getinput, parsing
 
-from .base import BaseModel, EnumField, ADTField, get_tag_based_derived_field
+from .base import (
+    BaseModel,
+    EnumField,
+    ADTField,
+    get_tag_based_derived_field,
+    LintConfig,
+)
 
 ALLOWED_TUSSENVOEGSELS = {
     NamingConvention.dutch: {
@@ -360,22 +366,22 @@ class Person(BaseModel):
             self.type.name,
         )
 
-    def lint_invalid(self, autofix: bool = True) -> Iterable[str]:
+    def lint_invalid(self, cfg: LintConfig) -> Iterable[str]:
         if self.type in (PersonType.hard_redirect, PersonType.soft_redirect):
             if not self.target:
                 yield f"{self}: redirect has no target"
-                if autofix:
+                if cfg.autofix:
                     print(f"{self}: resetting type to unchecked")
                     self.type = PersonType.unchecked  # type: ignore
 
-    def lint(self, autofix: bool = True) -> Iterable[str]:
+    def lint(self, cfg: LintConfig) -> Iterable[str]:
         for field_name, field_obj in self._meta.fields.items():
             if isinstance(field_obj, CharField):
                 value = getattr(self, field_name)
                 if value is not None and not helpers.is_clean_string(value):
                     cleaned = helpers.clean_string(value)
                     print(f"{self}: clean {field_name} from {value!r} to {cleaned!r}")
-                    if autofix:
+                    if cfg.autofix:
                         setattr(self, field_name, cleaned)
 
         if self.type in (

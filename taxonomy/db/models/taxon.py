@@ -24,7 +24,7 @@ from ..constants import (
     FillDataLevel,
 )
 
-from .base import BaseModel, EnumField
+from .base import BaseModel, EnumField, LintConfig
 from .article import Article
 from .fill_data import DEFAULT_LEVEL, fill_data_for_names
 
@@ -109,7 +109,7 @@ class Taxon(BaseModel):
     def should_skip(self) -> bool:
         return self.age in (AgeClass.removed, AgeClass.redirect)
 
-    def lint(self, autofix: bool = True) -> Iterable[str]:
+    def lint(self, cfg: LintConfig) -> Iterable[str]:
         if self.parent is None and self.id != 1:
             yield f"{self}: missing parent"
         if self.parent is not None and not self.age.can_have_parent_of_age(
@@ -126,9 +126,9 @@ class Taxon(BaseModel):
             rank = self.rank.name
             group = self.base_name.group.name
             yield f"{self}: group mismatch: rank {rank} but group {group}"
-        yield from self.check_valid_name(autofix=autofix)
+        yield from self.check_valid_name(cfg)
 
-    def check_valid_name(self, autofix: bool = True) -> Iterable[str]:
+    def check_valid_name(self, cfg: LintConfig) -> Iterable[str]:
         computed = self.compute_valid_name()
         if computed is None or self.valid_name == computed:
             return
@@ -141,7 +141,7 @@ class Taxon(BaseModel):
         # subspecies, or they have become nomina dubia (in which case we use the
         # corrected original name). For family-group names we don't always trust the
         # computed name, because stems may be arbitrary.
-        can_fix = autofix and (
+        can_fix = cfg.autofix and (
             self.base_name.group == Group.species or self.is_nominate_subgenus()
         )
         if can_fix:

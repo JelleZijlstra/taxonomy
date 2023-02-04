@@ -9,7 +9,7 @@ from functools import cache
 from peewee import CharField, ForeignKeyField
 from collections.abc import Iterable
 
-from .base import BaseModel, ADTField, database
+from .base import BaseModel, ADTField, database, LintConfig
 from .. import helpers
 from ... import events, getinput
 from ...adt import ADT
@@ -50,7 +50,7 @@ class IssueDate(BaseModel):
     def edit(self) -> None:
         self.fill_field("tags")
 
-    def lint(self, autofix: bool = True) -> Iterable[str]:
+    def lint(self, cfg: LintConfig) -> Iterable[str]:
         if not helpers.is_valid_date(self.date):
             yield f"{self}: invalid date {self.date}"
         if not self.start_page.isnumeric():

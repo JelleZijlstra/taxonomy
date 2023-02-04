@@ -9,7 +9,7 @@ import re
 from .. import constants, helpers, models
 from ... import adt, events, getinput
 
-from .base import BaseModel, EnumField, ADTField
+from .base import BaseModel, EnumField, ADTField, LintConfig
 from .region import Region
 
 CGTagT = TypeVar("CGTagT", bound="CitationGroupTag")
@@ -82,7 +82,7 @@ class CitationGroup(BaseModel):
         ):
             yield "region"
 
-    def lint(self, autofix: bool = True) -> Iterable[str]:
+    def lint(self, cfg: LintConfig) -> Iterable[str]:
         if not self.tags:
             return
         for tag in self.tags:
@@ -150,7 +150,7 @@ class CitationGroup(BaseModel):
         if tuple(tags) != tuple(self.tags):
             message = f"{self}: changing tags"
             getinput.print_diff(sorted(self.tags), tags)
-            if autofix:
+            if cfg.autofix:
                 print(message)
                 self.tags = tags  # type: ignore
             else:

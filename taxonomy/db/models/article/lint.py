@@ -14,14 +14,14 @@ from .article import Article, ArticleTag, ArticleComment
 from .name_parser import get_name_parser
 from ..citation_group import CitationGroup, CitationGroupTag
 from ..issue_date import IssueDate
-from ..base import BaseModel, ADTField
+from ..base import BaseModel, ADTField, LintConfig
 from ...constants import ArticleKind, ArticleType, DateSource
 from ... import helpers
 from .... import getinput
 from ....apis.zoobank import clean_lsid
 
-Linter = Callable[[Article, bool], Iterable[str]]
-IgnorableLinter = Callable[[Article, bool], Generator[str, None, set[str]]]
+Linter = Callable[[Article, LintConfig], Iterable[str]]
+IgnorableLinter = Callable[[Article, LintConfig], Generator[str, None, set[str]]]
 
 LINTERS = []
 DISABLED_LINTERS = []
@@ -37,10 +37,8 @@ def make_linter(
 ) -> Callable[[Linter], IgnorableLinter]:
     def decorator(linter: Linter) -> IgnorableLinter:
         @functools.wraps(linter)
-        def wrapper(
-            art: Article, autofix: bool = True
-        ) -> Generator[str, None, set[str]]:
-            issues = list(linter(art, autofix))
+        def wrapper(art: Article, cfg: LintConfig) -> Generator[str, None, set[str]]:
+            issues = list(linter(art, cfg))
             if not issues:
                 return set()
             ignored_lints = get_ignored_lints(art)
@@ -60,7 +58,7 @@ def make_linter(
 
 
 @make_linter("name")
-def check_name(art: Article, autofix: bool = True) -> Iterable[str]:
+def check_name(art: Article, cfg: LintConfig) -> Iterable[str]:
     # Names are restricted to printable ASCII because a long time ago I stored
     # files on a file system that didn't handle non-ASCII properly. It's probably
     # safe to lift this restriction by now though.
@@ -82,7 +80,7 @@ def check_name(art: Article, autofix: bool = True) -> Iterable[str]:
 
 
 @make_linter("path")
-def check_path(art: Article, autofix: bool = True) -> Iterable[str]:
+def check_path(art: Article, cfg: LintConfig) -> Iterable[str]:
     if art.kind.is_electronic():
         if art.path is None or art.path == "NOFILE":
             yield "electronic article should have a path"
@@ -92,7 +90,7 @@ def check_path(art: Article, autofix: bool = True) -> Iterable[str]:
                 f"non-electronic article (kind {art.kind!r}) should have no"
                 f" path, but has {art.path}"
             )
-            if autofix:
+            if cfg.autofix:
                 print(f"{art}: {message}")
                 art.path = None
             else:
@@ -100,7 +98,7 @@ def check_path(art: Article, autofix: bool = True) -> Iterable[str]:
 
 
 @make_linter("type_kind")
-def check_type_and_kind(art: Article, autofix: bool = True) -> Iterable[str]:
+def check_type_and_kind(art: Article, cfg: LintConfig) -> Iterable[str]:
     # The difference between kind and type is:
     # * kind is about how this article is stored in the database (electronic copy,
     #   physical copy, etc.)
@@ -179,7 +177,7 @@ def infer_publication_date(art: Article) -> str | None:
 
 
 @make_linter("year")
-def check_year(art: Article, autofix: bool = True) -> Iterable[str]:
+def check_year(art: Article, cfg: LintConfig) -> Iterable[str]:
     if not art.year:
         return
     if art.kind is ArticleKind.alternative_version:
@@ -191,7 +189,7 @@ def check_year(art: Article, autofix: bool = True) -> Iterable[str]:
     if match := re.match(r"(\d{4})\s+-\s+(\d{4})", year):
         year = f"{match.group(1)}-{match.group(2)}"
 
-    yield from _maybe_clean(art, "year", year, autofix)
+    yield from _maybe_clean(art, "year", year, cfg)
 
     if art.year != "undated" and not helpers.is_valid_date(art.year):
         yield f"invalid year {art.year!r}"
@@ -206,7 +204,7 @@ def check_year(art: Article, autofix: bool = True) -> Iterable[str]:
             message = f"tags yield more specific date {inferred} instead of {art.year}"
         else:
             message = f"year mismatch: inferred {inferred}, actual {art.year}"
-        if autofix and is_more_specific:
+        if cfg.autofix and is_more_specific:
             print(message)
             art.year = inferred
         else:
@@ -226,17 +224,17 @@ def is_valid_doi(doi: str) -> bool:
 
 
 @make_linter("url")
-def clean_up_url(art: Article, autofix: bool = True) -> Iterable[str]:
+def clean_up_url(art: Article, cfg: LintConfig) -> Iterable[str]:
     if art.doi is not None:
         cleaned = urllib.parse.unquote(art.doi)
-        yield from _maybe_clean(art, "doi", cleaned, autofix)
+        yield from _maybe_clean(art, "doi", cleaned, cfg)
         if not is_valid_doi(art.doi):
             yield f"invalid doi {art.doi!r}"
     if art.doi is None and art.url is not None:
         doi = _infer_doi_from_url(art.url)
         if doi is not None:
             message = f"inferred doi {doi} from url {art.url}"
-            if autofix:
+            if cfg.autofix:
                 print(f"{art}: {message}")
                 art.doi = doi
                 art.url = None
@@ -250,7 +248,7 @@ def clean_up_url(art: Article, autofix: bool = True) -> Iterable[str]:
         hdl = _infer_hdl_from_url(art.url)
         if hdl is not None:
             message = f"inferred HDL {hdl} from url {art.url}"
-            if autofix:
+            if cfg.autofix:
                 print(f"{art}: {message}")
                 art.add_tag(ArticleTag.HDL(hdl))
                 art.url = None
@@ -266,7 +264,7 @@ def clean_up_url(art: Article, autofix: bool = True) -> Iterable[str]:
                 # put JSTOR in
                 jstor_id = art.url.removeprefix(_JSTOR_URL_PREFIX)
                 message = f"inferred JStor id {jstor_id} from url {art.url}"
-                if autofix:
+                if cfg.autofix:
                     print(f"{art}: {message}")
                     art.add_tag(ArticleTag.JSTOR(jstor_id))
                     art.url = None
@@ -279,7 +277,7 @@ def clean_up_url(art: Article, autofix: bool = True) -> Iterable[str]:
                     f"inferred JStor id {jstor_id} from doi {art.doi} (CG"
                     f" {art.citation_group})"
                 )
-                if autofix:
+                if cfg.autofix:
                     print(f"{art}: {message}")
                     art.add_tag(ArticleTag.JSTOR(jstor_id))
                     art.doi = None
@@ -352,13 +350,13 @@ _TITLE_REGEXES = [
 
 
 @make_linter("title")
-def check_title(art: Article, autofix: bool = True) -> Iterable[str]:
+def check_title(art: Article, cfg: LintConfig) -> Iterable[str]:
     if art.title is None:
         return
     new_title = art.title
     for regex, replacement in _TITLE_REGEXES:
         new_title = re.sub(regex, replacement, new_title)
-    yield from _maybe_clean(art, "title", new_title, autofix)
+    yield from _maybe_clean(art, "title", new_title, cfg)
     # DOI titles tend to produce this kind of mess
     if re.search(r"[A-Z] [A-Z] [A-Z]", new_title):
         yield f"spaced caps in title {art.title!r}"
@@ -443,7 +441,7 @@ def md_lint(text: str) -> Iterable[str]:
 
 
 @make_linter("journal_specific")
-def journal_specific_cleanup(art: Article, autofix: bool = True) -> Iterable[str]:
+def journal_specific_cleanup(art: Article, cfg: LintConfig) -> Iterable[str]:
     cg = art.citation_group
     if cg is None:
         return
@@ -497,7 +495,7 @@ def journal_specific_cleanup(art: Article, autofix: bool = True) -> Iterable[str
     jnh = "Journal of Natural History Series "
     if cg.name.startswith(jnh):
         message = "fixing Annals and Magazine citation group"
-        if autofix:
+        if cfg.autofix:
             art.series = str(int(cg.name.removeprefix(jnh)))
             art.citation_group = CitationGroup.get_or_create(
                 "Annals and Magazine of Natural History"
@@ -513,7 +511,7 @@ def journal_specific_cleanup(art: Article, autofix: bool = True) -> Iterable[str
         )
     ) and art.issue:
         message = f"{cg} article should not have issue {art.issue}"
-        if autofix:
+        if cfg.autofix:
             print(f"{art}: {message}")
             art.issue = None
         else:
@@ -521,7 +519,7 @@ def journal_specific_cleanup(art: Article, autofix: bool = True) -> Iterable[str
 
 
 @make_linter("citation_group")
-def check_citation_group(art: Article, autofix: bool = True) -> Iterable[str]:
+def check_citation_group(art: Article, cfg: LintConfig) -> Iterable[str]:
     if art.type is ArticleType.JOURNAL:
         if art.citation_group is None:
             yield "journal article is missing a citation group"
@@ -555,19 +553,19 @@ def _clean_string_field(value: str) -> str:
 
 
 @make_linter("string_fields")
-def check_string_fields(art: Article, autofix: bool = True) -> Iterable[str]:
+def check_string_fields(art: Article, cfg: LintConfig) -> Iterable[str]:
     for field in art.fields():
         value = getattr(art, field)
         if not isinstance(value, str):
             continue
         cleaned = _clean_string_field(value)
-        yield from _maybe_clean(art, field, cleaned, autofix)
+        yield from _maybe_clean(art, field, cleaned, cfg)
         if "??" in value:
             yield f"double question mark in field {field}: {value!r}"
 
 
 @make_linter("required")
-def check_required_fields(art: Article, autofix: bool = True) -> Iterable[str]:
+def check_required_fields(art: Article, cfg: LintConfig) -> Iterable[str]:
     if art.title is None and not art.is_full_issue():
         yield "missing title"
     if (
@@ -585,7 +583,7 @@ DEFAULT_ISSUE_REGEX = r"\d{1,3}|\d{1,2}-\d{1,2}|Suppl\. \d{1,2}"
 
 
 @make_linter("journal")
-def check_journal(art: Article, autofix: bool = True) -> Iterable[str]:
+def check_journal(art: Article, cfg: LintConfig) -> Iterable[str]:
     if art.type is not ArticleType.JOURNAL:
         return
     cg = art.citation_group
@@ -594,7 +592,7 @@ def check_journal(art: Article, autofix: bool = True) -> Iterable[str]:
         return
     if art.volume is not None:
         volume = art.volume.replace("–", "-")
-        yield from _maybe_clean(art, "volume", volume, autofix)
+        yield from _maybe_clean(art, "volume", volume, cfg)
         tag = cg.get_tag(CitationGroupTag.VolumeRegex)
         rgx = tag.text if tag else DEFAULT_VOLUME_REGEX
         if not re.fullmatch(rgx, volume):
@@ -606,7 +604,7 @@ def check_journal(art: Article, autofix: bool = True) -> Iterable[str]:
     if art.issue is not None:
         issue = re.sub(r"[–_]", "-", art.issue)
         issue = re.sub(r"^(\d+)/(\d+)$", r"\1–\2", issue)
-        yield from _maybe_clean(art, "issue", issue, autofix)
+        yield from _maybe_clean(art, "issue", issue, cfg)
         tag = cg.get_tag(CitationGroupTag.IssueRegex)
         rgx = tag.text if tag else DEFAULT_ISSUE_REGEX
         if not re.fullmatch(rgx, issue):
@@ -615,7 +613,7 @@ def check_journal(art: Article, autofix: bool = True) -> Iterable[str]:
 
 
 @make_linter("pages")
-def check_start_end_page(art: Article, autofix: bool = True) -> Iterable[str]:
+def check_start_end_page(art: Article, cfg: LintConfig) -> Iterable[str]:
     if art.type is not ArticleType.JOURNAL:
         return  # TODO similar check for chapters
     cg = art.citation_group
@@ -675,7 +673,7 @@ def check_start_end_page(art: Article, autofix: bool = True) -> Iterable[str]:
 
 
 @make_linter("tags")
-def check_tags(art: Article, autofix: bool = True) -> Iterable[str]:
+def check_tags(art: Article, cfg: LintConfig) -> Iterable[str]:
     if not art.tags:
         return
     tags: list[ArticleTag] = []
@@ -689,16 +687,14 @@ def check_tags(art: Article, autofix: bool = True) -> Iterable[str]:
         if set(tags) != set(original_tags):
             print(f"changing tags for {art}")
             getinput.print_diff(sorted(original_tags), tags)
-        if autofix:
+        if cfg.autofix:
             art.tags = tags  # type: ignore
         else:
             yield f"{art}: needs change to tags"
 
 
 @make_linter("must_use_children")
-def check_must_use_children(
-    art: Article, autofix: bool = True, interactive: bool = False
-) -> Iterable[str]:
+def check_must_use_children(art: Article, cfg: LintConfig) -> Iterable[str]:
     if not any(art.get_tags(art.tags, ArticleTag.MustUseChildren)):
         return
     for field in Article._meta.backrefs:
@@ -711,7 +707,7 @@ def check_must_use_children(
             f"has references in {field.model.__name__}.{field.name} that should be"
             f" moved to children: {refs}"
         )
-        if interactive:
+        if cfg.interactive:
             for ref in refs:
                 ref.display()
                 ref.fill_field(field.name)
@@ -720,7 +716,8 @@ def check_must_use_children(
         if not refs:
             continue
         num_refs = [
-            get_num_referencing_tags(ref, art, interactive=interactive) for ref in refs
+            get_num_referencing_tags(ref, art, interactive=cfg.interactive)
+            for ref in refs
         ]
         refs = [ref for ref, num in zip(refs, num_refs, strict=True) if num > 0]
         if not refs:
@@ -757,12 +754,12 @@ def get_num_referencing_tags(
 
 
 def _maybe_clean(
-    art: Article, field: str, cleaned: Any, autofix: bool
+    art: Article, field: str, cleaned: Any, cfg: LintConfig
 ) -> Iterable[str]:
     current = getattr(art, field)
     if cleaned != current:
         message = f"clean {field} {current!r} -> {cleaned!r}"
-        if autofix:
+        if cfg.autofix:
             print(f"{art}: {message}")
             setattr(art, field, cleaned)
         else:
@@ -770,7 +767,7 @@ def _maybe_clean(
 
 
 def run_linters(
-    art: Article, autofix: bool = True, *, include_disabled: bool = False
+    art: Article, cfg: LintConfig, *, include_disabled: bool = False
 ) -> Iterable[str]:
     if include_disabled:
         linters = [*LINTERS, *DISABLED_LINTERS]
@@ -779,11 +776,11 @@ def run_linters(
 
     used_ignores = set()
     for linter in linters:
-        used_ignores |= yield from linter(art, autofix)
+        used_ignores |= yield from linter(art, cfg)
     actual_ignores = get_ignored_lints(art)
     unused = actual_ignores - used_ignores
     if unused:
-        if autofix:
+        if cfg.autofix:
             tags = art.tags or ()
             new_tags = []
             for tag in tags:

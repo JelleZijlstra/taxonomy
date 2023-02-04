@@ -1,5 +1,6 @@
 from __future__ import annotations
 import builtins
+from dataclasses import dataclass
 from collections import defaultdict
 import enum
 import functools
@@ -62,9 +63,6 @@ class LoggingDatabase(SqliteDatabase):
 database = LoggingDatabase(str(settings.db_filename))
 
 
-ADTT = TypeVar("ADTT", bound=adt.ADT)
-ModelT = TypeVar("ModelT", bound="BaseModel")
-Linter = Callable[[ModelT, bool], Iterable[str]]
 _getters: dict[tuple[type[Model], str | None], _NameGetter[Any]] = {}
 
 
@@ -129,6 +127,17 @@ def _foreign_key_set(self: ForeignKeyAccessor, instance: Model, value: Any) -> N
 ForeignKeyAccessor.__set__ = _foreign_key_set
 
 
+@dataclass(frozen=True)
+class LintConfig:
+    autofix: bool = True
+    interactive: bool = True
+
+
+ADTT = TypeVar("ADTT", bound=adt.ADT)
+ModelT = TypeVar("ModelT", bound="BaseModel")
+Linter = Callable[[ModelT, LintConfig], Iterable[str]]
+
+
 class BaseModel(Model):
     label_field: str
     label_field_has_underscores = False
@@ -183,6 +192,7 @@ class BaseModel(Model):
         interactive: bool = False,
         query: Iterable[ModelT] | None = None,
     ) -> list[tuple[ModelT, list[str]]]:
+        cfg = LintConfig(autofix=autofix, interactive=interactive)
         if query is None:
             if linter is None:
                 query = cls.select()
@@ -190,10 +200,10 @@ class BaseModel(Model):
                 # For specific linters, only worry about valid names
                 query = cls.select_valid()
         if linter is None:
-            linter = partial(cls.general_lint, interactive=interactive)
+            linter = cls.general_lint
         bad = []
         for obj in getinput.print_every_n(query, label=f"{cls.__name__}s"):
-            messages = list(linter(obj, autofix))
+            messages = list(linter(obj, cfg))
             if messages:
                 for message in messages:
                     print(message)
@@ -213,29 +223,27 @@ class BaseModel(Model):
     def is_lint_clean(
         self: ModelT,
         extra_linter: Linter[ModelT] | None = None,
-        interactive: bool = False,
+        cfg: LintConfig = LintConfig(),
     ) -> bool:
-        messages = list(self.general_lint(interactive=interactive))
+        messages = list(self.general_lint(cfg))
         if extra_linter is not None:
-            messages += extra_linter(self, True)
+            messages += extra_linter(self, cfg)
         if not messages:
             return True
         for message in messages:
             print(message)
         return False
 
-    def general_lint(
-        self, autofix: bool = True, interactive: bool = False
-    ) -> Iterable[str]:
+    def general_lint(self, cfg: LintConfig = LintConfig()) -> Iterable[str]:
         unrenderable = list(self.check_renderable())
         if unrenderable:
             yield from unrenderable
             return
-        yield from self.check_all_fields(autofix, interactive=interactive)
+        yield from self.check_all_fields(cfg)
         if self.is_invalid():
-            yield from self.lint_invalid(autofix)
+            yield from self.lint_invalid(cfg)
         else:
-            yield from self.lint(autofix)
+            yield from self.lint(cfg)
 
     def check_renderable(self) -> Iterable[str]:
         try:
@@ -258,9 +266,7 @@ class BaseModel(Model):
         }
         return getinput.edit_by_word(text, callbacks=callbacks)
 
-    def check_all_fields(
-        self, autofix: bool = False, interactive: bool = False
-    ) -> Iterable[str]:
+    def check_all_fields(self, cfg: LintConfig) -> Iterable[str]:
         is_invalid = self.is_invalid()
         for field in self.fields():
             if field in self.fields_may_be_invalid:
@@ -276,7 +282,7 @@ class BaseModel(Model):
                         f"{self}: references redirected object {value} -> {target} in"
                         f" field {field}"
                     )
-                    if autofix:
+                    if cfg.autofix:
                         print(message)
                         setattr(self, field, target)
                     else:
@@ -285,7 +291,7 @@ class BaseModel(Model):
                 elif not is_invalid and value.is_invalid():
                     yield f"{self}: references invalid object {value} in field {field}"
             elif isinstance(field_obj, ADTField):
-                if autofix:
+                if cfg.autofix:
                     new_tags = []
                     made_change = False
                     for tag in value:
@@ -321,7 +327,7 @@ class BaseModel(Model):
                                         f"{self}: contains unprintable characters:"
                                         f" {cleaned!r}"
                                     )
-                                    if interactive:
+                                    if cfg.interactive:
                                         self.display()
                                         print(message)
                                         overrides[attr_name] = self._edit_by_word(
@@ -370,7 +376,7 @@ class BaseModel(Model):
                         f"{self} (#{self.id}): field {field}: clean {value!r} ->"
                         f" {cleaned!r}"
                     )
-                    if autofix:
+                    if cfg.autofix:
                         print(message)
                         try:
                             setattr(self, field, cleaned)
@@ -392,7 +398,7 @@ class BaseModel(Model):
                         f"{self}: field {field}: contains unprintable characters:"
                         f" {cleaned!r}"
                     )
-                    if interactive:
+                    if cfg.interactive:
                         self.display()
                         print(message)
                         if allow_newlines:
@@ -408,11 +414,11 @@ class BaseModel(Model):
                 if secondary_target is not None:
                     yield f"{self}: double redirect to {target} -> {secondary_target}"
 
-    def lint(self, autofix: bool = True) -> Iterable[str]:
+    def lint(self, cfg: LintConfig) -> Iterable[str]:
         """Yield messages if something is wrong with this object."""
         return []
 
-    def lint_invalid(self, autofix: bool = True) -> Iterable[str]:
+    def lint_invalid(self, cfg: LintConfig) -> Iterable[str]:
         """Like lint() but only called if is_invalid() returned True."""
         return []
 
