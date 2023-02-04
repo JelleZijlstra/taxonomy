@@ -1174,7 +1174,7 @@ class BaseModel(Model):
         return edited_any
 
     def get_tags(
-        self, tags: Sequence[adt.ADT] | None, tag_cls: type[ADTT]
+        self, tags: Sequence[adt.ADT] | None, tag_cls: type[ADTT] | ADTT
     ) -> Iterable[ADTT]:
         if tags is None:
             return

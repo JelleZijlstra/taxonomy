@@ -469,6 +469,7 @@ class _WordEditor:
                     self.word_range_commands[command](start, end)
                     continue
             print(f"Unrecognized command: {line!r}")
+        assert False, "unreachable"
 
 
 def edit_by_word(

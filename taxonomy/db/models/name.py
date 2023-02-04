@@ -714,7 +714,7 @@ class Name(BaseModel):
                 return True
         return False
 
-    def map_type_tags(self, fn: Callable[[TypeTag], TypeTag | None]) -> None:
+    def map_type_tags(self, fn: Callable[[Any], Any | None]) -> None:
         self.map_tags_field(Name.type_tags, fn)
 
     def map_type_tags_by_type(
