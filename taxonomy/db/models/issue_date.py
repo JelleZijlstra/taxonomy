@@ -5,16 +5,17 @@ Dates of publication for issues.
 """
 
 from __future__ import annotations
-from functools import cache
-from peewee import CharField, ForeignKeyField
-from collections.abc import Iterable
 
-from .base import BaseModel, ADTField, database, LintConfig
-from .. import helpers
+from collections.abc import Iterable
+from functools import cache
+
+from peewee import CharField, ForeignKeyField
+
 from ... import events, getinput
 from ...adt import ADT
-
+from .. import helpers
 from .article import Article
+from .base import ADTField, BaseModel, LintConfig, database
 from .citation_group import CitationGroup
 
 

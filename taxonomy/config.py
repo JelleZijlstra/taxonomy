@@ -4,9 +4,9 @@ import json
 import os
 import socket
 import sys
+from collections.abc import Mapping
 from pathlib import Path
 from typing import NamedTuple
-from collections.abc import Mapping
 
 
 class Options(NamedTuple):

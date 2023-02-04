@@ -1,16 +1,18 @@
 from __future__ import annotations
-import json
-from taxonomy import getinput
-from peewee import CharField, ForeignKeyField, TextField
-from typing import Any, TypeVar
-from collections.abc import Iterable
 
-from .base import ADTField, BaseModel
+import json
+from collections.abc import Iterable
+from typing import Any, TypeVar
+
+from peewee import CharField, ForeignKeyField, TextField
+
+from taxonomy import getinput
+
+from ... import adt, events
 from ..constants import SOURCE_LANGUAGE_SYNONYMS, SourceLanguage
 from ..helpers import to_int
 from ..openlibrary import get_from_isbn
-from ... import events, adt
-
+from .base import ADTField, BaseModel
 from .citation_group import CitationGroup
 from .person import AuthorTag, Person, get_new_authors_list
 

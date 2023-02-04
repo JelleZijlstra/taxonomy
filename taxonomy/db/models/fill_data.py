@@ -4,15 +4,17 @@ System for ensuring that names with original citations have their data filled ou
 
 """
 from collections.abc import Iterable, Sequence
+
 import peewee
-from taxonomy.db import models
+
 from taxonomy import getinput
 from taxonomy.command_set import CommandSet
+from taxonomy.db import models
 
+from ..constants import ArticleKind, FillDataLevel, Status
 from .article import Article, ArticleTag
 from .citation_group import CitationGroup
 from .person import Person
-from ..constants import FillDataLevel, ArticleKind, Status
 
 DEFAULT_LEVEL = FillDataLevel.missing_required_fields
 

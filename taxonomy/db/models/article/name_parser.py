@@ -1,11 +1,11 @@
 import functools
 import itertools
 import re
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, ClassVar, TypeVar
-from collections.abc import Sequence
-from taxonomy.config import get_options
 
+from taxonomy.config import get_options
 
 T = TypeVar("T", bound="NameParser")
 

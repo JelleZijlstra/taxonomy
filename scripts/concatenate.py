@@ -6,9 +6,10 @@ Requires GhostScript to be installed.
 
 """
 import argparse
-from pathlib import Path
 import shlex
 import subprocess
+from pathlib import Path
+
 from taxonomy.config import get_options
 
 

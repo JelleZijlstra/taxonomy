@@ -1,18 +1,18 @@
 from __future__ import annotations
+
 import enum
-import sys
 import re
-from typing import Any, IO
+import sys
 from collections import Counter
 from collections.abc import Callable, Iterable
+from typing import IO, Any
 
 from peewee import CharField, ForeignKeyField, IntegerField, TextField
 
-from .. import models
 from ... import adt, events, getinput
-
-from .base import BaseModel, ADTField, EnumField, LintConfig
+from .. import models
 from .article import Article
+from .base import ADTField, BaseModel, EnumField, LintConfig
 from .period import Period, period_sort_key
 from .region import Region
 from .stratigraphic_unit import StratigraphicUnit

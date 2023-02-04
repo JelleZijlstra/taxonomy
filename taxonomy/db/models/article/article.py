@@ -1,10 +1,19 @@
 from __future__ import annotations
-from bs4 import BeautifulSoup
+
 import builtins
 import datetime
-from functools import lru_cache
 import os
+import pprint
+import shutil
+import subprocess
+import time
+from collections.abc import Callable, Iterable
+from functools import lru_cache
 from pathlib import Path
+from typing import Any, ClassVar, NamedTuple, TypeVar, cast
+
+import requests
+from bs4 import BeautifulSoup
 from peewee import (
     CharField,
     DeferredForeignKey,
@@ -12,32 +21,24 @@ from peewee import (
     IntegerField,
     TextField,
 )
-import pprint
-import requests
-import shutil
-import subprocess
-import time
-from typing import Any, ClassVar, NamedTuple, TypeVar, cast
-from collections.abc import Callable, Iterable
 
-from ..base import (
-    ADTField,
-    BaseModel,
-    EnumField,
-    get_tag_based_derived_field,
-    LintConfig,
-)
+from .... import adt, config, events, getinput
+from ... import models
 from ...constants import (
     ArticleCommentKind,
     ArticleKind,
     ArticleType,
-    SourceLanguage,
     DateSource,
+    SourceLanguage,
 )
-from ...helpers import to_int, clean_strings_recursively, get_date_object, is_valid_date
-from ... import models
-from .... import config, events, adt, getinput
-
+from ...helpers import clean_strings_recursively, get_date_object, is_valid_date, to_int
+from ..base import (
+    ADTField,
+    BaseModel,
+    EnumField,
+    LintConfig,
+    get_tag_based_derived_field,
+)
 from ..citation_group import CitationGroup
 from ..person import AuthorTag, Person, PersonLevel, get_new_authors_list
 from .folder_tree import FolderTree

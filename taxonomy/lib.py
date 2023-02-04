@@ -5,12 +5,11 @@ File that gets loaded on startup of the taxonomy shell.
 Contents overlap with shell.py, which defines "commands".
 
 """
-from collections import defaultdict
-from functools import partial
 import re
-from taxonomy.db.models.name import TypeTag
-from typing import Any
+from collections import defaultdict
 from collections.abc import Container, Iterable
+from functools import partial
+from typing import Any
 
 import peewee
 
@@ -35,6 +34,7 @@ from taxonomy.db.models import (
     Region,
     Taxon,
 )
+from taxonomy.db.models.name import TypeTag
 from taxonomy.db.models.person import AuthorTag
 
 

@@ -1,11 +1,10 @@
 from peewee import CharField, ForeignKeyField
 
 from ..constants import OccurrenceStatus
-
-from .base import BaseModel, EnumField
 from .article import Article
-from .taxon import Taxon
+from .base import BaseModel, EnumField
 from .location import Location
+from .taxon import Taxon
 
 
 class Occurrence(BaseModel):

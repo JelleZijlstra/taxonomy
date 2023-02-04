@@ -1,20 +1,19 @@
 from __future__ import annotations
-from functools import lru_cache
+
 import sys
-from typing import IO, Any, TypeVar
 from collections.abc import Iterable
+from functools import lru_cache
+from typing import IO, Any, TypeVar
 
 from peewee import BooleanField, CharField, ForeignKeyField
 
-from .. import models
-from ..constants import StratigraphicUnitRank, RequirednessLevel
-from ..derived_data import DerivedField
 from ... import events, getinput
-
+from .. import models
+from ..constants import RequirednessLevel, StratigraphicUnitRank
+from ..derived_data import DerivedField
 from .base import BaseModel, EnumField
 from .period import Period
 from .region import Region
-
 
 T = TypeVar("T")
 

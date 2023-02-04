@@ -1,6 +1,6 @@
 from datetime import date
 
-from .helpers import romanize_russian, trimdoi, get_date_object
+from .helpers import get_date_object, romanize_russian, trimdoi
 
 
 def assert_romanizes(cyrillic: str, latin: str) -> None:

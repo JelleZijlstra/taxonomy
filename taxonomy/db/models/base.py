@@ -1,32 +1,33 @@
 from __future__ import annotations
+
 import builtins
-from dataclasses import dataclass
-from collections import defaultdict
 import enum
 import functools
-from functools import partial
 import importlib
 import inspect
 import json
 import re
 import time
 import traceback
-from types import NoneType
-from typing import Any, ClassVar, Generic, IO, TypeVar
+from collections import defaultdict
 from collections.abc import Callable, Container, Iterable, Sequence
-import typing_inspect
+from dataclasses import dataclass
+from functools import partial
+from types import NoneType
+from typing import IO, Any, ClassVar, Generic, TypeVar
 
 import peewee
+import typing_inspect
 from peewee import (
     BooleanField,
     CharField,
+    FieldAccessor,
+    ForeignKeyAccessor,
     ForeignKeyField,
     IntegerField,
     Model,
     SqliteDatabase,
     TextField,
-    FieldAccessor,
-    ForeignKeyAccessor,
 )
 
 from ... import adt, config, events, getinput

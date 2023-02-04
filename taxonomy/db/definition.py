@@ -8,8 +8,8 @@ Generally follows Article 9 of the PhyloCode: http://www.ohio.edu/phylocode/art9
 
 import enum
 import json
-from typing import TYPE_CHECKING, Any, Union
 from collections.abc import Iterable
+from typing import TYPE_CHECKING, Any, Union
 
 if TYPE_CHECKING:
     from .models.taxon import Taxon  # noqa: F401

@@ -15,39 +15,38 @@ Possible ones to add:
 """
 
 import collections
-from collections import defaultdict
 import csv
 import datetime
 import functools
 import gc
-from itertools import groupby
 import logging
 import operator
 import os
 import os.path
-from pathlib import Path
-import peewee
 import re
 import shutil
-from typing import Any, Generic, NamedTuple, TypeVar, cast
-from collections import Counter
+from collections import Counter, defaultdict
 from collections.abc import Callable, Hashable, Iterable, Iterator, Mapping, Sequence
+from itertools import groupby
+from pathlib import Path
+from typing import Any, Generic, NamedTuple, TypeVar, cast
 
 import IPython
+import peewee
 import requests
 import unidecode
 from traitlets.config.loader import Config
 
 from . import getinput
-from .db import constants, definition, derived_data, helpers, models, export
+from .db import constants, definition, derived_data, export, helpers, models
 from .db.constants import (
     AgeClass,
-    Group,
-    NomenclatureStatus,
-    Rank,
     ArticleKind,
     ArticleType,
     FillDataLevel,
+    Group,
+    NomenclatureStatus,
+    Rank,
 )
 from .db.models import (
     Article,
@@ -62,7 +61,7 @@ from .db.models import (
     TypeTag,
     database,
 )
-from .db.models.base import ModelT, Linter
+from .db.models.base import Linter, ModelT
 from .db.models.person import PersonLevel
 
 T = TypeVar("T")

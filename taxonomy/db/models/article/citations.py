@@ -2,8 +2,8 @@
 
 import re
 
-from .article import Article, ArticleTag, register_cite_function
 from ...constants import ArticleType
+from .article import Article, ArticleTag, register_cite_function
 
 
 def wikify(s: str) -> str:

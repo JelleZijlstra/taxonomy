@@ -1,31 +1,30 @@
 from __future__ import annotations
-from collections import defaultdict
-from functools import lru_cache
+
 import operator
 import re
 import sys
-from typing import cast, IO, Any
-from collections import Counter
+from collections import Counter, defaultdict
 from collections.abc import Callable, Container, Iterable, Sequence
+from functools import lru_cache
+from typing import IO, Any, cast
 
 import peewee
 from peewee import BooleanField, CharField, ForeignKeyField, TextField
 
-from .. import definition, helpers, models
-from ..derived_data import DerivedField, SetLater
 from ... import events, getinput
+from .. import definition, helpers, models
 from ..constants import (
     AgeClass,
+    FillDataLevel,
     Group,
     NomenclatureStatus,
     OccurrenceStatus,
     Rank,
     Status,
-    FillDataLevel,
 )
-
-from .base import BaseModel, EnumField, LintConfig
+from ..derived_data import DerivedField, SetLater
 from .article import Article
+from .base import BaseModel, EnumField, LintConfig
 from .fill_data import DEFAULT_LEVEL, fill_data_for_names
 
 

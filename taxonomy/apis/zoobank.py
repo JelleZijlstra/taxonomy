@@ -1,11 +1,12 @@
-from dataclasses import dataclass
 import json
 import pprint
 import re
-import requests
+from dataclasses import dataclass
 from typing import Any
 
-from ..db.url_cache import cached, CacheDomain
+import requests
+
+from ..db.url_cache import CacheDomain, cached
 
 
 def clean_lsid(lsid: str) -> str:

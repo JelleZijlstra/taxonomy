@@ -3,15 +3,15 @@
 Exporting data.
 
 """
-from .models import Taxon, Name, Article, Occurrence
-from .models.name import TypeTag
-from ..command_set import CommandSet
-from .. import getinput
-from .constants import AgeClass, Group, Rank
-
 import csv
-from typing import TypedDict, Protocol
 from collections.abc import Container
+from typing import Protocol, TypedDict
+
+from .. import getinput
+from ..command_set import CommandSet
+from .constants import AgeClass, Group, Rank
+from .models import Article, Name, Occurrence, Taxon
+from .models.name import TypeTag
 
 CS = CommandSet("export", "Exporting data")
 

@@ -4,11 +4,10 @@ import itertools
 import json
 import re
 import unicodedata
-from collections import defaultdict
+from collections import Counter, defaultdict
+from collections.abc import Callable, Container, Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Any, NamedTuple
-from collections import Counter
-from collections.abc import Callable, Container, Iterable, Mapping, Sequence
 
 import Levenshtein
 import unidecode

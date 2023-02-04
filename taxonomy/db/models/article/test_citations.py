@@ -1,5 +1,4 @@
-from . import citations
-from . import utils
+from . import citations, utils
 
 
 def test_citepaper() -> None:

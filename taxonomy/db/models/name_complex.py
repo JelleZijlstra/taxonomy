@@ -1,22 +1,22 @@
 from __future__ import annotations
-from typing import Any, IO
-from collections.abc import Iterable
+
 import sys
+from collections.abc import Iterable
+from typing import IO, Any
 
 import peewee
 from peewee import BooleanField, CharField, ForeignKeyField
 
-from .. import models
 from ... import events, getinput
+from .. import models
 from ..constants import (
-    GrammaticalGender,
+    FillDataLevel,
     GenderArticle,
+    GrammaticalGender,
     Group,
     SourceLanguage,
     SpeciesNameKind,
-    FillDataLevel,
 )
-
 from .base import BaseModel, EnumField
 
 

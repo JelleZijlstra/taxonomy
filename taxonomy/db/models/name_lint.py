@@ -3,28 +3,29 @@
 Lint steps for Names.
 
 """
-from collections.abc import Iterable, Callable
-from datetime import datetime
 import json
 import re
+from collections.abc import Callable, Iterable
+from datetime import datetime
 from typing import TypeVar
-from .base import LintConfig
-from .name import Name, NameTag, TypeTag, STATUS_TO_TAG
-from .article import Article, ArticleTag
+
+from ... import adt, getinput
+from ...apis.zoobank import clean_lsid, get_zoobank_data
+from .. import helpers
 from ..constants import (
     ArticleKind,
     ArticleType,
-    TypeSpeciesDesignation,
-    FillDataLevel,
     CommentKind,
+    DateSource,
+    FillDataLevel,
     Group,
     NomenclatureStatus,
     SpeciesGroupType,
-    DateSource,
+    TypeSpeciesDesignation,
 )
-from .. import helpers
-from ... import adt, getinput
-from ...apis.zoobank import clean_lsid, get_zoobank_data
+from .article import Article, ArticleTag
+from .base import LintConfig
+from .name import STATUS_TO_TAG, Name, NameTag, TypeTag
 
 T = TypeVar("T")
 ADTT = TypeVar("ADTT", bound=adt.ADT)

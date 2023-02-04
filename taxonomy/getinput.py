@@ -3,7 +3,6 @@
 Helpers for retrieving user input.
 
 """
-from dataclasses import dataclass, field
 import difflib
 import enum
 import functools
@@ -12,14 +11,14 @@ import re
 import shutil
 import subprocess
 import sys
-from typing import Any, TypeVar, Union, Literal
-from typing_extensions import overload
-from collections.abc import Callable, Iterator, Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from dataclasses import dataclass, field
+from typing import Any, Literal, TypeVar, Union
 
 import prompt_toolkit
+from typing_extensions import overload
 
 from . import adt
-
 
 T = TypeVar("T")
 Completer = Callable[[str, Any], T]

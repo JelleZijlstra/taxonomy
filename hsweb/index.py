@@ -1,6 +1,6 @@
+from collections.abc import Awaitable, Callable
 from functools import lru_cache
 from pathlib import Path
-from collections.abc import Awaitable, Callable
 
 from aiohttp import web
 from aiohttp_graphql import GraphQLView

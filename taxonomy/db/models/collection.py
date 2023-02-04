@@ -4,7 +4,6 @@ from peewee import BooleanField, CharField, ForeignKeyField
 
 from ... import events, getinput
 from .. import models
-
 from .base import BaseModel, ModelT, get_tag_based_derived_field
 from .region import Region
 

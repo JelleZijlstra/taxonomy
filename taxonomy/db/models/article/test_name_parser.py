@@ -1,6 +1,6 @@
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
-from collections.abc import Mapping
 
 from .name_parser import NameParser
 

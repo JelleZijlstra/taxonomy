@@ -1,11 +1,9 @@
 """Data structure that maintains a tree of folders, for the purpose of placement suggestions."""
 
-from collections import defaultdict
 import re
-from typing import NamedTuple
-from collections import Counter
+from collections import Counter, defaultdict
 from collections.abc import Callable, Iterable, Sequence
-from typing import Protocol
+from typing import NamedTuple, Protocol
 
 _ArticlePath = tuple[str, ...]
 _IGNORED_FIRST_WORDS = {

@@ -1,24 +1,24 @@
 from __future__ import annotations
+
 import builtins
-from collections import defaultdict
 import enum
 import sys
-from typing import IO, Any
+from collections import defaultdict
 from collections.abc import Callable, Iterable, Mapping, Sequence
+from typing import IO, Any
 
 from peewee import CharField, DeferredForeignKey, TextField
 
-from ..constants import NamingConvention, PersonType
-from .. import models, helpers
-from ..openlibrary import get_author
 from ... import adt, events, getinput, parsing
-
+from .. import helpers, models
+from ..constants import NamingConvention, PersonType
+from ..openlibrary import get_author
 from .base import (
+    ADTField,
     BaseModel,
     EnumField,
-    ADTField,
-    get_tag_based_derived_field,
     LintConfig,
+    get_tag_based_derived_field,
 )
 
 ALLOWED_TUSSENVOEGSELS = {

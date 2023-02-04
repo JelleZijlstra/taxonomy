@@ -2,8 +2,8 @@ import enum
 import itertools
 import re
 from collections import deque
-from typing import Any
 from collections.abc import Iterable
+from typing import Any
 
 from taxonomy import shell
 

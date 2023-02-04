@@ -1,8 +1,8 @@
 import pprint
 import re
 import sys
-from pathlib import Path
 from collections.abc import Iterable
+from pathlib import Path
 
 from bs4 import BeautifulSoup
 

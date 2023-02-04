@@ -3,11 +3,11 @@
 Setting the path on a newly added file.
 
 """
-from itertools import islice
 from collections.abc import Sequence
+from itertools import islice
 
+from .... import getinput, uitools
 from .article import Article
-from .... import uitools, getinput
 
 
 def determine_path(art: Article) -> bool:

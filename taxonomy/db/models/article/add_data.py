@@ -4,24 +4,25 @@ Adding data to (usually new) files.
 
 """
 import enum
-from functools import lru_cache
 import json
-from pathlib import Path
 import re
-import requests
 import traceback
-from typing import Any
-from collections.abc import Sequence
 import urllib.parse
+from collections.abc import Sequence
+from functools import lru_cache
+from pathlib import Path
+from typing import Any
 
-from .article import Article, ArticleTag
-from .lint import is_valid_doi, infer_publication_date_from_tags
+import requests
+
+from .... import command_set, getinput, parsing, uitools
+from ...constants import ArticleKind, ArticleType, DateSource
+from ...helpers import clean_string, clean_strings_recursively, trimdoi
+from ...url_cache import CacheDomain, cached
 from ..citation_group import CitationGroup, CitationGroupTag
 from ..person import AuthorTag, Person
-from ...constants import ArticleType, ArticleKind, DateSource
-from ...helpers import clean_string, trimdoi, clean_strings_recursively
-from ...url_cache import cached, CacheDomain
-from .... import parsing, getinput, uitools, command_set
+from .article import Article, ArticleTag
+from .lint import infer_publication_date_from_tags, is_valid_doi
 
 CS = command_set.CommandSet("add_data", "Commands for adding data to articles")
 

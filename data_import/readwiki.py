@@ -1,9 +1,9 @@
 import functools
 import subprocess
+from collections.abc import Iterable
 from dataclasses import dataclass
 from itertools import chain
 from pathlib import Path
-from collections.abc import Iterable
 
 import requests
 import wikitextparser

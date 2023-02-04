@@ -6,9 +6,7 @@ Tag classes that need to defined after all models for import cycle reasons.
 
 """
 from ... import adt
-from . import Collection
-from . import Region
-from . import Article
+from . import Article, Collection, Region
 
 
 class PersonTag(adt.ADT):

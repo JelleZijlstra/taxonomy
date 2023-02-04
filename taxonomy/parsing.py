@@ -1,9 +1,10 @@
 from __future__ import annotations
+
+import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 from functools import partial
-from collections.abc import Iterable
 from re import Pattern
-import re
 
 
 def unicode_range(start: str, end: str) -> set[str]:

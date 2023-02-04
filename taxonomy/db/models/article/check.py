@@ -4,18 +4,18 @@ Checking for new files.
 
 """
 import os
-from pathlib import Path
 import re
 import shutil
 import subprocess
 import time
+from pathlib import Path
 from typing import NamedTuple, NoReturn
 
 from .... import config, getinput, uitools
 from ....command_set import CommandSet
 from ...constants import ArticleKind
-from .article import Article
 from .add_data import add_data_for_new_file
+from .article import Article
 from .name_parser import get_name_parser
 from .set_path import determine_path, get_folder_interactively
 

@@ -1,8 +1,8 @@
 import copy
 import re
 import unicodedata
-from typing import Any
 from collections.abc import Iterable
+from typing import Any
 
 from taxonomy.db import constants, models
 

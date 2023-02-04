@@ -1,8 +1,8 @@
 import json
 import re
-from typing import Any
 from collections import Counter
 from collections.abc import Iterable
+from typing import Any
 
 from taxonomy import getinput
 from taxonomy.db import constants, helpers, models

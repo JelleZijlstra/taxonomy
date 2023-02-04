@@ -3,13 +3,14 @@
 Implementation of pre-computed derived data.
 
 """
-from dataclasses import dataclass
 import enum
-from functools import lru_cache
 import pickle
-from typing import Any, Generic, TypeVar
-from typing import Protocol
+from dataclasses import dataclass
+from functools import lru_cache
+from typing import Any, Generic, Protocol, TypeVar
+
 import typing_inspect
+
 import taxonomy
 
 from .. import config

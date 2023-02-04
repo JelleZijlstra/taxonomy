@@ -1,5 +1,6 @@
 import peewee
-from pyanalyze.value import KnownValue, GenericValue, TypedValue, Value
+from pyanalyze.value import GenericValue, KnownValue, TypedValue, Value
+
 from taxonomy.db.models.base import ADTField, EnumField
 
 

@@ -1,15 +1,15 @@
 from __future__ import annotations
+
 import collections
 import sys
-from typing import IO
 from collections.abc import Iterable
+from typing import IO
 
 from peewee import CharField, ForeignKeyField
 
+from ... import events, getinput
 from .. import constants, models
 from ..derived_data import DerivedField
-from ... import events, getinput
-
 from .base import BaseModel, EnumField, get_tag_based_derived_field
 
 

@@ -1,10 +1,10 @@
-from ...constants import ArticleType
-from .article import Article
-from ..person import Person, AuthorTag
-
 from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import Any
+
+from ...constants import ArticleType
+from ..person import AuthorTag, Person
+from .article import Article
 
 
 @dataclass

@@ -1,46 +1,46 @@
 from __future__ import annotations
+
 import builtins
-from collections import Counter
 import datetime
 import json
 import re
 import sys
 import time
-from typing import Any, IO, TYPE_CHECKING, TypeAlias
+from collections import Counter
 from collections.abc import Callable, Iterable, Sequence
+from typing import IO, TYPE_CHECKING, Any, TypeAlias
 
 from peewee import CharField, ForeignKeyField, IntegerField, TextField
 
-from .. import constants, helpers, models
 from ... import adt, events, getinput
+from .. import constants, helpers, models
 from ..constants import (
+    AgeClass,
     EmendationJustification,
+    FillDataLevel,
     Group,
     NomenclatureStatus,
     Rank,
     SpeciesNameKind,
     Status,
-    AgeClass,
-    FillDataLevel,
 )
 from ..definition import Definition
 from ..derived_data import DerivedField
-
+from .article import Article
 from .base import (
+    ADTField,
     BaseModel,
     EnumField,
-    ADTField,
+    LintConfig,
     get_str_completer,
     get_tag_based_derived_field,
-    LintConfig,
 )
-from .article import Article
 from .citation_group import CitationGroup
 from .collection import Collection
-from .taxon import Taxon, display_organized
 from .location import Location
 from .name_complex import NameComplex, SpeciesNameComplex
-from .person import Person, AuthorTag, get_new_authors_list
+from .person import AuthorTag, Person, get_new_authors_list
+from .taxon import Taxon, display_organized
 
 _CRUCIAL_MISSING_FIELDS: dict[Group, set[str]] = {
     Group.species: {

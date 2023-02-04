@@ -3,22 +3,23 @@
 Lint steps for Articles.
 
 """
-from collections.abc import Iterable, Callable, Generator, Sequence
-from collections import defaultdict
 import functools
 import re
-import urllib.parse
-from typing import Any
 import unicodedata
-from .article import Article, ArticleTag, ArticleComment
-from .name_parser import get_name_parser
-from ..citation_group import CitationGroup, CitationGroupTag
-from ..issue_date import IssueDate
-from ..base import BaseModel, ADTField, LintConfig
-from ...constants import ArticleKind, ArticleType, DateSource
-from ... import helpers
+import urllib.parse
+from collections import defaultdict
+from collections.abc import Callable, Generator, Iterable, Sequence
+from typing import Any
+
 from .... import getinput
 from ....apis.zoobank import clean_lsid
+from ... import helpers
+from ...constants import ArticleKind, ArticleType, DateSource
+from ..base import ADTField, BaseModel, LintConfig
+from ..citation_group import CitationGroup, CitationGroupTag
+from ..issue_date import IssueDate
+from .article import Article, ArticleComment, ArticleTag
+from .name_parser import get_name_parser
 
 Linter = Callable[[Article, LintConfig], Iterable[str]]
 IgnorableLinter = Callable[[Article, LintConfig], Generator[str, None, set[str]]]

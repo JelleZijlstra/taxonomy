@@ -6,8 +6,8 @@ Deprecated; prefer getinput.py for new code.
 
 """
 import functools
-from typing import Any
 from collections.abc import Callable, Iterable
+from typing import Any
 
 import prompt_toolkit
 

@@ -1,6 +1,7 @@
-from functools import lru_cache
 import pprint
+from functools import lru_cache
 from typing import Any
+
 import requests
 
 DOMAIN = "http://openlibrary.org/"

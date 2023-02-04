@@ -13,6 +13,12 @@ class_attribute_transformers = [
 ]
 undefined_name = false
 
+[tool.isort]
+profile = "black"
+combine_as_imports = true
+skip = ["taxonomy/db/models/__init__.py", "taxonomy/db/models/article/__init__.py"]
+skip_gitignore = true
+
 [project]
 name = "taxonomy"
 version = "0.0"

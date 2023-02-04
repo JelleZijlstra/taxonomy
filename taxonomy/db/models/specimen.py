@@ -1,13 +1,14 @@
 from __future__ import annotations
-from peewee import CharField, ForeignKeyField, IntegerField, TextField
-import time
+
 import datetime
+import time
 
-from .base import BaseModel
+from peewee import CharField, ForeignKeyField, IntegerField, TextField
+
 from ... import events, getinput
-
-from .taxon import Taxon
+from .base import BaseModel
 from .region import Region
+from .taxon import Taxon
 
 
 class Specimen(BaseModel):

@@ -3,8 +3,8 @@ import enum
 import functools
 import operator
 import sys
-from typing import TYPE_CHECKING, Any, TypeVar, Literal
 from collections.abc import Callable, Iterable, Iterator, MutableMapping
+from typing import TYPE_CHECKING, Any, Literal, TypeVar
 
 BASIC_TYPES: tuple[type[Any], ...] = (int, str, float, bool, list)
 

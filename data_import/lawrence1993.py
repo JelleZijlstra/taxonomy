@@ -10,10 +10,10 @@ the paper.
 import enum
 import json
 import re
-from pathlib import Path
-from typing import Any
 from collections import Counter
 from collections.abc import Iterable
+from pathlib import Path
+from typing import Any
 
 import Levenshtein
 import unidecode

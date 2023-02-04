@@ -1,15 +1,14 @@
 import builtins
+import re
 from collections import Counter
-from typing import Any, TypeVar
 from collections.abc import Iterable
+from typing import Any, TypeVar
 
 from peewee import BooleanField, CharField, ForeignKeyField, IntegrityError
-import re
 
-from .. import constants, helpers, models
 from ... import adt, events, getinput
-
-from .base import BaseModel, EnumField, ADTField, LintConfig
+from .. import constants, helpers, models
+from .base import ADTField, BaseModel, EnumField, LintConfig
 from .region import Region
 
 CGTagT = TypeVar("CGTagT", bound="CitationGroupTag")
