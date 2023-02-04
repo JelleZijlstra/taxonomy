@@ -710,9 +710,9 @@ def citewp(article: Article, *, commons: bool = False) -> str:
                     # putting the remaining editors in |editor4-last=
                     if i == 4:
                         del paras["editor4-first"]
-                        paras[
-                            "editor4-last"
-                        ] = f"{bauthors[3].get_full_name(family_first=True)}; "
+                        paras["editor4-last"] = (
+                            f"{bauthors[3].get_full_name(family_first=True)}; "
+                        )
                     paras["editor4-last"] = (
                         paras["editor4-last"] or ""
                     ) + f"{bauthors[4].get_full_name(family_first=True)}; "

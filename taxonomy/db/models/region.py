@@ -203,9 +203,9 @@ class Region(BaseModel):
         if only_nonempty and not self.has_citation_groups(type=type):
             return
         print(" " * depth + self.name)
-        by_type: dict[
-            constants.ArticleType, list[models.CitationGroup]
-        ] = collections.defaultdict(list)
+        by_type: dict[constants.ArticleType, list[models.CitationGroup]] = (
+            collections.defaultdict(list)
+        )
         for group in sorted(self.citation_groups, key=lambda cg: cg.name):
             if type is not None and group.type is not type:
                 continue

@@ -590,8 +590,7 @@ class Name(BaseModel):
         locality: Location | None = None,
         **kwargs: Any,
     ) -> Taxon:
-        """Convenience method to add a type species described in the same paper as the genus.
-        """
+        """Convenience method to add a type species described in the same paper as the genus."""
         assert self.taxon.rank == Rank.genus
         assert self.type is None
         full_name = f"{self.corrected_original_name} {name}"
@@ -842,8 +841,7 @@ class Name(BaseModel):
         return helpers.to_int(self.page_described)
 
     def extract_page_described(self) -> int | None:
-        """Attempts to extract a page that appears in the original description, if at all possible.
-        """
+        """Attempts to extract a page that appears in the original description, if at all possible."""
         page_described = self.numeric_page_described()
         if page_described != 0:
             return page_described

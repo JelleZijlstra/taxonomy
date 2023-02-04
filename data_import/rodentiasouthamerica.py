@@ -271,13 +271,25 @@ def split_fields(names: DataT, refs_dict: RefsDictT) -> DataT:
             if match:
                 name["variant_kind"] = {
                     "preoccupied by": constants.NomenclatureStatus.preoccupied,
-                    "lapsus calami for": constants.NomenclatureStatus.incorrect_subsequent_spelling,
-                    "incorrect subsequent spelling": constants.NomenclatureStatus.incorrect_subsequent_spelling,
-                    "incorrect subsequent spelling of": constants.NomenclatureStatus.incorrect_subsequent_spelling,
-                    "incorrect subsequent spelling of, but not": constants.NomenclatureStatus.incorrect_subsequent_spelling,
-                    "unjustified emendation of": constants.NomenclatureStatus.unjustified_emendation,
+                    "lapsus calami for": (
+                        constants.NomenclatureStatus.incorrect_subsequent_spelling
+                    ),
+                    "incorrect subsequent spelling": (
+                        constants.NomenclatureStatus.incorrect_subsequent_spelling
+                    ),
+                    "incorrect subsequent spelling of": (
+                        constants.NomenclatureStatus.incorrect_subsequent_spelling
+                    ),
+                    "incorrect subsequent spelling of, but not": (
+                        constants.NomenclatureStatus.incorrect_subsequent_spelling
+                    ),
+                    "unjustified emendation of": (
+                        constants.NomenclatureStatus.unjustified_emendation
+                    ),
                     "replacement name for": constants.NomenclatureStatus.nomen_novum,
-                    "incorrect subsequent spelling or invalid emendation of": constants.NomenclatureStatus.variant,
+                    "incorrect subsequent spelling or invalid emendation of": (
+                        constants.NomenclatureStatus.variant
+                    ),
                 }[match.group(1)]
                 name_authority = split_name_authority(
                     match.group(4), quiet=True, try_harder=True
@@ -313,17 +325,17 @@ def split_fields(names: DataT, refs_dict: RefsDictT) -> DataT:
                         name["type_year"] = match.group("type_year")
                     type_kind = match.group("type_kind")
                     if type_kind == "monotypy":
-                        name[
-                            "genus_type_kind"
-                        ] = constants.TypeSpeciesDesignation.monotypy
+                        name["genus_type_kind"] = (
+                            constants.TypeSpeciesDesignation.monotypy
+                        )
                     elif type_kind == "original designation":
-                        name[
-                            "genus_type_kind"
-                        ] = constants.TypeSpeciesDesignation.original_designation
+                        name["genus_type_kind"] = (
+                            constants.TypeSpeciesDesignation.original_designation
+                        )
                     elif type_kind == "tautonymy":
-                        name[
-                            "genus_type_kind"
-                        ] = constants.TypeSpeciesDesignation.absolute_tautonymy
+                        name["genus_type_kind"] = (
+                            constants.TypeSpeciesDesignation.absolute_tautonymy
+                        )
                 else:
                     name["raw_type_species"] = text
                 name["verbatim_type"] = text

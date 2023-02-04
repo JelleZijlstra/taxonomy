@@ -1165,8 +1165,7 @@ class BaseModel(Model):
         )
 
     def fill_required_fields(self, skip_fields: Container[str] = frozenset()) -> bool:
-        """Edit all required fields that are empty. Returns whether any field was edited.
-        """
+        """Edit all required fields that are empty. Returns whether any field was edited."""
         edited_any = False
         for field in self.get_empty_required_fields():
             if field not in skip_fields:

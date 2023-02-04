@@ -250,8 +250,7 @@ class SpeciesNameComplex(BaseModel):
 
     @classmethod
     def ambiguous(cls, stem: str, comment: str | None = None) -> SpeciesNameComplex:
-        """For groups of names that are ambiguously nouns in apposition (Art. 31.2.2).
-        """
+        """For groups of names that are ambiguously nouns in apposition (Art. 31.2.2)."""
         return cls._get_or_create(
             stem, stem=stem, kind=SpeciesNameKind.ambiguous_noun, comment=comment
         )
@@ -542,8 +541,7 @@ class NameComplex(BaseModel):
         stem_remove: str = "",
         stem_add: str = "",
     ) -> NameComplex:
-        """Name based on a word of unknown etymology, but of obvious grammatical behavior.
-        """
+        """Name based on a word of unknown etymology, but of obvious grammatical behavior."""
         return cls._get_or_create(
             stem,
             stem=stem,
@@ -585,8 +583,7 @@ class NameComplex(BaseModel):
         stem_remove: str = "",
         stem_add: str = "",
     ) -> NameComplex:
-        """Name based on a word found in a Greek dictionary, but with a changed suffix.
-        """
+        """Name based on a word found in a Greek dictionary, but with a changed suffix."""
         return cls._get_or_create(
             stem,
             stem=stem,
@@ -647,8 +644,7 @@ class NameComplex(BaseModel):
         gender: GrammaticalGender = GrammaticalGender.masculine,
         comment: str | None = None,
     ) -> NameComplex:
-        """Names ending in -oides and a few other endings default to masculine unless the author treated it otherwise.
-        """
+        """Names ending in -oides and a few other endings default to masculine unless the author treated it otherwise."""
         if stem not in ("ites", "oides", "ides", "odes", "istes"):
             raise ValueError("Art. 30.1.4.4 only applies to a limited set of stems")
         if gender != GrammaticalGender.masculine:
@@ -675,8 +671,7 @@ class NameComplex(BaseModel):
         stem_remove: str = "",
         stem_add: str = "",
     ) -> NameComplex:
-        """Based on a Latin word with a changed ending. Comment must specify the original word.
-        """
+        """Based on a Latin word with a changed ending. Comment must specify the original word."""
         return cls._get_or_create(
             stem,
             stem=stem,
@@ -775,8 +770,7 @@ class NameComplex(BaseModel):
         stem_remove: str = "",
         stem_add: str = "",
     ) -> NameComplex:
-        """Defaulted to feminine or neuter as a non-Western name with a specific ending.
-        """
+        """Defaulted to feminine or neuter as a non-Western name with a specific ending."""
         if gender == GrammaticalGender.masculine:
             assert False, "use defaulted_masculine instead"
         elif gender == GrammaticalGender.feminine:

@@ -505,15 +505,15 @@ class Taxon(BaseModel):
                 getinput.flush()
 
         if geographically:
-            by_region: dict[
-                models.Region, dict[models.Location, list[models.Name]]
-            ] = defaultdict(dict)
+            by_region: dict[models.Region, dict[models.Location, list[models.Name]]] = (
+                defaultdict(dict)
+            )
             for loc, loc_nams in by_locality.items():
                 by_region[loc.region][loc] = loc_nams
 
-            region_to_children: dict[
-                models.Region | None, set[models.Region]
-            ] = defaultdict(set)
+            region_to_children: dict[models.Region | None, set[models.Region]] = (
+                defaultdict(set)
+            )
 
             def add_region(region: models.Region) -> None:
                 if region in region_to_children[region.parent]:
@@ -665,8 +665,7 @@ class Taxon(BaseModel):
         locality: models.Location | None = None,
         **kwargs: Any,
     ) -> Taxon:
-        """Convenience method to add a type species described in the same paper as the genus.
-        """
+        """Convenience method to add a type species described in the same paper as the genus."""
         return self.base_name.add_type_identical(
             name, page_described=page_described, locality=locality, **kwargs
         )
@@ -1323,8 +1322,7 @@ class Taxon(BaseModel):
         return str(self)
 
     def __getattr__(self, attr: str) -> models.Name:
-        """Returns a name belonging to this taxon with the given root_name or original_name.
-        """
+        """Returns a name belonging to this taxon with the given root_name or original_name."""
         if attr.startswith("_"):
             raise AttributeError(attr)
         candidates = [

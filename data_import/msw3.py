@@ -62,9 +62,9 @@ def translate_to_db(names: DataT) -> DataT:
         if name["TypeLocality"]:
             name["loc"] = name["TypeLocality"]
         if name["TypeSpecies"]:
-            name[
-                "verbatim_type"
-            ] = f'{name["TypeSpecies"]} [from {{Mammalia-review (MSW3)}}]'
+            name["verbatim_type"] = (
+                f'{name["TypeSpecies"]} [from {{Mammalia-review (MSW3)}}]'
+            )
         yield name
 
 

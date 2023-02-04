@@ -236,8 +236,7 @@ class NomenclatureStatus(enum.IntEnum):
         }
 
     def permissive_corrected_original_name(self) -> bool:
-        """Corrected original names with one of these statuses are not strictly checked.
-        """
+        """Corrected original names with one of these statuses are not strictly checked."""
         return self in {
             NomenclatureStatus.not_published_with_a_generic_name,
             NomenclatureStatus.informal,

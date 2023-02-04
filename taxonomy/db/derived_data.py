@@ -95,9 +95,9 @@ class DerivedField(Generic[T]):
 
     def set_value(self, model: "taxonomy.db.models.base.BaseModel", value: T) -> None:
         data = load_derived_data()
-        data.setdefault(model.call_sign, {}).setdefault(model.id, {})[
-            self.name
-        ] = self.serialize(value)
+        data.setdefault(model.call_sign, {}).setdefault(model.id, {})[self.name] = (
+            self.serialize(value)
+        )
 
     def serialize(self, value: Any) -> Any:
         if isinstance(value, list):
