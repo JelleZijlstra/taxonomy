@@ -43,6 +43,7 @@ please [let me know](mailto:jelle.zijlstra@gmail.com).
 - UI indication that names belong to a group with high-quality vs. low-quality coverage
   (so users don't expect insect families to list all genera)
 - Add an SSL cert (maybe using AWS ELB?)
+- Display a transliteration for Cyrillic names (e.g. "Несов (Nesov)")
 
 ## Backend
 
@@ -64,7 +65,8 @@ please [let me know](mailto:jelle.zijlstra@gmail.com).
   - Provide a documented interface for each table
 - Reconsider valid name rules for nomina dubia and species without genera
   - Currently they revert to the original name
-  - Should instead use the current genus or a recent well-known genus
+  - Should instead use the current genus or a recent well-known genus, with genus name
+    in quotes
 
 ## New or disabled checks
 

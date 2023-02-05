@@ -14,10 +14,10 @@ the month and day of publication, I now record precise dates where possible.
 
 Historically, the Code has required print publication as a criterion for availability.
 However, in recent years publishing has moved largely online, and the Code has moved to
-allow electronic publishing ({Nomenclature-ICZN electronic amendment.pdf}).
-Electronic-only publications, and electronic-only preprints, can now (after 2011) make a
-name available, but only if the name is registered. In practice, this means the
-publication must contain an LSID, or ZooBank identifier, in the text.
+allow electronic publishing ([ICZN, 2012](/a/59568)). Electronic-only publications, and
+electronic-only preprints, can now (after 2011) make a name available, but only if the
+name is registered. In practice, this means the publication must contain an LSID, or
+ZooBank identifier, in the text.
 
 My procedure for determining publication dates for recently published names is usually
 as follows:
