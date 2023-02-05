@@ -28,9 +28,6 @@ As of January 2023, the database contains:
 
 - [Release notes](/docs/release-notes)
 - [About me](/docs/about)
-- [Geography](/docs/geography)
-- [Chronology](/docs/chronology)
-- [Scope of the database](/docs/scope)
 - [Possible future work](/docs/future-work)
 
 Information about the objects in the database:
@@ -47,6 +44,14 @@ Information about the objects in the database:
 - [Species name complex](/docs/species-name-complex)
 - [Stratigraphic unit](/docs/stratigraphic-unit)
 - [Taxon](/docs/taxon)
+
+Other aspects of the database:
+
+- [Geography](/docs/geography)
+- [Chronology](/docs/chronology)
+- [Scope of the database](/docs/scope)
+- [Publication dates](/docs/dating)
+- [Tricky journals](/docs/tricky-journals)
 
 Source code:
 
