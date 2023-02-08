@@ -352,6 +352,7 @@ class Article(BaseModel):
             "expand_doi": lambda: self.expand_doi(verbose=True, set_fields=True),
             "display_names": self.display_names,
             "display_type_localities": self.display_type_localities,
+            "copy_year_for_names": self.copy_year_for_names,
             "modernize_in_press": self.modernize_in_press,
             "open_url": self.openurl,
             "remove": self.remove,
@@ -987,6 +988,16 @@ class Article(BaseModel):
                     print(f"    {nam.type_locality!r}")
                     current_tl = nam.type_locality
                 print(f"{' ' * 8}{nam.get_description()}", end="")
+
+    def copy_year_for_names(self, force: bool = False) -> None:
+        new_names = list(models.Name.add_validity_check(self.new_names))
+        for nam in new_names:
+            for issue in models.name_lint.check_year_matches(nam, LintConfig()):
+                print(issue)
+        if not force and not getinput.yes_no("Change names? "):
+            return
+        for nam in new_names:
+            nam.copy_year(quiet=True)
 
     def get_page_title(self) -> str:
         return self.cite()

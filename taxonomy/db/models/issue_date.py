@@ -112,7 +112,12 @@ class IssueDate(BaseModel):
 
     @classmethod
     def find_matching_issue(
-        cls, cg: CitationGroup, volume: str, start_page: int, end_page: int
+        cls,
+        cg: CitationGroup,
+        series: str | None,
+        volume: str,
+        start_page: int,
+        end_page: int,
     ) -> IssueDate | str | None:
         """Find the issue that contains these pages.
 
@@ -125,7 +130,9 @@ class IssueDate(BaseModel):
         if cg.id not in _get_cgs_with_issue_dates():
             return None
         candidates = list(
-            cls.select_valid().filter(cls.citation_group == cg, cls.volume == volume)
+            cls.select_valid().filter(
+                cls.citation_group == cg, cls.volume == volume, cls.series == series
+            )
         )
         if not candidates:
             return None

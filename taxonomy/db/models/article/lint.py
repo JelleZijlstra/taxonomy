@@ -160,6 +160,12 @@ def infer_publication_date(art: Article) -> str | None:
         parent_inferred = infer_publication_date(parent)
         if parent_inferred is not None:
             return parent_inferred
+    if date := infer_publication_date_from_issue_date(art):
+        return date
+    return infer_publication_date_from_tags(art.tags)
+
+
+def infer_publication_date_from_issue_date(art: Article) -> str | None:
     if (
         art.type is ArticleType.JOURNAL
         and art.citation_group
@@ -170,11 +176,15 @@ def infer_publication_date(art: Article) -> str | None:
         and art.end_page.isnumeric()
     ):
         issue_date = IssueDate.find_matching_issue(
-            art.citation_group, art.volume, int(art.start_page), int(art.end_page)
+            art.citation_group,
+            art.series,
+            art.volume,
+            int(art.start_page),
+            int(art.end_page),
         )
         if isinstance(issue_date, IssueDate):
             return issue_date.date
-    return infer_publication_date_from_tags(art.tags)
+    return None
 
 
 @make_linter("year")
