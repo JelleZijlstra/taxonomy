@@ -120,6 +120,37 @@ class SpeciesNameComplex(BaseModel):
                 self.make_ending(ending, full_name_only=full_name_only)
         return names
 
+    def get_adt_callbacks(self) -> getinput.CallbackMap:
+        return {
+            **super().get_adt_callbacks(),
+            "move_names_with_suffix": self.move_names_with_suffix,
+            "display_endings": self.display_endings,
+            "remove_endings": self.remove_endings,
+        }
+
+    def display_endings(self) -> None:
+        for ending in self.endings:
+            ending.display()
+
+    def move_names_with_suffix(
+        self, suffix: str | None = None, target: SpeciesNameComplex | None = None
+    ) -> None:
+        if suffix is None:
+            suffix = getinput.get_line("suffix> ")
+        if suffix is None:
+            return
+        if target is None:
+            target = SpeciesNameComplex.getter(None).get_one("target> ")
+        if target is None:
+            return
+        nams = [nam for nam in self.get_names() if nam.root_name.endswith(suffix)]
+        print(f"{len(nams)} names found")
+        if not nams:
+            return
+        for nam in nams:
+            print(nam)
+            nam.species_name_complex = target
+
     def get_stem_from_name(self, name: str) -> str:
         """Applies the group to a genus name to get the name's stem."""
         if self.masculine_ending is None:
@@ -177,13 +208,16 @@ class SpeciesNameComplex(BaseModel):
             full_name_only=full_name_only,
         )
 
+    def remove_endings(self) -> None:
+        for ending in self.endings:
+            print("removing ending", ending)
+            ending.delete_instance()
+
     def remove(self) -> None:
         for nam in self.get_names():
             print("removing name complex from", nam)
             nam.species_name_complex = None
-        for ending in self.endings:
-            print("removing ending", ending)
-            ending.delete_instance()
+        self.remove_endings()
         print("removing complex", self)
         self.delete_instance()
 
@@ -298,6 +332,16 @@ class SpeciesNameComplex(BaseModel):
         return cls.adjective(stem, comment, "", "", "", auto_apply=auto_apply)
 
     @classmethod
+    def noun_in_apposition(cls, stem: str, comment: str | None) -> SpeciesNameComplex:
+        """A specific subset of the nouns in apposition."""
+        return cls._get_or_create(
+            f"noun_in_apposition_{stem}",
+            stem=stem,
+            kind=SpeciesNameKind.noun_in_apposition,
+            comment=comment,
+        )
+
+    @classmethod
     def create_interactively(cls, **kwargs: Any) -> SpeciesNameComplex | None:
         kind = getinput.get_with_completion(
             [
@@ -306,6 +350,7 @@ class SpeciesNameComplex(BaseModel):
                 "first_declension",
                 "third_declension",
                 "invariant",
+                "noun_in_apposition",
             ],
             "kind> ",
         )
@@ -395,6 +440,9 @@ class NameComplex(BaseModel):
             space = " " * (depth + 12)
             file.write(f"{space}Comment: {self.comment}\n")
         if full:
+            for ending in self.endings:
+                space = " " * (depth + 12)
+                file.write(f"{space}ending: {ending.ending}\n")
             nams = list(self.names)
             models.name.write_names(
                 nams,
