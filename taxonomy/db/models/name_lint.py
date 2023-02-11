@@ -5,7 +5,7 @@ Lint steps for Names.
 """
 import json
 import re
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Iterator
 from datetime import datetime
 from typing import TypeVar
 
@@ -25,7 +25,7 @@ from ..constants import (
 )
 from .article import Article, ArticleTag
 from .base import LintConfig
-from .name import STATUS_TO_TAG, Name, NameTag, TypeTag
+from .name import STATUS_TO_TAG, Name, NameComment, NameTag, TypeTag
 
 T = TypeVar("T")
 ADTT = TypeVar("ADTT", bound=adt.ADT)
@@ -774,21 +774,65 @@ def extract_date_from_verbatim(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 if not date.startswith("Published before "):
                     yield f"{nam}: cannot parse date: {verbatim}"
             else:
-                article = nam.original_citation
-                tag = ArticleTag.PublicationDate(
-                    DateSource.external, parsed, f'"{date}" {_JG2015}'
-                )
-                if tag in (article.tags or ()):
-                    continue
-                message = (
-                    f"{nam}: inferred date for {article} from verbatim citation:"
-                    f" {parsed}"
-                )
-                if cfg.autofix:
-                    print(message)
-                    article.add_tag(tag)
-                else:
-                    yield message
+                yield from _maybe_add_publication_date(nam, parsed, date, _JG2015, cfg)
+
+
+def _maybe_add_publication_date(
+    nam: Name, parsed: str, raw_date: str, source: str, cfg: LintConfig
+) -> Iterator[str]:
+    article = nam.original_citation
+    tag = ArticleTag.PublicationDate(
+        DateSource.external, parsed, f'"{raw_date}" {source}'
+    )
+    if tag in (article.tags or ()):
+        return
+    message = f'{nam}: inferred date for {article} from raw date "{raw_date}": {parsed}'
+    if cfg.autofix:
+        print(message)
+        article.add_tag(tag)
+    else:
+        yield message
+
+
+USNM_RGX = re.compile(
+    r"""
+    ,\s(ordered\spublished\s)?
+    ((?P<day>\d{1,2})\s)?
+    ((?P<month>[A-Z][a-z]+)\s)?
+    (?P<year>\d{4})[a-z]?\.(\s|$)
+    """,
+    re.VERBOSE,
+)
+
+
+def extract_date_from_structured_quotes(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    if not nam.original_citation:
+        return
+    for comment in nam.comments.filter(
+        NameComment.source
+        << (
+            34056,  # {Mammalia-USNM types (Fisher & Ludwig 2015).pdf}
+            33916,  # {Anomaluromorpha, Hystricomorpha, Myomorpha-USNM types.pdf}
+            29833,  # {Ferungulata-USNM types.pdf}
+            15513,  # {Castorimorpha, Sciuromorpha-USNM types.pdf}
+        ),
+        NameComment.kind == CommentKind.structured_quote,
+    ):
+        cite = json.loads(comment.text)["verbatim_citation"]
+        match = USNM_RGX.search(cite)
+        if not match:
+            yield f"{nam}: cannot match verbatim citation: {cite!r}"
+            continue
+        try:
+            date = helpers.parse_date(
+                match.group("year"), match.group("month"), match.group("day")
+            )
+        except ValueError as e:
+            yield f"{nam}: invalid date in {cite!r}: {e}"
+            continue
+        yield from _maybe_add_publication_date(
+            nam, date, cite, f"{{{comment.source.name}}}", cfg
+        )
 
 
 def parse_date(date_str: str) -> str | None:
@@ -844,6 +888,7 @@ LINTERS: list[Linter] = [
     check_matches_citation,
     check_data,
     extract_date_from_verbatim,
+    extract_date_from_structured_quotes,
 ]
 DISABLED_LINTERS: list[Linter] = [
     check_type_designations_present  # too many missing (about 580)

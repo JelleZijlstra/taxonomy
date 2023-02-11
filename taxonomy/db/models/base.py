@@ -976,7 +976,7 @@ class BaseModel(Model):
 
     def edit_sibling_by_field(self) -> None:
         field = self.prompt_for_field_name()
-        if field is None:
+        if not field:
             return
         sibling = self.getter(field).get_one()
         if sibling is not None:
@@ -995,7 +995,7 @@ class BaseModel(Model):
     def print_character_names_for_field(self, field: str | None = None) -> None:
         if field is None:
             field = self.prompt_for_field_name()
-        if field is None:
+        if not field:
             return
         value = getattr(self, field)
         if isinstance(value, str):

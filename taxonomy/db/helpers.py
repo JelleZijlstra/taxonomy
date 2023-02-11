@@ -723,3 +723,29 @@ def is_valid_regex(rgx: str) -> str | None:
     if re.match(r"(?!\\)\.", rgx):
         return f"regex {rgx!r} contains unescaped dot"
     return None
+
+
+MONTHS = list(calendar.month_name)
+
+
+def parse_month(month: str) -> int:
+    if month.isnumeric():
+        return int(month)
+    if len(month) >= 3:
+        for i, candidate in enumerate(MONTHS):
+            if candidate.startswith(month):
+                return i
+    raise ValueError(f"Unrecognized month {month!r}")
+
+
+def parse_date(year: str, month: str | None, day: str | None) -> str:
+    result = year
+    if month:
+        month_num = parse_month(month)
+        result += f"-{month_num:02d}"
+    if day:
+        day_num = int(day)
+        result += f"-{day_num:02d}"
+    if not is_valid_date(result):
+        raise ValueError(f"produced invalid date {result!r} from {year} {month} {day}")
+    return result
