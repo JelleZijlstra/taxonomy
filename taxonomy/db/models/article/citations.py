@@ -161,13 +161,13 @@ def _citenormal(article: Article, *, mw: bool) -> str:
             if isinstance(tag, ArticleTag.ISBN):
                 identifiers.append(f"ISBN {tag.text}")
             elif isinstance(tag, ArticleTag.HDL):
-                identifiers.append(f"HDL {tag.text})")
+                identifiers.append(f"HDL {tag.text}")
             elif isinstance(tag, ArticleTag.JSTOR):
-                identifiers.append(f"JSTOR {tag.text})")
+                identifiers.append(f"JSTOR {tag.text}")
             elif isinstance(tag, ArticleTag.PMID):
-                identifiers.append(f"PMID {tag.text})")
+                identifiers.append(f"PMID {tag.text}")
             elif isinstance(tag, ArticleTag.PMC):
-                identifiers.append(f"PMC {tag.text})")
+                identifiers.append(f"PMC {tag.text}")
     out += "".join(f" {text}" for text in identifiers)
     # final cleanup
     out = re.sub(r"\s+", " ", out).replace("..", ".")
