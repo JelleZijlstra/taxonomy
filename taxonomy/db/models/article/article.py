@@ -352,6 +352,7 @@ class Article(BaseModel):
             "expand_doi": lambda: self.expand_doi(verbose=True, set_fields=True),
             "display_names": self.display_names,
             "display_type_localities": self.display_type_localities,
+            "display_children": self.display_children,
             "copy_year_for_names": self.copy_year_for_names,
             "modernize_in_press": self.modernize_in_press,
             "open_url": self.openurl,
@@ -988,6 +989,18 @@ class Article(BaseModel):
                     print(f"    {nam.type_locality!r}")
                     current_tl = nam.type_locality
                 print(f"{' ' * 8}{nam.get_description()}", end="")
+
+    def display_children(self) -> None:
+        children = list(
+            Article.select_valid().filter(
+                Article.parent == self,
+                Article.kind != ArticleKind.redirect,
+                Article.kind != ArticleKind.alternative_version,
+            )
+        )
+        children = sorted(children, key=lambda art: art.numeric_start_page())
+        for child in children:
+            print(f"    {child.start_page}–{child.end_page} {child.cite()}")
 
     def copy_year_for_names(self, force: bool = False) -> None:
         new_names = list(models.Name.add_validity_check(self.new_names))
