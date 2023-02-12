@@ -781,6 +781,8 @@ def _maybe_add_publication_date(
     nam: Name, parsed: str, raw_date: str, source: str, cfg: LintConfig
 ) -> Iterator[str]:
     article = nam.original_citation
+    if article is None:
+        return
     tag = ArticleTag.PublicationDate(
         DateSource.external, parsed, f'"{raw_date}" {source}'
     )
