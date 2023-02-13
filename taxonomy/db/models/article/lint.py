@@ -122,12 +122,14 @@ def check_type_and_kind(art: Article, cfg: LintConfig) -> Iterable[str]:
 SOURCE_PRIORITY = {
     # Without an lsid, online publication doesn't count
     False: [
+        DateSource.decision,
         DateSource.external,
         DateSource.internal,
         DateSource.doi_published_print,
         DateSource.doi_published,
     ],
     True: [
+        DateSource.decision,
         DateSource.external,
         DateSource.internal,
         DateSource.doi_published,
@@ -137,9 +139,11 @@ SOURCE_PRIORITY = {
 }
 
 
-def infer_publication_date_from_tags(tags: Sequence[ArticleTag] | None) -> str | None:
+def infer_publication_date_from_tags(
+    tags: Sequence[ArticleTag] | None,
+) -> tuple[str | None, list[str]]:
     if not tags:
-        return None
+        return None, []
     by_source = defaultdict(list)
     has_lsid = False
     for tag in tags:
@@ -150,18 +154,20 @@ def infer_publication_date_from_tags(tags: Sequence[ArticleTag] | None) -> str |
     for source in SOURCE_PRIORITY[has_lsid]:
         if tags_of_source := by_source[source]:
             if len(tags_of_source) > 1:
-                return None
-            return tags_of_source[0].date
-    return None
+                return None, [
+                    f"has multiple tags for source {source}: {tags_of_source}"
+                ]
+            return tags_of_source[0].date, []
+    return None, []
 
 
-def infer_publication_date(art: Article) -> str | None:
+def infer_publication_date(art: Article) -> tuple[str | None, list[str]]:
     if parent := art.parent:
         parent_inferred = infer_publication_date(parent)
         if parent_inferred is not None:
             return parent_inferred
     if date := infer_publication_date_from_issue_date(art):
-        return date
+        return date, []
     return infer_publication_date_from_tags(art.tags)
 
 
@@ -205,7 +211,8 @@ def check_year(art: Article, cfg: LintConfig) -> Iterable[str]:
     if art.year != "undated" and not helpers.is_valid_date(art.year):
         yield f"invalid year {art.year!r}"
 
-    inferred = infer_publication_date(art)
+    inferred, messages = infer_publication_date(art)
+    yield from messages
     if inferred is not None and inferred != art.year:
         # Ignore obviously wrong ones (though eventually we should retire this)
         if inferred.startswith("20") and art.numeric_year() < 1990:
@@ -216,7 +223,7 @@ def check_year(art: Article, cfg: LintConfig) -> Iterable[str]:
         else:
             message = f"year mismatch: inferred {inferred}, actual {art.year}"
         if cfg.autofix and is_more_specific:
-            print(message)
+            print(f"{art}: {message}")
             art.year = inferred
         else:
             yield message
@@ -342,6 +349,8 @@ _TITLE_REGEXES = [
     (r"([,:();]+)<\/i>", r"</i>\1"),
     (r"<i>([,:();]+)", r"\1<i>"),
     (r"<\/i>\s+<i>|\s+", " "),
+    (r"(?<![ \"'\-\(])<i>", " _"),
+    (r"</i>(?![ \"'\-\),\.])", "_ "),
     (r"</?i>", "_"),
     (r"\s+", " "),
     (r'(?<=[ (])_(["\'])([A-Z][a-z \.]+)\1_(?=[ ,)])', r"\1_\2_\1"),

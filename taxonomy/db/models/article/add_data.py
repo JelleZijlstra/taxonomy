@@ -179,7 +179,8 @@ def expand_doi_json(doi: str) -> RawData:
                     source=date_source, date="-".join(pieces), comment=""
                 )
             )
-    if year := infer_publication_date_from_tags(data["tags"]):
+    year, _ = infer_publication_date_from_tags(data["tags"])
+    if year:
         data["year"] = year
     return data
 

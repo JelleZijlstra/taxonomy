@@ -820,10 +820,21 @@ def extract_date_from_structured_quotes(nam: Name, cfg: LintConfig) -> Iterable[
         ),
         NameComment.kind == CommentKind.structured_quote,
     ):
+        if any(
+            comment.source.name in tag.comment
+            for tag in nam.original_citation.get_tags(
+                nam.original_citation.tags, ArticleTag.PublicationDate
+            )
+        ):
+            continue
+
         cite = json.loads(comment.text)["verbatim_citation"]
         match = USNM_RGX.search(cite)
         if not match:
-            yield f"{nam}: cannot match verbatim citation: {cite!r}"
+            yield (
+                f"{nam}: cannot match verbatim citation (ref {nam.original_citation}):"
+                f" {cite!r}"
+            )
             continue
         try:
             date = helpers.parse_date(

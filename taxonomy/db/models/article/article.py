@@ -370,7 +370,7 @@ class Article(BaseModel):
         }
 
     def infer_year(self) -> None:
-        inferred = models.article.lint.infer_publication_date(self)
+        inferred, _ = models.article.lint.infer_publication_date(self)
         if inferred is None or inferred == self.year:
             return
         print(f"Changing year: {self.year} -> {inferred}")
