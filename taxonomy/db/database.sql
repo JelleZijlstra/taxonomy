@@ -13,6 +13,7 @@ CREATE TABLE `taxon` (
     `age` INT DEFAULT 0 NOT NULL, -- Age class (e, h, extant)
     `base_name_id` INT UNSIGNED DEFAULT NULL, -- Name that this taxon is based on
     `is_page_root` BOOL DEFAULT FALSE,
+    `tags` text default null,
     PRIMARY KEY(`id`),
     INDEX(`valid_name`),
     INDEX(`base_name_id`)

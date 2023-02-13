@@ -10,6 +10,7 @@ from typing import IO, Any, cast
 
 import peewee
 from peewee import BooleanField, CharField, ForeignKeyField, TextField
+from typing_extensions import assert_never
 
 from ... import events, getinput
 from .. import definition, helpers, models
@@ -24,7 +25,7 @@ from ..constants import (
 )
 from ..derived_data import DerivedField, SetLater
 from .article import Article
-from .base import BaseModel, EnumField, LintConfig
+from .base import ADTField, BaseModel, EnumField, LintConfig
 from .fill_data import DEFAULT_LEVEL, fill_data_for_names
 
 
@@ -79,6 +80,7 @@ class Taxon(BaseModel):
     data = TextField(null=True)
     is_page_root = BooleanField(default=False)
     base_name = peewee.DeferredForeignKey("Name")
+    tags = ADTField(lambda: models.tags.TaxonTag)
 
     derived_fields = [
         DerivedField("class_", SetLater, _make_parent_getter(0)),
@@ -96,6 +98,9 @@ class Taxon(BaseModel):
         return query.filter(
             Taxon.age != AgeClass.removed, Taxon.age != AgeClass.redirect
         )
+
+    def edit(self) -> None:
+        self.fill_field("tags")
 
     def get_redirect_target(self) -> Taxon | None:
         if self.age is AgeClass.redirect:
@@ -125,7 +130,42 @@ class Taxon(BaseModel):
             rank = self.rank.name
             group = self.base_name.group.name
             yield f"{self}: group mismatch: rank {rank} but group {group}"
+        yield from self.check_nominal_genus(cfg)
         yield from self.check_valid_name(cfg)
+
+    def check_nominal_genus(self, cfg: LintConfig) -> Iterable[str]:
+        nominal_genus_tags = list(
+            self.get_tags(self.tags, models.tags.TaxonTag.NominalGenus)
+        )
+        if len(nominal_genus_tags) > 1:
+            yield f"{self}: has multiple nominal genus tags: {nominal_genus_tags}"
+        elif len(nominal_genus_tags) == 1:
+            nominal_genus = nominal_genus_tags[0].genus
+            if nominal_genus.group is not Group.genus:
+                yield f"{self}: nominal genus {nominal_genus} is not a genus"
+        if (
+            self.base_name.group is Group.species
+            and self.base_name.status is Status.valid
+            and not nominal_genus_tags
+            and not self.has_parent_of_rank(Rank.genus)
+        ):
+            if cfg.autofix:
+                orig_nam = self.base_name.corrected_original_name
+                if orig_nam:
+                    orig_genus, *_ = orig_nam.split()
+                    candidates = list(
+                        models.Name.select_valid().filter(
+                            models.Name.group == Group.genus,
+                            models.Name.root_name == orig_genus,
+                        )
+                    )
+                    if len(candidates) == 1:
+                        print(f"{self}: adding NominalGenus tag: {candidates[0]}")
+                        self.add_tag(
+                            models.tags.TaxonTag.NominalGenus(genus=candidates[0])
+                        )
+                        return
+            yield f"{self}: should have NominalGenus tag"
 
     def check_valid_name(self, cfg: LintConfig) -> Iterable[str]:
         computed = self.compute_valid_name()
@@ -253,6 +293,12 @@ class Taxon(BaseModel):
             )
         else:
             return self.parent.parent_of_rank(rank, original_taxon=original_taxon)
+
+    def add_tag(self, tag: models.tags.TaxonTag) -> None:
+        if self.tags:
+            self.tags += (tag,)
+        else:
+            self.tags = (tag,)  # type: ignore
 
     def has_parent_of_rank(self, rank: Rank) -> bool:
         try:
@@ -869,45 +915,47 @@ class Taxon(BaseModel):
             return "%s Division" % name.root_name
         elif self.is_nominate_subgenus():
             return f"{name.root_name} ({name.root_name})"
-        elif name.group in (Group.genus, Group.high):
+        group: Group = name.group
+        if group is Group.genus or group is Group.high:
             return name.root_name
-        elif name.group == Group.family:
+        elif group is Group.family:
             return name.root_name + helpers.suffix_of_rank(self.rank)
-        else:
-            assert name.group == Group.species
-            if name.status != Status.valid:
+        elif group is Group.species:
+            if name.status is not Status.valid:
                 if name.corrected_original_name is not None:
                     return name.get_default_valid_name()
                 else:
                     return self.valid_name
             try:
-                genus = self.parent_of_rank(Rank.genus)
+                logical_genus = self.parent_of_rank(Rank.genus)
             except ValueError:
-                # if there is no genus, just use the original name
-                # this may be one case where we can't rely on the computed valid name
-                assert self.rank in (Rank.species, Rank.subspecies), (
-                    "Taxon %s should have a genus parent" % self
+                logical_genus = None
+            if logical_genus is not None:
+                # Happy path: valid name within a genus
+                return self._valid_name_of_species(
+                    logical_genus.base_name.root_name, name
                 )
-                # default to the corrected original name
-                if name.corrected_original_name is not None:
-                    return name.get_default_valid_name()
-                else:
-                    return self.valid_name
+            nominal_genus = None
+            for tag in self.get_tags(self.tags, models.tags.TaxonTag.NominalGenus):
+                nominal_genus = tag.genus
+            if nominal_genus is not None:
+                return self._valid_name_of_species(f'"{nominal_genus.root_name}"', name)
+            if name.corrected_original_name is not None:
+                return name.get_default_valid_name()
             else:
-                if self.rank == Rank.species_group:
-                    return f"{genus.base_name.root_name} ({name.root_name})"
-                elif self.rank == Rank.species:
-                    return f"{genus.base_name.root_name} {name.root_name}"
-                else:
-                    assert self.rank == Rank.subspecies, (
-                        "Unexpected rank %s" % self.rank.name
-                    )
-                    species = self.parent_of_rank(Rank.species)
-                    return "{} {} {}".format(
-                        genus.base_name.root_name,
-                        species.base_name.root_name,
-                        name.root_name,
-                    )
+                return self.valid_name
+        else:
+            assert_never(group)
+
+    def _valid_name_of_species(self, genus: str, name: models.Name) -> str:
+        if self.rank == Rank.species_group:
+            return f"{genus} ({name.root_name})"
+        elif self.rank == Rank.species:
+            return f"{genus} {name.root_name}"
+        else:
+            assert self.rank == Rank.subspecies, f"Unexpected rank {self.rank.name}"
+            species = self.parent_of_rank(Rank.species)
+            return f"{genus} {species.base_name.root_name} {name.root_name}"
 
     def expected_base_name(self) -> models.Name | None:
         """Finds the name that is expected to be the base name for this name."""

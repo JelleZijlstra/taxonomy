@@ -6,7 +6,7 @@ Tag classes that need to defined after all models for import cycle reasons.
 
 """
 from ... import adt
-from . import Article, Collection, Region
+from . import Article, Collection, Name, Region
 
 
 class PersonTag(adt.ADT):
@@ -14,3 +14,8 @@ class PersonTag(adt.ADT):
     Institution(institution=Collection, tag=2)  # type: ignore
     ActiveRegion(region=Region, tag=3)  # type: ignore
     Biography(article=Article, tag=4)  # type: ignore
+
+
+class TaxonTag(adt.ADT):
+    NominalGenus(genus=Name, tag=1)  # type: ignore
+    MDD(id=str, tag=2)  # type: ignore

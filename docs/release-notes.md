@@ -19,12 +19,15 @@ will also apply to the database itself.
   - Add many new taxa and articles
   - Clean up unprintable characters in strings
   - Add geographic coordinates for more type localities
+  - For species not currently assigned to a genus, display the nominal genus name in
+    quotes (e.g., "_Microsciurus_" _flaviventris_).
 - Frontend
   - Display links to various identifiers (ISSN, ISBN, etc.) on article and citation
     group pages
   - Redirect merged entities into their target entity
   - Add [Future work](/docs/future-work) document
   - Improve display of lists to make it more intuitive
+  - Display a transliteration for Cyrillic names (e.g. "Несов (Nesov)")
 - Backend
   - Support redirecting Taxon and Name entities to others
   - Add support for marking the valid year range on journals (documented in
