@@ -916,7 +916,11 @@ class Taxon(BaseModel):
         elif self.is_nominate_subgenus():
             return f"{name.root_name} ({name.root_name})"
         group: Group = name.group
-        if group is Group.genus or group is Group.high:
+        # TODO there seems to be no way to combine these ifs and still make
+        # both mypy and pyanalyze accept the assert_never.
+        if group is Group.genus:
+            return name.root_name
+        elif group is Group.high:
             return name.root_name
         elif group is Group.family:
             return name.root_name + helpers.suffix_of_rank(self.rank)

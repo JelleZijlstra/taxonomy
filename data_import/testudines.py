@@ -97,7 +97,7 @@ class NameDetails:
         return tuple(models.person.AuthorTag.Author(p) for p in self.author_people)
 
     @classmethod
-    def parse(cls, stripped: str, refs_dict: dict[RefKey, str]) -> Self:  # type: ignore
+    def parse(cls, stripped: str, refs_dict: dict[RefKey, str]) -> Self:
         pieces = stripped.split()
         name_bits = [pieces[0]]
         idx = 1
