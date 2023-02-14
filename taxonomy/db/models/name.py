@@ -625,7 +625,7 @@ class Name(BaseModel):
             ("author_tags", AuthorTag),
         ]:
             if field == field_name:
-                for tag in tag_cls._tag_to_member.values():  # type: ignore
+                for tag in tag_cls._tag_to_member.values():
                     for attribute, typ in tag._attributes.items():
                         if typ is str and attribute in ("lectotype", "neotype"):
                             completer = get_str_completer(Name, "type_specimen")
