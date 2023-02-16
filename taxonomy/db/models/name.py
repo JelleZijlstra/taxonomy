@@ -731,12 +731,15 @@ class Name(BaseModel):
         existing = self.original_citation
 
         def map_fn(tag: TypeTag) -> TypeTag:
-            if isinstance(tag, TypeTag.LocationDetail) and tag.source == existing:
-                return TypeTag.LocationDetail(tag.text, new_citation)
-            elif isinstance(tag, TypeTag.SpecimenDetail) and tag.source == existing:
-                return TypeTag.SpecimenDetail(tag.text, new_citation)
-            else:
-                return tag
+            for tag_cls in (
+                TypeTag.LocationDetail,
+                TypeTag.SpecimenDetail,
+                TypeTag.CitationDetail,
+                TypeTag.EtymologyDetail,
+            ):
+                if isinstance(tag, tag_cls) and tag.source == existing:
+                    return tag_cls(tag.text, new_citation)
+            return tag
 
         self.map_type_tags(map_fn)
         self.original_citation = new_citation

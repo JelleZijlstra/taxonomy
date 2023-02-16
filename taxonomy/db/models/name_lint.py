@@ -902,6 +902,7 @@ LINTERS: list[Linter] = [
     check_data,
     extract_date_from_verbatim,
     extract_date_from_structured_quotes,
+    check_year_matches,
 ]
 DISABLED_LINTERS: list[Linter] = [
     check_type_designations_present  # too many missing (about 580)

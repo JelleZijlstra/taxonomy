@@ -29,8 +29,8 @@ class IssueDate(BaseModel):
     series = CharField(null=True)
     volume = CharField(null=False)
     issue = CharField(null=True)
-    start_page = CharField(null=False)
-    end_page = CharField(null=False)
+    start_page = CharField(null=True)
+    end_page = CharField(null=True)
     date = CharField(null=False)
     tags = ADTField(lambda: IssueDateTag, null=True)
 
@@ -54,9 +54,9 @@ class IssueDate(BaseModel):
     def lint(self, cfg: LintConfig) -> Iterable[str]:
         if not helpers.is_valid_date(self.date):
             yield f"{self}: invalid date {self.date}"
-        if not self.start_page.isnumeric():
+        if self.start_page is not None and not self.start_page.isnumeric():
             yield f"{self}: invalid start page: {self.start_page}"
-        if not self.end_page.isnumeric():
+        if self.end_page is not None and not self.end_page.isnumeric():
             yield f"{self}: invalid start page: {self.end_page}"
 
     @classmethod
@@ -70,15 +70,9 @@ class IssueDate(BaseModel):
         parts.append(self.volume)
         if self.issue:
             parts.append(f"({self.issue})")
-        parts += [
-            ":",
-            self.start_page,
-            "–",
-            self.end_page,
-            " (published ",
-            self.date,
-            ")",
-        ]
+        if self.start_page and self.end_page:
+            parts += [":", self.start_page, "–", self.end_page]
+        parts += [" (published ", self.date, ")"]
         return "".join(parts)
 
     @classmethod
@@ -137,10 +131,17 @@ class IssueDate(BaseModel):
         if not candidates:
             return None
         for candidate in candidates:
+            if candidate.start_page is None or candidate.end_page is None:
+                continue
             if int(candidate.start_page) <= start_page and end_page <= int(
                 candidate.end_page
             ):
                 return candidate
+        if (
+            len(candidates) == 1
+            and candidates[0].start_page is candidates[0].end_page is None
+        ):
+            return candidates[0]
         candidates = sorted(candidates, key=lambda c: int(c.start_page))
         return f"Cannot find matching issue for {start_page}-{end_page}: {candidates}"
 

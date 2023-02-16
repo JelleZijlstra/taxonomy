@@ -153,12 +153,24 @@ def infer_publication_date_from_tags(
             has_lsid = True
     for source in SOURCE_PRIORITY[has_lsid]:
         if tags_of_source := by_source[source]:
-            if len(tags_of_source) > 1:
+            if (
+                len(tags_of_source) > 1
+                and len(_unique_dates(tag.date for tag in tags_of_source)) > 1
+            ):
                 return None, [
                     f"has multiple tags for source {source}: {tags_of_source}"
                 ]
-            return tags_of_source[0].date, []
+            return max((tag.date for tag in tags_of_source), key=len), []
     return None, []
+
+
+def _unique_dates(dates: Iterable[str]) -> set[str]:
+    dates = set(dates)
+    return {
+        date
+        for date in dates
+        if not any(other != date and other.startswith(date) for other in dates)
+    }
 
 
 def infer_publication_date(art: Article) -> tuple[str | None, list[str]]:

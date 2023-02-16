@@ -447,3 +447,5 @@ class CitationGroupTag(adt.ADT):
     IssueRegex(text=str, tag=21)  # type: ignore
     # Control start and end page (see citation-group.md)
     PageRegex(start_page_regex=str, pages_regex=str, allow_standard=bool, tag=22)  # type: ignore
+    # Comments on how to date publications in this journal
+    DatingTools(text=str, tag=23)  # type: ignore
