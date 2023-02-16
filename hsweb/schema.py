@@ -66,6 +66,7 @@ class Model(Interface):
     call_sign = String(required=True)
     page_title = String(required=True)
     redirect_url = String(required=False)
+    model_cls = Field(lambda: ModelCls, required=True)
 
 
 @cache

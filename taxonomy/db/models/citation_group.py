@@ -1,4 +1,5 @@
 import builtins
+import functools
 import re
 from collections import Counter
 from collections.abc import Iterable
@@ -6,7 +7,7 @@ from typing import Any, TypeVar
 
 from peewee import BooleanField, CharField, ForeignKeyField, IntegrityError
 
-from ... import adt, events, getinput
+from ... import adt, config, events, getinput
 from .. import constants, helpers, models
 from .base import ADTField, BaseModel, EnumField, LintConfig
 from .region import Region
@@ -117,6 +118,9 @@ class CitationGroup(BaseModel):
                     yield f"{self}: invalid end year in {tag}: {issue}"
                 if tag.start and tag.end and int(tag.start) > int(tag.end):
                     yield f"{self}: {tag}: start is after end"
+            if isinstance(tag, CitationGroupTag.BiblioNote):
+                if tag.text not in _get_biblio_pages():
+                    yield f"{self}: references non-existent page {tag.text!r}"
             # TODO if there is a Predecessor, check that the YearRange tags make sense
             if isinstance(
                 tag,
@@ -419,6 +423,13 @@ class CitationGroupPattern(BaseModel):
             return existing
 
 
+@functools.cache
+def _get_biblio_pages() -> set[str]:
+    options = config.get_options()
+    biblio_dir = options.taxonomy_repo / "docs" / "biblio"
+    return {path.stem for path in biblio_dir.glob("*.md")}
+
+
 class CitationGroupTag(adt.ADT):
     # Must have articles for all citations in this group
     MustHave(tag=1)  # type: ignore
@@ -449,3 +460,5 @@ class CitationGroupTag(adt.ADT):
     PageRegex(start_page_regex=str, pages_regex=str, allow_standard=bool, tag=22)  # type: ignore
     # Comments on how to date publications in this journal
     DatingTools(text=str, tag=23)  # type: ignore
+    # Link to a relevant page in docs/biblio/
+    BiblioNote(text=str, tag=24)  # type: ignore

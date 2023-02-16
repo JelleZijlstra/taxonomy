@@ -43,7 +43,7 @@ referred to as _Proceedings of the Zoological Society of London_ throughout its 
   [Stanford](https://searchworks.stanford.edu/view/401297))
   - Later again temporarily split into series A and B (1985–1987)
 
-Separate [_Abstracts of the Proceedings of the Zoological Society of London_](/cg/38)
+Separate [_Abstracts of the Proceedings of the Zoological Society of London_](/cg/36)
 were issued for some time, at least 1897 to 1933, often providing an earlier date of
 publication for names more fully described in the _Proceedings_. I have often found it
 difficult to locate these publications.
