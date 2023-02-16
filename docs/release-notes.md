@@ -8,7 +8,8 @@ will also apply to the database itself.
 
 - Database
   - Start harmonizing the taxonomy for living mammals with the
-    [Mammal Diversity Database](https://www.mammaldiversity.org/)
+    [Mammal Diversity Database](https://www.mammaldiversity.org/), fixing numerous cases
+    where my classification was out of date. A few discrepancies remain.
   - Clean up about 300 duplicate articles with the same DOI
   - Clean up a few dozen duplicate citation groups
   - Clean up some unresolvable DOIs
@@ -28,6 +29,7 @@ will also apply to the database itself.
   - Add [Future work](/docs/future-work) document
   - Improve display of lists to make it more intuitive
   - Display a transliteration for Cyrillic names (e.g. "Несов (Nesov)")
+  - Add [Taxonomy](/docs/taxonomy) document
 - Backend
   - Support redirecting Taxon and Name entities to others
   - Add support for marking the valid year range on journals (documented in

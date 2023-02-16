@@ -47,6 +47,7 @@ Information about the objects in the database:
 
 Other aspects of the database:
 
+- [Taxonomy](/docs/taxonomy)
 - [Geography](/docs/geography)
 - [Chronology](/docs/chronology)
 - [Scope of the database](/docs/scope)
