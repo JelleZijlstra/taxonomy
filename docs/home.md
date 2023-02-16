@@ -51,7 +51,6 @@ Other aspects of the database:
 - [Chronology](/docs/chronology)
 - [Scope of the database](/docs/scope)
 - [Publication dates](/docs/dating)
-- [Tricky journals](/docs/tricky-journals)
 
 Source code:
 

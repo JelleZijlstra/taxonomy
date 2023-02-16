@@ -3,12 +3,17 @@
 The Principle of Priority is central to zoological nomenclature: if two names are
 considered synonyms, the oldest one prevails. Thus, it is important to determine when
 names and other nomenclatural actions were published. This page discusses some common
-issues and pitfalls around dates:
+issues and pitfalls around dates.
 
 Historically, precise dating has not been a priority for the database. I am now trying
 to improve the situation, but there are still many dubious dates. In the past I recorded
 dates only up to the year, but because priority can depend on not just the year but also
 the month and day of publication, I now record precise dates where possible.
+
+[Dickinson et al. (2011)](/a/59872) provide an excellent overview of the intricacies of
+dating zoological names, along with specific notes on many publications. Although their
+focus is on birds, all of the general discussion and many of the specifics apply to
+other animal groups.
 
 ## Electronic publication
 
@@ -38,12 +43,15 @@ Common problems with this procedure include:
 - Some articles publishing new names do have LSIDs but my scripts do not find them.
 - Sometimes the CrossRef API dates are incorrect or incomplete; for example, for
   [_Acta Palaeontologica Polonica_](/cg/675) articles the print publication date is
-  usually not recorded.
+  usually not recorded. The dates produced by the API for articles from the pre-Internet
+  era are usually imprecise.
 
 If there is evidence that the dates published by the standard procedure are not correct,
 I will adjust them.
 
 ## Pitfalls
+
+These are just a few commonly encountered problems.
 
 _Publication in parts_. Many old (19th-century) books were published in installments,
 often over a period of several years. The breaks are not always obvious in the work
@@ -82,12 +90,28 @@ useful sources have been published determining dates of publication.
 
 These include:
 
+- [Dickinson et al. (2011)](/a/59872), an overview of dating bird names with notes on
+  many specific cases.
 - [Jackson & Groves (2015)](/a/34474), who list precise publication dates for all
   references where possible and provide an invaluable list of resources used for
   determining publication dates.
 - [Sherborn (1922)](/a/59291), which includes a bibliography of many important
   19th-century books.
-- [Duncan (1937)](/a/14498), providing precise publication dates for _PZSL_, one of the
-  most prolific and trickiest to date zoological journals.
 - [Woodward (1903)](/a/48772) (and subsequent entries in the series), a complete and
   thorough catalog of books in the British Museum's library.
+
+## Tools in the database
+
+I use the following tools to keep track of and correct publication dates:
+
+- [Articles](/docs/article) can have _PublicationDate_ tags (displayed as "Evidence for
+  date"), containing references to evidence for a particular publication date.
+- Publication dates retrieved from the CrossRef API are recorded as _PublicationDate_
+  tags.
+- For [journals](/docs/citation-group), the database can record the pagination and dates
+  of each issue. If this evidence is present, we enforce that the date set on each
+  article in the issue matches the date for the issue.
+- We enforce that the date of publication recorded for each [name](/docs/name) matches
+  that for its original description. If there is a discrepancy here, that is often an
+  indication that something unusual is going on; for example, the imprint date on the
+  original citation may have been shown to be incorrect.

@@ -31,7 +31,7 @@ will also apply to the database itself.
 - Backend
   - Support redirecting Taxon and Name entities to others
   - Add support for marking the valid year range on journals (documented in
-    [Tricky journals](/docs/tricky-journals))
+    [Citation group](/docs/citation-group))
   - Check that the _page_described_ field for names is within the page range of their
     original citation
   - Validate the _series_, _volume_, _issue_, _start_page_, and _end_page_ fields on
@@ -43,6 +43,8 @@ will also apply to the database itself.
   - Add support for storing when each volume of a journal was published, and use this
     information to correct many dates for
     [_Proceedings of the Zoological Society of London_](/cg/1).
+  - New [Dating](/docs/dating) page, and numerous improvements to the treatment of
+    publication dates.
 
 # Previous
 

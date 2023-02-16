@@ -578,7 +578,7 @@ def resolve_by_call_sign(
 def resolve_documentation(
     parent: ObjectType, info: ResolveInfo, path: str
 ) -> str | None:
-    if not re.match(r"^[a-zA-Z\-\d]+$", path):
+    if not re.match(r"^[a-zA-Z\-\d]+(/[a-zA-Z\-\d]+)?$", path):
         return None
     full_path = DOCS_ROOT / (path + ".md")
     if full_path.exists():

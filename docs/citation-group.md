@@ -28,9 +28,7 @@ Citation groups have the following fields:
 
 The following are a few guidelines for organizing journal citation groups.
 
-See [Tricky journals](/docs/tricky-journals) for some tricky cases.
-
-## Splitting and lumping
+### Splitting and lumping
 
 - Prefer using the "series" field over using different journal names for variants of the
   same journal. For example, these should be [the same journal](/cg/47):
@@ -44,7 +42,7 @@ See [Tricky journals](/docs/tricky-journals) for some tricky cases.
   we'll have a system to merge renamed journals into the same internal journal, and
   automatically select the right name depending on time period.
 
-## Names
+### Names
 
 - Omit "The" in journal names where possible
   ("[Texas Journal of Science](/cg/Texas_Journal_of_Science)", not "The Texas Journal of
@@ -62,12 +60,12 @@ See [Tricky journals](/docs/tricky-journals) for some tricky cases.
 - For the citation_group field on names, it's OK to guess at the journal name or use an
   abbreviation. We'll clean up the names eventually.
 
-## Series, volume, issue, pages
+### Series, volume, issue, pages
 
 The five fields _series_, _volume_, _issue_, _start_page_, and _end_page_ on
 [articles](/docs/article) indicate where in the journal the article is to be found.
 
-### Series
+#### Series
 
 The _series_ is used for only some journals. It is used in two somewhat distinct cases:
 
@@ -92,7 +90,7 @@ the _SeriesRegex_ tag. This tag provides a regular expression that all series fi
 must match. If the _MustHaveSeries_ tag is also present, all articles in the citation
 group must have the field set.
 
-### Volume
+#### Volume
 
 The _volume_ must be set for all journal articles, except for "in press" articles that
 have not yet been assigned to a volume. Most frequently, the volume is a single number
@@ -109,7 +107,7 @@ By default, all journal volume numbers should match the regular expression
 can set the _VolumeRegex_ tag to override this default and allow a different set of
 volume numbers.
 
-### Issue
+#### Issue
 
 The _issue_ is optional. Normally, a volume is divided into issues, each of which is
 published as a single physical journal. As with volumes, issues are normally written as
@@ -126,7 +124,7 @@ By default, issues must match the regular expression
 numbers around a hyphen; or "Suppl." followed by a 1 or 2-digit numbers. Citation groups
 can set the _IssueRegex_ tag to allow a different set of issue numbers.
 
-### Start and end page
+#### Start and end page
 
 Classically, the page numbering in a journal is continuous through the whole volume, and
 the start and end page are each numbers, the end page greater than or equal to the start
@@ -160,3 +158,39 @@ digits. The _PageRegex_ tag can be used to customize this behavior. It has three
 - _allow_standard_: If this flag is on, the start and end page are allowed if they
   follow the standard rules (both numeric), regardless of the values of the other two
   fields.
+
+### Tricky cases
+
+Some journals have tricky histories: they were renamed repeatedly, divided into
+different series (and sometimes undivided again), or were known under different names.
+Often citations in the literature do not precisely reflect this history, making it
+difficult to provide accurate citations in the database. I use the following tags on
+citation groups to help keep track of such cases:
+
+- _YearRange_: Gives the first and last years when a journal was published. A
+  maintenance script enforces that all articles and names in the citation group fall
+  within the range.
+- _Predecessor_: Reference to an older journal that this journal is a renaming of.
+- _MustHaveSeries_: Enforce that all articles in this citation group must have the
+  "series" field set.
+- _DatingTools_: Brief discussion of resources to help determine the publication date
+  for members of this citation group.
+
+### Issue dates
+
+For some journals, precise publication dates are available for each issue. I track these
+in the database where possible and enforce that all articles in the issue use the
+correct publication date. See [_Annals of Natural History_](/cg/106) for an example.
+
+## Links
+
+- [Dating](/docs/dating) has more information on publication dates
+
+Short notes on several tricky areas of bibliography:
+
+- [_Beiträge zur Paläontologie_](/docs/biblio/beitraege)
+- [_Comptes Rendus_](/docs/biblio/comptes-rendus)
+- [Publications of the Muséum national d'Histoire naturelle](/docs/biblio/mnhn)
+- [_Neues Jahrbuch_](/docs/biblio/neues-jahrbuch)
+- [_Proceedings of the Zoological Society of London_](/docs/biblio/pzsl)
+- [University of California geological publications](/docs/biblio/uc-geology)
