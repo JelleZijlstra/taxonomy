@@ -1588,6 +1588,20 @@ class Name(BaseModel):
     def short_description(self) -> str:
         return self.root_name
 
+    def concise_markdown_link(self) -> str:
+        if self.corrected_original_name:
+            name = self.corrected_original_name
+        else:
+            name = self.root_name
+        if self.group in (Group.genus, Group.species):
+            name = f"_{name}_"
+        parts = [name]
+        if self.author_tags:
+            parts.append(" " + self.taxonomic_authority())
+        if self.year:
+            parts.append(f", {self.numeric_year()}")
+        return f"[{''.join(parts)}](/n/{self.id})"
+
     def __str__(self) -> str:
         return self.description()
 

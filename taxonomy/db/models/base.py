@@ -716,6 +716,11 @@ class BaseModel(Model):
         """Return the object this object redirects to, if any."""
         return None
 
+    def resolve_redirect(self: ModelT) -> ModelT:
+        if target := self.get_redirect_target():
+            return target
+        return self
+
     def is_invalid(self) -> bool:
         """If True, no valid object should have a reference to this object."""
         return False
@@ -1197,6 +1202,12 @@ class BaseModel(Model):
         getter = self.getter(field)
         getter.add_name(self)
         getinput.append_history(getter, self.get_value_to_show_for_field(field))
+
+    def concise_markdown_link(self) -> str:
+        return self.markdown_link()
+
+    def markdown_link(self) -> str:
+        return f"[{str(self)}](/{self.call_sign.lower()}/{self.id})"
 
     @classmethod
     def create_interactively(cls: type[ModelT], **kwargs: Any) -> ModelT | None:

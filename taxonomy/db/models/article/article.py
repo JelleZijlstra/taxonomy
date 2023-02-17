@@ -722,11 +722,6 @@ class Article(BaseModel):
         else:
             return None
 
-    def resolve_redirect(self) -> Article:
-        if target := self.get_redirect_target():
-            return target
-        return self
-
     def concise_markdown_link(self) -> str:
         authors_list = self.get_authors()
         if len(authors_list) > 2:
@@ -1004,9 +999,12 @@ class Article(BaseModel):
 
     def copy_year_for_names(self, force: bool = False) -> None:
         new_names = list(models.Name.add_validity_check(self.new_names))
+        issue = None
         for nam in new_names:
             for issue in models.name_lint.check_year_matches(nam, LintConfig()):
                 print(issue)
+        if issue is None:
+            return
         if not force and not getinput.yes_no("Change names? "):
             return
         for nam in new_names:
