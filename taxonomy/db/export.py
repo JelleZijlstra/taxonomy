@@ -76,13 +76,16 @@ def export_names(
     taxon: Taxon | None = None,
     ages: Container[AgeClass] | None = {AgeClass.extant, AgeClass.recently_extinct},
     group: Group | None = Group.species,
+    limit: int | None = None,
 ) -> None:
     """Export data about names to a CSV file."""
     print("collecting names...")
     if taxon is None:
-        names = list(Name.select_valid())
+        names = list(Name.select_valid().limit(limit))
     else:
         names = list(taxon.all_names())
+        if limit is not None:
+            names = names[:limit]
     print(f"done, {len(names)} found")
     print("filtering names...")
     if group is not None:

@@ -344,7 +344,7 @@ class Location(BaseModel):
         SearchField(SearchFieldType.text, "comment", highlight_enabled=True),
         SearchField(SearchFieldType.text, "location_detail", highlight_enabled=True),
         SearchField(SearchFieldType.text, "age_detail", highlight_enabled=True),
-        SearchField(SearchFieldType.text_array, "tags"),
+        SearchField(SearchFieldType.text_array, "tags", highlight_enabled=True),
     ]
 
     def get_search_dicts(self) -> list[dict[str, Any]]:

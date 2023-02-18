@@ -284,7 +284,7 @@ class Article(BaseModel):
         SearchField(SearchFieldType.literal, "kind"),
         SearchField(SearchFieldType.literal, "type"),
         SearchField(SearchFieldType.text, "publisher"),
-        SearchField(SearchFieldType.text_array, "tags"),
+        SearchField(SearchFieldType.text_array, "tags", highlight_enabled=True),
         # for PDF content
         SearchField(SearchFieldType.text, "text", highlight_enabled=True),
     ]

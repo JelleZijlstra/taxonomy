@@ -30,6 +30,8 @@ from taxonomy.db.derived_data import DerivedField
 from taxonomy.db.models import Article, Location, Name, NameComment, Period
 from taxonomy.db.models.base import ADTField, BaseModel, EnumField
 
+from . import search
+
 SCALAR_FIELD_TO_GRAPHENE = {
     peewee.CharField: String,
     peewee.TextField: String,
@@ -631,6 +633,55 @@ class ModelCls(ObjectType):
     )
 
 
+class SearchResult(ObjectType):
+    model = Field(Model)
+    context = String(required=False)
+    highlight = String(required=False)
+
+    @classmethod
+    def from_hit(cls, hit: dict[str, Any]) -> "SearchResult":
+        document_id = hit["id"]
+        pieces = document_id.split("/")
+        if len(pieces) == 3:
+            call_sign, oid, page = pieces
+            context = f"Page {page}"
+        else:
+            call_sign, oid = pieces
+            context = None
+        model_cls = CALL_SIGN_TO_MODEL[call_sign.upper()]
+        object_type = build_object_type_from_model(model_cls)
+        model = object_type(oid=int(oid), id=int(oid))
+        highlights = []
+        for value in hit["highlights"].values():
+            if "**" in value:
+                highlights.append(value)
+        return SearchResult(
+            model=model,
+            context=context,
+            highlight=" .. ".join(highlights) if highlights else None,
+        )
+
+
+class SearchResultConnection(Connection):
+    class Meta:
+        node = SearchResult
+
+
+def resolve_search(
+    parent: ObjectType,
+    info: ResolveInfo,
+    query: str,
+    first: int = 10,
+    after: str | None = None,
+) -> list[SearchResult]:
+    if after is not None:
+        offset = int(base64.b64decode(after).split(b":")[1])
+    else:
+        offset = 0
+    result = search.run_query(query, size=first, start=offset)
+    return [SearchResult.from_hit(hit) for hit in result["hit"]]
+
+
 class Query(ObjectType):
     node = Node.Field()
     by_call_sign = List(
@@ -647,6 +698,9 @@ class Query(ObjectType):
         call_sign=String(required=True),
         required=True,
         resolver=lambda self, info, call_sign: ModelCls(call_sign=call_sign),
+    )
+    search = ConnectionField(
+        SearchResultConnection, query=String(required=True), resolver=resolve_search
     )
     locals().update(get_model_resolvers())
 

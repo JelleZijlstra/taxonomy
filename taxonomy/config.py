@@ -37,6 +37,12 @@ class Options(NamedTuple):
     pem_file: Path = Path()
     hesperomys_host: str = ""
 
+    aws_key: str = ""
+    aws_secret_key: str = ""
+    aws_cloudsearch_domain: str = ""
+    aws_cloudsearch_document_endpoint: str = ""
+    aws_cloudsearch_search_endpoint: str = ""
+
     @property
     def burst_path(self) -> Path:
         return self.new_path / "Burst"
@@ -101,6 +107,15 @@ def parse_config_file(filename: Path) -> Options:
             hesperomys_repo=parse_path(section, "hesperomys_repo", base_path),
             pem_file=parse_path(section, "pem_file", base_path),
             hesperomys_host=section.get("hesperomys_host", ""),
+            aws_key=section.get("aws_key", ""),
+            aws_secret_key=section.get("aws_secret_key", ""),
+            aws_cloudsearch_domain=section.get("aws_cloudsearch_domain", ""),
+            aws_cloudsearch_search_endpoint=section.get(
+                "aws_cloudsearch_search_endpoint", ""
+            ),
+            aws_cloudsearch_document_endpoint=section.get(
+                "aws_cloudsearch_document_endpoint", ""
+            ),
         )
 
 
