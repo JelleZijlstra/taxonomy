@@ -32,7 +32,6 @@ please [let me know](mailto:jelle.zijlstra@gmail.com).
   - "see Schwarz, E., Sitzb. Ges. Naturf. Freunde, Berlin, for 1926, p. 29, 1927" might
     have dates for _Sitzungsberichte_ publications (found in {Placentalia Africa (Allen
     1939.pdf)}) p. 154
-  - Extract dates for PZSL, Annals & Magazine, etc. from papers discussing dating
   - Jackson & Groves (2015: 493-494) have a useful list of references for dates
 
 ## Frontend
@@ -45,7 +44,6 @@ please [let me know](mailto:jelle.zijlstra@gmail.com).
 - Provide a search function that indexes everything
 - UI indication that names belong to a group with high-quality vs. low-quality coverage
   (so users don't expect insect families to list all genera)
-- Add an SSL cert (maybe using AWS ELB?)
 
 ## Backend
 
@@ -74,9 +72,6 @@ please [let me know](mailto:jelle.zijlstra@gmail.com).
     synonym.
   - Complications: Lots of special cases where the oldest name is not the one that
     should be used.
-- Check that year matches between a Name and its original_citation.
-  - Why would it help? Correct mistakes where the wrong year is recorded on either the
-    name or the article.
 - Standardize and check the format of the _page_described_ field.
   - Why would it help? The check that matches up _page_described_ to the article's pages
     will be more powerful.
@@ -86,10 +81,6 @@ please [let me know](mailto:jelle.zijlstra@gmail.com).
     it. Or I don't have access to the source that did the designation.
   - Idea: Add a new tag to names that encompasses a verbatim_citation and
     citation_group, so we can track needed citations here.
-- Check that the gender of species names matches their genus (and maybe publish a paper
-  correcting all the wrong ones)
-  - I appear to have done this before and made a number of incorrect changes. Perhaps
-    audit all the cases where the root_name doesn't match the corrected_original_name.
 - Check that taxa don't have parents of the same rank (with some restrictions)
   - Noticed that _Sminthopsis aitkeni_ was placed within _S. fuliginosa_ but not ranked
     as a subspecies.
