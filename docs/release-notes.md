@@ -22,6 +22,7 @@ will also apply to the database itself.
   - Add geographic coordinates for more type localities
   - For species not currently assigned to a genus, display the nominal genus name in
     quotes (e.g., "_Microsciurus_" _flaviventris_).
+  - Correct numerous specific epithets to agree in gender with their genus
 - Frontend
   - Display links to various identifiers (ISSN, ISBN, etc.) on article and citation
     group pages
@@ -30,6 +31,7 @@ will also apply to the database itself.
   - Improve display of lists to make it more intuitive
   - Display a transliteration for Cyrillic names (e.g. "Несов (Nesov)")
   - Add [Taxonomy](/docs/taxonomy) document
+  - Support [SSL](https://hesperomys.com/)
 - Backend
   - Support redirecting Taxon and Name entities to others
   - Add support for marking the valid year range on journals (documented in
@@ -46,7 +48,9 @@ will also apply to the database itself.
     information to correct many dates for
     [_Proceedings of the Zoological Society of London_](/cg/1).
   - New [Dating](/docs/dating) page, and numerous improvements to the treatment of
-    publication dates.
+    publication dates. A significant proportion of names and articles now have dates
+    granular to the month or day, and many incorrect publication dates have been
+    corrected.
 
 # Previous
 
