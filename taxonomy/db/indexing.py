@@ -1,5 +1,6 @@
 import json
 import re
+import time
 from collections.abc import Iterable
 from typing import Any
 
@@ -111,16 +112,19 @@ def create_index_fields() -> None:
         print(result)
 
 
-def run_indexing(limit: int | None = None) -> None:
+def run_indexing(limit: int | None = None, batch_offset: int | None = None) -> None:
     options = get_options()
     client = _get_client(
         "cloudsearchdomain", endpoint_url=options.aws_cloudsearch_document_endpoint
     )
-    for batch in getinput.print_every_n(
-        generate_batches(limit=limit), n=1, label="batches"
+    for i, batch in enumerate(
+        getinput.print_every_n(generate_batches(limit=limit), n=1, label="batches")
     ):
+        if batch_offset is not None and i < batch_offset:
+            continue
         response = client.upload_documents(
             documents=batch, contentType="application/json"
         )
         for warning in response.get("warnings", []):
             print(warning)
+        time.sleep(10)

@@ -324,7 +324,7 @@ class Article(BaseModel):
             "doi": self.doi,
             "url": self.url,
             "kind": self.kind.name,
-            "type": self.type.name,
+            "type": self.type.name if self.type is not None else None,
             "publisher": self.publisher,
             "tags": tags,
         }

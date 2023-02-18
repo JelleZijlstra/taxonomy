@@ -43,6 +43,8 @@ if _log_path.exists():
     _log_f = open(_log_path, "a", encoding="utf-8")
 else:
     _log_f = None
+_change_log_path = settings.data_path / "changelog.txt"
+_change_log_f = open(_change_log_path, "a", encoding="utf-8")
 
 
 class LoggingDatabase(SqliteDatabase):
@@ -428,6 +430,8 @@ class BaseModel(Model):
 
     def save(self, *args: Any, **kwargs: Any) -> int:
         result = super().save(*args, **kwargs)
+        event = {"type": "save", "call_sign": self.call_sign, "id": self.id}
+        print(json.dumps(event), file=_change_log_f, flush=True)
         if hasattr(self, "save_event"):
             self.save_event.trigger(self)
         return result

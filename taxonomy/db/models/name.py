@@ -585,7 +585,9 @@ class Name(BaseModel):
         return {
             **callbacks,
             "add_comment": self.add_comment,
+            "d": self._display_plus,
             "o": self.open_description,
+            "open_url": self.open_url,
             "add_type_identical": self._add_type_identical_callback,
             "from_paper": self._from_paper_callback,
             "add_child": self._add_child_callback,
@@ -1617,6 +1619,17 @@ class Name(BaseModel):
             self.original_citation.openf()
         return True
 
+    def open_url(self) -> bool:
+        if self.original_citation is None:
+            print("%s: original citation unknown" % self.description())
+        else:
+            self.original_citation.open_url()
+        return True
+
+    def _display_plus(self) -> None:
+        self.format()
+        self.display()
+
     def remove(self, reason: str | None = None) -> None:
         print("Deleting name: " + self.description())
         self.status = Status.removed  # type: ignore
@@ -1988,6 +2001,8 @@ class NameComment(BaseModel):
     ]
 
     def get_search_dicts(self) -> list[dict[str, Any]]:
+        if self.should_skip():
+            return []
         return [{"kind": self.kind.name, "text": self.text}]
 
     @classmethod
@@ -2001,6 +2016,7 @@ class NameComment(BaseModel):
         return self.kind in (
             constants.CommentKind.removed,
             constants.CommentKind.structured_quote,
+            constants.CommentKind.automatic_change,
         )
 
     def get_page_title(self) -> str:
