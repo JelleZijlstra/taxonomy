@@ -31,6 +31,8 @@ setup(
         "graphene",
         "typing_inspect",
         "types-requests",
+        "boto3",
+        "botocore",
     ],
     classifiers=[
         "Development Status :: 2 - Pre-Alpha",
