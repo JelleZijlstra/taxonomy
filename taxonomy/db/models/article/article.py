@@ -637,6 +637,15 @@ class Article(BaseModel):
             raise ValueError(f"attempt to get PDF content for non-file {self}")
         return _getpdfcontent(str(self.get_path()))
 
+    def store_pdf_content(self) -> None:
+        if not self.ispdf() or self.isredirect():
+            return
+        expected_path = _options.pdf_text_path / f"{self.id}.txt"
+        if expected_path.exists():
+            return
+        print(f"Extracting PDF text for {self} and storing at {expected_path}")
+        subprocess.check_call(["pdftotext", self.get_path(), expected_path])
+
     # Authors
 
     def get_authors(self) -> list[Person]:
