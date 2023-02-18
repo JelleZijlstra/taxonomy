@@ -403,6 +403,7 @@ def check_for_existing_file(lsfile: LsFile) -> str | None:
         assert existing is not None
         file = existing.resolve_redirect()
         shutil.move(str(_options.new_path / lsfile.name), str(file.get_path()))
+        file.store_pdf_content(force=True)
         file.edit()
         return False
 

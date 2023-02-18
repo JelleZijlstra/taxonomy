@@ -710,11 +710,11 @@ class Article(BaseModel):
             return []
         return text_path.read_text().split("\x0c")
 
-    def store_pdf_content(self) -> Path | None:
+    def store_pdf_content(self, force: bool = False) -> Path | None:
         if not self.ispdf() or self.isredirect():
             return None
         expected_path = _options.pdf_text_path / f"{self.id}.txt"
-        if expected_path.exists():
+        if not force and expected_path.exists():
             return expected_path
         print(f"Extracting PDF text for {self} and storing at {expected_path}")
         subprocess.check_call(["pdftotext", self.get_path(), expected_path])

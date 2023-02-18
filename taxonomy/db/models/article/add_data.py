@@ -702,6 +702,7 @@ def add_data_for_new_file(art: Article) -> None:
         art.trymanual()
     art.format()
     art.save()
+    art.store_pdf_content()
     art.add_to_history()
     art.add_to_history("name")
     getinput.add_to_clipboard(art.name)
