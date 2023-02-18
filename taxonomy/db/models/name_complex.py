@@ -40,6 +40,7 @@ class SpeciesNameComplex(BaseModel):
     feminine_ending = CharField()
     neuter_ending = CharField()
     comment = CharField(null=True)
+    markdown_fields = {"comment"}
 
     class Meta:
         db_table = "species_name_complex"
@@ -194,6 +195,15 @@ class SpeciesNameComplex(BaseModel):
                 yield stem + ending
         else:
             yield name
+
+    def is_invariant_adjective(self) -> bool:
+        return (
+            self.kind is SpeciesNameKind.adjective
+            and self.masculine_ending
+            == self.feminine_ending
+            == self.neuter_ending
+            == ""
+        )
 
     def get_names(self) -> list[models.Name]:
         return list(self.names)

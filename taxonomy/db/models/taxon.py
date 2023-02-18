@@ -930,18 +930,11 @@ class Taxon(BaseModel):
                     return name.get_default_valid_name()
                 else:
                     return self.valid_name
-            try:
-                logical_genus = self.parent_of_rank(Rank.genus)
-            except ValueError:
-                logical_genus = None
+            logical_genus = self.get_logical_genus()
             if logical_genus is not None:
                 # Happy path: valid name within a genus
-                return self._valid_name_of_species(
-                    logical_genus.base_name.root_name, name
-                )
-            nominal_genus = None
-            for tag in self.get_tags(self.tags, models.tags.TaxonTag.NominalGenus):
-                nominal_genus = tag.genus
+                return self._valid_name_of_species(logical_genus.root_name, name)
+            nominal_genus = self.get_nominal_genus()
             if nominal_genus is not None:
                 return self._valid_name_of_species(f'"{nominal_genus.root_name}"', name)
             if name.corrected_original_name is not None:
@@ -950,6 +943,19 @@ class Taxon(BaseModel):
                 return self.valid_name
         else:
             assert_never(group)
+
+    def get_logical_genus(self) -> models.Name | None:
+        try:
+            logical_genus = self.parent_of_rank(Rank.genus)
+        except ValueError:
+            return None
+        else:
+            return logical_genus.base_name
+
+    def get_nominal_genus(self) -> models.Name | None:
+        for tag in self.get_tags(self.tags, models.tags.TaxonTag.NominalGenus):
+            return tag.genus
+        return None
 
     def _valid_name_of_species(self, genus: str, name: models.Name) -> str:
         if self.rank == Rank.species_group:

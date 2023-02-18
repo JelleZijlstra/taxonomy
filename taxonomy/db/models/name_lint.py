@@ -21,6 +21,8 @@ from ..constants import (
     Group,
     NomenclatureStatus,
     SpeciesGroupType,
+    SpeciesNameKind,
+    Status,
     TypeSpeciesDesignation,
 )
 from .article import Article, ArticleTag
@@ -334,6 +336,24 @@ def check_disallowed_attributes(nam: Name, cfg: LintConfig) -> Iterable[str]:
             value = getattr(nam, field)
             if value is not None:
                 yield f"{nam}: should not have attribute {field} (value {value})"
+    if (
+        nam.species_name_complex is not None
+        and not nam.nomenclature_status.requires_name_complex()
+    ):
+        message = (
+            f"{nam}: is of status {nam.nomenclature_status.name} and should not have a"
+            " name complex"
+        )
+        if cfg.autofix:
+            print(message)
+            nam.add_data(
+                "species_name_complex",
+                nam.species_name_complex.id,
+                concat_duplicate=True,
+            )
+            nam.species_name_complex = None
+        else:
+            yield message
 
 
 def _make_con_messsage(nam: Name, text: str) -> str:
@@ -406,6 +426,80 @@ def check_root_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
     elif nam.group is Group.species:
         if not re.match(r"^[a-z]+$", nam.root_name):
             yield _make_rn_message(nam, "contains unexpected characters")
+            return
+        yield from _check_species_name_gender(nam, cfg)
+
+
+def _check_rn_matches_original(
+    nam: Name, cfg: LintConfig, reason: str
+) -> Iterable[str]:
+    con_root = nam.corrected_original_name.split()[-1]
+    if con_root == nam.root_name:
+        return
+    message = _make_con_messsage(
+        nam, f"does not match root_name {nam.root_name!r} ({reason})"
+    )
+    if cfg.autofix:
+        print(message)
+        nam.root_name = con_root
+    else:
+        yield message
+
+
+def _check_species_name_gender(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    if nam.corrected_original_name is None:
+        return
+    con_root = nam.corrected_original_name.split()[-1]
+    # For nomina dubia we always follow the original name
+    if nam.status in (Status.nomen_dubium, Status.species_inquirenda):
+        yield from _check_rn_matches_original(nam, cfg, nam.status.name)
+        return
+    # If there is no name complex, the root_name should match exactly
+    if nam.species_name_complex is None:
+        yield from _check_rn_matches_original(nam, cfg, "no name complex")
+        return
+    if nam.species_name_complex.kind is not SpeciesNameKind.adjective:
+        yield from _check_rn_matches_original(nam, cfg, "not an adjective")
+        return
+    if nam.species_name_complex.is_invariant_adjective():
+        yield from _check_rn_matches_original(nam, cfg, "invariant adjective")
+        return
+    # Now we have an adjective that needs to agree in gender with its genus, so we
+    # have to find the genus. But first we check whether the name even makes sense.
+    try:
+        forms = list(nam.species_name_complex.get_forms(nam.root_name))
+    except ValueError as e:
+        yield _make_con_messsage(nam, f"has invalid name complex: {e!r}")
+        return
+    if con_root not in forms:
+        yield _make_con_messsage(nam, f"does not match root_name {nam.root_name!r}")
+        return
+
+    taxon = nam.taxon
+    genus = taxon.get_logical_genus() or taxon.get_nominal_genus()
+    if genus is None or genus.name_complex is None:
+        return
+
+    genus_gender = genus.name_complex.gender
+    expected_form = nam.species_name_complex.get_form(con_root, genus_gender)
+    if expected_form != nam.root_name:
+        message = _make_rn_message(
+            nam,
+            (
+                f"does not match expected form {expected_form!r} for"
+                f" {genus_gender.name} genus {genus}"
+            ),
+        )
+        if cfg.autofix:
+            print(message)
+            comment = (
+                f"Name changed from {nam.root_name!r} to {expected_form!r} to agree in"
+                f" gender with {genus_gender.name} genus {genus} ({{n#{genus.id}}})"
+            )
+            nam.add_static_comment(CommentKind.automatic_change, comment)
+            nam.root_name = expected_form
+        else:
+            yield message
 
 
 def check_family_root_name(nam: Name, cfg: LintConfig) -> Iterable[str]:

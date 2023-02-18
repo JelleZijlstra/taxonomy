@@ -417,6 +417,8 @@ def detect_species_name_complexes(dry_run: bool = False) -> None:
     for name in Name.select_valid().filter(
         Name.group == Group.species, Name.species_name_complex >> None
     ):
+        if not name.nomenclature_status.requires_name_complex():
+            continue
         total += 1
         if name.root_name in full_names:
             inferred, reason = full_names[name.root_name]
