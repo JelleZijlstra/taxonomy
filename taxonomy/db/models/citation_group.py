@@ -7,6 +7,8 @@ from typing import Any, TypeVar
 
 from peewee import BooleanField, CharField, ForeignKeyField, IntegrityError
 
+from taxonomy.apis.cloud_search import SearchField, SearchFieldType
+
 from ... import adt, config, events, getinput
 from .. import constants, helpers, models
 from .base import ADTField, BaseModel, EnumField, LintConfig
@@ -33,6 +35,30 @@ class CitationGroup(BaseModel):
 
     class Meta:
         db_table = "citation_group"
+
+    search_fields = [
+        SearchField(SearchFieldType.text, "name"),
+        SearchField(SearchFieldType.literal, "type"),
+        SearchField(SearchFieldType.text_array, "tags", highlight_enabled=True),
+    ]
+
+    def get_search_dicts(self) -> list[dict[str, Any]]:
+        tags = []
+        for tag in self.tags or ():
+            if isinstance(tag, CitationGroupTag.OnlineRepository):
+                tags.append(f"Repository: {tag.url}")
+            elif isinstance(tag, CitationGroupTag.ISSN):
+                tags.append(f"ISSN: {tag.text}")
+            elif isinstance(tag, CitationGroupTag.BHLBibliography):
+                tags.append(f"BHL: {tag.text}")
+            elif isinstance(tag, CitationGroupTag.ISSNOnline):
+                tags.append(f"ISSN (online): {tag.text}")
+            elif isinstance(tag, CitationGroupTag.CitationGroupURL):
+                tags.append(f"URL: {tag.text}")
+            elif isinstance(tag, CitationGroupTag.DatingTools):
+                tags.append(f"Dating tools: {tag.text}")
+        data = {"name": self.name, "type": self.type.name, "tags": tags}
+        return [data]
 
     @classmethod
     def add_validity_check(cls, query: Any) -> Any:

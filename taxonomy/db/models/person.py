@@ -9,6 +9,8 @@ from typing import IO, Any
 
 from peewee import CharField, DeferredForeignKey, TextField
 
+from taxonomy.apis.cloud_search import SearchField, SearchFieldType
+
 from ... import adt, events, getinput, parsing
 from .. import helpers, models
 from ..constants import NamingConvention, PersonType
@@ -81,6 +83,14 @@ class Person(BaseModel):
     bio = TextField(null=True)
     ol_id = CharField(null=True)
 
+    search_fields = [
+        SearchField(SearchFieldType.text, "name"),
+        SearchField(SearchFieldType.literal, "family_name"),
+        SearchField(SearchFieldType.text, "bio"),
+        SearchField(SearchFieldType.literal, "type"),
+        SearchField(SearchFieldType.literal, "naming_convention"),
+    ]
+
     derived_fields = [
         get_tag_based_derived_field(
             "patronyms",
@@ -128,6 +138,16 @@ class Person(BaseModel):
             skip_filter=True,
         ),
     ]
+
+    def get_search_dicts(self) -> list[dict[str, Any]]:
+        data = {
+            "name": self.get_full_name(),
+            "family_name": self.family_name,
+            "bio": self.bio,
+            "type": self.type.name,
+            "naming_convention": self.naming_convention.name,
+        }
+        return [data]
 
     def __str__(self) -> str:
         return self.get_description()

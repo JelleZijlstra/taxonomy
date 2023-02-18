@@ -12,6 +12,8 @@ import peewee
 from peewee import BooleanField, CharField, ForeignKeyField, TextField
 from typing_extensions import assert_never
 
+from taxonomy.apis.cloud_search import SearchField, SearchFieldType
+
 from ... import events, getinput
 from .. import definition, helpers, models
 from ..constants import (
@@ -87,11 +89,20 @@ class Taxon(BaseModel):
         DerivedField("order", SetLater, _make_parent_getter(1)),
         DerivedField("family", SetLater, _make_parent_getter(2)),
     ]
+    search_fields = [
+        SearchField(SearchFieldType.text, "name"),
+        SearchField(SearchFieldType.literal, "age"),
+        SearchField(SearchFieldType.literal, "rank"),
+    ]
 
     class Meta:
         db_table = "taxon"
 
     name = property(lambda self: self.base_name)
+
+    def get_search_dicts(self) -> list[dict[str, Any]]:
+        data = {"name": self.valid_name, "age": self.age.name, "rank": self.rank.name}
+        return [data]
 
     @classmethod
     def add_validity_check(cls, query: Any) -> Any:

@@ -7,6 +7,8 @@ from typing import IO, Any, TypeVar
 
 from peewee import BooleanField, CharField, ForeignKeyField
 
+from taxonomy.apis.cloud_search import SearchField, SearchFieldType
+
 from ... import events, getinput
 from .. import models
 from ..constants import RequirednessLevel, StratigraphicUnitRank
@@ -45,9 +47,18 @@ class StratigraphicUnit(BaseModel):
     derived_fields = [
         DerivedField("has_locations", bool, lambda unit: unit.has_locations())
     ]
+    search_fields = [
+        SearchField(SearchFieldType.text, "name"),
+        SearchField(SearchFieldType.literal, "rank"),
+        SearchField(SearchFieldType.text, "comment", highlight_enabled=True),
+    ]
 
     class Meta:
         db_table = "stratigraphic_unit"
+
+    def get_search_dicts(self) -> list[dict[str, Any]]:
+        data = {"name": self.name, "rank": self.rank.name, "comment": self.comment}
+        return [data]
 
     def has_locations(self) -> bool:
         for _ in self.locations:

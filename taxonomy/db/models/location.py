@@ -4,10 +4,12 @@ import enum
 import re
 import sys
 from collections import Counter
-from collections.abc import Callable, Iterable
-from typing import IO, Any
+from collections.abc import Callable, Iterable, Sequence
+from typing import IO, Any, ClassVar
 
 from peewee import CharField, ForeignKeyField, IntegerField, TextField
+
+from taxonomy.apis.cloud_search import SearchField, SearchFieldType
 
 from ... import adt, events, getinput
 from .. import models
@@ -336,6 +338,33 @@ class Location(BaseModel):
         for word, count in words.most_common(100):
             print(count, word)
         return words
+
+    search_fields: ClassVar[Sequence[SearchField]] = [
+        SearchField(SearchFieldType.text, "name"),
+        SearchField(SearchFieldType.text, "comment", highlight_enabled=True),
+        SearchField(SearchFieldType.text, "location_detail", highlight_enabled=True),
+        SearchField(SearchFieldType.text, "age_detail", highlight_enabled=True),
+        SearchField(SearchFieldType.text_array, "tags"),
+    ]
+
+    def get_search_dicts(self) -> list[dict[str, Any]]:
+        data = {
+            "name": self.name,
+            "comment": self.comment,
+            "location_detail": self.location_detail,
+            "age_detail": self.age_detail,
+        }
+        tags = []
+        for tag in self.tags or ():
+            if isinstance(tag, LocationTag.PBDB):
+                tags.append(f"PBDB {tag.id}")
+            elif isinstance(tag, LocationTag.ETMNA):
+                tags.append(f"ETMNA {tag.id}")
+            elif isinstance(tag, LocationTag.NOW):
+                tags.append(f"NOW {tag.id}")
+        if tags:
+            data["tags"] = tags
+        return [data]
 
 
 class LocationTag(adt.ADT):

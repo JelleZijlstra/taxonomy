@@ -22,6 +22,8 @@ from peewee import (
     TextField,
 )
 
+from taxonomy.apis.cloud_search import SearchField, SearchFieldType
+
 from .... import adt, config, events, getinput
 from ... import models
 from ...constants import (
@@ -265,6 +267,71 @@ class Article(BaseModel):
             1,
         ),
     ]
+    search_fields = [
+        SearchField(SearchFieldType.text, "name"),
+        SearchField(SearchFieldType.text_array, "authors"),
+        SearchField(SearchFieldType.text, "year"),
+        SearchField(SearchFieldType.text, "title", highlight_enabled=True),
+        SearchField(SearchFieldType.text, "citation_group"),
+        SearchField(SearchFieldType.literal, "series"),
+        SearchField(SearchFieldType.literal, "volume"),
+        SearchField(SearchFieldType.literal, "issue"),
+        SearchField(SearchFieldType.literal, "start_page"),
+        SearchField(SearchFieldType.literal, "end_page"),
+        SearchField(SearchFieldType.literal, "pages"),
+        SearchField(SearchFieldType.literal, "doi"),
+        SearchField(SearchFieldType.text, "url"),
+        SearchField(SearchFieldType.literal, "kind"),
+        SearchField(SearchFieldType.literal, "type"),
+        SearchField(SearchFieldType.text, "publisher"),
+        SearchField(SearchFieldType.text_array, "tags"),
+        # for PDF content
+        SearchField(SearchFieldType.text, "text", highlight_enabled=True),
+    ]
+
+    def get_search_dicts(self) -> list[dict[str, Any]]:
+        tags = []
+        for tag in self.tags or ():
+            if isinstance(tag, ArticleTag.ISBN):
+                tags.append(f"ISBN {tag.text}")
+            elif isinstance(tag, ArticleTag.HDL):
+                tags.append(f"HDL {tag.text}")
+            elif isinstance(tag, ArticleTag.JSTOR):
+                tags.append(f"JSTOR {tag.text}")
+            elif isinstance(tag, ArticleTag.PMID):
+                tags.append(f"PMID {tag.text}")
+            elif isinstance(tag, ArticleTag.PMC):
+                tags.append(f"PMC {tag.text}")
+            elif isinstance(tag, ArticleTag.LSIDArticle):
+                tags.append(f"LSID {tag.text}")
+            elif isinstance(tag, ArticleTag.PublicationDate):
+                tags.append(
+                    f"Publication date ({tag.source.name}): {tag.date}, {tag.comment}"
+                )
+
+        data = {
+            "name": self.name,
+            "authors": [author.get_full_name() for author in self.get_authors()],
+            "year": self.year,
+            "title": self.title,
+            "citation_group": self.citation_group.name if self.citation_group else None,
+            "series": self.series,
+            "volume": self.volume,
+            "issue": self.issue,
+            "start_page": self.start_page,
+            "end_page": self.end_page,
+            "pages": self.pages,
+            "doi": self.doi,
+            "url": self.url,
+            "kind": self.kind.name,
+            "type": self.type.name,
+            "publisher": self.publisher,
+            "tags": tags,
+        }
+        dicts = [data]
+        for i, page in enumerate(self.get_all_pdf_pages(), start=1):
+            dicts.append({"call_sign": "a/p", "id": f"a/{self.id}/{i}", "text": page})
+        return dicts
 
     @property
     def place_of_publication(self) -> str | None:
@@ -637,14 +704,21 @@ class Article(BaseModel):
             raise ValueError(f"attempt to get PDF content for non-file {self}")
         return _getpdfcontent(str(self.get_path()))
 
-    def store_pdf_content(self) -> None:
+    def get_all_pdf_pages(self) -> list[str]:
+        text_path = self.store_pdf_content()
+        if text_path is None:
+            return []
+        return text_path.read_text().split("\x0c")
+
+    def store_pdf_content(self) -> Path | None:
         if not self.ispdf() or self.isredirect():
-            return
+            return None
         expected_path = _options.pdf_text_path / f"{self.id}.txt"
         if expected_path.exists():
-            return
+            return expected_path
         print(f"Extracting PDF text for {self} and storing at {expected_path}")
         subprocess.check_call(["pdftotext", self.get_path(), expected_path])
+        return expected_path
 
     # Authors
 
@@ -1125,6 +1199,14 @@ class ArticleComment(BaseModel):
 
     class Meta:
         db_table = "article_comment"
+
+    search_fields = [
+        SearchField(SearchFieldType.literal, "kind"),
+        SearchField(SearchFieldType.text, "text", highlight_enabled=True),
+    ]
+
+    def get_search_dicts(self) -> list[dict[str, Any]]:
+        return [{"kind": self.kind.name, "text": self.text}]
 
     @classmethod
     def make(

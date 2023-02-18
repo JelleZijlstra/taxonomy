@@ -30,6 +30,8 @@ from peewee import (
     TextField,
 )
 
+from taxonomy.apis.cloud_search import SearchField
+
 from ... import adt, config, events, getinput
 from .. import derived_data, helpers
 
@@ -154,6 +156,7 @@ class BaseModel(Model):
     call_sign_to_model: ClassVar[dict[str, type[BaseModel]]] = {}
     fields_may_be_invalid: ClassVar[set[str]] = set()
     markdown_fields: ClassVar[set[str]] = set()
+    search_fields: ClassVar[Sequence[SearchField]] = ()
 
     class Meta:
         database = database
@@ -448,6 +451,9 @@ class BaseModel(Model):
         self.full_data()
         print("Data:", self.__data__)
         print("Dict:", self.__dict__)
+
+    def get_search_dicts(self) -> list[dict[str, Any]]:
+        return []
 
     def display(self, *, full: bool = False) -> None:
         """Print data about this object.

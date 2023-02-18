@@ -433,6 +433,8 @@ def check_root_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
 def _check_rn_matches_original(
     nam: Name, cfg: LintConfig, reason: str
 ) -> Iterable[str]:
+    if nam.corrected_original_name is None:
+        return
     con_root = nam.corrected_original_name.split()[-1]
     if con_root == nam.root_name:
         return

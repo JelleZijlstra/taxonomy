@@ -8,9 +8,11 @@ import sys
 import time
 from collections import Counter
 from collections.abc import Callable, Iterable, Sequence
-from typing import IO, TYPE_CHECKING, Any, TypeAlias
+from typing import IO, TYPE_CHECKING, Any, ClassVar, TypeAlias
 
 from peewee import CharField, ForeignKeyField, IntegerField, TextField
+
+from taxonomy.apis.cloud_search import SearchField, SearchFieldType
 
 from ... import adt, events, getinput
 from .. import constants, helpers, models
@@ -233,6 +235,74 @@ class Name(BaseModel):
             2,
         ),
     ]
+
+    search_fields: ClassVar[Sequence[SearchField]] = [
+        SearchField(SearchFieldType.literal, "group"),
+        SearchField(SearchFieldType.literal, "root_name"),
+        SearchField(SearchFieldType.literal, "status"),
+        SearchField(SearchFieldType.text, "original_name"),
+        SearchField(SearchFieldType.text, "corrected_original_name"),
+        SearchField(SearchFieldType.literal, "nomenclature_status"),
+        SearchField(SearchFieldType.text_array, "authors"),
+        SearchField(SearchFieldType.text, "page_described"),
+        SearchField(SearchFieldType.text, "verbatim_citation", highlight_enabled=True),
+        SearchField(SearchFieldType.text, "year"),
+        SearchField(SearchFieldType.text, "type_specimen"),
+        SearchField(SearchFieldType.literal, "genus_type_kind"),
+        SearchField(SearchFieldType.literal, "species_type_kind"),
+        SearchField(SearchFieldType.text_array, "tags", highlight_enabled=True),
+    ]
+
+    def get_search_dicts(self) -> list[dict[str, Any]]:
+        data = {
+            "group": self.group.name,
+            "root_name": self.root_name,
+            "status": self.status.name,
+            "original_name": self.original_name,
+            "corrected_original_name": self.corrected_original_name,
+            "nomenclature_status": self.nomenclature_status.name,
+            "page_described": self.page_described,
+            "verbatim_citation": self.verbatim_citation,
+            "year": self.year,
+            "type_specimen": self.type_specimen,
+            "genus_type_kind": (
+                self.genus_type_kind.name if self.genus_type_kind else None
+            ),
+            "species_type_kind": (
+                self.species_type_kind.name if self.species_type_kind else None
+            ),
+            "authors": [person.get_full_name() for person in self.get_authors()],
+        }
+        tags = []
+        for tag in self.tags or ():
+            if isinstance(tag, NameTag.HMW):
+                continue
+            tags.append(_stringify_tag(tag))
+        for tag in self.type_tags or ():
+            if isinstance(
+                tag,
+                (
+                    TypeTag._RawCollector,
+                    TypeTag.TypeLocality,
+                    TypeTag.StratigraphyDetail,
+                    TypeTag.Habitat,
+                    TypeTag.Host,
+                    TypeTag.NoEtymology,
+                    TypeTag.NoLocation,
+                    TypeTag.NoSpecimen,
+                    TypeTag.NoDate,
+                    TypeTag.NoCollector,
+                    TypeTag.NoOrgan,
+                    TypeTag.NoGender,
+                    TypeTag.NoAge,
+                    TypeTag.ImpreciseLocality,
+                    TypeTag.IncorrectGrammar,
+                ),
+            ):
+                continue
+            tags.append(_stringify_tag(tag))
+        data["tags"] = tags
+        return [data]
 
     @classmethod
     def with_tag_of_type(cls, tag_cls: builtins.type[adt.ADT]) -> list[Name]:
@@ -731,14 +801,13 @@ class Name(BaseModel):
         existing = self.original_citation
 
         def map_fn(tag: TypeTag) -> TypeTag:
-            for tag_cls in (
-                TypeTag.LocationDetail,
-                TypeTag.SpecimenDetail,
-                TypeTag.CitationDetail,
-                TypeTag.EtymologyDetail,
+            if (
+                hasattr(tag, "text")
+                and hasattr(tag, "source")
+                and set(tag.__dict__) == {"text", "source"}
             ):
-                if isinstance(tag, tag_cls) and tag.source == existing:
-                    return tag_cls(tag.text, new_citation)
+                if tag.source == existing:
+                    return type(tag)(text=tag.text, source=new_citation)
             return tag
 
         self.map_type_tags(map_fn)
@@ -1912,6 +1981,14 @@ class NameComment(BaseModel):
     class Meta:
         db_table = "name_comment"
 
+    search_fields = [
+        SearchField(SearchFieldType.literal, "kind"),
+        SearchField(SearchFieldType.text, "text", highlight_enabled=True),
+    ]
+
+    def get_search_dicts(self) -> list[dict[str, Any]]:
+        return [{"kind": self.kind.name, "text": self.text}]
+
     @classmethod
     def add_validity_check(cls, query: Any) -> Any:
         return query.filter(NameComment.kind != constants.CommentKind.removed)
@@ -2049,6 +2126,16 @@ def clean_original_name(original_name: str) -> str:
     )
     original_name = re.sub(r"\s+", " ", original_name).strip()
     return re.sub(r"([a-z]{2})-([a-z]{2})", r"\1\2", original_name)
+
+
+def _stringify_tag(tag: adt.ADT) -> str:
+    name = type(tag).__name__
+    name = re.sub(r"(?=[A-Z])", " ", name).lower().strip()
+    args = [str(value) for value in tag.__dict__.values() if value]
+    if args:
+        return f"{name}: {'; '.join(args)}"
+    else:
+        return name
 
 
 class NameTag(adt.ADT):

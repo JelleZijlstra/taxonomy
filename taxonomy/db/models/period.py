@@ -8,6 +8,8 @@ from typing import IO, Any, TypeVar
 
 from peewee import BooleanField, CharField, ForeignKeyField, IntegerField
 
+from taxonomy.apis.cloud_search import SearchField, SearchFieldType
+
 from ... import events, getinput
 from .. import models
 from ..constants import (
@@ -57,6 +59,12 @@ class Period(BaseModel):
 
     derived_fields = [
         DerivedField("has_locations", bool, lambda period: period.has_locations())
+    ]
+    search_fields = [
+        SearchField(SearchFieldType.text, "name"),
+        SearchField(SearchFieldType.literal, "system"),
+        SearchField(SearchFieldType.literal, "rank"),
+        SearchField(SearchFieldType.text, "comment", highlight_enabled=True),
     ]
 
     def has_locations(self) -> bool:

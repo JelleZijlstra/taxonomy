@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import sys
-from collections.abc import Iterable
-from typing import IO, Any
+from collections.abc import Iterable, Sequence
+from typing import IO, Any, ClassVar
 
 import peewee
 from peewee import BooleanField, CharField, ForeignKeyField
+
+from taxonomy.apis.cloud_search import SearchField, SearchFieldType
 
 from ... import events, getinput
 from .. import models
@@ -44,6 +46,23 @@ class SpeciesNameComplex(BaseModel):
 
     class Meta:
         db_table = "species_name_complex"
+
+    search_fields: ClassVar[Sequence[SearchField]] = [
+        SearchField(SearchFieldType.literal, "label"),
+        SearchField(SearchFieldType.literal, "kind"),
+        SearchField(SearchFieldType.text, "stem"),
+        SearchField(SearchFieldType.text, "comment", highlight_enabled=True),
+    ]
+
+    def get_search_dicts(self) -> list[dict[str, Any]]:
+        return [
+            {
+                "label": self.label,
+                "kind": self.kind.name,
+                "stem": self.stem,
+                "comment": self.comment,
+            }
+        ]
 
     def __repr__(self) -> str:
         if any(
@@ -422,8 +441,29 @@ class NameComplex(BaseModel):
     stem_remove = CharField(null=False)
     stem_add = CharField(null=False)
 
+    search_fields: ClassVar[Sequence[SearchField]] = [
+        SearchField(SearchFieldType.literal, "label"),
+        SearchField(SearchFieldType.text, "stem"),
+        SearchField(SearchFieldType.literal, "source_language"),
+        SearchField(SearchFieldType.literal, "code_article"),
+        SearchField(SearchFieldType.literal, "gender"),
+        SearchField(SearchFieldType.text, "comment", highlight_enabled=True),
+    ]
+
     class Meta:
         db_table = "name_complex"
+
+    def get_search_dicts(self) -> list[dict[str, Any]]:
+        return [
+            {
+                "label": self.label,
+                "stem": self.stem,
+                "source_language": self.source_language.name,
+                "code_article": self.code_article.name,
+                "gender": self.gender.name,
+                "comment": self.comment,
+            }
+        ]
 
     def __repr__(self) -> str:
         return (

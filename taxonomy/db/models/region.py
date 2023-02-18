@@ -3,9 +3,11 @@ from __future__ import annotations
 import collections
 import sys
 from collections.abc import Iterable
-from typing import IO
+from typing import IO, Any
 
 from peewee import CharField, ForeignKeyField
+
+from taxonomy.apis.cloud_search import SearchField, SearchFieldType
 
 from ... import events, getinput
 from .. import constants, models
@@ -45,6 +47,13 @@ class Region(BaseModel):
             1,
         ),
     ]
+    search_fields = [
+        SearchField(SearchFieldType.text, "name"),
+        SearchField(SearchFieldType.literal, "kind"),
+    ]
+
+    def get_search_dicts(self) -> list[dict[str, Any]]:
+        return [{"name": self.name, "kind": self.kind.name}]
 
     @classmethod
     def make(

@@ -2,6 +2,8 @@ from typing import Any
 
 from peewee import BooleanField, CharField, ForeignKeyField
 
+from taxonomy.apis.cloud_search import SearchField, SearchFieldType
+
 from ... import events, getinput
 from .. import models
 from .base import BaseModel, ModelT, get_tag_based_derived_field
@@ -47,6 +49,21 @@ class Collection(BaseModel):
             1,
         ),
     ]
+    search_fields = [
+        SearchField(SearchFieldType.text, "name"),
+        SearchField(SearchFieldType.literal, "label"),
+        SearchField(SearchFieldType.text, "comment", highlight_enabled=True),
+        SearchField(SearchFieldType.text, "city"),
+    ]
+
+    def get_search_dicts(self) -> list[dict[str, Any]]:
+        data = {
+            "name": self.name,
+            "label": self.label,
+            "comment": self.comment,
+            "city": self.city,
+        }
+        return [data]
 
     def __repr__(self) -> str:
         city = f", {self.city}" if self.city else ""
