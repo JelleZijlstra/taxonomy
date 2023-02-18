@@ -4,8 +4,8 @@ Interacting with AWS CloudSearch.
 
 """
 
-from dataclasses import dataclass
 import enum
+from dataclasses import dataclass
 from typing import Any
 
 

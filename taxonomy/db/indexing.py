@@ -1,6 +1,7 @@
-from typing import Any, Iterable
-from taxonomy.apis.cloud_search import SearchField
+from collections.abc import Iterable
+from typing import Any
 
+from taxonomy.apis.cloud_search import SearchField
 from taxonomy.db.models.base import BaseModel
 
 
