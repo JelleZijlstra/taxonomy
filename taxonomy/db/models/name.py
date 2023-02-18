@@ -287,17 +287,18 @@ class Name(BaseModel):
                     TypeTag.StratigraphyDetail,
                     TypeTag.Habitat,
                     TypeTag.Host,
-                    TypeTag.NoEtymology,
-                    TypeTag.NoLocation,
-                    TypeTag.NoSpecimen,
-                    TypeTag.NoDate,
-                    TypeTag.NoCollector,
-                    TypeTag.NoOrgan,
-                    TypeTag.NoGender,
-                    TypeTag.NoAge,
                     TypeTag.ImpreciseLocality,
                     TypeTag.IncorrectGrammar,
                 ),
+            ) or tag in (
+                TypeTag.NoEtymology,
+                TypeTag.NoLocation,
+                TypeTag.NoSpecimen,
+                TypeTag.NoDate,
+                TypeTag.NoCollector,
+                TypeTag.NoOrgan,
+                TypeTag.NoGender,
+                TypeTag.NoAge,
             ):
                 continue
             tags.append(_stringify_tag(tag))
