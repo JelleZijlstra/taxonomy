@@ -673,14 +673,18 @@ def resolve_search(
     query: str,
     first: int = 10,
     after: str | None = None,
-) -> list[SearchResult]:
+) -> list[SearchResult | None]:
     if after is not None:
         offset = int(base64.b64decode(after).split(b":")[1]) + 1
     else:
         offset = 0
     # + 1 so Relay can know whether there are additional results
     result = search.run_query(query, size=first + offset + 1, start=offset)
-    return [SearchResult.from_hit(hit) for hit in result["hit"]]
+    print(
+        "Requesting"
+        f" size={first + offset + 1} {offset=} {result['found']=} {len(result['hit'])=}"
+    )
+    return [None] * offset + [SearchResult.from_hit(hit) for hit in result["hit"]]
 
 
 class Query(ObjectType):

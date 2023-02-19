@@ -63,6 +63,12 @@ class SearchField:
     search_enabled: bool = True
     sort_enabled: bool | None = None
 
+    def get_weight(self) -> int:
+        if self.name == "name":
+            return 100
+        else:
+            return 1
+
     def get_highlight_enabled(self) -> bool | None:
         if not self.field_type.supports_highlight():
             return None

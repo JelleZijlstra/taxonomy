@@ -5,6 +5,7 @@ from typing import Any
 import boto3
 from botocore.config import Config
 
+from taxonomy.apis.cloud_search import SearchFieldType
 from taxonomy.config import get_options
 from taxonomy.db.indexing import get_all_fields
 
@@ -38,12 +39,25 @@ def get_highlight_param() -> str:
     return json.dumps(highlights, indent=None, separators=(",", ":"))
 
 
+@cache
+def get_options_param() -> str:
+    options = {
+        "fields": [
+            f"{field.name}^{field.get_weight()}"
+            for field in get_all_fields()
+            if field.field_type in (SearchFieldType.text, SearchFieldType.text_array)
+        ]
+    }
+    return json.dumps(options, indent=None, separators=(",", ":"))
+
+
 def run_query(query: str, size: int = 10, start: int = 0) -> dict[str, Any]:
     client = get_client()
     response = client.search(
         query=query,
         queryParser="simple",
         highlight=get_highlight_param(),
+        queryOptions=get_options_param(),
         size=size,
         start=start,
     )
