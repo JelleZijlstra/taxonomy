@@ -1955,16 +1955,6 @@ def run_linter_and_fix(
 
 
 @generator_command
-def check_tags(dry_run: bool = True) -> Iterable[tuple[Name, list[str]]]:
-    return Name.lint_all(models.name_lint.check_tags_for_name, autofix=not dry_run)
-
-
-@generator_command
-def check_type_tags(dry_run: bool = False) -> Iterable[tuple[Name, list[str]]]:
-    return Name.lint_all(models.name_lint.check_type_tags_for_name, autofix=not dry_run)
-
-
-@generator_command
 def move_to_lowest_rank(dry_run: bool = False) -> Iterable[tuple[Name, str]]:
     for nam in getinput.print_every_n(Name.select_valid(), label="names"):
         query = Taxon.select_valid().filter(Taxon.base_name == nam)
