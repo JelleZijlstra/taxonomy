@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import base64
 import enum
 import re
@@ -15,6 +17,7 @@ from graphene import (
     Int,
     Interface,
     List,
+    Mutation,
     NonNull,
     ObjectType,
     ResolveInfo,
@@ -25,6 +28,7 @@ from graphene.relay import Connection, ConnectionField, Node
 from graphene.utils.str_converters import to_snake_case
 
 from taxonomy.adt import ADT
+from taxonomy.config import get_options
 from taxonomy.db.constants import CommentKind
 from taxonomy.db.derived_data import DerivedField
 from taxonomy.db.models import Article, Location, Name, NameComment, Period
@@ -610,7 +614,7 @@ def resolve_documentation(
 
 
 def resolve_autocompletions(
-    parent: "ModelCls", info: ResolveInfo, field: str | None = None
+    parent: ModelCls, info: ResolveInfo, field: str | None = None
 ) -> list[str]:
     model_cls = BaseModel.call_sign_to_model[parent.call_sign]
     if field is None:
@@ -639,7 +643,7 @@ class SearchResult(ObjectType):
     highlight = String(required=False)
 
     @classmethod
-    def from_hit(cls, hit: dict[str, Any]) -> "SearchResult":
+    def from_hit(cls, hit: dict[str, Any]) -> SearchResult:
         document_id = hit["id"]
         pieces = document_id.split("/")
         if len(pieces) == 3:
@@ -710,7 +714,34 @@ class Query(ObjectType):
     locals().update(get_model_resolvers())
 
 
-schema = Schema(query=Query, types=TYPES)
+@cache
+def has_library() -> bool:
+    options = get_options()
+    return options.library_path.exists()
+
+
+class OpenArticle(Mutation):
+    class Arguments:
+        article_id = Int(required=True)
+
+    ok = Boolean()
+
+    def mutate(self, info: ResolveInfo, article_id: int) -> OpenArticle:
+        if not has_library():
+            return OpenArticle(ok=False)
+        try:
+            art = Article.get(id=article_id)
+        except Article.DoesNotExist:
+            return OpenArticle(ok=False)
+        art.openf()
+        return OpenArticle(ok=True)
+
+
+class MutationRoot(ObjectType):
+    open_article = OpenArticle.Field()
+
+
+schema = Schema(query=Query, mutation=MutationRoot, types=TYPES)
 
 
 def get_schema_string(schema: Schema) -> str:
