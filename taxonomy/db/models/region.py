@@ -191,6 +191,14 @@ class Region(BaseModel):
             yield self.parent
             yield from self.parent.all_parents()
 
+    def parent_of_kind(self, kind: constants.RegionKind) -> Region | None:
+        if self.kind is kind:
+            return self
+        for parent in self.all_parents():
+            if parent.kind is kind:
+                return parent
+        return None
+
     def all_citation_groups(self) -> Iterable[models.CitationGroup]:
         yield from self.citation_groups
         for child in self.children:

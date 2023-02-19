@@ -9,8 +9,8 @@ from typing import Protocol, TypedDict
 
 from .. import getinput
 from ..command_set import CommandSet
-from .constants import AgeClass, Group, Rank
-from .models import Article, Name, Occurrence, Taxon
+from .constants import AgeClass, Group, Rank, RegionKind
+from .models import Article, Collection, Name, Occurrence, Taxon
 from .models.name import TypeTag
 
 CS = CommandSet("export", "Exporting data")
@@ -252,6 +252,52 @@ def export_taxa(filename: str, *, limit: int | None = None) -> None:
         writer.writeheader()
         for taxon in getinput.print_every_n(taxa, label="taxa"):
             writer.writerow(data_for_taxon(taxon))
+
+
+class CollectionData(TypedDict):
+    id: str
+    link: str
+    label: str
+    name: str
+    comment: str
+    city: str
+    location_link: str
+    location: str
+    state: str
+    country: str
+    num_type_specimens: str
+
+
+def data_for_collection(collection: Collection) -> CollectionData:
+    loc = collection.location
+    state = loc.parent_of_kind(RegionKind.state)
+    country = loc.parent_of_kind(RegionKind.country)
+    return {
+        "id": str(collection.id),
+        "link": collection.get_absolute_url(),
+        "label": collection.label,
+        "name": collection.name,
+        "comment": collection.comment or "",
+        "city": collection.city or "",
+        "location_link": loc.get_absolute_url(),
+        "location": loc.name,
+        "state": state.name if state else "",
+        "country": country.name if country else "",
+        "num_type_specimens": collection.type_specimens.count(),
+    }
+
+
+@CS.register
+def export_collections(filename: str) -> None:
+    with open(filename, "w") as f:
+        writer: "csv.DictWriter[str]" = csv.DictWriter(
+            f, list(CollectionData.__annotations__)
+        )
+        writer.writeheader()
+        for occ in getinput.print_every_n(
+            Collection.select_valid(), label="collections", n=100
+        ):
+            writer.writerow(data_for_collection(occ))
 
 
 class OccurrenceData(TypedDict):

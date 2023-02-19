@@ -691,7 +691,7 @@ def resolve_search(
     return [None] * offset + [SearchResult.from_hit(hit) for hit in result["hit"]]
 
 
-class Query(ObjectType):
+class QueryRoot(ObjectType):
     node = Node.Field()
     by_call_sign = List(
         Model,
@@ -741,7 +741,7 @@ class MutationRoot(ObjectType):
     open_article = OpenArticle.Field()
 
 
-schema = Schema(query=Query, mutation=MutationRoot, types=TYPES)
+schema = Schema(query=QueryRoot, mutation=MutationRoot, types=TYPES)
 
 
 def get_schema_string(schema: Schema) -> str:
