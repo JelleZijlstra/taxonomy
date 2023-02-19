@@ -24,6 +24,7 @@ will also apply to the database itself.
     quotes (e.g., "_Microsciurus_" _flaviventris_).
   - Correct numerous specific epithets to agree in gender with their genus
 - Frontend
+  - Add full-text search which also searches in my library of references
   - Display links to various identifiers (ISSN, ISBN, etc.) on article and citation
     group pages
   - Redirect merged entities into their target entity

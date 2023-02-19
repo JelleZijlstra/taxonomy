@@ -41,7 +41,6 @@ please [let me know](mailto:jelle.zijlstra@gmail.com).
     and stores (GQL query, args) -> result.
     - Could be pre-filled if we want to
     - Need to worry about filling up the disk
-- Provide a search function that indexes everything
 - UI indication that names belong to a group with high-quality vs. low-quality coverage
   (so users don't expect insect families to list all genera)
 
