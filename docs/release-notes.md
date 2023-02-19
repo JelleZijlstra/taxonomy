@@ -1,10 +1,34 @@
 This page lists major changes in the code and data for the _Hesperomys_ database.
 Version numbers correspond to Git tags in the
 [frontend](https://github.com/JelleZijlstra/hesperomys/) and
-[backend](https://github.com/JelleZijlstra/taxonomy/) repositories. In the future, they
-will also apply to the database itself.
+[backend](https://github.com/JelleZijlstra/taxonomy/) repositories, and to database
+exports released on Zenodo.
 
-# Unreleased
+# 23.2.0 (February 19, 2023)
+
+This is the first tagged release. It comes with a number of major improvements:
+
+- I started to collaborate with the
+  [Mammal Diversity Database](https://www.mammaldiversity.org/) to improve our
+  respective databases. So far, this collaboration has led to a major update of the
+  taxonomy used for extant mammals in this database. Thanks to Nate Upham for reaching
+  out to start this collaboration and to Connor Burgin for reviewing numerous
+  differences between the databases with me.
+- Much of the database is now available on Zenodo as an immutable CSV export
+  ([doi:10.5281/zenodo.7654755](https://doi.org/10.5281/zenodo.7654755)). Thanks to
+  Jorrit Poelen for advice in this area.
+- The database now supports a full-text search function that also searches my reference
+  database.
+- The database now has better support for tracking and checking publication dates of
+  references and names. Many publication dates (about 20%) are now specified to the
+  month or day.
+
+This version may be cited as:
+
+- Zijlstra, J.S. 2023. Hesperomys Project (Version 23.2.0) [Data set]. Zenodo.
+  [doi:10.5281/zenodo.7654755](https://doi.org/10.5281/zenodo.7654755)
+
+More detailed list of changes:
 
 - Database
   - Start harmonizing the taxonomy for living mammals with the
@@ -55,4 +79,5 @@ will also apply to the database itself.
 
 # Previous
 
-Before January 2023 I did not track release notes.
+Before January 2023 I did not track release notes, but updated the database at irregular
+intervals.

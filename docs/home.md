@@ -13,16 +13,21 @@ and archaea), the geography at [Earth](/r/Earth) (until extraterrestrial life is
 discovered), or the chronology at [Phanerozoic](/p/Phanerozoic) (until I incorporate
 Precambrian fossils into the database).
 
+To cite this project, use:
+
+- Zijlstra, J.S. 2023. Hesperomys Project (Version 23.2.0) [Data set]. Zenodo.
+  [doi:10.5281/zenodo.7654755](https://doi.org/10.5281/zenodo.7654755)
+
 # Size
 
-As of January 2023, the database contains:
+As of February 2023, the database contains:
 
-- 95050 [names](/docs/name), of which 75275 are [mammals](/t/Mammalia)
-- 10021 [locations](/docs/location) grouped into 4430 [regions](/docs/region), 367
-  [periods](/docs/period), and 2047 [stratigraphic units](/docs/stratigraphic-unit)
-- 51981 [citations](/docs/article)
-- Type localities for 56086 names
-- Type specimens for 38197 names
+- 95585 [names](/docs/name), of which 75703 are [mammals](/t/Mammalia)
+- 10015 [locations](/docs/location) grouped into 4430 [regions](/docs/region), 367
+  [periods](/docs/period), and 2055 [stratigraphic units](/docs/stratigraphic-unit)
+- 52983 [citations](/docs/article)
+- Type localities for 56362 names
+- Type specimens for 38458 names
 
 # Documentation
 
