@@ -62,7 +62,7 @@ def assert_git_clean(repo: Path) -> None:
 
 
 def push_taxonomy(options: Options, version: str) -> None:
-    release_notes = (options.taxonomy_repo / "docs/release_notes.md").read_text()
+    release_notes = (options.taxonomy_repo / "docs/release-notes.md").read_text()
     assert version in release_notes, f"{version} is not documented"
     subprocess.check_call(["git", "tag", version], cwd=options.taxonomy_repo)
     subprocess.check_call(["git", "push"], cwd=options.taxonomy_repo)
