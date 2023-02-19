@@ -44,7 +44,11 @@ if _log_path.exists():
 else:
     _log_f = None
 _change_log_path = settings.data_path / "changelog.txt"
-_change_log_f = open(_change_log_path, "a", encoding="utf-8")
+_change_log_f: IO[str] | None
+if _change_log_path.exists():
+    _change_log_f = open(_change_log_path, "a", encoding="utf-8")
+else:
+    _change_log_f = None
 
 
 class LoggingDatabase(SqliteDatabase):
@@ -430,6 +434,7 @@ class BaseModel(Model):
 
     def save(self, *args: Any, **kwargs: Any) -> int:
         result = super().save(*args, **kwargs)
+        assert _change_log_f is not None, "cannot make changes without a changelog file"
         event = {"type": "save", "call_sign": self.call_sign, "id": self.id}
         print(json.dumps(event), file=_change_log_f, flush=True)
         if hasattr(self, "save_event"):
