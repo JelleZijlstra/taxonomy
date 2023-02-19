@@ -74,8 +74,8 @@ class DetailTag(Protocol):
 def export_names(
     filename: str,
     taxon: Taxon | None = None,
-    ages: Container[AgeClass] | None = {AgeClass.extant, AgeClass.recently_extinct},
-    group: Group | None = Group.species,
+    ages: Container[AgeClass] | None = None,
+    group: Group | None = None,
     limit: int | None = None,
 ) -> None:
     """Export data about names to a CSV file."""
