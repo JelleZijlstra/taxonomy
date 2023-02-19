@@ -54,6 +54,8 @@ dependencies = [
     "graphene",
     "typing_inspect",
     "types-requests",
+    "boto3",
+    "botocore",
 ]
 
 [project.urls]
