@@ -64,8 +64,12 @@ class SearchField:
     sort_enabled: bool | None = None
 
     def get_weight(self) -> int:
-        if self.name == "name":
+        if self.name in ("name", "corrected_original_name"):
             return 100
+        elif self.name in ("title", "original_name"):
+            return 50
+        elif self.name == "type_specimen":
+            return 25
         else:
             return 1
 

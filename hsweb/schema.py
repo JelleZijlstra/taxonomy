@@ -684,10 +684,6 @@ def resolve_search(
         offset = 0
     # + 1 so Relay can know whether there are additional results
     result = search.run_query(query, size=first + offset + 1, start=offset)
-    print(
-        "Requesting"
-        f" size={first + offset + 1} {offset=} {result['found']=} {len(result['hit'])=}"
-    )
     return [None] * offset + [SearchResult.from_hit(hit) for hit in result["hit"]]
 
 
