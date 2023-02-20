@@ -10,7 +10,7 @@ from typing import IO, TypedDict
 
 from taxonomy.db import helpers
 from taxonomy.db.constants import AgeClass, Rank, Status
-from taxonomy.db.models import Taxon
+from taxonomy.db.models import CitationGroup, Taxon
 from taxonomy.db.models.tags import TaxonTag
 
 INCLUDED_AGES = (AgeClass.extant, AgeClass.recently_extinct)
@@ -95,7 +95,7 @@ class Difference:
     mdd_id: str | None = None
     taxon: Taxon | None = None
 
-    def to_markdown(self) -> str:
+    def to_markdown(self, extra: str | None = None) -> str:
         parts = []
         if self.kind is DifferenceKind.missing_in_hesperomys:
             parts.append(f"Missing in Hesperomys: _{self.mdd}_")
@@ -110,10 +110,19 @@ class Difference:
             parentheticals.append(f"MDD#{self.mdd_id}")
         if self.taxon:
             parentheticals.append(
-                f"[{self.taxon.valid_name}](http://hesperomys.com/t/{self.taxon.id})"
+                f"[{self.taxon.valid_name}](https://hesperomys.com/t/{self.taxon.id})"
             )
         if self.comment:
             parentheticals.append(self.comment)
+        if self.taxon and self.taxon.base_name.original_citation:
+            link = (
+                self.taxon.base_name.original_citation.concise_markdown_link().replace(
+                    "/a/", "https://hesperomys.com/a/"
+                )
+            )
+            parentheticals.append(f"original citation: {link}")
+        if extra:
+            parentheticals.append(extra)
         parentheticals.append(self.kind.name)
         parts.append(f" ({'; '.join(parentheticals)})")
         return "".join(parts)
@@ -255,7 +264,7 @@ def compare_single(taxon: Taxon, mdd_row: MddRow) -> Iterable[Difference]:
             taxon=taxon,
         )
 
-    mdd_orig = mdd_row["originalNameCombination"].replace("_", " ")
+    mdd_orig = mdd_row["originalNameCombination"].replace("_", " ") or None
     if nam.original_name is not None and not mdd_orig:
         yield Difference(
             DifferenceKind.original_name_missing_mdd,
@@ -380,9 +389,54 @@ def generate_markdown(
             continue
         print(f"## {kind.name} ({len(differences)} differences)", file=f)
         print(file=f)
-        for difference in differences:
-            print(f"- {difference.to_markdown()}", file=f)
+        generate_markdown_for_kind(kind, differences, f)
         print(file=f)
+
+
+def generate_markdown_for_kind(
+    kind: DifferenceKind, differences: Sequence[Difference], f: IO[str]
+) -> None:
+    match kind:
+        case DifferenceKind.higher_classification:
+            by_difference: dict[
+                tuple[str | None, str | None, str | None], list[Difference]
+            ] = {}
+            for difference in differences:
+                key = (difference.comment, difference.mdd, difference.hesp)
+                by_difference.setdefault(key, []).append(difference)
+            for (comment, mdd, hesp), differences in by_difference.items():
+                print(
+                    (
+                        f"- {comment} {mdd} (MDD) vs. {hesp} (Hesperomys):"
+                        f" {len(differences)} differences, e.g.:"
+                    ),
+                    file=f,
+                )
+                print(f"    - {differences[0].to_markdown()}", file=f)
+        case DifferenceKind.year:
+            by_cg: dict[CitationGroup | None, list[Difference]] = {}
+            for difference in differences:
+                cg: CitationGroup | None
+                if difference.taxon is None:
+                    cg = None
+                elif difference.taxon.base_name.original_citation is None:
+                    cg = difference.taxon.base_name.citation_group
+                else:
+                    cite = difference.taxon.base_name.original_citation
+                    if cite.citation_group is None:
+                        cg = CitationGroup.getter("name")("book")
+                    else:
+                        cg = cite.citation_group
+                by_cg.setdefault(cg, []).append(difference)
+            for cg, cg_differences in by_cg.items():
+                print(f"- {cg} ({len(cg_differences)} differences)", file=f)
+                for difference in sorted(
+                    cg_differences, key=lambda diff: diff.mdd or ""
+                ):
+                    print(f"    - {difference.to_markdown()}", file=f)
+        case _:
+            for difference in differences:
+                print(f"- {difference.to_markdown()}", file=f)
 
 
 def run(
@@ -436,13 +490,12 @@ def main() -> None:
         help="Kinds to ignore",
     )
     args = parser.parse_args()
-    print(args.ignore)
     run(
         mdd_file=Path(args.mdd_file),
         md_output=Path(args.md) if args.md else None,
         csv_output=Path(args.csv) if args.csv else None,
         add_ids=args.add_ids,
-        ignore_kinds=args.ignore,
+        ignore_kinds=args.ignore or (),
     )
 
 
