@@ -57,6 +57,7 @@ Other aspects of the database:
 - [Chronology](/docs/chronology)
 - [Scope of the database](/docs/scope)
 - [Publication dates](/docs/dating)
+- [Data sources](/docs/data-sources)
 
 Source code:
 
