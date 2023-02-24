@@ -60,8 +60,7 @@ please [let me know](mailto:jelle.zijlstra@gmail.com).
   - Unchecked names that are almost the same as redirects
   - Cases where we have both "Firstname M. Lastname" and "Firstname Middlename Lastname"
 - Make the editor not allow leaving required (non-null) fields empty (especially enums)
-- Export feature on release
-  - Provide a documented interface for each table
+- Clean up duplicate tags (e.g. _Echinothrix_ Flower & Lydekker has the same UnjustifiedEmendation tag twice)
 
 ## New or disabled checks
 

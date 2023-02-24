@@ -23,6 +23,7 @@ from ..constants import (
     Group,
     NomenclatureStatus,
     Rank,
+    RegionKind,
     SpeciesNameKind,
     Status,
 )
@@ -42,6 +43,7 @@ from .collection import Collection
 from .location import Location
 from .name_complex import NameComplex, SpeciesNameComplex
 from .person import AuthorTag, Person, get_new_authors_list
+from .region import Region
 from .taxon import Taxon, display_organized
 
 _CRUCIAL_MISSING_FIELDS: dict[Group, set[str]] = {
@@ -940,6 +942,16 @@ class Name(BaseModel):
             return self.numeric_year()
         else:
             return None
+
+    def get_type_locality_country(self) -> models.Region | None:
+        tl = self.type_locality
+        if tl is None:
+            return None
+        region = tl.region
+        country = region.parent_of_kind(RegionKind.country)
+        if country is None:
+            return region
+        return country
 
     def sort_key(self) -> tuple[object, ...]:
         return (
