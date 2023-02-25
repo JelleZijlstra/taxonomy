@@ -4,10 +4,11 @@ from peewee import BooleanField, CharField, ForeignKeyField
 
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
 
-from ... import events, getinput
+from ... import events, getinput, adt
 from .. import models
-from .base import BaseModel, ModelT, get_tag_based_derived_field
+from .base import BaseModel, ModelT, get_tag_based_derived_field, ADTField
 from .region import Region
+from .article import Article
 
 
 class Collection(BaseModel):
@@ -25,6 +26,7 @@ class Collection(BaseModel):
     comment = CharField(null=True)
     city = CharField(null=True)
     removed = BooleanField(default=False)
+    tags = ADTField(lambda: CollectionTag, null=True)
 
     derived_fields = [
         get_tag_based_derived_field(
@@ -69,6 +71,9 @@ class Collection(BaseModel):
         city = f", {self.city}" if self.city else ""
         return f"{self.name}{city} ({self.label})"
 
+    def edit(self) -> None:
+        self.fill_field("tags")
+
     @classmethod
     def by_label(cls, label: str) -> "Collection":
         colls = list(cls.filter(cls.label == label))
@@ -112,7 +117,7 @@ class Collection(BaseModel):
         return obj
 
     def display(
-        self, full: bool = True, depth: int = 0, organized: bool = False
+        self, full: bool = False, depth: int = 0, organized: bool = False
     ) -> None:
         city = f", {self.city}" if self.city else ""
         print(" " * depth + f"{self!r}{city}, {self.location}")
@@ -169,3 +174,8 @@ class Collection(BaseModel):
 
     def is_invalid(self) -> bool:
         return self.removed
+
+
+class CollectionTag(adt.ADT):
+    CollectionDatabase(citation=Article, comment=str, tag=1)  # type: ignore
+    TypeCatalog(citation=Article, coverage=str, tag=2)  # type: ignore

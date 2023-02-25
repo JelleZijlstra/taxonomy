@@ -2289,6 +2289,7 @@ class TypeTag(adt.ADT):
     # paper should correct it.
     IncorrectGrammar(text=str, tag=43)  # type: ignore
     LSIDName(text=str, tag=44)  # type: ignore
+    TypeSpecimenLink(url=str, tag=45)  # type: ignore
 
 
 SOURCE_TAGS = (

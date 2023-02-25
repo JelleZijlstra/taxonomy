@@ -4,6 +4,17 @@ Version numbers correspond to Git tags in the
 [backend](https://github.com/JelleZijlstra/taxonomy/) repositories, and to database
 exports released on Zenodo.
 
+# Unreleased
+
+- Backend
+  - Add the ability to associate type catalogs and collection databases with
+    Collection objects (e.g., [MNHN](/c/MNHN)).
+  - Add the ability to link to collection database entries for type specimens.
+- Database
+  - Incorporate some data from the African Chiroptera Database (thanks to
+    Victor Van Cakenberghe).
+  - Add [SMF](/c/SMF) mammalian type specimens from a type catalog I located.
+
 # 23.2.0 (February 19, 2023)
 
 This is the first tagged release. It comes with a number of major improvements:

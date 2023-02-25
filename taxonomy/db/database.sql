@@ -201,6 +201,7 @@ CREATE TABLE `collection` (
     `comment` varchar(65535),
     `city` varchar(255) default null,
     `removed` integer default 0,
+    `tags` text default null
 );
 
 CREATE TABLE `name_comment` (
