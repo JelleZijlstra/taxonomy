@@ -3,9 +3,9 @@
 # Ghostscript (forgot how I got that)
 
 import argparse
-from pathlib import Path
 import subprocess
 import tempfile
+from pathlib import Path
 
 
 def run(input_file: Path, output_file: Path) -> None:

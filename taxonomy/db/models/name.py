@@ -43,7 +43,6 @@ from .collection import Collection
 from .location import Location
 from .name_complex import NameComplex, SpeciesNameComplex
 from .person import AuthorTag, Person, get_new_authors_list
-from .region import Region
 from .taxon import Taxon, display_organized
 
 _CRUCIAL_MISSING_FIELDS: dict[Group, set[str]] = {

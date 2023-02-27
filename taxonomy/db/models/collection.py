@@ -4,11 +4,11 @@ from peewee import BooleanField, CharField, ForeignKeyField
 
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
 
-from ... import events, getinput, adt
+from ... import adt, events, getinput
 from .. import models
-from .base import BaseModel, ModelT, get_tag_based_derived_field, ADTField
-from .region import Region
 from .article import Article
+from .base import ADTField, BaseModel, ModelT, get_tag_based_derived_field
+from .region import Region
 
 
 class Collection(BaseModel):
