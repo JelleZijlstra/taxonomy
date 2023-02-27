@@ -609,7 +609,7 @@ def resolve_documentation(
         return None
     full_path = DOCS_ROOT / (path + ".md")
     if full_path.exists():
-        return full_path.read_text()
+        return parse_refs_into_markdown(full_path.read_text())
     return None
 
 
