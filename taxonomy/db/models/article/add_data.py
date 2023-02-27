@@ -620,6 +620,8 @@ def doi_input(art: Article) -> bool:
         return not reuse_nofile(art)
 
     def set_type(cmd: str, data: object) -> bool:
+        if not isinstance(data, ArticleType):
+            return True
         art.type = data  # type: ignore
         return False
 
