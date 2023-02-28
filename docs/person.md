@@ -75,7 +75,7 @@ displaying names on this website.
 
 - _unspecified_: Default naming convention for unchecked names. These are generally
   treated similarly to Western names.
-- _western_: Catch-all naming convention for names from most European and some other
+- _general_: Catch-all naming convention for names from most European and some other
   languages. This should perhaps be split up further; for example, Brazilians sometimes
   have long lists of names where it is not clear which names are parts of the family
   name and which are given names.
@@ -136,7 +136,7 @@ Non-Latin writing systems:
   one-to-one (e.g., "Yu" for Ю).
 - _ukrainian_: The Ukrainian language uses a slightly different alphabet than Russian.
 
-A catch all:
+A catch-all:
 
 - _other_: Used for names in rare languages with unusual requirements. Names using this
   convention are exempt from most checks that restrict what characters may appear in a

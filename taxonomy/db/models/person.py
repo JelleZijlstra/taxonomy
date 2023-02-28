@@ -40,7 +40,7 @@ ALLOWED_TUSSENVOEGSELS = {
     },
     NamingConvention.german: {"von", "von den", "von der", "zu"},
     # French, Italian, Portuguese
-    NamingConvention.western: {"de", "du", "dos", "da", "de la", "del", "do", "von"},
+    NamingConvention.general: {"de", "du", "dos", "da", "de la", "del", "do", "von"},
     NamingConvention.spanish: {"de", "del", "de la", "de los", "de las"},
 }
 ALLOWED_TUSSENVOEGSELS[NamingConvention.unspecified] = set.union(

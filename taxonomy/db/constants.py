@@ -775,7 +775,7 @@ class NamingConvention(enum.IntEnum):
     hungarian = 9  # family name usually comes first
     vietnamese = 10
     german = 11  # treatment of von
-    western = 12
+    general = 12  # just first name and last name
     russian = 13  # allow Cyrillic
     turkish = 14  # for the dotted and dotless i
     chinese = 15  # Chinese-style names, but not in pinyin
