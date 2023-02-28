@@ -1230,7 +1230,7 @@ class Name(BaseModel):
         if knowledge_level == 0:
             intro_line = getinput.red(out)
         elif knowledge_level == 1:
-            intro_line = getinput.blue(out)
+            intro_line = getinput.yellow(out)
         else:
             intro_line = getinput.green(out)
         result = " " * ((depth + 1) * 4) + intro_line + "\n"

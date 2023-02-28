@@ -28,6 +28,7 @@ ADTOrInstance = Union[adt.ADT, type[adt.ADT]]
 
 RED = 31
 GREEN = 32
+YELLOW = 33
 BLUE = 34
 
 
@@ -49,6 +50,10 @@ def red(text: str) -> str:
 
 def green(text: str) -> str:
     return _colored_text(text, GREEN)
+
+
+def yellow(text: str) -> str:
+    return _colored_text(text, YELLOW)
 
 
 def blue(text: str) -> str:
