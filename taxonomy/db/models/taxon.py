@@ -347,6 +347,14 @@ class Taxon(BaseModel):
         nams = self.all_names()
         return [nam for nam in nams if pattern.match(nam.root_name)]
 
+    def print_names_like(self) -> None:
+        """Find names matching root_name within this taxon."""
+        root_name = models.Name.getter("root_name").get_one_key("root_name> ")
+        if not root_name:
+            return
+        for nam in self.names_like(root_name):
+            nam.display(full=False)
+
     def find_names(
         self, root_name: str, group: Group | None = None, fuzzy: bool = True
     ) -> list[models.Name]:
@@ -652,6 +660,7 @@ class Taxon(BaseModel):
             "edit_all_names": self.edit_all_names,
             "edit_all_children": self.edit_all_children,
             "make_parent_of_rank": self.make_parent_of_rank,
+            "names_like": self.print_names_like,
         }
 
     def add(self) -> Taxon | None:
