@@ -188,6 +188,8 @@ class NomenclatureStatus(enum.IntEnum):
     not_nominative_singular = 48
     # Justified emendation, available with its original author and date.
     as_emended = 49
+    # Regarded as unavailable by fiat
+    rejected_by_fiat = 50
 
     def requires_type(self) -> bool:
         """Whether a name of this status should have a type designated."""
