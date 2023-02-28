@@ -1207,7 +1207,7 @@ class Name(BaseModel):
             statuses.append(self.nomenclature_status)
         if statuses:
             out += f' ({", ".join(status.name for status in statuses)})'
-        if full and (self.original_name is not None or self.definition is not None):
+        if full:
             parts = []
             if self.original_name is not None:
                 parts.append(f"root: {self.root_name}")
@@ -1222,6 +1222,7 @@ class Name(BaseModel):
                 parts.append(f"name complex: {self.species_name_complex}")
             if self.definition is not None:
                 parts.append(str(self.definition))
+            parts.append(f"#{self.id}")
             out += " (%s)" % "; ".join(parts)
         if include_taxon:
             out += f" (={self.taxon})"
