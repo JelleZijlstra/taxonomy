@@ -593,6 +593,7 @@ class Name(BaseModel):
             "from_paper": self._from_paper_callback,
             "add_child": self._add_child_callback,
             "syn_from_paper": self._syn_from_paper_callback,
+            "variant_from_paper": self.variant_from_paper,
             "add_syn": self._add_syn_callback,
             "make_variant": self.make_variant,
             "add_variant": self.add_variant,
@@ -982,6 +983,15 @@ class Name(BaseModel):
             CONSTRUCTABLE_STATUS_TO_TAG[status](name=of_name, comment=comment or "")
         )
         self.nomenclature_status = status  # type: ignore
+
+    def variant_from_paper(self) -> Name | None:
+        root_name = Name.getter("root_name").get_one_key(prompt="root_name> ")
+        if root_name is None:
+            return None
+        paper = self.get_value_for_foreign_class("paper", Article)
+        if paper is None:
+            return None
+        return self.add_variant(root_name, paper=paper)
 
     def add_variant(
         self,
