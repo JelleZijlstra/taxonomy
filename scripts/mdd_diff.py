@@ -9,8 +9,8 @@ from pathlib import Path
 from typing import IO, TypedDict
 
 from taxonomy.db import helpers
-from taxonomy.db.constants import AgeClass, Rank, Status
-from taxonomy.db.models import CitationGroup, Taxon
+from taxonomy.db.constants import AgeClass, NamingConvention, Rank, Status
+from taxonomy.db.models import CitationGroup, Person, Taxon
 from taxonomy.db.models.tags import TaxonTag
 
 INCLUDED_AGES = (AgeClass.extant, AgeClass.recently_extinct)
@@ -195,6 +195,68 @@ def process_mdd_authority(text: str) -> str:
     return text
 
 
+def does_author_match(mdd_author: str, hesp_author: Person) -> bool:
+    if hesp_author.naming_convention is NamingConvention.pinyin:
+        expected = (
+            f"{hesp_author.family_name} {hesp_author.given_names.replace('-', '')}"
+        )
+        return mdd_author == expected
+    if hesp_author.naming_convention in (
+        NamingConvention.russian,
+        NamingConvention.ukrainian,
+    ):
+        return mdd_author == helpers.romanize_russian(hesp_author.family_name)
+    if mdd_author == hesp_author.family_name:
+        return True
+    if initials := hesp_author.get_initials():
+        initials_list = initials.split(".")
+        initials_list = [i for i in initials_list if i]
+        if (
+            mdd_author
+            == f"{''.join(f'{i}. ' for i in initials_list)}{hesp_author.family_name}"
+        ):
+            return True
+        # only first initial
+        if mdd_author == f"{initials_list[0]}. {hesp_author.family_name}":
+            return True
+    return False
+
+
+def compare_authors(taxon: Taxon, mdd_row: MddRow) -> Iterable[Difference]:
+    nam = taxon.base_name
+    mdd_id = mdd_row["id"]
+    raw_mdd_authority = mdd_row["authoritySpeciesAuthor"]
+    mdd_authority, *_ = raw_mdd_authority.split(" in ")
+    mdd_authors = re.split(r", (?:& )?| & ", mdd_authority)
+    hesp_authors = nam.get_authors()
+    hesp_authority = helpers.romanize_russian(nam.taxonomic_authority())
+    if len(mdd_authors) != len(hesp_authors):
+        yield Difference(
+            DifferenceKind.authority,
+            mdd=raw_mdd_authority,
+            hesp=hesp_authority,
+            mdd_id=mdd_id,
+            taxon=taxon,
+            comment=(
+                f"{len(mdd_authors)} authors in MDD, {len(hesp_authors)} authors in"
+                " Hesperomys"
+            ),
+        )
+        return
+    for i, (mdd_author, hesp_author) in enumerate(
+        zip(mdd_authors, hesp_authors, strict=True), start=1
+    ):
+        if not does_author_match(mdd_author, hesp_author):
+            yield Difference(
+                DifferenceKind.authority,
+                mdd=mdd_author,
+                hesp=str(hesp_author),
+                mdd_id=mdd_id,
+                taxon=taxon,
+                comment=f"Author {i}",
+            )
+
+
 def compare_single(taxon: Taxon, mdd_row: MddRow) -> Iterable[Difference]:
     mismatched_genus = False
     sci_name = mdd_row["sciName"].replace("_", " ")
@@ -245,15 +307,7 @@ def compare_single(taxon: Taxon, mdd_row: MddRow) -> Iterable[Difference]:
         )
     nam = taxon.base_name
 
-    hesp_authority = helpers.romanize_russian(nam.taxonomic_authority())
-    if hesp_authority != process_mdd_authority(mdd_row["authoritySpeciesAuthor"]):
-        yield Difference(
-            DifferenceKind.authority,
-            mdd=mdd_row["authoritySpeciesAuthor"],
-            hesp=hesp_authority,
-            mdd_id=mdd_id,
-            taxon=taxon,
-        )
+    yield from compare_authors(taxon, mdd_row)
 
     if str(nam.numeric_year()) != mdd_row["authoritySpeciesYear"]:
         yield Difference(
@@ -413,6 +467,18 @@ def generate_markdown_for_kind(
                     file=f,
                 )
                 print(f"    - {differences[0].to_markdown()}", file=f)
+        case DifferenceKind.authority:
+            by_mdd_author: dict[str, list[Difference]] = {}
+            for difference in differences:
+                if difference.comment and not difference.comment.startswith("Author "):
+                    author_key = "author count"
+                else:
+                    author_key = str(difference.mdd)
+                by_mdd_author.setdefault(author_key, []).append(difference)
+            for author, author_differences in sorted(by_mdd_author.items()):
+                print(f"- {author} ({len(author_differences)} differences)", file=f)
+                for difference in author_differences:
+                    print(f"    - {difference.to_markdown()}", file=f)
         case DifferenceKind.year:
             by_cg: dict[CitationGroup | None, list[Difference]] = {}
             for difference in differences:
@@ -489,13 +555,25 @@ def main() -> None:
         type=lambda k: DifferenceKind[k],
         help="Kinds to ignore",
     )
+    parser.add_argument(
+        "-s",
+        "--select",
+        nargs="*",
+        type=lambda k: DifferenceKind[k],
+        help="Output only these kinds",
+    )
     args = parser.parse_args()
+    ignore = set()
+    if args.select:
+        ignore |= {kind for kind in DifferenceKind if kind not in args.select}
+    if args.ignore:
+        ignore |= args.ignore
     run(
         mdd_file=Path(args.mdd_file),
         md_output=Path(args.md) if args.md else None,
         csv_output=Path(args.csv) if args.csv else None,
         add_ids=args.add_ids,
-        ignore_kinds=args.ignore or (),
+        ignore_kinds=list(ignore),
     )
 
 

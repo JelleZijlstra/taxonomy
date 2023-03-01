@@ -76,9 +76,12 @@ displaying names on this website.
 - _unspecified_: Default naming convention for unchecked names. These are generally
   treated similarly to Western names.
 - _general_: Catch-all naming convention for names from most European and some other
-  languages. This should perhaps be split up further; for example, Brazilians sometimes
-  have long lists of names where it is not clear which names are parts of the family
-  name and which are given names.
+  languages. These generally have a family name (consisting usually of one word, but
+  possibly of multiple words, separated by spaces or dashes) and one or more given
+  names. There are separate naming conventions for several other European languages that
+  have certain peculiarities, but usually these peculiarities are only relevant in rare
+  cases. Names from these languages that lack these peculiarities may be placed in the
+  _general_ convention.
 - _ancient_: This naming convention is used for ancient people without family names, and
   in practice also for some not-so-ancient people without a family name like
   [Queen Victoria](/h/49746).
@@ -93,14 +96,29 @@ Languages written in the Latin alphabet:
   rules apply only to Dutch people from the Netherlands; in Belgium these
   _tussenvoegsels_ are simply treated as part of the family name without special
   treatment.
+- _english_: English names allow suffixes like "Jr.", "III".
+- _english_peer_: For English peers, the suffix is the noble title (e.g., "3rd Earl of
+  Cranbrook").
+- _french_: Nothing too special, but the conventions around particles (e.g., in "de
+  Blainville") need further study.
+- _german_: German names may use particles like "von".
+- _hungarian_: Hungarian names conventionally put the family name first.
+- _italian_: Nothing too special.
+- _portuguese_: I need to understand Portuguese naming conventions better, but Brazilian
+  people sometimes seem to have a lot of names and it is not always clear which ones are
+  family names.
 - _spanish_: Spanish-speaking people have two family names, one deriving from the
   father's name and the other from the mother's. In practice the second family name is
   often omitted or abbreviated (e.g., "Albuja-V."). There is also variation in whether
   the two names are written as separate words or joined with a hyphen. My preference is
   to join them with a hyphen (e.g., [Elvira Martín-Suárez](/h/44465)), unless a
-  different spelling is consistently used for this person.
-- _german_: German names may use particles like "von".
-- _hungarian_: Hungarian names conventionally put the family name first.
+  different spelling is consistently used for this person. In some cases, the second
+  family name is usually omitted; in that case, it may be placed in the _suffix_ field.
+  Some Spanish-speaking people have a particle like "de" before their family name. For
+  some, like [Miguel de Cervantes](/h/71522), this particle is usually omitted when
+  referring to the person by their family name ("Cervantes"); for others, like
+  [Luis de la Torre](/h/73188), the particle is included when citing the family name
+  ("de la Torre").
 - _turkish_: Turkish names are separated because forms of the letter I are capitalized
   differently: I ı forms a separate pair from İ i.
 - _vietnamese_: Vietnamese names also write the family name first. Unlike most other

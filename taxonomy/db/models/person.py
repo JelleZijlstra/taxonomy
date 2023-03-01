@@ -39,13 +39,24 @@ ALLOWED_TUSSENVOEGSELS = {
         "von der",
     },
     NamingConvention.german: {"von", "von den", "von der", "zu"},
-    # French, Italian, Portuguese
-    NamingConvention.general: {"de", "du", "dos", "da", "de la", "del", "do", "von"},
-    NamingConvention.spanish: {"de", "del", "de la", "de los", "de las"},
+    NamingConvention.portuguese: {"dos", "da", "do", "de", "du"},
+    NamingConvention.french: {"de", "de la"},
+    NamingConvention.english_peer: {"de"},
+    NamingConvention.spanish: {"de", "de la", "de los", "del"},
 }
 ALLOWED_TUSSENVOEGSELS[NamingConvention.unspecified] = set.union(
     *ALLOWED_TUSSENVOEGSELS.values()
 ) | {"v.d."}
+ALLOWS_SUFFIXES = {
+    NamingConvention.ancient,
+    NamingConvention.spanish,
+    NamingConvention.unspecified,
+    NamingConvention.english,
+    NamingConvention.german,
+    NamingConvention.english_peer,
+    NamingConvention.french,
+    NamingConvention.portuguese,
+}
 UNCHECKED_TYPES = (
     PersonType.unchecked,
     PersonType.soft_redirect,
@@ -193,32 +204,39 @@ class Person(BaseModel):
                 parts.append(self.tussenvoegsel + " ")
             parts.append(self.family_name)
         if self.suffix:
-            if self.naming_convention is NamingConvention.ancient:
+            if self.naming_convention in (
+                NamingConvention.ancient,
+                NamingConvention.english,
+                NamingConvention.spanish,
+                NamingConvention.german,
+                NamingConvention.french,
+            ):
                 parts.append(" " + self.suffix)
             else:
                 parts.append(", " + self.suffix)
         return "".join(parts)
 
     def get_initials(self) -> str | None:
-        if self.initials:
-            return self.initials
-        if not self.given_names:
-            return None
-        names = self.given_names.split(" ")
+        if self.given_names:
+            names = self.given_names.split(" ")
 
-        def name_to_initial(name: str) -> str:
-            if not name:
-                return ""
-            elif "." in name:
-                return name
-            elif "-" in name:
-                return "-".join(name_to_initial(part) for part in name.split("-"))
-            elif name[0].isupper() or self.naming_convention is NamingConvention.pinyin:
-                return name[0] + "."
-            else:
-                return f" {name}"
+            def name_to_initial(name: str) -> str:
+                if not name:
+                    return ""
+                elif "." in name:
+                    return name
+                elif "-" in name:
+                    return "-".join(name_to_initial(part) for part in name.split("-"))
+                elif (
+                    name[0].isupper()
+                    or self.naming_convention is NamingConvention.pinyin
+                ):
+                    return name[0] + "."
+                else:
+                    return f" {name}"
 
-        return "".join(name_to_initial(name) for name in names)
+            return "".join(name_to_initial(name) for name in names)
+        return self.initials
 
     @classmethod
     def join_authors(cls, authors: Sequence[Person]) -> str:
@@ -432,6 +450,11 @@ class Person(BaseModel):
             allowed = ALLOWED_TUSSENVOEGSELS.get(self.naming_convention, set())
             if self.tussenvoegsel not in allowed:
                 yield f"{self}: disallowed tussenvoegsel {self.tussenvoegsel!r}"
+        if self.suffix and self.naming_convention not in ALLOWS_SUFFIXES:
+            yield (
+                f"{self}: suffix set for person with convention"
+                f" {self.naming_convention}"
+            )
         if self.initials and not self.given_names:
             if self.naming_convention is NamingConvention.russian:
                 grammar = parsing.russian_initials_pattern
@@ -446,8 +469,6 @@ class Person(BaseModel):
                 yield f"{self}: given_names set for organization"
             if self.initials:
                 yield f"{self}: initials set for organization"
-            if self.suffix:
-                yield f"{self}: suffix set for organization"
         elif self.naming_convention is NamingConvention.pinyin:
             if self.given_names:
                 if not parsing.matches_grammar(

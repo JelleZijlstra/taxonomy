@@ -9,7 +9,9 @@ import functools
 from collections.abc import Callable, Iterable
 from typing import Any
 
-import prompt_toolkit
+import prompt_toolkit.completion
+import prompt_toolkit.document
+import prompt_toolkit.history
 
 
 class EndOfInput(Exception):

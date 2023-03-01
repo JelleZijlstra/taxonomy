@@ -783,6 +783,11 @@ class NamingConvention(enum.IntEnum):
     mongolian = 17
     ukrainian = 18
     other = 19  # unusual language; we don't check the name for validity
+    english = 20
+    english_peer = 21
+    french = 22
+    italian = 23
+    portuguese = 24
 
 
 class PersonType(enum.IntEnum):

@@ -898,6 +898,7 @@ class BaseModel(Model):
             "lint": self.format,
             "print_character_names": self.print_character_names_for_field,
             "edit_reverse_rel": self.edit_reverse_rel,
+            "edit_derived_field": self.edit_derived_field,
         }
 
     def call(self) -> None:
@@ -982,6 +983,22 @@ class BaseModel(Model):
         if chosen is None:
             return
         for obj in getattr(self, chosen):
+            obj.display()
+            try:
+                obj.edit()
+            except getinput.StopException:
+                return
+
+    def edit_derived_field(self) -> None:
+        options = [field.name for field in self.derived_fields]
+        chosen = getinput.choose_one(options)
+        if chosen is None:
+            return
+        value = self.get_derived_field(chosen)
+        if not isinstance(value, list):
+            print(f"{value} is not a list")
+            return
+        for obj in value:
             obj.display()
             try:
                 obj.edit()
