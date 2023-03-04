@@ -29,9 +29,6 @@ please [let me know](mailto:jelle.zijlstra@gmail.com).
     & Groves cite Bauer AM, Gunther R, Klipfel M (1995) The herpetological contributions
     of Wilhelm C.H. Peters (1815–1883). Society for the Study of Amphibians and Reptiles
     in association with the Deutsche fur Herpetologie und Terrarienkunde.
-  - "see Schwarz, E., Sitzb. Ges. Naturf. Freunde, Berlin, for 1926, p. 29, 1927" might
-    have dates for _Sitzungsberichte_ publications (found in {Placentalia Africa (Allen
-    1939.pdf)}) p. 154
   - Jackson & Groves (2015: 493-494) have a useful list of references for dates
 
 ## Frontend
@@ -62,6 +59,8 @@ please [let me know](mailto:jelle.zijlstra@gmail.com).
 - Make the editor not allow leaving required (non-null) fields empty (especially enums)
 - Clean up duplicate tags (e.g. _Echinothrix_ Flower & Lydekker has the same
   UnjustifiedEmendation tag twice)
+- Add a way to add "name aliases", so we can present names in a way that is consistent
+  with the publication itself, while also tracking all references together.
 
 ## New or disabled checks
 
