@@ -217,6 +217,8 @@ class Person(BaseModel):
         return "".join(parts)
 
     def get_initials(self) -> str | None:
+        if self.initials:
+            return self.initials
         if self.given_names:
             names = self.given_names.split(" ")
 
@@ -236,7 +238,7 @@ class Person(BaseModel):
                     return f" {name}"
 
             return "".join(name_to_initial(name) for name in names)
-        return self.initials
+        return None
 
     @classmethod
     def join_authors(cls, authors: Sequence[Person]) -> str:
@@ -269,6 +271,8 @@ class Person(BaseModel):
         return query.filter(Person.type != PersonType.deleted)
 
     def get_redirect_target(self) -> Person | None:
+        if self.type is PersonType.alias:
+            return None
         return self.target
 
     def is_invalid(self) -> bool:
@@ -444,6 +448,9 @@ class Person(BaseModel):
                 yield f"{self}: unchecked but year of birth set"
             if self.death:
                 yield f"{self}: unchecked but year of death set"
+        # For aliases, we allow setting both to control the initials displayed.
+        if self.type is not PersonType.alias and self.given_names and self.initials:
+            yield f"{self}: has both given names and initials"
         if self.naming_convention is NamingConvention.other:
             return
         if self.tussenvoegsel:
@@ -492,7 +499,11 @@ class Person(BaseModel):
                 self.family_name.lower(), parsing.pinyin_family_name_lowercased_pattern
             ):
                 yield f"{self}: invalid pinyin in family name: {self.family_name!r}"
-
+        elif self.naming_convention is NamingConvention.ancient:
+            if self.given_names:
+                yield f"{self}: should be a mononym but has given names"
+            if self.initials:
+                yield f"{self}: should be a mononym but has initials"
         else:
             if self.given_names:
                 if self.naming_convention is NamingConvention.russian:
@@ -513,6 +524,10 @@ class Person(BaseModel):
                 grammar = parsing.ukrainian_family_name_pattern
             elif self.naming_convention is NamingConvention.burmese:
                 grammar = parsing.burmese_names_pattern
+            elif self.naming_convention is NamingConvention.spanish:
+                grammar = parsing.spanish_family_name_pattern
+            elif self.naming_convention is NamingConvention.portuguese:
+                grammar = parsing.portuguese_family_name_pattern
             else:
                 grammar = parsing.family_name_pattern
             if not parsing.matches_grammar(self.family_name, grammar):
@@ -675,6 +690,11 @@ class Person(BaseModel):
             "hard": self.make_hard_redirect,
             "print_character_names": self.print_character_names,
         }
+
+    def get_aliases(self) -> Iterable[Person]:
+        return Person.select_valid().filter(
+            Person.target == self, Person.type == PersonType.alias
+        )
 
     def print_character_names(self) -> None:
         print("=== family name ===")

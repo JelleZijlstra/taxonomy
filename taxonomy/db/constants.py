@@ -796,6 +796,7 @@ class PersonType(enum.IntEnum):
     soft_redirect = 3
     hard_redirect = 4
     deleted = 5
+    alias = 6
 
 
 class FillDataLevel(enum.IntEnum):

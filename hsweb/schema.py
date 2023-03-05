@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import enum
 import re
+from collections.abc import Callable
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, cast
@@ -31,7 +32,7 @@ from taxonomy.adt import ADT
 from taxonomy.config import get_options
 from taxonomy.db.constants import CommentKind
 from taxonomy.db.derived_data import DerivedField
-from taxonomy.db.models import Article, Location, Name, NameComment, Period
+from taxonomy.db.models import Article, Location, Name, NameComment, Period, Person
 from taxonomy.db.models.base import ADTField, BaseModel, EnumField
 
 from . import search
@@ -307,6 +308,32 @@ def locations_resolver(
     return ret
 
 
+def _get_aliases(
+    parent: ObjectType, info: ResolveInfo, first: int = 10, after: str | None = None
+) -> Any:
+    model = get_model(Person, parent, info)
+    query = model.get_aliases()
+    if after:
+        offset = int(base64.b64decode(after).split(b":")[1]) + 1
+        query = query.limit(first + offset + 1)
+    else:
+        query = query.limit(first + 1)
+    return query
+
+
+def person_aliases_resolver(
+    parent: ObjectType, info: ResolveInfo, first: int = 10, after: str | None = None
+) -> list[ObjectType]:
+    object_type = build_object_type_from_model(Person)
+    query = _get_aliases(parent, info, first, after)
+    cache = info.context["request"]
+    ret = []
+    for obj in query:
+        ret.append(object_type(id=obj.id, oid=obj.id))
+        cache[(Person.call_sign, obj.id)] = obj
+    return ret
+
+
 def num_locations_resolver(
     parent: ObjectType, info: ResolveInfo, first: int = 10, after: str | None = None
 ) -> int:
@@ -378,20 +405,25 @@ def _decode_after(after: str | None) -> int:
         return 0
 
 
-def make_location_connection() -> type[Connection]:
-    return build_connection(build_object_type_from_model(Location))
+def make_connection(model_cls: type[BaseModel]) -> Callable[[], type[Connection]]:
+    return lambda: build_connection(build_object_type_from_model(model_cls))
 
 
 CUSTOM_FIELDS = {
     Period: {
         "locations": ConnectionField(
-            make_location_connection, resolver=locations_resolver
+            make_connection(Location), resolver=locations_resolver
         ),
         "num_locations": Int(required=True, resolver=num_locations_resolver),
     },
     Name: {"numeric_year": Int(required=False, resolver=numeric_year_resolver_name)},
     Article: {
         "numeric_year": Int(required=False, resolver=numeric_year_resolver_article)
+    },
+    Person: {
+        "aliases": ConnectionField(
+            make_connection(Person), resolver=person_aliases_resolver
+        )
     },
 }
 

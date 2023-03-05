@@ -10,6 +10,8 @@ exports released on Zenodo.
   - Add the ability to associate type catalogs and collection databases with Collection
     objects (e.g., [MNHN](/c/MNHN)).
   - Add the ability to link to collection database entries for type specimens.
+  - Support name aliases, in order to provide more familiar citation forms for some
+    names.
 - Database
   - Incorporate some data from the African Chiroptera Database (thanks to Victor Van
     Cakenberghe).

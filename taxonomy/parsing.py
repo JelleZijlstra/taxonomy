@@ -16,7 +16,7 @@ class Element:
         raise NotImplementedError
 
     def compile(self) -> Pattern[str]:
-        return re.compile(f"^{self.to_regex()}$")
+        return re.compile(f"^({self.to_regex()})$")
 
     def __or__(self, other: Element) -> OneOf:
         return OneOf([self, other])
@@ -231,11 +231,13 @@ special_initials = {
 }
 initial = ((L("Mc") + latin_upper) | OneOf.from_strs(special_initials) | upper) + L(".")
 name_infixes = {
+    "auf ",
     "al ",
     "d'",
     "da ",
     "dal ",
     "das ",
+    "des ",
     "de ",
     "de la ",
     "de las ",
@@ -300,23 +302,43 @@ name_prefixes = {
     "Wolde",
     "O",
 }
-name_connectors = {"-", " i ", " y ", " e ", "-i-", "'"}
+name_connectors = {"-", " i ", " y ", " e ", "-i-", "'", "-del-"}
 name = (
     Optional(OneOf.from_strs(name_prefixes)) + upper + OneOrMore(lower)
 ) | OneOf.from_strs(["ffolliott", "LuAnn"])
-spanish_second_name = (latin_upper | L("Á")) + L(".")
-compound_name = name + ZeroOrMore(
-    OneOf.from_strs(name_connectors) + (name | spanish_second_name)
-)
+compound_name = name + ZeroOrMore(OneOf.from_strs(name_connectors) + name)
 names = compound_name + ZeroOrMore(
     L(" ") + Optional(OneOf.from_strs(name_prefixes)) + compound_name
 )
 special_family_names = {"MacC.", "S.D.W."}
-family_name = (
+family_name = (Optional(OneOf.from_strs(name_prefixes)) + names) | OneOf.from_strs(
+    special_family_names
+)
+
+portuguese_name_infixes = {" da ", "-da-", "-dos-", " e ", "-e-", "-"}
+portuguese_name = upper + OneOrMore(lower)
+portuguese_compound_name = portuguese_name + ZeroOrMore(
+    OneOf.from_strs(portuguese_name_infixes) + portuguese_name
+)
+portuguese_names = portuguese_compound_name + ZeroOrMore(
+    L(" ") + portuguese_compound_name
+)
+portuguese_family_name = portuguese_names + Optional(L("-Jr."))
+
+spanish_name = Optional(OneOf.from_strs(name_prefixes)) + upper + OneOrMore(lower)
+spanish_second_name = (latin_upper | L("Á")) + L(".")
+spanish_compound_name = spanish_name + ZeroOrMore(
+    OneOf.from_strs(name_connectors) + (spanish_name | spanish_second_name)
+)
+spanish_names = spanish_compound_name + ZeroOrMore(
+    L(" ") + Optional(OneOf.from_strs(name_prefixes)) + spanish_compound_name
+)
+spanish_family_name = (
     Optional(OneOf.from_strs(name_prefixes))
-    + names
+    + spanish_names
     + Optional(L(" ") + spanish_second_name)
-) | OneOf.from_strs(special_family_names)
+)
+
 nickname = L('"') + name + L('"')
 given_names = (
     Optional(initials + L(" "))
@@ -364,7 +386,7 @@ pinyin_syllable = (
 )
 pinyin_given_names = pinyin_syllable + Optional(L("-") + pinyin_syllable)
 pinyin_family_name = pinyin_syllable | OneOf.from_strs(
-    ["Ouyang", "Jinggong", "Jiangzuo"]
+    ["ouyang", "jinggong", "jiangzuo", "lv", "fucha"]
 )
 
 chinese_lower = C(sorted(unicode_range("a", "z") | {"ü"}))
@@ -410,6 +432,9 @@ burmese_names = burmese_name + ZeroOrMore(L(" ") + burmese_name)
 initials_pattern = initials.compile()
 family_name_pattern = family_name.compile()
 given_names_pattern = given_names.compile()
+
+spanish_family_name_pattern = spanish_family_name.compile()
+portuguese_family_name_pattern = portuguese_family_name.compile()
 
 russian_family_name_pattern = russian_family_name.compile()
 russian_given_names_pattern = russian_given_names.compile()

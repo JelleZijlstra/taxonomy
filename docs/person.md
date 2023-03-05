@@ -186,6 +186,11 @@ written in the person's native language, with all diacritics included. Similarly
 given names should generally be included, although occasionally some rarely used names
 can be omitted, especially for continental European names.
 
+In cases where using a single canonical name could lead to confusion, a _name alias_ can
+be used, which points to the canonical name but uses a different form. For example,
+Cranbrook's early work was published under the name [Lord Medway](/h/82298), so these
+articles are given under that alias.
+
 Names are currently written in the Latin alphabet in the database, except for a few
 Russian names written in Cyrillic. It would perhaps be more consistent with the general
 commitment to use names in their native forms to list names in other non-Latin writing
