@@ -196,28 +196,35 @@ def process_mdd_authority(text: str) -> str:
 
 
 def does_author_match(mdd_author: str, hesp_author: Person) -> bool:
-    if hesp_author.naming_convention is NamingConvention.pinyin:
+    if hesp_author.naming_convention in (
+        NamingConvention.pinyin,
+        NamingConvention.chinese,
+    ):
         expected = (
-            f"{hesp_author.family_name} {hesp_author.given_names.replace('-', '')}"
+            f"{hesp_author.family_name} {hesp_author.given_names.replace('-', '').lower().title()}"
         )
         return mdd_author == expected
     if hesp_author.naming_convention in (
         NamingConvention.russian,
         NamingConvention.ukrainian,
     ):
-        return mdd_author == helpers.romanize_russian(hesp_author.family_name)
+        if mdd_author == helpers.romanize_russian(hesp_author.family_name):
+            return True
     if mdd_author == hesp_author.family_name:
         return True
+    if hesp_author.tussenvoegsel:
+        if mdd_author == f"{hesp_author.tussenvoegsel} {hesp_author.family_name}":
+            return True
     if initials := hesp_author.get_initials():
-        initials_list = initials.split(".")
-        initials_list = [i for i in initials_list if i]
+        initials_list = re.split(r"(?<=\.)(?!-)| ", initials)
+        initials_list = [i for i in initials_list if i and i.endswith(".")]
         if (
             mdd_author
-            == f"{''.join(f'{i}. ' for i in initials_list)}{hesp_author.family_name}"
+            == f"{''.join(f'{i} ' for i in initials_list)}{hesp_author.family_name}"
         ):
             return True
         # only first initial
-        if mdd_author == f"{initials_list[0]}. {hesp_author.family_name}":
+        if mdd_author == f"{initials_list[0]} {hesp_author.family_name}":
             return True
     return False
 
