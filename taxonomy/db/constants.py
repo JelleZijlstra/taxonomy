@@ -290,6 +290,7 @@ class NomenclatureStatus(enum.IntEnum):
                 cls.subsequent_usage,
                 cls.not_intended_as_a_scientific_name,
                 cls.not_nominative_singular,
+                cls.rejected_by_fiat,
             ],
             # Spelling issues that produce unavailable names.
             [cls.incorrect_subsequent_spelling, cls.incorrect_original_spelling],

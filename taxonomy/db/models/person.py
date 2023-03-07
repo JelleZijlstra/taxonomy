@@ -14,6 +14,7 @@ from taxonomy.apis.cloud_search import SearchField, SearchFieldType
 from ... import adt, events, getinput, parsing
 from .. import helpers, models
 from ..constants import NamingConvention, PersonType
+from ..derived_data import DerivedField, LazyType, load_derived_data
 from ..openlibrary import get_author
 from .base import (
     ADTField,
@@ -72,6 +73,40 @@ class PersonLevel(enum.IntEnum):
     has_convention = 5
     redirect = 6
     checked = 7
+
+
+def get_derived_field_with_aliases(
+    name: str, lazy_model_cls: Callable[[], type[BaseModel]], base_field: str
+) -> DerivedField[list[Any]]:
+    def compute_all() -> dict[int, list[BaseModel]]:
+        person_id_to_aliases: dict[int, list[int]] = {}
+        for alias in Person.select_valid().filter(Person.type == PersonType.alias):
+            if alias.target is None:
+                continue
+            person_id_to_aliases.setdefault(alias.target.id, []).append(alias.id)
+        out: dict[int, list[BaseModel]] = defaultdict(list)
+        model_data = load_derived_data().get(Person.call_sign, {})
+        candidates = set(person_id_to_aliases) | {
+            oid for oid, data in model_data.items() if base_field in data
+        }
+        for oid in candidates:
+            data = []
+            if base_data := model_data.get(oid, {}).get(base_field):
+                data += base_data
+            if oid in person_id_to_aliases:
+                for alias_id in person_id_to_aliases[oid]:
+                    if alias_data := model_data.get(alias_id, {}).get(base_field):
+                        data += alias_data
+            if data:
+                out[oid] = data
+        return out
+
+    return DerivedField(
+        name,
+        LazyType(lambda: list[lazy_model_cls()]),  # type: ignore
+        compute_all=compute_all,
+        pull_on_miss=False,
+    )
 
 
 class Person(BaseModel):
@@ -148,6 +183,18 @@ class Person(BaseModel):
             1,
             skip_filter=True,
         ),
+        get_derived_field_with_aliases(
+            "patronyms_all", lambda: models.Name, "patronyms"
+        ),
+        get_derived_field_with_aliases(
+            "collected_all", lambda: models.Name, "collected"
+        ),
+        get_derived_field_with_aliases("involved_all", lambda: models.Name, "involved"),
+        get_derived_field_with_aliases(
+            "articles_all", lambda: models.Article, "articles"
+        ),
+        get_derived_field_with_aliases("books_all", lambda: models.Book, "books"),
+        get_derived_field_with_aliases("names_all", lambda: models.Name, "names"),
     ]
 
     def get_search_dicts(self) -> list[dict[str, Any]]:
