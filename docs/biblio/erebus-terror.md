@@ -9,8 +9,10 @@ R.N., F.R.S., during the years 1839 to 1843_ from 1844 to 1875.
 A few of the confusing aspects are:
 
 - There was about a 30-year gap between the publications of the parts of the treatise on
-  "The seals of the Southen Hemisphere", with pages 1–8 being published around 1844 and
-  pages 9–12 around 1874. However, some authors cite 1844 for the whole treatise.
+  "The seals of the Southen Hemisphere", with pages 1–8 being published in 1844 and
+  pages 9–12 in 1875. However, some authors cite 1844 for the whole treatise.
+- Similarly, while some of the plates for the work were published in the 1840s, others
+  were not published until 1875.
 - Bibliographic sources ({Animalia-Erebus & Terror dates (Evenhuis 2015).pdf};
   {Animalia-Erebus & Terror bibliography (Rosove 2021).pdf}) disagree on the division
   into parts and the dates of publication of the work.
@@ -30,12 +32,13 @@ divisible into three logical divisions:
   [_Ommatophoca rossii_](/t/Ommatophoca_rossii).
 - "Miscellanea", pages 12a through 12d, concerning terrestrial mammals mostly from
   Australia.
-- "On the cetaceous animals", pages 13 through 53, a full review of the Cetacea.
+- "On the cetaceous animals", pages 13 through 53, a full review of the Cetacea that
+  introduced numerous names that are still considered valid.
 
 Two differently numbered series of plates:
 
 - Main series: plates 1 through 29, where plates 1 through 17 concerns seals and plates
-  18 through 29 concern terrestrial mammals. Plates 11 through 13, 23, and 24 are
+  18 through 29 concern terrestrial mammals. Plates 11, 12, 13, 23, and 24 are
   apparently missing.
 - For whales: plates 1 through 37, plus 32 _bis_, and an unnumbered plate of _Balaena
   antipodarum_
