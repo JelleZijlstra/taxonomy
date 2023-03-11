@@ -552,7 +552,9 @@ def get_adt_list(
             return tuple(out)
         elif member.isnumeric() or (member.startswith("-") and member[1:].isnumeric()):
             index = int(member)
-            if index >= len(out):
+            try:
+                existing_member = out[index]
+            except IndexError:
                 print(f"{index} is out of range")
             else:
                 existing_member = out[index]
