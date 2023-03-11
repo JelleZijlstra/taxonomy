@@ -190,6 +190,7 @@ Short notes on several tricky areas of bibliography:
 
 - [_Beiträge zur Paläontologie_](/docs/biblio/beitraege)
 - [_Comptes Rendus_](/docs/biblio/comptes-rendus)
+- [Zoology of the _Erebus_ and _Terror_](/docs/biblio/erebus-terror)
 - [_Histoire naturelle des mammifères_](/docs/biblio/histnatmammiferes)
 - [Publications of the Muséum national d'Histoire naturelle](/docs/biblio/mnhn)
 - [_Neues Jahrbuch_](/docs/biblio/neues-jahrbuch)
