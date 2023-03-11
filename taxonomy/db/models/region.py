@@ -80,6 +80,7 @@ class Region(BaseModel):
             "display_collections": self.display_collections,
             "display_citation_groups": self.display_citation_groups,
             "display_periods": self.display_periods,
+            "display_type_localities": lambda: self.display(full=False, locations=True),
         }
 
     def get_general_localities(self) -> list[models.Location]:
