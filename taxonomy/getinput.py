@@ -557,7 +557,6 @@ def get_adt_list(
             except IndexError:
                 print(f"{index} is out of range")
             else:
-                existing_member = out[index]
                 if existing_member._has_args:
                     out[index] = _get_adt_member(
                         type(existing_member),  # type: ignore
