@@ -58,6 +58,7 @@ Other aspects of the database:
 - [Scope of the database](/docs/scope)
 - [Publication dates](/docs/dating)
 - [Data sources](/docs/data-sources)
+- [Scores](/docs/scores)
 
 Source code:
 

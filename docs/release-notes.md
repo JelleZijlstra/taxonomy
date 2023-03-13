@@ -6,16 +6,24 @@ exports released on Zenodo.
 
 # Unreleased
 
+- Database
+  - Incorporate some data from the African Chiroptera Database (thanks to Victor Van
+    Cakenberghe).
+  - Incorporate many missed names from the Mammal Diversity Database (with more to come)
+  - Add [SMF](/c/SMF) mammalian type specimens from a type catalog I located.
+  - Various new data, including some additional original citations and a few new
+    species.
 - Backend
   - Add the ability to associate type catalogs and collection databases with Collection
     objects (e.g., [MNHN](/c/MNHN)).
   - Add the ability to link to collection database entries for type specimens.
   - Support name aliases, in order to provide more familiar citation forms for some
-    names.
-- Database
-  - Incorporate some data from the African Chiroptera Database (thanks to Victor Van
-    Cakenberghe).
-  - Add [SMF](/c/SMF) mammalian type specimens from a type catalog I located.
+    names. This feature is not yet widely used.
+- Frontend
+  - Add bibliographic notes on
+    [_Zoology of the Erebus and Terror_](/docs/biblio/erebus-terror) and
+    [_Histoire naturelle des Mammifères_](/docs/biblio/histnatmammiferes).
+  - Add new pages on [data sources](/docs/data-sources) and [scores](/docs/scores).
 
 # 23.2.0 (February 19, 2023)
 
