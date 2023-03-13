@@ -2,7 +2,6 @@ import configparser
 import functools
 import json
 import os
-import socket
 import sys
 from collections.abc import Mapping
 from pathlib import Path
@@ -75,9 +74,8 @@ def parse_config_file(filename: Path) -> Options:
     else:
         base_path = filename.parent
         db_filename = parse_path(section, "db_filename", base_path)
-        # Hack for non-essential computer.
-        if "zijlistra" in socket.gethostname().lower():
-            db_filename = db_filename.parent / "taxonomy2.db"
+        if "TAXONOMY_DB_FILENAME" in os.environ:
+            db_filename = db_filename.parent / os.environ["TAXONOMY_DB_FILENAME"]
         return Options(
             new_path=parse_path(section, "new_path", base_path),
             library_path=parse_path(section, "library_path", base_path),
