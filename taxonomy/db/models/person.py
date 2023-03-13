@@ -736,6 +736,7 @@ class Person(BaseModel):
             "soft": self.make_soft_redirect,
             "hard": self.make_hard_redirect,
             "print_character_names": self.print_character_names,
+            "names_missing_field": self.names_missing_field,
         }
 
     def get_aliases(self) -> Iterable[Person]:
@@ -814,6 +815,23 @@ class Person(BaseModel):
             )
             if new_target is not None:
                 verbatim_to_target[nam.verbatim_citation] = new_target
+
+    def names_missing_field(self, field: str | None = None) -> None:
+        nams = self.get_derived_field("names")
+        if not nams:
+            return
+        if field is None:
+            field = models.Name.prompt_for_field_name()
+        if field is None:
+            return
+        nams = [
+            nam
+            for nam in nams
+            if (not nam.is_invalid()) and field in nam.get_empty_required_fields()
+        ]
+        nams = sorted(nams, key=lambda nam: nam.sort_key())
+        for nam in nams:
+            nam.display()
 
     def move_all_references(self, target: Person | None = None) -> None:
         if target is None:

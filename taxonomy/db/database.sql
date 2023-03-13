@@ -324,7 +324,8 @@ CREATE TABLE `specimen` (
     `location_text` VARCHAR(255),
     `date` VARCHAR(255),
     `description` VARCHAR(2047),
-    `link` VARCHAR(255) DEFAULT NULL
+    `link` VARCHAR(255) DEFAULT NULL,
+    `tags` text default null
 );
 
 CREATE TABLE `specimen_comment` (

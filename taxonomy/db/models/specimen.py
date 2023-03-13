@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import datetime
+import enum
 import time
+from collections import defaultdict
 
 from peewee import CharField, ForeignKeyField, IntegerField, TextField
 
-from ... import events, getinput
-from .base import BaseModel
+from ... import adt, events, getinput
+from .base import ADTField, BaseModel
 from .region import Region
 from .taxon import Taxon
 
@@ -24,6 +26,7 @@ class Specimen(BaseModel):
     date = CharField()
     description = CharField()
     link = CharField()
+    tags = ADTField(lambda: SpecimenTag, null=True)
 
     class Meta:
         db_table = "specimen"
@@ -74,6 +77,39 @@ class Specimen(BaseModel):
         callbacks = super().get_adt_callbacks()
         return {**callbacks, "add_comment": self.add_comment}
 
+    def edit(self) -> None:
+        self.fill_field("tags")
+
+    def total_num_specimens(self) -> int:
+        if not self.tags:
+            return 0
+        return sum(t.count for t in self.tags if isinstance(t, SpecimenTag.TaxonCount))
+
+    def get_kind(self) -> KindOfFind | None:
+        if not self.tags:
+            return None
+        for tag in self.tags:
+            if isinstance(tag, SpecimenTag.FindKind):
+                return tag.kind
+        return None
+
+    def get_taxa(self) -> set[str]:
+        if not self.tags:
+            return set()
+        return {t.taxon for t in self.tags if isinstance(t, SpecimenTag.TaxonCount)}
+
+    @classmethod
+    def taxon_report(cls) -> None:
+        counts: dict[str, int] = defaultdict(int)
+        for spec in cls.select_valid():
+            if not spec.tags:
+                continue
+            for tag in spec.tags:
+                if isinstance(tag, SpecimenTag.TaxonCount):
+                    counts[tag.taxon] += tag.count
+        for taxon, count in sorted(counts.items()):
+            print(f"{count} {taxon}")
+
 
 class SpecimenComment(BaseModel):
     call_sign = "JZCO"
@@ -113,3 +149,14 @@ class SpecimenComment(BaseModel):
             datetime.datetime.fromtimestamp(self.date).strftime("%b %d, %Y %H:%M:%S"),
         ]
         return f'{self.text} ({"; ".join(components)})'
+
+
+class KindOfFind(enum.IntEnum):
+    bottle = 1
+    picked_up = 2
+    professional = 3
+
+
+class SpecimenTag(adt.ADT):
+    TaxonCount(count=int, taxon=str, tag=1)  # type: ignore
+    FindKind(kind=KindOfFind, tag=2)  # type: ignore
