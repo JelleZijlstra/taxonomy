@@ -2701,6 +2701,30 @@ def find_patronym_clusters() -> None:
             nam.display(full=False)
 
 
+@command
+def generate_summary_paragraph() -> str:
+    name_count = Name.select_valid().count()
+    mammalia = Taxon.getter("valid_name")("Mammalia")
+    assert mammalia is not None
+    mammal_count = len(mammalia.all_names())
+    location_count = models.Location.select_valid().count()
+    region_count = models.Region.select_valid().count()
+    period_count = Period.select_valid().count()
+    su_count = models.StratigraphicUnit.select_valid().count()
+    art_count = Article.select_valid().count()
+    tl_count = Name.select_valid().filter(Name.type_locality != None).count()
+    spec_count = Name.select_valid().filter(Name.type_specimen != None).count()
+    template = f"""- {name_count} [names](/docs/name), of which {mammal_count} are [mammals](/t/Mammalia)
+- {location_count} [locations](/docs/location) grouped into {region_count} [regions](/docs/region), {period_count}
+  [periods](/docs/period), and {su_count} [stratigraphic units](/docs/stratigraphic-unit)
+- {art_count} [citations](/docs/article)
+- Type localities for {tl_count} names
+- Type specimens for {spec_count} names
+"""
+    print(template)
+    return template
+
+
 def run_shell() -> None:
     # GC does bad things on my current setup for some reason
     gc.disable()

@@ -15,19 +15,19 @@ Precambrian fossils into the database).
 
 To cite this project, use:
 
-- Zijlstra, J.S. 2023. Hesperomys Project (Version 23.2.0) [Data set]. Zenodo.
-  [doi:10.5281/zenodo.7654755](https://doi.org/10.5281/zenodo.7654755)
+- Zijlstra, J.S. 2023. Hesperomys Project (Version 23.3.0) [Data set]. Zenodo.
+  [doi:10.5281/zenodo.7730954](https://doi.org/10.5281/zenodo.7730954)
 
 # Size
 
-As of February 2023, the database contains:
+As of March 2023, the database contains:
 
-- 95585 [names](/docs/name), of which 75703 are [mammals](/t/Mammalia)
-- 10015 [locations](/docs/location) grouped into 4430 [regions](/docs/region), 367
-  [periods](/docs/period), and 2055 [stratigraphic units](/docs/stratigraphic-unit)
-- 52983 [citations](/docs/article)
-- Type localities for 56362 names
-- Type specimens for 38458 names
+- 96055 [names](/docs/name), of which 76147 are [mammals](/t/Mammalia)
+- 10039 [locations](/docs/location) grouped into 4430 [regions](/docs/region), 367
+  [periods](/docs/period), and 2059 [stratigraphic units](/docs/stratigraphic-unit)
+- 53547 [citations](/docs/article)
+- Type localities for 56524 names
+- Type specimens for 38724 names
 
 # Documentation
 

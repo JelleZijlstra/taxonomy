@@ -4,7 +4,9 @@ Version numbers correspond to Git tags in the
 [backend](https://github.com/JelleZijlstra/taxonomy/) repositories, and to database
 exports released on Zenodo.
 
-# Unreleased
+# 23.3.0 (March 13, 2023)
+
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.7730954.svg)](https://doi.org/10.5281/zenodo.7730954)
 
 - Database
   - Incorporate some data from the African Chiroptera Database (thanks to Victor Van
@@ -18,7 +20,7 @@ exports released on Zenodo.
     objects (e.g., [MNHN](/c/MNHN)).
   - Add the ability to link to collection database entries for type specimens.
   - Support name aliases, in order to provide more familiar citation forms for some
-    names. This feature is not yet widely used.
+    personal names. This feature is not yet widely used.
 - Frontend
   - Add bibliographic notes on
     [_Zoology of the Erebus and Terror_](/docs/biblio/erebus-terror) and
@@ -26,6 +28,8 @@ exports released on Zenodo.
   - Add new pages on [data sources](/docs/data-sources) and [scores](/docs/scores).
 
 # 23.2.0 (February 19, 2023)
+
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.7654755.svg)](https://doi.org/10.5281/zenodo.7654755)
 
 This is the first tagged release. It comes with a number of major improvements:
 
