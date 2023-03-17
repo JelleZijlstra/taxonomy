@@ -300,8 +300,12 @@ def check_for_lsid(nam: Name, cfg: LintConfig) -> Iterable[str]:
 
 
 def check_year(nam: Name, cfg: LintConfig) -> Iterable[str]:
-    if nam.year is not None and not helpers.is_valid_date(nam.year):
+    if nam.year is None:
+        return
+    if not helpers.is_valid_date(nam.year):
         yield f"{nam}: has invalid year {nam.year!r}"
+    if helpers.is_date_range(nam.year):
+        yield f"{nam}: year is a range"
 
 
 def check_year_matches(nam: Name, cfg: LintConfig) -> Iterable[str]:

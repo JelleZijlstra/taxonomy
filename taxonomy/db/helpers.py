@@ -703,11 +703,19 @@ def get_date_object(date: str | None) -> datetime.date:
         return _DEFAULT_DATE
 
 
+def is_date_range(date: str) -> bool:
+    match = _DATE_REGEX.fullmatch(date)
+    if match is None:
+        return False
+    return bool(match.group("end_year"))
+
+
 def is_more_specific_date(left: str | None, right: str | None) -> bool:
     if left is None:
         return right is not None
     return (
         right is not None
+        and not is_date_range(right)
         and is_valid_date(left)
         and is_valid_date(right)
         and left != right

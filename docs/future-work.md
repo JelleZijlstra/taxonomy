@@ -40,6 +40,9 @@ please [let me know](mailto:jelle.zijlstra@gmail.com).
     - Need to worry about filling up the disk
 - UI indication that names belong to a group with high-quality vs. low-quality coverage
   (so users don't expect insect families to list all genera)
+- Improve sorting
+  - On article pages, sort names by page_described
+  - On citation group pages, sort names and articles by year + page described
 
 ## Backend
 
@@ -82,6 +85,10 @@ please [let me know](mailto:jelle.zijlstra@gmail.com).
 - Check that taxa don't have parents of the same rank (with some restrictions)
   - Noticed that _Sminthopsis aitkeni_ was placed within _S. fuliginosa_ but not ranked
     as a subspecies.
+- Check that "fill_data_level" is perfect for all recent articles
+  - Add a way to ignore incomplete articles (e.g. ones I have only the abstract for)
+  - Make sure to ignore invalid names (e.g. redirects)
+  - Threshold should be at least at {Protodoris nov.pdf}
 
 ## New data not currently included
 

@@ -4,6 +4,18 @@ Version numbers correspond to Git tags in the
 [backend](https://github.com/JelleZijlstra/taxonomy/) repositories, and to database
 exports released on Zenodo.
 
+# Unreleased
+
+- Database
+- Backend
+  - Further checks for publication dates. Distinguish between "parts" (separately
+    published portions of a larger work) and "chapters" (simultaneously published
+    portions of a larger work, usually with different authorship). Enforce that chapters
+    have the same publication date as their enclosing work. Allow ranges of years (e.g.,
+    "1848-1852") only for works composed of parts, not for names or for other kinds of
+    works.
+- Frontend
+
 # 23.3.0 (March 13, 2023)
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.7730954.svg)](https://doi.org/10.5281/zenodo.7730954)

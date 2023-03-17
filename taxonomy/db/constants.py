@@ -731,7 +731,7 @@ class CommentKind(enum.IntEnum):
 
 class ArticleType(enum.IntEnum):
     ERROR = 0
-    CHAPTER = 1
+    CHAPTER = 1  # published simultaneously with its enclosing work
     BOOK = 2
     THESIS = 3  # kind of degree in "series", university in "publisher"
     WEB = 5
@@ -739,6 +739,7 @@ class ArticleType(enum.IntEnum):
     SUPPLEMENT = 8  # ID of target in "parent", kind of supplement in "title"
     JOURNAL = 9
     REDIRECT = 10
+    PART = 11  # separately published part of a larger work
 
 
 class ArticleKind(enum.IntEnum):

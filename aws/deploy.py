@@ -112,8 +112,8 @@ def restart(options: Options, kill: bool = True, port: int = 80) -> None:
     run_ssh(
         options,
         (
-            f"sudo nohup {PYTHON} -m hsweb -p {port} -b ~/hesperomys"
-            " >/home/ec2-user/hesperomys.log 2>&1 &"
+            f"TAXONOMY_CONFIG_FILE=~/taxonomy/taxonomy.ini sudo nohup {PYTHON} -m hsweb"
+            f" -p {port} -b ~/hesperomys >/home/ec2-user/hesperomys.log 2>&1 &"
         ),
     )
 

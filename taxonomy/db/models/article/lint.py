@@ -174,10 +174,10 @@ def _unique_dates(dates: Iterable[str]) -> set[str]:
 
 
 def infer_publication_date(art: Article) -> tuple[str | None, list[str]]:
-    if parent := art.parent:
-        parent_inferred = infer_publication_date(parent)
-        if parent_inferred is not None:
-            return parent_inferred
+    if art.type in (ArticleType.CHAPTER, ArticleType.SUPPLEMENT) and (
+        parent := art.parent
+    ):
+        return parent.year, []
     if date := infer_publication_date_from_issue_date(art):
         return date, []
     return infer_publication_date_from_tags(art.tags)
@@ -222,6 +222,10 @@ def check_year(art: Article, cfg: LintConfig) -> Iterable[str]:
 
     if art.year != "undated" and not helpers.is_valid_date(art.year):
         yield f"invalid year {art.year!r}"
+    if helpers.is_date_range(art.year) and not any(
+        art.get_tags(art.tags, ArticleTag.MustUseChildren)
+    ):
+        yield f"must have MustUseChildren tag because date is a range: {art.year}"
 
     inferred, messages = infer_publication_date(art)
     yield from messages
