@@ -89,6 +89,7 @@ _TYPE_TO_FIELDS = {
     ArticleType.WEB: ["author_tags", "year", "title", "url"],
     ArticleType.MISCELLANEOUS: ["author_tags", "year", "title", "url"],
 }
+_TYPE_TO_FIELDS[ArticleType.PART] = _TYPE_TO_FIELDS[ArticleType.CHAPTER]
 
 
 class LsFile(NamedTuple):
@@ -124,6 +125,8 @@ class Article(BaseModel):
     _location = CharField(
         db_column="location"
     )  # geographical location published (deprecated; use citation_group)
+
+    # For chapters/parts, may be used for a fuller indication of the contents.
     pages = CharField(null=True)  # number of pages in book
     misc_data = CharField()  # miscellaneous data
 
