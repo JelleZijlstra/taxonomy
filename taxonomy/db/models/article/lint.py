@@ -174,10 +174,9 @@ def _unique_dates(dates: Iterable[str]) -> set[str]:
 
 
 def infer_publication_date(art: Article) -> tuple[str | None, list[str]]:
-    if art.type in (ArticleType.CHAPTER, ArticleType.SUPPLEMENT) and (
-        parent := art.parent
-    ):
-        return parent.year, []
+    if art.type in (ArticleType.CHAPTER, ArticleType.SUPPLEMENT):
+        if parent := art.parent:
+            return parent.year, []
     if date := infer_publication_date_from_issue_date(art):
         return date, []
     return infer_publication_date_from_tags(art.tags)

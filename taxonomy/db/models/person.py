@@ -348,6 +348,8 @@ class Person(BaseModel):
                 file.write(indented_onset + repr(tag) + "\n")
         if full:
             for field in self.derived_fields:
+                if field.name.endswith("_all"):
+                    continue
                 refs = self.get_sorted_derived_field(field.name)
                 if refs:
                     file.write(f"{indented_onset}{field.name.title()} ({len(refs)})\n")
@@ -686,6 +688,8 @@ class Person(BaseModel):
     def num_references(self) -> dict[str, int]:
         num_refs = {}
         for field in self.derived_fields:
+            if field.name.endswith("_all"):
+                continue
             refs = self.get_raw_derived_field(field.name)
             if refs is not None:
                 num_refs[field.name] = len(refs)
