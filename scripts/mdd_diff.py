@@ -492,16 +492,13 @@ def generate_markdown_for_kind(
                 cg: CitationGroup | None
                 if difference.taxon is None:
                     cg = None
-                elif difference.taxon.base_name.original_citation is None:
-                    cg = difference.taxon.base_name.citation_group
                 else:
-                    cite = difference.taxon.base_name.original_citation
-                    if cite.citation_group is None:
-                        cg = CitationGroup.getter("name")("book")
-                    else:
-                        cg = cite.citation_group
+                    cg = difference.taxon.base_name.get_citation_group()
                 by_cg.setdefault(cg, []).append(difference)
-            for cg, cg_differences in by_cg.items():
+            for cg, cg_differences in sorted(
+                by_cg.items(),
+                key=lambda pair: pair[0].name if pair[0] is not None else "",
+            ):
                 print(f"- {cg} ({len(cg_differences)} differences)", file=f)
                 for difference in sorted(
                     cg_differences, key=lambda diff: diff.mdd or ""

@@ -603,6 +603,16 @@ class Article(BaseModel):
             self.fill_field(field)
         return True
 
+    def get_citation_group(self) -> CitationGroup | None:
+        """Return a citation group to use for this work."""
+        if self.citation_group is not None:
+            return self.citation_group
+        if self.parent is not None:
+            return self.parent.get_citation_group()
+        if self.type is ArticleType.BOOK:
+            return CitationGroup.getter("name")("book")
+        return None
+
     def get_path(self) -> Path:
         """Returns the full path to this file."""
         if not self.isfile():

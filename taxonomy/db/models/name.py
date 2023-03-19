@@ -943,6 +943,13 @@ class Name(BaseModel):
         else:
             return None
 
+    def get_citation_group(self) -> models.CitationGroup | None:
+        if self.citation_group is not None:
+            return self.citation_group
+        if self.original_citation is not None:
+            return self.original_citation.get_citation_group()
+        return None
+
     def get_type_locality_country(self) -> models.Region | None:
         tl = self.type_locality
         if tl is None:
