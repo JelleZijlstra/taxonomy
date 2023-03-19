@@ -825,4 +825,4 @@ def run_linters(
                     new_tags.append(tag)
             art.tags = new_tags  # type: ignore
         else:
-            yield f"has unused IgnoreLint tags {', '.join(unused)}"
+            yield f"{art}: has unused IgnoreLint tags {', '.join(unused)}"

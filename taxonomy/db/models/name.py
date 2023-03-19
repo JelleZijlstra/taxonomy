@@ -1569,8 +1569,7 @@ class Name(BaseModel):
             return
         if self.status is Status.removed:
             return
-        for linter in models.name_lint.LINTERS:
-            yield from linter(self, cfg)
+        yield from models.name_lint.run_linters(self, cfg)
         if not self.check_authors():
             yield f"{self}: discrepancy in authors"
 
@@ -2307,6 +2306,8 @@ class TypeTag(adt.ADT):
     IncorrectGrammar(text=str, tag=43)  # type: ignore
     LSIDName(text=str, tag=44)  # type: ignore
     TypeSpecimenLink(url=str, tag=45)  # type: ignore
+    # Ignore lints with a specific label
+    IgnoreLint(label=str, comment=str, tag=46)  # type: ignore
 
 
 SOURCE_TAGS = (

@@ -3,9 +3,10 @@
 Lint steps for Names.
 
 """
+import functools
 import json
 import re
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Generator, Iterable, Iterator
 from datetime import datetime
 from typing import TypeVar
 
@@ -33,6 +34,40 @@ T = TypeVar("T")
 ADTT = TypeVar("ADTT", bound=adt.ADT)
 
 Linter = Callable[[Name, LintConfig], Iterable[str]]
+IgnorableLinter = Callable[[Name, LintConfig], Generator[str, None, set[str]]]
+
+LINTERS = []
+DISABLED_LINTERS = []
+
+
+def get_ignored_lints(nam: Name) -> set[str]:
+    tags = nam.get_tags(nam.type_tags, TypeTag.IgnoreLint)
+    return {tag.label for tag in tags}
+
+
+def make_linter(
+    label: str, *, disabled: bool = False
+) -> Callable[[Linter], IgnorableLinter]:
+    def decorator(linter: Linter) -> IgnorableLinter:
+        @functools.wraps(linter)
+        def wrapper(nam: Name, cfg: LintConfig) -> Generator[str, None, set[str]]:
+            issues = list(linter(nam, cfg))
+            if not issues:
+                return set()
+            ignored_lints = get_ignored_lints(nam)
+            if label in ignored_lints:
+                return {label}
+            for issue in issues:
+                yield f"{nam}: {issue} [{label}]"
+            return set()
+
+        if disabled:
+            DISABLED_LINTERS.append(wrapper)
+        else:
+            LINTERS.append(wrapper)
+        return wrapper
+
+    return decorator
 
 
 def replace_arg(tag: ADTT, arg: str, val: object) -> ADTT:
@@ -49,6 +84,7 @@ def get_tag_fields_of_type(tag: adt.ADT, typ: type[T]) -> Iterable[tuple[str, T]
             yield arg_name, val
 
 
+@make_linter("type_tags")
 def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if not nam.type_tags:
         return
@@ -151,13 +187,14 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
             nam.type_tags = tags  # type: ignore
 
 
+@make_linter("type_designations", disabled=True)
 def check_type_designations_present(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.genus_type_kind is TypeSpeciesDesignation.subsequent_designation:
         if not any(
             tag.type == nam.type
             for tag in nam.get_tags(nam.type_tags, TypeTag.TypeDesignation)
         ):
-            yield f"{nam}: missing a reference for type species designation"
+            yield "missing a reference for type species designation"
     if (
         nam.species_type_kind is SpeciesGroupType.lectotype
         and nam.type_specimen is not None
@@ -166,7 +203,7 @@ def check_type_designations_present(nam: Name, cfg: LintConfig) -> Iterable[str]
             tag.lectotype == nam.type_specimen
             for tag in nam.get_tags(nam.type_tags, TypeTag.LectotypeDesignation)
         ):
-            yield f"{nam}: missing a reference for lectotype designation"
+            yield "missing a reference for lectotype designation"
     if (
         nam.species_type_kind is SpeciesGroupType.neotype
         and nam.type_specimen is not None
@@ -175,15 +212,16 @@ def check_type_designations_present(nam: Name, cfg: LintConfig) -> Iterable[str]
             tag.neotype == nam.type_specimen
             for tag in nam.get_tags(nam.type_tags, TypeTag.NeotypeDesignation)
         ):
-            yield f"{nam}: missing a reference for neotype designation"
+            yield "missing a reference for neotype designation"
 
 
+@make_linter("tags")
 def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
     """Looks at all tags set on names and applies related changes."""
     try:
         tags = nam.tags
     except Exception:
-        yield f"{nam}: could not deserialize tags"
+        yield "could not deserialize tags"
         return
     if not tags:
         return
@@ -212,8 +250,7 @@ def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
             senior_name = tag.name
             if nam.group != senior_name.group:
                 yield (
-                    f"{nam}: is of a different group than supposed senior name"
-                    f" {senior_name}"
+                    f"is of a different group than supposed senior name {senior_name}"
                 )
             if senior_name.nomenclature_status is NomenclatureStatus.subsequent_usage:
                 for senior_name_tag in senior_name.get_tags(
@@ -221,12 +258,12 @@ def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 ):
                     senior_name = senior_name_tag.name
             if nam.get_date_object() < senior_name.get_date_object():
-                yield f"{nam}: predates supposed senior name {senior_name}"
+                yield f"predates supposed senior name {senior_name}"
             # TODO apply this check to species too by handling gender endings correctly.
             if nam.group is not Group.species:
                 if nam.root_name != tag.name.root_name:
                     yield (
-                        f"{nam}: has a different root name than supposed senior name"
+                        "has a different root name than supposed senior name"
                         f" {senior_name}"
                     )
         elif isinstance(
@@ -244,7 +281,7 @@ def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 if isinstance(tag, tag_cls):
                     maybe_adjust_status(nam, status, tag)
             if nam.get_date_object() < tag.name.get_date_object():
-                yield f"{nam}: predates supposed original name {tag.name}"
+                yield f"predates supposed original name {tag.name}"
             if not isinstance(tag, NameTag.SubsequentUsageOf):
                 if nam.taxon != tag.name.taxon:
                     yield f"{nam} is not assigned to the same name as {tag.name}"
@@ -263,17 +300,17 @@ def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
         # haven't handled TakesPriorityOf, NomenOblitum, MandatoryChangeOf
 
 
+@make_linter("required_tags")
 def check_required_tags(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.nomenclature_status not in STATUS_TO_TAG:
         return
     tag_cls = STATUS_TO_TAG[nam.nomenclature_status]
     tags = list(nam.get_tags(nam.tags, tag_cls))
     if not tags:
-        yield (
-            f"{nam}: has status {nam.nomenclature_status.name} but no corresponding tag"
-        )
+        yield (f"has status {nam.nomenclature_status.name} but no corresponding tag")
 
 
+@make_linter("lsid")
 def check_for_lsid(nam: Name, cfg: LintConfig) -> Iterable[str]:
     # ICZN Art. 8.5.1: ZooBank is relevant to availability only starting in 2012
     if (
@@ -287,9 +324,9 @@ def check_for_lsid(nam: Name, cfg: LintConfig) -> Iterable[str]:
     zoobank_data = get_zoobank_data(nam.corrected_original_name)
     if zoobank_data is None:
         return
-    message = f"{nam}: Inferred Zoobank data: {zoobank_data}"
+    message = f"Inferred Zoobank data: {zoobank_data}"
     if cfg.autofix:
-        print(message)
+        print(f"{nam}: {message}")
         nam.add_type_tag(TypeTag.LSIDName(zoobank_data.name_lsid))
         nam.original_citation.add_tag(
             # We assume it's present until we find evidence to the contrary
@@ -299,15 +336,17 @@ def check_for_lsid(nam: Name, cfg: LintConfig) -> Iterable[str]:
         yield message
 
 
+@make_linter("year")
 def check_year(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.year is None:
         return
     if not helpers.is_valid_date(nam.year):
-        yield f"{nam}: has invalid year {nam.year!r}"
+        yield f"has invalid year {nam.year!r}"
     if helpers.is_date_range(nam.year):
-        yield f"{nam}: year is a range"
+        yield "year is a range"
 
 
+@make_linter("year_matches")
 def check_year_matches(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.original_citation is not None and nam.year != nam.original_citation.year:
         if cfg.autofix and helpers.is_more_specific_date(
@@ -317,7 +356,7 @@ def check_year_matches(nam: Name, cfg: LintConfig) -> Iterable[str]:
             nam.year = nam.original_citation.year
         else:
             yield (
-                f"{nam}: year mismatch: {nam.year} (name) vs."
+                f"year mismatch: {nam.year} (name) vs."
                 f" {nam.original_citation.year} (article)"
             )
 
@@ -334,22 +373,23 @@ ATTRIBUTES_BY_GROUP = {
 }
 
 
+@make_linter("disallowed_attributes")
 def check_disallowed_attributes(nam: Name, cfg: LintConfig) -> Iterable[str]:
     for field, groups in ATTRIBUTES_BY_GROUP.items():
         if nam.group not in groups:
             value = getattr(nam, field)
             if value is not None:
-                yield f"{nam}: should not have attribute {field} (value {value})"
+                yield f"should not have attribute {field} (value {value})"
     if (
         nam.species_name_complex is not None
         and not nam.nomenclature_status.requires_name_complex()
     ):
         message = (
-            f"{nam}: is of status {nam.nomenclature_status.name} and should not have a"
+            f"is of status {nam.nomenclature_status.name} and should not have a"
             " name complex"
         )
         if cfg.autofix:
-            print(message)
+            print(f"{nam}: {message}")
             nam.add_data(
                 "species_name_complex",
                 nam.species_name_complex.id,
@@ -361,9 +401,10 @@ def check_disallowed_attributes(nam: Name, cfg: LintConfig) -> Iterable[str]:
 
 
 def _make_con_messsage(nam: Name, text: str) -> str:
-    return f"{nam}: corrected original name {nam.corrected_original_name!r} {text}"
+    return f"corrected original name {nam.corrected_original_name!r} {text}"
 
 
+@make_linter("corrected_original_name")
 def check_corrected_original_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
     """Check that corrected_original_names are correct."""
     if nam.corrected_original_name is None:
@@ -417,9 +458,10 @@ def check_corrected_original_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
 
 
 def _make_rn_message(nam: Name, text: str) -> str:
-    return f"{nam}: root name {nam.root_name!r} {text}"
+    return f"root name {nam.root_name!r} {text}"
 
 
+@make_linter("root_name")
 def check_root_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
     """Check that root_names are correct."""
     if nam.nomenclature_status.permissive_corrected_original_name():
@@ -446,7 +488,7 @@ def _check_rn_matches_original(
         nam, f"does not match root_name {nam.root_name!r} ({reason})"
     )
     if cfg.autofix:
-        print(message)
+        print(f"{nam}: {message}")
         nam.root_name = con_root
     else:
         yield message
@@ -497,7 +539,7 @@ def _check_species_name_gender(nam: Name, cfg: LintConfig) -> Iterable[str]:
             ),
         )
         if cfg.autofix:
-            print(message)
+            print(f"{nam}: {message}")
             comment = (
                 f"Name changed from {nam.root_name!r} to {expected_form!r} to agree in"
                 f" gender with {genus_gender.name} genus {genus} ({{n#{genus.id}}})"
@@ -508,6 +550,7 @@ def _check_species_name_gender(nam: Name, cfg: LintConfig) -> Iterable[str]:
             yield message
 
 
+@make_linter("family_root_name")
 def check_family_root_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.group is not Group.family or nam.type is None:
         return
@@ -527,16 +570,17 @@ def check_family_root_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
         return
     for stripped in helpers.name_with_suffixes_removed(nam.root_name):
         if stripped == stem_name or stripped + "i" == stem_name:
-            print(f"Autocorrecting root name: {nam.root_name} -> {stem_name}")
+            print(f"{nam}: Autocorrecting root name: {nam.root_name} -> {stem_name}")
             if cfg.autofix:
                 nam.root_name = stem_name
             break
     if nam.root_name != stem_name:
         if nam.has_type_tag(TypeTag.IncorrectGrammar):
             return
-        yield f"{nam}: Stem mismatch: {nam.root_name} vs. {stem_name}"
+        yield f"Stem mismatch: {nam.root_name} vs. {stem_name}"
 
 
+@make_linter("type_taxon")
 def correct_type_taxon(nam: Name, cfg: LintConfig) -> Iterable[str]:
     """Check that a name's type belongs to a child of the name's taxon."""
     if nam.group not in (Group.genus, Group.family):
@@ -555,23 +599,22 @@ def correct_type_taxon(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if expected_taxon is None:
         return
     if nam.taxon != expected_taxon:
-        message = f"{nam}: expected taxon to be {expected_taxon} not {nam.taxon}"
+        message = f"expected taxon to be {expected_taxon} not {nam.taxon}"
         if cfg.autofix and expected_taxon.is_child_of(nam.taxon):
-            print(message)
+            print(f"{nam}: {message}")
             nam.taxon = expected_taxon
         else:
             yield message
 
 
+@make_linter("verbatim")
 def clean_up_verbatim(nam: Name, cfg: LintConfig) -> Iterable[str]:
-    if (
-        nam.group in (Group.family, Group.genus)
-        and nam.verbatim_type is not None
-        and (nam.type is not None or "type" not in nam.get_required_fields())
+    if nam.verbatim_type is not None and (
+        nam.type is not None or "type" not in nam.get_required_fields()
     ):
-        message = f"{nam}: cleaning up verbatim type: {nam.type}, {nam.verbatim_type}"
+        message = f"cleaning up verbatim type: {nam.type}, {nam.verbatim_type}"
         if cfg.autofix:
-            print(message)
+            print(f"{nam}: {message}")
             nam.add_data("verbatim_type", nam.verbatim_type, concat_duplicate=True)
             nam.verbatim_type = None
         else:
@@ -581,23 +624,20 @@ def clean_up_verbatim(nam: Name, cfg: LintConfig) -> Iterable[str]:
         and nam.verbatim_type is not None
         and nam.type_specimen is not None
     ):
-        message = (
-            f"{nam}: cleaning up verbatim type: {nam.type_specimen},"
-            f" {nam.verbatim_type}"
-        )
+        message = f"cleaning up verbatim type: {nam.type_specimen}, {nam.verbatim_type}"
         if cfg.autofix:
-            print(message)
+            print(f"{nam}: {message}")
             nam.add_data("verbatim_type", nam.verbatim_type, concat_duplicate=True)
             nam.verbatim_type = None
         else:
             yield message
     if nam.verbatim_citation is not None and nam.original_citation is not None:
         message = (
-            f"{nam}: cleaning up verbatim citation: {nam.original_citation.name},"
+            f"cleaning up verbatim citation: {nam.original_citation.name},"
             f" {nam.verbatim_citation}"
         )
         if cfg.autofix:
-            print(message)
+            print(f"{nam}: {message}")
             nam.add_data(
                 "verbatim_citation", nam.verbatim_citation, concat_duplicate=True
             )
@@ -606,21 +646,20 @@ def clean_up_verbatim(nam: Name, cfg: LintConfig) -> Iterable[str]:
             yield message
     if nam.citation_group is not None and nam.original_citation is not None:
         message = (
-            f"{nam}: cleaning up citation group: {nam.original_citation.name},"
+            f"cleaning up citation group: {nam.original_citation.name},"
             f" {nam.citation_group}"
         )
         if cfg.autofix:
-            print(message)
+            print(f"{nam}: {message}")
             nam.citation_group = None
         else:
             yield message
 
 
+@make_linter("status")
 def check_correct_status(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.status.is_base_name() and nam != nam.taxon.base_name:
-        yield (
-            f"{nam}: is of status {nam.status!r} and should be base name of {nam.taxon}"
-        )
+        yield (f"is of status {nam.status!r} and should be base name of {nam.taxon}")
 
 
 def _find_as_emended_by(nam: Name) -> Name | None:
@@ -640,18 +679,18 @@ def _check_names_match(
     nam: Name, other: Name, *, include_page_described: bool
 ) -> Iterable[str]:
     if nam.author_tags != other.author_tags:
-        yield f"{nam}: authors do not match {other}"
+        yield f"authors do not match {other}"
     if nam.year != other.year:
-        yield f"{nam}: year does not match {other}"
+        yield f"year does not match {other}"
     if nam.original_citation != other.original_citation:
-        yield f"{nam}: original_citation does not match {other}"
+        yield f"original_citation does not match {other}"
     if nam.verbatim_citation != other.verbatim_citation:
-        yield f"{nam}: verbatim_citation does not match {other}"
+        yield f"verbatim_citation does not match {other}"
     if nam.citation_group != other.citation_group:
-        yield f"{nam}: citation_group does not match {other}"
+        yield f"citation_group does not match {other}"
     if include_page_described:
         if nam.page_described != other.page_described:
-            yield f"{nam}: page_described does not match {other}"
+            yield f"page_described does not match {other}"
 
 
 def _check_as_emended_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
@@ -660,10 +699,10 @@ def _check_as_emended_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
         NomenclatureStatus.preoccupied,
         NomenclatureStatus.as_emended,
     ):
-        yield f"{nam}: expected status to be as_emended"
+        yield "expected status to be as_emended"
     as_emended_target = nam.get_tag_target(NameTag.AsEmendedBy)
     if as_emended_target is None:
-        message = f"{nam}: as_emended without an AsEmendedBy tag"
+        message = "as_emended without an AsEmendedBy tag"
         if not cfg.autofix:
             yield message
             return
@@ -671,50 +710,47 @@ def _check_as_emended_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
         if target is None:
             yield message + " (could not infer target)"
             return
-        print(f"{message} (inferred target {target})")
+        print(f"{nam}: {message} (inferred target {target})")
         nam.add_tag(NameTag.AsEmendedBy(name=target, comment=""))
         return
     if as_emended_target.taxon != nam.taxon:
-        yield f"{nam}: target {as_emended_target} does not belong to the same taxon"
+        yield f"target {as_emended_target} does not belong to the same taxon"
     if as_emended_target.root_name != nam.root_name:
         yield (
-            f"{nam}: root name {nam.root_name} does not match target"
+            f"root name {nam.root_name} does not match target"
             f" {as_emended_target.root_name}"
         )
     if (
         as_emended_target.nomenclature_status
         is not NomenclatureStatus.justified_emendation
     ):
-        yield f"{nam}: target {as_emended_target} is not a justified_emendation"
+        yield f"target {as_emended_target} is not a justified_emendation"
         return
     ios = as_emended_target.get_tag_target(NameTag.JustifiedEmendationOf)
     if ios is None:
         yield (
-            f"{nam}: as_emended target {as_emended_target} lacks a justified"
-            " emendation tag"
+            f"as_emended target {as_emended_target} lacks a justified emendation tag"
         )
         return
     if ios.nomenclature_status is not NomenclatureStatus.incorrect_original_spelling:
-        yield f"{nam}: incorrect original spelling {ios} is not marked as such"
+        yield f"incorrect original spelling {ios} is not marked as such"
         return
     yield from _check_names_match(nam, ios, include_page_described=True)
     original = ios.get_tag_target(NameTag.IncorrectOriginalSpellingOf)
     if original != nam:
-        yield (
-            f"{nam}: incorrect original spelling traces back to {original}, not this"
-            " name"
-        )
+        yield (f"incorrect original spelling traces back to {original}, not this name")
 
 
 def _check_correctable_ios(nam: Name, cfg: LintConfig) -> Iterable[str]:
     """Check an incorrect original spelling that should be part of a triple."""
     ios_target = nam.get_tag_target(NameTag.IncorrectOriginalSpellingOf)
     if ios_target is None:
-        yield f"{nam}: missing IncorrectOriginalSpellingOf tag"
+        yield "missing IncorrectOriginalSpellingOf tag"
         return
     yield from _check_as_emended_name(ios_target, cfg)
 
 
+@make_linter("justified_emendation")
 def check_justified_emendations(nam: Name, cfg: LintConfig) -> Iterable[str]:
     """Check for issues around justified emendations.
 
@@ -733,15 +769,15 @@ def check_justified_emendations(nam: Name, cfg: LintConfig) -> Iterable[str]:
     elif nam.nomenclature_status is NomenclatureStatus.justified_emendation:
         target = nam.get_tag_target(NameTag.JustifiedEmendationOf)
         if target is None:
-            yield f"{nam}: justified_emendation without a JustifiedEmendationOf tag"
+            yield "justified_emendation without a JustifiedEmendationOf tag"
             return
         if target.taxon != nam.taxon:
-            yield f"{nam}: target {target} does not belong to the same taxon"
+            yield f"target {target} does not belong to the same taxon"
         if target.nomenclature_status is NomenclatureStatus.incorrect_original_spelling:
             # Now we must have an IOS/JE/as_emended triple.
             if target.root_name == nam.root_name:
                 yield (
-                    f"{nam}: supposed incorrect spelling {target} has identical root"
+                    f"supposed incorrect spelling {target} has identical root"
                     f" name {nam.root_name}"
                 )
             yield from _check_correctable_ios(target, cfg)
@@ -752,19 +788,18 @@ def check_justified_emendations(nam: Name, cfg: LintConfig) -> Iterable[str]:
             NomenclatureStatus.partially_suppressed,
             NomenclatureStatus.fully_suppressed,
         ):
-            yield f"{nam}: emended name {target} has unexpected status"
+            yield f"emended name {target} has unexpected status"
         else:
             # Else it should be a justified emendation for something straightforward
             # (e.g., removing diacritics), so the CON and root_name should match.
             if nam.root_name != target.root_name:
                 yield (
-                    f"{nam}: root name {nam.root_name} does not match emended name"
-                    f" {target}"
+                    f"root name {nam.root_name} does not match emended name {target}"
                 )
     elif nam.nomenclature_status is NomenclatureStatus.incorrect_original_spelling:
         ios_target = nam.get_tag_target(NameTag.IncorrectOriginalSpellingOf)
         if ios_target is None:
-            yield f"{nam}: missing IncorrectOriginalSpellingOf tag"
+            yield "missing IncorrectOriginalSpellingOf tag"
             return
         # Incorrect original spellings come in two kinds:
         # - Where there are multiple spellings in the original publication, and one is
@@ -781,11 +816,13 @@ def check_justified_emendations(nam: Name, cfg: LintConfig) -> Iterable[str]:
             yield from _check_names_match(nam, ios_target, include_page_described=False)
 
 
+@make_linter("autoset_original_rank")
 def autoset_original_rank(nam: Name, cfg: LintConfig) -> Iterable[str]:
     nam.autoset_original_rank(dry_run=not cfg.autofix)
     return []
 
 
+@make_linter("corrected_original_name")
 def autoset_corrected_original_name(
     nam: Name, cfg: LintConfig, aggressive: bool = False
 ) -> Iterable[str]:
@@ -796,53 +833,57 @@ def autoset_corrected_original_name(
     inferred = nam.infer_corrected_original_name(aggressive=aggressive)
     if inferred:
         message = (
-            f"{nam}: inferred corrected_original_name to be {inferred!r} from"
+            f"inferred corrected_original_name to be {inferred!r} from"
             f" {nam.original_name!r}"
         )
         if cfg.autofix:
-            print(message)
+            print(f"{nam}: {message}")
             nam.corrected_original_name = inferred
         else:
             yield message
     else:
-        yield (
-            f"{nam}: could not infer corrected original name from {nam.original_name!r}"
-        )
+        yield (f"could not infer corrected original name from {nam.original_name!r}")
 
 
+@make_linter("fill_data_level")
 def check_fill_data_level(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.original_citation is None:
         return
     level, reason = nam.fill_data_level()
     if level > FillDataLevel.missing_required_fields:
         return
-    if nam.original_citation.has_tag(ArticleTag.NeedsTranslation):
+    if (
+        nam.original_citation.has_tag(ArticleTag.NeedsTranslation)
+        or nam.original_citation.kind is ArticleKind.no_copy
+    ):
         return
-    yield f"{nam}: missing basic data: {reason}"
+    yield f"missing basic data: {reason}"
 
 
+@make_linter("citation_group")
 def check_citation_group(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.citation_group is None or nam.year is None:
         return
     if message := nam.citation_group.is_year_in_range(nam.numeric_year()):
-        yield f"{nam}: {message}"
+        yield message
 
 
+@make_linter("page_described")
 def check_matches_citation(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.original_citation is None:
         return
     art = nam.original_citation
     if nam.page_described and nam.page_described.isnumeric():
-        if art.type in (ArticleType.JOURNAL, ArticleType.CHAPTER):
+        if art.type in (ArticleType.JOURNAL, ArticleType.CHAPTER, ArticleType.PART):
             start_page = art.numeric_start_page()
             end_page = art.numeric_end_page()
             if start_page and end_page:
-                page_range = range(art.numeric_start_page(), art.numeric_end_page() + 1)
+                page_range = range(start_page, end_page + 1)
                 if nam.numeric_page_described() not in page_range:
                     yield (
-                        f"{nam}: {nam.page_described} is not in {page_range} for {art}"
+                        f"{nam.page_described} is not in"
+                        f" {start_page}–{end_page} for {art}"
                     )
-    # TODO check year
 
 
 _JG2015 = "{Australia (Jackson & Groves 2015).pdf}"
@@ -850,6 +891,7 @@ _JG2015_RE = re.compile(rf"\[From {re.escape(_JG2015)}: [^\[\]]+ \[([A-Za-z\s\d]
 _JG2015_RE2 = re.compile(rf" \[([A-Za-z\s\d]+)\]\ \[from {re.escape(_JG2015)}\]")
 
 
+@make_linter("extract_date_from_verbatim")
 def extract_date_from_verbatim(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.original_citation is None or not nam.data:
         return
@@ -872,7 +914,7 @@ def extract_date_from_verbatim(nam: Name, cfg: LintConfig) -> Iterable[str]:
             parsed = parse_date(date)
             if parsed is None:
                 if not date.startswith("Published before "):
-                    yield f"{nam}: cannot parse date: {verbatim}"
+                    yield f"cannot parse date: {verbatim}"
             else:
                 yield from _maybe_add_publication_date(nam, parsed, date, _JG2015, cfg)
 
@@ -888,9 +930,9 @@ def _maybe_add_publication_date(
     )
     if tag in (article.tags or ()):
         return
-    message = f'{nam}: inferred date for {article} from raw date "{raw_date}": {parsed}'
+    message = f'inferred date for {article} from raw date "{raw_date}": {parsed}'
     if cfg.autofix:
-        print(message)
+        print(f"{nam}: {message}")
         article.add_tag(tag)
     else:
         yield message
@@ -907,6 +949,7 @@ USNM_RGX = re.compile(
 )
 
 
+@make_linter("extract_date_from_structured_quote")
 def extract_date_from_structured_quotes(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if not nam.original_citation:
         return
@@ -932,7 +975,7 @@ def extract_date_from_structured_quotes(nam: Name, cfg: LintConfig) -> Iterable[
         match = USNM_RGX.search(cite)
         if not match:
             yield (
-                f"{nam}: cannot match verbatim citation (ref {nam.original_citation}):"
+                f"cannot match verbatim citation (ref {nam.original_citation}):"
                 f" {cite!r}"
             )
             continue
@@ -941,7 +984,7 @@ def extract_date_from_structured_quotes(nam: Name, cfg: LintConfig) -> Iterable[
                 match.group("year"), match.group("month"), match.group("day")
             )
         except ValueError as e:
-            yield f"{nam}: invalid date in {cite!r}: {e}"
+            yield f"invalid date in {cite!r}: {e}"
             continue
         yield from _maybe_add_publication_date(
             nam, date, cite, f"{{{comment.source.name}}}", cfg
@@ -966,44 +1009,45 @@ def parse_date(date_str: str) -> str | None:
     return None
 
 
+@make_linter("data")
 def check_data(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if not nam.data:
         return
     try:
         data = json.loads(nam.data)
     except json.JSONDecodeError:
-        yield f"{nam}: invalid data field: {nam.data!r}"
+        yield f"invalid data field: {nam.data!r}"
         return
     if not isinstance(data, dict):
-        yield f"{nam}: invalid data field: {nam.data!r}"
+        yield f"invalid data field: {nam.data!r}"
         return
     if "verbatim_citation" in data:
         if not isinstance(data["verbatim_citation"], (str, list)):
-            yield f"{nam}: invalid verbatim_citation data: {data['verbatim_citation']}"
+            yield f"invalid verbatim_citation data: {data['verbatim_citation']}"
 
 
-LINTERS: list[Linter] = [
-    check_type_tags_for_name,
-    check_required_tags,
-    check_tags_for_name,
-    check_year,
-    check_disallowed_attributes,
-    check_corrected_original_name,
-    check_root_name,
-    check_family_root_name,
-    correct_type_taxon,
-    clean_up_verbatim,
-    check_correct_status,
-    check_justified_emendations,
-    autoset_original_rank,
-    autoset_corrected_original_name,
-    check_citation_group,
-    check_matches_citation,
-    check_data,
-    extract_date_from_verbatim,
-    extract_date_from_structured_quotes,
-    check_year_matches,
-]
-DISABLED_LINTERS: list[Linter] = [
-    check_type_designations_present  # too many missing (about 580)
-]
+def run_linters(
+    nam: Name, cfg: LintConfig, *, include_disabled: bool = False
+) -> Iterable[str]:
+    if include_disabled:
+        linters = [*LINTERS, *DISABLED_LINTERS]
+    else:
+        linters = [*LINTERS]
+
+    used_ignores = set()
+    for linter in linters:
+        used_ignores |= yield from linter(nam, cfg)
+    actual_ignores = get_ignored_lints(nam)
+    unused = actual_ignores - used_ignores
+    if unused:
+        if cfg.autofix:
+            tags = nam.type_tags or ()
+            new_tags = []
+            for tag in tags:
+                if isinstance(tag, TypeTag.IgnoreLint) and tag.label in unused:
+                    print(f"{nam}: removing unused IgnoreLint tag: {tag}")
+                else:
+                    new_tags.append(tag)
+            nam.type_tags = new_tags  # type: ignore
+        else:
+            yield f"{nam}: has unused IgnoreLint tags {', '.join(unused)}"
