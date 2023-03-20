@@ -674,6 +674,9 @@ class Article(BaseModel):
     def is_full_issue(self) -> bool:
         return any(self.get_tags(self.tags, ArticleTag.FullIssue))
 
+    def is_non_original(self) -> bool:
+        return self.kind is ArticleKind.no_copy or self.has_tag(ArticleTag.NonOriginal)
+
     def numeric_year(self) -> int:
         return self.get_date_object().year
 

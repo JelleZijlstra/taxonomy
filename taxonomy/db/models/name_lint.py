@@ -20,6 +20,7 @@ from ..constants import (
     DateSource,
     FillDataLevel,
     Group,
+    NamingConvention,
     NomenclatureStatus,
     SpeciesGroupType,
     SpeciesNameKind,
@@ -29,6 +30,7 @@ from ..constants import (
 from .article import Article, ArticleTag
 from .base import LintConfig
 from .name import STATUS_TO_TAG, Name, NameComment, NameTag, TypeTag
+from .person import AuthorTag, PersonLevel
 
 T = TypeVar("T")
 ADTT = TypeVar("ADTT", bound=adt.ADT)
@@ -319,19 +321,34 @@ def check_for_lsid(nam: Name, cfg: LintConfig) -> Iterable[str]:
         or nam.original_citation is None
     ):
         return
-    if nam.has_type_tag(TypeTag.LSIDName):
+    zoobank_data_list = get_zoobank_data(nam.corrected_original_name)
+    if not zoobank_data_list:
         return
-    zoobank_data = get_zoobank_data(nam.corrected_original_name)
-    if zoobank_data is None:
+    type_tags = []
+    art_tags = []
+    for zoobank_data in zoobank_data_list:
+        nam_tag = TypeTag.LSIDName(zoobank_data.name_lsid)
+        if not nam.type_tags or nam_tag not in nam.type_tags:
+            type_tags.append(nam_tag)
+        if zoobank_data.citation_lsid:
+            # We assume it's present until we find evidence to the contrary
+            art_tag = ArticleTag.LSIDArticle(
+                zoobank_data.citation_lsid, present_in_article=True
+            )
+            if (
+                not nam.original_citation.tags
+                or art_tag not in nam.original_citation.tags
+            ):
+                art_tags.append(art_tag)
+    if not type_tags and not art_tags:
         return
-    message = f"Inferred Zoobank data: {zoobank_data}"
+    message = f"Inferred ZooBank data: {type_tags}, {art_tags}"
     if cfg.autofix:
         print(f"{nam}: {message}")
-        nam.add_type_tag(TypeTag.LSIDName(zoobank_data.name_lsid))
-        nam.original_citation.add_tag(
-            # We assume it's present until we find evidence to the contrary
-            ArticleTag.LSIDArticle(zoobank_data.citation_lsid, present_in_article=True)
-        )
+        for tag in type_tags:
+            nam.add_type_tag(tag)
+        for tag in art_tags:
+            nam.original_citation.add_tag(tag)
     else:
         yield message
 
@@ -854,7 +871,7 @@ def check_fill_data_level(nam: Name, cfg: LintConfig) -> Iterable[str]:
         return
     if (
         nam.original_citation.has_tag(ArticleTag.NeedsTranslation)
-        or nam.original_citation.kind is ArticleKind.no_copy
+        or nam.original_citation.is_non_original()
     ):
         return
     yield f"missing basic data: {reason}"
@@ -1024,6 +1041,53 @@ def check_data(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if "verbatim_citation" in data:
         if not isinstance(data["verbatim_citation"], (str, list)):
             yield f"invalid verbatim_citation data: {data['verbatim_citation']}"
+
+
+@make_linter("specific_authors")
+def check_specific_authors(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    if not nam.original_citation and not nam.verbatim_citation:
+        return
+    for i, author in enumerate(nam.get_authors()):
+        if (
+            author.get_level() is not PersonLevel.family_name_only
+            or author.naming_convention is not NamingConvention.unspecified
+        ):
+            continue
+        if nam.original_citation is not None:
+            yield (
+                "has original citation, but has family name-only author"
+                f" {author} (position {i})"
+            )
+            if cfg.interactive:
+                author.edit_tag_sequence_on_object(
+                    nam, "author_tags", AuthorTag.Author, "names"
+                )
+        elif nam.verbatim_citation is not None and helpers.simplify_string(
+            author.family_name
+        ) in helpers.simplify_string(nam.verbatim_citation):
+            yield f"author {author} (position {i}) appears in verbatim citation"
+            if cfg.interactive:
+                author.edit_tag_sequence_on_object(
+                    nam, "author_tags", AuthorTag.Author, "names"
+                )
+
+
+@make_linter("required_fields")
+def check_required_fields(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    if nam.verbatim_citation and not nam.citation_group:
+        yield "has verbatim citation but no citation group"
+    if (
+        nam.original_citation
+        and not nam.page_described
+        and not nam.original_citation.is_non_original()
+    ):
+        yield "has original citation but no page_described"
+    if (
+        nam.numeric_year() > 1970
+        and not nam.verbatim_citation
+        and not nam.original_citation
+    ):
+        yield "recent name must have verbatim citation"
 
 
 def run_linters(

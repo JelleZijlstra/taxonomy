@@ -1,5 +1,4 @@
 import json
-import pprint
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -42,7 +41,7 @@ class ZooBankData:
     citation_lsid: str
 
 
-def get_zoobank_data(original_name: str) -> ZooBankData | None:
+def get_zoobank_data(original_name: str) -> list[ZooBankData]:
     api_response = json.loads(_get_zoobank_act_data(original_name.replace(" ", "_")))
     api_response = [
         entry
@@ -50,16 +49,12 @@ def get_zoobank_data(original_name: str) -> ZooBankData | None:
         if entry["tnuuuid"] == entry["protonymuuid"]
         and entry["namestring"] == original_name.split()[-1]
     ]
-    if not api_response:
-        return None
-    if len(api_response) > 1:
-        pprint.pprint(api_response)
-        print(f"found multiple ZooBank entries for {original_name}")
-        return None
-    (data,) = api_response
-    ref_uuid = clean_lsid(data["OriginalReferenceUUID"])
-    name_uuid = clean_lsid(data["protonymuuid"])
-    return ZooBankData(name_uuid, ref_uuid)
+    return [
+        ZooBankData(
+            clean_lsid(data["protonymuuid"]), clean_lsid(data["OriginalReferenceUUID"])
+        )
+        for data in api_response
+    ]
 
 
 def get_zoobank_data_for_article(lsid: str) -> dict[str, Any]:

@@ -4,6 +4,7 @@ import builtins
 import datetime
 import json
 import re
+import subprocess
 import sys
 import time
 from collections import Counter
@@ -13,6 +14,7 @@ from typing import IO, TYPE_CHECKING, Any, ClassVar, TypeAlias
 from peewee import CharField, ForeignKeyField, IntegerField, TextField
 
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
+from taxonomy.apis.zoobank import get_zoobank_data
 
 from ... import adt, events, getinput
 from .. import constants, helpers, models
@@ -617,6 +619,7 @@ class Name(BaseModel):
             "remove_duplicate": self._remove_duplicate,
             "edit_comments": self.edit_comments,
             "replace_original_citation": self.replace_original_citation,
+            "open_zoobank": self.open_zoobank,
         }
 
     def _merge(self) -> None:
@@ -1640,6 +1643,17 @@ class Name(BaseModel):
         self.status = Status.redirect  # type: ignore
         self.target = into
 
+    def open_zoobank(self) -> None:
+        lsids = {
+            tag.text for tag in self.get_tags(self.type_tags, TypeTag.LSIDName)
+        } | {
+            zoobank_data.name_lsid
+            for zoobank_data in get_zoobank_data(self.corrected_original_name)
+        }
+        for lsid in lsids:
+            url = f"https://zoobank.org/NomenclaturalActs/{lsid}"
+            subprocess.check_call(["open", url])
+
     def open_description(self) -> bool:
         if self.original_citation is None:
             print("%s: original citation unknown" % self.description())
@@ -1651,7 +1665,7 @@ class Name(BaseModel):
         if self.original_citation is None:
             print("%s: original citation unknown" % self.description())
         else:
-            self.original_citation.open_url()
+            self.original_citation.openurl()
         return True
 
     def _display_plus(self) -> None:
