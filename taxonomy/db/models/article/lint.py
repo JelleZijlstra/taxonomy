@@ -12,13 +12,13 @@ from collections.abc import Callable, Generator, Iterable, Sequence
 from typing import Any
 
 from .... import getinput
-from ....apis.zoobank import clean_lsid
-from ... import helpers
+from ....apis.zoobank import clean_lsid, get_zoobank_data_for_act
+from ... import helpers, models
 from ...constants import ArticleKind, ArticleType, DateSource
 from ..base import ADTField, BaseModel, LintConfig
 from ..citation_group import CitationGroup, CitationGroupTag
 from ..issue_date import IssueDate
-from .article import Article, ArticleComment, ArticleTag
+from .article import Article, ArticleComment, ArticleTag, PresenceStatus
 from .name_parser import get_name_parser
 
 Linter = Callable[[Article, LintConfig], Iterable[str]]
@@ -149,7 +149,12 @@ def infer_publication_date_from_tags(
     for tag in tags:
         if isinstance(tag, ArticleTag.PublicationDate):
             by_source[tag.source].append(tag)
-        elif isinstance(tag, ArticleTag.LSIDArticle) and tag.present_in_article:
+        elif (
+            isinstance(tag, ArticleTag.LSIDArticle)
+            # "inferred" strictly doesn't count but we'll allow it
+            and tag.present_in_article
+            in (PresenceStatus.present, PresenceStatus.inferred)
+        ):
             has_lsid = True
     for source in SOURCE_PRIORITY[has_lsid]:
         if tags_of_source := by_source[source]:
@@ -715,6 +720,8 @@ def check_tags(art: Article, cfg: LintConfig) -> Iterable[str]:
     original_tags = list(art.tags)
     for tag in original_tags:
         if isinstance(tag, ArticleTag.LSIDArticle):
+            if not tag.text:
+                continue
             tag = ArticleTag.LSIDArticle(clean_lsid(tag.text), tag.present_in_article)
         tags.append(tag)
     tags = sorted(set(tags))
@@ -726,6 +733,152 @@ def check_tags(art: Article, cfg: LintConfig) -> Iterable[str]:
             art.tags = tags  # type: ignore
         else:
             yield f"{art}: needs change to tags"
+
+
+@make_linter("infer_lsid")
+def infer_lsid_from_names(art: Article, cfg: LintConfig) -> Iterable[str]:
+    if art.numeric_year() < 2012:
+        return
+    tags = list(art.get_tags(art.tags, ArticleTag.LSIDArticle))
+    if any(
+        tag.present_in_article in (PresenceStatus.present, PresenceStatus.inferred)
+        for tag in tags
+    ):
+        return
+    new_names = list(art.new_names)
+    if not new_names:
+        return
+    act_lsids = []
+    for nam in new_names:
+        nam_tags = list(nam.get_tags(nam.type_tags, models.name.TypeTag.LSIDName))
+        for tag in nam_tags:
+            act_lsids.append(clean_lsid(tag.text).casefold())
+    if not act_lsids:
+        return
+    pages = art.get_all_pdf_pages()
+    cleaned_text = "".join(
+        re.sub(r"\s", "", page).replace("-", "-").casefold() for page in pages
+    ).replace("-", "")
+    for lsid in act_lsids:
+        if lsid.replace("-", "") not in cleaned_text:
+            continue
+        for zoobank_data in get_zoobank_data_for_act(lsid):
+            if zoobank_data.citation_lsid:
+                new_tag = ArticleTag.LSIDArticle(
+                    zoobank_data.citation_lsid, PresenceStatus.inferred
+                )
+                message = f"adding inferred LSID: {new_tag}"
+                if cfg.autofix:
+                    print(f"{art}: {message}")
+                    art.add_tag(new_tag)
+                else:
+                    yield message
+
+
+@make_linter("lsid")
+def check_lsid(art: Article, cfg: LintConfig) -> Iterable[str]:
+    tags = list(art.get_tags(art.tags, ArticleTag.LSIDArticle))
+    if not tags:
+        return
+    by_status = defaultdict(set)
+    by_lsid = defaultdict(set)
+    for tag in tags:
+        if tag.text:
+            by_status[tag.present_in_article].add(tag.text)
+            by_lsid[tag.text].add(tag.present_in_article)
+    dupes = False
+    for lsid, statuses in by_lsid.items():
+        if len(statuses) > 1:
+            yield f"LSID present with multiple statuses: {lsid}, {statuses}"
+            dupes = True
+    if dupes and cfg.autofix:
+        # present > inferred > absent
+        new_tags = []
+        existing_tags = list(art.tags)
+        for tag in existing_tags:
+            if isinstance(tag, ArticleTag.LSIDArticle):
+                if tag.present_in_article is PresenceStatus.absent and (
+                    tag.text in by_status[PresenceStatus.present]
+                    or tag.text in by_status[PresenceStatus.inferred]
+                ):
+                    continue
+                elif (
+                    tag.present_in_article is PresenceStatus.inferred
+                    and tag.text in by_status[PresenceStatus.present]
+                ):
+                    continue
+            new_tags.append(tag)
+        if existing_tags != new_tags:
+            print(f"{art}: changing tags")
+            getinput.print_diff(existing_tags, new_tags)
+            art.tags = new_tags  # type: ignore[assignment]
+
+    if (
+        not by_status[PresenceStatus.probably_absent]
+        and not by_status[PresenceStatus.to_be_determined]
+    ):
+        return
+    pages = art.get_all_pdf_pages()
+    cleaned_text = "".join(
+        re.sub(r"\s", "", page).replace("-", "-").casefold() for page in pages
+    )
+
+    tbd_present = []
+    tbd_absent = []
+    prob_absent = []
+    prob_present = []
+    for lsid in by_status[PresenceStatus.probably_absent]:
+        if clean_lsid(lsid).casefold() in cleaned_text:
+            prob_present.append(lsid)
+        else:
+            prob_absent.append(lsid)
+    for lsid in by_status[PresenceStatus.to_be_determined]:
+        if clean_lsid(lsid).casefold() in cleaned_text:
+            tbd_present.append(lsid)
+        else:
+            tbd_absent.append(lsid)
+    if tbd_present:
+        yield f"LSID {', '.join(tbd_present)} is present in article"
+    if tbd_absent:
+        yield f"LSID {', '.join(tbd_absent)} is absent in article"
+    if prob_present:
+        yield f"LSID {', '.join(prob_present)} is in fact present in article"
+    if prob_absent:
+        yield f"LSID {', '.join(prob_absent)} is really absent in article"
+    if cfg.autofix:
+        new_tags = []
+        existing_tags = list(art.tags)
+        for tag in existing_tags:
+            if isinstance(tag, ArticleTag.LSIDArticle):
+                if (
+                    tag.present_in_article is PresenceStatus.probably_absent
+                    and tag.text in prob_absent
+                ):
+                    new_tags.append(
+                        ArticleTag.LSIDArticle(tag.text, PresenceStatus.absent)
+                    )
+                elif (
+                    tag.present_in_article is PresenceStatus.to_be_determined
+                    and tag.text in tbd_present
+                ):
+                    new_tags.append(
+                        ArticleTag.LSIDArticle(tag.text, PresenceStatus.present)
+                    )
+                elif (
+                    tag.present_in_article is PresenceStatus.to_be_determined
+                    and tag.text in tbd_absent
+                ):
+                    new_tags.append(
+                        ArticleTag.LSIDArticle(tag.text, PresenceStatus.absent)
+                    )
+                else:
+                    # Others left for manual check
+                    new_tags.append(tag)
+            else:
+                new_tags.append(tag)
+        if new_tags != existing_tags:
+            print(f"{art}: adjusting LSID tags: {existing_tags} -> {new_tags}")
+            art.tags = new_tags  # type: ignore[assignment]
 
 
 @make_linter("must_use_children")

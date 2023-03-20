@@ -7,6 +7,8 @@ exports released on Zenodo.
 # Unreleased
 
 - Database
+  - Add given names or initials for a number of name authors that were given only as
+    family names.
 - Backend
   - Further checks for publication dates. Distinguish between "parts" (separately
     published portions of a larger work) and "chapters" (simultaneously published
@@ -14,6 +16,10 @@ exports released on Zenodo.
     have the same publication date as their enclosing work. Allow ranges of years (e.g.,
     "1848-1852") only for works composed of parts, not for names or for other kinds of
     works.
+  - More sophisticated processing and validation of LSIDs in order to display correct
+    publication dates.
+  - Enforce that the _page_described_ and _original_rank_ fields are set for all names
+    with original citations.
 - Frontend
 
 # 23.3.0 (March 13, 2023)

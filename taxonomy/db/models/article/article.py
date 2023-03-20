@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import builtins
 import datetime
+import enum
 import os
 import pprint
 import shutil
@@ -1275,6 +1276,14 @@ def register_cite_function(name: str) -> Callable[[CiterT], CiterT]:
     return decorator
 
 
+class PresenceStatus(enum.IntEnum):
+    absent = 0
+    to_be_determined = 1
+    probably_absent = 2
+    present = 3
+    inferred = 4  # absent in the article, but the article contains an LSID for a name
+
+
 class ArticleTag(adt.ADT):
     # identifiers
     ISBN(text=str, tag=1)  # type: ignore
@@ -1302,7 +1311,7 @@ class ArticleTag(adt.ADT):
     IgnoreLint(label=str, comment=str, tag=13)  # type: ignore
 
     PublicationDate(source=DateSource, date=str, comment=str, tag=14)  # type: ignore
-    LSIDArticle(text=str, present_in_article=bool, tag=15)  # type: ignore
+    LSIDArticle(text=str, present_in_article=PresenceStatus, tag=15)  # type: ignore
 
     # All references must be moved to children
     MustUseChildren(tag=16)  # type: ignore

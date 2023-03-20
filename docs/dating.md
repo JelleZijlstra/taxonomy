@@ -45,6 +45,10 @@ Common problems with this procedure include:
   [_Acta Palaeontologica Polonica_](/cg/675) articles the print publication date is
   usually not recorded. The dates produced by the API for articles from the pre-Internet
   era are usually imprecise.
+- Technically, the ICZN requires the LSID for the _publication_ to be included in the
+  text, but sometimes LSIDs are instead given for new names proposed in the article. I
+  accept this as making the name available if the name LSIDs can be used to find the
+  LSID for the publication on ZooBank.
 
 If there is evidence that the dates published by the standard procedure are not correct,
 I will adjust them.

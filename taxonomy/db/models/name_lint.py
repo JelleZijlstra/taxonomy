@@ -27,7 +27,7 @@ from ..constants import (
     Status,
     TypeSpeciesDesignation,
 )
-from .article import Article, ArticleTag
+from .article import Article, ArticleTag, PresenceStatus
 from .base import LintConfig
 from .name import STATUS_TO_TAG, Name, NameComment, NameTag, TypeTag
 from .person import AuthorTag, PersonLevel
@@ -326,20 +326,18 @@ def check_for_lsid(nam: Name, cfg: LintConfig) -> Iterable[str]:
         return
     type_tags = []
     art_tags = []
+    art = nam.original_citation
+    name_lsids = {tag.text for tag in nam.get_tags(nam.type_tags, TypeTag.LSIDName)}
+    art_lsids = {tag.text for tag in art.get_tags(art.tags, ArticleTag.LSIDArticle)}
     for zoobank_data in zoobank_data_list:
-        nam_tag = TypeTag.LSIDName(zoobank_data.name_lsid)
-        if not nam.type_tags or nam_tag not in nam.type_tags:
-            type_tags.append(nam_tag)
-        if zoobank_data.citation_lsid:
-            # We assume it's present until we find evidence to the contrary
+        if zoobank_data.name_lsid not in name_lsids:
+            type_tags.append(TypeTag.LSIDName(zoobank_data.name_lsid))
+        if zoobank_data.citation_lsid and zoobank_data.citation_lsid not in art_lsids:
             art_tag = ArticleTag.LSIDArticle(
-                zoobank_data.citation_lsid, present_in_article=True
+                zoobank_data.citation_lsid,
+                present_in_article=PresenceStatus.to_be_determined,
             )
-            if (
-                not nam.original_citation.tags
-                or art_tag not in nam.original_citation.tags
-            ):
-                art_tags.append(art_tag)
+            art_tags.append(art_tag)
     if not type_tags and not art_tags:
         return
     message = f"Inferred ZooBank data: {type_tags}, {art_tags}"

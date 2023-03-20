@@ -11,6 +11,7 @@ __all__ = [
     "check",
     "citations",
     "lint",
+    "PresenceStatus",
     "set_path",
 ]
 
@@ -18,6 +19,7 @@ from .article import (
     Article as Article,
     ArticleComment as ArticleComment,
     ArticleTag as ArticleTag,
+    PresenceStatus as PresenceStatus,
 )
 from . import citations as citations
 from . import lint as lint

@@ -9,7 +9,7 @@ from ..db.url_cache import CacheDomain, cached
 
 
 def clean_lsid(lsid: str) -> str:
-    lsid = re.sub(r"\s+", "", lsid.lower())
+    lsid = re.sub(r"\s+", "", lsid.lower()).replace("Ø", "0")
     if lsid.startswith("urn:"):
         *_, lsid = lsid.split(":")
     return lsid.upper()
@@ -39,6 +39,16 @@ def _get_zoobank_publication_data(query: str) -> str:
 class ZooBankData:
     name_lsid: str
     citation_lsid: str
+
+
+def get_zoobank_data_for_act(act: str) -> list[ZooBankData]:
+    api_response = json.loads(_get_zoobank_act_data(act))
+    return [
+        ZooBankData(
+            clean_lsid(data["protonymuuid"]), clean_lsid(data["OriginalReferenceUUID"])
+        )
+        for data in api_response
+    ]
 
 
 def get_zoobank_data(original_name: str) -> list[ZooBankData]:
