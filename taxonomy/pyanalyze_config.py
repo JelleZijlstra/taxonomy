@@ -12,6 +12,7 @@ def class_attribute_transformer(field_cls: peewee.Field) -> tuple[Value, Value] 
         val = TypedValue(field_cls.enum_cls)
     elif isinstance(field_cls, ADTField):
         val = GenericValue(tuple, [TypedValue(field_cls.adt_cls())])
+        return val, val | KnownValue(None)
     elif isinstance(field_cls, (peewee.TextField, peewee.CharField)):
         val = TypedValue(str)
     elif isinstance(field_cls, peewee.AutoField):

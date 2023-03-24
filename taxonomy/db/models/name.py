@@ -1644,12 +1644,12 @@ class Name(BaseModel):
         self.target = into
 
     def open_zoobank(self) -> None:
-        lsids = {
-            tag.text for tag in self.get_tags(self.type_tags, TypeTag.LSIDName)
-        } | {
-            zoobank_data.name_lsid
-            for zoobank_data in get_zoobank_data(self.corrected_original_name)
-        }
+        lsids = {tag.text for tag in self.get_tags(self.type_tags, TypeTag.LSIDName)}
+        if self.corrected_original_name:
+            lsids |= {
+                zoobank_data.name_lsid
+                for zoobank_data in get_zoobank_data(self.corrected_original_name)
+            }
         for lsid in lsids:
             url = f"https://zoobank.org/NomenclaturalActs/{lsid}"
             subprocess.check_call(["open", url])

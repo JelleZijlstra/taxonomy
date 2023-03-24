@@ -1325,6 +1325,8 @@ class _ADTDescriptor(FieldAccessor):
             tags = tuple(self.adt_cls.unserialize(val) for val in json.loads(value))
             instance._adt_cache[key] = tags
             return tags
+        elif instance is not None:
+            return ()
         else:
             return value
 
