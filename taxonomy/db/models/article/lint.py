@@ -12,7 +12,7 @@ from collections.abc import Callable, Generator, Iterable, Sequence
 from typing import Any
 
 from .... import getinput
-from ....apis.zoobank import clean_lsid, get_zoobank_data_for_act
+from ....apis.zoobank import clean_lsid, get_zoobank_data_for_act, is_valid_lsid
 from ... import helpers, models
 from ...constants import ArticleKind, ArticleType, DateSource
 from ..base import ADTField, BaseModel, LintConfig
@@ -723,6 +723,8 @@ def check_tags(art: Article, cfg: LintConfig) -> Iterable[str]:
             if not tag.text:
                 continue
             tag = ArticleTag.LSIDArticle(clean_lsid(tag.text), tag.present_in_article)
+            if not is_valid_lsid(tag.text):
+                yield f"invalid LSID {tag.text}"
         tags.append(tag)
     tags = sorted(set(tags))
     if tags != original_tags:

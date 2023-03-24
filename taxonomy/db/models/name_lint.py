@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import TypeVar
 
 from ... import adt, getinput
-from ...apis.zoobank import clean_lsid, get_zoobank_data
+from ...apis.zoobank import clean_lsid, get_zoobank_data, is_valid_lsid
 from .. import helpers
 from ..constants import (
     ArticleKind,
@@ -43,7 +43,7 @@ DISABLED_LINTERS = []
 
 
 def get_ignored_lints(nam: Name) -> set[str]:
-    tags = nam.get_tags(nam.type_tags, TypeTag.IgnoreLint)
+    tags = nam.get_tags(nam.type_tags, TypeTag.IgnoreLintName)
     return {tag.label for tag in tags}
 
 
@@ -176,7 +176,10 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 longitude = tag.longitude
             tags.append(TypeTag.Coordinates(lat, longitude))
         elif isinstance(tag, TypeTag.LSIDName):
-            tags.append(TypeTag.LSIDName(clean_lsid(tag.text)))
+            lsid = clean_lsid(tag.text)
+            tags.append(TypeTag.LSIDName(lsid))
+            if not is_valid_lsid(lsid):
+                yield f"invalid LSID {lsid}"
         else:
             tags.append(tag)
         # TODO: for lectotype and subsequent designations, ensure the earliest valid one is used.
@@ -1106,7 +1109,7 @@ def run_linters(
             tags = nam.type_tags or ()
             new_tags = []
             for tag in tags:
-                if isinstance(tag, TypeTag.IgnoreLint) and tag.label in unused:
+                if isinstance(tag, TypeTag.IgnoreLintName) and tag.label in unused:
                     print(f"{nam}: removing unused IgnoreLint tag: {tag}")
                 else:
                     new_tags.append(tag)

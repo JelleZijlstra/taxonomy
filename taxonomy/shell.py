@@ -755,11 +755,12 @@ def dup_names() -> (
         tuple[str | None, str | None, constants.NomenclatureStatus, str | None],
         list[Name],
     ] = defaultdict(list)
-    for name in Name.select_valid().filter(
-        Name.original_name != None, Name.year != None
+    for name in getinput.print_every_n(
+        Name.select_valid().filter(Name.original_name != None, Name.year != None),
+        label="names",
     ):
         key = (
-            name.original_name,
+            name.corrected_original_name,
             name.year,
             name.nomenclature_status,
             name.original_citation,
@@ -769,11 +770,30 @@ def dup_names() -> (
 
 
 @command
+def dup_journal_articles() -> None:
+    dup_articles(
+        interactive=True,
+        query=Article.select_valid().filter(Article.type == ArticleType.JOURNAL),
+        key=lambda art: (
+            art.citation_group,
+            art.volume,
+            art.issue,
+            art.start_page,
+            art.end_page,
+        ),
+    )
+
+
+@command
 def dup_articles(
-    key: Callable[[Article], Hashable] = lambda art: art.doi, interactive: bool = False
+    key: Callable[[Article], Hashable] = lambda art: art.doi,
+    interactive: bool = False,
+    query: Iterable[Article] | None = None,
 ) -> None:
+    if query is None:
+        query = Article.select_valid()
     by_key = defaultdict(list)
-    for art in getinput.print_every_n(Article.select_valid(), label="articles"):
+    for art in getinput.print_every_n(query, label="articles"):
         if art.get_redirect_target() is not None:
             continue
         if art.type is ArticleType.SUPPLEMENT and art.parent is not None:

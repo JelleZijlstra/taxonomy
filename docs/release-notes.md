@@ -9,6 +9,8 @@ exports released on Zenodo.
 - Database
   - Add given names or initials for a number of name authors that were given only as
     family names.
+  - Remove about 200 duplicate articles
+  - Remove some duplicate names, mostly in the turtles
 - Backend
   - Further checks for publication dates. Distinguish between "parts" (separately
     published portions of a larger work) and "chapters" (simultaneously published

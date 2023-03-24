@@ -33,7 +33,7 @@ from peewee import (
 from taxonomy.apis.cloud_search import SearchField
 
 from ... import adt, config, events, getinput
-from .. import derived_data, helpers
+from .. import derived_data, helpers, models
 
 settings = config.get_options()
 
@@ -899,6 +899,7 @@ class BaseModel(Model):
             "print_character_names": self.print_character_names_for_field,
             "edit_reverse_rel": self.edit_reverse_rel,
             "edit_derived_field": self.edit_derived_field,
+            "RootName": lambda: models.Name.getter("root_name").get_and_edit(),
         }
 
     def call(self) -> None:

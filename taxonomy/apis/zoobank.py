@@ -9,10 +9,18 @@ from ..db.url_cache import CacheDomain, cached
 
 
 def clean_lsid(lsid: str) -> str:
-    lsid = re.sub(r"\s+", "", lsid.lower()).replace("Ø", "0")
+    lsid = re.sub(r"\s+", "", lsid.lower())
     if lsid.startswith("urn:"):
         *_, lsid = lsid.split(":")
-    return lsid.upper()
+    return lsid.upper().replace("Ø", "0")
+
+
+def is_valid_lsid(lsid: str) -> bool:
+    return bool(
+        re.fullmatch(
+            r"^[A-Z0-9]{8}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{12}$", lsid
+        )
+    )
 
 
 @cached(CacheDomain.zoobank_act)
