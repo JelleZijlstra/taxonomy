@@ -89,6 +89,9 @@ please [let me know](mailto:jelle.zijlstra@gmail.com).
   - Add a way to ignore incomplete articles (e.g. ones I have only the abstract for)
   - Make sure to ignore invalid names (e.g. redirects)
   - Threshold should be at least at {Protodoris nov.pdf}
+- Check that species-group names and genus-group names are only synonyms of other names
+  of the same group. Family-group names can be synonyms of high-group names and vice
+  versa.
 
 ## New data not currently included
 
