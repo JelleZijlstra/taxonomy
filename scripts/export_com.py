@@ -131,7 +131,7 @@ def generate_report(taxon_name: str, output_file: str) -> None:
     with open(output_file, "w") as f:
         writer = csv.DictWriter(f, list(Row.__annotations__))
         writer.writeheader()
-        for row in getinput.print_every_n(generate_rows(taxon), label="rows"):
+        for row in getinput.print_every_n(generate_rows(taxon), label="rows", n=100):
             writer.writerow(row)  # static analysis: ignore[incompatible_argument]
 
 
