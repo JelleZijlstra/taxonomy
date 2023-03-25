@@ -146,21 +146,35 @@ class Period(BaseModel):
     def sort_key(self) -> tuple[int, int, int, str]:
         return period_sort_key(self)
 
-    def get_min_age(self) -> int | None:
+    def get_min_age(self, *, skip_parent: bool = False) -> int | None:
         if self.min_age is not None:
             return self.min_age
-        return min(
-            self._filter_none(child.get_min_age() for child in self.children),
+        child_min_age = min(
+            self._filter_none(
+                child.get_min_age(skip_parent=True) for child in self.children
+            ),
             default=None,
         )
+        if child_min_age is not None:
+            return child_min_age
+        if not skip_parent and self.parent is not None:
+            return self.parent.get_min_age()
+        return None
 
-    def get_max_age(self) -> int | None:
+    def get_max_age(self, *, skip_parent: bool = False) -> int | None:
         if self.max_age is not None:
             return self.max_age
-        return max(
-            self._filter_none(child.get_max_age() for child in self.children),
+        child_max_age = max(
+            self._filter_none(
+                child.get_max_age(skip_parent=True) for child in self.children
+            ),
             default=None,
         )
+        if child_max_age is not None:
+            return child_max_age
+        if not skip_parent and self.parent is not None:
+            return self.parent.get_max_age()
+        return None
 
     @classmethod
     def make(
