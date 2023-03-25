@@ -3,7 +3,7 @@ from __future__ import annotations
 import bisect
 import functools
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TypeVar
 
 from ... import getinput
@@ -69,6 +69,7 @@ BucketKey = tuple[str, int, int]
 @dataclass
 class DataPoint:
     location: Location
+    _bucket: BucketKey | None = field(init=False, repr=False, hash=False, compare=False)
 
     def get_description(self) -> str:
         raise NotImplementedError
@@ -83,8 +84,12 @@ class DataPoint:
         region = self.location.region.parent_of_kind(RegionKind.continent)
         if region is None:
             return None
+        if self.location.min_period is None:
+            return None
         min_age = self.location.min_period.get_min_age()
         if min_age is None:
+            return None
+        if self.location.max_period is None:
             return None
         max_age = self.location.max_period.get_max_age()
         if max_age is None:
@@ -92,7 +97,7 @@ class DataPoint:
         bm = get_bucket_maker()
         min_period = bm(min_age + 1)
         max_period = bm(max_age)
-        return region, min_period, max_period
+        return region.name, min_period, max_period
 
 
 @dataclass
@@ -109,13 +114,13 @@ class TypeLocDataPoint(DataPoint):
 @dataclass
 class OccurrenceDataPoint(DataPoint):
     taxon: Taxon
-    source: Article
+    source: Article | None
 
     def get_description(self) -> str:
         return (
             f"{self.location.concise_markdown_link()}, occurrence of"
             f" {self.taxon.concise_markdown_link()} according to"
-            f" {self.source.concise_markdown_link()}"
+            f" {self.source.concise_markdown_link() if self.source else '(no source)'}"
         )
 
 

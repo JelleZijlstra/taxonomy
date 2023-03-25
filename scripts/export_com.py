@@ -47,8 +47,7 @@ class Row(TypedDict):
     changes_to_make: str
 
 
-def make_row(nam: Name, sequence_number: int) -> Row:
-    taxon = nam.taxon
+def make_row(taxon: Taxon, nam: Name, sequence_number: int) -> Row:
     is_base = taxon.base_name == nam
     if is_base:
         rs = RangeSummary.from_taxon(taxon)
@@ -93,8 +92,8 @@ def make_row(nam: Name, sequence_number: int) -> Row:
         "citation_group_id": nam.citation_group.get_url() if nam.citation_group else "",
         "type": str(nam.type) if nam.type else "",
         "type_id": nam.type.get_url() if nam.type else "",
-        "parent": taxon.parent.valid_name if is_base else "",
-        "parent_id": taxon.parent.get_url() if is_base else "",
+        "parent": taxon.parent.valid_name if is_base and taxon.parent else "",
+        "parent_id": taxon.parent.get_url() if is_base and taxon.parent else "",
         "distribution": distribution,
         "distribution_detail": support,
         "common_name": common_name,
@@ -108,21 +107,21 @@ def make_row(nam: Name, sequence_number: int) -> Row:
     }
 
 
-def get_ordered_names(taxon: Taxon) -> Iterable[Name]:
+def get_ordered_names(taxon: Taxon) -> Iterable[tuple[Taxon, Name]]:
     if taxon.rank < Rank.genus:
         return
     base = taxon.base_name
-    yield base
+    yield taxon, base
     for nam in taxon.sorted_names():
         if nam != base:
-            yield nam
+            yield taxon, nam
     for child in taxon.sorted_children():
         yield from get_ordered_names(child)
 
 
 def generate_rows(taxon: Taxon) -> Iterable[Row]:
-    for i, nam in enumerate(get_ordered_names(taxon), start=1):
-        yield make_row(nam, i)
+    for i, (child_taxon, nam) in enumerate(get_ordered_names(taxon), start=1):
+        yield make_row(child_taxon, nam, i)
 
 
 def generate_report(taxon_name: str, output_file: str) -> None:
@@ -133,7 +132,7 @@ def generate_report(taxon_name: str, output_file: str) -> None:
         writer = csv.DictWriter(f, list(Row.__annotations__))
         writer.writeheader()
         for row in getinput.print_every_n(generate_rows(taxon), label="rows"):
-            writer.writerow(row)
+            writer.writerow(row)  # static analysis: ignore[incompatible_argument]
 
 
 if __name__ == "__main__":
