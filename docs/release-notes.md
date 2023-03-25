@@ -11,6 +11,8 @@ exports released on Zenodo.
     family names.
   - Remove about 200 duplicate articles
   - Remove some duplicate names, mostly in the turtles
+  - Remove uses of the legacy "dubious" status
+  - Fix some incorrect parent taxa
 - Backend
   - Further checks for publication dates. Distinguish between "parts" (separately
     published portions of a larger work) and "chapters" (simultaneously published

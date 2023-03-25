@@ -142,6 +142,17 @@ class Taxon(BaseModel):
             rank = self.rank.name
             group = self.base_name.group.name
             yield f"{self}: group mismatch: rank {rank} but group {group}"
+        parent = self.parent
+        if (
+            parent is not None
+            and parent.rank is not Rank.unranked
+            and self.rank is not Rank.unranked
+        ):
+            if self.rank >= parent.rank:
+                yield (
+                    f"{self}: is of rank {self.rank.name}, but parent is of rank"
+                    f" {parent.rank.name}"
+                )
         yield from self.check_nominal_genus(cfg)
         yield from self.check_valid_name(cfg)
 

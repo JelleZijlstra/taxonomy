@@ -82,16 +82,10 @@ please [let me know](mailto:jelle.zijlstra@gmail.com).
     it. Or I don't have access to the source that did the designation.
   - Idea: Add a new tag to names that encompasses a verbatim_citation and
     citation_group, so we can track needed citations here.
-- Check that taxa don't have parents of the same rank (with some restrictions)
-  - Noticed that _Sminthopsis aitkeni_ was placed within _S. fuliginosa_ but not ranked
-    as a subspecies.
 - Check that "fill_data_level" is perfect for all recent articles
   - Add a way to ignore incomplete articles (e.g. ones I have only the abstract for)
   - Make sure to ignore invalid names (e.g. redirects)
   - Threshold should be at least at {Protodoris nov.pdf}
-- Check that species-group names and genus-group names are only synonyms of other names
-  of the same group. Family-group names can be synonyms of high-group names and vice
-  versa.
 
 ## New data not currently included
 

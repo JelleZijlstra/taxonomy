@@ -582,7 +582,7 @@ def set_author_tags_from_raw(
         AuthorTag.Author(person=Person.get_or_create_unchecked(**params))
         for params in value
     ]
-    if art.author_tags is not None:
+    if art.author_tags:
         if only_new:
             if art.author_tags != new_tags and verbose:
                 print(f"{art}: dropping authors {value} (existing: {art.author_tags})")

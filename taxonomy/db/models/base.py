@@ -639,9 +639,9 @@ class BaseModel(Model):
                 continue
             my_data = getattr(self, field)
             into_data = getattr(into, field)
-            if my_data is None:
+            if my_data is None or my_data == ():
                 pass
-            elif into_data is None:
+            elif into_data is None or into_data == ():
                 print(f"setting {field}: {my_data}")
                 setattr(into, field, my_data)
             elif my_data != into_data:

@@ -1091,6 +1091,17 @@ def check_required_fields(nam: Name, cfg: LintConfig) -> Iterable[str]:
         yield "recent name must have verbatim citation"
 
 
+@make_linter("synonym_group")
+def check_synonym_group(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    if nam.group not in (Group.genus, Group.species):
+        return
+    if nam.taxon.base_name.group is not nam.group:
+        yield (
+            f"taxon is of group {nam.taxon.base_name.group.name} but name is of group"
+            f" {nam.group.name}"
+        )
+
+
 def run_linters(
     nam: Name, cfg: LintConfig, *, include_disabled: bool = False
 ) -> Iterable[str]:
