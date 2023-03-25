@@ -1240,7 +1240,7 @@ class BaseModel(Model):
         return self.markdown_link()
 
     def markdown_link(self) -> str:
-        return f"[{str(self)}](/{self.call_sign.lower()}/{self.id})"
+        return f"[{str(self)}]({self.get_url()})"
 
     @classmethod
     def create_interactively(cls: type[ModelT], **kwargs: Any) -> ModelT | None:

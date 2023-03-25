@@ -19,3 +19,5 @@ class PersonTag(adt.ADT):
 class TaxonTag(adt.ADT):
     NominalGenus(genus=Name, tag=1)  # type: ignore
     MDD(id=str, tag=2)  # type: ignore
+    KeyReference(article=Article, tag=3)  # type: ignore
+    EnglishCommonName(name=str, tag=4)  # type: ignore

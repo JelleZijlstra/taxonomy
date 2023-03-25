@@ -80,6 +80,7 @@ class Taxon(BaseModel):
         "self", related_name="children", null=True, db_column="parent_id"
     )
     data = TextField(null=True)
+    comments = TextField(null=True)
     is_page_root = BooleanField(default=False)
     base_name = peewee.DeferredForeignKey("Name")
     tags = ADTField(lambda: models.tags.TaxonTag)
