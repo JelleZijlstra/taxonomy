@@ -422,6 +422,9 @@ class PeriodSystem(enum.IntEnum):
     local_biostratigraphy = 8  # local biostratigraphic zonation
     aflma = 9  # African land mammal age system
 
+    def is_continuous(self) -> bool:
+        return self not in (PeriodSystem.salma, PeriodSystem.aulma, PeriodSystem.aflma)
+
 
 class PeriodRank(enum.IntEnum):
     age = 5

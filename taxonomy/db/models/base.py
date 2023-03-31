@@ -1192,11 +1192,12 @@ class BaseModel(Model):
     def get_empty_required_fields(self) -> Iterable[str]:
         deprecated_fields = set(self.get_deprecated_fields())
         for field in self.get_required_fields():
+            value = getattr(self, field)
             if field in deprecated_fields:
-                if getattr(self, field) is not None:
+                if value is not None and value != ():
                     yield field
             else:
-                if getattr(self, field) is None:
+                if value is None or value == ():
                     yield field
 
     def get_deprecated_fields(self) -> Iterable[str]:

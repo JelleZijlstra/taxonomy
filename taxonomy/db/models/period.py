@@ -126,6 +126,38 @@ class Period(BaseModel):
         else:
             if requires_parent is RequirednessLevel.disallowed:
                 yield f"{self}: may not have a parent"
+        if (
+            self.system.is_continuous()
+            and self.next is not None
+            and self.next.max_age is not None
+            and self.min_age != self.next.max_age
+        ):
+            yield (
+                f"{self}: min_age is {self.min_age}, but {self.next}'s max_age is"
+                f" {self.next.max_age}"
+            )
+            if cfg.autofix:
+                self.min_age = self.next.max_age
+        child_max_ages = [child.max_age for child in self.children]
+        if child_max_ages and all(age is not None for age in child_max_ages):
+            expected = max(child_max_ages)
+            if expected != self.max_age:
+                yield (
+                    f"{self}: max_age is {self.max_age}, but max age among children is"
+                    f" {expected}"
+                )
+                if cfg.autofix:
+                    self.max_age = expected
+        child_min_ages = [child.min_age for child in self.children]
+        if child_min_ages and all(age is not None for age in child_min_ages):
+            expected = min(child_min_ages)
+            if expected != self.min_age:
+                yield (
+                    f"{self}: min_age is {self.min_age}, but min age among children is"
+                    f" {expected}"
+                )
+                if cfg.autofix:
+                    self.min_age = expected
 
     def merge(self, other: Period) -> None:
         for loc in self.locations_min:
@@ -157,6 +189,8 @@ class Period(BaseModel):
         )
         if child_min_age is not None:
             return child_min_age
+        if self.min_period is not None:
+            return self.min_period.get_min_age()
         if not skip_parent and self.parent is not None:
             return self.parent.get_min_age()
         return None
@@ -172,6 +206,8 @@ class Period(BaseModel):
         )
         if child_max_age is not None:
             return child_max_age
+        if self.max_period is not None:
+            return self.max_period.get_max_age()
         if not skip_parent and self.parent is not None:
             return self.parent.get_max_age()
         return None
@@ -211,8 +247,8 @@ class Period(BaseModel):
         full: bool = False,
         depth: int = 0,
         file: IO[str] = sys.stdout,
-        locations: bool = True,
-        children: bool = True,
+        locations: bool = False,
+        children: bool = False,
     ) -> None:
         file.write("{}{}\n".format(" " * (depth + 4), repr(self)))
         if locations:
@@ -237,6 +273,9 @@ class Period(BaseModel):
                 period.display(
                     full=full, depth=depth + 2, file=file, locations=locations
                 )
+
+    def display_locations(self, full: bool = False) -> None:
+        self.display(full=full, locations=True, children=True)
 
     def max_only_localities(self) -> Iterable[models.Location]:
         return models.Location.select_valid().filter(
@@ -324,6 +363,13 @@ class Period(BaseModel):
             self.set_period(period)
         else:
             super().fill_field(field)
+
+    def get_adt_callbacks(self) -> getinput.CallbackMap:
+        return {
+            **super().get_adt_callbacks(),
+            "display_locations": self.display_locations,
+            "display_type_localities": self.display_type_localities,
+        }
 
     def get_required_fields(self) -> Iterable[str]:
         yield "name"

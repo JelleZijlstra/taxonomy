@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from typing import TypeVar
 
 from ... import getinput
-from ..constants import OccurrenceStatus, RegionKind
+from ..constants import OccurrenceStatus, PeriodSystem, RegionKind
 from .article import Article
 from .location import Location
 from .name import Name
@@ -66,38 +66,64 @@ def get_bucket_maker() -> Callable[[int], int]:
 BucketKey = tuple[str, int, int]
 
 
+def get_age_bucket(
+    min_period: Period | None, max_period: Period | None
+) -> tuple[int, int] | str:
+    if min_period is None:
+        return "no min period"
+    min_age = min_period.get_min_age()
+    if min_age is None:
+        return "no min age"
+    if max_period is None:
+        return "no max period"
+    max_age = max_period.get_max_age()
+    if max_age is None:
+        return "no max age"
+    bm = get_bucket_maker()
+    min_period_index = bm(min_age + 1)
+    max_period_index = bm(max_age)
+    return min_period_index, max_period_index
+
+
+def check_age_buckets(system: PeriodSystem, verbose: bool = False) -> None:
+    periods = Period.select_valid().filter(Period.system == system)
+    for period in periods:
+        bucket = get_age_bucket(period, period)
+        if isinstance(bucket, str):
+            print(f"{period}: {bucket}")
+            continue
+        min_index, max_index = bucket
+        min_period = PERIOD_BINS[min_index]
+        max_period = PERIOD_BINS[max_index]
+        if min_index == max_index:
+            if verbose:
+                print(f"{period}: {min_period}")
+            continue
+        print(f"{period}: {max_period}–{min_period}")
+
+
 @dataclass
 class DataPoint:
     location: Location
-    _bucket: BucketKey | None = field(init=False, repr=False, hash=False, compare=False)
+    _bucket: BucketKey | str = field(init=False, repr=False, hash=False, compare=False)
 
     def get_description(self) -> str:
         raise NotImplementedError
 
-    def get_bucket(self) -> BucketKey | None:
+    def get_bucket(self) -> BucketKey | str:
         if not hasattr(self, "_bucket"):
             self._bucket = self._get_bucket()
         return self._bucket
 
-    def _get_bucket(self) -> BucketKey | None:
+    def _get_bucket(self) -> BucketKey | str:
         # TODO minimize the number of cases we return None
         region = self.location.region.parent_of_kind(RegionKind.continent)
         if region is None:
-            return None
-        if self.location.min_period is None:
-            return None
-        min_age = self.location.min_period.get_min_age()
-        if min_age is None:
-            return None
-        if self.location.max_period is None:
-            return None
-        max_age = self.location.max_period.get_max_age()
-        if max_age is None:
-            return None
-        bm = get_bucket_maker()
-        min_period = bm(min_age + 1)
-        max_period = bm(max_age)
-        return region.name, min_period, max_period
+            return "no continent"
+        bucket = get_age_bucket(self.location.min_period, self.location.max_period)
+        if isinstance(bucket, str):
+            return bucket
+        return region.name, bucket[0], bucket[1]
 
 
 @dataclass
@@ -162,6 +188,11 @@ def get_datapoints(taxon: Taxon) -> Sequence[DataPoint]:
     return datapoints
 
 
+def clear_cache() -> None:
+    _TAXON_ID_TO_DATAPOINTS.clear()
+    get_bucket_maker.cache_clear()
+
+
 @dataclass
 class RangeSummary:
     datapoints: Sequence[DataPoint]
@@ -171,15 +202,25 @@ class RangeSummary:
         return RangeSummary(get_datapoints(taxon))
 
     def print_summary(self) -> None:
-        summary, explanation = self.summarize()
+        summary, explanation, reason_to_dp = self.summarize()
         getinput.print_header(summary)
+        if reason_to_dp:
+            print("## Skip reasons")
+            for reason, datapoints in sorted(
+                reason_to_dp.items(), key=lambda pair: -len(pair[1])
+            ):
+                print(reason, len(datapoints))
         print(explanation)
 
-    def summarize(self, detail_up_to: int = 2) -> tuple[str, str]:
+    def summarize(
+        self, detail_up_to: int = 2
+    ) -> tuple[str, str, dict[str, list[DataPoint]]]:
         bucketed: dict[BucketKey, list[DataPoint]] = {}
+        reason_to_datapoints: dict[str, list[DataPoint]] = {}
         for dp in self.datapoints:
             bucket = dp.get_bucket()
-            if bucket is None:
+            if isinstance(bucket, str):
+                reason_to_datapoints.setdefault(bucket, []).append(dp)
                 continue
             bucketed.setdefault(bucket, []).append(dp)
         keys = sorted(bucketed, key=lambda bucket: (bucket[0], -bucket[2], -bucket[1]))
@@ -189,13 +230,16 @@ class RangeSummary:
         start_index: int | None = None
         pieces = []
         for bucket in keys:
-            summary_lines.append(
-                make_summary_line(bucket, bucketed[bucket], detail_up_to)
-            )
+            buckets = bucketed[bucket]
+            summary_lines.append(make_summary_line(bucket, buckets, detail_up_to))
             region, min_index, max_index = bucket
             if max_index >= len(PERIOD_BINS) - 1:
+                reason_to_datapoints.setdefault("too old", []).extend(buckets)
                 continue
             if min_index != max_index:
+                reason_to_datapoints.setdefault(
+                    "covers multiple age buckets", []
+                ).extend(buckets)
                 # TODO
                 continue
             if region != current_continent:
@@ -224,4 +268,4 @@ class RangeSummary:
             pieces.append(PERIOD_BINS[last_index])
         if current_continent is not None:
             pieces.append(f", {current_continent}")
-        return "".join(pieces), "".join(summary_lines)
+        return "".join(pieces), "".join(summary_lines), reason_to_datapoints

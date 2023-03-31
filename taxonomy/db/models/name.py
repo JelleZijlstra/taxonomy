@@ -2322,6 +2322,7 @@ class TypeTag(adt.ADT):
     TypeSpecimenLink(url=str, tag=45)  # type: ignore
     # Ignore lints with a specific label
     IgnoreLintName(label=str, comment=str, tag=46)  # type: ignore
+    RejectedLSIDName(text=str, tag=47)  # type: ignore
 
 
 SOURCE_TAGS = (

@@ -331,8 +331,13 @@ def check_for_lsid(nam: Name, cfg: LintConfig) -> Iterable[str]:
     art_tags = []
     art = nam.original_citation
     name_lsids = {tag.text for tag in nam.get_tags(nam.type_tags, TypeTag.LSIDName)}
+    rejected_lsids = {
+        tag.text for tag in nam.get_tags(nam.type_tags, TypeTag.RejectedLSIDName)
+    }
     art_lsids = {tag.text for tag in art.get_tags(art.tags, ArticleTag.LSIDArticle)}
     for zoobank_data in zoobank_data_list:
+        if zoobank_data.name_lsid in rejected_lsids:
+            continue
         if zoobank_data.name_lsid not in name_lsids:
             type_tags.append(TypeTag.LSIDName(zoobank_data.name_lsid))
         if zoobank_data.citation_lsid and zoobank_data.citation_lsid not in art_lsids:

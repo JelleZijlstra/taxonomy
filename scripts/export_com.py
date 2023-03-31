@@ -51,7 +51,7 @@ def make_row(taxon: Taxon, nam: Name, sequence_number: int) -> Row:
     is_base = taxon.base_name == nam
     if is_base:
         rs = RangeSummary.from_taxon(taxon)
-        distribution, support = rs.summarize()
+        distribution, support, _ = rs.summarize()
         name_tags = taxon.get_tags(taxon.tags, TaxonTag.EnglishCommonName)
         common_name = ", ".join(tag.name for tag in name_tags)
         ref_tags = list(taxon.get_tags(taxon.tags, TaxonTag.KeyReference))

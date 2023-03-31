@@ -184,6 +184,8 @@ def process_article(*names: str, clear_caches: bool = False) -> None:
 
 def handle_template(template: Template) -> None:
     print(template, flush=True)
+    if "journal" in template.args:
+        print("Journal:", template.args["journal"])
     options = [
         "",
         "q",
