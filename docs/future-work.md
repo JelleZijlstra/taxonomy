@@ -62,8 +62,9 @@ please [let me know](mailto:jelle.zijlstra@gmail.com).
 - Make the editor not allow leaving required (non-null) fields empty (especially enums)
 - Clean up duplicate tags (e.g. _Echinothrix_ Flower & Lydekker has the same
   UnjustifiedEmendation tag twice)
-- Add a way to add "name aliases", so we can present names in a way that is consistent
-  with the publication itself, while also tracking all references together.
+- Change the way we do justified emendations. Instead of three names (IOS, as_emended,
+  justified_emendation), only have two (as_emended, justified_emendation). The root_name
+  of the former is based on that of the justified_emendation.
 
 ## New or disabled checks
 
