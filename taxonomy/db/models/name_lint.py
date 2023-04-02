@@ -371,7 +371,44 @@ def check_year(nam: Name, cfg: LintConfig) -> Iterable[str]:
 
 @make_linter("year_matches")
 def check_year_matches(nam: Name, cfg: LintConfig) -> Iterable[str]:
-    if nam.original_citation is not None and nam.year != nam.original_citation.year:
+    if nam.original_citation is None:
+        return
+
+    if nam.original_citation.has_tag(
+        ArticleTag.UnavailableElectronic
+    ) and nam.nomenclature_status not in (
+        NomenclatureStatus.unpublished_electronic,
+        NomenclatureStatus.unpublished_pending,
+    ):
+        yield (
+            "was published in unavailable electronic-only publication and should be"
+            " marked as unpublished_electronic"
+        )
+        if cfg.autofix:
+            nam.nomenclature_status = NomenclatureStatus.unpublished_electronic  # type: ignore
+    elif nam.nomenclature_status in (
+        NomenclatureStatus.unpublished_electronic,
+        NomenclatureStatus.unpublished_pending,
+    ) and not nam.original_citation.has_tag(ArticleTag.UnavailableElectronic):
+        yield (
+            "is marked as unpublished_electronic, but original citation is not marked"
+            " accordingly"
+        )
+
+    if (
+        nam.original_citation.type is ArticleType.THESIS
+        and nam.nomenclature_status is not NomenclatureStatus.unpublished_thesis
+    ):
+        yield "was published in a thesis and should be marked as unpublished_thesis"
+        if cfg.autofix:
+            nam.nomenclature_status = NomenclatureStatus.unpublished_thesis  # type: ignore
+    elif (
+        nam.nomenclature_status is NomenclatureStatus.unpublished_thesis
+        and nam.original_citation.type is not ArticleType.THESIS
+    ):
+        yield "is marked as unpublished_thesis, but was not published in a thesis"
+
+    if nam.year != nam.original_citation.year:
         if cfg.autofix and helpers.is_more_specific_date(
             nam.original_citation.year, nam.year
         ):
@@ -806,6 +843,7 @@ def check_justified_emendations(nam: Name, cfg: LintConfig) -> Iterable[str]:
             yield from _check_correctable_ios(target, cfg)
         elif target.nomenclature_status not in (
             NomenclatureStatus.available,
+            NomenclatureStatus.unpublished_pending,
             NomenclatureStatus.nomen_novum,
             NomenclatureStatus.preoccupied,
             NomenclatureStatus.partially_suppressed,

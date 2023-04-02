@@ -129,7 +129,8 @@ class NomenclatureStatus(enum.IntEnum):
     fully_suppressed = 3  # by the Commission
     not_based_on_a_generic_name = 4  # for family-group names (cf. Art. 11.7)
     infrasubspecific = 5  # for species-group names (Art. 1.3.4; but see 45.6.4.1)
-    unpublished = 6  # e.g., published in a thesis; see Art. 8
+    # e.g., published in a thesis; see Art. 8. Some more specific statuses below.
+    unpublished = 6
     incorrect_subsequent_spelling = 7
     unjustified_emendation = 8  # such names are available (Art. 19.1, 33)
     before_1758 = 9  # Art. 3.2: names published before 1758 are unavailable
@@ -190,6 +191,13 @@ class NomenclatureStatus(enum.IntEnum):
     as_emended = 49
     # Regarded as unavailable by fiat
     rejected_by_fiat = 50
+    unpublished_thesis = 51  # unpublished because named in an unpublished thesis
+    # unpublished because named in an electronic-only work without an LSID
+    unpublished_electronic = 52
+    # like the above, but expected to be published in print form. We mostly treat these as available.
+    unpublished_pending = 53
+    # unpublished because named in electronic supplementary material only
+    unpublished_supplement = 54
 
     def requires_type(self) -> bool:
         """Whether a name of this status should have a type designated."""
@@ -209,6 +217,7 @@ class NomenclatureStatus(enum.IntEnum):
         """Whether a name of this type can preoccupy another name."""
         return self in {
             NomenclatureStatus.available,
+            NomenclatureStatus.unpublished_pending,
             NomenclatureStatus.unjustified_emendation,
             NomenclatureStatus.hybrid_name,
             NomenclatureStatus.variant,
@@ -235,6 +244,10 @@ class NomenclatureStatus(enum.IntEnum):
             NomenclatureStatus.not_used_as_valid,
             NomenclatureStatus.not_published_with_a_generic_name,
             NomenclatureStatus.unpublished,
+            NomenclatureStatus.unpublished_thesis,
+            NomenclatureStatus.unpublished_electronic,
+            NomenclatureStatus.unpublished_supplement,
+            NomenclatureStatus.unpublished_pending,
         }
 
     def permissive_corrected_original_name(self) -> bool:
@@ -262,7 +275,14 @@ class NomenclatureStatus(enum.IntEnum):
             # The Commission's implicit word.
             [cls.unlisted],
             # If the work is invalid, we don't need to worry about the exact status of names.
-            [cls.unpublished, cls.before_1758, cls.inconsistently_binominal],
+            [
+                cls.unpublished,
+                cls.unpublished_thesis,
+                cls.unpublished_electronic,
+                cls.unpublished_supplement,
+                cls.before_1758,
+                cls.inconsistently_binominal,
+            ],
             # Clear problems with the name itself.
             [
                 cls.not_based_on_a_generic_name,
@@ -310,12 +330,14 @@ class NomenclatureStatus(enum.IntEnum):
             [cls.collective_group],
             [cls.as_emended],
             [cls.preoccupied],
+            [cls.unpublished_pending],
             [cls.available],
         ]
 
 
 REQUIRES_TYPE = {
     NomenclatureStatus.available,
+    NomenclatureStatus.unpublished_pending,
     NomenclatureStatus.hybrid_name,
     NomenclatureStatus.art_13_nomen_oblitum,
     NomenclatureStatus.preoccupied,

@@ -1316,6 +1316,10 @@ class ArticleTag(adt.ADT):
     # All references must be moved to children
     MustUseChildren(tag=16)  # type: ignore
 
+    # Electronic-only publication that is not available according to the ICZN
+    # (e.g., it doesn't have an LSID present in the article)
+    UnavailableElectronic(comment=str, tag=17)  # type: ignore
+
 
 @lru_cache
 def _getpdfcontent(path: str) -> str:

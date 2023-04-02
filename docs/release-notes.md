@@ -13,6 +13,8 @@ exports released on Zenodo.
   - Remove some duplicate names, mostly in the turtles
   - Remove uses of the legacy "dubious" status
   - Fix some incorrect parent taxa
+  - Add numerous new fossil taxa based on the recent literature
+  - Further taxonomic changes for extant mammals for alignment with the MDD
 - Backend
   - Further checks for publication dates. Distinguish between "parts" (separately
     published portions of a larger work) and "chapters" (simultaneously published
@@ -24,6 +26,12 @@ exports released on Zenodo.
     publication dates.
   - Enforce that the _page_described_ and _original_rank_ fields are set for all names
     with original citations.
+  - Add new nomenclature statuses to distinguish between unpublished names, separating
+    out "unpublished_thesis" (unpublished because named in a thesis),
+    "unpublished_electronic" (named in an electronic work that does not fulfill the
+    ICZN's criteria for publication), "unpublished_supplement" (named in electronic
+    supplementary material only), and "unpublished_pending" (not yet available, but
+    expected to be made available by print publication).
 - Frontend
 
 # 23.3.0 (March 13, 2023)

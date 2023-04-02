@@ -977,7 +977,10 @@ class Name(BaseModel):
         of_name: Name | None = None,
         comment: str | None = None,
     ) -> None:
-        if self.nomenclature_status != NomenclatureStatus.available:
+        if self.nomenclature_status not in (
+            NomenclatureStatus.available,
+            NomenclatureStatus.unpublished_pending,
+        ):
             raise ValueError(f"{self} is {self.nomenclature_status.name}")
         if status is None:
             status = getinput.get_enum_member(

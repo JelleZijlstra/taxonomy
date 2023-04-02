@@ -65,6 +65,7 @@ please [let me know](mailto:jelle.zijlstra@gmail.com).
 - Change the way we do justified emendations. Instead of three names (IOS, as_emended,
   justified_emendation), only have two (as_emended, justified_emendation). The root_name
   of the former is based on that of the justified_emendation.
+- Enforce that taxa based on unavailable names are marked as invalid
 
 ## New or disabled checks
 
