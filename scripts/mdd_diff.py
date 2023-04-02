@@ -377,7 +377,7 @@ def compare_single(taxon: Taxon, mdd_row: MddRow) -> Iterable[Difference]:
             taxon=taxon,
         )
 
-    mdd_is_extinct = mdd_row["extinct"] == "1"
+    mdd_is_extinct = mdd_row.get("extinct") == "1"
     hesp_is_extinct = taxon.age is AgeClass.recently_extinct
     if mdd_is_extinct is not hesp_is_extinct:
         yield Difference(

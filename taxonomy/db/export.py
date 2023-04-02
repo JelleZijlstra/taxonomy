@@ -77,6 +77,7 @@ def export_names(
     ages: Container[AgeClass] | None = None,
     group: Group | None = None,
     limit: int | None = None,
+    min_rank_for_age_filtering: Rank | None = None,
 ) -> None:
     """Export data about names to a CSV file."""
     print("collecting names...")
@@ -91,7 +92,20 @@ def export_names(
     if group is not None:
         names = [name for name in names if name.group is group]
     if ages is not None:
-        names = [name for name in names if name.taxon.age in ages]
+        new_names = []
+        for name in names:
+            if name.taxon.age in ages:
+                new_names.append(name)
+                continue
+            if min_rank_for_age_filtering is None:
+                continue
+            try:
+                parent = name.taxon.parent_of_rank(min_rank_for_age_filtering)
+            except ValueError:
+                continue
+            if parent.age in ages:
+                new_names.append(name)
+        names = new_names
     print(f"done, {len(names)} remaining")
 
     with open(filename, "w") as f:
