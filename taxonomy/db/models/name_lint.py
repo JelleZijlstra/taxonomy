@@ -487,6 +487,9 @@ def check_corrected_original_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
         if " " in nam.corrected_original_name:
             yield _make_con_messsage(nam, "contains whitespace")
         elif nam.corrected_original_name != nam.root_name:
+            emended = nam.get_tag_target(NameTag.AsEmendedBy)
+            if emended is not None and emended.root_name == nam.root_name:
+                return
             yield _make_con_messsage(nam, f"does not match root_name {nam.root_name!r}")
     elif nam.group is Group.family:
         if nam.nomenclature_status is NomenclatureStatus.not_based_on_a_generic_name:
@@ -506,6 +509,9 @@ def check_corrected_original_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
         if len(parts) not in (2, 3, 4):
             yield _make_con_messsage(nam, "is not a valid species or subspecies name")
         elif parts[-1] != nam.root_name:
+            emended = nam.get_tag_target(NameTag.AsEmendedBy)
+            if emended is not None and emended.root_name == nam.root_name:
+                return
             if nam.species_name_complex is not None:
                 try:
                     forms = list(nam.species_name_complex.get_forms(nam.root_name))
@@ -537,11 +543,9 @@ def check_root_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
 
 
 def _check_rn_matches_original(
-    nam: Name, cfg: LintConfig, reason: str
+    nam: Name, corrected_original_name: str, cfg: LintConfig, reason: str
 ) -> Iterable[str]:
-    if nam.corrected_original_name is None:
-        return
-    con_root = nam.corrected_original_name.split()[-1]
+    con_root = corrected_original_name.split()[-1]
     if con_root == nam.root_name:
         return
     message = _make_con_messsage(
@@ -555,22 +559,35 @@ def _check_rn_matches_original(
 
 
 def _check_species_name_gender(nam: Name, cfg: LintConfig) -> Iterable[str]:
-    if nam.corrected_original_name is None:
+    emending_name = nam.get_tag_target(NameTag.AsEmendedBy)
+    if emending_name is not None:
+        corrected_original_name = emending_name.corrected_original_name
+    else:
+        corrected_original_name = nam.corrected_original_name
+    if corrected_original_name is None:
         return
-    con_root = nam.corrected_original_name.split()[-1]
+    con_root = corrected_original_name.split()[-1]
     # For nomina dubia we always follow the original name
     if nam.status in (Status.nomen_dubium, Status.species_inquirenda):
-        yield from _check_rn_matches_original(nam, cfg, nam.status.name)
+        yield from _check_rn_matches_original(
+            nam, corrected_original_name, cfg, nam.status.name
+        )
         return
     # If there is no name complex, the root_name should match exactly
     if nam.species_name_complex is None:
-        yield from _check_rn_matches_original(nam, cfg, "no name complex")
+        yield from _check_rn_matches_original(
+            nam, corrected_original_name, cfg, "no name complex"
+        )
         return
     if nam.species_name_complex.kind is not SpeciesNameKind.adjective:
-        yield from _check_rn_matches_original(nam, cfg, "not an adjective")
+        yield from _check_rn_matches_original(
+            nam, corrected_original_name, cfg, "not an adjective"
+        )
         return
     if nam.species_name_complex.is_invariant_adjective():
-        yield from _check_rn_matches_original(nam, cfg, "invariant adjective")
+        yield from _check_rn_matches_original(
+            nam, corrected_original_name, cfg, "invariant adjective"
+        )
         return
     # Now we have an adjective that needs to agree in gender with its genus, so we
     # have to find the genus. But first we check whether the name even makes sense.
@@ -722,19 +739,6 @@ def check_correct_status(nam: Name, cfg: LintConfig) -> Iterable[str]:
         yield (f"is of status {nam.status!r} and should be base name of {nam.taxon}")
 
 
-def _find_as_emended_by(nam: Name) -> Name | None:
-    for synonym in nam.taxon.sorted_names():
-        if synonym.nomenclature_status is not NomenclatureStatus.justified_emendation:
-            continue
-        ios = synonym.get_tag_target(NameTag.JustifiedEmendationOf)
-        if ios is None:
-            continue
-        as_emended = ios.get_tag_target(NameTag.IncorrectOriginalSpellingOf)
-        if as_emended == nam:
-            return synonym
-    return None
-
-
 def _check_names_match(
     nam: Name, other: Name, *, include_page_described: bool
 ) -> Iterable[str]:
@@ -762,16 +766,7 @@ def _check_as_emended_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
         yield "expected status to be as_emended"
     as_emended_target = nam.get_tag_target(NameTag.AsEmendedBy)
     if as_emended_target is None:
-        message = "as_emended without an AsEmendedBy tag"
-        if not cfg.autofix:
-            yield message
-            return
-        target = _find_as_emended_by(nam)
-        if target is None:
-            yield message + " (could not infer target)"
-            return
-        print(f"{nam}: {message} (inferred target {target})")
-        nam.add_tag(NameTag.AsEmendedBy(name=target, comment=""))
+        yield "as_emended without an AsEmendedBy tag"
         return
     if as_emended_target.taxon != nam.taxon:
         yield f"target {as_emended_target} does not belong to the same taxon"
@@ -786,28 +781,14 @@ def _check_as_emended_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
     ):
         yield f"target {as_emended_target} is not a justified_emendation"
         return
-    ios = as_emended_target.get_tag_target(NameTag.JustifiedEmendationOf)
-    if ios is None:
+    original = as_emended_target.get_tag_target(NameTag.JustifiedEmendationOf)
+    if original is None:
         yield (
             f"as_emended target {as_emended_target} lacks a justified emendation tag"
         )
         return
-    if ios.nomenclature_status is not NomenclatureStatus.incorrect_original_spelling:
-        yield f"incorrect original spelling {ios} is not marked as such"
-        return
-    yield from _check_names_match(nam, ios, include_page_described=True)
-    original = ios.get_tag_target(NameTag.IncorrectOriginalSpellingOf)
     if original != nam:
-        yield (f"incorrect original spelling traces back to {original}, not this name")
-
-
-def _check_correctable_ios(nam: Name, cfg: LintConfig) -> Iterable[str]:
-    """Check an incorrect original spelling that should be part of a triple."""
-    ios_target = nam.get_tag_target(NameTag.IncorrectOriginalSpellingOf)
-    if ios_target is None:
-        yield "missing IncorrectOriginalSpellingOf tag"
-        return
-    yield from _check_as_emended_name(ios_target, cfg)
+        yield f"incorrect original spelling traces back to {original}, not this name"
 
 
 @make_linter("justified_emendation")
@@ -833,26 +814,24 @@ def check_justified_emendations(nam: Name, cfg: LintConfig) -> Iterable[str]:
             return
         if target.taxon != nam.taxon:
             yield f"target {target} does not belong to the same taxon"
-        if target.nomenclature_status is NomenclatureStatus.incorrect_original_spelling:
-            # Now we must have an IOS/JE/as_emended triple.
-            if target.root_name == nam.root_name:
+        if (
+            target.nomenclature_status is NomenclatureStatus.as_emended
+            or target.get_tag_target(NameTag.AsEmendedBy)
+        ):
+            # Now we must have an JE/as_emended pair.
+            if (
+                target.corrected_original_name != None
+                and target.corrected_original_name.split()[-1] == nam.root_name
+            ):
                 yield (
                     f"supposed incorrect spelling {target} has identical root"
                     f" name {nam.root_name}"
                 )
-            yield from _check_correctable_ios(target, cfg)
-        elif target.nomenclature_status not in (
-            NomenclatureStatus.available,
-            NomenclatureStatus.unpublished_pending,
-            NomenclatureStatus.nomen_novum,
-            NomenclatureStatus.preoccupied,
-            NomenclatureStatus.partially_suppressed,
-            NomenclatureStatus.fully_suppressed,
-        ):
-            yield f"emended name {target} has unexpected status"
+            yield from _check_as_emended_name(target, cfg)
         else:
             # Else it should be a justified emendation for something straightforward
-            # (e.g., removing diacritics), so the CON and root_name should match.
+            # (e.g., removing diacritics), so the root_name should match.
+            # But the CON may not match exactly, because the species may have moved genera etc.
             if nam.root_name != target.root_name:
                 yield (
                     f"root name {nam.root_name} does not match emended name {target}"
@@ -862,19 +841,10 @@ def check_justified_emendations(nam: Name, cfg: LintConfig) -> Iterable[str]:
         if ios_target is None:
             yield "missing IncorrectOriginalSpellingOf tag"
             return
-        # Incorrect original spellings come in two kinds:
-        # - Where there are multiple spellings in the original publication, and one is
-        #   selected as valid. Then both names should have the same author etc. (but
-        #   not necessarily the same page_described).
-        # - Where the original spelling is incorrect in some way and is later fixed.
-        #   Then the target name should be an as_emended.
-        if (
-            ios_target.nomenclature_status is NomenclatureStatus.as_emended
-            or ios_target.get_tag_target(NameTag.AsEmendedBy)
-        ):
-            yield from _check_correctable_ios(nam, cfg)
-        else:
-            yield from _check_names_match(nam, ios_target, include_page_described=False)
+        # Incorrect original spellings are used where there are multiple spellings
+        # in the original publication, and one is selected as valid. Then both names
+        # should have the same author etc. (but not necessarily the same page_described).
+        yield from _check_names_match(nam, ios_target, include_page_described=False)
 
 
 @make_linter("autoset_original_rank")

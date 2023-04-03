@@ -260,19 +260,15 @@ names should have at least one. They fall into several groups:
 
 Although the Code generally mandates that original spellings are to be maintained, on
 rare occasions a spelling other than the original is valid (see Arts. 32.5 and
-33.2.3.1). In such cases, three names should be entered into the database:
+33.2.3.1). In such cases, two names should be entered into the database:
 
-- The name as corrected, with its original author and date and with
-  `nomenclature_status` set to `as_emended`. The page*described field should be set to
-  the page where the original spelling was used. This name should have other standard
-  nomenclatural information, like the type locality and type specimen. If its
-  `nomenclature_status` cannot be `as_emended` (for example because it is a
-  `nomen_novum`), the \_AsEmended* tag should be added instead, pointing to the
-  justified emendation name.
-- The name as originally spelled, with its original author and date, but no other data
-  (such as `type_tags`). It should have `nomenclature_status` set to
-  `incorrect_original_spelling` and an _IncorrectOriginalSpellingOf_ tag pointing to the
-  emended name.
+- The name as originally spelled, with its original author and date and with
+  `nomenclature_status` set to `as_emended`. The _root_name_ field should have the
+  corrected spelling. The _page_described_ field should be set to the page where the
+  original spelling was used. This name should have other standard nomenclatural
+  information, like the type locality and type specimen. If its `nomenclature_status`
+  cannot be `as_emended` (for example because it is a `nomen_novum`), the _AsEmendedBy_
+  tag indicates its status.
 - The name as corrected, with the author and date who first performed the correction.
   This name should have `nomenclature_status` set to `justified_emendation` and a
   _JustifiedEmendationOf_ tag pointing to the original spelling.
