@@ -113,6 +113,8 @@ def should_include(template: Template) -> bool:
         return False
     if not template.template_name.startswith("cite"):
         return False
+    if template.args.get("title") == "Archived copy":
+        return False
     return True
 
 
@@ -121,10 +123,13 @@ def simplify_string(text: str) -> str:
         text.replace("<i>", "")
         .replace("</i>", "")
         .replace("''", "")
-        .replace(" :", "")
+        .replace(":", "")
+        .replace("_", "")
+        .replace("(", "")
+        .replace(")", "")
         .lower()
     )
-    return helpers.clean_string(text)
+    return helpers.clean_string(text, clean_whitespace=True)
 
 
 @functools.lru_cache
