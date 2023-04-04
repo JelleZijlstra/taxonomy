@@ -1165,8 +1165,7 @@ def autoset_original_name() -> None:
 
 @generator_command
 def childless_taxa() -> Iterable[Taxon]:
-    return Taxon.raw(
-        f"""
+    return Taxon.raw(f"""
             SELECT *
             FROM taxon
             WHERE
@@ -1179,8 +1178,7 @@ def childless_taxa() -> Iterable[Taxon]:
                         parent_id IS NOT NULL AND
                         age != {AgeClass.removed.value}
                 )
-        """
-    )
+        """)
 
 
 @generator_command
