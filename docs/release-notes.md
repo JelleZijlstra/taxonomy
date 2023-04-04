@@ -15,6 +15,7 @@ exports released on Zenodo.
   - Fix some incorrect parent taxa
   - Add numerous new fossil taxa based on the recent literature
   - Further taxonomic changes for extant mammals for alignment with the MDD
+  - Simplify the treatment of justified emendations, using two names instead of three
 - Backend
   - Further checks for publication dates. Distinguish between "parts" (separately
     published portions of a larger work) and "chapters" (simultaneously published
