@@ -126,10 +126,9 @@ Languages written in the Latin alphabet:
   Vietnamese uses a large set of unusual diacritics, but these seem to be usually
   omitted when Vietnamese scientists are listed as authors. Modes of citation for
   Vietnamese names vary; for example, [Nguyen Truong Son](/h/43537) is often cited as
-  "Son", but also as "S.T. Nguyen". In the database, the family name field should
-  contain the family name, and the given names field should contain the given name
-  followed by the middle name. Note that this reverses the normal name order in
-  Vietnamese.
+  "Son", but also as "S.T. Nguyen". However, the convention appears to be to cite people
+  by their given name, e.g. "Son". Therefore, the _family_name_ should contain the given
+  name, and the _given_names_ field should contain the family name and middle name.
 
 Non-Latin writing systems:
 

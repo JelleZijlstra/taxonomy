@@ -204,6 +204,9 @@ def does_author_match(mdd_author: str, hesp_author: Person) -> bool:
             f"{hesp_author.family_name} {hesp_author.given_names.replace('-', '').lower().title()}"
         )
         return mdd_author == expected
+    if hesp_author.naming_convention is NamingConvention.vietnamese:
+        expected = f"{hesp_author.given_names} {hesp_author.family_name}"
+        return mdd_author == expected
     if hesp_author.naming_convention in (
         NamingConvention.russian,
         NamingConvention.ukrainian,
