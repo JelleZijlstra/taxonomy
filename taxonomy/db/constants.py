@@ -113,6 +113,10 @@ class Status(enum.IntEnum):
     removed = 6
     # Merged into another name
     redirect = 7
+    # Based on a composite of multiple taxa, and no lectotype.
+    composite = 8
+    # Based on a hybrid
+    hybrid = 9
 
     def is_base_name(self) -> bool:
         return self in (
@@ -120,6 +124,8 @@ class Status(enum.IntEnum):
             Status.nomen_dubium,
             Status.species_inquirenda,
             Status.spurious,
+            Status.composite,
+            Status.hybrid,
         )
 
 

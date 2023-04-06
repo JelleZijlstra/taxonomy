@@ -1115,6 +1115,29 @@ def check_synonym_group(nam: Name, cfg: LintConfig) -> Iterable[str]:
         )
 
 
+@make_linter("composites")
+def check_composites(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    if nam.status not in (Status.composite, Status.hybrid):
+        return
+    children = list(nam.taxon.children)
+    if children:
+        different_status = [
+            child for child in children if child.status is not nam.status
+        ]
+        if different_status:
+            yield (
+                f"is of status {nam.status}, but has children of different status"
+                f" {different_status}"
+            )
+    else:
+        tags = list(nam.get_tags(nam.type_tags, TypeTag.PartialTaxon))
+        if len(tags) < 2:
+            yield (
+                f"is of status {nam.status} and must have at least two PartialTaxon"
+                f" tags (got {tags})"
+            )
+
+
 def run_linters(
     nam: Name, cfg: LintConfig, *, include_disabled: bool = False
 ) -> Iterable[str]:

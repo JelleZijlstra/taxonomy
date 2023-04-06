@@ -2326,6 +2326,8 @@ class TypeTag(adt.ADT):
     # Ignore lints with a specific label
     IgnoreLintName(label=str, comment=str, tag=46)  # type: ignore
     RejectedLSIDName(text=str, tag=47)  # type: ignore
+    # For hybrids and composites
+    PartialTaxon(taxon=Taxon, tag=48)  # type: ignore
 
 
 SOURCE_TAGS = (
