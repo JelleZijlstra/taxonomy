@@ -1073,7 +1073,6 @@ def fix_author(author: str, name_config: NameConfig) -> str:
     author = author.replace(" and ", " & ").replace(", & ", " & ")
     authors = re.split(r", | & ", author)
     authors = [name_config.authority_fixes.get(author, author) for author in authors]
-    authors = [shell.AUTHOR_SYNONYMS.get(author, author) for author in authors]
     if len(authors) > 1:
         return " & ".join([", ".join(authors[:-1]), authors[-1]])
     else:

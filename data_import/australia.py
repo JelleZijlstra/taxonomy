@@ -289,7 +289,7 @@ def _translate_single_author(raw_author: str) -> str:
         author = re.sub(r"^([A-Z][a-z A-Z\-]+) ([A-Z])[A-Z]?$", r"\2. \1", raw_author)
     if author == "Gray":
         author = "J. Gray"
-    return shell.AUTHOR_SYNONYMS.get(author, author)
+    return author
 
 
 def split_text(names: DataT) -> DataT:
@@ -325,9 +325,6 @@ def split_text(names: DataT) -> DataT:
 
 def associate_refs(names: DataT, refs_dict: RefsDictT) -> DataT:
     for name in names:
-        name["authority"] = shell.AUTHOR_SYNONYMS.get(
-            name["authority"], name["authority"]
-        )
         key = name["authority"], name["raw_year"]
         if key in refs_dict:
             name["verbatim_citation"] = refs_dict[key]
