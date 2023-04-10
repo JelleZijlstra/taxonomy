@@ -40,7 +40,7 @@ ALLOWED_TUSSENVOEGSELS = {
         "von der",
     },
     NamingConvention.german: {"von", "von den", "von der", "zu"},
-    NamingConvention.portuguese: {"dos", "da", "do", "de", "du"},
+    NamingConvention.portuguese: {"dos", "da", "do", "de", "du", "e"},
     NamingConvention.french: {"de", "de la"},
     NamingConvention.english_peer: {"de"},
     NamingConvention.spanish: {"de", "de la", "de los", "del"},
@@ -282,7 +282,7 @@ class Person(BaseModel):
                 ):
                     return name[0] + "."
                 else:
-                    return f" {name}"
+                    return f" {name} "
 
             return "".join(name_to_initial(name) for name in names)
         return None
@@ -296,6 +296,18 @@ class Person(BaseModel):
             + " & "
             + authors[-1].taxonomic_authority()
         )
+
+    def get_transliterated_family_name(self) -> str:
+        if self.naming_convention not in (
+            NamingConvention.russian,
+            NamingConvention.ukrainian,
+        ):
+            return self.family_name
+        for tag in self.get_tags(
+            self.tags, models.tags.PersonTag.TransliteratedFamilyName
+        ):
+            return tag.text
+        return helpers.romanize_russian(self.family_name)
 
     def taxonomic_authority(self) -> str:
         if (
