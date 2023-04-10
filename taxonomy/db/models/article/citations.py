@@ -2,7 +2,7 @@
 
 import re
 
-from ...constants import ArticleType
+from ...constants import ArticleType, NamingConvention
 from .article import Article, ArticleTag, register_cite_function
 
 
@@ -74,7 +74,11 @@ def format_authors(
                 author_str = f"{initials} {family_name}"
             else:
                 author_str = f"{family_name}, {initials}"
-            if author.suffix:
+            if author.suffix and author.naming_convention in (
+                NamingConvention.english,
+                NamingConvention.english_peer,
+                NamingConvention.ancient,
+            ):
                 author_str += f", {author.suffix}"
         else:
             author_str = family_name
@@ -128,24 +132,36 @@ def _citenormal(article: Article, *, mw: bool) -> str:
         if article.issue:
             out += f"({article.issue})"
         out += f":{page_range(article)}."
-    elif article.type == ArticleType.CHAPTER:
-        if article.start_page == article.end_page:
-            out += f"P. {article.start_page}"
-        else:
-            out += f"Pp. {article.start_page}–{article.end_page}"
+    elif article.type in (ArticleType.CHAPTER, ArticleType.PART):
+        if article.start_page and article.end_page:
+            if article.start_page == article.end_page:
+                out += f"P. {article.start_page}"
+            else:
+                out += f"Pp. {article.start_page}–{article.end_page}"
+        elif article.pages:
+            out += article.pages
         enclosing = article.parent
         if not enclosing:
             out += " in Unknown"
         else:
             out += " in "
             out += format_authors(enclosing, separator=",", lastSeparator=" and")
-            out += " (eds.). "
+            if article.type == ArticleType.CHAPTER:
+                out += " (eds.). "
             out += f"{enclosing.title}. {enclosing.publisher}"
             if enclosing.pages:
                 out += f", {enclosing.pages} pp"
         out += "."
     elif article.type == ArticleType.BOOK:
         out += f" {article.publisher}"
+        if article.citation_group is not None:
+            out += f", {article.citation_group.name}"
+        if article.pages:
+            out += f", {article.pages} pp"
+        out += "."
+    elif article.type == ArticleType.THESIS:
+        if article.series is not None:
+            out += f" {article.series} thesis"
         if article.citation_group is not None:
             out += f", {article.citation_group.name}"
         if article.pages:

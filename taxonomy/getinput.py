@@ -610,6 +610,8 @@ def display_tags(
                     continue
                 if isinstance(value, str):
                     value = re.sub(r"\s+", " ", value).strip()
+                if isinstance(value, enum.Enum):
+                    value = value.name
                 yield f"{spacing}  {attr}: {value!s}\n"
 
 
