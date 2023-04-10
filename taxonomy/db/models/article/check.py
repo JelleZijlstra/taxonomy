@@ -93,6 +93,17 @@ def build_csvlist() -> FileList:
 
 
 @CS.register
+def check_new() -> None:
+    """Check only for new files."""
+    try:
+        newcheck()
+        burstcheck()
+        oversized_folders()
+    except uitools.EndOfInput as e:
+        print(f"Exiting from check ({e!r})")
+
+
+@CS.register
 def check(dry_run: bool = False) -> None:
     """Checks the catalog for things to be changed:
     - Checks whether there are any files in the catalog that are not in the
