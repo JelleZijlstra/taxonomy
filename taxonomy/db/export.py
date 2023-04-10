@@ -42,6 +42,7 @@ class NameData(TypedDict):
     authority: str
     author_links: str
     year: str
+    publication_date: str
     page_described: str
     original_citation: str
     original_citation_link: str
@@ -70,16 +71,13 @@ class DetailTag(Protocol):
     source: Article
 
 
-@CS.register
-def export_names(
-    filename: str,
+def get_names_for_export(
     taxon: Taxon | None = None,
     ages: Container[AgeClass] | None = None,
     group: Group | None = None,
     limit: int | None = None,
     min_rank_for_age_filtering: Rank | None = None,
-) -> None:
-    """Export data about names to a CSV file."""
+) -> list[Name]:
     print("collecting names...")
     if taxon is None:
         names = list(Name.select_valid().limit(limit))
@@ -107,6 +105,20 @@ def export_names(
                 new_names.append(name)
         names = new_names
     print(f"done, {len(names)} remaining")
+    return names
+
+
+@CS.register
+def export_names(
+    filename: str,
+    taxon: Taxon | None = None,
+    ages: Container[AgeClass] | None = None,
+    group: Group | None = None,
+    limit: int | None = None,
+    min_rank_for_age_filtering: Rank | None = None,
+) -> None:
+    """Export data about names to a CSV file."""
+    names = get_names_for_export(taxon, ages, group, limit, min_rank_for_age_filtering)
 
     with open(filename, "w") as f:
         writer: "csv.DictWriter[str]" = csv.DictWriter(
@@ -167,7 +179,8 @@ def data_for_name(name: Name) -> NameData:
         "group": name.group.name,
         "authority": name.taxonomic_authority(),
         "author_links": author_links,
-        "year": name.year or "",
+        "year": name.year[:4] if name.year else "",
+        "publication_date": name.year or "",
         "page_described": name.page_described or "",
         "original_citation": citation.cite("paper") if citation else "",
         "original_citation_link": citation.get_absolute_url() if citation else "",

@@ -8,9 +8,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import IO, TypedDict
 
+import unidecode
+
 from taxonomy.db import helpers
 from taxonomy.db.constants import AgeClass, NamingConvention, Rank, Status
-from taxonomy.db.models import CitationGroup, Person, Taxon
+from taxonomy.db.models import CitationGroup, Name, Person, Taxon
 from taxonomy.db.models.tags import TaxonTag
 
 INCLUDED_AGES = (AgeClass.extant, AgeClass.recently_extinct)
@@ -95,7 +97,7 @@ class Difference:
     mdd_id: str | None = None
     taxon: Taxon | None = None
 
-    def to_markdown(self, extra: str | None = None) -> str:
+    def to_markdown(self, extra: str | None = None, concise: bool = False) -> str:
         parts = []
         if self.kind is DifferenceKind.missing_in_hesperomys:
             parts.append(f"Missing in Hesperomys: _{self.mdd}_")
@@ -106,15 +108,15 @@ class Difference:
                 f"{self.mdd or '(none)'} (MDD) vs. {self.hesp or '(none)'} (Hesperomys)"
             )
         parentheticals = []
-        if self.mdd_id:
+        if self.mdd_id and not concise:
             parentheticals.append(f"MDD#{self.mdd_id}")
-        if self.taxon:
+        if self.taxon and not concise:
             parentheticals.append(
                 f"[{self.taxon.valid_name}](https://hesperomys.com/t/{self.taxon.id})"
             )
         if self.comment:
             parentheticals.append(self.comment)
-        if self.taxon and self.taxon.base_name.original_citation:
+        if not concise and self.taxon and self.taxon.base_name.original_citation:
             link = (
                 self.taxon.base_name.original_citation.concise_markdown_link().replace(
                     "/a/", "https://hesperomys.com/a/"
@@ -123,7 +125,8 @@ class Difference:
             parentheticals.append(f"original citation: {link}")
         if extra:
             parentheticals.append(extra)
-        parentheticals.append(self.kind.name)
+        if not concise:
+            parentheticals.append(self.kind.name)
         parts.append(f" ({'; '.join(parentheticals)})")
         return "".join(parts)
 
@@ -195,47 +198,71 @@ def process_mdd_authority(text: str) -> str:
     return text
 
 
-def does_author_match(mdd_author: str, hesp_author: Person) -> bool:
+def _possible_family_names(hesp_author: Person) -> Iterable[str]:
+    yield hesp_author.family_name
+    if hesp_author.family_name[0].islower():
+        yield f"{hesp_author.family_name[0].upper()}{hesp_author.family_name[1:]}"
+    if hesp_author.tussenvoegsel:
+        yield f"{hesp_author.tussenvoegsel} {hesp_author.family_name}"
+        tussenvoegsel = (
+            f"{hesp_author.tussenvoegsel[0].upper()}{hesp_author.tussenvoegsel[1:]}"
+        )
+        yield f"{tussenvoegsel} {hesp_author.family_name}"
+
+
+def possible_mdd_authors(hesp_author: Person) -> Iterable[str]:
     if hesp_author.naming_convention in (
         NamingConvention.pinyin,
         NamingConvention.chinese,
     ):
-        expected = (
+        yield (
             f"{hesp_author.family_name} {hesp_author.given_names.replace('-', '').lower().title()}"
         )
-        return mdd_author == expected
+        return
     if hesp_author.naming_convention is NamingConvention.vietnamese:
-        expected = f"{hesp_author.given_names} {hesp_author.family_name}"
-        return mdd_author == expected
+        name = f"{hesp_author.given_names} {hesp_author.family_name}"
+        yield name
+        decoded = unidecode.unidecode(name)
+        if name != decoded:
+            yield decoded
+        return
     if hesp_author.naming_convention in (
         NamingConvention.russian,
         NamingConvention.ukrainian,
     ):
-        if mdd_author == helpers.romanize_russian(hesp_author.family_name):
-            return True
-    if mdd_author == hesp_author.family_name:
-        return True
-    if hesp_author.tussenvoegsel:
-        if mdd_author == f"{hesp_author.tussenvoegsel} {hesp_author.family_name}":
-            return True
-    if initials := hesp_author.get_initials():
-        initials_list = re.split(r"(?<=\.)(?!-)| ", initials)
-        initials_list = [i for i in initials_list if i and i.endswith(".")]
-        if (
-            mdd_author
-            == f"{''.join(f'{i} ' for i in initials_list)}{hesp_author.family_name}"
-        ):
-            return True
-        # only first initial
-        if mdd_author == f"{initials_list[0]} {hesp_author.family_name}":
-            return True
-    return False
+        yield hesp_author.get_transliterated_family_name()
+
+    for family_name in _possible_family_names(hesp_author):
+        yield family_name
+        if initials := hesp_author.get_initials():
+            for splits in r" ", r"(?<=\.)(?!-)| ":
+                initials_list = re.split(splits, initials)
+                initials_list = [i for i in initials_list if i and i.endswith(".")]
+                yield f"{''.join(f'{i} ' for i in initials_list)}{family_name}"
+                # only first initial
+                if len(initials_list) > 1:
+                    yield f"{initials_list[0]} {family_name}"
+                # J. Edwards Hill
+                if hesp_author.given_names and hesp_author.given_names.count(" ") == 1:
+                    before, after = hesp_author.given_names.split()
+                    yield f"{before[0]}. {after} {family_name}"
+
+
+def does_author_match(mdd_author: str, hesp_author: Person) -> bool:
+    return mdd_author in possible_mdd_authors(hesp_author)
 
 
 def compare_authors(taxon: Taxon, mdd_row: MddRow) -> Iterable[Difference]:
-    nam = taxon.base_name
-    mdd_id = mdd_row["id"]
-    raw_mdd_authority = mdd_row["authoritySpeciesAuthor"]
+    yield from compare_authors_to_name(
+        taxon.base_name, mdd_row["id"], mdd_row["authoritySpeciesAuthor"], taxon=taxon
+    )
+
+
+def compare_authors_to_name(
+    nam: Name, mdd_id: str, raw_mdd_authority: str, taxon: Taxon | None = None
+) -> Iterable[Difference]:
+    if taxon is None:
+        taxon = nam.taxon
     mdd_authority, *_ = raw_mdd_authority.split(" in ")
     mdd_authors = re.split(r", (?:& )?| & ", mdd_authority)
     hesp_authors = nam.get_authors()
@@ -260,7 +287,10 @@ def compare_authors(taxon: Taxon, mdd_row: MddRow) -> Iterable[Difference]:
             yield Difference(
                 DifferenceKind.authority,
                 mdd=mdd_author,
-                hesp=str(hesp_author),
+                hesp=(
+                    f"{hesp_author} (tried:"
+                    f" {', '.join(sorted(set(possible_mdd_authors(hesp_author))))})"
+                ),
                 mdd_id=mdd_id,
                 taxon=taxon,
                 comment=f"Author {i}",
