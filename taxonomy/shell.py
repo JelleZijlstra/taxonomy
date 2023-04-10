@@ -1997,104 +1997,6 @@ def move_to_lowest_rank(dry_run: bool = False) -> Iterable[tuple[Name, str]]:
                 nam.taxon = lowest
 
 
-AUTHOR_SYNONYMS = {
-    "Afanasiev": helpers.romanize_russian("Афанасьев"),
-    "Belayeva": helpers.romanize_russian("Беляева"),
-    "Beliaeva": helpers.romanize_russian("Беляева"),
-    "Beliajeva": helpers.romanize_russian("Беляева"),
-    "Beljaeva": helpers.romanize_russian("Беляева"),
-    "Belyayeva": helpers.romanize_russian("Беляева"),
-    "Belyaeva": helpers.romanize_russian("Беляева"),
-    "Bobrinskii": helpers.romanize_russian("Бобринской"),
-    "Bobrinskoi": helpers.romanize_russian("Бобринской"),
-    "Bogatschev": helpers.romanize_russian("Богачев"),
-    "Chabaeva": helpers.romanize_russian("Хабаева"),
-    "Chernyavskii": helpers.romanize_russian("Чернявский"),
-    "Crawford Cabral": "Crawford-Cabral",
-    "Czersky": helpers.romanize_russian("Черский"),
-    "de Selys-Longchamps": "de Sélys Longchamps",
-    "Degerbol": "Degerbøl",
-    "Dukelskaia": helpers.romanize_russian("Дукельская"),
-    "Dukelski": "Dukelskiy",
-    "Dukelsky": "Dukelskiy",
-    "E. Geoffroy Saint-Hilaire": "É. Geoffroy Saint-Hilaire",
-    "E. Geoffroy": "É. Geoffroy Saint-Hilaire",
-    "Ehik": "Éhik",
-    "Formosov": "Formozov",
-    "Geoffroy": "Geoffroy Saint-Hilaire",
-    "Habaeva": helpers.romanize_russian("Хабаева"),
-    "Kolossow": helpers.romanize_russian("Колосов"),
-    "Kortchagin": helpers.romanize_russian("Корчагин"),
-    "Kortshagin": helpers.romanize_russian("Корчагин"),
-    "Kovalskaja": helpers.romanize_russian("Ковальская"),
-    "Kovalskaya": helpers.romanize_russian("Ковальская"),
-    "Kowalskaia": helpers.romanize_russian("Ковальская"),
-    "Kowalskaja": helpers.romanize_russian("Ковальская"),
-    "Krassovskii": helpers.romanize_russian("Красовский"),
-    "Krassowsky": helpers.romanize_russian("Красовский"),
-    "Lacepede": "Lacépède",
-    "Le Soeuf": "Le Souef",
-    "Lonnberg": "Lönnberg",
-    "Lychev": helpers.romanize_russian("Лычев"),
-    "Lytschev": helpers.romanize_russian("Лычев"),
-    "Lytshev": helpers.romanize_russian("Лычев"),
-    "Milne Edwards": "Milne-Edwards",
-    "Miranda Ribeiro": "Miranda-Ribeiro",  # {Miranda-Ribeiro-biography.pdf}
-    "Morosova-Turova": helpers.romanize_russian("Морозова-Турова"),
-    "Naumoff": helpers.romanize_russian("Наумов"),
-    "Peron": "Péron",
-    "Petenyi": "Petényi",
-    "Prigogone": "Prigogine",
-    "Przewalski": helpers.romanize_russian("Пржевальский"),
-    "Raevski": helpers.romanize_russian("Раевский"),
-    "Raevsky": helpers.romanize_russian("Раевский"),
-    "Raevskyi": helpers.romanize_russian("Раевский"),
-    "Rajevsky": helpers.romanize_russian("Раевский"),
-    "Ruppell": "Rüppell",
-    "Scalon": helpers.romanize_russian("Скалон"),
-    "Selewin": helpers.romanize_russian("Селевин"),
-    "Severtsow": helpers.romanize_russian("Северцов"),
-    "Severtzov": helpers.romanize_russian("Северцов"),
-    "Severtzow": helpers.romanize_russian("Северцов"),
-    "Souef": "Le Souef",
-    "St Leger": "St. Leger",
-    "Teilhard": "Teilhard de Chardin",
-    "Tichomirov": helpers.romanize_russian("Тихомиров"),
-    "Tichomirow": helpers.romanize_russian("Тихомиров"),
-    "Timofeev": helpers.romanize_russian("Тимофеев"),
-    "Timofeiev": helpers.romanize_russian("Тимофеев"),
-    "Topal": "Topál",
-    "Tzalkin": helpers.romanize_russian("Цалкин"),
-    "Vasil'eva": helpers.romanize_russian("Васильева"),
-    "Verestchagin": helpers.romanize_russian("Верещагин"),
-    "Vereschchagin": helpers.romanize_russian("Верещагин"),
-    "Vereschagin": helpers.romanize_russian("Верещагин"),
-    "Van Bénéden": "Van Beneden",
-    "Von Dueben": "von Dueben",
-    "von Haast": "Haast",
-    "Von Lehmann": "Lehmann",
-    "von Huene": "Huene",
-    "Von Huene": "Huene",
-    "Von Meyer": "von Meyer",
-    "Vorontzov": "Vorontsov",
-    "Wasiljewa": helpers.romanize_russian("Васильева"),
-    "Worobiev": helpers.romanize_russian("Воробьев"),
-    "Zalkin": helpers.romanize_russian("Цалкин"),
-    "É. Geoffroy": "É. Geoffroy Saint-Hilaire",
-}
-
-
-@command
-def apply_author_synonyms(dry_run: bool = False) -> None:
-    for bad, good in AUTHOR_SYNONYMS.items():
-        if bad == good:
-            continue
-        for person in Person.select_valid().filter(Person.family_name == bad):
-            if person.total_references() > 0:
-                print(f"=== {person} ({bad} -> {good}) ===")
-                person.display()
-
-
 @command
 def resolve_redirects(dry_run: bool = False) -> None:
     for model_cls in models.BaseModel.__subclasses__():
@@ -2113,7 +2015,6 @@ def run_maintenance(skip_slow: bool = True) -> dict[Any, Any]:
         detect_complexes,
         detect_species_name_complexes,
         autoset_original_name,
-        apply_author_synonyms,
         dup_collections,
         dup_citation_groups,
         # dup_names,
