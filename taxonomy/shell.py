@@ -2242,7 +2242,7 @@ def find_potential_citations(
 
 
 def _author_names(obj: Article | Name) -> set[str]:
-    return {person.family_name for person in obj.get_authors()}
+    return {helpers.simplify_string(person.family_name) for person in obj.get_authors()}
 
 
 @command
@@ -2258,7 +2258,7 @@ def find_potential_citations_for_group(
         return 0
 
     def is_possible_match(art: Article, nam: Name, page: int) -> bool:
-        if nam.year != art.year or art.is_non_original():
+        if nam.numeric_year() != art.numeric_year() or art.is_non_original():
             return False
         if not art.is_page_in_range(page):
             return False
