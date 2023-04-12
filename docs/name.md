@@ -65,16 +65,7 @@ their limits are subjective in nature.
   table) in which the name was first made available. This is usually set only if I own a
   copy (e.g., a PDF) of the publication.
 - _page described_: The place in the original citation where the name was made
-  available. Normally this is a page reference, but it may be a reference to a plate or
-  figure. Where relevant, the page should be the location of a heading like "_Aus bus_,
-  sp. nov.", not necessarily the first mention of the name. If there is no such heading,
-  the page should be the first page on which the name appears. Special cases:
-  - Some articles have multiple paginations (e.g., one for the volume and one for the
-    individual work). In such cases, use the higher page number, because it is less
-    likely to be ambiguous.
-  - Sometimes page numbers are misprinted. In that case, specify the page number like "2
-    [as 1]", where "2" is the true page number that would be used if the pagination of
-    the work was correct, and "1" is the page number that actually appears on the page.
+  available. See below for more detail.
 - _verbatim citation_: A free-form text specifying the original place of publication of
   the name, used when I do not have the full paper (so that _original citation_ is not
   set). This is a place for rough notes that will eventually help me find the full
@@ -88,6 +79,70 @@ their limits are subjective in nature.
   be handled as a property of the publication, not of the name. The Code also stipulates
   citation as "1940 (1870)" if a family-group name takes the priority of an earlier name
   under certain circumstances; this is also not currently supported by the database.
+
+### _page_described_
+
+The _page_described_ field describes where in the original citation the name was
+created. It serves two purposes:
+
+- Make it easy to verify data about the name by reading the original description and
+  locating the correct page. In particular, it should be easy to find the information
+  that makes the name available for nomenclatural purposes.
+- Enable automated tools to consume the data, for example by verifying that the page
+  number is within the page range of the citation, or potentially by linking directly to
+  the right page on websites like Biodiversity Heritage Library.
+
+In simple cases, the original citation is an article that starts at say page 100 and
+ends at page 110, and on page 105 there is a heading "_Aus bus_, sp. nov.". In that
+case, the _page_described_ field should be "105".
+
+Unfortunately, there are many complications. Here are guidelines for dealing with
+various edge cases that I have encountered:
+
+- If there is no header that unambiguously introduces the description of the new name,
+  use the place where it is most prominently discussed. This is not necessarily the
+  first occurrence of the name, as that may be a passing mention in an abstract or
+  figure legend. However, if there are multiple places in the paper that collectively
+  satisfy the conditions that make the name available (e.g., the description is far from
+  the actual scientific name), multiple page numbers can be used. A range ("105-106")
+  can be used if the statement that makes the name available extends over multiple
+  printed pages.
+- If the name was introduced on a plate, use "pl. N", where N is the plate number in
+  Arabic numerals (not Roman numerals even if that is what the work uses).
+- If the name was introduced in a footnote, add "(footnote)" after the page number, e.g.
+  "105 (footnote)". If the footnotes are numbered, use the numbering, e.g. "105
+  (footnote 3)" if the name was introduced in footnote 3.
+- Some works have discontinuous pagination or even no page numbers. In such cases, use
+  whatever is needed to make the reference reasonably clear. For example:
+  - In short articles, you can just use "unnumbered"
+  - For unnumbered pages associated with a plate, a possible approach is "pl. 3
+    (unnumbered p. 4)" for the 4th unnumbered page associated with plate 3.
+  - If there are multiple discontinuous page sequences in an article, often they can be
+    split out into separate [Article](/docs/article) objects, which can carry more
+    precise citation data to make them easier to identify.
+- Some articles have multiple paginations (e.g., one for the volume and one for the
+  individual work). In such cases, use the higher page number, because it is less likely
+  to be ambiguous.
+- Sometimes page numbers are misprinted. In that case, specify the page number like "2
+  [as 1]", where "2" is the true page number that would be used if the pagination of the
+  work was correct, and "1" is the page number that actually appears on the page.
+
+If the citation is otherwise hard to find, I often add a comment to the name specifying
+the page number in the PDF version of the reference where the name can be found.
+
+The database does not yet enforce a consistent format for this field, but this will be
+added in the future. A sketch of what will be allowed:
+
+- Any number of pages, separated by commas. Each comma-separated part should be a valid
+  page.
+- Every page may be followed by arbitrary text enclosed in parentheses.
+- Every page may also be followed by "[as N]", where N is a number.
+- A page may be a single number, a pair of two separated by a hyphen, or "pl." followed
+  by a number.
+
+In addition, we will probably need an escape valve for unusual cases, perhaps in the
+form of a tag on the Article and the CitationGroup that allows a wider range of
+possibilities.
 
 ## Gender and stem
 
