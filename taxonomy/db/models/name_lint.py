@@ -896,20 +896,23 @@ def check_citation_group(nam: Name, cfg: LintConfig) -> Iterable[str]:
 
 @make_linter("matches_citation")
 def check_matches_citation(nam: Name, cfg: LintConfig) -> Iterable[str]:
-    if nam.original_citation is None:
+    if nam.original_citation is None or nam.page_described is None:
         return
     art = nam.original_citation
-    if nam.page_described and nam.page_described.isnumeric():
-        if art.type in (ArticleType.JOURNAL, ArticleType.CHAPTER, ArticleType.PART):
-            start_page = art.numeric_start_page()
-            end_page = art.numeric_end_page()
-            if start_page and end_page:
-                page_range = range(start_page, end_page + 1)
-                if nam.numeric_page_described() not in page_range:
-                    yield (
-                        f"{nam.page_described} is not in"
-                        f" {start_page}–{end_page} for {art}"
-                    )
+    if art.type not in (ArticleType.JOURNAL, ArticleType.CHAPTER, ArticleType.PART):
+        return
+    start_page = art.numeric_start_page()
+    end_page = art.numeric_end_page()
+    if not start_page or not end_page:
+        return
+    page_range = range(start_page, end_page + 1)
+    for page in extract_pages(nam.page_described):
+        try:
+            numeric_page = int(page)
+        except ValueError:
+            continue
+        if numeric_page not in page_range:
+            yield (f"{nam.page_described} is not in {start_page}–{end_page} for {art}")
 
 
 def extract_pages(page_described: str) -> Iterable[str]:
@@ -1110,7 +1113,7 @@ def check_specific_authors(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 "has original citation, but has family name-only author"
                 f" {author} (position {i})"
             )
-            if cfg.interactive:
+            if cfg.interactive and "specific_authors" not in get_ignored_lints(nam):
                 author.edit_tag_sequence_on_object(
                     nam, "author_tags", AuthorTag.Author, "names"
                 )
