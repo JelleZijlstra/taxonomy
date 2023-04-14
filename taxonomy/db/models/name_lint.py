@@ -739,9 +739,7 @@ def check_correct_status(nam: Name, cfg: LintConfig) -> Iterable[str]:
         yield (f"is of status {nam.status!r} and should be base name of {nam.taxon}")
 
 
-def _check_names_match(
-    nam: Name, other: Name, *, include_page_described: bool
-) -> Iterable[str]:
+def _check_names_match(nam: Name, other: Name) -> Iterable[str]:
     if nam.author_tags != other.author_tags:
         yield f"authors do not match {other}"
     if nam.year != other.year:
@@ -752,9 +750,6 @@ def _check_names_match(
         yield f"verbatim_citation does not match {other}"
     if nam.citation_group != other.citation_group:
         yield f"citation_group does not match {other}"
-    if include_page_described:
-        if nam.page_described != other.page_described:
-            yield f"page_described does not match {other}"
 
 
 def _check_as_emended_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
@@ -843,8 +838,8 @@ def check_justified_emendations(nam: Name, cfg: LintConfig) -> Iterable[str]:
             return
         # Incorrect original spellings are used where there are multiple spellings
         # in the original publication, and one is selected as valid. Then both names
-        # should have the same author etc. (but not necessarily the same page_described).
-        yield from _check_names_match(nam, ios_target, include_page_described=False)
+        # should have the same author etc.
+        yield from _check_names_match(nam, ios_target)
 
 
 @make_linter("autoset_original_rank")
@@ -899,7 +894,7 @@ def check_citation_group(nam: Name, cfg: LintConfig) -> Iterable[str]:
         yield message
 
 
-@make_linter("page_described")
+@make_linter("matches_citation")
 def check_matches_citation(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.original_citation is None:
         return
@@ -915,6 +910,49 @@ def check_matches_citation(nam: Name, cfg: LintConfig) -> Iterable[str]:
                         f"{nam.page_described} is not in"
                         f" {start_page}–{end_page} for {art}"
                     )
+
+
+def extract_pages(page_described: str) -> Iterable[str]:
+    page_described = re.sub(r" \([^\)]+\)(?=, |$)", "", page_described)
+    parts = page_described.split(", ")
+    for part in parts:
+        part = re.sub(r" \[as [0-9]+\]$", "", part)
+        yield part
+
+
+@make_linter("page_described")
+def check_page_described(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    if nam.page_described is None:
+        return
+    # For now ignore names without a citation
+    if nam.original_citation is None:
+        return
+    for part in extract_pages(nam.page_described):
+        if part.isdecimal() and part.isascii():
+            continue
+        if re.fullmatch(r"[0-9]+-[0-9]+", part):
+            continue
+        if part.startswith("pl. "):
+            number = part.removeprefix("pl. ")
+            if helpers.is_valid_roman_numeral(number):
+                continue
+            if re.fullmatch(r"[A-Z]?[0-9]+[A-Za-z]*", number):
+                continue
+        if helpers.is_valid_roman_numeral(part):
+            continue
+        # Pretty common to see "S40" or "40A"
+        if re.fullmatch(r"[A-Z]?[0-9]+[A-Z]?", part):
+            continue
+        if part in (
+            "unnumbered",
+            "cover",
+            "foldout",
+            "erratum",
+            "addenda",
+            "table of contents",
+        ):
+            continue
+        yield f"invalid part {part!r} in {nam.page_described!r}"
 
 
 _JG2015 = "{Australia (Jackson & Groves 2015).pdf}"

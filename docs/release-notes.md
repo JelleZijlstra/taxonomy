@@ -16,6 +16,7 @@ exports released on Zenodo.
   - Add numerous new fossil taxa based on the recent literature
   - Further taxonomic changes for extant mammals for alignment with the MDD
   - Simplify the treatment of justified emendations, using two names instead of three
+  - Change many \_page_described_fields to follow a more consistent format
 - Backend
   - Further checks for publication dates. Distinguish between "parts" (separately
     published portions of a larger work) and "chapters" (simultaneously published

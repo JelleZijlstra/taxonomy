@@ -160,8 +160,8 @@ The dates of the Livraisons, based on the "Ordre méthodique", are:
   - 70: August 1837 ({Mammalia (Geoffroy & Cuvier 1837) (livraison 70)})
   - 71: July 1842 ({Mammalia (Geoffroy & Cuvier 1842) (livraison 71)})
   - 72: August 1842 ({Mammalia (Geoffroy & Cuvier 1842) (livraison 72)})
-  - _Table générale_, assumed to have been published with 72 ({Mammalia-Table generale
-    (Cuvier 1842)})
+  - _Table générale_, assumed to have been published with 72 (cited here as
+    {Mammalia-Table generale (Cuvier 1842)})
 
 It is interesting that the notice by Cuvier _fils_, discussed above, is dated September
 1842 but contains statements suggesting that only livraison 71 had been published at
@@ -190,8 +190,9 @@ edition may therefore be of nomenclatural significance.
 While the series was authored jointly by É. Geoffroy Saint-Hilaire and F. Cuvier, the
 "Avertissement" at the beginning of volume 1 states that "Tous les discours qui n'auront
 pas de signature sont de M. Frédéric Cuvier." A similar statement appears at the end of
-the "Introduction" right after. Accordingly, names published in the _Histoire naturelle_
-are usually and correctly attributed to F. Cuvier alone.
+the "Introduction" right after. Few of the descriptions in the book actually bear an
+explicit signature. Accordingly, names published in the _Histoire naturelle_ are usually
+and correctly attributed to F. Cuvier alone.
 
 In the "Avis aux Souscripteurs", Cuvier _fils_ writes that he will add ("\[j\]'y
 joindrai") two tables summarizing the species covered in the work. Indeed, several
@@ -205,14 +206,9 @@ Some scattered evidence on authorship:
 - All title pages attribute the work to "M. Geoffroy Saint-Hilaire" et "M. Frédéric
   Cuvier". Uniquely, the "Ordre méthodique" for series 4/tome 7 lists only Frédéric
   Cuvier as the author.
-- Footnotes to the "Table générale et méthodique" refer to "mon père" (my father). Both
-  Geoffroy and Cuvier had children, but only Geoffroy's son Isidore was a mammalogist.
-  (Isidore was 13 years old when the _Histoire naturelle_ started, so it may be safely
-  assumed that the "M. Geoffroy Saint-Hilaire" who authored the series was his father
-  Étienne.)
 - A footnote to _Otolichnus senegalensis_ (pl. 96) on p. 2 of the "Table générale et
-  méthodique" says "Le texte de cette espèce est de M. Geoffroy-Saint-Hilaire", perhaps
-  suggesting that the text for other plates was not by Geoffroy.
+  méthodique" says "Le texte de cette espèce est de M. Geoffroy-Saint-Hilaire",
+  consistent with the rule that most of the texts are by F. Cuvier.
 - F. Cuvier died in 1838; É. Geoffroy died in 1844 but became blind in 1841.
 
 The people involved are:

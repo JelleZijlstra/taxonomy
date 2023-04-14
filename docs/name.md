@@ -111,7 +111,9 @@ various edge cases that I have encountered:
   Arabic numerals (not Roman numerals even if that is what the work uses).
 - If the name was introduced in a footnote, add "(footnote)" after the page number, e.g.
   "105 (footnote)". If the footnotes are numbered, use the numbering, e.g. "105
-  (footnote 3)" if the name was introduced in footnote 3.
+  (footnote 3)" if the name was introduced in footnote 3. Similarly, if the name was
+  introduced in a table or figure, "(figure 1)" or "(table 1)" can be added. However,
+  this is not necessary if the figure or table spans the whole page.
 - Some works have discontinuous pagination or even no page numbers. In such cases, use
   whatever is needed to make the reference reasonably clear. For example:
   - In short articles, you can just use "unnumbered"
@@ -130,8 +132,8 @@ various edge cases that I have encountered:
 If the citation is otherwise hard to find, I often add a comment to the name specifying
 the page number in the PDF version of the reference where the name can be found.
 
-The database does not yet enforce a consistent format for this field, but this will be
-added in the future. A sketch of what will be allowed:
+The database enforces a consistent format for this field, but only for names for which
+the original citation is known. An informal overview of what kind of texts are allowed:
 
 - Any number of pages, separated by commas. Each comma-separated part should be a valid
   page.
@@ -140,9 +142,20 @@ added in the future. A sketch of what will be allowed:
 - A page may be a single number, a pair of two separated by a hyphen, or "pl." followed
   by a number.
 
-In addition, we will probably need an escape valve for unusual cases, perhaps in the
-form of a tag on the Article and the CitationGroup that allows a wider range of
-possibilities.
+Some statistics for this field (as of April 13, 2023, after I finished making all names
+with original citations follow this format):
+
+- 66849 names with both an original citation and a page described
+- 3029 unique values in the _page_described_ field
+- The most common value is "2" with 1062 occurrences. The top 10 most common values are
+  the numbers from 1 to 10, mostly in order except that "1" is between "4" and "5".
+- 65114 values (97.4%) are simple numbers
+- Other relatively common categories, some of which may overlap:
+  - 71 (0.1%) are Roman numerals (e.g. "xvii")
+  - 442 (0.7%) contain a plate number (e.g., "pl. 248C")
+  - 441 (0.7%) contain multiple plain numeric page numbers (e.g., "337, 356")
+  - 298 (0.4%) contain mention of a footnote (e.g., "59 (footnote)")
+  - 64 (0.1%) are simple page ranges (e.g., "64-65")
 
 ## Gender and stem
 

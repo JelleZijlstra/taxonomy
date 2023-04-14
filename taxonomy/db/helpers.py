@@ -757,3 +757,8 @@ def parse_date(year: str, month: str | None, day: str | None) -> str:
     if not is_valid_date(result):
         raise ValueError(f"produced invalid date {result!r} from {year} {month} {day}")
     return result
+
+
+def is_valid_roman_numeral(s: str) -> bool:
+    # TODO stricter validation
+    return bool(re.fullmatch(r"[ivxlc]+", s))
