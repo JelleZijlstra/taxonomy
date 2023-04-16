@@ -185,7 +185,11 @@ class BaseModel(Model):
     @classmethod
     def create(cls: type[ModelT], **kwargs: Any) -> ModelT:
         kwargs = {
-            key: helpers.clean_string(value) if isinstance(value, str) else value
+            key: (
+                helpers.interactive_clean_string(value)
+                if isinstance(value, str)
+                else value
+            )
             for key, value in kwargs.items()
         }
         result = super().create(**kwargs)
@@ -323,7 +327,7 @@ class BaseModel(Model):
                                         f" {field} tag {tag}"
                                     )
                             elif isinstance(value, str):
-                                cleaned = helpers.clean_string(
+                                cleaned = helpers.interactive_clean_string(
                                     value, clean_whitespace=True
                                 )
                                 if cleaned != value:
@@ -363,7 +367,7 @@ class BaseModel(Model):
                                         f" {field} tag {tag}"
                                     )
                             elif isinstance(value, str):
-                                cleaned = helpers.clean_string(
+                                cleaned = helpers.interactive_clean_string(
                                     value, clean_whitespace=True
                                 )
                                 if cleaned != value:
@@ -378,9 +382,15 @@ class BaseModel(Model):
                                     )
             elif isinstance(field_obj, (CharField, TextField)):
                 allow_newlines = isinstance(field_obj, TextField)
-                cleaned = helpers.clean_string(
-                    value, clean_whitespace=not allow_newlines
-                )
+                is_markdown = field_obj.name != "data"
+                if is_markdown:
+                    cleaned = helpers.interactive_clean_string(
+                        value, clean_whitespace=not allow_newlines, verbose=True
+                    )
+                else:
+                    cleaned = helpers.clean_string(
+                        value, clean_whitespace=not allow_newlines
+                    )
                 if cleaned != value:
                     message = (
                         f"{self} (#{self.id}): field {field}: clean {value!r} ->"

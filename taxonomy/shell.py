@@ -99,6 +99,7 @@ ns = {
     "defaultdict": defaultdict,
     "getinput": getinput,
     "models": models,
+    "os": os,
 }
 ns.update(constants.__dict__)
 

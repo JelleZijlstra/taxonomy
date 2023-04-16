@@ -59,6 +59,7 @@ Other aspects of the database:
 - [Publication dates](/docs/dating)
 - [Data sources](/docs/data-sources)
 - [Scores](/docs/scores)
+- [Text conventions](/docs/text)
 
 Source code:
 

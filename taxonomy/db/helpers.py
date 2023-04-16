@@ -12,6 +12,7 @@ from typing import TypeVar, cast
 
 import unidecode
 
+from .. import getinput
 from . import constants
 from .constants import Group, Rank
 
@@ -542,6 +543,242 @@ def is_clean_string(text: str) -> bool:
     return clean_string(text) == text
 
 
+HYPHEN_IGNORE_PATTERNS = {"and ", "bis ", "en ", "oder ", "u. ", "und "}
+HYPHEN_REPLACE_PATTERNS = {
+    "adae",
+    "akh",
+    "al)",
+    "anthrop",
+    "arb",
+    "ation ",
+    "auro",
+    "bercula",
+    "bergiana",
+    "bin",
+    "boneb",
+    "bosphe",
+    "buch",
+    "cae ",
+    "cal ",
+    "can",
+    "cata",
+    "cene",
+    "ceous",
+    "cep",
+    "che",
+    "chus",
+    "cidians ",
+    "cies",
+    "cies ",
+    "cion ",
+    "ciones",
+    "citor ",
+    "cording ",
+    "cre",
+    "cène",
+    "dacty",
+    "dae",
+    "dae ",
+    "danod",
+    "de. ",
+    "dea",
+    "dectiformes",
+    "del",
+    "dian",
+    "dies.",
+    "dilia",
+    "dinn,",
+    "dontoidea",
+    "eide",
+    "ence",
+    "ence ",
+    "ens.",
+    "eralogie",
+    "ern ",
+    "eskog",
+    "ety",
+    "gen",
+    "gethi",
+    "gica",
+    "gie,",
+    "gler",
+    "glich",
+    "gol",
+    "grap",
+    "graphischer",
+    "ian ",
+    "ian,",
+    "ica ",
+    "ico",
+    "ing ",
+    "ior",
+    "ischen ",
+    "isième",
+    "its ",
+    "ity ",
+    "ized",
+    "kalk,",
+    "katche",
+    "kerau",
+    "kohle ",
+    "kunde",
+    "late",
+    "lates",
+    "lected",
+    "lemes ",
+    "leont",
+    "leti",
+    "lia.",
+    "lic",
+    "linidae",
+    "lle",
+    "lodont",
+    "log",
+    "logi",
+    "louse",
+    "lun",
+    "lutio",
+    "ly ",
+    "maci",
+    "mack",
+    "mali",
+    "malium",
+    "mals",
+    "man ",
+    "marks",
+    "mat",
+    "ment",
+    "min",
+    "morpha",
+    "mou",
+    "mét",
+    "nal",
+    "nan.",
+    "nean",
+    "ngs",
+    "nik ",
+    "no.",
+    "nod",
+    "ogisc",
+    "ogy",
+    "olog",
+    "oni",
+    "onto",
+    "opte",
+    "pas",
+    "pedia",
+    "pedition",
+    "per",
+    "pho",
+    "piali",
+    "pidae",
+    "plementary ",
+    "pra",
+    "pteryx",
+    "querq",
+    "rap",
+    "reisen",
+    "ren",
+    "rhy",
+    "ria",
+    "ric",
+    "ropod",
+    "ros",
+    "rosa",
+    "sau",
+    "sen",
+    "seum",
+    "sian",
+    "sion,",
+    "sta",
+    "sum",
+    "sup",
+    "tace",
+    "tagne",
+    "tained",
+    "tana",
+    "tary",
+    "tei",
+    "ten",
+    "ter ",
+    "tho",
+    "tieff ",
+    "til",
+    "tino",
+    "tinued ",
+    "tio",
+    "tion",
+    "tisch",
+    "titub",
+    "tlic",
+    "to ",
+    "tolog",
+    "tor",
+    "tra",
+    "treter",
+    "troduction ",
+    "trópica",
+    "tuberc",
+    "tuto",
+    "tyl",
+    "ungen",
+    "veaux ",
+    "versit",
+    "virons",
+    "wan",
+}
+
+
+def interactive_clean_string(
+    text: str,
+    *,
+    clean_whitespace: bool = True,
+    verbose: bool = False,
+    interactive: bool = False,
+) -> str:
+    text = clean_string(text, clean_whitespace=clean_whitespace)
+    if "- " in text:
+        getinput.print_header(text)
+
+    def repl(m: re.Match[str]) -> str:
+        after = m.group(1)
+        if any(after.startswith(pattern) for pattern in HYPHEN_IGNORE_PATTERNS):
+            if verbose:
+                print(f"autofix {after!r} in {text}")
+            return m.group().replace("- ", "-\\ ")
+        elif any(after.startswith(pattern) for pattern in HYPHEN_REPLACE_PATTERNS):
+            if verbose:
+                print(f"autofix {after!r} in {text}")
+            return after
+        elif re.search(r'^[a-zéèóüöä]{2,}[ ,)\.;:"]', after):
+            if verbose:
+                print(f"autofix {after!r} in {text}")
+            return after
+        if not interactive:
+            return m.group()
+        print(f"{after!r} in {text!r}")
+        if getinput.yes_no("remove '- '? "):
+            pattern = getinput.get_line("replace pattern> ")
+            if pattern:
+                if verbose:
+                    print(f"add replace pattern: {pattern!r}")
+                HYPHEN_REPLACE_PATTERNS.add(pattern)
+            return after
+        else:
+            pattern = getinput.get_line("ignore pattern> ")
+            if pattern:
+                if verbose:
+                    print(f"add ignore pattern: {pattern!r}")
+                HYPHEN_IGNORE_PATTERNS.add(pattern)
+                return m.group().replace("- ", "-\\ ")
+            return m.group()
+
+    text = re.sub(r"(?<! )- ([^-]+)", repl, text)
+    if interactive and "- " in text:
+        text = getinput.edit_by_word(text)
+    return text
+
+
 def clean_string(text: str, *, clean_whitespace: bool = True) -> str:
     """Clean a string.
 
@@ -579,6 +816,7 @@ def clean_string(text: str, *, clean_whitespace: bool = True) -> str:
     text = text.replace("o\x19", "ó")
     text = text.replace("u\x19", "ú")
     text = text.replace("e\x18", "è")
+    text = text.replace("\N{LEFT SINGLE QUOTATION MARK}", "'")
     text = text.replace("\U0010ff4e", "'")
     text = text.replace("*\U0010fc0d", "°")
     text = text.replace("'\U0010fc01", "'")
@@ -598,8 +836,14 @@ def clean_string(text: str, *, clean_whitespace: bool = True) -> str:
     text = text.replace("\U0010fc00", "=")
     text = text.replace("\uf8e7", "\N{EM DASH}")
     text = text.replace("\U0010fc94", "≈")
+    text = text.replace(" - ", " \N{EN DASH} ")
+    text = text.replace("+/-", "±")
+    text = text.replace("''", '"')
+    text = re.sub(r"([A-Z])\.- ([A-Z])\.", r"\1.-\2.", text)
+    text = re.sub(r"([a-z])- ([A-Z])", r"\1-\2", text)
     if clean_whitespace:
         text = re.sub(r"\s+", " ", text)
+    text = re.sub(r"(\d)- (\d)", r"\1-\2", text)
     return text.strip()
 
 

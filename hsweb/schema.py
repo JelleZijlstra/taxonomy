@@ -36,6 +36,7 @@ from taxonomy.db.models import Article, Location, Name, NameComment, Period, Per
 from taxonomy.db.models.base import ADTField, BaseModel, EnumField
 
 from . import search
+from .render import CALL_SIGN_TO_MODEL, render_markdown, render_plain_text
 
 SCALAR_FIELD_TO_GRAPHENE = {
     peewee.CharField: String,
@@ -45,47 +46,11 @@ SCALAR_FIELD_TO_GRAPHENE = {
 }
 TYPE_TO_GRAPHENE = {str: String, bool: Boolean, int: Int}
 TYPES: list[ObjectType] = []
-CALL_SIGN_TO_MODEL = {model.call_sign: model for model in BaseModel.__subclasses__()}
 
 DOCS_ROOT = Path(__file__).parent.parent / "docs"
 
 # work around mypy bug where it doesn't think types are hashable
 cache = cast(Any, lru_cache)
-
-
-def _match_to_md_ref(match: re.Match[str]) -> str:
-    ref = match.group(1)
-    if "/" in ref:
-        call_sign, rest = ref.split("/", maxsplit=1)
-        try:
-            model_cls = CALL_SIGN_TO_MODEL[call_sign.upper()]
-        except KeyError:
-            return match.group()
-        if rest.isnumeric():
-            try:
-                obj = model_cls.get(id=int(rest))
-            except model_cls.DoesNotExist:
-                return match.group()
-        elif not model_cls.label_field:
-            return match.group()
-        else:
-            field = getattr(model_cls, model_cls.label_field)
-            try:
-                obj = model_cls.select().filter(field == rest).get()
-            except model_cls.DoesNotExist:
-                return match.group()
-    else:
-        try:
-            obj = Article.select().filter(Article.name == ref).get()
-        except Article.DoesNotExist:
-            return match.group()
-    return obj.resolve_redirect().concise_markdown_link()
-
-
-@lru_cache(8192)
-def parse_refs_into_markdown(text: str) -> str:
-    """Turn '{x.pdf}' into '[A & B (2016](/a/123)'."""
-    return re.sub(r"\{([^}]+)\}", _match_to_md_ref, text)
 
 
 class Model(Interface):
@@ -157,7 +122,9 @@ def translate_adt_arg(arg: Any, attr_name: str) -> Any:
     if isinstance(arg, BaseModel):
         return build_object_type_from_model(type(arg))(id=arg.id, oid=arg.id)
     elif attr_name == "comment" and isinstance(arg, str):
-        return parse_refs_into_markdown(arg)
+        return render_markdown(arg)
+    elif isinstance(arg, str):
+        return render_plain_text(arg)
     else:
         return arg
 
@@ -233,9 +200,18 @@ def build_graphene_field(
             value = getattr(get_model(model_cls, parent, info), name)
             if value is None:
                 return None
-            return parse_refs_into_markdown(value)
+            return render_markdown(value)
 
         return Field(String, required=not peewee_field.null, resolver=md_resolver)
+    elif isinstance(peewee_field, peewee.CharField):
+
+        def str_resolver(parent: ObjectType, info: ResolveInfo) -> str | None:
+            value = getattr(get_model(model_cls, parent, info), name)
+            if value is None:
+                return None
+            return render_plain_text(value)
+
+        return Field(String, required=not peewee_field.null, resolver=str_resolver)
     elif type(peewee_field) in SCALAR_FIELD_TO_GRAPHENE:
         return Field(
             SCALAR_FIELD_TO_GRAPHENE[type(peewee_field)],
@@ -641,7 +617,7 @@ def resolve_documentation(
         return None
     full_path = DOCS_ROOT / (path + ".md")
     if full_path.exists():
-        return parse_refs_into_markdown(full_path.read_text())
+        return render_markdown(full_path.read_text())
     return None
 
 

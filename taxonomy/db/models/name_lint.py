@@ -1121,7 +1121,7 @@ def check_specific_authors(nam: Name, cfg: LintConfig) -> Iterable[str]:
             author.family_name
         ) in helpers.simplify_string(nam.verbatim_citation):
             yield f"author {author} (position {i}) appears in verbatim citation"
-            if cfg.interactive:
+            if cfg.interactive and "specific_authors" not in get_ignored_lints(nam):
                 author.edit_tag_sequence_on_object(
                     nam, "author_tags", AuthorTag.Author, "names"
                 )

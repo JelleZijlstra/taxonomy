@@ -575,13 +575,16 @@ def set_author_tags_from_raw(
     interactive: bool = False,
     verbose: bool = True,
 ) -> None:
-    for params in value:
-        if params["family_name"].isupper():
-            params["family_name"] = params["family_name"].title()
-    new_tags = [
-        AuthorTag.Author(person=Person.get_or_create_unchecked(**params))
-        for params in value
-    ]
+    if all(isinstance(elt, AuthorTag.Author) for elt in value):
+        new_tags = value
+    else:
+        for params in value:
+            if params["family_name"].isupper():
+                params["family_name"] = params["family_name"].title()
+        new_tags = [
+            AuthorTag.Author(person=Person.get_or_create_unchecked(**params))
+            for params in value
+        ]
     if art.author_tags:
         if only_new:
             if art.author_tags != new_tags and verbose:
@@ -597,7 +600,7 @@ def set_author_tags_from_raw(
         if not getinput.yes_no("Replace authors? "):
             art.fill_field("author_tags")
             return
-    art.author_tags = new_tags  # type: ignore
+    art.author_tags = new_tags
 
 
 def doi_input(art: Article) -> bool:
