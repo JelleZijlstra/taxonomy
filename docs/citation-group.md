@@ -196,3 +196,4 @@ Short notes on several tricky areas of bibliography:
 - [_Neues Jahrbuch_](/docs/biblio/neues-jahrbuch)
 - [_Proceedings of the Zoological Society of London_](/docs/biblio/pzsl)
 - [University of California geological publications](/docs/biblio/uc-geology)
+- [Gervais's _Zoologie et Paléontologie_](/docs/biblio/zoologie-et-paleontologie)
