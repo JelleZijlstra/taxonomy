@@ -21,6 +21,7 @@ the full work and the dates 1848–1852:
     Tome II consists of explanations for plates, plus some additional material that came
     up after the corresponding text in Tome I was published. Amphibians and fish are
     covered only in Tome II.
+  - p. 263 cites a paper published in the _Annals and Magazine_ in August 1852.
 - "Tome II. / Contenant l'explication des planches et divers mémoires / relatifs aux
   animaux vertébrés." Consists of discontinuous text associated with plate numbers.
   Sometimes multiple plates are covered in the same section.
@@ -92,10 +93,12 @@ the full work and the dates 1848–1852:
   plates bear titles and captions containing the genus name, but there is no additional
   text.
 
-In my library I have three partial copies of the work:
+In my library I have several partial copies of the work:
 
 - {France (Gervais 1852).pdf}
   - Tome I and II. This is used as the main reference.
+- {France (Gervais 1852) (1).pdf}
+  - Only Tome I
 - {France (Gervais 1852) (2).pdf}
   - Only Tome II
 - {France (Gervais 1852) (plates).pdf}
@@ -104,7 +107,9 @@ In my library I have three partial copies of the work:
 A second edition was published in 1859, apparently in a single part.
 [Notice #5743](https://babel.hathitrust.org/cgi/pt?id=umn.319510019169955&view=1up&seq=308&q1=gervais)
 in the _Bibliographie de la France_ for 25 June 1859 (48e année, 2e série, no. 26)
-establishes its date of publication.
+establishes its date of publication. Although both editions were influential, the second
+was perhaps more widely read; it is not uncommon for names that already appeared in the
+first edition to be cited to the second.
 
 ## Bibliographic sources
 
@@ -122,7 +127,10 @@ evidence:
   - {France-Gervais livr 2 again (Geneva).pdf}
     - These both discuss livraison 2. The first notice appeared in January 1849, but it
       gives no date for when the livraison appeared. Livraison 2 contained plates 2, 8,
-      11, and 12. The second notice discusses pl. 11 in more detail.
+      11, and 12. The second notice discusses pl. 11 in more detail. The notice says
+      that plates 2 and 11 are accompanied by a detailed discussion, perhaps suggesting
+      that the equally detailed discussion that accompanies pl. 12 in the finished work
+      was not in this livraison.
   - I have not found any further notices in the _Archives_, but I have not checked all
     volumes (they are a little difficult to locate in Google Books; I did check volumes
     11–13, 15, and 16).
@@ -157,10 +165,12 @@ evidence:
     - Livraisons 9–20, completing the work. Each livraisons contains 4 plates and 2 1/2
       leaves of text.
     - This catalog is for July–December 1852.
-- _Revue et magasin de zoologie pure et appliquée_ (French journal)
-  - [ser. 2, vol. 3, p. 195](https://www.google.com/books/edition/Revue_et_magasin_de_zoologie_pure_et_app/V2tIAAAAMAAJ?hl=en&gbpv=1&pg=PA195&printsec=frontcover&dq=gervais%20zoologie)
+- Scattered references
+  - [_Revue et magasin de zoologie_, ser. 2, vol. 3, p. 195](https://www.google.com/books/edition/Revue_et_magasin_de_zoologie_pure_et_app/V2tIAAAAMAAJ?hl=en&gbpv=1&pg=PA195&printsec=frontcover&dq=gervais%20zoologie)
     - Cites pl. 39 of _Ziphius cavirostris_.
     - Proceedings of a 7 April 1851 session of the Académie
+  - {Ziphiidae (Gervais 1850) (Annales)}
+  - p. 11 cites pl. 39 of the _Zoologie et Paléontologie_
 - Sherborn's _Index Animalium_
   - {Animalia-index (A-Aff).pdf}
     - p. lviii reads "Zool. et Paléont. Franç. 4to. Paris, 1848–. [Pp. 1–144 and descr.
@@ -184,3 +194,12 @@ the work in full. Only the following is known securely:
 
 If a copy with original wrappers could be found, it could provide a more precise
 collation.
+
+In the database I use the following citations:
+
+- {France (Gervais 1848) (livr 1)} for livraison 1
+- {France (Gervais 1849) (livr 2)} for livraison 2
+- {France (Gervais 1850) (livr 1-8)} for Tome I, pp. 1–136, which contains numerous new
+  mammal names.
+- {France (Gervais 1852) (livr 9-20)} for the rest, even if much of it may have been
+  published earlier.
