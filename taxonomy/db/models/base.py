@@ -184,14 +184,6 @@ class BaseModel(Model):
 
     @classmethod
     def create(cls: type[ModelT], **kwargs: Any) -> ModelT:
-        kwargs = {
-            key: (
-                helpers.interactive_clean_string(value)
-                if isinstance(value, str)
-                else value
-            )
-            for key, value in kwargs.items()
-        }
         result = super().create(**kwargs)
         if hasattr(cls, "creation_event"):
             cls.creation_event.trigger(result)
@@ -282,6 +274,7 @@ class BaseModel(Model):
 
     def check_all_fields(self, cfg: LintConfig) -> Iterable[str]:
         is_invalid = self.is_invalid()
+        message: str | None
         for field in self.fields():
             if field in self.fields_may_be_invalid:
                 continue
@@ -328,7 +321,9 @@ class BaseModel(Model):
                                     )
                             elif isinstance(value, str):
                                 cleaned = helpers.interactive_clean_string(
-                                    value, clean_whitespace=True
+                                    value,
+                                    clean_whitespace=True,
+                                    interactive=cfg.interactive,
                                 )
                                 if cleaned != value:
                                     print(
@@ -336,6 +331,8 @@ class BaseModel(Model):
                                         f" {cleaned!r}"
                                     )
                                     overrides[attr_name] = cleaned
+                                if message := helpers.is_string_clean(cleaned):
+                                    yield f"{self}: in tags: {message} in {cleaned!r}"
                                 if not cleaned.isprintable():
                                     message = (
                                         f"{self}: contains unprintable characters:"
@@ -368,13 +365,17 @@ class BaseModel(Model):
                                     )
                             elif isinstance(value, str):
                                 cleaned = helpers.interactive_clean_string(
-                                    value, clean_whitespace=True
+                                    value,
+                                    clean_whitespace=True,
+                                    interactive=cfg.interactive,
                                 )
                                 if cleaned != value:
                                     yield (
                                         f"{self}: in tags: clean {value!r} ->"
                                         f" {cleaned!r}"
                                     )
+                                if message := helpers.is_string_clean(cleaned):
+                                    yield f"{self}: in tags: {message} in {cleaned!r}"
                                 if not cleaned.isprintable():
                                     yield (
                                         f"{self}: contains unprintable characters:"
@@ -382,14 +383,14 @@ class BaseModel(Model):
                                     )
             elif isinstance(field_obj, (CharField, TextField)):
                 allow_newlines = isinstance(field_obj, TextField)
-                is_markdown = field_obj.name != "data"
-                if is_markdown:
-                    cleaned = helpers.interactive_clean_string(
-                        value, clean_whitespace=not allow_newlines, verbose=True
-                    )
+                if self.should_exempt_from_string_cleaning(field):
+                    cleaned = value
                 else:
-                    cleaned = helpers.clean_string(
-                        value, clean_whitespace=not allow_newlines
+                    cleaned = helpers.interactive_clean_string(
+                        value,
+                        clean_whitespace=not allow_newlines,
+                        verbose=True,
+                        interactive=cfg.interactive,
                     )
                 if cleaned != value:
                     message = (
@@ -411,6 +412,8 @@ class BaseModel(Model):
                                 raise
                     else:
                         yield message
+                if message := helpers.is_string_clean(cleaned):
+                    yield f"{self}: field {field}: {message} in {cleaned!r}"
                 if not cleaned.isprintable():
                     if allow_newlines and cleaned.replace("\n", "").isprintable():
                         continue
@@ -433,6 +436,10 @@ class BaseModel(Model):
                 secondary_target = target.get_redirect_target()
                 if secondary_target is not None:
                     yield f"{self}: double redirect to {target} -> {secondary_target}"
+
+    def should_exempt_from_string_cleaning(self, field: str) -> bool:
+        """If this returns True, we won't call clean_string() on the field in lint."""
+        return False
 
     def lint(self, cfg: LintConfig) -> Iterable[str]:
         """Yield messages if something is wrong with this object."""

@@ -2148,8 +2148,14 @@ def fgsyn(off: Name | None = None) -> Name | None:
 
 @command
 def author_report(
-    author: str, partial: bool = False, missing_attribute: str | None = None
+    author: str | None = None,
+    partial: bool = False,
+    missing_attribute: str | None = None,
 ) -> list[Name]:
+    if author is None:
+        author = Person.getter("family_name").get_one_key(prompt="name> ")
+    if author is None:
+        return []
     nams = names_of_author(author, include_partial=partial)
     if not missing_attribute:
         nams = [nam for nam in nams if nam.original_citation is None]
@@ -2169,7 +2175,7 @@ def author_report(
     print(f"total names: {sum(len(v) for _, v in by_year.items()) + len(no_year)}")
     if not by_year and not no_year:
         return []
-    print(f"years: {min(by_year)}–{max(by_year)}")
+    print(f"years: {min(by_year, default=None)}–{max(by_year, default=None)}")
     out: list[Name] = []
     for year, year_nams in sorted(by_year.items()):
         out += year_nams

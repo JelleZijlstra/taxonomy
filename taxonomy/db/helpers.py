@@ -734,11 +734,14 @@ def interactive_clean_string(
     *,
     clean_whitespace: bool = True,
     verbose: bool = False,
-    interactive: bool = False,
+    interactive: bool = True,
 ) -> str:
     text = clean_string(text, clean_whitespace=clean_whitespace)
-    if "- " in text:
-        getinput.print_header(text)
+    if "- " not in text:
+        return text
+    if "| --" in text or ":\n- " in text:
+        return text  # advanced Markdown formatting
+    getinput.print_header(text)
 
     def repl(m: re.Match[str]) -> str:
         after = m.group(1)
@@ -750,7 +753,7 @@ def interactive_clean_string(
             if verbose:
                 print(f"autofix {after!r} in {text}")
             return after
-        elif re.search(r'^[a-zéèóüöä]{2,}[ ,)\.;:"]', after):
+        elif re.search(r'^[a-zéèíóüöäа-я]{2,}([ ,)\.;:"]|\'s)', after):
             if verbose:
                 print(f"autofix {after!r} in {text}")
             return after
@@ -771,12 +774,44 @@ def interactive_clean_string(
                     print(f"add ignore pattern: {pattern!r}")
                 HYPHEN_IGNORE_PATTERNS.add(pattern)
                 return m.group().replace("- ", "-\\ ")
+            if getinput.yes_no("remove space? "):
+                return "-" + after
             return m.group()
 
     text = re.sub(r"(?<! )- ([^-]+)", repl, text)
     if interactive and "- " in text:
         text = getinput.edit_by_word(text)
     return text
+
+
+def is_string_clean(text: str) -> str | None:
+    if " \N{COMBINING ACUTE ACCENT}" in text:
+        return "combining acute accent ( ́)"
+    if " \N{COMBINING GRAVE ACCENT}" in text:
+        return "combining grave accent ( ̀)"
+    if " \N{COMBINING CIRCUMFLEX ACCENT}" in text:
+        return "combining circumflex accent ( ̂)"
+    if " \N{COMBINING TILDE}" in text:
+        return "combining tilde ( ̃)"
+    if " \N{COMBINING MACRON}" in text:
+        return "combining macron ( ̄)"
+    if " \N{COMBINING BREVE}" in text:
+        return "combining breve ( ̆)"
+    if " \N{COMBINING DOT ABOVE}" in text:
+        return "combining dot above ( ̇)"
+    if " \N{COMBINING DIAERESIS}" in text:
+        return "combining diaeresis ( ̈)"
+    if " \N{COMBINING RING ABOVE}" in text:
+        return "combining ring above ( ̊)"
+    if " \N{COMBINING DOUBLE ACUTE ACCENT}" in text:
+        return "combining double acute accent ( ̋)"
+    if " \N{COMBINING OGONEK}" in text:
+        return "combining ogonek ( ̨)"
+    if " \N{COMBINING CARON}" in text:
+        return "combining caron ( ̌)"
+    if " \N{COMBINING CEDILLA}" in text:
+        return "combining cedilla ( ̧)"
+    return None
 
 
 def clean_string(text: str, *, clean_whitespace: bool = True) -> str:
@@ -816,6 +851,32 @@ def clean_string(text: str, *, clean_whitespace: bool = True) -> str:
     text = text.replace("o\x19", "ó")
     text = text.replace("u\x19", "ú")
     text = text.replace("e\x18", "è")
+    text = re.sub(r"([aeiouAEIOU]) ̈", r"\1" + "\N{COMBINING DIAERESIS}", text)
+    text = re.sub(r"([aeiouAEIOUnN]) ̃", r"\1" + "\N{COMBINING TILDE}", text)
+    text = re.sub(r"([aeiouAEIOUnN]) ́", r"\1" + "\N{COMBINING ACUTE ACCENT}", text)
+    text = re.sub(r"([aeiouAEIOU]) ̀", r"\1" + "\N{COMBINING GRAVE ACCENT}", text)
+    text = re.sub(r"([aeiouAEIOU]) ̂", r"\1" + "\N{COMBINING CIRCUMFLEX ACCENT}", text)
+    text = re.sub(r"([aeiouAEIOUcC]) ̌", r"\1" + "\N{COMBINING CARON}", text)
+    text = re.sub(r"([aeiouAEIOU]) ̆", r"\1" + "\N{COMBINING BREVE}", text)
+    text = re.sub(r"([aeiouAEIOU]) ̄", r"\1" + "\N{COMBINING MACRON}", text)
+    text = re.sub(r"([aeiouAEIOU]) ̊", r"\1" + "\N{COMBINING RING ABOVE}", text)
+    text = re.sub(r"([aeiouAEIOU]) ̋", r"\1" + "\N{COMBINING DOUBLE ACUTE ACCENT}", text)
+    text = re.sub(r"([cCsStT]) ̧", r"\1" + "\N{COMBINING CEDILLA}", text)
+    text = text.replace(" ́ı", "í")
+    text = text.replace("ı́", "í")
+    text = text.replace("ı̈", "ï")
+    text = text.replace(" d ́", " d'")
+    text = text.replace(" l ́", " l'")
+    text = text.replace(" ́s ", "'s ")
+    text = text.replace("ü̈", "ü")
+    text = text.replace("ö̈", "ö")
+    text = re.sub(r"(?<=\d) ́", "'", text)
+    text = re.sub(r"(?<=\d) ̋", '"', text)
+    text = re.sub(r"(?<=\d) ̊", "\N{DEGREE SIGN}", text)
+    text = text.replace("' ́", "''")
+    # fallbacks: sometimes it's before the letter instead
+    text = re.sub(r" ̧([cCsStT])", r"\1" + "\N{COMBINING CEDILLA}", text)
+    text = re.sub(r" ́([aeiouAEIOUnN])", r"\1" + "\N{COMBINING ACUTE ACCENT}", text)
     text = text.replace("\N{LEFT SINGLE QUOTATION MARK}", "'")
     text = text.replace("\U0010ff4e", "'")
     text = text.replace("*\U0010fc0d", "°")
@@ -837,13 +898,20 @@ def clean_string(text: str, *, clean_whitespace: bool = True) -> str:
     text = text.replace("\uf8e7", "\N{EM DASH}")
     text = text.replace("\U0010fc94", "≈")
     text = text.replace(" - ", " \N{EN DASH} ")
+    text = text.replace(" -- ", " \N{EN DASH}")
     text = text.replace("+/-", "±")
     text = text.replace("''", '"')
+    text = text.replace(" :- ", ": \N{EN DASH} ")
+    text = re.sub(r"([A-Z])- (\d)", r"\1-\2", text)
+    text = re.sub(r"(\d)- ([A-Za-z\d])", r"\1-\2", text)
     text = re.sub(r"([A-Z])\.- ([A-Z])\.", r"\1.-\2.", text)
-    text = re.sub(r"([a-z])- ([A-Z])", r"\1-\2", text)
+    text = re.sub(r"([a-zа-я])- ([A-ZА-Я])", r"\1-\2", text)
+    text = re.sub(r"(\d\)|[a-z])\.- ([A-Z])", r"\1.—\2", text)
+    text = re.sub(r"\.- —", r". —", text)
     if clean_whitespace:
         text = re.sub(r"\s+", " ", text)
     text = re.sub(r"(\d)- (\d)", r"\1-\2", text)
+    text = unicodedata.normalize("NFC", text)
     return text.strip()
 
 

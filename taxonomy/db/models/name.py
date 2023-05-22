@@ -1579,6 +1579,9 @@ class Name(BaseModel):
         if not self.check_authors():
             yield f"{self}: discrepancy in authors"
 
+    def should_exempt_from_string_cleaning(self, field: str) -> bool:
+        return field == "data"
+
     def validate_as_child(self, status: Status = Status.valid) -> Taxon:
         if self.taxon.rank is Rank.species:
             new_rank = Rank.subspecies
@@ -2063,6 +2066,9 @@ class NameComment(BaseModel):
             constants.CommentKind.structured_quote,
             constants.CommentKind.automatic_change,
         )
+
+    def should_exempt_from_string_cleaning(self, field: str) -> bool:
+        return field == "text" and self.kind is constants.CommentKind.structured_quote
 
     def get_page_title(self) -> str:
         return f"Comment on {self.name}"
