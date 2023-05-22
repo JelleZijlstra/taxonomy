@@ -195,6 +195,20 @@ class Person(BaseModel):
         ),
         get_derived_field_with_aliases("books_all", lambda: models.Book, "books"),
         get_derived_field_with_aliases("names_all", lambda: models.Name, "names"),
+        DerivedField(
+            "ordered_names",
+            LazyType(lambda: list[models.Name]),
+            lambda pers: models.name.get_ordered_names(
+                pers.get_derived_field("names_all")
+            ),
+        ),
+        DerivedField(
+            "ordered_articles",
+            LazyType(lambda: list[models.Article]),
+            lambda pers: models.article.article.get_ordered_articles(
+                pers.get_derived_field("articles_all")
+            ),
+        ),
     ]
 
     def get_search_dicts(self) -> list[dict[str, Any]]:

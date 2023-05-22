@@ -34,6 +34,7 @@ from ...constants import (
     DateSource,
     SourceLanguage,
 )
+from ...derived_data import DerivedField, LazyType
 from ...helpers import clean_strings_recursively, get_date_object, is_valid_date, to_int
 from ..base import (
     ADTField,
@@ -144,6 +145,11 @@ class Article(BaseModel):
     folder_tree: ClassVar[FolderTree] = FolderTree()
     save_event.on(folder_tree.add)
     derived_fields = [
+        DerivedField(
+            "ordered_new_names",
+            LazyType(lambda: list[models.Name]),
+            lambda art: models.name.get_ordered_names(art.new_names),
+        ),
         get_tag_based_derived_field(
             "partially_suppressed_names",
             lambda: models.Name,
@@ -1327,3 +1333,15 @@ def _getpdfcontent(path: str) -> str:
     return subprocess.run(
         ["pdftotext", path, "-", "-l", "1"], stdout=subprocess.PIPE
     ).stdout.decode("utf-8", "replace")
+
+
+def citation_order_sort_key(art: Article) -> tuple[object, ...]:
+    return (
+        art.get_date_object(),
+        tuple(author.family_name for author in art.get_authors()),
+        art.numeric_start_page(),
+    )
+
+
+def get_ordered_articles(arts: Iterable[Article]) -> list[Article]:
+    return sorted(arts, key=citation_order_sort_key)

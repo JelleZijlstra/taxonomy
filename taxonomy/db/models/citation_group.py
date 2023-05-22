@@ -11,6 +11,7 @@ from taxonomy.apis.cloud_search import SearchField, SearchFieldType
 
 from ... import adt, config, events, getinput
 from .. import constants, helpers, models
+from ..derived_data import DerivedField, LazyType
 from .base import ADTField, BaseModel, EnumField, LintConfig
 from .region import Region
 
@@ -35,6 +36,19 @@ class CitationGroup(BaseModel):
 
     class Meta:
         db_table = "citation_group"
+
+    derived_fields = [
+        DerivedField(
+            "ordered_names",
+            LazyType(lambda: list[models.Name]),
+            lambda cg: models.name.get_ordered_names(cg.names),
+        ),
+        DerivedField(
+            "ordered_articles",
+            LazyType(lambda: list[models.Article]),
+            lambda cg: models.article.article.get_ordered_articles(cg.article_set),
+        ),
+    ]
 
     search_fields = [
         SearchField(SearchFieldType.text, "name"),

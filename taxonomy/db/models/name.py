@@ -2135,6 +2135,19 @@ class NameComment(BaseModel):
         return f'{self.text} ({"; ".join(components)})'
 
 
+def citation_sort_key(nam: Name) -> tuple[object, ...]:
+    return (
+        nam.numeric_year(),
+        nam.numeric_page_described(),
+        nam.corrected_original_name or "",
+        nam.root_name or "",
+    )
+
+
+def get_ordered_names(nams: Iterable[Name]) -> list[Name]:
+    return sorted(nams, key=citation_sort_key)
+
+
 def has_data_from_original(nam: Name) -> bool:
     if not nam.original_citation or not nam.get_raw_tags_field("type_tags"):
         return False
