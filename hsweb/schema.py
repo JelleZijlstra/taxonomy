@@ -433,7 +433,7 @@ def build_derived_field(
                 model_cls, parent, info
             ).get_derived_field(field_name),
         )
-    elif typ in TYPE_TO_GRAPHENE:
+    elif isinstance(typ, type) and typ in TYPE_TO_GRAPHENE:
         return Field(
             TYPE_TO_GRAPHENE[typ],
             required=False,
