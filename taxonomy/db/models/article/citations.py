@@ -328,9 +328,9 @@ def citearchnathist(article: Article) -> str:
         )
     )
     out.append(f", {article.numeric_year()}. ")
-    out.append(article.title)
-    out.append(". ")
-    out.append(f"_{article.citation_group.name}_ ")
+    out.append(f"{article.title}. ")
+    if article.citation_group is not None:
+        out.append(f"_{article.citation_group.name}_ ")
     if article.series:
         out.append(f"({article.series})")
     out.append(f"**{article.volume}**")
