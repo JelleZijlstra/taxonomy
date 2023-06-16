@@ -459,6 +459,9 @@ class _WordEditor:
             if match := re.fullmatch(r"([a-z]+)(\d+)", line):
                 command = match.group(1)
                 index = int(match.group(2))
+                if not (0 <= index < len(self.words)):
+                    print(f"Index out of range: {index}")
+                    continue
                 if command in self.word_range_commands:
                     self.word_range_commands[command](index, index)
                     continue

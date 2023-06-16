@@ -33,7 +33,7 @@ def format_authors(
     separator: str = ";",  # Text between two authors
     lastSeparator: str | None = None,  # Text between last two authors
     separatorWithTwoAuthors: None
-    | (str) = None,  # Text between authors if there are only two
+    | str = None,  # Text between authors if there are only two
     capitalizeNames: bool = False,  # Whether to capitalize names
     spaceInitials: bool = False,  # Whether to space initials
     initialsBeforeName: bool = False,  # Whether to place initials before the surname
@@ -313,6 +313,31 @@ def citejhe(article: Article) -> str:
     out += "."
     out = re.sub(r"\s+", " ", re.sub(r"(?<!\.)\.\.(?!\.)", ".", out))
     return out
+
+
+@register_cite_function("archnathist")
+def citearchnathist(article: Article) -> str:
+    out = []
+    out.append(
+        format_authors(
+            article,
+            separator=", ",
+            lastSeparator=" and",
+            capitalizeNames=True,
+            spaceInitials=True,
+        )
+    )
+    out.append(f", {article.numeric_year()}. ")
+    out.append(f"{article.title}. ")
+    if article.citation_group is not None:
+        out.append(f"_{article.citation_group.name}_ ")
+    if article.series:
+        out.append(f"({article.series})")
+    out.append(f"**{article.volume}**")
+    if article.issue:
+        out.append(f" ({article.issue})")
+    out.append(f": {article.start_page}–{article.end_page}.")
+    return "".join(out)
 
 
 @register_cite_function("palaeontology")

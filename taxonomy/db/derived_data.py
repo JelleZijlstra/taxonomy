@@ -5,6 +5,7 @@ Implementation of pre-computed derived data.
 """
 import enum
 import pickle
+from collections.abc import Callable
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any, Generic, Protocol, TypeVar
@@ -41,7 +42,7 @@ class ComputeAllFunc(Protocol[T]):
 
 
 class _LazyTypeArg(Protocol[T_co]):
-    def __call__(self) -> type[T_co]:
+    def __call__(self) -> Callable[[], T_co]:
         raise NotImplementedError
 
 
@@ -53,7 +54,7 @@ class LazyType(Generic[T]):
 @dataclass
 class DerivedField(Generic[T]):
     name: str
-    typ: type[T] | LazyType[T]
+    typ: Callable[[], T] | type[T] | LazyType[T]
     compute: SingleComputeFunc[T] | None = None
     compute_all: ComputeAllFunc[T] | None = None
     pull_on_miss: bool = True
@@ -127,7 +128,7 @@ class DerivedField(Generic[T]):
             return [self.deserialize(elt, arg_type) for elt in serialized]
         return serialized
 
-    def get_type(self) -> type[T]:
+    def get_type(self) -> Callable[[], T]:
         if isinstance(self.typ, LazyType):
             self.typ = self.typ.typ()
         return self.typ

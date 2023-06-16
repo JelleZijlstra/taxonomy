@@ -11,6 +11,8 @@ from collections import defaultdict
 from collections.abc import Callable, Generator, Iterable, Sequence
 from typing import Any
 
+import requests
+
 from .... import getinput
 from ....apis.zoobank import clean_lsid, get_zoobank_data_for_act, is_valid_lsid
 from ... import helpers, models
@@ -764,7 +766,12 @@ def infer_lsid_from_names(art: Article, cfg: LintConfig) -> Iterable[str]:
     for lsid in act_lsids:
         if lsid.replace("-", "") not in cleaned_text:
             continue
-        for zoobank_data in get_zoobank_data_for_act(lsid):
+        try:
+            datas = get_zoobank_data_for_act(lsid)
+        except requests.exceptions.HTTPError as e:
+            print(f"Error retrieving ZooBank data for {lsid}: {e!r}")
+            continue
+        for zoobank_data in datas:
             if zoobank_data.citation_lsid:
                 new_tag = ArticleTag.LSIDArticle(
                     zoobank_data.citation_lsid, PresenceStatus.inferred

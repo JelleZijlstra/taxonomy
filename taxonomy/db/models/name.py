@@ -675,6 +675,8 @@ class Name(BaseModel):
         full_name = f"{self.corrected_original_name} {name}"
         if isinstance(page_described, int):
             page_described = str(page_described)
+        if self.genus_type_kind is None:
+            self.fill_field("genus_type_kind")
         result = self.add_child_taxon(
             Rank.species,
             full_name,
@@ -2144,7 +2146,9 @@ def citation_sort_key(nam: Name) -> tuple[object, ...]:
     )
 
 
-def get_ordered_names(nams: Iterable[Name]) -> list[Name]:
+def get_ordered_names(nams: Iterable[Name] | None) -> list[Name]:
+    if nams is None:
+        return []
     return sorted(nams, key=citation_sort_key)
 
 

@@ -444,6 +444,7 @@ class Article(BaseModel):
             "removefirstpage": self.removefirstpage,
             "add_comment": self.add_comment,
             "infer_year": self.infer_year,
+            "cite": self.cite_interactive,
         }
 
     def infer_year(self) -> None:
@@ -853,6 +854,14 @@ class Article(BaseModel):
         if self.kind is ArticleKind.removed:
             return
         yield from models.article.lint.run_linters(self, cfg)
+
+    def cite_interactive(self) -> None:
+        citetype = getinput.get_with_completion(
+            _CITE_FUNCTIONS, "cite type> ", disallow_other=True
+        )
+        if not citetype:
+            return
+        print(self.cite(citetype))
 
     def cite(self, citetype: str = "paper") -> str:
         if self.issupplement() and self.parent is not None:
@@ -1343,5 +1352,7 @@ def citation_order_sort_key(art: Article) -> tuple[object, ...]:
     )
 
 
-def get_ordered_articles(arts: Iterable[Article]) -> list[Article]:
+def get_ordered_articles(arts: Iterable[Article] | None) -> list[Article]:
+    if arts is None:
+        return []
     return sorted(arts, key=citation_order_sort_key)
