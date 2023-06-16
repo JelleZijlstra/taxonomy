@@ -7,6 +7,8 @@ exports released on Zenodo.
 # Unreleased
 
 - Database
+  - Add numerous new names and recently published articles. Since the previous release,
+    1226 additional names and 1450 additional articles have been added.
   - Add given names or initials for a number of name authors that were given only as
     family names.
   - Remove about 200 duplicate articles
@@ -35,6 +37,7 @@ exports released on Zenodo.
     supplementary material only), and "unpublished_pending" (not yet available, but
     expected to be made available by print publication).
 - Frontend
+  - Better ordering for various lists of names and articles (e.g., ordering by page)
 
 # 23.3.0 (March 13, 2023)
 
