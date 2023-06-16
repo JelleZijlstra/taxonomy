@@ -10,6 +10,8 @@ from collections.abc import Callable, Generator, Iterable, Iterator
 from datetime import datetime
 from typing import TypeVar
 
+import requests
+
 from ... import adt, getinput
 from ...apis.zoobank import clean_lsid, get_zoobank_data, is_valid_lsid
 from .. import helpers
@@ -324,7 +326,11 @@ def check_for_lsid(nam: Name, cfg: LintConfig) -> Iterable[str]:
         or nam.original_citation is None
     ):
         return
-    zoobank_data_list = get_zoobank_data(nam.corrected_original_name)
+    try:
+        zoobank_data_list = get_zoobank_data(nam.corrected_original_name)
+    except requests.exceptions.HTTPError as e:
+        print(f"Error retrieving ZooBank data: {e!r}")
+        return
     if not zoobank_data_list:
         return
     type_tags = []

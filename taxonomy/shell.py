@@ -1818,6 +1818,7 @@ def reassign_references(
     family_name: str | None = None,
     substring: bool = True,
     max_level: PersonLevel | None = PersonLevel.has_given_name,
+    min_level: PersonLevel | None = None,
 ) -> None:
     if family_name is None:
         family_name = Person.getter("family_name").get_one_key()
@@ -1832,8 +1833,11 @@ def reassign_references(
     for person in persons:
         print(f"- {person!r} ({person.get_level().name})", flush=True)
     for person in persons:
-        if max_level is None or person.get_level() <= max_level:
-            person.maybe_reassign_references()
+        if max_level is not None and person.get_level() > max_level:
+            continue
+        if min_level is not None and person.get_level() < min_level:
+            continue
+        person.maybe_reassign_references()
 
 
 @command

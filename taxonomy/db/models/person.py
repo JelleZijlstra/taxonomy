@@ -358,6 +358,13 @@ class Person(BaseModel):
     def should_skip(self) -> bool:
         return self.type is not PersonType.deleted
 
+    def get_reference_lists(self) -> list[DerivedField[Any]]:
+        return [
+            field
+            for field in self.derived_fields
+            if not field.name.endswith("_all") and not field.name.startswith("ordered_")
+        ]
+
     def display(
         self,
         full: bool = False,
@@ -373,9 +380,7 @@ class Person(BaseModel):
             for tag in self.tags:
                 file.write(indented_onset + repr(tag) + "\n")
         if full:
-            for field in self.derived_fields:
-                if field.name.endswith("_all"):
-                    continue
+            for field in self.get_reference_lists():
                 refs = self.get_sorted_derived_field(field.name)
                 if refs:
                     file.write(f"{indented_onset}{field.name.title()} ({len(refs)})\n")
@@ -713,9 +718,7 @@ class Person(BaseModel):
 
     def num_references(self) -> dict[str, int]:
         num_refs = {}
-        for field in self.derived_fields:
-            if field.name.endswith("_all"):
-                continue
+        for field in self.get_reference_lists():
             refs = self.get_raw_derived_field(field.name)
             if refs is not None:
                 num_refs[field.name] = len(refs)
