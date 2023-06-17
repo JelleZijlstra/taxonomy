@@ -4,7 +4,9 @@ Version numbers correspond to Git tags in the
 [backend](https://github.com/JelleZijlstra/taxonomy/) repositories, and to database
 exports released on Zenodo.
 
-# Unreleased
+# 23.6.0 (June 16, 2023)
+
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.8049254.svg)](https://doi.org/10.5281/zenodo.8049254)
 
 - Database
   - Add numerous new names and recently published articles. Since the previous release,
