@@ -180,16 +180,21 @@ def _unique_dates(dates: Iterable[str]) -> set[str]:
     }
 
 
-def infer_publication_date(art: Article) -> tuple[str | None, list[str]]:
+def infer_publication_date(art: Article) -> tuple[str | None, str | None, list[str]]:
     if art.type in (ArticleType.CHAPTER, ArticleType.SUPPLEMENT):
         if parent := art.parent:
-            return parent.year, []
-    if date := infer_publication_date_from_issue_date(art):
-        return date, []
-    return infer_publication_date_from_tags(art.tags)
+            return parent.year, None, []
+    date: str | None
+    if data := infer_publication_date_from_issue_date(art):
+        date, issue = data
+        return date, issue, []
+    date, errors = infer_publication_date_from_tags(art.tags)
+    return date, None, errors
 
 
-def infer_publication_date_from_issue_date(art: Article) -> str | None:
+def infer_publication_date_from_issue_date(
+    art: Article,
+) -> tuple[str, str | None] | None:
     if (
         art.type is ArticleType.JOURNAL
         and art.citation_group
@@ -207,7 +212,7 @@ def infer_publication_date_from_issue_date(art: Article) -> str | None:
             int(art.end_page),
         )
         if isinstance(issue_date, IssueDate):
-            return issue_date.date
+            return issue_date.date, issue_date.issue
     return None
 
 
@@ -233,7 +238,7 @@ def check_year(art: Article, cfg: LintConfig) -> Iterable[str]:
     ):
         yield f"must have MustUseChildren tag because date is a range: {art.year}"
 
-    inferred, messages = infer_publication_date(art)
+    inferred, issue, messages = infer_publication_date(art)
     yield from messages
     if inferred is not None and inferred != art.year:
         # Ignore obviously wrong ones (though eventually we should retire this)
@@ -247,6 +252,13 @@ def check_year(art: Article, cfg: LintConfig) -> Iterable[str]:
         if cfg.autofix and is_more_specific:
             print(f"{art}: {message}")
             art.year = inferred
+        else:
+            yield message
+    if issue is not None and issue != art.issue:
+        message = f"issue mismatch: inferred {issue}, actual {art.issue}"
+        if cfg.autofix and art.issue is None:
+            print(f"{art}: {message}")
+            art.issue = issue
         else:
             yield message
 

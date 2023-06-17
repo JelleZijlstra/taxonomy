@@ -52,6 +52,13 @@ class IssueDate(BaseModel):
         self.fill_field("tags")
 
     def lint(self, cfg: LintConfig) -> Iterable[str]:
+        if self.issue is not None and "–" in self.issue:
+            message = f"{self}: dash in issue: {self.issue}"
+            if cfg.autofix:
+                print(message)
+                self.issue = self.issue.replace("–", "-")
+            else:
+                yield message
         if not helpers.is_valid_date(self.date):
             yield f"{self}: invalid date {self.date}"
         if self.start_page is not None and not self.start_page.isnumeric():

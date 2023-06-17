@@ -4,6 +4,13 @@ Version numbers correspond to Git tags in the
 [backend](https://github.com/JelleZijlstra/taxonomy/) repositories, and to database
 exports released on Zenodo.
 
+# Unreleased
+
+- Database
+  - Add issue numbers to several hundred articles (mostly in _Annals and Magazine of
+    Natural History_ and _Proceedings of the Zoological Society of London_). Correct a
+    few publication dates and issue numbers.
+
 # 23.6.0 (June 16, 2023)
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.8049254.svg)](https://doi.org/10.5281/zenodo.8049254)
