@@ -51,3 +51,30 @@ repos:
     rev: v3.0.0-alpha.9-for-vscode
     hooks:
       - id: prettier
+
+  - repo: local
+    hooks:
+      - id: pyanalyze
+        name: pyanalyze
+        entry: python -m pyanalyze --config-file pyproject.toml
+        language: python
+        files: ^taxonomy/.*\.py$
+        additional_dependencies:
+          - pyanalyze>=0.10.1
+          - peewee==3.13.3
+          - IPython>8
+          - prompt_toolkit
+          - requests
+          - unidecode
+          - python-levenshtein
+          - bs4
+          - mypy
+          - flake8
+          - pytest
+          - aiohttp
+          - aiohttp_graphql
+          - graphene
+          - typing_inspect
+          - types-requests
+          - boto3
+          - botocore
