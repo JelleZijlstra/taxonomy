@@ -10,6 +10,8 @@ exports released on Zenodo.
   - Add issue numbers to several hundred articles (mostly in _Annals and Magazine of
     Natural History_ and _Proceedings of the Zoological Society of London_). Correct a
     few publication dates and issue numbers.
+  - Add original citations for all names described in the _Journal of the Bombay Natural
+    History Society_.
 
 # 23.6.0 (June 16, 2023)
 
