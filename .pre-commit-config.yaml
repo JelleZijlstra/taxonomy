@@ -40,7 +40,7 @@ repos:
           - flake8-simplify
 
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.3.0
+    rev: v1.4.1
     hooks:
       - id: mypy
         additional_dependencies:
