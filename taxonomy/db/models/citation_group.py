@@ -340,6 +340,7 @@ class CitationGroup(BaseModel):
             "lint_names": lambda: models.Name.lint_all(
                 query=models.Name.add_validity_check(self.names)
             ),
+            "missing_high_names": self.print_missing_high_names,
         }
 
     def merge_interactive(self) -> None:
@@ -408,6 +409,9 @@ class CitationGroup(BaseModel):
         print(f"{' ' * depth}{self.name}{region_str}")
         nams = [(repr(nam), nam.taxon) for nam in self.get_names()]
         models.taxon.display_organized(nams)
+
+    def print_missing_high_names(self) -> None:
+        self._display_nams(nam for nam in self.names if nam.is_high_mammal())
 
     def print_field_value_for_articles(self, field: str | None = None) -> None:
         if field is None:

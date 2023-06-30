@@ -673,6 +673,7 @@ class Taxon(BaseModel):
             "edit_all_children": self.edit_all_children,
             "make_parent_of_rank": self.make_parent_of_rank,
             "names_like": self.print_names_like,
+            "missing_high_names": self.print_missing_high_names,
         }
 
     def add(self) -> Taxon | None:
@@ -789,7 +790,7 @@ class Taxon(BaseModel):
         occ = getinput.get_with_completion(
             occs.keys(), "location> ", disallow_other=True
         )
-        if occ is None:
+        if occ is None or occ not in occs:
             return
         occs[occ].edit()
 
@@ -1221,6 +1222,15 @@ class Taxon(BaseModel):
         if field is None:
             return
         nams = self.names_missing_field(field)
+        for nam in sorted(nams, key=lambda nam: nam.sort_key()):
+            nam.display(full=False)
+
+    def print_missing_high_names(self) -> None:
+        nams = {
+            nam
+            for nam in self.all_names()
+            if nam.original_citation is None and nam.is_high_mammal()
+        }
         for nam in sorted(nams, key=lambda nam: nam.sort_key()):
             nam.display(full=False)
 

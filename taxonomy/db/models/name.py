@@ -920,6 +920,12 @@ class Name(BaseModel):
     def is_unavailable(self) -> bool:
         return not self.nomenclature_status.can_preoccupy()
 
+    def is_high_mammal(self) -> bool:
+        return (
+            self.group is not Group.species
+            and self.taxon.get_derived_field("class_").valid_name == "Mammalia"
+        )
+
     def numeric_page_described(self) -> int:
         return helpers.to_int(self.page_described)
 
