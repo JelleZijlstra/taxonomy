@@ -4,11 +4,12 @@ import datetime
 import enum
 import time
 from collections import defaultdict
+from collections.abc import Iterable
 
 from peewee import CharField, ForeignKeyField, IntegerField, TextField
 
 from ... import adt, events, getinput
-from .base import ADTField, BaseModel
+from .base import ADTField, BaseModel, LintConfig
 from .region import Region
 from .taxon import Taxon
 
@@ -73,6 +74,16 @@ class Specimen(BaseModel):
             print("---")
             print(comment.text)
 
+    def lint(self, cfg: LintConfig) -> Iterable[str]:
+        if not any(isinstance(tag, SpecimenTag.TaxonCount) for tag in self.tags):
+            yield f"{self}: missing TaxonCount tag"
+        if not any(isinstance(tag, SpecimenTag.FindKind) for tag in self.tags):
+            yield f"{self}: missing FindKind tag"
+        for tag in self.tags:
+            if isinstance(tag, SpecimenTag.TaxonCount):
+                if " " in tag.taxon:
+                    yield f"{self}: TaxonCount taxon should be genus only"
+
     def get_adt_callbacks(self) -> getinput.CallbackMap:
         callbacks = super().get_adt_callbacks()
         return {**callbacks, "add_comment": self.add_comment}
@@ -109,6 +120,9 @@ class Specimen(BaseModel):
                     counts[tag.taxon] += tag.count
         for taxon, count in sorted(counts.items()):
             print(f"{count} {taxon}")
+
+    def __str__(self) -> str:
+        return f"JSZ#{self.id}"
 
 
 class SpecimenComment(BaseModel):
