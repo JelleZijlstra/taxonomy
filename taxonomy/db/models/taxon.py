@@ -1219,7 +1219,7 @@ class Taxon(BaseModel):
             history_key=(type(self), "fill_field_for_names"),
             disallow_other=True,
         )
-        if field is None:
+        if not field:
             return
         nams = self.names_missing_field(field)
         for nam in sorted(nams, key=lambda nam: nam.sort_key()):

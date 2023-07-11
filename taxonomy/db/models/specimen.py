@@ -121,6 +121,21 @@ class Specimen(BaseModel):
         for taxon, count in sorted(counts.items()):
             print(f"{count} {taxon}")
 
+    @classmethod
+    def grouped_taxon_report(cls, group_by: str) -> None:
+        counts: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+        for spec in cls.select_valid():
+            if not spec.tags:
+                continue
+            group_label = str(getattr(spec, group_by))
+            for tag in spec.tags:
+                if isinstance(tag, SpecimenTag.TaxonCount):
+                    counts[group_label][tag.taxon] += tag.count
+        for label, group in sorted(counts.items()):
+            print(f"=== {label} ===")
+            for taxon, count in sorted(group.items()):
+                print(f"{count} {taxon}")
+
     def __str__(self) -> str:
         return f"JSZ#{self.id}"
 
