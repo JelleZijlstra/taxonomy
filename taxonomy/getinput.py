@@ -643,7 +643,7 @@ def _get_adt_member(
                 get_line(
                     f"{arg_name}> ",
                     history_key=(member_cls, arg_name),
-                    default=str(existing_value) or "",
+                    default="" if existing_value is None else str(existing_value),
                 )
             )
         else:
