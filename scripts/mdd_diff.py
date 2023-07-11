@@ -500,10 +500,8 @@ def generate_markdown_for_kind(
                 by_difference.setdefault(key, []).append(difference)
             for (comment, mdd, hesp), differences in by_difference.items():
                 print(
-                    (
-                        f"- {comment} {mdd} (MDD) vs. {hesp} (Hesperomys):"
-                        f" {len(differences)} differences, e.g.:"
-                    ),
+                    f"- {comment} {mdd} (MDD) vs. {hesp} (Hesperomys):"
+                    f" {len(differences)} differences, e.g.:",
                     file=f,
                 )
                 print(f"    - {differences[0].to_markdown()}", file=f)
