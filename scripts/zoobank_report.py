@@ -52,10 +52,8 @@ def run_names(output_f: IO[str]) -> None:
         for tag in tags:
             presence = is_present(nam.original_citation, tag.text)
             print(
-                (
-                    f"  - urn:lsid:zoobank.org:act:{tag.text} –"
-                    f" {string_for_status(presence)}"
-                ),
+                f"  - urn:lsid:zoobank.org:act:{tag.text} –"
+                f" {string_for_status(presence)}",
                 file=output_f,
             )
 
@@ -76,10 +74,8 @@ def run_articles(output_f: IO[str]) -> None:
         print(f"- {art.cite()}", file=output_f)
         for tag in tags:
             print(
-                (
-                    f"  - urn:lsid:zoobank.org:pub:{tag.text} –"
-                    f" {string_for_status(tag.present_in_article)}"
-                ),
+                f"  - urn:lsid:zoobank.org:pub:{tag.text} –"
+                f" {string_for_status(tag.present_in_article)}",
                 file=output_f,
             )
 

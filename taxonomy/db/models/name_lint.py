@@ -481,10 +481,8 @@ def check_corrected_original_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if inferred is not None and inferred != nam.corrected_original_name:
         yield _make_con_messsage(
             nam,
-            (
-                f"inferred name {inferred!r} does not match current name"
-                f" {nam.corrected_original_name!r}"
-            ),
+            f"inferred name {inferred!r} does not match current name"
+            f" {nam.corrected_original_name!r}",
         )
     if not re.match(r"^[A-Z][a-z ]+$", nam.corrected_original_name):
         yield _make_con_messsage(nam, "contains unexpected characters")
@@ -616,10 +614,8 @@ def _check_species_name_gender(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if expected_form != nam.root_name:
         message = _make_rn_message(
             nam,
-            (
-                f"does not match expected form {expected_form!r} for"
-                f" {genus_gender.name} genus {genus}"
-            ),
+            f"does not match expected form {expected_form!r} for"
+            f" {genus_gender.name} genus {genus}",
         )
         if cfg.autofix:
             print(f"{nam}: {message}")
