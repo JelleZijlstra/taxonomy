@@ -1023,6 +1023,15 @@ USNM_RGX = re.compile(
     """,
     re.VERBOSE,
 )
+AMNH_RGX = re.compile(
+    r"""
+    ^([A-Za-z\.,"\s]+)\s\d+:\s?\d+(-\d+)?,\s
+    (?P<month>[A-Z][a-z]+)\.?\s
+    ((?P<day>\d+),\s?)?
+    (?P<year>\d{4})\.
+    """,
+    re.VERBOSE,
+)
 
 
 @make_linter("extract_date_from_structured_quote")
@@ -1036,6 +1045,7 @@ def extract_date_from_structured_quotes(nam: Name, cfg: LintConfig) -> Iterable[
             33916,  # {Anomaluromorpha, Hystricomorpha, Myomorpha-USNM types.pdf}
             29833,  # {Ferungulata-USNM types.pdf}
             15513,  # {Castorimorpha, Sciuromorpha-USNM types.pdf}
+            9585,  # Mammalia-AMNH types (Lawrence 1993).pdf
         ),
         NameComment.kind == CommentKind.structured_quote,
     ):
@@ -1048,12 +1058,16 @@ def extract_date_from_structured_quotes(nam: Name, cfg: LintConfig) -> Iterable[
             continue
 
         cite = json.loads(comment.text)["verbatim_citation"]
-        match = USNM_RGX.search(cite)
+        if comment.source.id == 9585:
+            match = AMNH_RGX.search(cite)
+        else:
+            match = USNM_RGX.search(cite)
         if not match:
-            yield (
-                f"cannot match verbatim citation (ref {nam.original_citation}):"
-                f" {cite!r}"
-            )
+            if comment.source.id != 9585:
+                yield (
+                    f"cannot match verbatim citation (ref {nam.original_citation}):"
+                    f" {cite!r}"
+                )
             continue
         try:
             date = helpers.parse_date(
