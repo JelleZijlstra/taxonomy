@@ -8,7 +8,7 @@ import json
 import re
 from collections.abc import Callable, Generator, Iterable, Iterator
 from datetime import datetime
-from typing import TypeVar
+from typing import Any, TypeVar
 
 import requests
 
@@ -54,8 +54,10 @@ def make_linter(
 ) -> Callable[[Linter], IgnorableLinter]:
     def decorator(linter: Linter) -> IgnorableLinter:
         @functools.wraps(linter)
-        def wrapper(nam: Name, cfg: LintConfig) -> Generator[str, None, set[str]]:
-            issues = list(linter(nam, cfg))
+        def wrapper(
+            nam: Name, cfg: LintConfig, **kwargs: Any
+        ) -> Generator[str, None, set[str]]:
+            issues = list(linter(nam, cfg, **kwargs))
             if not issues:
                 return set()
             ignored_lints = get_ignored_lints(nam)

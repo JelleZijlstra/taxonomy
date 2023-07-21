@@ -30,9 +30,7 @@ def _name_sort_key(nam: "models.Name") -> tuple[str, int]:
 
 def get_names(paper: Article) -> list["models.Name"]:
     return sorted(
-        models.Name.filter(
-            models.Name.original_citation == paper, models.Name.status != Status.removed
-        ),
+        models.Name.select_valid().filter(models.Name.original_citation == paper),
         key=_name_sort_key,
     )
 
@@ -49,6 +47,14 @@ def fill_data_from_paper(
         return True
     if paper.has_tag(ArticleTag.NeedsTranslation):
         print(f"{paper.name}: skipping because of NeedsTranslation tag")
+        _finished_papers.add((paper.name, level))
+        return True
+    if paper.has_tag(ArticleTag.NonOriginal):
+        print(f"{paper.name}: skipping because of NonOriginal tag")
+        _finished_papers.add((paper.name, level))
+        return True
+    if paper.kind is ArticleKind.no_copy:
+        print(f"{paper.name}: skipping because no copy available")
         _finished_papers.add((paper.name, level))
         return True
 

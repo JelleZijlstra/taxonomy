@@ -50,6 +50,7 @@ class NameData(TypedDict):
     citation_group: str
     citation_group_link: str
     type_locality: str
+    type_locality_country: str
     type_locality_detail: str
     type_specimen: str
     species_type_kind: str
@@ -159,6 +160,10 @@ def data_for_name(name: Name) -> NameData:
         tags += name.tags
     if name.type_tags:
         tags += name.type_tags
+    if name.type_locality is not None:
+        tl_country = name.type_locality.region.parent_of_kind(RegionKind.country)
+    else:
+        tl_country = ""
     return {
         "id": str(name.id),
         "link": name.get_absolute_url(),
@@ -188,6 +193,7 @@ def data_for_name(name: Name) -> NameData:
         "citation_group": cg.name if cg else "",
         "citation_group_link": cg.get_absolute_url() if cg else "",
         "type_locality": name.type_locality.name if name.type_locality else "",
+        "type_locality_country": tl_country,
         "type_locality_detail": loc_detail,
         "type_specimen": name.type_specimen or "",
         "species_type_kind": (

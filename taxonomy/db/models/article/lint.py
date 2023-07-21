@@ -119,6 +119,20 @@ def check_type_and_kind(art: Article, cfg: LintConfig) -> Iterable[str]:
         yield f"is {art.kind.name} but has no parent"
     if art.type in (ArticleType.SUPPLEMENT, ArticleType.CHAPTER) and art.parent is None:
         yield f"is {art.type.name} but has no parent"
+    if art.kind is ArticleKind.no_copy:
+        if art.parent is not None and art.parent.kind is not ArticleKind.no_copy:
+            yield f"is no_copy but has a parent of kind {art.parent.kind!r}"
+        if art.url is not None:
+            parsed = urllib.parse.urlparse(art.url)
+            if parsed.netloc in (
+                "www.biodiversitylibrary.org",
+                "biodiversitylibrary.org",
+            ):
+                if cfg.autofix:
+                    print(f"{art}: set kind to reference")
+                    art.kind = ArticleKind.reference
+                else:
+                    yield f"has a BHL URL and should be of kind 'reference'"
 
 
 SOURCE_PRIORITY = {

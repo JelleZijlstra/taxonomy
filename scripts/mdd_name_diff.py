@@ -89,6 +89,8 @@ COLUMNS = [
     "MDD_synonymCitations",
 ]
 
+EXTRA_COLUMNS = ["Action", "Jelle_Comments", "Connor_Comments"]
+
 
 def run(mdd_csv: Path, match_csv: Path, output_csv: Path, taxon: Taxon) -> None:
     with mdd_csv.open() as f:
@@ -104,15 +106,29 @@ def run(mdd_csv: Path, match_csv: Path, output_csv: Path, taxon: Taxon) -> None:
         min_rank_for_age_filtering=Rank.species,
     )
 
-    hesp_id_to_mdd_ids: dict[int, list[str]] = {}
+    hesp_id_to_mdd_ids: dict[int, set[str]] = {}
+    mdd_id_to_extra: dict[str, dict[str, str]] = {}
+    hesp_id_to_extra: dict[int, dict[str, str]] = {}
     for row in match_rows:
         mdd_id = row["MDD_syn_ID"]
+        if mdd_id:
+            for column in EXTRA_COLUMNS:
+                if column in row and row[column]:
+                    mdd_id_to_extra.setdefault(mdd_id, {})[column] = row[column]
+        hesp_id_str = row["Hesp_id"]
+        if not hesp_id_str:
+            hesp_id = 0
+        else:
+            hesp_id = int(hesp_id_str)
+        if hesp_id:
+            for column in EXTRA_COLUMNS:
+                if column in row and row[column]:
+                    hesp_id_to_extra.setdefault(hesp_id, {})[column] = row[column]
         if not mdd_id:
             continue
-        hesp_id = int(row["Hesp_id"])
         if hesp_id == 0:
             continue
-        hesp_id_to_mdd_ids.setdefault(hesp_id, []).append(mdd_id)
+        hesp_id_to_mdd_ids.setdefault(hesp_id, set()).add(mdd_id)
     mdd_id_to_row = {row["MDD_syn_ID"]: row for row in mdd_rows}
     used_mdd_ids = set()
 
@@ -133,8 +149,9 @@ def run(mdd_csv: Path, match_csv: Path, output_csv: Path, taxon: Taxon) -> None:
         for name in getinput.print_every_n(hesp_names, label="Hesperomys names"):
             data = export.data_for_name(name)
             row = {f"Hesp_{k}": v for k, v in data.items()}
+            row.update(hesp_id_to_extra.get(name.id, {}))
             if name.id in hesp_id_to_mdd_ids:
-                mdd_ids = hesp_id_to_mdd_ids[name.id]
+                mdd_ids = sorted(hesp_id_to_mdd_ids[name.id])
                 if len(mdd_ids) == 1:
                     num_simple_matches += 1
                 else:
@@ -162,6 +179,7 @@ def run(mdd_csv: Path, match_csv: Path, output_csv: Path, taxon: Taxon) -> None:
                         continue
                     mdd_row = mdd_id_to_row[mdd_id]
                     single_row.update(mdd_row)
+                    single_row.update(mdd_id_to_extra.get(mdd_id, {}))
                     author_diffs = list(
                         mdd_diff.compare_authors_to_name(
                             name, mdd_id, mdd_row["MDD_author"]
@@ -192,6 +210,7 @@ def run(mdd_csv: Path, match_csv: Path, output_csv: Path, taxon: Taxon) -> None:
                 continue
             num_mdd_only += 1
             out_row = {**row, "match_status": "no_hesp_match"}
+            out_row.update(mdd_id_to_extra.get(row["MDD_syn_ID"], {}))
             writer.writerow(out_row)
 
     print("Report:")
