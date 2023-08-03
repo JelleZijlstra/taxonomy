@@ -630,6 +630,26 @@ def resolve_autocompletions(
     return model_cls.getter(field).get_all()
 
 
+class ModelConnection(Connection):
+    class Meta:
+        node = Model
+
+
+def resolve_newest(
+    parent: ModelCls, info: ResolveInfo, first: int = 10, after: str | None = None
+) -> list[Model]:
+    model_cls = BaseModel.call_sign_to_model[parent.call_sign]
+    object_type = build_object_type_from_model(model_cls)
+    query = model_cls.select_valid().order_by(model_cls.id.desc())
+    query = query.limit(first + _decode_after(after) + 1)
+    ret = []
+    cache = info.context["request"]
+    for obj in query:
+        ret.append(object_type(id=obj.id, oid=obj.id))
+        cache[(model_cls.call_sign, obj.id)] = obj
+    return ret
+
+
 class ModelCls(ObjectType):
     call_sign = String(required=True)
     name = String(
@@ -642,6 +662,12 @@ class ModelCls(ObjectType):
         NonNull(List(NonNull(String))),
         field=String(required=False),
         resolver=resolve_autocompletions,
+    )
+    newest = ConnectionField(
+        NonNull(ModelConnection),
+        first=Int(required=False),
+        after=String(required=False),
+        resolver=resolve_newest,
     )
 
 
