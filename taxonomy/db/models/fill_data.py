@@ -11,7 +11,7 @@ from taxonomy import getinput
 from taxonomy.command_set import CommandSet
 from taxonomy.db import models
 
-from ..constants import ArticleKind, FillDataLevel, Status
+from ..constants import ArticleKind, FillDataLevel
 from .article import Article, ArticleTag
 from .citation_group import CitationGroup
 from .person import Person

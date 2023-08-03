@@ -160,10 +160,11 @@ def data_for_name(name: Name) -> NameData:
         tags += name.tags
     if name.type_tags:
         tags += name.type_tags
+    tl_country = ""
     if name.type_locality is not None:
-        tl_country = name.type_locality.region.parent_of_kind(RegionKind.country)
-    else:
-        tl_country = ""
+        tl_country_object = name.type_locality.region.parent_of_kind(RegionKind.country)
+        if tl_country_object is not None:
+            tl_country = tl_country_object.name
     return {
         "id": str(name.id),
         "link": name.get_absolute_url(),

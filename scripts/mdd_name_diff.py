@@ -90,6 +90,7 @@ COLUMNS = [
 ]
 
 EXTRA_COLUMNS = ["Action", "Jelle_Comments", "Connor_Comments"]
+EMPTY: dict[str, object] = {}
 
 
 def run(mdd_csv: Path, match_csv: Path, output_csv: Path, taxon: Taxon) -> None:
@@ -149,7 +150,7 @@ def run(mdd_csv: Path, match_csv: Path, output_csv: Path, taxon: Taxon) -> None:
         for name in getinput.print_every_n(hesp_names, label="Hesperomys names"):
             data = export.data_for_name(name)
             row = {f"Hesp_{k}": v for k, v in data.items()}
-            row.update(hesp_id_to_extra.get(name.id, {}))
+            row.update(hesp_id_to_extra.get(name.id, EMPTY))
             if name.id in hesp_id_to_mdd_ids:
                 mdd_ids = sorted(hesp_id_to_mdd_ids[name.id])
                 if len(mdd_ids) == 1:
@@ -179,7 +180,7 @@ def run(mdd_csv: Path, match_csv: Path, output_csv: Path, taxon: Taxon) -> None:
                         continue
                     mdd_row = mdd_id_to_row[mdd_id]
                     single_row.update(mdd_row)
-                    single_row.update(mdd_id_to_extra.get(mdd_id, {}))
+                    single_row.update(mdd_id_to_extra.get(mdd_id, EMPTY))
                     author_diffs = list(
                         mdd_diff.compare_authors_to_name(
                             name, mdd_id, mdd_row["MDD_author"]
@@ -210,7 +211,7 @@ def run(mdd_csv: Path, match_csv: Path, output_csv: Path, taxon: Taxon) -> None:
                 continue
             num_mdd_only += 1
             out_row = {**row, "match_status": "no_hesp_match"}
-            out_row.update(mdd_id_to_extra.get(row["MDD_syn_ID"], {}))
+            out_row.update(mdd_id_to_extra.get(row["MDD_syn_ID"], EMPTY))
             writer.writerow(out_row)
 
     print("Report:")
