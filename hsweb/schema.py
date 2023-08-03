@@ -597,7 +597,7 @@ def get_model_resolvers() -> dict[str, Field]:
 def resolve_by_call_sign(
     parent: ObjectType, info: ResolveInfo, call_sign: str, oid: str
 ) -> list[ObjectType]:
-    model_cls = CALL_SIGN_TO_MODEL[call_sign.upper()]
+    model_cls = get_by_call_sign(call_sign)
     object_type = build_object_type_from_model(model_cls)
     if oid.isnumeric():
         return [object_type(oid=int(oid), id=int(oid))]
@@ -624,10 +624,14 @@ def resolve_documentation(
 def resolve_autocompletions(
     parent: ModelCls, info: ResolveInfo, field: str | None = None
 ) -> list[str]:
-    model_cls = BaseModel.call_sign_to_model[parent.call_sign]
+    model_cls = get_by_call_sign(parent.call_sign)
     if field is None:
         field = model_cls.label_field
     return model_cls.getter(field).get_all()
+
+
+def get_by_call_sign(call_sign: str) -> type[BaseModel]:
+    return CALL_SIGN_TO_MODEL[call_sign.upper()]
 
 
 class ModelConnection(Connection):
@@ -638,7 +642,7 @@ class ModelConnection(Connection):
 def resolve_newest(
     parent: ModelCls, info: ResolveInfo, first: int = 10, after: str | None = None
 ) -> list[Model]:
-    model_cls = BaseModel.call_sign_to_model[parent.call_sign]
+    model_cls = get_by_call_sign(parent.call_sign)
     object_type = build_object_type_from_model(model_cls)
     query = model_cls.select_valid().order_by(model_cls.id.desc())
     query = query.limit(first + _decode_after(after) + 1)
@@ -654,9 +658,7 @@ class ModelCls(ObjectType):
     call_sign = String(required=True)
     name = String(
         required=True,
-        resolver=lambda self, *args: BaseModel.call_sign_to_model[
-            self.call_sign
-        ].__name__,
+        resolver=lambda self, *args: get_by_call_sign(self.call_sign).__name__,
     )
     autocompletions = Field(
         NonNull(List(NonNull(String))),
@@ -686,7 +688,7 @@ class SearchResult(ObjectType):
         else:
             call_sign, oid = pieces
             context = None
-        model_cls = CALL_SIGN_TO_MODEL[call_sign.upper()]
+        model_cls = get_by_call_sign(call_sign)
         object_type = build_object_type_from_model(model_cls)
         model = object_type(oid=int(oid), id=int(oid))
         highlights = []
