@@ -196,6 +196,13 @@ class Name(BaseModel):
             1,
         ),
         get_tag_based_derived_field(
+            "name_combinations",
+            lambda: Name,
+            "tags",
+            lambda: NameTag.NameCombinationOf,
+            1,
+        ),
+        get_tag_based_derived_field(
             "selections_of_priority",
             lambda: Name,
             "tags",
@@ -2261,6 +2268,7 @@ class NameTag(adt.ADT):
     HMW(number=str, name=str, tag=20)  # type: ignore
     # Not required, used when the name can't have the "as_emended" nomenclature status
     AsEmendedBy(name=Name, comment=str, tag=21)  # type: ignore
+    NameCombinationOf(name=Name, comment=str, tag=22)  # type: ignore
 
 
 CONSTRUCTABLE_STATUS_TO_TAG = {
@@ -2273,6 +2281,7 @@ CONSTRUCTABLE_STATUS_TO_TAG = {
     NomenclatureStatus.nomen_novum: NameTag.NomenNovumFor,
     NomenclatureStatus.incorrect_original_spelling: NameTag.IncorrectOriginalSpellingOf,
     NomenclatureStatus.subsequent_usage: NameTag.SubsequentUsageOf,
+    NomenclatureStatus.name_combination: NameTag.NameCombinationOf,
     NomenclatureStatus.preoccupied: NameTag.PreoccupiedBy,
 }
 STATUS_TO_TAG = {

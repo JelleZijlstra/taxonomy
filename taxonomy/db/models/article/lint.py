@@ -130,9 +130,9 @@ def check_type_and_kind(art: Article, cfg: LintConfig) -> Iterable[str]:
             ):
                 if cfg.autofix:
                     print(f"{art}: set kind to reference")
-                    art.kind = ArticleKind.reference
+                    art.kind = ArticleKind.reference  # type: ignore
                 else:
-                    yield f"has a BHL URL and should be of kind 'reference'"
+                    yield "has a BHL URL and should be of kind 'reference'"
 
 
 SOURCE_PRIORITY = {
@@ -277,6 +277,18 @@ def check_year(art: Article, cfg: LintConfig) -> Iterable[str]:
             yield message
 
 
+@make_linter("precise_date")
+def check_precise_date(art: Article, cfg: LintConfig) -> Iterable[str]:
+    if art.citation_group is None:
+        return
+    if not art.citation_group.has_tag(CitationGroupTag.MustHavePreciseDate):
+        return
+    if art.new_names.count() == 0:
+        return
+    if art.year is not None and "-" not in art.year:
+        yield f"is in {art.citation_group} but has imprecise date {art.year}"
+
+
 _JSTOR_URL_PREFIX = "http://www.jstor.org/stable/"
 _JSTOR_DOI_PREFIX = "10.2307/"
 
@@ -287,6 +299,18 @@ def is_valid_hdl(hdl: str) -> bool:
 
 def is_valid_doi(doi: str) -> bool:
     return bool(re.fullmatch(r"^10\.[A-Za-z0-9\.\/\[\]<>\-;:_()+]+$", doi))
+
+
+@make_linter("must_have_url")
+def check_must_have_url(art: Article, cfg: LintConfig) -> Iterable[str]:
+    if art.citation_group is None:
+        return
+    if not art.citation_group.has_tag(CitationGroupTag.MustHaveURL):
+        return
+    url = art.geturl()
+    if url is not None:
+        return
+    yield f"has no URL, but is in {art.citation_group}"
 
 
 @make_linter("url")
@@ -514,7 +538,7 @@ def journal_specific_cleanup(art: Article, cfg: LintConfig) -> Iterable[str]:
     if cg is None:
         return
     if message := cg.is_year_in_range(art.numeric_year()):
-        yield f"{message}"
+        yield message
     if art.series is None and cg.get_tag(CitationGroupTag.MustHaveSeries):
         yield f"missing a series, but {cg} requires one"
     if cg.type is ArticleType.JOURNAL:

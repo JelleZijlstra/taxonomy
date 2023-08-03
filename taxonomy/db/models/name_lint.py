@@ -57,6 +57,7 @@ def make_linter(
         def wrapper(
             nam: Name, cfg: LintConfig, **kwargs: Any
         ) -> Generator[str, None, set[str]]:
+            # static analysis: ignore[incompatible_call]
             issues = list(linter(nam, cfg, **kwargs))
             if not issues:
                 return set()
@@ -266,6 +267,11 @@ def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                     senior_name.tags, NameTag.SubsequentUsageOf
                 ):
                     senior_name = senior_name_tag.name
+            if senior_name.nomenclature_status is NomenclatureStatus.name_combination:
+                for senior_name_tag in senior_name.get_tags(
+                    senior_name.tags, NameTag.NameCombinationOf
+                ):
+                    senior_name = senior_name_tag.name
             if nam.get_date_object() < senior_name.get_date_object():
                 yield f"predates supposed senior name {senior_name}"
             # TODO apply this check to species too by handling gender endings correctly.
@@ -284,6 +290,7 @@ def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 NameTag.NomenNovumFor,
                 NameTag.JustifiedEmendationOf,
                 NameTag.SubsequentUsageOf,
+                NameTag.NameCombinationOf,
             ),
         ):
             for status, tag_cls in STATUS_TO_TAG.items():

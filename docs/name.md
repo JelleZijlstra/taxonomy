@@ -229,7 +229,10 @@ Tags include the following:
   author who formally selected the correct original spelling.
 - _SubsequentUsageOf_: The name is a subsequent usage of another name, without its own
   availability. Such names are included in the database if they are listed as synonyms
-  in previous compilations.
+  in previous compilations, usually if it represents a misidentification.
+- _NameCombinationOf_: The name is a new name combination (e.g., reassignment to a
+  different genus) of a previous name. Name combinations are currently only rarely
+  listed.
 - _SelectionOfPriority_: The name was selected to have priority over another,
   simultaneously published name.
 - _ReversalOfPriority_: The Commission reversed the priority of this name relative to

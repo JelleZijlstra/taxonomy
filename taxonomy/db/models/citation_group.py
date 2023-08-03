@@ -506,3 +506,8 @@ class CitationGroupTag(adt.ADT):
     DatingTools(text=str, tag=23)  # type: ignore
     # Link to a relevant page in docs/biblio/
     BiblioNote(text=str, tag=24)  # type: ignore
+    # Articles must have a month or day in publication date
+    # (only enforced for articles containing new names)
+    MustHavePreciseDate(tag=25)  # type: ignore
+    # Articles must have a URL (or DOI, HDL, etc.)
+    MustHaveURL(tag=26)  # type: ignore
