@@ -6,7 +6,8 @@ Lint steps for Names.
 import functools
 import json
 import re
-from collections.abc import Callable, Generator, Iterable, Iterator
+from collections.abc import Callable, Generator, Iterable, Iterator, Sequence
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, TypeVar
 
@@ -31,6 +32,7 @@ from ..constants import (
 )
 from .article import Article, ArticleTag, PresenceStatus
 from .base import LintConfig
+from .collection import Collection, CollectionTag
 from .name import STATUS_TO_TAG, Name, NameComment, NameTag, TypeTag
 from .person import AuthorTag, PersonLevel
 
@@ -223,6 +225,177 @@ def check_type_designations_present(nam: Name, cfg: LintConfig) -> Iterable[str]
             for tag in nam.get_tags(nam.type_tags, TypeTag.NeotypeDesignation)
         ):
             yield "missing a reference for neotype designation"
+
+
+MULTIPLE_ID = 366
+
+
+def _get_specimen_regexes(nam: Name) -> Iterable[re.Pattern[str]]:
+    if nam.collection is None:
+        yield re.compile(r"^.*$")
+        return
+    if nam.collection.id == MULTIPLE_ID:
+        for tag in nam.type_tags:
+            if isinstance(tag, TypeTag.Repository):
+                yield _get_regex_from_collection(tag.repository)
+    else:
+        yield _get_regex_from_collection(nam.collection)
+
+
+def _get_former_collection_regexes(nam: Name) -> Iterable[re.Pattern[str]]:
+    for tag in nam.type_tags:
+        if isinstance(tag, TypeTag.FormerRepository):
+            yield _get_regex_from_collection(tag.repository)
+
+
+def _get_regex_from_collection(coll: Collection) -> re.Pattern[str]:
+    for tag in coll.tags:
+        if isinstance(tag, CollectionTag.SpecimenRegex):
+            return re.compile(tag.regex)
+    return re.compile(r"^.*$")
+
+
+@dataclass
+class Specimen:
+    text: str
+    comment: str | None = None
+    former_texts: Sequence[str] = field(default_factory=list)
+
+
+@dataclass
+class SpecialSpecimen:
+    collection: str
+    label: str
+    comment: str | None = None
+    former_texts: Sequence[str] = field(default_factory=list)
+
+
+@dataclass
+class SpecimenRange:
+    start: Specimen
+    end: Specimen
+
+
+AnySpecimen = Specimen | SpecialSpecimen | SpecimenRange
+
+
+def _split_type_spec_string(text: str) -> Iterable[str]:
+    current: list[str] = []
+    parens = 0
+    just_saw_comma = False
+    for i, c in enumerate(text):
+        if just_saw_comma:
+            just_saw_comma = False
+            if c != " ":
+                raise ValueError(f"expected space at position {i}, not {c!r}")
+            continue
+        if c == "(":
+            parens += 1
+        elif c == ")":
+            parens -= 1
+        elif c == "," and parens == 0:
+            just_saw_comma = True
+            if not current:
+                raise ValueError(f"unexpected comma at position {i}")
+            yield "".join(current)
+            current.clear()
+            continue
+        current.append(c)
+    if current:
+        yield "".join(current)
+    else:
+        raise ValueError("comma at end of string")
+    if parens != 0:
+        raise ValueError("unbalanced parentheses")
+
+
+def parse_type_specimen(text: str) -> list[AnySpecimen]:
+    specs: list[AnySpecimen] = []
+    for chunk in _split_type_spec_string(text):
+        if " through " in chunk:
+            left, right = chunk.split(" through ", maxsplit=1)
+            left_spec = _parse_single_specimen(left)
+            if not isinstance(left_spec, Specimen):
+                raise ValueError(
+                    f"range must contain a simple specimen, not {left_spec}"
+                )
+            right_spec = _parse_single_specimen(right)
+            if not isinstance(right_spec, Specimen):
+                raise ValueError(
+                    f"range must contain a simple specimen, not {right_spec}"
+                )
+            specs.append(SpecimenRange(left_spec, right_spec))
+        else:
+            specs.append(_parse_single_specimen(chunk))
+    return specs
+
+
+_SPECIAL_SUFFIXES = (
+    " (unnumbered)",
+    " (no number given)",
+    " (no numbers given)",
+    " (lost)",
+)
+
+
+def _parse_single_specimen(text: str) -> Specimen | SpecialSpecimen:
+    formers: list[str] = []
+    comment = None
+    while text.endswith(")"):
+        if text.endswith(_SPECIAL_SUFFIXES):
+            text, end = text.rsplit(" (", maxsplit=1)
+            return SpecialSpecimen(
+                text, end.removesuffix(")"), comment=comment, former_texts=formers
+            )
+        elif text.endswith("!)"):
+            if comment is not None:
+                raise ValueError(f"cannot have two comments in {text}")
+            text, end = text.rsplit(" (", maxsplit=1)
+            comment = end.removesuffix("!)")
+            continue
+        if " (= " not in text:
+            raise ValueError(f"invalid parenthesized text in {text!r}")
+        text, end = text.rsplit(" (= ", maxsplit=1)
+        formers.append(end.removesuffix(")"))
+    return Specimen(text, comment=comment, former_texts=formers)
+
+
+@make_linter("type_specimen")
+def check_type_specimen(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    if nam.type_specimen is None:
+        return
+    regexes = list(_get_specimen_regexes(nam))
+    former_regexes = list(_get_former_collection_regexes(nam))
+    try:
+        specs = parse_type_specimen(nam.type_specimen)
+    except ValueError as e:
+        yield f"cannot parse type specimen string {nam.type_specimen}: {e}"
+        return
+    for spec in specs:
+        if isinstance(spec, SpecimenRange):
+            yield from _check_specimen(spec.start, regexes, former_regexes)
+            yield from _check_specimen(spec.end, regexes, former_regexes)
+        elif isinstance(spec, SpecialSpecimen):
+            continue
+        else:
+            yield from _check_specimen(spec, regexes, former_regexes)
+
+
+def _check_specimen(
+    spec: Specimen,
+    regexes: list[re.Pattern[str]],
+    former_regexes: list[re.Pattern[str]],
+) -> Iterable[str]:
+    if not any(rgx.fullmatch(spec.text) for rgx in regexes):
+        yield f"{spec.text!r} does not match any collection ({regexes})"
+    for former in spec.former_texts:
+        if not any(rgx.fullmatch(former) for rgx in former_regexes) and not any(
+            rgx.fullmatch(former) for rgx in regexes
+        ):
+            yield (
+                f"former location {former!r} does not match any collection"
+                f" ({former_regexes}; {regexes})"
+            )
 
 
 @make_linter("tags")
@@ -450,11 +623,11 @@ ATTRIBUTES_BY_GROUP = {
 
 @make_linter("disallowed_attributes")
 def check_disallowed_attributes(nam: Name, cfg: LintConfig) -> Iterable[str]:
-    for field, groups in ATTRIBUTES_BY_GROUP.items():
+    for field_name, groups in ATTRIBUTES_BY_GROUP.items():
         if nam.group not in groups:
-            value = getattr(nam, field)
+            value = getattr(nam, field_name)
             if value is not None:
-                yield f"should not have attribute {field} (value {value})"
+                yield f"should not have attribute {field_name} (value {value})"
     if (
         nam.species_name_complex is not None
         and not nam.nomenclature_status.requires_name_complex()

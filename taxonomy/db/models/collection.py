@@ -1,3 +1,5 @@
+import re
+from collections.abc import Iterable
 from typing import Any
 
 from peewee import BooleanField, CharField, ForeignKeyField
@@ -7,7 +9,7 @@ from taxonomy.apis.cloud_search import SearchField, SearchFieldType
 from ... import adt, events, getinput
 from .. import models
 from .article import Article
-from .base import ADTField, BaseModel, ModelT, get_tag_based_derived_field
+from .base import ADTField, BaseModel, LintConfig, ModelT, get_tag_based_derived_field
 from .region import Region
 
 
@@ -73,6 +75,14 @@ class Collection(BaseModel):
 
     def edit(self) -> None:
         self.fill_field("tags")
+
+    def lint(self, cfg: LintConfig) -> Iterable[str]:
+        for tag in self.tags:
+            if isinstance(tag, CollectionTag.SpecimenRegex):
+                try:
+                    re.compile(tag.regex)
+                except re.error:
+                    yield f"{self}: invalid specimen regex {tag.regex!r}"
 
     @classmethod
     def by_label(cls, label: str) -> "Collection":
@@ -179,3 +189,4 @@ class Collection(BaseModel):
 class CollectionTag(adt.ADT):
     CollectionDatabase(citation=Article, comment=str, tag=1)  # type: ignore
     TypeCatalog(citation=Article, coverage=str, tag=2)  # type: ignore
+    SpecimenRegex(regex=str, tag=3)  # type: ignore

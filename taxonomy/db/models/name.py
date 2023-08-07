@@ -2366,6 +2366,7 @@ class TypeTag(adt.ADT):
     RejectedLSIDName(text=str, tag=47)  # type: ignore
     # For hybrids and composites
     PartialTaxon(taxon=Taxon, tag=48)  # type: ignore
+    FormerRepository(repository=Collection, tag=49)  # type: ignore
 
 
 SOURCE_TAGS = (
