@@ -180,7 +180,8 @@ with original citations follow this format):
   political region for extant names.
 - _type specimen_: The type specimen of the name. Normally, this should be in the form
   of a standard specimen reference, e.g. "AMNH 108371". Otherwise, it should be whatever
-  information is known that will unambiguously indicate the specimen involved.
+  information is known that will unambiguously indicate the specimen involved. See below
+  for more details on the format.
 - _collection_: Reference to the collection in which the type specimen is located (in
   the [Collection](/docs/collection) table).
 - _genus type kind_: For genus-group taxa, the way the type species was designated
@@ -188,6 +189,45 @@ with original citations follow this format):
   designation).
 - _species type kind_: For species-group taxa, the kind of type specimen (holotype,
   syntypes, lectotype, neotype).
+
+### _type_specimen_
+
+The _type_specimen_ field normally contains the catalog number of a type specimen. If
+there are multiple type specimens with different numbers, or if parts of a single
+specimen are cataloged under different numbers, these are separated with commas (for
+example, "USNM 120, MCZ 4759" for two syntypes of _Neotamias dorsalis_).
+
+Each entry in the list may be followed by any number of alternative catalog numbers in
+parentheses prefixed with "= ". For example, "AMNH 12345 (= USNM 54321) (= MCZ 1234)"
+would indicate that the specimen is currently in the AMNH as AMNH 12345, but was
+previously cataloged as USNM 54321 and MCZ 1234.
+
+Also, each entry may be followed by a comment in parentheses ending with an exclamation
+mark, usually for cases where the catalog number is not enough to uniquely identify the
+specimen. For example, if AMNH 12345 contains a skin and a skull, but only the skin is a
+type, the entry should read "AMNH 12345 (skin!)".
+
+When the parenthesized previous numbers and comments are removed, the catalog number
+remains. Formats for museum catalog numbers vary widely from one collection to another,
+and even numbers from the same collection are often presented differently in different
+sources. A standardized format should be defined for each collection, ideally mirroring
+what the collection itself uses. As of this writing, the database only defines such a
+format for a few collections.
+
+Many collections have different catalogues for different taxonomic groups and for fossil
+and extant specimens. In such cases, a collection should be created for each different
+catalogue, with the overarching collection as a parent.
+
+The following special forms are always allowed:
+
+- "BMNH (unnumbered)": a specimen in the BMNH that lacks a catalogue number
+- "BMNH (no number given)" (or "numbers"): there is a type (or multiple types) in the
+  BMNH, but the source does not record the catalog number. This is most frequently
+  useful with syntypes, where a source might say that one syntype is ZMB 12345 and
+  another syntype is in the BMNH. If there is only a single type, simply set the
+  _collection_ field to "BMNH" and leave _type_specimen_ blank.
+- "BMNH (lost)": the type specimen used to be in the BMNH but is currently considered
+  lost.
 
 ## Tags
 

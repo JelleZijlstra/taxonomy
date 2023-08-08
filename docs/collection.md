@@ -15,7 +15,9 @@ Collections have the following fields:
   [UA (Ankara)](</c/UA_(Ankara)>), [UA (Antananarivo)](</c/UA_(Antananarivo)>) and
   [UA (Arizona)](</c/UA_(Arizona)>). For some collections (usually associated with
   European universities), the city name is used as the label instead, because there is
-  no well-established abbreviation (e.g. [Göttingen]</c/Göttingen>).
+  no well-established abbreviation (e.g. [Göttingen]</c/Göttingen>). For subcollections,
+  the label of the parent collection should be used with an additional identifier after
+  it, e.g. "BMNH (mammals)".
 - _name_: The full English name of the institution. If the name is written in the Latin
   alphabet, the native name may be used instead.
 - _location_: The [Region](region) in which the collection is physically located.
@@ -23,6 +25,7 @@ Collections have the following fields:
   helps sort together similar collections in regions that have many.
 - _comment_: Any comments on the collection. This may include previous names and notes
   on the history of the institution.
+- _parent_: Parent collection for a sub-collection.
 
 Sometimes specimens are included in private collections. For these, the label should be
 "(last name) collection" and the name should be "Collection of (full name)". For

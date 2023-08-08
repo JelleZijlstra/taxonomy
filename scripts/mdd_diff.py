@@ -10,9 +10,9 @@ from typing import IO, TypedDict
 
 import unidecode
 
-from taxonomy.db import helpers
+from taxonomy.db import helpers, models
 from taxonomy.db.constants import AgeClass, NamingConvention, Rank, Status
-from taxonomy.db.models import CitationGroup, Name, Person, Taxon
+from taxonomy.db.models import CitationGroup, Collection, Name, Person, Taxon
 from taxonomy.db.models.tags import TaxonTag
 
 INCLUDED_AGES = (AgeClass.extant, AgeClass.recently_extinct)
@@ -185,6 +185,8 @@ def process_mdd_type(text: str) -> str | None:
     text = re.sub(r" \[[^\]]+\]", "", text)
     text = re.sub(r"^([A-Z\-]+)(?=\d)", r"\1 ", text)
     text = re.sub(r"^(BM|NHM) ", "BMNH ", text)
+    if "BMNH" in text:
+        text = models.name_lint.clean_up_bmnh_type(text)
     return text
 
 
@@ -533,6 +535,24 @@ def generate_markdown_for_kind(
                 print(f"- {cg} ({len(cg_differences)} differences)", file=f)
                 for difference in sorted(
                     cg_differences, key=lambda diff: diff.mdd or ""
+                ):
+                    print(f"    - {difference.to_markdown()}", file=f)
+        case DifferenceKind.type_specimen:
+            by_coll: dict[Collection | None, list[Difference]] = {}
+            for difference in differences:
+                coll: Collection | None
+                if difference.taxon is None:
+                    coll = None
+                else:
+                    coll = difference.taxon.base_name.collection
+                by_coll.setdefault(coll, []).append(difference)
+            for coll, coll_differences in sorted(
+                by_coll.items(),
+                key=lambda pair: pair[0].name if pair[0] is not None else "",
+            ):
+                print(f"- {coll} ({len(coll_differences)} differences)", file=f)
+                for difference in sorted(
+                    coll_differences, key=lambda diff: diff.mdd or ""
                 ):
                     print(f"    - {difference.to_markdown()}", file=f)
         case _:

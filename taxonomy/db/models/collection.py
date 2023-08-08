@@ -7,10 +7,11 @@ from peewee import BooleanField, CharField, ForeignKeyField
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
 
 from ... import adt, events, getinput
-from .. import models
+from .. import constants, models
 from .article import Article
 from .base import ADTField, BaseModel, LintConfig, ModelT, get_tag_based_derived_field
 from .region import Region
+from .taxon import Taxon
 
 
 class Collection(BaseModel):
@@ -29,6 +30,7 @@ class Collection(BaseModel):
     city = CharField(null=True)
     removed = BooleanField(default=False)
     tags = ADTField(lambda: CollectionTag, null=True)
+    parent = ForeignKeyField("self", related_name="children", null=True)
 
     derived_fields = [
         get_tag_based_derived_field(
@@ -185,8 +187,13 @@ class Collection(BaseModel):
     def is_invalid(self) -> bool:
         return self.removed
 
+    def must_use_children(self) -> bool:
+        return any(tag is CollectionTag.MustUseChildrenCollection for tag in self.tags)
+
 
 class CollectionTag(adt.ADT):
     CollectionDatabase(citation=Article, comment=str, tag=1)  # type: ignore
     TypeCatalog(citation=Article, coverage=str, tag=2)  # type: ignore
     SpecimenRegex(regex=str, tag=3)  # type: ignore
+    MustUseChildrenCollection(tag=4)  # type: ignore
+    ChildRule(collection=Collection, regex=str, taxon=Taxon, age=constants.AgeClass, tag=5)  # type: ignore

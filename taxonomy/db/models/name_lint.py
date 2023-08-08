@@ -228,11 +228,28 @@ def check_type_designations_present(nam: Name, cfg: LintConfig) -> Iterable[str]
 
 
 MULTIPLE_ID = 366
+BMNH_COLLECTION_ID = 5
+
+# Takes a string, return None if it matches or an error message if it doesn't
+SpecimenValidator = Callable[[str], str | None]
 
 
-def _get_specimen_regexes(nam: Name) -> Iterable[re.Pattern[str]]:
+@dataclass
+class RegexValidator:
+    rgx: re.Pattern[str]
+
+    def __call__(self, text: str) -> str | None:
+        if not self.rgx.fullmatch(text):
+            return f"does not match regex {self.rgx}"
+        return None
+
+
+_AllowAll = RegexValidator(re.compile(r"^.*$"))
+
+
+def _get_specimen_regexes(nam: Name) -> Iterable[SpecimenValidator]:
     if nam.collection is None:
-        yield re.compile(r"^.*$")
+        yield _AllowAll
         return
     if nam.collection.id == MULTIPLE_ID:
         for tag in nam.type_tags:
@@ -242,17 +259,77 @@ def _get_specimen_regexes(nam: Name) -> Iterable[re.Pattern[str]]:
         yield _get_regex_from_collection(nam.collection)
 
 
-def _get_former_collection_regexes(nam: Name) -> Iterable[re.Pattern[str]]:
+def _get_former_collection_regexes(nam: Name) -> Iterable[SpecimenValidator]:
     for tag in nam.type_tags:
         if isinstance(tag, TypeTag.FormerRepository):
             yield _get_regex_from_collection(tag.repository)
 
 
-def _get_regex_from_collection(coll: Collection) -> re.Pattern[str]:
+FOSSIL_CATALOGS = [
+    ("M", "mammal"),
+    ("R", "reptile"),
+    ("A", "bird"),
+    ("E", "?paleoanthropology"),
+    ("OR", "old collection"),
+]
+
+
+def _validate_bmnh(specimen: str) -> str | None:
+    if not specimen.startswith("BMNH "):
+        return "BMNH specimen must start with 'BMNH'"
+    specimen = specimen.removeprefix("BMNH ")
+
+    # Fossil numbers: BMNH M 1234 for fossil mammals
+    for catalog, label in FOSSIL_CATALOGS:
+        if specimen.startswith(catalog):
+            if not re.fullmatch(catalog + r" \d+[a-z]?", specimen):
+                return (
+                    f"invalid fossil {label} number (should be of form"
+                    f" {catalog} <number>)"
+                )
+            return None
+    periods = specimen.count(".")
+
+    # Date-based catalog numbers: BMNH 1901.2.24.3 was cataloged on February 24, 1901
+    if periods == 3:
+        year, month, day, number = specimen.split(".")
+        if not year.isdigit():
+            return f"invalid year {year}"
+        num_year = int(year)
+        if not (1830 <= num_year <= 2100):
+            return f"year {num_year} out of range"
+        try:
+            helpers.parse_date(year, month, day)
+        except ValueError as e:
+            return f"invalid date in catalog number: {e}"
+        if not re.fullmatch(r"\d+([a-z]|bis)?", number):
+            return f"invalid number {number}"
+        return None
+    # Year based catalog numbers: BMNH 1992.123 was cataloged in 1992
+    elif periods == 1:
+        year, number = specimen.split(".")
+        if not year.isdigit():
+            return f"invalid year {year}"
+        num_year = int(year)
+        if not (1830 <= num_year <= 2100):
+            return f"year {num_year} out of range"
+        if not re.fullmatch(r"\d+[a-z]?", number):
+            return f"invalid number {number}"
+        return None
+
+    # Old mammal catalog
+    if re.fullmatch(r"\d+[a-z]", specimen):
+        return None
+    return "invalid BMNH specimen"
+
+
+def _get_regex_from_collection(coll: Collection) -> SpecimenValidator:
+    if coll.id == BMNH_COLLECTION_ID:
+        return _validate_bmnh
     for tag in coll.tags:
         if isinstance(tag, CollectionTag.SpecimenRegex):
-            return re.compile(tag.regex)
-    return re.compile(r"^.*$")
+            return RegexValidator(re.compile(tag.regex))
+    return _AllowAll
 
 
 @dataclass
@@ -381,21 +458,110 @@ def check_type_specimen(nam: Name, cfg: LintConfig) -> Iterable[str]:
             yield from _check_specimen(spec, regexes, former_regexes)
 
 
+def _validate(text: str, validators: Iterable[SpecimenValidator]) -> str | None:
+    messages = []
+    for validator in validators:
+        message = validator(text)
+        if message is None:
+            return None
+        messages.append(message)
+    return "; ".join(messages)
+
+
 def _check_specimen(
     spec: Specimen,
-    regexes: list[re.Pattern[str]],
-    former_regexes: list[re.Pattern[str]],
+    regexes: list[SpecimenValidator],
+    former_regexes: list[SpecimenValidator],
 ) -> Iterable[str]:
-    if not any(rgx.fullmatch(spec.text) for rgx in regexes):
-        yield f"{spec.text!r} does not match any collection ({regexes})"
+    if message := _validate(spec.text, regexes):
+        yield f"{spec.text!r} does not match: {message}"
     for former in spec.former_texts:
-        if not any(rgx.fullmatch(former) for rgx in former_regexes) and not any(
-            rgx.fullmatch(former) for rgx in regexes
-        ):
+        if message := _validate(former, former_regexes + regexes):
             yield (
-                f"former location {former!r} does not match any collection"
-                f" ({former_regexes}; {regexes})"
+                f"former location {former!r} does not match any collection ({message})"
             )
+
+
+_BMNH_REGEXES = [
+    (r"^BMNH ([MR])[\- \.]*(\d+[a-z]?)$", r"BMNH \1 \2"),  # M1234 -> M 1234
+    (r"^BMNH (\d)(\.\d+\.\d+\.\d+)$", r"BMNH 190\1\2"),  # 2.1.1.1 -> 1902.1.1.1
+    (r"^BMNH ([4-9]\d)(\.\d+\.\d+\.\d+)$", r"BMNH 18\1\2"),  # 55.1.1.1 -> 1855.1.1.1
+    (r"^BMNH ([1-2]\d)(\.\d+\.\d+\.\d+)$", r"BMNH 19\1\2"),  # 11.1.1.1 -> 1911.1.1.1
+    (r"^BMNH (\d{4,5})$", r"BMNH OR \1"),  # BMNH 12345 -> BMNH OR 12345
+    (r"^BMNH (3[0-5])(\.\d+\.\d+\.\d+)$", r"BMNH 19\1\2"),  # 33.1.1.1 -> 1933.1.1.1
+    (r"^BMNH (3[7-9])(\.\d+\.\d+\.\d+)$", r"BMNH 19\1\2"),  # 38.1.1.1 -> 1838.1.1.1
+    (r"^BMNH ([4-9]\d)(\.\d+)$", r"BMNH 19\1\2"),  # 40.123 -> 1940.123
+]
+
+
+@make_linter("bmnh_types")
+def check_bmnh_type_specimens(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    """Fix some simple issues with BMNH type specimens."""
+    if nam.type_specimen is None:
+        return
+    if nam.collection is None or nam.collection.id != BMNH_COLLECTION_ID:
+        return
+    try:
+        specs = parse_type_specimen(nam.type_specimen)
+    except ValueError:
+        return  # other check will complain
+    for spec in specs:
+        if not isinstance(spec, Specimen):
+            continue
+        if not spec.text.startswith("BMNH"):
+            continue
+        new_spec = clean_up_bmnh_type(spec.text)
+        if new_spec != spec.text:
+            message = f"replace {spec.text!r} with {new_spec!r}"
+            if cfg.autofix:
+                print(f"{nam}: {message}")
+                nam.type_specimen = nam.type_specimen.replace(spec.text, new_spec)
+            else:
+                yield message
+
+
+def _get_all_type_specimen_texts(nam: Name) -> Iterable[str]:
+    if nam.type_specimen is None:
+        return
+    for spec in parse_type_specimen(nam.type_specimen):
+        if isinstance(spec, Specimen):
+            yield spec.text
+        elif isinstance(spec, SpecimenRange):
+            yield spec.start.text
+            yield spec.end.text
+
+
+@make_linter("child_collection")
+def check_general_collection(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    if nam.collection is None:
+        return
+    if not nam.collection.must_use_children():
+        return
+    if nam.type_specimen is not None:
+        for tag in nam.collection.tags:
+            if (
+                isinstance(tag, CollectionTag.ChildRule)
+                and all(
+                    re.fullmatch(tag.regex, spec)
+                    for spec in _get_all_type_specimen_texts(nam)
+                )
+                and nam.taxon.age == tag.age
+                and nam.taxon.is_child_of(tag.taxon)
+            ):
+                message = f"should use collection {tag.collection} based on rule {tag}"
+                if cfg.autofix:
+                    print(f"{nam}: {message}")
+                    nam.collection = tag.collection
+                else:
+                    yield message
+                return
+    yield f"should use child collection of {nam.collection}"
+
+
+def clean_up_bmnh_type(text: str) -> str:
+    for rgx, replacement in _BMNH_REGEXES:
+        text = re.sub(rgx, replacement, text)
+    return text
 
 
 @make_linter("tags")
