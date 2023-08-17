@@ -8,11 +8,12 @@ from aiohttp_graphql import GraphQLView
 from . import schema
 
 HESPEROMYS_ROOT = Path("/Users/jelle/py/hesperomys")
+STATIC_DIR = Path(__file__).parent / "static"
 
 
 @lru_cache
-def get_static_file_contents(hesperomys_dir: Path, path: str) -> bytes:
-    return (hesperomys_dir / "build" / path).read_bytes()
+def get_static_file_contents(parent_dir: Path, path: str) -> bytes:
+    return (parent_dir / path).read_bytes()
 
 
 def make_static_handler(
@@ -20,11 +21,18 @@ def make_static_handler(
 ) -> Callable[[web.Request], Awaitable[web.Response]]:
     async def handler(request: web.Request) -> web.Response:
         return web.Response(
-            body=get_static_file_contents(hesperomys_dir, "index.html"),
+            body=get_static_file_contents(hesperomys_dir / "build", "index.html"),
             content_type=content_type,
         )
 
     return handler
+
+
+async def favicon_handler(request: web.Request) -> web.Response:
+    return web.Response(
+        body=get_static_file_contents(STATIC_DIR, "favicon.ico"),
+        content_type="image/png",
+    )
 
 
 async def on_prepare(request: web.Request, response: web.Response) -> None:
@@ -40,14 +48,7 @@ def make_app(build_root: str | None = None) -> web.Application:
     app = web.Application()
     GraphQLView.attach(app, schema=schema.schema, graphiql=True)
     app.router.add_static("/static", hesperomys_dir / "build" / "static")
-    app.add_routes(
-        [
-            web.get(
-                "/favicon.ico",
-                make_static_handler("favicon.ico", "image/x-icon", hesperomys_dir),
-            )
-        ]
-    )
+    app.add_routes([web.get("/favicon.ico", favicon_handler)])
 
     # Delegate everything else to React
     react_handler = make_static_handler("index.html", "text/html", hesperomys_dir)
