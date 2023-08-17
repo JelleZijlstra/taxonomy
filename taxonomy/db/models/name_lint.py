@@ -9,6 +9,7 @@ import re
 from collections.abc import Callable, Generator, Iterable, Iterator, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
+from functools import partial
 from typing import Any, TypeVar
 
 import requests
@@ -93,13 +94,27 @@ def get_tag_fields_of_type(tag: adt.ADT, typ: type[T]) -> Iterable[tuple[str, T]
             yield arg_name, val
 
 
+UNIQUE_TAGS = (
+    TypeTag.Altitude,
+    TypeTag.Coordinates,
+    TypeTag.Date,
+    TypeTag.Gender,
+    TypeTag.Age,
+    TypeTag.DifferentAuthority,
+    TypeTag.TextualOriginalRank,
+    TypeTag.GenusCoelebs,
+)
+
+
 @make_linter("type_tags")
 def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if not nam.type_tags:
         return
     tags: list[TypeTag] = []
     original_tags = list(nam.type_tags)
+    by_type: dict[type[TypeTag], list[TypeTag]] = {}
     for tag in original_tags:
+        by_type.setdefault(type(tag), []).append(tag)
         for arg_name, art in get_tag_fields_of_type(tag, Article):
             if art.kind is ArticleKind.removed:
                 print(f"{nam} references a removed Article in {tag}")
@@ -116,6 +131,24 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                     f"{nam} references a removed Name in argument {arg_name} to {tag}"
                 )
                 yield f"bad name in tag {tag}"
+        for arg_name, coll in get_tag_fields_of_type(tag, Collection):
+            if coll.must_use_children():
+                yield f"must use child collection in argument {arg_name} to {tag}"
+
+        if isinstance(tag, TypeTag.FormerRepository):
+            if tag.repository in nam.get_repositories():
+                yield (
+                    f"{tag.repository} is marked as a former repository, but it is the"
+                    " current repository"
+                )
+
+        if isinstance(tag, TypeTag.ProbableRepository) and nam.collection is not None:
+            message = f"has {tag} but colllection is set to {nam.collection}"
+            if cfg.autofix:
+                print(f"{nam}: {message}")
+                continue
+            else:
+                yield message
 
         if isinstance(tag, TypeTag.CommissionTypeDesignation):
             if nam.type != tag.type:
@@ -190,6 +223,20 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
         else:
             tags.append(tag)
         # TODO: for lectotype and subsequent designations, ensure the earliest valid one is used.
+
+    for tag_type, tags_of_type in by_type.items():
+        if tag_type in UNIQUE_TAGS and len(tags_of_type) > 1:
+            yield f"has multiple tags of type {tag_type}: {tags_of_type}"
+    if nam.collection is not None and nam.collection.id == MULTIPLE_ID:
+        repos = by_type.get(TypeTag.Repository, [])
+        if len(repos) < 2:
+            yield (
+                "name with collection 'multiple' must have multiple Repository tags:"
+                f" {repos}"
+            )
+    elif TypeTag.Repository in by_type:
+        yield f"name may not have Repository tags: {by_type[TypeTag.Repository]}"
+
     tags = sorted(set(tags))
     if tags != original_tags:
         if set(tags) != set(original_tags):
@@ -228,6 +275,7 @@ def check_type_designations_present(nam: Name, cfg: LintConfig) -> Iterable[str]
 
 
 MULTIPLE_ID = 366
+BMNH_MAMMALS_ID = 1471
 BMNH_COLLECTION_ID = 5
 
 # Takes a string, return None if it matches or an error message if it doesn't
@@ -274,20 +322,21 @@ FOSSIL_CATALOGS = [
 ]
 
 
-def _validate_bmnh(specimen: str) -> str | None:
+def _validate_bmnh(specimen: str, *, allow_fossils: bool = True) -> str | None:
     if not specimen.startswith("BMNH "):
         return "BMNH specimen must start with 'BMNH'"
     specimen = specimen.removeprefix("BMNH ")
 
-    # Fossil numbers: BMNH M 1234 for fossil mammals
-    for catalog, label in FOSSIL_CATALOGS:
-        if specimen.startswith(catalog):
-            if not re.fullmatch(catalog + r" \d+[a-z]?", specimen):
-                return (
-                    f"invalid fossil {label} number (should be of form"
-                    f" {catalog} <number>)"
-                )
-            return None
+    if allow_fossils:
+        # Fossil numbers: BMNH M 1234 for fossil mammals
+        for catalog, label in FOSSIL_CATALOGS:
+            if specimen.startswith(catalog):
+                if not re.fullmatch(catalog + r" \d+[a-z]?", specimen):
+                    return (
+                        f"invalid fossil {label} number (should be of form"
+                        f" {catalog} <number>)"
+                    )
+                return None
     periods = specimen.count(".")
 
     # Date-based catalog numbers: BMNH 1901.2.24.3 was cataloged on February 24, 1901
@@ -324,11 +373,15 @@ def _validate_bmnh(specimen: str) -> str | None:
 
 
 def _get_regex_from_collection(coll: Collection) -> SpecimenValidator:
-    if coll.id == BMNH_COLLECTION_ID:
-        return _validate_bmnh
+    if coll.id == BMNH_MAMMALS_ID:
+        return partial(_validate_bmnh, allow_fossils=False)
     for tag in coll.tags:
         if isinstance(tag, CollectionTag.SpecimenRegex):
             return RegexValidator(re.compile(tag.regex))
+    if coll.id == BMNH_COLLECTION_ID or (
+        coll.parent is not None and coll.parent.id == BMNH_COLLECTION_ID
+    ):
+        return _validate_bmnh
     return _AllowAll
 
 
@@ -338,6 +391,27 @@ class Specimen:
     comment: str | None = None
     former_texts: Sequence[str] = field(default_factory=list)
 
+    def stringify(self) -> str:
+        text = self.text
+        if self.comment is not None:
+            text += f" ({self.comment}!)"
+        text += "".join(f" (= {former})" for former in sorted(self.former_texts))
+        return text
+
+    def sort_key(self) -> tuple[object, ...]:
+        numeric_match = re.fullmatch(r"(.+) (\d+)", self.text)
+        return (
+            1,
+            numeric_match is not None,
+            (
+                (numeric_match.group(1), int(numeric_match.group(2)))
+                if numeric_match is not None
+                else self.text
+            ),
+            self.comment or "",
+            tuple(sorted(self.former_texts)),
+        )
+
 
 @dataclass
 class SpecialSpecimen:
@@ -346,11 +420,33 @@ class SpecialSpecimen:
     comment: str | None = None
     former_texts: Sequence[str] = field(default_factory=list)
 
+    def stringify(self) -> str:
+        text = f"{self.collection} ({self.label})"
+        if self.comment is not None:
+            text += f" ({self.comment}!)"
+        text += "".join(f" (= {former})" for former in sorted(self.former_texts))
+        return text
+
+    def sort_key(self) -> tuple[object, ...]:
+        return (
+            2,
+            self.collection,
+            self.label,
+            self.comment or "",
+            tuple(sorted(self.former_texts)),
+        )
+
 
 @dataclass
 class SpecimenRange:
     start: Specimen
     end: Specimen
+
+    def stringify(self) -> str:
+        return f"{self.start.stringify()} through {self.end.stringify()}"
+
+    def sort_key(self) -> tuple[object, ...]:
+        return (0, self.start.sort_key(), self.end.sort_key())
 
 
 AnySpecimen = Specimen | SpecialSpecimen | SpecimenRange
@@ -384,6 +480,30 @@ def _split_type_spec_string(text: str) -> Iterable[str]:
         raise ValueError("comma at end of string")
     if parens != 0:
         raise ValueError("unbalanced parentheses")
+
+
+@make_linter("type_specimen_order")
+def check_type_specimen_order(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    if nam.type_specimen is None:
+        return
+    try:
+        specs = parse_type_specimen(nam.type_specimen)
+    except ValueError:
+        return  # reported elsewhere
+    expected_text = ", ".join(
+        spec.stringify() for spec in sorted(specs, key=lambda spec: spec.sort_key())
+    )
+    if nam.type_specimen == expected_text:
+        return
+    message = (
+        f"Incorrectly formatted type specimen: got {nam.type_specimen!r}, expected"
+        f" {expected_text!r}"
+    )
+    if cfg.autofix:
+        print(f"{nam}: {message}")
+        nam.type_specimen = expected_text
+    else:
+        yield message
 
 
 def parse_type_specimen(text: str) -> list[AnySpecimen]:
@@ -490,7 +610,6 @@ _BMNH_REGEXES = [
     (r"^BMNH (\d{4,5})$", r"BMNH OR \1"),  # BMNH 12345 -> BMNH OR 12345
     (r"^BMNH (3[0-5])(\.\d+\.\d+\.\d+)$", r"BMNH 19\1\2"),  # 33.1.1.1 -> 1933.1.1.1
     (r"^BMNH (3[7-9])(\.\d+\.\d+\.\d+)$", r"BMNH 19\1\2"),  # 38.1.1.1 -> 1838.1.1.1
-    (r"^BMNH ([4-9]\d)(\.\d+)$", r"BMNH 19\1\2"),  # 40.123 -> 1940.123
 ]
 
 
@@ -520,7 +639,7 @@ def check_bmnh_type_specimens(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 yield message
 
 
-def _get_all_type_specimen_texts(nam: Name) -> Iterable[str]:
+def get_all_type_specimen_texts(nam: Name) -> Iterable[str]:
     if nam.type_specimen is None:
         return
     for spec in parse_type_specimen(nam.type_specimen):
@@ -543,7 +662,7 @@ def check_general_collection(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 isinstance(tag, CollectionTag.ChildRule)
                 and all(
                     re.fullmatch(tag.regex, spec)
-                    for spec in _get_all_type_specimen_texts(nam)
+                    for spec in get_all_type_specimen_texts(nam)
                 )
                 and nam.taxon.age == tag.age
                 and nam.taxon.is_child_of(tag.taxon)
@@ -556,6 +675,24 @@ def check_general_collection(nam: Name, cfg: LintConfig) -> Iterable[str]:
                     yield message
                 return
     yield f"should use child collection of {nam.collection}"
+
+
+@make_linter("type_specimen_link")
+def check_must_have_type_specimen_link(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    if nam.collection is None or not nam.collection.must_have_specimen_links():
+        return
+    if nam.type_specimen is None:
+        return
+    num_expected = sum(
+        not isinstance(spec, SpecialSpecimen)
+        for spec in parse_type_specimen(nam.type_specimen)
+    )
+    num_actual = sum(isinstance(tag, TypeTag.TypeSpecimenLink) for tag in nam.type_tags)
+    if num_actual < num_expected:
+        yield (
+            f"has {num_actual} type specimen links, but expected at least"
+            f" {num_expected}"
+        )
 
 
 def clean_up_bmnh_type(text: str) -> str:
@@ -1507,6 +1644,8 @@ def check_required_fields(nam: Name, cfg: LintConfig) -> Iterable[str]:
         and not nam.original_citation
     ):
         yield "recent name must have verbatim citation"
+    if nam.type_specimen is not None and nam.species_type_kind is None:
+        yield "has type_specimen but no species_type_kind"
 
 
 @make_linter("synonym_group")

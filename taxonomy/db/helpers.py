@@ -902,6 +902,7 @@ def clean_string(text: str, *, clean_whitespace: bool = True) -> str:
     text = text.replace("+/-", "±")
     text = text.replace("''", '"')
     text = text.replace(" :- ", ": \N{EN DASH} ")
+    text = text.replace("\x91%", "\N{DEGREE SIGN}")
     text = re.sub(r"([A-Z])- (\d)", r"\1-\2", text)
     text = re.sub(r"(\d)- ([A-Za-z\d])", r"\1-\2", text)
     text = re.sub(r"([A-Z])\.- ([A-Z])\.", r"\1.-\2.", text)

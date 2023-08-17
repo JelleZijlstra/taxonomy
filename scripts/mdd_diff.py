@@ -11,8 +11,14 @@ from typing import IO, TypedDict
 import unidecode
 
 from taxonomy.db import helpers, models
-from taxonomy.db.constants import AgeClass, NamingConvention, Rank, Status
-from taxonomy.db.models import CitationGroup, Collection, Name, Person, Taxon
+from taxonomy.db.constants import (
+    AgeClass,
+    NamingConvention,
+    NomenclatureStatus,
+    Rank,
+    Status,
+)
+from taxonomy.db.models import CitationGroup, Collection, Name, NameTag, Person, Taxon
 from taxonomy.db.models.tags import TaxonTag
 
 INCLUDED_AGES = (AgeClass.extant, AgeClass.recently_extinct)
@@ -182,6 +188,8 @@ def parent_of_rank(taxon: Taxon, rank: Rank) -> Taxon | None:
 def process_mdd_type(text: str) -> str | None:
     if text == "" or text == "NA":
         return None
+    text = text.strip().rstrip(".")
+    text = re.sub(r"\s+", " ", text)
     text = re.sub(r" \[[^\]]+\]", "", text)
     text = re.sub(r"^([A-Z\-]+)(?=\d)", r"\1 ", text)
     text = re.sub(r"^(BM|NHM) ", "BMNH ", text)
@@ -299,6 +307,17 @@ def compare_authors_to_name(
             )
 
 
+def _get_hesp_type_specimen(nam: Name) -> str | None:
+    if nam.nomenclature_status is NomenclatureStatus.nomen_novum:
+        target = nam.get_tag_target(NameTag.NomenNovumFor)
+        if target is not None:
+            return _get_hesp_type_specimen(target)
+    result = ", ".join(models.name_lint.get_all_type_specimen_texts(nam))
+    if not result:
+        return None
+    return result
+
+
 def compare_single(taxon: Taxon, mdd_row: MddRow) -> Iterable[Difference]:
     mismatched_genus = False
     sci_name = mdd_row["sciName"].replace("_", " ")
@@ -387,15 +406,16 @@ def compare_single(taxon: Taxon, mdd_row: MddRow) -> Iterable[Difference]:
         )
 
     mdd_type = process_mdd_type(mdd_row["holotypeVoucher"])
-    if nam.type_specimen is not None and mdd_type is None:
+    hesp_type = _get_hesp_type_specimen(nam)
+    if hesp_type is not None and mdd_type is None:
         yield Difference(
             DifferenceKind.type_specimen_missing_mdd,
             mdd=None,
-            hesp=nam.type_specimen,
+            hesp=hesp_type,
             mdd_id=mdd_id,
             taxon=taxon,
         )
-    elif nam.type_specimen is None and mdd_type is not None:
+    elif hesp_type is None and mdd_type is not None:
         yield Difference(
             DifferenceKind.type_specimen_missing_hesp,
             mdd=mdd_row["holotypeVoucher"],
@@ -403,11 +423,11 @@ def compare_single(taxon: Taxon, mdd_row: MddRow) -> Iterable[Difference]:
             mdd_id=mdd_id,
             taxon=taxon,
         )
-    elif nam.type_specimen != mdd_type:
+    elif hesp_type != mdd_type:
         yield Difference(
             DifferenceKind.type_specimen,
             mdd=mdd_row["holotypeVoucher"],
-            hesp=nam.type_specimen,
+            hesp=hesp_type,
             mdd_id=mdd_id,
             taxon=taxon,
         )
@@ -555,6 +575,9 @@ def generate_markdown_for_kind(
                     coll_differences, key=lambda diff: diff.mdd or ""
                 ):
                     print(f"    - {difference.to_markdown()}", file=f)
+        case DifferenceKind.type_specimen_missing_hesp:
+            for difference in sorted(differences, key=lambda d: d.mdd or ""):
+                print(f"- {difference.to_markdown()}", file=f)
         case _:
             for difference in differences:
                 print(f"- {difference.to_markdown()}", file=f)

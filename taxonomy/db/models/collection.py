@@ -1,15 +1,18 @@
+from __future__ import annotations
+
 import re
 from collections.abc import Iterable
 from typing import Any
 
 from peewee import BooleanField, CharField, ForeignKeyField
+from typing_extensions import Self
 
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
 
 from ... import adt, events, getinput
 from .. import constants, models
 from .article import Article
-from .base import ADTField, BaseModel, LintConfig, ModelT, get_tag_based_derived_field
+from .base import ADTField, BaseModel, LintConfig, get_tag_based_derived_field
 from .region import Region
 from .taxon import Taxon
 
@@ -54,6 +57,13 @@ class Collection(BaseModel):
             lambda: models.name.TypeTag.Repository,
             1,
         ),
+        get_tag_based_derived_field(
+            "former_specimens",
+            lambda: models.Name,
+            "type_tags",
+            lambda: models.name.TypeTag.FormerRepository,
+            1,
+        ),
     ]
     search_fields = [
         SearchField(SearchFieldType.text, "name"),
@@ -87,7 +97,7 @@ class Collection(BaseModel):
                     yield f"{self}: invalid specimen regex {tag.regex!r}"
 
     @classmethod
-    def by_label(cls, label: str) -> "Collection":
+    def by_label(cls, label: str) -> Collection:
         colls = list(cls.filter(cls.label == label))
         if len(colls) == 1:
             return colls[0]
@@ -97,7 +107,7 @@ class Collection(BaseModel):
     @classmethod
     def get_or_create(
         cls, label: str, name: str, location: Region, comment: str | None = None
-    ) -> "Collection":
+    ) -> Collection:
         try:
             return cls.by_label(label)
         except ValueError:
@@ -110,21 +120,28 @@ class Collection(BaseModel):
 
     @classmethod
     def create_interactively(
-        cls: type[ModelT],
+        cls,
         label: str | None = None,
         name: str | None = None,
         location: Region | None = None,
+        parent: Self | None = None,
         **kwargs: Any,
-    ) -> ModelT:
+    ) -> Self:
         if label is None:
-            label = getinput.get_line("label> ")
+            label = getinput.get_line(
+                "label> ", default=parent.label if parent is not None else ""
+            )
         if name is None:
-            name = getinput.get_line("name> ")
+            name = getinput.get_line(
+                "name> ", default=parent.name if parent is not None else ""
+            )
         if location is None:
             location = cls.get_value_for_foreign_key_field_on_class(
                 "location", allow_none=False
             )
-        obj = cls.create(label=label, name=name, location=location)
+        obj = cls.create(
+            label=label, name=name, location=location, parent=parent, **kwargs
+        )
         obj.fill_required_fields()
         return obj
 
@@ -155,7 +172,7 @@ class Collection(BaseModel):
 
     def get_partial(
         self, display: bool = False
-    ) -> tuple[list["models.name.Name"], list["models.name.Name"]]:
+    ) -> tuple[list[models.name.Name], list[models.name.Name]]:
         multiple = []
         probable_repo = []
         for nam in models.Name.with_tag_of_type(models.name.TypeTag.Repository):
@@ -179,16 +196,34 @@ class Collection(BaseModel):
                     break
         return multiple, probable_repo
 
-    def merge(self, other: "Collection") -> None:
+    def merge(self, other: Collection) -> None:
         for nam in self.type_specimens:
             nam.collection = other
-        self.delete_instance()
+        self.parent = other
+        self.removed = True
+
+    def get_redirect_target(self) -> Collection | None:
+        if self.removed:
+            return self.parent
+        return None
 
     def is_invalid(self) -> bool:
         return self.removed
 
     def must_use_children(self) -> bool:
         return any(tag is CollectionTag.MustUseChildrenCollection for tag in self.tags)
+
+    def must_have_specimen_links(self) -> bool:
+        return any(tag is CollectionTag.MustHaveSpecimenLinks for tag in self.tags)
+
+    def get_adt_callbacks(self) -> getinput.CallbackMap:
+        return {
+            **super().get_adt_callbacks(),
+            "add_child": lambda: Collection.create_interactively(
+                parent=self, city=self.city, location=self.location
+            ),
+            "lint_names": lambda: models.Name.lint_all(query=self.type_specimens),
+        }
 
 
 class CollectionTag(adt.ADT):
@@ -197,3 +232,4 @@ class CollectionTag(adt.ADT):
     SpecimenRegex(regex=str, tag=3)  # type: ignore
     MustUseChildrenCollection(tag=4)  # type: ignore
     ChildRule(collection=Collection, regex=str, taxon=Taxon, age=constants.AgeClass, tag=5)  # type: ignore
+    MustHaveSpecimenLinks(tag=6)  # type: ignore

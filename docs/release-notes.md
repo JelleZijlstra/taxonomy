@@ -12,6 +12,23 @@ exports released on Zenodo.
     few publication dates and issue numbers.
   - Add original citations for all names described in the _Journal of the Bombay Natural
     History Society_.
+  - Add issue numbers for many additional articles.
+  - Add a few dozen missing type localities for synonyms of extant mammal species.
+  - Add numerous additional type specimens for extant mammals, based mostly on online
+    collection databases.
+  - Add thousands of links to type specimen catalog entries, mostly in
+    [BMNH](</c/BMNH_(mammals)>), [MNHN](</c/MNHN_(ZM)>), and
+    [MCZ](</c/MCZ_(Mammalogy)>).
+- Backend
+  - Add capability to mark the former repository of a type specimen (see e.g.
+    [FMSM](/c/FMSM)).
+  - Enforce a consistent format for the type specimen field.
+  - Add the capability to enforce a more precise format for individual collections.
+  - Enforce that names have only one value for e.g. the "age" tag for type specimens.
+  - Use the "IssueDate" mechanism to infer what issue papers were published in.
+- Frontend
+  - Add new page listing the newest additions to the database (e.g.,
+    [new names](/new/n)).
 
 # 23.6.0 (June 16, 2023)
 

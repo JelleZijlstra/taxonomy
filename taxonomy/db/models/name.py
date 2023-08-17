@@ -627,7 +627,30 @@ class Name(BaseModel):
             "edit_comments": self.edit_comments,
             "replace_original_citation": self.replace_original_citation,
             "open_zoobank": self.open_zoobank,
+            "open_type_specimen_link": self.open_type_specimen_link,
+            "replace_type": self.replace_type,
         }
+
+    def open_type_specimen_link(self) -> None:
+        for tag in self.type_tags:
+            if isinstance(tag, TypeTag.TypeSpecimenLink):
+                subprocess.check_call(["open", tag.url])
+
+    def replace_type(self) -> None:
+        new_type = Name.getter("type_specimen").get_one_key("new type> ")
+        if not new_type:
+            return
+        coll = Collection.getter(None).get_one("collection> ")
+        if coll is None:
+            return
+        if self.type_specimen is None:
+            new_text = new_type
+        else:
+            new_text = f"{new_type} (= {self.type_specimen})"
+        self.type_specimen = new_text
+        if self.collection is not None:
+            self.add_type_tag(TypeTag.FormerRepository(self.collection))
+        self.collection = coll
 
     def _merge(self) -> None:
         other = Name.getter(None).get_one("name to merge into> ")
@@ -792,7 +815,7 @@ class Name(BaseModel):
         type_tags = self.type_tags
         if type_tags is None:
             self.type_tags = [tag]
-        else:
+        elif tag not in type_tags:
             self.type_tags = type_tags + (tag,)
 
     def has_type_tag(self, tag_cls: TypeTagCons) -> bool:
@@ -948,6 +971,18 @@ class Name(BaseModel):
             if match:
                 return int(match.group(1))
         return None
+
+    def get_repositories(self) -> list[Collection]:
+        if self.collection is None:
+            return []
+        if self.collection.name == "multiple":
+            return [
+                tag.repository
+                for tag in self.type_tags
+                if isinstance(tag, TypeTag.Repository)
+            ]
+        else:
+            return [self.collection]
 
     def get_date_object(self) -> datetime.date:
         return helpers.get_date_object(self.year)
