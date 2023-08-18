@@ -6,13 +6,14 @@ exports released on Zenodo.
 
 # 23.8.0 (August 17, 2023)
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.8260038.svg)](https://doi.org/10.5281/zenodo.8260038)
+
 - Database
   - Add issue numbers to several hundred articles (mostly in _Annals and Magazine of
     Natural History_ and _Proceedings of the Zoological Society of London_). Correct a
     few publication dates and issue numbers.
   - Add original citations for all names described in the _Journal of the Bombay Natural
     History Society_.
-  - Add issue numbers for many additional articles.
   - Add a few dozen missing type localities for synonyms of extant mammal species.
   - Add numerous additional type specimens for extant mammals, based mostly on online
     collection databases.
