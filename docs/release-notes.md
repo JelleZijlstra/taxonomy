@@ -4,7 +4,7 @@ Version numbers correspond to Git tags in the
 [backend](https://github.com/JelleZijlstra/taxonomy/) repositories, and to database
 exports released on Zenodo.
 
-# Unreleased
+# 23.8.0 (August 17, 2023)
 
 - Database
   - Add issue numbers to several hundred articles (mostly in _Annals and Magazine of
@@ -19,6 +19,7 @@ exports released on Zenodo.
   - Add thousands of links to type specimen catalog entries, mostly in
     [BMNH](</c/BMNH_(mammals)>), [MNHN](</c/MNHN_(ZM)>), and
     [MCZ](</c/MCZ_(Mammalogy)>).
+  - Numerous new taxonomic changes and newly examined old literature.
 - Backend
   - Add capability to mark the former repository of a type specimen (see e.g.
     [FMSM](/c/FMSM)).
