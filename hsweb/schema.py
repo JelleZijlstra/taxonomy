@@ -4,9 +4,8 @@ import base64
 import enum
 import re
 from collections.abc import Callable
-from functools import lru_cache
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, TypeVar
 
 import peewee
 import typing_inspect
@@ -38,6 +37,16 @@ from taxonomy.db.models.base import ADTField, BaseModel, EnumField
 from . import search
 from .render import CALL_SIGN_TO_MODEL, render_markdown, render_plain_text
 
+T = TypeVar("T")
+
+if TYPE_CHECKING:
+
+    def cache(obj: T, /) -> T:
+        return obj
+
+else:
+    from functools import cache
+
 SCALAR_FIELD_TO_GRAPHENE = {
     peewee.CharField: String,
     peewee.TextField: String,
@@ -48,9 +57,6 @@ TYPE_TO_GRAPHENE = {str: String, bool: Boolean, int: Int}
 TYPES: list[ObjectType] = []
 
 DOCS_ROOT = Path(__file__).parent.parent / "docs"
-
-# work around mypy bug where it doesn't think types are hashable
-cache = cast(Any, lru_cache)
 
 
 class Model(Interface):
@@ -82,7 +88,7 @@ def build_graphene_field_from_adt_arg(typ: type[Any]) -> Field:
 
 
 @cache
-def build_adt_member(adt_cls: type[ADT], adt: ADT) -> type[ObjectType]:
+def build_adt_member(adt_cls: type[ADT], adt: type[ADT]) -> type[ObjectType]:
     namespace = {}
     for name, typ in adt._attributes.items():
         graphene_field = build_graphene_field_from_adt_arg(typ)
