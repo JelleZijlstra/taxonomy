@@ -2272,38 +2272,41 @@ def _stringify_tag(tag: adt.ADT) -> str:
 
 
 class NameTag(adt.ADT):
-    PreoccupiedBy(name=Name, comment=str, tag=1)  # type: ignore
-    UnjustifiedEmendationOf(name=Name, comment=str, tag=2)  # type: ignore
-    IncorrectSubsequentSpellingOf(name=Name, comment=str, tag=4)  # type: ignore
-    NomenNovumFor(name=Name, comment=str, tag=5)  # type: ignore
+    PreoccupiedBy(name=Name, comment=NotRequired[str], tag=1)  # type: ignore
+    UnjustifiedEmendationOf(name=Name, comment=NotRequired[str], tag=2)  # type: ignore
+    IncorrectSubsequentSpellingOf(name=Name, comment=NotRequired[str], tag=4)  # type: ignore
+    NomenNovumFor(name=Name, comment=NotRequired[str], tag=5)  # type: ignore
     # If we don't know which of 2-4 to use
-    VariantOf(name=Name, comment=str, tag=6)  # type: ignore
+    VariantOf(name=Name, comment=NotRequired[str], tag=6)  # type: ignore
     # "opinion" is a reference to an Article containing an ICZN Opinion
-    PartiallySuppressedBy(opinion=Article, comment=str, tag=7)  # type: ignore
-    FullySuppressedBy(opinion=Article, comment=str, tag=8)  # type: ignore
-    TakesPriorityOf(name=Name, comment=str, tag=9)  # type: ignore
+    PartiallySuppressedBy(opinion=Article, comment=NotRequired[str], tag=7)  # type: ignore
+    FullySuppressedBy(opinion=Article, comment=NotRequired[str], tag=8)  # type: ignore
+    TakesPriorityOf(name=Name, comment=NotRequired[str], tag=9)  # type: ignore
     # ICZN Art. 23.9. The reference is to the nomen protectum relative to which precedence is reversed.
-    NomenOblitum(name=Name, comment=str, tag=10)  # type: ignore
-    MandatoryChangeOf(name=Name, comment=str, tag=11)  # type: ignore
+    NomenOblitum(name=Name, comment=NotRequired[str], tag=10)  # type: ignore
+    MandatoryChangeOf(name=Name, comment=NotRequired[str], tag=11)  # type: ignore
     # Conserved by placement on the Official List.
-    Conserved(opinion=Article, comment=str, tag=12)  # type: ignore
-    IncorrectOriginalSpellingOf(name=Name, comment=str, tag=13)  # type: ignore
+    Conserved(opinion=Article, comment=NotRequired[str], tag=12)  # type: ignore
+    IncorrectOriginalSpellingOf(name=Name, comment=NotRequired[str], tag=13)  # type: ignore
     # selection as the correct original spelling
-    SelectionOfSpelling(source=Article, comment=str, tag=14)  # type: ignore
-    SubsequentUsageOf(name=Name, comment=str, tag=15)  # type: ignore
-    SelectionOfPriority(over=Name, source=Article, comment=str, tag=16)  # type: ignore
+    SelectionOfSpelling(source=NotRequired[Article], comment=NotRequired[str], tag=14)  # type: ignore
+    SubsequentUsageOf(name=Name, comment=NotRequired[str], tag=15)  # type: ignore
+    SelectionOfPriority(over=Name, source=NotRequired[Article], comment=NotRequired[str], tag=16)  # type: ignore
     # Priority reversed by ICZN opinion
-    ReversalOfPriority(over=Name, opinion=Article, comment=str, tag=17)  # type: ignore
+    ReversalOfPriority(over=Name, opinion=Article, comment=NotRequired[str], tag=17)  # type: ignore
     # Placed on the Official Index, but without being suppressed.
-    Rejected(opinion=Article, comment=str, tag=18)  # type: ignore
+    Rejected(opinion=Article, comment=NotRequired[str], tag=18)  # type: ignore
     # See discussion in docs/name.md
     JustifiedEmendationOf(  # type: ignore
-        name=Name, justification=EmendationJustification, comment=str, tag=19
+        name=Name,
+        justification=EmendationJustification,
+        comment=NotRequired[str],
+        tag=19,
     )
     HMW(number=str, name=str, tag=20)  # type: ignore
     # Not required, used when the name can't have the "as_emended" nomenclature status
-    AsEmendedBy(name=Name, comment=str, tag=21)  # type: ignore
-    NameCombinationOf(name=Name, comment=str, tag=22)  # type: ignore
+    AsEmendedBy(name=Name, comment=NotRequired[str], tag=21)  # type: ignore
+    NameCombinationOf(name=Name, comment=NotRequired[str], tag=22)  # type: ignore
 
 
 CONSTRUCTABLE_STATUS_TO_TAG = {

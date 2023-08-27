@@ -149,6 +149,26 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                     " the current repository"
                 )
 
+        if (
+            isinstance(
+                tag,
+                (
+                    TypeTag.LocationDetail,
+                    TypeTag.SpecimenDetail,
+                    TypeTag.EtymologyDetail,
+                    TypeTag.TypeSpeciesDetail,
+                ),
+            )
+            and tag.text == ""
+            and tag.source is None
+        ):
+            message = f"{tag} has no text and no source"
+            if cfg.autofix:
+                print(f"{nam}: {message}")
+                continue
+            else:
+                yield message
+
         if isinstance(tag, TypeTag.ProbableRepository) and nam.collection is not None:
             message = f"has {tag} but colllection is set to {nam.collection}"
             if cfg.autofix:
@@ -728,8 +748,8 @@ def check_general_collection(nam: Name, cfg: LintConfig) -> Iterable[str]:
                     re.fullmatch(tag.regex, spec)
                     for spec in get_all_type_specimen_texts(nam)
                 )
-                and nam.taxon.age == tag.age
-                and nam.taxon.is_child_of(tag.taxon)
+                and (tag.age is None or nam.taxon.age == tag.age)
+                and (tag.taxon is None or nam.taxon.is_child_of(tag.taxon))
             ):
                 message = f"should use collection {tag.collection} based on rule {tag}"
                 if cfg.autofix:

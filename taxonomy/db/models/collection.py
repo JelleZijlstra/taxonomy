@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable
-from typing import Any
+from typing import Any, NotRequired
 
 from peewee import BooleanField, CharField, ForeignKeyField
 from typing_extensions import Self
@@ -288,9 +288,9 @@ class CollectionTag(adt.ADT):
     TypeCatalog(citation=Article, coverage=str, tag=2)  # type: ignore
     SpecimenRegex(regex=str, tag=3)  # type: ignore
     MustUseChildrenCollection(tag=4)  # type: ignore
-    ChildRule(collection=Collection, regex=str, taxon=Taxon, age=constants.AgeClass, tag=5)  # type: ignore
+    ChildRule(collection=Collection, regex=str, taxon=NotRequired[Taxon], age=NotRequired[constants.AgeClass], tag=5)  # type: ignore
     MustHaveSpecimenLinks(tag=6)  # type: ignore
-    ConditionalMustHaveSpecimenLinks(regex=str, taxon=Taxon, age=constants.AgeClass, tag=7)  # type: ignore
+    ConditionalMustHaveSpecimenLinks(regex=str, taxon=NotRequired[Taxon], age=NotRequired[constants.AgeClass], tag=7)  # type: ignore
     # To be counted as a specimen link for this collection, a link must have this prefix.
     # Multiple copies of this tag may be present.
     SpecimenLinkPrefix(prefix=str, tag=8)  # type: ignore
