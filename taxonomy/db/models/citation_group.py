@@ -3,7 +3,7 @@ import functools
 import re
 from collections import Counter
 from collections.abc import Iterable
-from typing import Any, TypeVar
+from typing import Any, NotRequired, TypeVar
 
 from peewee import BooleanField, CharField, ForeignKeyField, IntegrityError
 
@@ -482,9 +482,9 @@ class CitationGroupTag(adt.ADT):
     # Like MustHave, but only for articles published after this year
     MustHaveAfter(tag=3, year=str)  # type: ignore
     # Articles in this citation group must have a series set.
-    MustHaveSeries(comment=str, tag=11)  # type: ignore
+    MustHaveSeries(comment=NotRequired[str], tag=11)  # type: ignore
     # Information on where to find it.
-    OnlineRepository(url=str, comment=str, tag=12)  # type: ignore
+    OnlineRepository(url=str, comment=NotRequired[str], tag=12)  # type: ignore
     ISSN(text=str, tag=13)  # type: ignore
     BHLBibliography(text=str, tag=14)  # type: ignore
     # ISSN for online edition

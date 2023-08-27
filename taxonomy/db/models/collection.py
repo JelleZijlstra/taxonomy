@@ -284,7 +284,7 @@ class Collection(BaseModel):
 
 
 class CollectionTag(adt.ADT):
-    CollectionDatabase(citation=Article, comment=str, tag=1)  # type: ignore
+    CollectionDatabase(citation=Article, comment=NotRequired[str], tag=1)  # type: ignore
     TypeCatalog(citation=Article, coverage=str, tag=2)  # type: ignore
     SpecimenRegex(regex=str, tag=3)  # type: ignore
     MustUseChildrenCollection(tag=4)  # type: ignore

@@ -2289,9 +2289,9 @@ class NameTag(adt.ADT):
     Conserved(opinion=Article, comment=NotRequired[str], tag=12)  # type: ignore
     IncorrectOriginalSpellingOf(name=Name, comment=NotRequired[str], tag=13)  # type: ignore
     # selection as the correct original spelling
-    SelectionOfSpelling(source=NotRequired[Article], comment=NotRequired[str], tag=14)  # type: ignore
+    SelectionOfSpelling(optional_source=NotRequired[Article], comment=NotRequired[str], tag=14)  # type: ignore
     SubsequentUsageOf(name=Name, comment=NotRequired[str], tag=15)  # type: ignore
-    SelectionOfPriority(over=Name, source=NotRequired[Article], comment=NotRequired[str], tag=16)  # type: ignore
+    SelectionOfPriority(over=Name, optional_source=NotRequired[Article], comment=NotRequired[str], tag=16)  # type: ignore
     # Priority reversed by ICZN opinion
     ReversalOfPriority(over=Name, opinion=Article, comment=NotRequired[str], tag=17)  # type: ignore
     # Placed on the Official Index, but without being suppressed.
@@ -2349,21 +2349,29 @@ class TypeTag(adt.ADT):
     Host(name=str, tag=11)  # type: ignore
     # 12 is unused
     # subsequent designation of the type (for a genus)
-    TypeDesignation(source=Article, type=Name, comment=str, tag=13)  # type: ignore
+    TypeDesignation(source=Article, type=Name, comment=NotRequired[str], tag=13)  # type: ignore
     # like the above, but by the Commission (and therefore trumping everything else)
     CommissionTypeDesignation(opinion=Article, type=Name, tag=14)  # type: ignore
     LectotypeDesignation(  # type: ignore
-        source=NotRequired[Article], lectotype=str, valid=bool, comment=str, tag=15
+        optional_source=NotRequired[Article],
+        lectotype=str,
+        valid=bool,
+        comment=NotRequired[str],
+        tag=15,
     )
     NeotypeDesignation(  # type: ignore
-        source=NotRequired[Article], neotype=str, valid=bool, comment=str, tag=16
+        optional_source=NotRequired[Article],
+        neotype=str,
+        valid=bool,
+        comment=NotRequired[str],
+        tag=16,
     )
     # more information on the specimen
     SpecimenDetail(text=str, source=Article, tag=17)  # type: ignore
     # phrasing of the type locality in a particular source
     LocationDetail(text=str, source=Article, tag=18)  # type: ignore
     # an originally included species in a genus without an original type designation
-    IncludedSpecies(name=Name, comment=str, tag=19)  # type: ignore
+    IncludedSpecies(name=Name, comment=NotRequired[str], tag=19)  # type: ignore
     # repository that holds some of the type specimens
     Repository(repository=Collection, tag=20)  # type: ignore
     # indicates that it was originally a genus coelebs
@@ -2391,9 +2399,9 @@ class TypeTag(adt.ADT):
     NoGender(tag=37)  # type: ignore
     NoAge(tag=38)  # type: ignore
     # Person who is involved in the type specimen's history
-    Involved(person=Person, comment=str, tag=39)  # type: ignore
+    Involved(person=Person, comment=NotRequired[str], tag=39)  # type: ignore
     # Indicates that a General type locality cannot be fixed
-    ImpreciseLocality(comment=str, tag=40)  # type: ignore
+    ImpreciseLocality(comment=NotRequired[str], tag=40)  # type: ignore
     # Arbitrary text about nomenclature
     NomenclatureDetail(text=str, source=Article, tag=41)  # type: ignore
     TextualOriginalRank(text=str, tag=42)  # type: ignore

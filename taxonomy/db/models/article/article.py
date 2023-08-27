@@ -11,7 +11,7 @@ import time
 from collections.abc import Callable, Iterable
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, ClassVar, NamedTuple, TypeVar, cast
+from typing import Any, ClassVar, NamedTuple, NotRequired, TypeVar, cast
 
 import requests
 from bs4 import BeautifulSoup
@@ -1312,20 +1312,20 @@ class ArticleTag(adt.ADT):
 
     # other
     Edition(text=str, tag=8)  # type: ignore
-    FullIssue(comment=str, tag=9)  # type: ignore
+    FullIssue(comment=NotRequired[str], tag=9)  # type: ignore
     PartLocation(  # type: ignore
-        parent=Article, start_page=int, end_page=int, comment=str, tag=10
+        parent=Article, start_page=int, end_page=int, comment=NotRequired[str], tag=10
     )
-    NonOriginal(comment=str, tag=10)  # type: ignore
+    NonOriginal(comment=NotRequired[str], tag=10)  # type: ignore
     # The article doesn't give full names for the authors
     InitialsOnly(tag=11)  # type: ignore
     # We can't fill_data_from_paper() because the article is in a language
     # I don't understand.
     NeedsTranslation(language=SourceLanguage, tag=12)  # type: ignore
     # Ignore lints with a specific label
-    IgnoreLint(label=str, comment=str, tag=13)  # type: ignore
+    IgnoreLint(label=str, comment=NotRequired[str], tag=13)  # type: ignore
 
-    PublicationDate(source=DateSource, date=str, comment=str, tag=14)  # type: ignore
+    PublicationDate(source=DateSource, date=str, comment=NotRequired[str], tag=14)  # type: ignore
     LSIDArticle(text=str, present_in_article=PresenceStatus, tag=15)  # type: ignore
 
     # All references must be moved to children
@@ -1333,7 +1333,7 @@ class ArticleTag(adt.ADT):
 
     # Electronic-only publication that is not available according to the ICZN
     # (e.g., it doesn't have an LSID present in the article)
-    UnavailableElectronic(comment=str, tag=17)  # type: ignore
+    UnavailableElectronic(comment=NotRequired[str], tag=17)  # type: ignore
 
 
 @lru_cache
