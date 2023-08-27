@@ -306,6 +306,14 @@ class BaseModel(Model):
                         overrides = {}
                         for attr_name in tag_type._attributes:
                             value = getattr(tag, attr_name)
+                            if (
+                                value is None
+                                and attr_name in tag_type.__required_attrs__
+                            ):
+                                yield (
+                                    f"{self}: missing required attribute {attr_name} on"
+                                    f" {field} tag {tag}"
+                                )
                             if isinstance(value, BaseModel):
                                 target = value.get_redirect_target()
                                 if target is not None:

@@ -627,14 +627,22 @@ def _get_adt_member(
         return member_cls
     args: dict[str, Any] = {}
     for arg_name, typ in member_cls._attributes.items():
+        is_required = arg_name in member_cls.__required_attrs__
         existing_value = getattr(existing, arg_name, None)
         if (member_cls, arg_name) in completers:
-            args[arg_name] = completers[(member_cls, arg_name)](
-                f"{arg_name}> ", existing_value
-            )
+            while True:
+                value = completers[(member_cls, arg_name)](
+                    f"{arg_name}> ", existing_value
+                )
+                if value is not None or not is_required:
+                    break
+            args[arg_name] = value
         elif isinstance(typ, type) and issubclass(typ, enum.IntEnum):
             args[arg_name] = get_enum_member(
-                typ, prompt=f"{arg_name}> ", default=existing_value, allow_empty=False
+                typ,
+                prompt=f"{arg_name}> ",
+                default=existing_value,
+                allow_empty=not is_required,
             )
         elif typ is bool:
             args[arg_name] = yes_no(f"{arg_name}> ", default=existing_value)
@@ -644,6 +652,7 @@ def _get_adt_member(
                     f"{arg_name}> ",
                     history_key=(member_cls, arg_name),
                     default="" if existing_value is None else str(existing_value),
+                    allow_none=not is_required,
                 )
             )
         else:

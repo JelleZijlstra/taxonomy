@@ -3,10 +3,11 @@ import enum
 import functools
 import operator
 import sys
+import typing
 from collections.abc import Callable, Iterable, Iterator, MutableMapping
 from typing import TYPE_CHECKING, Any, Literal, TypeVar
 
-BASIC_TYPES: tuple[type[Any], ...] = (int, str, float, bool, list)
+BASIC_TYPES: tuple[type[Any], ...] = (int, str, float, bool)
 
 
 class _ADTMember:
@@ -132,6 +133,9 @@ class _ADTMeta(type):
                 raise TypeError(f"incomplete member {member}")
             has_args = bool(member.kwargs)
             attrs: dict[str, type[Any]] = {}
+            annotations: dict[str, Any] = {}
+            required_attrs: set[str] = set()
+            optional_attrs: set[str] = set()
             member_ns = {
                 "_attributes": attrs,
                 "_tag": member.tag,
@@ -142,28 +146,48 @@ class _ADTMeta(type):
                 "__lt__": _adt_member_lt,
                 "__hash__": _adt_member_hash,
                 "replace": _adt_member_replace,
-                "__annotations__": attrs,
+                "__annotations__": annotations,
+                "__required_attrs__": required_attrs,
+                "__optional_attrs__": optional_attrs,
             }
             if has_args:
                 for key, value in member.kwargs.items():
+                    origin = typing.get_origin(value)
+                    if origin is typing.Required:
+                        (value,) = typing.get_args(value)
+                        required = True
+                    elif origin is typing.NotRequired:
+                        (value,) = typing.get_args(value)
+                        required = False
+                    else:
+                        required = True
+                    if required:
+                        required_attrs.add(key)
+                    else:
+                        optional_attrs.add(key)
                     if value in BASIC_TYPES:
-                        attrs[key] = value
+                        typ = value
                     elif isinstance(value, type) and issubclass(value, enum.IntEnum):
-                        attrs[key] = value
+                        typ = value
                     elif (
                         isinstance(value, type)
                         and hasattr(value, "serialize")
                         and hasattr(value, "unserialize")
                     ):
-                        attrs[key] = value
+                        typ = value
                     elif (
                         has_self_cls
                         and isinstance(value, _ADTMember)
                         and value.name == name
                     ):
-                        attrs[key] = new_cls
+                        typ = new_cls
                     else:
                         raise TypeError(f"unsupported type {value}")
+                    attrs[key] = typ
+                    if required:
+                        annotations[key] = typ
+                    else:
+                        annotations[key] = typing.Optional[typ]
                 lines = "".join(
                     f"    self.{attr} = {attr}\n" for attr in member.kwargs.keys()
                 )
@@ -173,7 +197,7 @@ class _ADTMeta(type):
                 new_ns: dict[str, Any] = {}
                 exec(code, {}, new_ns)
                 init = new_ns["__init__"]
-                init.__annotations__.update(attrs)
+                init.__annotations__.update(annotations)
                 member_ns["__init__"] = init
             member_cls: Any = functools.total_ordering(
                 type(member.name, (new_cls,), member_ns)

@@ -72,26 +72,31 @@ def make_enum(python_enum: type[enum.Enum]) -> type[Enum]:
     return Enum.from_enum(python_enum)
 
 
-def build_graphene_field_from_adt_arg(typ: type[Any]) -> Field:
+def build_graphene_field_from_adt_arg(typ: type[Any], is_required: bool) -> Field:
     if typ is str:
-        return Field(String)
+        graphene_type = String
     elif typ is int:
-        return Field(Int)
+        graphene_type = Int
     elif typ is bool:
-        return Field(Boolean)
+        graphene_type = Boolean
     elif issubclass(typ, BaseModel):
-        return Field(NonNull(lambda: build_object_type_from_model(typ)))
+        graphene_type = lambda: build_object_type_from_model(typ)
     elif issubclass(typ, enum.Enum):
-        return Field(make_enum(typ))
+        graphene_type = make_enum(typ)
     else:
         assert False, f"failed to translate {typ}"
+    if is_required:
+        graphene_type = NonNull(graphene_type)
+    return Field(graphene_type)
 
 
 @cache
 def build_adt_member(adt_cls: type[ADT], adt: type[ADT]) -> type[ObjectType]:
     namespace = {}
     for name, typ in adt._attributes.items():
-        graphene_field = build_graphene_field_from_adt_arg(typ)
+        graphene_field = build_graphene_field_from_adt_arg(
+            typ, is_required=name in adt.__required_attrs__
+        )
         if graphene_field is not None:
             namespace[name] = graphene_field
 

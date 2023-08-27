@@ -9,7 +9,7 @@ import sys
 import time
 from collections import Counter
 from collections.abc import Callable, Iterable, Sequence
-from typing import IO, TYPE_CHECKING, Any, ClassVar, TypeAlias
+from typing import IO, TYPE_CHECKING, Any, ClassVar, NotRequired, TypeAlias
 
 from peewee import CharField, ForeignKeyField, IntegerField, TextField
 
@@ -2332,7 +2332,10 @@ class TypeTag(adt.ADT):
     Gender(gender=constants.SpecimenGender, tag=3)  # type: ignore
     Age(age=constants.SpecimenAge, tag=4)  # type: ignore
     Organ(  # type: ignore
-        organ=constants.SpecimenOrgan, detail=str, condition=str, tag=5
+        organ=constants.SpecimenOrgan,
+        detail=NotRequired[str],
+        condition=NotRequired[str],
+        tag=5,
     )
     Altitude(altitude=str, unit=constants.AltitudeUnit, tag=6)  # type: ignore
     Coordinates(latitude=str, longitude=str, tag=7)  # type: ignore
@@ -2347,10 +2350,10 @@ class TypeTag(adt.ADT):
     # like the above, but by the Commission (and therefore trumping everything else)
     CommissionTypeDesignation(opinion=Article, type=Name, tag=14)  # type: ignore
     LectotypeDesignation(  # type: ignore
-        source=Article, lectotype=str, valid=bool, comment=str, tag=15
+        source=NotRequired[Article], lectotype=str, valid=bool, comment=str, tag=15
     )
     NeotypeDesignation(  # type: ignore
-        source=Article, neotype=str, valid=bool, comment=str, tag=16
+        source=NotRequired[Article], neotype=str, valid=bool, comment=str, tag=16
     )
     # more information on the specimen
     SpecimenDetail(text=str, source=Article, tag=17)  # type: ignore
@@ -2365,7 +2368,7 @@ class TypeTag(adt.ADT):
     # quotation with information about a type species
     TypeSpeciesDetail(text=str, source=Article, tag=22)  # type: ignore
     # Likely location of the type specimen.
-    ProbableRepository(repository=Collection, reasoning=str, tag=23)  # type: ignore
+    ProbableRepository(repository=Collection, reasoning=NotRequired[str], tag=23)  # type: ignore
     # Data on the repository of the type material.
     CollectionDetail(text=str, source=Article, tag=24)  # type: ignore
     # Quotes about the original citation.
@@ -2375,7 +2378,7 @@ class TypeTag(adt.ADT):
     NamedAfter(person=Person, tag=28)  # type: ignore
     CollectedBy(person=Person, tag=29)  # type: ignore
 
-    DifferentAuthority(comment=str, tag=30)  # type: ignore
+    DifferentAuthority(comment=NotRequired[str], tag=30)  # type: ignore
     NoEtymology(tag=31)  # type: ignore
     NoLocation(tag=32)  # type: ignore
     NoSpecimen(tag=33)  # type: ignore
@@ -2397,7 +2400,7 @@ class TypeTag(adt.ADT):
     LSIDName(text=str, tag=44)  # type: ignore
     TypeSpecimenLink(url=str, tag=45)  # type: ignore
     # Ignore lints with a specific label
-    IgnoreLintName(label=str, comment=str, tag=46)  # type: ignore
+    IgnoreLintName(label=str, comment=NotRequired[str], tag=46)  # type: ignore
     RejectedLSIDName(text=str, tag=47)  # type: ignore
     # For hybrids and composites
     PartialTaxon(taxon=Taxon, tag=48)  # type: ignore
