@@ -35,3 +35,15 @@ def test_parse_type_specimen() -> None:
         "MVZ 123 (two specimens!) (= ZMB 42)",
         [Specimen("MVZ 123", comment="two specimens", former_texts=["ZMB 42"])],
     )
+    check_both_ways(
+        "MVZ 123 (two specimens!) (=> PNM 123) (+ MSB 123) (= ZMB 42)",
+        [
+            Specimen(
+                "MVZ 123",
+                comment="two specimens",
+                future_texts=["PNM 123"],
+                extra_texts=["MSB 123"],
+                former_texts=["ZMB 42"],
+            )
+        ],
+    )

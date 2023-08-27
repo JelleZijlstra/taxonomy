@@ -135,11 +135,18 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
             if coll.must_use_children():
                 yield f"must use child collection in argument {arg_name} to {tag}"
 
-        if isinstance(tag, TypeTag.FormerRepository):
+        if isinstance(
+            tag,
+            (
+                TypeTag.FormerRepository,
+                TypeTag.FutureRepository,
+                TypeTag.ExtraRepository,
+            ),
+        ):
             if tag.repository in nam.get_repositories():
                 yield (
-                    f"{tag.repository} is marked as a former repository, but it is the"
-                    " current repository"
+                    f"{tag.repository} is marked as a {type(tag).__name__}, but it is"
+                    " the current repository"
                 )
 
         if isinstance(tag, TypeTag.ProbableRepository) and nam.collection is not None:
@@ -220,6 +227,10 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
             tags.append(TypeTag.LSIDName(lsid))
             if not is_valid_lsid(lsid):
                 yield f"invalid LSID {lsid}"
+        elif isinstance(tag, TypeTag.TypeSpecimenLink):
+            if not tag.url.startswith(("http://", "https://")):
+                yield f"invalid type specimen URL {tag.url!r}"
+            tags.append(TypeTag.TypeSpecimenLink(fix_type_specimen_link(tag.url)))
         else:
             tags.append(tag)
         # TODO: for lectotype and subsequent designations, ensure the earliest valid one is used.
@@ -244,6 +255,18 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
             getinput.print_diff(sorted(original_tags), tags)
         if cfg.autofix:
             nam.type_tags = tags  # type: ignore
+
+
+def fix_type_specimen_link(url: str) -> str:
+    if url.startswith(
+        (
+            "http://arctos.database.museum/",
+            "http://researcharchive.calacademy.org/",
+            "http://ucmpdb.berkeley.edu/cgi/",
+        )
+    ):
+        return url.replace("http://", "https://")
+    return url
 
 
 @make_linter("type_designations", disabled=True)
@@ -305,12 +328,6 @@ def _get_specimen_regexes(nam: Name) -> Iterable[SpecimenValidator]:
                 yield _get_regex_from_collection(tag.repository)
     else:
         yield _get_regex_from_collection(nam.collection)
-
-
-def _get_former_collection_regexes(nam: Name) -> Iterable[SpecimenValidator]:
-    for tag in nam.type_tags:
-        if isinstance(tag, TypeTag.FormerRepository):
-            yield _get_regex_from_collection(tag.repository)
 
 
 FOSSIL_CATALOGS = [
@@ -389,12 +406,16 @@ def _get_regex_from_collection(coll: Collection) -> SpecimenValidator:
 class Specimen:
     text: str
     comment: str | None = None
+    future_texts: Sequence[str] = field(default_factory=list)
+    extra_texts: Sequence[str] = field(default_factory=list)
     former_texts: Sequence[str] = field(default_factory=list)
 
     def stringify(self) -> str:
         text = self.text
         if self.comment is not None:
             text += f" ({self.comment}!)"
+        text += "".join(f" (=> {future})" for future in sorted(self.future_texts))
+        text += "".join(f" (+ {extra})" for extra in sorted(self.extra_texts))
         text += "".join(f" (= {former})" for former in sorted(self.former_texts))
         return text
 
@@ -409,6 +430,8 @@ class Specimen:
                 else self.text
             ),
             self.comment or "",
+            tuple(sorted(self.future_texts)),
+            tuple(sorted(self.extra_texts)),
             tuple(sorted(self.former_texts)),
         )
 
@@ -537,10 +560,16 @@ _SPECIAL_SUFFIXES = (
 
 def _parse_single_specimen(text: str) -> Specimen | SpecialSpecimen:
     formers: list[str] = []
+    futures: list[str] = []
+    extras: list[str] = []
     comment = None
     while text.endswith(")"):
         if text.endswith(_SPECIAL_SUFFIXES):
             text, end = text.rsplit(" (", maxsplit=1)
+            if futures or extras:
+                raise ValueError(
+                    f"Special specimen {text} cannot have future or extra location"
+                )
             return SpecialSpecimen(
                 text, end.removesuffix(")"), comment=comment, former_texts=formers
             )
@@ -550,19 +579,30 @@ def _parse_single_specimen(text: str) -> Specimen | SpecialSpecimen:
             text, end = text.rsplit(" (", maxsplit=1)
             comment = end.removesuffix("!)")
             continue
-        if " (= " not in text:
+        elif " (= " in text:
+            text, end = text.rsplit(" (= ", maxsplit=1)
+            formers.append(end.removesuffix(")"))
+        elif " (=> " in text:
+            text, end = text.rsplit(" (=> ", maxsplit=1)
+            futures.append(end.removesuffix(")"))
+        elif " (+ " in text:
+            text, end = text.rsplit(" (+ ", maxsplit=1)
+            extras.append(end.removesuffix(")"))
+        else:
             raise ValueError(f"invalid parenthesized text in {text!r}")
-        text, end = text.rsplit(" (= ", maxsplit=1)
-        formers.append(end.removesuffix(")"))
-    return Specimen(text, comment=comment, former_texts=formers)
+    return Specimen(
+        text,
+        comment=comment,
+        former_texts=formers,
+        future_texts=futures,
+        extra_texts=extras,
+    )
 
 
 @make_linter("type_specimen")
 def check_type_specimen(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.type_specimen is None:
         return
-    regexes = list(_get_specimen_regexes(nam))
-    former_regexes = list(_get_former_collection_regexes(nam))
     try:
         specs = parse_type_specimen(nam.type_specimen)
     except ValueError as e:
@@ -570,12 +610,12 @@ def check_type_specimen(nam: Name, cfg: LintConfig) -> Iterable[str]:
         return
     for spec in specs:
         if isinstance(spec, SpecimenRange):
-            yield from _check_specimen(spec.start, regexes, former_regexes)
-            yield from _check_specimen(spec.end, regexes, former_regexes)
+            yield from _check_specimen(spec.start, nam)
+            yield from _check_specimen(spec.end, nam)
         elif isinstance(spec, SpecialSpecimen):
             continue
         else:
-            yield from _check_specimen(spec, regexes, former_regexes)
+            yield from _check_specimen(spec, nam)
 
 
 def _validate(text: str, validators: Iterable[SpecimenValidator]) -> str | None:
@@ -588,17 +628,41 @@ def _validate(text: str, validators: Iterable[SpecimenValidator]) -> str | None:
     return "; ".join(messages)
 
 
-def _check_specimen(
-    spec: Specimen,
-    regexes: list[SpecimenValidator],
-    former_regexes: list[SpecimenValidator],
-) -> Iterable[str]:
+def _check_specimen(spec: Specimen, nam: Name) -> Iterable[str]:
+    regexes = list(_get_specimen_regexes(nam))
     if message := _validate(spec.text, regexes):
         yield f"{spec.text!r} does not match: {message}"
     for former in spec.former_texts:
+        if former.startswith('"') and former.endswith('"'):
+            continue
+        former_regexes = [
+            _get_regex_from_collection(tag.repository)
+            for tag in nam.type_tags
+            if isinstance(tag, TypeTag.FormerRepository)
+        ]
         if message := _validate(former, former_regexes + regexes):
             yield (
                 f"former location {former!r} does not match any collection ({message})"
+            )
+    for future in spec.future_texts:
+        future_regexes = [
+            _get_regex_from_collection(tag.repository)
+            for tag in nam.type_tags
+            if isinstance(tag, TypeTag.FutureRepository)
+        ]
+        if message := _validate(future, future_regexes + regexes):
+            yield (
+                f"future location {future!r} does not match any collection ({message})"
+            )
+    for extra in spec.extra_texts:
+        extra_regexes = [
+            _get_regex_from_collection(tag.repository)
+            for tag in nam.type_tags
+            if isinstance(tag, TypeTag.ExtraRepository)
+        ]
+        if message := _validate(extra, extra_regexes + regexes):
+            yield (
+                f"extra location {extra!r} does not match any collection ({message})"
             )
 
 
@@ -679,7 +743,8 @@ def check_general_collection(nam: Name, cfg: LintConfig) -> Iterable[str]:
 
 @make_linter("type_specimen_link")
 def check_must_have_type_specimen_link(nam: Name, cfg: LintConfig) -> Iterable[str]:
-    if nam.collection is None or not nam.collection.must_have_specimen_links():
+    # TODO: cover multiple, ExtraRepository etc. here
+    if nam.collection is None or not nam.collection.must_have_specimen_links(nam):
         return
     if nam.type_specimen is None:
         return
@@ -687,7 +752,12 @@ def check_must_have_type_specimen_link(nam: Name, cfg: LintConfig) -> Iterable[s
         not isinstance(spec, SpecialSpecimen)
         for spec in parse_type_specimen(nam.type_specimen)
     )
-    num_actual = sum(isinstance(tag, TypeTag.TypeSpecimenLink) for tag in nam.type_tags)
+    num_actual = sum(
+        isinstance(tag, TypeTag.TypeSpecimenLink)
+        and nam.collection is not None
+        and nam.collection.is_valid_specimen_link(tag.url)
+        for tag in nam.type_tags
+    )
     if num_actual < num_expected:
         yield (
             f"has {num_actual} type specimen links, but expected at least"

@@ -197,26 +197,38 @@ there are multiple type specimens with different numbers, or if parts of a singl
 specimen are cataloged under different numbers, these are separated with commas (for
 example, "USNM 120, MCZ 4759" for two syntypes of _Neotamias dorsalis_).
 
-Each entry in the list may be followed by any number of alternative catalog numbers in
-parentheses prefixed with "= ". For example, "AMNH 12345 (= USNM 54321) (= MCZ 1234)"
-would indicate that the specimen is currently in the AMNH as AMNH 12345, but was
-previously cataloged as USNM 54321 and MCZ 1234.
+Each entry in the list is a single specimen, possibly followed by some parenthesized
+alternative numbers and comments. Formats for museum catalog numbers vary widely from
+one collection to another, and even numbers from the same collection are often presented
+differently in different sources. A standardized format should be defined for each
+collection, ideally mirroring what the collection itself uses. As of this writing, the
+database only defines such a format for a few collections.
 
-Also, each entry may be followed by a comment in parentheses ending with an exclamation
-mark, usually for cases where the catalog number is not enough to uniquely identify the
-specimen. For example, if AMNH 12345 contains a skin and a skull, but only the skin is a
-type, the entry should read "AMNH 12345 (skin!)".
+Parenthesized phrases after them main catalog number may include:
 
-When the parenthesized previous numbers and comments are removed, the catalog number
-remains. Formats for museum catalog numbers vary widely from one collection to another,
-and even numbers from the same collection are often presented differently in different
-sources. A standardized format should be defined for each collection, ideally mirroring
-what the collection itself uses. As of this writing, the database only defines such a
-format for a few collections.
+- Former catalog numbers in parentheses prefixed with "= ". For example, "AMNH 12345 (=
+  USNM 54321) (= MCZ 1234)" would indicate that the specimen is currently in the AMNH as
+  AMNH 12345, but was previously cataloged as USNM 54321 and MCZ 1234. A field number or
+  informal number may be added with quotes, e.g. 'RGM.1332450 (= "Trinil 2")' for the
+  type of _Homo erectus_. The repository should be listed in a _FormerRepository_ tag.
+- Extra catalog numbers may be added in parentheses prefixed with "+ ". This format is
+  used when the type specimen is primarily in one collection, but some secondary
+  material is in another. For example, the skin and skull may be in the primary
+  collection, but a tissue sample in another. This would be expressed as e.g. "INPA 2550
+  (+ MVZ:Mamm:195429)". The repository should be listed in a _ExtraRepository_ tag.
+- Future catalog numbers may be added in parentheses prefixed with "=> ". Sometimes new
+  species descriptions contain a statement that the type specimen is to be transferred
+  to some other institution. Until that transfer actually occurs, the original number
+  should be listed as primary, e.g. "MSB:Mamm:12345 (=> CBF 12345)". The repository
+  should be listed in a _FutureRepository_ tag.
+- A comment in parentheses ending with an exclamation mark, usually for cases where the
+  catalog number is not enough to uniquely identify the specimen. For example, if AMNH
+  12345 contains a skin and a skull, but only the skin is a type, the entry should read
+  "AMNH 12345 (skin!)".
 
 Many collections have different catalogues for different taxonomic groups and for fossil
-and extant specimens. In such cases, a collection should be created for each different
-catalogue, with the overarching collection as a parent.
+and extant specimens. In such cases, a unique format should be used, usually with some
+collection identifier between the institution code and the number.
 
 The following special forms are always allowed:
 
@@ -337,6 +349,8 @@ names should have at least one. They fall into several groups:
     collection. The intended use of this tag is that it can help give clues to
     researchers looking for the type material and help generate lists of possible type
     material for those compiling catalogues of particular collections.
+  - _FormerRepository_, _ExtraRepository_, and _FutureRepository_: Used for several
+    cases where type material is associated with multiple collections; see above.
 - Nomenclatural actions
   - _TypeDesignation_: The designation of the type species of a genus-group name.
     Includes references to the source and to the designated type species.

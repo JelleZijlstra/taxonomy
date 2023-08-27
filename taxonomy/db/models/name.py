@@ -2405,6 +2405,8 @@ class TypeTag(adt.ADT):
     # For hybrids and composites
     PartialTaxon(taxon=Taxon, tag=48)  # type: ignore
     FormerRepository(repository=Collection, tag=49)  # type: ignore
+    ExtraRepository(repository=Collection, tag=50)  # type: ignore
+    FutureRepository(repository=Collection, tag=51)  # type: ignore
 
 
 SOURCE_TAGS = (

@@ -2628,6 +2628,35 @@ def find_patronym_clusters() -> None:
 
 
 @command
+def rename_type_specimens() -> None:
+    collection = Collection.getter(None).get_one("collection> ")
+    if collection is None:
+        return
+    age = getinput.get_enum_member(constants.AgeClass, prompt="age> ", allow_empty=True)
+    parent_taxon = Taxon.getter(None).get_one("taxon> ")
+    include_regex = getinput.get_line("include regex> ", allow_none=True)
+    to_replace = getinput.get_line("replace> ", allow_none=False)
+    replace_with = getinput.get_line("replace with> ", allow_none=False)
+    dry_run = getinput.yes_no("dry run? ")
+    replacements = 0
+    for nam in collection.type_specimens.filter(Name.type_specimen != None):
+        if age is not None and nam.taxon.age is not age:
+            continue
+        if parent_taxon is not None and not nam.taxon.is_child_of(parent_taxon):
+            continue
+        if include_regex and not re.fullmatch(include_regex, nam.type_specimen):
+            continue
+        new_type_specimen = nam.type_specimen.replace(to_replace, replace_with)
+        if nam.type_specimen == new_type_specimen:
+            continue
+        print(f"{nam.type_specimen!r} -> {new_type_specimen!r} ({nam})")
+        replacements += 1
+        if not dry_run:
+            nam.type_specimen = new_type_specimen
+    print(f"{replacements} replacements made")
+
+
+@command
 def generate_summary_paragraph() -> str:
     name_count = Name.select_valid().count()
     mammalia = Taxon.getter("valid_name")("Mammalia")

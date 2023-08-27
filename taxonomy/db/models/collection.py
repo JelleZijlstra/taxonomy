@@ -64,6 +64,20 @@ class Collection(BaseModel):
             lambda: models.name.TypeTag.FormerRepository,
             1,
         ),
+        get_tag_based_derived_field(
+            "future_specimens",
+            lambda: models.Name,
+            "type_tags",
+            lambda: models.name.TypeTag.FutureRepository,
+            1,
+        ),
+        get_tag_based_derived_field(
+            "extra_specimens",
+            lambda: models.Name,
+            "type_tags",
+            lambda: models.name.TypeTag.ExtraRepository,
+            1,
+        ),
     ]
     search_fields = [
         SearchField(SearchFieldType.text, "name"),
@@ -95,6 +109,14 @@ class Collection(BaseModel):
                     re.compile(tag.regex)
                 except re.error:
                     yield f"{self}: invalid specimen regex {tag.regex!r}"
+        if CollectionTag.MustHaveSpecimenLinks in self.tags or any(
+            isinstance(tag, CollectionTag.ConditionalMustHaveSpecimenLinks)
+            for tag in self.tags
+        ):
+            if not any(
+                isinstance(tag, CollectionTag.SpecimenLinkPrefix) for tag in self.tags
+            ):
+                yield f"{self}: must have SpecimenLinkPrefix tag"
 
     @classmethod
     def by_label(cls, label: str) -> Collection:
@@ -196,7 +218,11 @@ class Collection(BaseModel):
                     break
         return multiple, probable_repo
 
-    def merge(self, other: Collection) -> None:
+    def merge(self, other: Collection | None = None) -> None:
+        if other is None:
+            other = Collection.getter(None).get_one("merge target> ")
+            if other is None:
+                return
         for nam in self.type_specimens:
             nam.collection = other
         self.parent = other
@@ -213,8 +239,38 @@ class Collection(BaseModel):
     def must_use_children(self) -> bool:
         return any(tag is CollectionTag.MustUseChildrenCollection for tag in self.tags)
 
-    def must_have_specimen_links(self) -> bool:
-        return any(tag is CollectionTag.MustHaveSpecimenLinks for tag in self.tags)
+    def must_have_specimen_links(self, nam: models.Name) -> bool:
+        for tag in self.tags:
+            if tag is CollectionTag.MustHaveSpecimenLinks:
+                return True
+            if isinstance(tag, CollectionTag.ConditionalMustHaveSpecimenLinks):
+                if tag.regex and nam.type_specimen:
+                    if not re.fullmatch(tag.regex, nam.type_specimen):
+                        continue
+                if tag.taxon:
+                    if not nam.taxon.is_child_of(tag.taxon):
+                        continue
+                if tag.age:
+                    if nam.taxon.age is not tag.age:
+                        continue
+                return True
+        return False
+
+    def is_valid_specimen_link(self, link: str) -> bool:
+        prefixes = tuple(
+            tag.prefix
+            for tag in self.tags
+            if isinstance(tag, CollectionTag.SpecimenLinkPrefix)
+        )
+        if not prefixes:
+            return True
+        return link.startswith(prefixes)
+
+    def print_specimen_links(self) -> None:
+        for nam in self.type_specimens:
+            for tag in nam.type_tags:
+                if isinstance(tag, models.name.TypeTag.TypeSpecimenLink):
+                    print(tag.url)
 
     def get_adt_callbacks(self) -> getinput.CallbackMap:
         return {
@@ -223,6 +279,7 @@ class Collection(BaseModel):
                 parent=self, city=self.city, location=self.location
             ),
             "lint_names": lambda: models.Name.lint_all(query=self.type_specimens),
+            "print_specimen_links": self.print_specimen_links,
         }
 
 
@@ -233,3 +290,7 @@ class CollectionTag(adt.ADT):
     MustUseChildrenCollection(tag=4)  # type: ignore
     ChildRule(collection=Collection, regex=str, taxon=Taxon, age=constants.AgeClass, tag=5)  # type: ignore
     MustHaveSpecimenLinks(tag=6)  # type: ignore
+    ConditionalMustHaveSpecimenLinks(regex=str, taxon=Taxon, age=constants.AgeClass, tag=7)  # type: ignore
+    # To be counted as a specimen link for this collection, a link must have this prefix.
+    # Multiple copies of this tag may be present.
+    SpecimenLinkPrefix(prefix=str, tag=8)  # type: ignore

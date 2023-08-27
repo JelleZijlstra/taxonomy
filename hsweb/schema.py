@@ -321,10 +321,18 @@ def person_aliases_resolver(
     return ret
 
 
+def num_aliases_resolver(parent: ObjectType, info: ResolveInfo) -> list[ObjectType]:
+    model = get_model(Person, parent, info)
+    return model.get_aliases().count()
+
+
 def num_locations_resolver(
     parent: ObjectType, info: ResolveInfo, first: int = 10, after: str | None = None
 ) -> int:
-    query = _get_locations(parent, info, first, after)
+    model = get_model(Period, parent, info)
+    query = Location.select_valid().filter(
+        (Location.min_period == model) | (Location.max_period == model)
+    )
     return query.count()
 
 
@@ -410,7 +418,8 @@ CUSTOM_FIELDS = {
     Person: {
         "aliases": ConnectionField(
             make_connection(Person), resolver=person_aliases_resolver
-        )
+        ),
+        "num_aliases": Int(required=True, resolver=num_aliases_resolver),
     },
 }
 

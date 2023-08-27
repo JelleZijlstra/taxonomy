@@ -29,9 +29,16 @@ def mnhn() -> Collection:
     return coll
 
 
+@functools.cache
+def mnhn_f() -> Collection:
+    coll = Collection.getter("label")("MNHN (F)")
+    assert coll is not None
+    return coll
+
+
 def get_hesp_data() -> dict[str, list[Name]]:
     output = defaultdict(list)
-    for coll in (mnhn_mammals(), mnhn()):
+    for coll in (mnhn_mammals(), mnhn(), mnhn_f()):
         for nam in coll.type_specimens:
             if nam.type_specimen is None:
                 continue
@@ -60,6 +67,11 @@ def get_bmnh_db() -> Iterable[dict[str, str]]:
         "mnhn-mammalia-holotypes.csv",
         "mnhn-mammalia-types-1.csv",
         "mnhn-mammalia-types-2.csv",
+        "mnhn-fossils-1.csv",
+        "mnhn-fossils-2.csv",
+        "mnhn-fossils-3.csv",
+        "mnhn-fossils-4.csv",
+        "mnhn-fossils-5.csv",
     ):
         with (DATA_DIR / path).open() as f:
             rows = csv.DictReader(f)
@@ -76,7 +88,7 @@ def find_name(original_name: str, authority: str, year: str) -> Name | None:
     nams = [
         nam
         for nam in query
-        if nam.taxonomic_authority() == authority
+        if nam.taxonomic_authority().casefold() == authority.casefold()
         and abs(nam.numeric_year() - num_year) <= 2
     ]
     if len(nams) == 1:
@@ -148,8 +160,8 @@ def get_tags(row: dict[str, str]) -> Iterable[TypeTag]:
 def handle_interactively(
     nam: Name, row: dict[str, str], cat_num: str, exclude_list: IO[str]
 ) -> None:
-    # if not INTERACTIVE:
-    #     return
+    if not INTERACTIVE:
+        return
     getinput.print_header(nam)
     tags = list(get_tags(row))
     nam.display()
@@ -172,15 +184,17 @@ def extract_name_and_status(row: dict[str, str]) -> tuple[str, str] | None:
 
 
 def can_replace_collection(coll: Collection | None) -> bool:
-    return coll is None or coll in (mnhn(), mnhn_mammals())
+    return coll is None or coll in (mnhn(), mnhn_mammals(), mnhn_f())
 
 
 def can_replace_type_secimen(text: str | None, row: dict[str, str]) -> bool:
     if text is None:
         return True
-    text = text.lower().replace(".", "-")
+    text = text.lower().replace(".", "-").replace(" ", "")
     cat_no = row["catalogNumber"].lower()
     cat_no = cat_no.removeprefix("mo-").removeprefix("ac-")
+    if "," in text or "=" in text:
+        return False
     if cat_no in text:
         return True
     return False
@@ -233,7 +247,7 @@ def handle_cannot_find(
         name, authority, year = parsed
         nam = find_name(name, authority, year)
     if nam is None:
-        print(f"cannot find {name} {authority}, {year} ({cat_num})")
+        print(f"cannot find {name} {authority}, {year} ({cat_num}, {type_status})")
         nam = maybe_get(exclude_list, cat_num)
         if nam is None:
             return "cannot find name"
@@ -271,12 +285,21 @@ def handle_cannot_find(
         if can_replace_type_secimen(nam.type_specimen, row):
             nam.type_specimen = cat_num
         if can_replace_collection(nam.collection):
-            nam.collection = mnhn_mammals()
+            nam.collection = get_collection(row)
         if nam.species_type_kind is None:
             type_kind = get_type_kind(type_status)
             if type_kind is not None:
                 nam.species_type_kind = type_kind
     return "matched"
+
+
+def get_collection(row: dict[str, str]) -> Collection:
+    if row["collectionCode"] == "F":
+        return mnhn_f()
+    elif row["collectionCode"] == "ZM":
+        return mnhn_mammals()
+    else:
+        raise ValueError(row["collectionCode"])
 
 
 def get_type_kind(type_status: str) -> constants.SpeciesGroupType | None:
@@ -347,6 +370,8 @@ def should_exclude_type(type_status: str) -> bool:
         "topotype",
         "neoparatype",
         "allotype",
+        "figure",
+        "cite",
     )
 
 
@@ -356,10 +381,9 @@ def main(dry_run: bool = True) -> None:
     statuses: Counter[str] = Counter()
     exclude_file = DATA_DIR / "mnhn-exclude.txt"
     excluded = {line.strip() for line in exclude_file.read_text().splitlines()}
-    mnhn_zm = mnhn_mammals()
     with exclude_file.open("a") as exclude_f:
         for row in getinput.print_every_n(get_bmnh_db(), label="specimens", n=100):
-            if should_exclude_type(row["typeStatus"]):
+            if should_exclude_type(row["typeStatus"]) or row["itemType"] == "moulage":
                 excluded_status += 1
                 continue
             cat_num = f"MNHN-{row['collectionCode']}-{row['catalogNumber']}"
@@ -386,9 +410,10 @@ def main(dry_run: bool = True) -> None:
                     for tag in get_tags(row):
                         print(f"{nam}: add tag {tag}")
                         nam.add_type_tag(tag)
-                    if nam.collection != mnhn_zm:
+                    expected = get_collection(row)
+                    if nam.collection != expected:
                         print(f"{nam}: set collection")
-                        nam.collection = mnhn_zm
+                        nam.collection = expected
     print(
         f"total = {total}, cannot_find = {cannot_find}, tag_present = {tag_present},"
         f" excluded_status = {excluded_status}, excluded = {excluded_count}, added_tag"

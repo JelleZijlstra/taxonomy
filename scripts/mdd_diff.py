@@ -185,17 +185,41 @@ def parent_of_rank(taxon: Taxon, rank: Rank) -> Taxon | None:
         return parent
 
 
+def split_mdd_type(text: str) -> Iterable[tuple[str, str | None]]:
+    text = re.sub(r"\[([^,\]]+),([^\]]+)\]", r"[\1]", text)
+    pieces = text.split(",")
+    for piece in pieces:
+        piece = piece.strip()
+        if match := re.fullmatch(r"(.*) \[([^\]]+)\]", piece):
+            yield match.group(1), match.group(2)
+        else:
+            yield piece, None
+
+
+MDD_TYPE_REGEXES = [
+    (r"\s+", " "),  # weird whitespace
+    (r"^([A-Z\-]+)(?=\d)", r"\1 "),  # space after collection name
+    (r"^(BM|NHM) (ZD |GMCM )", "BMNH "),
+    (r"^AMNHM-", "AMNH "),
+    (r"^BPBM ", ""),
+    (r"\s+", " "),  # weird whitespace
+]
+
+
 def process_mdd_type(text: str) -> str | None:
     if text == "" or text == "NA":
         return None
-    text = text.strip().rstrip(".")
-    text = re.sub(r"\s+", " ", text)
-    text = re.sub(r" \[[^\]]+\]", "", text)
-    text = re.sub(r"^([A-Z\-]+)(?=\d)", r"\1 ", text)
-    text = re.sub(r"^(BM|NHM) ", "BMNH ", text)
-    if "BMNH" in text:
-        text = models.name_lint.clean_up_bmnh_type(text)
-    return text
+    final = []
+    for piece, label in split_mdd_type(text):
+        if label in ("paratype", "paralectotype"):
+            continue
+        piece = piece.strip().rstrip(".")
+        for rgx, sub in MDD_TYPE_REGEXES:
+            piece = re.sub(rgx, sub, piece)
+        if "BMNH" in piece:
+            piece = models.name_lint.clean_up_bmnh_type(piece)
+        final.append(piece)
+    return ", ".join(sorted(final))
 
 
 def process_mdd_authority(text: str) -> str:
@@ -307,11 +331,15 @@ def compare_authors_to_name(
             )
 
 
-def _get_hesp_type_specimen(nam: Name) -> str | None:
+def _get_hesp_type_specimen_name(nam: Name) -> Name:
     if nam.nomenclature_status is NomenclatureStatus.nomen_novum:
         target = nam.get_tag_target(NameTag.NomenNovumFor)
         if target is not None:
-            return _get_hesp_type_specimen(target)
+            return target
+    return nam
+
+
+def clean_hesp_type(nam: Name) -> str | None:
     result = ", ".join(models.name_lint.get_all_type_specimen_texts(nam))
     if not result:
         return None
@@ -406,7 +434,8 @@ def compare_single(taxon: Taxon, mdd_row: MddRow) -> Iterable[Difference]:
         )
 
     mdd_type = process_mdd_type(mdd_row["holotypeVoucher"])
-    hesp_type = _get_hesp_type_specimen(nam)
+    hesp_type_nam = _get_hesp_type_specimen_name(nam)
+    hesp_type = clean_hesp_type(hesp_type_nam)
     if hesp_type is not None and mdd_type is None:
         yield Difference(
             DifferenceKind.type_specimen_missing_mdd,
@@ -424,12 +453,14 @@ def compare_single(taxon: Taxon, mdd_row: MddRow) -> Iterable[Difference]:
             taxon=taxon,
         )
     elif hesp_type != mdd_type:
+        print(f"{hesp_type!r} vs. {mdd_type!r} (from {mdd_row['holotypeVoucher']!r})")
         yield Difference(
             DifferenceKind.type_specimen,
             mdd=mdd_row["holotypeVoucher"],
-            hesp=hesp_type,
+            hesp=hesp_type_nam.type_specimen,
             mdd_id=mdd_id,
             taxon=taxon,
+            comment=f"compared H {hesp_type!r} vs. M {mdd_type!r}",
         )
 
     mdd_is_extinct = mdd_row.get("extinct") == "1"
@@ -564,7 +595,9 @@ def generate_markdown_for_kind(
                 if difference.taxon is None:
                     coll = None
                 else:
-                    coll = difference.taxon.base_name.collection
+                    coll = _get_hesp_type_specimen_name(
+                        difference.taxon.base_name
+                    ).collection
                 by_coll.setdefault(coll, []).append(difference)
             for coll, coll_differences in sorted(
                 by_coll.items(),
