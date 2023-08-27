@@ -4,6 +4,20 @@ Version numbers correspond to Git tags in the
 [backend](https://github.com/JelleZijlstra/taxonomy/) repositories, and to database
 exports released on Zenodo.
 
+# Unreleased
+
+- Database
+  - Add numerous additional links to type specimen catalog entries, primarily for US
+    collections found in [VertNet](http://www.vertnet.org/index.html).
+- Backend
+  - Add support for "extra" and "future" catalog numbers on type specimens.
+  - Require that type specimen links from a particular collection follow a fixed prefix
+  - Support marking fields on tags as required or not. Fixes a bug where some name pages
+    (those that have lectotype/neotype designations for which no source has been
+    recorded) failed to render.
+- Frontend
+  - Add total counts to all lists.
+
 # 23.8.0 (August 17, 2023)
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.8260038.svg)](https://doi.org/10.5281/zenodo.8260038)
