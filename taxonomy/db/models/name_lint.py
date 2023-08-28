@@ -768,6 +768,118 @@ def replace_simple_type_specimen_link(nam: Name, cfg: LintConfig) -> Iterable[st
         yield message
 
 
+@make_linter("replace_type_specimen_link")
+def replace_type_specimen_link(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    if nam.type_specimen is None:
+        return
+    if not any(isinstance(tag, TypeTag.TypeSpecimenLink) for tag in nam.type_tags):
+        return
+    from_spec_details: dict[str, str] = {}
+    for tag in nam.type_tags:
+        if not isinstance(tag, TypeTag.SpecimenDetail):
+            continue
+        if match := re.fullmatch(
+            r"\[catalogNumber\] (?P<catno>.*?) \.\.\. .* \[at"
+            r" (?P<url>https?://[^\]]+)\]",
+            tag.text,
+        ):
+            url = match.group("url")
+            catno = match.group("catno")
+        elif match := re.fullmatch(
+            r"\[institutioncode\] (?P<inst>[A-Z]+) .* \[catalognumber\] (?P<catno>.*?)"
+            r" \.\.\. .* \[at (?P<url>https?://[^\]]+)\]",
+            tag.text,
+        ):
+            url = match.group("url")
+            catno = (
+                f"{match.group('inst')} {match.group('catno')}".replace(
+                    "UCMP ", "UCMP:V:"
+                )
+                .replace("YPM YPM ", "YPM ")
+                .replace("FMNH ", "FMNH Mammals ")
+                .replace("UF ", "UF:VP:")
+            )
+        else:
+            continue
+        url = fix_type_specimen_link(url)
+        if "data.nhm.ac.uk" in url:
+            catno = "BMNH " + catno.replace("NHMUK", "").replace("ZD", "").strip()
+            catno = clean_up_bmnh_type(catno).replace("BMNH ", "BMNH Mammals ")
+        from_spec_details[url] = catno
+
+    new_tags = []
+    messages = []
+    possible_types = set(get_possible_type_specimens(nam))
+    for tag in nam.type_tags:
+        if not isinstance(tag, TypeTag.TypeSpecimenLink):
+            new_tags.append(tag)
+            continue
+        specimen = None
+        if tag.url in from_spec_details:
+            specimen = from_spec_details[tag.url]
+        elif tag.url.startswith("https://mczbase.mcz.harvard.edu/guid/"):
+            specimen = tag.url.removeprefix("https://mczbase.mcz.harvard.edu/guid/")
+        elif match := re.fullmatch(
+            r"https?://portal\.vertnet\.org/o/ucla/mammals\?id=urn-catalog-ucla-mammals-(\d+)",
+            tag.url,
+        ):
+            specimen = f"UCLA Mammals {match.group(1)}"
+        elif match := re.fullmatch(
+            r"http://coldb\.mnhn\.fr/catalognumber/mnhn/([a-z]+)/([a-z\-]+\d+)([a-z])",
+            tag.url,
+        ):
+            specimen = f"MNHN-{match.group(1).upper()}-{match.group(2).upper()}{match.group(3)}"
+        elif match := re.fullmatch(
+            r"http://portal\.vertnet\.org/o/amnh/mammals\?id=urn-catalog-amnh-mammals-([a-z\d\-]+)",
+            tag.url,
+        ):
+            specimen = f"AMNH {match.group(1).upper()}"
+
+        if specimen is not None and specimen in possible_types:
+            new_tag = TypeTag.TypeSpecimenLinkFor(tag.url, specimen)
+            messages.append(f"{tag} -> {new_tag}")
+        else:
+            if specimen is not None:
+                print(f"Reject {specimen!r} (not in {possible_types}, URL {tag.url})")
+            new_tag = tag
+        new_tags.append(new_tag)
+
+    if not messages:
+        return
+    message = (
+        f"replace TypeSpecimenLink tag with TypeSpecimenLinkFor: {', '.join(messages)}"
+    )
+    if cfg.autofix:
+        print(f"{nam}: {message}")
+        nam.type_tags = new_tags  # type: ignore
+    else:
+        yield message
+
+
+def get_possible_type_specimens(nam: Name) -> Iterable[str]:
+    if nam.type_specimen is None:
+        return
+    for spec in parse_type_specimen(nam.type_specimen):
+        match spec:
+            case SpecialSpecimen(
+                collection=collection, label=label, former_texts=former_texts
+            ):
+                yield f"{collection} ({label})"
+                yield from former_texts
+            case SpecimenRange(start=start, end=end):
+                yield from _get_possible_type_specimens_from_specimen(start)
+                yield from _get_possible_type_specimens_from_specimen(end)
+            case Specimen():
+                yield from _get_possible_type_specimens_from_specimen(spec)
+
+
+def _get_possible_type_specimens_from_specimen(spec: Specimen) -> Iterable[str]:
+    yield spec.text
+    yield from spec.former_texts
+    yield from spec.future_texts
+    yield from spec.extra_texts
+
+
 def clean_up_bmnh_type(text: str) -> str:
     for rgx, replacement in _BMNH_REGEXES:
         text = re.sub(rgx, replacement, text)
