@@ -22,8 +22,7 @@ against.
 Covered:
 
 - [Extant mammals](</c/MCZ_(Mammalogy)>): 328 types
-
-* [Fossil vertebrates](</c/MCZ_(Vertebrate_Paleontology)>): 151 types
+- [Fossil vertebrates](</c/MCZ_(Vertebrate_Paleontology)>): 151 types
 
 Generally high-quality data; only a few discrepancies identified.
 
@@ -49,6 +48,19 @@ searched the BMNH catalog for all specimens listed as part of the
 [Kloss collection](/c/CBK), which apparently largely ended up in London. This is likely
 also true for much of [FMSM](/c/FMSM) and perhaps some additional specimens in
 [RM](c/ZRC).
+
+Switching back to a single collection:
+
+- "BMNH Reptiles 1901.2.3.4"
+- "BMNH Mammals 1901.2.3.4"
+- "BMNH Mammals 123a"
+- "BMNH Amphibians 1901.2.3.4"
+- "BMNH Minor phyla 1901.2.3.4"
+- "BMNH PV R 1234"
+- "BMNH PV M 1234"
+- "BMNH PV A 1234"
+- "BMNH PV OR 1234"
+- "BMNH PV In 1234"
 
 ## CAS (August 2023)
 
@@ -420,3 +432,11 @@ Issues encountered:
   holotype of _Nycticebus borneanus_).
 - Several subfossil forms from the Caribbean were transferred from the mammal collection
   to the vertebrate paleontology collection at some point and received new numbers.
+- The invertebrate zoology department appears to have three different catalogs without a
+  clear indicator as to how the numbers should be distinguished: one for arthropods, one
+  for mollusks, and one for everything else. For now, I refer to these as
+  "USNM:ARTHRO:", "USNM:MOLL:", and "USNM:IZ:". There are apparently also other catalogs
+  (for poriferans and cnidarians?), but they do not appear in my database.
+- Some recent paleontological specimens are not in the online database.
+- Found three cases where my database incorrectly had a UNSM specimen listed as USNM.
+- Specimens that are not physically in the collection are not in the online database.

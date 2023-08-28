@@ -818,6 +818,10 @@ class Name(BaseModel):
         elif tag not in type_tags:
             self.type_tags = type_tags + (tag,)
 
+    @classmethod
+    def with_type_tag(cls, tag_cls: TypeTagCons) -> Iterable[Name]:
+        return cls.select_valid().filter(Name.type_tags.contains(f"[{tag_cls._tag},"))
+
     def has_type_tag(self, tag_cls: TypeTagCons) -> bool:
         tag_id = tag_cls._tag
         for tag in self.get_raw_tags_field("type_tags"):
@@ -2349,7 +2353,7 @@ class TypeTag(adt.ADT):
     Host(name=str, tag=11)  # type: ignore
     # 12 is unused
     # subsequent designation of the type (for a genus)
-    TypeDesignation(source=Article, type=Name, comment=NotRequired[str], tag=13)  # type: ignore
+    TypeDesignation(optional_source=NotRequired[Article], type=Name, comment=NotRequired[str], tag=13)  # type: ignore
     # like the above, but by the Commission (and therefore trumping everything else)
     CommissionTypeDesignation(opinion=Article, type=Name, tag=14)  # type: ignore
     LectotypeDesignation(  # type: ignore
@@ -2418,6 +2422,7 @@ class TypeTag(adt.ADT):
     FormerRepository(repository=Collection, tag=49)  # type: ignore
     ExtraRepository(repository=Collection, tag=50)  # type: ignore
     FutureRepository(repository=Collection, tag=51)  # type: ignore
+    TypeSpecimenLinkFor(url=str, specimen=str, tag=52)  # type: ignore
 
 
 SOURCE_TAGS = (

@@ -3,13 +3,13 @@
 Lint steps for Names.
 
 """
+import enum
 import functools
 import json
 import re
 from collections.abc import Callable, Generator, Iterable, Iterator, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
-from functools import partial
 from typing import Any, TypeVar
 
 import requests
@@ -251,6 +251,14 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
             if not tag.url.startswith(("http://", "https://")):
                 yield f"invalid type specimen URL {tag.url!r}"
             tags.append(TypeTag.TypeSpecimenLink(fix_type_specimen_link(tag.url)))
+        elif isinstance(tag, TypeTag.TypeSpecimenLinkFor):
+            if not tag.url.startswith(("http://", "https://")):
+                yield f"invalid type specimen URL {tag.url!r}"
+            tags.append(
+                TypeTag.TypeSpecimenLinkFor(
+                    fix_type_specimen_link(tag.url), tag.specimen
+                )
+            )
         else:
             tags.append(tag)
         # TODO: for lectotype and subsequent designations, ensure the earliest valid one is used.
@@ -321,105 +329,30 @@ MULTIPLE_ID = 366
 BMNH_MAMMALS_ID = 1471
 BMNH_COLLECTION_ID = 5
 
-# Takes a string, return None if it matches or an error message if it doesn't
-SpecimenValidator = Callable[[str], str | None]
+
+class RepositoryKind(enum.Enum):
+    repository = 1
+    former = 2
+    extra = 3
+    future = 4
 
 
-@dataclass
-class RegexValidator:
-    rgx: re.Pattern[str]
-
-    def __call__(self, text: str) -> str | None:
-        if not self.rgx.fullmatch(text):
-            return f"does not match regex {self.rgx}"
-        return None
-
-
-_AllowAll = RegexValidator(re.compile(r"^.*$"))
-
-
-def _get_specimen_regexes(nam: Name) -> Iterable[SpecimenValidator]:
-    if nam.collection is None:
-        yield _AllowAll
-        return
-    if nam.collection.id == MULTIPLE_ID:
-        for tag in nam.type_tags:
-            if isinstance(tag, TypeTag.Repository):
-                yield _get_regex_from_collection(tag.repository)
-    else:
-        yield _get_regex_from_collection(nam.collection)
-
-
-FOSSIL_CATALOGS = [
-    ("M", "mammal"),
-    ("R", "reptile"),
-    ("A", "bird"),
-    ("E", "?paleoanthropology"),
-    ("OR", "old collection"),
-]
-
-
-def _validate_bmnh(specimen: str, *, allow_fossils: bool = True) -> str | None:
-    if not specimen.startswith("BMNH "):
-        return "BMNH specimen must start with 'BMNH'"
-    specimen = specimen.removeprefix("BMNH ")
-
-    if allow_fossils:
-        # Fossil numbers: BMNH M 1234 for fossil mammals
-        for catalog, label in FOSSIL_CATALOGS:
-            if specimen.startswith(catalog):
-                if not re.fullmatch(catalog + r" \d+[a-z]?", specimen):
-                    return (
-                        f"invalid fossil {label} number (should be of form"
-                        f" {catalog} <number>)"
-                    )
-                return None
-    periods = specimen.count(".")
-
-    # Date-based catalog numbers: BMNH 1901.2.24.3 was cataloged on February 24, 1901
-    if periods == 3:
-        year, month, day, number = specimen.split(".")
-        if not year.isdigit():
-            return f"invalid year {year}"
-        num_year = int(year)
-        if not (1830 <= num_year <= 2100):
-            return f"year {num_year} out of range"
-        try:
-            helpers.parse_date(year, month, day)
-        except ValueError as e:
-            return f"invalid date in catalog number: {e}"
-        if not re.fullmatch(r"\d+([a-z]|bis)?", number):
-            return f"invalid number {number}"
-        return None
-    # Year based catalog numbers: BMNH 1992.123 was cataloged in 1992
-    elif periods == 1:
-        year, number = specimen.split(".")
-        if not year.isdigit():
-            return f"invalid year {year}"
-        num_year = int(year)
-        if not (1830 <= num_year <= 2100):
-            return f"year {num_year} out of range"
-        if not re.fullmatch(r"\d+[a-z]?", number):
-            return f"invalid number {number}"
-        return None
-
-    # Old mammal catalog
-    if re.fullmatch(r"\d+[a-z]", specimen):
-        return None
-    return "invalid BMNH specimen"
-
-
-def _get_regex_from_collection(coll: Collection) -> SpecimenValidator:
-    if coll.id == BMNH_MAMMALS_ID:
-        return partial(_validate_bmnh, allow_fossils=False)
-    for tag in coll.tags:
-        if isinstance(tag, CollectionTag.SpecimenRegex):
-            return RegexValidator(re.compile(tag.regex))
-    if coll.id == BMNH_COLLECTION_ID or (
-        coll.parent is not None and coll.parent.id == BMNH_COLLECTION_ID
-    ):
-        return _validate_bmnh
-    return _AllowAll
+def _get_repositories(nam: Name) -> set[tuple[RepositoryKind, Collection]]:
+    repos = set()
+    if nam.collection is not None and nam.collection.id != MULTIPLE_ID:
+        repos.add((RepositoryKind.repository, nam.collection))
+    repo: Collection
+    for tag in nam.type_tags:
+        match tag:
+            case TypeTag.Repository(repo):
+                repos.add((RepositoryKind.repository, repo))
+            case TypeTag.FormerRepository(repo):
+                repos.add((RepositoryKind.former, repo))
+            case TypeTag.ExtraRepository(repo):
+                repos.add((RepositoryKind.extra, repo))
+            case TypeTag.FutureRepository(repo):
+                repos.add((RepositoryKind.future, repo))
+    return repos
 
 
 @dataclass
@@ -638,10 +571,14 @@ def check_type_specimen(nam: Name, cfg: LintConfig) -> Iterable[str]:
             yield from _check_specimen(spec, nam)
 
 
-def _validate(text: str, validators: Iterable[SpecimenValidator]) -> str | None:
+def _validate_specimen(
+    text: str, repos: set[tuple[RepositoryKind, Collection]], kinds: set[RepositoryKind]
+) -> str | None:
     messages = []
-    for validator in validators:
-        message = validator(text)
+    for kind, repo in repos:
+        if kind not in kinds:
+            continue
+        message = repo.validate_specimen(text)
         if message is None:
             return None
         messages.append(message)
@@ -649,40 +586,34 @@ def _validate(text: str, validators: Iterable[SpecimenValidator]) -> str | None:
 
 
 def _check_specimen(spec: Specimen, nam: Name) -> Iterable[str]:
-    regexes = list(_get_specimen_regexes(nam))
-    if message := _validate(spec.text, regexes):
+    repos = _get_repositories(nam)
+    if message := _validate_specimen(spec.text, repos, {RepositoryKind.repository}):
         yield f"{spec.text!r} does not match: {message}"
     for former in spec.former_texts:
         if former.startswith('"') and former.endswith('"'):
             continue
-        former_regexes = [
-            _get_regex_from_collection(tag.repository)
-            for tag in nam.type_tags
-            if isinstance(tag, TypeTag.FormerRepository)
-        ]
-        if message := _validate(former, former_regexes + regexes):
+        if message := _validate_specimen(
+            former, repos, {RepositoryKind.repository, RepositoryKind.former}
+        ):
             yield (
-                f"former location {former!r} does not match any collection ({message})"
+                f"former specimen reference {former!r} does not match any collection"
+                f" ({message})"
             )
     for future in spec.future_texts:
-        future_regexes = [
-            _get_regex_from_collection(tag.repository)
-            for tag in nam.type_tags
-            if isinstance(tag, TypeTag.FutureRepository)
-        ]
-        if message := _validate(future, future_regexes + regexes):
+        if message := _validate_specimen(
+            future, repos, {RepositoryKind.repository, RepositoryKind.future}
+        ):
             yield (
-                f"future location {future!r} does not match any collection ({message})"
+                f"future specimen reference {future!r} does not match any collection"
+                f" ({message})"
             )
     for extra in spec.extra_texts:
-        extra_regexes = [
-            _get_regex_from_collection(tag.repository)
-            for tag in nam.type_tags
-            if isinstance(tag, TypeTag.ExtraRepository)
-        ]
-        if message := _validate(extra, extra_regexes + regexes):
+        if message := _validate_specimen(
+            extra, repos, {RepositoryKind.repository, RepositoryKind.extra}
+        ):
             yield (
-                f"extra location {extra!r} does not match any collection ({message})"
+                f"extra specimen reference {extra!r} does not match any collection"
+                f" ({message})"
             )
 
 
@@ -764,6 +695,7 @@ def check_general_collection(nam: Name, cfg: LintConfig) -> Iterable[str]:
 @make_linter("type_specimen_link")
 def check_must_have_type_specimen_link(nam: Name, cfg: LintConfig) -> Iterable[str]:
     # TODO: cover multiple, ExtraRepository etc. here
+    # After replacing all TypeSpecimenLink tags. Then we should be able to associate every TypeSpecimenLinkFor tag with some part of the type_specimen text.
     if nam.collection is None or not nam.collection.must_have_specimen_links(nam):
         return
     if nam.type_specimen is None:
@@ -773,7 +705,7 @@ def check_must_have_type_specimen_link(nam: Name, cfg: LintConfig) -> Iterable[s
         for spec in parse_type_specimen(nam.type_specimen)
     )
     num_actual = sum(
-        isinstance(tag, TypeTag.TypeSpecimenLink)
+        isinstance(tag, (TypeTag.TypeSpecimenLink, TypeTag.TypeSpecimenLinkFor))
         and nam.collection is not None
         and nam.collection.is_valid_specimen_link(tag.url)
         for tag in nam.type_tags
@@ -783,6 +715,57 @@ def check_must_have_type_specimen_link(nam: Name, cfg: LintConfig) -> Iterable[s
             f"has {num_actual} type specimen links, but expected at least"
             f" {num_expected}"
         )
+
+
+@make_linter("duplicate_type_specimen_links")
+def check_duplicate_type_specimen_links(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    tags_with_specimens = {
+        tag.url for tag in nam.type_tags if isinstance(tag, TypeTag.TypeSpecimenLinkFor)
+    }
+    if not tags_with_specimens:
+        return
+    new_tags = tuple(
+        tag
+        for tag in nam.type_tags
+        if not isinstance(tag, TypeTag.TypeSpecimenLink)
+        or tag.url not in tags_with_specimens
+    )
+    if nam.type_tags != new_tags:
+        removed = set(nam.type_tags) - set(new_tags)
+        message = f"remove redundant tags: {removed}"
+        if cfg.autofix:
+            print(f"{nam}: {message}")
+            nam.type_tags = new_tags  # type: ignore
+        else:
+            yield message
+
+
+@make_linter("replace_simple_type_specimen_link")
+def replace_simple_type_specimen_link(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    if nam.type_specimen is None:
+        return
+    if "," in nam.type_specimen or "(" in nam.type_specimen:
+        return
+    num_ts_links = sum(
+        isinstance(tag, TypeTag.TypeSpecimenLink) for tag in nam.type_tags
+    )
+    if num_ts_links != 1:
+        return
+    new_tags = tuple(
+        (
+            TypeTag.TypeSpecimenLinkFor(tag.url, nam.type_specimen)
+            if isinstance(tag, TypeTag.TypeSpecimenLink)
+            and nam.type_specimen is not None
+            else tag
+        )
+        for tag in nam.type_tags
+    )
+    message = "replace TypeSpecimenLink tag with TypeSpecimenLinkFor"
+    if cfg.autofix:
+        print(f"{nam}: {message}")
+        nam.type_tags = new_tags  # type: ignore
+    else:
+        yield message
 
 
 def clean_up_bmnh_type(text: str) -> str:
@@ -1623,7 +1606,7 @@ def extract_date_from_structured_quotes(nam: Name, cfg: LintConfig) -> Iterable[
         NameComment.kind == CommentKind.structured_quote,
     ):
         if any(
-            comment.source.name in tag.comment
+            tag.comment is not None and comment.source.name in tag.comment
             for tag in nam.original_citation.get_tags(
                 nam.original_citation.tags, ArticleTag.PublicationDate
             )

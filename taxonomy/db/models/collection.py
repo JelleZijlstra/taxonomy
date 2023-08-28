@@ -10,7 +10,7 @@ from typing_extensions import Self
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
 
 from ... import adt, events, getinput
-from .. import constants, models
+from .. import constants, helpers, models
 from .article import Article
 from .base import ADTField, BaseModel, LintConfig, get_tag_based_derived_field
 from .region import Region
@@ -236,6 +236,10 @@ class Collection(BaseModel):
     def is_invalid(self) -> bool:
         return self.removed
 
+    @classmethod
+    def add_validity_check(cls, query: Any) -> Any:
+        return query.filter(cls.removed == False)
+
     def must_use_children(self) -> bool:
         return any(tag is CollectionTag.MustUseChildrenCollection for tag in self.tags)
 
@@ -272,6 +276,23 @@ class Collection(BaseModel):
                 if isinstance(tag, models.name.TypeTag.TypeSpecimenLink):
                     print(tag.url)
 
+    def validate_specimen(self, text: str) -> str | None:
+        if self.id == BMNH_MAMMALS_ID:
+            return _validate_bmnh(text, allow_fossils=False)
+        for tag in self.tags:
+            if isinstance(tag, CollectionTag.SpecimenRegex):
+                if not re.fullmatch(tag.regex, text):
+                    return f"does not match regex {tag.regex}"
+                return None
+        if self.id == BMNH_COLLECTION_ID or (
+            self.parent is not None and self.parent.id == BMNH_COLLECTION_ID
+        ):
+            return _validate_bmnh(text)
+        return None
+
+    def is_valid_specimen(self, text: str) -> bool:
+        return self.validate_specimen(text) is None
+
     def get_adt_callbacks(self) -> getinput.CallbackMap:
         return {
             **super().get_adt_callbacks(),
@@ -280,7 +301,92 @@ class Collection(BaseModel):
             ),
             "lint_names": lambda: models.Name.lint_all(query=self.type_specimens),
             "print_specimen_links": self.print_specimen_links,
+            "merge": self.merge,
         }
+
+
+MULTIPLE_ID = 366
+BMNH_MAMMALS_ID = 1471
+BMNH_COLLECTION_ID = 5
+
+
+FOSSIL_CATALOGS = [
+    ("M", "mammal"),
+    ("R", "reptile"),
+    ("A", "bird"),
+    ("E", "?paleoanthropology"),
+    ("OR", "old collection"),
+]
+
+
+def _validate_bmnh(specimen: str, *, allow_fossils: bool = True) -> str | None:
+    """We allow the following formats:
+
+    - "BMNH Reptiles 1901.2.3.4"
+    - "BMNH Mammals 1901.2.3.4"
+    - "BMNH Mammals 123a"
+    - "BMNH Amphibians 1901.2.3.4"
+    - "BMNH Minor 1901.2.3.4"
+    - "BMNH PV R 1234"
+    - "BMNH PV M 1234"
+    - "BMNH PV A 1234"
+    - "BMNH PV OR 1234"
+    - "BMNH PV E 1234"
+
+    """
+    if not specimen.startswith("BMNH "):
+        return "BMNH specimen must start with 'BMNH'"
+    specimen = specimen.removeprefix("BMNH ")
+    if " " not in specimen:
+        return "BMNH specimen lacking sub-collection tag"
+    sub_collection, specimen = specimen.split(" ", maxsplit=1)
+
+    if sub_collection == "PV":
+        # Fossil numbers: BMNH M 1234 for fossil mammals
+        for catalog, label in FOSSIL_CATALOGS:
+            if specimen.startswith(catalog):
+                if not re.fullmatch(catalog + r" \d+[a-z]?", specimen):
+                    return (
+                        f"invalid fossil {label} number (should be of form"
+                        f" {catalog} <number>)"
+                    )
+                return None
+    elif sub_collection not in ("Reptiles", "Mammals", "Amphibians", "Minor"):
+        return f"Invalid sub-collection tag: {sub_collection!r}"
+
+    periods = specimen.count(".")
+
+    # Date-based catalog numbers: BMNH 1901.2.24.3 was cataloged on February 24, 1901
+    if periods == 3:
+        year, month, day, number = specimen.split(".")
+        if not year.isdigit():
+            return f"invalid year {year}"
+        num_year = int(year)
+        if not (1830 <= num_year <= 2100):
+            return f"year {num_year} out of range"
+        try:
+            helpers.parse_date(year, month, day)
+        except ValueError as e:
+            return f"invalid date in catalog number: {e}"
+        if not re.fullmatch(r"\d+([a-z]|bis)?", number):
+            return f"invalid number {number}"
+        return None
+    # Year based catalog numbers: BMNH 1992.123 was cataloged in 1992
+    elif periods == 1:
+        year, number = specimen.split(".")
+        if not year.isdigit():
+            return f"invalid year {year}"
+        num_year = int(year)
+        if not (1830 <= num_year <= 2100):
+            return f"year {num_year} out of range"
+        if not re.fullmatch(r"\d+[a-z]?", number):
+            return f"invalid number {number}"
+        return None
+
+    # Old mammal catalog
+    if re.fullmatch(r"\d+[a-z]", specimen):
+        return None
+    return "invalid BMNH specimen"
 
 
 class CollectionTag(adt.ADT):

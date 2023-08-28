@@ -2652,7 +2652,22 @@ def rename_type_specimens() -> None:
         print(f"{nam.type_specimen!r} -> {new_type_specimen!r} ({nam})")
         replacements += 1
         if not dry_run:
+            old_type_specimen = nam.type_specimen
             nam.type_specimen = new_type_specimen
+
+            def mapper(
+                tag: TypeTag,
+                old_type_specimen: str = old_type_specimen,
+                new_type_specimen: str = new_type_specimen,
+            ) -> TypeTag | None:
+                if (
+                    isinstance(tag, TypeTag.TypeSpecimenLinkFor)
+                    and tag.specimen == old_type_specimen
+                ):
+                    return TypeTag.TypeSpecimenLinkFor(tag.url, new_type_specimen)
+                return tag
+
+            nam.map_type_tags(mapper)
     print(f"{replacements} replacements made")
 
 

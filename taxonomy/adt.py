@@ -199,6 +199,7 @@ class _ADTMeta(type):
                 init = new_ns["__init__"]
                 init.__annotations__.update(annotations)
                 member_ns["__init__"] = init
+                member_ns["__match_args__"] = tuple(annotations)
             member_cls: Any = functools.total_ordering(
                 type(member.name, (new_cls,), member_ns)
             )
@@ -272,7 +273,11 @@ class ADT(_ADTBase, metaclass=_ADTMeta):
                         args.append(None)
                     else:
                         args.append(arg_type.unserialize(serialized))
-                elif isinstance(arg_type, type) and issubclass(arg_type, enum.IntEnum):
+                elif (
+                    serialized is not None
+                    and isinstance(arg_type, type)
+                    and issubclass(arg_type, enum.IntEnum)
+                ):
                     args.append(arg_type(serialized))
                 else:
                     args.append(serialized)

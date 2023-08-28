@@ -897,7 +897,7 @@ def clean_string(text: str, *, clean_whitespace: bool = True) -> str:
     text = text.replace("\U0010fc00", "=")
     text = text.replace("\uf8e7", "\N{EM DASH}")
     text = text.replace("\U0010fc94", "≈")
-    text = re.sub(r" -+ ", " \N{EN DASH} ", text)
+    text = re.sub(r" -+(?= )", " \N{EN DASH}", text)
     text = text.replace("+/-", "±")
     text = text.replace("''", '"')
     text = text.replace(" :- ", ": \N{EN DASH} ")
