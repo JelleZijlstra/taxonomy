@@ -8,7 +8,7 @@ from collections.abc import Iterable
 from typing import IO
 
 from taxonomy import getinput
-from taxonomy.db import constants
+from taxonomy.db import constants, models
 from taxonomy.db.models import Article, Collection, Name, TypeTag, name_lint
 
 from .lib import DATA_DIR
@@ -218,7 +218,7 @@ def handle_cannot_find(
     if nam.collection is not None or nam.type_specimen is not None:
         handle_interactively(nam, row, cat_num, exclude_list)
         return "matched with existing type"
-    if name_lint._validate_bmnh(cat_num) is not None:
+    if models.collection._validate_bmnh(cat_num) is not None:
         handle_interactively(nam, row, cat_num, exclude_list)
         return "matched but number is invalid"
     if nam.numeric_year() < 1840:
