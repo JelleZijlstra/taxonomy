@@ -526,21 +526,21 @@ def _parse_single_specimen(text: str) -> Specimen | SpecialSpecimen:
             return SpecialSpecimen(
                 text, end.removesuffix(")"), comment=comment, former_texts=formers
             )
-        elif text.endswith("!)"):
-            if comment is not None:
-                raise ValueError(f"cannot have two comments in {text}")
+        elif " (" in text:
             text, end = text.rsplit(" (", maxsplit=1)
-            comment = end.removesuffix("!)")
-            continue
-        elif " (= " in text:
-            text, end = text.rsplit(" (= ", maxsplit=1)
-            formers.append(end.removesuffix(")"))
-        elif " (=> " in text:
-            text, end = text.rsplit(" (=> ", maxsplit=1)
-            futures.append(end.removesuffix(")"))
-        elif " (+ " in text:
-            text, end = text.rsplit(" (+ ", maxsplit=1)
-            extras.append(end.removesuffix(")"))
+            tail = end.removesuffix(")")
+            if tail.endswith("!"):
+                if comment is not None:
+                    raise ValueError(f"cannot have two comments in {text}")
+                comment = tail.rstrip("!")
+            elif tail.startswith("=>"):
+                futures.append(tail.removeprefix("=>").strip())
+            elif tail.startswith("+"):
+                extras.append(tail.removeprefix("+").strip())
+            elif tail.startswith("="):
+                formers.append(tail.removeprefix("=").strip())
+            else:
+                raise ValueError(f"invalid parenthesized text in {text!r}")
         else:
             raise ValueError(f"invalid parenthesized text in {text!r}")
     return Specimen(
