@@ -15,8 +15,8 @@ Precambrian fossils into the database).
 
 To cite this project, use:
 
-- Zijlstra, J.S. 2023. Hesperomys Project (Version 23.8.0) [Data set]. Zenodo.
-  [doi:10.5281/zenodo.8260038](https://doi.org/10.5281/zenodo.8260038)
+- Zijlstra, J.S. 2023. Hesperomys Project (Version 23.8.1) [Data set]. Zenodo.
+  [doi:10.5281/zenodo.8298623](https://doi.org/10.5281/zenodo.8298623)
 
 # Size
 
