@@ -273,7 +273,13 @@ class Collection(BaseModel):
     def print_specimen_links(self) -> None:
         for nam in self.type_specimens:
             for tag in nam.type_tags:
-                if isinstance(tag, models.name.TypeTag.TypeSpecimenLink):
+                if isinstance(
+                    tag,
+                    (
+                        models.name.TypeTag.TypeSpecimenLink,
+                        models.name.TypeTag.TypeSpecimenLinkFor,
+                    ),
+                ):
                     print(tag.url)
 
     def validate_specimen(self, text: str) -> str | None:

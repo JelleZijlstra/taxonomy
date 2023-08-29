@@ -768,6 +768,20 @@ def replace_simple_type_specimen_link(nam: Name, cfg: LintConfig) -> Iterable[st
         yield message
 
 
+def _parse_specimen_detail(text: str) -> dict[str, str] | None:
+    match = re.fullmatch(r"(.*) \[at (https?://.*)\]", text)
+    if match is None:
+        return None
+    rest = match.group(1)
+    url = match.group(2)
+    out = {"at": url}
+    for piece in rest.split(" ... "):
+        match = re.fullmatch(r"\[([^\]]+)\] (.*)", piece)
+        if match:
+            out[match.group(1)] = match.group(2)
+    return out
+
+
 @make_linter("replace_type_specimen_link")
 def replace_type_specimen_link(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.type_specimen is None:
@@ -778,33 +792,37 @@ def replace_type_specimen_link(nam: Name, cfg: LintConfig) -> Iterable[str]:
     for tag in nam.type_tags:
         if not isinstance(tag, TypeTag.SpecimenDetail):
             continue
-        if match := re.fullmatch(
-            r"\[catalogNumber\] (?P<catno>.*?) \.\.\. .* \[at"
-            r" (?P<url>https?://[^\]]+)\]",
-            tag.text,
-        ):
-            url = match.group("url")
-            catno = match.group("catno")
-        elif match := re.fullmatch(
-            r"\[institutioncode\] (?P<inst>[A-Z]+) .* \[catalognumber\] (?P<catno>.*?)"
-            r" \.\.\. .* \[at (?P<url>https?://[^\]]+)\]",
-            tag.text,
-        ):
-            url = match.group("url")
+        parsed = _parse_specimen_detail(tag.text)
+        if not parsed:
+            continue
+        url = fix_type_specimen_link(parsed["at"])
+        if "data.nhm.ac.uk" in url:
+            catno = parsed["catalogNumber"]
             catno = (
-                f"{match.group('inst')} {match.group('catno')}".replace(
-                    "UCMP ", "UCMP:V:"
-                )
-                .replace("YPM YPM ", "YPM ")
+                "BMNH "
+                + catno.replace("NHMUK", "")
+                .replace("ZD", "")
+                .replace("GMCM", "")
+                .replace("GERM", "")
+                .strip()
+            )
+            catno = clean_up_bmnh_type(catno).replace("BMNH ", "BMNH Mammals ")
+            catno = re.sub(r"\.\[[a-zA-Z]\]$", "", catno)
+            catno = re.sub(r"\.([a-z])$", r"\1", catno)
+        elif "coldb.mnhn.fr" in url:
+            code = url.split("/")[-2].upper()
+            catno = f"MNHN-{code}-{parsed['catalogNumber']}"
+        elif "institutioncode" in parsed and "catalognumber" in parsed:
+            catno = f"{parsed['institutioncode']} {parsed['catalognumber']}"
+            catno = (
+                catno.replace("UCMP ", "UCMP:V:")
                 .replace("FMNH ", "FMNH Mammals ")
+                .replace("UCLA ", "UCLA Mammals ")
                 .replace("UF ", "UF:VP:")
             )
+            catno = re.sub(r"^([A-Z]+) \1", r"\1", catno)
         else:
             continue
-        url = fix_type_specimen_link(url)
-        if "data.nhm.ac.uk" in url:
-            catno = "BMNH " + catno.replace("NHMUK", "").replace("ZD", "").strip()
-            catno = clean_up_bmnh_type(catno).replace("BMNH ", "BMNH Mammals ")
         from_spec_details[url] = catno
 
     new_tags = []
@@ -840,7 +858,11 @@ def replace_type_specimen_link(nam: Name, cfg: LintConfig) -> Iterable[str]:
             messages.append(f"{tag} -> {new_tag}")
         else:
             if specimen is not None:
-                print(f"Reject {specimen!r} (not in {possible_types}, URL {tag.url})")
+                print(
+                    f"Reject {specimen!r} (not in {possible_types} for {nam}, URL"
+                    f" {tag.url})"
+                )
+            yield f"replace TypeSpecimenLink tag: {tag}"
             new_tag = tag
         new_tags.append(new_tag)
 

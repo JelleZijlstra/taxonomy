@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from functools import cache
+from typing import NotRequired
 
 from peewee import CharField, ForeignKeyField
 
@@ -154,7 +155,7 @@ class IssueDate(BaseModel):
 
 
 class IssueDateTag(ADT):
-    CommentIssueDate(text=str, source=Article, tag=1)  # type: ignore
+    CommentIssueDate(text=str, optional_source=NotRequired[Article], tag=1)  # type: ignore
 
 
 @cache
