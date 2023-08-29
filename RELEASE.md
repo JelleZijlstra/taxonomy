@@ -11,6 +11,7 @@
   (`export_collections("collection.csv"); export_names("name.csv"); export_taxa("taxon.csv")`)
 - Create a new Zenodo release
 - Add the new DOI to `home.md` and `release-notes.md`
-- Run `aws/deploy.py deploy <version>`. This will tag the release in Git and push to
-  GitHub, as well as to hesperomys.com.
+- Run `aws/deploy.py deploy <version>` (where `version` is e.g. "23.8.0", not
+  "v23.8.0"). This will tag the release in Git and push to GitHub, as well as to
+  hesperomys.com.
 - Verify that the website is still working.
