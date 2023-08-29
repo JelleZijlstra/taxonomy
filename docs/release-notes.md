@@ -8,7 +8,10 @@ exports released on Zenodo.
 
 - Database
   - Add numerous additional links to type specimen catalog entries, primarily for US
-    collections found in [VertNet](http://www.vertnet.org/index.html).
+    collections found in [VertNet](http://www.vertnet.org/index.html). About 37% of
+    names in the database with type specimens now have a link to an online collection
+    database.
+  - Add and update some additional type specimens.
 - Backend
   - Add support for "extra" and "future" catalog numbers on type specimens.
   - Require that type specimen links from a particular collection follow a fixed prefix

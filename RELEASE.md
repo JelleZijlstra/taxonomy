@@ -5,6 +5,8 @@
   (`compute_derived_fields(); warm_all_caches(); write_derived_data()`)
 - Run `generate_summary_paragraph()` and update the "Size" section in `docs/home.md`
 - Review the release notes in `docs/release-notes.md`
+- Commit your changes. Make sure there are no untracked files, as `deploy.py` will fail
+  if there are any.
 - Generate export files
   (`export_collections("collection.csv"); export_names("name.csv"); export_taxa("taxon.csv")`)
 - Create a new Zenodo release
