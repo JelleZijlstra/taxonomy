@@ -4,6 +4,7 @@ Lint steps for Articles.
 
 """
 
+import bisect
 import functools
 import re
 import unicodedata
@@ -288,6 +289,51 @@ def check_precise_date(art: Article, cfg: LintConfig) -> Iterable[str]:
         return
     if art.year is not None and "-" not in art.year:
         yield f"is in {art.citation_group} but has imprecise date {art.year}"
+
+
+@make_linter("infer_precise_date")
+def infer_precise_date(art: Article, cfg: LintConfig) -> Iterable[str]:
+    if (
+        art.citation_group is None
+        or art.volume is None
+        or art.start_page is None
+        or art.year is None
+        or not art.start_page.isnumeric()
+        or "-" in art.year
+    ):
+        return
+    # If there is a DOI, we can get more reliable data
+    if art.doi is not None:
+        return
+    siblings = [
+        art
+        for art in Article.select_valid().filter(
+            Article.citation_group == art.citation_group,
+            Article.series == art.series,
+            Article.volume == art.volume,
+            Article.year.contains("-"),
+        )
+        if art.start_page.isnumeric()
+    ]
+    if len(siblings) <= 1:
+        return
+    siblings = sorted(siblings, key=lambda art: int(art.start_page))
+    index = bisect.bisect_left(
+        siblings, int(art.start_page), key=lambda art: int(art.start_page)
+    )
+    if index == 0 or index == len(siblings):
+        return
+    if siblings[index - 1].year != siblings[index].year:
+        return
+    message = (
+        f"inferred publication date of {siblings[index].year} based on position between"
+        f" {siblings[index - 1]!r} and {siblings[index]!r}"
+    )
+    if cfg.autofix:
+        print(f"{art}: {message}")
+        art.year = siblings[index].year
+    else:
+        yield message
 
 
 _JSTOR_URL_PREFIX = "http://www.jstor.org/stable/"
