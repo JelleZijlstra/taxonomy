@@ -5,6 +5,7 @@ Match up data with NOW.
 Needs an export file from NOW containing its locality and species data.
 
 """
+
 import csv
 import functools
 from typing import TypedDict

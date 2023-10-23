@@ -6,6 +6,7 @@ Needs an import file "nowlocs.tsv", to be downloaded from
 http://pantodon.science.helsinki.fi/now/locality_list.php
 
 """
+
 import csv
 from pathlib import Path
 

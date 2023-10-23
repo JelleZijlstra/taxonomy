@@ -5,6 +5,7 @@ r"""TODO:
 - Ignore everything else (no attempt to understand synonymy)
 
 """
+
 import re
 from collections.abc import Iterable
 

@@ -3,6 +3,7 @@
 System for ensuring that names with original citations have their data filled out.
 
 """
+
 from collections.abc import Iterable, Sequence
 
 import peewee

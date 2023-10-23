@@ -3,6 +3,7 @@
 Lint steps for Names.
 
 """
+
 import enum
 import functools
 import json

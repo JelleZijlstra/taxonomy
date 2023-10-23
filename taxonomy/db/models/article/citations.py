@@ -32,8 +32,9 @@ def format_authors(
     art: Article,
     separator: str = ";",  # Text between two authors
     lastSeparator: str | None = None,  # Text between last two authors
-    separatorWithTwoAuthors: None
-    | str = None,  # Text between authors if there are only two
+    separatorWithTwoAuthors: (
+        None | str
+    ) = None,  # Text between authors if there are only two
     capitalizeNames: bool = False,  # Whether to capitalize names
     spaceInitials: bool = False,  # Whether to space initials
     initialsBeforeName: bool = False,  # Whether to place initials before the surname

@@ -5,6 +5,7 @@ Cache for arbitrary external data.
 Motivating use case: caching CrossRef API responses.
 
 """
+
 import datetime
 import enum
 import functools

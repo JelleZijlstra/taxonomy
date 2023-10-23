@@ -3,6 +3,7 @@
 Lint steps for Articles.
 
 """
+
 import functools
 import re
 import unicodedata
