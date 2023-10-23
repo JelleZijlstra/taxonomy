@@ -5,6 +5,7 @@ Provides functions for things like editing long strings and creating menus.
 Deprecated; prefer getinput.py for new code.
 
 """
+
 import functools
 from collections.abc import Callable, Iterable
 from typing import Any

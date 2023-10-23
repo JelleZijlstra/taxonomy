@@ -3,6 +3,7 @@
 Definitions of various models.
 
 """
+
 __all__ = [
     "Article",
     "ArticleComment",

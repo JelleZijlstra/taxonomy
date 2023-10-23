@@ -5,6 +5,7 @@ Script to concatenate a series of PDFs into one.
 Requires GhostScript to be installed.
 
 """
+
 import argparse
 import shlex
 import subprocess

@@ -5,6 +5,7 @@ File that gets loaded on startup of the taxonomy shell.
 Contents overlap with shell.py, which defines "commands".
 
 """
+
 import re
 from collections import defaultdict
 from collections.abc import Container, Iterable

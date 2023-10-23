@@ -3,6 +3,7 @@
 Setting the path on a newly added file.
 
 """
+
 from collections.abc import Sequence
 from itertools import islice
 

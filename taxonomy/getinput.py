@@ -3,6 +3,7 @@
 Helpers for retrieving user input.
 
 """
+
 import difflib
 import enum
 import functools

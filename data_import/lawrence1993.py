@@ -7,6 +7,7 @@ Assumes there is a file "lawrence1993.txt" in the data/ directory with the OCR t
 the paper.
 
 """
+
 import enum
 import json
 import re
