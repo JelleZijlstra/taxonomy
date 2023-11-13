@@ -367,9 +367,9 @@ def add_new_file(file: LsFile) -> bool:
     if not determine_path(article):
         print("Unable to determine folder")
         return False
-    subprocess.check_call(
-        ["mv", "-n", str(_options.new_path / file.name), str(article.get_path())]
-    )
+    subprocess.check_call([
+        "mv", "-n", str(_options.new_path / file.name), str(article.get_path())
+    ])
     add_data_for_new_file(article)
     return True
 
@@ -484,9 +484,9 @@ def burst(lsfile: LsFile) -> bool:
         raise uitools.EndOfInput("burst")
 
     def continuer(cmd: str, data: object) -> bool:
-        subprocess.check_call(
-            ["mv", "-n", str(full_path), str(_options.burst_path / "Old" / lsfile.name)]
-        )
+        subprocess.check_call([
+            "mv", "-n", str(full_path), str(_options.burst_path / "Old" / lsfile.name)
+        ])
         if full_path.exists():
             print("File still exists: oldPath")
             target = _options.burst_path / "Old" / f"{time.time()}{lsfile.name}"
@@ -502,19 +502,17 @@ def burst(lsfile: LsFile) -> bool:
         )
         start, end = page_range.split("-")
         output_path = _options.new_path / filename
-        subprocess.check_call(
-            [
-                "gs",
-                "-dBATCH",
-                "-dNOPAUSE",
-                "-q",
-                "-sDEVICE=pdfwrite",
-                f"-dFirstPage={start}",
-                f"-dLastPage={end}",
-                f"-sOUTPUTFILE={output_path}",
-                str(full_path),
-            ]
-        )
+        subprocess.check_call([
+            "gs",
+            "-dBATCH",
+            "-dNOPAUSE",
+            "-q",
+            "-sDEVICE=pdfwrite",
+            f"-dFirstPage={start}",
+            f"-dLastPage={end}",
+            f"-sOUTPUTFILE={output_path}",
+            str(full_path),
+        ])
         print(f"Split off file {filename}")
         add_new_file(LsFile(filename))
         return True
