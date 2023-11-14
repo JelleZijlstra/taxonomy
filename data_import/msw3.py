@@ -76,16 +76,14 @@ def main(argv: list[str]) -> DataT:
     names = lib.translate_type_locality(names, quiet=True)
     names = lib.associate_names(
         names,
-        lib.NameConfig(
-            {
-                "De Winton": "de Winton",
-                "von Lehmann": "Lehmann",
-                "Cockrum, Vaughn & Vaughn": "Cockrum, Vaughan & Vaughan",
-                "Dalebout et al.": "Dalebout, Mead, Baker, Baker & Van Helden",
-                "Von Haast": "von Haast",
-                "Zaglossus bruijni": "Tachyglossus bruijnii",
-            }
-        ),
+        lib.NameConfig({
+            "De Winton": "de Winton",
+            "von Lehmann": "Lehmann",
+            "Cockrum, Vaughn & Vaughn": "Cockrum, Vaughan & Vaughan",
+            "Dalebout et al.": "Dalebout, Mead, Baker, Baker & Van Helden",
+            "Von Haast": "von Haast",
+            "Zaglossus bruijni": "Tachyglossus bruijnii",
+        }),
         name_field="valid_name",
         quiet=True,
         max_distance=2,

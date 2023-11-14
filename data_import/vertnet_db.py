@@ -730,7 +730,24 @@ INCLUDED_CODES = {"UMZC", "UTEP", "USNM"}
 
 def _get_cat_num(row: Row) -> str:
     match row["institutioncode"]:
-        case "YPM" | "CHAS" | "DMNS" | "MSB" | "MVZ" | "NMR" | "NRM" | "NSMT" | "O" | "RCS" | "RBINS" | "ZIN" | "ZMMU" | "UAM" | "UCM" | "UTEP":
+        case (
+            "YPM"
+            | "CHAS"
+            | "DMNS"
+            | "MSB"
+            | "MVZ"
+            | "NMR"
+            | "NRM"
+            | "NSMT"
+            | "O"
+            | "RCS"
+            | "RBINS"
+            | "ZIN"
+            | "ZMMU"
+            | "UAM"
+            | "UCM"
+            | "UTEP"
+        ):
             return row["catalognumber"]
         case "AMNH" | "UMZC":
             return f"{row['institutioncode']} {row['catalognumber']}"

@@ -52,14 +52,12 @@ def make_app(build_root: str | None = None) -> web.Application:
 
     # Delegate everything else to React
     react_handler = make_static_handler("index.html", "text/html", hesperomys_dir)
-    app.add_routes(
-        [
-            web.get("/{part1}/{part2}/{part3}", react_handler),
-            web.get("/{part1}/{part2}", react_handler),
-            web.get("/{part1}", react_handler),
-            web.get("/", react_handler),
-        ]
-    )
+    app.add_routes([
+        web.get("/{part1}/{part2}/{part3}", react_handler),
+        web.get("/{part1}/{part2}", react_handler),
+        web.get("/{part1}", react_handler),
+        web.get("/", react_handler),
+    ])
     # invariance is too strict here
     app.on_response_prepare.append(on_prepare)  # type: ignore
 

@@ -193,12 +193,10 @@ def build_graphene_field(
                 else:
                     graphene_cls = build_adt_member(adt_cls, type(adt))
                     out.append(
-                        graphene_cls(
-                            **{
-                                key: translate_adt_arg(value, key)
-                                for key, value in adt.__dict__.items()
-                            }
-                        )
+                        graphene_cls(**{
+                            key: translate_adt_arg(value, key)
+                            for key, value in adt.__dict__.items()
+                        })
                     )
             return out
 

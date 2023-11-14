@@ -1756,13 +1756,11 @@ def most_common_unchecked_names(
             if max_num_names is not None:
                 name_counter[person.family_name] += 1
     if max_num_names is not None:
-        counter = Counter(
-            {
-                family_name: count
-                for family_name, count in counter.items()
-                if name_counter[family_name] <= max_num_names
-            }
-        )
+        counter = Counter({
+            family_name: count
+            for family_name, count in counter.items()
+            if name_counter[family_name] <= max_num_names
+        })
     for value, count in counter.most_common(num_to_display):
         print(value, count)
     return counter
