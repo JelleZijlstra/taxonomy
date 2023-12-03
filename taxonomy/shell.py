@@ -2693,6 +2693,17 @@ def generate_summary_paragraph() -> str:
     return template
 
 
+@command
+def check_wikipedia_links(path: str) -> None:
+    url = f"https://en.wikipedia.org/w/index.php?title={path}&action=raw"
+    data = requests.get(url).text
+    for match in re.finditer(r"''\[\[([A-Za-z ]+)\]\]''", data):
+        name = match.group(1)
+        nams = list(Name.select_valid().filter(Name.corrected_original_name == name))
+        if not nams:
+            print(name)
+
+
 def run_shell() -> None:
     # GC does bad things on my current setup for some reason
     gc.disable()
