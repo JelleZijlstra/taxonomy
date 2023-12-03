@@ -10,6 +10,7 @@ from peewee import CharField, ForeignKeyField, IntegerField, TextField
 
 from ... import adt, events, getinput
 from .base import ADTField, BaseModel, LintConfig
+from .location import Location
 from .region import Region
 from .taxon import Taxon
 
@@ -22,6 +23,7 @@ class Specimen(BaseModel):
 
     taxon = ForeignKeyField(Taxon)
     region = ForeignKeyField(Region)
+    location = ForeignKeyField(Location, null=True)
     taxon_text = CharField()
     location_text = CharField()
     date = CharField()
@@ -46,6 +48,9 @@ class Specimen(BaseModel):
         region = Region.getter(None).get_one("region> ")
         if region is None:
             return None
+        location = Location.getter(None).get_one("location> ")
+        if location is None:
+            return None
         description = Specimen.getter("description").get_one_key("description> ")
         if description is None:
             return None
@@ -58,6 +63,7 @@ class Specimen(BaseModel):
             taxon=taxon,
             location_text=location_text,
             region=region,
+            location=location,
             date=date,
             description=description,
             link=link,
@@ -136,6 +142,26 @@ class Specimen(BaseModel):
             for taxon, count in sorted(group.items()):
                 print(f"{count} {taxon}")
 
+    @classmethod
+    def location_report(cls) -> None:
+        by_loc: dict[str, list[Specimen]] = defaultdict(list)
+        for spec in cls.select_valid():
+            by_loc[spec.location].append(spec)
+        for loc, specs in sorted(by_loc.items(), key=lambda p: len(p[1])):
+            counts: dict[str, int] = defaultdict(int)
+            for spec in specs:
+                for tag in spec.tags:
+                    if isinstance(tag, SpecimenTag.TaxonCount):
+                        counts[tag.taxon] += tag.count
+            total = sum(counts.values())
+            if total < 5:
+                continue
+            getinput.print_header(f"{loc} ({len(specs)} lots, {total} individuals)")
+            for taxon, count in sorted(counts.items()):
+                if count < 3:
+                    continue
+                print(f"{count} {taxon} ({count/total*100:.02f}%)")
+
     def __str__(self) -> str:
         return f"JSZ#{self.id}"
 
@@ -186,6 +212,12 @@ class KindOfFind(enum.IntEnum):
     professional = 3
 
 
+class BoxType(enum.IntEnum):
+    default = 1
+    separate = 2
+
+
 class SpecimenTag(adt.ADT):
     TaxonCount(count=int, taxon=str, tag=1)  # type: ignore
     FindKind(kind=KindOfFind, tag=2)  # type: ignore
+    Box(type=BoxType, taxon=str, description=str, tag=3)  # type: ignore
