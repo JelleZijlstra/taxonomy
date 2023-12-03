@@ -10,7 +10,8 @@ import wikitextparser
 
 from taxonomy import getinput
 from taxonomy.db import helpers
-from taxonomy.db.models import Article
+from taxonomy.db.models import Article, CitationGroup
+from taxonomy.shell import cg_recent_report
 
 CACHE_DIR = Path(__file__).parent / "wikicache"
 EXCLUDED_HEADERS = {
@@ -189,6 +190,20 @@ def process_article(*names: str, clear_caches: bool = False) -> None:
         handle_template(template)
 
 
+def run_cg_recent_report(template: Template) -> None:
+    cg = None
+    if "journal" in template.args:
+        try:
+            cg = (
+                CitationGroup.select_valid()
+                .filter(CitationGroup.name == template.args["journal"])
+                .get()
+            )
+        except CitationGroup.DoesNotExist:
+            pass
+    cg_recent_report(cg)
+
+
 def handle_template(template: Template) -> None:
     print(template, flush=True)
     if "journal" in template.args:
@@ -207,6 +222,8 @@ def handle_template(template: Template) -> None:
         "scihub",
         "p",
         "print",
+        "c",
+        "cg_recent_report",
     ]
     while True:
         command = getinput.get_with_completion(
@@ -229,3 +246,6 @@ def handle_template(template: Template) -> None:
         elif command in ("p", "print"):
             for key, value in sorted(template.args.items()):
                 print(f"{key}: {value}", flush=True)
+        elif command in ("c", "cg_recent_report"):
+            run_cg_recent_report(template)
+            print(template, flush=True)
