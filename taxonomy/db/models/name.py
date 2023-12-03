@@ -2423,6 +2423,7 @@ class TypeTag(adt.ADT):
     ExtraRepository(repository=Collection, tag=50)  # type: ignore
     FutureRepository(repository=Collection, tag=51)  # type: ignore
     TypeSpecimenLinkFor(url=str, specimen=str, tag=52)  # type: ignore
+    PhyloCodeNumber(number=int, tag=53)  # type: ignore
 
 
 SOURCE_TAGS = (
