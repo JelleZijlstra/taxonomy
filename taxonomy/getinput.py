@@ -191,10 +191,14 @@ class _Completer(prompt_toolkit.completion.Completer):
 
 class _CallbackCompleter(prompt_toolkit.completion.Completer):
     def __init__(
-        self, strings: Iterable[str], lazy_strings: Callable[[], Iterable[str]]
+        self,
+        strings: Iterable[str],
+        lazy_strings: Callable[[], Iterable[str]],
+        max_completions: int = 100,
     ) -> None:
         self.strings = sorted(strings)
         self.lazy_strings = lazy_strings
+        self.max_completions = max_completions
 
     def get_completions(
         self,
@@ -203,16 +207,23 @@ class _CallbackCompleter(prompt_toolkit.completion.Completer):
     ) -> Iterable[prompt_toolkit.completion.Completion]:
         # This might be faster with a prefix tree but I'm lazy.
         text = document.text
-        strings = [
-            string[len(text) :] for string in self.strings if string.startswith(text)
-        ]
-        lazy_strings = [
-            string[len(text) :]
-            for string in self.lazy_strings()
-            if string.startswith(text)
-        ]
-        for s in sorted([*strings, *lazy_strings]):
-            yield prompt_toolkit.completion.Completion(s)
+        for s in sorted(self._get_unsorted_completions(text)):
+            yield prompt_toolkit.completion.Completion(s[len(text) :])
+
+    def _get_unsorted_completions(self, query: str) -> Iterable[str]:
+        num_yielded = 0
+        for string in self.strings:
+            if string.startswith(query):
+                yield string
+                num_yielded += 1
+                if num_yielded >= self.max_completions:
+                    return
+        for string in self.lazy_strings():
+            if string.startswith(query):
+                yield string
+                num_yielded += 1
+                if num_yielded >= self.max_completions:
+                    return
 
 
 def get_with_lazy_completion(
