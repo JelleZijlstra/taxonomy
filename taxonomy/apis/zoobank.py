@@ -60,7 +60,12 @@ def get_zoobank_data_for_act(act: str) -> list[ZooBankData]:
 
 
 def get_zoobank_data(original_name: str) -> list[ZooBankData]:
-    api_response = json.loads(_get_zoobank_act_data(original_name.replace(" ", "_")))
+    try:
+        api_response = json.loads(
+            _get_zoobank_act_data(original_name.replace(" ", "_"))
+        )
+    except requests.ConnectionError:
+        return []
     api_response = [
         entry
         for entry in api_response
