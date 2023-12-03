@@ -14,7 +14,6 @@ setup(
     author="Jelle Zijlstra",
     author_email="jelle.zijlstra@gmail.com",
     url="https://github.com/JelleZijlstra/taxoomy",
-    license="MIT",
     packages=["taxonomy", "hsweb"],
     install_requires=[
         "peewee==3.13.3",
