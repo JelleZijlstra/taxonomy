@@ -281,8 +281,24 @@ class CitationGroup(BaseModel):
                     print(f"    {{{art.name}}}: {art.cite()}")
         return nams
 
+    def _for_years_interactive(self) -> None:
+        start_year_str = getinput.get_line(
+            "start year> ", validate=str.isnumeric, allow_none=True
+        )
+        if start_year_str is None:
+            return
+        end_year_str = getinput.get_line(
+            "end year> ", validate=str.isnumeric, allow_none=True
+        )
+        include_articles = getinput.yes_no("include articles? ")
+        self.for_years(
+            start_year=int(start_year_str),
+            end_year=int(end_year_str) if end_year_str else None,
+            include_articles=include_articles,
+        )
+
     def display(
-        self, depth: int = 0, full: bool = True, include_articles: bool = False
+        self, depth: int = 0, full: bool = False, include_articles: bool = False
     ) -> None:
         nams = self.get_names()
         arts = list(self.get_articles())
@@ -341,6 +357,7 @@ class CitationGroup(BaseModel):
                 query=models.Name.add_validity_check(self.names)
             ),
             "missing_high_names": self.print_missing_high_names,
+            "for_years": self._for_years_interactive,
         }
 
     def merge_interactive(self) -> None:
