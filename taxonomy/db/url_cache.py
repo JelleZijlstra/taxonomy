@@ -24,6 +24,7 @@ class CacheDomain(enum.Enum):
         3  # e.g. https://zoobank.org/NomenclaturalActs.json/Pseudanthias_carlsoni
     )
     zoobank_publication = 4  # e.g. https://zoobank.org/References.json/427D7953-E8FC-41E8-BEA7-8AE644E6DE77
+    crossref_openurl = 5
 
 
 _LOCAL_CACHE: dict[tuple[CacheDomain, str], str] = {}

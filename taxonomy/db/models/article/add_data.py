@@ -15,8 +15,9 @@ from pathlib import Path
 from typing import Any
 
 import requests
+from bs4 import BeautifulSoup
 
-from .... import command_set, getinput, parsing, uitools
+from .... import command_set, config, getinput, parsing, uitools
 from ...constants import ArticleKind, ArticleType, DateSource
 from ...helpers import clean_string, clean_strings_recursively, trimdoi
 from ...url_cache import CacheDomain, cached
@@ -28,6 +29,7 @@ from .lint import infer_publication_date_from_tags, is_valid_doi
 CS = command_set.CommandSet("add_data", "Commands for adding data to articles")
 
 RawData = dict[str, Any]
+_options = config.get_options()
 
 
 @lru_cache
@@ -47,6 +49,33 @@ def get_doi_json_cached(doi: str) -> str:
     response = requests.get(url)
     response.raise_for_status()
     return response.text
+
+
+@cached(CacheDomain.crossref_openurl)
+def _get_doi_from_crossref_inner(params: str) -> str:
+    query_dict = json.loads(params)
+    url = "https://www.crossref.org/openurl"
+    response = requests.get(url, query_dict)
+    response.raise_for_status()
+    return response.text
+
+
+def get_doi_from_crossref(art: Article) -> str | None:
+    if art.citation_group is None:
+        return None
+    query_dict = {
+        "pid": _options.crossrefid,
+        "title": art.citation_group.name,
+        "volume": art.volume,
+        "spage": art.start_page,
+        "noredirect": "true",
+    }
+    data = _get_doi_from_crossref_inner(json.dumps(query_dict))
+    xml = BeautifulSoup(data, features="xml")
+    try:
+        return xml.crossref_result.doi.text
+    except AttributeError:
+        return None
 
 
 def is_doi_valid(doi: str) -> bool:

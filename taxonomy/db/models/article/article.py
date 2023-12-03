@@ -13,8 +13,6 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, ClassVar, NamedTuple, NotRequired, TypeVar, cast
 
-import requests
-from bs4 import BeautifulSoup
 from peewee import (
     CharField,
     DeferredForeignKey,
@@ -879,24 +877,9 @@ class Article(BaseModel):
             and self.start_page
         ):
             print(f"Trying to find DOI for file {self.name}... ")
-            query_dict = {
-                "pid": _options.crossrefid,
-                "title": self.citation_group.name,
-                "volume": self.volume,
-                "spage": self.start_page,
-                "noredirect": "true",
-            }
-            url = "http://www.crossref.org/openurl"
-            response = requests.get(url, query_dict)
-            if not response.ok:
-                print(f"Failed to retrieve data: {response.text}")
-                return False
-            xml = BeautifulSoup(response.text, features="lxml")
-            try:
-                doi = xml.crossref_result.doi.text
-            except AttributeError:
+            doi = models.article.add_data.get_doi_from_crossref(self)
+            if doi is None:
                 print("nothing found")
-                self.triedfinddoi = True
                 return False
             else:
                 print(f"found doi {doi}")
