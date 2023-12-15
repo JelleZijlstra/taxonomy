@@ -518,7 +518,7 @@ class Name(BaseModel):
             and self.collection is None
             and self.type_specimen is not None
         ):
-            coll_name = self.type_specimen.split()[0]
+            coll_name = self.type_specimen.split()[0].split(":")[0]
             getter = Collection.getter("label")
             if coll_name in getter:
                 coll = getter(coll_name)
@@ -603,6 +603,8 @@ class Name(BaseModel):
             "add_child": self._add_child_callback,
             "syn_from_paper": self._syn_from_paper_callback,
             "variant_from_paper": self.variant_from_paper,
+            "combination_from_paper": self.combination_from_paper,
+            "add_combination": self.add_combination,
             "add_syn": self._add_syn_callback,
             "make_variant": self.make_variant,
             "add_variant": self.add_variant,
@@ -1051,6 +1053,17 @@ class Name(BaseModel):
         )
         self.nomenclature_status = status  # type: ignore
 
+    def combination_from_paper(self) -> Name | None:
+        paper = self.get_value_for_foreign_class("paper", Article)
+        if paper is None:
+            return None
+        return self.add_variant(
+            root_name=self.root_name,
+            status=NomenclatureStatus.name_combination,
+            interactive=True,
+            paper=paper,
+        )
+
     def variant_from_paper(self) -> Name | None:
         root_name = Name.getter("root_name").get_one_key(prompt="root_name> ")
         if root_name is None:
@@ -1059,6 +1072,13 @@ class Name(BaseModel):
         if paper is None:
             return None
         return self.add_variant(root_name, paper=paper)
+
+    def add_combination(self) -> Name | None:
+        return self.add_variant(
+            root_name=self.root_name,
+            status=NomenclatureStatus.name_combination,
+            interactive=True,
+        )
 
     def add_variant(
         self,
@@ -1097,7 +1117,8 @@ class Name(BaseModel):
             if nam is None:
                 return None
         tag_cls = CONSTRUCTABLE_STATUS_TO_TAG[status]
-        nam.page_described = page_described
+        if page_described is not None:
+            nam.page_described = page_described
         nam.add_tag(tag_cls(self, ""))
         if interactive:
             nam.fill_required_fields()
