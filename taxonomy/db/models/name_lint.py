@@ -105,6 +105,16 @@ UNIQUE_TAGS = (
     TypeTag.TextualOriginalRank,
     TypeTag.GenusCoelebs,
 )
+ORGAN_REPLACEMENTS = [
+    (r"(^|, )right\w", r"\1R"),
+    (r"(^|, )left\w", r"\1L"),
+    (r"M1 or M2", r"M1/2"),
+    (r"m1 or m2", r"m1/2"),
+    (r"^both$", r"L, R"),
+    (r"(^|, )partial ([LR])(?=$|, )", r"\1\2 part"),
+    (r"(^|, )(proximal|distal) ([LR])(?=$|, )", r"\1\3 \2"),
+    (r"^partial$", "part"),
+]
 
 
 @make_linter("type_tags")
@@ -260,6 +270,12 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                     fix_type_specimen_link(tag.url), tag.specimen
                 )
             )
+        elif isinstance(tag, TypeTag.Organ) and tag.detail:
+            detail = tag.detail
+            for rgx, replacement in ORGAN_REPLACEMENTS:
+                detail = re.sub(rgx, replacement, detail)
+            new_tag = TypeTag.Organ(tag.organ, detail, tag.condition)
+            tags.append(new_tag)
         else:
             tags.append(tag)
         # TODO: for lectotype and subsequent designations, ensure the earliest valid one is used.

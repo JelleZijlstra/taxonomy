@@ -1754,11 +1754,13 @@ def most_common_unchecked_names(
             if max_num_names is not None:
                 name_counter[person.family_name] += 1
     if max_num_names is not None:
-        counter = Counter({
-            family_name: count
-            for family_name, count in counter.items()
-            if name_counter[family_name] <= max_num_names
-        })
+        counter = Counter(
+            {
+                family_name: count
+                for family_name, count in counter.items()
+                if name_counter[family_name] <= max_num_names
+            }
+        )
     for value, count in counter.most_common(num_to_display):
         print(value, count)
     return counter
@@ -2700,6 +2702,68 @@ def check_wikipedia_links(path: str) -> None:
         nams = list(Name.select_valid().filter(Name.corrected_original_name == name))
         if not nams:
             print(name)
+
+
+def find_names_with_organ(organ: constants.SpecimenOrgan) -> Iterable[Name]:
+    return Name.select_valid().filter(
+        Name.type_tags.contains(f"[{TypeTag.Organ._tag}, {organ.value},")
+    )
+
+
+@command
+def edit_organ() -> None:
+    organ = getinput.get_enum_member(constants.SpecimenOrgan, "organ> ")
+    if organ is None:
+        return
+    substring = getinput.get_line("substring> ")
+    for nam in find_names_with_organ(organ):
+        relevant_tags = [
+            t
+            for t in nam.type_tags
+            if isinstance(t, TypeTag.Organ) and t.organ is organ and t.detail
+        ]
+        if substring:
+            relevant_tags = [t for t in relevant_tags if substring in t.detail]
+        if not relevant_tags:
+            continue
+        getinput.print_header(nam)
+        for tag in relevant_tags:
+            print(tag)
+        if getinput.yes_no("edit?"):
+            nam.edit()
+            nam.type_tags = [tag for tag in nam.type_tags if tag not in relevant_tags]
+
+
+@command
+def organ_report(focus_organ: constants.SpecimenOrgan | None = None) -> None:
+    organ_to_count = Counter()
+    organ_to_text_to_count = defaultdict(Counter)
+    if focus_organ is None:
+        query = Name.select_valid().filter(
+            Name.type_tags.contains(f"[{TypeTag.Organ._tag},")
+        )
+    else:
+        query = find_names_with_organ(focus_organ)
+    for nam in getinput.print_every_n(query, label="names"):
+        for tag in nam.type_tags:
+            if isinstance(tag, TypeTag.Organ):
+                organ_to_count[tag.organ] += 1
+                if not tag.detail:
+                    continue
+                detail = re.sub(r"\([^\)]+\)", "", tag.detail).split(",")
+                for piece in detail:
+                    organ_to_text_to_count[tag.organ][piece.strip()] += 1
+
+    getinput.print_header("Overall counts")
+    for organ, count in organ_to_count.most_common():
+        print(f"{count} {organ.name}")
+    for organ, _ in organ_to_count.most_common():
+        getinput.print_header(organ.name)
+        text_to_count = organ_to_text_to_count[organ]
+        for text, count in text_to_count.most_common():
+            if count <= 1:
+                continue
+            print(count, text)
 
 
 def run_shell() -> None:

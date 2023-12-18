@@ -103,7 +103,7 @@ class Location(BaseModel):
         if name is None:
             name = getinput.get_line("name> ")
         assert name is not None
-        if region is None:
+        while region is None:
             region = cls.get_value_for_foreign_key_field_on_class(
                 "region", allow_none=False
             )

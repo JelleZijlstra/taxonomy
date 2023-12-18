@@ -519,9 +519,9 @@ class Name(BaseModel):
             and self.type_specimen is not None
         ):
             coll_name = self.type_specimen.split()[0].split(":")[0]
-            getter = Collection.getter("label")
-            if coll_name in getter:
-                coll = getter(coll_name)
+            getter = list(Collection.select_valid().filter(Collection.label == coll_name))
+            if len(getter) == 1:
+                coll = getter[0]
                 print(f"inferred collection to be {coll} from {self.type_specimen}")
                 return coll
             return super().get_value_for_field(field, default=default)

@@ -736,6 +736,18 @@ class SpecimenOrgan(enum.IntEnum):
     scapulocoracoid = 45
     carpometacarpal = 46
     patella = 47
+    ilium = 48
+    ischium = 49
+    pubis = 50
+    metacarpal = 51
+    metatarsal = 52
+    phalanx_manus = 53
+    phalanx_pes = 54
+    premaxilla = 55
+    metapodial = 56
+    tibiotarsus = 57
+    furcula = 58
+    phalanx = 59
 
 
 class AltitudeUnit(enum.IntEnum):
