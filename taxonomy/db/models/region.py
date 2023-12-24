@@ -173,6 +173,11 @@ class Region(BaseModel):
                 return False
         return True
 
+    def has_children(self) -> bool:
+        for _ in self.children:
+            return True
+        return False
+
     def sorted_children(self) -> list[Region]:
         return sorted(self.children, key=lambda c: c.name)
 
