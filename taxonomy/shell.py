@@ -2278,6 +2278,7 @@ def find_potential_citations_for_group(
 
     count = 0
     for nam in cg.get_names():
+        nam = nam.reload()
         if nam.original_citation is not None:
             continue
         page = nam.extract_page_described()
