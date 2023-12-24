@@ -4,6 +4,23 @@ Version numbers correspond to Git tags in the
 [backend](https://github.com/JelleZijlstra/taxonomy/) repositories, and to database
 exports released on Zenodo.
 
+# Unreleased
+
+- Database
+  - Add many newly named taxa
+  - Add coverage for several archosauromorph groups, including ornithischians, "rauisuchians",
+    aetosaurs, and phytosaurs
+  - Improve "organ" tags for the material included in type specimens. Replace many organs
+    labeled with the legacy "other" or "postcranial_skeleton" organs and start standardizing the
+    format of the "details" field.
+  - Start adding name combinations to the database, mostly for newly covered taxa.
+- Backend
+  - Add many new bones to the enumeration of organs
+  - Add script to infer the publication date of articles based on that of other articles in the same issue
+  - Add ability to add the PhyloCode number for a name
+  - Support for name combinations
+  - Make terminal autocompletions more efficient
+
 # 23.8.1 (August 29, 2023)
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.8298623)](https://doi.org/10.5281/zenodo.8298623)
