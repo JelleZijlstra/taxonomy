@@ -94,7 +94,11 @@ class StratigraphicUnit(BaseModel):
     def should_skip(self) -> bool:
         return self.deleted
 
-    def merge(self, other: StratigraphicUnit) -> None:
+    def merge(self, other: StratigraphicUnit | None = None) -> None:
+        if other is None:
+            other = StratigraphicUnit.getter(None).get_one("merge into> ")
+            if other is None:
+                return
         for loc in self.locations:
             loc.stratigraphic_unit = other
         new_comment = f"Merged into {other} (P#{other.id})"
@@ -102,6 +106,7 @@ class StratigraphicUnit(BaseModel):
             self.comment = new_comment
         else:
             self.comment = f"{self.comment} – {new_comment}"
+        self.parent = other
         self.deleted = True
 
     @staticmethod
@@ -228,6 +233,11 @@ class StratigraphicUnit(BaseModel):
             self.set_period(period)
         else:
             super().fill_field(field)
+
+    def get_adt_callbacks(self) -> getinput.CallbackMap:
+        return {
+            **super().get_adt_callbacks(), "merge": self.merge
+        }
 
     def get_required_fields(self) -> Iterable[str]:
         yield "name"
