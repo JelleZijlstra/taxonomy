@@ -339,6 +339,37 @@ class Taxon(BaseModel):
         else:
             return self.parent.is_child_of(taxon)
 
+    def diversity_summary(self) -> tuple[dict[AgeClass, int], dict[AgeClass, int], dict[AgeClass, int]]:
+        """Return tuple of family count, genus count, species count."""
+        family_counts = Counter()
+        genus_counts = Counter()
+        species_counts = Counter()
+        if self.base_name.status is Status.valid:
+            if self.rank is Rank.family:
+                family_counts[self.age] += 1
+            if self.rank is Rank.genus:
+                genus_counts[self.age] += 1
+            if self.rank is Rank.species:
+                species_counts[self.age] += 1
+        for child in self.add_validity_check(self.children):
+            fam, gen, sp = child.diversity_summary()
+            family_counts += fam
+            genus_counts += gen
+            species_counts += sp
+        return family_counts, genus_counts, species_counts
+
+    def print_diversity(self) -> None:
+        fam, gen, sp = self.diversity_summary()
+        if fam:
+            print("Families:", sum(fam.values()))
+            print(", ".join(f"{age.name}: {count}" for age, count in sorted(fam.items())))
+        if gen:
+            print("Genera:", sum(gen.values()))
+            print(", ".join(f"{age.name}: {count}" for age, count in sorted(gen.items())))
+        if sp:
+            print("Species:", sum(sp.values()))
+            print(", ".join(f"{age.name}: {count}" for age, count in sorted(sp.items())))
+
     def children_of_rank(self, rank: Rank, age: AgeClass | None = None) -> list[Taxon]:
         if self.rank < rank:
             return []
@@ -674,6 +705,7 @@ class Taxon(BaseModel):
             "make_parent_of_rank": self.make_parent_of_rank,
             "names_like": self.print_names_like,
             "missing_high_names": self.print_missing_high_names,
+            "diversity": self.print_diversity,
         }
 
     def add(self) -> Taxon | None:
