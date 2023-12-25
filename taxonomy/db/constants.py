@@ -748,6 +748,8 @@ class SpecimenOrgan(enum.IntEnum):
     tibiotarsus = 57
     furcula = 58
     phalanx = 59
+    interclavicle = 61
+    gastralia = 62
 
 
 class AltitudeUnit(enum.IntEnum):
