@@ -14,9 +14,9 @@ PYTHON = "/usr/local/bin/python3.11"
 
 def run_ssh(options: Options, command: str) -> None:
     print(f"# {command}")
-    subprocess.check_call([
-        "ssh", "-i", options.pem_file, options.hesperomys_host, command
-    ])
+    subprocess.check_call(
+        ["ssh", "-i", options.pem_file, options.hesperomys_host, command]
+    )
 
 
 def run_scp(

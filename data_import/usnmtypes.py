@@ -79,19 +79,17 @@ def extract_names(pages: Iterable[tuple[int, list[str]]]) -> DataT:
                 start_label("Lectotype", line)
             elif line.startswith("Neotype as designated"):
                 start_label("Neotype", line)
-            elif line.startswith(
-                (
-                    "This specimen",
-                    "Type ",
-                    "No type",
-                    "There are",
-                    "No additional",
-                    "All ",
-                    "Subspecies of ",
-                    "Neotype designated ",
-                    "Padre Island",
-                )
-            ):
+            elif line.startswith((
+                "This specimen",
+                "Type ",
+                "No type",
+                "There are",
+                "No additional",
+                "All ",
+                "Subspecies of ",
+                "Neotype designated ",
+                "Padre Island",
+            )):
                 start_label("comments", line)
             elif line.startswith(
                 ("Secondary junior", "Primary junior", "Junior primary")
