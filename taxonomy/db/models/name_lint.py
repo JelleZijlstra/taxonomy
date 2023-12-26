@@ -1445,7 +1445,9 @@ def clean_up_verbatim(nam: Name, cfg: LintConfig) -> Iterable[str]:
 @make_linter("status")
 def check_correct_status(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.status.is_base_name() and nam != nam.taxon.base_name:
-        yield (f"is of status {nam.status!r} and should be base name of {nam.taxon}")
+        yield f"is of status {nam.status!r} and should be base name of {nam.taxon}"
+    if nam.status is Status.valid and nam.taxon.parent is not None and nam.taxon.parent.base_name.status is not Status.valid:
+        yield f"is valid, but parent {nam.taxon.parent} is of status {nam.taxon.parent.base_name.status}"
 
 
 def _check_names_match(nam: Name, other: Name) -> Iterable[str]:

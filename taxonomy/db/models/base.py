@@ -923,6 +923,7 @@ class BaseModel(Model):
             "lint": self.format,
             "print_character_names": self.print_character_names_for_field,
             "edit_reverse_rel": self.edit_reverse_rel,
+            "lint_reverse_rel": self.lint_reverse_rel,
             "edit_derived_field": self.edit_derived_field,
             "RootName": lambda: models.Name.getter("root_name").get_and_edit(),
         }
@@ -1012,6 +1013,20 @@ class BaseModel(Model):
             obj.display()
             try:
                 obj.edit()
+            except getinput.StopException:
+                return
+
+    def lint_reverse_rel(self) -> None:
+        options = [field.backref for field in self._meta.backrefs]
+        chosen = getinput.choose_one(options)
+        if chosen is None:
+            return
+        for obj in getattr(self, chosen):
+            if obj.is_lint_clean():
+                continue
+            obj.display()
+            try:
+                obj.edit_until_clean()
             except getinput.StopException:
                 return
 

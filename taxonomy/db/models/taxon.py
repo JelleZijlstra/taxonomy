@@ -155,6 +155,36 @@ class Taxon(BaseModel):
                 )
         yield from self.check_nominal_genus(cfg)
         yield from self.check_valid_name(cfg)
+        yield from self.check_basal_tags(cfg)
+
+    def needs_basal_tag(self) -> bool:
+        if self.base_name.status != Status.valid:
+            return False
+        if self.parent is None or not any(
+            child.rank > self.rank for child in self.parent.get_children()
+        ):
+            return False
+        return True
+
+    def check_basal_tags(self, cfg: LintConfig) -> Iterable[str]:
+        has_is = self.has_tag(models.tags.TaxonTag.IncertaeSedis)
+        has_basal = self.has_tag(models.tags.TaxonTag.Basal)
+        if has_is and has_basal:
+            yield f"{self}: has both IncertaeSedis and Basal tags"
+        if self.needs_basal_tag():
+            if not has_is and not has_basal:
+                yield (
+                    f"{self}: parent taxon {self.parent} has higher-ranked children,"
+                    " but child lacks 'incertae sedis' or 'basal' tag"
+                )
+        else:
+            if has_is:
+                yield f"{self}: has unnecessary IncertaeSedis tag"
+            if has_basal:
+                yield f"{self}: has unnecessary Basal tag"
+
+    def has_tag(self, tag: type[models.tags.TaxonTag]) -> bool:
+        return any(self.get_tags(self.tags, tag))
 
     def check_nominal_genus(self, cfg: LintConfig) -> Iterable[str]:
         nominal_genus_tags = list(
@@ -339,7 +369,9 @@ class Taxon(BaseModel):
         else:
             return self.parent.is_child_of(taxon)
 
-    def diversity_summary(self) -> tuple[dict[AgeClass, int], dict[AgeClass, int], dict[AgeClass, int]]:
+    def diversity_summary(
+        self,
+    ) -> tuple[dict[AgeClass, int], dict[AgeClass, int], dict[AgeClass, int]]:
         """Return tuple of family count, genus count, species count."""
         family_counts = Counter()
         genus_counts = Counter()
@@ -351,7 +383,7 @@ class Taxon(BaseModel):
                 genus_counts[self.age] += 1
             if self.rank is Rank.species:
                 species_counts[self.age] += 1
-        for child in self.add_validity_check(self.children):
+        for child in self.get_children():
             fam, gen, sp = child.diversity_summary()
             family_counts += fam
             genus_counts += gen
@@ -362,13 +394,19 @@ class Taxon(BaseModel):
         fam, gen, sp = self.diversity_summary()
         if fam:
             print("Families:", sum(fam.values()))
-            print(", ".join(f"{age.name}: {count}" for age, count in sorted(fam.items())))
+            print(
+                ", ".join(f"{age.name}: {count}" for age, count in sorted(fam.items()))
+            )
         if gen:
             print("Genera:", sum(gen.values()))
-            print(", ".join(f"{age.name}: {count}" for age, count in sorted(gen.items())))
+            print(
+                ", ".join(f"{age.name}: {count}" for age, count in sorted(gen.items()))
+            )
         if sp:
             print("Species:", sum(sp.values()))
-            print(", ".join(f"{age.name}: {count}" for age, count in sorted(sp.items())))
+            print(
+                ", ".join(f"{age.name}: {count}" for age, count in sorted(sp.items()))
+            )
 
     def children_of_rank(self, rank: Rank, age: AgeClass | None = None) -> list[Taxon]:
         if self.rank < rank:
@@ -467,9 +505,16 @@ class Taxon(BaseModel):
             if self.base_name.status == Status.valid:
                 valid_children = []
                 dubious_children = []
+                basal_children = []
+                is_children = []
                 for child in children:
                     if child.base_name.status == Status.valid:
-                        valid_children.append(child)
+                        if child.has_tag(models.tags.TaxonTag.IncertaeSedis):
+                            is_children.append(child)
+                        elif child.has_tag(models.tags.TaxonTag.Basal):
+                            basal_children.append(child)
+                        else:
+                            valid_children.append(child)
                     elif exclude_fn is None or not exclude_fn(child):
                         dubious_children.append(child)
                 self._display_children(
@@ -483,6 +528,37 @@ class Taxon(BaseModel):
                     name_exclude_fn=name_exclude_fn,
                     show_occurrences=show_occurrences,
                 )
+                if basal_children:
+                    file.write(
+                        " " * ((depth + 1) * 4) + f"Basal ({self.valid_name}):\n"
+                    )
+                    self._display_children(
+                        basal_children,
+                        full=full,
+                        max_depth=new_max_depth,
+                        file=file,
+                        depth=depth + 2,
+                        exclude=exclude,
+                        exclude_fn=exclude_fn,
+                        name_exclude_fn=name_exclude_fn,
+                        show_occurrences=show_occurrences,
+                    )
+                if is_children:
+                    file.write(
+                        " " * ((depth + 1) * 4)
+                        + f"Incertae sedis ({self.valid_name}):\n"
+                    )
+                    self._display_children(
+                        is_children,
+                        full=full,
+                        max_depth=new_max_depth,
+                        file=file,
+                        depth=depth + 2,
+                        exclude=exclude,
+                        exclude_fn=exclude_fn,
+                        name_exclude_fn=name_exclude_fn,
+                        show_occurrences=show_occurrences,
+                    )
                 if dubious_children:
                     file.write(
                         " " * ((depth + 1) * 4) + f"Dubious ({self.valid_name}):\n"
@@ -706,7 +782,26 @@ class Taxon(BaseModel):
             "names_like": self.print_names_like,
             "missing_high_names": self.print_missing_high_names,
             "diversity": self.print_diversity,
+            "o": lambda: self.base_name.open_description(),
+            "open_url": lambda: self.base_name.open_url(),
+            "change_status": self._change_status,
+            "lint_all_children": self.lint_all_children,
+            "lint_basal_tags": self.lint_basal_tags,
         }
+
+    def _change_status(self) -> None:
+        status = getinput.get_enum_member(Status, "to status> ")
+        if status is None:
+            return
+        self.change_status(status, change_from=self.base_name.status)
+
+    def change_status(self, to: Status, change_from: Status | None = None) -> None:
+        if change_from is not None and self.base_name.status is not change_from:
+            return
+        print(f"{self}: change status from {self.base_name.status!s} to {to!s}")
+        self.base_name.status = to
+        for child in self.get_children():
+            child.change_status(to, change_from=change_from)
 
     def add(self) -> Taxon | None:
         rank = getinput.get_enum_member(
@@ -734,6 +829,7 @@ class Taxon(BaseModel):
         )
         taxon.base_name = name_obj
         name_obj.fill_required_fields()
+        self.edit_until_clean()
         return taxon
 
     def add_syn(
@@ -1137,7 +1233,7 @@ class Taxon(BaseModel):
         self.display()
         if not getinput.yes_no("Synonymize all? "):
             return
-        for taxon in self.children:
+        for taxon in self.get_children():
             print(taxon)
             taxon.synonymize(self)
 
@@ -1178,6 +1274,36 @@ class Taxon(BaseModel):
         callback(self)
         for child in self.get_children():
             child.run_on_self_and_children(callback)
+
+    def lint_all_children(self) -> None:
+        self.run_on_self_and_children(lambda txn: txn.edit_until_clean())
+
+    def lint_basal_tags(self) -> None:
+        self.edit_until_clean()
+        dirty_children = []
+        for child in self.get_children():
+            if list(child.check_basal_tags(LintConfig())):
+                dirty_children.append(child)
+        if dirty_children:
+            getinput.print_header(f"{self}: children have issues with basal tags")
+            self.display()
+            for child in dirty_children:
+                print(child)
+            choice = getinput.get_with_completion(
+                ["incertae_sedis", "basal"],
+                message="tag to apply> ",
+                callbacks=self.get_adt_callbacks(),
+            )
+            if choice == "incertae_sedis":
+                for child in self.get_children():
+                    if list(child.check_basal_tags(LintConfig())):
+                        child.add_tag(models.tags.TaxonTag.IncertaeSedis(""))
+            elif choice == "basal":
+                for child in self.get_children():
+                    if list(child.check_basal_tags(LintConfig())):
+                        child.add_tag(models.tags.TaxonTag.Basal(""))
+        for child in self.get_children():
+            child.lint_basal_tags()
 
     def remove(self, reason: str | None = None, *, remove_names: bool = True) -> None:
         for _ in self.get_children():
