@@ -2712,12 +2712,15 @@ def find_names_with_organ(organ: constants.SpecimenOrgan) -> Iterable[Name]:
 
 
 @command
-def edit_organ() -> None:
-    organ = getinput.get_enum_member(constants.SpecimenOrgan, "organ> ")
+def edit_organ(organ: constants.SpecimenOrgan | None = None) -> None:
     if organ is None:
-        return
+        organ = getinput.get_enum_member(constants.SpecimenOrgan, "organ> ")
+        if organ is None:
+            return
     substring = getinput.get_line("substring> ")
+    check_lint = getinput.yes_no("only edit if there are lint issues? ")
     for nam in find_names_with_organ(organ):
+        nam.format(quiet=True)
         relevant_tags = [
             t
             for t in nam.type_tags
@@ -2727,12 +2730,24 @@ def edit_organ() -> None:
             relevant_tags = [t for t in relevant_tags if substring in t.detail]
         if not relevant_tags:
             continue
+        if check_lint and nam.is_lint_clean():
+            continue
         getinput.print_header(nam)
+        dirty = False
         for tag in relevant_tags:
             print(tag)
+            for issue in models.name_lint.check_organ_detail(tag.organ, tag.detail):
+                print(issue)
+                dirty = True
+        if check_lint and not dirty:
+            print(f"Ignoring as {organ.name} tags are clean")
+            continue
         if getinput.yes_no("edit?"):
+            original_tags = set(nam.type_tags)
             nam.edit()
-            nam.type_tags = [tag for tag in nam.type_tags if tag not in relevant_tags]
+            new_tags = [tag for tag in nam.type_tags if tag not in relevant_tags]
+            if any(tag not in original_tags for tag in new_tags):
+                nam.type_tags = new_tags
 
 
 @command
@@ -2762,8 +2777,6 @@ def organ_report(focus_organ: constants.SpecimenOrgan | None = None) -> None:
         getinput.print_header(organ.name)
         text_to_count = organ_to_text_to_count[organ]
         for text, count in text_to_count.most_common():
-            if count <= 1:
-                continue
             print(count, text)
 
 

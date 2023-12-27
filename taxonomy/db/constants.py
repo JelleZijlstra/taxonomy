@@ -731,8 +731,8 @@ class SpecimenOrgan(enum.IntEnum):
     tissue_sample = 40
     shell = 41  # of a turtle
     skeleton = 42  # full skeleton
-    limb = 43
-    girdle = 44
+    limb = 43  # fore or hind, ideally should specify bones. Includes pterosaur/bird wings and ichthyosaur fins.
+    girdle = 44  # pelvic or pectoral, ideally should specify bones
     scapulocoracoid = 45
     carpometacarpal = 46
     patella = 47
@@ -750,6 +750,9 @@ class SpecimenOrgan(enum.IntEnum):
     phalanx = 59
     interclavicle = 61
     gastralia = 62
+    prepubis = 63
+    predentary = 64
+    palate = 65
 
 
 class AltitudeUnit(enum.IntEnum):

@@ -29,6 +29,7 @@ from ..constants import (
     NomenclatureStatus,
     SpeciesGroupType,
     SpeciesNameKind,
+    SpecimenOrgan,
     Status,
     TypeSpeciesDesignation,
 )
@@ -106,15 +107,345 @@ UNIQUE_TAGS = (
     TypeTag.GenusCoelebs,
 )
 ORGAN_REPLACEMENTS = [
-    (r"(^|, )right\w", r"\1R"),
-    (r"(^|, )left\w", r"\1L"),
-    (r"M1 or M2", r"M1/2"),
-    (r"m1 or m2", r"m1/2"),
+    (r"(^|, )right(\b|$)", r"\1R"),
+    (r"(^|, )left(\b|$)", r"\1L"),
+    (r"M(\d) or M(\d)", r"M\1/\2"),
+    (r"m(\d) or m(\d)", r"m\1/\2"),
     (r"^both$", r"L, R"),
     (r"(^|, )partial ([LR])(?=$|, )", r"\1\2 part"),
-    (r"(^|, )(proximal|distal) ([LR])(?=$|, )", r"\1\3 \2"),
+    (r"(^|, )(proximal|distal|shaft|part) ([LR])(?=$|, )", r"\1\3 \2"),
     (r"^partial$", "part"),
+    (r"^(L |R )?fragments$", r"\1parts"),
+    (r"^(L |R )?fragment$", r"\1part"),
+    (r"^(multiple|several|many)$", ">1"),
+    (r"(^|, )(L|R) (\??[A-Za-z]{1,2}(\??\d|$))", r"\1\2\3"),  # remove space after L/R in tooth
+    (r"^([LR]?)([A-Za-z]\d)\?", r"\1?\2"),
 ]
+
+LONG_BONES = (
+    SpecimenOrgan.fibula,
+    SpecimenOrgan.radius,
+    SpecimenOrgan.ulna,
+    SpecimenOrgan.tibia,
+    SpecimenOrgan.femur,
+    SpecimenOrgan.humerus,
+)
+PROXIMAL_DISTAL_ORGANS = {
+    *LONG_BONES,
+    SpecimenOrgan.metapodial,
+    SpecimenOrgan.carpometacarpal,
+    SpecimenOrgan.tarsometatarsus,
+    SpecimenOrgan.clavicle,
+    SpecimenOrgan.tibiotarsus,
+    SpecimenOrgan.metacarpal,
+    SpecimenOrgan.metatarsal,
+    SpecimenOrgan.pubis,
+    SpecimenOrgan.ischium,
+    SpecimenOrgan.ilium,
+    SpecimenOrgan.coracoid,
+    SpecimenOrgan.scapula,
+    SpecimenOrgan.pelvis,
+    SpecimenOrgan.calcaneum,
+    SpecimenOrgan.astragalus,
+}
+PAIRED_ORGANS = {
+    *PROXIMAL_DISTAL_ORGANS,
+    SpecimenOrgan.furcula,
+    SpecimenOrgan.petrosal,
+    SpecimenOrgan.patella,
+    SpecimenOrgan.hyoid,
+    SpecimenOrgan.carpal,
+    SpecimenOrgan.scapulocoracoid,
+    SpecimenOrgan.girdle,
+    SpecimenOrgan.antler,
+    SpecimenOrgan.limb,
+    SpecimenOrgan.prepubis,
+}
+COUNTED_ORGANS = {
+    SpecimenOrgan.carpal,
+    SpecimenOrgan.metapodial,
+    SpecimenOrgan.metacarpal,
+    SpecimenOrgan.metatarsal,
+    SpecimenOrgan.limb,
+    SpecimenOrgan.tooth,
+}
+TOOTHED_ORGANS = {
+    SpecimenOrgan.dentary,
+    SpecimenOrgan.palate,
+    SpecimenOrgan.tooth,
+}
+CHECKED_ORGANS = {
+    *PAIRED_ORGANS,
+    *COUNTED_ORGANS,
+    *PROXIMAL_DISTAL_ORGANS,
+    *TOOTHED_ORGANS,
+    SpecimenOrgan.egg,
+    SpecimenOrgan.gastralia,
+    SpecimenOrgan.interclavicle,
+    SpecimenOrgan.baculum,
+    SpecimenOrgan.caudal_tube,
+    SpecimenOrgan.skeleton,
+    SpecimenOrgan.pelvis,
+}
+# TODO: carpal, phalanx_manus, frontlet, phalanx_pes, other, phalanx, sternum, horn_core (split up?), manus, osteoderm, pes, vertebra, postcranial_skeleton, shell, rib
+# Maybe leave alone: tissue_sample, whole_animal, in_alcohol, skin, skull
+
+
+def remove_prefix(text: str, prefixes: tuple[str, ...]) -> str:
+    if text in prefixes:
+        return ""
+    for prefix in prefixes:
+        text = text.removeprefix(prefix + " ")
+    return text
+
+def remove_suffix(text: str, suffixes: tuple[str, ...]) -> str:
+    if text in suffixes:
+        return ""
+    for suffix in suffixes:
+        text = text.removesuffix(" " + suffix)
+    return text
+
+TOOTH_REGEX = re.compile(
+    r"""
+        (
+            (?P<category>[A-Za-z]+)
+            (/(?P<category_alt>[A-Za-z]+))?
+        )?
+        \??
+        (
+            (?P<number>\d+)
+            (/(?P<number_alt>\d+))?
+        )?
+        (?P<full_alt>/[A-Za-z]\d+)?
+    """,
+    re.VERBOSE,
+)
+CATEGORIES = ['i', 'c', 'p', 'm']
+ALLOWED_CATEGORIES = {*CATEGORIES, "di", "dc", "dp", "mf", "a", "if", "pmf", "maxillary", "mandibular"}
+
+
+def check_tooth_text(text: str, organ: SpecimenOrgan) -> Iterable[str]:
+    text = text.removeprefix("L").removeprefix("R").removeprefix("?")
+    if not text:
+        return
+    if "-" in text:
+        parts = text.split("-", maxsplit=1)
+    else:
+        parts = [text]
+    if organ in (SpecimenOrgan.mandible, SpecimenOrgan.dentary, SpecimenOrgan.maxilla, SpecimenOrgan.premaxilla, SpecimenOrgan.skull, SpecimenOrgan.palate):
+        if text.strip() in ("edentulous", "complete"):
+            return
+    if organ in (SpecimenOrgan.mandible, SpecimenOrgan.dentary):
+        if text == "symphysis":
+            return
+    if organ in (SpecimenOrgan.mandible, SpecimenOrgan.dentary, SpecimenOrgan.maxilla, SpecimenOrgan.premaxilla, SpecimenOrgan.tooth):
+        match = re.fullmatch(r" ?(?P<count>\d+)( (?P<category>[A-Za-z/]+))?", text)
+        if match:
+            category = match.group("category")
+            if category is None or all(part in ALLOWED_CATEGORIES for part in category.lower().split("/")):
+                return
+    if organ in (SpecimenOrgan.mandible, SpecimenOrgan.skull):
+        # allow arbirary text
+        if re.match(text.strip(), r"[a-z]+"):
+            return
+    allow_uppers = organ not in (SpecimenOrgan.mandible, SpecimenOrgan.dentary)
+    allow_lowers = organ not in (SpecimenOrgan.maxilla, SpecimenOrgan.premaxilla, SpecimenOrgan.skull, SpecimenOrgan.palate)
+    first_tooth_category: int | None = None
+    first_tooth_position: int | None = None
+    for i, part in enumerate(parts):
+        match = TOOTH_REGEX.fullmatch(part)
+        if not match:
+            yield f"cannot parse tooth {part!r}"
+            continue
+        if "-" in text and (match.group("category_alt") or match.group("number_alt") or match.group("full_alt")):
+            yield f"cannot use / in a range of tooth positions"
+        if i == 0 and not match.group("category"):
+            yield "category may not be omitted in first part of range"
+        category = match.group("category")
+        if category and category.lower() not in ALLOWED_CATEGORIES:
+            yield f"disallowed category {category!r}"
+        category_alt = match.group("category_alt")
+        if category_alt and category_alt.lower() not in ALLOWED_CATEGORIES:
+            yield f"disallowed category {category_alt!r}"
+        if not allow_uppers:
+            if category and category.isupper():
+                yield f"tooth is from upper jaw: {category}"
+            if category_alt and category_alt.isupper():
+                yield f"tooth is from upper jaw: {category}"
+        if not allow_lowers:
+            if category and category.islower():
+                yield f"tooth is from lower jaw: {category}"
+            if category_alt and category_alt.islower():
+                yield f"tooth is from lower jaw: {category}"
+        try:
+            tooth_category = CATEGORIES.index(category.lower())
+        except (AttributeError, ValueError):
+            tooth_category = None
+        else:
+            if i == 0:
+                first_tooth_category = tooth_category
+            elif first_tooth_category is not None:
+                if tooth_category < first_tooth_category:
+                    yield f"invalid range from {CATEGORIES[first_tooth_category]} to {CATEGORIES[tooth_category]}"
+        if number := match.group("number"):
+            try:
+                tooth_position = int(number)
+            except ValueError:
+                continue
+            else:
+                if i == 0:
+                    first_tooth_position = tooth_position
+                elif first_tooth_category is not None and (tooth_category is None or first_tooth_category == tooth_category) and first_tooth_position is not None:
+                    if tooth_position < first_tooth_position:
+                        yield f"invalid range from {first_tooth_position} to {tooth_position}"
+
+
+def check_single_organ_detail(organ: SpecimenOrgan, detail: str) -> Iterable[str]:
+    if organ not in CHECKED_ORGANS:
+        return
+    original_detail = detail
+    detail = detail.removeprefix("?")
+    detail = remove_suffix(detail, ("part", "parts"))
+    if organ in COUNTED_ORGANS:
+        detail = re.sub(r"^[>~]?\d+(?= |$)", "", detail).lstrip()
+    if organ in PAIRED_ORGANS:
+        detail = remove_prefix(detail, ("L", "R"))
+    if organ in PROXIMAL_DISTAL_ORGANS:
+        detail = remove_prefix(detail, ("proximal", "distal"))
+    if organ in LONG_BONES:
+        detail = remove_prefix(detail, ("shaft",))
+    if organ is SpecimenOrgan.girdle:
+        detail = remove_prefix(detail, ("pelvic", "pectoral"))
+    if organ is SpecimenOrgan.limb:
+        detail = remove_prefix(detail, ("fore", "hind"))
+    if organ is SpecimenOrgan.metacarpal:
+        detail = re.sub(r"^Mc(I|II|III|IV|V)$", "", detail)
+    if organ is SpecimenOrgan.metatarsal:
+        detail = re.sub(r"^Mt(I|II|III|IV|V)$", "", detail)
+    if organ in TOOTHED_ORGANS:
+        yield from check_tooth_text(detail, organ)
+        return
+    if detail:
+        if detail == original_detail:
+            yield f"organ of type {organ!r} has disallowed detail text {detail!r}"
+        else:
+            yield (
+                f"organ of type {organ!r} has disallowed detail text"
+                f" {detail!r} (remaining from {original_detail!r})"
+            )
+
+
+def check_organ_detail(organ: SpecimenOrgan, detail: str) -> Iterable[str]:
+    for part in detail.split(", "):
+        yield from check_single_organ_detail(organ, part)
+
+
+def specify_organ(organ: SpecimenOrgan, detail: str) -> tuple[SpecimenOrgan, str] | None:
+    if organ is SpecimenOrgan.pes:
+        if detail == "phalanges":
+            return SpecimenOrgan.phalanx_pes, ">1"
+        elif detail == "phalanx":
+            return SpecimenOrgan.phalanx_pes, "1"
+        elif re.fullmatch(r"^(L |R )?Mt(I|II|III|IV|V)$", detail):
+            return SpecimenOrgan.metatarsal, detail
+        elif detail == "metatarsals":
+            return SpecimenOrgan.metatarsal, ">1"
+        elif detail == "metatarsal":
+            return SpecimenOrgan.metatarsal, "1"
+    elif organ is SpecimenOrgan.manus:
+        if detail == "phalanges":
+            return SpecimenOrgan.phalanx_manus, ">1"
+        elif detail == "phalanx":
+            return SpecimenOrgan.phalanx_manus, "1"
+        elif re.fullmatch(r"^(L |R )?Mc(I|II|III|IV|V)$", detail):
+            return SpecimenOrgan.metacarpal, detail
+        elif detail == "metacarpals":
+            return SpecimenOrgan.metacarpal, ">1"
+        elif detail == "metacarpal":
+            return SpecimenOrgan.metacarpal, "1"
+    if organ is not SpecimenOrgan.in_alcohol:
+        if detail.startswith(("L ", "R ")):
+            new_detail, text = detail.split(" ", maxsplit=1)
+        else:
+            new_detail = ""
+            text = detail
+        try:
+            new_organ = SpecimenOrgan[text]
+        except KeyError:
+            pass
+        else:
+            return new_organ, new_detail
+    return None
+
+
+def maybe_replace_tags(organ: SpecimenOrgan, detail: str, condition: str) -> tuple[list[TypeTag.Organ], list[str]]:
+    if organ in (SpecimenOrgan.mandible, SpecimenOrgan.dentary):
+        if " with " in detail:
+            before, after = detail.split(" with ", maxsplit=1)
+            if match := re.fullmatch("([LR]) (dentary|lower jaw|ramus|dentary fragment)", before):
+                side = match.group(1)
+            elif before in ("dentary", "lower jaw", "ramus", "dentary fragment"):
+                side = ""
+            else:
+                side = None
+            if side is not None:
+                if re.fullmatch(r"[a-z][\da-z\-\?]*(, [a-z][\da-z\-\?]*)*", after):
+                    pieces = after.split(", ")
+                    new_detail = ", ".join(side + piece for piece in pieces)
+                    return [TypeTag.Organ(SpecimenOrgan.dentary, new_detail, condition)], []
+    elif organ is SpecimenOrgan.maxilla:
+        if " with " in detail:
+            before, after = detail.split(" with ", maxsplit=1)
+            if match := re.fullmatch("([LR]) (maxilla|upper jaw)", before):
+                side = match.group(1)
+            elif before in ("maxilla", "upper jaw"):
+                side = ""
+            else:
+                side = None
+            if side is not None:
+                if re.fullmatch(r"[A-Z][\dA-Z\-\?]*(, [A-Z][\dA-Z\-\?]*)*", after):
+                    pieces = after.split(", ")
+                    new_detail = ", ".join(side + piece for piece in pieces)
+                    return [TypeTag.Organ(SpecimenOrgan.maxilla, new_detail, condition)], []
+    parts = detail.split(", ")
+    remaining_parts = []
+    new_tags = []
+    if len(parts) == 1 or (not condition and "L" not in parts and "R" not in parts and "(" not in detail):
+        for part in parts:
+            new_pair = specify_organ(organ, part)
+            if new_pair is None:
+                remaining_parts.append(part)
+            else:
+                new_organ, new_detail = new_pair
+                new_tags.append(TypeTag.Organ(new_organ, new_detail, condition))
+    else:
+        remaining_parts = parts
+    return new_tags, remaining_parts
+
+
+def check_organ_tag(tag: TypeTag.Organ) -> Generator[str, None, list[TypeTag.Organ]]:
+    if not tag.detail:
+        return [tag]
+    detail = tag.detail
+    for rgx, replacement in ORGAN_REPLACEMENTS:
+        detail = re.sub(rgx, replacement, detail)
+    condition = tag.condition
+    if not condition:
+        if match := re.fullmatch(r"^([^\(\)]+) \(([^\(\)]+)\)", detail):
+            detail = match.group(1)
+            condition = match.group(2)
+    organ = tag.organ
+    new_tags, remaining_parts = maybe_replace_tags(organ, detail, condition)
+    if not remaining_parts:
+        return new_tags
+    detail = ", ".join(remaining_parts)
+    # Move museum numbers from "detail" to "condition"
+    if re.fullmatch(r"^[A-Z]{2,}(-[A-Z]+)? [A-Z]?(\d{2,}[\-\d/\.]*|\d(\.\d+)+)[a-z]?$", detail) and not condition:
+        condition = detail
+        detail = ""
+    yield from check_organ_detail(organ, detail)
+    new_tags.append(TypeTag.Organ(organ, detail, condition))
+    return new_tags
 
 
 @make_linter("type_tags")
@@ -271,11 +602,8 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 )
             )
         elif isinstance(tag, TypeTag.Organ) and tag.detail:
-            detail = tag.detail
-            for rgx, replacement in ORGAN_REPLACEMENTS:
-                detail = re.sub(rgx, replacement, detail)
-            new_tag = TypeTag.Organ(tag.organ, detail, tag.condition)
-            tags.append(new_tag)
+            new_tags = yield from check_organ_tag(tag)
+            tags += new_tags
         else:
             tags.append(tag)
         # TODO: for lectotype and subsequent designations, ensure the earliest valid one is used.
@@ -1446,8 +1774,15 @@ def clean_up_verbatim(nam: Name, cfg: LintConfig) -> Iterable[str]:
 def check_correct_status(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.status.is_base_name() and nam != nam.taxon.base_name:
         yield f"is of status {nam.status!r} and should be base name of {nam.taxon}"
-    if nam.status is Status.valid and nam.taxon.parent is not None and nam.taxon.parent.base_name.status is not Status.valid:
-        yield f"is valid, but parent {nam.taxon.parent} is of status {nam.taxon.parent.base_name.status}"
+    if (
+        nam.status is Status.valid
+        and nam.taxon.parent is not None
+        and nam.taxon.parent.base_name.status is not Status.valid
+    ):
+        yield (
+            f"is valid, but parent {nam.taxon.parent} is of status"
+            f" {nam.taxon.parent.base_name.status}"
+        )
 
 
 def _check_names_match(nam: Name, other: Name) -> Iterable[str]:
