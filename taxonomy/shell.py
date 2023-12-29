@@ -2719,8 +2719,7 @@ def edit_organ(organ: constants.SpecimenOrgan | None = None) -> None:
             return
     substring = getinput.get_line("substring> ")
     check_lint = getinput.yes_no("only edit if there are lint issues? ")
-    for nam in find_names_with_organ(organ):
-        nam.format(quiet=True)
+    for nam in getinput.print_every_n(find_names_with_organ(organ), n=100, label="names"):
         relevant_tags = [
             t
             for t in nam.type_tags
@@ -2742,6 +2741,7 @@ def edit_organ(organ: constants.SpecimenOrgan | None = None) -> None:
         if check_lint and not dirty:
             print(f"Ignoring as {organ.name} tags are clean")
             continue
+        nam.format(quiet=True)
         if getinput.yes_no("edit?"):
             original_tags = set(nam.type_tags)
             nam.edit()

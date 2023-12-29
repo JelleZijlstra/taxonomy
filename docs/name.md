@@ -334,7 +334,8 @@ names should have at least one. They fall into several groups:
     "juvenile".
   - _Organ_: A preserved part of the specimen, such as "skin", "skull", or "tooth".
     There may be (and often are) multiple _Organ_ tags. The tag has fields for detail
-    (such as tooth position) and condition of the specimen.
+    (such as tooth position) and comments about the specimen. See below for more detail
+    on how _Organ_ tags work.
   - _Altitude_: Altitude, in meters or feet, at which the type specimen was collected.
   - _Coordinates_: Geographical coordinates (latitude and longitude) at which the type
     specimen was collected.
@@ -380,6 +381,134 @@ names should have at least one. They fall into several groups:
   previous versions of this database that is now no longer relevant, such as vernacular
   Dutch and English names.
 - _definition_: Phylogenetic definition of the name, where applicable.
+
+## _Organ_ tags
+
+The _Organ_ tag indicates the preserved parts of the type specimen. For extant mammals,
+this is usually something like "skin and skull"; for fossils, it can be a long list of
+bones. The tag has three fields:
+
+- _organ_, one member of a long but fixed list of organs, e.g. "skin"
+- _detail_, text describing the organ in more detail. For most organs, the precise text
+  is tightly restricted to facilitate comparisons; for some others this has not yet been
+  done. All allow adding "?" in front of the text (to indicate uncertainty) and "part"
+  or "parts" after the text (to indicate that only part of the organ is present). As
+  appropriate, many organs allow a count, possibly prefixed with ">" or "~" (e.g., ">1",
+  "~30"), the word "proximal" or "distal", the word "shaft", or the letter "L" or "R"
+  for left or right.
+- _comment_, free text. Often this is the collection number of part of the type
+  specimen, or further text describing its physical condition.
+
+The options for the _organ_ field are as follows:
+
+- Non-bones
+  - _skin_, preserved skin
+  - _in_alcohol_ or other fluid, a whole animal or carcass
+  - _whole_animal_, usually in non-mammals, the entire animal preserved
+  - _tissue_sample_ in extant animals, e.g. a liver sample
+- Skull bones
+  - _skull_. In extant mammals this tends to implicitly include the mandible, but in
+    fossils the mandible should be implicitly included. In mammals, if teeth are
+    present, those should be recorded in the standard notation. For example, "part, LC,
+    RM1-3" means a partial skull holding the left canine and right first through third
+    upper molars. The detail field may hold short arbitrary text as well as tooth
+    positions. The word "edentulous" may be used to indicate no teeth are present.
+  - _mandible_, the entirety of the lower jaw. In fossils, the tooth present should be
+    recorded in the detail field. In mammals, _mandible_ should only be used if both
+    branches are still articulated. If the two are separate, use _dentary_ instead. In
+    nonmammals, the mandible includes more bones than just the dentary. As with the
+    skull, the detail field may hold short arbitrary text.
+  - _dentary_, the left or right tooth-bearing part of the mandible. The detail text
+    mostly just refers to the teeth; for example, "Lm1-2, Rp4, Rm2-3" means a left
+    dentary with the first and second molars and a right dentary with the fourth
+    premolar and second and third molars.
+  - _palate_, both upper jaws together, with the teeth present.
+  - _maxilla_, one of the main tooth-bearing upper jaws.
+  - _premaxilla_, holding the incisors and canine.
+  - _tooth_, one or more isolated teeth. In mammals, the text follows a standard formula
+    like "RX1", where "R" (or "L") indicates left or right, "X" is the category of tooth
+    and "1" is its position in the series. The category is uppercase in the upper jaw
+    and lowercase in the lower jaw. The standard categories are "I" (incisor), "C"
+    (canine), "P" (premolar), and "M" (molar). No number should be added to "C", or to
+    the incisor in rodents, because there is only ever one. Other categories allowed
+    include "DI", "DC", and "DP" for deciduous teeth; "A" for antemolars (in shrews);
+    and "IF", "PMF", and "MF" for incisiform, premolariform, and molariform teeth.
+    Ranges of teeth may be indicated like "Lp4-m1" or "Lm1-3". If there is uncertainty
+    about the exact tooth, separate the options with slashes: "M1/2" is a first or
+    second upper molar, "C/c" is an upper or lower canine. In nonmammals (and some
+    mammals), the teeth are not so precisely identified, and usually only a count is
+    specified, or the word "maxillary" or "mandibular" for upper and lower teeth.
+  - _frontlet_, in ruminants, part of the skull with horns or antlers
+  - _predentary_, in ornithischians
+- Paired bones
+  - _scapula_
+  - _coracoid_
+  - _scapulocoracoid_, the fused scapula and coracoid
+  - _clavicle_
+  - _humerus_
+  - _ulna_
+  - _radius_
+  - _pelvis_, the entire bone (also called innominate or os coxae) when fused together
+    (as is normally the case in mammsl)
+  - _ilium_, when separate from the pelvis
+  - _ischium_, when separate from the pelvis
+  - _pubis_, when separate from the pelvis
+  - _prepubis_, in some archosaurs
+  - _femur_
+  - _patella_
+  - _tibia_
+  - _fibula_
+  - _astragalus_
+  - _calcaneum_
+  - _petrosal_
+  - _antler_, in deer
+  - _horn_core_, in bovids
+  - _tibiotarsus_
+  - _carpometacarpal_, in birds
+  - _tarsometatarsus_, in birds
+- Bones of the hands and feet
+  - _metacarpal_
+    - The position can be indicated as "McI" for the first metacarpal
+  - _metatarsal_
+    - Detail field is e.g. "MtII" for the second metatarsal
+  - _metapodial_
+    - Either a metacarpal or metatarsal
+  - _phalanx_manus_
+    - "IV-1" means the proximal (first) phalanx of the fourth digit.
+  - _phalanx_pes_
+    - As for the manus
+  - _phalanx_
+    - A phalanx of either the manus or the pes
+  - _carpal_
+  - _navicular_
+- Other bones
+  - _vertebra_, including the sacrum and associated bones such as chevrons
+  - _rib_
+  - _caudal_tube_, in cingulates
+  - _osteoderm_, in cingulates and various archosaurs, among others
+  - _hyoid_
+  - _baculum_
+  - _furcula_
+  - _sternum_
+  - _shell_, usually in turtles and cingulates
+  - _interclavicle_
+  - _gastralia_
+- Multiple bones
+  - _postcranial_skeleton_. In extant mammals this often indicates the entire
+    postcranial skeleton; in fossils it is used (usually with the detail text "part") if
+    the source is not precise about the bones preserved.
+  - _skeleton_. In fossils, used if the entire skeleton is preserved.
+  - _limb_. Used (with "fore" or "hind" in the detail field) if the source is imprecise
+    about the exact limb bones preserved.
+  - _girdle_, with "pectoral" or "pelvic" in the detail field, also used when the source
+    is not precise about the bones preserved.
+  - _manus_, for the entire manus. It is preferred to list the individual bones
+    separately.
+  - _pes_, similar to the manus.
+- Miscellaneous
+  - _other_, used to tag organs that have yet to be sorted out and may need new entries
+    in the list of allowed organs
+  - _egg_
 
 ## Justified emendations
 

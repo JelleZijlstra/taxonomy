@@ -107,8 +107,10 @@ UNIQUE_TAGS = (
     TypeTag.GenusCoelebs,
 )
 ORGAN_REPLACEMENTS = [
-    (r"(^|, )right(\b|$)", r"\1R"),
-    (r"(^|, )left(\b|$)", r"\1L"),
+    (r"(^|, | with )right(\b|$)", r"\1R"),
+    (r"(^|, | with )left(\b|$)", r"\1L"),
+    (r"(^|, | with )L (?=[A-Z]\d)", r"\1L"),
+    (r"(^|, | with )R (?=[A-Z]\d)", r"\1R"),
     (r"M(\d) or M(\d)", r"M\1/\2"),
     (r"m(\d) or m(\d)", r"m\1/\2"),
     (r"^both$", r"L, R"),
@@ -160,6 +162,7 @@ PAIRED_ORGANS = {
     SpecimenOrgan.antler,
     SpecimenOrgan.limb,
     SpecimenOrgan.prepubis,
+    SpecimenOrgan.predentary,
 }
 COUNTED_ORGANS = {
     SpecimenOrgan.carpal,
@@ -173,6 +176,10 @@ TOOTHED_ORGANS = {
     SpecimenOrgan.dentary,
     SpecimenOrgan.palate,
     SpecimenOrgan.tooth,
+    SpecimenOrgan.mandible,
+    SpecimenOrgan.maxilla,
+    SpecimenOrgan.premaxilla,
+    SpecimenOrgan.skull,
 }
 CHECKED_ORGANS = {
     *PAIRED_ORGANS,
@@ -238,7 +245,7 @@ def check_tooth_text(text: str, organ: SpecimenOrgan) -> Iterable[str]:
     if organ in (SpecimenOrgan.mandible, SpecimenOrgan.dentary):
         if text == "symphysis":
             return
-    if organ in (SpecimenOrgan.mandible, SpecimenOrgan.dentary, SpecimenOrgan.maxilla, SpecimenOrgan.premaxilla, SpecimenOrgan.tooth):
+    if organ in (SpecimenOrgan.mandible, SpecimenOrgan.dentary, SpecimenOrgan.maxilla, SpecimenOrgan.premaxilla, SpecimenOrgan.tooth, SpecimenOrgan.skull):
         match = re.fullmatch(r" ?(?P<count>\d+)( (?P<category>[A-Za-z/]+))?", text)
         if match:
             category = match.group("category")
@@ -246,7 +253,7 @@ def check_tooth_text(text: str, organ: SpecimenOrgan) -> Iterable[str]:
                 return
     if organ in (SpecimenOrgan.mandible, SpecimenOrgan.skull):
         # allow arbirary text
-        if re.match(text.strip(), r"[a-z]+"):
+        if re.fullmatch(r"[a-z]+( [a-z]+)?", text.strip()):
             return
     allow_uppers = organ not in (SpecimenOrgan.mandible, SpecimenOrgan.dentary)
     allow_lowers = organ not in (SpecimenOrgan.maxilla, SpecimenOrgan.premaxilla, SpecimenOrgan.skull, SpecimenOrgan.palate)
@@ -382,31 +389,49 @@ def maybe_replace_tags(organ: SpecimenOrgan, detail: str, condition: str) -> tup
     if organ in (SpecimenOrgan.mandible, SpecimenOrgan.dentary):
         if " with " in detail:
             before, after = detail.split(" with ", maxsplit=1)
-            if match := re.fullmatch("([LR]) (dentary|lower jaw|ramus|dentary fragment)", before):
+            new_organ = SpecimenOrgan.dentary
+            rgx = r"[a-z][\da-z\-\?]*(, [a-z][\da-z\-\?]*)*"
+            if match := re.fullmatch("([LR]) (dentary|lower jaw|ramus|dentary fragment|mandible)", before):
                 side = match.group(1)
             elif before in ("dentary", "lower jaw", "ramus", "dentary fragment"):
                 side = ""
+            elif before == "mandible" and "L" in detail and "R" in detail:
+                side = ""
+                new_organ = SpecimenOrgan.mandible
+                rgx = r"[LR][a-z][\da-z\-\?]*(, [LR][a-z][\da-z\-\?]*)*"
             else:
                 side = None
             if side is not None:
-                if re.fullmatch(r"[a-z][\da-z\-\?]*(, [a-z][\da-z\-\?]*)*", after):
+                if re.fullmatch(rgx, after):
                     pieces = after.split(", ")
                     new_detail = ", ".join(side + piece for piece in pieces)
-                    return [TypeTag.Organ(SpecimenOrgan.dentary, new_detail, condition)], []
-    elif organ is SpecimenOrgan.maxilla:
+                    return [TypeTag.Organ(new_organ, new_detail, condition)], []
+    if organ in (SpecimenOrgan.maxilla, SpecimenOrgan.skull):
         if " with " in detail:
             before, after = detail.split(" with ", maxsplit=1)
-            if match := re.fullmatch("([LR]) (maxilla|upper jaw)", before):
+            new_organ = SpecimenOrgan.maxilla
+            if match := re.fullmatch("([LR]) (maxilla|upper jaw|palate)", before):
                 side = match.group(1)
+                if match.group(2) == "palate":
+                    new_organ = SpecimenOrgan.palate
             elif before in ("maxilla", "upper jaw"):
                 side = ""
+            elif before == "palate":
+                side = ""
+                new_organ = SpecimenOrgan.palate
             else:
                 side = None
             if side is not None:
                 if re.fullmatch(r"[A-Z][\dA-Z\-\?]*(, [A-Z][\dA-Z\-\?]*)*", after):
                     pieces = after.split(", ")
                     new_detail = ", ".join(side + piece for piece in pieces)
-                    return [TypeTag.Organ(SpecimenOrgan.maxilla, new_detail, condition)], []
+                    return [TypeTag.Organ(new_organ, new_detail, condition)], []
+    if organ is SpecimenOrgan.skull:
+        if " with " in detail:
+            before, after = detail.split(" with ", maxsplit=1)
+            if re.fullmatch(r"(partial |broken )?(skull|cranium)", before):
+                if re.fullmatch(r"[A-Z][\dA-Z\-\?]*(, [A-Z][\dA-Z\-\?]*)*", after):
+                    return [TypeTag.Organ(SpecimenOrgan.skull, after, condition)], []
     parts = detail.split(", ")
     remaining_parts = []
     new_tags = []
