@@ -171,6 +171,7 @@ COUNTED_ORGANS = {
     SpecimenOrgan.metatarsal,
     SpecimenOrgan.limb,
     SpecimenOrgan.tooth,
+    SpecimenOrgan.gastralia,
 }
 TOOTHED_ORGANS = {
     SpecimenOrgan.dentary,
@@ -195,7 +196,14 @@ CHECKED_ORGANS = {
     SpecimenOrgan.pelvis,
 }
 # TODO: carpal, phalanx_manus, frontlet, phalanx_pes, other, phalanx, sternum, horn_core (split up?), manus, osteoderm, pes, vertebra, postcranial_skeleton, shell, rib
-# Maybe leave alone: tissue_sample, whole_animal, in_alcohol, skin, skull
+# Maybe leave alone: tissue_sample, whole_animal, in_alcohol, skin
+# Other possible improvements:
+# - Parse teeth into a dataclass and then restringify to make the format
+#   more consistent
+# - Sort the comma-separated parts
+# - Unify multiple organ tags that use the same organ and have no comment
+# - Rename the "condition" tag to "comment"
+# - Restrict some organs to specific taxonomic groups (antler, frontlet, predentary, horn_core, shell)
 
 
 def remove_prefix(text: str, prefixes: tuple[str, ...]) -> str:
