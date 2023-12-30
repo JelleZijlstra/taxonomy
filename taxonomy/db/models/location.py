@@ -265,6 +265,13 @@ class Location(BaseModel):
         if self.max_period is None and self.min_period is not None:
             yield f"{self}: missing max_period"
 
+    def should_be_specified(self) -> bool:
+        if self.region.has_children():
+            return True
+        if self.min_period == self.max_period and self.min_period.name != "Recent" and get_expected_general_name(self.region, self.min_period) == self.name:
+            return True
+        return False
+
     @classmethod
     def fix_references(cls) -> None:
         for alias in cls.select_valid().filter(cls.deleted == LocationStatus.alias):
@@ -273,14 +280,7 @@ class Location(BaseModel):
 
     @classmethod
     def get_or_create_general(cls, region: Region, period: Period) -> Location:
-        if period.name == "Recent":
-            name = region.name
-        elif period.name == "Phanerozoic":
-            name = f"{region.name} fossil"
-        elif period.name == "Pleistocene":
-            name = f"{region.name} Pleistocene"
-        else:
-            name = f"{period.name} ({region.name})"
+        name = get_expected_general_name(region, period)
         objs = list(Location.select_valid().filter(Location.name == name))
         if objs:
             return objs[0]  # should only be one
@@ -382,3 +382,14 @@ class LocationTag(adt.ADT):
 
     # Neogene of the Old World database
     NOW(id=str, tag=4)  # type: ignore
+
+
+def get_expected_general_name(region: Region, period: Period) -> str:
+    if period.name == "Recent":
+        return region.name
+    elif period.name == "Phanerozoic":
+        return f"{region.name} fossil"
+    elif period.name == "Pleistocene":
+        return f"{region.name} Pleistocene"
+    else:
+        return f"{period.name} ({region.name})"

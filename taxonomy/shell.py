@@ -1569,7 +1569,7 @@ def fix_general_type_localities() -> None:
 
 
 def fix_general_type_localities_for_location(loc: models.Location) -> None:
-    if not loc.has_tag(models.location.LocationTag.General):
+    if not loc.should_be_specified():
         return
     if loc.type_localities.count() == 0:
         return
@@ -1599,6 +1599,17 @@ def fix_general_type_localities_for_region(region: models.Region) -> None:
 
     for child in region.children:
         fix_general_type_localities_for_region(child)
+
+
+@command
+def biggest_general_type_localities() -> None:
+    counts = Counter()
+    for loc in getinput.print_every_n(models.Location.select_valid(), n=100, label="localities"):
+        if not loc.should_be_specified():
+            continue
+        counts[loc] = loc.type_localities.count()
+    for loc, count in counts.most_common(100):
+        print(count, loc)
 
 
 @command
