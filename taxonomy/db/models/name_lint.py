@@ -557,7 +557,14 @@ def _parse_single_tooth(
         if not (side := match.group("side")):
             side = side_preset
         if raw_category := match.group("category"):
-            is_upper = raw_category.isupper()
+            if raw_category.isupper():
+                is_upper = True
+            elif raw_category.islower():
+                is_upper = False
+            elif raw_category[0] == "d" and len(raw_category) == 2 and raw_category[1].isupper():
+                is_upper = True
+            else:
+                raise ParseException(f"mixed case in {raw_category!r}")
             category = raw_category.lower()
         elif category_preset is not None and is_upper_preset is not None:
             is_upper = is_upper_preset
@@ -646,7 +653,7 @@ class ParsedOrgan:
     def validate(self, organ: SpecimenOrgan) -> Iterable[str]:
         if self.count is not None:
             yield from self.count.validate(organ, self)
-        if self.side is not None and organ not in PAIRED_ORGANS and not isinstance(self.base, RawText):
+        if self.side is not None and organ not in PAIRED_ORGANS and not isinstance(self.base, RawText) and self.part_text is None:
             yield f"organ {organ.name!r} does not allow a left/right side: {self.side}"
         if self.proximal_distal is not None and organ not in PROXIMAL_DISTAL_ORGANS:
             yield f"organ {organ.name!r} does not allow proximal/distal specification: {self.proximal_distal}"
