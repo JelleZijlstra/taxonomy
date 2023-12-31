@@ -1,5 +1,6 @@
 from .name_lint import (
     AnySpecimen,
+    ParsedOrgan,
     SpecialSpecimen,
     Specimen,
     SpecimenRange,

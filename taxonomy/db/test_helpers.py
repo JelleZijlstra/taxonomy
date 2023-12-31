@@ -1,6 +1,6 @@
 from datetime import date
 
-from .helpers import get_date_object, romanize_russian, trimdoi
+from .helpers import get_date_object, romanize_russian, trimdoi, make_roman_numeral, parse_roman_numeral
 
 
 def assert_romanizes(cyrillic: str, latin: str) -> None:
@@ -106,3 +106,17 @@ def test_get_date_object() -> None:
     assert get_date_object("1991-02") == date(1991, 2, 28)
     assert get_date_object("1992-02") == date(1992, 2, 29)
     assert get_date_object("1991-02-11") == date(1991, 2, 11)
+
+
+def test_make_roman_numeral() -> None:
+    assert make_roman_numeral(1) == "I"
+    assert make_roman_numeral(2) == "II"
+    assert make_roman_numeral(4) == "IV"
+    assert make_roman_numeral(5) == "V"
+
+
+def test_parse_roman_numeral() -> None:
+    assert parse_roman_numeral("IV") == 4
+    assert parse_roman_numeral("III") == 3
+    for i in range(1, 100):
+        assert parse_roman_numeral(make_roman_numeral(i)) == i

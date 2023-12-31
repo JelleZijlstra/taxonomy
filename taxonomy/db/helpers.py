@@ -1074,3 +1074,39 @@ def parse_date(year: str, month: str | None, day: str | None) -> str:
 def is_valid_roman_numeral(s: str) -> bool:
     # TODO stricter validation
     return bool(re.fullmatch(r"[ivxlc]+", s))
+
+
+LETTER_TO_VALUE = {
+    "I": 1,
+    "V": 5,
+    "X": 10,
+    "L": 50,
+    "C": 100,
+    "D": 500,
+    "M": 1000
+}
+_SORTED_VALUES = sorted(LETTER_TO_VALUE.items(), key=lambda p: -p[1])
+
+
+def make_roman_numeral(i: int) -> str:
+    """Not the best option for higher numbers, but works."""
+    assert 0 < i <= 4000
+    for letter, value in _SORTED_VALUES:
+        if i == value:
+            return letter
+        elif i == value - 1:
+            return f"I{letter}"
+        elif i > value:
+            rest = i - value
+            return letter + make_roman_numeral(rest)
+    assert False, "should never get here"
+
+
+def parse_roman_numeral(s: str) -> int:
+    for letter, value in _SORTED_VALUES:
+        if letter in s:
+            before, after = s.split(letter, maxsplit=1)
+            return value - parse_roman_numeral(before) + parse_roman_numeral(after)
+    if s:
+        raise ValueError(f"unrecognized Roman numeral: {s!r}")
+    return 0

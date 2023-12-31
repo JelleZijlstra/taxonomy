@@ -2746,7 +2746,7 @@ def edit_organ(organ: constants.SpecimenOrgan | None = None) -> None:
         dirty = False
         for tag in relevant_tags:
             print(tag)
-            for issue in models.name_lint.check_organ_detail(tag.organ, tag.detail):
+            for issue in models.name_lint.check_organ_tag(tag):
                 print(issue)
                 dirty = True
         if check_lint and not dirty:
