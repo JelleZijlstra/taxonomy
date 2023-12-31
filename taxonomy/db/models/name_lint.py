@@ -147,6 +147,8 @@ PROXIMAL_DISTAL_ORGANS = {
     SpecimenOrgan.calcaneum,
     SpecimenOrgan.astragalus,
     SpecimenOrgan.rib,
+    SpecimenOrgan.manus,
+    SpecimenOrgan.pes,
 }
 ALLOW_ANTERIOR_POSTERIOR = {
     SpecimenOrgan.shell,
@@ -207,6 +209,12 @@ ALLOW_RESTRICTED_RAW_TEXT = {
     SpecimenOrgan.mandible,
     SpecimenOrgan.sternum,
     SpecimenOrgan.osteoderm,
+    SpecimenOrgan.manus,
+    SpecimenOrgan.pes,
+    SpecimenOrgan.tissue_sample,
+    SpecimenOrgan.whole_animal,
+    SpecimenOrgan.in_alcohol,
+    SpecimenOrgan.skin,
 }
 CHECKED_ORGANS = {
     *PAIRED_ORGANS,
@@ -224,8 +232,7 @@ CHECKED_ORGANS = {
     SpecimenOrgan.shell,
     SpecimenOrgan.postcranial_skeleton,
 }
-# TODO: other, manus, pes
-# Maybe leave alone: tissue_sample, whole_animal, in_alcohol, skin
+# Only one not chedked is "other", it should probably stay that way
 # Other possible improvements:
 # - Sort the comma-separated parts
 # - Unify multiple organ tags that use the same organ and have no comment
@@ -714,7 +721,7 @@ class RawText:
     def validate(self, organ: SpecimenOrgan) -> Iterable[str]:
         if organ not in CHECKED_ORGANS:
             return
-        if organ in ALLOW_RESTRICTED_RAW_TEXT and re.fullmatch(r"[a-z]+( [a-z]+)?", self.text):
+        if organ in ALLOW_RESTRICTED_RAW_TEXT and re.fullmatch(r"[a-z]+([ \-][a-z]+)?", self.text):
             return
         yield f"unrecognized text {self.text!r} for organ {organ.name!r}"
 

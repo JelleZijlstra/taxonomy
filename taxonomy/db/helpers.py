@@ -1090,7 +1090,7 @@ _SORTED_VALUES = sorted(LETTER_TO_VALUE.items(), key=lambda p: -p[1])
 
 def make_roman_numeral(i: int) -> str:
     """Not the best option for higher numbers, but works."""
-    assert 0 < i <= 4000
+    assert 0 <= i <= 4000
     for letter, value in _SORTED_VALUES:
         if i == value:
             return letter
@@ -1099,7 +1099,7 @@ def make_roman_numeral(i: int) -> str:
         elif i > value:
             rest = i - value
             return letter + make_roman_numeral(rest)
-    assert False, "should never get here"
+    return 0
 
 
 def parse_roman_numeral(s: str) -> int:
