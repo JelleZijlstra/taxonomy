@@ -9,6 +9,7 @@ import enum
 import functools
 import json
 import re
+from collections import defaultdict
 from collections.abc import Callable, Generator, Iterable, Iterator, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -108,21 +109,13 @@ UNIQUE_TAGS = (
     TypeTag.GenusCoelebs,
 )
 ORGAN_REPLACEMENTS = [
-    (r"(^|, | with )right(\b|$)", r"\1R"),
-    (r"(^|, | with )left(\b|$)", r"\1L"),
-    (r"(^|, | with )L (?=[A-Z]\d)", r"\1L"),
-    (r"(^|, | with )R (?=[A-Z]\d)", r"\1R"),
-    (r"M(\d) or M(\d)", r"M\1/\2"),
-    (r"m(\d) or m(\d)", r"m\1/\2"),
     (r"^both$", r"L, R"),
     (r"(^|, )partial ([LR])(?=$|, )", r"\1\2 part"),
     (r"(^|, )(proximal|distal|shaft|part) ([LR])(?=$|, )", r"\1\3 \2"),
     (r"^partial$", "part"),
     (r"^(L |R )?fragments$", r"\1parts"),
     (r"^(L |R )?fragment$", r"\1part"),
-    (r"^(multiple|several|many)$", ">1"),
-    (r"(^|, )(L|R) (\??[A-Za-z]{1,2}(\??\d|$))", r"\1\2\3"),  # remove space after L/R in tooth
-    (r"^([LR]?)([A-Za-z]\d)\?", r"\1?\2"),
+    (r"^(multiple|several|many|vertebrae)$", ">1"),
 ]
 
 LONG_BONES = (
@@ -151,10 +144,13 @@ PROXIMAL_DISTAL_ORGANS = {
     SpecimenOrgan.pelvis,
     SpecimenOrgan.calcaneum,
     SpecimenOrgan.astragalus,
+    SpecimenOrgan.rib,
 }
 ALLOW_ANTERIOR_POSTERIOR = {
     SpecimenOrgan.shell,
     SpecimenOrgan.skull,
+    SpecimenOrgan.vertebra,
+    SpecimenOrgan.calcaneum,
 }
 PAIRED_ORGANS = {
     *PROXIMAL_DISTAL_ORGANS,
@@ -166,6 +162,8 @@ PAIRED_ORGANS = {
     SpecimenOrgan.scapulocoracoid,
     SpecimenOrgan.girdle,
     SpecimenOrgan.antler,
+    SpecimenOrgan.horn_core,
+    SpecimenOrgan.frontlet,
     SpecimenOrgan.limb,
     SpecimenOrgan.prepubis,
     SpecimenOrgan.predentary,
@@ -175,6 +173,8 @@ PAIRED_ORGANS = {
     SpecimenOrgan.mandible,  # only for nonmammals
     SpecimenOrgan.tooth,
     SpecimenOrgan.osteoderm,
+    SpecimenOrgan.rib,
+    SpecimenOrgan.gastralia,
 }
 COUNTED_ORGANS = {
     SpecimenOrgan.carpal,
@@ -186,6 +186,8 @@ COUNTED_ORGANS = {
     SpecimenOrgan.tooth,
     SpecimenOrgan.gastralia,
     SpecimenOrgan.osteoderm,
+    SpecimenOrgan.vertebra,
+    SpecimenOrgan.rib,
 }
 TOOTHED_ORGANS = {
     SpecimenOrgan.dentary,
@@ -216,8 +218,9 @@ CHECKED_ORGANS = {
     SpecimenOrgan.skeleton,
     SpecimenOrgan.pelvis,
     SpecimenOrgan.shell,
+    SpecimenOrgan.postcranial_skeleton,
 }
-# TODO: phalanx_manus, frontlet, phalanx_pes, other, phalanx, horn_core (split up?), manus, pes, vertebra, postcranial_skeleton, shell, rib
+# TODO: phalanx_manus, phalanx_pes, other, phalanx, manus, pes
 # Maybe leave alone: tissue_sample, whole_animal, in_alcohol, skin
 # Other possible improvements:
 # - Sort the comma-separated parts
@@ -473,13 +476,21 @@ class ToothRange:
 
 
 SHELL_TEXTS = (
+    # cingulates
+    "cephalic shield",
+    # both
     "carapace",
     "plastron",
+    # turtles
+    "bridge",
     "costal",
+    "marginal",
     "neural",
+    "epineural",
     "nuchal",
     "peripheral",
     "pygal",
+    "suprapygal",
     "epiplastron",
     "entoplastron",
     "hyoplastron",
@@ -511,6 +522,117 @@ class Shell:
             if match.group(1) in SHELL_TEXTS:
                 return Shell(match.group(1), int(match.group(2)))
         return None
+
+VERTEBRA_ABBREVIATIONS = {
+    "cervical": "C",
+    "dorsal": "D",
+    "thoracic": "T",
+    "lumbar": "L",
+    "sacral": "S",
+    "caudal": "Ca",
+}
+VertebraGroup = Literal["C", "D", "T", "L", "S", "Ca", "sternal"]
+ALLOWED_GROUPS = set(get_args(VertebraGroup))
+
+# TODO: hemal arches and chevrons are the same? If so, which term should we use?
+AfterText = Literal["centrum", "neural spine", "neural arch", "hemal arch", "chevron", "epiphysis", "neurapophysis", "diapophysis", "intercentrum"]
+AFTER_TEXT_VARIANTS = {
+    "chevrons": "chevron",
+    "haemal arches": "hemal arch",
+    "haemal arch": "hemal arch",
+    "hemal arches": "hemal arch",
+    "neural spines": "neural spine",
+    "neural arches": "neural arch",
+    "centra": "centrum",
+    "epiphyses": "epiphysis",
+    "neurapophyses": "neurapophysis",
+    "diapophyses": "diapophysis",
+    **{text: text for text in get_args(AfterText)}
+}
+
+
+@dataclass
+class Vertebra:
+    group: VertebraGroup | None = None
+    position: int | None = None
+    after_text: AfterText | None = None
+
+    def __str__(self) -> str:
+        parts = []
+        if self.group is not None:
+            parts.append(self.group)
+        if self.position is not None:
+            parts.append(str(self.position))
+        if self.after_text is not None:
+            if parts:
+                parts.append(" ")
+            parts.append(self.after_text)
+        return "".join(parts)
+
+    def validate(self, organ: SpecimenOrgan) -> Iterable[str]:
+        if self.position is not None and self.group is None:
+            yield "if position is given, group must be given"
+        if self.group is None and self.after_text is None:
+            yield "at least one of group and after_text must be set"
+        if self.group == "sternal" and organ is not SpecimenOrgan.rib:
+            yield "there are no sternal vertebrae"
+    
+    @classmethod
+    def maybe_parse(cls, text: str) -> Vertebra | VertebraRange | None:
+        if "-" in text:
+            left, right = text.split("-", maxsplit=1)
+            left_vert = cls.maybe_parse(left)
+            if left_vert is None:
+                return None
+            if right.isnumeric():
+                return VertebraRange(left_vert, cls(left_vert.group, int(right)))
+            right_vert = cls.maybe_parse(right)
+            if right_vert is None:
+                return None
+            return VertebraRange(left_vert, right_vert)
+        if text in AFTER_TEXT_VARIANTS:
+            return cls(after_text=AFTER_TEXT_VARIANTS[text])
+        after_text = None
+        for variant, after_text_candidate in AFTER_TEXT_VARIANTS.items():
+            if text.endswith(" " + variant):
+                text = text.removesuffix(" " + variant)
+                after_text = after_text_candidate
+                break
+        if text == "atlas":
+            return cls("C", 1, after_text)
+        elif text == "axis":
+            return cls("C", 2, after_text)
+        if text in ALLOWED_GROUPS:
+            return cls(text, after_text=after_text)
+        if group := VERTEBRA_ABBREVIATIONS.get(text.rstrip("s")):
+            return cls(group, after_text=after_text)
+        if match := re.fullmatch(r"([A-Z]a?)(\d+)", text):
+            group = match.group(1)
+            if group in ALLOWED_GROUPS:
+                return cls(group, int(match.group(2)), after_text=after_text)
+        return None
+
+
+@dataclass
+class VertebraRange:
+    start: Vertebra
+    end: Vertebra
+
+    def __str__(self) -> str:
+        if self.start.group == self.end.group:
+            return f"{self.start}-{self.end.position}"
+        return f"{self.start}-{self.end}"
+    
+    def validate(self, organ: SpecimenOrgan) -> Iterable[str]:
+        yield from self.start.validate(organ)
+        yield from self.start.validate(organ)
+        if self.start.group is None:
+            yield "group must be set for vertebrae in a range"
+        if self.end.group is None:
+            yield "group must be set for vertebrae in a range"
+        if self.start.group == self.end.group and self.start.position is not None and self.end.position is not None:
+            if self.start.position >= self.end.position:
+                yield f"invalid vertebral range: {self}"
 
 
 @dataclass
@@ -545,13 +667,13 @@ class RawText:
             return
         if organ in ALLOW_RESTRICTED_RAW_TEXT and re.fullmatch(r"[a-z]+( [a-z]+)?", self.text):
             return
-        yield f"unrecognized text for organ {organ.name!r}"
+        yield f"unrecognized text {self.text!r} for organ {organ.name!r}"
 
     def __str__(self) -> str:
         return self.text
 
 
-OrganBaseLiteral = Literal["shaft", "pelvic", "pectoral", "fore", "hind", "edentulous", "complete", "symphysis", "premaxillary", "maxillary", "mandibular"]
+OrganBaseLiteral = Literal["shaft", "pelvic", "pectoral", "fore", "hind", "edentulous", "complete", "symphysis", "premaxillary", "maxillary", "mandibular", "sacrum", "synsacrum", "pygostyle", "column"]
 _LITERAL_ORGAN_BASES = set(get_args(OrganBaseLiteral))
 OrganBase = Metacarpal | Metatarsal | Tooth | ToothRange | Shell | AlternativeOrgan | RawText | OrganBaseLiteral
 
@@ -578,6 +700,9 @@ def _validate_organ_base(base: OrganBase | None, organ: SpecimenOrgan) -> Iterab
         case "premaxillary" | "maxillary" | "mandibular":
             if organ is not SpecimenOrgan.tooth:
                 yield f"{base!r} is valid only for 'tooth', not {organ.name!r}"
+        case "sacrum" | "pygostyle" | "column" | "synsacrum":
+            if organ is not SpecimenOrgan.vertebra:
+                yield f"{base!r} is valid only for 'vertebra', not {organ.name!r}"
         case _:
             yield from base.validate(organ)
 
@@ -661,16 +786,20 @@ def _parse_tooth(text: str) -> Tooth | ToothRange | AlternativeOrgan | None:
     return _parse_single_tooth(text)
 
 
-def _parse_organ_base(text: str) -> OrganBase:
+def _parse_organ_base(text: str, organ: SpecimenOrgan) -> OrganBase:
     if text in _LITERAL_ORGAN_BASES:
         return text
-    tooth = _parse_tooth(text)
-    if tooth is not None:
-        return tooth
+    if organ in TOOTHED_ORGANS:
+        tooth = _parse_tooth(text)
+        if tooth is not None:
+            return tooth
+    if organ in (SpecimenOrgan.vertebra, SpecimenOrgan.rib):
+        if vertebra := Vertebra.maybe_parse(text):
+            return vertebra
     if "/" in text:
         pieces = text.split("/")
         return AlternativeOrgan(
-            [_parse_organ_base(piece) for piece in pieces]
+            [_parse_organ_base(piece, organ) for piece in pieces]
         )
     if text.startswith("Mc"):
         numeral = text.removeprefix("Mc")
@@ -726,14 +855,17 @@ class ParsedOrgan:
             return text
 
     @classmethod
-    def parse(cls, text: str) -> ParsedOrgan:
+    def parse(cls, text: str, organ: SpecimenOrgan) -> ParsedOrgan:
         is_uncertain = False
         count = base = part_text = side = anatomical_direction = None
         if text.startswith("?"):
             is_uncertain = True
             text = text.removeprefix("?")
+        affixes = ("part", "parts", "proximal", "distal", "anterior", "posterior")
+        if organ is not SpecimenOrgan.vertebra:
+            affixes = affixes + ("L", "R")
         while True:
-            text, affix = remove_affix(text, ("part", "parts", "L", "R", "proximal", "distal", "anterior", "posterior"))
+            text, affix = remove_affix(text, affixes)
             if affix is not None:
                 match affix:
                     case "L" | "R":
@@ -760,7 +892,7 @@ class ParsedOrgan:
             else:
                 break
         if text:
-            base = _parse_organ_base(text)
+            base = _parse_organ_base(text, organ)
         return ParsedOrgan(
             is_uncertain=is_uncertain,
             count=count,
@@ -784,16 +916,16 @@ def remove_affix(text, affixes: Sequence[str]) -> tuple[str, str | None]:
     return text, None
 
 
-def parse_organ_detail(detail: str) -> list[ParsedOrgan]:
+def parse_organ_detail(detail: str, organ: SpecimenOrgan) -> list[ParsedOrgan]:
     parts = detail.split(", ")
-    return [ParsedOrgan.parse(part) for part in parts]
+    return [ParsedOrgan.parse(part, organ) for part in parts]
 
 
 def check_organ_tag_with_parser(organ: SpecimenOrgan, detail: str) -> Generator[str, None, str]:
     if organ not in CHECKED_ORGANS:
         return detail
     try:
-        parsed_list = parse_organ_detail(detail)
+        parsed_list = parse_organ_detail(detail, organ)
     except ParseException as e:
         yield f"{e} while parsing {detail!r}"
         return detail
@@ -1001,13 +1133,38 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
     elif TypeTag.Repository in by_type:
         yield f"name may not have Repository tags: {by_type[TypeTag.Repository]}"
 
-    tags = sorted(set(tags))
     if tags != original_tags:
         if set(tags) != set(original_tags):
             print(f"changing tags for {nam}")
             getinput.print_diff(sorted(original_tags), tags)
         if cfg.autofix:
             nam.type_tags = tags  # type: ignore
+
+
+@make_linter("dedupe_tags")
+def dedupe_and_sort_tags(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    original_tags = list(nam.type_tags)
+    organ_tags_to_merge = defaultdict(list)
+    all_tags = set()
+    for tag in nam.type_tags:
+        if isinstance(tag, TypeTag.Organ) and tag.organ in CHECKED_ORGANS and not tag.condition:
+            organ_tags_to_merge[tag.organ].append(tag)
+        else:
+            all_tags.add(tag)
+    for organ, group in organ_tags_to_merge.items():
+        detail = []
+        for tag in group:
+            if tag.detail:
+                detail.append(tag.detail)
+        all_tags.add(TypeTag.Organ(organ, ", ".join(detail), ""))
+    tags = sorted(all_tags)
+    if tags != original_tags:
+        if set(tags) != set(original_tags):
+            print(f"changing tags for {nam}")
+            getinput.print_diff(sorted(original_tags), tags)
+        if cfg.autofix:
+            nam.type_tags = tags  # type: ignore
+    return []
 
 
 def fix_type_specimen_link(url: str) -> str:
