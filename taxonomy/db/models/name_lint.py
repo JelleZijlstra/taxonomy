@@ -126,8 +126,10 @@ LONG_BONES = (
     SpecimenOrgan.femur,
     SpecimenOrgan.humerus,
 )
+PHALANX_ORGANS = {SpecimenOrgan.phalanx, SpecimenOrgan.phalanx_manus, SpecimenOrgan.phalanx_pes}
 PROXIMAL_DISTAL_ORGANS = {
     *LONG_BONES,
+    *PHALANX_ORGANS,
     SpecimenOrgan.metapodial,
     SpecimenOrgan.carpometacarpal,
     SpecimenOrgan.tarsometatarsus,
@@ -175,6 +177,7 @@ PAIRED_ORGANS = {
     SpecimenOrgan.osteoderm,
     SpecimenOrgan.rib,
     SpecimenOrgan.gastralia,
+    *PHALANX_ORGANS,
 }
 COUNTED_ORGANS = {
     SpecimenOrgan.carpal,
@@ -188,6 +191,7 @@ COUNTED_ORGANS = {
     SpecimenOrgan.osteoderm,
     SpecimenOrgan.vertebra,
     SpecimenOrgan.rib,
+    *PHALANX_ORGANS,
 }
 TOOTHED_ORGANS = {
     SpecimenOrgan.dentary,
@@ -220,7 +224,7 @@ CHECKED_ORGANS = {
     SpecimenOrgan.shell,
     SpecimenOrgan.postcranial_skeleton,
 }
-# TODO: phalanx_manus, phalanx_pes, other, phalanx, manus, pes
+# TODO: other, manus, pes
 # Maybe leave alone: tissue_sample, whole_animal, in_alcohol, skin
 # Other possible improvements:
 # - Sort the comma-separated parts
@@ -636,6 +640,51 @@ class VertebraRange:
 
 
 @dataclass
+class Phalanx:
+    digit: int
+    position: int | Literal["ungual"] | None = None
+
+    def __str__(self) -> str:
+        if self.position is None:
+            return helpers.make_roman_numeral(self.digit)
+        return f"{helpers.make_roman_numeral(self.digit)}-{self.position}"
+
+    def validate(self, organ: SpecimenOrgan) -> Iterable[str]:
+        if organ not in PHALANX_ORGANS:
+            yield f"{organ.name!r} cannot have phalanges"
+        if not 1 <= self.digit <= 5:
+            yield f"invalid digit {self.digit}"
+        if isinstance(self.position, int) and not 1 <= self.position <= 5:
+            yield f"invalid position {self.position}"
+    
+    @classmethod
+    def maybe_parse(cls, text: str) -> Phalanx | None:
+        if "-" in text:
+            digit_text, position_text = text.split("-", maxsplit=1)
+            try:
+                digit = helpers.parse_roman_numeral(digit_text)
+            except ValueError:
+                return None
+            if position_text == "ungual":
+                return Phalanx(digit, "ungual")
+            if not position_text.isnumeric() or len(position_text) != 1:
+                return None
+            try:
+                position = int(position_text)
+            except ValueError:
+                return None
+            return Phalanx(digit, position)
+        else:
+            try:
+                digit = helpers.parse_roman_numeral(text)
+            except ValueError:
+                return None
+            else:
+                return Phalanx(digit)
+        return None
+
+
+@dataclass
 class AlternativeOrgan:
     possibilities: list[OrganBase]
 
@@ -673,7 +722,7 @@ class RawText:
         return self.text
 
 
-OrganBaseLiteral = Literal["shaft", "pelvic", "pectoral", "fore", "hind", "edentulous", "complete", "symphysis", "premaxillary", "maxillary", "mandibular", "sacrum", "synsacrum", "pygostyle", "column"]
+OrganBaseLiteral = Literal["shaft", "pelvic", "pectoral", "fore", "hind", "edentulous", "complete", "symphysis", "premaxillary", "maxillary", "mandibular", "sacrum", "synsacrum", "pygostyle", "column", "ungual"]
 _LITERAL_ORGAN_BASES = set(get_args(OrganBaseLiteral))
 OrganBase = Metacarpal | Metatarsal | Tooth | ToothRange | Shell | AlternativeOrgan | RawText | OrganBaseLiteral
 
@@ -703,6 +752,9 @@ def _validate_organ_base(base: OrganBase | None, organ: SpecimenOrgan) -> Iterab
         case "sacrum" | "pygostyle" | "column" | "synsacrum":
             if organ is not SpecimenOrgan.vertebra:
                 yield f"{base!r} is valid only for 'vertebra', not {organ.name!r}"
+        case "ungual":
+            if organ not in PHALANX_ORGANS:
+                yield f"{base!r} is valid only for phalanges, not {organ.name!r}"
         case _:
             yield from base.validate(organ)
 
@@ -796,6 +848,8 @@ def _parse_organ_base(text: str, organ: SpecimenOrgan) -> OrganBase:
     if organ in (SpecimenOrgan.vertebra, SpecimenOrgan.rib):
         if vertebra := Vertebra.maybe_parse(text):
             return vertebra
+    if phalanx := Phalanx.maybe_parse(text):
+        return phalanx
     if "/" in text:
         pieces = text.split("/")
         return AlternativeOrgan(
