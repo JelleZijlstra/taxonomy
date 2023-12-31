@@ -238,6 +238,8 @@ CHECKED_ORGANS = {
 # - Unify multiple organ tags that use the same organ and have no comment
 # - Rename the "condition" tag to "comment"
 # - Restrict some organs to specific taxonomic groups (antler, frontlet, predentary, horn_core, shell)
+# - Lint against overlapping teeth (both LP2-M3 and LP3-M3, both ?P3 and P?3). Also both "P2" and "RP2"
+# - Make sure "3 L M" gets turned into "3 LM"
 
 
 CATEGORIES = ['i', 'c', 'p', 'm']
@@ -379,7 +381,7 @@ class OrganCount:
         if organ in COUNTED_ORGANS:
             return
         if organ in TOOTHED_ORGANS:
-            if isinstance(parsed.base, Tooth) or parsed.base is None:
+            if isinstance(parsed.base, (Tooth, RawText, Shell)) or parsed.base is None:
                 return
             if isinstance(parsed.base, AlternativeOrgan) and all(isinstance(poss, Tooth) for poss in parsed.base.possibilities):
                 return
@@ -809,6 +811,10 @@ def _parse_single_tooth(
             position = int(match.group("position"))
         else:
             position = None
+        
+        # Position should not be set for canines
+        if position == 1 and category in ("c", "dc"):
+            position = None
         return Tooth(
             side=side,
             uncertain_category=bool(match.group("category_doubt")),
@@ -893,7 +899,7 @@ class ParsedOrgan:
     def validate(self, organ: SpecimenOrgan) -> Iterable[str]:
         if self.count is not None:
             yield from self.count.validate(organ, self)
-        if self.side is not None and organ not in PAIRED_ORGANS and not isinstance(self.base, (RawText, Shell)) and self.part_text is None:
+        if self.side is not None and organ not in PAIRED_ORGANS and not isinstance(self.base, (RawText, Shell)) and self.part_text is None and self.anatomical_direction is None:
             yield f"organ {organ.name!r} does not allow a left/right side: {self.side}"
         if self.anatomical_direction is not None:
             if self.anatomical_direction in ("proximal", "distal"):
@@ -2379,7 +2385,7 @@ def check_correct_status(nam: Name, cfg: LintConfig) -> Iterable[str]:
     ):
         yield (
             f"is valid, but parent {nam.taxon.parent} is of status"
-            f" {nam.taxon.parent.base_name.status}"
+            f" {nam.taxon.parent.base_name.status.name}"
         )
 
 
