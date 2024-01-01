@@ -7,6 +7,7 @@ Lint steps for Names.
 
 import enum
 import functools
+import itertools
 import json
 import re
 from collections import defaultdict
@@ -155,6 +156,8 @@ ALLOW_ANTERIOR_POSTERIOR = {
     SpecimenOrgan.skull,
     SpecimenOrgan.vertebra,
     SpecimenOrgan.calcaneum,
+    SpecimenOrgan.mandible,
+    SpecimenOrgan.dentary,
 }
 PAIRED_ORGANS = {
     *PROXIMAL_DISTAL_ORGANS,
@@ -235,7 +238,6 @@ CHECKED_ORGANS = {
 # Only one not chedked is "other", it should probably stay that way
 # Other possible improvements:
 # - Sort the comma-separated parts
-# - Unify multiple organ tags that use the same organ and have no comment
 # - Rename the "condition" tag to "comment"
 # - Restrict some organs to specific taxonomic groups (antler, frontlet, predentary, horn_core, shell)
 # - Lint against overlapping teeth (both LP2-M3 and LP3-M3, both ?P3 and P?3). Also both "P2" and "RP2"
@@ -360,7 +362,7 @@ class ParseException(Exception):
     pass
 
 
-@dataclass(kw_only=True)
+@dataclass(kw_only=True, frozen=True)
 class OrganCount:
     more_than: bool = False
     approximately: bool = False
@@ -380,15 +382,20 @@ class OrganCount:
             yield f"count must be a positive integer, not {self.count}"
         if organ in COUNTED_ORGANS:
             return
+        if isinstance(parsed.base, Shell):
+            return
         if organ in TOOTHED_ORGANS:
-            if isinstance(parsed.base, (Tooth, RawText, Shell)) or parsed.base is None:
+            if isinstance(parsed.base, (Tooth, RawText)) or parsed.base is None:
                 return
             if isinstance(parsed.base, AlternativeOrgan) and all(isinstance(poss, Tooth) for poss in parsed.base.possibilities):
                 return
         yield f"organ {organ.name!r} does not allow a count: {self.count}"
  
+    def sort_key(self) -> tuple[object, ...]:
+        return ("OrganCount", self.count, self.more_than, self.approximately)
 
-@dataclass
+
+@dataclass(frozen=True)
 class Metacarpal:
     position: int
 
@@ -398,11 +405,14 @@ class Metacarpal:
         if not (1 <= self.position <= 5):
             yield f"metacarpal out of range: {self.position}"
 
+    def sort_key(self) -> tuple[object, ...]:
+        return ("Metacarpal", self.position)
+
     def __str__(self) -> str:
         return "Mc" + helpers.make_roman_numeral(self.position)
 
 
-@dataclass
+@dataclass(frozen=True)
 class Metatarsal:
     position: int
 
@@ -412,6 +422,9 @@ class Metatarsal:
         if not (1 <= self.position <= 5):
             yield f"metatarsal out of range: {self.position}"
 
+    def sort_key(self) -> tuple[object, ...]:
+        return ("Metatarsal", self.position)
+
     def __str__(self) -> str:
         return "Mt" + helpers.make_roman_numeral(self.position)
 
@@ -420,7 +433,7 @@ ORDERED_TOOTH_CATEGORIES = ["di", "i", "if", "dc", "c", "a", "dp", "p", "pmf", "
 ToothCategory = Literal["i", "c", "p", "m", "di", "dc", "dp", "a", "if", "mf", "pmf"]
 
 
-@dataclass(kw_only=True)
+@dataclass(kw_only=True, frozen=True)
 class Tooth:
     side: Literal["L", "R", None] = None
     uncertain_category: bool = False
@@ -456,8 +469,19 @@ class Tooth:
         if not self.is_upper and organ in (SpecimenOrgan.maxilla, SpecimenOrgan.premaxilla, SpecimenOrgan.skull, SpecimenOrgan.palate):
             yield f"lower teeth are not allowed in {organ.name!r}"
 
+    def sort_key(self) -> tuple[object, ...]:
+        return (
+            "Tooth",
+            self.is_upper,
+            self.side or "",
+            ORDERED_TOOTH_CATEGORIES.index(self.category),
+            self.position or 0,
+            self.uncertain_category,
+            self.uncertain_position,
+        )
 
-@dataclass
+
+@dataclass(frozen=True)
 class ToothRange:
     start: Tooth
     end: Tooth
@@ -480,7 +504,10 @@ class ToothRange:
                 yield f"invalid range from {self.start.position} to {self.end.position}"
         yield from self.start.validate(organ)
         yield from self.end.validate(organ)
-    
+
+    def sort_key(self) -> tuple[object, ...]:
+        return self.start.sort_key() + self.end.sort_key()
+
     def __str__(self) -> str:
         skip_side = self.start.side == self.end.side
         skip_category = skip_side and not self.start.uncertain_category and not self.end.uncertain_category and self.start.category == self.end.category
@@ -513,7 +540,7 @@ SHELL_TEXTS = (
 )
 
 
-@dataclass
+@dataclass(frozen=True)
 class Shell:
     text: str
     position: int | None = None
@@ -521,7 +548,10 @@ class Shell:
     def validate(self, organ: SpecimenOrgan) -> Iterable[str]:
         if organ is not SpecimenOrgan.shell:
             yield f"{organ.name!r} is not a shell"
-    
+
+    def sort_key(self) -> tuple[object, ...]:
+        return ("Shell", self.text, self.position or 0)
+
     def __str__(self) -> str:
         if self.position is not None:
             return f"{self.text} {self.position}"
@@ -536,6 +566,7 @@ class Shell:
                 return Shell(match.group(1), int(match.group(2)))
         return None
 
+
 VERTEBRA_ABBREVIATIONS = {
     "cervical": "C",
     "dorsal": "D",
@@ -546,6 +577,7 @@ VERTEBRA_ABBREVIATIONS = {
 }
 VertebraGroup = Literal["C", "D", "T", "L", "S", "Ca", "sternal"]
 ALLOWED_GROUPS = set(get_args(VertebraGroup))
+ORDERED_GROUPS = ["C", "D", "T", "L", "S", "Ca", "sternal"]
 
 # TODO: hemal arches and chevrons are the same? If so, which term should we use?
 AfterText = Literal["centrum", "neural spine", "neural arch", "hemal arch", "chevron", "epiphysis", "neurapophysis", "diapophysis", "intercentrum"]
@@ -564,7 +596,7 @@ AFTER_TEXT_VARIANTS = {
 }
 
 
-@dataclass
+@dataclass(frozen=True)
 class Vertebra:
     group: VertebraGroup | None = None
     position: int | None = None
@@ -589,7 +621,14 @@ class Vertebra:
             yield "at least one of group and after_text must be set"
         if self.group == "sternal" and organ is not SpecimenOrgan.rib:
             yield "there are no sternal vertebrae"
-    
+
+    def sort_key(self) -> tuple[object, ...]:
+        if self.group is None:
+            group = len(ORDERED_GROUPS)
+        else:
+            group = ORDERED_GROUPS.index(self.group)
+        return ("Vertebra", group, self.position or float("inf"), self.after_text or "")
+
     @classmethod
     def maybe_parse(cls, text: str) -> Vertebra | VertebraRange | None:
         if "-" in text:
@@ -626,7 +665,7 @@ class Vertebra:
         return None
 
 
-@dataclass
+@dataclass(frozen=True)
 class VertebraRange:
     start: Vertebra
     end: Vertebra
@@ -646,9 +685,12 @@ class VertebraRange:
         if self.start.group == self.end.group and self.start.position is not None and self.end.position is not None:
             if self.start.position >= self.end.position:
                 yield f"invalid vertebral range: {self}"
+    
+    def sort_key(self) -> tuple[object, ...]:
+        return self.start.sort_key() + self.end.sort_key()
 
 
-@dataclass
+@dataclass(frozen=True)
 class Phalanx:
     digit: int
     position: int | Literal["ungual"] | None = None
@@ -665,7 +707,17 @@ class Phalanx:
             yield f"invalid digit {self.digit}"
         if isinstance(self.position, int) and not 1 <= self.position <= 5:
             yield f"invalid position {self.position}"
-    
+
+    def sort_key(self) -> tuple[object, ...]:
+        match self.position:
+            case None:
+                pos = 0
+            case "ungual":
+                pos = float("inf")
+            case pos:
+                pass
+        return ("Phalanx", self.digit, pos)
+
     @classmethod
     def maybe_parse(cls, text: str) -> Phalanx | None:
         if "-" in text:
@@ -693,9 +745,9 @@ class Phalanx:
         return None
 
 
-@dataclass
+@dataclass(frozen=True)
 class AlternativeOrgan:
-    possibilities: list[OrganBase]
+    possibilities: Sequence[OrganBase]
 
     def validate(self, organ: SpecimenOrgan) -> Iterable[str]:
         if len(self.possibilities) < 2:
@@ -703,9 +755,17 @@ class AlternativeOrgan:
         for possibility in self.possibilities:
             yield from _validate_organ_base(possibility, organ)
     
+    def sort_key(self) -> tuple[object, ...]:
+        return tuple(itertools.chain.from_iterable(
+            _organ_base_sort_key(poss) for poss in self.possibilities
+        ))
+    
+    def __hash__(self) -> int:
+        return hash(tuple(self.possibilities))
+    
     def __str__(self) -> str:
         if len(self.possibilities) > 1 and all(isinstance(possibility, Tooth) for possibility in self.possibilities):
-            first, *rest = self.possibilities
+            first, *rest = sorted(self.possibilities, key=_organ_base_sort_key)
             skip_side = True
             skip_category = not first.uncertain_category
             for poss in rest:
@@ -716,7 +776,7 @@ class AlternativeOrgan:
         return "/".join(str(poss) for poss in self.possibilities)
 
 
-@dataclass
+@dataclass(frozen=True)
 class RawText:
     text: str
 
@@ -727,6 +787,9 @@ class RawText:
             return
         yield f"unrecognized text {self.text!r} for organ {organ.name!r}"
 
+    def sort_key(self) -> tuple[object, ...]:
+        return ("RawText", self.text)
+
     def __str__(self) -> str:
         return self.text
 
@@ -734,6 +797,16 @@ class RawText:
 OrganBaseLiteral = Literal["shaft", "pelvic", "pectoral", "fore", "hind", "edentulous", "complete", "symphysis", "premaxillary", "maxillary", "mandibular", "sacrum", "synsacrum", "pygostyle", "column", "ungual"]
 _LITERAL_ORGAN_BASES = set(get_args(OrganBaseLiteral))
 OrganBase = Metacarpal | Metatarsal | Tooth | ToothRange | Shell | AlternativeOrgan | RawText | OrganBaseLiteral
+
+
+def _organ_base_sort_key(base: OrganBase | None) -> tuple[object, ...]:
+    match base:
+        case None:
+            return ("",)
+        case str():
+            return ("str", base)
+        case _:
+            return base.sort_key()
 
 
 def _validate_organ_base(base: OrganBase | None, organ: SpecimenOrgan) -> Iterable[str]:
@@ -887,7 +960,7 @@ def _parse_organ_base(text: str, organ: SpecimenOrgan) -> OrganBase:
     return RawText(text)
 
 
-@dataclass(kw_only=True)
+@dataclass(kw_only=True, frozen=True)
 class ParsedOrgan:
     is_uncertain: bool = False
     count: OrganCount | None = None
@@ -911,7 +984,17 @@ class ParsedOrgan:
             else:
                 assert_never(self.anatomical_direction)
         yield from _validate_organ_base(self.base, organ)
-    
+
+    def sort_key(self) -> tuple[object, ...]:
+        return (
+            self.side or "",
+            _organ_base_sort_key(self.base),
+            self.is_uncertain,
+            self.count.sort_key() if self.count is not None else ("",),
+            self.anatomical_direction or "",
+            self.part_text or "",
+        )
+
     def __str__(self) -> str:
         parts = [self.count, self.side, self.anatomical_direction, self.base, self.part_text]
         parts = [str(part) for part in parts if part is not None]
@@ -999,7 +1082,7 @@ def check_organ_tag_with_parser(organ: SpecimenOrgan, detail: str) -> Generator[
     for parsed in parsed_list:
         for issue in parsed.validate(organ):
             yield f"{issue} (from text {detail!r})"
-    return ", ".join(str(parsed) for parsed in parsed_list)
+    return ", ".join(str(parsed) for parsed in sorted(set(parsed_list), key=ParsedOrgan.sort_key))
 
 
 def check_organ_tag(tag: TypeTag.Organ) -> Generator[str, None, list[TypeTag.Organ]]:
