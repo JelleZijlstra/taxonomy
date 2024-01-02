@@ -693,21 +693,14 @@ def citewp(article: Article, *, commons: bool = False) -> str:
             author.get_full_name(family_first=True) for author in article.get_authors()
         )
     else:
-        coauthors: list[str] = []
         for i, author in enumerate(article.get_authors()):
-            if i < 9:
-                # templates only support up to 9 authors
-                paras[f"last{i + 1}"] = author.family_name
-                if author.given_names:
-                    paras[f"first{i + 1}"] = author.given_names
-                elif author.initials:
-                    paras[f"first{i + 1}"] = author.initials
-            else:
-                coauthors.append(author.get_full_name(family_first=True))
-        if coauthors:
-            paras["coauthors"] = "; ".join(coauthors)
+            paras[f"last{i + 1}"] = author.family_name
+            if author.given_names:
+                paras[f"first{i + 1}"] = author.given_names
+            elif author.initials:
+                paras[f"first{i + 1}"] = author.initials
     # easy stuff we need in all classes
-    paras["year"] = article.year
+    paras["year"] = str(article.numeric_year())
     if hdl:
         paras["id"] = f"{{hdl|{hdl}}}"
     paras["jstor"] = article.getIdentifier(ArticleTag.JSTOR)
