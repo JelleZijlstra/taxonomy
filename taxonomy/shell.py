@@ -715,17 +715,15 @@ def dup_taxa() -> list[dict[str, list[Taxon]]]:
         if txn.rank == Rank.subgenus and taxa[txn.valid_name]:
             continue
         taxa[txn.valid_name].append(txn)
-    return [
-        {
-            label: [
-                t
-                for t in ts
-                if t.base_name.nomenclature_status != NomenclatureStatus.preoccupied
-            ]
-            for label, ts in taxa.items()
-            if len(ts) > 1
-        }
-    ]
+    return [{
+        label: [
+            t
+            for t in ts
+            if t.base_name.nomenclature_status != NomenclatureStatus.preoccupied
+        ]
+        for label, ts in taxa.items()
+        if len(ts) > 1
+    }]
 
 
 @_duplicate_finder

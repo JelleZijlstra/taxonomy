@@ -1193,9 +1193,9 @@ class BaseModel(Model):
                     if getinput.yes_no(
                         f"create new {foreign_cls.__name__} named {value}? "
                     ):
-                        result = foreign_cls.create_interactively(**{
-                            foreign_cls.label_field: value
-                        })
+                        result = foreign_cls.create_interactively(
+                            **{foreign_cls.label_field: value}
+                        )
                         print(f"created new {foreign_cls} {result}")
                         return result
                     elif allow_none:

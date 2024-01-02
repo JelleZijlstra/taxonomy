@@ -367,9 +367,9 @@ def print_row(row: dict[str, str]) -> None:
 
 def main(dry_run: bool = True) -> None:
     hesp_data = get_hesp_data()
-    total = (
-        cannot_find
-    ) = added_tag = tag_present = excluded_count = not_a_type = name_doesnt_match = 0
+    total = cannot_find = added_tag = tag_present = excluded_count = not_a_type = (
+        name_doesnt_match
+    ) = 0
     statuses: Counter[str] = Counter()
     exclude_file = DATA_DIR / "bmnh-exclude.txt"
     excluded = {line.strip() for line in exclude_file.read_text().splitlines()}
