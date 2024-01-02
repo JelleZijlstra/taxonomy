@@ -1603,7 +1603,7 @@ def fix_general_type_localities_for_region(region: models.Region) -> None:
 
 @command
 def biggest_general_type_localities() -> None:
-    counts = Counter()
+    counts: Counter[models.Location] = Counter()
     for loc in getinput.print_every_n(
         models.Location.select_valid(), n=100, label="localities"
     ):
@@ -2739,7 +2739,11 @@ def edit_organ(organ: constants.SpecimenOrgan | None = None) -> None:
             if isinstance(t, TypeTag.Organ) and t.organ is organ and t.detail
         ]
         if substring:
-            relevant_tags = [t for t in relevant_tags if substring in t.detail]
+            relevant_tags = [
+                t
+                for t in relevant_tags
+                if t.detail is not None and substring in t.detail
+            ]
         if not relevant_tags:
             continue
         if check_lint and nam.is_lint_clean():
@@ -2760,13 +2764,15 @@ def edit_organ(organ: constants.SpecimenOrgan | None = None) -> None:
             nam.edit()
             new_tags = [tag for tag in nam.type_tags if tag not in relevant_tags]
             if any(tag not in original_tags for tag in new_tags):
-                nam.type_tags = new_tags
+                nam.type_tags = new_tags  # type: ignore[assignment]
 
 
 @command
 def organ_report(focus_organ: constants.SpecimenOrgan | None = None) -> None:
-    organ_to_count = Counter()
-    organ_to_text_to_count = defaultdict(Counter)
+    organ_to_count: Counter[constants.SpecimenOrgan] = Counter()
+    organ_to_text_to_count: dict[constants.SpecimenOrgan, Counter[str]] = defaultdict(
+        Counter
+    )
     if focus_organ is None:
         query = Name.select_valid().filter(
             Name.type_tags.contains(f"[{TypeTag.Organ._tag},")

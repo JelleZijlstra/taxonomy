@@ -107,6 +107,7 @@ class Location(BaseModel):
             region = cls.get_value_for_foreign_key_field_on_class(
                 "region", allow_none=False
             )
+        assert region is not None
         if period is None:
             period = cls.get_value_for_foreign_key_field_on_class("min_period")
         result = cls.make(
@@ -270,6 +271,7 @@ class Location(BaseModel):
             return True
         if (
             self.min_period == self.max_period
+            and self.min_period is not None
             and self.min_period.name != "Recent"
             and get_expected_general_name(self.region, self.min_period) == self.name
         ):

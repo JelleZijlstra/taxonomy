@@ -1091,7 +1091,7 @@ def make_roman_numeral(i: int) -> str:
         elif i > value:
             rest = i - value
             return letter + make_roman_numeral(rest)
-    return 0
+    return ""
 
 
 def parse_roman_numeral(s: str) -> int:

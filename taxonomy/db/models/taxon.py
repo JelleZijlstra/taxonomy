@@ -371,11 +371,11 @@ class Taxon(BaseModel):
 
     def diversity_summary(
         self,
-    ) -> tuple[dict[AgeClass, int], dict[AgeClass, int], dict[AgeClass, int]]:
+    ) -> tuple[Counter[AgeClass], Counter[AgeClass], Counter[AgeClass]]:
         """Return tuple of family count, genus count, species count."""
-        family_counts = Counter()
-        genus_counts = Counter()
-        species_counts = Counter()
+        family_counts: Counter[AgeClass] = Counter()
+        genus_counts: Counter[AgeClass] = Counter()
+        species_counts: Counter[AgeClass] = Counter()
         if self.base_name.status is Status.valid:
             if self.rank is Rank.family:
                 family_counts[self.age] += 1
