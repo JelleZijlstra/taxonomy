@@ -1604,7 +1604,9 @@ def fix_general_type_localities_for_region(region: models.Region) -> None:
 @command
 def biggest_general_type_localities() -> None:
     counts = Counter()
-    for loc in getinput.print_every_n(models.Location.select_valid(), n=100, label="localities"):
+    for loc in getinput.print_every_n(
+        models.Location.select_valid(), n=100, label="localities"
+    ):
         if not loc.should_be_specified():
             continue
         counts[loc] = loc.type_localities.count()
@@ -1765,13 +1767,11 @@ def most_common_unchecked_names(
             if max_num_names is not None:
                 name_counter[person.family_name] += 1
     if max_num_names is not None:
-        counter = Counter(
-            {
-                family_name: count
-                for family_name, count in counter.items()
-                if name_counter[family_name] <= max_num_names
-            }
-        )
+        counter = Counter({
+            family_name: count
+            for family_name, count in counter.items()
+            if name_counter[family_name] <= max_num_names
+        })
     for value, count in counter.most_common(num_to_display):
         print(value, count)
     return counter
@@ -2730,7 +2730,9 @@ def edit_organ(organ: constants.SpecimenOrgan | None = None) -> None:
             return
     substring = getinput.get_line("substring> ")
     check_lint = getinput.yes_no("only edit if there are lint issues? ")
-    for nam in getinput.print_every_n(find_names_with_organ(organ), n=100, label="names"):
+    for nam in getinput.print_every_n(
+        find_names_with_organ(organ), n=100, label="names"
+    ):
         relevant_tags = [
             t
             for t in nam.type_tags

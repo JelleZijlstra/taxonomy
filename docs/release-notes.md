@@ -8,22 +8,24 @@ exports released on Zenodo.
 
 - Database
   - Add many newly named taxa
-  - Add coverage for several archosauromorph groups, including ornithischians, "rauisuchians",
-    aetosaurs, phytosaurs, and basal archosauromorphs. All archosauromorphs except crown-group
-    birds are now reasonably well covered.
-  - Improve "organ" tags for the material included in type specimens. Replace many organs
-    labeled with the legacy "other" or "postcranial_skeleton" organs and start standardizing the
-    format of the "details" field.
+  - Add coverage for several archosauromorph groups, including ornithischians,
+    "rauisuchians", aetosaurs, phytosaurs, and basal archosauromorphs. All
+    archosauromorphs except crown-group birds are now reasonably well covered.
+  - Improve "organ" tags for the material included in type specimens. Replace many
+    organs labeled with the legacy "other" or "postcranial_skeleton" organs and start
+    standardizing the format of the "details" field.
   - Start adding name combinations to the database, mostly for newly covered taxa.
 - Backend
   - Add many new bones to the enumeration of organs
-  - Add script to infer the publication date of articles based on that of other articles in the same issue
+  - Add script to infer the publication date of articles based on that of other articles
+    in the same issue
   - Add ability to add the PhyloCode number for a name
   - Support for name combinations
   - Make terminal autocompletions more efficient
-  - Taxa that are placed in a parent taxon that also contains sibling taxa of higher ranks
-    are now marked as either "basal" (current evidence indicates they are unlikely to belong
-    in any particular subtaxon) or "incertae sedis" (they may belong in some subtaxon).
+  - Taxa that are placed in a parent taxon that also contains sibling taxa of higher
+    ranks are now marked as either "basal" (current evidence indicates they are unlikely
+    to belong in any particular subtaxon) or "incertae sedis" (they may belong in some
+    subtaxon).
 
 # 23.8.1 (August 29, 2023)
 

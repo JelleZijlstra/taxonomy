@@ -1076,15 +1076,7 @@ def is_valid_roman_numeral(s: str) -> bool:
     return bool(re.fullmatch(r"[ivxlc]+", s))
 
 
-LETTER_TO_VALUE = {
-    "I": 1,
-    "V": 5,
-    "X": 10,
-    "L": 50,
-    "C": 100,
-    "D": 500,
-    "M": 1000
-}
+LETTER_TO_VALUE = {"I": 1, "V": 5, "X": 10, "L": 50, "C": 100, "D": 500, "M": 1000}
 _SORTED_VALUES = sorted(LETTER_TO_VALUE.items(), key=lambda p: -p[1])
 
 

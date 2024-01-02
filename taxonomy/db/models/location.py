@@ -268,7 +268,11 @@ class Location(BaseModel):
     def should_be_specified(self) -> bool:
         if self.region.has_children():
             return True
-        if self.min_period == self.max_period and self.min_period.name != "Recent" and get_expected_general_name(self.region, self.min_period) == self.name:
+        if (
+            self.min_period == self.max_period
+            and self.min_period.name != "Recent"
+            and get_expected_general_name(self.region, self.min_period) == self.name
+        ):
             return True
         return False
 

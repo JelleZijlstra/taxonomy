@@ -235,9 +235,7 @@ class StratigraphicUnit(BaseModel):
             super().fill_field(field)
 
     def get_adt_callbacks(self) -> getinput.CallbackMap:
-        return {
-            **super().get_adt_callbacks(), "merge": self.merge
-        }
+        return {**super().get_adt_callbacks(), "merge": self.merge}
 
     def get_required_fields(self) -> Iterable[str]:
         yield "name"

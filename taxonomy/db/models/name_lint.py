@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 """
 
 Lint steps for Names.
@@ -127,7 +128,11 @@ LONG_BONES = (
     SpecimenOrgan.femur,
     SpecimenOrgan.humerus,
 )
-PHALANX_ORGANS = {SpecimenOrgan.phalanx, SpecimenOrgan.phalanx_manus, SpecimenOrgan.phalanx_pes}
+PHALANX_ORGANS = {
+    SpecimenOrgan.phalanx,
+    SpecimenOrgan.phalanx_manus,
+    SpecimenOrgan.phalanx_pes,
+}
 PROXIMAL_DISTAL_ORGANS = {
     *LONG_BONES,
     *PHALANX_ORGANS,
@@ -244,10 +249,12 @@ CHECKED_ORGANS = {
 # - Make sure "3 L M" gets turned into "3 LM"
 
 
-CATEGORIES = ['i', 'c', 'p', 'm']
+CATEGORIES = ["i", "c", "p", "m"]
 
 
-def specify_organ(organ: SpecimenOrgan, detail: str) -> tuple[SpecimenOrgan, str] | None:
+def specify_organ(
+    organ: SpecimenOrgan, detail: str
+) -> tuple[SpecimenOrgan, str] | None:
     if organ is SpecimenOrgan.pes:
         if detail == "phalanges":
             return SpecimenOrgan.phalanx_pes, ">1"
@@ -295,13 +302,17 @@ def specify_organ(organ: SpecimenOrgan, detail: str) -> tuple[SpecimenOrgan, str
     return None
 
 
-def maybe_replace_tags(organ: SpecimenOrgan, detail: str, condition: str) -> tuple[list[TypeTag.Organ], list[str]]:
+def maybe_replace_tags(
+    organ: SpecimenOrgan, detail: str, condition: str
+) -> tuple[list[TypeTag.Organ], list[str]]:
     if organ in (SpecimenOrgan.mandible, SpecimenOrgan.dentary):
         if " with " in detail:
             before, after = detail.split(" with ", maxsplit=1)
             new_organ = SpecimenOrgan.dentary
             rgx = r"[a-z][\da-z\-\?]*(, [a-z][\da-z\-\?]*)*"
-            if match := re.fullmatch("([LR]) (dentary|lower jaw|ramus|dentary fragment|mandible)", before):
+            if match := re.fullmatch(
+                "([LR]) (dentary|lower jaw|ramus|dentary fragment|mandible)", before
+            ):
                 side = match.group(1)
             elif before in ("dentary", "lower jaw", "ramus", "dentary fragment"):
                 side = ""
@@ -345,7 +356,9 @@ def maybe_replace_tags(organ: SpecimenOrgan, detail: str, condition: str) -> tup
     parts = detail.split(", ")
     remaining_parts = []
     new_tags = []
-    if len(parts) == 1 or (not condition and "L" not in parts and "R" not in parts and "(" not in detail):
+    if len(parts) == 1 or (
+        not condition and "L" not in parts and "R" not in parts and "(" not in detail
+    ):
         for part in parts:
             new_pair = specify_organ(organ, part)
             if new_pair is None:
@@ -387,10 +400,12 @@ class OrganCount:
         if organ in TOOTHED_ORGANS:
             if isinstance(parsed.base, (Tooth, RawText)) or parsed.base is None:
                 return
-            if isinstance(parsed.base, AlternativeOrgan) and all(isinstance(poss, Tooth) for poss in parsed.base.possibilities):
+            if isinstance(parsed.base, AlternativeOrgan) and all(
+                isinstance(poss, Tooth) for poss in parsed.base.possibilities
+            ):
                 return
         yield f"organ {organ.name!r} does not allow a count: {self.count}"
- 
+
     def sort_key(self) -> tuple[object, ...]:
         return ("OrganCount", self.count, self.more_than, self.approximately)
 
@@ -429,7 +444,19 @@ class Metatarsal:
         return "Mt" + helpers.make_roman_numeral(self.position)
 
 
-ORDERED_TOOTH_CATEGORIES = ["di", "i", "if", "dc", "c", "a", "dp", "p", "pmf", "m", "mf"]
+ORDERED_TOOTH_CATEGORIES = [
+    "di",
+    "i",
+    "if",
+    "dc",
+    "c",
+    "a",
+    "dp",
+    "p",
+    "pmf",
+    "m",
+    "mf",
+]
 ToothCategory = Literal["i", "c", "p", "m", "di", "dc", "dp", "a", "if", "mf", "pmf"]
 
 
@@ -458,7 +485,7 @@ class Tooth:
         if self.position is not None:
             parts.append(str(self.position))
         return "".join(parts)
-    
+
     def validate(self, organ: SpecimenOrgan) -> Iterable[str]:
         if organ not in TOOTHED_ORGANS:
             yield f"teeth cannot be present in {organ.name!r}"
@@ -466,7 +493,12 @@ class Tooth:
             yield f"invalidly positioned ?"
         if self.is_upper and organ in (SpecimenOrgan.mandible, SpecimenOrgan.dentary):
             yield f"upper teeth are not allowed in {organ.name!r}"
-        if not self.is_upper and organ in (SpecimenOrgan.maxilla, SpecimenOrgan.premaxilla, SpecimenOrgan.skull, SpecimenOrgan.palate):
+        if not self.is_upper and organ in (
+            SpecimenOrgan.maxilla,
+            SpecimenOrgan.premaxilla,
+            SpecimenOrgan.skull,
+            SpecimenOrgan.palate,
+        ):
             yield f"lower teeth are not allowed in {organ.name!r}"
 
     def sort_key(self) -> tuple[object, ...]:
@@ -497,9 +529,15 @@ class ToothRange:
             yield f"invalid range: {self.end.category} is before {self.start.category}"
         if self.start.category == self.end.category:
             if self.start.position is None:
-                yield f"invalid range: start and end are in same category, but no start position given"
+                yield (
+                    f"invalid range: start and end are in same category, but no start"
+                    f" position given"
+                )
             elif self.end.position is None:
-                yield f"invalid range: start and end are in same category, but no end position given"
+                yield (
+                    f"invalid range: start and end are in same category, but no end"
+                    f" position given"
+                )
             elif self.start.position >= self.end.position:
                 yield f"invalid range from {self.start.position} to {self.end.position}"
         yield from self.start.validate(organ)
@@ -510,7 +548,12 @@ class ToothRange:
 
     def __str__(self) -> str:
         skip_side = self.start.side == self.end.side
-        skip_category = skip_side and not self.start.uncertain_category and not self.end.uncertain_category and self.start.category == self.end.category
+        skip_category = (
+            skip_side
+            and not self.start.uncertain_category
+            and not self.end.uncertain_category
+            and self.start.category == self.end.category
+        )
         end = self.end.__str__(skip_side=skip_side, skip_category=skip_category)
         return f"{self.start}-{end}"
 
@@ -529,6 +572,7 @@ SHELL_TEXTS = (
     "epineural",
     "nuchal",
     "peripheral",
+    "pleural",
     "pygal",
     "suprapygal",
     "epiplastron",
@@ -556,7 +600,7 @@ class Shell:
         if self.position is not None:
             return f"{self.text} {self.position}"
         return self.text
-    
+
     @classmethod
     def maybe_parse(cls, text: str) -> Shell | None:
         if text in SHELL_TEXTS:
@@ -580,7 +624,17 @@ ALLOWED_GROUPS = set(get_args(VertebraGroup))
 ORDERED_GROUPS = ["C", "D", "T", "L", "S", "Ca", "sternal"]
 
 # TODO: hemal arches and chevrons are the same? If so, which term should we use?
-AfterText = Literal["centrum", "neural spine", "neural arch", "hemal arch", "chevron", "epiphysis", "neurapophysis", "diapophysis", "intercentrum"]
+AfterText = Literal[
+    "centrum",
+    "neural spine",
+    "neural arch",
+    "hemal arch",
+    "chevron",
+    "epiphysis",
+    "neurapophysis",
+    "diapophysis",
+    "intercentrum",
+]
 AFTER_TEXT_VARIANTS = {
     "chevrons": "chevron",
     "haemal arches": "hemal arch",
@@ -592,7 +646,7 @@ AFTER_TEXT_VARIANTS = {
     "epiphyses": "epiphysis",
     "neurapophyses": "neurapophysis",
     "diapophyses": "diapophysis",
-    **{text: text for text in get_args(AfterText)}
+    **{text: text for text in get_args(AfterText)},
 }
 
 
@@ -674,7 +728,7 @@ class VertebraRange:
         if self.start.group == self.end.group:
             return f"{self.start}-{self.end.position}"
         return f"{self.start}-{self.end}"
-    
+
     def validate(self, organ: SpecimenOrgan) -> Iterable[str]:
         yield from self.start.validate(organ)
         yield from self.start.validate(organ)
@@ -682,10 +736,14 @@ class VertebraRange:
             yield "group must be set for vertebrae in a range"
         if self.end.group is None:
             yield "group must be set for vertebrae in a range"
-        if self.start.group == self.end.group and self.start.position is not None and self.end.position is not None:
+        if (
+            self.start.group == self.end.group
+            and self.start.position is not None
+            and self.end.position is not None
+        ):
             if self.start.position >= self.end.position:
                 yield f"invalid vertebral range: {self}"
-    
+
     def sort_key(self) -> tuple[object, ...]:
         return self.start.sort_key() + self.end.sort_key()
 
@@ -754,24 +812,37 @@ class AlternativeOrgan:
             yield f"must have at least 2 possibilities: {self.possibilities}"
         for possibility in self.possibilities:
             yield from _validate_organ_base(possibility, organ)
-    
+
     def sort_key(self) -> tuple[object, ...]:
-        return tuple(itertools.chain.from_iterable(
-            _organ_base_sort_key(poss) for poss in self.possibilities
-        ))
-    
+        return tuple(
+            itertools.chain.from_iterable(
+                _organ_base_sort_key(poss) for poss in self.possibilities
+            )
+        )
+
     def __hash__(self) -> int:
         return hash(tuple(self.possibilities))
-    
+
     def __str__(self) -> str:
-        if len(self.possibilities) > 1 and all(isinstance(possibility, Tooth) for possibility in self.possibilities):
+        if len(self.possibilities) > 1 and all(
+            isinstance(possibility, Tooth) for possibility in self.possibilities
+        ):
             first, *rest = sorted(self.possibilities, key=_organ_base_sort_key)
             skip_side = True
             skip_category = not first.uncertain_category
             for poss in rest:
                 skip_side = skip_side and first.side == poss.side
-                skip_category = skip_side and skip_category and not poss.uncertain_category and first.category == poss.category and first.is_upper == poss.is_upper
-            rest_string = "/".join(poss.__str__(skip_side=skip_side, skip_category=skip_category) for poss in rest)
+                skip_category = (
+                    skip_side
+                    and skip_category
+                    and not poss.uncertain_category
+                    and first.category == poss.category
+                    and first.is_upper == poss.is_upper
+                )
+            rest_string = "/".join(
+                poss.__str__(skip_side=skip_side, skip_category=skip_category)
+                for poss in rest
+            )
             return f"{first}/{rest_string}"
         return "/".join(str(poss) for poss in self.possibilities)
 
@@ -783,7 +854,9 @@ class RawText:
     def validate(self, organ: SpecimenOrgan) -> Iterable[str]:
         if organ not in CHECKED_ORGANS:
             return
-        if organ in ALLOW_RESTRICTED_RAW_TEXT and re.fullmatch(r"[a-z]+([ \-][a-z]+)?", self.text):
+        if organ in ALLOW_RESTRICTED_RAW_TEXT and re.fullmatch(
+            r"[a-z]+([ \-][a-z]+)?", self.text
+        ):
             return
         yield f"unrecognized text {self.text!r} for organ {organ.name!r}"
 
@@ -794,9 +867,35 @@ class RawText:
         return self.text
 
 
-OrganBaseLiteral = Literal["shaft", "pelvic", "pectoral", "fore", "hind", "edentulous", "complete", "symphysis", "premaxillary", "maxillary", "mandibular", "sacrum", "synsacrum", "pygostyle", "column", "ungual"]
+OrganBaseLiteral = Literal[
+    "shaft",
+    "pelvic",
+    "pectoral",
+    "fore",
+    "hind",
+    "edentulous",
+    "complete",
+    "symphysis",
+    "premaxillary",
+    "maxillary",
+    "mandibular",
+    "sacrum",
+    "synsacrum",
+    "pygostyle",
+    "column",
+    "ungual",
+]
 _LITERAL_ORGAN_BASES = set(get_args(OrganBaseLiteral))
-OrganBase = Metacarpal | Metatarsal | Tooth | ToothRange | Shell | AlternativeOrgan | RawText | OrganBaseLiteral
+OrganBase = (
+    Metacarpal
+    | Metatarsal
+    | Tooth
+    | ToothRange
+    | Shell
+    | AlternativeOrgan
+    | RawText
+    | OrganBaseLiteral
+)
 
 
 def _organ_base_sort_key(base: OrganBase | None) -> tuple[object, ...]:
@@ -823,8 +922,18 @@ def _validate_organ_base(base: OrganBase | None, organ: SpecimenOrgan) -> Iterab
             if organ is not SpecimenOrgan.limb:
                 yield f"{base!r} is valid only for 'limb', not {organ.name!r}"
         case "edentulous" | "complete":
-            if organ not in (SpecimenOrgan.mandible, SpecimenOrgan.dentary, SpecimenOrgan.maxilla, SpecimenOrgan.premaxilla, SpecimenOrgan.skull, SpecimenOrgan.palate):
-                yield f"{base!r} is valid only for tooth-bearing organs, not {organ.name!r}"
+            if organ not in (
+                SpecimenOrgan.mandible,
+                SpecimenOrgan.dentary,
+                SpecimenOrgan.maxilla,
+                SpecimenOrgan.premaxilla,
+                SpecimenOrgan.skull,
+                SpecimenOrgan.palate,
+            ):
+                yield (
+                    f"{base!r} is valid only for tooth-bearing organs, not"
+                    f" {organ.name!r}"
+                )
         case "symphysis":
             if organ not in (SpecimenOrgan.mandible, SpecimenOrgan.dentary):
                 yield f"{base!r} is valid only for lower jaws, not {organ.name!r}"
@@ -858,7 +967,7 @@ def _parse_single_tooth(
     *,
     side_preset: Literal["L", "R"] | None = None,
     category_preset: ToothCategory | None = None,
-    is_upper_preset: bool | None = None, 
+    is_upper_preset: bool | None = None,
 ) -> Tooth | None:
     if match := SINGLE_TOOTH_REGEX.fullmatch(text):
         if not (side := match.group("side")):
@@ -868,7 +977,11 @@ def _parse_single_tooth(
                 is_upper = True
             elif raw_category.islower():
                 is_upper = False
-            elif raw_category[0] == "d" and len(raw_category) == 2 and raw_category[1].isupper():
+            elif (
+                raw_category[0] == "d"
+                and len(raw_category) == 2
+                and raw_category[1].isupper()
+            ):
                 is_upper = True
             else:
                 raise ParseException(f"mixed case in {raw_category!r}")
@@ -884,7 +997,7 @@ def _parse_single_tooth(
             position = int(match.group("position"))
         else:
             position = None
-        
+
         # Position should not be set for canines
         if position == 1 and category in ("c", "dc"):
             position = None
@@ -907,7 +1020,12 @@ def _parse_tooth(text: str) -> Tooth | ToothRange | AlternativeOrgan | None:
             return None
         possibilities = [first]
         for part in parts[1:]:
-            tooth = _parse_single_tooth(part, side_preset=first.side, is_upper_preset=first.is_upper, category_preset=first.category)
+            tooth = _parse_single_tooth(
+                part,
+                side_preset=first.side,
+                is_upper_preset=first.is_upper,
+                category_preset=first.category,
+            )
             if tooth is None:
                 return None
             possibilities.append(tooth)
@@ -917,7 +1035,12 @@ def _parse_tooth(text: str) -> Tooth | ToothRange | AlternativeOrgan | None:
         start_tooth = _parse_single_tooth(start)
         if start_tooth is None:
             return None
-        end_tooth = _parse_single_tooth(end, side_preset=start_tooth.side, is_upper_preset=start_tooth.is_upper, category_preset=start_tooth.category)
+        end_tooth = _parse_single_tooth(
+            end,
+            side_preset=start_tooth.side,
+            is_upper_preset=start_tooth.is_upper,
+            category_preset=start_tooth.category,
+        )
         if end_tooth is None:
             return None
         return ToothRange(start_tooth, end_tooth)
@@ -938,9 +1061,7 @@ def _parse_organ_base(text: str, organ: SpecimenOrgan) -> OrganBase:
         return phalanx
     if "/" in text:
         pieces = text.split("/")
-        return AlternativeOrgan(
-            [_parse_organ_base(piece, organ) for piece in pieces]
-        )
+        return AlternativeOrgan([_parse_organ_base(piece, organ) for piece in pieces])
     if text.startswith("Mc"):
         numeral = text.removeprefix("Mc")
         try:
@@ -965,22 +1086,36 @@ class ParsedOrgan:
     is_uncertain: bool = False
     count: OrganCount | None = None
     side: Literal["L", "R", None] = None
-    anatomical_direction: Literal["proximal", "distal", "anterior", "posterior", None] = None
+    anatomical_direction: Literal[
+        "proximal", "distal", "anterior", "posterior", None
+    ] = None
     base: OrganBase | None = None
     part_text: Literal["part", "parts", None] = None
 
     def validate(self, organ: SpecimenOrgan) -> Iterable[str]:
         if self.count is not None:
             yield from self.count.validate(organ, self)
-        if self.side is not None and organ not in PAIRED_ORGANS and not isinstance(self.base, (RawText, Shell)) and self.part_text is None and self.anatomical_direction is None:
+        if (
+            self.side is not None
+            and organ not in PAIRED_ORGANS
+            and not isinstance(self.base, (RawText, Shell))
+            and self.part_text is None
+            and self.anatomical_direction is None
+        ):
             yield f"organ {organ.name!r} does not allow a left/right side: {self.side}"
         if self.anatomical_direction is not None:
             if self.anatomical_direction in ("proximal", "distal"):
-                if organ not in PROXIMAL_DISTAL_ORGANS:
-                    yield f"organ {organ.name!r} does not allow proximal/distal specification: {self.anatomical_direction}"
+                if organ not in PROXIMAL_DISTAL_ORGANS and not (organ is SpecimenOrgan.shell and isinstance(self.base, RawText)):
+                    yield (
+                        f"organ {organ.name!r} does not allow proximal/distal"
+                        f" specification: {self.anatomical_direction}"
+                    )
             elif self.anatomical_direction in ("anterior", "posterior"):
                 if organ not in ALLOW_ANTERIOR_POSTERIOR:
-                    yield f"organ {organ.name!r} does not allow anterior/posterior specification: {self.anatomical_direction}"
+                    yield (
+                        f"organ {organ.name!r} does not allow anterior/posterior"
+                        f" specification: {self.anatomical_direction}"
+                    )
             else:
                 assert_never(self.anatomical_direction)
         yield from _validate_organ_base(self.base, organ)
@@ -996,7 +1131,13 @@ class ParsedOrgan:
         )
 
     def __str__(self) -> str:
-        parts = [self.count, self.side, self.anatomical_direction, self.base, self.part_text]
+        parts = [
+            self.count,
+            self.side,
+            self.anatomical_direction,
+            self.base,
+            self.part_text,
+        ]
         parts = [str(part) for part in parts if part is not None]
         text = " ".join(str(part) for part in parts if part is not None)
         if self.is_uncertain:
@@ -1020,17 +1161,26 @@ class ParsedOrgan:
                 match affix:
                     case "L" | "R":
                         if side is not None:
-                            raise ParseException(f"multiple values for side: {side} and {affix}")
+                            raise ParseException(
+                                f"multiple values for side: {side} and {affix}"
+                            )
                         side = affix
                     case "part" | "parts":
                         if part_text is not None:
-                            raise ParseException(f"multiple values for part: {part_text} and {affix}")
+                            raise ParseException(
+                                f"multiple values for part: {part_text} and {affix}"
+                            )
                         part_text = affix
                     case "proximal" | "distal" | "anterior" | "posterior":
                         if anatomical_direction is not None:
-                            raise ParseException(f"multiple values for anatomical direction: {anatomical_direction} and {affix}")
+                            raise ParseException(
+                                "multiple values for anatomical direction:"
+                                f" {anatomical_direction} and {affix}"
+                            )
                         anatomical_direction = affix
-            elif match := re.match(r"^(?P<gt>>?)(?P<approx>~?)(?P<count>\d+)(?= |$)(?P<rest>.*$)", text):
+            elif match := re.match(
+                r"^(?P<gt>>?)(?P<approx>~?)(?P<count>\d+)(?= |$)(?P<rest>.*$)", text
+            ):
                 if count is not None:
                     raise ParseException("multiple counts found")
                 count = OrganCount(
@@ -1071,7 +1221,9 @@ def parse_organ_detail(detail: str, organ: SpecimenOrgan) -> list[ParsedOrgan]:
     return [ParsedOrgan.parse(part, organ) for part in parts]
 
 
-def check_organ_tag_with_parser(organ: SpecimenOrgan, detail: str) -> Generator[str, None, str]:
+def check_organ_tag_with_parser(
+    organ: SpecimenOrgan, detail: str
+) -> Generator[str, None, str]:
     if organ not in CHECKED_ORGANS:
         return detail
     try:
@@ -1082,7 +1234,9 @@ def check_organ_tag_with_parser(organ: SpecimenOrgan, detail: str) -> Generator[
     for parsed in parsed_list:
         for issue in parsed.validate(organ):
             yield f"{issue} (from text {detail!r})"
-    return ", ".join(str(parsed) for parsed in sorted(set(parsed_list), key=ParsedOrgan.sort_key))
+    return ", ".join(
+        str(parsed) for parsed in sorted(set(parsed_list), key=ParsedOrgan.sort_key)
+    )
 
 
 def check_organ_tag(tag: TypeTag.Organ) -> Generator[str, None, list[TypeTag.Organ]]:
@@ -1102,7 +1256,12 @@ def check_organ_tag(tag: TypeTag.Organ) -> Generator[str, None, list[TypeTag.Org
         return new_tags
     detail = ", ".join(remaining_parts)
     # Move museum numbers from "detail" to "condition"
-    if re.fullmatch(r"^[A-Z]{2,}(-[A-Z]+)? [A-Z]?(\d{2,}[\-\d/\.]*|\d(\.\d+)+)[a-z]?$", detail) and not condition:
+    if (
+        re.fullmatch(
+            r"^[A-Z]{2,}(-[A-Z]+)? [A-Z]?(\d{2,}[\-\d/\.]*|\d(\.\d+)+)[a-z]?$", detail
+        )
+        and not condition
+    ):
         condition = detail
         detail = ""
     detail = yield from check_organ_tag_with_parser(organ, detail)
@@ -1297,7 +1456,11 @@ def dedupe_and_sort_tags(nam: Name, cfg: LintConfig) -> Iterable[str]:
     organ_tags_to_merge = defaultdict(list)
     all_tags = set()
     for tag in nam.type_tags:
-        if isinstance(tag, TypeTag.Organ) and tag.organ in CHECKED_ORGANS and not tag.condition:
+        if (
+            isinstance(tag, TypeTag.Organ)
+            and tag.organ in CHECKED_ORGANS
+            and not tag.condition
+        ):
             organ_tags_to_merge[tag.organ].append(tag)
         else:
             all_tags.add(tag)
