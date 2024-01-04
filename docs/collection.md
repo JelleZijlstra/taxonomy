@@ -15,7 +15,7 @@ Collections have the following fields:
   [UA (Ankara)](</c/UA_(Ankara)>), [UA (Antananarivo)](</c/UA_(Antananarivo)>) and
   [UA (Arizona)](</c/UA_(Arizona)>). For some collections (usually associated with
   European universities), the city name is used as the label instead, because there is
-  no well-established abbreviation (e.g. [Göttingen]</c/Göttingen>). For subcollections,
+  no well-established abbreviation (e.g. [Göttingen](/c/Göttingen)). For subcollections,
   the label of the parent collection should be used with an additional identifier after
   it, e.g. "BMNH (mammals)".
 - _name_: The full English name of the institution. If the name is written in the Latin

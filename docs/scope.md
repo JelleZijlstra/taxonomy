@@ -19,12 +19,12 @@ Major groups covered include:
 - [Mammals](/t/Mammalia)
 - [Probainognathia](/t/Probainognathia), a clade that includes mammals and their closest
   relatives
-- [Crocodylomorpha](/t/Crocodylomorpha), a clade that includes extant crocodylians and
-  their relatives
-- [Saurischia](/t/Saurischia), a clade of dinosaurs that includes sauropods and
-  theropods, as well as birds. Mesozoic birds are also covered comprehensively, but
-  Cenozoic birds are not covered except for a few taxa here and there.
-- [Pterosauria](/t/Pterosauria), a group of Mesozoic flying archosaurs
+- [Archosauromorpha](/t/Archosauromorpha) (except modern birds), a major subgroup of
+  reptiles, including [turtles](/t/Testudinata), [crocodile-line taxa](/t/Pseudosuchia),
+  [pterosaurs](/t/Pterosauria), and [saurischian](/t/Saurischia) and
+  [ornithischian](/t/Ornithischia) dinosaurs. Mesozoic birds are also covered
+  comprehensively, but Cenozoic birds are not covered except for a few taxa here and
+  there.
 - [Ichthyosauromorpha](/t/Ichthyosauromorpha), a group of Mesozoic marine reptiles
 - [Rhynchocephalia](/t/Rhynchocephalia), an ancient group of reptiles that includes the
   living tuatara ([_Sphenodon_](/t/Sphenodon))
@@ -34,9 +34,9 @@ Major groups covered include:
   amphibians
 - [Allocaudata](/t/Allocaudata), a group of extinct amphibians that survived into the
   Pliocene
+- Many fossil members of [Squamata](/t/Squamata)
 - A variety of individual species and small clades of tetrapods, such as
-  [Pachycephalosauridae](/t/Pachycephalosauridae) and
-  [Weigeltisauridae](/t/Weigeltisauridae)
+  [Weigeltisauridae](/t/Weigeltisauridae) and [Dibamidae](/t/Dibamidae).
 - [Cephalochordata](/t/Cephalochordata), the lancelets, marine invertebrates closely
   related to vertebrates
 - [Gnathostomulida](/t/Gnathostomulida), a minor group of marine invertebrates
@@ -59,19 +59,17 @@ type localities, and citations.
 
 ## Future additions
 
-I am currently focusing on improving coverage for groups that are already included, but
-I do aim to work gradually towards more comprehensive coverage of tetrapods. I am
-especially interested in groups that tend to co-occur in the fossil record with mammals
-and other currently covered groups. I am less likely to work on groups that include
-large numbers of extant taxa, such as squamates, anurans, and birds, because these are a
-bigger investment and there are already some fairly comprehensive nomenclatural
-databases (e.g., [Amphibians of the World](https://amphibiansoftheworld.amnh.org/) and
-the [Reptile Database](http://www.reptile-database.org/)).
+I try to focus on improving coverage for groups that are already included, but I do aim
+to work gradually towards more comprehensive coverage of tetrapods. I am especially
+interested in groups that tend to co-occur in the fossil record with mammals and other
+currently covered groups. I am less likely to work on groups that include large numbers
+of extant taxa, such as squamates, anurans, and birds, because these are a bigger
+investment and there are already some fairly comprehensive nomenclatural databases
+(e.g., [Amphibians of the World](https://amphibiansoftheworld.amnh.org/) and the
+[Reptile Database](http://www.reptile-database.org/)).
 
 Likely additions include:
 
-- Turtles, which are common as fossils and often co-occur with mammals. They are fairly
-  diverse as living taxa, but not excessively so.
-- Filling in the gaps among the archosaurs by adding ornithischian dinosaurs and a few
-  basal groups, such as rauisuchians and phytosaurs. Many major archosaur clades are
-  already covered, and adding the rest would make for more consistency.
+- Remaining fossil sauropsid groups, such as parareptiles and plesiosaurs
+- Further near-mammal synapsid groups, such as the gomphodonts
+- Remaining fossil squamate taxa, such as the mosasaurs
