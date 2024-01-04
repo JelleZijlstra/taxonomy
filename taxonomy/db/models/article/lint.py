@@ -992,7 +992,11 @@ def check_must_use_children(art: Article, cfg: LintConfig) -> Iterable[str]:
     if not any(art.get_tags(art.tags, ArticleTag.MustUseChildren)):
         return
     for field in Article._meta.backrefs:
-        if field is Article.parent or field is ArticleComment.article:
+        if (
+            field is Article.parent
+            or field is ArticleComment.article
+            or field is models.name.NameComment.source
+        ):
             continue
         refs = list(getattr(art, field.backref))
         if not refs:
