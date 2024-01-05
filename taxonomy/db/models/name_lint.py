@@ -2206,7 +2206,29 @@ def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                     maybe_adjust_status(nam, status, tag)
             if nam.get_date_object() < tag.name.get_date_object():
                 yield f"predates supposed original name {tag.name}"
-            if not isinstance(tag, NameTag.SubsequentUsageOf):
+            if isinstance(tag, NameTag.SubsequentUsageOf):
+                if (
+                    nam.group is Group.species
+                    and nam.taxon == tag.name.taxon
+                    and nam.corrected_original_name != tag.name.corrected_original_name
+                ):
+                    yield (
+                        f"{nam} should be a name combination instead of a subsequent"
+                        " usage, because it is assigned to the same taxon as its"
+                        f" target {tag.name}"
+                    )
+                    if (
+                        cfg.autofix
+                        and nam.nomenclature_status
+                        is NomenclatureStatus.subsequent_usage
+                    ):
+                        new_tags = [
+                            *[t for t in nam.tags if t != tag],
+                            NameTag.NameCombinationOf(tag.name, tag.comment),
+                        ]
+                        nam.tags = new_tags  # type: ignore
+                        nam.nomenclature_status = NomenclatureStatus.name_combination  # type: ignore
+            else:
                 if nam.taxon != tag.name.taxon:
                     yield f"{nam} is not assigned to the same name as {tag.name}"
         elif isinstance(tag, NameTag.PartiallySuppressedBy):
