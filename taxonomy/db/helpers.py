@@ -737,6 +737,7 @@ def interactive_clean_string(
     interactive: bool = True,
 ) -> str:
     text = clean_string(text, clean_whitespace=clean_whitespace)
+    text = text.replace("\n- ", "\n-\\ -")
     if "- " not in text:
         return text
     if "| --" in text or ":\n- " in text:
@@ -761,19 +762,8 @@ def interactive_clean_string(
             return m.group()
         print(f"{after!r} in {text!r}")
         if getinput.yes_no("remove '- '? "):
-            pattern = getinput.get_line("replace pattern> ")
-            if pattern:
-                if verbose:
-                    print(f"add replace pattern: {pattern!r}")
-                HYPHEN_REPLACE_PATTERNS.add(pattern)
             return after
         else:
-            pattern = getinput.get_line("ignore pattern> ")
-            if pattern:
-                if verbose:
-                    print(f"add ignore pattern: {pattern!r}")
-                HYPHEN_IGNORE_PATTERNS.add(pattern)
-                return m.group().replace("- ", "-\\ ")
             if getinput.yes_no("remove space? "):
                 return "-" + after
             return m.group()
