@@ -173,10 +173,12 @@ class CitationGroup(BaseModel):
                 if issue := helpers.is_valid_regex(tag.text):
                     yield f"{self}: invalid tag {tag}: {issue}"
             if isinstance(tag, CitationGroupTag.PageRegex):
-                if issue := helpers.is_valid_regex(tag.start_page_regex):
-                    yield f"{self}: invalid start_page_regex in tag {tag}: {issue}"
-                if issue := helpers.is_valid_regex(tag.pages_regex):
-                    yield f"{self}: invalid pages_regex in tag {tag}: {issue}"
+                if tag.start_page_regex is not None:
+                    if issue := helpers.is_valid_regex(tag.start_page_regex):
+                        yield f"{self}: invalid start_page_regex in tag {tag}: {issue}"
+                if tag.pages_regex is not None:
+                    if issue := helpers.is_valid_regex(tag.pages_regex):
+                        yield f"{self}: invalid pages_regex in tag {tag}: {issue}"
 
         tags = sorted(set(self.tags))
         counts = Counter(type(tag) for tag in tags)
@@ -518,7 +520,7 @@ class CitationGroupTag(adt.ADT):
     # Issues must conform to this regex
     IssueRegex(text=str, tag=21)  # type: ignore
     # Control start and end page (see citation-group.md)
-    PageRegex(start_page_regex=str, pages_regex=str, allow_standard=bool, tag=22)  # type: ignore
+    PageRegex(start_page_regex=NotRequired[str], pages_regex=NotRequired[str], allow_standard=bool, tag=22)  # type: ignore
     # Comments on how to date publications in this journal
     DatingTools(text=str, tag=23)  # type: ignore
     # Link to a relevant page in docs/biblio/

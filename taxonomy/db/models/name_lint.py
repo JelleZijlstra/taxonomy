@@ -2409,6 +2409,9 @@ def _make_con_messsage(nam: Name, text: str) -> str:
     return f"corrected original name {nam.corrected_original_name!r} {text}"
 
 
+CON_REGEX = re.compile(r"^[A-Z][a-z]+( [a-z]+){0,3}$")
+
+
 @make_linter("corrected_original_name")
 def check_corrected_original_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
     """Check that corrected_original_names are correct."""
@@ -2423,9 +2426,19 @@ def check_corrected_original_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
             f"inferred name {inferred!r} does not match current name"
             f" {nam.corrected_original_name!r}",
         )
-    if not re.match(r"^[A-Z][a-z ]+$", nam.corrected_original_name):
+    if not CON_REGEX.fullmatch(nam.corrected_original_name):
         yield _make_con_messsage(nam, "contains unexpected characters")
         return
+    if (
+        nam.original_name is not None
+        and nam.group is not Group.family
+        and nam.original_name != nam.corrected_original_name
+        and nam.original_name.count(" ") == nam.corrected_original_name.count(" ")
+        and CON_REGEX.fullmatch(nam.original_name)
+    ):
+        yield _make_con_messsage(
+            nam, f"is different from original name {nam.original_name!r}"
+        )
     if nam.group in (Group.high, Group.genus):
         if " " in nam.corrected_original_name:
             yield _make_con_messsage(nam, "contains whitespace")

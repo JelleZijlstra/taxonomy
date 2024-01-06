@@ -2799,6 +2799,15 @@ def organ_report(focus_organ: constants.SpecimenOrgan | None = None) -> None:
             print(count, text)
 
 
+@command
+def lint_recent(limit: int = 1000) -> None:
+    for cls in models.BaseModel.__subclasses__():
+        getinput.print_header(cls)
+        run_linter_and_fix(
+            cls, query=cls.select_valid().order_by(cls.id.desc()).limit(limit)
+        )
+
+
 def run_shell() -> None:
     # GC does bad things on my current setup for some reason
     gc.disable()

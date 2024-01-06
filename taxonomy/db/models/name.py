@@ -2457,6 +2457,7 @@ SOURCE_TAGS = (
     TypeTag.CollectionDetail,
     TypeTag.DefinitionDetail,
     TypeTag.TypeSpeciesDetail,
+    TypeTag.NomenclatureDetail,
 )
 
 if TYPE_CHECKING:
