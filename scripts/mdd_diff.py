@@ -110,9 +110,7 @@ class Difference:
         elif self.kind is DifferenceKind.missing_in_mdd:
             parts.append(f"Missing in MDD: _{self.hesp}_")
         else:
-            parts.append(
-                f"{self.mdd or '(none)'} (MDD) vs. {self.hesp or '(none)'} (Hesperomys)"
-            )
+            parts.append(f"{self.hesp or '(none)'} (H) vs. {self.mdd or '(none)'} (M)")
         parentheticals = []
         if self.mdd_id and not concise:
             parentheticals.append(f"MDD#{self.mdd_id}")
@@ -200,9 +198,15 @@ MDD_TYPE_REGEXES = [
     (r"\s+", " "),  # weird whitespace
     (r"^([A-Z\-]+)(?=\d)", r"\1 "),  # space after collection name
     (r"^(BM|NHM) (ZD |GMCM )", "BMNH "),
+    (r"^BM ", "BMNH "),
     (r"^AMNHM-", "AMNH "),
     (r"^BPBM ", ""),
     (r"\s+", " "),  # weird whitespace
+    (r"^BMNH ", "BMNH Mammals "),
+    (r"^USNM ", "USNM:MAMM:"),
+    (r"^MCZ ", "MCZ:Mamm:"),
+    (r"^FMNH ", "FMNH Mammals "),
+    (r"^AMNH ", "AMNH M-"),
 ]
 
 
