@@ -7,14 +7,16 @@ exports released on Zenodo.
 # Unreleased
 
 - Database
-  - Add many newly named taxa
+  - Add many newly named taxa and make changes based on newly accessible literature.
+    Thanks to Rudolf Haslauer and Connor Burgin for supplying literature.
   - Add coverage for several archosauromorph groups, including ornithischians,
     "rauisuchians", aetosaurs, phytosaurs, and basal archosauromorphs. All
     archosauromorphs except crown-group birds are now reasonably well covered.
   - Improve "organ" tags for the material included in type specimens. Replace many
     organs labeled with the legacy "other" or "postcranial_skeleton" organs and start
     standardizing the format of the "details" field.
-  - Start adding name combinations to the database, mostly for newly covered taxa.
+  - Start adding name combinations to the database, mostly for newly covered taxa. Some
+    names previously classed as "subsequent usage" are now marked as "name combination".
 - Backend
   - Add many new bones to the enumeration of organs
   - Add script to infer the publication date of articles based on that of other articles
@@ -25,7 +27,7 @@ exports released on Zenodo.
   - Taxa that are placed in a parent taxon that also contains sibling taxa of higher
     ranks are now marked as either "basal" (current evidence indicates they are unlikely
     to belong in any particular subtaxon) or "incertae sedis" (they may belong in some
-    subtaxon).
+    subtaxon). (This is not yet reflected in the frontend.)
 
 # 23.8.1 (August 29, 2023)
 
