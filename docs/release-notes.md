@@ -7,8 +7,9 @@ exports released on Zenodo.
 # Unreleased
 
 - Database
-  - Add many newly named taxa and make changes based on newly accessible literature.
-    Thanks to Rudolf Haslauer and Connor Burgin for supplying literature.
+  - Add many newly named taxa, though some recent literature may still be missing.
+  - Many small corrections and additions, some based on literature I did not previously
+    have access to.
   - Add coverage for several archosauromorph groups, including ornithischians,
     "rauisuchians", aetosaurs, phytosaurs, and basal archosauromorphs. All
     archosauromorphs except crown-group birds are now reasonably well covered.
@@ -28,6 +29,8 @@ exports released on Zenodo.
     ranks are now marked as either "basal" (current evidence indicates they are unlikely
     to belong in any particular subtaxon) or "incertae sedis" (they may belong in some
     subtaxon). (This is not yet reflected in the frontend.)
+
+Thanks to Rudolf Haslauer and Connor Burgin for supplying literature.
 
 # 23.8.1 (August 29, 2023)
 
