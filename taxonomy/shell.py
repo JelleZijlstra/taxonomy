@@ -2808,6 +2808,34 @@ def lint_recent(limit: int = 1000) -> None:
         )
 
 
+@command
+def try_extract_page_described(dry_run: bool = True, verbose: bool = False) -> None:
+    count = 0
+    for nam in getinput.print_every_n(
+        Name.select_valid().filter(
+            Name.verbatim_citation != None, Name.page_described == None
+        ),
+        label="names",
+        n=100,
+    ):
+        cite = nam.verbatim_citation
+        if cite is None:
+            continue
+        cite = re.sub(r"\[[^\[\]]+\]", " ", cite).strip().rstrip(".")
+        cite = re.sub(
+            r", (\d{1,2} )?([A-Z][a-z][a-z][a-z]?\.?\s)?1[789]\d{2}$", "", cite
+        ).strip()
+        if match := re.search(r"(?:\bp\.|\bS\.|:)\s*(\d{1,4})$", cite):
+            page = match.group(1)
+            print(f"{nam}: infer page {page!r} from {nam.verbatim_citation!r}")
+            count += 1
+            if not dry_run:
+                nam.page_described = page
+        elif verbose:
+            print(nam.verbatim_citation, repr(cite))
+    print(f"extracted {count} page_described")
+
+
 def run_shell() -> None:
     # GC does bad things on my current setup for some reason
     gc.disable()
