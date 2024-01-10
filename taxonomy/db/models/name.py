@@ -1056,15 +1056,7 @@ class Name(BaseModel):
         self.nomenclature_status = status  # type: ignore
 
     def combination_from_paper(self) -> Name | None:
-        paper = self.get_value_for_foreign_class("paper", Article)
-        if paper is None:
-            return None
-        return self.add_variant(
-            root_name=self.root_name,
-            status=NomenclatureStatus.name_combination,
-            interactive=True,
-            paper=paper,
-        )
+        return self.add_combination(from_paper=True)
 
     def variant_from_paper(self) -> Name | None:
         root_name = Name.getter("root_name").get_one_key(prompt="root_name> ")
@@ -1075,11 +1067,28 @@ class Name(BaseModel):
             return None
         return self.add_variant(root_name, paper=paper)
 
-    def add_combination(self) -> Name | None:
+    def add_combination(self, from_paper: bool = False) -> Name | None:
+        original_name = Name.getter("original_name").get_one_key(
+            prompt="original_name> "
+        )
+        existing = list(Name.select_valid().filter(Name.original_name == original_name))
+        if existing:
+            print("Existing similar names:")
+            for nam in existing:
+                nam.display()
+            if not getinput.yes_no("continue? "):
+                return None
+        paper = None
+        if from_paper:
+            paper = self.get_value_for_foreign_class("paper", Article)
+            if paper is None:
+                return None
         return self.add_variant(
             root_name=self.root_name,
             status=NomenclatureStatus.name_combination,
             interactive=True,
+            original_name=original_name,
+            paper=paper,
         )
 
     def add_variant(

@@ -38,6 +38,7 @@ import unidecode
 from traitlets.config.loader import Config
 
 from . import getinput
+from .command_set import CommandSet
 from .db import constants, definition, derived_data, export, helpers, models
 from .db.constants import (
     AgeClass,
@@ -68,12 +69,17 @@ T = TypeVar("T")
 
 gc.disable()
 
+_CS = CommandSet("shell", "Miscellaneous commands")
+
 COMMAND_SETS = [
     models.fill_data.CS,
     models.article.check.CS,
     export.CS,
     models.article.add_data.CS,
+    _CS,
 ]
+
+command = _CS.register
 
 
 def _reconnect() -> None:
@@ -116,7 +122,7 @@ for model in models.BaseModel.__subclasses__():
 CallableT = TypeVar("CallableT", bound=Callable[..., Any])
 
 
-def command(fn: CallableT) -> CallableT:
+def _register_command(fn: CallableT) -> CallableT:
     @functools.wraps(fn)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
         try:
@@ -2841,7 +2847,7 @@ def run_shell() -> None:
     gc.disable()
     for cs in COMMAND_SETS:
         for cmd in cs.commands:
-            command(cmd)
+            _register_command(cmd)
     config = Config()
     config.InteractiveShell.confirm_exit = False
     config.TerminalIPythonApp.display_banner = False

@@ -895,22 +895,9 @@ class BaseModel(Model):
 
         field_editors = {field: callback(field) for field in self.get_field_names()}
 
-        def make_editor(cls: type[BaseModel]) -> Callable[[], None]:
-            return lambda: cls.getter(None).get_and_edit(f"{cls.__name__}> ")
-
-        sibling_editors = {
-            # At first I had this as "edit_{name}", but that was annoying
-            # because it's a lot of typing before you get to the model.
-            # Then I had "{name}_edit", but that created too many conflicts
-            # where I ended up picking a location instead of adding a LocationDetail
-            # tag. Keeping the name uppercase requires few keystrokes but is unique.
-            cls.__name__: make_editor(cls)
-            for cls in BaseModel.__subclasses__()
-            if hasattr(cls, "label_field")
-        }
         return {
+            **get_static_callbacks(),
             **field_editors,
-            **sibling_editors,
             "d": self.display,
             "f": lambda: self.display(full=True),
             "foreign": self.edit_foreign,
@@ -925,7 +912,6 @@ class BaseModel(Model):
             "edit_reverse_rel": self.edit_reverse_rel,
             "lint_reverse_rel": self.lint_reverse_rel,
             "edit_derived_field": self.edit_derived_field,
-            "RootName": lambda: models.Name.getter("root_name").get_and_edit(),
         }
 
     def call(self) -> None:
@@ -938,54 +924,7 @@ class BaseModel(Model):
         if not name:
             return
         obj, sig = options[name]
-        if hasattr(obj, "__doc__"):
-            print(obj.__doc__)
-        args = {}
-        for name, param in sig.parameters.items():
-            try:
-                args[name] = self._fill_param(name, param)
-            except getinput.StopException:
-                return None
-        result = obj(**args)
-        print("Result:", result)
-
-    def _fill_param(self, name: str, param: inspect.Parameter) -> object:
-        if param.kind not in (
-            inspect.Parameter.POSITIONAL_OR_KEYWORD,
-            inspect.Parameter.KEYWORD_ONLY,
-        ):
-            print(f"Cannot fill parameter {name} of kind {param.kind!r}")
-            raise getinput.StopException
-        typ = param.annotation
-        is_optional = False
-        if typing_inspect.is_optional_type(typ):
-            args = typing_inspect.get_args(typ)
-            if len(args) == 2 and isinstance(args[1], NoneType):
-                typ = args[0]
-                is_optional = True
-
-        if typ is bool:
-            return getinput.yes_no(name)
-        elif typ is str:
-            return getinput.get_line(name, allow_none=is_optional)
-        elif typ is int:
-            line = getinput.get_line(
-                name, allow_none=is_optional, validate=lambda value: value.isnumeric()
-            )
-            if line is None:
-                return None
-            return int(line)
-        elif isinstance(typ, type):
-            if issubclass(typ, enum.Enum):
-                return getinput.get_enum_member(
-                    typ, f"{name}> ", allow_empty=is_optional
-                )
-            elif issubclass(typ, BaseModel) and typ is not BaseModel:
-                return typ.getter(None).get_one(f"{name}> ", allow_empty=is_optional)
-        if param.default is not inspect.Parameter.empty:
-            return param.default
-        print(f"Cannot fill parameter {param}")
-        raise getinput.StopException
+        _call_obj(obj, sig)
 
     def _get_possible_callable(
         self, name: str
@@ -1653,3 +1592,99 @@ def get_query_and_fields(cls: type[Model]) -> tuple[str, list[str]]:
         f' ("{cls._meta.table_name}"."id" = ?)'
     )
     return query, fields
+
+
+@functools.cache
+def get_static_callbacks() -> getinput.CallbackMap:
+    import taxonomy.lib
+    import taxonomy.shell
+
+    sibling_editors = {
+        # At first I had this as "edit_{name}", but that was annoying
+        # because it's a lot of typing before you get to the model.
+        # Then I had "{name}_edit", but that created too many conflicts
+        # where I ended up picking a location instead of adding a LocationDetail
+        # tag. Keeping the name uppercase requires few keystrokes but is unique.
+        cls.__name__: _make_editor(cls)
+        for cls in BaseModel.__subclasses__()
+        if hasattr(cls, "label_field")
+    }
+    commands = {
+        f":{cmd.__name__}": partial(_call_obj, cmd)
+        for cs in taxonomy.shell.COMMAND_SETS
+        for cmd in cs.commands
+    }
+    return {
+        **sibling_editors,
+        **commands,
+        ":h": lambda: _call_obj(taxonomy.lib.h),
+        "RootName": lambda: models.Name.getter("root_name").get_and_edit(),
+    }
+
+
+def _make_editor(cls: type[BaseModel]) -> Callable[[], None]:
+    return lambda: cls.getter(None).get_and_edit(f"{cls.__name__}> ")
+
+
+def _call_obj(obj: Callable[..., Any], sig: inspect.Signature | None = None) -> None:
+    if sig is None:
+        try:
+            sig = inspect.signature(obj)
+        except Exception:
+            pass
+    if hasattr(obj, "__doc__") and obj.__doc__ is not None:
+        print(obj.__doc__)
+    args = {}
+    if sig is not None:
+        for name, param in sig.parameters.items():
+            try:
+                args[name] = _fill_param(name, param)
+            except getinput.StopException:
+                return None
+    result = obj(**args)
+    print("Result:", result)
+
+
+def _fill_param(name: str, param: inspect.Parameter) -> object:
+    if param.kind not in (
+        inspect.Parameter.POSITIONAL_OR_KEYWORD,
+        inspect.Parameter.KEYWORD_ONLY,
+    ):
+        print(f"Cannot fill parameter {name} of kind {param.kind!r}")
+        raise getinput.StopException
+    typ = param.annotation
+    is_optional = param.default is not inspect.Parameter.empty
+    default_value = param.default
+    if typing_inspect.is_optional_type(typ):
+        args = typing_inspect.get_args(typ)
+        if len(args) == 2 and isinstance(args[1], NoneType):
+            typ = args[0]
+            is_optional = True
+            default_value = None
+
+    print(typ, is_optional, default_value)
+    value: object = None
+    if typ is bool:
+        value = getinput.yes_no(name)
+    elif typ is str:
+        value = getinput.get_line(name + "> ", allow_none=is_optional) or None
+    elif typ is int:
+        line = getinput.get_line(
+            name + "> ",
+            allow_none=is_optional,
+            validate=lambda value: value == "" or value.isnumeric(),
+        )
+        if not line:
+            return default_value
+        return int(line)
+    elif isinstance(typ, type):
+        if issubclass(typ, enum.Enum):
+            value = getinput.get_enum_member(typ, f"{name}> ", allow_empty=is_optional)
+        elif issubclass(typ, BaseModel) and typ is not BaseModel:
+            value = typ.getter(None).get_one(f"{name}> ", allow_empty=is_optional)
+    if value is not None:
+        return value
+    if value is None and default_value is not inspect.Parameter.empty:
+        return default_value
+    print(f"Cannot fill parameter {param}")
+    raise getinput.StopException
