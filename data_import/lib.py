@@ -269,7 +269,7 @@ def get_text(source: Source, encoding: str = "utf-8") -> Iterable[str]:
         yield from f
 
 
-def extract_pages(lines: Iterable[str]) -> PagesT:
+def extract_pages(lines: Iterable[str], *, permissive: bool = False) -> PagesT:
     """Split the text into pages."""
     current_page = None
     current_lines = []
@@ -288,10 +288,16 @@ def extract_pages(lines: Iterable[str]) -> PagesT:
                     # or the right
                     current_page = int(line.split()[-1])
             except ValueError as e:
-                raise ValueError(
-                    f"failure extracting from {line!r} while on {current_page}"
-                ) from e
-        elif current_page:
+                if permissive:
+                    if current_page is not None:
+                        current_page += 1
+                    else:
+                        continue
+                else:
+                    raise ValueError(
+                        f"failure extracting from {line!r} while on {current_page}"
+                    ) from e
+        elif current_page is not None:
             current_lines.append(line)
     # last page
     assert current_page is not None
@@ -498,7 +504,7 @@ def translate_to_db(
     else:
         coll = None
     for name in names:
-        if "taxon_name" in name:
+        if "taxon_name" in name and "taxon" not in name:
             try:
                 name["taxon"] = models.Taxon.get(
                     models.Taxon.valid_name == name["taxon_name"]
