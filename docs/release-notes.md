@@ -4,7 +4,9 @@ Version numbers correspond to Git tags in the
 [backend](https://github.com/JelleZijlstra/taxonomy/) repositories, and to database
 exports released on Zenodo.
 
-# Unreleased
+# 24.1.0 (January 10, 2024)
+
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.10481655)](https://doi.org/10.5281/zenodo.10481655)
 
 - Database
   - Add many newly named taxa, though some recent literature may still be missing.
