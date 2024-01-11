@@ -1341,6 +1341,15 @@ class Taxon(BaseModel):
             names |= child.all_names(age=age, exclude=exclude, min_year=min_year)
         return names
 
+    def all_names_lazy(
+        self, exclude: Container[Taxon] = frozenset()
+    ) -> Iterable[models.Name]:
+        if self in exclude:
+            return
+        yield from self.get_names()
+        for child in self.get_children():
+            yield from child.all_names_lazy(exclude=exclude)
+
     def all_authors(
         self,
         age: AgeClass | None = None,
@@ -1369,6 +1378,15 @@ class Taxon(BaseModel):
             for name in self.all_names(age=age, min_year=min_year, exclude=exclude)
             if getattr(name, field) is None and field in name.get_required_fields()
         }
+
+    def names_missing_field_lazy(
+        self, field: str, limit: int = 1000
+    ) -> Iterable[models.Name]:
+        for i, name in enumerate(self.all_names_lazy()):
+            if i >= limit:
+                return
+            if getattr(name, field) is None and field in name.get_required_fields():
+                yield name
 
     def print_names_missing_field(self) -> None:
         field = getinput.get_with_completion(

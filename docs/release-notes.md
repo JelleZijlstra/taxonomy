@@ -4,6 +4,15 @@ Version numbers correspond to Git tags in the
 [backend](https://github.com/JelleZijlstra/taxonomy/) repositories, and to database
 exports released on Zenodo.
 
+# Unreleased
+
+- Database
+- Backend
+- Frontend
+  - Add option to show names in a taxon that are missing a field
+
+Thanks to Rudolf Haslauer and Severin Uebbing for supplying information.
+
 # 24.1.0 (January 10, 2024)
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.10481655)](https://doi.org/10.5281/zenodo.10481655)

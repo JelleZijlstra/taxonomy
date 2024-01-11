@@ -4,9 +4,11 @@ import base64
 import enum
 import re
 from collections.abc import Callable
+from itertools import islice
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeVar
 
+import graphene
 import peewee
 import typing_inspect
 from graphene import (
@@ -31,7 +33,15 @@ from taxonomy.adt import ADT
 from taxonomy.config import get_options
 from taxonomy.db.constants import CommentKind
 from taxonomy.db.derived_data import DerivedField
-from taxonomy.db.models import Article, Location, Name, NameComment, Period, Person
+from taxonomy.db.models import (
+    Article,
+    Location,
+    Name,
+    NameComment,
+    Period,
+    Person,
+    Taxon,
+)
 from taxonomy.db.models.base import ADTField, BaseModel, EnumField
 
 from . import search
@@ -324,6 +334,40 @@ def num_aliases_resolver(parent: ObjectType, info: ResolveInfo) -> list[ObjectTy
     return model.get_aliases().count()
 
 
+def _get_names_missing_field(
+    parent: ObjectType,
+    info: ResolveInfo,
+    field: str,
+    first: int = 10,
+    after: str | None = None,
+) -> Any:
+    model = get_model(Taxon, parent, info)
+    query = model.names_missing_field_lazy(field)
+    if after:
+        offset = int(base64.b64decode(after).split(b":")[1]) + 1
+        limit = first + offset + 1
+    else:
+        limit = first + 1
+    return islice(query, limit)
+
+
+def names_missing_field_resolver(
+    parent: ObjectType,
+    info: ResolveInfo,
+    field: str,
+    first: int = 10,
+    after: str | None = None,
+) -> list[ObjectType]:
+    object_type = build_object_type_from_model(Name)
+    query = _get_names_missing_field(parent, info, field, first, after)
+    cache = info.context["request"]
+    ret = []
+    for obj in query:
+        ret.append(object_type(id=obj.id, oid=obj.id))
+        cache[(Name.call_sign, obj.id)] = obj
+    return ret
+
+
 def num_locations_resolver(
     parent: ObjectType, info: ResolveInfo, first: int = 10, after: str | None = None
 ) -> int:
@@ -418,6 +462,13 @@ CUSTOM_FIELDS = {
             make_connection(Person), resolver=person_aliases_resolver
         ),
         "num_aliases": Int(required=True, resolver=num_aliases_resolver),
+    },
+    Taxon: {
+        "names_missing_field": ConnectionField(
+            make_connection(Name),
+            resolver=names_missing_field_resolver,
+            field=graphene.Argument(String, required=True),
+        )
     },
 }
 
