@@ -69,9 +69,13 @@ def push_taxonomy(options: Options, version: str) -> None:
     subprocess.check_call(["git", "push", "--tags"], cwd=options.taxonomy_repo)
 
 
-def push_hesperomys(options: Options, version: str) -> None:
+def build_hesperomys(options: Options) -> None:
     subprocess.check_call(["npm", "run", "relay"], cwd=options.hesperomys_repo)
     subprocess.check_call(["npm", "run", "build"], cwd=options.hesperomys_repo)
+
+
+def push_hesperomys(options: Options, version: str) -> None:
+    build_hesperomys(options)
     subprocess.check_call(["git", "tag", version], cwd=options.hesperomys_repo)
     subprocess.check_call(["git", "push"], cwd=options.hesperomys_repo)
     subprocess.check_call(["git", "push", "--tags"], cwd=options.hesperomys_repo)
@@ -129,13 +133,20 @@ def full_deploy(options: Options, version: str) -> None:
     restart(options)
 
 
+def update_code(options: Options) -> None:
+    build_hesperomys(options)
+    deploy_hesperomys(options)
+    deploy_taxonomy(options)
+    restart(options)
+
+
 def interactive_ssh(options: Options) -> None:
     subprocess.check_call(["ssh", "-i", options.pem_file, options.hesperomys_host])
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", choices=["ssh", "deploy", "restart"])
+    parser.add_argument("command", choices=["ssh", "deploy", "restart", "code"])
     parser.add_argument("version", nargs="?")
     parser.add_argument("--port", type=int, default=80)
     parser.add_argument("--kill", action="store_true", default=False)
@@ -151,6 +162,8 @@ def main() -> None:
         case "deploy":
             assert args.version
             full_deploy(options, args.version)
+        case "code":
+            update_code(options)
 
 
 if __name__ == "__main__":
