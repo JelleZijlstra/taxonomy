@@ -2842,6 +2842,42 @@ def try_extract_page_described(dry_run: bool = True, verbose: bool = False) -> N
     print(f"extracted {count} page_described")
 
 
+def maybe_rename_paper(art: Article) -> str | None:
+    if art.name.startswith(("Theria ", "Placentalia ")):
+        return re.sub(r"^(Theria|Placentalia) ", "Mammalia ", art.name)
+    if art.name.endswith(("-review.pdf", "-revision.pdf", "-taxonomy.pdf")):
+        authors = art.get_authors()
+        if len(authors) == 1:
+            citation = authors[0].family_name
+        elif len(authors) == 2:
+            citation = f"{authors[0].family_name} & {authors[1].family_name}"
+        else:
+            citation = f"{authors[0].family_name} et al."
+        citation = unidecode.unidecode(citation)
+        replacement = f" ({citation} {art.numeric_year()}).pdf"
+        return re.sub(r"-(review|revision|taxonomy)\.pdf$", replacement, art.name)
+    return None
+
+
+@command
+def rename_papers(query: Iterable[Article] | None=None) -> None:
+    if query is None:
+        query = Article.select_valid()
+    for art in query:
+        new_name = maybe_rename_paper(art)
+        if new_name is None:
+            continue
+        getinput.print_header(art)
+        art.display()
+        if Article.select().filter(Article.name == new_name).count() > 0:
+            print("new name already exists")
+            continue
+        if getinput.yes_no(f"rename to {new_name!r}? "):
+            art.move(new_name)
+        else:
+            art.edit()
+
+
 def run_shell() -> None:
     # GC does bad things on my current setup for some reason
     gc.disable()
