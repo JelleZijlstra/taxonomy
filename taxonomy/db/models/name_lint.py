@@ -2886,6 +2886,22 @@ def extract_pages(page_described: str) -> Iterable[str]:
         yield part
 
 
+@make_linter("no_page_ranges")
+def no_page_ranges(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    if nam.page_described is None:
+        return
+    # Only applicable if there is a citation. This ensures we check
+    # if the range is appropriate when adding a citation.
+    if nam.original_citation is None:
+        return
+    for part in extract_pages(nam.page_described):
+        if re.fullmatch(r"[0-9]+-[0-9]+", part):
+            # Ranges should only be used in very rare cases (e.g., where the
+            # name itself literally extends across multiple pages). Enforce
+            # an explicit IgnoreLintName in such cases.
+            yield f"page_describes contains range: {part}"
+
+
 @make_linter("page_described")
 def check_page_described(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.page_described is None:
