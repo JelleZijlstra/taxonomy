@@ -7,6 +7,11 @@ exports released on Zenodo.
 # Unreleased
 
 - Database
+  - Fix species assignment for many extant mammal names based on comparisons with data
+    from the MDD
+  - Set more precise page numbers instead of page ranges for a few dozen names
+  - Add citations to many names, including most remaining names published in the
+    publications of the Geological Survey of India
 - Backend
 - Frontend
   - Add option to show names in a taxon that are missing a field
