@@ -329,9 +329,9 @@ def add_new_file(file: LsFile) -> bool:
         parser.printErrors()
         cmd = getinput.yes_no(
             "This filename could not be parsed. Do you want to rename it? ",
-            callbacks={"o": lambda: open_new(file)},
         )
         if cmd:
+            open_new(file)
             renameFunction()
 
     getinput.add_to_clipboard(file.name)
