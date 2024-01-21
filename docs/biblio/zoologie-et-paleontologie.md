@@ -113,7 +113,7 @@ first edition to be cited to the second.
 
 ## Bibliographic sources
 
-The work itself contains little evidence to contrain its dates. I found the following
+The work itself contains little evidence to constrain its dates. I found the following
 evidence:
 
 - _Archives des sciences physiques et naturelles_ (Geneva journal that frequently
@@ -170,7 +170,7 @@ evidence:
     - Cites pl. 39 of _Ziphius cavirostris_.
     - Proceedings of a 7 April 1851 session of the Académie
   - {Ziphiidae (Gervais 1850) (Annales)}
-  - p. 11 cites pl. 39 of the _Zoologie et Paléontologie_
+    - p. 11 cites pl. 39 of the _Zoologie et Paléontologie_
 - Sherborn's _Index Animalium_
   - {Animalia-index (A-Aff).pdf}
     - p. lviii reads "Zool. et Paléont. Franç. 4to. Paris, 1848–. [Pp. 1–144 and descr.
