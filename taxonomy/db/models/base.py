@@ -1212,9 +1212,12 @@ class BaseModel(Model):
 
     def add_to_history(self, field: str | None = None) -> None:
         """Add this object to the history for its label field."""
-        getter = self.getter(field)
-        getter.add_name(self)
-        getinput.append_history(getter, self.get_value_to_show_for_field(field))
+        getters = [self.getter(field)]
+        if field is None and hasattr(self, "label_field"):
+            getters.append(self.getter(self.label_field))
+        for getter in getters:
+            getter.add_name(self)
+            getinput.append_history(getter, self.get_value_to_show_for_field(field))
 
     def concise_markdown_link(self) -> str:
         return self.markdown_link()
@@ -1610,14 +1613,20 @@ def get_static_callbacks() -> getinput.CallbackMap:
         if hasattr(cls, "label_field")
     }
     commands = {
-        f":{cmd.__name__}": partial(_call_obj, cmd)
+        f":{cmd.__name__}": partial(_call_obj, cmd, use_default=True)
+        for cs in taxonomy.shell.COMMAND_SETS
+        for cmd in cs.commands
+    }
+    flexible_commands = {
+        f"::{cmd.__name__}": partial(_call_obj, cmd, use_default=False)
         for cs in taxonomy.shell.COMMAND_SETS
         for cmd in cs.commands
     }
     return {
         **sibling_editors,
         **commands,
-        ":h": lambda: _call_obj(taxonomy.lib.h),
+        **flexible_commands,
+        ":h": lambda: _call_obj(taxonomy.lib.h, use_default=True),
         "RootName": lambda: models.Name.getter("root_name").get_and_edit(),
     }
 
@@ -1626,7 +1635,12 @@ def _make_editor(cls: type[BaseModel]) -> Callable[[], None]:
     return lambda: cls.getter(None).get_and_edit(f"{cls.__name__}> ")
 
 
-def _call_obj(obj: Callable[..., Any], sig: inspect.Signature | None = None) -> None:
+def _call_obj(
+    obj: Callable[..., Any],
+    sig: inspect.Signature | None = None,
+    *,
+    use_default: bool = False,
+) -> None:
     if sig is None:
         try:
             sig = inspect.signature(obj)
@@ -1638,14 +1652,16 @@ def _call_obj(obj: Callable[..., Any], sig: inspect.Signature | None = None) -> 
     if sig is not None:
         for name, param in sig.parameters.items():
             try:
-                args[name] = _fill_param(name, param)
+                args[name] = _fill_param(name, param, use_default=use_default)
             except getinput.StopException:
                 return None
     result = obj(**args)
     print("Result:", result)
 
 
-def _fill_param(name: str, param: inspect.Parameter) -> object:
+def _fill_param(
+    name: str, param: inspect.Parameter, *, use_default: bool = False
+) -> object:
     if param.kind not in (
         inspect.Parameter.POSITIONAL_OR_KEYWORD,
         inspect.Parameter.KEYWORD_ONLY,
@@ -1655,6 +1671,8 @@ def _fill_param(name: str, param: inspect.Parameter) -> object:
     typ = param.annotation
     is_optional = param.default is not inspect.Parameter.empty
     default_value = param.default
+    if use_default and default_value is not inspect.Parameter.empty:
+        return default_value
     if typing_inspect.is_optional_type(typ):
         args = typing_inspect.get_args(typ)
         if len(args) == 2 and isinstance(args[1], NoneType):
@@ -1662,7 +1680,6 @@ def _fill_param(name: str, param: inspect.Parameter) -> object:
             is_optional = True
             default_value = None
 
-    print(typ, is_optional, default_value)
     value: object = None
     if typ is bool:
         value = getinput.yes_no(name)
