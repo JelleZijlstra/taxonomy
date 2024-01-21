@@ -12,6 +12,10 @@ exports released on Zenodo.
   - Set more precise page numbers instead of page ranges for a few dozen names
   - Add citations to many names, including most remaining names published in the
     publications of the Geological Survey of India
+  - Add coverage of Cynognathia, a group of Triassic cynodonts closely related to
+    mammals
+  - Add full authority citations for many more names
+  - Set the _page_described_ field for several thousand more names.
 - Backend
 - Frontend
   - Add option to show names in a taxon that are missing a field

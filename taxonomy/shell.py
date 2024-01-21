@@ -2821,30 +2821,29 @@ def lint_recent(limit: int = 1000) -> None:
 
 
 @command
-def try_extract_page_described(dry_run: bool = True, verbose: bool = False) -> None:
+def try_extract_page_described(
+    dry_run: bool = True, verbose: bool = False, limit: int | None = None
+) -> None:
+    query = Name.select_valid().filter(
+        Name.verbatim_citation != None, Name.page_described == None
+    )
+    if limit is not None:
+        query = query.limit(limit)
+    cfg = models.base.LintConfig(autofix=not dry_run)
     count = 0
-    for nam in getinput.print_every_n(
-        Name.select_valid().filter(
-            Name.verbatim_citation != None, Name.page_described == None
-        ),
-        label="names",
-        n=100,
-    ):
-        cite = nam.verbatim_citation
-        if cite is None:
-            continue
-        cite = re.sub(r"\[[^\[\]]+\]", " ", cite).strip().rstrip(".")
-        cite = re.sub(
-            r", (\d{1,2} )?([A-Z][a-z][a-z][a-z]?\.?\s)?1[789]\d{2}$", "", cite
-        ).strip()
-        if match := re.search(r"(?:\bp\.|\bS\.|:)\s*(\d{1,4})$", cite):
-            page = match.group(1)
-            print(f"{nam}: infer page {page!r} from {nam.verbatim_citation!r}")
+    for nam in getinput.print_every_n(query, label="names", n=100):
+        nam = nam.reload()
+        result = list(models.name_lint.infer_page_described(nam, cfg))
+        for message in result:
+            print(message)
+        if dry_run:
+            success = any(result)
+        else:
+            success = nam.page_described is not None
+        if success:
             count += 1
-            if not dry_run:
-                nam.page_described = page
         elif verbose:
-            print(nam.verbatim_citation, repr(cite))
+            print(nam.verbatim_citation)
     print(f"extracted {count} page_described")
 
 

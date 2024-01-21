@@ -2902,6 +2902,45 @@ def no_page_ranges(nam: Name, cfg: LintConfig) -> Iterable[str]:
             yield f"page_describes contains range: {part}"
 
 
+@make_linter("infer_page_described")
+def infer_page_described(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    if (
+        nam.page_described is not None
+        or nam.verbatim_citation is None
+        or nam.original_citation is not None
+    ):
+        return
+    cite = nam.verbatim_citation
+    while True:
+        new_cite = re.sub(r"\[[^\[\]]+\]", " ", cite).strip().rstrip(".")
+        new_cite = re.sub(r"\([A-Za-z ]+\)", " ", new_cite).strip().rstrip(".")
+        # remove trailing date
+        new_cite = re.sub(
+            r", (\d{1,2} )?([A-Z][a-z][a-z][a-z]?\.?\s)?1[789]\d{2}$", "", new_cite
+        ).strip()
+        # remove trailing "fig." or "pl."
+        new_cite = re.sub(r", ?(pl|pls|fig|figs|pi)\. ?\d[\d\-]*\.?$", "", new_cite)
+        # remove trailing "fig." or "pl."
+        new_cite = re.sub(r", \d+ ?(pl|pls|fig|figs|pi)\.?$", "", new_cite)
+        if cite == new_cite:
+            break
+        cite = new_cite
+    if match := re.search(r"(?:\bp ?\.|\bS\.|:)\s*(\d{1,4})\.?$", cite):
+        page = match.group(1)
+    elif match := re.search(
+        r"(?:\bp\.|pp\.|\bS\.|:|,)\s*(\d{1,4}) ?[-–e] ?(\d{1,4})\.?$", cite
+    ):
+        page = f"{match.group(1)}-{match.group(2)}"
+    else:
+        return
+    message = f"infer page {page!r} from {nam.verbatim_citation!r}"
+    if cfg.autofix:
+        print(f"{nam}: {message}")
+        nam.page_described = page
+    else:
+        yield message
+
+
 @make_linter("page_described")
 def check_page_described(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.page_described is None:
