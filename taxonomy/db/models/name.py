@@ -1071,6 +1071,8 @@ class Name(BaseModel):
         original_name = Name.getter("original_name").get_one_key(
             prompt="original_name> "
         )
+        if not original_name:
+            return None
         existing = list(Name.select_valid().filter(Name.original_name == original_name))
         if existing:
             print("Existing similar names:")
