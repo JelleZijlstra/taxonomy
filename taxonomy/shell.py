@@ -2253,7 +2253,7 @@ def _must_have_citation_groups() -> list[CitationGroup]:
 
 @command
 def find_potential_citations(
-    fix: bool = False, region: models.Region | None = None, aggressive: bool = False
+    fix: bool = True, region: models.Region | None = None, aggressive: bool = True
 ) -> int:
     if region is None:
         cgs = CitationGroup.select_valid()
@@ -2273,8 +2273,12 @@ def _author_names(obj: Article | Name) -> set[str]:
 
 @command
 def find_potential_citations_for_group(
-    cg: CitationGroup, fix: bool = False, aggressive: bool = False
+    cg: CitationGroup | None = None, fix: bool = True, aggressive: bool = True
 ) -> int:
+    if cg is None:
+        cg = CitationGroup.getter(None).get_one()
+    if cg is None:
+        return 0
     if not cg.get_names():
         return 0
     potential_arts = Article.bfind(
@@ -2315,8 +2319,10 @@ def find_potential_citations_for_group(
             if fix:
                 for candidate in candidates:
                     candidate.openf()
-                    getinput.add_to_clipboard(candidate.name)
+                    candidate.add_to_history()
                 nam.fill_required_fields()
+                if nam.original_citation is not None:
+                    nam.edit_until_clean()
     if count:
         print(f"{cg} had {count} potential citations", flush=True)
     return count
@@ -2860,7 +2866,7 @@ def maybe_rename_paper(art: Article) -> str | None:
 
 
 @command
-def rename_papers(query: Iterable[Article] | None=None) -> None:
+def rename_papers(query: Iterable[Article] | None = None) -> None:
     if query is None:
         query = Article.select_valid()
     for art in query:
