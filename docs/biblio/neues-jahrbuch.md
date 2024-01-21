@@ -26,6 +26,14 @@ and _Monatshefte_, each of which has had its own set of renamings.
     (1950-present)
 - Post-1950 there is also a separate Neues Jahrbuch für Mineralogie.
 
+A related publication is the _Centralblatt für Mineralogie, Geologie und Paläontologie_,
+apparently split off in 1900 to house some sections that were formerly in the _Neues
+Jahrbuch_. Its spelling was changed in 1935:
+
+- [Centralblatt für Mineralogie, Geologie und Paläontologie](/cg/2015)
+- [Zentralblatt für Mineralogie, Geologie und Paläontologie](/cg/1129), in multiple
+  series after 1942
+
 Sources:
 
 - https://searchworks.stanford.edu/view/398259
@@ -33,4 +41,5 @@ Sources:
 - https://searchworks.stanford.edu/view/371180
 - https://searchworks.stanford.edu/view/487499
 - https://searchworks.stanford.edu/view/497423
+- https://searchworks.stanford.edu/view/401236
 - https://www.biodiversitylibrary.org/bibliography/51831#/summary
