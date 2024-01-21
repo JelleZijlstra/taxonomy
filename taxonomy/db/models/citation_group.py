@@ -3,6 +3,7 @@ import functools
 import re
 from collections import Counter
 from collections.abc import Iterable
+from datetime import date
 from typing import Any, NotRequired, TypeVar
 
 from peewee import BooleanField, CharField, ForeignKeyField, IntegrityError
@@ -154,10 +155,12 @@ class CitationGroup(BaseModel):
             if isinstance(tag, CitationGroupTag.YearRange):
                 if issue := helpers.is_valid_year(tag.start):
                     yield f"{self}: invalid start year in {tag}: {issue}"
-                if issue := helpers.is_valid_year(tag.end):
+                if tag.end and (issue := helpers.is_valid_year(tag.end)):
                     yield f"{self}: invalid end year in {tag}: {issue}"
                 if tag.start and tag.end and int(tag.start) > int(tag.end):
                     yield f"{self}: {tag}: start is after end"
+                if tag.end and int(tag.end) > date.today().year:
+                    yield f"{self}: {tag} is predicting the future"
             if isinstance(tag, CitationGroupTag.BiblioNote):
                 if tag.text not in _get_biblio_pages():
                     yield f"{self}: references non-existent page {tag.text!r}"
@@ -242,6 +245,24 @@ class CitationGroup(BaseModel):
                 nam.citation_group = self
         if getinput.yes_no("Save pattern? "):
             CitationGroupPattern.make(pattern=pattern, citation_group=self)
+
+    def fill_field_for_names(self, field: str | None = None) -> None:
+        if field is None:
+            field = getinput.get_with_completion(
+                models.Name.get_field_names(),
+                message="field> ",
+                history_key=(type(self), "fill_field_for_names"),
+                disallow_other=True,
+            )
+        if field is None:
+            return
+
+        for name in sorted(
+            self.get_names(),
+            key=lambda nam: (nam.taxonomic_authority(), nam.year or ""),
+        ):
+            name = name.reload()
+            name.fill_field_if_empty(field)
 
     def for_years(
         self,
@@ -360,6 +381,7 @@ class CitationGroup(BaseModel):
             ),
             "missing_high_names": self.print_missing_high_names,
             "for_years": self._for_years_interactive,
+            "fill_field_for_names": self.fill_field_for_names,
         }
 
     def merge_interactive(self) -> None:
@@ -510,7 +532,7 @@ class CitationGroupTag(adt.ADT):
     ISSNOnline(text=str, tag=15)  # type: ignore
     CitationGroupURL(text=str, tag=16)  # type: ignore
     # The journal existed during this period
-    YearRange(start=str, end=str, tag=17)  # type: ignore
+    YearRange(start=str, end=NotRequired[str], tag=17)  # type: ignore
     # If a journal got renamed, a reference to the previous name
     Predecessor(cg=CitationGroup, tag=18)  # type: ignore
     # Series may be present and must conform to the regex in the tag
