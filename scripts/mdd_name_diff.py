@@ -116,7 +116,6 @@ def run(
     taxon: Taxon,
 ) -> None:
     with mdd_csv.open() as f:
-        f.read(1)  # skip BOM
         reader = csv.DictReader(f)
         mdd_rows = list(reader)
     with match_csv.open() as f:
@@ -305,10 +304,10 @@ def run(
             if row["MDD_syn_ID"] in used_mdd_ids:
                 continue
             num_mdd_only += 1
-            if row["MDD_syn_ID"] not in mdd_ids_with_overrides:
-                print("MDD-only name:", row)
             out_row = {**row, "match_status": "no_hesp_match"}
             extra = mdd_id_to_extra.get(row["MDD_syn_ID"], EMPTY)
+            if not extra.get("Jelle_Comments"):
+                print("MDD-only name:", row)
             if extra.get("Change"):
                 out_row["Connor_Comments"] = extra["Change"]
             out_row.update(extra)
@@ -340,7 +339,7 @@ def main() -> None:
         help="CSV file with MDD/Hesp matching",
         default=None,
     )
-    parser.add_argument("taxon", nargs="?", default="Mammalia")
+    parser.add_argument("--taxon", nargs="?", default="Mammalia")
     args = parser.parse_args()
     root = Taxon.getter("valid_name")(args.taxon)
     if root is None:
