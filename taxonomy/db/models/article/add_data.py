@@ -668,7 +668,7 @@ def doi_input(art: Article) -> bool:
 
     result, _ = uitools.menu(
         head=(
-            "If this file has a DOI or AMNH handle, please enter it. Otherwise, enter"
+            "If this file has a DOI, please enter it. Otherwise, enter"
             " the type of the file."
         ),
         helpinfo=(
