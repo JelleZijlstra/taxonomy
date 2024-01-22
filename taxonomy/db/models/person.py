@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import builtins
 import enum
+import re
 import sys
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Mapping, Sequence
@@ -505,6 +506,16 @@ class Person(BaseModel):
                     print(f"{self}: clean {field_name} from {value!r} to {cleaned!r}")
                     if cfg.autofix:
                         setattr(self, field_name, cleaned)
+
+        for tag in self.tags:
+            if isinstance(tag, models.tags.PersonTag.Wiki):
+                if not re.fullmatch(
+                    r"https://[a-z]{2,3}\.wikipedia\.org/wiki/[^/]+", tag.text
+                ):
+                    yield f"{self}: invalid Wikipedia link: {tag}"
+            elif isinstance(tag, models.tags.PersonTag.ORCID):
+                if not re.fullmatch(r"\d{4}-\d{4}-\d{4}-\d{4}", tag.text):
+                    yield f"{self}: invalid ORCID: {tag}"
 
         if self.type in (
             PersonType.deleted,

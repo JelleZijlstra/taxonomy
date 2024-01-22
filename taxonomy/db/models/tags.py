@@ -17,6 +17,7 @@ class PersonTag(adt.ADT):
     ActiveRegion(region=Region, tag=3)  # type: ignore
     Biography(article=Article, tag=4)  # type: ignore
     TransliteratedFamilyName(text=str, tag=5)  # type: ignore
+    ORCID(text=str, tag=6)  # type: ignore
 
 
 class TaxonTag(adt.ADT):

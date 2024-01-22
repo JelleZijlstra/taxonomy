@@ -17,6 +17,8 @@ exports released on Zenodo.
   - Add full authority citations for many more names
   - Set the _page_described_ field for several thousand more names.
 - Backend
+  - Add support for ORCID identifiers (though they are currently set for very few
+    people)
 - Frontend
   - Add option to show names in a taxon that are missing a field
 
