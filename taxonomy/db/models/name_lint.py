@@ -634,6 +634,7 @@ AfterText = Literal[
     "epiphysis",
     "neurapophysis",
     "diapophysis",
+    "hemapophysis",
     "intercentrum",
 ]
 AFTER_TEXT_VARIANTS: dict[str, AfterText] = {
@@ -2916,7 +2917,9 @@ def infer_page_described(nam: Name, cfg: LintConfig) -> Iterable[str]:
         new_cite = re.sub(r"\([A-Za-z ]+\)", " ", new_cite).strip().rstrip(".")
         # remove trailing date
         new_cite = re.sub(
-            r", (\d{1,2} )?([A-Z][a-z][a-z][a-z]?\.?\s)?1[789]\d{2}$", "", new_cite
+            r", (\d{1,2} )?([A-Z][a-z][a-z][a-z]?\.?\s)?1[789]\d{2}[a-e]?$",
+            "",
+            new_cite,
         ).strip()
         # remove trailing "fig." or "pl."
         new_cite = re.sub(r", ?(pl|pls|fig|figs|pi)\. ?\d[\d\-]*\.?$", "", new_cite)
