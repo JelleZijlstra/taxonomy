@@ -46,7 +46,9 @@ from .db.constants import (
     ArticleType,
     FillDataLevel,
     Group,
+    NamingConvention,
     NomenclatureStatus,
+    PersonType,
     Rank,
 )
 from .db.models import (
@@ -1834,6 +1836,7 @@ def reassign_references(
     substring: bool = True,
     max_level: PersonLevel | None = PersonLevel.has_given_name,
     min_level: PersonLevel | None = None,
+    auto: bool = False,
 ) -> None:
     if family_name is None:
         family_name = Person.getter("family_name").get_one_key()
@@ -1852,7 +1855,30 @@ def reassign_references(
             continue
         if min_level is not None and person.get_level() < min_level:
             continue
-        person.maybe_reassign_references()
+        person.maybe_reassign_references(auto=auto)
+
+
+@command
+def reassign_references_auto(substring: bool = False) -> None:
+    reassign_references(auto=True, substring=substring)
+
+
+@command
+def reassign_references_for_convention(
+    convention: NamingConvention | None = None,
+) -> None:
+    if convention is None:
+        convention = getinput.get_enum_member(NamingConvention, "convention> ")
+    if convention is None:
+        return
+    family_names = {
+        person.family_name
+        for person in Person.select_valid().filter(
+            Person.naming_convention == convention
+        )
+    }
+    for family_name in sorted(family_names):
+        reassign_references(family_name, auto=True, substring=False)
 
 
 @command
@@ -2881,6 +2907,60 @@ def rename_papers(query: Iterable[Article] | None = None) -> None:
             art.move(new_name)
         else:
             art.edit()
+
+
+def is_more_less_specific_sequence(persons: Iterable[Person]) -> bool:
+    persons = sorted(persons, key=lambda pers: pers.get_full_name())
+    for left, right in zip(persons, persons[1:], strict=False):
+        if not right.is_more_specific_than(left):
+            return False
+    return True
+
+
+def sum_year_ranges(persons: Iterable[Person]) -> tuple[int, int] | None:
+    min_year: int | None = None
+    max_year: int | None = None
+    for person in persons:
+        year_range = person.get_active_year_range()
+        if year_range is None:
+            continue
+        new_min, new_max = year_range
+        if min_year is None or new_min < min_year:
+            min_year = new_min
+        if max_year is None or new_max > max_year:
+            max_year = new_max
+    if min_year is None or max_year is None:
+        return None
+    return min_year, max_year
+
+
+@command
+def find_potential_person_clusters(interactive: bool = True) -> None:
+    for person in Person.select_valid().filter(
+        Person.given_names == None, Person.initials == None
+    ):
+        all_persons = list(
+            Person.select_valid().filter(
+                Person.family_name == person.family_name,
+                ~(Person.type << (PersonType.soft_redirect, PersonType.hard_redirect)),
+            )
+        )
+        if len(all_persons) <= 1:
+            continue
+        if not is_more_less_specific_sequence(all_persons):
+            continue
+        total_range = sum_year_ranges(all_persons)
+        if total_range is None:
+            continue
+        min_year, max_year = total_range
+        # probably not the same person
+        if max_year - min_year > 70:
+            continue
+        getinput.print_header(person.family_name)
+        for person in all_persons:
+            person.display(full=True)
+        if interactive:
+            reassign_references(person.family_name, substring=False)
 
 
 def run_shell() -> None:

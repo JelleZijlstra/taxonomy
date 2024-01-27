@@ -377,6 +377,8 @@ class Person(BaseModel):
         indented_onset = onset + " " * 4
         double_indented_onset = onset + " " * 8
         file.write(onset + str(self) + "\n")
+        if active_range := self.get_active_year_range():
+            file.write(f"{indented_onset}Active: {active_range[0]}–{active_range[1]}\n")
         if self.tags:
             for tag in self.tags:
                 file.write(indented_onset + repr(tag) + "\n")
@@ -738,6 +740,36 @@ class Person(BaseModel):
     def total_references(self) -> int:
         return sum(self.num_references().values())
 
+    def get_active_year_range(self) -> tuple[int, int] | None:
+        years = sorted(self.get_active_years())
+        if not years:
+            return None
+        return years[0], years[-1]
+
+    def get_active_years(self) -> Iterable[int]:
+        for nam in self.get_derived_field("names") or ():
+            if nam.year is not None:
+                yield nam.numeric_year()
+        for art in self.get_derived_field("articles") or ():
+            if art.year is not None:
+                yield art.numeric_year()
+        for book in self.get_derived_field("books") or ():
+            if book.year is not None:
+                try:
+                    yield int(book.year)
+                except ValueError:
+                    pass
+
+        # These two could technically be very different from when
+        # the person themself was active, but it's better than nothing.
+        for nam in self.get_derived_field("collected") or ():
+            if nam.year is not None:
+                # TODO: Look at the Date tag instead if available
+                yield nam.numeric_year()
+        for nam in self.get_derived_field("involved") or ():
+            if nam.year is not None:
+                yield nam.numeric_year()
+
     def reassign_initials_only(self) -> None:
         arts = self.get_sorted_derived_field("articles")
         for art in arts:
@@ -776,6 +808,7 @@ class Person(BaseModel):
             "reassign_references": self.reassign_references,
             "rio": self.reassign_initials_only,
             "reassign_initials_only": self.reassign_initials_only,
+            "pinyinify": self.pinyinify,
             "move": self.move_all_references,
             "soft": self.make_soft_redirect,
             "hard": self.make_hard_redirect,
@@ -801,10 +834,18 @@ class Person(BaseModel):
             print("=== tussenvoegsel ===")
             helpers.print_character_names(self.tussenvoegsel)
 
-    def maybe_reassign_references(self) -> None:
+    def maybe_reassign_references(self, auto: bool = False) -> None:
         num_refs = self.total_references()
         if num_refs == 0:
             return
+        if auto:
+            match self.get_level():
+                case PersonLevel.family_name_only:
+                    self.reassign_names_with_verbatim(filter_for_name=True)
+                    return
+                case PersonLevel.initials_only:
+                    self.reassign_initials_only()
+                    return
         print(f"======= {self} ({num_refs}) =======")
         while True:
             command = getinput.get_line(
@@ -876,6 +917,19 @@ class Person(BaseModel):
         nams = sorted(nams, key=lambda nam: nam.sort_key())
         for nam in nams:
             nam.display()
+
+    def pinyinify(self, given_names: str | None = None) -> None:
+        """Replace a person with a correctly formatted pinyin-style name."""
+        if given_names is None:
+            given_names = self.getter("given_names").get_one_key("given name> ")
+        if given_names is None:
+            return
+        person = self.get_or_create_unchecked(self.family_name, given_names=given_names)
+        if person.naming_convention is not NamingConvention.pinyin:
+            print(f"{person}: set naming convention to pinyin")
+            person.naming_convention = NamingConvention.pinyin  # type: ignore
+        person.edit_until_clean()
+        self.make_soft_redirect(person)
 
     def move_all_references(self, target: Person | None = None) -> None:
         if target is None:

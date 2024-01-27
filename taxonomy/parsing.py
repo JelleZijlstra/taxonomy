@@ -379,14 +379,18 @@ pinyin_syllable = (
     + pinyin_vowel
     + Optional(pinyin_coda)
 )
-pinyin_given_names = pinyin_syllable + Optional(L("-") + pinyin_syllable)
+pinyin_given_names = pinyin_syllable + Repetition(
+    L("-") + pinyin_syllable, min=0, max=2
+)
 pinyin_family_name = pinyin_syllable | OneOf.from_strs(
     ["ouyang", "jinggong", "jiangzuo", "lv", "fucha"]
 )
 
 chinese_lower = C(sorted(unicode_range("a", "z") | {"ü"}))
 chinese_name = latin_upper + OneOrMore(chinese_lower)
-pinyin_given_names_cased = chinese_name + Optional(L("-") + OneOrMore(chinese_lower))
+pinyin_given_names_cased = chinese_name + Repetition(
+    L("-") + OneOrMore(chinese_lower), min=0, max=2
+)
 chinese_given_names = chinese_name + Optional(
     (L("-") | L(" ")) + Optional(latin_upper) + OneOrMore(chinese_lower)
 )
