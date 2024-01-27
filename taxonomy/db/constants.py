@@ -171,6 +171,7 @@ class NomenclatureStatus(enum.IntEnum):
     # Art. 20: names in -ites, -ytes, -ithes for fossils may not be available
     ites_name = 30
     # names based on hybrids are available, but do not compete in priority (Art. 23.8)
+    # Deprecated as this is redundant with setting 'status' to 'hybrid'
     hybrid_name = 31
     # Art. 23.12: name rejected under Art. 23b in the 1961-1973 Code
     art_13_nomen_oblitum = 32
