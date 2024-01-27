@@ -1064,6 +1064,7 @@ class BaseModel(Model):
         while not self.is_lint_clean():
             self.display()
             self.edit()
+            self = self.reload()
 
     @classmethod
     def get_completers_for_adt_field(cls, field: str) -> getinput.CompleterMap:
