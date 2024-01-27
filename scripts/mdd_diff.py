@@ -3,6 +3,7 @@ import csv
 import enum
 import re
 import sys
+from collections import Counter
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -92,6 +93,7 @@ class DifferenceKind(enum.Enum):
     type_specimen_missing_hesp = 13
     original_name_missing_mdd = 14
     original_name_missing_hesp = 15
+    authority_exact = 16
 
 
 @dataclass
@@ -226,6 +228,105 @@ def process_mdd_type(text: str) -> str | None:
     return ", ".join(sorted(final))
 
 
+def get_mdd_style_authority(nam: Name, need_initials: set[str]) -> str:
+    authors = nam.get_authors()
+    name_authors = get_mdd_style_authority_for_name_list(authors, need_initials, nam)
+    if (
+        nam.original_citation is not None
+        and nam.original_citation.get_authors() != authors
+    ):
+        article_authors = get_mdd_style_authority_for_name_list(
+            nam.original_citation.get_authors(), need_initials, nam
+        )
+        return f"{name_authors} in {article_authors}"
+    return name_authors
+
+
+def get_need_initials_authors(nams: Iterable[Name]) -> set[str]:
+    all_authors: set[Person] = set()
+    for nam in nams:
+        all_authors.update(nam.get_authors())
+        if nam.original_citation:
+            all_authors.update(nam.original_citation.get_authors())
+    family_name_to_authors: Counter[str] = Counter()
+    for author in all_authors:
+        family_name_to_authors[helpers.romanize_russian(author.family_name)] += 1
+    return {
+        family_name
+        for family_name, count in family_name_to_authors.items()
+        if count > 1
+    }
+
+
+def get_mdd_style_authority_for_name_list(
+    persons: Sequence[Person], need_initials: set[str], nam: Name
+) -> str:
+    match len(persons):
+        case 1:
+            return get_mdd_style_authority_for_single_person(
+                persons[0], need_initials, nam
+            )
+        case 2:
+            first = get_mdd_style_authority_for_single_person(
+                persons[0], need_initials, nam
+            )
+            second = get_mdd_style_authority_for_single_person(
+                persons[1], need_initials, nam
+            )
+            return f"{first} & {second}"
+        case _:
+            authorities = [
+                get_mdd_style_authority_for_single_person(person, need_initials, nam)
+                for person in persons
+            ]
+            return ", ".join(authorities[:-1]) + f", & {authorities[-1]}"
+
+
+def get_mdd_style_authority_for_single_person(
+    person: Person, need_initials: set[str], nam: Name
+) -> str:
+    # special case!
+    if person.family_name == "Hill":
+        match person.given_names:
+            case "John Eric":
+                return "J. Eric Hill"
+            case "John Edwards":
+                return "J. Edwards Hill"
+    match person.naming_convention:
+        case NamingConvention.pinyin:
+            return (
+                f"{person.family_name} {person.given_names.replace('-', '').lower().title()}"
+            )
+        case NamingConvention.chinese:
+            if person.given_names is not None:
+                given_name = person.given_names.replace("-", "").lower().title()
+                return f"{person.family_name} {given_name}"
+            else:
+                print(f"warning: no initials for {person} in {nam}")
+                return person.family_name
+        case NamingConvention.korean:
+            return f"{person.family_name} {person.given_names}"
+        case NamingConvention.vietnamese:
+            return f"{person.given_names} {person.family_name}"
+        case _:
+            family_name = person.get_transliterated_family_name()
+            if person.tussenvoegsel is not None:
+                if person.naming_convention is NamingConvention.dutch:
+                    tsv = person.tussenvoegsel[0].upper() + person.tussenvoegsel[1:]
+                    family_name = f"{tsv} {family_name}"
+                else:
+                    family_name = f"{person.tussenvoegsel} {family_name}"
+            if person.family_name not in need_initials:
+                return family_name
+            initials = person.get_initials()
+            if initials is None:
+                print(f"warning: no initials for {person} in {nam}")
+                return family_name
+            initials = helpers.romanize_russian(initials)
+            initials = re.sub(r"\.(?=[A-Z])", ". ", initials)
+            return f"{initials} {family_name}"
+
+
 def process_mdd_authority(text: str) -> str:
     text = re.sub(r" in .*", "", text)
     text = text.replace("J. Edwards Hill", "Hill")
@@ -271,26 +372,45 @@ def possible_mdd_authors(hesp_author: Person) -> Iterable[str]:
         yield hesp_author.get_transliterated_family_name()
 
     for family_name in _possible_family_names(hesp_author):
+        family_name = helpers.romanize_russian(family_name)
         yield family_name
         if initials := hesp_author.get_initials():
-            for splits in r" ", r"(?<=\.)(?!-)| ":
-                initials_list = re.split(splits, initials)
-                initials_list = [i for i in initials_list if i and i.endswith(".")]
-                yield f"{''.join(f'{i} ' for i in initials_list)}{family_name}"
-                # only first initial
-                if len(initials_list) > 1:
-                    yield f"{initials_list[0]} {family_name}"
-                # J. Edwards Hill
-                if hesp_author.given_names and hesp_author.given_names.count(" ") == 1:
-                    before, after = hesp_author.given_names.split()
-                    yield f"{before[0]}. {after} {family_name}"
+            initials = helpers.romanize_russian(initials)
+            for remove_infix in (False, True):
+                for splits in r" ", r"(?<=\.)(?!-)| ":
+                    initials_list = re.split(splits, initials)
+                    initials_list = [i for i in initials_list if i]
+                    if remove_infix:
+                        initials_list = [i for i in initials_list if i.endswith(".")]
+                    yield f"{''.join(f'{i} ' for i in initials_list)}{family_name}"
+                    # only first initial
+                    if len(initials_list) > 1:
+                        yield f"{initials_list[0]} {family_name}"
+                    # J. Edwards Hill
+                    if (
+                        hesp_author.given_names
+                        and hesp_author.given_names.count(" ") == 1
+                    ):
+                        before, after = hesp_author.given_names.split()
+                        yield f"{before[0]}. {after} {family_name}"
 
 
 def does_author_match(mdd_author: str, hesp_author: Person) -> bool:
     return mdd_author in possible_mdd_authors(hesp_author)
 
 
-def compare_authors(taxon: Taxon, mdd_row: MddRow) -> Iterable[Difference]:
+def compare_authors(
+    taxon: Taxon, mdd_row: MddRow, need_initials: set[str]
+) -> Iterable[Difference]:
+    mdd_style = get_mdd_style_authority(taxon.base_name, need_initials)
+    if mdd_row["authoritySpeciesAuthor"] != mdd_style:
+        yield Difference(
+            DifferenceKind.authority_exact,
+            mdd=mdd_row["authoritySpeciesAuthor"],
+            hesp=mdd_style,
+            mdd_id=mdd_row["id"],
+            taxon=taxon,
+        )
     yield from compare_authors_to_name(
         taxon.base_name, mdd_row["id"], mdd_row["authoritySpeciesAuthor"], taxon=taxon
     )
@@ -350,7 +470,9 @@ def clean_hesp_type(nam: Name) -> str | None:
     return result
 
 
-def compare_single(taxon: Taxon, mdd_row: MddRow) -> Iterable[Difference]:
+def compare_single(
+    taxon: Taxon, mdd_row: MddRow, need_initials: set[str]
+) -> Iterable[Difference]:
     mismatched_genus = False
     sci_name = mdd_row["sciName"].replace("_", " ")
     mdd_id = mdd_row["id"]
@@ -400,7 +522,7 @@ def compare_single(taxon: Taxon, mdd_row: MddRow) -> Iterable[Difference]:
         )
     nam = taxon.base_name
 
-    yield from compare_authors(taxon, mdd_row)
+    yield from compare_authors(taxon, mdd_row, need_initials)
 
     if str(nam.numeric_year()) != mdd_row["authoritySpeciesYear"]:
         yield Difference(
@@ -480,7 +602,11 @@ def compare_single(taxon: Taxon, mdd_row: MddRow) -> Iterable[Difference]:
 
 
 def compare(
-    taxa: Iterable[Taxon], mdd_data: Iterable[MddRow], add_ids: bool = False
+    taxa: Iterable[Taxon],
+    mdd_data: Iterable[MddRow],
+    *,
+    add_ids: bool = False,
+    need_initials: set[str],
 ) -> Iterable[Difference]:
     mdd_by_name = {}
     mdd_by_id = {}
@@ -510,7 +636,7 @@ def compare(
                     DifferenceKind.missing_in_mdd, hesp=taxon.valid_name, taxon=taxon
                 )
                 continue
-        yield from compare_single(taxon, mdd_row)
+        yield from compare_single(taxon, mdd_row, need_initials=need_initials)
         del mdd_by_id[mdd_row["id"]]
         del mdd_by_name[mdd_row["sciName"].replace("_", " ")]
 
@@ -636,10 +762,15 @@ def run(
     print("Reading Hesperomys data... ", end="", flush=True)
     mammalia = Taxon.getter("valid_name")("Mammalia")
     assert isinstance(mammalia, Taxon), repr(mammalia)
-    species = all_species(mammalia)
+    species = list(all_species(mammalia))
+    print("Done")
+    print("Generating need_initials list.. ", end="", flush=True)
+    need_initials = get_need_initials_authors(txn.base_name for txn in species)
     print("Done")
     print("Generating differences... ", end="", flush=True)
-    differences = list(compare(species, mdd_rows, add_ids=add_ids))
+    differences = list(
+        compare(species, mdd_rows, add_ids=add_ids, need_initials=need_initials)
+    )
     print("Done")
 
     generate_markdown(differences, sys.stdout, ignore_kinds=ignore_kinds)

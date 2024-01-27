@@ -9,7 +9,7 @@ import Levenshtein
 from scripts import mdd_diff
 from taxonomy import getinput
 from taxonomy.db import export
-from taxonomy.db.constants import AgeClass, Group, Rank
+from taxonomy.db.constants import AgeClass, Group, Rank, Status
 from taxonomy.db.models import Name, Taxon
 
 COLUMNS = [
@@ -19,11 +19,13 @@ COLUMNS = [
     "Connor_TODO",
     "Jelle_Comments",
     "Connor_Comments",
+    "MDD_change",
     "match_status",
     "species_status",
     "spelling_status",
     "nomenclature_status",
     "author_status",
+    "author_exact_status",
     "year_status",
     "Hesp_root_name",
     "Hesp_authority",
@@ -108,6 +110,20 @@ def root_name_matches(name: Name, mdd_root_name: str) -> bool:
     return False
 
 
+def get_mdd_like_species_name(name: Name) -> str:
+    if name.taxon.base_name.status is not Status.valid:
+        try:
+            genus = name.taxon.parent_of_rank(Rank.genus).valid_name
+        except ValueError:
+            return "incertae_sedis incertae_sedis"
+        else:
+            return f"{genus} incertae_sedis"
+    try:
+        return name.taxon.parent_of_rank(Rank.species).valid_name
+    except ValueError:
+        return ""
+
+
 def run(
     mdd_csv: Path,
     match_csv: Path,
@@ -166,9 +182,13 @@ def run(
             continue
         hesp_id_to_mdd_ids.setdefault(hesp_id, set()).add(row["MDD_syn_ID"])
 
+    mdd_id_to_row = {row["MDD_syn_ID"]: row for row in mdd_rows}
+
     for row in match_rows:
         mdd_id = row["MDD_syn_ID"]
         if mdd_id:
+            mdd_id_to_row[mdd_id].update(row)
+            del mdd_id_to_row[mdd_id]["match_status"]
             for column in EXTRA_COLUMNS:
                 if value := row.get(column):
                     mdd_id_to_extra.setdefault(mdd_id, {})[column] = value
@@ -177,7 +197,6 @@ def run(
                 if value := row.get(column):
                     hesp_id_to_extra.setdefault(hesp_id, {})[column] = value
 
-    mdd_id_to_row = {row["MDD_syn_ID"]: row for row in mdd_rows}
     used_mdd_ids = set()
 
     hesp_names = export.get_names_for_export(
@@ -186,6 +205,7 @@ def run(
         group=Group.species,
         min_rank_for_age_filtering=Rank.species,
     )
+    need_initials = mdd_diff.get_need_initials_authors(hesp_names)
 
     num_mdd_names = len(mdd_rows)
     num_hesp_names = len(hesp_names)
@@ -196,6 +216,7 @@ def run(
     num_mdd_only = 0
     num_species_diffs = 0
     num_author_diffs = 0
+    num_exact_author_diffs = 0
     num_spelling_diffs = 0
     num_year_diffs = 0
     num_nomenclature_diffs = 0
@@ -206,7 +227,9 @@ def run(
         for name in getinput.print_every_n(hesp_names, label="Hesperomys names"):
             data = export.data_for_name(name)
             row = {f"Hesp_{k}": v for k, v in data.items()}
-            row.update(hesp_id_to_extra.get(name.id, EMPTY))
+            mdd_style_author = mdd_diff.get_mdd_style_authority(name, need_initials)
+            row["Hesp_authority"] = mdd_style_author
+            hesp_extra = hesp_id_to_extra.get(name.id, EMPTY)
             if name.id in hesp_id_to_mdd_ids:
                 mdd_ids = sorted(hesp_id_to_mdd_ids[name.id])
                 if len(mdd_ids) == 1:
@@ -238,31 +261,24 @@ def run(
                         writer.writerow(single_row)
                         continue
                     mdd_row = mdd_id_to_row[mdd_id]
-                    single_row.update(mdd_row)
+                    # prefer Hesp data over mdd_row, which contains data from the matched sheet
+                    single_row = {**mdd_row, **single_row, **hesp_extra}
                     extra = mdd_id_to_extra.get(mdd_id, EMPTY)
                     if extra.get("Change"):
                         single_row["Connor_Comments"] = extra["Change"]
                     single_row.update(extra)
-                    author_diffs = list(
-                        mdd_diff.compare_authors_to_name(
-                            name, mdd_id, mdd_row["MDD_author"]
-                        )
-                    )
                     mdd_species = (
                         f"{mdd_row['MDD_genus']} {mdd_row['MDD_specificEpithet']}"
                     )
-                    try:
-                        hesp_species = name.taxon.parent_of_rank(
-                            Rank.species
-                        ).valid_name
-                    except ValueError:
-                        hesp_species = ""
+                    hesp_species = get_mdd_like_species_name(name)
                     if mdd_species != hesp_species:
                         distance = Levenshtein.distance(hesp_species, mdd_species)
                         single_row["species_status"] = (
                             f"{distance}: {hesp_species} (H) / {mdd_species} (M)"
                         )
                         num_species_diffs += 1
+                    else:
+                        single_row["species_status"] = ""
                     if name.nomenclature_status.name != mdd_row[
                         "MDD_nomenclature_status"
                     ].replace("spelling_error", "incorrect_subsequent_spelling"):
@@ -271,11 +287,31 @@ def run(
                             f" {mdd_row['MDD_nomenclature_status']} (M)"
                         )
                         num_nomenclature_diffs += 1
+                    else:
+                        single_row["nomenclature_status"] = ""
+                    author_diffs = list(
+                        mdd_diff.compare_authors_to_name(
+                            name, mdd_id, mdd_row["MDD_author"]
+                        )
+                    )
                     if author_diffs:
                         single_row["author_status"] = "; ".join(
                             diff.to_markdown(concise=True) for diff in author_diffs
                         )
                         num_author_diffs += 1
+                    else:
+                        single_row["author_status"] = ""
+                    if mdd_style_author != mdd_row["MDD_author"]:
+                        distance = Levenshtein.distance(
+                            mdd_style_author, mdd_row["MDD_author"]
+                        )
+                        single_row["author_exact_status"] = (
+                            f"{distance}: {mdd_style_author} (H) /"
+                            f" {mdd_row['MDD_author']} (M)"
+                        )
+                        num_exact_author_diffs += 1
+                    else:
+                        single_row["author_exact_status"] = ""
                     if not root_name_matches(name, mdd_row["MDD_root_name"]):
                         distance = Levenshtein.distance(
                             name.root_name, mdd_row["MDD_root_name"]
@@ -285,6 +321,8 @@ def run(
                             f" {mdd_row['MDD_root_name']} (M)"
                         )
                         num_spelling_diffs += 1
+                    else:
+                        single_row["spelling_status"] = ""
                     if data["year"] != mdd_row["MDD_year"]:
                         try:
                             distance = abs(int(data["year"]) - int(mdd_row["MDD_year"]))
@@ -295,6 +333,8 @@ def run(
                             f" {mdd_row['MDD_year']} (M)"
                         )
                         num_year_diffs += 1
+                    else:
+                        single_row["year_status"] = ""
                     writer.writerow(single_row)
             else:
                 num_hesp_only += 1
@@ -325,6 +365,7 @@ def run(
     print(f"{num_nomenclature_diffs} nomenclature status differences")
     print(f"{num_spelling_diffs} spelling differences")
     print(f"{num_author_diffs} author differences")
+    print(f"{num_exact_author_diffs} exact author differences")
     print(f"{num_year_diffs} year differences")
 
 
