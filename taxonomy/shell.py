@@ -211,10 +211,7 @@ def add_page_described() -> Iterable[tuple[Name, str]]:
     ):
         if name.year in ("2015", "2016"):
             continue  # recent JVP papers don't have page numbers
-        message = (
-            "Name %s is missing page described, but has original citation {%s}"
-            % (name.description(), name.original_citation.name)
-        )
+        message = f"Name {name.description()} is missing page described, but has original citation {{{name.original_citation.name}}}"
         yield name, message
 
 
@@ -372,8 +369,7 @@ def detect_types_from_root_names(max_count: int | None = None) -> None:
                     break
             else:
                 print(
-                    "Could not detect type for name %s (root_name = %s)"
-                    % (name, name.root_name)
+                    f"Could not detect type for name {name} (root_name = {name.root_name})"
                 )
     print("Success: %d/%d" % (successful_count, count))
 
@@ -863,10 +859,7 @@ class ScoreHolder:
         sorted_items = sorted(items, key=sort_key)
         chart_data = []
         for taxon, data in sorted_items:
-            if field in data:
-                percentage, count, required_count = data[field]
-            else:
-                percentage, count, required_count = 100, 0, 0
+            percentage, count, required_count = data.get(field, (100, 0, 0))
             label = (
                 f'{taxon} {percentage:.2f} ({count}/{required_count}) {data["total"]}'
             )
@@ -2908,10 +2901,10 @@ def rename_papers(query: Iterable[Article] | None = None) -> None:
 
 def is_more_less_specific_sequence(persons: Iterable[Person]) -> bool:
     persons = sorted(persons, key=lambda pers: pers.get_full_name())
-    for left, right in zip(persons, persons[1:], strict=False):
-        if not right.is_more_specific_than(left):
-            return False
-    return True
+    return all(
+        right.is_more_specific_than(left)
+        for left, right in zip(persons, persons[1:], strict=False)
+    )
 
 
 def sum_year_ranges(persons: Iterable[Person]) -> tuple[int, int] | None:

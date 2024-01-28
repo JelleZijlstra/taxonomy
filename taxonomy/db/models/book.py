@@ -165,10 +165,7 @@ class Book(BaseModel):
 
     def has_tag(self, tag_cls: type[adt.ADT]) -> bool:
         tag_id = tag_cls._tag
-        for tag in self.get_raw_tags_field("tags"):
-            if tag[0] == tag_id:
-                return True
-        return False
+        return any(tag[0] == tag_id for tag in self.get_raw_tags_field("tags"))
 
     def __repr__(self) -> str:
         authors = ", ".join(map(str, self.get_authors()))

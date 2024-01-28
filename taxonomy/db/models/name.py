@@ -828,10 +828,7 @@ class Name(BaseModel):
 
     def has_type_tag(self, tag_cls: TypeTagCons) -> bool:
         tag_id = tag_cls._tag
-        for tag in self.get_raw_tags_field("type_tags"):
-            if tag[0] == tag_id:
-                return True
-        return False
+        return any(tag[0] == tag_id for tag in self.get_raw_tags_field("type_tags"))
 
     def map_type_tags(self, fn: Callable[[Any], Any | None]) -> None:
         self.map_tags_field(Name.type_tags, fn)
@@ -1516,10 +1513,10 @@ class Name(BaseModel):
 
     def has_tag_from_source(self, tag_cls: TypeTagCons, source: Article) -> bool:
         tag_id = tag_cls._tag
-        for tag in self.get_raw_tags_field("type_tags"):
-            if tag[0] == tag_id and tag[2] == source.id:
-                return True
-        return False
+        return any(
+            tag[0] == tag_id and tag[2] == source.id
+            for tag in self.get_raw_tags_field("type_tags")
+        )
 
     def requires_etymology(self) -> bool:
         if self.group is Group.genus:
@@ -1855,8 +1852,7 @@ class Name(BaseModel):
             if current_value is not None:
                 if current_value != value and current_value != str(value):
                     print(
-                        "Warning: %s does not match (given as %s, paper has %s)"
-                        % (label, current_value, value)
+                        f"Warning: {label} does not match (given as {current_value}, paper has {value})"
                     )
                     if force:
                         setattr(self, label, value)
@@ -1875,8 +1871,7 @@ class Name(BaseModel):
         candidates = self.detect_type(verbatim_type=verbatim_type, verbose=verbose)
         if candidates is None or not candidates:
             print(
-                "Verbatim type %s for name %s could not be recognized"
-                % (verbatim_type, self)
+                f"Verbatim type {verbatim_type} for name {self} could not be recognized"
             )
             return False
         elif len(candidates) == 1:
@@ -1886,8 +1881,7 @@ class Name(BaseModel):
             return True
         else:
             print(
-                "Verbatim type %s for name %s yielded multiple possible names: %s"
-                % (verbatim_type, self, candidates)
+                f"Verbatim type {verbatim_type} for name {self} yielded multiple possible names: {candidates}"
             )
             return False
 

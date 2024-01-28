@@ -72,7 +72,7 @@ def build_newlist(path: Path | None = None) -> LsFileList:
     for entry in os.scandir(path):
         if entry.is_file() and entry.name and not Path(entry.name).name.startswith("."):
             out[entry.name] = LsFile(entry.name)
-    out = {key: value for key, value in sorted(out.items(), key=lambda kv: kv[0])}
+    out = dict(sorted(out.items(), key=lambda kv: kv[0]))
 
     if not out:
         print("no new files found")

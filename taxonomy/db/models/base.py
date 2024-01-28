@@ -737,9 +737,7 @@ class BaseModel(Model):
         # mypy thinks fields aren't hashable
         query, fields = get_query_and_fields(cls)  # type: ignore
         cursor = database.execute_sql(query, (data,))
-        kwargs = {
-            field: value for field, value in zip(fields, cursor.fetchone(), strict=True)
-        }
+        kwargs = dict(zip(fields, cursor.fetchone(), strict=True))
         return cls(**kwargs)
 
     @classmethod

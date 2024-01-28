@@ -9,13 +9,10 @@ from taxonomy.db.models import Article, Name, Taxon, TypeTag
 def has_orig_location_detail(nam: Name) -> bool:
     if nam.original_citation is None:
         return False
-    for tag in nam.type_tags:
-        if (
-            isinstance(tag, TypeTag.LocationDetail)
-            and tag.source == nam.original_citation
-        ):
-            return True
-    return False
+    return any(
+        isinstance(tag, TypeTag.LocationDetail) and tag.source == nam.original_citation
+        for tag in nam.type_tags
+    )
 
 
 def kind_of_tl(nam: Name) -> str:

@@ -227,10 +227,7 @@ class Location(BaseModel):
 
     def has_tag(self, tag_cls: adt.ADT | type[adt.ADT]) -> bool:
         tag_id = tag_cls._tag
-        for tag in self.get_raw_tags_field("tags"):
-            if tag[0] == tag_id:
-                return True
-        return False
+        return any(tag[0] == tag_id for tag in self.get_raw_tags_field("tags"))
 
     def add_tag(self, tag: adt.ADT) -> None:
         if self.tags is None:

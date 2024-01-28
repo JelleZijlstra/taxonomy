@@ -168,10 +168,7 @@ class Region(BaseModel):
         for loc in self.locations.filter(models.Location.deleted != True):
             if loc.type_localities.count() > 0:
                 return False
-        for child in self.children:
-            if not child.is_empty():
-                return False
-        return True
+        return all(child.is_empty() for child in self.children)
 
     def has_children(self) -> bool:
         for _ in self.children:

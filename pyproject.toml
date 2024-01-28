@@ -102,14 +102,6 @@ ignore = [
   "ANN401",  # let me use Any
   "B006",  # just don't mutate it
   "SIM115",  # needs a bigger rewrite
-
-  # Re-enable after committing once to see unsafe fixes in action
-  "SIM110",
-  "SIM401",
-  "UP031",
-  "UP007",
-  "C416",
-  "PIE810",
 ]
 
 line-length = 300

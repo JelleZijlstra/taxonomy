@@ -780,10 +780,7 @@ class Article(BaseModel):
 
     def has_tag(self, tag_cls: ArticleTag._Constructor) -> bool:  # type: ignore
         tag_id = tag_cls._tag
-        for tag in self.get_raw_tags_field("tags"):
-            if tag[0] == tag_id:
-                return True
-        return False
+        return any(tag[0] == tag_id for tag in self.get_raw_tags_field("tags"))
 
     def geturl(self) -> str | None:
         # get the URL for this file from the data given

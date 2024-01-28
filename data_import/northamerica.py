@@ -100,9 +100,7 @@ def extract_taxa(pages: Iterable[tuple[int, list[str]]]) -> DataT:
                     yield current_taxon
                 current_taxon = _make_taxon(line, "genus", current_page)
             elif (
-                line.endswith("*")
-                or line.endswith("#")
-                or line.endswith("•")
+                line.endswith(("*", "#", "•"))
                 or re.search(r'\* \([A-Za-z,\. \-\'"]+\)$', line)
                 or re.match(
                     (
