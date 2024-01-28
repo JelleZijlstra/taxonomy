@@ -849,11 +849,11 @@ def infer_lsid_from_names(art: Article, cfg: LintConfig) -> Iterable[str]:
     new_names = list(art.new_names)
     if not new_names:
         return
-    act_lsids = []
-    for nam in new_names:
-        nam_tags = list(nam.get_tags(nam.type_tags, models.name.TypeTag.LSIDName))
-        for tag in nam_tags:
-            act_lsids.append(clean_lsid(tag.text).casefold())
+    act_lsids = [
+        clean_lsid(tag.text).casefold()
+        for nam in new_names
+        for tag in nam.get_tags(nam.type_tags, models.name.TypeTag.LSIDName)
+    ]
     if not act_lsids:
         return
     pages = art.get_all_pdf_pages()

@@ -1279,10 +1279,11 @@ class Taxon(BaseModel):
 
     def lint_basal_tags(self) -> None:
         self.edit_until_clean()
-        dirty_children = []
-        for child in self.get_children():
-            if list(child.check_basal_tags(LintConfig())):
-                dirty_children.append(child)
+        dirty_children = [
+            child
+            for child in self.get_children()
+            if list(child.check_basal_tags(LintConfig()))
+        ]
         if dirty_children:
             getinput.print_header(f"{self}: children have issues with basal tags")
             self.display()

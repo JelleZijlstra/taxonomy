@@ -142,7 +142,7 @@ class DerivedField(Generic[T]):
         if self.compute_all is not None:
             field_data = self.compute_all()
             # First remove all data for this field
-            for _, object_data in model_data.items():
+            for object_data in model_data.values():
                 if self.name in object_data:
                     del object_data[self.name]
         else:

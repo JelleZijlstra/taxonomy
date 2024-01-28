@@ -174,10 +174,11 @@ _TAXON_ID_TO_DATAPOINTS: dict[int, Sequence[DataPoint]] = {}
 def get_datapoints(taxon: Taxon) -> Sequence[DataPoint]:
     if taxon.id in _TAXON_ID_TO_DATAPOINTS:
         return _TAXON_ID_TO_DATAPOINTS[taxon.id]
-    datapoints: list[DataPoint] = []
-    for nam in taxon.get_names():
-        if nam.type_locality is not None:
-            datapoints.append(TypeLocDataPoint(nam.type_locality, nam))
+    datapoints: list[DataPoint] = [
+        TypeLocDataPoint(nam.type_locality, nam)
+        for nam in taxon.get_names()
+        if nam.type_locality is not None
+    ]
     for occ in taxon.occurrences.filter(
         Occurrence.status << (OccurrenceStatus.valid, OccurrenceStatus.extirpated)
     ):

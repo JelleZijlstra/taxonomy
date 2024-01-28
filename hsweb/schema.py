@@ -760,10 +760,7 @@ class SearchResult(ObjectType):
         model_cls = get_by_call_sign(call_sign)
         object_type = build_object_type_from_model(model_cls)
         model = object_type(oid=int(oid), id=int(oid))
-        highlights = []
-        for value in hit["highlights"].values():
-            if "**" in value:
-                highlights.append(value)
+        highlights = [value for value in hit["highlights"].values() if "**" in value]
         return SearchResult(
             model=model,
             context=context,

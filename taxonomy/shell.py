@@ -193,7 +193,10 @@ def add_original_names() -> Iterable[tuple[Name, str]]:
         .filter(Name.original_citation != None, Name.original_name >> None)
         .order_by(Name.original_name)
     ):
-        message = f"Name {name.description()} is missing an original name, but has original citation {{{name.original_citation.name}}}:{name.page_described}"
+        message = (
+            f"Name {name.description()} is missing an original name, but has original"
+            f" citation {{{name.original_citation.name}}}:{name.page_described}"
+        )
         yield name, message
 
 
@@ -211,7 +214,10 @@ def add_page_described() -> Iterable[tuple[Name, str]]:
     ):
         if name.year in ("2015", "2016"):
             continue  # recent JVP papers don't have page numbers
-        message = f"Name {name.description()} is missing page described, but has original citation {{{name.original_citation.name}}}"
+        message = (
+            f"Name {name.description()} is missing page described, but has original"
+            f" citation {{{name.original_citation.name}}}"
+        )
         yield name, message
 
 
@@ -369,7 +375,8 @@ def detect_types_from_root_names(max_count: int | None = None) -> None:
                     break
             else:
                 print(
-                    f"Could not detect type for name {name} (root_name = {name.root_name})"
+                    f"Could not detect type for name {name} (root_name ="
+                    f" {name.root_name})"
                 )
     print("Success: %d/%d" % (successful_count, count))
 

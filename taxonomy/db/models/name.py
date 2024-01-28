@@ -1228,10 +1228,11 @@ class Name(BaseModel):
 
     @classmethod
     def check_all_authors(cls, autofix: bool = True, quiet: bool = True) -> list[Name]:
-        bad = []
-        for nam in cls.select_valid().filter(cls.author_tags != None):
-            if not nam.check_authors(autofix=autofix, quiet=quiet):
-                bad.append(nam)
+        bad = [
+            nam
+            for nam in cls.select_valid().filter(cls.author_tags != None)
+            if not nam.check_authors(autofix=autofix, quiet=quiet)
+        ]
         print(f"{len(bad)} discrepancies")
         return bad
 

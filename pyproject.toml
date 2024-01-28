@@ -64,8 +64,8 @@ select = [
   "B",  # bugbear
   "SIM",  # simplify
   "UP",  # pyupgrade
-  "PIE810",  # startswith/endswith with a tuple
-  "PERF101",  # unnecessary list() calls that can be replaced with literals
+  "PIE",  # various nice rules
+  "PERF",  # unnecessary list() calls that can be replaced with literals
 ]
 
 ignore = [
@@ -85,6 +85,7 @@ ignore = [
   "ANN401",  # let me use Any
   "B006",  # just don't mutate it
   "SIM115",  # needs a bigger rewrite
+  "PERF401",  # too eager to add list comprehensions
 ]
 
 line-length = 300
