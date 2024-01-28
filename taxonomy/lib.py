@@ -130,7 +130,7 @@ def f(
     nam.display()
     edited_any = nam.fill_required_fields(skip_fields=skip_fields)
     if always_edit and not edited_any:
-        nam.e.type_tags
+        nam.edit()
 
 
 g = partial(
@@ -181,7 +181,7 @@ def set_page(nams: Iterable[Name]) -> None:
         if nam.verbatim_citation is not None and nam.page_described is None:
             nam.display()
             print(nam.verbatim_citation)
-            nam.e.page_described
+            nam.fill_field("page_described")
 
 
 class _NamesGetter:
@@ -382,4 +382,4 @@ def clean_regions(kind: RegionKind, print_only: bool = False) -> None:
             if getinput.yes_no("Edit manually?"):
                 for child in children:
                     print(child)
-                    child.e.kind
+                    child.fill_field("kind")

@@ -13,7 +13,7 @@ RefsDictT = dict[tuple[str, str], str]
 
 
 def realign_lines(
-    pages: Iterable[tuple[int, list[str]]]
+    pages: Iterable[tuple[int, list[str]]],
 ) -> Iterable[tuple[int, list[str]]]:
     for page, lines in pages:
         initial_space = min(

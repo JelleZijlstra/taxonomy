@@ -14,10 +14,9 @@ import subprocess
 import sys
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Literal, TypeVar, Union
+from typing import Any, Literal, TypeVar, Union, overload
 
 import prompt_toolkit
-from typing_extensions import overload
 
 from . import adt
 

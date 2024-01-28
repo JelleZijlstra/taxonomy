@@ -6,9 +6,7 @@ import math
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TypedDict
-
-from typing_extensions import NotRequired
+from typing import NotRequired, TypedDict
 
 Mapper = Callable[[float, float], tuple[float, float]]
 DEFAULT_MARKER_SIZE = 4.3493844

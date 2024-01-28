@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable
-from typing import Any, NotRequired
+from typing import Any, NotRequired, Self
 
 from peewee import BooleanField, CharField, ForeignKeyField
-from typing_extensions import Self
 
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
 

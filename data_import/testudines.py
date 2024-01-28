@@ -6,9 +6,7 @@ import traceback
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from functools import cache, cached_property
-from typing import Any
-
-from typing_extensions import Self, assert_never
+from typing import Any, Self, assert_never
 
 from data_import.lib import Source, clean_string, extract_pages, get_text, split_lines
 from taxonomy import getinput

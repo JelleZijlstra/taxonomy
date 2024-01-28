@@ -63,10 +63,7 @@ def _adt_member_eq(self: Any, other: Any) -> Any:
         return NotImplemented
     if not isinstance(other, type(self)):
         return False
-    for attr in self._attributes.keys():
-        if getattr(self, attr) != getattr(other, attr):
-            return False
-    return True
+    return all(getattr(self, attr) == getattr(other, attr) for attr in self._attributes)
 
 
 def _none_safe_lt(left: Any, right: Any) -> bool:
@@ -83,7 +80,7 @@ def _adt_member_lt(self: Any, other: Any) -> Any:
         return NotImplemented
     if not isinstance(other, type(self)):
         return type(self).__name__ < type(other).__name__
-    for attr in self._attributes.keys():
+    for attr in self._attributes:
         left_attr = getattr(self, attr)
         right_attr = getattr(other, attr)
         if left_attr == right_attr:
@@ -119,7 +116,7 @@ class _ADTMeta(type):
                 members[key] = value
                 del ns[key]
         new_cls = super().__new__(
-            mcs, name, bases, dict(ns.items(), _members=tuple(members.keys()))
+            mcs, name, bases, dict(ns.items(), _members=tuple(members))
         )
         new_cls._tag_to_member = {}  # type: ignore
         if name in members and not members[name].called:
@@ -188,12 +185,8 @@ class _ADTMeta(type):
                         annotations[key] = typ
                     else:
                         annotations[key] = typing.Optional[typ]
-                lines = "".join(
-                    f"    self.{attr} = {attr}\n" for attr in member.kwargs.keys()
-                )
-                code = (
-                    f'def __init__(self, {", ".join(member.kwargs.keys())}):\n{lines}'
-                )
+                lines = "".join(f"    self.{attr} = {attr}\n" for attr in member.kwargs)
+                code = f'def __init__(self, {", ".join(member.kwargs)}):\n{lines}'
                 new_ns: dict[str, Any] = {}
                 exec(code, {}, new_ns)
                 init = new_ns["__init__"]
@@ -242,7 +235,7 @@ class ADT(_ADTBase, metaclass=_ADTMeta):
     _tag_to_member: dict[int, type[Any]]
 
     def _get_attributes(self) -> Iterable[Any]:
-        for attr in self._attributes.keys():
+        for attr in self._attributes:
             yield getattr(self, attr)
 
     def serialize(self) -> Any:

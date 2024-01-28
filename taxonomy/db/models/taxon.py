@@ -6,11 +6,10 @@ import sys
 from collections import Counter, defaultdict
 from collections.abc import Callable, Container, Iterable, Sequence
 from functools import lru_cache
-from typing import IO, Any, cast
+from typing import IO, Any, assert_never, cast
 
 import peewee
 from peewee import BooleanField, CharField, ForeignKeyField, TextField
-from typing_extensions import assert_never
 
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
 
@@ -1025,9 +1024,9 @@ class Taxon(BaseModel):
         elif self.rank == Rank.superfamily:
             rank = Rank.family
         else:
-            assert False, "Cannot add nominate subtaxon of {} of rank {}".format(
-                self, self.rank.name
-            )
+            assert (
+                False
+            ), f"Cannot add nominate subtaxon of {self} of rank {self.rank.name}"
 
         base_name = self.base_name
         taxon = Taxon.make_or_revalidate(rank, base_name, self.age, self)
@@ -1217,8 +1216,8 @@ class Taxon(BaseModel):
             except peewee.IntegrityError:
                 print("dropping duplicate occurrence %s" % occ)
                 existing = to_taxon.at(occ.location)
-                additional_comment = "Also under _{}_ with source {{{}}}.".format(
-                    self.name, occ.source
+                additional_comment = (
+                    f"Also under _{self.name}_ with source {{{occ.source}}}."
                 )
                 if comment is not None:
                     additional_comment += " " + comment

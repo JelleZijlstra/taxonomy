@@ -1,6 +1,6 @@
-from __future__ import annotations
-
 """Enums for various fields."""
+
+from __future__ import annotations
 
 import enum
 from functools import cache

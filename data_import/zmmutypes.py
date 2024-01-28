@@ -139,9 +139,10 @@ def extract_names(pages: PagesT) -> DataT:
             line = line.rstrip()
             if not line:
                 continue
-            if current_section or not current_name:
-                if lib.initial_count(line, " ") > 3:
-                    continue
+            if (current_section or not current_name) and lib.initial_count(
+                line, " "
+            ) > 3:
+                continue
             if current_label == "ДАТА" and re.search(r"[a-z], \d{4}\)?$", line):
                 continue
             if re.match(r"^†?[a-z]+$", line):

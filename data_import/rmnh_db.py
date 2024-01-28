@@ -280,27 +280,29 @@ SUFFIXES = set(string.ascii_lowercase) | set(string.digits)
 def can_add_to_type_specimen(nam: Name, row: Row) -> bool:
     if nam.type_specimen is None:
         return False
-    if nam.species_type_kind in (
-        constants.SpeciesGroupType.holotype,
-        constants.SpeciesGroupType.lectotype,
-    ):
-        parts = name_lint.parse_type_specimen(nam.type_specimen)
-        if not all(
-            isinstance(part, name_lint.Specimen)
-            and part.text.startswith(("RMNH.", "ZMA.", "RGM."))
-            for part in parts
-        ):
+    match nam.species_type_kind:
+        case constants.SpeciesGroupType.holotype | constants.SpeciesGroupType.lectotype:
+            parts = name_lint.parse_type_specimen(nam.type_specimen)
+            if not all(
+                isinstance(part, name_lint.Specimen)
+                and part.text.startswith(("RMNH.", "ZMA.", "RGM."))
+                for part in parts
+            ):
+                return False
+            texts = [
+                part.text for part in parts if isinstance(part, name_lint.Specimen)
+            ]
+            cat_num = row["catalogNumber"]
+            return (
+                all(
+                    text[:-1] == cat_num[:-1] and text[-1] in SUFFIXES for text in texts
+                )
+                and cat_num[-1] in SUFFIXES
+            )
+        case constants.SpeciesGroupType.syntypes:
+            return True
+        case _:
             return False
-        texts = [part.text for part in parts if isinstance(part, name_lint.Specimen)]
-        cat_num = row["catalogNumber"]
-        return (
-            all(text[:-1] == cat_num[:-1] and text[-1] in SUFFIXES for text in texts)
-            and cat_num[-1] in SUFFIXES
-        )
-    elif nam.species_type_kind is constants.SpeciesGroupType.syntypes:
-        return True
-    else:
-        return False
 
 
 def maybe_get(exclude_list: IO[str], cat_num: str) -> Name | None:

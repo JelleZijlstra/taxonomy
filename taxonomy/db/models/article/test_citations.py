@@ -100,7 +100,9 @@ def test_citejvp() -> None:
 
 def test_citebibtex() -> None:
     article = utils.make_journal_article()
-    assert citations.citebibtex(article) == """@article{Zijlstra201091860,
+    assert (
+        citations.citebibtex(article)
+        == """@article{Zijlstra201091860,
 \tauthor = "Zijlstra, J. S. and Madern, P. A. and Hoek Ostende, L. W. van den",
 \tyear = "2010",
 \ttitle = "{New genus and two new species of Pleistocene oryzomyines (Cricetidae: Sigmodontinae) from Bonaire, Netherlands Antilles}",
@@ -109,6 +111,7 @@ def test_citebibtex() -> None:
 \tnumber = "4",
 \tpages = "860--873",
 }"""
+    )
 
 
 def test_citezootaxa() -> None:

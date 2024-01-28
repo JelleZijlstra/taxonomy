@@ -1,10 +1,10 @@
-from __future__ import annotations
-
 """
 
 Lint steps for Names.
 
 """
+
+from __future__ import annotations
 
 import enum
 import functools

@@ -193,12 +193,7 @@ def add_original_names() -> Iterable[tuple[Name, str]]:
         .filter(Name.original_citation != None, Name.original_name >> None)
         .order_by(Name.original_name)
     ):
-        message = (
-            "Name {} is missing an original name, but has original citation {{{}}}:{}"
-            .format(
-                name.description(), name.original_citation.name, name.page_described
-            )
-        )
+        message = f"Name {name.description()} is missing an original name, but has original citation {{{name.original_citation.name}}}:{name.page_described}"
         yield name, message
 
 
@@ -650,7 +645,7 @@ def species_root_name_mismatch() -> Iterable[Name]:
 
 
 def _duplicate_finder(
-    fn: Callable[[], Iterable[Mapping[Any, Sequence[ModelT]]]]
+    fn: Callable[[], Iterable[Mapping[Any, Sequence[ModelT]]]],
 ) -> Callable[[], list[Sequence[ModelT]] | None]:
     @generator_command
     @functools.wraps(fn)
@@ -859,7 +854,7 @@ class ScoreHolder:
         )
 
         def sort_key(
-            pair: tuple[Any, dict[str, tuple[float, int, int]]]
+            pair: tuple[Any, dict[str, tuple[float, int, int]]],
         ) -> tuple[Any, ...]:
             _, data = pair
             percentage, count, required_count = data.get(field, (100, 0, 0))
@@ -1172,7 +1167,8 @@ def autoset_original_name() -> None:
 
 @generator_command
 def childless_taxa() -> Iterable[Taxon]:
-    return Taxon.raw(f"""
+    return Taxon.raw(
+        f"""
             SELECT *
             FROM taxon
             WHERE
@@ -1185,7 +1181,8 @@ def childless_taxa() -> Iterable[Taxon]:
                         parent_id IS NOT NULL AND
                         age != {AgeClass.removed.value}
                 )
-        """)
+        """
+    )
 
 
 @generator_command
@@ -1293,7 +1290,7 @@ def _set_name_complex_for_names(nams: Sequence[Name]) -> None:
             print(f"Skipping {nam} ({nam.nomenclature_status})")
             continue
         nam.display()
-        nam.e.name_complex
+        nam.fill_field("name_complex")
 
 
 @command
@@ -1323,7 +1320,7 @@ def set_citation_group_for_matching_citation(
                 getinput.print_header(cite)
                 for nam in cite_to_nams[cite]:
                     nam.display()
-                    nam.e.citation_group
+                    nam.fill_field("citation_group")
     print(f"Added {count} citation_groups")
 
 
@@ -1369,7 +1366,7 @@ def set_region_for_groups(*queries: Any) -> None:
         *queries,
     ):
         cg.display(full=True)
-        cg.e.region
+        cg.fill_field("region")
 
 
 @command
@@ -1661,12 +1658,12 @@ def more_precise_periods(
         getinput.print_header(loc)
         loc.display(full=True)
         if loc.stratigraphic_unit == period:
-            loc.e.stratigraphic_unit
+            loc.fill_field("stratigraphic_unit")
         else:
-            loc.e.max_period
-            loc.e.min_period
+            loc.fill_field("max_period")
+            loc.fill_field("min_period")
             if set_stratigraphy and loc.stratigraphic_unit is None:
-                loc.e.stratigraphic_unit
+                loc.fill_field("stratigraphic_unit")
 
 
 def _more_precise(
@@ -1894,7 +1891,7 @@ def doubled_authors(autofix: bool = False) -> list[Name]:
                 nam.display()
                 for i, tag in enumerate(nam.author_tags):
                     print(f"{i}: {tag}")
-                nam.e.author_tags
+                nam.fill_field("author_tags")
     return bad_nams
 
 
@@ -2158,17 +2155,17 @@ def find_multiple_repository_names(
     if edit:
         for nam in nams:
             nam.display()
-            nam.e.type_specimen
-            nam.e.collection
-            nam.e.type_tags
+            nam.fill_field("type_specimen")
+            nam.fill_field("collection")
+            nam.edit()
     return nams
 
 
 @command
 def moreau(nam: Name) -> None:
     nam.display()
-    nam.e.type_locality
-    nam.e.type_tags
+    nam.fill_field("type_locality")
+    nam.edit()
 
 
 def fgsyn(off: Name | None = None) -> Name | None:
@@ -2264,7 +2261,7 @@ def archive_for_must_have(fix: bool = True) -> Iterator[CitationGroup]:
         if cg.archive is None:
             getinput.print_header(cg)
             cg.display()
-            cg.e.archive
+            cg.fill_field("archive")
             yield cg
 
 
@@ -2383,7 +2380,7 @@ def fill_verbatim_citation_for_names(
             nam.possible_citation_groups()
         nam.display()
         if fix:
-            nam.e.verbatim_citation
+            nam.fill_field("verbatim_citation")
         yield nam
 
 

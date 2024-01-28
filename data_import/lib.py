@@ -221,7 +221,6 @@ NAME_SYNONYMS = {
     "Yukon Territory": "Yukon",
     "NWT": "Northwest Territories",
     "Tadzhikistan": "Tajikistan",
-    "Kazakstan": "Kazakhstan",
     "Makedonia": "Macedonia",
     "Kirgizia": "Kyrgyzstan",
     "Cameron": "Cameroon",

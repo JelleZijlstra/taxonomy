@@ -4,21 +4,12 @@ include = '\.pyi?$'
 skip-magic-trailing-comma = true
 preview = true
 
-[tool.pycln]
-all = true
-
 [tool.pyanalyze]
 class_attribute_transformers = [
   "taxonomy.pyanalyze_config.class_attribute_transformer"
 ]
 undefined_name = false
 paths = ["."]
-
-[tool.isort]
-profile = "black"
-combine_as_imports = true
-skip = ["taxonomy/db/models/__init__.py", "taxonomy/db/models/article/__init__.py"]
-skip_gitignore = true
 
 [project]
 name = "taxonomy"
@@ -62,3 +53,68 @@ dependencies = [
 [project.urls]
 Changelog = "https://github.com/JelleZijlstra/taxonomy/blob/master/docs/release-notes.md"
 Homepage = "http://hesperomys.com/"
+
+[tool.ruff]
+select = [
+  "F",
+  "E",
+  "I",  # import sorting
+  "ANN",  # type annotations for everything
+  "C4",  # flake8-comprehensions
+  "B",  # bugbear
+  "SIM",  # simplify
+  "UP",  # pyupgrade
+  "PIE810",  # startswith/endswith with a tuple
+  "SIM101",  # mergeable isinstance() calls
+  "SIM201",  # "not ... == ..." -> "... != ..."
+  "SIM202",  # "not ... != ..." -> "... == ..."
+  "C400",  # unnecessary list() calls
+  "C401",  # unnecessary set() calls
+  "C402",  # unnecessary dict() calls
+  "C403",  # unnecessary listcomp within set() call
+  "C404",  # unnecessary listcomp within dict() call
+  "C405",  # use set literals
+  "C406",  # use dict literals
+  "C409",  # tuple() calls that can be replaced with literals
+  "C410",  # list() calls that can be replaced with literals
+  "C411",  # list() calls with genexps that can be replaced with listcomps
+  "C413",  # unnecessary list() calls around sorted()
+  "C414",  # unnecessary list() calls inside sorted()
+  "C417",  # unnecessary map() calls that can be replaced with listcomps/genexps
+  "C418",  # unnecessary dict() calls that can be replaced with literals
+  "PERF101",  # unnecessary list() calls that can be replaced with literals
+]
+
+ignore = [
+  "B008",  # do not perform function calls in argument defaults
+  "B011",  # assert False is fine
+  "ANN101",  # missing type annotation for self in method
+  "ANN102",  # missing type annotation for cls in classmethod
+  "F821",  # ADT definitions make lots of "undefined" names
+  "SIM108",  # I don't like ternaries that much
+  "E711",  # need "== None" in queries
+  "E712",  # need "== True" in queries
+  "UP038",  # no need to "X | Y" in isinstance
+  "SIM105",  # I don't like contextlib.suppress
+  "E731",  # I'll assign a lambda if I want to
+  "SIM114",  # not that worth it
+  "SIM102",  # not that worth it
+  "ANN401",  # let me use Any
+  "B006",  # just don't mutate it
+  "SIM115",  # needs a bigger rewrite
+
+  # Re-enable after committing once to see unsafe fixes in action
+  "SIM110",
+  "SIM401",
+  "UP031",
+  "UP007",
+  "C416",
+  "PIE810",
+]
+
+line-length = 300
+target-version = "py311"
+
+[tool.ruff.per-file-ignores]
+"taxonomy/db/models/__init__.py" = ["I"]
+"taxonomy/db/models/article/__init__.py" = ["I"]

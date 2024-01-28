@@ -414,27 +414,29 @@ SUFFIXES = set(string.ascii_lowercase) | set(string.digits)
 def _can_add_to_type_specimen(nam: Name, row: Row) -> bool:
     if nam.type_specimen is None:
         return False
-    if nam.species_type_kind in (
-        constants.SpeciesGroupType.holotype,
-        constants.SpeciesGroupType.lectotype,
-    ):
-        parts = name_lint.parse_type_specimen(nam.type_specimen)
-        if not all(
-            isinstance(part, name_lint.Specimen)
-            and part.text.startswith(("RMNH.", "ZMA.", "RGM."))
-            for part in parts
-        ):
+    match nam.species_type_kind:
+        case constants.SpeciesGroupType.holotype | constants.SpeciesGroupType.lectotype:
+            parts = name_lint.parse_type_specimen(nam.type_specimen)
+            if not all(
+                isinstance(part, name_lint.Specimen)
+                and part.text.startswith(("RMNH.", "ZMA.", "RGM."))
+                for part in parts
+            ):
+                return False
+            texts = [
+                part.text for part in parts if isinstance(part, name_lint.Specimen)
+            ]
+            cat_num = _get_cat_num(row)
+            return (
+                all(
+                    text[:-1] == cat_num[:-1] and text[-1] in SUFFIXES for text in texts
+                )
+                and cat_num[-1] in SUFFIXES
+            )
+        case constants.SpeciesGroupType.syntypes:
+            return True
+        case _:
             return False
-        texts = [part.text for part in parts if isinstance(part, name_lint.Specimen)]
-        cat_num = _get_cat_num(row)
-        return (
-            all(text[:-1] == cat_num[:-1] and text[-1] in SUFFIXES for text in texts)
-            and cat_num[-1] in SUFFIXES
-        )
-    elif nam.species_type_kind is constants.SpeciesGroupType.syntypes:
-        return True
-    else:
-        return False
 
 
 def _maybe_get(exclude_list: IO[str], cat_num: str, interactive: bool) -> Name | None:
@@ -754,15 +756,11 @@ def _get_cat_num(row: Row) -> str:
         case "KU" | "MBML" | "NCSM":
             return f"{row['collectioncode']} {row['catalognumber']}"
         case "BPBM" | "FMNH" | "LACM" | "UCLA" | "LSUMZ" | "MHNC":
-            return (
-                f"{row['institutioncode']} {row['collectioncode']} {row['catalognumber'].lstrip('0')}"
-            )
+            return f"{row['institutioncode']} {row['collectioncode']} {row['catalognumber'].lstrip('0')}"
         case "OMNH" | "UCMP" | "UMMZ" | "UNICAMP":
             return f"{row['institutioncode']}:{row['collectioncode']}:{row['catalognumber'].lstrip('0')}"
         case "ROM" | "SDNHM" | "UMNH":
-            return (
-                f"{row['institutioncode']}:{row['collectioncode'].replace('Mammals', 'MAM').replace('Mammal specimens', 'Mamm')}:{row['catalognumber'].lstrip('0')}"
-            )
+            return f"{row['institutioncode']}:{row['collectioncode'].replace('Mammals', 'MAM').replace('Mammal specimens', 'Mamm')}:{row['catalognumber'].lstrip('0')}"
         case "USNM":
             match row["collectioncode"]:
                 case "Mammals":

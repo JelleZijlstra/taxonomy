@@ -673,8 +673,7 @@ def doi_input(art: Article) -> bool:
         ),
         helpinfo=(
             "In addition to the regular commands, the following synonyms are accepted"
-            " for the several types:\n"
-            + _get_type_synonyms_as_string()
+            " for the several types:\n" + _get_type_synonyms_as_string()
         ),
         options={
             "o": "open the file",

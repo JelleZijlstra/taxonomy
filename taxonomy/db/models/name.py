@@ -753,7 +753,7 @@ class Name(BaseModel):
             yield field
         if (
             fields
-            and "type_tags" != fields[-1]
+            and fields[-1] != "type_tags"
             and "type_tags" in self.get_required_fields()
         ):
             # Always make the user edit type_tags if some other field was unfilled,

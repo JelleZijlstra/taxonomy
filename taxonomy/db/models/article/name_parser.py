@@ -484,10 +484,8 @@ class NameParser:
         elif len(input) > 1 and input[1] == "-":
             # that's a range, so it's indeed time
             return True
-        elif cls.find_term(res[0].strip(), cls.periodTerms):
-            return True
         else:
-            return False
+            return cls.find_term(res[0].strip(), cls.periodTerms) is not None
 
     # Finds whether any of the phrases in array terms occur in haystack.
     # Returns an array of the haystack without the word plus the word, or

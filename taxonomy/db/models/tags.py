@@ -1,11 +1,12 @@
-from __future__ import annotations
-
 """
 
 Tag classes that need to defined after all models for import cycle reasons.
 
 """
-from typing_extensions import NotRequired
+
+from __future__ import annotations
+
+from typing import NotRequired
 
 from ... import adt
 from . import Article, Collection, Name, Region

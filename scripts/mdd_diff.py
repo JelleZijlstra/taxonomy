@@ -295,9 +295,7 @@ def get_mdd_style_authority_for_single_person(
                 return "J. Edwards Hill"
     match person.naming_convention:
         case NamingConvention.pinyin:
-            return (
-                f"{person.family_name} {person.given_names.replace('-', '').lower().title()}"
-            )
+            return f"{person.family_name} {person.given_names.replace('-', '').lower().title()}"
         case NamingConvention.chinese:
             if person.given_names is not None:
                 given_name = person.given_names.replace("-", "").lower().title()

@@ -1164,7 +1164,7 @@ class BaseModel(Model):
 
     @classmethod
     def get_field_names(cls) -> list[str]:
-        return [field for field in cls._meta.fields.keys() if field != "id"]
+        return [field for field in cls._meta.fields if field != "id"]
 
     def get_required_fields(self) -> Iterable[str]:
         yield from self.get_field_names()
