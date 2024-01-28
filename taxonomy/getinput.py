@@ -14,7 +14,7 @@ import subprocess
 import sys
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Literal, TypeVar, Union, overload
+from typing import Any, Literal, TypeVar, overload
 
 import prompt_toolkit
 
@@ -24,7 +24,7 @@ T = TypeVar("T")
 Completer = Callable[[str, Any], T]
 CompleterMap = Mapping[tuple[type[adt.ADT], str], Completer[Any]]
 CallbackMap = Mapping[str, Callable[[], object]]
-ADTOrInstance = Union[adt.ADT, type[adt.ADT]]
+ADTOrInstance = adt.ADT | type[adt.ADT]
 
 RED = 31
 GREEN = 32

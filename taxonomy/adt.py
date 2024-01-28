@@ -184,7 +184,7 @@ class _ADTMeta(type):
                     if required:
                         annotations[key] = typ
                     else:
-                        annotations[key] = typing.Optional[typ]
+                        annotations[key] = typ | None
                 lines = "".join(f"    self.{attr} = {attr}\n" for attr in member.kwargs)
                 code = f'def __init__(self, {", ".join(member.kwargs)}):\n{lines}'
                 new_ns: dict[str, Any] = {}
