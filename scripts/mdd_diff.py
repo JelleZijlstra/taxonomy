@@ -23,6 +23,7 @@ from taxonomy.db.models import CitationGroup, Collection, Name, NameTag, Person,
 from taxonomy.db.models.tags import TaxonTag
 
 INCLUDED_AGES = (AgeClass.extant, AgeClass.recently_extinct)
+WARN_NO_INITIALS = False
 
 
 class MddRow(TypedDict):
@@ -302,7 +303,8 @@ def get_mdd_style_authority_for_single_person(
                 given_name = person.given_names.replace("-", "").lower().title()
                 return f"{person.family_name} {given_name}"
             else:
-                print(f"warning: no initials for {person} in {nam}")
+                if WARN_NO_INITIALS:
+                    print(f"warning: no initials for {person} in {nam}")
                 return person.family_name
         case NamingConvention.korean:
             return f"{person.family_name} {person.given_names}"
@@ -320,7 +322,8 @@ def get_mdd_style_authority_for_single_person(
                 return family_name
             initials = person.get_initials()
             if initials is None:
-                print(f"warning: no initials for {person} in {nam}")
+                if WARN_NO_INITIALS:
+                    print(f"warning: no initials for {person} in {nam}")
                 return family_name
             initials = helpers.romanize_russian(initials)
             initials = re.sub(r"\.(?=[A-Z])", ". ", initials)
@@ -357,6 +360,9 @@ def possible_mdd_authors(hesp_author: Person) -> Iterable[str]:
         yield (
             f"{hesp_author.family_name} {hesp_author.given_names.replace('-', '').lower().title()}"
         )
+        return
+    if hesp_author.naming_convention is NamingConvention.korean:
+        yield f"{hesp_author.family_name} {hesp_author.given_names}"
         return
     if hesp_author.naming_convention is NamingConvention.vietnamese:
         name = f"{hesp_author.given_names} {hesp_author.family_name}"
