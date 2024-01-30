@@ -637,7 +637,7 @@ class Name(BaseModel):
 
     def open_type_specimen_link(self) -> None:
         for tag in self.type_tags:
-            if isinstance(tag, TypeTag.TypeSpecimenLink):
+            if isinstance(tag, (TypeTag.TypeSpecimenLink, TypeTag.TypeSpecimenLinkFor)):
                 subprocess.check_call(["open", tag.url])
 
     def replace_type(self) -> None:
@@ -1853,7 +1853,8 @@ class Name(BaseModel):
             if current_value is not None:
                 if current_value != value and current_value != str(value):
                     print(
-                        f"Warning: {label} does not match (given as {current_value}, paper has {value})"
+                        f"Warning: {label} does not match (given as {current_value},"
+                        f" paper has {value})"
                     )
                     if force:
                         setattr(self, label, value)
@@ -1882,7 +1883,8 @@ class Name(BaseModel):
             return True
         else:
             print(
-                f"Verbatim type {verbatim_type} for name {self} yielded multiple possible names: {candidates}"
+                f"Verbatim type {verbatim_type} for name {self} yielded multiple"
+                f" possible names: {candidates}"
             )
             return False
 
