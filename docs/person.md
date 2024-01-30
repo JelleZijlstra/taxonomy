@@ -137,7 +137,9 @@ Non-Latin writing systems:
   lowercase (example [Yang Zhong-jian](/h/47669)). It is more common to join the two
   syllables together without a hyphen, but this can occasionally lead to ambiguity (as
   with [Ji Shu-an](/h/48904)), and it is easier to remove the hyphen when it is not
-  desired than to add it when it is.
+  desired than to add it when it is. The Chinese surname 吕 Lü is sometimes
+  transliterated as "Lv" or "Lyu" when it is difficult to use the umlaut. These names
+  should be normalized to the standard pinyin "Lü".
 - _chinese_: Chinese name transliterated using a system other than Pinyin. This usually
   involves people from places like Taiwan, Hongkong, or Malaysia. In these names, the
   second part of a compound name following a hyphen is capitalized.

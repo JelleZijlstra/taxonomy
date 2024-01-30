@@ -243,10 +243,10 @@ The following special forms are always allowed:
 
 ## Tags
 
-There two fields that contain lists of tags that record various pieces of information
-about the names. The _type tags_ field mostly records additional information about the
-type specimen; the _tags_ field mostly has data about the nomenclatural status of the
-name.
+There are two fields that contain lists of tags that record various pieces of
+information about the names. The _type tags_ field mostly records additional information
+about the type specimen; the _tags_ field mostly has data about the nomenclatural status
+of the name.
 
 Tags include the following:
 
