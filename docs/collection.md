@@ -13,11 +13,12 @@ Collections have the following fields:
   parentheses. For example, the Universities of Ankara, Antananarivo, and Arizona share
   the abbreviation UA, so their collections are distinguished as
   [UA (Ankara)](</c/UA_(Ankara)>), [UA (Antananarivo)](</c/UA_(Antananarivo)>) and
-  [UA (Arizona)](</c/UA_(Arizona)>). For some collections (usually associated with
-  European universities), the city name is used as the label instead, because there is
-  no well-established abbreviation (e.g. [Göttingen](/c/Göttingen)). For subcollections,
-  the label of the parent collection should be used with an additional identifier after
-  it, e.g. "BMNH (mammals)".
+  [UA (Arizona)](</c/UA_(Arizona)>). I am starting to move towards a new system where
+  collection labels are globally unique and the abbreviation is expanded as necessary.
+  For example, the "UA" collections might be relabeled as "UAnk", "UAnt", "UAri". For
+  some collections (usually associated with European universities), the city name is
+  used as the label instead, because there is no well-established abbreviation (e.g.
+  [Göttingen](/c/Göttingen)).
 - _name_: The full English name of the institution. If the name is written in the Latin
   alphabet, the native name may be used instead.
 - _location_: The [Region](region) in which the collection is physically located.
