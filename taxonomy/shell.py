@@ -2960,6 +2960,20 @@ def find_potential_person_clusters(interactive: bool = True) -> None:
             reassign_references(person.family_name, substring=False)
 
 
+@command
+def fix_lints(
+    bad: Mapping[Any, list[tuple[Any, list[str]]]], cls: type[models.BaseModel]
+) -> None:
+    """Use this after running bad = run_maintenance()."""
+    for obj, lints in bad[cls.lint_all]:
+        obj = obj.reload()
+        getinput.print_header(obj)
+        obj.display()
+        for lint in lints:
+            print(lint)
+        obj.edit_until_clean()
+
+
 def run_shell() -> None:
     # GC does bad things on my current setup for some reason
     gc.disable()
