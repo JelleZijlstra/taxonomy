@@ -960,6 +960,12 @@ class Article(BaseModel):
                 return
         self.author_tags = new_tags  # type: ignore
 
+    def has_initials_only_authors(self) -> bool:
+        return any(
+            author.get_level() is PersonLevel.initials_only
+            for author in self.get_authors()
+        )
+
     def specify_authors(
         self,
         level: PersonLevel | None = PersonLevel.initials_only,
