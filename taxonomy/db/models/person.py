@@ -516,6 +516,9 @@ class Person(BaseModel):
             elif isinstance(tag, models.tags.PersonTag.ORCID):
                 if not re.fullmatch(r"\d{4}-\d{4}-\d{4}-\d{4}", tag.text):
                     yield f"{self}: invalid ORCID: {tag}"
+            elif isinstance(tag, models.tags.PersonTag.OnlineBio):
+                if not tag.text.startswith(("http://", "https://")):
+                    yield f"{self}: invalid online link: {tag}"
 
         if self.type in (
             PersonType.deleted,

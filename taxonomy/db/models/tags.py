@@ -19,6 +19,7 @@ class PersonTag(adt.ADT):
     Biography(article=Article, tag=4)  # type: ignore
     TransliteratedFamilyName(text=str, tag=5)  # type: ignore
     ORCID(text=str, tag=6)  # type: ignore
+    OnlineBio(text=str, tag=7)  # type: ignore
 
 
 class TaxonTag(adt.ADT):
