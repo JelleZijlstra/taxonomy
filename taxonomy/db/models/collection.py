@@ -107,7 +107,11 @@ class Collection(BaseModel):
                 try:
                     re.compile(tag.regex)
                 except re.error:
-                    yield f"{self}: invalid specimen regex {tag.regex!r}"
+                    yield f"{self}: invalid specimen regex {tag}"
+            if tag is CollectionTag.MustUseChildrenCollection or isinstance(
+                tag, CollectionTag.ChildRule
+            ):
+                yield f"{self}: uses deprecated tag {tag}"
         if CollectionTag.MustHaveSpecimenLinks in self.tags or any(
             isinstance(tag, CollectionTag.ConditionalMustHaveSpecimenLinks)
             for tag in self.tags
@@ -282,16 +286,11 @@ class Collection(BaseModel):
                     print(tag.url)
 
     def validate_specimen(self, text: str) -> str | None:
-        if self.id == BMNH_MAMMALS_ID:
-            return _validate_bmnh(text, allow_fossils=False)
         for tag in self.tags:
             if isinstance(tag, CollectionTag.SpecimenRegex):
                 if not re.fullmatch(tag.regex, text):
                     return f"does not match regex {tag.regex}"
-                return None
-        if self.id == BMNH_COLLECTION_ID or (
-            self.parent is not None and self.parent.id == BMNH_COLLECTION_ID
-        ):
+        if self.id == BMNH_COLLECTION_ID:
             return _validate_bmnh(text)
         return None
 
@@ -311,7 +310,6 @@ class Collection(BaseModel):
 
 
 MULTIPLE_ID = 366
-BMNH_MAMMALS_ID = 1471
 BMNH_COLLECTION_ID = 5
 
 
