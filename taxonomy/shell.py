@@ -2679,8 +2679,8 @@ def rename_type_specimens() -> None:
         return
     age = getinput.get_enum_member(constants.AgeClass, prompt="age> ", allow_empty=True)
     parent_taxon = Taxon.getter(None).get_one("taxon> ")
-    include_regex = getinput.get_line("include regex> ", allow_none=True)
-    to_replace = getinput.get_line("replace> ", allow_none=False)
+    include_regex = getinput.get_line("include regex (full match)> ", allow_none=True)
+    to_replace = getinput.get_line("replace (regex)> ", allow_none=False)
     replace_with = getinput.get_line("replace with> ", allow_none=False)
     dry_run = getinput.yes_no("dry run? ")
     replacements = 0
@@ -2713,6 +2713,7 @@ def rename_type_specimens() -> None:
                 return tag
 
             nam.map_type_tags(mapper)
+            nam.edit_until_clean()
     print(f"{replacements} replacements made")
 
 
@@ -2972,6 +2973,48 @@ def fix_lints(
         for lint in lints:
             print(lint)
         obj.edit_until_clean()
+
+
+@command
+def run_command_shell() -> None:
+    """Runs a shell for running commands."""
+    cb_map = models.base.get_static_callbacks()
+    while True:
+        try:
+            cmd = getinput.get_with_completion(
+                ["q"], "> ", callbacks=cb_map, history_key=run_command_shell
+            )
+        except getinput.StopException:
+            break
+        if cmd == "q":
+            break
+
+
+@command
+def rename_collections() -> None:
+    candidates = sorted(
+        models.Collection.select_valid().filter(models.Collection.label.contains("(")),
+        key=lambda c: c.label,
+    )
+    for candidate in candidates:
+        candidate = candidate.reload()
+        if "(" not in candidate.label:
+            continue
+        getinput.print_header(candidate)
+        without_parens = re.sub(r" \(.*\)", "", candidate.label)
+        similar = sorted(
+            models.Collection.select_valid().filter(
+                models.Collection.label.startswith(without_parens)
+            ),
+            key=lambda c: c.label,
+        )
+        for coll in similar:
+            coll.display()
+        print("---")
+        candidate.display(full=True)
+        while "(" in candidate.label and not candidate.removed:
+            candidate.edit()
+        run_linter_and_fix(models.Name, query=candidate.type_specimens)
 
 
 def run_shell() -> None:
