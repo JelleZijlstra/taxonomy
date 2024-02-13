@@ -344,31 +344,33 @@ given_names = (
     + Optional(L(" ") + nickname)
 )
 
-pinyin_initial = OneOf.from_strs({
-    "b",
-    "p",
-    "m",
-    "f",
-    "d",
-    "t",
-    "n",
-    "z",
-    "c",
-    "s",
-    "l",
-    "zh",
-    "ch",
-    "sh",
-    "r",
-    "j",
-    "q",
-    "x",
-    "g",
-    "k",
-    "h",
-    "y",
-    "w",
-})
+pinyin_initial = OneOf.from_strs(
+    {
+        "b",
+        "p",
+        "m",
+        "f",
+        "d",
+        "t",
+        "n",
+        "z",
+        "c",
+        "s",
+        "l",
+        "zh",
+        "ch",
+        "sh",
+        "r",
+        "j",
+        "q",
+        "x",
+        "g",
+        "k",
+        "h",
+        "y",
+        "w",
+    }
+)
 pinyin_pre_vowel = C(["i", "u"])
 pinyin_vowel = OneOf.from_strs(
     {"i", "e", "a", "o", "ou", "ao", "u", "ü", "ue", "ua", "üa", "üe"}

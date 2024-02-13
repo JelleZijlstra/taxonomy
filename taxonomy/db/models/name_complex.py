@@ -55,12 +55,14 @@ class SpeciesNameComplex(BaseModel):
     ]
 
     def get_search_dicts(self) -> list[dict[str, Any]]:
-        return [{
-            "label": self.label,
-            "kind": self.kind.name,
-            "stem": self.stem,
-            "comment": self.comment,
-        }]
+        return [
+            {
+                "label": self.label,
+                "kind": self.kind.name,
+                "stem": self.stem,
+                "comment": self.comment,
+            }
+        ]
 
     def __repr__(self) -> str:
         if any(
@@ -452,14 +454,16 @@ class NameComplex(BaseModel):
         db_table = "name_complex"
 
     def get_search_dicts(self) -> list[dict[str, Any]]:
-        return [{
-            "label": self.label,
-            "stem": self.stem,
-            "source_language": self.source_language.name,
-            "code_article": self.code_article.name,
-            "gender": self.gender.name,
-            "comment": self.comment,
-        }]
+        return [
+            {
+                "label": self.label,
+                "stem": self.stem,
+                "source_language": self.source_language.name,
+                "code_article": self.code_article.name,
+                "gender": self.gender.name,
+                "comment": self.comment,
+            }
+        ]
 
     def __repr__(self) -> str:
         return (

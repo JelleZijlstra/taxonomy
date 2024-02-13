@@ -1514,11 +1514,13 @@ def dedupe_and_sort_tags(nam: Name, cfg: LintConfig) -> Iterable[str]:
 
 
 def fix_type_specimen_link(url: str) -> str:
-    if url.startswith((
-        "http://arctos.database.museum/",
-        "http://researcharchive.calacademy.org/",
-        "http://ucmpdb.berkeley.edu/cgi/",
-    )):
+    if url.startswith(
+        (
+            "http://arctos.database.museum/",
+            "http://researcharchive.calacademy.org/",
+            "http://ucmpdb.berkeley.edu/cgi/",
+        )
+    ):
         return url.replace("http://", "https://")
     return url
 

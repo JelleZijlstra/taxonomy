@@ -61,11 +61,13 @@ def make_journal_article() -> Article:
                 _FakePerson({"family_name": "Madern", "given_names": "Paulina A."})
             ),
             AuthorTag.Author(
-                _FakePerson({
-                    "family_name": "Hoek Ostende",
-                    "given_names": "Lars W.",
-                    "tussenvoegsel": "van den",
-                })
+                _FakePerson(
+                    {
+                        "family_name": "Hoek Ostende",
+                        "given_names": "Lars W.",
+                        "tussenvoegsel": "van den",
+                    }
+                )
             ),
         ],
     }

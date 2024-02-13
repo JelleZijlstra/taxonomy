@@ -86,10 +86,12 @@ def split_fields(names: DataT) -> DataT:
     for name in names:
         name["raw_text"] = dict(name)
         if any("ANSP" in key for key in name):
-            detail = "\n".join([
-                name["specimen_detail"],
-                *[value for key, value in name.items() if "ANSP" in key],
-            ])
+            detail = "\n".join(
+                [
+                    name["specimen_detail"],
+                    *[value for key, value in name.items() if "ANSP" in key],
+                ]
+            )
             name["specimen_detail"] = detail
         elif "specimen_detail" in name:
             match = re.match(

@@ -11,15 +11,17 @@ from pathlib import Path
 def run(input_file: Path, output_file: Path) -> None:
     with tempfile.NamedTemporaryFile() as f:
         subprocess.check_call(["djvups", input_file, f.name])
-        subprocess.check_call([
-            "gs",
-            "-dNOPAUSE",
-            "-dBATCH",
-            "-q",
-            "-sDEVICE=pdfwrite",
-            f"-sOutputFile={output_file}",
-            f.name,
-        ])
+        subprocess.check_call(
+            [
+                "gs",
+                "-dNOPAUSE",
+                "-dBATCH",
+                "-q",
+                "-sDEVICE=pdfwrite",
+                f"-sOutputFile={output_file}",
+                f.name,
+            ]
+        )
 
 
 if __name__ == "__main__":
