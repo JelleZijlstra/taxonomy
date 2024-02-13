@@ -721,15 +721,17 @@ def dup_taxa() -> list[dict[str, list[Taxon]]]:
         if txn.rank == Rank.subgenus and taxa[txn.valid_name]:
             continue
         taxa[txn.valid_name].append(txn)
-    return [{
-        label: [
-            t
-            for t in ts
-            if t.base_name.nomenclature_status != NomenclatureStatus.preoccupied
-        ]
-        for label, ts in taxa.items()
-        if len(ts) > 1
-    }]
+    return [
+        {
+            label: [
+                t
+                for t in ts
+                if t.base_name.nomenclature_status != NomenclatureStatus.preoccupied
+            ]
+            for label, ts in taxa.items()
+            if len(ts) > 1
+        }
+    ]
 
 
 @_duplicate_finder
@@ -1772,11 +1774,13 @@ def most_common_unchecked_names(
             if max_num_names is not None:
                 name_counter[person.family_name] += 1
     if max_num_names is not None:
-        counter = Counter({
-            family_name: count
-            for family_name, count in counter.items()
-            if name_counter[family_name] <= max_num_names
-        })
+        counter = Counter(
+            {
+                family_name: count
+                for family_name, count in counter.items()
+                if name_counter[family_name] <= max_num_names
+            }
+        )
     for value, count in counter.most_common(num_to_display):
         print(value, count)
     return counter

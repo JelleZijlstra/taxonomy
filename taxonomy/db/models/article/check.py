@@ -502,17 +502,19 @@ def burst(lsfile: LsFile) -> bool:
         )
         start, end = page_range.split("-")
         output_path = _options.new_path / filename
-        subprocess.check_call([
-            "gs",
-            "-dBATCH",
-            "-dNOPAUSE",
-            "-q",
-            "-sDEVICE=pdfwrite",
-            f"-dFirstPage={start}",
-            f"-dLastPage={end}",
-            f"-sOUTPUTFILE={output_path}",
-            str(full_path),
-        ])
+        subprocess.check_call(
+            [
+                "gs",
+                "-dBATCH",
+                "-dNOPAUSE",
+                "-q",
+                "-sDEVICE=pdfwrite",
+                f"-dFirstPage={start}",
+                f"-dLastPage={end}",
+                f"-sOUTPUTFILE={output_path}",
+                str(full_path),
+            ]
+        )
         print(f"Split off file {filename}")
         add_new_file(LsFile(filename))
         return True

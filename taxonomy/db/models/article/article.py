@@ -557,16 +557,18 @@ class Article(BaseModel):
     def removefirstpage(self) -> bool:
         temp_path = self.get_path().parent / "tmp.pdf"
         path = self.get_path()
-        subprocess.check_call([
-            "gs",
-            "-dBATCH",
-            "-dNOPAUSE",
-            "-q",
-            "-sDEVICE=pdfwrite",
-            "-dFirstPage=2",
-            f"-sOUTPUTFILE={temp_path}",
-            str(path),
-        ])
+        subprocess.check_call(
+            [
+                "gs",
+                "-dBATCH",
+                "-dNOPAUSE",
+                "-q",
+                "-sDEVICE=pdfwrite",
+                "-dFirstPage=2",
+                f"-sOUTPUTFILE={temp_path}",
+                str(path),
+            ]
+        )
         # open files for review
         subprocess.check_call(["open", str(temp_path)])
         self.openf()
