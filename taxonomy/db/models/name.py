@@ -346,6 +346,12 @@ class Name(BaseModel):
             return None
         return self.name_complex.get_stem_from_name(self.root_name)
 
+    def safe_get_stem(self) -> str | None:
+        try:
+            return self.get_stem()
+        except ValueError:
+            return None
+
     @property
     def definition(self) -> Definition | None:
         data = self._definition
