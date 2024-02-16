@@ -201,8 +201,23 @@ Each entry in the list is a single specimen, possibly followed by some parenthes
 alternative numbers and comments. Formats for museum catalog numbers vary widely from
 one collection to another, and even numbers from the same collection are often presented
 differently in different sources. A standardized format should be defined for each
-collection, ideally mirroring what the collection itself uses. As of this writing, the
-database only defines such a format for a few collections.
+collection, ideally mirroring what the collection itself uses. The format should follow
+these guidelines:
+
+- All specimen numbers should start with the label of the collection, followed by a
+  space or punctuation. This ensures that if there are multiple type specimens or if the
+  type specimen is cited by itself, it is clear which collection it belongs to.
+- All specimen numbers must be globally unique. Collections that include multiple
+  departments (e.g., for mammals and for other classes) often use overlapping number
+  sequences for each department, so e.g. "FMNH 1234" could mean a mammal as well as a
+  bird or reptile specimen. To prevent this ambiguity, include a department code. This
+  makes the type specimen number into a triple (institution, department, number).
+- If the insitution does not provide a standard format for including the department
+  code, prefer the form "institution:department:number". Preferred texts for the
+  department code are "Mamm" (mammals), "Bird" (birds), "Herp" (reptiles plus
+  amphibians), "Rept" (reptiles), "Amph" (amphibians), "Fish" (fish), "Pal" (general
+  paleontology), "VP" (vertebrate paleontology). Thus, the type specimen might be
+  represented as "FMNH:Mamm:1234".
 
 Parenthesized phrases after them main catalog number may include:
 
@@ -240,6 +255,9 @@ The following special forms are always allowed:
   _collection_ field to "BMNH" and leave _type_specimen_ blank.
 - "BMNH (lost)": the type specimen used to be in the BMNH but is currently considered
   lost.
+- 'BMNH "some text"', where "some text" can be any text surrounded by double quotes.
+  This is to be used if the specimen number does not follow the standard format, e.g.
+  because only a field number has been reported.
 
 ## Tags
 
