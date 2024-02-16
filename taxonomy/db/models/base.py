@@ -217,7 +217,11 @@ class BaseModel(Model):
         return bad
 
     def format(self, *, quiet: bool = False) -> bool:
-        messages = list(self.general_lint())
+        # First autofix
+        for _ in self.general_lint(LintConfig(autofix=True, interactive=False)):
+            pass
+        # Then allow interactive fixing
+        messages = list(self.general_lint(LintConfig(autofix=False, interactive=True)))
         if not messages:
             if not quiet:
                 print("Everything clean")
@@ -229,7 +233,7 @@ class BaseModel(Model):
     def is_lint_clean(
         self: ModelT,
         extra_linter: Linter[ModelT] | None = None,
-        cfg: LintConfig = LintConfig(),
+        cfg: LintConfig = LintConfig(interactive=False, autofix=False),
     ) -> bool:
         messages = list(self.general_lint(cfg))
         if extra_linter is not None:
