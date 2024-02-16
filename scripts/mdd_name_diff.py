@@ -4,6 +4,7 @@ import functools
 import re
 import sys
 from pathlib import Path
+from typing import Final
 
 import Levenshtein
 
@@ -32,6 +33,7 @@ COLUMNS = [
     "citation_status",
     "type_locality_status",
     "type_specimen_status",
+    "species_type_kind_status",
     # core data
     "Hesp_root_name",
     "Hesp_authority",
@@ -94,6 +96,7 @@ EXTRA_COLUMNS = [
     "Connor_TODO",
 ]
 EMPTY: dict[str, object] = {}
+SKIP_MDD_ONLY: Final = True
 
 
 @functools.cache
@@ -297,6 +300,10 @@ def run(
     tl_missing_hesp_not_required = 0
     tl_missing_mdd = 0
     num_type_specimen_diffs = 0
+    num_count_diffs = 0
+    num_number_diffs = 0
+    num_text_diffs = 0
+    num_species_type_kind_diffs = 0
     type_specimen_missing_hesp = 0
     type_specimen_missing_mdd = 0
 
@@ -458,7 +465,6 @@ def run(
                             if normalized_matches:
                                 num_original_name_diffs += 1
                             else:
-                                print(f"{name}: {diff}")
                                 num_original_name_diffs_normalized += 1
                         else:
                             single_row["original_name_status"] = ""
@@ -507,11 +513,53 @@ def run(
                         single_row["type_locality_status"] = ""
 
                     # type_specimen_status
-                    hesp_type = get_mdd_style_type_specimen(name)
+                    hesp_type = name.type_specimen
                     mdd_type = mdd_row["MDD_holotype"]
+                    if mdd_type.lower() in ("not found", "na"):
+                        mdd_type = ""
+                    if m := re.match(r"(.*) \[([^\[\]]+)\]", mdd_type):
+                        mdd_species_type_kind = m.group(2)
+                        if mdd_species_type_kind == "syntype":
+                            mdd_species_type_kind = "syntypes"
+                        mdd_type = m.group(1)
+                    elif mdd_type:
+                        mdd_species_type_kind = "holotype"
+                    else:
+                        mdd_species_type_kind = ""
+                    hesp_species_type_kind = (
+                        name.species_type_kind.name if name.species_type_kind else ""
+                    )
+                    if (
+                        hesp_species_type_kind
+                        and mdd_species_type_kind
+                        and hesp_species_type_kind != mdd_species_type_kind
+                    ):
+                        single_row["species_type_kind_status"] = (
+                            f"{hesp_species_type_kind or '(blank)'} (H) / {mdd_species_type_kind or '(blank)'} (M)"
+                        )
+                        num_species_type_kind_diffs += 1
+                    else:
+                        single_row["species_type_kind_status"] = ""
+
                     if hesp_type and mdd_type:
                         if hesp_type != mdd_type:
                             diff = f"{hesp_type} (H) / {mdd_type} (M)"
+                            hesp_comma_count = hesp_type.count(",")
+                            mdd_comma_count = mdd_type.count(",")
+                            if hesp_comma_count != mdd_comma_count:
+                                diff = f"count: ({hesp_comma_count + 1}/{mdd_comma_count + 1}) {diff}"
+                                num_count_diffs += 1
+                            else:
+                                hesp_stripped = re.sub(
+                                    r"[^0-9]", " ", hesp_type
+                                ).strip()
+                                mdd_stripped = re.sub(r"[^0-9]+", " ", mdd_type).strip()
+                                if hesp_stripped != mdd_stripped:
+                                    diff = f"number: ({hesp_stripped}/{mdd_stripped}) {diff}"
+                                    num_number_diffs += 1
+                                else:
+                                    diff = f"text: {diff}"
+                                    num_text_diffs += 1
                             single_row["type_specimen_status"] = diff
                             num_type_specimen_diffs += 1
                         else:
@@ -530,18 +578,19 @@ def run(
                 num_hesp_only += 1
                 row["match_status"] = "no_mdd_match"
                 writer.writerow(row)
-        for row in getinput.print_every_n(mdd_rows, label="MDD names"):
-            if row["MDD_syn_ID"] in used_mdd_ids:
-                continue
-            num_mdd_only += 1
-            out_row = {**row, "match_status": "no_hesp_match"}
-            extra = mdd_id_to_extra.get(row["MDD_syn_ID"], EMPTY)
-            if not extra.get("Jelle_Comments"):
-                print("MDD-only name:", row)
-            if extra.get("Change"):
-                out_row["Connor_Comments"] = extra["Change"]
-            out_row.update(extra)
-            writer.writerow(out_row)
+        if not SKIP_MDD_ONLY:
+            for row in getinput.print_every_n(mdd_rows, label="MDD names"):
+                if row["MDD_syn_ID"] in used_mdd_ids:
+                    continue
+                num_mdd_only += 1
+                out_row = {**row, "match_status": "no_hesp_match"}
+                extra = mdd_id_to_extra.get(row["MDD_syn_ID"], EMPTY)
+                if not extra.get("Jelle_Comments"):
+                    print("MDD-only name:", row)
+                if extra.get("Change"):
+                    out_row["Connor_Comments"] = extra["Change"]
+                out_row.update(extra)
+                writer.writerow(out_row)
 
     print("Report:")
     print(f"{num_mdd_names} MDD names")
@@ -566,7 +615,10 @@ def run(
         " (type locality not required by status)"
     )
     print(f"{tl_missing_mdd} MDD names missing type locality")
-    print(f"{num_type_specimen_diffs} type specimen differences")
+    print(
+        f"{num_type_specimen_diffs} type specimen differences ({num_count_diffs} counts, {num_number_diffs} specimen numbers, {num_text_diffs} text)"
+    )
+    print(f"{num_species_type_kind_diffs} species type kind differences")
     print(f"{type_specimen_missing_hesp} Hesperomys names missing type specimen")
     print(f"{type_specimen_missing_mdd} MDD names missing type specimen")
     print(
