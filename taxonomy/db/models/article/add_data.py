@@ -20,7 +20,7 @@ from bs4 import BeautifulSoup
 from .... import command_set, config, getinput, parsing, uitools
 from ...constants import ArticleKind, ArticleType, DateSource
 from ...helpers import clean_string, clean_strings_recursively, trimdoi
-from ...url_cache import CacheDomain, cached
+from ...url_cache import CacheDomain, cached, dirty_cache
 from ..citation_group import CitationGroup, CitationGroupTag
 from ..person import AuthorTag, Person
 from .article import Article, ArticleTag
@@ -40,6 +40,10 @@ def get_doi_json(doi: str) -> dict[str, Any] | None:
         traceback.print_exc()
         print(f"Could not resolve DOI {doi}")
         return None
+
+
+def clear_doi_cache(doi: str) -> None:
+    dirty_cache(CacheDomain.doi, doi)
 
 
 @cached(CacheDomain.doi)

@@ -425,6 +425,9 @@ class Article(BaseModel):
             "recompute_authors_from_jstor": self.recompute_authors_from_jstor,
             "print_doi_information": self.print_doi_information,
             "expand_doi": lambda: self.expand_doi(verbose=True, set_fields=True),
+            "expand_doi_force": lambda: self.expand_doi(
+                verbose=True, set_fields=True, clear_cache=True
+            ),
             "display_names": self.display_names,
             "display_type_localities": self.display_type_localities,
             "display_children": self.display_children,
@@ -902,10 +905,17 @@ class Article(BaseModel):
             self.doi = None
 
     def expand_doi(
-        self, overwrite: bool = False, verbose: bool = False, set_fields: bool = True
+        self,
+        *,
+        overwrite: bool = False,
+        verbose: bool = False,
+        set_fields: bool = True,
+        clear_cache: bool = False,
     ) -> dict[str, Any]:
         if not self.doi:
             return {}
+        if clear_cache:
+            models.article.add_data.clear_doi_cache(self.doi)
         data = models.article.add_data.expand_doi_json(self.doi)
         if set_fields:
             models.article.add_data.set_multi(
