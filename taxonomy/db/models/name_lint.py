@@ -2616,7 +2616,7 @@ def check_family_root_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
 
 @make_linter("type_taxon")
 def correct_type_taxon(nam: Name, cfg: LintConfig) -> Iterable[str]:
-    """Check that a name's type belongs to a child of the name's taxon."""
+    """Moves names to child taxa if the type allows it."""
     if nam.group not in (Group.genus, Group.family):
         return
     if nam.type is None:
@@ -2639,6 +2639,50 @@ def correct_type_taxon(nam: Name, cfg: LintConfig) -> Iterable[str]:
             nam.taxon = expected_taxon
         else:
             yield message
+
+
+@make_linter("type_is_child")
+def check_type_is_child(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    """Checks that the type taxon is a child of the name's taxon."""
+    if nam.type is None:
+        return
+    if nam.type.taxon.is_child_of(nam.taxon):
+        return
+    yield f"type {nam.type} is not a child of {nam.taxon}"
+
+
+@make_linter("infer_family_group_type")
+def infer_family_group_type(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    if (
+        nam.group is not Group.family
+        or nam.type is not None
+        or "type" not in nam.get_required_fields()
+    ):
+        return
+    possible_types = [
+        child_nam
+        for child_nam in nam.taxon.all_names()
+        if child_nam.group is Group.genus
+        and child_nam.name_complex is not None
+        and child_nam.safe_get_stem() == nam.root_name
+    ]
+    if len(possible_types) != 1:
+        return
+    message = f"inferred type {possible_types[0]} for family {nam}"
+    if cfg.autofix:
+        print(f"{nam}: {message}")
+        nam.type = possible_types[0]
+    else:
+        yield message
+
+
+@make_linter("valid_stem")
+def check_valid_stem(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    try:
+        nam.get_stem()
+    except ValueError as e:
+        yield f"bad name complex {nam.name_complex}: {e}"
+        return
 
 
 @make_linter("verbatim")
