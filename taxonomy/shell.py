@@ -2686,6 +2686,8 @@ def rename_type_specimens() -> None:
     include_regex = getinput.get_line("include regex (full match)> ", allow_none=True)
     to_replace = getinput.get_line("replace (regex)> ", allow_none=False)
     replace_with = getinput.get_line("replace with> ", allow_none=False)
+    assert to_replace is not None
+    assert replace_with is not None
     dry_run = getinput.yes_no("dry run? ")
     replacements = 0
     for nam in collection.type_specimens.filter(Name.type_specimen != None):
@@ -2695,7 +2697,7 @@ def rename_type_specimens() -> None:
             continue
         if include_regex and not re.fullmatch(include_regex, nam.type_specimen):
             continue
-        new_type_specimen = nam.type_specimen.replace(to_replace, replace_with)
+        new_type_specimen = re.sub(to_replace, replace_with, nam.type_specimen)
         if nam.type_specimen == new_type_specimen:
             continue
         print(f"{nam.type_specimen!r} -> {new_type_specimen!r} ({nam})")
