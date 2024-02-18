@@ -13,6 +13,7 @@ from typing import IO, TYPE_CHECKING, Any, ClassVar, NotRequired, TypeAlias
 
 from peewee import CharField, ForeignKeyField, IntegerField, TextField
 
+from taxonomy import parsing
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
 from taxonomy.apis.zoobank import get_zoobank_data
 
@@ -41,7 +42,12 @@ from .base import (
     get_tag_based_derived_field,
 )
 from .citation_group import CitationGroup
-from .collection import Collection
+from .collection import (
+    LOST_COLLECTION,
+    MULTIPLE_COLLECTION,
+    UNTRACED_COLLECTION,
+    Collection,
+)
 from .location import Location
 from .name_complex import NameComplex, SpeciesNameComplex
 from .person import AuthorTag, Person, get_new_authors_list
@@ -524,14 +530,17 @@ class Name(BaseModel):
             and self.collection is None
             and self.type_specimen is not None
         ):
-            coll_name = self.type_specimen.split()[0].split(":")[0]
-            getter = list(
-                Collection.select_valid().filter(Collection.label == coll_name)
+            coll_name = parsing.extract_collection_from_type_specimen(
+                self.type_specimen
             )
-            if len(getter) == 1:
-                coll = getter[0]
-                print(f"inferred collection to be {coll} from {self.type_specimen}")
-                return coll
+            if coll_name is not None:
+                getter = list(
+                    Collection.select_valid().filter(Collection.label == coll_name)
+                )
+                if len(getter) == 1:
+                    coll = getter[0]
+                    print(f"inferred collection to be {coll} from {self.type_specimen}")
+                    return coll
             return super().get_value_for_field(field, default=default)
         elif field == "original_name":
             if self.original_name is None and self.group in (Group.genus, Group.high):
@@ -639,7 +648,15 @@ class Name(BaseModel):
             "open_zoobank": self.open_zoobank,
             "open_type_specimen_link": self.open_type_specimen_link,
             "replace_type": self.replace_type,
+            "print_type_specimen": self.print_type_specimen,
         }
+
+    def print_type_specimen(self) -> None:
+        if self.type_specimen is None:
+            print("No type specimen")
+            return
+        for spec in models.name_lint.parse_type_specimen(self.type_specimen):
+            print(spec)
 
     def open_type_specimen_link(self) -> None:
         for tag in self.type_tags:
@@ -1553,7 +1570,7 @@ class Name(BaseModel):
 
     def get_required_derived_tags(self) -> Iterable[tuple[TypeTagCons, ...]]:
         if self.group is Group.species:
-            if self.collection and self.collection.id == 366:  # multiple
+            if self.collection and self.collection.id == MULTIPLE_COLLECTION:
                 yield (TypeTag.Repository,)
             if (
                 self.type_specimen
@@ -1641,9 +1658,10 @@ class Name(BaseModel):
                 yield "type"
             elif self.group is Group.species:
                 yield "type_locality"
-                # 75 (lost) and 381 (untraced) are special Collections that
-                # indicate there is no preserved specimen.
-                if self.collection is None or (self.collection.id not in (75, 381)):
+                # These are special Collections that indicate there is no preserved specimen.
+                if self.collection is None or (
+                    self.collection.id not in (LOST_COLLECTION, UNTRACED_COLLECTION)
+                ):
                     yield "type_specimen"
                 yield "collection"
                 if self.type_specimen is not None or self.collection is not None:

@@ -3023,6 +3023,38 @@ def rename_collections() -> None:
         run_linter_and_fix(models.Name, query=candidate.type_specimens)
 
 
+def lint_collections() -> None:
+    cfg = models.base.LintConfig()
+    total = models.Collection.select_valid().count()
+    print(f"{total} total")
+    for coll in getinput.print_every_n(
+        models.Collection.select_valid().order_by(models.Collection.id.desc()),
+        n=5,
+        label=f"of {total} collections",
+    ):
+        types = list(coll.type_specimens)
+        issues = {
+            nam: lints
+            for nam in types
+            if (lints := list(models.name_lint.check_type_specimen(nam, cfg)))
+        }
+        if not issues:
+            print(f"{coll} ({len(types)} types) is clean")
+            continue
+        getinput.print_header(coll)
+        coll.display(full=True)
+        for nam, lints in issues.items():
+            nam.display(full=False)
+            print("      ", nam.type_specimen)
+            for lint in lints:
+                print("      ", lint)
+        print(f"{len(types)} names, {len(issues)} with issues")
+        coll.edit()
+        run_linter_and_fix(
+            Name, query=coll.type_specimens, linter=models.name_lint.check_type_specimen
+        )
+
+
 def run_shell() -> None:
     # GC does bad things on my current setup for some reason
     gc.disable()

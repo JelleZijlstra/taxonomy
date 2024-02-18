@@ -19,6 +19,8 @@ exports released on Zenodo.
 - Backend
   - Add support for ORCID identifiers (though they are currently set for very few
     people)
+  - Enforce that collection labels consist only of letters and that type specimen
+    references start with the corresponding collection label
 - Frontend
   - Add option to show names in a taxon that are missing a field
 

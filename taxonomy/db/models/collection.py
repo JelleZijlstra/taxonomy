@@ -6,6 +6,7 @@ from typing import Any, NotRequired, Self
 
 from peewee import BooleanField, CharField, ForeignKeyField
 
+from taxonomy import parsing
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
 
 from ... import adt, events, getinput
@@ -14,6 +15,19 @@ from .article import Article
 from .base import ADTField, BaseModel, LintConfig, get_tag_based_derived_field
 from .region import Region
 from .taxon import Taxon
+
+# Special collection IDs
+LOST_COLLECTION = 75
+UNTRACED_COLLECTION = 381
+MULTIPLE_COLLECTION = 366
+IN_SITU_COLLECTION = 471
+SPECIAL_COLLECTION_IDS = {
+    LOST_COLLECTION,
+    UNTRACED_COLLECTION,
+    MULTIPLE_COLLECTION,
+    IN_SITU_COLLECTION,
+}
+BMNH_COLLECTION = 5
 
 
 class Collection(BaseModel):
@@ -120,6 +134,8 @@ class Collection(BaseModel):
                 isinstance(tag, CollectionTag.SpecimenLinkPrefix) for tag in self.tags
             ):
                 yield f"{self}: must have SpecimenLinkPrefix tag"
+        if not parsing.matches_grammar(self.label, parsing.collection_pattern):
+            yield f"{self}: invalid label"
 
     @classmethod
     def by_label(cls, label: str) -> Collection:
@@ -290,9 +306,21 @@ class Collection(BaseModel):
             if isinstance(tag, CollectionTag.SpecimenRegex):
                 if not re.fullmatch(tag.regex, text):
                     return f"does not match regex {tag.regex}"
-        if self.id == BMNH_COLLECTION_ID:
+        if self.id == BMNH_COLLECTION:
             return _validate_bmnh(text)
+        expected_label = self.get_expected_label()
+        if expected_label is not None:
+            actual_label = parsing.extract_collection_from_type_specimen(text)
+            if actual_label != expected_label:
+                return f"expected label {expected_label!r}, got {actual_label!r}"
         return None
+
+    def get_expected_label(self) -> str | None:
+        if self.id in SPECIAL_COLLECTION_IDS:
+            return None
+        if self.label.endswith(" collection"):
+            return self.label.removesuffix(" collection")
+        return self.label
 
     def is_valid_specimen(self, text: str) -> bool:
         return self.validate_specimen(text) is None
@@ -307,10 +335,6 @@ class Collection(BaseModel):
             "print_specimen_links": self.print_specimen_links,
             "merge": self.merge,
         }
-
-
-MULTIPLE_ID = 366
-BMNH_COLLECTION_ID = 5
 
 
 FOSSIL_CATALOGS = [

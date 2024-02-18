@@ -103,6 +103,7 @@ upper = C(
             "Ú",
             "Ü",
             "Ľ",
+            "Ñ",
             "Ő",
             "Ō",
             "Đ",
@@ -456,6 +457,21 @@ pinyin_family_name_lowercased_pattern = pinyin_family_name.compile()
 pinyin_given_names_pattern = pinyin_given_names_cased.compile()
 pinyin_given_names_lowercased_pattern = pinyin_given_names.compile()
 
+special_collection = OneOf.from_strs(["in situ", "lost", "untraced", "multiple"])
+personal_collection = family_name + L(" collection")
+institutional_collection = upper + OneOrMore(upper | lower)
+collection = special_collection | personal_collection | institutional_collection
+collection_pattern = collection.compile()
+
+specimen_label_pattern = re.compile(r"^([^ /\-\.:]+)")
+
 
 def matches_grammar(text: str, grammar: Pattern[str]) -> bool:
     return bool(grammar.match(text))
+
+
+def extract_collection_from_type_specimen(specimen: str) -> str | None:
+    match = specimen_label_pattern.search(specimen)
+    if match:
+        return match.group(1)
+    return None
