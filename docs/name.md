@@ -195,29 +195,54 @@ with original citations follow this format):
 The _type_specimen_ field normally contains the catalog number of a type specimen. If
 there are multiple type specimens with different numbers, or if parts of a single
 specimen are cataloged under different numbers, these are separated with commas (for
-example, "USNM 120, MCZ 4759" for two syntypes of _Neotamias dorsalis_).
+example, "USNM 120, MCZ 4759" for two syntypes of _Neotamias dorsalis_). Each entry in
+the list is a single cataloged specimen, possibly followed by some parenthesized
+alternative numbers and comments.
 
-Each entry in the list is a single specimen, possibly followed by some parenthesized
-alternative numbers and comments. Formats for museum catalog numbers vary widely from
-one collection to another, and even numbers from the same collection are often presented
-differently in different sources. A standardized format should be defined for each
-collection, ideally mirroring what the collection itself uses. The format should follow
-these guidelines:
+Formats for museum catalog numbers vary widely from one collection to another, and even
+numbers from the same collection are often presented differently in different sources.
+Most frequently, numbers are presented in a format like "ABCD 12345", where "ABCD" is an
+institution code and "12345" is a catalog number. However, this is problematic in cases
+where an institution maintains multiple catalogs (e.g., for different groups of
+organisms), since it is sometimes ambiguous which catalog is being referred to.
+
+To remove this ambiguity, the preferred format for specimen numbers is as a triplet
+containing the _institution code_ (e.g., "USNM"), the _collection code_ (e.g., "Mamm"
+for mammals) and the _catalog number_ (e.g., "12345"), separated by colons, e.g.
+"USNM:Mamm:12345". This format is sometimes known as a "Darwin Core triplet". (Note that
+the database elsewhere uses the word "collection" where "institution" would have been
+more consistent. We may change this in the future.) If an institution has only a single
+catalog number, the preferred format is simply "USNM 12345".
+
+If an institution consistently uses a different style in its own collection database,
+that style should be followed. For example, the RMNH uses "RMNH.MAM.12345". Often
+catalog numbers from an institution are cited inconsistently in the literature, and the
+institution does not publish a collection database or catalog that indicates a preferred
+format. In such cases, use type specimen numbers as provided in the literature, but
+avoid clear inconsistencies and follow the following guidelines:
 
 - All specimen numbers should start with the label of the collection, followed by a
   space or punctuation. This ensures that if there are multiple type specimens or if the
   type specimen is cited by itself, it is clear which collection it belongs to.
-- All specimen numbers must be globally unique. Collections that include multiple
-  departments (e.g., for mammals and for other classes) often use overlapping number
-  sequences for each department, so e.g. "FMNH 1234" could mean a mammal as well as a
-  bird or reptile specimen. To prevent this ambiguity, include a department code. This
-  makes the type specimen number into a triple (institution, department, number).
-- If the insitution does not provide a standard format for including the department
-  code, prefer the form "institution:department:number". Preferred texts for the
-  department code are "Mamm" (mammals), "Bird" (birds), "Herp" (reptiles plus
-  amphibians), "Rept" (reptiles), "Amph" (amphibians), "Fish" (fish), "Pal" (general
-  paleontology), "VP" (vertebrate paleontology). Thus, the type specimen might be
-  represented as "FMNH:Mamm:1234".
+- Avoid periods and excessive or unusual punctuation in specimen numbers.
+- If the ordering of the elements in a number is inconsistent, prefer to go from least
+  to most specific.
+- All specimen numbers must be globally unique. As a consequence, every institution
+  should have a unique code, and collection codes should be added where necessary.
+
+If the institution does not provide standard collection codes, prefer using one of the
+following:
+
+- "Mamm" (mammals)
+- "Bird" (birds)
+- "Herp" (reptiles plus amphibians)
+- "Rept" (reptiles only)
+- "Amph" (amphibians)
+- "Fish" (fishes)
+- "Pal" (general paleontology)
+- "VP" (vertebrate paleontology)
+
+#### Additional catalog numbers
 
 Parenthesized phrases after them main catalog number may include:
 
@@ -241,9 +266,7 @@ Parenthesized phrases after them main catalog number may include:
   12345 contains a skin and a skull, but only the skin is a type, the entry should read
   "AMNH 12345 (skin!)".
 
-Many collections have different catalogues for different taxonomic groups and for fossil
-and extant specimens. In such cases, a unique format should be used, usually with some
-collection identifier between the institution code and the number.
+#### Special forms
 
 The following special forms are always allowed:
 

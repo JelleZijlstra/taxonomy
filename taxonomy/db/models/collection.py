@@ -15,6 +15,7 @@ from .article import Article
 from .base import ADTField, BaseModel, LintConfig, get_tag_based_derived_field
 from .region import Region
 from .taxon import Taxon
+from .type_specimen import BaseSpecimen, SimpleSpecimen, TripletSpecimen
 
 # Special collection IDs
 LOST_COLLECTION = 75
@@ -28,6 +29,8 @@ SPECIAL_COLLECTION_IDS = {
     IN_SITU_COLLECTION,
 }
 BMNH_COLLECTION = 5
+
+DEFAULT_TRIPLET_REGEX = re.compile(r"\d+[a-z]?")
 
 
 class Collection(BaseModel):
@@ -122,6 +125,14 @@ class Collection(BaseModel):
                     re.compile(tag.regex)
                 except re.error:
                     yield f"{self}: invalid specimen regex {tag}"
+            if isinstance(tag, CollectionTag.CollectionCode):
+                if tag.specimen_regex is not None:
+                    try:
+                        re.compile(tag.specimen_regex)
+                    except re.error:
+                        yield f"{self}: invalid specimen regex {tag}"
+                if not re.fullmatch(r"[A-Za-z\-]+", tag.label):
+                    yield f"{self}: invalid collection code {tag.label}"
             if tag is CollectionTag.MustUseChildrenCollection or isinstance(
                 tag, CollectionTag.ChildRule
             ):
@@ -301,18 +312,50 @@ class Collection(BaseModel):
                 ):
                     print(tag.url)
 
-    def validate_specimen(self, text: str) -> str | None:
+    def validate_specimen(self, spec: BaseSpecimen) -> str | None:
+        if error := self._validate_specimen_label(spec):
+            return error
+        if isinstance(spec, SimpleSpecimen):
+            return self._validate_specimen_text(spec.text)
+        elif isinstance(spec, TripletSpecimen):
+            code_tag = self._get_applicable_collection_code(spec.collection_code)
+            if code_tag is None:
+                return f"collection code {spec.collection_code!r} not allowed"
+            if code_tag.specimen_regex:
+                if not re.fullmatch(code_tag.specimen_regex, spec.catalog_number):
+                    return f"catalog number {spec.catalog_number!r} does not match regex {code_tag.specimen_regex}"
+            else:
+                if not DEFAULT_TRIPLET_REGEX.fullmatch(spec.catalog_number):
+                    return f"catalog number {spec.catalog_number!r} does not match default regex"
+        return None
+
+    def _get_applicable_collection_code(
+        self, code: str
+    ) -> CollectionTag.CollectionCode | None:  # type: ignore[name-defined]
+        for tag in self.tags:
+            if isinstance(tag, CollectionTag.CollectionCode) and tag.label == code:
+                return tag
+        return None
+
+    def _validate_specimen_text(self, text: str) -> str | None:
         for tag in self.tags:
             if isinstance(tag, CollectionTag.SpecimenRegex):
                 if not re.fullmatch(tag.regex, text):
                     return f"does not match regex {tag.regex}"
         if self.id == BMNH_COLLECTION:
             return _validate_bmnh(text)
+        return None
+
+    def _validate_specimen_label(self, spec: BaseSpecimen) -> str | None:
         expected_label = self.get_expected_label()
-        if expected_label is not None:
-            actual_label = parsing.extract_collection_from_type_specimen(text)
-            if actual_label != expected_label:
-                return f"expected label {expected_label!r}, got {actual_label!r}"
+        if expected_label is None:
+            return None
+        if isinstance(spec, SimpleSpecimen):
+            actual_label = parsing.extract_collection_from_type_specimen(spec.text)
+        else:
+            actual_label = spec.institution_code
+        if actual_label != expected_label:
+            return f"expected label {expected_label!r}, got {actual_label!r}"
         return None
 
     def get_expected_label(self) -> str | None:
@@ -321,9 +364,6 @@ class Collection(BaseModel):
         if self.label.endswith(" collection"):
             return self.label.removesuffix(" collection")
         return self.label
-
-    def is_valid_specimen(self, text: str) -> bool:
-        return self.validate_specimen(text) is None
 
     def rename_type_specimens(self, *, full: bool = False) -> None:
         if full:
@@ -510,3 +550,5 @@ class CollectionTag(adt.ADT):
     # To be counted as a specimen link for this collection, a link must have this prefix.
     # Multiple copies of this tag may be present.
     SpecimenLinkPrefix(prefix=str, tag=8)  # type: ignore
+    MustUseTriplets(tag=9)  # type: ignore
+    CollectionCode(label=str, comment=str, specimen_regex=NotRequired[str], tag=10)  # type: ignore
