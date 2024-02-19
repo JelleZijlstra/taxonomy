@@ -325,6 +325,87 @@ class Collection(BaseModel):
     def is_valid_specimen(self, text: str) -> bool:
         return self.validate_specimen(text) is None
 
+    def rename_type_specimens(self, *, full: bool = False) -> None:
+        if full:
+            age = getinput.get_enum_member(
+                constants.AgeClass, prompt="age> ", allow_empty=True
+            )
+            parent_taxon = Taxon.getter(None).get_one("taxon> ")
+            include_regex = getinput.get_line(
+                "include regex (full match)> ", allow_none=True
+            )
+        else:
+            age = parent_taxon = include_regex = None
+        to_replace = getinput.get_line("replace (regex)> ", allow_none=False)
+        replace_with = getinput.get_line("replace with> ", allow_none=False)
+        assert to_replace is not None
+        assert replace_with is not None
+        dry_run = getinput.yes_no("dry run? ")
+        result = self._do_rename_type_specimens(
+            to_replace=to_replace,
+            replace_with=replace_with,
+            dry_run=dry_run,
+            age=age,
+            parent_taxon=parent_taxon,
+            include_regex=include_regex,
+        )
+        if dry_run and result > 0:
+            if getinput.yes_no("Continue with actual rename? "):
+                self._do_rename_type_specimens(
+                    to_replace=to_replace,
+                    replace_with=replace_with,
+                    dry_run=False,
+                    age=age,
+                    parent_taxon=parent_taxon,
+                    include_regex=include_regex,
+                )
+
+    def _do_rename_type_specimens(
+        self,
+        *,
+        to_replace: str,
+        replace_with: str,
+        dry_run: bool,
+        age: constants.AgeClass | None,
+        parent_taxon: Taxon | None,
+        include_regex: str | None,
+    ) -> int:
+        replacements = 0
+        for nam in self.type_specimens.filter(models.Name.type_specimen != None):
+            if age is not None and nam.taxon.age is not age:
+                continue
+            if parent_taxon is not None and not nam.taxon.is_child_of(parent_taxon):
+                continue
+            if include_regex and not re.fullmatch(include_regex, nam.type_specimen):
+                continue
+            new_type_specimen = re.sub(to_replace, replace_with, nam.type_specimen)
+            if nam.type_specimen == new_type_specimen:
+                continue
+            print(f"{nam.type_specimen!r} -> {new_type_specimen!r} ({nam})")
+            replacements += 1
+            if not dry_run:
+                old_type_specimen = nam.type_specimen
+                nam.type_specimen = new_type_specimen
+
+                def mapper(
+                    tag: models.name.TypeTag,
+                    old_type_specimen: str = old_type_specimen,
+                    new_type_specimen: str = new_type_specimen,
+                ) -> models.name.TypeTag | None:
+                    if (
+                        isinstance(tag, models.name.TypeTag.TypeSpecimenLinkFor)
+                        and tag.specimen == old_type_specimen
+                    ):
+                        return models.name.TypeTag.TypeSpecimenLinkFor(
+                            tag.url, new_type_specimen
+                        )
+                    return tag
+
+                nam.map_type_tags(mapper)
+                nam.edit_until_clean()
+        print(f"{replacements} replacements made")
+        return replacements
+
     def get_adt_callbacks(self) -> getinput.CallbackMap:
         return {
             **super().get_adt_callbacks(),
@@ -334,6 +415,8 @@ class Collection(BaseModel):
             "lint_names": lambda: models.Name.lint_all(query=self.type_specimens),
             "print_specimen_links": self.print_specimen_links,
             "merge": self.merge,
+            "rename_type_specimens": self.rename_type_specimens,
+            "rename_type_specimens_full": lambda: self.rename_type_specimens(full=True),
         }
 
 
