@@ -316,6 +316,8 @@ class Collection(BaseModel):
         if error := self._validate_specimen_label(spec):
             return error
         if isinstance(spec, SimpleSpecimen):
+            if self.must_use_triplets():
+                return f"collection {self} requires the use of triplets"
             return self._validate_specimen_text(spec.text)
         elif isinstance(spec, TripletSpecimen):
             code_tag = self._get_applicable_collection_code(spec.collection_code)
@@ -328,6 +330,9 @@ class Collection(BaseModel):
                 if not DEFAULT_TRIPLET_REGEX.fullmatch(spec.catalog_number):
                     return f"catalog number {spec.catalog_number!r} does not match default regex"
         return None
+
+    def must_use_triplets(self) -> bool:
+        return CollectionTag.MustUseTriplets in self.tags
 
     def _get_applicable_collection_code(
         self, code: str
