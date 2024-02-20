@@ -3,7 +3,7 @@ import csv
 import functools
 import re
 import string
-from collections import Counter, defaultdict
+from collections import Counter
 from collections.abc import Iterable
 from pathlib import Path
 from typing import IO, TypedDict
@@ -12,7 +12,7 @@ from taxonomy import getinput
 from taxonomy.db import constants
 from taxonomy.db.models import Article, Collection, Name, TypeTag, name_lint
 
-from .lib import DATA_DIR
+from .lib import DATA_DIR, get_type_specimens
 
 Row = TypedDict(
     "Row",
@@ -210,58 +210,7 @@ def collection_by_label(label: str) -> Collection:
 
 
 def _get_hesp_data() -> dict[str, list[Name]]:
-    output = defaultdict(list)
-    for coll in _all_collections():
-        for nam in coll.type_specimens:
-            if nam.type_specimen is None:
-                continue
-            for spec in name_lint.parse_type_specimen(nam.type_specimen):
-                if isinstance(spec, name_lint.Specimen):
-                    output[spec.text].append(nam)
-        for nam in coll.get_derived_field("former_specimens") or ():
-            if nam.type_specimen is None:
-                continue
-            for spec in name_lint.parse_type_specimen(nam.type_specimen):
-                if isinstance(spec, name_lint.SpecimenRange):
-                    continue
-                for text in spec.former_texts:
-                    if text.startswith(tuple(INCLUDED_CODES)):
-                        output[text].append(nam)
-        for nam in coll.get_derived_field("future_specimens") or ():
-            if nam.type_specimen is None:
-                continue
-            for spec in name_lint.parse_type_specimen(nam.type_specimen):
-                if isinstance(
-                    spec, (name_lint.SpecimenRange, name_lint.SpecialSpecimen)
-                ):
-                    continue
-                for text in spec.future_texts:
-                    if text.startswith(tuple(INCLUDED_CODES)):
-                        output[text].append(nam)
-        for nam in coll.get_derived_field("extra_specimens") or ():
-            if nam.type_specimen is None:
-                continue
-            for spec in name_lint.parse_type_specimen(nam.type_specimen):
-                if isinstance(
-                    spec, (name_lint.SpecimenRange, name_lint.SpecialSpecimen)
-                ):
-                    continue
-                for text in spec.extra_texts:
-                    if text.startswith(tuple(INCLUDED_CODES)):
-                        output[text].append(nam)
-    multiple = collection_by_label("multiple")
-    for nam in multiple.type_specimens:
-        if nam.type_specimen is None:
-            continue
-        try:
-            for spec in name_lint.parse_type_specimen(nam.type_specimen):
-                if isinstance(spec, name_lint.Specimen) and spec.text.startswith(
-                    tuple(INCLUDED_CODES)
-                ):
-                    output[spec.text].append(nam)
-        except ValueError as e:
-            print(f"failed to parse {nam} due to {e!r}")
-    return output
+    return get_type_specimens(*_all_collections())
 
 
 def get_vertnet_db(filename: Path) -> Iterable[Row]:
@@ -416,23 +365,7 @@ def _can_add_to_type_specimen(nam: Name, row: Row) -> bool:
         return False
     match nam.species_type_kind:
         case constants.SpeciesGroupType.holotype | constants.SpeciesGroupType.lectotype:
-            parts = name_lint.parse_type_specimen(nam.type_specimen)
-            if not all(
-                isinstance(part, name_lint.Specimen)
-                and part.text.startswith(("RMNH.", "ZMA.", "RGM."))
-                for part in parts
-            ):
-                return False
-            texts = [
-                part.text for part in parts if isinstance(part, name_lint.Specimen)
-            ]
-            cat_num = _get_cat_num(row)
-            return (
-                all(
-                    text[:-1] == cat_num[:-1] and text[-1] in SUFFIXES for text in texts
-                )
-                and cat_num[-1] in SUFFIXES
-            )
+            return False
         case constants.SpeciesGroupType.syntypes:
             return True
         case _:

@@ -79,6 +79,7 @@ OneOrMore = partial(Repetition, min=1, max=None)
 C = Char
 L = Literal
 
+digit = C(sorted(unicode_range("0", "9")))
 upper = C(
     sorted(
         unicode_range("A", "Z")
@@ -462,6 +463,9 @@ personal_collection = family_name + L(" collection")
 institutional_collection = upper + OneOrMore(upper | lower)
 collection = special_collection | personal_collection | institutional_collection
 collection_pattern = collection.compile()
+
+collection_code = upper + OneOrMore(upper | lower | L("-") | digit)
+collection_code_pattern = collection_code.compile()
 
 specimen_label_pattern = re.compile(r"^([^ /\-\.:]+)")
 

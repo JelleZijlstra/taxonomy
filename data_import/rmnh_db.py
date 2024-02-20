@@ -3,15 +3,15 @@ import functools
 import re
 import string
 import sys
-from collections import Counter, defaultdict
+from collections import Counter
 from collections.abc import Iterable
 from typing import IO, TypedDict
 
 from taxonomy import getinput
 from taxonomy.db import constants
-from taxonomy.db.models import Article, Collection, Name, TypeTag, name_lint
+from taxonomy.db.models import Article, Collection, Name, TypeTag, type_specimen
 
-from .lib import DATA_DIR
+from .lib import DATA_DIR, get_type_specimens
 
 INTERACTIVE = False
 
@@ -81,12 +81,7 @@ def collection_by_label(label: str) -> Collection:
 
 
 def all_rmnh_collections() -> list[Collection]:
-    return [
-        collection_by_label("RMNH"),
-        collection_by_label("RMNH (Mammalia)"),
-        collection_by_label("RMNH (Amphibia and Reptilia)"),
-        collection_by_label("ZMA"),
-    ]
+    return [collection_by_label("RMNH"), collection_by_label("ZMA")]
 
 
 def fossil_collections() -> list[Collection]:
@@ -94,27 +89,8 @@ def fossil_collections() -> list[Collection]:
 
 
 def get_hesp_data(fossil: bool) -> dict[str, list[Name]]:
-    output = defaultdict(list)
-    for coll in fossil_collections() if fossil else all_rmnh_collections():
-        for nam in coll.type_specimens:
-            if nam.type_specimen is None:
-                continue
-            for spec in name_lint.parse_type_specimen(nam.type_specimen):
-                if isinstance(spec, name_lint.Specimen):
-                    output[spec.text.replace("RGM ", "RGM.")].append(nam)
-    multiple = collection_by_label("multiple")
-    for nam in multiple.type_specimens:
-        if nam.type_specimen is None:
-            continue
-        try:
-            for spec in name_lint.parse_type_specimen(nam.type_specimen):
-                if isinstance(spec, name_lint.Specimen) and spec.text.startswith(
-                    ("RMNH", "RGM")
-                ):
-                    output[spec.text].append(nam)
-        except ValueError as e:
-            print(f"failed to parse {nam} due to {e!r}")
-    return output
+    colls = fossil_collections() if fossil else all_rmnh_collections()
+    return get_type_specimens(*colls)
 
 
 def get_rmnh_db(fossil: bool, herps: bool) -> Iterable[Row]:
@@ -282,15 +258,17 @@ def can_add_to_type_specimen(nam: Name, row: Row) -> bool:
         return False
     match nam.species_type_kind:
         case constants.SpeciesGroupType.holotype | constants.SpeciesGroupType.lectotype:
-            parts = name_lint.parse_type_specimen(nam.type_specimen)
+            parts = type_specimen.parse_type_specimen(nam.type_specimen)
             if not all(
-                isinstance(part, name_lint.Specimen)
-                and part.text.startswith(("RMNH.", "ZMA.", "RGM."))
+                isinstance(part, type_specimen.Specimen)
+                and part.base.institution_code in (("RMNH.", "ZMA.", "RGM."))
                 for part in parts
             ):
                 return False
             texts = [
-                part.text for part in parts if isinstance(part, name_lint.Specimen)
+                part.base.stringify()
+                for part in parts
+                if isinstance(part, type_specimen.Specimen)
             ]
             cat_num = row["catalogNumber"]
             return (

@@ -52,6 +52,7 @@ from .location import Location
 from .name_complex import NameComplex, SpeciesNameComplex
 from .person import AuthorTag, Person, get_new_authors_list
 from .taxon import Taxon, display_organized
+from .type_specimen import parse_type_specimen
 
 _CRUCIAL_MISSING_FIELDS: dict[Group, set[str]] = {
     Group.species: {
@@ -649,13 +650,15 @@ class Name(BaseModel):
             "open_type_specimen_link": self.open_type_specimen_link,
             "replace_type": self.replace_type,
             "print_type_specimen": self.print_type_specimen,
+            "add_collection_code": lambda: self.collection is not None
+            and self.collection.add_collection_code(),
         }
 
     def print_type_specimen(self) -> None:
         if self.type_specimen is None:
             print("No type specimen")
             return
-        for spec in models.name_lint.parse_type_specimen(self.type_specimen):
+        for spec in parse_type_specimen(self.type_specimen):
             print(spec)
 
     def open_type_specimen_link(self) -> None:

@@ -13,7 +13,7 @@ import json
 import re
 from collections import defaultdict
 from collections.abc import Callable, Generator, Iterable, Iterator, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Literal, TypeVar, assert_never, cast, get_args
 
@@ -42,6 +42,18 @@ from .base import LintConfig
 from .collection import BMNH_COLLECTION, MULTIPLE_COLLECTION, Collection
 from .name import STATUS_TO_TAG, Name, NameComment, NameTag, TypeTag
 from .person import AuthorTag, PersonLevel
+from .type_specimen import (
+    BaseSpecimen,
+    InformalSpecimen,
+    InformalWithoutInstitution,
+    SimpleSpecimen,
+    SpecialSpecimen,
+    Specimen,
+    SpecimenRange,
+    TripletSpecimen,
+    parse_type_specimen,
+    stringify_specimen_list,
+)
 
 T = TypeVar("T")
 ADTT = TypeVar("ADTT", bound=adt.ADT)
@@ -1450,10 +1462,15 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
         elif isinstance(tag, TypeTag.TypeSpecimenLinkFor):
             if not tag.url.startswith(("http://", "https://")):
                 yield f"invalid type specimen URL {tag.url!r}"
+            try:
+                specs = parse_type_specimen(tag.specimen)
+            except ValueError as e:
+                yield f"invalid type specimen {tag.specimen!r} in {tag}: {e}"
+                new_spec = tag.specimen
+            else:
+                new_spec = stringify_specimen_list(specs)
             tags.append(
-                TypeTag.TypeSpecimenLinkFor(
-                    fix_type_specimen_link(tag.url), tag.specimen
-                )
+                TypeTag.TypeSpecimenLinkFor(fix_type_specimen_link(tag.url), new_spec)
             )
         elif isinstance(tag, TypeTag.Organ) and tag.detail:
             new_tags = yield from check_organ_tag(tag)
@@ -1578,130 +1595,6 @@ def _get_repositories(nam: Name) -> set[tuple[RepositoryKind, Collection]]:
     return repos
 
 
-@dataclass
-class SimpleSpecimen:
-    text: str
-
-    def stringify(self) -> str:
-        return self.text
-
-    def sort_key(self) -> tuple[object, ...]:
-        numeric_match = re.fullmatch(r"(.+) (\d+)", self.text)
-        return (
-            1,
-            numeric_match is not None,
-            (
-                (numeric_match.group(1), int(numeric_match.group(2)))
-                if numeric_match is not None
-                else self.text
-            ),
-        )
-
-
-@dataclass
-class InformalSpecimen:
-    """Represents 'BMNH "informal number"."""
-
-    collection: str
-    number: str
-
-    def stringify(self) -> str:
-        return f'{self.collection} "{self.number}"'
-
-    def sort_key(self) -> tuple[object, ...]:
-        return (2, self.collection, self.number)
-
-
-@dataclass
-class SpecialSpecimen:
-    """Represents 'BMNH (lost)'."""
-
-    collection: str
-    label: str
-
-    def stringify(self) -> str:
-        return f"{self.collection} ({self.label})"
-
-    def sort_key(self) -> tuple[object, ...]:
-        return (3, self.collection, self.label)
-
-
-BaseSpecimen = SimpleSpecimen | InformalSpecimen | SpecialSpecimen
-
-
-@dataclass
-class Specimen:
-    base: BaseSpecimen
-    comment: str | None = None
-    future_texts: Sequence[str] = field(default_factory=list)
-    extra_texts: Sequence[str] = field(default_factory=list)
-    former_texts: Sequence[str] = field(default_factory=list)
-
-    def stringify(self) -> str:
-        text = self.base.stringify()
-        if self.comment is not None:
-            text += f" ({self.comment}!)"
-        text += "".join(f" (=> {future})" for future in sorted(self.future_texts))
-        text += "".join(f" (+ {extra})" for extra in sorted(self.extra_texts))
-        text += "".join(f" (= {former})" for former in sorted(self.former_texts))
-        return text
-
-    def sort_key(self) -> tuple[object, ...]:
-        return (
-            1,
-            self.base.sort_key(),
-            self.comment or "",
-            tuple(sorted(self.future_texts)),
-            tuple(sorted(self.extra_texts)),
-            tuple(sorted(self.former_texts)),
-        )
-
-
-@dataclass
-class SpecimenRange:
-    start: Specimen
-    end: Specimen
-
-    def stringify(self) -> str:
-        return f"{self.start.stringify()} through {self.end.stringify()}"
-
-    def sort_key(self) -> tuple[object, ...]:
-        return (0, self.start.sort_key(), self.end.sort_key())
-
-
-AnySpecimen = Specimen | SpecimenRange
-
-
-def _split_type_spec_string(text: str) -> Iterable[str]:
-    current: list[str] = []
-    parens = 0
-    just_saw_comma = False
-    for i, c in enumerate(text):
-        if just_saw_comma:
-            just_saw_comma = False
-            if c != " ":
-                raise ValueError(f"expected space at position {i}, not {c!r}")
-            continue
-        if c == "(":
-            parens += 1
-        elif c == ")":
-            parens -= 1
-        elif c == "," and parens == 0:
-            just_saw_comma = True
-            if not current:
-                raise ValueError(f"unexpected comma at position {i}")
-            yield "".join(current)
-            current.clear()
-            continue
-        current.append(c)
-    if current:
-        yield "".join(current)
-    else:
-        raise ValueError("comma at end of string")
-    if parens != 0:
-        raise ValueError("unbalanced parentheses")
-
-
 @make_linter("type_specimen_order")
 def check_type_specimen_order(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.type_specimen is None:
@@ -1710,9 +1603,7 @@ def check_type_specimen_order(nam: Name, cfg: LintConfig) -> Iterable[str]:
         specs = parse_type_specimen(nam.type_specimen)
     except ValueError:
         return  # reported elsewhere
-    expected_text = ", ".join(
-        spec.stringify() for spec in sorted(specs, key=lambda spec: spec.sort_key())
-    )
+    expected_text = stringify_specimen_list(specs)
     if nam.type_specimen == expected_text:
         return
     message = (
@@ -1724,80 +1615,6 @@ def check_type_specimen_order(nam: Name, cfg: LintConfig) -> Iterable[str]:
         nam.type_specimen = expected_text
     else:
         yield message
-
-
-def parse_type_specimen(text: str) -> list[AnySpecimen]:
-    specs: list[AnySpecimen] = []
-    for chunk in _split_type_spec_string(text):
-        if " through " in chunk:
-            left, right = chunk.split(" through ", maxsplit=1)
-            left_spec = _parse_single_specimen(left)
-            if not isinstance(left_spec.base, SimpleSpecimen):
-                raise ValueError(
-                    f"range must contain a simple specimen, not {left_spec}"
-                )
-            right_spec = _parse_single_specimen(right)
-            if not isinstance(right_spec.base, SimpleSpecimen):
-                raise ValueError(
-                    f"range must contain a simple specimen, not {right_spec}"
-                )
-            specs.append(SpecimenRange(left_spec, right_spec))
-        else:
-            specs.append(_parse_single_specimen(chunk))
-    return specs
-
-
-_SPECIAL_SUFFIXES = (
-    " (unnumbered)",
-    " (no number given)",
-    " (no numbers given)",
-    " (lost)",
-)
-
-
-def _parse_single_specimen(text: str) -> Specimen:
-    formers: list[str] = []
-    futures: list[str] = []
-    extras: list[str] = []
-    comment = None
-    while text.endswith(")") and not text.endswith(_SPECIAL_SUFFIXES):
-        if " (" in text:
-            text, end = text.rsplit(" (", maxsplit=1)
-            tail = end.removesuffix(")")
-            if tail.endswith("!"):
-                if comment is not None:
-                    raise ValueError(f"cannot have two comments in {text}")
-                comment = tail.rstrip("!")
-            elif tail.startswith("=>"):
-                futures.append(tail.removeprefix("=>").strip())
-            elif tail.startswith("+"):
-                extras.append(tail.removeprefix("+").strip())
-            elif tail.startswith("="):
-                formers.append(tail.removeprefix("=").strip())
-            else:
-                raise ValueError(f"invalid parenthesized text in {text!r}")
-        else:
-            raise ValueError(f"invalid parenthesized text in {text!r}")
-    return Specimen(
-        _parse_base_specimen(text),
-        comment=comment,
-        former_texts=formers,
-        future_texts=futures,
-        extra_texts=extras,
-    )
-
-
-def _parse_base_specimen(text: str) -> BaseSpecimen:
-    if text.endswith(_SPECIAL_SUFFIXES):
-        text, end = text.rsplit(" (", maxsplit=1)
-        return SpecialSpecimen(text, end.removesuffix(")"))
-    elif text.endswith('"'):
-        coll, number = text.split(" ", maxsplit=1)
-        if not number.startswith('"'):
-            raise ValueError(f"invalid informal specimen {text!r}")
-        return InformalSpecimen(coll, number.strip('"'))
-    else:
-        return SimpleSpecimen(text)
 
 
 @make_linter("type_specimen")
@@ -1818,13 +1635,15 @@ def check_type_specimen(nam: Name, cfg: LintConfig) -> Iterable[str]:
 
 
 def _validate_specimen(
-    text: str, repos: set[tuple[RepositoryKind, Collection]], kinds: set[RepositoryKind]
+    spec: BaseSpecimen,
+    possible_repos: set[tuple[RepositoryKind, Collection]],
+    allowed_kinds: set[RepositoryKind],
 ) -> str | None:
     messages = []
-    for kind, repo in repos:
-        if kind not in kinds:
+    for kind, repo in possible_repos:
+        if kind not in allowed_kinds:
             continue
-        message = repo.validate_specimen(text)
+        message = repo.validate_specimen(spec)
         if message is None:
             return None
         messages.append(message)
@@ -1833,18 +1652,10 @@ def _validate_specimen(
 
 def _check_specimen(spec: Specimen, nam: Name) -> Iterable[str]:
     repos = _get_repositories(nam)
-    match spec.base:
-        case SimpleSpecimen(text):
-            if message := _validate_specimen(text, repos, {RepositoryKind.repository}):
-                yield f"{text!r} does not match: {message}"
-        case SpecialSpecimen(coll) | InformalSpecimen(coll):
-            possible_colls = {
-                repo.label for kind, repo in repos if kind is RepositoryKind.repository
-            }
-            if coll not in possible_colls:
-                yield f"special specimen {spec} is not labeled with any of {possible_colls}"
+    if message := _validate_specimen(spec.base, repos, {RepositoryKind.repository}):
+        yield f"{spec.base.stringify()!r} does not match: {message}"
     for former in spec.former_texts:
-        if former.startswith('"') and former.endswith('"'):
+        if isinstance(former, InformalWithoutInstitution):
             continue
         if message := _validate_specimen(
             former, repos, {RepositoryKind.repository, RepositoryKind.former}
@@ -1923,6 +1734,8 @@ def get_all_type_specimen_texts(nam: Name) -> Iterable[str]:
 def _get_all_type_specimen_texts_from_specimen(spec: Specimen) -> Iterable[str]:
     if isinstance(spec.base, SimpleSpecimen):
         yield spec.base.text
+    elif isinstance(spec.base, TripletSpecimen):
+        yield spec.base.stringify()
 
 
 @make_linter("type_specimen_link")
@@ -1933,12 +1746,16 @@ def check_must_have_type_specimen_link(nam: Name, cfg: LintConfig) -> Iterable[s
         return
     if nam.type_specimen is None:
         return
+    try:
+        specs = parse_type_specimen(nam.type_specimen)
+    except ValueError:
+        return  # other check will complain
     num_expected = sum(
         not (
             isinstance(spec, Specimen)
             and isinstance(spec.base, (SpecialSpecimen, InformalSpecimen))
         )
-        for spec in parse_type_specimen(nam.type_specimen)
+        for spec in specs
     )
     num_actual = sum(
         isinstance(tag, (TypeTag.TypeSpecimenLink, TypeTag.TypeSpecimenLinkFor))
@@ -2128,9 +1945,12 @@ def get_possible_type_specimens(nam: Name) -> Iterable[str]:
 
 def _get_possible_type_specimens_from_specimen(spec: Specimen) -> Iterable[str]:
     yield spec.base.stringify()
-    yield from spec.former_texts
-    yield from spec.future_texts
-    yield from spec.extra_texts
+    for former in spec.former_texts:
+        yield former.stringify()
+    for future in spec.future_texts:
+        yield future.stringify()
+    for extra in spec.extra_texts:
+        yield extra.stringify()
 
 
 def clean_up_bmnh_type(text: str) -> str:
@@ -3246,10 +3066,10 @@ def check_synonym_group(nam: Name, cfg: LintConfig) -> Iterable[str]:
 def check_composites(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.status not in (Status.composite, Status.hybrid):
         return
-    children = list(nam.taxon.children)
+    children = list(nam.taxon.get_children())
     if children:
         different_status = [
-            child for child in children if child.status is not nam.status
+            child for child in children if child.base_name.status is not nam.status
         ]
         if different_status:
             yield (

@@ -64,7 +64,7 @@ from .db.models import (
     TypeTag,
     database,
 )
-from .db.models.base import Linter, ModelT
+from .db.models.base import LintConfig, Linter, ModelT
 from .db.models.person import PersonLevel
 
 T = TypeVar("T")
@@ -2005,13 +2005,14 @@ def run_linter_and_fix(
     print(f"Found {len(bad)} issues")
     if not bad:
         return
+    cfg = LintConfig(autofix=True, interactive=True)
     for obj, messages in getinput.print_every_n(bad, label="issues", n=5):
         obj = obj.reload()
         getinput.print_header(obj)
         obj.display()
         for message in messages:
             print(message)
-        while not obj.is_lint_clean(extra_linter=linter):
+        while not obj.is_lint_clean(extra_linter=linter, cfg=cfg):
             try:
                 obj.edit()
             except getinput.StopException:
@@ -2681,46 +2682,7 @@ def rename_type_specimens() -> None:
     collection = Collection.getter(None).get_one("collection> ")
     if collection is None:
         return
-    age = getinput.get_enum_member(constants.AgeClass, prompt="age> ", allow_empty=True)
-    parent_taxon = Taxon.getter(None).get_one("taxon> ")
-    include_regex = getinput.get_line("include regex (full match)> ", allow_none=True)
-    to_replace = getinput.get_line("replace (regex)> ", allow_none=False)
-    replace_with = getinput.get_line("replace with> ", allow_none=False)
-    assert to_replace is not None
-    assert replace_with is not None
-    dry_run = getinput.yes_no("dry run? ")
-    replacements = 0
-    for nam in collection.type_specimens.filter(Name.type_specimen != None):
-        if age is not None and nam.taxon.age is not age:
-            continue
-        if parent_taxon is not None and not nam.taxon.is_child_of(parent_taxon):
-            continue
-        if include_regex and not re.fullmatch(include_regex, nam.type_specimen):
-            continue
-        new_type_specimen = re.sub(to_replace, replace_with, nam.type_specimen)
-        if nam.type_specimen == new_type_specimen:
-            continue
-        print(f"{nam.type_specimen!r} -> {new_type_specimen!r} ({nam})")
-        replacements += 1
-        if not dry_run:
-            old_type_specimen = nam.type_specimen
-            nam.type_specimen = new_type_specimen
-
-            def mapper(
-                tag: TypeTag,
-                old_type_specimen: str = old_type_specimen,
-                new_type_specimen: str = new_type_specimen,
-            ) -> TypeTag | None:
-                if (
-                    isinstance(tag, TypeTag.TypeSpecimenLinkFor)
-                    and tag.specimen == old_type_specimen
-                ):
-                    return TypeTag.TypeSpecimenLinkFor(tag.url, new_type_specimen)
-                return tag
-
-            nam.map_type_tags(mapper)
-            nam.edit_until_clean()
-    print(f"{replacements} replacements made")
+    collection.rename_type_specimens(full=True)
 
 
 @command

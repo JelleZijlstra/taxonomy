@@ -67,4 +67,9 @@ from .taxon import Taxon as Taxon
 from .person import Person as Person
 from .book import Book as Book
 from .specimen import Specimen as Specimen
-from . import tags as tags, name_lint as name_lint, fill_data as fill_data
+from . import (
+    tags as tags,
+    name_lint as name_lint,
+    fill_data as fill_data,
+    type_specimen as type_specimen,
+)

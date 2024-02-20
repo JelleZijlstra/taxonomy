@@ -15,6 +15,7 @@ from .article import Article
 from .base import ADTField, BaseModel, LintConfig, get_tag_based_derived_field
 from .region import Region
 from .taxon import Taxon
+from .type_specimen import BaseSpecimen, SimpleSpecimen, TripletSpecimen
 
 # Special collection IDs
 LOST_COLLECTION = 75
@@ -28,6 +29,8 @@ SPECIAL_COLLECTION_IDS = {
     IN_SITU_COLLECTION,
 }
 BMNH_COLLECTION = 5
+
+DEFAULT_TRIPLET_REGEX = re.compile(r"\d+[a-z]?")
 
 
 class Collection(BaseModel):
@@ -115,6 +118,15 @@ class Collection(BaseModel):
     def edit(self) -> None:
         self.fill_field("tags")
 
+    def add_tag_interactively(self, tag_cls: type[CollectionTag]) -> None:
+        try:
+            tag = getinput.get_adt_member(
+                tag_cls, completers=self.get_completers_for_adt_field("tags")
+            )
+        except getinput.StopException:
+            return
+        self.tags = self.tags + (tag,)
+
     def lint(self, cfg: LintConfig) -> Iterable[str]:
         for tag in self.tags:
             if isinstance(tag, CollectionTag.SpecimenRegex):
@@ -122,6 +134,16 @@ class Collection(BaseModel):
                     re.compile(tag.regex)
                 except re.error:
                     yield f"{self}: invalid specimen regex {tag}"
+            if isinstance(tag, CollectionTag.CollectionCode):
+                if tag.specimen_regex is not None:
+                    try:
+                        re.compile(tag.specimen_regex)
+                    except re.error:
+                        yield f"{self}: invalid specimen regex {tag}"
+                if not parsing.matches_grammar(
+                    tag.label, parsing.collection_code_pattern
+                ):
+                    yield f"{self}: invalid collection code {tag.label}"
             if tag is CollectionTag.MustUseChildrenCollection or isinstance(
                 tag, CollectionTag.ChildRule
             ):
@@ -301,18 +323,52 @@ class Collection(BaseModel):
                 ):
                     print(tag.url)
 
-    def validate_specimen(self, text: str) -> str | None:
+    def validate_specimen(self, spec: BaseSpecimen) -> str | None:
+        if error := self._validate_specimen_label(spec):
+            return error
+        if isinstance(spec, SimpleSpecimen):
+            if self.must_use_triplets():
+                return f"collection {self} requires the use of triplets"
+            return self._validate_specimen_text(spec.text)
+        elif isinstance(spec, TripletSpecimen):
+            code_tag = self._get_applicable_collection_code(spec.collection_code)
+            if code_tag is None:
+                return f"collection code {spec.collection_code!r} not allowed"
+            if code_tag.specimen_regex:
+                if not re.fullmatch(code_tag.specimen_regex, spec.catalog_number):
+                    return f"catalog number {spec.catalog_number!r} does not match regex {code_tag.specimen_regex}"
+            else:
+                if not DEFAULT_TRIPLET_REGEX.fullmatch(spec.catalog_number):
+                    return f"catalog number {spec.catalog_number!r} does not match default regex"
+            if self.id == BMNH_COLLECTION:
+                return _validate_bmnh(spec.collection_code, spec.catalog_number)
+        return None
+
+    def must_use_triplets(self) -> bool:
+        return CollectionTag.MustUseTriplets in self.tags
+
+    def _get_applicable_collection_code(
+        self, code: str
+    ) -> CollectionTag.CollectionCode | None:  # type: ignore[name-defined]
+        for tag in self.tags:
+            if isinstance(tag, CollectionTag.CollectionCode) and tag.label == code:
+                return tag
+        return None
+
+    def _validate_specimen_text(self, text: str) -> str | None:
         for tag in self.tags:
             if isinstance(tag, CollectionTag.SpecimenRegex):
                 if not re.fullmatch(tag.regex, text):
                     return f"does not match regex {tag.regex}"
-        if self.id == BMNH_COLLECTION:
-            return _validate_bmnh(text)
+        return None
+
+    def _validate_specimen_label(self, spec: BaseSpecimen) -> str | None:
         expected_label = self.get_expected_label()
-        if expected_label is not None:
-            actual_label = parsing.extract_collection_from_type_specimen(text)
-            if actual_label != expected_label:
-                return f"expected label {expected_label!r}, got {actual_label!r}"
+        if expected_label is None:
+            return None
+        actual_label = spec.institution_code
+        if actual_label != expected_label:
+            return f"expected label {expected_label!r}, got {actual_label!r}"
         return None
 
     def get_expected_label(self) -> str | None:
@@ -322,8 +378,86 @@ class Collection(BaseModel):
             return self.label.removesuffix(" collection")
         return self.label
 
-    def is_valid_specimen(self, text: str) -> bool:
-        return self.validate_specimen(text) is None
+    def rename_type_specimens(self, *, full: bool = False) -> None:
+        if full:
+            age = getinput.get_enum_member(
+                constants.AgeClass, prompt="age> ", allow_empty=True
+            )
+            parent_taxon = Taxon.getter(None).get_one("taxon> ")
+            include_regex = getinput.get_line(
+                "include regex (full match)> ", allow_none=True
+            )
+        else:
+            age = parent_taxon = include_regex = None
+        to_replace = getinput.get_line("replace (regex)> ", allow_none=False)
+        replace_with = getinput.get_line("replace with> ", allow_none=False)
+        assert to_replace is not None
+        assert replace_with is not None
+        dry_run = getinput.yes_no("dry run? ")
+        result = self._do_rename_type_specimens(
+            to_replace=to_replace,
+            replace_with=replace_with,
+            dry_run=dry_run,
+            age=age,
+            parent_taxon=parent_taxon,
+            include_regex=include_regex,
+        )
+        if dry_run and result > 0:
+            if getinput.yes_no("Continue with actual rename? "):
+                self._do_rename_type_specimens(
+                    to_replace=to_replace,
+                    replace_with=replace_with,
+                    dry_run=False,
+                    age=age,
+                    parent_taxon=parent_taxon,
+                    include_regex=include_regex,
+                )
+
+    def _do_rename_type_specimens(
+        self,
+        *,
+        to_replace: str,
+        replace_with: str,
+        dry_run: bool,
+        age: constants.AgeClass | None,
+        parent_taxon: Taxon | None,
+        include_regex: str | None,
+    ) -> int:
+        replacements = 0
+        for nam in self.type_specimens.filter(models.Name.type_specimen != None):
+            if age is not None and nam.taxon.age is not age:
+                continue
+            if parent_taxon is not None and not nam.taxon.is_child_of(parent_taxon):
+                continue
+            if include_regex and not re.fullmatch(include_regex, nam.type_specimen):
+                continue
+            new_type_specimen = re.sub(to_replace, replace_with, nam.type_specimen)
+            if nam.type_specimen == new_type_specimen:
+                continue
+            print(f"{nam.type_specimen!r} -> {new_type_specimen!r} ({nam})")
+            replacements += 1
+            if not dry_run:
+                old_type_specimen = nam.type_specimen
+                nam.type_specimen = new_type_specimen
+
+                def mapper(
+                    tag: models.name.TypeTag,
+                    old_type_specimen: str = old_type_specimen,
+                    new_type_specimen: str = new_type_specimen,
+                ) -> models.name.TypeTag | None:
+                    if (
+                        isinstance(tag, models.name.TypeTag.TypeSpecimenLinkFor)
+                        and tag.specimen == old_type_specimen
+                    ):
+                        return models.name.TypeTag.TypeSpecimenLinkFor(
+                            tag.url, new_type_specimen
+                        )
+                    return tag
+
+                nam.map_type_tags(mapper)
+                nam.edit_until_clean()
+        print(f"{replacements} replacements made")
+        return replacements
 
     def get_adt_callbacks(self) -> getinput.CallbackMap:
         return {
@@ -334,7 +468,13 @@ class Collection(BaseModel):
             "lint_names": lambda: models.Name.lint_all(query=self.type_specimens),
             "print_specimen_links": self.print_specimen_links,
             "merge": self.merge,
+            "rename_type_specimens": self.rename_type_specimens,
+            "rename_type_specimens_full": lambda: self.rename_type_specimens(full=True),
+            "add_collection_code": self.add_collection_code,
         }
+
+    def add_collection_code(self) -> None:
+        self.add_tag_interactively(CollectionTag.CollectionCode)
 
 
 FOSSIL_CATALOGS = [
@@ -346,46 +486,38 @@ FOSSIL_CATALOGS = [
 ]
 
 
-def _validate_bmnh(specimen: str, *, allow_fossils: bool = True) -> str | None:
+def _validate_bmnh(collection_code: str, catalog_number: str) -> str | None:
     """We allow the following formats:
 
-    - "BMNH Reptiles 1901.2.3.4"
-    - "BMNH Mammals 1901.2.3.4"
-    - "BMNH Mammals 123a"
-    - "BMNH Amphibians 1901.2.3.4"
-    - "BMNH Minor 1901.2.3.4"
-    - "BMNH PV R 1234"
-    - "BMNH PV M 1234"
-    - "BMNH PV A 1234"
-    - "BMNH PV OR 1234"
-    - "BMNH PV E 1234"
+    - "BMNH:Rept:1901.2.3.4"
+    - "BMNH:Mamm:1901.2.3.4"
+    - "BMNH:Mamm:123a"
+    - "BMNH:Amph:1901.2.3.4"
+    - "BMNH:Minor:1901.2.3.4"
+    - "BMNH:PV:R 1234"
+    - "BMNH:PV:M 1234"
+    - "BMNH:PV:A 1234"
+    - "BMNH:PV:OR 1234"
+    - "BMNH:PV:E 1234"
 
     """
-    if not specimen.startswith("BMNH "):
-        return "BMNH specimen must start with 'BMNH'"
-    specimen = specimen.removeprefix("BMNH ")
-    if " " not in specimen:
-        return "BMNH specimen lacking sub-collection tag"
-    sub_collection, specimen = specimen.split(" ", maxsplit=1)
-
-    if sub_collection == "PV":
+    if collection_code == "PV":
         # Fossil numbers: BMNH M 1234 for fossil mammals
         for catalog, label in FOSSIL_CATALOGS:
-            if specimen.startswith(catalog):
-                if not re.fullmatch(catalog + r" \d+[a-z]?", specimen):
+            if catalog_number.startswith(catalog):
+                if not re.fullmatch(catalog + r" \d+[a-z]?", catalog_number):
                     return (
                         f"invalid fossil {label} number (should be of form"
                         f" {catalog} <number>)"
                     )
                 return None
-    elif sub_collection not in ("Reptiles", "Mammals", "Amphibians", "Minor"):
-        return f"Invalid sub-collection tag: {sub_collection!r}"
+        return f"invalid fossil catalog {catalog_number!r}"
 
-    periods = specimen.count(".")
+    periods = catalog_number.count(".")
 
     # Date-based catalog numbers: BMNH 1901.2.24.3 was cataloged on February 24, 1901
     if periods == 3:
-        year, month, day, number = specimen.split(".")
+        year, month, day, number = catalog_number.split(".")
         if not year.isdigit():
             return f"invalid year {year}"
         num_year = int(year)
@@ -400,7 +532,7 @@ def _validate_bmnh(specimen: str, *, allow_fossils: bool = True) -> str | None:
         return None
     # Year based catalog numbers: BMNH 1992.123 was cataloged in 1992
     elif periods == 1:
-        year, number = specimen.split(".")
+        year, number = catalog_number.split(".")
         if not year.isdigit():
             return f"invalid year {year}"
         num_year = int(year)
@@ -411,7 +543,7 @@ def _validate_bmnh(specimen: str, *, allow_fossils: bool = True) -> str | None:
         return None
 
     # Old mammal catalog
-    if re.fullmatch(r"\d+[a-z]", specimen):
+    if re.fullmatch(r"\d+[a-z]", catalog_number):
         return None
     return "invalid BMNH specimen"
 
@@ -427,3 +559,5 @@ class CollectionTag(adt.ADT):
     # To be counted as a specimen link for this collection, a link must have this prefix.
     # Multiple copies of this tag may be present.
     SpecimenLinkPrefix(prefix=str, tag=8)  # type: ignore
+    MustUseTriplets(tag=9)  # type: ignore
+    CollectionCode(label=str, comment=str, specimen_regex=NotRequired[str], tag=10)  # type: ignore

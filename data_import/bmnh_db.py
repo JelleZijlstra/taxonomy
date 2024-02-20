@@ -3,7 +3,7 @@ import functools
 import re
 import subprocess
 import sys
-from collections import Counter, defaultdict
+from collections import Counter
 from collections.abc import Iterable
 from typing import IO
 
@@ -11,42 +11,20 @@ from taxonomy import getinput
 from taxonomy.db import constants, models
 from taxonomy.db.models import Article, Collection, Name, TypeTag, name_lint
 
-from .lib import DATA_DIR
+from .lib import DATA_DIR, get_type_specimens
 
 INTERACTIVE = True
 
 
 @functools.cache
-def bmnh_mammals() -> Collection:
-    coll = Collection.getter("label")("BMNH (mammals)")
+def bmnh() -> Collection:
+    coll = Collection.getter("label")("BMNH")
     assert coll is not None
     return coll
 
 
 def get_hesp_data() -> dict[str, list[Name]]:
-    output = defaultdict(list)
-    for coll in (bmnh_mammals(), Collection.getter("label")("BMNH (old collection)")):
-        assert coll is not None
-        for nam in coll.type_specimens:
-            if nam.type_specimen is None:
-                continue
-            for spec in name_lint.parse_type_specimen(nam.type_specimen):
-                if isinstance(spec, name_lint.Specimen):
-                    output[spec.text].append(nam)
-    multiple = Collection.getter("label")("multiple")
-    assert multiple is not None
-    for nam in multiple.type_specimens:
-        if nam.type_specimen is None:
-            continue
-        try:
-            for spec in name_lint.parse_type_specimen(nam.type_specimen):
-                if isinstance(spec, name_lint.Specimen) and spec.text.startswith(
-                    "BMNH "
-                ):
-                    output[spec.text].append(nam)
-        except ValueError as e:
-            print(f"failed to parse {nam} due to {e!r}")
-    return output
+    return get_type_specimens(bmnh())
 
 
 def get_bmnh_db() -> Iterable[dict[str, str]]:
@@ -218,7 +196,7 @@ def handle_cannot_find(
     if nam.collection is not None or nam.type_specimen is not None:
         handle_interactively(nam, row, cat_num, exclude_list)
         return "matched with existing type"
-    if models.collection._validate_bmnh(cat_num) is not None:
+    if models.collection._validate_bmnh("Mamm", cat_num) is not None:
         handle_interactively(nam, row, cat_num, exclude_list)
         return "matched but number is invalid"
     if nam.numeric_year() < 1840:
@@ -243,7 +221,7 @@ def handle_cannot_find(
         if nam.type_specimen is None:
             nam.type_specimen = cat_num
         if nam.collection is None:
-            nam.collection = bmnh_mammals()
+            nam.collection = bmnh()
         if nam.species_type_kind is None:
             type_kind = get_type_kind(row)
             if type_kind is not None:
