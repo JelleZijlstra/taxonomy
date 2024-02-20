@@ -309,37 +309,37 @@ class BaseModel(Model):
                         tag_type = type(tag)
                         overrides = {}
                         for attr_name in tag_type._attributes:
-                            value = getattr(tag, attr_name)
+                            attr_value = getattr(tag, attr_name)
                             if (
-                                value is None
+                                attr_value is None
                                 and attr_name in tag_type.__required_attrs__
                             ):
                                 yield (
                                     f"{self}: missing required attribute {attr_name} on"
                                     f" {field} tag {tag}"
                                 )
-                            if isinstance(value, BaseModel):
-                                target = value.get_redirect_target()
+                            if isinstance(attr_value, BaseModel):
+                                target = attr_value.get_redirect_target()
                                 if target is not None:
                                     print(
                                         f"{self}: references redirected object"
-                                        f" {value} -> {target}"
+                                        f" {attr_value} -> {target}"
                                     )
                                     overrides[attr_name] = target
-                                elif not is_invalid and value.is_invalid():
+                                elif not is_invalid and attr_value.is_invalid():
                                     yield (
-                                        f"{self}: references invalid object {value} in"
+                                        f"{self}: references invalid object {attr_value} in"
                                         f" {field} tag {tag}"
                                     )
-                            elif isinstance(value, str):
+                            elif isinstance(attr_value, str):
                                 cleaned = helpers.interactive_clean_string(
-                                    value,
+                                    attr_value,
                                     clean_whitespace=True,
                                     interactive=cfg.interactive,
                                 )
-                                if cleaned != value:
+                                if cleaned != attr_value:
                                     print(
-                                        f"{self}: in tags: clean {value!r} ->"
+                                        f"{self}: in tags: clean {attr_value!r} ->"
                                         f" {cleaned!r}"
                                     )
                                     overrides[attr_name] = cleaned
@@ -372,22 +372,22 @@ class BaseModel(Model):
                     for tag in value:
                         tag_type = type(tag)
                         for attr_name in tag_type._attributes:
-                            value = getattr(tag, attr_name)
+                            attr_value = getattr(tag, attr_name)
                             if isinstance(value, BaseModel):
                                 if not is_invalid and value.is_invalid():
                                     yield (
-                                        f"{self}: references invalid object {value} in"
+                                        f"{self}: references invalid object {attr_value} in"
                                         f" {field} tag {tag}"
                                     )
-                            elif isinstance(value, str):
+                            elif isinstance(attr_value, str):
                                 cleaned = helpers.interactive_clean_string(
-                                    value,
+                                    attr_value,
                                     clean_whitespace=True,
                                     interactive=cfg.interactive,
                                 )
-                                if cleaned != value:
+                                if cleaned != attr_value:
                                     yield (
-                                        f"{self}: in tags: clean {value!r} ->"
+                                        f"{self}: in tags: clean {attr_value!r} ->"
                                         f" {cleaned!r}"
                                     )
                                 if message := helpers.is_string_clean(cleaned):
