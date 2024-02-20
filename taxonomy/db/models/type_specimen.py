@@ -13,6 +13,8 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from typing import Protocol, TypeVar
 
+from taxonomy.parsing import extract_collection_from_type_specimen
+
 
 @dataclass
 class SimpleSpecimen:
@@ -23,6 +25,10 @@ class SimpleSpecimen:
 
     def sort_key(self) -> tuple[object, ...]:
         return (1, _possibly_numeric_sort_key(self.text))
+
+    @property
+    def institution_code(self) -> str | None:
+        return extract_collection_from_type_specimen(self.text)
 
 
 @dataclass

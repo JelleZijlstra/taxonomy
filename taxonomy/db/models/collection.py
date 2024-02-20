@@ -366,10 +366,7 @@ class Collection(BaseModel):
         expected_label = self.get_expected_label()
         if expected_label is None:
             return None
-        if isinstance(spec, SimpleSpecimen):
-            actual_label = parsing.extract_collection_from_type_specimen(spec.text)
-        else:
-            actual_label = spec.institution_code
+        actual_label = spec.institution_code
         if actual_label != expected_label:
             return f"expected label {expected_label!r}, got {actual_label!r}"
         return None

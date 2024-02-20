@@ -1,34 +1,16 @@
 import csv
 import sys
-from collections import defaultdict
 from collections.abc import Iterable
 
-from taxonomy.db.models import Collection, Name, TypeTag, name_lint
+from taxonomy.db.models import Collection, Name, TypeTag
 
-from .lib import DATA_DIR
+from .lib import DATA_DIR, get_type_specimens
 
 
 def get_hesp_data(fossil: bool) -> dict[str, list[Name]]:
-    mcz_mamm = Collection.getter("label")(
-        "MCZ (Vertebrate Paleontology)" if fossil else "MCZ (Mammalogy)"
-    )
-    assert mcz_mamm is not None
-    output = defaultdict(list)
-    for nam in mcz_mamm.type_specimens:
-        if nam.type_specimen is None:
-            continue
-        for spec in name_lint.parse_type_specimen(nam.type_specimen):
-            if isinstance(spec, name_lint.Specimen):
-                output[spec.text].append(nam)
-    multiple = Collection.getter("label")("multiple")
-    assert multiple is not None
-    for nam in multiple.type_specimens:
-        if nam.type_specimen is None:
-            continue
-        for spec in name_lint.parse_type_specimen(nam.type_specimen):
-            if isinstance(spec, name_lint.Specimen) and spec.text.startswith("MCZ "):
-                output[spec.text].append(nam)
-    return output
+    mcz = Collection.getter("label")("MCZ")
+    assert mcz is not None
+    return get_type_specimens(mcz)
 
 
 def get_mcz_db(fossil: bool) -> Iterable[dict[str, str]]:

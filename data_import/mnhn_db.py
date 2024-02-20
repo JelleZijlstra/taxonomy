@@ -2,15 +2,15 @@ import csv
 import functools
 import re
 import sys
-from collections import Counter, defaultdict
+from collections import Counter
 from collections.abc import Iterable
 from typing import IO
 
 from taxonomy import getinput
 from taxonomy.db import constants
-from taxonomy.db.models import Article, Collection, Name, TypeTag, name_lint
+from taxonomy.db.models import Article, Collection, Name, TypeTag
 
-from .lib import DATA_DIR
+from .lib import DATA_DIR, get_type_specimens
 
 INTERACTIVE = True
 
@@ -37,28 +37,7 @@ def mnhn_f() -> Collection:
 
 
 def get_hesp_data() -> dict[str, list[Name]]:
-    output = defaultdict(list)
-    for coll in (mnhn_mammals(), mnhn(), mnhn_f()):
-        for nam in coll.type_specimens:
-            if nam.type_specimen is None:
-                continue
-            for spec in name_lint.parse_type_specimen(nam.type_specimen):
-                if isinstance(spec, name_lint.Specimen):
-                    output[spec.text].append(nam)
-    multiple = Collection.getter("label")("multiple")
-    assert multiple is not None
-    for nam in multiple.type_specimens:
-        if nam.type_specimen is None:
-            continue
-        try:
-            for spec in name_lint.parse_type_specimen(nam.type_specimen):
-                if isinstance(spec, name_lint.Specimen) and spec.text.startswith(
-                    "MNHN-"
-                ):
-                    output[spec.text].append(nam)
-        except ValueError as e:
-            print(f"failed to parse {nam} due to {e!r}")
-    return output
+    return get_type_specimens(mnhn())
 
 
 def get_bmnh_db() -> Iterable[dict[str, str]]:
