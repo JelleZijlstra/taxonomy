@@ -123,7 +123,7 @@ class Person(BaseModel):
     tussenvoegsel = CharField(null=True)
     birth = CharField(null=True)
     death = CharField(null=True)
-    tags = ADTField(lambda: models.tags.PersonTag, null=True)
+    tags = ADTField(lambda: models.tags.PersonTag, null=True, is_ordered=False)
     naming_convention = EnumField(NamingConvention)
     type = EnumField(PersonType)
     target = DeferredForeignKey("Person", null=True)

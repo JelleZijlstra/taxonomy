@@ -48,7 +48,7 @@ class Collection(BaseModel):
     comment = CharField(null=True)
     city = CharField(null=True)
     removed = BooleanField(default=False)
-    tags = ADTField(lambda: CollectionTag, null=True)
+    tags = ADTField(lambda: CollectionTag, null=True, is_ordered=False)
     parent = ForeignKeyField("self", related_name="children", null=True)
 
     derived_fields = [

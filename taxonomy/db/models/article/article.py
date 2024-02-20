@@ -137,7 +137,7 @@ class Article(BaseModel):
     bools = CharField(null=True)  # array of boolean flags
     kind = EnumField(ArticleKind)
     parent = DeferredForeignKey("Article", null=True)
-    tags = ADTField(lambda: ArticleTag, null=True)
+    tags = ADTField(lambda: ArticleTag, null=True, is_ordered=False)
     citation_group = ForeignKeyField(CitationGroup, null=True)
 
     folder_tree: ClassVar[FolderTree] = FolderTree()

@@ -32,7 +32,7 @@ class Book(BaseModel):
     pages = CharField(null=True)  # number of pages in book
     isbn = CharField(null=True)
     publisher = CharField(null=True)
-    tags = ADTField(lambda: BookTag, null=True)
+    tags = ADTField(lambda: BookTag, null=True, is_ordered=False)
     citation_group = ForeignKeyField(CitationGroup, null=True)
     dewey = CharField(null=True)
     loc = CharField(null=True)

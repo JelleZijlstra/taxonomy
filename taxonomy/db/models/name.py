@@ -137,13 +137,13 @@ class Name(BaseModel):
     )
     genus_type_kind = EnumField(constants.TypeSpeciesDesignation, null=True)
     species_type_kind = EnumField(constants.SpeciesGroupType, null=True)
-    type_tags = ADTField(lambda: TypeTag, null=True)
+    type_tags = ADTField(lambda: TypeTag, null=True, is_ordered=False)
     original_rank = EnumField(constants.Rank, null=True)
 
     # Miscellaneous data
     data = TextField(null=True)
     _definition = CharField(null=True, db_column="definition")
-    tags = ADTField(lambda: NameTag, null=True)
+    tags = ADTField(lambda: NameTag, null=True, is_ordered=False)
 
     class Meta:
         db_table = "name"

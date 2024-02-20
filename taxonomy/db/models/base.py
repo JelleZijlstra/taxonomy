@@ -362,6 +362,10 @@ class BaseModel(Model):
                             new_tags.append(adt.replace(tag, **overrides))
                         else:
                             new_tags.append(tag)
+                    if not field_obj.is_ordered:
+                        new_tags = sorted(set(new_tags))
+                        if tuple(new_tags) != value:
+                            made_change = True
                     if made_change:
                         setattr(self, field, tuple(new_tags))
                 else:
@@ -393,6 +397,9 @@ class BaseModel(Model):
                                         f"{self}: contains unprintable characters:"
                                         f" {cleaned!r}"
                                     )
+                    if not field_obj.is_ordered:
+                        if list(value) != sorted(set(value)):
+                            yield f"{self}: contains duplicate or unsorted tags in {field}"
             elif isinstance(field_obj, (CharField, TextField)):
                 allow_newlines = isinstance(field_obj, TextField)
                 if self.should_exempt_from_string_cleaning(field):
@@ -1328,9 +1335,16 @@ class _ADTDescriptor(FieldAccessor):
 
 
 class ADTField(TextField):
-    def __init__(self, adt_cls: Callable[[], type[Any]], **kwargs: Any) -> None:
+    def __init__(
+        self,
+        adt_cls: Callable[[], type[Any]],
+        *,
+        is_ordered: bool = True,
+        **kwargs: Any,
+    ) -> None:
         super().__init__(**kwargs)
         self.adt_cls = adt_cls
+        self.is_ordered = is_ordered
         self.accessor_class = partial(_ADTDescriptor, adt_cls=adt_cls)
 
     def get_adt(self) -> type[Any]:

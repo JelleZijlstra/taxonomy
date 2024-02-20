@@ -53,7 +53,7 @@ class Location(BaseModel):
     age_detail = TextField()
     source = ForeignKeyField(Article, related_name="locations", null=True)
     deleted = EnumField(LocationStatus)
-    tags = ADTField(lambda: LocationTag, null=True)
+    tags = ADTField(lambda: LocationTag, null=True, is_ordered=False)
     parent = ForeignKeyField(
         "self", related_name="aliases", null=True, db_column="parent_id"
     )

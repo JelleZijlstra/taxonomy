@@ -33,7 +33,7 @@ class IssueDate(BaseModel):
     start_page = CharField(null=True)
     end_page = CharField(null=True)
     date = CharField(null=False)
-    tags = ADTField(lambda: IssueDateTag, null=True)
+    tags = ADTField(lambda: IssueDateTag, null=True, is_ordered=False)
 
     class Meta:
         db_table = "issue_date"

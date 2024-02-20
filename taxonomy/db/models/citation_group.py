@@ -32,7 +32,7 @@ class CitationGroup(BaseModel):
     deleted = BooleanField(default=False)
     type = EnumField(constants.ArticleType)
     target = ForeignKeyField("self", related_name="redirects", null=True)
-    tags = ADTField(lambda: CitationGroupTag, null=True)
+    tags = ADTField(lambda: CitationGroupTag, null=True, is_ordered=False)
     archive = CharField(null=True)
 
     class Meta:

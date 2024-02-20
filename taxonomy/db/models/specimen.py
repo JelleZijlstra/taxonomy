@@ -29,7 +29,7 @@ class Specimen(BaseModel):
     date = CharField()
     description = CharField()
     link = CharField()
-    tags = ADTField(lambda: SpecimenTag, null=True)
+    tags = ADTField(lambda: SpecimenTag, null=True, is_ordered=False)
 
     class Meta:
         db_table = "specimen"
