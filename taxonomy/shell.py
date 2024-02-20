@@ -64,7 +64,7 @@ from .db.models import (
     TypeTag,
     database,
 )
-from .db.models.base import Linter, ModelT
+from .db.models.base import LintConfig, Linter, ModelT
 from .db.models.person import PersonLevel
 
 T = TypeVar("T")
@@ -2005,13 +2005,14 @@ def run_linter_and_fix(
     print(f"Found {len(bad)} issues")
     if not bad:
         return
+    cfg = LintConfig(autofix=True, interactive=True)
     for obj, messages in getinput.print_every_n(bad, label="issues", n=5):
         obj = obj.reload()
         getinput.print_header(obj)
         obj.display()
         for message in messages:
             print(message)
-        while not obj.is_lint_clean(extra_linter=linter):
+        while not obj.is_lint_clean(extra_linter=linter, cfg=cfg):
             try:
                 obj.edit()
             except getinput.StopException:
