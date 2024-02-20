@@ -231,6 +231,13 @@ def _parse_single_specimen(text: str) -> Specimen:
     )
 
 
+_BMNH_COLLECTION_SYNONYMS = {
+    "Mammals": "Mamm",
+    "Amphibians": "Amph",
+    "Reptiles": "Rept",
+}
+
+
 def _parse_base_specimen(text: str) -> BaseSpecimen:
     if text.endswith(_SPECIAL_SUFFIXES):
         text, end = text.rsplit(" (", maxsplit=1)
@@ -240,9 +247,14 @@ def _parse_base_specimen(text: str) -> BaseSpecimen:
         if not number.startswith('"'):
             raise ValueError(f"invalid informal specimen {text!r}")
         return InformalSpecimen(coll, number.strip('"'))
-    elif match := re.fullmatch(r"^([A-Za-z]+):([A-Za-z\-]+):(.*)$", text):
+    elif match := re.fullmatch(r"^([A-Za-z]+):([^:]+):(.*)$", text):
         return TripletSpecimen(match.group(1), match.group(2), match.group(3))
     else:
+        # As a temporary measure, facilitate migrating BMNH to the triplet system
+        if text.startswith("BMNH ") and text.count(" ") >= 2:
+            institution, collection, number = text.split(" ", maxsplit=2)
+            collection = _BMNH_COLLECTION_SYNONYMS.get(collection, collection)
+            return TripletSpecimen(institution, collection, number)
         return SimpleSpecimen(text)
 
 
@@ -256,6 +268,10 @@ _SortableT = TypeVar("_SortableT", bound=_Sortable)
 
 def sort_specimens(specimens: Iterable[_SortableT]) -> list[_SortableT]:
     return sorted(specimens, key=lambda s: s.sort_key())
+
+
+def stringify_specimen_list(specimens: Iterable[AnySpecimen]) -> str:
+    return ", ".join(spec.stringify() for spec in sort_specimens(specimens))
 
 
 def parse_type_specimen(text: str) -> list[AnySpecimen]:

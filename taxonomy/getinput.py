@@ -572,7 +572,7 @@ def get_adt_list(
                 print(f"{index} is out of range")
             else:
                 if existing_member._has_args:
-                    out[index] = _get_adt_member(
+                    out[index] = get_adt_member(
                         type(existing_member),  # type: ignore
                         existing=existing_member,
                         completers=completers,
@@ -588,7 +588,7 @@ def get_adt_list(
                 print("removing member:", out[index])
                 del out[index]
         elif member in name_to_cls:
-            out.append(_get_adt_member(name_to_cls[member], completers=completers))
+            out.append(get_adt_member(name_to_cls[member], completers=completers))
         else:
             print(f"unrecognized command: {member}")
         if set_existing is not None:
@@ -629,7 +629,7 @@ def display_tags(
                 yield f"{spacing}  {attr}: {value!s}\n"
 
 
-def _get_adt_member(
+def get_adt_member(
     member_cls: type[adt.ADT],
     existing: ADTOrInstance | None = None,
     completers: CompleterMap = {},

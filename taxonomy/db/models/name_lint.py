@@ -52,6 +52,7 @@ from .type_specimen import (
     SpecimenRange,
     TripletSpecimen,
     parse_type_specimen,
+    stringify_specimen_list,
 )
 
 T = TypeVar("T")
@@ -1461,10 +1462,15 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
         elif isinstance(tag, TypeTag.TypeSpecimenLinkFor):
             if not tag.url.startswith(("http://", "https://")):
                 yield f"invalid type specimen URL {tag.url!r}"
+            try:
+                specs = parse_type_specimen(tag.specimen)
+            except ValueError as e:
+                yield f"invalid type specimen {tag.specimen!r} in {tag}: {e}"
+                new_spec = tag.specimen
+            else:
+                new_spec = stringify_specimen_list(specs)
             tags.append(
-                TypeTag.TypeSpecimenLinkFor(
-                    fix_type_specimen_link(tag.url), tag.specimen
-                )
+                TypeTag.TypeSpecimenLinkFor(fix_type_specimen_link(tag.url), new_spec)
             )
         elif isinstance(tag, TypeTag.Organ) and tag.detail:
             new_tags = yield from check_organ_tag(tag)
@@ -1597,9 +1603,7 @@ def check_type_specimen_order(nam: Name, cfg: LintConfig) -> Iterable[str]:
         specs = parse_type_specimen(nam.type_specimen)
     except ValueError:
         return  # reported elsewhere
-    expected_text = ", ".join(
-        spec.stringify() for spec in sorted(specs, key=lambda spec: spec.sort_key())
-    )
+    expected_text = stringify_specimen_list(specs)
     if nam.type_specimen == expected_text:
         return
     message = (
@@ -1742,12 +1746,16 @@ def check_must_have_type_specimen_link(nam: Name, cfg: LintConfig) -> Iterable[s
         return
     if nam.type_specimen is None:
         return
+    try:
+        specs = parse_type_specimen(nam.type_specimen)
+    except ValueError:
+        return  # other check will complain
     num_expected = sum(
         not (
             isinstance(spec, Specimen)
             and isinstance(spec.base, (SpecialSpecimen, InformalSpecimen))
         )
-        for spec in parse_type_specimen(nam.type_specimen)
+        for spec in specs
     )
     num_actual = sum(
         isinstance(tag, (TypeTag.TypeSpecimenLink, TypeTag.TypeSpecimenLinkFor))

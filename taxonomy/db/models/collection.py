@@ -118,6 +118,15 @@ class Collection(BaseModel):
     def edit(self) -> None:
         self.fill_field("tags")
 
+    def add_tag_interactively(self, tag_cls: type[CollectionTag]) -> None:
+        try:
+            tag = getinput.get_adt_member(
+                tag_cls, completers=self.get_completers_for_adt_field("tags")
+            )
+        except getinput.StopException:
+            return
+        self.tags = self.tags + (tag,)
+
     def lint(self, cfg: LintConfig) -> Iterable[str]:
         for tag in self.tags:
             if isinstance(tag, CollectionTag.SpecimenRegex):
@@ -131,7 +140,9 @@ class Collection(BaseModel):
                         re.compile(tag.specimen_regex)
                     except re.error:
                         yield f"{self}: invalid specimen regex {tag}"
-                if not re.fullmatch(r"[A-Za-z\-]+", tag.label):
+                if not parsing.matches_grammar(
+                    tag.label, parsing.collection_code_pattern
+                ):
                     yield f"{self}: invalid collection code {tag.label}"
             if tag is CollectionTag.MustUseChildrenCollection or isinstance(
                 tag, CollectionTag.ChildRule
@@ -329,6 +340,8 @@ class Collection(BaseModel):
             else:
                 if not DEFAULT_TRIPLET_REGEX.fullmatch(spec.catalog_number):
                     return f"catalog number {spec.catalog_number!r} does not match default regex"
+            if self.id == BMNH_COLLECTION:
+                return _validate_bmnh(spec.collection_code, spec.catalog_number)
         return None
 
     def must_use_triplets(self) -> bool:
@@ -347,8 +360,6 @@ class Collection(BaseModel):
             if isinstance(tag, CollectionTag.SpecimenRegex):
                 if not re.fullmatch(tag.regex, text):
                     return f"does not match regex {tag.regex}"
-        if self.id == BMNH_COLLECTION:
-            return _validate_bmnh(text)
         return None
 
     def _validate_specimen_label(self, spec: BaseSpecimen) -> str | None:
@@ -462,7 +473,11 @@ class Collection(BaseModel):
             "merge": self.merge,
             "rename_type_specimens": self.rename_type_specimens,
             "rename_type_specimens_full": lambda: self.rename_type_specimens(full=True),
+            "add_collection_code": self.add_collection_code,
         }
+
+    def add_collection_code(self) -> None:
+        self.add_tag_interactively(CollectionTag.CollectionCode)
 
 
 FOSSIL_CATALOGS = [
@@ -474,46 +489,38 @@ FOSSIL_CATALOGS = [
 ]
 
 
-def _validate_bmnh(specimen: str, *, allow_fossils: bool = True) -> str | None:
+def _validate_bmnh(collection_code: str, catalog_number: str) -> str | None:
     """We allow the following formats:
 
-    - "BMNH Reptiles 1901.2.3.4"
-    - "BMNH Mammals 1901.2.3.4"
-    - "BMNH Mammals 123a"
-    - "BMNH Amphibians 1901.2.3.4"
-    - "BMNH Minor 1901.2.3.4"
-    - "BMNH PV R 1234"
-    - "BMNH PV M 1234"
-    - "BMNH PV A 1234"
-    - "BMNH PV OR 1234"
-    - "BMNH PV E 1234"
+    - "BMNH:Rept:1901.2.3.4"
+    - "BMNH:Mamm:1901.2.3.4"
+    - "BMNH:Mamm:123a"
+    - "BMNH:Amph:1901.2.3.4"
+    - "BMNH:Minor:1901.2.3.4"
+    - "BMNH:PV:R 1234"
+    - "BMNH:PV:M 1234"
+    - "BMNH:PV:A 1234"
+    - "BMNH:PV:OR 1234"
+    - "BMNH:PV:E 1234"
 
     """
-    if not specimen.startswith("BMNH "):
-        return "BMNH specimen must start with 'BMNH'"
-    specimen = specimen.removeprefix("BMNH ")
-    if " " not in specimen:
-        return "BMNH specimen lacking sub-collection tag"
-    sub_collection, specimen = specimen.split(" ", maxsplit=1)
-
-    if sub_collection == "PV":
+    if collection_code == "PV":
         # Fossil numbers: BMNH M 1234 for fossil mammals
         for catalog, label in FOSSIL_CATALOGS:
-            if specimen.startswith(catalog):
-                if not re.fullmatch(catalog + r" \d+[a-z]?", specimen):
+            if catalog_number.startswith(catalog):
+                if not re.fullmatch(catalog + r" \d+[a-z]?", catalog_number):
                     return (
                         f"invalid fossil {label} number (should be of form"
                         f" {catalog} <number>)"
                     )
                 return None
-    elif sub_collection not in ("Reptiles", "Mammals", "Amphibians", "Minor"):
-        return f"Invalid sub-collection tag: {sub_collection!r}"
+        return f"invalid fossil catalog {catalog_number!r}"
 
-    periods = specimen.count(".")
+    periods = catalog_number.count(".")
 
     # Date-based catalog numbers: BMNH 1901.2.24.3 was cataloged on February 24, 1901
     if periods == 3:
-        year, month, day, number = specimen.split(".")
+        year, month, day, number = catalog_number.split(".")
         if not year.isdigit():
             return f"invalid year {year}"
         num_year = int(year)
@@ -528,7 +535,7 @@ def _validate_bmnh(specimen: str, *, allow_fossils: bool = True) -> str | None:
         return None
     # Year based catalog numbers: BMNH 1992.123 was cataloged in 1992
     elif periods == 1:
-        year, number = specimen.split(".")
+        year, number = catalog_number.split(".")
         if not year.isdigit():
             return f"invalid year {year}"
         num_year = int(year)
@@ -539,7 +546,7 @@ def _validate_bmnh(specimen: str, *, allow_fossils: bool = True) -> str | None:
         return None
 
     # Old mammal catalog
-    if re.fullmatch(r"\d+[a-z]", specimen):
+    if re.fullmatch(r"\d+[a-z]", catalog_number):
         return None
     return "invalid BMNH specimen"
 

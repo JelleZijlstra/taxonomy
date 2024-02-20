@@ -650,6 +650,8 @@ class Name(BaseModel):
             "open_type_specimen_link": self.open_type_specimen_link,
             "replace_type": self.replace_type,
             "print_type_specimen": self.print_type_specimen,
+            "add_collection_code": lambda: self.collection is not None
+            and self.collection.add_collection_code(),
         }
 
     def print_type_specimen(self) -> None:
