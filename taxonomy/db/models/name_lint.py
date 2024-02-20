@@ -29,6 +29,7 @@ from ..constants import (
     Group,
     NamingConvention,
     NomenclatureStatus,
+    Rank,
     SpeciesGroupType,
     SpeciesNameKind,
     SpecimenOrgan,
@@ -41,6 +42,7 @@ from .collection import BMNH_COLLECTION, MULTIPLE_COLLECTION, Collection
 from .name import STATUS_TO_TAG, Name, NameComment, NameTag, TypeTag
 from .organ import CHECKED_ORGANS, ParsedOrgan, ParseException, parse_organ_detail
 from .person import AuthorTag, PersonLevel
+from .taxon import Taxon
 from .type_specimen import (
     BaseSpecimen,
     InformalSpecimen,
@@ -2068,6 +2070,51 @@ def check_composites(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 f"is of status {nam.status} and must have at least two PartialTaxon"
                 f" tags (got {tags})"
             )
+
+
+@make_linter("species_secondary_homonym")
+def check_species_group_secondary_homonyms(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    if nam.group is not Group.species:
+        return
+    if not nam.nomenclature_status.can_preoccupy():
+        return
+    try:
+        genus = nam.taxon.parent_of_rank(Rank.genus)
+    except ValueError:
+        return
+    name_dict = _get_names_of_genus(genus)
+    relevant_names = [
+        other_nam
+        for other_nam in name_dict.get(nam.root_name, [])
+        if nam != other_nam and other_nam.nomenclature_status.can_preoccupy()
+    ]
+    if not relevant_names:
+        return
+    earliest = min(relevant_names, key=lambda n: n.numeric_year())
+    if earliest.numeric_year() < nam.numeric_year():
+        already_variant_of = {
+            tag.name
+            for tag in nam.tags
+            if isinstance(
+                tag,
+                (
+                    NameTag.PreoccupiedBy,
+                    NameTag.UnjustifiedEmendationOf,
+                    NameTag.JustifiedEmendationOf,
+                ),
+            )
+        }
+        if earliest not in already_variant_of:
+            yield f"preoccupied by {earliest}"
+
+
+@functools.lru_cache(maxsize=8192)
+def _get_names_of_genus(genus: Taxon) -> dict[str, list[Name]]:
+    root_name_to_names: dict[str, list[Name]] = {}
+    for nam in genus.all_names():
+        if nam.group is Group.species and nam.year is not None:
+            root_name_to_names.setdefault(nam.root_name, []).append(nam)
+    return root_name_to_names
 
 
 def run_linters(
