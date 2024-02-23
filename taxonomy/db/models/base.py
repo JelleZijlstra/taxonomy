@@ -216,12 +216,16 @@ class BaseModel(Model):
                 bad.append((obj, messages))
         return bad
 
-    def format(self, *, quiet: bool = False) -> bool:
+    def format(
+        self, *, quiet: bool = False, autofix: bool = True, interactive: bool = True
+    ) -> bool:
         # First autofix
-        for _ in self.general_lint(LintConfig(autofix=True, interactive=False)):
+        for _ in self.general_lint(LintConfig(autofix=autofix, interactive=False)):
             pass
         # Then allow interactive fixing
-        messages = list(self.general_lint(LintConfig(autofix=False, interactive=True)))
+        messages = list(
+            self.general_lint(LintConfig(autofix=autofix, interactive=interactive))
+        )
         if not messages:
             if not quiet:
                 print("Everything clean")

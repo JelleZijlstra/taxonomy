@@ -839,9 +839,11 @@ class Article(BaseModel):
         cite = self.cite()
         return f"[{cite}](/a/{self.id})"
 
-    def format(self, *, quiet: bool = False) -> bool:
+    def format(
+        self, *, quiet: bool = False, autofix: bool = True, interactive: bool = True
+    ) -> bool:
         self.specify_authors()
-        return super().format(quiet=quiet)
+        return super().format(quiet=quiet, autofix=autofix, interactive=interactive)
 
     def lint(self, cfg: LintConfig) -> Iterable[str]:
         try:

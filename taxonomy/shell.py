@@ -3017,6 +3017,25 @@ def lint_collections() -> None:
         )
 
 
+@command
+def find_valid_names_with_invalid_bases() -> None:
+    for txn in Taxon.select_valid().filter(
+        Taxon.age << (AgeClass.extant, AgeClass.recently_extinct),
+        Taxon.rank == Rank.species,
+    ):
+        if (
+            txn.base_name.nomenclature_status
+            not in (
+                NomenclatureStatus.available,
+                NomenclatureStatus.nomen_novum,
+                NomenclatureStatus.as_emended,
+                NomenclatureStatus.informal,
+            )
+            and txn.base_name.status is constants.Status.valid
+        ):
+            txn.display()
+
+
 def run_shell() -> None:
     # GC does bad things on my current setup for some reason
     gc.disable()

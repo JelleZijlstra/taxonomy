@@ -8,10 +8,12 @@ from __future__ import annotations
 
 import enum
 import functools
+import itertools
 import json
 import re
 from collections import defaultdict
 from collections.abc import Callable, Generator, Iterable, Iterator
+from dataclasses import replace
 from datetime import datetime
 from typing import Any, TypeVar
 
@@ -79,11 +81,13 @@ def make_linter(
         def wrapper(
             nam: Name, cfg: LintConfig, **kwargs: Any
         ) -> Generator[str, None, set[str]]:
+            ignored_lints = get_ignored_lints(nam)
+            if label in ignored_lints:
+                cfg = replace(cfg, interactive=False)
             # static analysis: ignore[incompatible_call]
             issues = list(linter(nam, cfg, **kwargs))
             if not issues:
                 return set()
-            ignored_lints = get_ignored_lints(nam)
             if label in ignored_lints:
                 return {label}
             for issue in issues:
@@ -946,6 +950,13 @@ def clean_up_bmnh_type(text: str) -> str:
     return text
 
 
+PREOCCUPIED_TAGS = (
+    NameTag.PreoccupiedBy,
+    NameTag.PrimaryHomonymOf,
+    NameTag.SecondaryHomonymOf,
+)
+
+
 @make_linter("tags")
 def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
     """Looks at all tags set on names and applies related changes."""
@@ -975,10 +986,12 @@ def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 nam.add_static_comment(CommentKind.automatic_change, comment)
                 nam.nomenclature_status = status  # type: ignore
 
+    new_tags = []
     for tag in tags:
-        if isinstance(tag, NameTag.PreoccupiedBy):
+        if isinstance(tag, PREOCCUPIED_TAGS):
             maybe_adjust_status(nam, NomenclatureStatus.preoccupied, tag)
             senior_name = tag.name
+            new_tag = tag
             if nam.group != senior_name.group:
                 yield (
                     f"is of a different group than supposed senior name {senior_name}"
@@ -995,13 +1008,47 @@ def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                     senior_name = senior_name_tag.name
             if nam.get_date_object() < senior_name.get_date_object():
                 yield f"predates supposed senior name {senior_name}"
-            # TODO apply this check to species too by handling gender endings correctly.
-            if nam.group is not Group.species:
-                if nam.root_name != tag.name.root_name:
-                    yield (
-                        "has a different root name than supposed senior name"
-                        f" {senior_name}"
-                    )
+            if nam.group is Group.species:
+                if isinstance(tag, NameTag.PrimaryHomonymOf):
+                    if nam.original_parent != senior_name.original_parent:
+                        yield (
+                            f"{nam} is marked as a primary homonym of {senior_name}, but has a"
+                            " different original genus"
+                        )
+                elif isinstance(tag, NameTag.SecondaryHomonymOf):
+                    if nam.original_parent == senior_name.original_parent:
+                        yield (
+                            f"{nam} is marked as a secondary homonym of {senior_name}, but has"
+                            " the same original genus, so it should be marked as a primary homonym instead"
+                        )
+                        new_tag = NameTag.PrimaryHomonymOf(tag.name, tag.comment)
+                    my_genus = _get_parent(nam)
+                    senior_genus = _get_parent(senior_name)
+                    if my_genus != senior_genus:
+                        yield (
+                            f"{nam} is marked as a secondary homonym of {senior_name}, but is not currently placed in the same genus"
+                        )
+                elif isinstance(tag, NameTag.PreoccupiedBy):
+                    if nam.original_parent == senior_name.original_parent:
+                        new_tag = NameTag.PrimaryHomonymOf(tag.name, tag.comment)
+                    elif _get_parent(nam) == _get_parent(senior_name):
+                        new_tag = NameTag.SecondaryHomonymOf(tag.name, tag.comment)
+            else:
+                if isinstance(
+                    tag, (NameTag.PrimaryHomonymOf, NameTag.SecondaryHomonymOf)
+                ):
+                    yield f"{nam} is not a species-group name, but uses {type(tag).__name__} tag"
+            if (
+                nam.get_normalized_root_name_for_homonymy()
+                != senior_name.get_normalized_root_name_for_homonymy()
+            ):
+                yield (
+                    "has a different root name than supposed senior name"
+                    f" {senior_name}"
+                )
+            if not senior_name.can_preoccupy():
+                yield f"senior name {senior_name} is not available"
+            new_tags.append(new_tag)
         elif isinstance(
             tag,
             (
@@ -1044,10 +1091,13 @@ def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
             else:
                 if nam.taxon != tag.name.taxon:
                     yield f"{nam} is not assigned to the same name as {tag.name}"
+            new_tags.append(tag)
         elif isinstance(tag, NameTag.PartiallySuppressedBy):
             maybe_adjust_status(nam, NomenclatureStatus.partially_suppressed, tag)
+            new_tags.append(tag)
         elif isinstance(tag, NameTag.FullySuppressedBy):
             maybe_adjust_status(nam, NomenclatureStatus.fully_suppressed, tag)
+            new_tags.append(tag)
         elif isinstance(tag, NameTag.Conserved):
             if nam.nomenclature_status not in (
                 NomenclatureStatus.available,
@@ -1056,17 +1106,38 @@ def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 NomenclatureStatus.preoccupied,
             ):
                 yield f"{nam} is on the Official List, but is not marked as available."
+            new_tags.append(tag)
+        else:
+            new_tags.append(tag)
         # haven't handled TakesPriorityOf, NomenOblitum, MandatoryChangeOf
+
+    if tuple(new_tags) != tags:
+        message = f"changing tags from {tags} to {new_tags}"
+        getinput.print_diff(tags, new_tags)
+        if cfg.autofix:
+            print(f"{nam}: {message}")
+            nam.tags = new_tags  # type: ignore[assignment]
+        else:
+            yield message
+
+
+def _get_parent(nam: Name, rank: Rank = Rank.genus) -> Taxon | None:
+    try:
+        return nam.taxon.parent_of_rank(rank)
+    except ValueError:
+        return None
 
 
 @make_linter("required_tags")
 def check_required_tags(nam: Name, cfg: LintConfig) -> Iterable[str]:
-    if nam.nomenclature_status not in STATUS_TO_TAG:
-        return
-    tag_cls = STATUS_TO_TAG[nam.nomenclature_status]
-    tags = list(nam.get_tags(nam.tags, tag_cls))
-    if not tags:
-        yield (f"has status {nam.nomenclature_status.name} but no corresponding tag")
+    if nam.nomenclature_status is NomenclatureStatus.preoccupied:
+        if not any(isinstance(tag, PREOCCUPIED_TAGS) for tag in nam.tags):
+            yield "is preoccupied but has no corresponding tag"
+    elif nam.nomenclature_status in STATUS_TO_TAG:
+        tag_cls = STATUS_TO_TAG[nam.nomenclature_status]
+        tags = list(nam.get_tags(nam.tags, tag_cls))
+        if not tags:
+            yield f"has status {nam.nomenclature_status.name} but no corresponding tag"
 
 
 @make_linter("lsid")
@@ -2072,49 +2143,281 @@ def check_composites(nam: Name, cfg: LintConfig) -> Iterable[str]:
             )
 
 
+# TODO:
+# - Account for "nearly homonymous" names (see get_normalized_root_name_for_homonymy method)
+#   This should probably be a separate check, so we can lint-ignore it specifically in
+#   cases where it's not relevant.
+# - Add homonymy check for genus-group names
 @make_linter("species_secondary_homonym")
 def check_species_group_secondary_homonyms(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    yield from _check_species_group_homonyms(nam, primary=False, fuzzy=False, cfg=cfg)
+
+
+@make_linter("species_primary_homonym")
+def check_species_group_primary_homonyms(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    yield from _check_species_group_homonyms(nam, primary=True, fuzzy=False, cfg=cfg)
+
+
+@make_linter("species_fuzzy_secondary_homonym")
+def check_species_group_fuzzy_secondary_homonyms(
+    nam: Name, cfg: LintConfig
+) -> Iterable[str]:
+    yield from _check_species_group_homonyms(nam, primary=False, fuzzy=True, cfg=cfg)
+
+
+@make_linter("species_fuzzy_primary_homonym")
+def check_species_group_fuzzy_primary_homonyms(
+    nam: Name, cfg: LintConfig
+) -> Iterable[str]:
+    yield from _check_species_group_homonyms(nam, primary=True, fuzzy=True, cfg=cfg)
+
+
+def _check_species_group_homonyms(
+    nam: Name, *, primary: bool, fuzzy: bool, cfg: LintConfig
+) -> Iterable[str]:
     if nam.group is not Group.species:
         return
-    if not nam.nomenclature_status.can_preoccupy():
+    if not nam.can_preoccupy():
         return
-    try:
-        genus = nam.taxon.parent_of_rank(Rank.genus)
-    except ValueError:
-        return
-    name_dict = _get_names_of_genus(genus)
+    if primary:
+        genus = nam.original_parent
+        if genus is None:
+            return
+        genus = _resolve_original_parent(genus, depth=0)
+        name_dict = _get_primary_names_of_genus_and_variants(genus, fuzzy=fuzzy)
+    else:
+        genus = _get_parent(nam)
+        if genus is None:
+            return
+        name_dict = _get_secondary_names_of_genus(genus, fuzzy=fuzzy)
+    root = (
+        nam.get_normalized_root_name_for_homonymy()
+        if fuzzy
+        else nam.get_normalized_root_name()
+    )
     relevant_names = [
         other_nam
-        for other_nam in name_dict.get(nam.root_name, [])
-        if nam != other_nam and other_nam.nomenclature_status.can_preoccupy()
+        for other_nam in name_dict.get(root, [])
+        if nam != other_nam
+        and other_nam.can_preoccupy()
+        and other_nam.get_date_object() < nam.get_date_object()
     ]
+    if fuzzy:
+        # Exclude non-fuzzy matches, the regular check will catch them.
+        relevant_names = [
+            other_nam
+            for other_nam in relevant_names
+            if other_nam.get_normalized_root_name() != nam.get_normalized_root_name()
+        ]
+
     if not relevant_names:
         return
-    earliest = min(relevant_names, key=lambda n: n.numeric_year())
-    if earliest.numeric_year() < nam.numeric_year():
-        already_variant_of = {
-            tag.name
-            for tag in nam.tags
-            if isinstance(
-                tag,
-                (
-                    NameTag.PreoccupiedBy,
-                    NameTag.UnjustifiedEmendationOf,
-                    NameTag.JustifiedEmendationOf,
-                ),
-            )
-        }
-        if earliest not in already_variant_of:
-            yield f"preoccupied by {earliest}"
+    already_variant_of = {
+        tag.name
+        for tag in nam.tags
+        if isinstance(
+            tag,
+            (
+                NameTag.PreoccupiedBy,
+                NameTag.UnjustifiedEmendationOf,
+                NameTag.JustifiedEmendationOf,
+                NameTag.PrimaryHomonymOf,
+                NameTag.SecondaryHomonymOf,
+                NameTag.NotPreoccupiedBy,
+                NameTag.VariantOf,
+                NameTag.IncorrectSubsequentSpellingOf,
+            ),
+        )
+    }
+
+    for senior_homonym in relevant_names:
+        # Ignore secondary homonyms that are also primary homonyms
+        if (
+            not primary
+            and nam.original_parent is not None
+            and senior_homonym.original_parent == nam.original_parent
+        ):
+            continue
+
+        # Already marked as a homonym
+        if senior_homonym in already_variant_of:
+            continue
+
+        if cfg.interactive:
+            getinput.print_header(nam)
+            print(f"{nam}: preoccupied by {senior_homonym}")
+            if getinput.yes_no("Accept preoccupation? "):
+                tag = (
+                    NameTag.PrimaryHomonymOf if primary else NameTag.SecondaryHomonymOf
+                )
+                nam.preoccupied_by(senior_homonym, tag=tag)
+        yield f"preoccupied by {senior_homonym}"
+
+
+def _resolve_original_parent(nam: Name, *, depth: int) -> Name:
+    if depth > 10:
+        raise ValueError(f"too deep: {nam}")
+    for tag in nam.tags:
+        if isinstance(
+            tag,
+            (
+                NameTag.VariantOf,
+                NameTag.UnjustifiedEmendationOf,
+                NameTag.JustifiedEmendationOf,
+                NameTag.IncorrectOriginalSpellingOf,
+                NameTag.SubsequentUsageOf,
+                NameTag.MandatoryChangeOf,
+                NameTag.IncorrectSubsequentSpellingOf,
+            ),
+        ):
+            return _resolve_original_parent(tag.name, depth=depth + 1)
+    return nam
+
+
+def _get_primary_names_of_genus_and_variants(
+    genus: Name, fuzzy: bool = False
+) -> dict[str, list[Name]]:
+    all_genera = {genus}
+    stack = [genus]
+    while stack:
+        current = stack.pop()
+        for nam in itertools.chain(
+            current.get_derived_field("variants") or (),
+            current.get_derived_field("unjustified_emendations") or (),
+            current.get_derived_field("justified_emendations") or (),
+            current.get_derived_field("incorrect_original_spellings") or (),
+            current.get_derived_field("subsequent_usages") or (),
+            current.get_derived_field("mandatory_changes") or (),
+            current.get_derived_field("incorrect_subsequent_spellings") or (),
+        ):
+            if nam not in all_genera:
+                all_genera.add(nam)
+                stack.append(nam)
+    if len(all_genera) == 1:
+        return _get_primary_names_of_genus(genus, fuzzy=fuzzy)
+    root_name_to_names: dict[str, list[Name]] = {}
+    for nam in all_genera:
+        for root_name, names in _get_primary_names_of_genus(nam, fuzzy=fuzzy).items():
+            root_name_to_names.setdefault(root_name, []).extend(names)
+    return root_name_to_names
 
 
 @functools.lru_cache(maxsize=8192)
-def _get_names_of_genus(genus: Taxon) -> dict[str, list[Name]]:
+def _get_primary_names_of_genus(
+    genus: Name, fuzzy: bool = False
+) -> dict[str, list[Name]]:
+    root_name_to_names: dict[str, list[Name]] = {}
+    for nam in Name.add_validity_check(genus.original_children):
+        if nam.group is Group.species and nam.year is not None:
+            if fuzzy:
+                root_name = nam.get_normalized_root_name_for_homonymy()
+            else:
+                root_name = nam.get_normalized_root_name()
+            root_name_to_names.setdefault(root_name, []).append(nam)
+    return root_name_to_names
+
+
+@functools.lru_cache(maxsize=8192)
+def _get_secondary_names_of_genus(
+    genus: Taxon, fuzzy: bool = False
+) -> dict[str, list[Name]]:
     root_name_to_names: dict[str, list[Name]] = {}
     for nam in genus.all_names():
         if nam.group is Group.species and nam.year is not None:
-            root_name_to_names.setdefault(nam.root_name, []).append(nam)
+            if fuzzy:
+                root_name = nam.get_normalized_root_name_for_homonymy()
+            else:
+                root_name = nam.get_normalized_root_name()
+            root_name_to_names.setdefault(root_name, []).append(nam)
     return root_name_to_names
+
+
+# TODO: Validate that original_parent matches corrected_original_name (and that it's a genus-group name)
+# Needs special handling in case original_parent is a justified emendation.
+@make_linter("infer_original_parent")
+def infer_original_parent(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    if (
+        nam.group is not Group.species
+        or nam.original_parent is not None
+        or not nam.nomenclature_status.requires_original_parent()
+    ):
+        return
+    if nam.corrected_original_name is None:
+        return
+    candidates = _get_inferred_original_parent(nam)
+    if len(candidates) != 1:
+        if not candidates and nam.original_citation is None:
+            return
+        message = f"cannot infer original parent: {candidates}"
+        if cfg.interactive:
+            getinput.print_header(nam)
+            print(f"{nam}: {message}")
+            nam.fill_field("original_parent")
+        yield message
+        return
+    message = f"inferred original_parent to be {candidates} from {nam.corrected_original_name}"
+    if cfg.autofix:
+        print(f"{nam}: {message}")
+        nam.original_parent = candidates[0]
+    else:
+        yield message
+
+
+def _get_inferred_original_parent(nam: Name) -> list[Name]:
+    if nam.corrected_original_name is None:
+        return []
+    original_genus, *_ = nam.corrected_original_name.split()
+
+    # Is it still in the same genus? If so, use that genus.
+    current_genus = _get_parent(nam)
+    if (
+        current_genus is not None
+        and current_genus.base_name.root_name == original_genus
+    ):
+        return [current_genus.base_name]
+
+    # Is there only a single possibility, still placed in the same order?
+    possible_genera = list(
+        Name.select_valid().filter(
+            Name.group == Group.genus,
+            Name.root_name == original_genus,
+            Name.nomenclature_status != NomenclatureStatus.subsequent_usage,
+        )
+    )
+    possible_genera = [
+        # give some buffer
+        genus
+        for genus in possible_genera
+        if genus.numeric_year() <= nam.numeric_year() + 2
+    ]
+    if len(possible_genera) < 1:
+        return []
+    current_order = _get_parent(nam, Rank.order)
+    same_order_genera = [
+        genus
+        for genus in possible_genera
+        if _get_parent(genus, Rank.order) == current_order
+    ]
+    if len(same_order_genera) == 1:
+        return same_order_genera
+
+    # Try available names only
+    available_genera = [genus for genus in possible_genera if genus.can_preoccupy()]
+    if len(available_genera) == 1:
+        return available_genera
+
+    if nam.original_citation is not None:
+        # Try to match the original citation
+        same_citation_genera = [
+            genus
+            for genus in possible_genera
+            if nam.original_citation == genus.original_citation
+        ]
+        if len(same_citation_genera) == 1:
+            return same_citation_genera
+
+    # Else give up.
+    return possible_genera
 
 
 def run_linters(

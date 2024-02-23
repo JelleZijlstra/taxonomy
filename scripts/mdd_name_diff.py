@@ -4,7 +4,7 @@ import functools
 import re
 import sys
 from pathlib import Path
-from typing import Final
+from typing import Any, Final
 
 import Levenshtein
 
@@ -13,6 +13,7 @@ from taxonomy import getinput
 from taxonomy.db import export
 from taxonomy.db.constants import AgeClass, Group, Rank, Status
 from taxonomy.db.models import Name, Taxon
+from taxonomy.db.models.name import TypeTag
 
 COLUMNS = [
     "MDD_syn_ID",
@@ -64,6 +65,10 @@ COLUMNS = [
     "MDD_authority_link",
     # type locality
     "Hesp_type_locality",
+    "Hesp_original_type_locality_verbatim",
+    "Hesp_emended_type_locality_verbatim",
+    "Hesp_type_latitude",
+    "Hesp_type_longitude",
     "MDD_type_locality",
     "MDD_type_latitude",
     "MDD_type_longitude",
@@ -193,6 +198,35 @@ def normalize_original_name(name: str) -> str:
     )
 
 
+def get_hesp_row(name: Name, need_initials: set[str]) -> dict[str, Any]:
+    data = export.data_for_name(name)
+    row = {f"Hesp_{k}": v for k, v in data.items()}
+    mdd_style_author = mdd_diff.get_mdd_style_authority(name, need_initials)
+    row["Hesp_authority"] = mdd_style_author
+    if (
+        name.status is Status.synonym
+        and name.taxon.base_name.status is not Status.valid
+    ):
+        row["Hesp_status"] = name.taxon.base_name.status.name
+    verbatim_tl = []
+    emended_tl = []
+    for tag in name.type_tags:
+        if isinstance(tag, TypeTag.LocationDetail):
+            if tag.source == name.original_citation:
+                verbatim_tl.append(tag.text)
+            else:
+                citation = ", ".join(tag.source.taxonomicAuthority())
+                emended_tl.append(f'"{tag.text}" ({citation})')
+        elif isinstance(tag, TypeTag.Coordinates):
+            row["Hesp_type_latitude"] = tag.latitude
+            row["Hesp_type_longitude"] = tag.longitude
+    if verbatim_tl:
+        row["Hesp_original_type_locality_verbatim"] = " | ".join(verbatim_tl)
+    if emended_tl:
+        row["Hesp_emended_type_locality_verbatim"] = " | ".join(emended_tl)
+    return row
+
+
 def run(
     mdd_csv: Path,
     match_csv: Path,
@@ -311,15 +345,8 @@ def run(
         writer = csv.DictWriter(f, COLUMNS, extrasaction="ignore")
         writer.writeheader()
         for name in getinput.print_every_n(hesp_names, label="Hesperomys names"):
-            data = export.data_for_name(name)
-            row = {f"Hesp_{k}": v for k, v in data.items()}
-            mdd_style_author = mdd_diff.get_mdd_style_authority(name, need_initials)
-            row["Hesp_authority"] = mdd_style_author
-            if (
-                name.status is Status.synonym
-                and name.taxon.base_name.status is not Status.valid
-            ):
-                row["Hesp_status"] = name.taxon.base_name.status.name
+            row = get_hesp_row(name, need_initials)
+            mdd_style_author = row["Hesp_authority"]
             hesp_extra = hesp_id_to_extra.get(name.id, EMPTY)
             if name.id in hesp_id_to_mdd_ids:
                 mdd_ids = sorted(hesp_id_to_mdd_ids[name.id])
@@ -424,13 +451,15 @@ def run(
                         single_row["spelling_status"] = ""
 
                     # year_status
-                    if data["year"] != mdd_row["MDD_year"]:
+                    if row["Hesp_year"] != mdd_row["MDD_year"]:
                         try:
-                            distance = abs(int(data["year"]) - int(mdd_row["MDD_year"]))
+                            distance = abs(
+                                int(row["Hesp_year"]) - int(mdd_row["MDD_year"])
+                            )
                         except ValueError:
                             distance = 1000
                         single_row["year_status"] = (
-                            f"{distance}: {data['year']} (H) /"
+                            f"{distance}: {row['Hesp_year']} (H) /"
                             f" {mdd_row['MDD_year']} (M)"
                         )
                         num_year_diffs += 1
@@ -553,7 +582,8 @@ def run(
                                 hesp_stripped = re.sub(
                                     r"[^0-9]", " ", hesp_type
                                 ).strip()
-                                mdd_stripped = re.sub(r"[^0-9]+", " ", mdd_type).strip()
+                                mdd_stripped = re.sub(r"[^0-9]+", " ", mdd_type)
+                                mdd_stripped = re.sub(r" +", " ", mdd_stripped).strip()
                                 if hesp_stripped != mdd_stripped:
                                     diff = f"number: ({hesp_stripped}/{mdd_stripped}) {diff}"
                                     num_number_diffs += 1

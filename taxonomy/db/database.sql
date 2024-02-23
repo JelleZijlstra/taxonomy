@@ -61,13 +61,15 @@ CREATE TABLE `name` (
     `author_tags` text default null,
     `original_rank` integer default null,
     `target` integer default null,
+    `original_parent` integer default null,
     PRIMARY KEY(`id`),
     INDEX(`original_name`),
     INDEX(`root_name`),
     INDEX(`taxon_id`),
     INDEX(`type_locality_id`),
     INDEX(`corrected_original_name`),
-    INDEX(`citation_group`)
+    INDEX(`citation_group`),
+    INDEX(`original_parent`)
 ) ENGINE=INNODB DEFAULT CHARSET=utf8;
 
 CREATE TABLE `region` (

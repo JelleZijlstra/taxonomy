@@ -141,6 +141,9 @@ class Name(BaseModel):
     original_rank = EnumField(constants.Rank, null=True)
 
     # Miscellaneous data
+    original_parent = ForeignKeyField(  # for species-group names
+        "self", null=True, db_column="original_parent", related_name="original_children"
+    )
     data = TextField(null=True)
     _definition = CharField(null=True, db_column="definition")
     tags = ADTField(lambda: NameTag, null=True, is_ordered=False)
@@ -154,6 +157,20 @@ class Name(BaseModel):
         ),
         get_tag_based_derived_field(
             "preoccupied_names", lambda: Name, "tags", lambda: NameTag.PreoccupiedBy, 1
+        ),
+        get_tag_based_derived_field(
+            "junior_primary_homonyms",
+            lambda: Name,
+            "tags",
+            lambda: NameTag.PrimaryHomonymOf,
+            1,
+        ),
+        get_tag_based_derived_field(
+            "junior_secondary_homonyms",
+            lambda: Name,
+            "tags",
+            lambda: NameTag.SecondaryHomonymOf,
+            1,
         ),
         get_tag_based_derived_field(
             "unjustified_emendations",
@@ -981,6 +998,31 @@ class Name(BaseModel):
     def is_unavailable(self) -> bool:
         return not self.nomenclature_status.can_preoccupy()
 
+    def can_preoccupy(self) -> bool:
+        if not self.nomenclature_status.can_preoccupy():
+            return False
+        if nam := self.get_variant_base_name():
+            return nam.can_preoccupy()
+        return True
+
+    def get_variant_base_name(self) -> Name | None:
+        for tag in self.tags:
+            if isinstance(
+                tag,
+                (
+                    NameTag.VariantOf,
+                    NameTag.UnjustifiedEmendationOf,
+                    NameTag.JustifiedEmendationOf,
+                    NameTag.NomenNovumFor,
+                    NameTag.IncorrectOriginalSpellingOf,
+                    NameTag.SubsequentUsageOf,
+                    NameTag.MandatoryChangeOf,
+                    NameTag.IncorrectSubsequentSpellingOf,
+                ),
+            ):
+                return tag.name
+        return None
+
     def is_high_mammal(self) -> bool:
         return (
             self.group is not Group.species
@@ -1161,17 +1203,23 @@ class Name(BaseModel):
         return nam
 
     def preoccupied_by(
-        self, name: Name | None = None, comment: str | None = None
+        self,
+        name: Name | None = None,
+        comment: str | None = None,
+        *,
+        tag: builtins.type[NameTag] | None = None,
     ) -> None:
         if name is None:
             name = Name.getter("corrected_original_name").get_one(prompt="name> ")
         if name is None:
             return
-        self.add_tag(NameTag.PreoccupiedBy(name, comment or ""))
+        if tag is None:
+            tag = NameTag.PreoccupiedBy
+        self.add_tag(tag(name, comment or ""))
         if self.nomenclature_status == NomenclatureStatus.available:
             self.nomenclature_status = NomenclatureStatus.preoccupied  # type: ignore
         else:
-            print(f"not changing status because it is {self.nomenclature_status}")
+            print(f"not changing status because it is {self.nomenclature_status!r}")
 
     def conserve(self, opinion: Article, comment: str | None = None) -> None:
         self.add_tag(NameTag.Conserved(opinion, comment or ""))
@@ -1677,6 +1725,12 @@ class Name(BaseModel):
                     yield "type"
                 if self.type is not None:
                     yield "genus_type_kind"
+        if (
+            self.group is Group.species
+            and self.corrected_original_name is not None
+            and self.nomenclature_status.requires_original_parent()
+        ):
+            yield "original_parent"
 
     def lint(
         self, cfg: LintConfig = LintConfig(autofix=False, interactive=False)
@@ -1828,6 +1882,71 @@ class Name(BaseModel):
                 self.root_name = computed
             return False
         return True
+
+    def get_normalized_root_name(self) -> str:
+        if self.species_name_complex is None:
+            return self.root_name
+        try:
+            return self.species_name_complex.get_form(
+                self.root_name, constants.GrammaticalGender.masculine
+            )
+        except ValueError:
+            return self.root_name
+
+    def get_normalized_root_name_for_homonymy(self) -> str:
+        if self.group is not Group.species:
+            return self.root_name
+        # See ICZN Art. 58: Certain names are considered equivalent for purposes of homonymy
+        root_name = self.get_normalized_root_name()
+        # 58.1. use of ae, oe or e (e.g. caeruleus, coeruleus, ceruleus)
+        root_name = root_name.replace("ae", "e").replace("oe", "e")
+        # 58.2. use of ei, i or y (e.g. cheiropus, chiropus, chyropus)
+        # 58.13. transcription of the semivowel i as y, ei, ej or ij (e.g. guianensis, guyanensis)
+        root_name = (
+            root_name.replace("ei", "i")
+            .replace("y", "i")
+            .replace("ij", "i")
+            .replace("ej", "i")
+        )
+        # 58.7. use of a single or double consonant (e.g. litoralis, littoralis)
+        # Applying this before 58.3 and 58.4 in case there are names with two j or v.
+        root_name = re.sub(r"(?![aeiouy])([a-z])\1", r"\1", root_name)
+        # 58.3. use of i or j for the same Latin letter (e.g. iavanus, javanus; maior, major)
+        root_name = root_name.replace("j", "i")
+        # 58.4. use of u or v for the same Latin letter (e.g. neura, nevra; miluina, milvina)
+        root_name = root_name.replace("v", "u")
+        # 58.5. use of c or k for the same letter (e.g. microdon, mikrodon)
+        root_name = root_name.replace("k", "c")
+        # 58.6. aspiration or non-aspiration of a consonant (e.g. oxyrhynchus, oxyrynchus)
+        # Assuming this refers only to rh, because there are separate rules for ch and th
+        root_name = root_name.replace("rh", "r")
+        # 58.8. presence or absence of c before t (e.g. auctumnalis, autumnalis)
+        root_name = root_name.replace("ct", "t")
+        # 58.9. use of f or ph (e.g. sulfureus, sulphureus)
+        root_name = root_name.replace("ph", "f")
+        # 58.10. use of ch or c (e.g. chloropterus, cloropterus)
+        root_name = root_name.replace("ch", "c")
+        # 58.11. use of th or t (e.g. thiara, tiara; clathratus, clatratus)
+        root_name = root_name.replace("th", "t")
+        # 58.12. use of different connecting vowels in compound words (e.g. nigricinctus, nigrocinctus)
+        # omitted for now
+        # 58.14. use of -i or -ii, -ae or -iae, -orum or -iorum, -arum or -iarum
+        # as the ending in a genitive based on the name of a person or persons,
+        # or a place, host or other entity associated with the taxon, or between
+        # the elements of a compound species-group name (e.g. smithi, smithii;
+        # patchae, patchiae; fasciventris, fasciiventris)
+        root_name = re.sub(r"ii$", "i", root_name)
+        root_name = re.sub(r"iae$", "ae", root_name)
+        root_name = re.sub(r"iorum$", "orum", root_name)
+        root_name = re.sub(r"iarum$", "arum", root_name)
+        # "fasciiventris"/"fasciventris" omitted for now
+        # 58.15. presence or absence of -i before a suffix or termination (e.g. timorensis, timoriensis; comstockana, comstockiana)
+        root_name = re.sub(r"iensis$", "ensis", root_name)
+        root_name = re.sub(r"ianus$", "anus", root_name)
+        # Adding one: "monticola" vs. "monticolus", where one is interpreted as an
+        # adjective and the other as a noun in apposition.
+        root_name = re.sub(r"(a|um)$", "us", root_name)
+        return root_name
 
     def short_description(self) -> str:
         return self.root_name
@@ -2369,6 +2488,14 @@ class NameTag(adt.ADT):
     # Not required, used when the name can't have the "as_emended" nomenclature status
     AsEmendedBy(name=Name, comment=NotRequired[str], tag=21)  # type: ignore
     NameCombinationOf(name=Name, comment=NotRequired[str], tag=22)  # type: ignore
+
+    # These replace PreoccupiedBy for species-group names
+    PrimaryHomonymOf(name=Name, comment=NotRequired[str], tag=23)  # type: ignore
+    SecondaryHomonymOf(name=Name, comment=NotRequired[str], tag=24)  # type: ignore
+
+    # Used if another name does not preoccupy a name (e.g., because it is unavailable
+    # or spelled differently), but there are suggestions in the literature that it is.
+    NotPreoccupiedBy(name=Name, comment=NotRequired[str], tag=25)  # type: ignore
 
 
 CONSTRUCTABLE_STATUS_TO_TAG = {

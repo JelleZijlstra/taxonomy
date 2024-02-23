@@ -235,6 +235,7 @@ class NomenclatureStatus(enum.IntEnum):
             NomenclatureStatus.partially_suppressed,
             NomenclatureStatus.nomen_novum,
             NomenclatureStatus.as_emended,
+            NomenclatureStatus.infrasubspecific,
         }
 
     def requires_name_complex(self) -> bool:
@@ -258,6 +259,15 @@ class NomenclatureStatus(enum.IntEnum):
             NomenclatureStatus.unpublished_electronic,
             NomenclatureStatus.unpublished_supplement,
             NomenclatureStatus.unpublished_pending,
+        }
+
+    def requires_original_parent(self) -> bool:
+        return self not in {
+            NomenclatureStatus.not_intended_as_a_scientific_name,
+            NomenclatureStatus.inconsistently_binominal,
+            NomenclatureStatus.not_published_with_a_generic_name,
+            NomenclatureStatus.before_1758,
+            NomenclatureStatus.informal,
         }
 
     def permissive_corrected_original_name(self) -> bool:
