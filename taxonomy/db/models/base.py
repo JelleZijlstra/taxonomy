@@ -1078,6 +1078,7 @@ class BaseModel(Model):
             self.display()
             self.edit()
             self = self.reload()
+            self.format()
 
     @classmethod
     def get_completers_for_adt_field(cls, field: str) -> getinput.CompleterMap:

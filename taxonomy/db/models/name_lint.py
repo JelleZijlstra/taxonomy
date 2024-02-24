@@ -41,7 +41,7 @@ from ..constants import (
 from .article import Article, ArticleTag, PresenceStatus
 from .base import LintConfig
 from .collection import BMNH_COLLECTION, MULTIPLE_COLLECTION, Collection
-from .name import STATUS_TO_TAG, Name, NameComment, NameTag, TypeTag
+from .name import PREOCCUPIED_TAGS, STATUS_TO_TAG, Name, NameComment, NameTag, TypeTag
 from .organ import CHECKED_ORGANS, ParsedOrgan, ParseException, parse_organ_detail
 from .person import AuthorTag, PersonLevel
 from .taxon import Taxon
@@ -950,11 +950,81 @@ def clean_up_bmnh_type(text: str) -> str:
     return text
 
 
-PREOCCUPIED_TAGS = (
-    NameTag.PreoccupiedBy,
-    NameTag.PrimaryHomonymOf,
-    NameTag.SecondaryHomonymOf,
-)
+TAG_TO_STATUS = {
+    **{tag: status for status, tag in STATUS_TO_TAG.items()},
+    NameTag.FullySuppressedBy: NomenclatureStatus.fully_suppressed,
+    NameTag.PartiallySuppressedBy: NomenclatureStatus.partially_suppressed,
+    NameTag.AsEmendedBy: NomenclatureStatus.as_emended,
+}
+
+
+def _check_preoccupation_tag(tag: NameTag, nam: Name) -> Generator[str, None, NameTag]:
+    senior_name = tag.name
+    new_tag = tag
+    if nam.group != senior_name.group:
+        yield f"is of a different group than supposed senior name {senior_name}"
+    if senior_name.nomenclature_status is NomenclatureStatus.subsequent_usage:
+        for senior_name_tag in senior_name.get_tags(
+            senior_name.tags, NameTag.SubsequentUsageOf
+        ):
+            senior_name = senior_name_tag.name
+    if senior_name.nomenclature_status is NomenclatureStatus.name_combination:
+        for senior_name_tag in senior_name.get_tags(
+            senior_name.tags, NameTag.NameCombinationOf
+        ):
+            senior_name = senior_name_tag.name
+    if nam.get_date_object() < senior_name.get_date_object():
+        yield f"predates supposed senior name {senior_name}"
+    if nam.group is Group.species:
+        if nam.original_parent is None:
+            my_original = None
+        else:
+            my_original = _resolve_original_parent(nam.original_parent, depth=0)
+        if senior_name.original_parent is None:
+            senior_original = None
+        else:
+            senior_original = _resolve_original_parent(
+                senior_name.original_parent, depth=0
+            )
+        if isinstance(tag, NameTag.PrimaryHomonymOf):
+            if my_original is None:
+                yield f"{nam} is marked as a primary homonym of {senior_name}, but has no original genus"
+            elif senior_original is None:
+                yield f"{senior_name} is marked as a primary homonym, but has no original genus"
+            elif my_original != senior_original:
+                yield (
+                    f"{nam} is marked as a primary homonym of {senior_name}, but has a"
+                    f" different original genus ({my_original} vs. {senior_original})"
+                )
+        elif isinstance(tag, NameTag.SecondaryHomonymOf):
+            if my_original is not None and my_original == senior_original:
+                yield (
+                    f"{nam} is marked as a secondary homonym of {senior_name}, but has"
+                    " the same original genus, so it should be marked as a primary homonym instead"
+                )
+                new_tag = NameTag.PrimaryHomonymOf(tag.name, tag.comment)
+            my_genus = _get_parent(nam)
+            senior_genus = _get_parent(senior_name)
+            if my_genus != senior_genus:
+                yield (
+                    f"{nam} is marked as a secondary homonym of {senior_name}, but is not currently placed in the same genus"
+                )
+        elif isinstance(tag, NameTag.PreoccupiedBy):
+            if my_original is not None and my_original == senior_original:
+                new_tag = NameTag.PrimaryHomonymOf(tag.name, tag.comment)
+            elif _get_parent(nam) == _get_parent(senior_name):
+                new_tag = NameTag.SecondaryHomonymOf(tag.name, tag.comment)
+    else:
+        if isinstance(tag, (NameTag.PrimaryHomonymOf, NameTag.SecondaryHomonymOf)):
+            yield f"{nam} is not a species-group name, but uses {type(tag).__name__} tag"
+    if (
+        nam.get_normalized_root_name_for_homonymy()
+        != senior_name.get_normalized_root_name_for_homonymy()
+    ):
+        yield ("has a different root name than supposed senior name" f" {senior_name}")
+    if not senior_name.can_preoccupy():
+        yield f"senior name {senior_name} is not available"
+    return new_tag
 
 
 @make_linter("tags")
@@ -968,87 +1038,11 @@ def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if not tags:
         return
 
-    status_to_priority = {}
-    for priority, statuses in enumerate(NomenclatureStatus.hierarchy()):
-        for status in statuses:
-            status_to_priority[status] = priority
-
-    def maybe_adjust_status(nam: Name, status: NomenclatureStatus, tag: object) -> None:
-        current_priority = status_to_priority[nam.nomenclature_status]
-        new_priority = status_to_priority[status]
-        if current_priority > new_priority:
-            comment = (
-                f"Status automatically changed from {nam.nomenclature_status.name} to"
-                f" {status.name} because of {tag}"
-            )
-            print(f"changing status of {nam} and adding comment {comment!r}")
-            if cfg.autofix:
-                nam.add_static_comment(CommentKind.automatic_change, comment)
-                nam.nomenclature_status = status  # type: ignore
-
     new_tags = []
     for tag in tags:
+        new_tag: NameTag | None = tag
         if isinstance(tag, PREOCCUPIED_TAGS):
-            maybe_adjust_status(nam, NomenclatureStatus.preoccupied, tag)
-            senior_name = tag.name
-            new_tag = tag
-            if nam.group != senior_name.group:
-                yield (
-                    f"is of a different group than supposed senior name {senior_name}"
-                )
-            if senior_name.nomenclature_status is NomenclatureStatus.subsequent_usage:
-                for senior_name_tag in senior_name.get_tags(
-                    senior_name.tags, NameTag.SubsequentUsageOf
-                ):
-                    senior_name = senior_name_tag.name
-            if senior_name.nomenclature_status is NomenclatureStatus.name_combination:
-                for senior_name_tag in senior_name.get_tags(
-                    senior_name.tags, NameTag.NameCombinationOf
-                ):
-                    senior_name = senior_name_tag.name
-            if nam.get_date_object() < senior_name.get_date_object():
-                yield f"predates supposed senior name {senior_name}"
-            if nam.group is Group.species:
-                if isinstance(tag, NameTag.PrimaryHomonymOf):
-                    if nam.original_parent != senior_name.original_parent:
-                        yield (
-                            f"{nam} is marked as a primary homonym of {senior_name}, but has a"
-                            " different original genus"
-                        )
-                elif isinstance(tag, NameTag.SecondaryHomonymOf):
-                    if nam.original_parent == senior_name.original_parent:
-                        yield (
-                            f"{nam} is marked as a secondary homonym of {senior_name}, but has"
-                            " the same original genus, so it should be marked as a primary homonym instead"
-                        )
-                        new_tag = NameTag.PrimaryHomonymOf(tag.name, tag.comment)
-                    my_genus = _get_parent(nam)
-                    senior_genus = _get_parent(senior_name)
-                    if my_genus != senior_genus:
-                        yield (
-                            f"{nam} is marked as a secondary homonym of {senior_name}, but is not currently placed in the same genus"
-                        )
-                elif isinstance(tag, NameTag.PreoccupiedBy):
-                    if nam.original_parent == senior_name.original_parent:
-                        new_tag = NameTag.PrimaryHomonymOf(tag.name, tag.comment)
-                    elif _get_parent(nam) == _get_parent(senior_name):
-                        new_tag = NameTag.SecondaryHomonymOf(tag.name, tag.comment)
-            else:
-                if isinstance(
-                    tag, (NameTag.PrimaryHomonymOf, NameTag.SecondaryHomonymOf)
-                ):
-                    yield f"{nam} is not a species-group name, but uses {type(tag).__name__} tag"
-            if (
-                nam.get_normalized_root_name_for_homonymy()
-                != senior_name.get_normalized_root_name_for_homonymy()
-            ):
-                yield (
-                    "has a different root name than supposed senior name"
-                    f" {senior_name}"
-                )
-            if not senior_name.can_preoccupy():
-                yield f"senior name {senior_name} is not available"
-            new_tags.append(new_tag)
+            new_tag = yield from _check_preoccupation_tag(tag, nam)
         elif isinstance(
             tag,
             (
@@ -1061,9 +1055,6 @@ def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 NameTag.NameCombinationOf,
             ),
         ):
-            for status, tag_cls in STATUS_TO_TAG.items():
-                if isinstance(tag, tag_cls):
-                    maybe_adjust_status(nam, status, tag)
             if nam.get_date_object() < tag.name.get_date_object():
                 yield f"predates supposed original name {tag.name}"
             if isinstance(tag, NameTag.SubsequentUsageOf):
@@ -1077,27 +1068,11 @@ def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                         " usage, because it is assigned to the same taxon as its"
                         f" target {tag.name}"
                     )
-                    if (
-                        cfg.autofix
-                        and nam.nomenclature_status
-                        is NomenclatureStatus.subsequent_usage
-                    ):
-                        new_tags = [
-                            *[t for t in nam.tags if t != tag],
-                            NameTag.NameCombinationOf(tag.name, tag.comment),
-                        ]
-                        nam.tags = new_tags  # type: ignore
-                        nam.nomenclature_status = NomenclatureStatus.name_combination  # type: ignore
+                    new_tag = NameTag.NameCombinationOf(tag.name, tag.comment)
             else:
                 if nam.taxon != tag.name.taxon:
                     yield f"{nam} is not assigned to the same name as {tag.name}"
-            new_tags.append(tag)
-        elif isinstance(tag, NameTag.PartiallySuppressedBy):
-            maybe_adjust_status(nam, NomenclatureStatus.partially_suppressed, tag)
-            new_tags.append(tag)
-        elif isinstance(tag, NameTag.FullySuppressedBy):
-            maybe_adjust_status(nam, NomenclatureStatus.fully_suppressed, tag)
-            new_tags.append(tag)
+
         elif isinstance(tag, NameTag.Conserved):
             if nam.nomenclature_status not in (
                 NomenclatureStatus.available,
@@ -1106,10 +1081,22 @@ def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 NomenclatureStatus.preoccupied,
             ):
                 yield f"{nam} is on the Official List, but is not marked as available."
-            new_tags.append(tag)
-        else:
-            new_tags.append(tag)
+
+        elif isinstance(tag, NameTag.Condition):
+            if tag.status in get_inherent_nomenclature_statuses(nam):
+                yield f"has redundant Condition tag for {tag.status.name}"
+                if not tag.comment:
+                    new_tag = None
+            elif tag.status in get_applicable_nomenclature_statuses_from_tags(
+                nam, exclude_condition=True
+            ):
+                yield f"has Condition tag for {tag.status.name}, but already has a more specific tag"
+                if not tag.comment:
+                    new_tag = None
+
         # haven't handled TakesPriorityOf, NomenOblitum, MandatoryChangeOf
+        if new_tag is not None:
+            new_tags.append(new_tag)
 
     if tuple(new_tags) != tags:
         message = f"changing tags from {tags} to {new_tags}"
@@ -1128,16 +1115,68 @@ def _get_parent(nam: Name, rank: Rank = Rank.genus) -> Taxon | None:
         return None
 
 
-@make_linter("required_tags")
-def check_required_tags(nam: Name, cfg: LintConfig) -> Iterable[str]:
-    if nam.nomenclature_status is NomenclatureStatus.preoccupied:
-        if not any(isinstance(tag, PREOCCUPIED_TAGS) for tag in nam.tags):
-            yield "is preoccupied but has no corresponding tag"
-    elif nam.nomenclature_status in STATUS_TO_TAG:
-        tag_cls = STATUS_TO_TAG[nam.nomenclature_status]
-        tags = list(nam.get_tags(nam.tags, tag_cls))
-        if not tags:
-            yield f"has status {nam.nomenclature_status.name} but no corresponding tag"
+def get_applicable_nomenclature_statuses_from_tags(
+    nam: Name, *, exclude_condition: bool = False
+) -> Iterable[NomenclatureStatus]:
+    for tag in nam.tags:
+        if not exclude_condition and isinstance(tag, NameTag.Condition):
+            yield tag.status
+        elif isinstance(tag, PREOCCUPIED_TAGS):
+            yield NomenclatureStatus.preoccupied
+        elif type(tag) in TAG_TO_STATUS:
+            yield TAG_TO_STATUS[type(tag)]
+
+
+def get_applicable_nomenclature_statuses(nam: Name) -> Iterable[NomenclatureStatus]:
+    yield from get_applicable_nomenclature_statuses_from_tags(nam)
+    yield from get_inherent_nomenclature_statuses(nam)
+
+
+def get_inherent_nomenclature_statuses(nam: Name) -> Iterable[NomenclatureStatus]:
+    # Allow 1757 because of spiders
+    if nam.year is not None and nam.numeric_year() < 1757:
+        yield NomenclatureStatus.before_1758
+    if nam.original_citation is not None:
+        if nam.original_citation.has_tag(ArticleTag.UnavailableElectronic):
+            yield NomenclatureStatus.unpublished_electronic
+        if nam.original_citation.has_tag(ArticleTag.InPress):
+            yield NomenclatureStatus.unpublished_pending
+        if nam.original_citation.type is ArticleType.THESIS:
+            yield NomenclatureStatus.unpublished_thesis
+
+
+@functools.cache
+def _get_status_priorities() -> dict[NomenclatureStatus, int]:
+    status_to_priority = {}
+    i = 0
+    for statuses in NomenclatureStatus.hierarchy():
+        for status in statuses:
+            status_to_priority[status] = i
+            i += 1
+    return status_to_priority
+
+
+@make_linter("expected_nomenclature_status")
+def check_expected_nomenclature_status(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    """Check if the nomenclature status is as expected."""
+    priority_map = _get_status_priorities()
+    applicable = get_applicable_nomenclature_statuses(nam)
+    expected_status = min(
+        applicable,
+        key=lambda status: priority_map[status],
+        default=NomenclatureStatus.available,
+    )
+
+    if nam.nomenclature_status is not expected_status:
+        message = (
+            f"has status {nam.nomenclature_status.name}, but expected"
+            f" {expected_status.name}"
+        )
+        if cfg.autofix:
+            print(f"{nam}: {message}")
+            nam.nomenclature_status = expected_status  # type: ignore[assignment]
+        else:
+            yield message
 
 
 @make_linter("lsid")
@@ -1203,40 +1242,6 @@ def check_year_matches(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.original_citation is None:
         return
 
-    if nam.original_citation.has_tag(
-        ArticleTag.UnavailableElectronic
-    ) and nam.nomenclature_status not in (
-        NomenclatureStatus.unpublished_electronic,
-        NomenclatureStatus.unpublished_pending,
-    ):
-        yield (
-            "was published in unavailable electronic-only publication and should be"
-            " marked as unpublished_electronic"
-        )
-        if cfg.autofix:
-            nam.nomenclature_status = NomenclatureStatus.unpublished_electronic  # type: ignore
-    elif nam.nomenclature_status in (
-        NomenclatureStatus.unpublished_electronic,
-        NomenclatureStatus.unpublished_pending,
-    ) and not nam.original_citation.has_tag(ArticleTag.UnavailableElectronic):
-        yield (
-            "is marked as unpublished_electronic, but original citation is not marked"
-            " accordingly"
-        )
-
-    if (
-        nam.original_citation.type is ArticleType.THESIS
-        and nam.nomenclature_status is not NomenclatureStatus.unpublished_thesis
-    ):
-        yield "was published in a thesis and should be marked as unpublished_thesis"
-        if cfg.autofix:
-            nam.nomenclature_status = NomenclatureStatus.unpublished_thesis  # type: ignore
-    elif (
-        nam.nomenclature_status is NomenclatureStatus.unpublished_thesis
-        and nam.original_citation.type is not ArticleType.THESIS
-    ):
-        yield "is marked as unpublished_thesis, but was not published in a thesis"
-
     if nam.year != nam.original_citation.year:
         if cfg.autofix and helpers.is_more_specific_date(
             nam.original_citation.year, nam.year
@@ -1269,24 +1274,6 @@ def check_disallowed_attributes(nam: Name, cfg: LintConfig) -> Iterable[str]:
             value = getattr(nam, field_name)
             if value is not None:
                 yield f"should not have attribute {field_name} (value {value})"
-    if (
-        nam.species_name_complex is not None
-        and not nam.nomenclature_status.requires_name_complex()
-    ):
-        message = (
-            f"is of status {nam.nomenclature_status.name} and should not have a"
-            " name complex"
-        )
-        if cfg.autofix:
-            print(f"{nam}: {message}")
-            nam.add_data(
-                "species_name_complex",
-                nam.species_name_complex.id,
-                concat_duplicate=True,
-            )
-            nam.species_name_complex = None
-        else:
-            yield message
 
 
 def _make_con_messsage(nam: Name, text: str) -> str:
@@ -2144,10 +2131,8 @@ def check_composites(nam: Name, cfg: LintConfig) -> Iterable[str]:
 
 
 # TODO:
-# - Account for "nearly homonymous" names (see get_normalized_root_name_for_homonymy method)
-#   This should probably be a separate check, so we can lint-ignore it specifically in
-#   cases where it's not relevant.
 # - Add homonymy check for genus-group names
+# - Remove/lint against NotPreoccupiedBy if it *is* preoccupied
 @make_linter("species_secondary_homonym")
 def check_species_group_secondary_homonyms(nam: Name, cfg: LintConfig) -> Iterable[str]:
     yield from _check_species_group_homonyms(nam, primary=False, fuzzy=False, cfg=cfg)
@@ -2418,6 +2403,66 @@ def _get_inferred_original_parent(nam: Name) -> list[Name]:
 
     # Else give up.
     return possible_genera
+
+
+class Possibility(enum.Enum):
+    yes = "yes"
+    no = "no"
+    maybe = "maybe"
+
+
+def _contains_one_of_words(name: str, words: Iterable[str]) -> bool:
+    return bool(re.search(rf"\b({'|'.join(words)})\b", name.lower()))
+
+
+def _is_variety_or_form(nam: Name) -> bool:
+    if nam.original_name is None:
+        return False
+    return _contains_one_of_words(
+        nam.original_name, ("variety", "form", "var", "forma", "v", "f")
+    )
+
+
+def should_be_infrasubspecific(nam: Name) -> Possibility:
+    if nam.original_name is None or nam.corrected_original_name is None:
+        return Possibility.maybe
+    num_words = len(nam.corrected_original_name.split())
+    match num_words:
+        case 2:
+            return Possibility.no
+        case 3:
+            # Art. 45.6.2
+            if _contains_one_of_words(
+                nam.original_name, ("aberration", "aber", "aberr", "morph")
+            ):
+                return Possibility.yes
+            if nam.numeric_year() > 1960 and _is_variety_or_form(nam):
+                return Possibility.yes
+            return Possibility.maybe
+        case 4:
+            return Possibility.yes
+        case _:
+            return Possibility.maybe
+    assert False, "unreachable"
+
+
+@make_linter("infrasubspecific")
+def check_infrasubspecific(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    if nam.nomenclature_status is NomenclatureStatus.infrasubspecific:
+        if nam.group is not Group.species:
+            yield "is infrasubspecific but not of group species"
+            return
+        status = should_be_infrasubspecific(nam)
+        if status is Possibility.no:
+            yield "is infrasubspecific but should not be"
+    # TODO implement "condition" idea and expand to other nomenclature statuses
+    elif (
+        nam.group is Group.species
+        and nam.nomenclature_status is NomenclatureStatus.available
+    ):
+        status = should_be_infrasubspecific(nam)
+        if status is Possibility.yes:
+            yield "should be infrasubspecific but is not"
 
 
 def run_linters(

@@ -235,7 +235,6 @@ class NomenclatureStatus(enum.IntEnum):
             NomenclatureStatus.partially_suppressed,
             NomenclatureStatus.nomen_novum,
             NomenclatureStatus.as_emended,
-            NomenclatureStatus.infrasubspecific,
         }
 
     def requires_name_complex(self) -> bool:
@@ -296,12 +295,12 @@ class NomenclatureStatus(enum.IntEnum):
             [cls.unlisted],
             # If the work is invalid, we don't need to worry about the exact status of names.
             [
-                cls.unpublished,
+                cls.before_1758,
+                cls.inconsistently_binominal,
                 cls.unpublished_thesis,
                 cls.unpublished_electronic,
                 cls.unpublished_supplement,
-                cls.before_1758,
-                cls.inconsistently_binominal,
+                cls.unpublished,
             ],
             # Clear problems with the name itself.
             [

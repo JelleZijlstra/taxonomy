@@ -645,6 +645,8 @@ class Name(BaseModel):
             "add_variant": self.add_variant,
             "add_nomen_nudum": lambda: self.add_nomen_nudum(interactive=True),
             "preoccupied_by": self.preoccupied_by,
+            "not_preoccupied_by": self.not_preoccupied_by,
+            "add_condition": self.add_condition,
             "display_type_locality": (
                 lambda: self.type_locality and self.type_locality.display()
             ),
@@ -1013,7 +1015,6 @@ class Name(BaseModel):
                     NameTag.VariantOf,
                     NameTag.UnjustifiedEmendationOf,
                     NameTag.JustifiedEmendationOf,
-                    NameTag.NomenNovumFor,
                     NameTag.IncorrectOriginalSpellingOf,
                     NameTag.SubsequentUsageOf,
                     NameTag.MandatoryChangeOf,
@@ -1220,6 +1221,39 @@ class Name(BaseModel):
             self.nomenclature_status = NomenclatureStatus.preoccupied  # type: ignore
         else:
             print(f"not changing status because it is {self.nomenclature_status!r}")
+
+    def not_preoccupied_by(
+        self, name: Name | None = None, comment: str | None = None
+    ) -> None:
+        if name is None:
+            getter = Name.getter("corrected_original_name")
+            for tag in self.tags:
+                if (
+                    isinstance(tag, PREOCCUPIED_TAGS)
+                    and tag.name.corrected_original_name is not None
+                ):
+                    getinput.append_history(getter, tag.name.corrected_original_name)
+            name = getter.get_one(prompt="name> ")
+        if name is None:
+            return
+        tags = list(self.tags)
+        tags = [
+            tag
+            for tag in tags
+            if not (isinstance(tag, PREOCCUPIED_TAGS) and tag.name == name)
+        ]
+        tags.append(NameTag.NotPreoccupiedBy(name, comment or ""))
+        getinput.print_diff(self.tags, tags)
+        self.tags = tags  # type: ignore[assignment]
+
+    def add_condition(self, status: NomenclatureStatus | None = None) -> None:
+        if status is None:
+            status = getinput.get_enum_member(
+                NomenclatureStatus, prompt="nomenclature_status> "
+            )
+        if status is None:
+            return
+        self.add_tag(NameTag.Condition(status, ""))
 
     def conserve(self, opinion: Article, comment: str | None = None) -> None:
         self.add_tag(NameTag.Conserved(opinion, comment or ""))
@@ -2497,6 +2531,9 @@ class NameTag(adt.ADT):
     # or spelled differently), but there are suggestions in the literature that it is.
     NotPreoccupiedBy(name=Name, comment=NotRequired[str], tag=25)  # type: ignore
 
+    # An arbitrary nomenclature status that is applicable to this name.
+    Condition(status=NomenclatureStatus, comment=NotRequired[str], tag=26)  # type: ignore
+
 
 CONSTRUCTABLE_STATUS_TO_TAG = {
     NomenclatureStatus.unjustified_emendation: NameTag.UnjustifiedEmendationOf,
@@ -2515,6 +2552,11 @@ STATUS_TO_TAG = {
     **CONSTRUCTABLE_STATUS_TO_TAG,
     NomenclatureStatus.justified_emendation: NameTag.JustifiedEmendationOf,
 }
+PREOCCUPIED_TAGS = (
+    NameTag.PreoccupiedBy,
+    NameTag.PrimaryHomonymOf,
+    NameTag.SecondaryHomonymOf,
+)
 
 
 class TypeTag(adt.ADT):

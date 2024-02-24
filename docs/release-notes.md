@@ -16,11 +16,17 @@ exports released on Zenodo.
     mammals
   - Add full authority citations for many more names
   - Set the _page_described_ field for several thousand more names.
+  - Move to a more consistent format for type specimens. All type specimen references
+    now start with the institution code.
+  - Mark numerous names as junior homonyms.
 - Backend
   - Add support for ORCID identifiers (though they are currently set for very few
     people)
   - Enforce that collection labels consist only of letters and that type specimen
     references start with the corresponding collection label
+  - Automatically detect species-group homonyms. Distinguish between primary and
+    secondary homonyms.
+  - Revamp system for computing the nomenclatural status of names.
 - Frontend
   - Add option to show names in a taxon that are missing a field
 

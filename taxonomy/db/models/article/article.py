@@ -1332,6 +1332,8 @@ class ArticleTag(adt.ADT):
     # Electronic-only publication that is not available according to the ICZN
     # (e.g., it doesn't have an LSID present in the article)
     UnavailableElectronic(comment=NotRequired[str], tag=17)  # type: ignore
+    # Like UnavailableElectronic, but expected to be available in the future
+    InPress(comment=NotRequired[str], tag=18)  # type: ignore
 
 
 @lru_cache
