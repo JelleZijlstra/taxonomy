@@ -9,7 +9,8 @@ from typing import IO, TypedDict
 
 from taxonomy import getinput
 from taxonomy.db import constants
-from taxonomy.db.models import Article, Collection, Name, TypeTag, type_specimen
+from taxonomy.db.models import Article, Collection, Name, TypeTag
+from taxonomy.db.models.name import type_specimen
 
 from .lib import DATA_DIR, get_type_specimens
 

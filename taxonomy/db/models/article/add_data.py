@@ -17,10 +17,11 @@ from typing import Any
 import requests
 from bs4 import BeautifulSoup
 
-from .... import command_set, config, getinput, parsing, uitools
-from ...constants import ArticleKind, ArticleType, DateSource
-from ...helpers import clean_string, clean_strings_recursively, trimdoi
-from ...url_cache import CacheDomain, cached, dirty_cache
+from taxonomy import command_set, config, getinput, parsing, uitools
+from taxonomy.db.constants import ArticleKind, ArticleType, DateSource
+from taxonomy.db.helpers import clean_string, clean_strings_recursively, trimdoi
+from taxonomy.db.url_cache import CacheDomain, cached, dirty_cache
+
 from ..citation_group import CitationGroup, CitationGroupTag
 from ..person import AuthorTag, Person
 from .article import Article, ArticleTag

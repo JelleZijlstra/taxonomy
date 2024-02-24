@@ -8,8 +8,9 @@ import csv
 from collections.abc import Container
 from typing import Protocol, TypedDict
 
-from .. import getinput
-from ..command_set import CommandSet
+from taxonomy import getinput
+from taxonomy.command_set import CommandSet
+
 from .constants import AgeClass, Group, Rank, RegionKind
 from .models import Article, Collection, Name, Occurrence, Taxon
 from .models.name import TypeTag

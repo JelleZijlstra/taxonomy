@@ -199,7 +199,7 @@ class Person(BaseModel):
         DerivedField(
             "ordered_names",
             LazyType(lambda: list[models.Name]),
-            lambda pers: models.name.get_ordered_names(
+            lambda pers: models.name.name.get_ordered_names(
                 pers.get_derived_field("names_all")
             ),
         ),

@@ -12,8 +12,8 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from typing import Literal, assert_never, cast, get_args
 
-from .. import helpers
-from ..constants import SpecimenOrgan
+from taxonomy.db import helpers
+from taxonomy.db.constants import SpecimenOrgan
 
 LONG_BONES = (
     SpecimenOrgan.fibula,

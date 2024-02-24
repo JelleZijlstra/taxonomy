@@ -1,4 +1,4 @@
-from .name_lint import parse_date
+from .lint import parse_date
 
 
 def test_parse_date() -> None:

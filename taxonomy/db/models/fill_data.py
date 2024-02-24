@@ -4,6 +4,8 @@ System for ensuring that names with original citations have their data filled ou
 
 """
 
+from __future__ import annotations
+
 from collections.abc import Iterable, Sequence
 
 import peewee
@@ -11,9 +13,10 @@ import peewee
 from taxonomy import getinput
 from taxonomy.command_set import CommandSet
 from taxonomy.db import models
+from taxonomy.db.constants import ArticleKind, FillDataLevel
 
-from ..constants import ArticleKind, FillDataLevel
 from .article import Article, ArticleTag
+from .base import BaseModel
 from .citation_group import CitationGroup
 from .person import Person
 
@@ -22,14 +25,14 @@ DEFAULT_LEVEL = FillDataLevel.missing_required_fields
 _finished_papers: set[tuple[str, FillDataLevel]] = set()
 
 
-def _name_sort_key(nam: "models.Name") -> tuple[str, int]:
+def _name_sort_key(nam: models.Name) -> tuple[str, int]:
     try:
         return ("", nam.numeric_page_described())
     except (TypeError, ValueError):
         return (nam.page_described or "", 0)
 
 
-def get_names(paper: Article) -> list["models.Name"]:
+def get_names(paper: Article) -> list[models.Name]:
     return sorted(
         models.Name.select_valid().filter(models.Name.original_citation == paper),
         key=_name_sort_key,
@@ -149,7 +152,7 @@ def fill_data_from_articles(
 
 
 def fill_data_for_names(
-    nams: Iterable["models.Name"],
+    nams: Iterable[models.Name],
     *,
     min_year: int | None = None,
     field: str | None = None,
@@ -247,7 +250,7 @@ def display_names(
 
 
 def _fill_data_level_for_name(
-    nam: "models.Name", desired_level: FillDataLevel | None = None
+    nam: models.Name, desired_level: FillDataLevel | None = None
 ) -> FillDataLevel:
     if desired_level is None:
         return nam.get_derived_field("fill_data_level", force_recompute=True)
@@ -270,8 +273,8 @@ def fill_data_from_paper_interactive(
     should_open: bool = True,
 ) -> None:
     if paper is None:
-        paper = models.BaseModel.get_value_for_foreign_class(
-            "paper", models.Article, allow_none=False
+        paper = BaseModel.get_value_for_foreign_class(
+            "paper", Article, allow_none=False
         )
     assert paper is not None, "paper needs to be specified"
     fill_data_from_paper(
@@ -305,14 +308,14 @@ def fill_data_from_author(
 
 @CS.register
 def fill_data_for_children(
-    paper: models.Article | None = None,
+    paper: Article | None = None,
     level: FillDataLevel = FillDataLevel.max_level(),
     skip_nofile: bool = False,
     only_fill_cache: bool = False,
 ) -> None:
     if paper is None:
-        paper = models.BaseModel.get_value_for_foreign_class(
-            "paper", models.Article, allow_none=False
+        paper = BaseModel.get_value_for_foreign_class(
+            "paper", Article, allow_none=False
         )
     assert paper is not None, "paper needs to be specified"
     children = sorted(
@@ -465,5 +468,5 @@ def edit_names_from_article(
         if art is None:
             return
     art.display_names()
-    models.fill_data.edit_names_interactive(art, field=field)
+    edit_names_interactive(art, field=field)
     fill_data_from_paper(art)

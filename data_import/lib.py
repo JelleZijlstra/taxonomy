@@ -1278,9 +1278,9 @@ def write_to_db(
                     )
                 else:
                     nam.add_tag(
-                        models.name.CONSTRUCTABLE_STATUS_TO_TAG[name["variant_kind"]](
-                            name=name["variant_target"], comment=comment
-                        )
+                        models.name.name.CONSTRUCTABLE_STATUS_TO_TAG[
+                            name["variant_kind"]
+                        ](name=name["variant_target"], comment=comment)
                     )
 
         for attr in (
@@ -1520,19 +1520,24 @@ def get_type_specimens(*colls: models.Collection) -> dict[str, list[models.Name]
         for nam in coll.type_specimens:
             if nam.type_specimen is None:
                 continue
-            for spec in models.type_specimen.parse_type_specimen(nam.type_specimen):
-                if isinstance(spec, models.type_specimen.Specimen):
+            for spec in models.name.type_specimen.parse_type_specimen(
+                nam.type_specimen
+            ):
+                if isinstance(spec, models.name.type_specimen.Specimen):
                     output[spec.base.stringify()].append(nam)
         for nam in coll.get_derived_field("former_specimens") or ():
             if nam.type_specimen is None:
                 continue
-            for spec in models.type_specimen.parse_type_specimen(nam.type_specimen):
-                if isinstance(spec, models.type_specimen.SpecimenRange):
+            for spec in models.name.type_specimen.parse_type_specimen(
+                nam.type_specimen
+            ):
+                if isinstance(spec, models.name.type_specimen.SpecimenRange):
                     continue
                 for former_spec in spec.former_texts:
                     if (
                         not isinstance(
-                            former_spec, models.type_specimen.InformalWithoutInstitution
+                            former_spec,
+                            models.name.type_specimen.InformalWithoutInstitution,
                         )
                         and former_spec.institution_code == coll.label
                     ):
@@ -1540,8 +1545,10 @@ def get_type_specimens(*colls: models.Collection) -> dict[str, list[models.Name]
         for nam in coll.get_derived_field("future_specimens") or ():
             if nam.type_specimen is None:
                 continue
-            for spec in models.type_specimen.parse_type_specimen(nam.type_specimen):
-                if isinstance(spec, models.type_specimen.SpecimenRange):
+            for spec in models.name.type_specimen.parse_type_specimen(
+                nam.type_specimen
+            ):
+                if isinstance(spec, models.name.type_specimen.SpecimenRange):
                     continue
                 for future_spec in spec.future_texts:
                     if future_spec.institution_code == coll.label:
@@ -1549,8 +1556,10 @@ def get_type_specimens(*colls: models.Collection) -> dict[str, list[models.Name]
         for nam in coll.get_derived_field("extra_specimens") or ():
             if nam.type_specimen is None:
                 continue
-            for spec in models.type_specimen.parse_type_specimen(nam.type_specimen):
-                if isinstance(spec, models.type_specimen.SpecimenRange):
+            for spec in models.name.type_specimen.parse_type_specimen(
+                nam.type_specimen
+            ):
+                if isinstance(spec, models.name.type_specimen.SpecimenRange):
                     continue
                 for extra_spec in spec.extra_texts:
                     if extra_spec.institution_code == coll.label:
@@ -1559,9 +1568,9 @@ def get_type_specimens(*colls: models.Collection) -> dict[str, list[models.Name]
     for nam in multiple.type_specimens:
         if nam.type_specimen is None:
             continue
-        for spec in models.type_specimen.parse_type_specimen(nam.type_specimen):
+        for spec in models.name.type_specimen.parse_type_specimen(nam.type_specimen):
             if (
-                isinstance(spec, models.type_specimen.Specimen)
+                isinstance(spec, models.name.type_specimen.Specimen)
                 and spec.base.institution_code in codes
             ):
                 output[spec.base.stringify()].append(nam)

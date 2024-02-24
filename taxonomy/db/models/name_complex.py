@@ -94,7 +94,7 @@ class SpeciesNameComplex(BaseModel):
             file.write(f"{space}Comment: {self.comment}\n")
         if full:
             nams = list(self.names)
-            models.name.write_names(
+            models.name.name.write_names(
                 nams,
                 depth=depth,
                 full=full,
@@ -494,7 +494,7 @@ class NameComplex(BaseModel):
                 space = " " * (depth + 12)
                 file.write(f"{space}ending: {ending.ending}\n")
             nams = list(self.names)
-            models.name.write_names(
+            models.name.name.write_names(
                 nams,
                 depth=depth,
                 full=full,

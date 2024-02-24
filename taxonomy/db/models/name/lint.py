@@ -19,10 +19,10 @@ from typing import Any, TypeVar
 
 import requests
 
-from ... import adt, getinput
-from ...apis.zoobank import clean_lsid, get_zoobank_data, is_valid_lsid
-from .. import helpers
-from ..constants import (
+from .... import adt, getinput
+from ....apis.zoobank import clean_lsid, get_zoobank_data, is_valid_lsid
+from ... import helpers
+from ...constants import (
     ArticleKind,
     ArticleType,
     CommentKind,
@@ -38,13 +38,13 @@ from ..constants import (
     Status,
     TypeSpeciesDesignation,
 )
-from .article import Article, ArticleTag, PresenceStatus
-from .base import LintConfig
-from .collection import BMNH_COLLECTION, MULTIPLE_COLLECTION, Collection
+from ..article import Article, ArticleTag, PresenceStatus
+from ..base import LintConfig
+from ..collection import BMNH_COLLECTION, MULTIPLE_COLLECTION, Collection
+from ..person import AuthorTag, PersonLevel
+from ..taxon import Taxon
 from .name import PREOCCUPIED_TAGS, STATUS_TO_TAG, Name, NameComment, NameTag, TypeTag
 from .organ import CHECKED_ORGANS, ParsedOrgan, ParseException, parse_organ_detail
-from .person import AuthorTag, PersonLevel
-from .taxon import Taxon
 from .type_specimen import (
     BaseSpecimen,
     InformalSpecimen,

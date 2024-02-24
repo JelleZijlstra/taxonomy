@@ -6,16 +6,14 @@ from typing import Any, NotRequired, Self
 
 from peewee import BooleanField, CharField, ForeignKeyField
 
-from taxonomy import parsing
+from taxonomy import adt, events, getinput, parsing
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
+from taxonomy.db import constants, helpers, models
 
-from ... import adt, events, getinput
-from .. import constants, helpers, models
 from .article import Article
 from .base import ADTField, BaseModel, LintConfig, get_tag_based_derived_field
 from .region import Region
 from .taxon import Taxon
-from .type_specimen import BaseSpecimen, SimpleSpecimen, TripletSpecimen
 
 # Special collection IDs
 LOST_COLLECTION = 75
@@ -323,14 +321,16 @@ class Collection(BaseModel):
                 ):
                     print(tag.url)
 
-    def validate_specimen(self, spec: BaseSpecimen) -> str | None:
+    def validate_specimen(
+        self, spec: models.name.type_specimen.BaseSpecimen
+    ) -> str | None:
         if error := self._validate_specimen_label(spec):
             return error
-        if isinstance(spec, SimpleSpecimen):
+        if isinstance(spec, models.name.type_specimen.SimpleSpecimen):
             if self.must_use_triplets():
                 return f"collection {self} requires the use of triplets"
             return self._validate_specimen_text(spec.text)
-        elif isinstance(spec, TripletSpecimen):
+        elif isinstance(spec, models.name.type_specimen.TripletSpecimen):
             code_tag = self._get_applicable_collection_code(spec.collection_code)
             if code_tag is None:
                 return f"collection code {spec.collection_code!r} not allowed"
@@ -362,7 +362,9 @@ class Collection(BaseModel):
                     return f"does not match regex {tag.regex}"
         return None
 
-    def _validate_specimen_label(self, spec: BaseSpecimen) -> str | None:
+    def _validate_specimen_label(
+        self, spec: models.name.type_specimen.BaseSpecimen
+    ) -> str | None:
         expected_label = self.get_expected_label()
         if expected_label is None:
             return None

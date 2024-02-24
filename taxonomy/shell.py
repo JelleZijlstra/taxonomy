@@ -306,7 +306,7 @@ def detect_corrected_original_names(aggressive: bool = False) -> None:
         Name.original_name != None, Name.corrected_original_name == None
     )
     linter = functools.partial(
-        models.name_lint.autoset_corrected_original_name, aggressive=aggressive
+        models.name.lint.autoset_corrected_original_name, aggressive=aggressive
     )
     run_linter_and_fix(Name, linter, query)
 
@@ -316,7 +316,7 @@ def detect_original_rank() -> None:
     query = Name.select_valid().filter(
         Name.corrected_original_name != None, Name.original_rank == None
     )
-    run_linter_and_fix(Name, models.name_lint.autoset_original_rank, query)
+    run_linter_and_fix(Name, models.name.lint.autoset_original_rank, query)
 
 
 @command
@@ -1235,7 +1235,7 @@ def bad_page_described() -> None:
     sorted_field_values(
         "page_described",
         filters=[Name.original_citation != None],
-        exclude_fn=models.name.is_valid_page_described,
+        exclude_fn=models.name.name.is_valid_page_described,
     )
 
 
@@ -1990,7 +1990,7 @@ def fix_justified_emendations() -> None:
             NomenclatureStatus.incorrect_original_spelling,
         )
     )
-    run_linter_and_fix(Name, models.name_lint.check_justified_emendations, query)
+    run_linter_and_fix(Name, models.name.lint.check_justified_emendations, query)
 
 
 @command
@@ -2756,7 +2756,7 @@ def edit_organ(organ: constants.SpecimenOrgan | None = None) -> None:
         dirty = False
         for tag in relevant_tags:
             print(tag)
-            for issue in models.name_lint.check_organ_tag(tag):
+            for issue in models.name.lint.check_organ_tag(tag):
                 print(issue)
                 dirty = True
         if check_lint and not dirty:
@@ -2825,7 +2825,7 @@ def try_extract_page_described(
     count = 0
     for nam in getinput.print_every_n(query, label="names", n=100):
         nam = nam.reload()
-        result = list(models.name_lint.infer_page_described(nam, cfg))
+        result = list(models.name.lint.infer_page_described(nam, cfg))
         for message in result:
             print(message)
         if dry_run:
@@ -2998,7 +2998,7 @@ def lint_collections() -> None:
         issues = {
             nam: lints
             for nam in types
-            if (lints := list(models.name_lint.check_type_specimen(nam, cfg)))
+            if (lints := list(models.name.lint.check_type_specimen(nam, cfg)))
         }
         if not issues:
             print(f"{coll} ({len(types)} types) is clean")
@@ -3013,7 +3013,7 @@ def lint_collections() -> None:
         print(f"{len(types)} names, {len(issues)} with issues")
         coll.edit()
         run_linter_and_fix(
-            Name, query=coll.type_specimens, linter=models.name_lint.check_type_specimen
+            Name, query=coll.type_specimens, linter=models.name.lint.check_type_specimen
         )
 
 

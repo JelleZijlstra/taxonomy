@@ -10,7 +10,8 @@ from typing import IO, TypedDict
 
 from taxonomy import getinput
 from taxonomy.db import constants
-from taxonomy.db.models import Article, Collection, Name, TypeTag, name_lint
+from taxonomy.db.models import Article, Collection, Name, TypeTag
+from taxonomy.db.models.name import lint
 
 from .lib import DATA_DIR, get_type_specimens
 
@@ -287,7 +288,7 @@ def _get_ts_link(row: Row) -> TypeTag:
     if row["institutioncode"] == "USNM":
         link = row["occurrenceid"]
     else:
-        link = name_lint.fix_type_specimen_link(row["references"])
+        link = lint.fix_type_specimen_link(row["references"])
     return TypeTag.TypeSpecimenLinkFor(link, _get_cat_num(row))
 
 

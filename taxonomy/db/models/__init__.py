@@ -18,7 +18,6 @@ __all__ = [
     "has_data_from_original",
     "IssueDate",
     "Location",
-    "name_lint",
     "Name",
     "NameComment",
     "NameComplex",
@@ -46,7 +45,7 @@ from .citation_group import (
     CitationGroupTag as CitationGroupTag,
 )
 from .issue_date import IssueDate as IssueDate
-from .name import (
+from .name.name import (
     Name as Name,
     NameComment as NameComment,
     TypeTag as TypeTag,
@@ -67,9 +66,4 @@ from .taxon import Taxon as Taxon
 from .person import Person as Person
 from .book import Book as Book
 from .specimen import Specimen as Specimen
-from . import (
-    tags as tags,
-    name_lint as name_lint,
-    fill_data as fill_data,
-    type_specimen as type_specimen,
-)
+from . import fill_data as fill_data, name as name, tags as tags

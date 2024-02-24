@@ -13,13 +13,11 @@ from typing import IO, TYPE_CHECKING, Any, ClassVar, NotRequired, TypeAlias
 
 from peewee import CharField, ForeignKeyField, IntegerField, TextField
 
-from taxonomy import parsing
+from taxonomy import adt, events, getinput, parsing
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
 from taxonomy.apis.zoobank import get_zoobank_data
-
-from ... import adt, events, getinput
-from .. import constants, helpers, models
-from ..constants import (
+from taxonomy.db import constants, helpers, models
+from taxonomy.db.constants import (
     AgeClass,
     EmendationJustification,
     FillDataLevel,
@@ -30,10 +28,11 @@ from ..constants import (
     SpeciesNameKind,
     Status,
 )
-from ..definition import Definition
-from ..derived_data import DerivedField
-from .article import Article
-from .base import (
+from taxonomy.db.definition import Definition
+from taxonomy.db.derived_data import DerivedField
+
+from ..article import Article
+from ..base import (
     ADTField,
     BaseModel,
     EnumField,
@@ -41,17 +40,17 @@ from .base import (
     get_str_completer,
     get_tag_based_derived_field,
 )
-from .citation_group import CitationGroup
-from .collection import (
+from ..citation_group import CitationGroup
+from ..collection import (
     LOST_COLLECTION,
     MULTIPLE_COLLECTION,
     UNTRACED_COLLECTION,
     Collection,
 )
-from .location import Location
-from .name_complex import NameComplex, SpeciesNameComplex
-from .person import AuthorTag, Person, get_new_authors_list
-from .taxon import Taxon, display_organized
+from ..location import Location
+from ..name_complex import NameComplex, SpeciesNameComplex
+from ..person import AuthorTag, Person, get_new_authors_list
+from ..taxon import Taxon, display_organized
 from .type_specimen import parse_type_specimen
 
 _CRUCIAL_MISSING_FIELDS: dict[Group, set[str]] = {
@@ -1776,7 +1775,7 @@ class Name(BaseModel):
             return
         if self.status is Status.removed:
             return
-        yield from models.name_lint.run_linters(self, cfg)
+        yield from models.name.lint.run_linters(self, cfg)
         if not self.check_authors():
             yield f"{self}: discrepancy in authors"
 

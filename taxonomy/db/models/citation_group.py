@@ -42,7 +42,7 @@ class CitationGroup(BaseModel):
         DerivedField(
             "ordered_names",
             LazyType(lambda: list[models.Name]),
-            lambda cg: models.name.get_ordered_names(cg.names),
+            lambda cg: models.name.name.get_ordered_names(cg.names),
         ),
         DerivedField(
             "ordered_articles",

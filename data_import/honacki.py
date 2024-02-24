@@ -217,7 +217,7 @@ def resolve_original(nam: models.Name) -> models.Name:
             | NomenclatureStatus.unjustified_emendation
             | NomenclatureStatus.incorrect_subsequent_spelling
         ):
-            tag = models.name.CONSTRUCTABLE_STATUS_TO_TAG[nam.nomenclature_status]
+            tag = models.name.name.CONSTRUCTABLE_STATUS_TO_TAG[nam.nomenclature_status]
             target = nam.get_tag_target(tag)
             if target is not None:
                 return resolve_original(target)

@@ -156,7 +156,7 @@ class Location(BaseModel):
             space = " " * (depth + 12)
             file.write(f"{space}Comment: {self.comment}\n")
         type_locs = list(self.type_localities)
-        models.name.write_names(
+        models.name.name.write_names(
             type_locs, depth=depth, full=full, organized=organized, file=file
         )
         if include_occurrences:

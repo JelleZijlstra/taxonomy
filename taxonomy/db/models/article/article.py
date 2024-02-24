@@ -21,19 +21,24 @@ from peewee import (
     TextField,
 )
 
+from taxonomy import adt, config, events, getinput
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
-
-from .... import adt, config, events, getinput
-from ... import models
-from ...constants import (
+from taxonomy.db import models
+from taxonomy.db.constants import (
     ArticleCommentKind,
     ArticleKind,
     ArticleType,
     DateSource,
     SourceLanguage,
 )
-from ...derived_data import DerivedField, LazyType
-from ...helpers import clean_strings_recursively, get_date_object, is_valid_date, to_int
+from taxonomy.db.derived_data import DerivedField, LazyType
+from taxonomy.db.helpers import (
+    clean_strings_recursively,
+    get_date_object,
+    is_valid_date,
+    to_int,
+)
+
 from ..base import (
     ADTField,
     BaseModel,
@@ -146,7 +151,7 @@ class Article(BaseModel):
         DerivedField(
             "ordered_new_names",
             LazyType(lambda: list[models.Name]),
-            lambda art: models.name.get_ordered_names(art.new_names),
+            lambda art: models.name.name.get_ordered_names(art.new_names),
         ),
         get_tag_based_derived_field(
             "partially_suppressed_names",
@@ -1114,7 +1119,7 @@ class Article(BaseModel):
         new_names = list(models.Name.add_validity_check(self.new_names))
         issue = None
         for nam in new_names:
-            for issue in models.name_lint.check_year_matches(nam, LintConfig()):
+            for issue in models.name.lint.check_year_matches(nam, LintConfig()):
                 print(issue)
         if issue is None:
             return

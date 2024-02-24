@@ -327,7 +327,7 @@ class Period(BaseModel):
     def display_type_localities(
         self, include_children: bool = True, include_partial: bool = False
     ) -> None:
-        models.name.write_names(
+        models.name.name.write_names(
             self.all_type_localities(
                 include_children=include_children, include_partial=include_partial
             ),
