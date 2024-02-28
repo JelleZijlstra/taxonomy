@@ -2584,7 +2584,7 @@ def check_infrasubspecific(nam: Name, cfg: LintConfig) -> Iterable[str]:
             isinstance(tag, NameTag.Condition)
             and tag.status is NomenclatureStatus.infrasubspecific
             for tag in nam.tags
-        ):
+        ) or nam.has_name_tag(NameTag.VarietyOrForm):
             return
         message = "should be infrasubspecific but is not"
         if cfg.autofix:
