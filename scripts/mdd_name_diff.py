@@ -11,7 +11,7 @@ import Levenshtein
 from scripts import mdd_diff
 from taxonomy import getinput
 from taxonomy.db import export
-from taxonomy.db.constants import AgeClass, Group, Rank, Status
+from taxonomy.db.constants import AgeClass, Group, Rank, RegionKind, Status
 from taxonomy.db.models import Name, Taxon
 from taxonomy.db.models.name import TypeTag
 
@@ -62,14 +62,19 @@ COLUMNS = [
     "Hesp_citation_group",
     "MDD_authority_citation",
     "MDD_authority_page",
+    "MDD_unchecked_authority_citation",
     "MDD_authority_link",
     # type locality
+    "Hesp_type_locality_region",
     "Hesp_type_locality",
     "Hesp_original_type_locality_verbatim",
     "Hesp_emended_type_locality_verbatim",
     "Hesp_type_latitude",
     "Hesp_type_longitude",
-    "MDD_type_locality",
+    "MDD_old_type_locality",
+    "MDD_original_type_locality",
+    "MDD_unchecked_type_locality",
+    "MDD_emended_type_locality",
     "MDD_type_latitude",
     "MDD_type_longitude",
     "MDD_type_country",
@@ -78,6 +83,7 @@ COLUMNS = [
     "Hesp_type_specimen",
     "Hesp_species_type_kind",
     "MDD_holotype",
+    "MDD_type_kind",
     # taxonomic context
     "Hesp_order",
     "Hesp_family",
@@ -198,6 +204,21 @@ def normalize_original_name(name: str) -> str:
     )
 
 
+def get_type_locality_region(nam: Name) -> str:
+    if nam.type_locality is None:
+        return ""
+    region = nam.type_locality.region
+    regions = [region.name]
+    while region is not None and region.kind not in (
+        RegionKind.planet,
+        RegionKind.continent,
+        RegionKind.country,
+    ):
+        region = region.parent
+        regions.append(region.name)
+    return ": ".join(reversed(regions))
+
+
 def get_hesp_row(name: Name, need_initials: set[str]) -> dict[str, Any]:
     data = export.data_for_name(name)
     row = {f"Hesp_{k}": v for k, v in data.items()}
@@ -224,6 +245,7 @@ def get_hesp_row(name: Name, need_initials: set[str]) -> dict[str, Any]:
         row["Hesp_original_type_locality_verbatim"] = " | ".join(verbatim_tl)
     if emended_tl:
         row["Hesp_emended_type_locality_verbatim"] = " | ".join(emended_tl)
+    row["Hesp_type_locality_region"] = get_type_locality_region(name)
     return row
 
 
@@ -289,8 +311,17 @@ def run(
 
     for row in match_rows:
         mdd_id = row["MDD_syn_ID"]
+        for key, value in row.items():
+            if value and key not in COLUMNS:
+                print(f"warning: unknown column: {key}")
         if mdd_id:
-            mdd_id_to_row[mdd_id].update(row)
+            if mdd_id in mdd_id_to_row:
+                mdd_id_to_row[mdd_id].update(row)
+            else:
+                hesp_id = resolve_hesp_id(row["Hesp_id"])
+                if hesp_id is not None:
+                    hesp_id_to_mdd_ids.setdefault(hesp_id, set()).add(mdd_id)
+                mdd_id_to_row[mdd_id] = row
             del mdd_id_to_row[mdd_id]["match_status"]
             for column in EXTRA_COLUMNS:
                 if value := row.get(column):
@@ -524,7 +555,7 @@ def run(
 
                     # type_locality_status
                     hesp_has_tl = name.type_locality is not None
-                    mdd_has_tl = bool(mdd_row["MDD_type_locality"])
+                    mdd_has_tl = bool(mdd_row.get("MDD_type_locality"))
                     if hesp_has_tl != mdd_has_tl:
                         if hesp_has_tl:
                             single_row["type_locality_status"] = "H only"
