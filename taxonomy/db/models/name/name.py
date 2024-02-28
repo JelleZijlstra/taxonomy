@@ -874,6 +874,10 @@ class Name(BaseModel):
         tag_id = tag_cls._tag
         return any(tag[0] == tag_id for tag in self.get_raw_tags_field("type_tags"))
 
+    def has_name_tag(self, tag_cls: NameTagCons) -> bool:
+        tag_id = tag_cls._tag
+        return any(tag[0] == tag_id for tag in self.get_raw_tags_field("tags"))
+
     def map_type_tags(self, fn: Callable[[Any], Any | None]) -> None:
         self.map_tags_field(Name.type_tags, fn)
 
@@ -999,12 +1003,37 @@ class Name(BaseModel):
     def is_unavailable(self) -> bool:
         return not self.nomenclature_status.can_preoccupy()
 
-    def can_preoccupy(self) -> bool:
+    def can_preoccupy(self, *, depth: int = 0) -> bool:
+        if depth > 10:
+            raise ValueError(f"reached recursion limit on {self}")
         if not self.nomenclature_status.can_preoccupy():
             return False
         if nam := self.get_variant_base_name():
-            return nam.can_preoccupy()
+            return nam.can_preoccupy(depth=depth + 1)
         return True
+
+    def can_be_valid_base_name(self) -> bool:
+        if self.nomenclature_status is NomenclatureStatus.nomen_novum:
+            nam = self.get_tag_target(NameTag.NomenNovumFor)
+            if nam is None:
+                return False
+        else:
+            nam = self
+        if nam.nomenclature_status in (
+            NomenclatureStatus.available,
+            NomenclatureStatus.as_emended,
+            NomenclatureStatus.collective_group,
+            NomenclatureStatus.informal,
+            NomenclatureStatus.unpublished_pending,
+        ):
+            return True
+        if (
+            nam.nomenclature_status
+            is NomenclatureStatus.not_intended_as_a_scientific_name
+            and nam.taxon.rank == Rank.division
+        ):
+            return True
+        return False
 
     def get_variant_base_name(self) -> Name | None:
         for tag in self.tags:
@@ -2122,6 +2151,12 @@ class Name(BaseModel):
         else:
             return verbatim_type, None
 
+    def has_lint_ignore(self, label: str) -> bool:
+        return any(
+            isinstance(tag, TypeTag.IgnoreLintName) and tag.label == label
+            for tag in self.type_tags
+        )
+
     def detect_type_from_verbatim_type(self, verbatim_type: str) -> list[Name]:
         def _filter_by_authority(
             candidates: list[Name], authority: str | None
@@ -2533,6 +2568,14 @@ class NameTag(adt.ADT):
     # An arbitrary nomenclature status that is applicable to this name.
     Condition(status=NomenclatureStatus, comment=NotRequired[str], tag=26)  # type: ignore
 
+    # A use of this name as valid, for the purposes of ICZN Art. 23.9 (reversal of precedence).
+    ValidUse(source=Article, comment=NotRequired[str], tag=27)  # type: ignore
+
+    # Like Condition(variety_or_form), but separate because of special conditions in the Code.
+    VarietyOrForm(comment=NotRequired[str], tag=28)  # type: ignore
+    # Same for not_used_as_valid
+    NotUsedAsValid(comment=NotRequired[str], tag=29)  # type: ignore
+
 
 CONSTRUCTABLE_STATUS_TO_TAG = {
     NomenclatureStatus.unjustified_emendation: NameTag.UnjustifiedEmendationOf,
@@ -2665,8 +2708,10 @@ SOURCE_TAGS = (
 
 if TYPE_CHECKING:
     TypeTagCons: TypeAlias = Any
+    NameTagCons: TypeAlias = Any
 else:
     TypeTagCons = TypeTag._Constructors
+    NameTagCons = NameTag._Constructors
 
 
 def write_names(

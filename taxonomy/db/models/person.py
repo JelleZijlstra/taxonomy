@@ -777,7 +777,9 @@ class Person(BaseModel):
             art = art.reload()
             art.specify_authors()
 
-    def reassign_references(self, target: Person | None = None) -> None:
+    def reassign_references(
+        self, target: Person | None = None, respect_ignore_lint: bool = True
+    ) -> None:
         for field_name, tag_name, tag_cls in [
             ("books", "author_tags", AuthorTag.Author),
             ("articles", "author_tags", AuthorTag.Author),
@@ -789,6 +791,11 @@ class Person(BaseModel):
             for obj in self.get_sorted_derived_field(field_name):
                 if field_name == "names":
                     obj.check_authors(autofix=True)
+                if target is None and respect_ignore_lint:
+                    if isinstance(obj, models.Name) and obj.has_lint_ignore(
+                        "specific_authors"
+                    ):
+                        continue
                 self.edit_tag_sequence_on_object(
                     obj, tag_name, tag_cls, field_name, target=target
                 )
@@ -806,7 +813,9 @@ class Person(BaseModel):
             "v": lambda: self.reassign_names_with_verbatim(filter_for_name=True),
             "i": lambda: self.display(full=True, include_detail=True),
             "r": self.reassign_references,
-            "reassign_references": self.reassign_references,
+            "reassign_references": lambda: self.reassign_references(
+                respect_ignore_lint=False
+            ),
             "rio": self.reassign_initials_only,
             "reassign_initials_only": self.reassign_initials_only,
             "pinyinify": self.pinyinify,
@@ -876,7 +885,7 @@ class Person(BaseModel):
             if command in ("s", "skip"):
                 return
             else:
-                self.reassign_references()
+                self.reassign_references(respect_ignore_lint=auto)
                 return
 
     def reassign_names_with_verbatim(self, filter_for_name: bool = False) -> None:

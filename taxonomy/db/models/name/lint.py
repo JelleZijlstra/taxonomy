@@ -11,8 +11,9 @@ import functools
 import itertools
 import json
 import re
+import traceback
 from collections import defaultdict
-from collections.abc import Callable, Generator, Iterable, Iterator
+from collections.abc import Callable, Generator, Iterable, Iterator, Sequence
 from dataclasses import replace
 from datetime import datetime
 from typing import Any, TypeVar
@@ -84,8 +85,13 @@ def make_linter(
             ignored_lints = get_ignored_lints(nam)
             if label in ignored_lints:
                 cfg = replace(cfg, interactive=False)
-            # static analysis: ignore[incompatible_call]
-            issues = list(linter(nam, cfg, **kwargs))
+            try:
+                # static analysis: ignore[incompatible_call]
+                issues = list(linter(nam, cfg, **kwargs))
+            except Exception as e:
+                traceback.print_exc()
+                yield f"{nam}: error running {label} linter: {e}"
+                return set()
             if not issues:
                 return set()
             if label in ignored_lints:
@@ -1017,6 +1023,7 @@ def _check_preoccupation_tag(tag: NameTag, nam: Name) -> Generator[str, None, Na
     else:
         if isinstance(tag, (NameTag.PrimaryHomonymOf, NameTag.SecondaryHomonymOf)):
             yield f"{nam} is not a species-group name, but uses {type(tag).__name__} tag"
+            new_tag = NameTag.PreoccupiedBy(tag.name, tag.comment)
     if (
         nam.get_normalized_root_name_for_homonymy()
         != senior_name.get_normalized_root_name_for_homonymy()
@@ -1072,6 +1079,9 @@ def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
             else:
                 if nam.taxon != tag.name.taxon:
                     yield f"{nam} is not assigned to the same name as {tag.name}"
+            if isinstance(tag, NameTag.VariantOf) and nam.original_citation is not None:
+                # should be specified to unjustified emendation or incorrect subsequent spelling
+                yield f"{nam} is marked as a variant, but has an original citation"
 
         elif isinstance(tag, NameTag.Conserved):
             if nam.nomenclature_status not in (
@@ -1087,12 +1097,37 @@ def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 yield f"has redundant Condition tag for {tag.status.name}"
                 if not tag.comment:
                     new_tag = None
-            elif tag.status in get_applicable_nomenclature_statuses_from_tags(
-                nam, exclude_condition=True
-            ):
-                yield f"has Condition tag for {tag.status.name}, but already has a more specific tag"
-                if not tag.comment:
-                    new_tag = None
+            else:
+                statuses_from_tags = get_applicable_nomenclature_statuses_from_tags(
+                    nam, exclude_condition=True
+                )
+                if tag.status in statuses_from_tags:
+                    yield f"has Condition tag for {tag.status.name}, but already has a more specific tag"
+                    if not tag.comment:
+                        new_tag = None
+                if (
+                    tag.status is NomenclatureStatus.infrasubspecific
+                    and NomenclatureStatus.variety_or_form in statuses_from_tags
+                ):
+                    yield "is marked as infrasubspecific, but also as variety or form"
+                    if not tag.comment:
+                        new_tag = None
+
+                if tag.status is NomenclatureStatus.variety_or_form:
+                    new_tag = NameTag.VarietyOrForm(tag.comment)
+                elif tag.status is NomenclatureStatus.not_used_as_valid:
+                    new_tag = NameTag.NotUsedAsValid(tag.comment)
+
+                if tag.status is NomenclatureStatus.infrasubspecific:
+                    possibility = should_be_infrasubspecific(nam)
+                    if possibility is Possibility.no:
+                        yield "is marked as infrasubspecific, but should not be"
+
+            # TODO: lint against other statuses that have their own tag
+        elif isinstance(tag, NameTag.VarietyOrForm):
+            possibility = should_be_infrasubspecific(nam)
+            if possibility is Possibility.no:
+                yield "is marked as a variety or form, but should not be"
 
         # haven't handled TakesPriorityOf, NomenOblitum, MandatoryChangeOf
         if new_tag is not None:
@@ -1123,6 +1158,24 @@ def get_applicable_nomenclature_statuses_from_tags(
             yield tag.status
         elif isinstance(tag, PREOCCUPIED_TAGS):
             yield NomenclatureStatus.preoccupied
+        elif isinstance(tag, NameTag.VarietyOrForm):
+            # ICZN Art. 45.6.4.1: a name originally published as a variety or form before 1961
+            # is available from its original date if it was used as valid before 1985
+            if nam.numeric_year() < 1961 and any(
+                isinstance(tag, NameTag.ValidUse) and tag.source.numeric_year() < 1985
+                for tag in nam.tags
+            ):
+                continue
+            yield NomenclatureStatus.variety_or_form
+        elif isinstance(tag, NameTag.NotUsedAsValid):
+            # ICZN Art. 11.6.1: a name originally published as a synonym before 1961
+            # is available from its original date if it was used as valid before 1961
+            if nam.numeric_year() < 1961 and any(
+                isinstance(tag, NameTag.ValidUse) and tag.source.numeric_year() < 1961
+                for tag in nam.tags
+            ):
+                continue
+            yield NomenclatureStatus.not_used_as_valid
         elif type(tag) in TAG_TO_STATUS:
             yield TAG_TO_STATUS[type(tag)]
 
@@ -2100,6 +2153,13 @@ def check_required_fields(nam: Name, cfg: LintConfig) -> Iterable[str]:
 def check_synonym_group(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.group not in (Group.genus, Group.species):
         return
+    # Unavailable genus-group names may be synonyms of their parent taxon
+    if (
+        nam.group is Group.genus
+        and not nam.can_be_valid_base_name()
+        and nam.taxon.base_name.group is not Group.species
+    ):
+        return
     if nam.taxon.base_name.group is not nam.group:
         yield (
             f"taxon is of group {nam.taxon.base_name.group.name} but name is of group"
@@ -2157,6 +2217,20 @@ def check_species_group_fuzzy_primary_homonyms(
     yield from _check_species_group_homonyms(nam, primary=True, fuzzy=True, cfg=cfg)
 
 
+@make_linter("genus_homonym")
+def check_genus_group_homonyms(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    if nam.group is not Group.genus:
+        return
+    if not nam.can_preoccupy():
+        return
+    possible_homonyms = list(
+        Name.select_valid().filter(
+            Name.root_name == nam.root_name, Name.group == Group.genus
+        )
+    )
+    yield from _check_homonym_list(nam, possible_homonyms, cfg=cfg)
+
+
 def _check_species_group_homonyms(
     nam: Name, *, primary: bool, fuzzy: bool, cfg: LintConfig
 ) -> Iterable[str]:
@@ -2180,9 +2254,23 @@ def _check_species_group_homonyms(
         if fuzzy
         else nam.get_normalized_root_name()
     )
+    possible_homonyms = name_dict.get(root, [])
+    yield from _check_homonym_list(
+        nam, possible_homonyms, primary=primary, fuzzy=fuzzy, cfg=cfg
+    )
+
+
+def _check_homonym_list(
+    nam: Name,
+    possible_homonyms: Sequence[Name],
+    *,
+    primary: bool = True,
+    fuzzy: bool = False,
+    cfg: LintConfig,
+) -> Iterable[str]:
     relevant_names = [
         other_nam
-        for other_nam in name_dict.get(root, [])
+        for other_nam in possible_homonyms
         if nam != other_nam
         and other_nam.can_preoccupy()
         and other_nam.get_date_object() < nam.get_date_object()
@@ -2211,6 +2299,8 @@ def _check_species_group_homonyms(
                 NameTag.NotPreoccupiedBy,
                 NameTag.VariantOf,
                 NameTag.IncorrectSubsequentSpellingOf,
+                NameTag.SubsequentUsageOf,
+                NameTag.NameCombinationOf,
             ),
         )
     }
@@ -2232,10 +2322,16 @@ def _check_species_group_homonyms(
             getinput.print_header(nam)
             print(f"{nam}: preoccupied by {senior_homonym}")
             if getinput.yes_no("Accept preoccupation? "):
-                tag = (
-                    NameTag.PrimaryHomonymOf if primary else NameTag.SecondaryHomonymOf
-                )
+                if nam.group is Group.species:
+                    if primary:
+                        tag = NameTag.PrimaryHomonymOf
+                    else:
+                        tag = NameTag.SecondaryHomonymOf
+                else:
+                    tag = NameTag.PreoccupiedBy
                 nam.preoccupied_by(senior_homonym, tag=tag)
+            elif getinput.yes_no("Mark as subsequent usage instead? "):
+                nam.add_tag(NameTag.SubsequentUsageOf(senior_homonym, ""))
         yield f"preoccupied by {senior_homonym}"
 
 
@@ -2317,8 +2413,29 @@ def _get_secondary_names_of_genus(
     return root_name_to_names
 
 
-# TODO: Validate that original_parent matches corrected_original_name (and that it's a genus-group name)
-# Needs special handling in case original_parent is a justified emendation.
+@make_linter("check_original_parent")
+def check_original_parent(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    if nam.original_parent is None:
+        return
+    if nam.group is not Group.species:
+        yield "original_parent should only be set for species-group names"
+        return
+    if nam.original_parent.group is not Group.genus:
+        yield f"original_parent is not a genus: {nam.original_parent}"
+    if nam.corrected_original_name is None:
+        return
+    original_genus, *_ = nam.corrected_original_name.split()
+    # corrected_original_name is for the case where the genus name got a justified emendation
+    if original_genus not in (
+        nam.original_parent.root_name,
+        nam.original_parent.corrected_original_name,
+    ):
+        yield (
+            f"original_parent {nam.original_parent} does not match corrected"
+            f" original name {nam.corrected_original_name}"
+        )
+
+
 @make_linter("infer_original_parent")
 def infer_original_parent(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if (
@@ -2448,21 +2565,33 @@ def should_be_infrasubspecific(nam: Name) -> Possibility:
 
 @make_linter("infrasubspecific")
 def check_infrasubspecific(nam: Name, cfg: LintConfig) -> Iterable[str]:
-    if nam.nomenclature_status is NomenclatureStatus.infrasubspecific:
-        if nam.group is not Group.species:
-            yield "is infrasubspecific but not of group species"
+    if nam.group is not Group.species:
+        return
+    status = should_be_infrasubspecific(nam)
+    if status is not Possibility.yes:
+        return
+    if _is_variety_or_form(nam):
+        if nam.has_name_tag(NameTag.VarietyOrForm):
             return
-        status = should_be_infrasubspecific(nam)
-        if status is Possibility.no:
-            yield "is infrasubspecific but should not be"
-    # TODO implement "condition" idea and expand to other nomenclature statuses
-    elif (
-        nam.group is Group.species
-        and nam.nomenclature_status is NomenclatureStatus.available
-    ):
-        status = should_be_infrasubspecific(nam)
-        if status is Possibility.yes:
-            yield "should be infrasubspecific but is not"
+        message = "should be marked as variety or form"
+        if cfg.autofix:
+            print(f"{nam}: {message}")
+            nam.add_tag(NameTag.VarietyOrForm(""))
+        else:
+            yield message
+    else:
+        if any(
+            isinstance(tag, NameTag.Condition)
+            and tag.status is NomenclatureStatus.infrasubspecific
+            for tag in nam.tags
+        ):
+            return
+        message = "should be infrasubspecific but is not"
+        if cfg.autofix:
+            print(f"{nam}: {message}")
+            nam.add_tag(NameTag.Condition(NomenclatureStatus.infrasubspecific, ""))
+        else:
+            yield message
 
 
 def run_linters(
