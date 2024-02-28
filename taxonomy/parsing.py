@@ -98,6 +98,7 @@ upper = C(
             "È",
             "É",
             "Í",
+            "Î",
             "Ó",
             "Ö",
             "Ø",
@@ -113,6 +114,7 @@ upper = C(
             "Š",
             "Ș",
             "Ś",
+            "Ț",
             "Ř",
             "Ş",
             "Ż",
@@ -395,10 +397,9 @@ chinese_name = latin_upper + OneOrMore(chinese_lower)
 pinyin_given_names_cased = chinese_name + Repetition(
     L("-") + OneOrMore(chinese_lower), min=0, max=2
 )
-chinese_given_names = chinese_name + Optional(
-    (L("-") | L(" "))
-    + Optional(latin_upper)
-    + OneOrMore(chinese_lower)
+chinese_given_names = (
+    chinese_name
+    + Optional((L("-") | L(" ")) + Optional(latin_upper) + OneOrMore(chinese_lower))
     + Optional(L(" ") + latin_upper + L("."))
 )
 
@@ -464,7 +465,7 @@ institutional_collection = upper + OneOrMore(upper | lower)
 collection = special_collection | personal_collection | institutional_collection
 collection_pattern = collection.compile()
 
-collection_code = upper + OneOrMore(upper | lower | L("-") | digit)
+collection_code = upper + ZeroOrMore(upper | lower | L("-") | digit)
 collection_code_pattern = collection_code.compile()
 
 specimen_label_pattern = re.compile(r"^([^ /\-\.:]+)")
