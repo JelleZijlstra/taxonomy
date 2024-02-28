@@ -3,6 +3,9 @@ import csv
 import functools
 import re
 import sys
+from collections import Counter
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final
 
@@ -24,15 +27,18 @@ COLUMNS = [
     "Connor_Comments",
     "match_status",
     "spelling_status",
-    "author_status",
     "author_exact_status",
     "year_status",
     "nomenclature_status",
     "species_status",
     "validity_status",
     "original_name_status",
-    "citation_status",
-    "type_locality_status",
+    "authority_citation_status",
+    "authority_page_status",
+    "unchecked_authority_citation_status",
+    "original_type_locality_status",
+    "type_country_status",
+    "type_subregion_status",
     "type_specimen_status",
     "species_type_kind_status",
     # core data
@@ -140,11 +146,14 @@ def root_name_matches(name: Name, mdd_root_name: str) -> bool:
 def get_mdd_like_species_name(name: Name) -> str:
     if name.taxon.base_name.status is not Status.valid:
         try:
-            genus = name.taxon.parent_of_rank(Rank.genus).valid_name
+            genus = name.taxon.parent_of_rank(Rank.genus)
         except ValueError:
             return "incertae_sedis incertae_sedis"
         else:
-            return f"{genus} incertae_sedis"
+            if genus.base_name.status is Status.valid:
+                return f"{genus.valid_name} incertae_sedis"
+            else:
+                return "incertae_sedis incertae_sedis"
     try:
         return name.taxon.parent_of_rank(Rank.species).valid_name
     except ValueError:
@@ -173,25 +182,12 @@ def get_mdd_status(name: Name) -> str:
             return name.status.name
 
 
-def get_original_name_from_mdd(row: dict[str, str]) -> str | None:
+def get_original_name_from_mdd(row: dict[str, str]) -> str:
     if original_combination := row["MDD_original_combination"]:
         if "_" not in original_combination:
-            return None  # probably just the root name
+            return ""  # probably just the root name
         return original_combination.replace("_", " ")
-    return None
-
-
-def get_mdd_style_type_specimen(name: Name) -> str | None:
-    spec = name.type_specimen
-    if spec is None:
-        return None
-    spec = re.sub(r"([A-Z]+):[A-Za-z]+:", r"\1 ", spec)
-    spec = re.sub(r"([A-Z]+) [A-Za-z]+ ", r"\1 ", spec)
-    spec = re.sub(r"([A-Z]+)\.[A-Za-z]+\.", r"\1 ", spec)
-    spec = re.sub(r"AMNH [A-Z]+\-", "AMNH ", spec)
-    spec = spec.replace("MNHN-ZM-MO-", "MNHN ")
-    spec = spec.replace("BMNH ", "BM ")
-    return spec
+    return ""
 
 
 def normalize_original_name(name: str) -> str:
@@ -247,6 +243,64 @@ def get_hesp_row(name: Name, need_initials: set[str]) -> dict[str, Any]:
         row["Hesp_emended_type_locality_verbatim"] = " | ".join(emended_tl)
     row["Hesp_type_locality_region"] = get_type_locality_region(name)
     return row
+
+
+@dataclass
+class ComputedValue:
+    value: str
+
+
+def compare_column(
+    single_row: dict[str, str],
+    *,
+    hesp_column: str | ComputedValue,
+    mdd_column: str | ComputedValue,
+    target_column: str,
+    compare_func: Callable[[str, str], object] | None = Levenshtein.distance,
+    counts: dict[str, int],
+) -> bool:
+    if isinstance(hesp_column, ComputedValue):
+        hesp_value = hesp_column.value
+    else:
+        hesp_value = single_row[hesp_column]
+    if isinstance(mdd_column, ComputedValue):
+        mdd_value = mdd_column.value
+    else:
+        mdd_value = single_row[mdd_column]
+    match (bool(hesp_value), bool(mdd_value)):
+        case (True, False):
+            single_row[target_column] = "H only"
+            counts[f"{target_column} missing in MDD"] += 1
+            return True
+        case (False, True):
+            single_row[target_column] = "M only"
+            counts[f"{target_column} missing in Hesperomys"] += 1
+            return True
+        case (True, True):
+            if hesp_value != mdd_value:
+                comparison = f"{hesp_value} (H) / {mdd_value} (M)"
+                if compare_func is not None:
+                    extra = compare_func(hesp_value, mdd_value)
+                    comparison = f"{extra}: {comparison}"
+                single_row[target_column] = comparison
+                counts[f"{target_column} differences"] += 1
+                return True
+            else:
+                single_row[target_column] = ""
+        case (False, False):
+            single_row[target_column] = ""
+    return False
+
+
+def compare_year(hesp_year: str, mdd_year: str) -> int:
+    try:
+        return abs(int(hesp_year) - int(mdd_year))
+    except ValueError:
+        return 1000
+
+
+COLUMN_RENAMES = {"MDD original combination": "MDD_original_combination"}
+REMOVED_COLUMNS = {"citation_status", "author_status", "type_locality_status"}
 
 
 def run(
@@ -311,8 +365,9 @@ def run(
 
     for row in match_rows:
         mdd_id = row["MDD_syn_ID"]
+        row = {COLUMN_RENAMES.get(key, key): value for key, value in row.items()}
         for key, value in row.items():
-            if value and key not in COLUMNS:
+            if value and key not in COLUMNS and key not in REMOVED_COLUMNS:
                 print(f"warning: unknown column: {key}")
         if mdd_id:
             if mdd_id in mdd_id_to_row:
@@ -349,28 +404,48 @@ def run(
     num_hesp_only = 0
     num_mdd_only = 0
     num_species_diffs = 0
-    num_author_diffs = 0
-    num_exact_author_diffs = 0
     num_spelling_diffs = 0
-    num_year_diffs = 0
     num_nomenclature_diffs = 0
-    num_validity_diffs = 0
     num_original_name_diffs = 0
     num_original_name_diffs_normalized = 0
-    original_name_missing_hesp = 0
-    original_name_missing_mdd = 0
-    citation_missing_hesp = 0
-    citation_missing_mdd = 0
-    tl_missing_hesp = 0
-    tl_missing_hesp_not_required = 0
-    tl_missing_mdd = 0
-    num_type_specimen_diffs = 0
     num_count_diffs = 0
     num_number_diffs = 0
     num_text_diffs = 0
-    num_species_type_kind_diffs = 0
-    type_specimen_missing_hesp = 0
-    type_specimen_missing_mdd = 0
+    counts: dict[str, int] = Counter()
+
+    def compare_type_specimen_text(hesp_type: str, mdd_type: str) -> str:
+        hesp_comma_count = hesp_type.count(",")
+        mdd_comma_count = mdd_type.count(",")
+        if hesp_comma_count != mdd_comma_count:
+            nonlocal num_count_diffs
+            num_count_diffs += 1
+            return f"count: ({hesp_comma_count + 1}/{mdd_comma_count + 1})"
+        else:
+            hesp_stripped = re.sub(r"[^0-9]", " ", hesp_type).strip()
+            mdd_stripped = re.sub(r"[^0-9]+", " ", mdd_type)
+            mdd_stripped = re.sub(r" +", " ", mdd_stripped).strip()
+            if hesp_stripped != mdd_stripped:
+                nonlocal num_number_diffs
+                num_number_diffs += 1
+                return f"number: ({hesp_stripped}/{mdd_stripped})"
+            else:
+                nonlocal num_text_diffs
+                num_text_diffs += 1
+                return "text"
+
+    def compare_original_name(hesp_orig: str, mdd_orig: str) -> str:
+        normalized_matches = normalize_original_name(
+            hesp_orig
+        ) == normalize_original_name(mdd_orig)
+        distance = Levenshtein.distance(hesp_orig, mdd_orig)
+        if normalized_matches:
+            nonlocal num_original_name_diffs
+            num_original_name_diffs += 1
+            return f"(normalized name matches) {distance}"
+        else:
+            nonlocal num_original_name_diffs_normalized
+            num_original_name_diffs_normalized += 1
+            return str(distance)
 
     with output_csv.open("w") as f:
         writer = csv.DictWriter(f, COLUMNS, extrasaction="ignore")
@@ -443,30 +518,14 @@ def run(
                     else:
                         single_row["nomenclature_status"] = ""
 
-                    # author_status, author_exact_status
-                    author_diffs = list(
-                        mdd_diff.compare_authors_to_name(
-                            name, mdd_id, mdd_row["MDD_author"]
-                        )
+                    # author_exact_status
+                    compare_column(
+                        single_row,
+                        hesp_column=ComputedValue(mdd_style_author),
+                        mdd_column="MDD_author",
+                        target_column="author_exact_status",
+                        counts=counts,
                     )
-                    if author_diffs:
-                        single_row["author_status"] = "; ".join(
-                            diff.to_markdown(concise=True) for diff in author_diffs
-                        )
-                        num_author_diffs += 1
-                    else:
-                        single_row["author_status"] = ""
-                    if mdd_style_author != mdd_row["MDD_author"]:
-                        distance = Levenshtein.distance(
-                            mdd_style_author, mdd_row["MDD_author"]
-                        )
-                        single_row["author_exact_status"] = (
-                            f"{distance}: {mdd_style_author} (H) /"
-                            f" {mdd_row['MDD_author']} (M)"
-                        )
-                        num_exact_author_diffs += 1
-                    else:
-                        single_row["author_exact_status"] = ""
 
                     # spelling_status
                     if not root_name_matches(name, mdd_row["MDD_root_name"]):
@@ -482,157 +541,106 @@ def run(
                         single_row["spelling_status"] = ""
 
                     # year_status
-                    if row["Hesp_year"] != mdd_row["MDD_year"]:
-                        try:
-                            distance = abs(
-                                int(row["Hesp_year"]) - int(mdd_row["MDD_year"])
-                            )
-                        except ValueError:
-                            distance = 1000
-                        single_row["year_status"] = (
-                            f"{distance}: {row['Hesp_year']} (H) /"
-                            f" {mdd_row['MDD_year']} (M)"
-                        )
-                        num_year_diffs += 1
-                    else:
-                        single_row["year_status"] = ""
+                    compare_column(
+                        single_row,
+                        hesp_column="Hesp_year",
+                        mdd_column="MDD_year",
+                        target_column="year_status",
+                        compare_func=compare_year,
+                        counts=counts,
+                    )
 
                     # validity_status
                     expected_mdd_status = get_mdd_status(name)
-                    if expected_mdd_status != mdd_row["MDD_validity"]:
-                        single_row["validity_status"] = (
-                            f"{expected_mdd_status} (H) / {mdd_row['MDD_validity']} (M)"
-                        )
-                        num_validity_diffs += 1
-                    else:
-                        single_row["validity_status"] = ""
+                    compare_column(
+                        single_row,
+                        hesp_column=ComputedValue(expected_mdd_status),
+                        mdd_column="MDD_validity",
+                        target_column="validity_status",
+                        counts=counts,
+                        compare_func=None,
+                    )
 
                     # original_name_status
                     mdd_orig = get_original_name_from_mdd(mdd_row)
-                    hesp_orig = name.original_name
-                    if hesp_orig is not None and mdd_orig is not None:
-                        if hesp_orig != mdd_orig:
-                            normalized_matches = normalize_original_name(
-                                hesp_orig
-                            ) == normalize_original_name(mdd_orig)
-                            prefix = (
-                                "(normalized name matches) "
-                                if normalized_matches
-                                else ""
-                            )
-                            diff = f"{prefix}{hesp_orig} (H) / {mdd_orig} (M)"
-                            single_row["original_name_status"] = diff
-                            if normalized_matches:
-                                num_original_name_diffs += 1
-                            else:
-                                num_original_name_diffs_normalized += 1
-                        else:
-                            single_row["original_name_status"] = ""
-                    elif hesp_orig is not None:
-                        single_row["original_name_status"] = "H only"
-                        original_name_missing_mdd += 1
-                    elif mdd_orig is not None:
-                        single_row["original_name_status"] = "M only"
-                        original_name_missing_hesp += 1
-                    else:
-                        single_row["original_name_status"] = ""
+                    compare_column(
+                        single_row,
+                        hesp_column="Hesp_original_name",
+                        mdd_column=ComputedValue(mdd_orig),
+                        target_column="original_name_status",
+                        compare_func=compare_original_name,
+                        counts=counts,
+                    )
 
                     # citation_status
-                    hesp_has_cite = (
-                        name.original_citation is not None
-                        or name.verbatim_citation is not None
+                    compare_column(
+                        single_row,
+                        hesp_column="Hesp_original_citation",
+                        mdd_column="MDD_authority_citation",
+                        target_column="authority_citation_status",
+                        counts=counts,
                     )
-                    mdd_has_cite = bool(mdd_row["MDD_authority_citation"])
-                    if hesp_has_cite != mdd_has_cite:
-                        if hesp_has_cite:
-                            single_row["citation_status"] = "H only"
-                            citation_missing_mdd += 1
-                        else:
-                            single_row["citation_status"] = "M only"
-                            citation_missing_hesp += 1
-                    else:
-                        single_row["citation_status"] = ""
+                    compare_column(
+                        single_row,
+                        hesp_column="Hesp_page_described",
+                        mdd_column="MDD_authority_page",
+                        target_column="authority_page_status",
+                        counts=counts,
+                    )
+                    compare_column(
+                        single_row,
+                        hesp_column="Hesp_verbatim_citation",
+                        mdd_column="MDD_unchecked_authority_citation",
+                        target_column="unchecked_authority_citation_status",
+                        counts=counts,
+                    )
 
                     # type_locality_status
-                    hesp_has_tl = name.type_locality is not None
-                    mdd_has_tl = bool(mdd_row.get("MDD_type_locality"))
-                    if hesp_has_tl != mdd_has_tl:
-                        if hesp_has_tl:
-                            single_row["type_locality_status"] = "H only"
-                            tl_missing_mdd += 1
-                        else:
-                            if "type_locality" in name.get_required_fields():
-                                single_row["type_locality_status"] = "M only"
-                                tl_missing_hesp += 1
-                            else:
-                                single_row["type_locality_status"] = (
-                                    "M only (not required)"
-                                )
-                                tl_missing_hesp_not_required += 1
-                    else:
-                        single_row["type_locality_status"] = ""
+                    compare_column(
+                        single_row,
+                        hesp_column="Hesp_original_type_locality_verbatim",
+                        mdd_column="MDD_original_type_locality",
+                        target_column="original_type_locality_status",
+                        counts=counts,
+                    )
+                    region_parts = single_row["Hesp_type_locality_region"].split(":")
+                    compare_column(
+                        single_row,
+                        hesp_column=ComputedValue(
+                            region_parts[0].strip() if region_parts else ""
+                        ),
+                        mdd_column="MDD_type_country",
+                        target_column="type_country_status",
+                        counts=counts,
+                    )
+                    compare_column(
+                        single_row,
+                        hesp_column=ComputedValue(
+                            region_parts[1].strip() if len(region_parts) > 1 else ""
+                        ),
+                        mdd_column="MDD_type_subregion",
+                        target_column="type_subregion_status",
+                        counts=counts,
+                    )
+
+                    # species_type_kind_status
+                    compare_column(
+                        single_row,
+                        hesp_column="Hesp_species_type_kind",
+                        mdd_column="MDD_type_kind",
+                        target_column="species_type_kind_status",
+                        counts=counts,
+                    )
 
                     # type_specimen_status
-                    hesp_type = name.type_specimen
-                    mdd_type = mdd_row["MDD_holotype"]
-                    if mdd_type.lower() in ("not found", "na"):
-                        mdd_type = ""
-                    if m := re.match(r"(.*) \[([^\[\]]+)\]", mdd_type):
-                        mdd_species_type_kind = m.group(2)
-                        if mdd_species_type_kind == "syntype":
-                            mdd_species_type_kind = "syntypes"
-                        mdd_type = m.group(1)
-                    elif mdd_type:
-                        mdd_species_type_kind = "holotype"
-                    else:
-                        mdd_species_type_kind = ""
-                    hesp_species_type_kind = (
-                        name.species_type_kind.name if name.species_type_kind else ""
+                    compare_column(
+                        single_row,
+                        hesp_column="Hesp_type_specimen",
+                        mdd_column="MDD_holotype",
+                        target_column="type_specimen_status",
+                        compare_func=compare_type_specimen_text,
+                        counts=counts,
                     )
-                    if (
-                        hesp_species_type_kind
-                        and mdd_species_type_kind
-                        and hesp_species_type_kind != mdd_species_type_kind
-                    ):
-                        single_row["species_type_kind_status"] = (
-                            f"{hesp_species_type_kind or '(blank)'} (H) / {mdd_species_type_kind or '(blank)'} (M)"
-                        )
-                        num_species_type_kind_diffs += 1
-                    else:
-                        single_row["species_type_kind_status"] = ""
-
-                    if hesp_type and mdd_type:
-                        if hesp_type != mdd_type:
-                            diff = f"{hesp_type} (H) / {mdd_type} (M)"
-                            hesp_comma_count = hesp_type.count(",")
-                            mdd_comma_count = mdd_type.count(",")
-                            if hesp_comma_count != mdd_comma_count:
-                                diff = f"count: ({hesp_comma_count + 1}/{mdd_comma_count + 1}) {diff}"
-                                num_count_diffs += 1
-                            else:
-                                hesp_stripped = re.sub(
-                                    r"[^0-9]", " ", hesp_type
-                                ).strip()
-                                mdd_stripped = re.sub(r"[^0-9]+", " ", mdd_type)
-                                mdd_stripped = re.sub(r" +", " ", mdd_stripped).strip()
-                                if hesp_stripped != mdd_stripped:
-                                    diff = f"number: ({hesp_stripped}/{mdd_stripped}) {diff}"
-                                    num_number_diffs += 1
-                                else:
-                                    diff = f"text: {diff}"
-                                    num_text_diffs += 1
-                            single_row["type_specimen_status"] = diff
-                            num_type_specimen_diffs += 1
-                        else:
-                            single_row["type_specimen_status"] = ""
-                    elif hesp_type:
-                        single_row["type_specimen_status"] = "H only"
-                        type_specimen_missing_mdd += 1
-                    elif mdd_type:
-                        single_row["type_specimen_status"] = "M only"
-                        type_specimen_missing_hesp += 1
-                    else:
-                        single_row["type_specimen_status"] = ""
 
                     writer.writerow(single_row)
             else:
@@ -661,27 +669,14 @@ def run(
     print(f"{prev_match} matched MDD ids that no longer exist")
     print(f"{num_hesp_only} Hesperomys-only names")
     print(f"{num_mdd_only} MDD-only names")
+    for key, count in sorted(counts.items()):
+        print(f"{count} {key}")
     print(f"{num_species_diffs} species differences")
     print(f"{num_nomenclature_diffs} nomenclature status differences")
     print(f"{num_spelling_diffs} spelling differences")
-    print(f"{num_author_diffs} author differences")
-    print(f"{num_exact_author_diffs} exact author differences")
-    print(f"{num_year_diffs} year differences")
-    print(f"{num_validity_diffs} validity differences")
-    print(f"{citation_missing_hesp} Hesperomys names missing citation")
-    print(f"{citation_missing_mdd} MDD names missing citation")
-    print(f"{tl_missing_hesp} Hesperomys names missing type locality")
     print(
-        f"{tl_missing_hesp_not_required} Hesperomys names missing type locality"
-        " (type locality not required by status)"
+        f"type specimen differences: {num_count_diffs} counts, {num_number_diffs} specimen numbers, {num_text_diffs} text"
     )
-    print(f"{tl_missing_mdd} MDD names missing type locality")
-    print(
-        f"{num_type_specimen_diffs} type specimen differences ({num_count_diffs} counts, {num_number_diffs} specimen numbers, {num_text_diffs} text)"
-    )
-    print(f"{num_species_type_kind_diffs} species type kind differences")
-    print(f"{type_specimen_missing_hesp} Hesperomys names missing type specimen")
-    print(f"{type_specimen_missing_mdd} MDD names missing type specimen")
     print(
         f"{num_original_name_diffs} original name differences (normalized name matches)"
     )
@@ -689,8 +684,6 @@ def run(
         f"{num_original_name_diffs_normalized} original name differences (normalized"
         " name does not match)"
     )
-    print(f"{original_name_missing_hesp} Hesperomys names missing original name")
-    print(f"{original_name_missing_mdd} MDD names missing original name")
 
 
 def main() -> None:
