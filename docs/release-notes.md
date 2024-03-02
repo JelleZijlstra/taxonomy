@@ -27,6 +27,8 @@ exports released on Zenodo.
   - Automatically detect species-group homonyms. Distinguish between primary and
     secondary homonyms.
   - Revamp system for computing the nomenclatural status of names.
+  - Fill the citation group column for names with a checked original citation in the
+    exported data.
 - Frontend
   - Add option to show names in a taxon that are missing a field
 

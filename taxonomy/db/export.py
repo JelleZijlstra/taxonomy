@@ -147,7 +147,7 @@ def data_for_name(name: Name) -> NameData:
         species = None
     author_links = ", ".join(pers.get_absolute_url() for pers in name.get_authors())
     citation = name.original_citation
-    cg = name.citation_group
+    cg = name.get_citation_group()
     coll = name.collection
     loc_detail = "; ".join(
         stringify_detail_tag(tag)
