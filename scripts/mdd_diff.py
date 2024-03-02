@@ -1,3 +1,11 @@
+"""
+
+Example invocation:
+
+python -m scripts.mdd_diff notes/mdd/v1.12/MDD_v1.12_6718species.csv --csv mdd-compare.csv -i authority -i authority_exact -i higher_classification -i original_name -i original_name_missing_mdd -i type_specimen -i type_specimen_missing_hesp -i type_specimen_missing_mdd -i year
+
+"""
+
 import argparse
 import csv
 import enum
@@ -137,6 +145,10 @@ class Difference:
         parts.append(f" ({'; '.join(parentheticals)})")
         return "".join(parts)
 
+    @classmethod
+    def get_csv_columns(cls) -> list[str]:
+        return [*cls.__annotations__.keys(), "taxon_name", "mdd_link", "hesp_link"]
+
     def to_csv(self) -> dict[str, str]:
         return {
             "kind": self.kind.name,
@@ -145,6 +157,15 @@ class Difference:
             "hesp": self.hesp or "",
             "mdd_id": self.mdd_id or "",
             "taxon": str(self.taxon.id) if self.taxon else "",
+            "taxon_name": self.taxon.valid_name if self.taxon else "",
+            "mdd_link": (
+                f"https://www.mammaldiversity.org/explore.html#{self.mdd_id}"
+                if self.mdd_id
+                else ""
+            ),
+            "hesp_link": (
+                f"https://hesperomys.com/t/{self.taxon.id}" if self.taxon else ""
+            ),
         }
 
 
@@ -256,6 +277,8 @@ def get_need_initials_authors(nams: Iterable[Name]) -> set[str]:
         family_name
         for family_name, count in family_name_to_authors.items()
         if count > 1
+        or family_name
+        == "True"  # MDD gives True initials so he doesn't get mangled by Google Sheets
     }
 
 
@@ -784,9 +807,11 @@ def run(
 
     if csv_output is not None:
         with csv_output.open("w") as f:
-            writer = csv.DictWriter(f, list(Difference.__annotations__))
+            writer = csv.DictWriter(f, Difference.get_csv_columns())
             writer.writeheader()
             for difference in differences:
+                if difference.kind in ignore_kinds:
+                    continue
                 writer.writerow(difference.to_csv())
 
 
@@ -801,23 +826,24 @@ def main() -> None:
     parser.add_argument(
         "-i",
         "--ignore",
-        nargs="*",
         type=lambda k: DifferenceKind[k],
         help="Kinds to ignore",
+        action="append",
     )
     parser.add_argument(
         "-s",
         "--select",
-        nargs="*",
         type=lambda k: DifferenceKind[k],
         help="Output only these kinds",
+        action="append",
     )
     args = parser.parse_args()
     ignore = set()
     if args.select:
         ignore |= {kind for kind in DifferenceKind if kind not in args.select}
     if args.ignore:
-        ignore |= args.ignore
+        ignore |= set(args.ignore)
+
     run(
         mdd_file=Path(args.mdd_file),
         md_output=Path(args.md) if args.md else None,
