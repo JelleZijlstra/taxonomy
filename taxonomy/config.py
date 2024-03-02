@@ -42,6 +42,9 @@ class Options(NamedTuple):
     aws_cloudsearch_document_endpoint: str = ""
     aws_cloudsearch_search_endpoint: str = ""
 
+    mdd_sheet: str = ""
+    mdd_worksheet_gid: int = 0
+
     @property
     def burst_path(self) -> Path:
         return self.new_path / "Burst"
@@ -114,6 +117,8 @@ def parse_config_file(filename: Path) -> Options:
             aws_cloudsearch_document_endpoint=section.get(
                 "aws_cloudsearch_document_endpoint", ""
             ),
+            mdd_sheet=section.get("mdd_sheet", ""),
+            mdd_worksheet_gid=int(section.get("mdd_worksheet_gid", "0")),
         )
 
 
