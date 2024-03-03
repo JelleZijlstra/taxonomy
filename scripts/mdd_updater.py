@@ -22,10 +22,11 @@ import functools
 import itertools
 import pprint
 import sys
+import time
 from collections import Counter
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TypeVar
 
 import gspread
 import Levenshtein
@@ -275,6 +276,20 @@ def compare_year(hesp_year: str, mdd_year: str) -> int:
 COLUMN_RENAMES = {"MDD original combination": "MDD_original_combination"}
 REMOVED_COLUMNS = {"citation_status", "author_status", "type_locality_status"}
 
+T = TypeVar("T")
+
+
+def batched(iterable: Iterable[T], n: int) -> Iterable[list[T]]:
+    it = iter(iterable)
+    while chunk := list(itertools.islice(it, n)):
+        yield chunk
+
+
+def process_value_for_sheets(value: str) -> str | int:
+    if value.isdigit():
+        return int(value)
+    return value
+
 
 def run(*, dry_run: bool = True, taxon: Taxon) -> None:
     options = get_options()
@@ -413,7 +428,9 @@ def run(*, dry_run: bool = True, taxon: Taxon) -> None:
                 should_add = False
             if not should_add:
                 continue
-            row_list = [row.get(column, "") for column in headings]
+            row_list = [
+                process_value_for_sheets(row.get(column, "")) for column in headings
+            ]
             if not dry_run:
                 worksheet.append_row(row_list)
 
@@ -469,6 +486,7 @@ def run(*, dry_run: bool = True, taxon: Taxon) -> None:
                     ask_individually = getinput.yes_no("Ask individually?")
                 else:
                     ask_individually = False
+                updates_to_make = []
                 for diff in group:
                     if not diff.hesp_value:
                         print("No Hesp value", diff.summary())
@@ -476,16 +494,17 @@ def run(*, dry_run: bool = True, taxon: Taxon) -> None:
                         should_add = True
                     elif ask_individually:
                         print(diff.summary())
-                        should_add = getinput.yes_no("Add?")
+                        should_add = getinput.yes_no("Apply?")
                     else:
                         should_add = False
                     if should_add:
-                        if not dry_run:
-                            worksheet.update_cell(
-                                diff.row_idx, diff.col_idx, diff.hesp_value
+                        updates_to_make.append(
+                            gspread.cell.Cell(
+                                row=diff.row_idx,
+                                col=diff.col_idx,
+                                value=process_value_for_sheets(diff.hesp_value),
                             )
-                        else:
-                            print("Would set", diff.hesp_value)
+                        )
                     dict_writer.writerow(
                         {
                             "row_idx": diff.row_idx,
@@ -499,6 +518,18 @@ def run(*, dry_run: bool = True, taxon: Taxon) -> None:
                             "applied": str(int(should_add)),
                         }
                     )
+
+                if dry_run:
+                    print("Make change:", updates_to_make)
+                else:
+                    done = 0
+                    print("Applying changes for column", mdd_column)
+                    for batch in batched(updates_to_make, 500):
+                        worksheet.update_cells(batch)
+                        done += len(batch)
+                        print(f"Done {done}/{len(updates_to_make)}")
+                        if len(batch) == 500:
+                            time.sleep(30)
 
     print("Done. Data saved at", backup_path)
 
