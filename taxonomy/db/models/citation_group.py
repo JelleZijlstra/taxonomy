@@ -263,10 +263,10 @@ class CitationGroup(BaseModel):
                     callbacks={**self.get_adt_callbacks(), "open_all": open_all},
                     history_key=(self, "infer_bhl_biblio"),
                 )
-                # help pyanalyze, which picks "object" as the type otherwise
-                assert isinstance(data, dict)
                 if data is None:
                     return
+                # help pyanalyze, which picks "object" as the type otherwise
+                assert isinstance(data, dict)
             else:
                 yield message
                 return

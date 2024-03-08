@@ -1,5 +1,3 @@
-# static analysis: ignore[impossible_pattern]
-# TODO fix bug in pyanalyze
 import collections
 import csv
 import enum
@@ -102,6 +100,23 @@ def _get_page_metadata_string(page_id: str) -> str:
     return httpx.get(url).text
 
 
+def get_part_metadata(part_id: int) -> dict[str, Any]:
+    result = json.loads(_get_part_metadata_string(str(part_id)))
+    if result["Status"] != "ok":
+        raise ValueError(f"Bad status: {result['Status']} {result['ErrorMessage']}")
+    return result["Result"][0]
+
+
+@cached(CacheDomain.bhl_part)
+def _get_part_metadata_string(part_id: str) -> str:
+    api_key = config.get_options().bhl_api_key
+    url = (
+        f"https://www.biodiversitylibrary.org/api3?op=GetPartMetadata&id={part_id}"
+        f"&pages=t&idtype=bhl&format=json&apikey={api_key}"
+    )
+    return httpx.get(url).text
+
+
 def volume_matches(our_volume: str, bhl_volume: str) -> bool:
     if our_volume == bhl_volume:
         return True
@@ -181,7 +196,7 @@ class PossiblePage:
 
     @property
     def is_confident(self) -> bool:
-        return self.contains_text and self.contains_end_page
+        return self.contains_text and self.contains_end_page and bool(self.ocr_text)
 
 
 def find_possible_pages(
@@ -209,6 +224,9 @@ def find_possible_pages(
             else:
                 contains_end_page = any(get_possible_pages(item, end_page))
             page_metadata = get_page_metadata(page_id)
+            if "OcrText" not in page_metadata:
+                yield PossiblePage(page_id, start_page, False, False, "")
+                continue
             ocr_text = page_metadata["OcrText"]
             contains = any(contains_name(page_id, name) for name in contains_text)
             yield PossiblePage(
@@ -217,37 +235,77 @@ def find_possible_pages(
 
 
 class UrlType(enum.Enum):
-    bibliography = enum.auto()
-    item = enum.auto()
-    page = enum.auto()
-    biostor = enum.auto()
+    bhl_bibliography = enum.auto()
+    bhl_item = enum.auto()
+    bhl_page = enum.auto()
+    bhl_part = enum.auto()
+    other_bhl = enum.auto()
+    biostor_ref = enum.auto()
+    other_biostor = enum.auto()
+    other = enum.auto()
 
 
-def parse_possible_bhl_url(url: str) -> tuple[UrlType, int] | None:
+@dataclass
+class ParsedUrl:
+    url_type: UrlType
+    payload: str
+
+    def __str__(self) -> str:
+        match self.url_type:
+            case UrlType.bhl_bibliography:
+                return (
+                    f"https://www.biodiversitylibrary.org/bibliography/{self.payload}"
+                )
+            case UrlType.bhl_item:
+                return f"https://www.biodiversitylibrary.org/item/{self.payload}"
+            case UrlType.bhl_page:
+                return f"https://www.biodiversitylibrary.org/page/{self.payload}"
+            case UrlType.bhl_part:
+                return f"https://www.biodiversitylibrary.org/part/{self.payload}"
+            case UrlType.other_bhl:
+                return self.payload
+            case UrlType.biostor_ref:
+                return f"http://biostor.org/reference/{self.payload}"
+            case UrlType.other_biostor:
+                return self.payload
+            case UrlType.other:
+                return self.payload
+        return "<unknown url>"
+
+
+def parse_possible_bhl_url(url: str) -> ParsedUrl:
     if match := re.fullmatch(
-        r"https?://www.biodiversitylibrary.org/([a-z]+)/(\d+)", url
+        r"https?://(?:www\.)?biodiversitylibrary\.org/([a-z]+)/(\d+)", url
     ):
         match match.group(1):
             case "bibliography":
-                return UrlType.bibliography, int(match.group(2))
+                return ParsedUrl(UrlType.bhl_bibliography, match.group(2))
             case "item":
-                return UrlType.item, int(match.group(2))
+                return ParsedUrl(UrlType.bhl_item, match.group(2))
             case "page":
-                return UrlType.page, int(match.group(2))
-    elif match := re.fullmatch(r"https?://biostor.org/reference/(\d+)", url):
-        return UrlType.biostor, int(match.group(1))
-    return None
+                return ParsedUrl(UrlType.bhl_page, match.group(2))
+            case "part" | "partpdf":
+                return ParsedUrl(UrlType.bhl_part, match.group(2))
+    elif match := re.fullmatch(r"https?://biostor\.org/reference/(\d+)", url):
+        return ParsedUrl(UrlType.biostor_ref, match.group(1))
+    elif "biodiversitylibrary.org" in url:
+        return ParsedUrl(UrlType.other_bhl, url)
+    elif "biostor.org" in url:
+        return ParsedUrl(UrlType.other_biostor, url)
+    return ParsedUrl(UrlType.other, url)
 
 
 def get_bhl_item_from_url(url: str) -> int | None:
     pair = parse_possible_bhl_url(url)
     match pair:
-        case (UrlType.item, id):
-            assert isinstance(id, int), "help mypy"
-            return id
-        case (UrlType.page, id):
-            assert isinstance(id, int), "help mypy"
-            data = get_page_metadata(id)
+        case ParsedUrl(UrlType.bhl_item, id):
+            return int(id)
+        case ParsedUrl(UrlType.bhl_page, id):
+            data = get_page_metadata(int(id))
+            if data is not None:
+                return data["ItemID"]
+        case ParsedUrl(UrlType.bhl_part, id):
+            data = get_part_metadata(int(id))
             if data is not None:
                 return data["ItemID"]
     return None
@@ -255,17 +313,21 @@ def get_bhl_item_from_url(url: str) -> int | None:
 
 def get_bhl_bibliography_from_url(url: str) -> int | None:
     match parse_possible_bhl_url(url):
-        case (UrlType.bibliography, id):
-            assert isinstance(id, int), "help mypy"
-            return id
-        case (UrlType.item, id):
-            assert isinstance(id, int), "help mypy"
-            data = get_item_metadata(id)
+        case ParsedUrl(UrlType.bhl_bibliography, id):
+            return int(id)
+        case ParsedUrl(UrlType.bhl_item, id):
+            data = get_item_metadata(int(id))
             if data is not None:
                 return data["TitleID"]
-        case (UrlType.page, id):
-            assert isinstance(id, int), "help mypy"
-            data = get_page_metadata(id)
+        case ParsedUrl(UrlType.bhl_page, id):
+            data = get_page_metadata(int(id))
+            if data is not None:
+                item_id = data["ItemID"]
+                data = get_item_metadata(item_id)
+                if data is not None:
+                    return data["TitleID"]
+        case ParsedUrl(UrlType.bhl_part, id):
+            data = get_part_metadata(int(id))
             if data is not None:
                 item_id = data["ItemID"]
                 data = get_item_metadata(item_id)

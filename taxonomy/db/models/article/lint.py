@@ -14,6 +14,7 @@ from collections import defaultdict
 from collections.abc import Callable, Generator, Iterable, Sequence
 from typing import Any
 
+import httpx
 import requests
 
 from taxonomy.apis import bhl
@@ -369,12 +370,99 @@ def check_must_have_url(art: Article, cfg: LintConfig) -> Iterable[str]:
 
 
 @make_linter("url")
-def clean_up_url(art: Article, cfg: LintConfig) -> Iterable[str]:
-    if art.doi is not None:
-        cleaned = urllib.parse.unquote(art.doi)
-        yield from _maybe_clean(art, "doi", cleaned, cfg)
-        if not is_valid_doi(art.doi):
-            yield f"invalid doi {art.doi!r}"
+def check_url(art: Article, cfg: LintConfig) -> Iterable[str]:
+    if art.url is None:
+        return
+    hdl = _infer_hdl_from_url(art.url)
+    if hdl is not None:
+        message = f"inferred HDL {hdl} from url {art.url}"
+        if cfg.autofix:
+            print(f"{art}: {message}")
+            art.add_tag(ArticleTag.HDL(hdl))
+            art.url = None
+        else:
+            yield message
+        return
+
+    if art.url.startswith(_JSTOR_URL_PREFIX):
+        # put JSTOR in
+        jstor_id = art.url.removeprefix(_JSTOR_URL_PREFIX)
+        message = f"inferred JStor id {jstor_id} from url {art.url}"
+        if cfg.autofix:
+            print(f"{art}: {message}")
+            art.add_tag(ArticleTag.JSTOR(jstor_id))
+            art.url = None
+        else:
+            yield message
+        return
+
+    parsed_url = bhl.parse_possible_bhl_url(art.url)
+    stringified = str(parsed_url)
+    if stringified != art.url:
+        message = f"reformatted url to {parsed_url} from {art.url}"
+        if cfg.autofix:
+            print(f"{art}: {message}")
+            art.url = stringified
+        else:
+            yield message
+
+    match parsed_url:
+        case bhl.ParsedUrl(bhl.UrlType.biostor_ref, _):
+            if (bhl_page := get_inferred_bhl_page(art)) is not None:
+                message = f"inferred BHL page {bhl_page} from url {art.url}"
+                if cfg.autofix:
+                    print(f"{art}: {message}")
+                    art.url = bhl_page.page_url
+                else:
+                    yield message
+            elif (bhl_url := get_bhl_url_from_biostor(parsed_url.payload)) is not None:
+                message = f"inferred BHL page {bhl_url} from url {art.url}"
+                if cfg.autofix:
+                    print(f"{art}: {message}")
+                    art.url = bhl_url
+                else:
+                    yield message
+
+    # TODO: lint against other_bhl, other_biostor, biostor_ref
+
+
+def get_bhl_url_from_biostor(biostor_id: str) -> str | None:
+    response = httpx.get(f"https://biostor.org/reference/{biostor_id}")
+    response.raise_for_status()
+    data = response.text
+    # Line to match:
+    # BHL: <a href="https://www.biodiversitylibrary.org/page/7784406"
+    if match := re.search(
+        r"BHL: <a href=\"https://www\.biodiversitylibrary\.org/page/(\d+)\"", data
+    ):
+        return str(bhl.ParsedUrl(bhl.UrlType.bhl_page, match.group(1)))
+    return None
+
+
+@make_linter("doi")
+def check_doi(art: Article, cfg: LintConfig) -> Iterable[str]:
+    if art.doi is None:
+        return
+    cleaned = urllib.parse.unquote(art.doi)
+    yield from _maybe_clean(art, "doi", cleaned, cfg)
+    if not is_valid_doi(art.doi):
+        yield f"invalid doi {art.doi!r}"
+    if art.doi.startswith(_JSTOR_DOI_PREFIX):
+        jstor_id = art.doi.removeprefix(_JSTOR_DOI_PREFIX).removeprefix("/")
+        message = (
+            f"inferred JStor id {jstor_id} from doi {art.doi} (CG"
+            f" {art.citation_group})"
+        )
+        if cfg.autofix:
+            print(f"{art}: {message}")
+            art.add_tag(ArticleTag.JSTOR(jstor_id))
+            art.doi = None
+        else:
+            yield message
+
+
+@make_linter("infer_doi")
+def infer_doi(art: Article, cfg: LintConfig) -> Iterable[str]:
     if art.doi is None and art.url is not None:
         doi = _infer_doi_from_url(art.url)
         if doi is not None:
@@ -385,49 +473,6 @@ def clean_up_url(art: Article, cfg: LintConfig) -> Iterable[str]:
                 art.url = None
             else:
                 yield message
-
-    if hdl := art.getIdentifier(ArticleTag.HDL):
-        if not is_valid_hdl(hdl):
-            yield f"invalid HDL {hdl!r}"
-    elif art.url is not None:
-        hdl = _infer_hdl_from_url(art.url)
-        if hdl is not None:
-            message = f"inferred HDL {hdl} from url {art.url}"
-            if cfg.autofix:
-                print(f"{art}: {message}")
-                art.add_tag(ArticleTag.HDL(hdl))
-                art.url = None
-            else:
-                yield message
-
-    if jstor_id := art.getIdentifier(ArticleTag.JSTOR):
-        if len(jstor_id) < 4 or not jstor_id.isnumeric():
-            yield f"invalid JSTOR id {jstor_id!r}"
-    else:
-        if art.url is not None:
-            if art.url.startswith(_JSTOR_URL_PREFIX):
-                # put JSTOR in
-                jstor_id = art.url.removeprefix(_JSTOR_URL_PREFIX)
-                message = f"inferred JStor id {jstor_id} from url {art.url}"
-                if cfg.autofix:
-                    print(f"{art}: {message}")
-                    art.add_tag(ArticleTag.JSTOR(jstor_id))
-                    art.url = None
-                else:
-                    yield message
-        if art.doi is not None:
-            if art.doi.startswith(_JSTOR_DOI_PREFIX):
-                jstor_id = art.doi.removeprefix(_JSTOR_DOI_PREFIX).removeprefix("/")
-                message = (
-                    f"inferred JStor id {jstor_id} from doi {art.doi} (CG"
-                    f" {art.citation_group})"
-                )
-                if cfg.autofix:
-                    print(f"{art}: {message}")
-                    art.add_tag(ArticleTag.JSTOR(jstor_id))
-                    art.doi = None
-                else:
-                    yield message
 
 
 DOI_EXTRACTION_REGEXES = [
@@ -457,6 +502,8 @@ def _infer_hdl_from_url(url: str) -> str | None:
 
 @make_linter("bhl_page")
 def infer_bhl_page(art: Article, cfg: LintConfig) -> Iterable[str]:
+    if art.url is not None:
+        return
     page_obj = get_inferred_bhl_page(art)
     if page_obj is None:
         return
@@ -471,8 +518,7 @@ def infer_bhl_page(art: Article, cfg: LintConfig) -> Iterable[str]:
 
 def get_inferred_bhl_page(art: Article) -> bhl.PossiblePage | None:
     if (
-        art.url is not None
-        or art.start_page is None
+        art.start_page is None
         or not art.start_page.isnumeric()
         or art.end_page is None
         or not art.end_page.isnumeric()
@@ -885,6 +931,13 @@ def check_tags(art: Article, cfg: LintConfig) -> Iterable[str]:
         elif isinstance(tag, ArticleTag.BiblioNoteArticle):
             if tag.text not in get_biblio_pages():
                 yield f"references non-existent page {tag.text!r}"
+        elif isinstance(tag, ArticleTag.HDL):
+            if not is_valid_hdl(tag.text):
+                yield f"invalid HDL {tag.text!r}"
+        elif isinstance(tag, ArticleTag.JSTOR):
+            jstor_id = tag.text
+            if len(jstor_id) < 4 or not jstor_id.isnumeric():
+                yield f"invalid JSTOR id {jstor_id!r}"
         tags.append(tag)
     tags = sorted(set(tags))
     if tags != original_tags:

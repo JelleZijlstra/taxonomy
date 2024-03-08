@@ -40,6 +40,7 @@ class CacheDomain(enum.Enum):
     bhl_title = 6  # BHL GetTitleMetadata
     bhl_item = 7  # BHL GetItemMetadata
     bhl_page = 8  # BHL GetPageMetadata
+    bhl_part = 9  # BHL GetPartMetadata
 
 
 KeyT = TypeVar("KeyT")
