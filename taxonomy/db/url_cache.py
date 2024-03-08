@@ -4,15 +4,27 @@ Cache for arbitrary external data.
 
 Motivating use case: caching CrossRef API responses.
 
+Table created with:
+
+CREATE TABLE `url_cache` (
+    `domain` INT UNSIGNED NOT NULL,
+    `key` VARCHAR(128),
+    `content` TEXT
+);
+CREATE UNIQUE INDEX `full_key` on `url_cache` (`domain`, `key`);
+
 """
 
 import datetime
 import enum
 import functools
 from collections.abc import Callable
-from typing import Any
+from dataclasses import dataclass, field
+from typing import Any, Generic, TypeVar
 
-from . import models
+from peewee import SqliteDatabase
+
+from taxonomy.config import get_options
 
 CachedCallable = Callable[[str], str]
 
@@ -25,13 +37,50 @@ class CacheDomain(enum.Enum):
     )
     zoobank_publication = 4  # e.g. https://zoobank.org/References.json/427D7953-E8FC-41E8-BEA7-8AE644E6DE77
     crossref_openurl = 5
+    bhl_title = 6  # BHL GetTitleMetadata
+    bhl_item = 7  # BHL GetItemMetadata
+    bhl_page = 8  # BHL GetPageMetadata
 
 
-_LOCAL_CACHE: dict[tuple[CacheDomain, str], str] = {}
+KeyT = TypeVar("KeyT")
+ValueT = TypeVar("ValueT")
+
+
+@dataclass
+class LRU(Generic[KeyT, ValueT]):
+    max_size: int
+    _cache: dict[KeyT, ValueT] = field(default_factory=dict, init=False)
+
+    def __getitem__(self, key: KeyT) -> ValueT:
+        value = self._cache.pop(key)
+        self._cache[key] = value
+        return value
+
+    def __contains__(self, key: KeyT) -> bool:
+        return key in self._cache
+
+    def __setitem__(self, key: KeyT, value: ValueT) -> None:
+        if len(self._cache) >= self.max_size:
+            key_to_remove = next(iter(self._cache))
+            del self._cache[key_to_remove]
+        self._cache[key] = value
+
+    def __delitem__(self, key: KeyT) -> None:
+        del self._cache[key]
+
+
+_LOCAL_CACHE: LRU[tuple[CacheDomain, str], str] = LRU(2048)
+
+
+@functools.cache
+def get_database() -> SqliteDatabase:
+    option = get_options()
+    return SqliteDatabase(option.urlcache_filename)
 
 
 def run_query(sql: str, args: tuple[object, ...]) -> list[tuple[Any, ...]]:
-    cursor = models.base.database.execute_sql(sql, args)
+    db = get_database()
+    cursor = db.execute_sql(sql, args)
     return list(cursor)
 
 
@@ -79,6 +128,7 @@ def dirty_cache(domain: CacheDomain, key: str) -> None:
         """,
         (domain.value, key),
     )
+    del _LOCAL_CACHE[(domain, key)]
 
 
 @cached(CacheDomain.test)

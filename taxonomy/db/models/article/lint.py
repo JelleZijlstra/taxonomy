@@ -7,6 +7,7 @@ Lint steps for Articles.
 import bisect
 import functools
 import re
+import traceback
 import unicodedata
 import urllib.parse
 from collections import defaultdict
@@ -15,12 +16,14 @@ from typing import Any
 
 import requests
 
+from taxonomy.apis import bhl
+
 from .... import getinput
 from ....apis.zoobank import clean_lsid, get_zoobank_data_for_act, is_valid_lsid
 from ... import helpers, models
 from ...constants import ArticleKind, ArticleType, DateSource
 from ..base import ADTField, BaseModel, LintConfig
-from ..citation_group import CitationGroup, CitationGroupTag
+from ..citation_group import CitationGroup, CitationGroupTag, get_biblio_pages
 from ..issue_date import IssueDate
 from .article import Article, ArticleComment, ArticleTag, PresenceStatus
 from .name_parser import get_name_parser
@@ -43,7 +46,12 @@ def make_linter(
     def decorator(linter: Linter) -> IgnorableLinter:
         @functools.wraps(linter)
         def wrapper(art: Article, cfg: LintConfig) -> Generator[str, None, set[str]]:
-            issues = list(linter(art, cfg))
+            try:
+                issues = list(linter(art, cfg))
+            except Exception as e:
+                traceback.print_exc()
+                yield f"{art}: error running {label} linter: {e}"
+                return set()
             if not issues:
                 return set()
             ignored_lints = get_ignored_lints(art)
@@ -422,20 +430,17 @@ def clean_up_url(art: Article, cfg: LintConfig) -> Iterable[str]:
                     yield message
 
 
+DOI_EXTRACTION_REGEXES = [
+    r"https?:\/\/(?:dx\.)?doi\.org\/(10\..+)",
+    r"http:\/\/www\.bioone\.org\/doi\/(?:full|abs|pdf)\/(.*)",
+    r"http:\/\/onlinelibrary\.wiley\.com\/doi\/(.*?)\/(abs|full|pdf|abstract)",
+]
+
+
 def _infer_doi_from_url(url: str) -> str | None:
-    if url.startswith("http://dx.doi.org/"):
-        return url[len("http://dx.doi.org/") :]
-
-    if match := re.search(
-        r"^http:\/\/www\.bioone\.org\/doi\/(full|abs|pdf)\/(.*)$", url
-    ):
-        return match.group(2)
-
-    if match := re.search(
-        r"^http:\/\/onlinelibrary\.wiley\.com\/doi\/(.*?)\/(abs|full|pdf|abstract)$",
-        url,
-    ):
-        return match.group(1)
+    for rgx in DOI_EXTRACTION_REGEXES:
+        if match := re.match(rgx, url):
+            return match.group(1)
     return None
 
 
@@ -447,6 +452,59 @@ def _infer_hdl_from_url(url: str) -> str | None:
         url,
     ):
         return match.group(2)
+    return None
+
+
+@make_linter("bhl_page")
+def infer_bhl_page(art: Article, cfg: LintConfig) -> Iterable[str]:
+    page_obj = get_inferred_bhl_page(art)
+    if page_obj is None:
+        return
+    message = f"inferred BHL page {page_obj} from {art.start_page}–{art.end_page}"
+    if cfg.autofix:
+        print(f"{art}: {message}")
+        art.url = page_obj.page_url
+    else:
+        yield message
+    print(page_obj.page_url)
+
+
+def get_inferred_bhl_page(art: Article) -> bhl.PossiblePage | None:
+    if (
+        art.url is not None
+        or art.start_page is None
+        or not art.start_page.isnumeric()
+        or art.end_page is None
+        or not art.end_page.isnumeric()
+        or art.year is None
+        or art.title is None
+    ):
+        return None
+    cg = art.get_citation_group()
+    if cg is None:
+        return None
+    title_ids = cg.get_bhl_title_ids()
+    if not title_ids:
+        return None
+    year = art.numeric_year()
+    contains_text = [art.title]
+    start_page = int(art.start_page)
+    end_page = int(art.end_page)
+    possible_pages = list(
+        bhl.find_possible_pages(
+            title_ids,
+            year=year,
+            start_page=start_page,
+            end_page=end_page,
+            volume=art.volume,
+            contains_text=contains_text,
+        )
+    )
+    confident_pages = [page for page in possible_pages if page.is_confident]
+    if not confident_pages:
+        pass
+    elif len(confident_pages) == 1:
+        return confident_pages[0]
     return None
 
 
@@ -824,6 +882,9 @@ def check_tags(art: Article, cfg: LintConfig) -> Iterable[str]:
             tag = ArticleTag.LSIDArticle(clean_lsid(tag.text), tag.present_in_article)
             if not is_valid_lsid(tag.text):
                 yield f"invalid LSID {tag.text}"
+        elif isinstance(tag, ArticleTag.BiblioNoteArticle):
+            if tag.text not in get_biblio_pages():
+                yield f"references non-existent page {tag.text!r}"
         tags.append(tag)
     tags = sorted(set(tags))
     if tags != original_tags:

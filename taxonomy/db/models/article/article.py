@@ -22,6 +22,7 @@ from peewee import (
 )
 
 from taxonomy import adt, config, events, getinput
+from taxonomy.apis import bhl
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
 from taxonomy.db import models
 from taxonomy.db.constants import (
@@ -627,6 +628,11 @@ class Article(BaseModel):
             return CitationGroup.getter("name")("book")
         return None
 
+    def get_bhl_item_id(self) -> int | None:
+        if self.url is None:
+            return None
+        return bhl.get_bhl_item_from_url(self.url)
+
     def get_path(self) -> Path:
         """Returns the full path to this file."""
         if not self.isfile():
@@ -1103,7 +1109,7 @@ class Article(BaseModel):
                     current_tl = nam.type_locality
                 print(f"{' ' * 8}{nam.get_description()}", end="")
 
-    def display_children(self) -> None:
+    def display_children(self, indent: int = 4) -> None:
         children = list(
             Article.select_valid().filter(
                 Article.parent == self,
@@ -1113,7 +1119,11 @@ class Article(BaseModel):
         )
         children = sorted(children, key=lambda art: art.numeric_start_page())
         for child in children:
-            print(f"    {child.start_page}–{child.end_page} {child.cite()}")
+            print(
+                f"{' ' * indent}{child.start_page}–{child.end_page}"
+                f" {{{child.name}}} {child.cite()}"
+            )
+            child.display_children(indent=indent + 4)
 
     def copy_year_for_names(self, force: bool = False) -> None:
         new_names = list(models.Name.add_validity_check(self.new_names))
@@ -1339,6 +1349,9 @@ class ArticleTag(adt.ADT):
     UnavailableElectronic(comment=NotRequired[str], tag=17)  # type: ignore
     # Like UnavailableElectronic, but expected to be available in the future
     InPress(comment=NotRequired[str], tag=18)  # type: ignore
+
+    # Link to a relevant page in docs/biblio/
+    BiblioNoteArticle(text=str, tag=19)  # type: ignore
 
 
 @lru_cache

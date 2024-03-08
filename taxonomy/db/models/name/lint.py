@@ -20,6 +20,8 @@ from typing import Any, TypeVar
 
 import requests
 
+from taxonomy.apis import bhl
+
 from .... import adt, getinput
 from ....apis.zoobank import clean_lsid, get_zoobank_data, is_valid_lsid
 from ... import helpers
@@ -311,6 +313,11 @@ def check_organ_tag(tag: TypeTag.Organ) -> Generator[str, None, list[TypeTag.Org
     return new_tags
 
 
+ALLOWED_AUTHORITY_PAGE_LINKS = re.compile(
+    r"^https://www\.biodiversitylibrary\.org/page/\d+$"
+)
+
+
 @make_linter("type_tags")
 def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if not nam.type_tags:
@@ -472,6 +479,16 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
         elif isinstance(tag, TypeTag.Organ) and tag.detail:
             new_tags = yield from check_organ_tag(tag)
             tags += new_tags
+        elif isinstance(tag, TypeTag.AuthorityPageLink):
+            if not ALLOWED_AUTHORITY_PAGE_LINKS.fullmatch(tag.url):
+                yield f"invalid authority page link {tag.url!r}"
+            if nam.page_described is not None:
+                allowed_pages = list(extract_pages(nam.page_described))
+                if tag.page not in allowed_pages:
+                    yield f"authority page link {tag.url} for page {tag.page!r}" f" does not match any pages in page_described ({allowed_pages})"
+            tags.append(
+                TypeTag.AuthorityPageLink(tag.url, tag.confirmed, str(tag.page))
+            )
         else:
             tags.append(tag)
         # TODO: for lectotype and subsequent designations, ensure the earliest valid one is used.
@@ -2592,6 +2609,80 @@ def check_infrasubspecific(nam: Name, cfg: LintConfig) -> Iterable[str]:
             nam.add_tag(NameTag.Condition(NomenclatureStatus.infrasubspecific, ""))
         else:
             yield message
+
+
+@make_linter("infer_bhl_page")
+def infer_bhl_page(
+    nam: Name,
+    cfg: LintConfig = LintConfig(autofix=False, interactive=False),
+    verbose: bool = False,
+) -> Iterable[str]:
+    if nam.page_described is None or nam.year is None:
+        if verbose:
+            print(f"{nam}: Skip because no page or year")
+        return
+    pages = list(extract_pages(nam.page_described))
+    if nam.num_type_tags(TypeTag.AuthorityPageLink) >= len(pages):
+        if verbose:
+            print(f"{nam}: Skip because already has BHL page")
+        return
+    cg = nam.get_citation_group()
+    if cg is None:
+        if verbose:
+            print(f"{nam}: Skip because no citation group")
+        return
+    title_ids = cg.get_bhl_title_ids()
+    if not title_ids:
+        if verbose:
+            print(f"{nam}: Skip because citation group has no BHLBibliography tag")
+        return
+    year = nam.numeric_year()
+    contains_text: list[str] = []
+    if nam.original_name is not None:
+        contains_text.append(nam.original_name)
+    if nam.corrected_original_name is not None:
+        contains_text.append(nam.corrected_original_name)
+    if not contains_text:
+        return
+    if nam.original_citation is not None:
+        known_item_id = nam.original_citation.get_bhl_item_id()
+    else:
+        known_item_id = None
+    for page in pages:
+        if not page.isnumeric():
+            continue
+        start_page = int(page)
+        possible_pages = list(
+            bhl.find_possible_pages(
+                title_ids,
+                year=year,
+                start_page=start_page,
+                contains_text=contains_text,
+                known_item_id=known_item_id,
+            )
+        )
+        confident_pages = [page for page in possible_pages if page.is_confident]
+        if not confident_pages:
+            if verbose:
+                print(f"Reject for {nam} because no confident pages")
+                for page_obj in possible_pages:
+                    print(page_obj.page_url)
+        elif len(confident_pages) == 1:
+            page_obj = confident_pages[0]
+            message = f"inferred BHL page {page_obj} from {page}"
+            if cfg.autofix:
+                print(f"{nam}: {message}")
+                tag = TypeTag.AuthorityPageLink(
+                    page_obj.page_url, True, str(page_obj.page_number)
+                )
+                nam.add_type_tag(tag)
+            else:
+                yield message
+            print(page_obj.page_url)
+        elif verbose:
+            print(f"Reject for {nam} because multiple pages with name:")
+            for page_obj in confident_pages:
+                print(page_obj.page_url)
 
 
 def run_linters(

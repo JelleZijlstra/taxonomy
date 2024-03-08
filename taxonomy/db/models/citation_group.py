@@ -1,6 +1,7 @@
 import builtins
 import functools
 import re
+import subprocess
 from collections import Counter
 from collections.abc import Iterable
 from datetime import date
@@ -8,6 +9,7 @@ from typing import Any, NotRequired, TypeVar
 
 from peewee import BooleanField, CharField, ForeignKeyField, IntegrityError
 
+from taxonomy.apis import bhl
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
 
 from ... import adt, config, events, getinput
@@ -126,6 +128,7 @@ class CitationGroup(BaseModel):
     def lint(self, cfg: LintConfig) -> Iterable[str]:
         if not self.tags:
             return
+        has_bhl_biblio = False
         for tag in self.tags:
             if tag is CitationGroupTag.MustHave or isinstance(
                 tag, CitationGroupTag.MustHaveAfter
@@ -152,6 +155,7 @@ class CitationGroup(BaseModel):
             if isinstance(tag, CitationGroupTag.BHLBibliography):
                 if not tag.text.isnumeric():
                     yield f"{self}: invalid BHL tag {tag}"
+                has_bhl_biblio = True
             if isinstance(tag, CitationGroupTag.YearRange):
                 if issue := helpers.is_valid_year(tag.start):
                     yield f"{self}: invalid start year in {tag}: {issue}"
@@ -162,7 +166,7 @@ class CitationGroup(BaseModel):
                 if tag.end and int(tag.end) > date.today().year:
                     yield f"{self}: {tag} is predicting the future"
             if isinstance(tag, CitationGroupTag.BiblioNote):
-                if tag.text not in _get_biblio_pages():
+                if tag.text not in get_biblio_pages():
                     yield f"{self}: references non-existent page {tag.text!r}"
             # TODO if there is a Predecessor, check that the YearRange tags make sense
             if isinstance(
@@ -203,6 +207,98 @@ class CitationGroup(BaseModel):
                 self.tags = tags  # type: ignore
             else:
                 yield message
+
+        if not has_bhl_biblio:
+            yield from self.infer_bhl_biblio(cfg)
+        yield from self.infer_bhl_biblio_from_children(cfg)
+
+    def infer_bhl_biblio_from_children(self, cfg: LintConfig) -> Iterable[str]:
+        bibliographies = set()
+        for nam in self.get_names():
+            for tag in nam.get_tags(
+                nam.type_tags, models.name.TypeTag.AuthorityPageLink
+            ):
+                if biblio := bhl.get_bhl_bibliography_from_url(tag.url):
+                    bibliographies.add(biblio)
+        for art in self.get_articles():
+            if art.url:
+                if biblio := bhl.get_bhl_bibliography_from_url(art.url):
+                    bibliographies.add(biblio)
+        if not bibliographies:
+            return
+        existing = self.get_bhl_title_ids()
+        bibliographies.difference_update(str(biblio) for biblio in existing)
+        if not bibliographies:
+            return
+        message = (
+            f"{self}: inferred BHL tags {bibliographies} "
+            f"from child articles and names"
+        )
+        if cfg.autofix:
+            print(message)
+            for biblio in bibliographies:
+                self.add_tag(CitationGroupTag.BHLBibliography(text=str(biblio)))
+        else:
+            yield message
+
+    def infer_bhl_biblio(self, cfg: LintConfig) -> Iterable[str]:
+        title_dict = bhl.get_title_to_data()
+        name = self.name.casefold()
+        if name not in title_dict:
+            return
+        candidates = title_dict[name]
+        if len(candidates) > 1:
+            urls = [cand["TitleURL"] for cand in candidates]
+            message = f"{self}: multiple possible BHL entries: {urls}"
+            if cfg.interactive:
+                getinput.print_header(self)
+                print(message)
+
+                def open_all() -> None:
+                    for cand in candidates:
+                        subprocess.check_call(["open", cand["TitleURL"]])
+
+                data = getinput.choose_one(
+                    candidates,
+                    callbacks={**self.get_adt_callbacks(), "open_all": open_all},
+                    history_key=(self, "infer_bhl_biblio"),
+                )
+                # help pyanalyze, which picks "object" as the type otherwise
+                assert isinstance(data, dict)
+                if data is None:
+                    return
+            else:
+                yield message
+                return
+        else:
+            data = candidates[0]
+            active_years = self.get_active_year_range()
+            if active_years is None:
+                message = f"{self}: no active years, but may match {data['TitleURL']}"
+                if cfg.interactive:
+                    print(message)
+                    subprocess.check_call(["open", data["TitleURL"]])
+                    if not getinput.yes_no(
+                        "Accept anyway? ", callbacks=self.get_adt_callbacks()
+                    ):
+                        return
+                else:
+                    yield message
+                return
+            my_start_year, my_end_year = active_years
+            if not data["StartYear"]:
+                return
+            if my_start_year < int(data["StartYear"]) or (
+                data["EndYear"] and my_end_year > int(data["EndYear"])
+            ):
+                yield f"{self}: active years {my_start_year}-{my_end_year} don't match {data['TitleURL']} {data['StartYear']}-{data['EndYear']}"
+                return
+        message = f"{self}: inferred BHL tag {data['TitleID']}"
+        if cfg.autofix:
+            print(message)
+            self.add_tag(CitationGroupTag.BHLBibliography(text=str(data["TitleID"])))
+        else:
+            yield message
 
     def has_tag(self, tag: adt.ADT) -> bool:
         if self.tags is None:
@@ -445,6 +541,29 @@ class CitationGroup(BaseModel):
             return f"{year} is after end of {year_range} for {self}"
         return None
 
+    def get_active_year_range(self) -> tuple[int, int] | None:
+        years: set[int] = set()
+        for nam in self.get_names():
+            year = nam.numeric_year()
+            if year:
+                years.add(year)
+        for art in self.get_articles():
+            year = art.numeric_year()
+            if year:
+                years.add(year)
+        if tag := self.get_tag(CitationGroupTag.YearRange):
+            if tag.start:
+                years.add(int(tag.start))
+            if tag.end:
+                years.add(int(tag.end))
+        if years:
+            return min(years), max(years)
+        return None
+
+    def get_bhl_title_ids(self) -> list[int]:
+        tags = self.get_tags(self.tags, CitationGroupTag.BHLBibliography)
+        return [int(tag.text) for tag in tags]
+
     def display_organized(self, depth: int = 0) -> None:
         region_str = f" ({self.region.name})" if self.region else ""
         print(f"{' ' * depth}{self.name}{region_str}")
@@ -509,7 +628,7 @@ class CitationGroupPattern(BaseModel):
 
 
 @functools.cache
-def _get_biblio_pages() -> set[str]:
+def get_biblio_pages() -> set[str]:
     options = config.get_options()
     biblio_dir = options.taxonomy_repo / "docs" / "biblio"
     return {path.stem for path in biblio_dir.glob("*.md")}

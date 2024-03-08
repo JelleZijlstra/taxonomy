@@ -14,6 +14,7 @@ class Options(NamedTuple):
     data_path: Path = Path()
     parserdata_path: Path = Path()
     db_filename: Path = Path()
+    urlcache_filename: Path = Path()
     derived_data_filename: Path = Path()
     cached_data_filename: Path = Path()
     photos_path: Path = Path()
@@ -44,6 +45,8 @@ class Options(NamedTuple):
 
     mdd_sheet: str = ""
     mdd_worksheet_gid: int = 0
+
+    bhl_api_key: str = ""
 
     @property
     def burst_path(self) -> Path:
@@ -91,6 +94,7 @@ def parse_config_file(filename: Path) -> Options:
             photos_path=parse_path(section, "photos_path", base_path),
             pdf_text_path=parse_path(section, "pdf_text_path", base_path),
             db_filename=db_filename,
+            urlcache_filename=parse_path(section, "urlcache_filename", base_path),
             db_server=section.get("db_server", ""),
             db_username=section.get("db_username", ""),
             db_password=section.get("db_password", ""),
@@ -119,6 +123,7 @@ def parse_config_file(filename: Path) -> Options:
             ),
             mdd_sheet=section.get("mdd_sheet", ""),
             mdd_worksheet_gid=int(section.get("mdd_worksheet_gid", "0")),
+            bhl_api_key=section.get("bhl_api_key", ""),
         )
 
 

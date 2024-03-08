@@ -110,6 +110,11 @@ def get_type_locality_country_and_subregion(nam: Name) -> tuple[str, str]:
     return regions[0], regions[1]
 
 
+def get_authority_link(nam: Name) -> str:
+    tags = nam.get_tags(nam.type_tags, TypeTag.AuthorityPageLink)
+    return " | ".join(tag.url for tag in tags)
+
+
 OMITTED_COLUMNS = {
     "MDD_authority_link",
     "MDD_old_type_locality",
@@ -140,6 +145,7 @@ def get_hesp_row(name: Name, need_initials: set[str]) -> dict[str, Any]:
     row["Hesp_unchecked_authority_citation"] = row["verbatim_citation"]
     row["Hesp_citation_group"] = row["citation_group"]
     row["Hesp_authority_page"] = row["page_described"]
+    row["Hesp_unchecked_authority_link"] = get_authority_link(name)
     # TODO: MDD_authority_link
 
     # Type locality
@@ -208,7 +214,7 @@ def get_hesp_row(name: Name, need_initials: set[str]) -> dict[str, Any]:
 class FixableDifference:
     row_idx: int
     col_idx: int
-    explanation: str
+    explanation: str | None
     mdd_column: str
     hesp_value: str
     mdd_value: str
@@ -217,7 +223,17 @@ class FixableDifference:
     hesp_name: Name
 
     def summary(self) -> str:
+        if self.explanation is None:
+            return f"{self.hesp_value} (H) / {self.mdd_value} (M) [{self.hesp_name}]"
         return f"{self.explanation}: {self.hesp_value} (H) / {self.mdd_value} (M) [{self.hesp_name}]"
+
+    def print(self) -> None:
+        expl = f": {self.explanation}" if self.explanation else ""
+        print(f"- {self.mdd_column}{expl} ({self.hesp_name})")
+        if self.hesp_value:
+            print(f"    - H: {self.hesp_value}")
+        if self.mdd_value:
+            print(f"    - M: {self.mdd_value}")
 
 
 def compare_column(
@@ -237,7 +253,7 @@ def compare_column(
     match (bool(hesp_value), bool(mdd_value)):
         case (True, False):
             counts[f"{mdd_column} missing in MDD"] += 1
-            explanation = "H only"
+            explanation: str | None = "H only"
         case (False, True):
             counts[f"{mdd_column} missing in Hesperomys"] += 1
             explanation = "M only"
@@ -247,7 +263,9 @@ def compare_column(
                 if compare_func is not None:
                     extra = compare_func(hesp_value, mdd_value)
                     comparison = f"{extra}: {comparison}"
-                explanation = comparison
+                    explanation = comparison
+                else:
+                    explanation = None
                 counts[f"{mdd_column} differences"] += 1
             else:
                 return None
@@ -456,7 +474,9 @@ def run(*, dry_run: bool = True, taxon: Taxon) -> None:
                     ]
                 )
 
-    fixable_differences = sorted(fixable_differences, key=lambda x: x.mdd_column)
+    fixable_differences = sorted(
+        fixable_differences, key=lambda x: (x.mdd_column, x.hesp_value, x.mdd_value)
+    )
     if fixable_differences:
         with (backup_path / "fixable-differences.csv").open("w") as file:
             dict_writer = csv.DictWriter(
@@ -480,7 +500,7 @@ def run(*, dry_run: bool = True, taxon: Taxon) -> None:
                 group = list(group_iter)
                 getinput.print_header(f"Differences for {mdd_column} ({len(group)})")
                 for diff in group:
-                    print("-", diff.summary())
+                    diff.print()
                 add_all = getinput.yes_no("Accept all?")
                 if not add_all:
                     ask_individually = getinput.yes_no("Ask individually?")
@@ -493,7 +513,7 @@ def run(*, dry_run: bool = True, taxon: Taxon) -> None:
                     if add_all:
                         should_add = True
                     elif ask_individually:
-                        print(diff.summary())
+                        diff.print()
                         should_add = getinput.yes_no("Apply?")
                     else:
                         should_add = False

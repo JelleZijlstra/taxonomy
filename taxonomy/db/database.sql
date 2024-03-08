@@ -341,13 +341,6 @@ CREATE TABLE `specimen_comment` (
 );
 CREATE INDEX "idx_specimen" ON "specimen_comment" (`specimen_id`);
 
-CREATE TABLE `url_cache` (
-    `domain` INT UNSIGNED NOT NULL,
-    `key` VARCHAR(128),
-    `content` TEXT
-);
-CREATE UNIQUE INDEX `full_key` on `url_cache` (`domain`, `key`);
-
 CREATE TABLE `issue_date` (
     `id` integer primary key,
     `citation_group_id` integer not null,

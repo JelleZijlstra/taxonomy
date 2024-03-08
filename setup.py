@@ -32,6 +32,7 @@ setup(
         "typing_inspect",
         "types-requests",
         "boto3",
+        "httpx",
         "botocore",
     ],
     classifiers=[

@@ -874,6 +874,10 @@ class Name(BaseModel):
         tag_id = tag_cls._tag
         return any(tag[0] == tag_id for tag in self.get_raw_tags_field("type_tags"))
 
+    def num_type_tags(self, tag_cls: TypeTagCons) -> int:
+        tag_id = tag_cls._tag
+        return sum(tag[0] == tag_id for tag in self.get_raw_tags_field("type_tags"))
+
     def has_name_tag(self, tag_cls: NameTagCons) -> bool:
         tag_id = tag_cls._tag
         return any(tag[0] == tag_id for tag in self.get_raw_tags_field("tags"))
@@ -945,6 +949,7 @@ class Name(BaseModel):
 
     def add_nomen_nudum(self, interactive: bool = True) -> Name | None:
         """Adds a nomen nudum similar to this name."""
+        tags = [NameTag.Condition(NomenclatureStatus.nomen_nudum, "")]
         if interactive:
             paper = self.get_value_for_foreign_class("paper", Article)
             if paper is not None:
@@ -953,12 +958,14 @@ class Name(BaseModel):
                     root_name=self.root_name,
                     original_name=self.original_name,
                     author_tags=self.author_tags,
+                    tags=tags,
                     nomenclature_status=NomenclatureStatus.nomen_nudum,
                 )
         return self.taxon.add_syn(
             root_name=self.root_name,
             original_name=self.original_name,
             author_tags=self.author_tags,
+            tags=tags,
             nomenclature_status=NomenclatureStatus.nomen_nudum,
         )
 
@@ -2693,6 +2700,7 @@ class TypeTag(adt.ADT):
     FutureRepository(repository=Collection, tag=51)  # type: ignore
     TypeSpecimenLinkFor(url=str, specimen=str, tag=52)  # type: ignore
     PhyloCodeNumber(number=int, tag=53)  # type: ignore
+    AuthorityPageLink(url=str, confirmed=bool, page=str, tag=54)  # type: ignore
 
 
 SOURCE_TAGS = (

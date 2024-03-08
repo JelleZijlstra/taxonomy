@@ -98,17 +98,24 @@ def citenormal(article: Article) -> str:
     return _citenormal(article, mw=True)
 
 
-def _citenormal(article: Article, *, mw: bool) -> str:
+def _citenormal(
+    article: Article, *, mw: bool, child_article: Article | None = None
+) -> str:
     # cites according to normal WP citation style
     # if mw = False, no MediaWiki markup is used
     # this is going to be the citation
-    if mw:
+    if mw and child_article is None:
         out = "*"
     else:
         out = ""
     # replace last ; with ", and"; others with ","
     out += format_authors(article, separator=",", lastSeparator=" and")
-    out += f". {article.year}. "
+    if child_article is not None and child_article.type is ArticleType.CHAPTER:
+        out += ". (eds.)"
+    if child_article is not None and child_article.year == article.year:
+        out += ". "
+    else:
+        out += f". {article.year}. "
     if mw:
         url = article.geturl()
         if url:
@@ -143,16 +150,10 @@ def _citenormal(article: Article, *, mw: bool) -> str:
             out += article.pages
         enclosing = article.parent
         if not enclosing:
-            out += " in Unknown"
+            out += " in Unknown."
         else:
             out += " in "
-            out += format_authors(enclosing, separator=",", lastSeparator=" and")
-            if article.type == ArticleType.CHAPTER:
-                out += " (eds.). "
-            out += f"{enclosing.title}. {enclosing.publisher}"
-            if enclosing.pages:
-                out += f", {enclosing.pages} pp"
-        out += "."
+            out += _citenormal(enclosing, mw=mw, child_article=article)
     elif article.type == ArticleType.BOOK:
         out += f" {article.publisher}"
         if article.citation_group is not None:
@@ -168,6 +169,8 @@ def _citenormal(article: Article, *, mw: bool) -> str:
         if article.pages:
             out += f", {article.pages} pp"
         out += "."
+    if child_article is not None:
+        return out
     identifiers = []
     if article.url is not None:
         identifiers.append(f"URL: {article.url}")
@@ -187,7 +190,7 @@ def _citenormal(article: Article, *, mw: bool) -> str:
                 identifiers.append(f"PMC {tag.text}")
     out += "".join(f" {text}" for text in identifiers)
     # final cleanup
-    out = re.sub(r"\s+", " ", out).replace("..", ".")
+    out = re.sub(r"\s+", " ", out).replace("..", ".").replace("-\\ ", "- ")
     if mw:
         out = wikify(out)
     return out
