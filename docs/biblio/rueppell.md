@@ -274,6 +274,8 @@ and end of the range is somewhat weak. We can date the parts as follows:
 - Hefte 7–11: 1828 (_Isis_, 1829)
 - Hefte 12–15: 1829 (_Isis_, 1829)
 - Hefte 16-17: by October 1830 (_Bulletin_, 23:134)
-- Hefte 18-20: by August 1831 (_Bulletin_, 26:185)
-  - However, contemporary sources date all these parts to 1830, and {Aves-dating.pdf}
-    allocates part 18 to 1830.
+- Hefte 18-20: 1830 (_Bulletin_, 26:185, 1831; _Allgemeine Literatur-Zeitung_, 1832)
+  - It is possible that some were published in 1831, as hinted at by Sherborn. However,
+    contemporary sources date all these parts to 1830, and {Aves-dating.pdf} allocates
+    part 18 to 1830. The _Bulletin_ establishes that they were all published by
+    August 1831.
