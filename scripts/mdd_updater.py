@@ -112,11 +112,12 @@ def get_type_locality_country_and_subregion(nam: Name) -> tuple[str, str]:
 
 def get_authority_link(nam: Name) -> str:
     tags = nam.get_tags(nam.type_tags, TypeTag.AuthorityPageLink)
-    return " | ".join(tag.url for tag in tags)
+    return " | ".join(sorted({tag.url for tag in tags}))
 
 
 OMITTED_COLUMNS = {
     "MDD_authority_link",
+    "MDD_unchecked_authority_page_link",
     "MDD_old_type_locality",
     "MDD_emended_type_locality",
     "MDD_type_latitude",
@@ -145,8 +146,9 @@ def get_hesp_row(name: Name, need_initials: set[str]) -> dict[str, Any]:
     row["Hesp_unchecked_authority_citation"] = row["verbatim_citation"]
     row["Hesp_citation_group"] = row["citation_group"]
     row["Hesp_authority_page"] = row["page_described"]
-    row["Hesp_unchecked_authority_link"] = get_authority_link(name)
+    row["Hesp_authority_page_link"] = get_authority_link(name)
     # TODO: MDD_authority_link
+    # TODO: MDD_unchecked_authority_page_link
 
     # Type locality
     # Omit: MDD_old_type_locality
