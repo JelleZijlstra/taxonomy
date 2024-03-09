@@ -669,7 +669,7 @@ class Article(BaseModel):
             path = self.get_path()
         else:
             raise ValueError(f"invalid place {place}")
-        subprocess.check_call(["open", str(path)])
+        subprocess.call(["open", str(path)])
 
     def isfile(self) -> bool:
         # returns whether this 'file' is a file
@@ -794,6 +794,11 @@ class Article(BaseModel):
         else:
             self.tags = self.tags + (tag,)
 
+    def set_or_replace_url(self, url: str) -> None:
+        if self.url:
+            self.add_tag(ArticleTag.AlternativeURL(self.url))
+        self.url = url
+
     def has_tag(self, tag_cls: ArticleTag._Constructor) -> bool:  # type: ignore
         tag_id = tag_cls._tag
         return any(tag[0] == tag_id for tag in self.get_raw_tags_field("tags"))
@@ -803,7 +808,7 @@ class Article(BaseModel):
         if self.url:
             return self.url
         if self.doi:
-            return f"http://dx.doi.org/{self.doi}"
+            return f"http://dx.doi.org/{self.doi}"  # TODO update to HTTPS URLs
         tries = {
             ArticleTag.JSTOR: "http://www.jstor.org/stable/",
             ArticleTag.HDL: "http://hdl.handle.net/",
@@ -1352,6 +1357,8 @@ class ArticleTag(adt.ADT):
 
     # Link to a relevant page in docs/biblio/
     BiblioNoteArticle(text=str, tag=19)  # type: ignore
+
+    AlternativeURL(url=str, tag=20)  # type: ignore
 
 
 @lru_cache

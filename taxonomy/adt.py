@@ -71,6 +71,8 @@ def _none_safe_lt(left: Any, right: Any) -> bool:
         return right is not None
     elif right is None:
         return False
+    elif {type(left), type(right)} == {int, str}:
+        return str(left) < str(right)
     else:
         return left < right
 

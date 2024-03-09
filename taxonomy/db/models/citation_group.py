@@ -241,7 +241,9 @@ class CitationGroup(BaseModel):
         else:
             yield message
 
-    def infer_bhl_biblio(self, cfg: LintConfig) -> Iterable[str]:
+    def infer_bhl_biblio(
+        self, cfg: LintConfig, interactive_mode: bool = False
+    ) -> Iterable[str]:
         title_dict = bhl.get_title_to_data()
         name = self.name.casefold()
         if name not in title_dict:
@@ -250,7 +252,7 @@ class CitationGroup(BaseModel):
         if len(candidates) > 1:
             urls = [cand["TitleURL"] for cand in candidates]
             message = f"{self}: multiple possible BHL entries: {urls}"
-            if cfg.interactive:
+            if interactive_mode:
                 getinput.print_header(self)
                 print(message)
 
@@ -275,7 +277,7 @@ class CitationGroup(BaseModel):
             active_years = self.get_active_year_range()
             if active_years is None:
                 message = f"{self}: no active years, but may match {data['TitleURL']}"
-                if cfg.interactive:
+                if interactive_mode:
                     print(message)
                     subprocess.check_call(["open", data["TitleURL"]])
                     if not getinput.yes_no(
@@ -478,6 +480,7 @@ class CitationGroup(BaseModel):
             "missing_high_names": self.print_missing_high_names,
             "for_years": self._for_years_interactive,
             "fill_field_for_names": self.fill_field_for_names,
+            "interactively_add_bhl_urls": self.interactively_add_bhl_urls,
         }
 
     def merge_interactive(self) -> None:
@@ -586,6 +589,13 @@ class CitationGroup(BaseModel):
         for series, arts in sorted(by_value.items()):
             print(f"- {series} ({len(arts)})")
 
+    def interactively_add_bhl_urls(self) -> None:
+        for art in self.get_articles():
+            if art.doi is not None:
+                continue
+            for _ in models.article.lint.infer_bhl_page(art, interactive_mode=True):
+                pass
+
     def _display_nams(self, nams: Iterable["models.Name"], depth: int = 0) -> None:
         for nam in sorted(nams, key=lambda nam: nam.sort_key()):
             # Make it easier to see names that don't have a citation yet
@@ -671,3 +681,4 @@ class CitationGroupTag(adt.ADT):
     MustHavePreciseDate(tag=25)  # type: ignore
     # Articles must have a URL (or DOI, HDL, etc.)
     MustHaveURL(tag=26)  # type: ignore
+    URLPattern(text=str, tag=27)  # type: ignore

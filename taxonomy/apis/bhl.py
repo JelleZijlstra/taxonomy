@@ -149,29 +149,83 @@ def get_possible_items(
     return item_ids
 
 
+def get_page_id_to_index(item_id: int) -> dict[int, int]:
+    item_metadata = get_item_metadata(item_id)
+    if item_metadata is None:
+        return {}
+    return {page["PageID"]: i for i, page in enumerate(item_metadata["Pages"])}
+
+
+def is_contigous_range(
+    item_id: int, start_page_id: int, end_page_id: int, page_id_to_index: dict[int, int]
+) -> bool:
+    if start_page_id == end_page_id:
+        return True
+    item_metadata = get_item_metadata(item_id)
+    if item_metadata is None:
+        return False
+    start_index = page_id_to_index.get(start_page_id)
+    end_index = page_id_to_index.get(end_page_id)
+    if start_index is None or end_index is None or end_index < start_index:
+        return False
+    start_page_no = _get_number_from_page(item_metadata["Pages"][start_index])
+    if start_page_no is None:
+        return False
+    for page in item_metadata["Pages"][start_index + 1 : end_index + 1]:
+        page_no = _get_number_from_page(page)
+        if page_no is None:
+            continue
+        if page_no <= start_page_no:
+            return False
+        start_page_no = page_no
+    return True
+
+
+def _get_number_from_page(page: dict[str, Any]) -> int | None:
+    for number in page["PageNumbers"]:
+        if number.get("Prefix", "").endswith("Page"):
+            try:
+                return int(number["Number"])
+            except ValueError:
+                pass
+    return None
+
+
 def get_possible_pages(item_id: int, page_number: int) -> list[int]:
     item_metadata = get_item_metadata(item_id)
     if not item_metadata:
         return []
+    return _get_matching_pages(item_metadata["Pages"], page_number)
+
+
+def _get_matching_pages(pages: list[dict[str, Any]], page_number: int) -> list[int]:
     page_ids = []
-    for page in item_metadata["Pages"]:
+    for page in pages:
         if any(
-            number.get("Prefix") == "Page" and number.get("Number") == str(page_number)
+            number.get("Prefix", "").endswith("Page")
+            and number.get("Number") == str(page_number)
             for number in page["PageNumbers"]
         ):
             page_ids.append(page["PageID"])
     return page_ids
 
 
+def get_possible_pages_from_part(part_id: int, page_number: int) -> list[int]:
+    part_metadata = get_part_metadata(part_id)
+    if not part_metadata:
+        return []
+    return _get_matching_pages(part_metadata["Pages"], page_number)
+
+
 def contains_name(page_id: int, name: str, max_distance: int = 3) -> bool:
     page_metadata = get_page_metadata(page_id)
-    folded_name = name.casefold().replace("_", "")
+    folded_name = name.casefold().replace("_", "").replace(".", "").replace(",", "")
     for name_data in page_metadata["Names"]:
         for name in name_data.values():
             if name.casefold() == folded_name:
                 return True
 
-    ocr_text = page_metadata["OcrText"].casefold()
+    ocr_text = page_metadata["OcrText"].casefold().replace(".", "").replace(",", "")
     if folded_name in ocr_text:
         return True
     words = folded_name.split()
@@ -188,7 +242,9 @@ class PossiblePage:
     page_number: int
     contains_text: bool
     contains_end_page: bool
+    year_matches: bool
     ocr_text: str = field(repr=False)
+    item_id: int
 
     @property
     def page_url(self) -> str:
@@ -197,6 +253,15 @@ class PossiblePage:
     @property
     def is_confident(self) -> bool:
         return self.contains_text and self.contains_end_page and bool(self.ocr_text)
+
+    def sort_key(self) -> tuple[object, ...]:
+        # Best match first
+        return (
+            not self.contains_text,
+            not self.year_matches,
+            not self.contains_end_page,
+            self.page_id,
+        )
 
 
 def find_possible_pages(
@@ -218,6 +283,13 @@ def find_possible_pages(
             for item in get_possible_items(title_id, year, volume)
         ]
     for item in possible_items:
+        item_metadata = get_item_metadata(item)
+        if item_metadata is None:
+            continue
+        if "Year" in item_metadata:
+            year_matches = int(item_metadata["Year"]) == year
+        else:
+            year_matches = False
         for page_id in get_possible_pages(item, start_page):
             if end_page is None:
                 contains_end_page = True
@@ -225,12 +297,26 @@ def find_possible_pages(
                 contains_end_page = any(get_possible_pages(item, end_page))
             page_metadata = get_page_metadata(page_id)
             if "OcrText" not in page_metadata:
-                yield PossiblePage(page_id, start_page, False, False, "")
+                yield PossiblePage(
+                    page_id=page_id,
+                    page_number=start_page,
+                    contains_text=False,
+                    contains_end_page=contains_end_page,
+                    year_matches=year_matches,
+                    ocr_text="",
+                    item_id=item,
+                )
                 continue
             ocr_text = page_metadata["OcrText"]
             contains = any(contains_name(page_id, name) for name in contains_text)
             yield PossiblePage(
-                page_id, start_page, contains, contains_end_page, ocr_text
+                page_id=page_id,
+                page_number=start_page,
+                contains_text=contains,
+                contains_end_page=contains_end_page,
+                year_matches=year_matches,
+                ocr_text=ocr_text,
+                item_id=item,
             )
 
 
@@ -303,11 +389,11 @@ def get_bhl_item_from_url(url: str) -> int | None:
         case ParsedUrl(UrlType.bhl_page, id):
             data = get_page_metadata(int(id))
             if data is not None:
-                return data["ItemID"]
+                return int(data["ItemID"])
         case ParsedUrl(UrlType.bhl_part, id):
             data = get_part_metadata(int(id))
             if data is not None:
-                return data["ItemID"]
+                return int(data["ItemID"])
     return None
 
 

@@ -156,6 +156,7 @@ def choose_one_by_name(
     allow_empty: bool = True,
     display_fn: Callable[[T], str] = str,
     history_key: object = None,
+    callbacks: CallbackMap = {},
 ) -> T | None:
     choices = {display_fn(option): option for option in options}
     for display in choices:
@@ -168,6 +169,7 @@ def choose_one_by_name(
         disallow_other=True,
         history_key=history_key,
         allow_empty=allow_empty,
+        callbacks=callbacks,
     )
     if not choice:
         return None

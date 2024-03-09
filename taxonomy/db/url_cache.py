@@ -69,6 +69,9 @@ class LRU(Generic[KeyT, ValueT]):
     def __delitem__(self, key: KeyT) -> None:
         del self._cache[key]
 
+    def dirty(self, key: KeyT) -> None:
+        self._cache.pop(key, None)
+
 
 _LOCAL_CACHE: LRU[tuple[CacheDomain, str], str] = LRU(2048)
 
@@ -129,7 +132,7 @@ def dirty_cache(domain: CacheDomain, key: str) -> None:
         """,
         (domain.value, key),
     )
-    del _LOCAL_CACHE[(domain, key)]
+    _LOCAL_CACHE.dirty((domain, key))
 
 
 @cached(CacheDomain.test)

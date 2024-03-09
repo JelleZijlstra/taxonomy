@@ -45,6 +45,7 @@ class Options(NamedTuple):
 
     mdd_sheet: str = ""
     mdd_worksheet_gid: int = 0
+    mdd_journals_worksheet_gid: int = 0
 
     bhl_api_key: str = ""
 
@@ -123,6 +124,9 @@ def parse_config_file(filename: Path) -> Options:
             ),
             mdd_sheet=section.get("mdd_sheet", ""),
             mdd_worksheet_gid=int(section.get("mdd_worksheet_gid", "0")),
+            mdd_journals_worksheet_gid=int(
+                section.get("mdd_journals_worksheet_gid", "0")
+            ),
             bhl_api_key=section.get("bhl_api_key", ""),
         )
 

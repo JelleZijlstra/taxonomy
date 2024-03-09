@@ -11,21 +11,29 @@ Notes for auto-gsheet updating:
 - For new names, first get the max() of the existing MDD ids and start from there.
 
 To set up gspread, follow the instructions in https://docs.gspread.org/en/latest/oauth2.html#oauth-client-id
-to get an OAuth client id.
+to get an OAuth client id. The tokens appears to expire after a week. Notes for next time:
+
+- Go to  https://console.cloud.google.com/apis/api/sheets.googleapis.com/credentials?authuser=1&project=directed-tracer-123911&supportedpurview=project
+- Add an "OAuth 2.0 Client ID" credential for a desktop app
+- Download the credentials and put them in ~/.config/gspread/credentials.json
+- Delete ~/.config/gspread/authorized_user.json (maybe just deleting this file is enough? try it next time)
+- Run this script with --gspread-test to re-authorize. Make sure to fix cell A1 in the MDD sheet back afterwards.
 
 """
 
 import argparse
 import csv
 import datetime
+import enum
 import functools
 import itertools
 import pprint
+import subprocess
 import sys
 import time
 from collections import Counter
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, TypeVar
 
 import gspread
@@ -34,7 +42,7 @@ import Levenshtein
 from scripts import mdd_diff
 from taxonomy import getinput
 from taxonomy.config import get_options
-from taxonomy.db import export
+from taxonomy.db import export, models
 from taxonomy.db.constants import AgeClass, Group, Rank, RegionKind, Status
 from taxonomy.db.models import Name, Taxon
 from taxonomy.db.models.name import TypeTag
@@ -116,8 +124,6 @@ def get_authority_link(nam: Name) -> str:
 
 
 OMITTED_COLUMNS = {
-    "MDD_authority_link",
-    "MDD_unchecked_authority_page_link",
     "MDD_old_type_locality",
     "MDD_emended_type_locality",
     "MDD_type_latitude",
@@ -146,9 +152,21 @@ def get_hesp_row(name: Name, need_initials: set[str]) -> dict[str, Any]:
     row["Hesp_unchecked_authority_citation"] = row["verbatim_citation"]
     row["Hesp_citation_group"] = row["citation_group"]
     row["Hesp_authority_page"] = row["page_described"]
-    row["Hesp_authority_page_link"] = get_authority_link(name)
-    # TODO: MDD_authority_link
-    # TODO: MDD_unchecked_authority_page_link
+    authority_link = get_authority_link(name)
+    row["Hesp_authority_page_link"] = authority_link
+    if name.original_citation is not None:
+        url = name.original_citation.geturl()
+        row["Hesp_authority_link"] = url or ""
+    else:
+        row["Hesp_authority_link"] = ""
+    if authority_link:
+        row["Hesp_unchecked_authority_page_link"] = ""
+    else:
+        # At most 3
+        candidates = itertools.islice(models.name.lint.get_candidate_bhl_pages(name), 3)
+        row["Hesp_unchecked_authority_page_link"] = " | ".join(
+            page.page_url for page in candidates
+        )
 
     # Type locality
     # Omit: MDD_old_type_locality
@@ -212,6 +230,12 @@ def get_hesp_row(name: Name, need_initials: set[str]) -> dict[str, Any]:
     return row
 
 
+class DifferenceKind(enum.StrEnum):
+    missing_in_mdd = "missing in MDD"
+    missing_in_hesp = "missing in Hesp"
+    differences = "differences"
+
+
 @dataclass
 class FixableDifference:
     row_idx: int
@@ -220,8 +244,8 @@ class FixableDifference:
     mdd_column: str
     hesp_value: str
     mdd_value: str
-    hesp_row: dict[str, str]
-    mdd_row: dict[str, str]
+    hesp_row: dict[str, str] = field(repr=False)
+    mdd_row: dict[str, str] = field(repr=False)
     hesp_name: Name
 
     def summary(self) -> str:
@@ -236,6 +260,68 @@ class FixableDifference:
             print(f"    - H: {self.hesp_value}")
         if self.mdd_value:
             print(f"    - M: {self.mdd_value}")
+
+    @property
+    def kind(self) -> DifferenceKind:
+        if not self.hesp_value:
+            return DifferenceKind.missing_in_hesp
+        if not self.mdd_value:
+            return DifferenceKind.missing_in_mdd
+        return DifferenceKind.differences
+
+    def apply_to_hesp(self, *, dry_run: bool) -> None:
+        match self.mdd_column:
+            case "MDD_authority_link":
+                if self.hesp_name.original_citation is None:
+                    print(f"{self}: skip applying because no original citation")
+                    return
+                if self.hesp_name.original_citation.geturl() is not None:
+                    print(f"{self}: skip applying because already has a link")
+                    return
+                print(
+                    f"{self}: set url to {self.mdd_value} for {self.hesp_name.original_citation}"
+                )
+                if not dry_run:
+                    self.hesp_name.original_citation.url = self.mdd_value
+            case "MDD_authority_page_link":
+                if self.hesp_name.page_described is None:
+                    tag = models.name.TypeTag.AuthorityPageLink(
+                        self.mdd_value, True, ""
+                    )
+                else:
+                    pages = list(
+                        models.name.lint.extract_pages(self.hesp_name.page_described)
+                    )
+                    if len(pages) == 1:
+                        tag = models.name.TypeTag.AuthorityPageLink(
+                            self.mdd_value, True, pages[0]
+                        )
+                    else:
+                        tag = models.name.TypeTag.AuthorityPageLink(
+                            self.mdd_value, True, ""
+                        )
+                print(f"{self}: add tag {tag}")
+                if not dry_run:
+                    self.hesp_name.add_type_tag(tag)
+
+            case _:
+                print(
+                    f"{self}: skip applying because no action defined for {self.mdd_column}"
+                )
+
+    def get_adt_callbacks(self) -> getinput.CallbackMap:
+        callbacks = {**self.hesp_name.get_adt_callbacks()}
+        if self.mdd_column in ("MDD_authority_link", "MDD_authority_page_link"):
+            if self.hesp_value:
+                callbacks["open_hesp"] = functools.partial(_open_urls, self.hesp_value)
+            if self.mdd_value:
+                callbacks["open_mdd"] = functools.partial(_open_urls, self.mdd_value)
+        return callbacks
+
+
+def _open_urls(urls: str) -> None:
+    for url in urls.split(" | "):
+        subprocess.run(["open", url])
 
 
 def compare_column(
@@ -309,6 +395,14 @@ def process_value_for_sheets(value: str) -> str | int:
     if value.isdigit():
         return int(value)
     return value
+
+
+def run_gspread_test() -> None:
+    options = get_options()
+    gc = gspread.oauth()
+    sheet = gc.open(options.mdd_sheet)
+    worksheet = sheet.get_worksheet_by_id(options.mdd_worksheet_gid)
+    worksheet.update_cell(1, 1, "MDD_syn_ID_test")
 
 
 def run(*, dry_run: bool = True, taxon: Taxon) -> None:
@@ -477,7 +571,8 @@ def run(*, dry_run: bool = True, taxon: Taxon) -> None:
                 )
 
     fixable_differences = sorted(
-        fixable_differences, key=lambda x: (x.mdd_column, x.hesp_value, x.mdd_value)
+        fixable_differences,
+        key=lambda x: (x.mdd_column, x.kind, x.hesp_value, x.mdd_value),
     )
     if fixable_differences:
         with (backup_path / "fixable-differences.csv").open("w") as file:
@@ -496,30 +591,43 @@ def run(*, dry_run: bool = True, taxon: Taxon) -> None:
                 ],
             )
             dict_writer.writeheader()
-            for mdd_column, group_iter in itertools.groupby(
-                fixable_differences, key=lambda x: x.mdd_column
+            for (mdd_column, kind), group_iter in itertools.groupby(
+                fixable_differences, key=lambda x: (x.mdd_column, x.kind)
             ):
                 group = list(group_iter)
-                getinput.print_header(f"Differences for {mdd_column} ({len(group)})")
+                header = f"{kind.name} for {mdd_column} ({len(group)})"
+                getinput.print_header(header)
                 for diff in group:
                     diff.print()
-                add_all = getinput.yes_no("Accept all?")
-                if not add_all:
-                    ask_individually = getinput.yes_no("Ask individually?")
-                else:
-                    ask_individually = False
+                print(header)
+                choice = getinput.choose_one_by_name(
+                    ["mdd_edit", "ask_individually", "hesp_edit", "skip"],
+                    allow_empty=False,
+                    history_key="overall_choice",
+                )
                 updates_to_make = []
                 for diff in group:
-                    if not diff.hesp_value:
-                        print("No Hesp value", diff.summary())
-                    if add_all:
-                        should_add = True
-                    elif ask_individually:
-                        diff.print()
-                        should_add = getinput.yes_no("Apply?")
-                    else:
-                        should_add = False
-                    if should_add:
+                    should_add_to_mdd = False
+                    should_add_to_hesp = False
+                    match choice:
+                        case "mdd_edit":
+                            should_add_to_mdd = True
+                        case "hesp_edit":
+                            should_add_to_hesp = True
+                        case "ask_individually":
+                            diff.print()
+                            individual_choice = getinput.choose_one_by_name(
+                                ["mdd_edit", "hesp_edit", "skip"],
+                                allow_empty=False,
+                                history_key="individual_choice",
+                                callbacks=diff.get_adt_callbacks(),
+                            )
+                            match individual_choice:
+                                case "mdd_edit":
+                                    should_add_to_mdd = True
+                                case "hesp_edit":
+                                    should_add_to_hesp = True
+                    if should_add_to_mdd:
                         updates_to_make.append(
                             gspread.cell.Cell(
                                 row=diff.row_idx,
@@ -527,6 +635,8 @@ def run(*, dry_run: bool = True, taxon: Taxon) -> None:
                                 value=process_value_for_sheets(diff.hesp_value),
                             )
                         )
+                    elif should_add_to_hesp:
+                        diff.apply_to_hesp(dry_run=dry_run)
                     dict_writer.writerow(
                         {
                             "row_idx": diff.row_idx,
@@ -537,7 +647,7 @@ def run(*, dry_run: bool = True, taxon: Taxon) -> None:
                             "mdd_value": diff.mdd_value,
                             "hesp_id": diff.hesp_row["id"],
                             "mdd_id": diff.mdd_row["MDD_syn_ID"],
-                            "applied": str(int(should_add)),
+                            "applied": str(int(should_add_to_hesp)),
                         }
                     )
 
@@ -560,7 +670,11 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--taxon", nargs="?", default="Mammalia")
     parser.add_argument("--dry-run", action="store_true", default=False)
+    parser.add_argument("--gspread-test", action="store_true", default=False)
     args = parser.parse_args()
+    if args.gspread_test:
+        run_gspread_test()
+        return
     root = Taxon.getter("valid_name")(args.taxon)
     if root is None:
         print("Invalid taxon", args.taxon)

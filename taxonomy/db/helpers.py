@@ -529,7 +529,7 @@ def simplify_string(text: str, clean_words: bool = True) -> str:
     to help compare strings.
 
     """
-    text = re.sub(r"[\.,]", "", text)
+    text = re.sub(r"[\.,_]", "", text)
     text = unidecode.unidecode(text)
     text = clean_string(text).lower()
     if clean_words:

@@ -7,6 +7,7 @@ Lint steps for Articles.
 import bisect
 import functools
 import re
+import subprocess
 import traceback
 import unicodedata
 import urllib.parse
@@ -345,7 +346,7 @@ def infer_precise_date(art: Article, cfg: LintConfig) -> Iterable[str]:
         yield message
 
 
-_JSTOR_URL_PREFIX = "http://www.jstor.org/stable/"
+_JSTOR_URL_REGEX = r"https?://www\.jstor\.org/stable/(\d+)"
 _JSTOR_DOI_PREFIX = "10.2307/"
 
 
@@ -365,6 +366,10 @@ def check_must_have_url(art: Article, cfg: LintConfig) -> Iterable[str]:
         return
     url = art.geturl()
     if url is not None:
+        tag = art.citation_group.get_tag(CitationGroupTag.URLPattern)
+        if tag is not None:
+            if not re.fullmatch(tag.text, url):
+                yield f"url {url} does not match pattern {tag.text!r}"
         return
     yield f"has no URL, but is in {art.citation_group}"
 
@@ -384,9 +389,9 @@ def check_url(art: Article, cfg: LintConfig) -> Iterable[str]:
             yield message
         return
 
-    if art.url.startswith(_JSTOR_URL_PREFIX):
+    if match := re.fullmatch(_JSTOR_URL_REGEX, art.url):
         # put JSTOR in
-        jstor_id = art.url.removeprefix(_JSTOR_URL_PREFIX)
+        jstor_id = match.group(1)
         message = f"inferred JStor id {jstor_id} from url {art.url}"
         if cfg.autofix:
             print(f"{art}: {message}")
@@ -423,7 +428,12 @@ def check_url(art: Article, cfg: LintConfig) -> Iterable[str]:
                 else:
                     yield message
 
-    # TODO: lint against other_bhl, other_biostor, biostor_ref
+    if parsed_url.url_type in (
+        bhl.UrlType.biostor_ref,
+        bhl.UrlType.other_bhl,
+        bhl.UrlType.other_biostor,
+    ):
+        yield f"unacceptable URL type {parsed_url.url_type} for {art.url}"
 
 
 def get_bhl_url_from_biostor(biostor_id: str) -> str | None:
@@ -500,23 +510,178 @@ def _infer_hdl_from_url(url: str) -> str | None:
     return None
 
 
-@make_linter("bhl_page")
-def infer_bhl_page(art: Article, cfg: LintConfig) -> Iterable[str]:
-    if art.url is not None:
+@make_linter("bhl_page_from_names")
+def infer_bhl_page_from_names(
+    art: Article, cfg: LintConfig, verbose: bool = False
+) -> Iterable[str]:
+    if not should_look_for_bhl_url(art):
+        if verbose:
+            print(f"{art}: not looking for BHL URL")
         return
-    page_obj = get_inferred_bhl_page(art)
+    if (
+        art.start_page is None
+        or not art.start_page.isnumeric()
+        or art.end_page is None
+        or not art.end_page.isnumeric()
+        or art.title is None
+    ):
+        if verbose:
+            print(f"{art}: no start or end page or title")
+        return
+    new_names = list(art.new_names)
+    if not new_names:
+        if verbose:
+            print(f"{art}: no new names")
+        return
+    known_pages = [
+        tag
+        for nam in new_names
+        for tag in nam.get_tags(nam.type_tags, models.name.TypeTag.AuthorityPageLink)
+    ]
+    bhl_page_ids = set()
+    for tag in known_pages:
+        parsed = bhl.parse_possible_bhl_url(tag.url)
+        if parsed.url_type is bhl.UrlType.bhl_page:
+            bhl_page_ids.add(int(parsed.payload))
+    if not bhl_page_ids:
+        if verbose:
+            print(f"{art}: no BHL page IDs from names")
+        return
+    item_ids = set()
+    for page_id in bhl_page_ids:
+        metadata = bhl.get_page_metadata(page_id)
+        if "ItemID" in metadata:
+            item_ids.add(int(metadata["ItemID"]))
+    if len(item_ids) > 1:
+        yield f"names are on multiple BHL items: {item_ids} (from {known_pages})"
+        return
+    if not item_ids:
+        if verbose:
+            print(f"{art}: no BHL item IDs from names")
+        return
+    item_id = item_ids.pop()
+    item_metadata = bhl.get_item_metadata(item_id)
+    if item_metadata is not None and "Parts" in item_metadata:
+        for part in item_metadata["Parts"]:
+            simplified_part_title = helpers.simplify_string(part["Title"])
+            simplified_my_title = helpers.simplify_string(art.title)
+            if simplified_part_title != simplified_my_title:
+                if verbose:
+                    print(
+                        f"{art}: title {art.title!r} ({simplified_my_title!r}) does not match part title"
+                        f" {part['Title']!r} ({simplified_part_title!r})"
+                    )
+                continue
+            part_id = part["PartID"]
+            part_metadata = bhl.get_part_metadata(part_id)
+            if part_metadata is None:
+                if verbose:
+                    print(f"{art}: no metadata for part {part_id}")
+                continue
+            part_page_ids = {page["PageID"] for page in part_metadata["Pages"]}
+            if bhl_page_ids <= part_page_ids:
+                message = f"inferred BHL part {part_id} from names"
+                if cfg.autofix:
+                    print(f"{art}: {message}")
+                    art.set_or_replace_url(
+                        f"https://www.biodiversitylibrary.org/part/{part_id}"
+                    )
+                else:
+                    yield message
+                return
+            else:
+                if verbose:
+                    print(
+                        f"{art}: not all known pages ({bhl_page_ids}) are in part {part_id} {part_page_ids}"
+                    )
+    else:
+        if verbose:
+            print(f"{art}: no item metadata for {item_id}")
+
+    start_page = int(art.start_page)
+    end_page = int(art.end_page)
+    possible_start_pages = bhl.get_possible_pages(item_id, start_page)
+    possible_end_pages = bhl.get_possible_pages(item_id, end_page)
+    if len(possible_start_pages) != len(possible_end_pages):
+        if verbose:
+            print(
+                f"{art}: different number of possible start and end pages"
+                f" {possible_start_pages} {possible_end_pages}"
+            )
+        return
+    page_mapping = bhl.get_page_id_to_index(item_id)
+    for possible_start_page, possible_end_page in zip(
+        possible_start_pages, possible_end_pages, strict=True
+    ):
+        if not bhl.is_contigous_range(
+            item_id, possible_start_page, possible_end_page, page_mapping
+        ):
+            if verbose:
+                print(
+                    f"{art}: non-contiguous range {possible_start_page}–{possible_end_page}"
+                )
+            continue
+        start_page_idx = page_mapping[possible_start_page]
+        end_page_idx = page_mapping[possible_end_page]
+        if not all(
+            start_page_idx <= page_mapping[page_id] <= end_page_idx
+            for page_id in bhl_page_ids
+        ):
+            if verbose:
+                print(
+                    f"{art}: not all known pages are in range {possible_start_page}–{possible_end_page}"
+                )
+            continue
+        message = f"inferred BHL page {possible_start_page} from names"
+        if cfg.autofix:
+            print(f"{art}: {message}")
+            art.set_or_replace_url(
+                f"https://www.biodiversitylibrary.org/page/{possible_start_page}"
+            )
+        else:
+            yield message
+
+
+def should_look_for_bhl_url(art: Article) -> bool:
+    if art.url is None:
+        return True
+    match bhl.parse_possible_bhl_url(art.url).url_type:
+        case (
+            bhl.UrlType.bhl_page
+            | bhl.UrlType.bhl_item
+            | bhl.UrlType.bhl_part
+            | bhl.UrlType.bhl_bibliography
+        ):
+            return False
+    return True
+
+
+def infer_bhl_page(
+    art: Article, cfg: LintConfig = LintConfig(), *, interactive_mode: bool = False
+) -> Iterable[str]:
+    if not should_look_for_bhl_url(art):
+        return
+    page_obj = get_inferred_bhl_page(art, interactive_mode=interactive_mode)
     if page_obj is None:
         return
     message = f"inferred BHL page {page_obj} from {art.start_page}–{art.end_page}"
+    if art.url is not None:
+        message += f" (replacing {art.url})"
     if cfg.autofix:
         print(f"{art}: {message}")
-        art.url = page_obj.page_url
+        art.set_or_replace_url(page_obj.page_url)
     else:
         yield message
     print(page_obj.page_url)
 
 
-def get_inferred_bhl_page(art: Article) -> bhl.PossiblePage | None:
+# allow direct calls too
+infer_bhl_page_linter = make_linter("bhl_page")(infer_bhl_page)
+
+
+def get_inferred_bhl_page(
+    art: Article, *, interactive_mode: bool = False
+) -> bhl.PossiblePage | None:
     if (
         art.start_page is None
         or not art.start_page.isnumeric()
@@ -536,7 +701,7 @@ def get_inferred_bhl_page(art: Article) -> bhl.PossiblePage | None:
     contains_text = [art.title]
     start_page = int(art.start_page)
     end_page = int(art.end_page)
-    possible_pages = list(
+    possible_pages = sorted(
         bhl.find_possible_pages(
             title_ids,
             year=year,
@@ -544,13 +709,38 @@ def get_inferred_bhl_page(art: Article) -> bhl.PossiblePage | None:
             end_page=end_page,
             volume=art.volume,
             contains_text=contains_text,
-        )
+        ),
+        key=lambda page: page.sort_key(),
     )
     confident_pages = [page for page in possible_pages if page.is_confident]
-    if not confident_pages:
-        pass
-    elif len(confident_pages) == 1:
+    # Even if there is more than one, just pick the first
+    if len(confident_pages) >= 1:
         return confident_pages[0]
+    if not interactive_mode:
+        return None
+    if possible_pages:
+        getinput.print_header(art.name)
+        art.display()
+        print(f"Unconfirmed pages found: {possible_pages}")
+        for page in possible_pages[:4]:
+            getinput.print_header(page)
+            ocr_text = page.ocr_text.replace("\n\n", "\n")
+            print(ocr_text)
+            art.display()
+            if getinput.yes_no("Is this the correct page?"):
+                return page
+
+        for page in possible_pages[:4]:
+            print(page)
+            subprocess.check_call(["open", page.page_url])
+        url_to_page = {page.page_url: page for page in possible_pages}
+        choice = getinput.choose_one_by_name(
+            list(url_to_page), callbacks=art.get_adt_callbacks()
+        )
+        if choice is None:
+            return None
+        print("Chose", choice, "for", art)
+        return url_to_page[choice]
     return None
 
 

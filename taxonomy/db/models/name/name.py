@@ -1908,6 +1908,8 @@ class Name(BaseModel):
             print("%s: original citation unknown" % self.description())
         else:
             self.original_citation.openurl()
+        for tag in self.get_tags(self.type_tags, TypeTag.AuthorityPageLink):
+            subprocess.call(["open", tag.url])
         return True
 
     def _display_plus(self) -> None:
