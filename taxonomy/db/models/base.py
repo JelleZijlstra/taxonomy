@@ -924,6 +924,7 @@ class BaseModel(Model):
             "print_character_names": self.print_character_names_for_field,
             "edit_reverse_rel": self.edit_reverse_rel,
             "lint_reverse_rel": self.lint_reverse_rel,
+            "lint_and_fix": self.lint_and_fix,
             "edit_derived_field": self.edit_derived_field,
         }
 
@@ -958,7 +959,7 @@ class BaseModel(Model):
 
     def edit_reverse_rel(self) -> None:
         options = [field.backref for field in self._meta.backrefs]
-        chosen = getinput.choose_one(options)
+        chosen = getinput.choose_one_by_name(options)
         if chosen is None:
             return
         for obj in getattr(self, chosen):
@@ -970,10 +971,19 @@ class BaseModel(Model):
 
     def lint_reverse_rel(self) -> None:
         options = [field.backref for field in self._meta.backrefs]
-        chosen = getinput.choose_one(options)
+        chosen = getinput.choose_one_by_name(options)
         if chosen is None:
             return
         for obj in getattr(self, chosen):
+            obj.format(quiet=True)
+
+    def lint_and_fix(self) -> None:
+        options = [field.backref for field in self._meta.backrefs]
+        chosen = getinput.choose_one_by_name(options)
+        if chosen is None:
+            return
+        for obj in getattr(self, chosen):
+            obj.format(quiet=True)
             if obj.is_lint_clean():
                 continue
             obj.display()
@@ -984,7 +994,7 @@ class BaseModel(Model):
 
     def edit_derived_field(self) -> None:
         options = [field.name for field in self.derived_fields]
-        chosen = getinput.choose_one(options)
+        chosen = getinput.choose_one_by_name(options)
         if chosen is None:
             return
         value = self.get_derived_field(chosen)

@@ -615,7 +615,12 @@ def run(*, dry_run: bool = True, taxon: Taxon) -> None:
                         case "hesp_edit":
                             should_add_to_hesp = True
                         case "ask_individually":
+                            diff.hesp_name.display()
+                            if diff.hesp_name.original_citation:
+                                diff.hesp_name.original_citation.display()
                             diff.print()
+                            if diff.mdd_value.startswith("http"):
+                                subprocess.check_call(["open", diff.mdd_value])
                             individual_choice = getinput.choose_one_by_name(
                                 ["mdd_edit", "hesp_edit", "skip"],
                                 allow_empty=False,

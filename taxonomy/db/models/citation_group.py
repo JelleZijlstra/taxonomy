@@ -2,7 +2,7 @@ import builtins
 import functools
 import re
 import subprocess
-from collections import Counter
+from collections import Counter, defaultdict
 from collections.abc import Iterable
 from datetime import date
 from typing import Any, NotRequired, TypeVar
@@ -213,21 +213,22 @@ class CitationGroup(BaseModel):
         yield from self.infer_bhl_biblio_from_children(cfg)
 
     def infer_bhl_biblio_from_children(self, cfg: LintConfig) -> Iterable[str]:
-        bibliographies = set()
+        bibliographies: dict[int, list[object]] = defaultdict(list)
         for nam in self.get_names():
             for tag in nam.get_tags(
                 nam.type_tags, models.name.TypeTag.AuthorityPageLink
             ):
                 if biblio := bhl.get_bhl_bibliography_from_url(tag.url):
-                    bibliographies.add(biblio)
+                    bibliographies[biblio].append(nam)
         for art in self.get_articles():
             if art.url:
                 if biblio := bhl.get_bhl_bibliography_from_url(art.url):
-                    bibliographies.add(biblio)
+                    bibliographies[biblio].append(art)
         if not bibliographies:
             return
         existing = self.get_bhl_title_ids()
-        bibliographies.difference_update(str(biblio) for biblio in existing)
+        for biblio in existing:
+            bibliographies.pop(biblio, None)
         if not bibliographies:
             return
         message = (

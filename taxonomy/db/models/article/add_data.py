@@ -18,8 +18,10 @@ import requests
 from bs4 import BeautifulSoup
 
 from taxonomy import command_set, config, getinput, parsing, uitools
+from taxonomy.apis import bhl
 from taxonomy.db.constants import ArticleKind, ArticleType, DateSource
 from taxonomy.db.helpers import clean_string, clean_strings_recursively, trimdoi
+from taxonomy.db.models.article import lint
 from taxonomy.db.url_cache import CacheDomain, cached, dirty_cache
 
 from ..citation_group import CitationGroup, CitationGroupTag
@@ -65,6 +67,18 @@ def _get_doi_from_crossref_inner(params: str) -> str:
     return response.text
 
 
+@cached(CacheDomain.doi_resolution)
+def get_doi_resolution(doi: str) -> str:
+    url = f"https://doi.org/api/handles/{doi}"
+    response = requests.get(url)
+    response.raise_for_status()
+    text = response.text
+    data = json.loads(text)
+    if data["responseCode"] == 2:  # error
+        raise ValueError(f"Error resolvoing {doi}: {data}")
+    return text
+
+
 def get_doi_from_crossref(art: Article) -> str | None:
     if art.citation_group is None:
         return None
@@ -90,6 +104,9 @@ def is_doi_valid(doi: str) -> bool:
         if "404 Client Error: Not Found" not in str(e):
             traceback.print_exc()
             print("ignoring unexpected error")
+            return True
+        resolution = json.loads(get_doi_resolution(doi))
+        if resolution["responseCode"] == 1:
             return True
         return False
     return True
@@ -376,6 +393,66 @@ def fill_issns(limit: int | None = None, verbose: bool = False) -> None:
             cg.add_tag(tag)
 
 
+_BHL_PART_FIELDS = [
+    ("Title", "title"),
+    ("Volume", "volume"),
+    ("Issue", "issue"),
+    ("Date", "year"),
+    ("StartPageNumber", "start_page"),
+    ("EndPageNumber", "end_page"),
+    ("ContainerTitle", "journal"),
+]
+
+
+def get_bhl_part_data_from_part_id(part_id: int) -> RawData:
+    metadata = bhl.get_part_metadata(part_id)
+    data = {
+        "type": ArticleType.JOURNAL,
+        "url": f"https://www.biodiversitylibrary.org/part/{part_id}",
+    }
+    for bhl_name, our_name in _BHL_PART_FIELDS:
+        if value := metadata.get(bhl_name):
+            data[our_name] = value
+    if authors_raw := metadata.get("Authors"):
+        authors = []
+        for author in authors_raw:
+            last, first = author["Name"].split(", ", maxsplit=1)
+            given_names = first.strip().strip(",")
+            info = {"family_name": last.strip()}
+            if parsing.matches_grammar(
+                given_names.replace(" ", ""), parsing.initials_pattern
+            ):
+                info["initials"] = given_names.replace(" ", "")
+            else:
+                info["given_names"] = re.sub(r"\. ([A-Z]\.)", r".\1", given_names)
+            authors.append(info)
+        data["author_tags"] = authors
+    return data
+
+
+def get_bhl_part_data_from_pdf(art: Article) -> RawData:
+    pages = art.get_all_pdf_pages()
+    if not pages:
+        return {}
+    last_page = pages[-1]
+    if match := re.search(
+        r"\bhttps://www\.biodiversitylibrary\.org/partpdf/(\d+)\b", last_page
+    ):
+        part_id = int(match.group(1))
+        return get_bhl_part_data_from_part_id(part_id)
+    return {}
+
+
+def get_bhl_part_data(art: Article) -> RawData:
+    if art.url is None:
+        return {}
+    parsed = bhl.parse_possible_bhl_url(art.url)
+    if parsed.url_type is not bhl.UrlType.bhl_part:
+        return {}
+    part_id = int(parsed.payload)
+    return get_bhl_part_data_from_part_id(part_id)
+
+
 def get_jstor_data(art: Article) -> RawData:
     pdfcontent = art.getpdfcontent()
     if not re.search(
@@ -650,7 +727,7 @@ def doi_input(art: Article) -> bool:
             if typ:
                 return "t", typ
         cmd = trimdoi(cmd)
-        if is_valid_doi(cmd):
+        if is_valid_doi(cmd) or "biodiversitylibrary.org" in cmd:
             return "d", cmd
         return None, None
 
@@ -664,8 +741,22 @@ def doi_input(art: Article) -> bool:
         return False
 
     def set_doi(cmd: str, data: object) -> bool:
-        art.doi = data
-        return not art.expand_doi(set_fields=True)
+        if not isinstance(data, str):
+            return True
+        data = data.strip()
+        if data.startswith("10."):
+            art.doi = data
+            print("Detected DOI", data)
+            return not art.expand_doi(set_fields=True)
+        elif doi := lint.infer_doi_from_url(data):
+            art.doi = doi
+            print("Detected DOI", doi, "from url", data)
+            return not art.expand_doi(set_fields=True)
+        parsed = bhl.parse_possible_bhl_url(data)
+        if parsed.url_type is bhl.UrlType.bhl_part:
+            print("Detected BHL part", data)
+            return not art.expand_bhl_part(url=data, set_fields=True)
+        return True
 
     def opener(cmd: str, data: object) -> bool:
         art.openf()
@@ -714,7 +805,12 @@ def _get_type_synonyms_as_string() -> str:
     return out
 
 
-AUTO_ADDERS = [get_jstor_data, get_zootaxa_data, get_doi_data]
+AUTO_ADDERS = [
+    get_jstor_data,
+    get_zootaxa_data,
+    get_doi_data,
+    get_bhl_part_data_from_pdf,
+]
 
 
 def add_data_for_new_file(art: Article) -> None:

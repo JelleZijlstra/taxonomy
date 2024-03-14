@@ -670,7 +670,33 @@ class Name(BaseModel):
             "print_type_specimen": self.print_type_specimen,
             "add_collection_code": lambda: self.collection is not None
             and self.collection.add_collection_code(),
+            "add_authority_page_link": self.add_authority_page_link,
+            "try_to_find_bhl_links": self.try_to_find_bhl_links,
         }
+
+    def add_authority_page_link(self) -> None:
+        if self.page_described is None or not self.page_described.isnumeric():
+            print("Page described is too complex; add AuthorityPageLink tag directly")
+            return
+        link = getinput.get_line("link> ")
+        if link is None:
+            return
+        if link.isnumeric():
+            link = f"https://www.biodiversitylibrary.org/page/{link}"
+        self.add_type_tag(TypeTag.AuthorityPageLink(link, True, self.page_described))
+
+    def try_to_find_bhl_links(self) -> None:
+        cfg = LintConfig()
+        if self.has_type_tag(models.name.TypeTag.AuthorityPageLink):
+            return
+        for _ in models.name.lint.infer_bhl_page(self, cfg, verbose=True):  # type: ignore[call-arg]
+            pass
+        for _ in models.name.lint.infer_bhl_page_from_other_names(
+            self, cfg, verbose=True  # type: ignore[call-arg]
+        ):
+            pass
+        for _ in models.name.lint.infer_bhl_page_from_article(self, cfg, verbose=True):  # type: ignore[call-arg]
+            pass
 
     def print_type_specimen(self) -> None:
         if self.type_specimen is None:

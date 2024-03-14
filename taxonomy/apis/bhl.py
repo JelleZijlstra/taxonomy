@@ -157,64 +157,108 @@ def get_page_id_to_index(item_id: int) -> dict[int, int]:
 
 
 def is_contigous_range(
-    item_id: int, start_page_id: int, end_page_id: int, page_id_to_index: dict[int, int]
+    item_id: int,
+    start_page_id: int,
+    end_page_id: int,
+    page_id_to_index: dict[int, int],
+    *,
+    allow_unnumbered: bool = True,
+    verbose: bool = False,
 ) -> bool:
     if start_page_id == end_page_id:
         return True
     item_metadata = get_item_metadata(item_id)
     if item_metadata is None:
+        if verbose:
+            print(f"not contiguous: Item {item_id} not found")
         return False
     start_index = page_id_to_index.get(start_page_id)
     end_index = page_id_to_index.get(end_page_id)
     if start_index is None or end_index is None or end_index < start_index:
+        if verbose:
+            print(
+                f"not contiguous: Page indexes {start_index} and"
+                f" {end_index} not found or not in order"
+            )
         return False
     start_page_no = _get_number_from_page(item_metadata["Pages"][start_index])
     if start_page_no is None:
+        if verbose:
+            print(f"not contiguous: Start page {start_page_no} is not numbered")
         return False
     for page in item_metadata["Pages"][start_index + 1 : end_index + 1]:
         page_no = _get_number_from_page(page)
         if page_no is None:
+            if not allow_unnumbered:
+                if verbose:
+                    print(f"not contiguous: Unnumbered page {page}")
+                return False
             continue
         if page_no <= start_page_no:
+            if verbose:
+                print(f"not contiguous: Page {page_no} is not after {start_page_no}")
             return False
         start_page_no = page_no
     return True
 
 
-def _get_number_from_page(page: dict[str, Any]) -> int | None:
-    for number in page["PageNumbers"]:
-        if number.get("Prefix", "").endswith("Page"):
+def _get_number_from_page(item: dict[str, Any]) -> int | None:
+    for number in item["PageNumbers"]:
+        if _is_numbered_page(number):
             try:
                 return int(number["Number"])
             except ValueError:
                 pass
+        elif m := re.fullmatch(r"%(\d+)", number["Number"]):
+            return int(m.group(1))
     return None
 
 
-def get_possible_pages(item_id: int, page_number: int) -> list[int]:
+def _is_numbered_page(page: dict[str, Any]) -> bool:
+    prefix = page.get("Prefix", "")
+    return prefix.endswith("Page") or prefix == "p."
+
+
+def get_possible_pages(item_id: int, page_number: str) -> list[int]:
     item_metadata = get_item_metadata(item_id)
     if not item_metadata:
         return []
     return _get_matching_pages(item_metadata["Pages"], page_number)
 
 
-def _get_matching_pages(pages: list[dict[str, Any]], page_number: int) -> list[int]:
+def _get_matching_pages(pages: list[dict[str, Any]], page_number: str) -> list[int]:
     page_ids = []
     for page in pages:
         if any(
-            number.get("Prefix", "").endswith("Page")
-            and number.get("Number") == str(page_number)
+            (
+                _is_numbered_page(number)
+                and number.get("Number", "").casefold() == page_number.casefold()
+            )
+            or str(_get_number_from_page(page)) == page_number
             for number in page["PageNumbers"]
         ):
             page_ids.append(page["PageID"])
     return page_ids
 
 
-def get_possible_pages_from_part(part_id: int, page_number: int) -> list[int]:
+def get_possible_pages_from_part(part_id: int, page_number: str) -> list[int]:
     part_metadata = get_part_metadata(part_id)
     if not part_metadata:
         return []
     return _get_matching_pages(part_metadata["Pages"], page_number)
+
+
+def get_possible_parts_from_page(page_id: int) -> Iterable[int]:
+    page_metadata = get_page_metadata(page_id)
+    if "ItemID" not in page_metadata:
+        return
+    item_metadata = get_item_metadata(int(page_metadata["ItemID"]))
+    if item_metadata is None or "Parts" not in item_metadata:
+        return
+    for part in item_metadata["Parts"]:
+        part_metadata = get_part_metadata(part["PartID"])
+        if any(page["PageID"] == page_id for page in part_metadata["Pages"]):
+            yield part["PartID"]
 
 
 def contains_name(page_id: int, name: str, max_distance: int = 3) -> bool:
@@ -239,7 +283,7 @@ def contains_name(page_id: int, name: str, max_distance: int = 3) -> bool:
 @dataclass
 class PossiblePage:
     page_id: int
-    page_number: int
+    page_number: str
     contains_text: bool
     contains_end_page: bool
     year_matches: bool
@@ -269,8 +313,8 @@ def find_possible_pages(
     *,
     year: int,
     volume: str | None = None,
-    start_page: int,
-    end_page: int | None = None,
+    start_page: str,
+    end_page: str | None = None,
     contains_text: Sequence[str],
     known_item_id: int | None = None,
 ) -> Iterable[PossiblePage]:
@@ -328,6 +372,8 @@ class UrlType(enum.Enum):
     other_bhl = enum.auto()
     biostor_ref = enum.auto()
     other_biostor = enum.auto()
+    google_books = enum.auto()
+    archive_org = enum.auto()
     other = enum.auto()
 
 
@@ -352,9 +398,12 @@ class ParsedUrl:
                 return self.payload
             case UrlType.biostor_ref:
                 return f"http://biostor.org/reference/{self.payload}"
-            case UrlType.other_biostor:
-                return self.payload
-            case UrlType.other:
+            case (
+                UrlType.other_biostor
+                | UrlType.google_books
+                | UrlType.archive_org
+                | UrlType.other
+            ):
                 return self.payload
         return "<unknown url>"
 
@@ -378,6 +427,13 @@ def parse_possible_bhl_url(url: str) -> ParsedUrl:
         return ParsedUrl(UrlType.other_bhl, url)
     elif "biostor.org" in url:
         return ParsedUrl(UrlType.other_biostor, url)
+    # TODO parse these more precisely so we get consistent URLs
+    # Maybe make specific types into subclasses of ParsedUrl instead,
+    # so they can have different types of payloads.
+    elif "books.google.com" in url:
+        return ParsedUrl(UrlType.google_books, url)
+    elif "archive.org" in url:
+        return ParsedUrl(UrlType.archive_org, url)
     return ParsedUrl(UrlType.other, url)
 
 
@@ -404,21 +460,21 @@ def get_bhl_bibliography_from_url(url: str) -> int | None:
         case ParsedUrl(UrlType.bhl_item, id):
             data = get_item_metadata(int(id))
             if data is not None:
-                return data["TitleID"]
+                return int(data["TitleID"])
         case ParsedUrl(UrlType.bhl_page, id):
             data = get_page_metadata(int(id))
             if data is not None:
                 item_id = data["ItemID"]
                 data = get_item_metadata(item_id)
                 if data is not None:
-                    return data["TitleID"]
+                    return int(data["TitleID"])
         case ParsedUrl(UrlType.bhl_part, id):
             data = get_part_metadata(int(id))
             if data is not None:
                 item_id = data["ItemID"]
                 data = get_item_metadata(item_id)
                 if data is not None:
-                    return data["TitleID"]
+                    return int(data["TitleID"])
     return None
 
 

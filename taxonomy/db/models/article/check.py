@@ -93,9 +93,20 @@ def build_csvlist() -> FileList:
     return csvlist
 
 
+_has_run_full_check = False
+
+
 @CS.register
 def check_new() -> None:
-    """Check only for new files."""
+    """Check only for new files.
+
+    On the first run, automatically invokes full check(), which fills up caches
+    for file paths. On later calls, run full check() to update file paths.
+
+    """
+    if not _has_run_full_check:
+        check()
+        return
     try:
         newcheck()
         burstcheck()
@@ -131,6 +142,8 @@ def check(dry_run: bool = False) -> None:
         burstcheck(dry_run=dry_run)
         # check if folders are too large
         oversized_folders()
+        global _has_run_full_check
+        _has_run_full_check = True
     except uitools.EndOfInput as e:
         print(f"Exiting from check ({e!r})")
 

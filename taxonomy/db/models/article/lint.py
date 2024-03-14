@@ -474,7 +474,7 @@ def check_doi(art: Article, cfg: LintConfig) -> Iterable[str]:
 @make_linter("infer_doi")
 def infer_doi(art: Article, cfg: LintConfig) -> Iterable[str]:
     if art.doi is None and art.url is not None:
-        doi = _infer_doi_from_url(art.url)
+        doi = infer_doi_from_url(art.url)
         if doi is not None:
             message = f"inferred doi {doi} from url {art.url}"
             if cfg.autofix:
@@ -492,7 +492,7 @@ DOI_EXTRACTION_REGEXES = [
 ]
 
 
-def _infer_doi_from_url(url: str) -> str | None:
+def infer_doi_from_url(url: str) -> str | None:
     for rgx in DOI_EXTRACTION_REGEXES:
         if match := re.match(rgx, url):
             return match.group(1)
@@ -510,29 +510,62 @@ def _infer_hdl_from_url(url: str) -> str | None:
     return None
 
 
-@make_linter("bhl_page_from_names")
-def infer_bhl_page_from_names(
-    art: Article, cfg: LintConfig, verbose: bool = False
-) -> Iterable[str]:
-    if not should_look_for_bhl_url(art):
-        if verbose:
-            print(f"{art}: not looking for BHL URL")
+@make_linter("bhl_item_from_bibliography")
+def bhl_item_from_bibliography(art: Article, cfg: LintConfig) -> Iterable[str]:
+    if art.url is None:
         return
-    if (
-        art.start_page is None
-        or not art.start_page.isnumeric()
-        or art.end_page is None
-        or not art.end_page.isnumeric()
-        or art.title is None
-    ):
-        if verbose:
-            print(f"{art}: no start or end page or title")
+    parsed = bhl.parse_possible_bhl_url(art.url)
+    if parsed.url_type is not bhl.UrlType.bhl_bibliography:
         return
+    metadata = bhl.get_title_metadata(int(parsed.payload))
+    if "Items" in metadata and len(metadata["Items"]) == 1:
+        item_id = metadata["Items"][0]["ItemID"]
+        new_url = f"https://www.biodiversitylibrary.org/item/{item_id}"
+        message = f"inferred BHL item {item_id} from bibliography {art.url}"
+        if cfg.autofix:
+            print(f"{art}: {message}")
+            art.url = new_url
+        else:
+            yield message
+
+
+@make_linter("bhl_part_from_page")
+def bhl_part_from_page(art: Article, cfg: LintConfig) -> Iterable[str]:
+    if art.url is None or art.title is None:
+        return
+    parsed = bhl.parse_possible_bhl_url(art.url)
+    if parsed.url_type is not bhl.UrlType.bhl_page:
+        return
+    metadata = bhl.get_page_metadata(int(parsed.payload))
+    if "ItemID" not in metadata:
+        return
+    item_metadata = bhl.get_item_metadata(int(metadata["ItemID"]))
+    if item_metadata is None or "Parts" not in item_metadata:
+        return
+    matching_part = None
+    for part in item_metadata["Parts"]:
+        if helpers.simplify_string(part["Title"]) != helpers.simplify_string(art.title):
+            continue
+        part_metadata = bhl.get_part_metadata(part["PartID"])
+        if "StartPageID" not in part_metadata:
+            continue
+        if part_metadata["StartPageID"] == parsed.payload:
+            matching_part = part
+            break
+    if matching_part is None:
+        return
+    message = f"inferred BHL part {matching_part['PartID']} from page {art.url}"
+    if cfg.autofix:
+        print(f"{art}: {message}")
+        art.url = f"https://www.biodiversitylibrary.org/part/{matching_part['PartID']}"
+    else:
+        yield message
+
+
+def _get_bhl_page_ids_from_names(art: Article) -> set[int]:
     new_names = list(art.new_names)
     if not new_names:
-        if verbose:
-            print(f"{art}: no new names")
-        return
+        return set()
     known_pages = [
         tag
         for nam in new_names
@@ -543,6 +576,28 @@ def infer_bhl_page_from_names(
         parsed = bhl.parse_possible_bhl_url(tag.url)
         if parsed.url_type is bhl.UrlType.bhl_page:
             bhl_page_ids.add(int(parsed.payload))
+    return bhl_page_ids
+
+
+@make_linter("must_have_bhl_url")
+def must_have_bhl_url(art: Article, cfg: LintConfig) -> Iterable[str]:
+    if not should_look_for_bhl_url(art):
+        return
+    bhl_page_ids = _get_bhl_page_ids_from_names(art)
+    if not bhl_page_ids:
+        return
+    yield f"has new names with BHL page IDs {bhl_page_ids} but no BHL URL"
+
+
+@make_linter("bhl_page_from_names")
+def infer_bhl_page_from_names(
+    art: Article, cfg: LintConfig, verbose: bool = False
+) -> Iterable[str]:
+    if not should_look_for_bhl_url(art):
+        if verbose:
+            print(f"{art}: not looking for BHL URL")
+        return
+    bhl_page_ids = _get_bhl_page_ids_from_names(art)
     if not bhl_page_ids:
         if verbose:
             print(f"{art}: no BHL page IDs from names")
@@ -553,7 +608,7 @@ def infer_bhl_page_from_names(
         if "ItemID" in metadata:
             item_ids.add(int(metadata["ItemID"]))
     if len(item_ids) > 1:
-        yield f"names are on multiple BHL items: {item_ids} (from {known_pages})"
+        yield f"names are on multiple BHL items: {item_ids} (from {bhl_page_ids})"
         return
     if not item_ids:
         if verbose:
@@ -561,7 +616,10 @@ def infer_bhl_page_from_names(
         return
     item_id = item_ids.pop()
     item_metadata = bhl.get_item_metadata(item_id)
-    if item_metadata is not None and "Parts" in item_metadata:
+    if art.title is None:
+        if verbose:
+            print(f"{art}: no title")
+    elif item_metadata is not None and "Parts" in item_metadata:
         for part in item_metadata["Parts"]:
             simplified_part_title = helpers.simplify_string(part["Title"])
             simplified_my_title = helpers.simplify_string(art.title)
@@ -598,8 +656,13 @@ def infer_bhl_page_from_names(
         if verbose:
             print(f"{art}: no item metadata for {item_id}")
 
-    start_page = int(art.start_page)
-    end_page = int(art.end_page)
+    if art.start_page is None or art.end_page is None:
+        if verbose:
+            print(f"{art}: no start or end page")
+        return
+
+    start_page = art.start_page
+    end_page = art.end_page
     possible_start_pages = bhl.get_possible_pages(item_id, start_page)
     possible_end_pages = bhl.get_possible_pages(item_id, end_page)
     if len(possible_start_pages) != len(possible_end_pages):
@@ -684,9 +747,7 @@ def get_inferred_bhl_page(
 ) -> bhl.PossiblePage | None:
     if (
         art.start_page is None
-        or not art.start_page.isnumeric()
         or art.end_page is None
-        or not art.end_page.isnumeric()
         or art.year is None
         or art.title is None
     ):
@@ -699,8 +760,8 @@ def get_inferred_bhl_page(
         return None
     year = art.numeric_year()
     contains_text = [art.title]
-    start_page = int(art.start_page)
-    end_page = int(art.end_page)
+    start_page = art.start_page
+    end_page = art.end_page
     possible_pages = sorted(
         bhl.find_possible_pages(
             title_ids,

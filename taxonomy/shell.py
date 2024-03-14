@@ -31,11 +31,15 @@ from itertools import groupby
 from pathlib import Path
 from typing import Any, Generic, NamedTuple, TypeVar, cast
 
+import httpx
 import IPython
 import peewee
 import requests
 import unidecode
 from traitlets.config.loader import Config
+
+from taxonomy.apis import bhl
+from taxonomy.config import get_options
 
 from . import getinput
 from .command_set import CommandSet
@@ -3034,6 +3038,32 @@ def find_valid_names_with_invalid_bases() -> None:
             and txn.base_name.status is constants.Status.valid
         ):
             txn.display()
+
+
+@command
+def download_bhl_parts() -> None:
+    options = get_options()
+    # Should fix type of with_type_tag()
+    # static analysis: ignore[undefined_attribute]
+    for nam in Name.with_type_tag(TypeTag.AuthorityPageLink).filter(
+        Name.original_citation == None
+    ):
+        for tag in nam.type_tags:
+            if not isinstance(tag, TypeTag.AuthorityPageLink):
+                continue
+            parsed = bhl.parse_possible_bhl_url(tag.url)
+            if parsed.url_type is not bhl.UrlType.bhl_page:
+                continue
+            for part_id in bhl.get_possible_parts_from_page(int(parsed.payload)):
+                url = f"https://www.biodiversitylibrary.org/partpdf/{part_id}"
+                if not getinput.yes_no(f"download {part_id} for {nam}?"):
+                    return
+                print("Downloading", url)
+                response = httpx.get(url, timeout=None)
+                path = options.new_path / f"{part_id}.pdf"
+                path.write_bytes(response.content)
+                print("Adding part for name", nam)
+                models.article.check.check_new()
 
 
 def run_shell() -> None:

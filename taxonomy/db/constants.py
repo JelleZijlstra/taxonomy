@@ -305,7 +305,6 @@ class NomenclatureStatus(enum.IntEnum):
             # Clear problems with the name itself.
             [
                 cls.not_based_on_a_generic_name,
-                cls.infrasubspecific,
                 cls.hypothetical_concept,
                 cls.teratological,
                 cls.hybrid_as_such,
@@ -334,6 +333,7 @@ class NomenclatureStatus(enum.IntEnum):
             ],
             # Spelling issues that produce unavailable names.
             [cls.incorrect_subsequent_spelling, cls.incorrect_original_spelling],
+            [cls.infrasubspecific],
             [cls.nomen_nudum],
             # From here on, names are available.
             [

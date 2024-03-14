@@ -434,6 +434,9 @@ class Article(BaseModel):
             "expand_doi_force": lambda: self.expand_doi(
                 verbose=True, set_fields=True, clear_cache=True
             ),
+            "expand_bhl_part": lambda: self.expand_bhl_part(
+                verbose=True, set_fields=True
+            ),
             "display_names": self.display_names,
             "display_type_localities": self.display_type_localities,
             "display_children": self.display_children,
@@ -452,7 +455,12 @@ class Article(BaseModel):
             "add_comment": self.add_comment,
             "infer_year": self.infer_year,
             "cite": self.cite_interactive,
+            "try_to_find_bhl_links": self.try_to_find_bhl_links,
         }
+
+    def try_to_find_bhl_links(self) -> None:
+        for nam in self.new_names:
+            nam.try_to_find_bhl_links()
 
     def infer_year(self) -> None:
         inferred, _, _ = models.article.lint.infer_publication_date(self)
@@ -821,6 +829,17 @@ class Article(BaseModel):
                 return url + value
         return None
 
+    def has_bhl_link(self) -> bool:
+        if not self.url:
+            return False
+        parsed = bhl.parse_possible_bhl_url(self.url)
+        return parsed.url_type in (
+            bhl.UrlType.bhl_bibliography,
+            bhl.UrlType.bhl_page,
+            bhl.UrlType.bhl_item,
+            bhl.UrlType.bhl_part,
+        )
+
     def openurl(self) -> bool:
         # open the URL associated with the file
         url = self.geturl()
@@ -935,6 +954,30 @@ class Article(BaseModel):
         if clear_cache:
             models.article.add_data.clear_doi_cache(self.doi)
         data = models.article.add_data.expand_doi_json(self.doi)
+        if set_fields:
+            models.article.add_data.set_multi(
+                self, data, only_new=not overwrite, verbose=verbose
+            )
+        return data
+
+    def expand_bhl_part(
+        self,
+        *,
+        url: str | None = None,
+        overwrite: bool = False,
+        verbose: bool = False,
+        set_fields: bool = True,
+    ) -> dict[str, Any]:
+        if url is None:
+            url = self.url
+        if not url:
+            return {}
+        parsed = bhl.parse_possible_bhl_url(url)
+        if parsed.url_type is not bhl.UrlType.bhl_part:
+            return {}
+        data = models.article.add_data.get_bhl_part_data_from_part_id(
+            int(parsed.payload)
+        )
         if set_fields:
             models.article.add_data.set_multi(
                 self, data, only_new=not overwrite, verbose=verbose
