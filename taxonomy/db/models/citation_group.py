@@ -128,7 +128,7 @@ class CitationGroup(BaseModel):
     def lint(self, cfg: LintConfig) -> Iterable[str]:
         if not self.tags:
             return
-        has_bhl_biblio = False
+        num_bhl_biblios = 0
         for tag in self.tags:
             if tag is CitationGroupTag.MustHave or isinstance(
                 tag, CitationGroupTag.MustHaveAfter
@@ -155,7 +155,7 @@ class CitationGroup(BaseModel):
             if isinstance(tag, CitationGroupTag.BHLBibliography):
                 if not tag.text.isnumeric():
                     yield f"{self}: invalid BHL tag {tag}"
-                has_bhl_biblio = True
+                num_bhl_biblios += 1
             if isinstance(tag, CitationGroupTag.YearRange):
                 if issue := helpers.is_valid_year(tag.start):
                     yield f"{self}: invalid start year in {tag}: {issue}"
@@ -208,11 +208,17 @@ class CitationGroup(BaseModel):
             else:
                 yield message
 
-        if not has_bhl_biblio:
+        if num_bhl_biblios > 5:
+            yield f"{self}: has {num_bhl_biblios} BHL bibliographies"
+
+        if not num_bhl_biblios:
             yield from self.infer_bhl_biblio(cfg)
-        yield from self.infer_bhl_biblio_from_children(cfg)
+        if not self.has_tag(CitationGroupTag.SkipExtraBHLBibliographies):
+            yield from self.infer_bhl_biblio_from_children(cfg)
 
     def infer_bhl_biblio_from_children(self, cfg: LintConfig) -> Iterable[str]:
+        if self.type is not constants.ArticleType.JOURNAL:
+            return
         bibliographies: dict[int, list[object]] = defaultdict(list)
         for nam in self.get_names():
             for tag in nam.get_tags(
@@ -245,6 +251,8 @@ class CitationGroup(BaseModel):
     def infer_bhl_biblio(
         self, cfg: LintConfig, interactive_mode: bool = False
     ) -> Iterable[str]:
+        if self.type is not constants.ArticleType.JOURNAL:
+            return
         title_dict = bhl.get_title_to_data()
         name = self.name.casefold()
         if name not in title_dict:
@@ -271,7 +279,6 @@ class CitationGroup(BaseModel):
                 # help pyanalyze, which picks "object" as the type otherwise
                 assert isinstance(data, dict)
             else:
-                yield message
                 return
         else:
             data = candidates[0]
@@ -482,7 +489,27 @@ class CitationGroup(BaseModel):
             "for_years": self._for_years_interactive,
             "fill_field_for_names": self.fill_field_for_names,
             "interactively_add_bhl_urls": self.interactively_add_bhl_urls,
+            "validate_bhl_urls": self.validate_bhl_urls,
         }
+
+    def validate_bhl_urls(self) -> None:
+        for art in self.get_articles():
+            if art.url is None:
+                continue
+            art.display()
+            if not bhl.print_data_for_possible_bhl_url(art.url):
+                continue
+            if not getinput.yes_no("Keep URL? ", callbacks=art.get_adt_callbacks()):
+                art.url = None
+        for nam in self.get_names():
+            nam.display()
+            for tag in nam.get_tags(
+                nam.type_tags, models.name.TypeTag.AuthorityPageLink
+            ):
+                if not bhl.print_data_for_possible_bhl_url(tag.url):
+                    continue
+                if not getinput.yes_no("Keep URL? ", callbacks=nam.get_adt_callbacks()):
+                    nam.remove_type_tag(tag)
 
     def merge_interactive(self) -> None:
         other = self.getter(None).get_one("merge target> ")
@@ -683,3 +710,5 @@ class CitationGroupTag(adt.ADT):
     # Articles must have a URL (or DOI, HDL, etc.)
     MustHaveURL(tag=26)  # type: ignore
     URLPattern(text=str, tag=27)  # type: ignore
+    # Do not add more BHL bibliographies based on children
+    SkipExtraBHLBibliographies(tag=28)  # type: ignore

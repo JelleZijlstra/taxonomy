@@ -30,10 +30,12 @@ from ...constants import (
     ArticleType,
     CommentKind,
     DateSource,
-    FillDataLevel,
+    GenderArticle,
     Group,
+    NameDataLevel,
     NamingConvention,
     NomenclatureStatus,
+    OriginalCitationDataLevel,
     Rank,
     SpeciesGroupType,
     SpeciesNameKind,
@@ -1200,11 +1202,6 @@ def get_applicable_nomenclature_statuses_from_tags(
             yield TAG_TO_STATUS[type(tag)]
 
 
-def get_applicable_nomenclature_statuses(nam: Name) -> Iterable[NomenclatureStatus]:
-    yield from get_applicable_nomenclature_statuses_from_tags(nam)
-    yield from get_inherent_nomenclature_statuses(nam)
-
-
 def get_inherent_nomenclature_statuses(nam: Name) -> Iterable[NomenclatureStatus]:
     # Allow 1757 because of spiders
     if nam.year is not None and nam.numeric_year() < 1757:
@@ -1233,7 +1230,15 @@ def _get_status_priorities() -> dict[NomenclatureStatus, int]:
 def check_expected_nomenclature_status(nam: Name, cfg: LintConfig) -> Iterable[str]:
     """Check if the nomenclature status is as expected."""
     priority_map = _get_status_priorities()
-    applicable = get_applicable_nomenclature_statuses(nam)
+    applicable_from_tags = set(get_applicable_nomenclature_statuses_from_tags(nam))
+    if (
+        NomenclatureStatus.infrasubspecific in applicable_from_tags
+        and NomenclatureStatus.variety_or_form in applicable_from_tags
+    ):
+        yield "has both infrasubspecific and variety/form tags"
+
+    inherent = set(get_inherent_nomenclature_statuses(nam))
+    applicable = applicable_from_tags | inherent
     expected_status = min(
         applicable,
         key=lambda status: priority_map[status],
@@ -1617,8 +1622,14 @@ def infer_family_group_type(nam: Name, cfg: LintConfig) -> Iterable[str]:
         yield message
 
 
-@make_linter("valid_stem")
-def check_valid_stem(nam: Name, cfg: LintConfig) -> Iterable[str]:
+@make_linter("name_complex")
+def check_name_complex(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    if (
+        nam.name_complex is not None
+        and nam.original_citation is not None
+        and nam.name_complex.code_article is GenderArticle.assumed
+    ):
+        yield "'assumed' name_complex for name with original_citation"
     try:
         nam.get_stem()
     except ValueError as e:
@@ -1822,19 +1833,22 @@ def autoset_corrected_original_name(
         yield (f"could not infer corrected original name from {nam.original_name!r}")
 
 
-@make_linter("fill_data_level")
-def check_fill_data_level(nam: Name, cfg: LintConfig) -> Iterable[str]:
-    if nam.original_citation is None:
-        return
-    level, reason = nam.fill_data_level()
-    if level > FillDataLevel.missing_required_fields:
-        return
-    if (
-        nam.original_citation.has_tag(ArticleTag.NeedsTranslation)
-        or nam.original_citation.is_non_original()
-    ):
-        return
-    yield f"missing basic data: {reason}"
+@make_linter("data_level")
+def check_data_level(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    ocdl, ocdl_reason = nam.original_citation_data_level()
+    ndl, ndl_reason = nam.name_data_level()
+    match ocdl:
+        case OriginalCitationDataLevel.no_citation:
+            pass
+        case OriginalCitationDataLevel.no_data:
+            if ndl < NameDataLevel.missing_details_tags:
+                yield f"has no data from original ({ocdl_reason}), but missing important fields: {ndl_reason}"
+        case OriginalCitationDataLevel.some_data:
+            if ndl is NameDataLevel.missing_crucial_fields:
+                yield f"has some data from original ({ocdl_reason}), but missing crucial data: {ndl_reason}"
+        case OriginalCitationDataLevel.all_required_data:
+            if ndl is NameDataLevel.missing_crucial_fields:
+                yield f"has data from original, but missing crucial data: {ndl_reason}"
 
 
 @make_linter("citation_group")
@@ -2468,14 +2482,6 @@ def infer_original_parent(nam: Name, cfg: LintConfig) -> Iterable[str]:
         return
     candidates = _get_inferred_original_parent(nam)
     if len(candidates) != 1:
-        if not candidates and nam.original_citation is None:
-            return
-        message = f"cannot infer original parent: {candidates}"
-        if cfg.interactive:
-            getinput.print_header(nam)
-            print(f"{nam}: {message}")
-            nam.fill_field("original_parent")
-        yield message
         return
     message = f"inferred original_parent to be {candidates} from {nam.corrected_original_name}"
     if cfg.autofix:
@@ -2643,52 +2649,131 @@ def check_must_have_authority_page_link(nam: Name, cfg: LintConfig) -> Iterable[
 
 @make_linter("check_bhl_page")
 def check_bhl_page(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    if nam.original_citation is None:
+        return
     for tag in nam.get_tags(nam.type_tags, TypeTag.AuthorityPageLink):
         parsed = bhl.parse_possible_bhl_url(tag.url)
         if parsed.url_type is not bhl.UrlType.bhl_page:
             continue
-        item_id = bhl.get_bhl_item_from_url(tag.url)
-        if item_id is None:
-            yield f"cannot find BHL item for {tag.url}"
-            continue
-        if nam.original_citation is None:
-            continue
         if nam.original_citation.url is None:
             yield f"name has BHL page, but original citation has no URL: {nam.original_citation}"
             if cfg.interactive:
-                _autoset_original_citation_url(nam)
+                nam.original_citation.format(quiet=True)
+                if nam.original_citation.url is None:
+                    _autoset_original_citation_url(nam)
             continue
-        citation_item_id = bhl.get_bhl_item_from_url(nam.original_citation.url)
-        if citation_item_id is None:
+        parsed_url = bhl.parse_possible_bhl_url(nam.original_citation.url)
+        if not parsed_url.is_bhl():
             yield f"name has BHL page, but citation has non-BHL URL {nam.original_citation.url}"
             if cfg.interactive:
                 _autoset_original_citation_url(nam)
             continue
-        if item_id != citation_item_id:
-            # TODO: Ignore this for now; too noisy. In the future we can add more infrastructure and try
-            # to automatically replace the URL in this case.
-            # yield f"BHL item mismatch: {item_id} (name) != {citation_item_id} (citation)"
-            replacement = [
-                page
-                for page in get_candidate_bhl_pages(nam, verbose=False)
-                if page.item_id == citation_item_id and page.is_confident
-            ]
-            if len(replacement) == 1:
-                message = f"replace {tag.url} with {replacement[0].page_url}"
-                if cfg.autofix:
-                    print(f"{nam}: {message}")
-                    nam.type_tags = [  # type: ignore[assignment]
-                        (
-                            existing_tag
-                            if existing_tag != tag
-                            else TypeTag.AuthorityPageLink(
-                                replacement[0].page_url, True, tag.page
-                            )
+        yield from _check_bhl_item_matches(nam, tag, cfg)
+        yield from _check_bhl_bibliography_matches(nam, tag, cfg)
+
+
+def _check_bhl_item_matches(
+    nam: Name,
+    tag: TypeTag.AuthorityPageLink,  # type:ignore[name-defined]
+    cfg: LintConfig,
+) -> Iterable[str]:
+    item_id = bhl.get_bhl_item_from_url(tag.url)
+    if item_id is None:
+        yield f"cannot find BHL item for {tag.url}"
+        return
+    if nam.original_citation is None or nam.original_citation.url is None:
+        return
+    citation_item_ids = list(_get_possible_bhl_item_ids(nam.original_citation))
+    if not citation_item_ids:
+        return
+    if item_id not in citation_item_ids:
+        # TODO: Ignore this for now; too noisy. In the future we can add more infrastructure and try
+        # to automatically replace the URL in this case.
+        # yield f"BHL item mismatch: {item_id} (name) != {citation_item_id} (citation)"
+        replacement = [
+            page
+            for page in get_candidate_bhl_pages(nam, verbose=False)
+            if page.item_id in citation_item_ids and page.is_confident
+        ]
+        if len(replacement) == 1:
+            message = f"replace {tag.url} with {replacement[0].page_url}"
+            if cfg.autofix:
+                print(f"{nam}: {message}")
+                nam.type_tags = [  # type: ignore[assignment]
+                    (
+                        existing_tag
+                        if existing_tag != tag
+                        else TypeTag.AuthorityPageLink(
+                            replacement[0].page_url, True, tag.page
                         )
-                        for existing_tag in nam.type_tags
-                    ]
-                else:
-                    yield message
+                    )
+                    for existing_tag in nam.type_tags
+                ]
+            else:
+                yield message
+
+
+def _get_possible_bhl_item_ids(art: Article) -> Iterable[int]:
+    if art.url is not None:
+        item_id = bhl.get_bhl_item_from_url(art.url)
+        if item_id is not None:
+            yield item_id
+    for tag in art.tags:
+        if isinstance(tag, ArticleTag.AlternativeURL):
+            item_id = bhl.get_bhl_item_from_url(tag.url)
+            if item_id is not None:
+                yield item_id
+
+
+def _check_bhl_bibliography_matches(
+    nam: Name,
+    tag: TypeTag.AuthorityPageLink,  # type:ignore[name-defined]
+    cfg: LintConfig,
+) -> Iterable[str]:
+    bibliography_id = bhl.get_bhl_bibliography_from_url(tag.url)
+    if bibliography_id is None:
+        yield f"cannot find BHL bibliograohy for {tag.url}"
+        return
+    if nam.original_citation is None or nam.original_citation.url is None:
+        return
+    citation_biblio_ids = list(
+        _get_possible_bhl_bibliography_ids(nam.original_citation)
+    )
+    if bibliography_id not in citation_biblio_ids:
+        yield f"BHL item mismatch: {bibliography_id} (name) not in {citation_biblio_ids} (citation)"
+        replacement = [
+            page
+            for page in get_candidate_bhl_pages(nam, verbose=False)
+            if page.item_id in citation_biblio_ids and page.is_confident
+        ]
+        if len(replacement) == 1:
+            message = f"replace {tag.url} with {replacement[0].page_url}"
+            if cfg.autofix:
+                print(f"{nam}: {message}")
+                nam.type_tags = [  # type: ignore[assignment]
+                    (
+                        existing_tag
+                        if existing_tag != tag
+                        else TypeTag.AuthorityPageLink(
+                            replacement[0].page_url, True, tag.page
+                        )
+                    )
+                    for existing_tag in nam.type_tags
+                ]
+            else:
+                yield message
+
+
+def _get_possible_bhl_bibliography_ids(art: Article) -> Iterable[int]:
+    if art.url is not None:
+        bibliography_id = bhl.get_bhl_bibliography_from_url(art.url)
+        if bibliography_id is not None:
+            yield bibliography_id
+    for tag in art.tags:
+        if isinstance(tag, ArticleTag.AlternativeURL):
+            bibliography_id = bhl.get_bhl_bibliography_from_url(tag.url)
+            if bibliography_id is not None:
+                yield bibliography_id
 
 
 def _should_look_for_page_links(nam: Name) -> bool:
@@ -2819,6 +2904,12 @@ def infer_bhl_page_from_other_names(
         if verbose:
             print(f"{nam}: no original citation")
         return
+    # Just so we don't waste effort adding incorrect pages before the link has been
+    # confirmed on the article.
+    if not nam.original_citation.has_bhl_link():
+        if verbose:
+            print(f"{nam}: original citation has no BHL link")
+        return
     pages = list(extract_pages(nam.page_described))
     if len(pages) != 1:
         if verbose:
@@ -2843,7 +2934,7 @@ def infer_bhl_page_from_other_names(
                     print(f"{other_nam}: {tag} is not a BHL page URL")
                 continue
             existing_page_id = int(parsed.payload)
-            if tag.page == page:
+            if tag.page == page and nam.page_described == other_nam.page_described:
                 inferred_pages.add(existing_page_id)
             if not tag.page.isnumeric() or not page.isnumeric():
                 if verbose:

@@ -312,14 +312,12 @@ class NomenclatureStatus(enum.IntEnum):
                 cls.work_of_extant,
                 cls.zoological_formula,
                 cls.not_latin_alphabet,
-                cls.not_used_as_valid,
                 cls.not_used_as_genus_plural,
                 cls.not_published_with_a_generic_name,
                 cls.multiple_words,
                 cls.no_type_specified,
                 cls.anonymous_authorship,
                 cls.conditional,
-                cls.variety_or_form,
                 cls.not_explicitly_new,
                 cls.ites_name,
                 cls.based_on_homonym,
@@ -333,8 +331,11 @@ class NomenclatureStatus(enum.IntEnum):
             ],
             # Spelling issues that produce unavailable names.
             [cls.incorrect_subsequent_spelling, cls.incorrect_original_spelling],
-            [cls.infrasubspecific],
             [cls.nomen_nudum],
+            # Potentially available under some circumstances
+            [cls.variety_or_form],
+            [cls.infrasubspecific],
+            [cls.not_used_as_valid],
             # From here on, names are available.
             [
                 cls.unjustified_emendation,
@@ -875,6 +876,21 @@ class FillDataLevel(enum.IntEnum):
     @classmethod
     def max_level(cls) -> FillDataLevel:
         return cls.no_data_from_original
+
+
+class NameDataLevel(enum.IntEnum):
+    missing_crucial_fields = 1
+    missing_required_fields = 2
+    missing_details_tags = 3
+    missing_derived_tags = 4
+    nothing_needed = 5
+
+
+class OriginalCitationDataLevel(enum.IntEnum):
+    no_citation = 1
+    no_data = 2
+    some_data = 3
+    all_required_data = 4
 
 
 class DateSource(enum.IntEnum):

@@ -7,6 +7,7 @@ import json
 import re
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, TypeVar
 
@@ -47,6 +48,7 @@ def get_title_to_data() -> dict[str, list[dict[str, str]]]:
     return output
 
 
+@lru_cache(maxsize=1024)
 def get_title_metadata(title_id: int) -> dict[str, Any]:
     result = json.loads(_get_title_metadata_string(str(title_id)))
     if result["Status"] != "ok":
@@ -63,6 +65,8 @@ def _get_title_metadata_string(title_id: str) -> str:
     ).text
 
 
+# profiling shows significant overhead from JSON decoding otherwise
+@lru_cache(maxsize=1024)
 def get_item_metadata(item_id: int) -> dict[str, Any] | None:
     result = json.loads(_get_item_metadata_string(str(item_id)))
     if result["Status"] != "ok":
@@ -82,6 +86,7 @@ def _get_item_metadata_string(item_id: str) -> str:
     return httpx.get(url).text
 
 
+@lru_cache(maxsize=1024)
 def get_page_metadata(page_id: int) -> dict[str, Any]:
     result = json.loads(_get_page_metadata_string(str(page_id)))
     if result["Status"] != "ok":
@@ -407,6 +412,14 @@ class ParsedUrl:
                 return self.payload
         return "<unknown url>"
 
+    def is_bhl(self) -> bool:
+        return self.url_type in {
+            UrlType.bhl_bibliography,
+            UrlType.bhl_item,
+            UrlType.bhl_page,
+            UrlType.bhl_part,
+        }
+
 
 def parse_possible_bhl_url(url: str) -> ParsedUrl:
     if match := re.fullmatch(
@@ -476,6 +489,76 @@ def get_bhl_bibliography_from_url(url: str) -> int | None:
                 if data is not None:
                     return int(data["TitleID"])
     return None
+
+
+EXCLUDED_FROM_PRINTING = {
+    "ItemID",
+    "TitleID",
+    "ThumbnailPageID",
+    "Source",
+    "IsVirtual",
+    "HoldingInstitution",
+    "Sponsor",
+    "Language",
+    "Rights",
+    "CopyrightStatus",
+    "ItemUrl",
+    "TitleUrl",
+    "ItemThumbUrl",
+    "ItemTextUrl",
+    "ItemPDFUrl",
+    "ItemImagesUrl",
+    "CreationDate",
+    "Pages",
+    "Subjects",
+    "Items",
+}
+
+
+def print_data_for_possible_bhl_url(url: str) -> bool:
+    parsed = parse_possible_bhl_url(url)
+    if not parsed.is_bhl():
+        return False
+    item_id = get_bhl_item_from_url(url)
+    if item_id is not None:
+        item_metadata = get_item_metadata(item_id)
+        if item_metadata is None:
+            print(f"No metadata found for item {item_id} from {url}")
+        else:
+            print_metadata(item_metadata)
+    else:
+        bibliography_id = get_bhl_bibliography_from_url(url)
+        if bibliography_id is not None:
+            biblio_metadata = get_title_metadata(bibliography_id)
+            if biblio_metadata is None:
+                print(
+                    f"No metadata found for bibliography {bibliography_id} from {url}"
+                )
+            else:
+                print_metadata(biblio_metadata)
+        else:
+            print(f"No item or bibliography found for {url}")
+    return True
+
+
+def print_metadata(data: dict[str, Any]) -> None:
+    for key, value in data.items():
+        if key not in EXCLUDED_FROM_PRINTING:
+            print(f"{key}: {value}")
+
+
+def clear_caches_related_to_url(url: str) -> None:
+    item_id = get_bhl_item_from_url(url)
+    if item_id is not None:
+        dirty_cache(CacheDomain.bhl_item, str(item_id))
+    biblio_id = get_bhl_bibliography_from_url(url)
+    if biblio_id is not None:
+        dirty_cache(CacheDomain.bhl_title, str(biblio_id))
+    match parse_possible_bhl_url(url):
+        case ParsedUrl(UrlType.bhl_page, id):
+            dirty_cache(CacheDomain.bhl_page, id)
+        case ParsedUrl(UrlType.bhl_part, id):
+            dirty_cache(CacheDomain.bhl_part, id)
 
 
 # From https://docs.python.org/3.10/library/itertools.html#itertools-recipes

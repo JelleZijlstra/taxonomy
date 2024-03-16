@@ -14,6 +14,7 @@ from typing import IO, TYPE_CHECKING, Any, ClassVar, NotRequired, TypeAlias
 from peewee import CharField, ForeignKeyField, IntegerField, TextField
 
 from taxonomy import adt, events, getinput, parsing
+from taxonomy.apis import bhl
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
 from taxonomy.apis.zoobank import get_zoobank_data
 from taxonomy.db import constants, helpers, models
@@ -22,7 +23,9 @@ from taxonomy.db.constants import (
     EmendationJustification,
     FillDataLevel,
     Group,
+    NameDataLevel,
     NomenclatureStatus,
+    OriginalCitationDataLevel,
     Rank,
     RegionKind,
     SpeciesNameKind,
@@ -53,16 +56,23 @@ from ..person import AuthorTag, Person, get_new_authors_list
 from ..taxon import Taxon, display_organized
 from .type_specimen import parse_type_specimen
 
+_CRUCIAL_MISSING_FIELDS_ALL_GROUPS = {
+    "original_name",
+    "corrected_original_name",
+    "author_tags",
+    "year",
+    "page_described",
+    "original_rank",
+    # Note fields not applicable to the name are filtered out
+    "original_parent",
+    "name_complex",
+    "species_name_complex",
+}
 _CRUCIAL_MISSING_FIELDS: dict[Group, set[str]] = {
-    Group.species: {
-        "species_name_complex",
-        "original_name",
-        "corrected_original_name",
-        "original_rank",
-    },
-    Group.genus: {"name_complex", "original_rank"},
-    Group.family: {"type", "original_rank"},
-    Group.high: {"original_rank"},
+    Group.species: _CRUCIAL_MISSING_FIELDS_ALL_GROUPS,
+    Group.genus: _CRUCIAL_MISSING_FIELDS_ALL_GROUPS,
+    Group.family: {"type", *_CRUCIAL_MISSING_FIELDS_ALL_GROUPS},
+    Group.high: _CRUCIAL_MISSING_FIELDS_ALL_GROUPS,
 }
 _ETYMOLOGY_CUTOFF = 1990
 _DATA_CUTOFF = 1900
@@ -672,14 +682,20 @@ class Name(BaseModel):
             and self.collection.add_collection_code(),
             "add_authority_page_link": self.add_authority_page_link,
             "try_to_find_bhl_links": self.try_to_find_bhl_links,
+            "clear_bhl_caches": self.clear_bhl_caches,
         }
+
+    def clear_bhl_caches(self) -> None:
+        for tag in self.type_tags:
+            if isinstance(tag, TypeTag.AuthorityPageLink):
+                bhl.clear_caches_related_to_url(tag.url)
 
     def add_authority_page_link(self) -> None:
         if self.page_described is None or not self.page_described.isnumeric():
             print("Page described is too complex; add AuthorityPageLink tag directly")
             return
         link = getinput.get_line("link> ")
-        if link is None:
+        if not link:
             return
         if link.isnumeric():
             link = f"https://www.biodiversitylibrary.org/page/{link}"
@@ -739,11 +755,15 @@ class Name(BaseModel):
         other.merge(self)
 
     def print_fill_data_level(self) -> None:
-        level, reason = self.fill_data_level()
-        if reason:
-            print(f"{level.name}: {reason}")
-        else:
-            print(level.name)
+        for label, (level, reason) in (
+            ("name", self.name_data_level()),
+            ("original citation", self.original_citation_data_level()),
+            ("fill data", self.fill_data_level()),
+        ):
+            if reason:
+                print(f"{label}: {level.name}: {reason}")
+            else:
+                print(f"{label}: {level.name}")
 
     def edit(self) -> None:
         self.fill_field("type_tags")
@@ -891,6 +911,12 @@ class Name(BaseModel):
             self.type_tags = [tag]
         elif tag not in type_tags:
             self.type_tags = type_tags + (tag,)
+
+    def remove_type_tag(self, tag: TypeTag) -> None:
+        type_tags = self.type_tags
+        if type_tags is None:
+            return
+        self.type_tags = tuple(t for t in type_tags if t != tag)  # type: ignore[assignment]
 
     @classmethod
     def with_type_tag(cls, tag_cls: TypeTagCons) -> Iterable[Name]:
@@ -1518,9 +1544,21 @@ class Name(BaseModel):
                 lints = "; ".join(self.lint())
                 if lints:
                     data["lint"] = lints
+            level_strings = []
+            ocdl, ocdl_reason = self.original_citation_data_level()
+            if ocdl not in (
+                OriginalCitationDataLevel.all_required_data,
+                OriginalCitationDataLevel.no_citation,
+            ):
+                level_strings.append(f"citation: {ocdl.name.upper()} ({ocdl_reason})")
+            ndl, ndl_reason = self.name_data_level()
+            if ndl is not NameDataLevel.nothing_needed:
+                level_strings.append(f"name: {ndl.name.upper()} ({ndl_reason})")
             level, reason = self.fill_data_level()
             if level is not FillDataLevel.nothing_needed:
-                data["level"] = f"{level.name.upper()} ({reason})"
+                level_strings.append(f"fill data: {level.name.upper()} ({reason})")
+            if level_strings:
+                data["level"] = "; ".join(level_strings)
             if self.type_locality is not None:
                 data["locality"] = repr(self.type_locality)
             type_info = []
@@ -1610,29 +1648,59 @@ class Name(BaseModel):
                 assert isinstance(new_tag, TypeTag)
                 self.add_type_tag(new_tag)
 
-    def fill_data_level(self) -> tuple[FillDataLevel, str]:
-        if (
-            self.name_complex is not None
-            and self.original_citation is not None
-            and self.name_complex.code_article is constants.GenderArticle.assumed
-        ):
+    def original_citation_data_level(self) -> tuple[OriginalCitationDataLevel, str]:
+        if self.original_citation is None:
+            return (OriginalCitationDataLevel.no_citation, "missing original_citation")
+        if self.original_citation.has_tag(models.article.ArticleTag.NeedsTranslation):
             return (
-                FillDataLevel.needs_basic_data,
-                "'assumed' name_complex for name with original_citation",
+                OriginalCitationDataLevel.no_citation,
+                "original citation needs translation",
             )
+        if self.original_citation.is_non_original():
+            return (OriginalCitationDataLevel.no_citation, "non-original citation")
+        source_tags = list(get_tags_from_original_citation(self))
+        if not source_tags:
+            return (OriginalCitationDataLevel.no_data, "no tags from original citation")
+        missing = []
+        for group in self.get_required_details_tags():
+            if not any(tag in source_tags for tag in group):
+                missing.append(group)
+        if missing:
+            return (OriginalCitationDataLevel.some_data, tag_list(missing))
+        return (OriginalCitationDataLevel.all_required_data, "")
+
+    def name_data_level(self) -> tuple[NameDataLevel, str]:
+        missing_fields = set(self.get_empty_required_fields())
+        crucial_missing = _CRUCIAL_MISSING_FIELDS[self.group] & missing_fields
+        if crucial_missing:
+            return (
+                NameDataLevel.missing_crucial_fields,
+                f"missing {', '.join(sorted(crucial_missing))}",
+            )
+        if missing_fields:
+            return (
+                NameDataLevel.missing_required_fields,
+                f"missing {', '.join(sorted(missing_fields))}",
+            )
+
+        required_details_tags = list(self.get_required_details_tags())
+        missing_details_tags = list(self.get_missing_tags(required_details_tags))
+        if missing_details_tags:
+            return (NameDataLevel.missing_details_tags, tag_list(missing_details_tags))
+
+        required_derived_tags = list(self.get_required_derived_tags())
+        missing_derived_tags = list(self.get_missing_tags(required_derived_tags))
+        if missing_derived_tags:
+            return (NameDataLevel.missing_derived_tags, tag_list(missing_derived_tags))
+
+        return (NameDataLevel.nothing_needed, "")
+
+    def fill_data_level(self) -> tuple[FillDataLevel, str]:
         missing_fields = set(self.get_empty_required_fields())
         required_details_tags = list(self.get_required_details_tags())
         missing_details_tags = list(self.get_missing_tags(required_details_tags))
         required_derived_tags = list(self.get_required_derived_tags())
         missing_derived_tags = list(self.get_missing_tags(required_derived_tags))
-
-        def tag_list(tags: Iterable[tuple[TypeTagCons, ...]]) -> str:
-            # display only the first one in the group; no need to mention NoEtymology c.s.
-            firsts = [group[0] for group in tags]
-            return (
-                "missing"
-                f" {', '.join(first.__name__ if hasattr(first, '__name__') else repr(first) for first in firsts)}"
-            )
 
         if has_data_from_original(self):
             crucial_missing = _CRUCIAL_MISSING_FIELDS[self.group] & missing_fields
@@ -2492,16 +2560,49 @@ def has_data_from_original(nam: Name) -> bool:
     for tag in nam.type_tags:
         if isinstance(tag, SOURCE_TAGS) and tag.source == nam.original_citation:
             return True
-        if isinstance(
+        if (
+            isinstance(
+                tag,
+                (
+                    TypeTag.IncludedSpecies,
+                    TypeTag.GenusCoelebs,
+                    TypeTag.TextualOriginalRank,
+                ),
+            )
+            or tag in NO_DATA_FROM_SOURCE_TAGS
+        ):
+            return True
+    return False
+
+
+def get_tags_from_original_citation(nam: Name) -> Iterable[TypeTagCons]:
+    if not nam.original_citation or not nam.get_raw_tags_field("type_tags"):
+        return
+    if not nam.type_tags:
+        return
+    for tag in nam.type_tags:
+        if isinstance(tag, SOURCE_TAGS) and tag.source == nam.original_citation:
+            yield type(tag)  # static analysis: ignore[incompatible_yield]
+        elif isinstance(
             tag,
             (
                 TypeTag.IncludedSpecies,
                 TypeTag.GenusCoelebs,
                 TypeTag.TextualOriginalRank,
             ),
-        ) or tag in (TypeTag.NoEtymology, TypeTag.NoLocation, TypeTag.NoSpecimen):
-            return True
-    return False
+        ):
+            yield type(tag)  # static analysis: ignore[incompatible_yield]
+        elif tag in NO_DATA_FROM_SOURCE_TAGS:
+            yield tag
+
+
+def tag_list(tags: Iterable[tuple[TypeTagCons, ...]]) -> str:
+    # display only the first one in the group; no need to mention NoEtymology c.s.
+    firsts = [group[0] for group in tags]
+    return (
+        "missing"
+        f" {', '.join(first.__name__ if hasattr(first, '__name__') else repr(first) for first in firsts)}"
+    )
 
 
 def is_valid_page_described(page_described: str) -> bool:
@@ -2741,6 +2842,7 @@ SOURCE_TAGS = (
     TypeTag.TypeSpeciesDetail,
     TypeTag.NomenclatureDetail,
 )
+NO_DATA_FROM_SOURCE_TAGS = (TypeTag.NoEtymology, TypeTag.NoLocation, TypeTag.NoSpecimen)
 
 if TYPE_CHECKING:
     TypeTagCons: TypeAlias = Any

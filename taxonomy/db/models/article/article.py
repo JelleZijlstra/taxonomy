@@ -37,6 +37,7 @@ from taxonomy.db.helpers import (
     clean_strings_recursively,
     get_date_object,
     is_valid_date,
+    split_iterable,
     to_int,
 )
 
@@ -456,11 +457,30 @@ class Article(BaseModel):
             "infer_year": self.infer_year,
             "cite": self.cite_interactive,
             "try_to_find_bhl_links": self.try_to_find_bhl_links,
+            "remove_all_author_page_links": self.remove_all_author_page_links,
+            "clear_bhl_caches": self.clear_bhl_caches,
         }
+
+    def clear_bhl_caches(self) -> None:
+        if self.url is not None:
+            bhl.clear_caches_related_to_url(self.url)
+        for tag in self.tags:
+            if isinstance(tag, ArticleTag.AlternativeURL):
+                bhl.clear_caches_related_to_url(tag.url)
 
     def try_to_find_bhl_links(self) -> None:
         for nam in self.new_names:
             nam.try_to_find_bhl_links()
+
+    def remove_all_author_page_links(self) -> None:
+        for nam in self.new_names:
+            author_links, other_tags = split_iterable(
+                nam.type_tags,
+                lambda tag: isinstance(tag, models.TypeTag.AuthorityPageLink),
+            )
+            if author_links:
+                print(f"{nam}: removing tags: {author_links}")
+                nam.type_tags = other_tags
 
     def infer_year(self) -> None:
         inferred, _, _ = models.article.lint.infer_publication_date(self)

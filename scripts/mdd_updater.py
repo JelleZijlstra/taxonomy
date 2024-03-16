@@ -163,9 +163,9 @@ def get_hesp_row(name: Name, need_initials: set[str]) -> dict[str, Any]:
         row["Hesp_unchecked_authority_page_link"] = ""
     else:
         # At most 3
-        candidates = itertools.islice(models.name.lint.get_candidate_bhl_pages(name), 3)
+        candidates = models.name.lint.get_candidate_bhl_pages(name)
         row["Hesp_unchecked_authority_page_link"] = " | ".join(
-            page.page_url for page in candidates
+            sorted(page.page_url for page in candidates)[:3]
         )
 
     # Type locality

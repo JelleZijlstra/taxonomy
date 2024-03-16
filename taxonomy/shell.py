@@ -50,8 +50,10 @@ from .db.constants import (
     ArticleType,
     FillDataLevel,
     Group,
+    NameDataLevel,
     NamingConvention,
     NomenclatureStatus,
+    OriginalCitationDataLevel,
     PersonType,
     Rank,
 )
@@ -713,7 +715,7 @@ def dup_citation_groups() -> list[dict[object, list[CitationGroup]]]:
 @_duplicate_finder
 def dup_collections() -> list[dict[str, list[Collection]]]:
     colls: dict[str, list[Collection]] = defaultdict(list)
-    for coll in Collection.select():
+    for coll in Collection.select_valid():
         colls[coll.label].append(coll)
     return [colls]
 
@@ -3064,6 +3066,56 @@ def download_bhl_parts() -> None:
                 path.write_bytes(response.content)
                 print("Adding part for name", nam)
                 models.article.check.check_new()
+
+
+@command
+def print_data_level_report() -> None:
+    """Output as of March 2024:
+
+    OCDL | NDL         missing_crucial_fields  missing_required_fields  missing_details_tags  missing_derived_tags  nothing_needed
+    no_citation        10281                   17504                    62                    67                    470
+    no_data            0                       0                        932                   785                   21602
+    some_data          1                       673                      3103                  343                   304
+    all_required_data  38                      9065                     0                     3504                  33073
+
+    """
+    counts: Counter[tuple[OriginalCitationDataLevel, NameDataLevel]] = Counter()
+    for nam in Name.select_valid():
+        ocdl, _ = nam.original_citation_data_level()
+        ndl, _ = nam.name_data_level()
+        counts[(ocdl, ndl)] += 1
+    rows = [
+        ["OCDL | NDL", *[level.name for level in NameDataLevel]],
+        *[
+            [ocdl.name, *[str(counts[(ocdl, ndl)]) for ndl in NameDataLevel]]
+            for ocdl in OriginalCitationDataLevel
+        ],
+    ]
+    getinput.print_table(rows)
+
+
+@command
+def edit_names_at_level(query: Iterable[Name] | None = None) -> None:
+    ocdl = getinput.get_enum_member(
+        OriginalCitationDataLevel, "original citation data level> "
+    )
+    if ocdl is None:
+        return
+    ndl = getinput.get_enum_member(NameDataLevel, "name data level> ")
+    if ndl is None:
+        return
+    if query is None:
+        query = Name.select_valid()
+    for nam in query:
+        name_ocdl, _ = nam.original_citation_data_level()
+        if name_ocdl is not ocdl:
+            continue
+        name_ndl, _ = nam.name_data_level()
+        if name_ndl is not ndl:
+            continue
+        getinput.print_header(nam)
+        nam.display()
+        nam.edit()
 
 
 def run_shell() -> None:

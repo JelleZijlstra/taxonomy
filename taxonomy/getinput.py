@@ -790,3 +790,17 @@ def print_every_n(it: Iterable[T], *, label: str, n: int = 1000) -> Iterator[T]:
             print(f"{i} {label}...")
         yield obj
     print(f"Finished processing {i} {label}")
+
+
+def print_table(rows: Sequence[Sequence[str]], *, spacing: int = 2) -> None:
+    if not rows:
+        return
+    num_cols = len(rows[0])
+    col_widths = [0] * num_cols
+    for row in rows:
+        for i, cell in enumerate(row):
+            col_widths[i] = max(col_widths[i], len(cell))
+    for row in rows:
+        for i, cell in enumerate(row):
+            print(cell.ljust(col_widths[i]), end=" " * spacing)
+        print()

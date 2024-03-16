@@ -6,7 +6,7 @@ import json
 import re
 import time
 import unicodedata
-from collections.abc import Iterable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from typing import TypeVar, cast
 
@@ -1092,3 +1092,17 @@ def parse_roman_numeral(s: str) -> int:
     if s:
         raise ValueError(f"unrecognized Roman numeral: {s!r}")
     return 0
+
+
+def split_iterable(
+    iterable: Iterable[T], predicate: Callable[[T], bool]
+) -> tuple[list[T], list[T]]:
+    """Split an iterable into two lists based on a predicate."""
+    true_list = []
+    false_list = []
+    for elt in iterable:
+        if predicate(elt):
+            true_list.append(elt)
+        else:
+            false_list.append(elt)
+    return true_list, false_list
