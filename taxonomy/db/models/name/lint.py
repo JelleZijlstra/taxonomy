@@ -1961,7 +1961,7 @@ def check_page_described(nam: Name, cfg: LintConfig) -> Iterable[str]:
             number = part.removeprefix("pl. ")
             if helpers.is_valid_roman_numeral(number):
                 continue
-            if re.fullmatch(r"[A-Z]?[0-9]+[A-Za-z]*", number):
+            if re.fullmatch(r"[A-Z]?-?[0-9]+[A-Za-z]*", number):
                 continue
         if helpers.is_valid_roman_numeral(part):
             continue

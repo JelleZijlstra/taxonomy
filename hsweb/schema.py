@@ -5,7 +5,6 @@ import enum
 import re
 from collections.abc import Callable
 from itertools import islice
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeVar
 
 import graphene
@@ -45,7 +44,7 @@ from taxonomy.db.models import (
 from taxonomy.db.models.base import ADTField, BaseModel, EnumField
 
 from . import search
-from .render import CALL_SIGN_TO_MODEL, render_markdown, render_plain_text
+from .render import CALL_SIGN_TO_MODEL, DOCS_ROOT, render_markdown, render_plain_text
 
 T = TypeVar("T")
 
@@ -65,8 +64,6 @@ SCALAR_FIELD_TO_GRAPHENE = {
 }
 TYPE_TO_GRAPHENE = {str: String, bool: Boolean, int: Int}
 TYPES: list[ObjectType] = []
-
-DOCS_ROOT = Path(__file__).parent.parent / "docs"
 
 
 class Model(Interface):
@@ -715,7 +712,7 @@ def resolve_newest(
 ) -> list[Model]:
     model_cls = get_by_call_sign(parent.call_sign)
     object_type = build_object_type_from_model(model_cls)
-    query = model_cls.select_valid().order_by(model_cls.id.desc())
+    query = model_cls.select_valid().order_by(model_cls.id.desc())  # type: ignore[attr-defined]
     query = query.limit(first + _decode_after(after) + 1)
     ret = []
     cache = info.context["request"]
