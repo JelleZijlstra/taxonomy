@@ -12,7 +12,6 @@ from taxonomy.apis.cloud_search import SearchField, SearchFieldType
 from ... import events, getinput
 from .. import models
 from ..constants import (
-    FillDataLevel,
     GenderArticle,
     GrammaticalGender,
     Group,
@@ -400,11 +399,7 @@ class SpeciesNameComplex(BaseModel):
             return getattr(cls, kind)(stem=stem, comment=comment)
 
     def fill_data(
-        self,
-        level: FillDataLevel = FillDataLevel.incomplete_detail,
-        ask_before_opening: bool = True,
-        only_fill_cache: bool = False,
-        skip_nofile: bool = True,
+        self, ask_before_opening: bool = True, skip_nofile: bool = True
     ) -> None:
         citations = sorted(
             {
@@ -415,11 +410,7 @@ class SpeciesNameComplex(BaseModel):
             key=lambda art: (art.path, art.name),
         )
         models.fill_data.fill_data_from_articles(
-            citations,
-            level=level,
-            ask_before_opening=ask_before_opening,
-            only_fill_cache=only_fill_cache,
-            skip_nofile=skip_nofile,
+            citations, ask_before_opening=ask_before_opening, skip_nofile=skip_nofile
         )
 
 

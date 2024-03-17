@@ -48,7 +48,6 @@ from .db.constants import (
     AgeClass,
     ArticleKind,
     ArticleType,
-    FillDataLevel,
     Group,
     NameDataLevel,
     NamingConvention,
@@ -366,7 +365,7 @@ def detect_types_from_root_names(max_count: int | None = None) -> None:
     for name in (
         Name.select_valid()
         .filter(Name.group == Group.family, Name.type >> None)
-        .order_by(Name.id.desc())
+        .order_by(Name.id.desc())  # type: ignore[attr-defined]
         .limit(max_count)
     ):
         if name.is_unavailable():
@@ -1586,9 +1585,7 @@ def fix_general_type_localities_for_location(loc: models.Location) -> None:
         return
     if loc.type_localities.count() == 0:
         return
-    models.fill_data.fill_data_for_names(
-        list(loc.type_localities), level=FillDataLevel.incomplete_detail
-    )
+    models.fill_data.fill_data_for_names(list(loc.type_localities))
     getinput.print_header(loc)
     loc.display(full=True)
     while True:
@@ -2996,7 +2993,7 @@ def lint_collections() -> None:
     total = models.Collection.select_valid().count()
     print(f"{total} total")
     for coll in getinput.print_every_n(
-        models.Collection.select_valid().order_by(models.Collection.id.desc()),
+        models.Collection.select_valid().order_by(models.Collection.id.desc()),  # type: ignore[attr-defined]
         n=5,
         label=f"of {total} collections",
     ):

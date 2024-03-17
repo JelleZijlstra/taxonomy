@@ -148,6 +148,7 @@ Linter = Callable[[ModelT, LintConfig], Iterable[str]]
 
 
 class BaseModel(Model):
+    id: int
     label_field: str
     label_field_has_underscores = False
     # If given, lists are separated into groups based on this field.

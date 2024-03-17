@@ -17,8 +17,8 @@ import peewee
 from taxonomy import getinput
 from taxonomy.db.constants import (
     AgeClass,
-    FillDataLevel,
     Group,
+    NameDataLevel,
     Rank,
     RegionKind,
     Status,
@@ -221,16 +221,14 @@ ns = _NamesGetter(Group.species)
 gs = _NamesGetter(Group.genus)
 
 
-def edit_at_level(level: FillDataLevel = FillDataLevel.incomplete_derived_tags) -> None:
+def edit_at_level(level: NameDataLevel = NameDataLevel.missing_derived_tags) -> None:
     txn = Taxon.getter(None).get_one()
     if txn is None:
         return
     edit_names(txn.all_names(), level)
 
 
-def edit_by_author(
-    level: FillDataLevel = FillDataLevel.incomplete_derived_tags,
-) -> None:
+def edit_by_author(level: NameDataLevel = NameDataLevel.missing_derived_tags) -> None:
     txn = Person.getter(None).get_one()
     if txn is None:
         return
@@ -239,8 +237,7 @@ def edit_by_author(
 
 
 def edit_names(
-    nam_iter: Iterable[Name],
-    level: FillDataLevel = FillDataLevel.incomplete_derived_tags,
+    nam_iter: Iterable[Name], level: NameDataLevel = NameDataLevel.missing_derived_tags
 ) -> None:
     nams = sorted(
         nam_iter, key=lambda nam: (nam.get_date_object(), nam.numeric_page_described())
@@ -251,9 +248,10 @@ def edit_names(
             percentage = i / len(nams) * 100
             getinput.print_header(f"{i}/{len(nams)} ({percentage:.2f}%) done")
         while True:
-            name_level, _ = nam.fill_data_level()
+            name_level, _ = nam.name_data_level()
             if name_level != level:
                 break
+            nam.format()
             nam.display()
             nam.edit()
 

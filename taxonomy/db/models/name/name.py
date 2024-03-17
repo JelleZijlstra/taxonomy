@@ -1554,9 +1554,6 @@ class Name(BaseModel):
             ndl, ndl_reason = self.name_data_level()
             if ndl is not NameDataLevel.nothing_needed:
                 level_strings.append(f"name: {ndl.name.upper()} ({ndl_reason})")
-            level, reason = self.fill_data_level()
-            if level is not FillDataLevel.nothing_needed:
-                level_strings.append(f"fill data: {level.name.upper()} ({reason})")
             if level_strings:
                 data["level"] = "; ".join(level_strings)
             if self.type_locality is not None:

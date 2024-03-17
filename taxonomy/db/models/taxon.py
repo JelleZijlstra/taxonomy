@@ -17,17 +17,18 @@ from ... import events, getinput
 from .. import definition, helpers, models
 from ..constants import (
     AgeClass,
-    FillDataLevel,
     Group,
+    NameDataLevel,
     NomenclatureStatus,
     OccurrenceStatus,
+    OriginalCitationDataLevel,
     Rank,
     Status,
 )
 from ..derived_data import DerivedField, SetLater
 from .article import Article
 from .base import ADTField, BaseModel, EnumField, LintConfig
-from .fill_data import DEFAULT_LEVEL, fill_data_for_names
+from .fill_data import fill_data_for_names
 
 
 class _OccurrenceGetter:
@@ -1489,7 +1490,8 @@ class Taxon(BaseModel):
 
     def edit_names_at_level(
         self,
-        level: FillDataLevel = FillDataLevel.incomplete_derived_tags,
+        ocdl: OriginalCitationDataLevel | None = None,
+        ndl: NameDataLevel | None = NameDataLevel.missing_derived_tags,
         age: AgeClass | None = None,
         reverse: bool = True,
     ) -> None:
@@ -1499,16 +1501,16 @@ class Taxon(BaseModel):
             sorted(nams, reverse=reverse, key=lambda nam: nam.sort_key())
         ):
             print(f"({i}/{total}) {nam}")
-            name_level = nam.get_derived_field("fill_data_level")
-            if name_level is level:
-                name_level = nam.get_derived_field(
-                    "fill_data_level", force_recompute=True
-                )
-            if name_level is level:
-                nam.display()
-                level, reason = nam.fill_data_level()
-                print(f"Level: {level.name.upper()} ({reason})")
-                nam.edit()
+            if ocdl is not None:
+                name_ocdl, _ = nam.original_citation_data_level()
+                if ocdl is not name_ocdl:
+                    continue
+            if ndl is not None:
+                name_ndl, _ = nam.name_data_level()
+                if ndl is not name_ndl:
+                    continue
+            nam.display()
+            nam.edit()
 
     def fill_data_for_names(
         self,
@@ -1517,22 +1519,28 @@ class Taxon(BaseModel):
         min_year: int | None = None,
         age: AgeClass | None = None,
         field: str | None = None,
-        level: FillDataLevel = DEFAULT_LEVEL,
         ask_before_opening: bool = True,
-        only_fill_cache: bool = False,
-        filter_by_name_level: bool = False,
         skip_nofile: bool = True,
     ) -> None:
         """Calls fill_required_fields() for all names in this taxon."""
+        ocdl = getinput.get_enum_member(
+            OriginalCitationDataLevel, "original citation data level to edit at> "
+        )
+        ndl = getinput.get_enum_member(NameDataLevel, "name data level to edit at> ")
         all_names = self.all_names(age=age)
+        if ocdl is not None:
+            all_names = {
+                nam
+                for nam in all_names
+                if nam.original_citation_data_level()[0] is ocdl
+            }
+        if ndl is not None:
+            all_names = {nam for nam in all_names if nam.name_data_level()[0] is ndl}
         fill_data_for_names(
             all_names,
             min_year=min_year,
             field=field,
-            level=level,
             ask_before_opening=ask_before_opening,
-            only_fill_cache=only_fill_cache,
-            filter_by_name_level=filter_by_name_level,
             skip_nofile=skip_nofile,
         )
 
