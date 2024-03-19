@@ -157,8 +157,10 @@ def get_hesp_row(name: Name, need_initials: set[str]) -> dict[str, Any]:
     if name.original_citation is not None:
         url = name.original_citation.geturl()
         row["Hesp_authority_link"] = url or ""
+        row["Hesp_citation_kind"] = name.original_citation.get_effective_kind().name
     else:
         row["Hesp_authority_link"] = ""
+        row["Hesp_citation_kind"] = ""
     if authority_link:
         row["Hesp_unchecked_authority_page_link"] = ""
     else:
@@ -405,7 +407,7 @@ def run_gspread_test() -> None:
     worksheet.update_cell(1, 1, "MDD_syn_ID_test")
 
 
-def run(*, dry_run: bool = True, taxon: Taxon) -> None:
+def run(*, dry_run: bool = True, taxon: Taxon, max_names: int | None = None) -> None:
     options = get_options()
     backup_path = (
         options.data_path / "mdd_updater" / datetime.datetime.now().isoformat()
@@ -445,6 +447,8 @@ def run(*, dry_run: bool = True, taxon: Taxon) -> None:
     for row_idx, mdd_row_as_list in getinput.print_every_n(
         enumerate(rows[1:], start=2), label="MDD names"
     ):
+        if max_names is not None and row_idx > max_names:
+            break
         mdd_row = dict(zip(headings, mdd_row_as_list, strict=False))
         mdd_id = int(mdd_row["MDD_syn_ID"])
         max_mdd_id = max(max_mdd_id, mdd_id)
@@ -501,28 +505,30 @@ def run(*, dry_run: bool = True, taxon: Taxon) -> None:
             )
 
     missing_in_mdd = []
-    for hesp_id in unused_hesp_ids:
-        name = hesp_id_to_name[hesp_id]
-        hesp_row = get_hesp_row(name, need_initials)
-        new_mdd_row = {"MDD_syn_ID": str(max_mdd_id + 1), "Hesp_id": str(hesp_id)}
-        max_mdd_id += 1
-        for mdd_column in headings:
-            hesp_column = mdd_column.replace("MDD", "Hesp")
-            if hesp_column in hesp_row:
-                new_mdd_row[mdd_column] = hesp_row[hesp_column]
-        missing_in_mdd.append(new_mdd_row)
+    if max_names is None:
+        for hesp_id in unused_hesp_ids:
+            name = hesp_id_to_name[hesp_id]
+            hesp_row = get_hesp_row(name, need_initials)
+            new_mdd_row = {"MDD_syn_ID": str(max_mdd_id + 1), "Hesp_id": str(hesp_id)}
+            max_mdd_id += 1
+            for mdd_column in headings:
+                hesp_column = mdd_column.replace("MDD", "Hesp")
+                if hesp_column in hesp_row:
+                    new_mdd_row[mdd_column] = hesp_row[hesp_column]
+            missing_in_mdd.append(new_mdd_row)
 
     with (backup_path / "summary.txt").open("w") as file:
         for f in (sys.stdout, file):
             print("Report:", file=f)
-            print(f"Total MDD names: {len(rows) - 1}", file=f)
-            print(f"Total Hesp names: {len(hesp_names)}", file=f)
-            print(f"Missing in Hesp: {len(missing_in_hesp)}", file=f)
-            print(f"Missing in MDD: {len(missing_in_mdd)}", file=f)
+            if max_names is None:
+                print(f"Total MDD names: {len(rows) - 1}", file=f)
+                print(f"Total Hesp names: {len(hesp_names)}", file=f)
+                print(f"Missing in Hesp: {len(missing_in_hesp)}", file=f)
+                print(f"Missing in MDD: {len(missing_in_mdd)}", file=f)
             for key, value in sorted(counts.items()):
                 print(f"{key}: {value}", file=f)
 
-    if missing_in_mdd:
+    if max_names is None and missing_in_mdd:
         getinput.print_header(f"Missing in MDD {len(missing_in_mdd)}")
         for row in missing_in_mdd:
             pprint.pp(row)
@@ -557,7 +563,7 @@ def run(*, dry_run: bool = True, taxon: Taxon) -> None:
                     [row.get(column, "") for column in missing_in_mdd_headings]
                 )
 
-    if missing_in_hesp:
+    if max_names is None and missing_in_hesp:
         with (backup_path / "missing-in-hesp.csv").open("w") as file:
             writer = csv.writer(file)
             missing_in_hesp_headings = ["match_status", *missing_in_hesp[0][1]]
@@ -676,6 +682,7 @@ def main() -> None:
     parser.add_argument("--taxon", nargs="?", default="Mammalia")
     parser.add_argument("--dry-run", action="store_true", default=False)
     parser.add_argument("--gspread-test", action="store_true", default=False)
+    parser.add_argument("--max-names", type=int, default=None)
     args = parser.parse_args()
     if args.gspread_test:
         run_gspread_test()
@@ -684,7 +691,7 @@ def main() -> None:
     if root is None:
         print("Invalid taxon", args.taxon)
         sys.exit(1)
-    run(taxon=root, dry_run=args.dry_run)
+    run(taxon=root, dry_run=args.dry_run, max_names=args.max_names)
 
 
 if __name__ == "__main__":

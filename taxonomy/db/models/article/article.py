@@ -389,6 +389,12 @@ class Article(BaseModel):
     def should_skip(self) -> bool:
         return self.kind is ArticleKind.redirect
 
+    def get_effective_kind(self) -> ArticleKind:
+        art = self
+        while art.kind is ArticleKind.part and art.parent is not None:
+            art = art.parent
+        return art.kind
+
     def edit(self) -> None:
         self.fill_field("tags")
 

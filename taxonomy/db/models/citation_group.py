@@ -712,3 +712,4 @@ class CitationGroupTag(adt.ADT):
     URLPattern(text=str, tag=27)  # type: ignore
     # Do not add more BHL bibliographies based on children
     SkipExtraBHLBibliographies(tag=28)  # type: ignore
+    CitationGroupComment(text=str, tag=29)  # type: ignore

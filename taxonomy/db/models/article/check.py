@@ -479,7 +479,12 @@ def burst(lsfile: LsFile) -> bool:
     # bursts a PDF file into several files
     print(f"Bursting file {lsfile.name!r}. Opening file.")
     full_path = _options.burst_path / lsfile.name
-    subprocess.check_call(["open", str(full_path)])
+
+    def opener(*args: object) -> bool:
+        subprocess.check_call(["open", str(full_path)])
+        return False
+
+    opener()
 
     def processcommand(cmd: str) -> tuple[str | None, object]:
         if cmd in ("c", "s", "q"):
@@ -507,6 +512,11 @@ def burst(lsfile: LsFile) -> bool:
         return False
 
     def adder(cmd: str, filename: str) -> bool:
+        if not filename:
+            return False
+        if not filename.endswith(".pdf"):
+            print("invalid filename")
+            return False
         page_range, _ = uitools.menu(
             prompt="Page range: ",
             validfunction=lambda page_range, _: bool(
@@ -539,6 +549,7 @@ def burst(lsfile: LsFile) -> bool:
             "c": "continue with the next file",
             "q": "quit",
             "s": "skip this file",
+            "o": "open this file",
             # fake commands, used internally by processcommand/process
             # a => add this file
             # i => ignore
@@ -551,6 +562,7 @@ def burst(lsfile: LsFile) -> bool:
             "c": continuer,
             "s": lambda *args: False,
             "a": adder,
+            "o": opener,
         },
     )
     return True

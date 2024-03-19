@@ -3047,6 +3047,9 @@ def download_bhl_parts() -> None:
     for nam in Name.with_type_tag(TypeTag.AuthorityPageLink).filter(
         Name.original_citation == None
     ):
+        nam = nam.reload()
+        if nam.original_citation is not None:
+            continue
         for tag in nam.type_tags:
             if not isinstance(tag, TypeTag.AuthorityPageLink):
                 continue
