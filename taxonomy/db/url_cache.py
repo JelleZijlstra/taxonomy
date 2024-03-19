@@ -18,11 +18,10 @@ CREATE UNIQUE INDEX `full_key` on `url_cache` (`domain`, `key`);
 import datetime
 import enum
 import functools
+import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, Generic, TypeVar
-
-from peewee import SqliteDatabase
 
 from taxonomy.config import get_options
 
@@ -78,15 +77,16 @@ _LOCAL_CACHE: LRU[tuple[CacheDomain, str], str] = LRU(2048)
 
 
 @functools.cache
-def get_database() -> SqliteDatabase:
+def get_database() -> sqlite3.Connection:
     option = get_options()
-    return SqliteDatabase(option.urlcache_filename)
+    # static analysis: ignore[internal_error]
+    return sqlite3.connect(option.urlcache_filename)
 
 
 def run_query(sql: str, args: tuple[object, ...]) -> list[tuple[Any, ...]]:
     db = get_database()
-    cursor = db.execute_sql(sql, args)
-    return list(cursor)
+    cursor = db.execute(sql, args)
+    return cursor.fetchall()
 
 
 def cached(domain: CacheDomain) -> Callable[[CachedCallable], CachedCallable]:

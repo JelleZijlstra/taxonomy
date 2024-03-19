@@ -4,7 +4,7 @@ import re
 from collections.abc import Iterable
 from typing import Any, NotRequired, Self
 
-from peewee import BooleanField, CharField, ForeignKeyField
+from clorm import Field
 
 from taxonomy import adt, events, getinput, parsing
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
@@ -37,17 +37,16 @@ class Collection(BaseModel):
     label_field = "label"
     grouping_field = "city"
     call_sign = "C"
+    clorm_table_name = "collection"
 
-    label = CharField()
-    name = CharField()
-    location = ForeignKeyField(
-        Region, related_name="collections", db_column="location_id"
-    )
-    comment = CharField(null=True)
-    city = CharField(null=True)
-    removed = BooleanField(default=False)
-    tags = ADTField(lambda: CollectionTag, null=True, is_ordered=False)
-    parent = ForeignKeyField("self", related_name="children", null=True)
+    label = Field[str]()
+    name = Field[str]()
+    location = Field[Region]("location_id", related_name="collections")
+    comment = Field[str | None]()
+    city = Field[str | None]()
+    removed = Field[bool](default=False)
+    tags = ADTField["CollectionTag"](is_ordered=False)
+    parent = Field[Self | None]("parent_id", related_name="children")
 
     derived_fields = [
         get_tag_based_derived_field(

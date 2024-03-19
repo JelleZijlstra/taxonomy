@@ -14,6 +14,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+import clorm
 import requests
 from bs4 import BeautifulSoup
 
@@ -332,7 +333,7 @@ def get_issns(
 def get_cg_by_name(name: str) -> CitationGroup | None:
     try:
         cg = CitationGroup.select().filter(CitationGroup.name == name).get()
-    except CitationGroup.DoesNotExist:
+    except clorm.DoesNotExist:
         return None
     if target := cg.get_redirect_target():
         return target
@@ -737,7 +738,7 @@ def doi_input(art: Article) -> bool:
     def set_type(cmd: str, data: object) -> bool:
         if not isinstance(data, ArticleType):
             return True
-        art.type = data  # type: ignore
+        art.type = data
         return False
 
     def set_doi(cmd: str, data: object) -> bool:

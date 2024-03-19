@@ -4,8 +4,7 @@ import sys
 from collections.abc import Iterable, Sequence
 from typing import IO, Any, ClassVar
 
-import peewee
-from peewee import BooleanField, CharField, ForeignKeyField
+from clorm import DoesNotExist, Field
 
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
 
@@ -18,7 +17,7 @@ from ..constants import (
     SourceLanguage,
     SpeciesNameKind,
 )
-from .base import BaseModel, EnumField
+from .base import BaseModel
 
 
 class SpeciesNameComplex(BaseModel):
@@ -33,18 +32,16 @@ class SpeciesNameComplex(BaseModel):
     label_field = "label"
     label_field_has_underscores = True
     call_sign = "SC"
+    clorm_table_name = "species_name_complex"
 
-    label = CharField()
-    stem = CharField(null=True)
-    kind = EnumField(SpeciesNameKind)
-    masculine_ending = CharField()
-    feminine_ending = CharField()
-    neuter_ending = CharField()
-    comment = CharField(null=True)
+    label = Field[str]()
+    stem = Field[str | None]()
+    kind = Field[SpeciesNameKind]()
+    masculine_ending = Field[str]()
+    feminine_ending = Field[str]()
+    neuter_ending = Field[str]()
+    comment = Field[str | None]()
     markdown_fields = {"comment"}
-
-    class Meta:
-        db_table = "species_name_complex"
 
     search_fields: ClassVar[Sequence[SearchField]] = [
         SearchField(SearchFieldType.literal, "label"),
@@ -117,7 +114,7 @@ class SpeciesNameComplex(BaseModel):
             name
             for name in models.Name.filter(
                 models.Name.group == Group.species,
-                models.Name.species_name_complex >> None,
+                models.Name.species_name_complex == None,
                 models.Name.root_name % f"*{ending}",
             )
             if name.root_name.endswith(ending)
@@ -285,7 +282,7 @@ class SpeciesNameComplex(BaseModel):
     ) -> SpeciesNameComplex:
         try:
             return cls.get(cls.label == label, cls.stem == stem, cls.kind == kind)
-        except peewee.DoesNotExist:
+        except DoesNotExist:
             print("creating new name complex with label", label)
             return cls.make(
                 label=label,
@@ -422,15 +419,16 @@ class NameComplex(BaseModel):
     label_field = "label"
     label_field_has_underscores = True
     call_sign = "NC"
+    clorm_table_name = "name_complex"
 
-    label = CharField()
-    stem = CharField(null=True)
-    source_language = EnumField(SourceLanguage)
-    code_article = EnumField(GenderArticle)
-    gender = EnumField(GrammaticalGender)
-    comment = CharField(null=True)
-    stem_remove = CharField(null=False)
-    stem_add = CharField(null=False)
+    label = Field[str]()
+    stem = Field[str | None]()
+    source_language = Field[SourceLanguage]()
+    code_article = Field[GenderArticle]()
+    gender = Field[GrammaticalGender]()
+    comment = Field[str | None]()
+    stem_remove = Field[str]()
+    stem_add = Field[str]()
 
     search_fields: ClassVar[Sequence[SearchField]] = [
         SearchField(SearchFieldType.literal, "label"),
@@ -440,9 +438,6 @@ class NameComplex(BaseModel):
         SearchField(SearchFieldType.literal, "gender"),
         SearchField(SearchFieldType.text, "comment", highlight_enabled=True),
     ]
-
-    class Meta:
-        db_table = "name_complex"
 
     def get_search_dicts(self) -> list[dict[str, Any]]:
         return [
@@ -503,7 +498,7 @@ class NameComplex(BaseModel):
             name
             for name in models.Name.filter(
                 models.Name.group == Group.genus,
-                models.Name.name_complex >> None,
+                models.Name.name_complex == None,
                 models.Name.root_name % f"*{ending}",
             )
             if name.root_name.endswith(ending)
@@ -579,7 +574,7 @@ class NameComplex(BaseModel):
                 cls.code_article == code_article,
                 cls.gender == gender,
             )
-        except peewee.DoesNotExist:
+        except DoesNotExist:
             print("creating new name complex with label", label)
             return cls.make(
                 label=label,
@@ -981,15 +976,11 @@ class NameEnding(BaseModel):
 
     label_field = "ending"
     call_sign = "NE"
+    clorm_table_name = "name_ending"
 
-    name_complex = ForeignKeyField(
-        NameComplex, related_name="endings", db_column="name_complex_id"
-    )
-    ending = CharField()
-    comment = CharField()
-
-    class Meta:
-        db_table = "name_ending"
+    name_complex = Field[NameComplex]("name_complex_id", related_name="endings")
+    ending = Field[str]()
+    comment = Field[str]()
 
 
 class SpeciesNameEnding(BaseModel):
@@ -997,16 +988,12 @@ class SpeciesNameEnding(BaseModel):
 
     label_field = "ending"
     call_sign = "SNE"
+    clorm_table_name = "species_name_ending"
 
-    name_complex = ForeignKeyField(
-        SpeciesNameComplex, related_name="endings", db_column="name_complex_id"
-    )
-    ending = CharField()
-    comment = CharField()
-    full_name_only = BooleanField(default=False)
-
-    class Meta:
-        db_table = "species_name_ending"
+    name_complex = Field[SpeciesNameComplex]("name_complex_id", related_name="endings")
+    ending = Field[str]()
+    comment = Field[str]()
+    full_name_only = Field[bool](default=False)
 
     @classmethod
     def get_or_create(
@@ -1022,7 +1009,7 @@ class SpeciesNameEnding(BaseModel):
                 cls.ending == ending,
                 cls.full_name_only == full_name_only,
             )
-        except peewee.DoesNotExist:
+        except DoesNotExist:
             print("creating new name ending", ending, " for ", name_complex)
             return cls.create(
                 name_complex=name_complex,

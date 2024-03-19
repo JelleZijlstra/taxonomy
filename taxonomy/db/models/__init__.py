@@ -35,7 +35,7 @@ __all__ = [
     "Taxon",
     "TypeTag",
 ]
-from .base import BaseModel as BaseModel, database as database
+from .base import BaseModel as BaseModel
 from .article import Article as Article, ArticleComment as ArticleComment
 from .collection import Collection as Collection
 from .location import Location as Location

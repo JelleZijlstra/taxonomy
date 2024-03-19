@@ -4,9 +4,9 @@ import sys
 from collections import defaultdict
 from collections.abc import Iterable
 from functools import lru_cache
-from typing import IO, Any, TypeVar
+from typing import IO, Any, Self, TypeVar
 
-from peewee import BooleanField, CharField, ForeignKeyField, IntegerField
+from clorm import Field
 
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
 
@@ -19,7 +19,7 @@ from ..constants import (
     RequirednessLevel,
 )
 from ..derived_data import DerivedField
-from .base import BaseModel, EnumField, LintConfig
+from .base import BaseModel, LintConfig
 from .region import Region
 
 T = TypeVar("T")
@@ -30,32 +30,21 @@ class Period(BaseModel):
     save_event = events.Event["Period"]()
     label_field = "name"
     call_sign = "P"
+    clorm_table_name = "period"
 
-    name = CharField()
-    parent = ForeignKeyField(
-        "self", related_name="children", db_column="parent_id", null=True
-    )
-    prev = ForeignKeyField(
-        "self", related_name="next_foreign", db_column="prev_id", null=True
-    )
-    next = ForeignKeyField(
-        "self", related_name="prev_foreign", db_column="next_id", null=True
-    )
-    min_age = IntegerField(null=True)
-    max_age = IntegerField(null=True)
-    min_period = ForeignKeyField(
-        "self", related_name="children_min", db_column="min_period_id", null=True
-    )
-    max_period = ForeignKeyField(
-        "self", related_name="children_max", db_column="max_period_id", null=True
-    )
-    system = EnumField(PeriodSystem)
-    rank = EnumField(PeriodRank)
-    comment = CharField()
-    region = ForeignKeyField(
-        Region, related_name="periods", db_column="region_id", null=True
-    )
-    deleted = BooleanField(default=False)
+    name = Field[str]()
+    parent = Field[Self | None]("parent_id", related_name="children")
+    prev = Field[Self | None]("prev_id", related_name="next_foreign")
+    next = Field[Self | None]("next_id", related_name="prev_foreign")
+    min_age = Field[int | None]()
+    max_age = Field[int | None]()
+    min_period = Field[Self | None]("min_period_id", related_name="children_min")
+    max_period = Field[Self | None]("max_period_id", related_name="children_max")
+    system = Field[PeriodSystem]()
+    rank = Field[PeriodRank]()
+    comment = Field[str]()
+    region = Field[Region | None]("region_id", related_name="periods")
+    deleted = Field[bool](default=False)
 
     derived_fields = [
         DerivedField("has_locations", bool, lambda period: period.has_locations())
@@ -110,10 +99,6 @@ class Period(BaseModel):
         return self.deleted
 
     def lint(self, cfg: LintConfig) -> Iterable[str]:
-        if self.system is None:
-            yield f"{self}: missing a system"
-        if self.rank is None:
-            yield f"{self}: missing a rank"
         if self.rank not in SYSTEM_TO_ALLOWED_RANKS[self.system]:
             yield (
                 f"{self}: is of rank {self.rank}, which is not allowed for"

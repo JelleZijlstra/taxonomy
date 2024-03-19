@@ -52,7 +52,7 @@ from taxonomy.db.models.name import TypeTag
 def resolve_hesp_id(hesp_id_str: str) -> int | None:
     if hesp_id_str:
         hesp_id = int(hesp_id_str)
-        row = Name.select().filter(Name.id == hesp_id).first()
+        row = Name(hesp_id)
         if row is None:
             return None
         while row.target is not None:

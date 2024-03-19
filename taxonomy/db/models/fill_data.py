@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
 
-import peewee
+import clorm
 
 from taxonomy import getinput
 from taxonomy.command_set import CommandSet
@@ -280,7 +280,7 @@ def fill_data_for_children(
 @CS.register
 def fill_data_random(batch_size: int = 20, ask_before_opening: bool = True) -> None:
     for count, art in enumerate(
-        Article.select_valid().order_by(peewee.fn.Random()).limit(batch_size)
+        Article.select_valid().order_by(clorm.Func("RANDOM")).limit(batch_size)
     ):
         if count > 0:
             percentage = (count / batch_size) * 100
@@ -308,6 +308,7 @@ def fill_data_reverse_order(
     include_lint: bool = True,
 ) -> None:
     done = 0
+    # static analysis: ignore[undefined_attribute]
     for i, art in enumerate(Article.select_valid().order_by(Article.id.desc())):  # type: ignore[attr-defined]
         if max_count is not None and i > max_count:
             return

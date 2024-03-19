@@ -7,28 +7,18 @@ import importlib
 import inspect
 import json
 import re
-import time
+import sqlite3
 import traceback
+import typing
 from collections import defaultdict
 from collections.abc import Callable, Container, Iterable, Sequence
 from dataclasses import dataclass
 from functools import partial
 from types import NoneType
-from typing import IO, Any, ClassVar, Generic, TypeVar
+from typing import Any, ClassVar, Generic, TypeVar
 
-import peewee
 import typing_inspect
-from peewee import (
-    BooleanField,
-    CharField,
-    FieldAccessor,
-    ForeignKeyAccessor,
-    ForeignKeyField,
-    IntegerField,
-    Model,
-    SqliteDatabase,
-    TextField,
-)
+from clorm import Clorm, Field, Model
 
 from taxonomy.apis.cloud_search import SearchField
 
@@ -37,39 +27,8 @@ from .. import derived_data, helpers, models
 
 settings = config.get_options()
 
-_log_path = settings.new_path / "log" / "queries.txt"
-_log_f: IO[str] | None
-if _log_path.exists():
-    _log_f = open(_log_path, "a", encoding="utf-8")
-else:
-    _log_f = None
-_change_log_path = settings.data_path / "changelog.txt"
-_change_log_f: IO[str] | None
-if _change_log_path.exists():
-    _change_log_f = open(_change_log_path, "a", encoding="utf-8")
-else:
-    _change_log_f = None
-
-
-class LoggingDatabase(SqliteDatabase):
-    def execute_sql(self, sql: str, *args: Any, **kwargs: Any) -> Any:
-        if _log_f is None:
-            return super().execute_sql(sql, *args, **kwargs)
-        if sql.startswith("UPDATE"):
-            _log_f.write(f"--- Write query: {sql}\n")
-            traceback.print_stack(file=_log_f)
-            _log_f.flush()
-        start = time.time()
-        try:
-            return super().execute_sql(sql, *args, **kwargs)
-        finally:
-            end = time.time()
-            if end - start > 0.1:
-                _log_f.write(f"{end - start:.03f}: {sql}\n")
-                _log_f.flush()
-
-
-database = LoggingDatabase(str(settings.db_filename))
+# static analysis: ignore[internal_error]
+CLORM = Clorm(sqlite3.connect(str(settings.db_filename)))
 
 
 _getters: dict[tuple[type[Model], str | None], _NameGetter[Any]] = {}
@@ -92,48 +51,7 @@ class _FieldEditor:
         return None
 
     def __dir__(self) -> list[str]:
-        return ["all"] + sorted(self.instance._meta.fields.keys())
-
-
-def _descriptor_set(self: FieldAccessor, instance: Model, value: Any) -> None:
-    """Monkeypatch the __set__ method on peewee descriptors to always save immediately.
-
-    This is useful for us because in interactive use, it is easy to forget to call .save(), and
-    we are not concerned about the performance implications of saving often.
-
-    """
-    has_old_value = self.name in instance.__data__
-    old_value = instance.__data__.get(self.name)
-    instance.__data__[self.name] = value
-    # Otherwise this gets called in the constructor.
-    if (not has_old_value or old_value != value) and getattr(
-        instance, "_is_prepared", False
-    ):
-        instance._dirty.add(self.name)
-        instance.save()
-
-
-FieldAccessor.__set__ = _descriptor_set
-
-_real_foreign_key_set = ForeignKeyAccessor.__set__
-
-
-def _foreign_key_set(self: ForeignKeyAccessor, instance: Model, value: Any) -> None:
-    """Same for ForeignKeyAccessor, which has its own __set__."""
-    is_dirty = self.name in instance._dirty
-    has_old_value = self.name in instance.__data__
-    old_value = instance.__data__.get(self.name)
-    _real_foreign_key_set(self, instance, value)
-    if (not has_old_value or old_value != value) and getattr(
-        instance, "_is_prepared", False
-    ):
-        instance._dirty.add(self.name)
-        instance.save()
-    elif not is_dirty:
-        instance._dirty.discard(self.name)
-
-
-ForeignKeyAccessor.__set__ = _foreign_key_set
+        return ["all"] + sorted(self.instance.clorm_fields.keys())
 
 
 @dataclass(frozen=True)
@@ -165,8 +83,7 @@ class BaseModel(Model):
     markdown_fields: ClassVar[set[str]] = set()
     search_fields: ClassVar[Sequence[SearchField]] = ()
 
-    class Meta:
-        database = database
+    clorm = CLORM
 
     e = _FieldEditor()
 
@@ -178,10 +95,6 @@ class BaseModel(Model):
         for field in cls.derived_fields:
             if field.typ is derived_data.SetLater:
                 field.typ = cls
-
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        super().__init__(*args, **kwargs)
-        self._is_prepared = True
 
     @classmethod
     def create(cls: type[ModelT], **kwargs: Any) -> ModelT:
@@ -291,7 +204,7 @@ class BaseModel(Model):
             if value is None:
                 continue
             field_obj = getattr(type(self), field)
-            if isinstance(field_obj, ForeignKeyField):
+            if issubclass(field_obj.type_object, Model):
                 target = value.get_redirect_target()
                 if target is not None:
                     message = (
@@ -307,6 +220,7 @@ class BaseModel(Model):
                 elif not is_invalid and value.is_invalid():
                     yield f"{self}: references invalid object {value} in field {field}"
             elif isinstance(field_obj, ADTField):
+                assert isinstance(value, tuple)
                 if cfg.autofix:
                     new_tags = []
                     made_change = False
@@ -405,8 +319,8 @@ class BaseModel(Model):
                     if not field_obj.is_ordered:
                         if list(value) != sorted(set(value)):
                             yield f"{self}: contains duplicate or unsorted tags in {field}"
-            elif isinstance(field_obj, (CharField, TextField)):
-                allow_newlines = isinstance(field_obj, TextField)
+            elif field_obj.type_object is str:
+                allow_newlines = isinstance(field_obj, (TextField, TextOrNullField))
                 if self.should_exempt_from_string_cleaning(field):
                     cleaned = value
                 else:
@@ -425,7 +339,7 @@ class BaseModel(Model):
                         print(message)
                         try:
                             setattr(self, field, cleaned)
-                        except peewee.IntegrityError:
+                        except sqlite3.IntegrityError:
                             if (
                                 self.get_redirect_target() is not None
                                 or field == "pattern"
@@ -473,14 +387,10 @@ class BaseModel(Model):
         """Like lint() but only called if is_invalid() returned True."""
         return []
 
-    def save(self, *args: Any, **kwargs: Any) -> int:
-        result = super().save(*args, **kwargs)
-        assert _change_log_f is not None, "cannot make changes without a changelog file"
-        event = {"type": "save", "call_sign": self.call_sign, "id": self.id}
-        print(json.dumps(event), file=_change_log_f, flush=True)
+    def save(self) -> None:
+        super().save()
         if hasattr(self, "save_event"):
             self.save_event.trigger(self)
-        return result
 
     def dump_data(self) -> str:
         return f"{self.__class__.__name__}({self.__dict__!r})"
@@ -527,13 +437,13 @@ class BaseModel(Model):
         self._name_to_derived_field[name].set_value(self, value)
 
     def get_raw_tags_field(self, name: str) -> Any:
-        data = self.__data__.get(name)
+        data = getattr(type(self), name).get_raw(self)
         if not data:
             return []
         return json.loads(data)
 
     def map_tags_field(
-        self, field: ADTField, fn: Callable[[adt.ADT], adt.ADT | None]
+        self, field: ADTField[Any], fn: Callable[[adt.ADT], adt.ADT | None]
     ) -> None:
         existing_tags = getattr(self, field.name)
         if existing_tags is None:
@@ -547,7 +457,7 @@ class BaseModel(Model):
             setattr(self, field.name, tuple(new_tags))
 
     def map_tags_by_type(
-        self, field: ADTField, typ: builtins.type[Any], fn: Callable[[Any], Any]
+        self, field: ADTField[Any], typ: builtins.type[Any], fn: Callable[[Any], Any]
     ) -> None:
         def map_fn(tag: adt.ADT) -> adt.ADT:
             new_args = []
@@ -605,7 +515,7 @@ class BaseModel(Model):
     def select_for_field(cls, field: str | None) -> Any:
         if field is not None:
             field_obj = getattr(cls, field)
-            return cls.select_valid(field_obj).filter(field_obj != None)
+            return cls.select_valid().filter(field_obj != None)
         else:
             return cls.select_valid()
 
@@ -636,16 +546,9 @@ class BaseModel(Model):
         assert isinstance(other, BaseModel)
         return self.id < other.id
 
-    def __del__(self) -> None:
-        if self.is_dirty():
-            try:
-                self.save()
-            except peewee.IntegrityError:
-                pass
-
     @classmethod
     def fields(cls) -> Iterable[str]:
-        yield from cls._meta.fields.keys()
+        yield from cls.clorm_fields.keys()
 
     def short_description(self) -> str:
         """Used as the prompt when editing this object."""
@@ -698,7 +601,7 @@ class BaseModel(Model):
         **kwargs: Any,
     ) -> list[ModelT]:
         filters = [*args]
-        fields = cls._meta.fields
+        fields = cls.clorm_fields
         for key, value in kwargs.items():
             if key not in fields:
                 raise ValueError(f"{key} is not a valid field")
@@ -744,22 +647,12 @@ class BaseModel(Model):
 
     @classmethod
     def unserialize(cls: type[ModelT], data: int) -> ModelT:
-        return cls.get(id=data)
+        return cls(data)
 
     @classmethod
-    def get_quick(cls: type[ModelT], data: int) -> ModelT:
-        # TODO: This is actually slower, why? It seems to trigger more queries, maybe
-        # peewee caches the instance?
-        # mypy thinks fields aren't hashable
-        query, fields = get_query_and_fields(cls)  # type: ignore
-        cursor = database.execute_sql(query, (data,))
-        kwargs = dict(zip(fields, cursor.fetchone(), strict=True))
-        return cls(**kwargs)
-
-    @classmethod
-    def select_valid(cls, *args: Any) -> Any:
+    def select_valid(cls) -> Any:
         """Subclasses may override this to filter out removed instances."""
-        return cls.add_validity_check(cls.select(*args))
+        return cls.add_validity_check(cls.select())
 
     @classmethod
     def add_validity_check(cls, query: Any) -> Any:
@@ -807,7 +700,7 @@ class BaseModel(Model):
         prompt = f"{field}> "
         current_value = getattr(self, field)
         callbacks = self.get_adt_callbacks()
-        if isinstance(field_obj, ForeignKeyField):
+        if issubclass(field_obj.type_object, Model):
             return self.get_value_for_foreign_key_field(field, callbacks=callbacks)
         elif isinstance(field_obj, ADTField):
 
@@ -818,39 +711,33 @@ class BaseModel(Model):
                 setattr(self, field, adts)
 
             return getinput.get_adt_list(
-                field_obj.get_adt(),
+                field_obj.adt_type,
                 completers=self.get_completers_for_adt_field(field),
                 callbacks=callbacks,
                 prompt=self.short_description(),
                 get_existing=get_existing,
                 set_existing=set_existing,
             )
-        elif isinstance(field_obj, CharField):
+        elif field_obj.type_object is str:
             if default is None:
                 default = "" if current_value is None else current_value
-            return (
-                self.getter(field).get_one_key(
-                    prompt, default=default, callbacks=callbacks
-                )
-                or None
-            )
-        elif isinstance(field_obj, TextField):
-            if default is None:
-                default = "" if current_value is None else current_value
-            return (
-                getinput.get_line(
+            if isinstance(field_obj, (TextField, TextOrNullField)):
+                line = getinput.get_line(
                     prompt, default=default, mouse_support=True, callbacks=callbacks
                 )
-                or None
-            )
-        elif isinstance(field_obj, EnumField):
+            else:
+                line = self.getter(field).get_one_key(
+                    prompt, default=default, callbacks=callbacks
+                )
+            return line or None
+        elif issubclass(field_obj.type_object, enum.Enum):
             default = current_value
             if default is None and field in self.field_defaults:
                 default = self.field_defaults[field]
             return getinput.get_enum_member(
                 field_obj.enum_cls, prompt=prompt, default=default, callbacks=callbacks
             )
-        elif isinstance(field_obj, IntegerField):
+        elif field_obj.type_object is int:
             default = "" if current_value is None else str(current_value)
             result = getinput.get_line(
                 prompt, default=default, mouse_support=True, callbacks=callbacks
@@ -859,7 +746,7 @@ class BaseModel(Model):
                 return None
             else:
                 return int(result)
-        elif isinstance(field_obj, BooleanField):
+        elif field_obj.type_object is bool:
             return getinput.yes_no(prompt, default=current_value, callbacks=callbacks)
         else:
             raise ValueError(f"don't know how to fill {field}")
@@ -868,33 +755,33 @@ class BaseModel(Model):
     def get_value_for_field_on_class(cls, field: str, default: Any = "") -> Any:
         field_obj = getattr(cls, field)
         prompt = f"{field}> "
-        if isinstance(field_obj, ForeignKeyField):
+        if issubclass(field_obj.type_object, Model):
             return cls.get_value_for_foreign_key_field_on_class(field)
         elif isinstance(field_obj, ADTField):
             return getinput.get_adt_list(
-                field_obj.get_adt(),
+                field_obj.adt_type,
                 prompt=prompt,
                 completers=cls.get_completers_for_adt_field(field),
             )
-        elif isinstance(field_obj, CharField):
-            return cls.getter(field).get_one_key(prompt, default=default) or None
-        elif isinstance(field_obj, TextField):
+        elif isinstance(field_obj, (TextField, TextOrNullField)):
             return (
                 getinput.get_line(prompt, default=default, mouse_support=True) or None
             )
-        elif isinstance(field_obj, EnumField):
+        elif field_obj.type_object is str:
+            return cls.getter(field).get_one_key(prompt, default=default) or None
+        elif issubclass(field_obj.type_object, enum.Enum):
             if default is None and field in cls.field_defaults:
                 default = cls.field_defaults[field]
             return getinput.get_enum_member(
                 field_obj.enum_cls, prompt=prompt, default=default
             )
-        elif isinstance(field_obj, IntegerField):
+        elif field_obj.type_object is int:
             result = getinput.get_line(prompt, default=default, mouse_support=True)
             if result == "" or result is None:
                 return None
             else:
                 return int(result)
-        elif isinstance(field_obj, BooleanField):
+        elif field_obj.type_object is bool:
             return getinput.yes_no(prompt, default=default)
         else:
             raise ValueError(f"don't know how to fill {field}")
@@ -959,7 +846,7 @@ class BaseModel(Model):
         return obj, sig
 
     def edit_reverse_rel(self) -> None:
-        options = [field.backref for field in self._meta.backrefs]
+        options = [field.related_name for field in self.clorm_backrefs]
         chosen = getinput.choose_one_by_name(options)
         if chosen is None:
             return
@@ -971,7 +858,7 @@ class BaseModel(Model):
                 return
 
     def lint_reverse_rel(self) -> None:
-        options = [field.backref for field in self._meta.backrefs]
+        options = [field.related_name for field in self.clorm_backrefs]
         chosen = getinput.choose_one_by_name(options)
         if chosen is None:
             return
@@ -979,7 +866,7 @@ class BaseModel(Model):
             obj.format(quiet=True)
 
     def lint_and_fix(self) -> None:
-        options = [field.backref for field in self._meta.backrefs]
+        options = [field.related_name for field in self.clorm_backrefs]
         chosen = getinput.choose_one_by_name(options)
         if chosen is None:
             return
@@ -1045,8 +932,8 @@ class BaseModel(Model):
     def edit_foreign(self) -> None:
         options = {
             name: field
-            for name, field in self._meta.fields.items()
-            if isinstance(field, peewee.ForeignKeyField)
+            for name, field in self.clorm_fields.items()
+            if issubclass(field.type_object, Model)
         }
         chosen = getinput.get_with_completion(
             options,
@@ -1095,7 +982,7 @@ class BaseModel(Model):
     def get_completers_for_adt_field(cls, field: str) -> getinput.CompleterMap:
         field_obj = getattr(cls, field)
         assert isinstance(field_obj, ADTField)
-        tag_cls = field_obj.adt_cls()
+        tag_cls = field_obj.adt_type
         completers: dict[tuple[type[adt.ADT], str], getinput.Completer[Any]] = {}
         for tag in tag_cls._tag_to_member.values():
             for attribute, typ in tag._attributes.items():
@@ -1189,7 +1076,7 @@ class BaseModel(Model):
 
     @classmethod
     def get_field_names(cls) -> list[str]:
-        return [field for field in cls._meta.fields if field != "id"]
+        return [field for field in cls.clorm_fields if field != "id"]
 
     def get_required_fields(self) -> Iterable[str]:
         yield from self.get_field_names()
@@ -1275,100 +1162,63 @@ class BaseModel(Model):
             obj.edit()
 
 
-EnumT = TypeVar("EnumT", bound=enum.Enum)
+class ADTField(Field[Sequence[ADTT]]):
+    _adt_type: type[adt.ADT]
+    is_ordered: bool
+    _adt_cache: dict[str, Any]
 
+    def __init__(self, name: str | None = None, *, is_ordered: bool = True) -> None:
+        super().__init__(name)
+        self.is_ordered = is_ordered
 
-class _EnumFieldDescriptor(FieldAccessor, Generic[EnumT]):
-    def __init__(
-        self,
-        model: type[BaseModel],
-        field: peewee.Field,
-        name: str,
-        enum_cls: type[EnumT],
-    ) -> None:
-        super().__init__(model, field, name)
-        self.enum_cls = enum_cls
+    @property
+    def adt_type(self) -> type[adt.ADT]:
+        self.resolve_type()
+        return self._adt_type
 
-    def __get__(self, instance: Any, instance_type: Any = None) -> EnumT:
-        value = super().__get__(instance, instance_type=instance_type)
-        if isinstance(value, int):
-            value = self.enum_cls(value)
-        return value
-
-    def __set__(self, instance: Any, value: int | EnumT) -> None:
-        if isinstance(value, self.enum_cls):
-            assert isinstance(value, enum.Enum)
-            value = value.value
-        super().__set__(instance, value)
-
-
-class EnumField(IntegerField):
-    def __init__(self, enum_cls: type[enum.Enum], **kwargs: Any) -> None:
-        super().__init__(**kwargs)
-        self.enum_cls = enum_cls
-        self.accessor_class = partial(_EnumFieldDescriptor, enum_cls=enum_cls)
-
-
-class _ADTDescriptor(FieldAccessor):
-    def __init__(
-        self, model: type[BaseModel], field: peewee.Field, name: str, adt_cls: Any
-    ) -> None:
-        super().__init__(model, field, name)
-        self.adt_cls = adt_cls
-        self.field_name = name
-
-    def __get__(
-        self, instance: Any, instance_type: Any = None, raw: bool = False
-    ) -> Any:
-        value = super().__get__(instance, instance_type=instance_type)
-        if raw:
-            return value
-        if isinstance(value, str) and value:
-            if not hasattr(instance, "_adt_cache"):
-                instance._adt_cache = {}
-            key = (self.field_name, value)
-            if key in instance._adt_cache:
-                return instance._adt_cache[key]
-            if not isinstance(self.adt_cls, type):
-                self.adt_cls = self.adt_cls()
-            tags = tuple(self.adt_cls.unserialize(val) for val in json.loads(value))
-            instance._adt_cache[key] = tags
+    def deserialize(self, raw_value: Any) -> Sequence[ADTT]:
+        if isinstance(raw_value, str) and raw_value:
+            if not hasattr(self, "_adt_cache"):
+                self._adt_cache = {}
+            if raw_value in self._adt_cache:
+                return self._adt_cache[raw_value]
+            tags = tuple(
+                self.adt_type.unserialize(val) for val in json.loads(raw_value)
+            )
+            self._adt_cache[raw_value] = tags
             return tags
-        elif instance is not None:
-            return ()
         else:
-            return value
+            return ()
 
-    def __set__(self, instance: Any, value: Any) -> None:
+    def serialize(self, value: Sequence[ADTT]) -> str | None:
         if isinstance(value, tuple):
             value = list(value)
         if isinstance(value, list):
             if value:
-                value = json.dumps([val.serialize() for val in value])
+                return json.dumps([val.serialize() for val in value])
             else:
-                value = None
-        super().__set__(instance, value)
+                return None
+        elif value is None:
+            return None
+        raise TypeError(f"Unsupported type {value}")
+
+    def get_resolved_type(self) -> tuple[Any, type[object], bool]:
+        orig_class = self.__orig_class__
+        (arg,) = typing.get_args(orig_class)
+        if isinstance(arg, typing.ForwardRef):
+            arg = self.resolve_forward_ref(arg)
+        if not issubclass(arg, adt.ADT):
+            raise TypeError(f"ADTField must be instantiated with an ADT, not {arg}")
+        self._adt_type = arg
+        return (Sequence[arg], Sequence, True)  # type: ignore[valid-type]
 
 
-class ADTField(TextField):
-    def __init__(
-        self,
-        adt_cls: Callable[[], type[Any]],
-        *,
-        is_ordered: bool = True,
-        **kwargs: Any,
-    ) -> None:
-        super().__init__(**kwargs)
-        self.adt_cls = adt_cls
-        self.is_ordered = is_ordered
-        self.accessor_class = partial(_ADTDescriptor, adt_cls=adt_cls)
+class TextField(Field[str]):
+    """Indicates that long text is allowed."""
 
-    def get_adt(self) -> type[Any]:
-        return self.adt_cls()
 
-    def get_raw_value(self, instance: Any) -> str | None:
-        accessor = self.accessor_class(type(instance), self, self.name)
-        return accessor.__get__(instance, raw=True)
+class TextOrNullField(Field[str | None]):
+    """Indicates that long text is allowed but may be NULL."""
 
 
 class _NameGetter(Generic[ModelT]):
@@ -1617,17 +1467,6 @@ def get_tag_based_derived_field(
         compute_all=compute_all,
         pull_on_miss=False,
     )
-
-
-@functools.cache
-def get_query_and_fields(cls: type[Model]) -> tuple[str, list[str]]:
-    fields = [field.column_name for field in cls._meta.fields.values()]
-    columns = ", ".join(f'"{field}"' for field in fields)
-    query = (
-        f'SELECT {columns} FROM "{cls._meta.table_name}" WHERE'
-        f' ("{cls._meta.table_name}"."id" = ?)'
-    )
-    return query, fields
 
 
 @functools.cache

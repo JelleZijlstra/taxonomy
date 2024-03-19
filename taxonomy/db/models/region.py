@@ -3,16 +3,16 @@ from __future__ import annotations
 import collections
 import sys
 from collections.abc import Iterable
-from typing import IO, Any
+from typing import IO, Any, Self
 
-from peewee import CharField, ForeignKeyField
+from clorm import Field
 
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
 
 from ... import events, getinput
 from .. import constants, models
 from ..derived_data import DerivedField
-from .base import BaseModel, EnumField, get_tag_based_derived_field
+from .base import BaseModel, get_tag_based_derived_field
 
 
 class Region(BaseModel):
@@ -20,13 +20,12 @@ class Region(BaseModel):
     save_event = events.Event["Region"]()
     label_field = "name"
     call_sign = "R"
+    clorm_table_name = "region"
 
-    name = CharField()
-    comment = CharField(null=True)
-    parent = ForeignKeyField(
-        "self", related_name="children", db_column="parent_id", null=True
-    )
-    kind = EnumField(constants.RegionKind)
+    name = Field[str]()
+    comment = Field[str | None]()
+    parent = Field[Self | None]("parent_id", related_name="children")
+    kind = Field[constants.RegionKind]()
 
     derived_fields = [
         DerivedField("has_collections", bool, lambda region: region.has_collections()),

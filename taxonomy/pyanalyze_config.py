@@ -1,31 +1,10 @@
-import peewee
-from pyanalyze.value import GenericValue, KnownValue, TypedValue, Value
+import clorm
+from pyanalyze.annotations import type_from_runtime
+from pyanalyze.value import Value
 
-from taxonomy.db.models.base import ADTField, EnumField
 
-
-def class_attribute_transformer(field_cls: peewee.Field) -> tuple[Value, Value] | None:
-    if not isinstance(field_cls, peewee.Field):
+def class_attribute_transformer(field_cls: clorm.Field) -> tuple[Value, Value] | None:
+    if not isinstance(field_cls, clorm.Field):
         return None
-    val: Value
-    if isinstance(field_cls, EnumField):
-        val = TypedValue(field_cls.enum_cls)
-    elif isinstance(field_cls, ADTField):
-        val = GenericValue(tuple, [TypedValue(field_cls.adt_cls())])
-        return val, val | KnownValue(None)
-    elif isinstance(field_cls, (peewee.TextField, peewee.CharField)):
-        val = TypedValue(str)
-    elif isinstance(field_cls, peewee.AutoField):
-        val = TypedValue(int)
-    elif isinstance(field_cls, peewee.ForeignKeyField):
-        val = TypedValue(field_cls.rel_model)
-    elif isinstance(field_cls, peewee.BooleanField):
-        val = TypedValue(bool)
-    elif isinstance(field_cls, peewee.IntegerField):
-        val = TypedValue(int)
-    else:
-        raise NotImplementedError(field_cls)
-
-    if field_cls.null:
-        val = val | KnownValue(None)
+    val = type_from_runtime(field_cls.full_type)
     return val, val

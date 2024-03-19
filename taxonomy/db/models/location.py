@@ -5,16 +5,16 @@ import re
 import sys
 from collections import Counter
 from collections.abc import Callable, Iterable, Sequence
-from typing import IO, Any, ClassVar
+from typing import IO, Any, ClassVar, Self
 
-from peewee import CharField, ForeignKeyField, IntegerField, TextField
+from clorm import Field
 
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
 
 from ... import adt, events, getinput
 from .. import models
 from .article import Article
-from .base import ADTField, BaseModel, EnumField, LintConfig
+from .base import ADTField, BaseModel, LintConfig, TextField
 from .period import Period, period_sort_key
 from .region import Region
 from .stratigraphic_unit import StratigraphicUnit
@@ -32,31 +32,26 @@ class Location(BaseModel):
     label_field = "name"
     grouping_field = "min_period"
     call_sign = "L"
+    clorm_table_name = "location"
 
-    name = CharField()
-    min_period = ForeignKeyField(
-        Period, related_name="locations_min", db_column="min_period_id", null=True
+    name = Field[str]()
+    min_period = Field[Period | None]("min_period_id", related_name="locations_min")
+    max_period = Field[Period | None]("max_period_id", related_name="locations_max")
+    min_age = Field[int | None]()
+    max_age = Field[int | None]()
+    stratigraphic_unit = Field[StratigraphicUnit | None](
+        "stratigraphic_unit_id", related_name="locations"
     )
-    max_period = ForeignKeyField(
-        Period, related_name="locations_max", db_column="max_period_id", null=True
-    )
-    min_age = IntegerField(null=True)
-    max_age = IntegerField(null=True)
-    stratigraphic_unit = ForeignKeyField(
-        StratigraphicUnit, related_name="locations", null=True
-    )
-    region = ForeignKeyField(Region, related_name="locations", db_column="region_id")
-    comment = CharField()
-    latitude = CharField()
-    longitude = CharField()
+    region = Field[Region]("region_id", related_name="locations")
+    comment = Field[str]()
+    latitude = Field[str]()
+    longitude = Field[str]()
     location_detail = TextField()
     age_detail = TextField()
-    source = ForeignKeyField(Article, related_name="locations", null=True)
-    deleted = EnumField(LocationStatus)
-    tags = ADTField(lambda: LocationTag, null=True, is_ordered=False)
-    parent = ForeignKeyField(
-        "self", related_name="aliases", null=True, db_column="parent_id"
-    )
+    source = Field[Article](related_name="locations")
+    deleted = Field[LocationStatus]()
+    tags = ADTField["LocationTag"](is_ordered=False)
+    parent = Field[Self | None]("parent_id", related_name="aliases")
 
     @classmethod
     def add_validity_check(cls, query: Any) -> Any:
@@ -178,7 +173,7 @@ class Location(BaseModel):
             if other is None:
                 return
         self.reassign_references(other)
-        self.deleted = LocationStatus.alias  # type: ignore
+        self.deleted = LocationStatus.alias
         self.parent = other
 
     def add_alias(self) -> Location | None:
@@ -314,7 +309,7 @@ class Location(BaseModel):
             return
         print(f"Autodeleting {self!r}")
         if not dry_run:
-            self.deleted = LocationStatus.deleted  # type: ignore
+            self.deleted = LocationStatus.deleted
 
     @classmethod
     def get_interactive_creators(cls) -> dict[str, Callable[[], Any]]:

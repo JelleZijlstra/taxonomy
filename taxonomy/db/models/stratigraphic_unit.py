@@ -3,9 +3,9 @@ from __future__ import annotations
 import sys
 from collections.abc import Iterable
 from functools import lru_cache
-from typing import IO, Any, TypeVar
+from typing import IO, Any, Self, TypeVar
 
-from peewee import BooleanField, CharField, ForeignKeyField
+from clorm import Field
 
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
 
@@ -13,7 +13,7 @@ from ... import events, getinput
 from .. import models
 from ..constants import RequirednessLevel, StratigraphicUnitRank
 from ..derived_data import DerivedField
-from .base import BaseModel, EnumField
+from .base import BaseModel
 from .period import Period
 from .region import Region
 
@@ -25,24 +25,17 @@ class StratigraphicUnit(BaseModel):
     save_event = events.Event["StratigraphicUnit"]()
     label_field = "name"
     call_sign = "S"
+    clorm_table_name = "stratigraphic_unit"
 
-    name = CharField()
-    parent = ForeignKeyField(
-        "self", related_name="children", db_column="parent_id", null=True
-    )
-    prev = ForeignKeyField("self", related_name="next", db_column="prev_id", null=True)
-    min_period = ForeignKeyField(
-        Period, related_name="stratigraphic_units_min", null=True
-    )
-    max_period = ForeignKeyField(
-        Period, related_name="stratigraphic_units_max", null=True
-    )
-    rank = EnumField(StratigraphicUnitRank)
-    comment = CharField()
-    region = ForeignKeyField(
-        Region, related_name="periods", db_column="region_id", null=True
-    )
-    deleted = BooleanField(default=False)
+    name = Field[str]()
+    parent = Field[Self | None]("parent_id", related_name="children")
+    prev = Field[Self | None]("prev_id", related_name="next")
+    min_period = Field[Period | None](related_name="stratigraphic_units_min")
+    max_period = Field[Period | None](related_name="stratigraphic_units_max")
+    rank = Field[StratigraphicUnitRank]()
+    comment = Field[str]()
+    region = Field[Region | None]("region_id", related_name="stratigraphic_units")
+    deleted = Field[bool](default=False)
 
     derived_fields = [
         DerivedField("has_locations", bool, lambda unit: unit.has_locations())
@@ -52,9 +45,6 @@ class StratigraphicUnit(BaseModel):
         SearchField(SearchFieldType.literal, "rank"),
         SearchField(SearchFieldType.text, "comment", highlight_enabled=True),
     ]
-
-    class Meta:
-        db_table = "stratigraphic_unit"
 
     def get_search_dicts(self) -> list[dict[str, Any]]:
         data = {"name": self.name, "rank": self.rank.name, "comment": self.comment}

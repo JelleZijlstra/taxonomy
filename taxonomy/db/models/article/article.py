@@ -11,15 +11,9 @@ import time
 from collections.abc import Callable, Iterable
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, ClassVar, NamedTuple, NotRequired, TypeVar, cast
+from typing import Any, ClassVar, NamedTuple, NotRequired, Self, TypeVar, cast
 
-from peewee import (
-    CharField,
-    DeferredForeignKey,
-    ForeignKeyField,
-    IntegerField,
-    TextField,
-)
+from clorm import Field
 
 from taxonomy import adt, config, events, getinput
 from taxonomy.apis import bhl
@@ -44,8 +38,8 @@ from taxonomy.db.helpers import (
 from ..base import (
     ADTField,
     BaseModel,
-    EnumField,
     LintConfig,
+    TextField,
     get_tag_based_derived_field,
 )
 from ..citation_group import CitationGroup
@@ -110,42 +104,41 @@ class Article(BaseModel):
     label_field = "name"
     call_sign = "A"
     excluded_fields = {"path", "addmonth", "addday", "addyear", "kind", "tags"}
+    clorm_table_name = "article"
 
     # Properties that have a one-to-one correspondence with the database.
-    addmonth = CharField()  # month added to catalog
-    addday = CharField()  # day added to catalog
-    addyear = CharField()  # year added to catalog
-    name = CharField()  # name of file (or handle of citation)
-    author_tags = ADTField(lambda: AuthorTag, null=True)
-    year = CharField(null=True)  # year published
+    addmonth = Field[str]()  # month added to catalog
+    addday = Field[str]()  # day added to catalog
+    addyear = Field[str]()  # year added to catalog
+    name = Field[str]()  # name of file (or handle of citation)
+    author_tags = ADTField["AuthorTag"]()
+    year = Field[str | None]()  # year published
     # title (chapter title for book chapter; book title for full book or thesis)
-    title = CharField(null=True)
-    series = CharField(null=True)  # journal series
-    volume = CharField(null=True)  # journal volume
-    issue = CharField(null=True)  # journal issue
-    start_page = CharField(null=True)
-    end_page = CharField(null=True)
-    url = CharField(null=True)
-    doi = CharField(null=True)
-    type = EnumField(ArticleType)  # type of file
-    publisher = CharField(null=True)
-    _location = CharField(
-        db_column="location"
+    title = Field[str | None]()
+    series = Field[str | None]()  # journal series
+    volume = Field[str | None]()  # journal volume
+    issue = Field[str | None]()  # journal issue
+    start_page = Field[str | None]()
+    end_page = Field[str | None]()
+    url = Field[str | None]()
+    doi = Field[str | None]()
+    type = Field[ArticleType]()  # type of file
+    publisher = Field[str | None]()
+    _location = Field[str](
+        "location"
     )  # geographical location published (deprecated; use citation_group)
 
     # For chapters/parts, may be used for a fuller indication of the contents.
-    pages = CharField(null=True)  # number of pages in book
-    misc_data = CharField()  # miscellaneous data
+    pages = Field[str | None]()  # number of pages in book
+    misc_data = Field[str]()  # miscellaneous data
 
-    path = CharField(null=True)  # path to file (contains None if "file" is not a file)
-    ids = CharField(
-        null=True
-    )  # array of properties for various less-common identifiers
-    bools = CharField(null=True)  # array of boolean flags
-    kind = EnumField(ArticleKind)
-    parent = DeferredForeignKey("Article", null=True)
-    tags = ADTField(lambda: ArticleTag, null=True, is_ordered=False)
-    citation_group = ForeignKeyField(CitationGroup, null=True)
+    path = Field[str | None]()  # path to file (contains None if "file" is not a file)
+    ids = Field[str | None]()  # array of properties for various less-common identifiers
+    bools = Field[str | None]()  # array of boolean flags
+    kind = Field[ArticleKind]()
+    parent = Field[Self | None]("parent_id")
+    tags = ADTField["ArticleTag"](is_ordered=False)
+    citation_group = Field[CitationGroup | None]("citation_group_id")
 
     folder_tree: ClassVar[FolderTree] = FolderTree()
     save_event.on(folder_tree.add)
@@ -366,9 +359,6 @@ class Article(BaseModel):
         else:
             return None
 
-    class Meta:
-        db_table = "article"
-
     @classmethod
     def add_validity_check(cls, query: Any) -> Any:
         return query.filter(
@@ -522,7 +512,7 @@ class Article(BaseModel):
         if self.kind == ArticleKind.electronic and self.path:
             os.unlink(self.get_path())
         print(f"File {self.name} removed.")
-        self.kind = ArticleKind.removed  # type: ignore
+        self.kind = ArticleKind.removed
 
     def merge(self, target: Article | None = None, force: bool = False) -> None:
         """Merges this file into another file."""
@@ -541,7 +531,7 @@ class Article(BaseModel):
                 ):
                     return
             os.unlink(self.get_path())
-        self.kind = ArticleKind.redirect  # type: ignore
+        self.kind = ArticleKind.redirect
         self.path = None
         self.parent = target
 
@@ -554,7 +544,7 @@ class Article(BaseModel):
         if self == target:
             print("Can't merge into yourself")
             return
-        self.kind = ArticleKind.alternative_version  # type: ignore
+        self.kind = ArticleKind.alternative_version
         self.parent = target
 
     def change_folder(self) -> None:
@@ -1309,15 +1299,13 @@ class Article(BaseModel):
 
 
 class ArticleComment(BaseModel):
-    article = ForeignKeyField(Article, related_name="comments", db_column="article_id")
-    kind = EnumField(ArticleCommentKind)
-    date = IntegerField()
+    article = Field[Article]("article_id", related_name="comments")
+    kind = Field[ArticleCommentKind]()
+    date = Field[int]()
     text = TextField()
 
     call_sign = "AC"
-
-    class Meta:
-        db_table = "article_comment"
+    clorm_table_name = "article_comment"
 
     search_fields = [
         SearchField(SearchFieldType.literal, "kind"),

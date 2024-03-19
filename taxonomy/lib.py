@@ -10,9 +10,8 @@ import re
 from collections import defaultdict
 from collections.abc import Container, Iterable
 from functools import partial
-from typing import Any
 
-import peewee
+import clorm
 
 from taxonomy import getinput
 from taxonomy.db.constants import (
@@ -26,7 +25,6 @@ from taxonomy.db.constants import (
 from taxonomy.db.helpers import root_name_of_name
 from taxonomy.db.models import (
     Article,
-    BaseModel,
     Book,
     Location,
     Name,
@@ -67,16 +65,6 @@ def move_localities(period: Period) -> None:
 def move_to_stratigraphy(loc: Location, period: Period) -> None:
     loc.stratigraphic_unit = period
     loc.min_period = loc.max_period = None
-
-
-def count_field(model: type[BaseModel], field: str) -> list[tuple[Any, int]]:
-    field_obj = getattr(model, field)
-    return [
-        (getattr(t, field), t.num)
-        for t in model.select(field_obj, peewee.fn.Count().alias("num"))
-        .group_by(field_obj)
-        .order_by(peewee.fn.Count().desc())
-    ]
 
 
 def locless_names(
@@ -267,7 +255,7 @@ def make_genus() -> Taxon | None:
         existing = Taxon.select_valid().filter(Taxon.valid_name == name).get()
         print(f"{existing} already exists")
         return None
-    except Taxon.DoesNotExist:
+    except clorm.DoesNotExist:
         pass
     authors = []
     while True:
@@ -298,7 +286,7 @@ def make_species() -> Taxon | None:
         existing = Taxon.select_valid().filter(Taxon.valid_name == name).get()
         print(f"{existing} already exists")
         return None
-    except Taxon.DoesNotExist:
+    except clorm.DoesNotExist:
         pass
     authors = []
     while True:
@@ -373,7 +361,7 @@ def clean_regions(kind: RegionKind, print_only: bool = False) -> None:
         if new_kind:
             for child in children:
                 print(child)
-                child.kind = new_kind  # type: ignore
+                child.kind = new_kind
             print("Perform fixup")
             Region.getter(None).get_and_edit()
         else:

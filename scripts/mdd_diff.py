@@ -177,7 +177,7 @@ def all_species(taxon: Taxon) -> Iterable[Taxon]:
             yield taxon
     else:
         for child in Taxon.add_validity_check(
-            taxon.children.filter(Taxon.age << INCLUDED_AGES)
+            taxon.children.filter(Taxon.age.is_in(INCLUDED_AGES))
         ):
             yield from all_species(child)
 

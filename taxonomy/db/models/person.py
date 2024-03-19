@@ -6,9 +6,9 @@ import re
 import sys
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from typing import IO, Any
+from typing import IO, Any, Self
 
-from peewee import CharField, DeferredForeignKey, TextField
+from clorm import Field
 
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
 
@@ -20,8 +20,8 @@ from ..openlibrary import get_author
 from .base import (
     ADTField,
     BaseModel,
-    EnumField,
     LintConfig,
+    TextOrNullField,
     get_tag_based_derived_field,
 )
 
@@ -115,20 +115,21 @@ class Person(BaseModel):
     save_event = events.Event["Person"]()
     label_field = "family_name"
     call_sign = "H"  # for human, P is taken for Period
+    clorm_table_name = "person"
 
-    family_name = CharField()
-    given_names = CharField(null=True)
-    initials = CharField(null=True)
-    suffix = CharField(null=True)
-    tussenvoegsel = CharField(null=True)
-    birth = CharField(null=True)
-    death = CharField(null=True)
-    tags = ADTField(lambda: models.tags.PersonTag, null=True, is_ordered=False)
-    naming_convention = EnumField(NamingConvention)
-    type = EnumField(PersonType)
-    target = DeferredForeignKey("Person", null=True)
-    bio = TextField(null=True)
-    ol_id = CharField(null=True)
+    family_name = Field[str]()
+    given_names = Field[str | None]()
+    initials = Field[str | None]()
+    suffix = Field[str | None]()
+    tussenvoegsel = Field[str | None]()
+    birth = Field[str | None]()
+    death = Field[str | None]()
+    tags = ADTField["models.tags.PersonTag"](is_ordered=False)
+    naming_convention = Field[NamingConvention]()
+    type = Field[PersonType]()
+    target = Field[Self | None]("target_id")
+    bio = TextOrNullField()
+    ol_id = Field[str | None]()
 
     search_fields = [
         SearchField(SearchFieldType.text, "name"),
@@ -495,11 +496,11 @@ class Person(BaseModel):
                 yield f"{self}: redirect has no target"
                 if cfg.autofix:
                     print(f"{self}: resetting type to unchecked")
-                    self.type = PersonType.unchecked  # type: ignore
+                    self.type = PersonType.unchecked
 
     def lint(self, cfg: LintConfig) -> Iterable[str]:
-        for field_name, field_obj in self._meta.fields.items():
-            if isinstance(field_obj, CharField):
+        for field_name, field_obj in self.clorm_fields.items():
+            if field_obj.type_object is str:
                 value = getattr(self, field_name)
                 if value is not None and not helpers.is_clean_string(value):
                     cleaned = helpers.clean_string(value)
@@ -640,7 +641,7 @@ class Person(BaseModel):
     @classmethod
     def find_duplicates(cls, autofix: bool = False) -> list[list[Person]]:
         by_key: dict[tuple[str | None, ...], list[Person]] = defaultdict(list)
-        for person in cls.select_valid().filter(Person.type << UNCHECKED_TYPES):
+        for person in cls.select_valid().filter(Person.type.is_in(UNCHECKED_TYPES)):
             key = (
                 person.family_name,
                 None if person.given_names is not None else person.initials,
@@ -728,7 +729,7 @@ class Person(BaseModel):
             for person in group[1:]:
                 print(f"Reassign {person} -> {group[0]}")
                 person.reassign_references(target=group[0])
-                person.type = PersonType.deleted  # type: ignore
+                person.type = PersonType.deleted
 
     def num_references(self) -> dict[str, int]:
         num_refs = {}
@@ -937,7 +938,7 @@ class Person(BaseModel):
         person = self.get_or_create_unchecked(self.family_name, given_names=given_names)
         if person.naming_convention is not NamingConvention.pinyin:
             print(f"{person}: set naming convention to pinyin")
-            person.naming_convention = NamingConvention.pinyin  # type: ignore
+            person.naming_convention = NamingConvention.pinyin
         person.edit_until_clean()
         self.make_soft_redirect(person)
 
@@ -959,7 +960,7 @@ class Person(BaseModel):
         if target == self:
             print(f"Cannot redirect {self} to itself")
             return
-        self.type = PersonType.soft_redirect  # type: ignore
+        self.type = PersonType.soft_redirect
         self.target = target
         self.reassign_references(target=target)
 
@@ -971,7 +972,7 @@ class Person(BaseModel):
         if target == self:
             print(f"Cannot redirect {self} to itself")
             return
-        self.type = PersonType.hard_redirect  # type: ignore
+        self.type = PersonType.hard_redirect
         self.target = target
         self.reassign_references(target=target)
 
@@ -983,7 +984,7 @@ class Person(BaseModel):
             return
         print(f"Autodeleting {self!r}")
         if not dry_run:
-            self.type = PersonType.deleted  # type: ignore
+            self.type = PersonType.deleted
 
     def is_more_specific_than(self, other: Person) -> bool:
         if other.type in (PersonType.hard_redirect, PersonType.soft_redirect):
@@ -1020,7 +1021,7 @@ class Person(BaseModel):
     @classmethod
     def resolve_redirects(cls) -> None:
         for person in cls.select_valid().filter(
-            Person.type << (PersonType.soft_redirect, PersonType.hard_redirect)
+            Person.type.is_in((PersonType.soft_redirect, PersonType.hard_redirect))
         ):
             refs = person.total_references()
             if refs > 0:
@@ -1138,7 +1139,7 @@ class Person(BaseModel):
                 Person.initials == initials,
                 Person.suffix == suffix,
                 Person.tussenvoegsel == tussenvoegsel,
-                Person.type << UNCHECKED_TYPES,
+                Person.type.is_in(UNCHECKED_TYPES),
             )
         )
         if objs:

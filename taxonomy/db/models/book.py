@@ -4,7 +4,7 @@ import json
 from collections.abc import Iterable
 from typing import Any, TypeVar
 
-from peewee import CharField, ForeignKeyField, TextField
+from clorm import Field
 
 from taxonomy import getinput
 
@@ -12,7 +12,7 @@ from ... import adt, events
 from ..constants import SOURCE_LANGUAGE_SYNONYMS, SourceLanguage
 from ..helpers import to_int
 from ..openlibrary import get_from_isbn
-from .base import ADTField, BaseModel
+from .base import ADTField, BaseModel, TextOrNullField
 from .citation_group import CitationGroup
 from .person import AuthorTag, Person, get_new_authors_list
 
@@ -24,23 +24,21 @@ class Book(BaseModel):
     save_event = events.Event["Book"]()
     label_field = "title"
     call_sign = "B"
+    clorm_table_name = "book"
 
-    author_tags = ADTField(lambda: AuthorTag, null=True)
-    year = CharField(null=True)
-    title = CharField(null=False)
-    subtitle = CharField(null=True)
-    pages = CharField(null=True)  # number of pages in book
-    isbn = CharField(null=True)
-    publisher = CharField(null=True)
-    tags = ADTField(lambda: BookTag, null=True, is_ordered=False)
-    citation_group = ForeignKeyField(CitationGroup, null=True)
-    dewey = CharField(null=True)
-    loc = CharField(null=True)
-    data = TextField(null=True)
-    category = CharField(null=True)
-
-    class Meta:
-        db_table = "book"
+    author_tags = ADTField["AuthorTag"]()
+    year = Field[str | None]()
+    title = Field[str]()
+    subtitle = Field[str | None]()
+    pages = Field[str | None]()  # number of pages in book
+    isbn = Field[str | None]()
+    publisher = Field[str | None]()
+    tags = ADTField["BookTag"](is_ordered=False)
+    citation_group = Field[CitationGroup | None]()
+    dewey = Field[str | None]()
+    loc = Field[str | None]()
+    data = TextOrNullField()
+    category = Field[str | None]()
 
     @classmethod
     def create_interactively(
@@ -110,7 +108,7 @@ class Book(BaseModel):
             self.loc = data["lc_classifications"][0]
         if data.get("publish_date"):
             self.year = data["publish_date"]
-        self.data = json.dumps(data, separators=(",", ":"))
+        self.data = json.dumps(data, separators=(",", ":"))  # type: ignore[assignment]
         self.title = data["title"]
         if data.get("isbn_13"):
             self.isbn = data["isbn_13"][0]
@@ -150,7 +148,7 @@ class Book(BaseModel):
     def get_required_fields(self) -> Iterable[str]:
         yield from [
             field
-            for field in self._meta.fields
+            for field in self.clorm_fields
             if field not in ("subtitle", "data", "loc", "dewey")
         ]
 

@@ -9,9 +9,9 @@ import sys
 import time
 from collections import Counter
 from collections.abc import Callable, Iterable, Sequence
-from typing import IO, TYPE_CHECKING, Any, ClassVar, NotRequired, TypeAlias
+from typing import IO, TYPE_CHECKING, Any, ClassVar, NotRequired, Self, TypeAlias
 
-from peewee import CharField, ForeignKeyField, IntegerField, TextField
+from clorm import DoesNotExist, Field, Query
 
 from taxonomy import adt, events, getinput, parsing
 from taxonomy.apis import bhl
@@ -38,8 +38,9 @@ from ..article import Article
 from ..base import (
     ADTField,
     BaseModel,
-    EnumField,
     LintConfig,
+    TextField,
+    TextOrNullField,
     get_str_completer,
     get_tag_based_derived_field,
 )
@@ -90,75 +91,66 @@ class Name(BaseModel):
     }
     excluded_fields = {"data"}
     markdown_fields = {"verbatim_citation"}
+    clorm_table_name = "name"
 
     # Basic data
-    group = EnumField(Group)
-    root_name = CharField()
-    status = EnumField(Status)
-    taxon = ForeignKeyField(Taxon, related_name="names", db_column="taxon_id")
-    original_name = CharField(null=True)
+    group = Field[Group]()
+    root_name = Field[str]()
+    status = Field[Status]()
+    taxon = Field[Taxon]("taxon_id", related_name="names")
+    original_name = Field[str | None]()
     # Original name, with corrections for issues like capitalization and diacritics. Should not correct incorrect original spellings
     # for other reasons (e.g., prevailing usage). Consider a case where Gray (1825) names _Mus Somebodyi_, then Gray (1827) spells it
     # _Mus Somebodii_ and all subsequent authors follow this usage, rendering it a justified emendation. In this case, the 1825 name
     # should have original_name _Mus Somebodyi_, corrected original name _Mus somebodyi_, and root name _somebodii_. The 1827 name
     # should be listed as a justified emendation.
-    corrected_original_name = CharField(null=True)
-    nomenclature_status = EnumField(
-        NomenclatureStatus, default=NomenclatureStatus.available
+    corrected_original_name = Field[str | None]()
+    nomenclature_status = Field[NomenclatureStatus](
+        default=NomenclatureStatus.available
     )
     # for redirects
-    target = ForeignKeyField(
-        "self", null=True, db_column="target", related_name="redirects"
-    )
+    target = Field[Self | None]("target", related_name="redirects")
 
     # Citation and authority
-    author_tags = ADTField(lambda: AuthorTag, null=True)
-    original_citation = ForeignKeyField(
-        Article, null=True, db_column="original_citation_id", related_name="new_names"
+    author_tags = ADTField["AuthorTag"]()
+    original_citation = Field[Article | None](
+        "original_citation_id", related_name="new_names"
     )
-    page_described = CharField(null=True)
-    verbatim_citation = CharField(null=True)
-    citation_group = ForeignKeyField(
-        CitationGroup, null=True, db_column="citation_group", related_name="names"
-    )
-    year = CharField(null=True)  # redundant with data for the publication itself
+    page_described = Field[str | None]()
+    verbatim_citation = Field[str | None]()
+    citation_group = Field[CitationGroup | None]("citation_group", related_name="names")
+    year = Field[str | None]()  # redundant with data for the publication itself
 
     # Gender and stem
-    name_complex = ForeignKeyField(NameComplex, null=True, related_name="names")
-    species_name_complex = ForeignKeyField(
-        SpeciesNameComplex, null=True, related_name="names"
+    name_complex = Field[NameComplex | None]("name_complex_id", related_name="names")
+    species_name_complex = Field[SpeciesNameComplex | None](
+        "species_name_complex_id", related_name="names"
     )
 
     # Types
-    type = ForeignKeyField(
-        "self", null=True, db_column="type_id", related_name="typified_names"
+    type = Field[Self | None](
+        "type_id", related_name="typified_names"
     )  # for family and genus group
-    verbatim_type = CharField(null=True)  # deprecated
-    type_locality = ForeignKeyField(
-        Location,
-        related_name="type_localities",
-        db_column="type_locality_id",
-        null=True,
+    verbatim_type = Field[str | None]()  # deprecated
+    type_locality = Field[Location | None](
+        "type_locality_id", related_name="type_localities"
     )
-    type_specimen = CharField(null=True)
-    collection = ForeignKeyField(
-        Collection, null=True, db_column="collection_id", related_name="type_specimens"
+    type_specimen = Field[str | None]()
+    collection = Field[Collection | None](
+        "collection_id", related_name="type_specimens"
     )
-    genus_type_kind = EnumField(constants.TypeSpeciesDesignation, null=True)
-    species_type_kind = EnumField(constants.SpeciesGroupType, null=True)
-    type_tags = ADTField(lambda: TypeTag, null=True, is_ordered=False)
-    original_rank = EnumField(constants.Rank, null=True)
+    genus_type_kind = Field[constants.TypeSpeciesDesignation | None]()
+    species_type_kind = Field[constants.SpeciesGroupType | None]()
+    type_tags = ADTField["TypeTag"](is_ordered=False)
+    original_rank = Field[constants.Rank | None]()
 
     # Miscellaneous data
-    original_parent = ForeignKeyField(  # for species-group names
-        "self", null=True, db_column="original_parent", related_name="original_children"
+    original_parent = Field[Self | None](  # for species-group names
+        related_name="original_children"
     )
-    data = TextField(null=True)
-    _definition = CharField(null=True, db_column="definition")
-    tags = ADTField(lambda: NameTag, null=True, is_ordered=False)
-
-    class Meta:
-        db_table = "name"
+    data = TextOrNullField()
+    _definition = Field[str | None]("definition")
+    tags = ADTField["NameTag"](is_ordered=False)
 
     derived_fields = [
         DerivedField(
@@ -590,13 +582,13 @@ class Name(BaseModel):
                 return super().get_value_for_field(field, default=default)
         elif field == "original_rank":
             if self.original_rank is None:
-                inferred = self.infer_original_rank()
-                if inferred is not None:
+                inferred_rank = self.infer_original_rank()
+                if inferred_rank is not None:
                     print(
-                        f"inferred original_rank to be {inferred!r} from"
+                        f"inferred original_rank to be {inferred_rank!r} from"
                         f" {self.original_name!r}"
                     )
-                    return inferred
+                    return inferred_rank
             if self.group is Group.species:
                 rank_default = Rank.species
             elif self.group is Group.genus:
@@ -864,7 +856,7 @@ class Name(BaseModel):
         if "additional" not in data:
             data["additional"] = []
         data["additional"].append(new_data)
-        self.data = json.dumps(data)
+        self.data = json.dumps(data)  # type: ignore[assignment]
 
     def add_data(self, field: str, value: Any, concat_duplicate: bool = False) -> None:
         data = self._load_data()
@@ -878,7 +870,7 @@ class Name(BaseModel):
             else:
                 raise ValueError(f"{field} is already in {data}")
         data[field] = value
-        self.data = json.dumps(data)
+        self.data = json.dumps(data)  # type: ignore[assignment]
 
     def get_data(self, field: str) -> Any:
         data = self._load_data()
@@ -919,7 +911,7 @@ class Name(BaseModel):
         self.type_tags = tuple(t for t in type_tags if t != tag)  # type: ignore[assignment]
 
     @classmethod
-    def with_type_tag(cls, tag_cls: TypeTagCons) -> Iterable[Name]:
+    def with_type_tag(cls, tag_cls: TypeTagCons) -> Query[Name]:
         return cls.select_valid().filter(Name.type_tags.contains(f"[{tag_cls._tag},"))
 
     def has_type_tag(self, tag_cls: TypeTagCons) -> bool:
@@ -1037,7 +1029,7 @@ class Name(BaseModel):
         parenthesized_bits = []
         try:
             taxon = self.taxon
-        except Taxon.DoesNotExist:
+        except DoesNotExist:
             parenthesized_bits.append("= <invalid taxon>")
         else:
             if taxon.valid_name != self.original_name:
@@ -1206,7 +1198,7 @@ class Name(BaseModel):
         self.add_tag(
             CONSTRUCTABLE_STATUS_TO_TAG[status](name=of_name, comment=comment or "")
         )
-        self.nomenclature_status = status  # type: ignore
+        self.nomenclature_status = status
 
     def combination_from_paper(self) -> Name | None:
         return self.add_combination(from_paper=True)
@@ -1305,7 +1297,7 @@ class Name(BaseModel):
             tag = NameTag.PreoccupiedBy
         self.add_tag(tag(name, comment or ""))
         if self.nomenclature_status == NomenclatureStatus.available:
-            self.nomenclature_status = NomenclatureStatus.preoccupied  # type: ignore
+            self.nomenclature_status = NomenclatureStatus.preoccupied
         else:
             print(f"not changing status because it is {self.nomenclature_status!r}")
 
@@ -1960,7 +1952,7 @@ class Name(BaseModel):
         assert parent is not None, f"found no parent for {self}"
         new_taxon = Taxon.make_or_revalidate(rank, self, old_taxon.age, parent)
         self.taxon = new_taxon
-        self.status = status  # type: ignore
+        self.status = status
         new_taxon.recompute_name()
         return new_taxon
 
@@ -1973,7 +1965,7 @@ class Name(BaseModel):
         if self.type_tags and into.type_tags:
             into.type_tags += self.type_tags
         self._merge_fields(into, exclude={"id"})
-        self.status = Status.redirect  # type: ignore
+        self.status = Status.redirect
         self.target = into
 
     def open_zoobank(self) -> None:
@@ -2009,7 +2001,7 @@ class Name(BaseModel):
 
     def remove(self, reason: str | None = None) -> None:
         print("Deleting name: " + self.description())
-        self.status = Status.removed  # type: ignore
+        self.status = Status.removed
         if reason:
             self.add_comment(constants.CommentKind.removal, reason, None, "")
 
@@ -2259,8 +2251,8 @@ class Name(BaseModel):
 
     def detect_type_from_verbatim_type(self, verbatim_type: str) -> list[Name]:
         def _filter_by_authority(
-            candidates: list[Name], authority: str | None
-        ) -> list[Name]:
+            candidates: Iterable[Name], authority: str | None
+        ) -> Iterable[Name]:
             if authority is None:
                 return candidates
             split = re.split(r", (?=\d)", authority, maxsplit=1)
@@ -2284,8 +2276,10 @@ class Name(BaseModel):
                 type_name, authority = verbatim[0], None
             else:
                 type_name, authority = verbatim
-            return _filter_by_authority(
-                parent.find_names(verbatim[0], group=Group.genus), authority
+            return list(
+                _filter_by_authority(
+                    parent.find_names(verbatim[0], group=Group.genus), authority
+                )
             )
         else:
             type_name, authority = self._split_authority(verbatim_type)
@@ -2316,11 +2310,12 @@ class Name(BaseModel):
             ]
             # if we failed to find using the original_name, try the valid_name
             if not candidates and not find_abbrev:
-                candidates = (
-                    Name.filter(Name.status == Status.valid)
-                    .join(Taxon)
-                    .where(Taxon.valid_name == type_name)
-                )
+                candidate_taxa = Taxon.select().filter(valid_name=type_name)
+                candidates = [
+                    taxon.base_name
+                    for taxon in candidate_taxa
+                    if taxon.base_name.status is Status.valid
+                ]
                 candidates = _filter_by_authority(candidates, authority)
                 candidates = [
                     candidate
@@ -2429,18 +2424,14 @@ class NameComment(BaseModel):
     call_sign = "NCO"
     grouping_field = "kind"
     fields_may_be_invalid = {"name"}
+    clorm_table_name = "name_comment"
 
-    name = ForeignKeyField(Name, related_name="comments", db_column="name_id")
-    kind = EnumField(constants.CommentKind)
-    date = IntegerField()
+    name = Field[Name]("name_id", related_name="comments")
+    kind = Field[constants.CommentKind]()
+    date = Field[int]()
     text = TextField()
-    source = ForeignKeyField(
-        Article, related_name="name_comments", null=True, db_column="source_id"
-    )
+    source = Field[Article | None]("source_id", related_name="name_comments")
     page = TextField()
-
-    class Meta:
-        db_table = "name_comment"
 
     search_fields = [
         SearchField(SearchFieldType.literal, "kind"),

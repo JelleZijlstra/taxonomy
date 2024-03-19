@@ -1,21 +1,20 @@
-from peewee import CharField, ForeignKeyField
+from clorm import Field
 
 from ..constants import OccurrenceStatus
 from .article import Article
-from .base import BaseModel, EnumField
+from .base import BaseModel
 from .location import Location
 from .taxon import Taxon
 
 
 class Occurrence(BaseModel):
-    taxon = ForeignKeyField(Taxon, related_name="occurrences", db_column="taxon_id")
-    location = ForeignKeyField(Location, related_name="taxa", db_column="location_id")
-    comment = CharField()
-    status = EnumField(OccurrenceStatus, default=OccurrenceStatus.valid)
-    source = ForeignKeyField(
-        Article, related_name="occurrences", null=True, db_column="source_id"
-    )
+    taxon = Field[Taxon]("taxon_id", related_name="occurrences")
+    location = Field[Location]("location_id", related_name="taxa")
+    comment = Field[str]()
+    status = Field[OccurrenceStatus](default=OccurrenceStatus.valid)
+    source = Field[Article | None]("source_id", related_name="occurrences")
     call_sign = "O"
+    clorm_table_name = "occurrence"
     # The taxon field can become invalid when a taxon is merged into another. Allowing this
     # is not ideal because we can also get an Occurrence from a location. Alternatively,
     # we could reassign the occurrence to the other taxon, but that may cause duplicate

@@ -118,7 +118,7 @@ class DerivedField(Generic[T]):
             if issubclass(typ, taxonomy.db.models.base.BaseModel):
                 # Not select_valid(), we'll filter out deleted names the next time
                 # we regenerate the derived data.
-                return typ.select().filter(typ.id == serialized).get()
+                return typ(serialized)
             elif issubclass(typ, enum.Enum):
                 return typ(serialized)
         if (

@@ -25,15 +25,16 @@ import os
 import os.path
 import re
 import shutil
+import sqlite3
 from collections import Counter, defaultdict
 from collections.abc import Callable, Hashable, Iterable, Iterator, Mapping, Sequence
 from itertools import groupby
 from pathlib import Path
 from typing import Any, Generic, NamedTuple, TypeVar, cast
 
+import clorm
 import httpx
 import IPython
-import peewee
 import requests
 import unidecode
 from traitlets.config.loader import Config
@@ -67,7 +68,6 @@ from .db.models import (
     Person,
     Taxon,
     TypeTag,
-    database,
 )
 from .db.models.base import LintConfig, Linter, ModelT
 from .db.models.person import PersonLevel
@@ -89,11 +89,6 @@ COMMAND_SETS = [
 command = _CS.register
 
 
-def _reconnect() -> None:
-    database.close()
-    database.connect()
-
-
 ns = {
     "constants": constants,
     "helpers": helpers,
@@ -104,7 +99,6 @@ ns = {
     "Other": definition.Other,
     "N": Name.getter("root_name"),
     "O": Name.getter("corrected_original_name"),
-    "reconnect": _reconnect,
     "NameTag": models.NameTag,
     "PersonLevel": PersonLevel,
     "TypeTag": models.TypeTag,
@@ -195,7 +189,7 @@ def _add_missing_data(fn: _MissingDataProducer) -> Callable[..., None]:
 def add_original_names() -> Iterable[tuple[Name, str]]:
     for name in (
         Name.select_valid()
-        .filter(Name.original_citation != None, Name.original_name >> None)
+        .filter(Name.original_citation != None, Name.original_name == None)
         .order_by(Name.original_name)
     ):
         message = (
@@ -212,7 +206,7 @@ def add_page_described() -> Iterable[tuple[Name, str]]:
         Name.select_valid()
         .filter(
             Name.original_citation != None,
-            Name.page_described >> None,  # noqa: E711
+            Name.page_described == None,
             Name.year != "in press",
         )
         .order_by(Name.original_citation, Name.original_name)
@@ -246,7 +240,7 @@ def make_county_regions(
     for county in counties:
         try:
             models.Region.make(county, constants.RegionKind.county, state)
-        except peewee.IntegrityError:
+        except sqlite3.IntegrityError:
             print(f"{county} already exists")
     _more_precise_by_county(state, counties)
     more_precise(state)
@@ -289,8 +283,8 @@ def add_types() -> None:
         Name.select_valid()
         .filter(
             Name.original_citation != None,
-            Name.type >> None,
-            Name.year > "1930",  # noqa: E711
+            Name.type == None,
+            Name.year > "1930",
             Name.group == Group.genus,
         )
         .order_by(Name.original_citation)
@@ -332,9 +326,9 @@ def detect_types(max_count: int | None = None, verbose: bool = False) -> None:
     group = (Group.family, Group.genus)
     for name in (
         Name.select_valid()
-        .filter(Name.verbatim_type != None, Name.type >> None, Name.group << group)
+        .filter(Name.verbatim_type != None, Name.type == None, Name.group.is_in(group))
         .limit(max_count)
-    ):  # noqa: E711
+    ):
         count += 1
         if name.detect_and_set_type(verbatim_type=name.verbatim_type, verbose=verbose):
             successful_count += 1
@@ -364,7 +358,8 @@ def detect_types_from_root_names(max_count: int | None = None) -> None:
     successful_count = 0
     for name in (
         Name.select_valid()
-        .filter(Name.group == Group.family, Name.type >> None)
+        .filter(Name.group == Group.family, Name.type == None)
+        # static analysis: ignore[undefined_attribute]
         .order_by(Name.id.desc())  # type: ignore[attr-defined]
         .limit(max_count)
     ):
@@ -399,7 +394,7 @@ def endswith(end: str) -> list[Name]:
 def detect_complexes() -> None:
     endings = list(models.NameEnding.select())
     for name in Name.select_valid().filter(
-        Name.group == Group.genus, Name.name_complex >> None
+        Name.group == Group.genus, Name.name_complex == None
     ):
         inferred = find_ending(name, endings)
         if inferred is None:
@@ -427,7 +422,7 @@ def detect_species_name_complexes(dry_run: bool = False) -> None:
     success = 0
     total = 0
     for name in Name.select_valid().filter(
-        Name.group == Group.species, Name.species_name_complex >> None
+        Name.group == Group.species, Name.species_name_complex == None
     ):
         if not name.nomenclature_status.requires_name_complex():
             continue
@@ -537,7 +532,7 @@ def find_first_declension_adjectives(dry_run: bool = True) -> dict[str, int]:
     )
     species_name_to_names: dict[str, list[Name]] = defaultdict(list)
     for name in Name.select_valid().filter(
-        Name.group == Group.species, Name.species_name_complex >> None
+        Name.group == Group.species, Name.species_name_complex == None
     ):
         species_name_to_names[name.root_name].append(name)
     count = 0
@@ -1038,7 +1033,7 @@ def label_name(name: Name) -> LabeledName:
 
 @command
 def labeled_authorless_names(attribute: str = "author_tags") -> list[LabeledName]:
-    nams = Name.select_valid().filter(getattr(Name, attribute) >> None)
+    nams = Name.select_valid().filter(getattr(Name, attribute) == None)
     return [
         label_name(name) for name in nams if attribute in name.get_required_fields()
     ]
@@ -1167,14 +1162,15 @@ def article_stats(includefoldertree: bool = False) -> None:
 @command
 def autoset_original_name() -> None:
     for nam in Name.select_valid().filter(
-        Name.original_name >> None, Name.group << (Group.genus, Group.high)
+        Name.original_name == None, Name.group.is_in((Group.genus, Group.high))
     ):
         nam.original_name = nam.root_name
 
 
 @generator_command
 def childless_taxa() -> Iterable[Taxon]:
-    return Taxon.raw(
+    # TODO make this work again
+    return Taxon.raw(  # static analysis: ignore[undefined_attribute]
         f"""
             SELECT *
             FROM taxon
@@ -1206,7 +1202,7 @@ def fossilize(
     for taxon in taxa:
         if taxon.age != from_status:
             continue
-        taxon.age = to_status  # type: ignore
+        taxon.age = to_status
         for child in taxon.children:
             fossilize(child, to_status=to_status, from_status=from_status)
 
@@ -1355,7 +1351,7 @@ def fill_citation_group_for_type(
         name = getattr(art, field)
         try:
             cg = CitationGroup.get(name=name)
-        except CitationGroup.DoesNotExist:
+        except clorm.DoesNotExist:
             print(f"Create: {name}, type={article_type}")
             if dry_run:
                 continue
@@ -1501,7 +1497,7 @@ def names_with_location_detail_without_type_loc(
     if taxon is None:
         nams = Name.select_valid().filter(
             Name.type_tags != None,
-            Name.type_locality >> None,
+            Name.type_locality == None,
             Name.group == Group.species,
         )
     else:
@@ -1541,7 +1537,7 @@ def fill_type_locality_from_location_detail(
 def names_with_type_detail_without_type(taxon: Taxon | None = None) -> Iterable[Name]:
     if taxon is None:
         nams = Name.select_valid().filter(
-            Name.type_tags != None, Name.type >> None, Name.group == Group.genus
+            Name.type_tags != None, Name.type == None, Name.group == Group.genus
         )
     else:
         nams = [
@@ -1986,11 +1982,12 @@ def check_expected_base_name() -> Iterable[Taxon]:
 @command
 def fix_justified_emendations() -> None:
     query = Name.select_valid().filter(
-        Name.nomenclature_status
-        << (
-            NomenclatureStatus.as_emended,
-            NomenclatureStatus.justified_emendation,
-            NomenclatureStatus.incorrect_original_spelling,
+        Name.nomenclature_status.is_in(
+            (
+                NomenclatureStatus.as_emended,
+                NomenclatureStatus.justified_emendation,
+                NomenclatureStatus.incorrect_original_spelling,
+            )
         )
     )
     run_linter_and_fix(Name, models.name.lint.check_justified_emendations, query)
@@ -2050,11 +2047,12 @@ def move_to_lowest_rank(dry_run: bool = False) -> Iterable[tuple[Name, str]]:
 
 @command
 def resolve_redirects(dry_run: bool = False) -> None:
+    cfg = LintConfig(autofix=not dry_run)
     for model_cls in models.BaseModel.__subclasses__():
         for obj in getinput.print_every_n(
             model_cls.select(), label=f"{model_cls.__name__}s"
         ):
-            for _ in obj.check_all_fields(autofix=not dry_run):
+            for _ in obj.check_all_fields(cfg):
                 pass
 
 
@@ -2446,9 +2444,7 @@ def find_dois() -> None:
 
 @command
 def reset_db() -> None:
-    database = models.base.database
-    database.close()
-    database.connect()
+    pass  # TODO
 
 
 @command
@@ -2481,7 +2477,7 @@ def occ(
         return None
     try:
         o = t.at(loc)
-    except models.Occurrence.DoesNotExist:
+    except clorm.DoesNotExist:
         o = t.add_occurrence(loc, source, **kwargs)
         print("ADDED: %s" % o)
     else:
@@ -2558,9 +2554,9 @@ def warm_all_caches() -> None:
         if hasattr(model, "label_field"):
             print(f"{model}: warming None getter")
             model.getter(None).rewarm_cache()
-        for name, field in model._meta.fields.items():
+        for name, field in model.clorm_fields.items():
             getter = model.getter(name)
-            if isinstance(field, peewee.CharField) or getter._cache_key() in keys:
+            if field.type_object is str or getter._cache_key() in keys:
                 print(f"{model}: warming {name} ({field})")
                 getter.rewarm_cache()
     write_derived_data()
@@ -2568,6 +2564,7 @@ def warm_all_caches() -> None:
 
 @command
 def show_queries(on: bool) -> None:
+    # TODO make this work in clorm if we want to
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger("peewee")
     if on:
@@ -2811,7 +2808,9 @@ def lint_recent(limit: int = 1000) -> None:
     for cls in models.BaseModel.__subclasses__():
         getinput.print_header(cls)
         run_linter_and_fix(
-            cls, query=cls.select_valid().order_by(cls.id.desc()).limit(limit)
+            cls,
+            # static analysis: ignore[undefined_attribute]
+            query=cls.select_valid().order_by(cls.id.desc()).limit(limit),
         )
 
 
@@ -2911,7 +2910,11 @@ def find_potential_person_clusters(interactive: bool = True) -> None:
         all_persons = list(
             Person.select_valid().filter(
                 Person.family_name == person.family_name,
-                ~(Person.type << (PersonType.soft_redirect, PersonType.hard_redirect)),
+                (
+                    Person.type.is_not_in(
+                        (PersonType.soft_redirect, PersonType.hard_redirect)
+                    )
+                ),
             )
         )
         if len(all_persons) <= 1:
@@ -2993,6 +2996,7 @@ def lint_collections() -> None:
     total = models.Collection.select_valid().count()
     print(f"{total} total")
     for coll in getinput.print_every_n(
+        # static analysis: ignore[undefined_attribute]
         models.Collection.select_valid().order_by(models.Collection.id.desc()),  # type: ignore[attr-defined]
         n=5,
         label=f"of {total} collections",
@@ -3023,7 +3027,7 @@ def lint_collections() -> None:
 @command
 def find_valid_names_with_invalid_bases() -> None:
     for txn in Taxon.select_valid().filter(
-        Taxon.age << (AgeClass.extant, AgeClass.recently_extinct),
+        Taxon.age.is_in((AgeClass.extant, AgeClass.recently_extinct)),
         Taxon.rank == Rank.species,
     ):
         if (
@@ -3043,7 +3047,6 @@ def find_valid_names_with_invalid_bases() -> None:
 def download_bhl_parts() -> None:
     options = get_options()
     # Should fix type of with_type_tag()
-    # static analysis: ignore[undefined_attribute]
     for nam in Name.with_type_tag(TypeTag.AuthorityPageLink).filter(
         Name.original_citation == None
     ):

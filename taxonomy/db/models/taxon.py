@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import operator
 import re
+import sqlite3
 import sys
 from collections import Counter, defaultdict
 from collections.abc import Callable, Container, Iterable, Sequence
 from functools import lru_cache
-from typing import IO, Any, assert_never, cast
+from typing import IO, Any, Self, assert_never, cast
 
-import peewee
-from peewee import BooleanField, CharField, ForeignKeyField, TextField
+from clorm import DoesNotExist, Field
 
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
 
@@ -27,7 +27,7 @@ from ..constants import (
 )
 from ..derived_data import DerivedField, SetLater
 from .article import Article
-from .base import ADTField, BaseModel, EnumField, LintConfig
+from .base import ADTField, BaseModel, LintConfig, TextOrNullField
 from .fill_data import fill_data_for_names
 
 
@@ -72,18 +72,17 @@ class Taxon(BaseModel):
     label_field = "valid_name"
     grouping_field = "age"
     call_sign = "T"
+    clorm_table_name = "taxon"
 
-    rank = EnumField(Rank)
-    valid_name = CharField(default="")
-    age = EnumField(AgeClass)
-    parent = ForeignKeyField(
-        "self", related_name="children", null=True, db_column="parent_id"
-    )
-    data = TextField(null=True)
-    comments = TextField(null=True)
-    is_page_root = BooleanField(default=False)
-    base_name = peewee.DeferredForeignKey("Name")
-    tags = ADTField(lambda: models.tags.TaxonTag)
+    rank = Field[Rank]()
+    valid_name = Field[str](default="")
+    age = Field[AgeClass]()
+    parent = Field[Self | None]("parent_id", related_name="children")
+    data = TextOrNullField()
+    comments = TextOrNullField()
+    is_page_root = Field[bool](default=False)
+    base_name = Field["models.Name"]("base_name_id")
+    tags = ADTField["models.tags.TaxonTag"](is_ordered=False)
 
     derived_fields = [
         DerivedField("class_", SetLater, _make_parent_getter(0)),
@@ -95,9 +94,6 @@ class Taxon(BaseModel):
         SearchField(SearchFieldType.literal, "age"),
         SearchField(SearchFieldType.literal, "rank"),
     ]
-
-    class Meta:
-        db_table = "taxon"
 
     name = property(lambda self: self.base_name)
 
@@ -310,14 +306,14 @@ class Taxon(BaseModel):
             if self.rank == Rank.subgenus:
                 self._needs_is = (
                     Taxon.select()
-                    .where(Taxon.parent == self, Taxon.rank == Rank.species_group)
+                    .filter(Taxon.parent == self, Taxon.rank == Rank.species_group)
                     .count()
                     > 0
                 )
             elif self.rank == Rank.genus:
                 self._needs_is = (
                     Taxon.select_valid()
-                    .where(
+                    .filter(
                         Taxon.parent == self,
                         (Taxon.rank == Rank.subgenus)
                         | (Taxon.rank == Rank.species_group),
@@ -909,7 +905,7 @@ class Taxon(BaseModel):
                 comment=comment,
                 status=status,
             )
-        except peewee.IntegrityError:
+        except sqlite3.IntegrityError:
             print("DUPLICATE OCCURRENCE")
             return self.at(location)  # type: ignore
 
@@ -1069,9 +1065,7 @@ class Taxon(BaseModel):
     def compute_valid_name(self) -> str:
         name = self.base_name
         if name is None:
-            raise models.Name.DoesNotExist(
-                "Taxon with id %d has an invalid base_name" % self.id
-            )
+            raise DoesNotExist("Taxon with id %d has an invalid base_name" % self.id)
         if self.rank == Rank.division:
             return "%s Division" % name.root_name
         elif self.is_nominate_subgenus():
@@ -1189,7 +1183,7 @@ class Taxon(BaseModel):
         self._merge_fields(into, exclude={"id", "base_name"})
         self.base_name.merge(into.base_name, allow_valid=True)
         self.parent = into
-        self.age = AgeClass.redirect  # type: ignore
+        self.age = AgeClass.redirect
 
     def synonymize(self, to_taxon: Taxon | None = None) -> models.Name:
         if to_taxon is None:
@@ -1214,7 +1208,7 @@ class Taxon(BaseModel):
             try:
                 occ.taxon = to_taxon
                 occ.add_comment("Previously under _%s_." % self.name)
-            except peewee.IntegrityError:
+            except sqlite3.IntegrityError:
                 print("dropping duplicate occurrence %s" % occ)
                 existing = to_taxon.at(occ.location)
                 additional_comment = (
@@ -1225,7 +1219,7 @@ class Taxon(BaseModel):
                 existing.add_comment(additional_comment)
         to_taxon = to_taxon.reload()
         to_taxon.base_name.status = original_to_status
-        self.age = AgeClass.redirect  # type: ignore
+        self.age = AgeClass.redirect
         self.parent = to_taxon
         return models.Name.get(models.Name.id == nam.id)
 
@@ -1314,9 +1308,9 @@ class Taxon(BaseModel):
         if remove_names:
             for name in self.sorted_names():
                 name.remove(reason=reason)
-        self.age = AgeClass.removed  # type: ignore
+        self.age = AgeClass.removed
         if reason is not None:
-            self.data = reason
+            self.data = reason  # type: ignore[assignment]
 
     def all_names(
         self,
@@ -1604,7 +1598,7 @@ class Taxon(BaseModel):
     def __repr__(self) -> str:
         return str(self)
 
-    def __getattr__(self, attr: str) -> models.Name:
+    def get_name(self, attr: str) -> models.Name:
         """Returns a name belonging to this taxon with the given root_name or original_name."""
         if attr.startswith("_"):
             raise AttributeError(attr)
@@ -1627,10 +1621,9 @@ class Taxon(BaseModel):
                 raise AttributeError(attr)
             return nam
 
-    def __dir__(self) -> list[str]:
-        result = set(super().__dir__())
+    def get_acceptable_names(self) -> list[str]:
         names = self.sorted_names()
-        result |= {name.original_name for name in names}
+        result = {name.original_name for name in names}
         result |= {name.root_name for name in names}
         return [name for name in result if name is not None and " " not in name]
 

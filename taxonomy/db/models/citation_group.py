@@ -1,13 +1,14 @@
 import builtins
 import functools
 import re
+import sqlite3
 import subprocess
 from collections import Counter, defaultdict
 from collections.abc import Iterable
 from datetime import date
-from typing import Any, NotRequired, TypeVar
+from typing import Any, NotRequired, Self, TypeVar
 
-from peewee import BooleanField, CharField, ForeignKeyField, IntegrityError
+from clorm import Field
 
 from taxonomy.apis import bhl
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
@@ -15,7 +16,7 @@ from taxonomy.apis.cloud_search import SearchField, SearchFieldType
 from ... import adt, config, events, getinput
 from .. import constants, helpers, models
 from ..derived_data import DerivedField, LazyType
-from .base import ADTField, BaseModel, EnumField, LintConfig
+from .base import ADTField, BaseModel, LintConfig
 from .region import Region
 
 CGTagT = TypeVar("CGTagT", bound="CitationGroupTag")
@@ -28,17 +29,15 @@ class CitationGroup(BaseModel):
     grouping_field = "type"
     call_sign = "CG"
     excluded_fields = {"tags", "archive"}
+    clorm_table_name = "citation_group"
 
-    name = CharField()
-    region = ForeignKeyField(Region, related_name="citation_groups", null=True)
-    deleted = BooleanField(default=False)
-    type = EnumField(constants.ArticleType)
-    target = ForeignKeyField("self", related_name="redirects", null=True)
-    tags = ADTField(lambda: CitationGroupTag, null=True, is_ordered=False)
-    archive = CharField(null=True)
-
-    class Meta:
-        db_table = "citation_group"
+    name = Field[str]()
+    region = Field[Region | None]("region_id", related_name="citation_groups")
+    deleted = Field[bool](default=False)
+    type = Field[constants.ArticleType]()
+    target = Field[Self | None]("target_id", related_name="redirects")
+    tags = ADTField["CitationGroupTag"](is_ordered=False)
+    archive = Field[str | None]()
 
     derived_fields = [
         DerivedField(
@@ -540,7 +539,7 @@ class CitationGroup(BaseModel):
             print(f"Setting region: {self.region}")
             other.region = self.region
         self.target = other
-        self.type = constants.ArticleType.REDIRECT  # type: ignore
+        self.type = constants.ArticleType.REDIRECT
 
     def add_alias(self) -> "CitationGroup | None":
         alias_name = self.getter("name").get_one_key("alias> ")
@@ -642,12 +641,10 @@ class CitationGroup(BaseModel):
 class CitationGroupPattern(BaseModel):
     label_field = "pattern"
     call_sign = "CGP"
+    clorm_table_name = "citation_group_patter"
 
-    pattern = CharField(null=False)
-    citation_group = ForeignKeyField(CitationGroup, related_name="patterns", null=False)
-
-    class Meta:
-        db_table = "citation_group_pattern"
+    pattern = Field[str]()
+    citation_group = Field[CitationGroup](related_name="patterns")
 
     @classmethod
     def make(
@@ -656,7 +653,7 @@ class CitationGroupPattern(BaseModel):
         pattern = helpers.simplify_string(pattern)
         try:
             return cls.create(pattern=pattern, citation_group=citation_group)
-        except IntegrityError:
+        except sqlite3.IntegrityError:
             existing = cls.get(pattern=pattern)
             if existing.citation_group != citation_group:
                 raise ValueError(

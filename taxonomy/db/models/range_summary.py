@@ -180,7 +180,7 @@ def get_datapoints(taxon: Taxon) -> Sequence[DataPoint]:
         if nam.type_locality is not None
     ]
     for occ in taxon.occurrences.filter(
-        Occurrence.status << (OccurrenceStatus.valid, OccurrenceStatus.extirpated)
+        Occurrence.status.is_in((OccurrenceStatus.valid, OccurrenceStatus.extirpated))
     ):
         datapoints.append(OccurrenceDataPoint(occ.location, occ.taxon, occ.source))
     for child in taxon.get_children():

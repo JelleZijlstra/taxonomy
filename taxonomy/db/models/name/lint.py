@@ -411,7 +411,7 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 )
                 if cfg.autofix:
                     nam.genus_type_kind = (
-                        TypeSpeciesDesignation.designated_by_the_commission  # type: ignore
+                        TypeSpeciesDesignation.designated_by_the_commission
                     )
             tags.append(tag)
         elif isinstance(tag, TypeTag.Date):
@@ -1252,7 +1252,7 @@ def check_expected_nomenclature_status(nam: Name, cfg: LintConfig) -> Iterable[s
         )
         if cfg.autofix:
             print(f"{nam}: {message}")
-            nam.nomenclature_status = expected_status  # type: ignore[assignment]
+            nam.nomenclature_status = expected_status
         else:
             yield message
 
@@ -2057,13 +2057,14 @@ def extract_date_from_structured_quotes(nam: Name, cfg: LintConfig) -> Iterable[
     if not nam.original_citation:
         return
     for comment in nam.comments.filter(
-        NameComment.source
-        << (
-            34056,  # {Mammalia-USNM types (Fisher & Ludwig 2015).pdf}
-            33916,  # {Anomaluromorpha, Hystricomorpha, Myomorpha-USNM types.pdf}
-            29833,  # {Ferungulata-USNM types.pdf}
-            15513,  # {Castorimorpha, Sciuromorpha-USNM types.pdf}
-            9585,  # Mammalia-AMNH types (Lawrence 1993).pdf
+        NameComment.source.is_in(
+            (
+                34056,  # {Mammalia-USNM types (Fisher & Ludwig 2015).pdf}
+                33916,  # {Anomaluromorpha, Hystricomorpha, Myomorpha-USNM types.pdf}
+                29833,  # {Ferungulata-USNM types.pdf}
+                15513,  # {Castorimorpha, Sciuromorpha-USNM types.pdf}
+                9585,  # Mammalia-AMNH types (Lawrence 1993).pdf
+            )
         ),
         NameComment.kind == CommentKind.structured_quote,
     ):

@@ -86,7 +86,9 @@ def build_csvlist() -> FileList:
     csvlist = {
         f.name: f
         for f in Article.select_valid().filter(
-            Article.kind << (ArticleKind.electronic, ArticleKind.alternative_version)
+            Article.kind.is_in(
+                (ArticleKind.electronic, ArticleKind.alternative_version)
+            )
         )
     }
     print(f"done ({len(csvlist)} found)")

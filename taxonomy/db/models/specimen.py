@@ -6,10 +6,10 @@ import time
 from collections import defaultdict
 from collections.abc import Iterable
 
-from peewee import CharField, ForeignKeyField, IntegerField, TextField
+from clorm import Field
 
 from ... import adt, events, getinput
-from .base import ADTField, BaseModel, LintConfig
+from .base import ADTField, BaseModel, LintConfig, TextField
 from .location import Location
 from .region import Region
 from .taxon import Taxon
@@ -20,19 +20,17 @@ class Specimen(BaseModel):
     save_event = events.Event["Specimen"]()
     call_sign = "JZ"
     label_field = "id"
+    clorm_table_name = "specimen"
 
-    taxon = ForeignKeyField(Taxon)
-    region = ForeignKeyField(Region)
-    location = ForeignKeyField(Location, null=True)
-    taxon_text = CharField()
-    location_text = CharField()
-    date = CharField()
-    description = CharField()
-    link = CharField()
-    tags = ADTField(lambda: SpecimenTag, null=True, is_ordered=False)
-
-    class Meta:
-        db_table = "specimen"
+    taxon = Field[Taxon]()
+    region = Field[Region]()
+    location = Field[Location | None]()
+    taxon_text = Field[str]()
+    location_text = Field[str]()
+    date = Field[str]()
+    description = Field[str]()
+    link = Field[str]()
+    tags = ADTField["SpecimenTag"](is_ordered=False)
 
     @classmethod
     def create_interactively(cls, **kwargs: object) -> Specimen | None:
@@ -168,15 +166,11 @@ class Specimen(BaseModel):
 
 class SpecimenComment(BaseModel):
     call_sign = "JZCO"
+    clorm_table_name = "specimen_comment"
 
-    specimen = ForeignKeyField(
-        Specimen, related_name="comments", db_column="specimen_id"
-    )
-    date = IntegerField()
+    specimen = Field[Specimen]("specimen_id", related_name="comments")
+    date = Field[int]()
     text = TextField()
-
-    class Meta:
-        db_table = "specimen_comment"
 
     @classmethod
     def make(cls, specimen: Specimen, text: str) -> SpecimenComment:
