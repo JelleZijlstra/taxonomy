@@ -26,6 +26,7 @@ import os.path
 import re
 import shutil
 import sqlite3
+import subprocess
 from collections import Counter, defaultdict
 from collections.abc import Callable, Hashable, Iterable, Iterator, Mapping, Sequence
 from itertools import groupby
@@ -1998,7 +1999,7 @@ def run_linter_and_fix(
     model_cls: type[ModelT],
     linter: Linter[ModelT] | None = None,
     query: Iterable[ModelT] | None = None,
-    interactive: bool = True,
+    interactive: bool = False,
 ) -> None:
     """Helper for running a lint on a subset of objects and fixing the issues."""
     bad = model_cls.lint_all(linter, query=query, interactive=interactive)
@@ -3044,12 +3045,13 @@ def find_valid_names_with_invalid_bases() -> None:
 
 
 @command
-def download_bhl_parts() -> None:
+def download_bhl_parts(nams: Iterable[Name] | None = None) -> None:
     options = get_options()
-    # Should fix type of with_type_tag()
-    for nam in Name.with_type_tag(TypeTag.AuthorityPageLink).filter(
-        Name.original_citation == None
-    ):
+    if nams is None:
+        nams = Name.with_type_tag(TypeTag.AuthorityPageLink).filter(
+            Name.original_citation == None
+        )
+    for nam in nams:
         nam = nam.reload()
         if nam.original_citation is not None:
             continue
@@ -3063,12 +3065,49 @@ def download_bhl_parts() -> None:
                 url = f"https://www.biodiversitylibrary.org/partpdf/{part_id}"
                 if not getinput.yes_no(f"download {part_id} for {nam}?"):
                     return
-                print("Downloading", url)
+                print("Downloading:")
+                # Line by itself for easier copy-pasting
+                print(url)
                 response = httpx.get(url, timeout=None)
                 path = options.new_path / f"{part_id}.pdf"
                 path.write_bytes(response.content)
                 print("Adding part for name", nam)
                 models.article.check.check_new()
+
+
+@command
+def download_bhl_items(nams: Iterable[Name] | None = None) -> None:
+    options = get_options()
+    if nams is None:
+        nams = Name.with_type_tag(TypeTag.AuthorityPageLink).filter(
+            Name.original_citation == None
+        )
+    for nam in nams:
+        nam = nam.reload()
+        if nam.original_citation is not None:
+            continue
+        for tag in nam.type_tags:
+            if not isinstance(tag, TypeTag.AuthorityPageLink):
+                continue
+            item_id = bhl.get_bhl_item_from_url(tag.url)
+            if item_id is None:
+                continue
+            url = f"https://www.biodiversitylibrary.org/itempdf/{item_id}"
+            if not getinput.yes_no(
+                f"download {item_id} for {nam} ({nam.verbatim_citation})?"
+            ):
+                return
+            print("Downloading:")
+            # Line by itself for easier copy-pasting
+            print(url)
+            response = httpx.get(url, timeout=None, follow_redirects=True)
+            path = options.burst_path / f"{item_id}.pdf"
+            path.write_bytes(response.content)
+            subprocess.check_call(["open", path])
+            if getinput.yes_no("catalog as one item? "):
+                shutil.move(path, options.new_path)
+            print("Adding item for name", nam)
+            models.article.check.check_new()
 
 
 @command

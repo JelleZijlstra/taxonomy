@@ -164,7 +164,9 @@ class Region(BaseModel):
             location.display(full=full, depth=depth + 4, file=file)
 
     def is_empty(self) -> bool:
-        for loc in self.locations.filter(models.Location.deleted != True):
+        for loc in self.locations.filter(
+            models.Location.deleted != models.location.LocationStatus.deleted
+        ):
             if loc.type_localities.count() > 0:
                 return False
         return all(child.is_empty() for child in self.children)

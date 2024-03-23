@@ -735,7 +735,10 @@ class BaseModel(Model):
             if default is None and field in self.field_defaults:
                 default = self.field_defaults[field]
             return getinput.get_enum_member(
-                field_obj.enum_cls, prompt=prompt, default=default, callbacks=callbacks
+                field_obj.type_object,
+                prompt=prompt,
+                default=default,
+                callbacks=callbacks,
             )
         elif field_obj.type_object is int:
             default = "" if current_value is None else str(current_value)
@@ -1016,7 +1019,7 @@ class BaseModel(Model):
         field_obj = getattr(cls, field)
         return cls.get_value_for_foreign_class(
             field,
-            field_obj.rel_model,
+            field_obj.type_object,
             default_obj=default_obj,
             callbacks=callbacks,
             allow_none=allow_none,
@@ -1191,6 +1194,8 @@ class ADTField(Field[Sequence[ADTT]]):
             return ()
 
     def serialize(self, value: Sequence[ADTT]) -> str | None:
+        if isinstance(value, str):
+            return value
         if isinstance(value, tuple):
             value = list(value)
         if isinstance(value, list):

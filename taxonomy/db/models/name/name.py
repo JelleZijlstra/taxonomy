@@ -2431,7 +2431,7 @@ class NameComment(BaseModel):
     date = Field[int]()
     text = TextField()
     source = Field[Article | None]("source_id", related_name="name_comments")
-    page = TextField()
+    page = Field[str | None]()
 
     search_fields = [
         SearchField(SearchFieldType.literal, "kind"),

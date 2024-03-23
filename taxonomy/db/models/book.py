@@ -34,7 +34,7 @@ class Book(BaseModel):
     isbn = Field[str | None]()
     publisher = Field[str | None]()
     tags = ADTField["BookTag"](is_ordered=False)
-    citation_group = Field[CitationGroup | None]()
+    citation_group = Field[CitationGroup | None]("citation_group_id")
     dewey = Field[str | None]()
     loc = Field[str | None]()
     data = TextOrNullField()

@@ -22,9 +22,9 @@ class Specimen(BaseModel):
     label_field = "id"
     clorm_table_name = "specimen"
 
-    taxon = Field[Taxon]()
-    region = Field[Region]()
-    location = Field[Location | None]()
+    taxon = Field[Taxon]("taxon_id")
+    region = Field[Region]("region_id")
+    location = Field[Location | None]("location_id")
     taxon_text = Field[str]()
     location_text = Field[str]()
     date = Field[str]()

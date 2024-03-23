@@ -122,7 +122,7 @@ class Article(BaseModel):
     end_page = Field[str | None]()
     url = Field[str | None]()
     doi = Field[str | None]()
-    type = Field[ArticleType]()  # type of file
+    type = Field[ArticleType | None]()  # type of file
     publisher = Field[str | None]()
     _location = Field[str](
         "location"

@@ -30,8 +30,12 @@ class StratigraphicUnit(BaseModel):
     name = Field[str]()
     parent = Field[Self | None]("parent_id", related_name="children")
     prev = Field[Self | None]("prev_id", related_name="next")
-    min_period = Field[Period | None](related_name="stratigraphic_units_min")
-    max_period = Field[Period | None](related_name="stratigraphic_units_max")
+    min_period = Field[Period | None](
+        "min_period_id", related_name="stratigraphic_units_min"
+    )
+    max_period = Field[Period | None](
+        "max_period_id", related_name="stratigraphic_units_max"
+    )
     rank = Field[StratigraphicUnitRank]()
     comment = Field[str]()
     region = Field[Region | None]("region_id", related_name="stratigraphic_units")

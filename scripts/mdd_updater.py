@@ -13,7 +13,7 @@ Notes for auto-gsheet updating:
 To set up gspread, follow the instructions in https://docs.gspread.org/en/latest/oauth2.html#oauth-client-id
 to get an OAuth client id. The tokens appears to expire after a week. Notes for next time:
 
-- Go to  https://console.cloud.google.com/apis/api/sheets.googleapis.com/credentials?authuser=1&project=directed-tracer-123911&supportedpurview=project
+- Go to https://console.cloud.google.com/apis/api/sheets.googleapis.com/credentials?authuser=1&project=directed-tracer-123911&supportedpurview=project
 - Add an "OAuth 2.0 Client ID" credential for a desktop app
 - Download the credentials and put them in ~/.config/gspread/credentials.json
 - Delete ~/.config/gspread/authorized_user.json (maybe just deleting this file is enough? try it next time)
@@ -43,9 +43,16 @@ from scripts import mdd_diff
 from taxonomy import getinput
 from taxonomy.config import get_options
 from taxonomy.db import export, models
-from taxonomy.db.constants import AgeClass, Group, Rank, RegionKind, Status
+from taxonomy.db.constants import (
+    AgeClass,
+    Group,
+    NomenclatureStatus,
+    Rank,
+    RegionKind,
+    Status,
+)
 from taxonomy.db.models import Name, Taxon
-from taxonomy.db.models.name import TypeTag
+from taxonomy.db.models.name import NameTag, TypeTag
 
 
 @functools.cache
@@ -123,6 +130,75 @@ def get_authority_link(nam: Name) -> str:
     return " | ".join(sorted({tag.url for tag in tags}))
 
 
+def get_type_specimen_link(nam: Name) -> str:
+    tags = nam.get_tags(nam.type_tags, TypeTag.TypeSpecimenLinkFor)
+    return " | ".join(sorted({tag.url for tag in tags}))
+
+
+def get_nomenclature_status_string(nam: Name) -> str:
+    applicable = models.name.lint.get_sorted_applicable_statuses(nam)
+    if not applicable:
+        return "available"
+    return " | ".join(status.name for status in applicable)
+
+
+VARIANT_OF_TAGS = (
+    NameTag.UnjustifiedEmendationOf,
+    NameTag.IncorrectSubsequentSpellingOf,
+    NameTag.NomenNovumFor,
+    NameTag.VariantOf,
+    NameTag.MandatoryChangeOf,
+    NameTag.IncorrectOriginalSpellingOf,
+    NameTag.SubsequentUsageOf,
+    NameTag.JustifiedEmendationOf,
+    NameTag.NameCombinationOf,
+)
+HOMONYM_TAGS = (
+    NameTag.PreoccupiedBy,
+    NameTag.PrimaryHomonymOf,
+    NameTag.SecondaryHomonymOf,
+)
+
+
+def get_tag_targets(nam: Name, tags: tuple[type[NameTag], ...]) -> Iterable[Name]:
+    for tag in nam.tags:
+        if isinstance(tag, tags):
+            yield tag.name
+
+
+def stringify_name_for_mdd(
+    nam: Name, need_initials: set[str], hesp_id_to_mdd_id: dict[int, str]
+) -> str:
+    parts = []
+    if nam.corrected_original_name is not None:
+        parts.append(nam.corrected_original_name)
+    else:
+        parts.append(nam.root_name)
+    if nam.author_tags:
+        parts.append(" ")
+        parts.append(mdd_diff.get_mdd_style_authority(nam, need_initials))
+    if nam.year:
+        parts.append(", ")
+        parts.append(nam.year[:4])
+    if nam.id in hesp_id_to_mdd_id:
+        parts.append(f" [{hesp_id_to_mdd_id[nam.id]}]")
+    else:
+        parts.append(" [fossil]")
+    return "".join(parts)
+
+
+def get_tag_targets_string(
+    nam: Name,
+    tags: tuple[type[NameTag], ...],
+    need_initials: set[str],
+    hesp_id_to_mdd_id: dict[int, str],
+) -> str:
+    nams = get_tag_targets(nam, tags)
+    return " | ".join(
+        stringify_name_for_mdd(nam, need_initials, hesp_id_to_mdd_id) for nam in nams
+    )
+
+
 OMITTED_COLUMNS = {
     "MDD_old_type_locality",
     "MDD_emended_type_locality",
@@ -136,29 +212,43 @@ OMITTED_COLUMNS = {
 }
 
 
-def get_hesp_row(name: Name, need_initials: set[str]) -> dict[str, Any]:
-    row = {**export.data_for_name(name)}
+def get_hesp_row(
+    name: Name, need_initials: set[str], hesp_id_to_mdd_id: dict[int, str]
+) -> dict[str, Any]:
+    row = {}
     row["Hesp_species"] = get_mdd_like_species_name(name)
-    row["Hesp_root_name"] = row["root_name"]
+    row["Hesp_root_name"] = name.root_name
     mdd_style_author = mdd_diff.get_mdd_style_authority(name, need_initials)
     row["Hesp_author"] = mdd_style_author
-    row["Hesp_year"] = row["year"]
-    row["Hesp_nomenclature_status"] = row["nomenclature_status"]
+    row["Hesp_year"] = name.year[:4] if name.year else ""
     row["Hesp_validity"] = get_mdd_status(name)
-    row["Hesp_original_combination"] = row["original_name"]
+    row["Hesp_original_combination"] = name.original_name or ""
+
+    # Nomenclature status
+    row["Hesp_nomenclature_status"] = get_nomenclature_status_string(name)
+    row["Hesp_variant_of"] = get_tag_targets_string(
+        name, VARIANT_OF_TAGS, need_initials, hesp_id_to_mdd_id
+    )
+    row["Hesp_senior_homonym"] = get_tag_targets_string(
+        name, HOMONYM_TAGS, need_initials, hesp_id_to_mdd_id
+    )
 
     # Citation
-    row["Hesp_authority_citation"] = row["original_citation"]
-    row["Hesp_unchecked_authority_citation"] = row["verbatim_citation"]
-    row["Hesp_citation_group"] = row["citation_group"]
-    row["Hesp_authority_page"] = row["page_described"]
+    row["Hesp_unchecked_authority_citation"] = name.verbatim_citation or ""
+    cg = name.get_citation_group()
+    row["Hesp_citation_group"] = cg.name if cg else ""
+    row["Hesp_authority_page"] = name.page_described or ""
     authority_link = get_authority_link(name)
     row["Hesp_authority_page_link"] = authority_link
     if name.original_citation is not None:
         url = name.original_citation.geturl()
+        row["Hesp_authority_citation"] = models.article.citations.citepaper(
+            name.original_citation, include_url=False
+        )
         row["Hesp_authority_link"] = url or ""
         row["Hesp_citation_kind"] = name.original_citation.get_effective_kind().name
     else:
+        row["Hesp_authority_citation"] = ""
         row["Hesp_authority_link"] = ""
         row["Hesp_citation_kind"] = ""
     if authority_link:
@@ -170,32 +260,49 @@ def get_hesp_row(name: Name, need_initials: set[str]) -> dict[str, Any]:
             sorted(page.page_url for page in candidates)[:3]
         )
 
+    # For nomina nova, get type data from original name
+    names_for_tags = [name]
+    if name.nomenclature_status is NomenclatureStatus.nomen_novum:
+        name_for_types = name.get_tag_target(models.name.NameTag.NomenNovumFor)
+        if name_for_types is None:
+            name_for_types = name
+        else:
+            names_for_tags.append(name_for_types)
+    else:
+        name_for_types = name
+
     # Type locality
     # Omit: MDD_old_type_locality
     # Omit: MDD_emended_type_locality
     verbatim_tl = []
     emended_tl = []
-    for tag in name.type_tags:
-        if isinstance(tag, TypeTag.LocationDetail):
-            if tag.source == name.original_citation:
-                verbatim_tl.append(tag.text)
-            else:
-                citation = ", ".join(tag.source.taxonomicAuthority())
-                emended_tl.append(f'"{tag.text}" ({citation})')
-        elif isinstance(tag, TypeTag.Coordinates):
-            row["Hesp_type_latitude"] = tag.latitude
-            row["Hesp_type_longitude"] = tag.longitude
+    for nam in names_for_tags:
+        for tag in nam.type_tags:
+            if isinstance(tag, TypeTag.LocationDetail):
+                if tag.source == nam.original_citation:
+                    verbatim_tl.append(tag.text)
+                else:
+                    citation = ", ".join(tag.source.taxonomicAuthority())
+                    emended_tl.append(f'"{tag.text}" ({citation})')
+            elif isinstance(tag, TypeTag.Coordinates):
+                row["Hesp_type_latitude"] = tag.latitude
+                row["Hesp_type_longitude"] = tag.longitude
     if verbatim_tl:
         row["Hesp_original_type_locality"] = " | ".join(verbatim_tl)
     if emended_tl:
         row["Hesp_unchecked_type_locality"] = " | ".join(emended_tl)
     row["Hesp_type_country"], row["Hesp_type_subregion"] = (
-        get_type_locality_country_and_subregion(name)
+        get_type_locality_country_and_subregion(name_for_types)
     )
 
     # Type specimen
-    row["Hesp_holotype"] = row["type_specimen"]
-    row["Hesp_type_kind"] = row["species_type_kind"]
+    row["Hesp_holotype"] = name_for_types.type_specimen or ""
+    row["Hesp_type_kind"] = (
+        name_for_types.species_type_kind.name
+        if name_for_types.species_type_kind
+        else ""
+    )
+    row["Hesp_type_specimen_link"] = get_type_specimen_link(name_for_types)
 
     # Higher classification
     taxon = name.taxon
@@ -305,6 +412,12 @@ class FixableDifference:
                 print(f"{self}: add tag {tag}")
                 if not dry_run:
                     self.hesp_name.add_type_tag(tag)
+
+            case "MDD_authority_page":
+                print(
+                    f"{self}: page_described {self.hesp_name.page_described!r} -> {self.mdd_value!r}"
+                )
+                self.hesp_name.page_described = self.mdd_value
 
             case _:
                 print(
@@ -418,15 +531,19 @@ def run(*, dry_run: bool = True, taxon: Taxon, max_names: int | None = None) -> 
     gc = gspread.oauth()
     sheet = gc.open(options.mdd_sheet)
     worksheet = sheet.get_worksheet_by_id(options.mdd_worksheet_gid)
-    rows = worksheet.get()
-    headings = rows[0]
+    raw_rows = worksheet.get()
+    headings = raw_rows[0]
     column_to_idx = {heading: i for i, heading in enumerate(headings, start=1)}
+    rows = [dict(zip(headings, row, strict=False)) for row in raw_rows[1:]]
+    hesp_id_to_mdd_id = {
+        int(row["Hesp_id"]): row["MDD_syn_ID"] for row in rows if row["Hesp_id"]
+    }
     print(f"done, {len(rows)} found")
 
     print("backing up MDD names... ")
     with (backup_path / "mdd_names.csv").open("w") as file:
         writer = csv.writer(file)
-        for row in rows:
+        for row in raw_rows:
             writer.writerow(row)
     print(f"done, backup at {backup_path}")
 
@@ -444,12 +561,11 @@ def run(*, dry_run: bool = True, taxon: Taxon, max_names: int | None = None) -> 
     fixable_differences: list[FixableDifference] = []
     max_mdd_id = 0
 
-    for row_idx, mdd_row_as_list in getinput.print_every_n(
-        enumerate(rows[1:], start=2), label="MDD names"
+    for row_idx, mdd_row in getinput.print_every_n(
+        enumerate(rows, start=2), label="MDD names"
     ):
         if max_names is not None and row_idx > max_names:
             break
-        mdd_row = dict(zip(headings, mdd_row_as_list, strict=False))
         mdd_id = int(mdd_row["MDD_syn_ID"])
         max_mdd_id = max(max_mdd_id, mdd_id)
         hesp_id = resolve_hesp_id(mdd_row["Hesp_id"])
@@ -465,7 +581,7 @@ def run(*, dry_run: bool = True, taxon: Taxon, max_names: int | None = None) -> 
             continue
         unused_hesp_ids.remove(hesp_id)
         name = hesp_id_to_name[hesp_id]
-        hesp_row = get_hesp_row(name, need_initials)
+        hesp_row = get_hesp_row(name, need_initials, hesp_id_to_mdd_id)
 
         for column in headings:
             if column in OMITTED_COLUMNS:
@@ -508,7 +624,7 @@ def run(*, dry_run: bool = True, taxon: Taxon, max_names: int | None = None) -> 
     if max_names is None:
         for hesp_id in unused_hesp_ids:
             name = hesp_id_to_name[hesp_id]
-            hesp_row = get_hesp_row(name, need_initials)
+            hesp_row = get_hesp_row(name, need_initials, hesp_id_to_mdd_id)
             new_mdd_row = {"MDD_syn_ID": str(max_mdd_id + 1), "Hesp_id": str(hesp_id)}
             max_mdd_id += 1
             for mdd_column in headings:
@@ -521,7 +637,7 @@ def run(*, dry_run: bool = True, taxon: Taxon, max_names: int | None = None) -> 
         for f in (sys.stdout, file):
             print("Report:", file=f)
             if max_names is None:
-                print(f"Total MDD names: {len(rows) - 1}", file=f)
+                print(f"Total MDD names: {len(rows)}", file=f)
                 print(f"Total Hesp names: {len(hesp_names)}", file=f)
                 print(f"Missing in Hesp: {len(missing_in_hesp)}", file=f)
                 print(f"Missing in MDD: {len(missing_in_mdd)}", file=f)
@@ -656,7 +772,7 @@ def run(*, dry_run: bool = True, taxon: Taxon, max_names: int | None = None) -> 
                             "mdd_column": diff.mdd_column,
                             "hesp_value": diff.hesp_value,
                             "mdd_value": diff.mdd_value,
-                            "hesp_id": diff.hesp_row["id"],
+                            "hesp_id": diff.hesp_name.id,
                             "mdd_id": diff.mdd_row["MDD_syn_ID"],
                             "applied": str(int(should_add_to_hesp)),
                         }

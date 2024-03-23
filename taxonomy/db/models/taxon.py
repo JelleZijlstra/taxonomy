@@ -925,7 +925,6 @@ class Taxon(BaseModel):
         page_described: None | int | str = None,
         status: Status = Status.synonym,
         group: Group | None = None,
-        age: AgeClass | None = None,
         interactive: bool = True,
         **kwargs: Any,
     ) -> models.Name | None:
@@ -945,7 +944,6 @@ class Taxon(BaseModel):
             original_citation=paper,
             page_described=page_described,
             status=status,
-            age=age,
             interactive=False,
         )
         if result is None:
@@ -998,7 +996,6 @@ class Taxon(BaseModel):
             original_name=name,
             author_tags=paper.author_tags,
             year=paper.year,
-            parent=self,
             status=status,
             age=age,
         )

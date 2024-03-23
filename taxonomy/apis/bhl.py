@@ -428,7 +428,7 @@ def parse_possible_bhl_url(url: str) -> ParsedUrl:
         match match.group(1):
             case "bibliography":
                 return ParsedUrl(UrlType.bhl_bibliography, match.group(2))
-            case "item":
+            case "item" | "itempdf":
                 return ParsedUrl(UrlType.bhl_item, match.group(2))
             case "page":
                 return ParsedUrl(UrlType.bhl_page, match.group(2))

@@ -489,7 +489,16 @@ class CitationGroup(BaseModel):
             "fill_field_for_names": self.fill_field_for_names,
             "interactively_add_bhl_urls": self.interactively_add_bhl_urls,
             "validate_bhl_urls": self.validate_bhl_urls,
+            "open_bhl_pages": self.open_bhl_pages,
         }
+
+    def open_bhl_pages(self) -> None:
+        for nam in self.get_names():
+            nam.load()
+            if not nam.has_type_tag(models.name.TypeTag.AuthorityPageLink):
+                continue
+            nam.open_url()
+            nam.edit()
 
     def validate_bhl_urls(self) -> None:
         for art in self.get_articles():
@@ -641,10 +650,10 @@ class CitationGroup(BaseModel):
 class CitationGroupPattern(BaseModel):
     label_field = "pattern"
     call_sign = "CGP"
-    clorm_table_name = "citation_group_patter"
+    clorm_table_name = "citation_group_pattern"
 
     pattern = Field[str]()
-    citation_group = Field[CitationGroup](related_name="patterns")
+    citation_group = Field[CitationGroup]("citation_group_id", related_name="patterns")
 
     @classmethod
     def make(

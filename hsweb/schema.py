@@ -251,7 +251,7 @@ def get_model(model_cls: type[BaseModel], parent: Any, info: ResolveInfo) -> Bas
     cache = info.context["request"]
     key = (model_cls.call_sign, parent.oid)
     if key not in cache:
-        obj = model_cls.select().filter(model_cls.id == parent.oid).get()
+        obj = model_cls(parent.oid)
         if obj.is_invalid() and not obj.get_redirect_target():
             raise ValueError(f"No {model_cls} with id {obj.id}")
         cache[key] = obj

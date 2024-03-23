@@ -88,9 +88,9 @@ def format_authors(
 
 
 @register_cite_function("paper")
-def citepaper(article: Article) -> str:
+def citepaper(article: Article, include_url: bool = True) -> str:
     # like citenormal(), but without WP style links and things
-    return _citenormal(article, mw=False)
+    return _citenormal(article, mw=False, include_url=include_url)
 
 
 @register_cite_function("normal")
@@ -99,7 +99,11 @@ def citenormal(article: Article) -> str:
 
 
 def _citenormal(
-    article: Article, *, mw: bool, child_article: Article | None = None
+    article: Article,
+    *,
+    mw: bool,
+    child_article: Article | None = None,
+    include_url: bool = True,
 ) -> str:
     # cites according to normal WP citation style
     # if mw = False, no MediaWiki markup is used
@@ -171,24 +175,25 @@ def _citenormal(
         out += "."
     if child_article is not None:
         return out
-    identifiers = []
-    if article.url is not None:
-        identifiers.append(f"URL: {article.url}")
-    if not mw and article.doi:
-        identifiers.append(f"doi:{article.doi}")
-    if article.tags:
-        for tag in article.tags:
-            if isinstance(tag, ArticleTag.ISBN):
-                identifiers.append(f"ISBN {tag.text}")
-            elif isinstance(tag, ArticleTag.HDL):
-                identifiers.append(f"HDL {tag.text}")
-            elif isinstance(tag, ArticleTag.JSTOR):
-                identifiers.append(f"JSTOR {tag.text}")
-            elif isinstance(tag, ArticleTag.PMID):
-                identifiers.append(f"PMID {tag.text}")
-            elif isinstance(tag, ArticleTag.PMC):
-                identifiers.append(f"PMC {tag.text}")
-    out += "".join(f" {text}" for text in identifiers)
+    if include_url:
+        identifiers = []
+        if article.url is not None:
+            identifiers.append(f"URL: {article.url}")
+        if not mw and article.doi:
+            identifiers.append(f"doi:{article.doi}")
+        if article.tags:
+            for tag in article.tags:
+                if isinstance(tag, ArticleTag.ISBN):
+                    identifiers.append(f"ISBN {tag.text}")
+                elif isinstance(tag, ArticleTag.HDL):
+                    identifiers.append(f"HDL {tag.text}")
+                elif isinstance(tag, ArticleTag.JSTOR):
+                    identifiers.append(f"JSTOR {tag.text}")
+                elif isinstance(tag, ArticleTag.PMID):
+                    identifiers.append(f"PMID {tag.text}")
+                elif isinstance(tag, ArticleTag.PMC):
+                    identifiers.append(f"PMC {tag.text}")
+        out += "".join(f" {text}" for text in identifiers)
     # final cleanup
     out = re.sub(r"\s+", " ", out).replace("..", ".").replace("-\\ ", "- ")
     if mw:

@@ -1216,7 +1216,7 @@ def get_inherent_nomenclature_statuses(nam: Name) -> Iterable[NomenclatureStatus
 
 
 @functools.cache
-def _get_status_priorities() -> dict[NomenclatureStatus, int]:
+def get_status_priorities() -> dict[NomenclatureStatus, int]:
     status_to_priority = {}
     i = 0
     for statuses in NomenclatureStatus.hierarchy():
@@ -1226,10 +1226,19 @@ def _get_status_priorities() -> dict[NomenclatureStatus, int]:
     return status_to_priority
 
 
+_priority_map = get_status_priorities()
+
+
+def get_sorted_applicable_statuses(nam: Name) -> list[NomenclatureStatus]:
+    applicable_from_tags = set(get_applicable_nomenclature_statuses_from_tags(nam))
+    inherent = set(get_inherent_nomenclature_statuses(nam))
+    applicable = applicable_from_tags | inherent
+    return sorted(applicable, key=lambda status: _priority_map[status])
+
+
 @make_linter("expected_nomenclature_status")
 def check_expected_nomenclature_status(nam: Name, cfg: LintConfig) -> Iterable[str]:
     """Check if the nomenclature status is as expected."""
-    priority_map = _get_status_priorities()
     applicable_from_tags = set(get_applicable_nomenclature_statuses_from_tags(nam))
     if (
         NomenclatureStatus.infrasubspecific in applicable_from_tags
@@ -1241,7 +1250,7 @@ def check_expected_nomenclature_status(nam: Name, cfg: LintConfig) -> Iterable[s
     applicable = applicable_from_tags | inherent
     expected_status = min(
         applicable,
-        key=lambda status: priority_map[status],
+        key=lambda status: _priority_map[status],
         default=NomenclatureStatus.available,
     )
 
@@ -1253,6 +1262,24 @@ def check_expected_nomenclature_status(nam: Name, cfg: LintConfig) -> Iterable[s
         if cfg.autofix:
             print(f"{nam}: {message}")
             nam.nomenclature_status = expected_status
+        else:
+            yield message
+
+
+@make_linter("redundant_fields")
+def check_redundant_fields(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    if nam.nomenclature_status is not NomenclatureStatus.nomen_novum:
+        return
+    parent = nam.get_tag_target(NameTag.NomenNovumFor)
+    for field in ("type_locality", "type_specimen", "collection", "species_type_kind"):
+        value = getattr(nam, field)
+        if value is None:
+            continue
+        can_autofix = parent is not None and getattr(parent, field) == value
+        message = f"is a nomen novum and should not have the {field} field set ({can_autofix})"
+        if cfg.autofix and can_autofix:
+            print(f"{nam}: {message} (setting value to None)")
+            setattr(nam, field, None)
         else:
             yield message
 
@@ -1961,7 +1988,7 @@ def check_page_described(nam: Name, cfg: LintConfig) -> Iterable[str]:
             number = part.removeprefix("pl. ")
             if helpers.is_valid_roman_numeral(number):
                 continue
-            if re.fullmatch(r"[A-Z]?-?[0-9]+[A-Za-z]*", number):
+            if re.fullmatch(r"([A-Z]+-?)?[0-9]+[A-Za-z]*", number):
                 continue
         if helpers.is_valid_roman_numeral(part):
             continue
