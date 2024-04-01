@@ -351,7 +351,7 @@ _JSTOR_DOI_PREFIX = "10.2307/"
 
 
 def is_valid_hdl(hdl: str) -> bool:
-    return bool(re.fullmatch(r"^\d+(\.\d+)?\/(\d+)$", hdl))
+    return bool(re.fullmatch(r"^\d+(\.\d+)?\/\S+$", hdl))
 
 
 def is_valid_doi(doi: str) -> bool:
@@ -487,8 +487,8 @@ def infer_doi(art: Article, cfg: LintConfig) -> Iterable[str]:
 
 DOI_EXTRACTION_REGEXES = [
     r"https?:\/\/(?:dx\.)?doi\.org\/(10\..+)",
-    r"http:\/\/www\.bioone\.org\/doi\/(?:full|abs|pdf)\/(.*)",
-    r"http:\/\/onlinelibrary\.wiley\.com\/doi\/(.*?)\/(abs|full|pdf|abstract)",
+    r"https?:\/\/www\.bioone\.org\/doi\/(?:full|abs|pdf)\/(.*)",
+    r"https?:\/\/onlinelibrary\.wiley\.com\/doi\/(.*?)\/(abs|full|pdf|abstract)",
 ]
 
 
@@ -500,8 +500,9 @@ def infer_doi_from_url(url: str) -> str | None:
 
 
 def _infer_hdl_from_url(url: str) -> str | None:
-    if url.startswith("http://hdl.handle.net/"):
-        return url[22:]
+    for prefix in ("http://hdl.handle.net/", "https://hdl.handle.net/"):
+        if url.startswith(prefix):
+            return url.removeprefix(prefix)
     if match := re.search(
         r"^http:\/\/(digitallibrary\.amnh\.org\/dspace|deepblue\.lib\.umich\.edu)\/handle\/(.*)$",
         url,

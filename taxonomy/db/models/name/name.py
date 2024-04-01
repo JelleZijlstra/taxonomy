@@ -1385,6 +1385,33 @@ class Name(BaseModel):
     def taxonomic_authority(self) -> str:
         return Person.join_authors(self.get_authors())
 
+    def should_parenthesize_authority(self) -> bool | None:
+        if self.original_parent is None:
+            return None  # unknown
+        genus = self.taxon.get_current_genus()
+        if genus is None:
+            return False  # not in any genus, so don't parenthesize
+        return genus.resolve_name() != self.original_parent.resolve_name()
+
+    def resolve_name(self, *, depth: int = 0) -> Name:
+        if depth > 10:
+            raise ValueError(f"too deep: {self}")
+        for tag in self.tags:
+            if isinstance(
+                tag,
+                (
+                    NameTag.VariantOf,
+                    NameTag.UnjustifiedEmendationOf,
+                    NameTag.JustifiedEmendationOf,
+                    NameTag.IncorrectOriginalSpellingOf,
+                    NameTag.SubsequentUsageOf,
+                    NameTag.MandatoryChangeOf,
+                    NameTag.IncorrectSubsequentSpellingOf,
+                ),
+            ):
+                return tag.name.resolve_name(depth=depth + 1)
+        return self
+
     def copy_year(self, quiet: bool = False) -> None:
         citation = self.original_citation
         if citation is None:
@@ -1645,7 +1672,7 @@ class Name(BaseModel):
                 OriginalCitationDataLevel.no_citation,
                 "original citation needs translation",
             )
-        if self.original_citation.is_non_original():
+        if self.original_citation.lacks_full_text():
             return (OriginalCitationDataLevel.no_citation, "non-original citation")
         source_tags = list(get_tags_from_original_citation(self))
         if not source_tags:

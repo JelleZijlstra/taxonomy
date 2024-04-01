@@ -2318,7 +2318,7 @@ def find_potential_citations_for_group(
         return 0
 
     def is_possible_match(art: Article, nam: Name, page: int) -> bool:
-        if nam.numeric_year() != art.numeric_year() or art.is_non_original():
+        if nam.numeric_year() != art.numeric_year() or art.lacks_full_text():
             return False
         if not art.is_page_in_range(page):
             return False
@@ -3158,6 +3158,42 @@ def edit_names_at_level(query: Iterable[Name] | None = None) -> None:
         getinput.print_header(nam)
         nam.display()
         nam.edit()
+
+
+@command
+def confirm_zmmu_types() -> None:
+    coll = Collection.getter("label")("ZMMU")
+    assert coll is not None
+    for nam in coll.type_specimens:
+        if (
+            nam.corrected_original_name is not None
+            and nam.corrected_original_name < "Sciurus"
+        ):
+            continue
+        if not nam.type_specimen:
+            continue
+        if nam.has_type_tag(models.name.TypeTag.TypeSpecimenLinkFor):
+            continue
+        nam.load()
+        for spec in models.name.type_specimen.parse_type_specimen(nam.type_specimen):
+            if not isinstance(spec, models.name.type_specimen.Specimen):
+                continue
+            if not isinstance(spec.base, models.name.type_specimen.SimpleSpecimen):
+                continue
+            m = re.fullmatch(r"ZMMU (S-\d+)", spec.base.text)
+            assert m, spec
+            number = m.group(1)
+            url = f"https://zmmu.msu.ru/dbs/list_record.php?id={number}"
+            getinput.print_header(nam)
+            nam.display()
+            print(url)
+            subprocess.check_call(["open", url])
+            if not getinput.yes_no("confirm? "):
+                continue
+            nam.add_type_tag(
+                models.name.TypeTag.TypeSpecimenLinkFor(url, spec.stringify())
+            )
+            models.article.check.check_new()
 
 
 def run_shell() -> None:

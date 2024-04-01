@@ -146,10 +146,7 @@ def fill_data_for_names(
     def should_include(nam: models.Name) -> bool:
         if nam.original_citation is None:
             return False
-        if (
-            nam.original_citation.kind is ArticleKind.no_copy
-            or nam.original_citation.is_non_original()
-        ):
+        if nam.original_citation.lacks_full_text():
             return False
         if field is not None and (
             getattr(nam, field) is not None or field not in nam.get_required_fields()

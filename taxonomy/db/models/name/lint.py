@@ -319,6 +319,8 @@ ALLOWED_AUTHORITY_PAGE_LINK_TYPES = {
     bhl.UrlType.bhl_page,
     bhl.UrlType.google_books,
     bhl.UrlType.archive_org,
+    bhl.UrlType.hathitrust,
+    bhl.UrlType.hdl,
 }
 
 
@@ -1007,13 +1009,11 @@ def _check_preoccupation_tag(tag: NameTag, nam: Name) -> Generator[str, None, Na
         if nam.original_parent is None:
             my_original = None
         else:
-            my_original = _resolve_original_parent(nam.original_parent, depth=0)
+            my_original = nam.original_parent.resolve_name()
         if senior_name.original_parent is None:
             senior_original = None
         else:
-            senior_original = _resolve_original_parent(
-                senior_name.original_parent, depth=0
-            )
+            senior_original = senior_name.original_parent.resolve_name()
         if isinstance(tag, NameTag.PrimaryHomonymOf):
             if my_original is None:
                 yield f"{nam} is marked as a primary homonym of {senior_name}, but has no original genus"
@@ -1533,7 +1533,7 @@ def _check_species_name_gender(nam: Name, cfg: LintConfig) -> Iterable[str]:
         return
 
     taxon = nam.taxon
-    genus = taxon.get_logical_genus() or taxon.get_nominal_genus()
+    genus = taxon.get_current_genus()
     if genus is None or genus.name_complex is None:
         return
 
@@ -2198,7 +2198,8 @@ def check_required_fields(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if (
         nam.original_citation
         and not nam.page_described
-        and not nam.original_citation.is_non_original()
+        and nam.original_citation.kind is not ArticleKind.no_copy
+        and not nam.original_citation.has_tag(ArticleTag.NonOriginal)
     ):
         yield "has original citation but no page_described"
     if (
@@ -2304,7 +2305,7 @@ def _check_species_group_homonyms(
         genus = nam.original_parent
         if genus is None:
             return
-        genus = _resolve_original_parent(genus, depth=0)
+        genus = genus.resolve_name()
         name_dict = _get_primary_names_of_genus_and_variants(genus, fuzzy=fuzzy)
     else:
         genus = _get_parent(nam)
@@ -2395,26 +2396,6 @@ def _check_homonym_list(
             elif getinput.yes_no("Mark as subsequent usage instead? "):
                 nam.add_tag(NameTag.SubsequentUsageOf(senior_homonym, ""))
         yield f"preoccupied by {senior_homonym}"
-
-
-def _resolve_original_parent(nam: Name, *, depth: int) -> Name:
-    if depth > 10:
-        raise ValueError(f"too deep: {nam}")
-    for tag in nam.tags:
-        if isinstance(
-            tag,
-            (
-                NameTag.VariantOf,
-                NameTag.UnjustifiedEmendationOf,
-                NameTag.JustifiedEmendationOf,
-                NameTag.IncorrectOriginalSpellingOf,
-                NameTag.SubsequentUsageOf,
-                NameTag.MandatoryChangeOf,
-                NameTag.IncorrectSubsequentSpellingOf,
-            ),
-        ):
-            return _resolve_original_parent(tag.name, depth=depth + 1)
-    return nam
 
 
 def _get_primary_names_of_genus_and_variants(

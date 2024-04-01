@@ -718,8 +718,12 @@ class Article(BaseModel):
     def is_full_issue(self) -> bool:
         return any(self.get_tags(self.tags, ArticleTag.FullIssue))
 
-    def is_non_original(self) -> bool:
-        return self.kind is ArticleKind.no_copy or self.has_tag(ArticleTag.NonOriginal)
+    def lacks_full_text(self) -> bool:
+        return (
+            self.kind is ArticleKind.no_copy
+            or self.has_tag(ArticleTag.NonOriginal)
+            or self.has_tag(ArticleTag.Incomplete)
+        )
 
     def numeric_year(self) -> int:
         return self.get_date_object().year
@@ -832,17 +836,19 @@ class Article(BaseModel):
         if self.url:
             return self.url
         if self.doi:
-            return f"http://dx.doi.org/{self.doi}"  # TODO update to HTTPS URLs
+            return f"https://doi.org/{self.doi}"
         tries = {
-            ArticleTag.JSTOR: "http://www.jstor.org/stable/",
-            ArticleTag.HDL: "http://hdl.handle.net/",
-            ArticleTag.PMID: "http://www.ncbi.nlm.nih.gov/pubmed/",
-            ArticleTag.PMC: "http://www.ncbi.nlm.nih.gov/pmc/articles/PMC",
+            ArticleTag.JSTOR: "https://www.jstor.org/stable/",
+            ArticleTag.HDL: "https://hdl.handle.net/",
+            ArticleTag.PMID: "https://www.ncbi.nlm.nih.gov/pubmed/",
+            ArticleTag.PMC: "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC",
         }
         for identifier, url in tries.items():
             value = self.getIdentifier(identifier)
             if value:
                 return url + value
+        if self.parent is not None:
+            return self.parent.geturl()
         return None
 
     def has_bhl_link(self) -> bool:
@@ -1389,7 +1395,7 @@ class ArticleTag(adt.ADT):
     Edition(text=str, tag=8)  # type: ignore
     FullIssue(comment=NotRequired[str], tag=9)  # type: ignore
     PartLocation(  # type: ignore
-        parent=Article, start_page=int, end_page=int, comment=NotRequired[str], tag=10
+        parent=Article, start_page=int, end_page=int, comment=NotRequired[str], tag=22
     )
     NonOriginal(comment=NotRequired[str], tag=10)  # type: ignore
     # The article doesn't give full names for the authors
@@ -1416,6 +1422,8 @@ class ArticleTag(adt.ADT):
     BiblioNoteArticle(text=str, tag=19)  # type: ignore
 
     AlternativeURL(url=str, tag=20)  # type: ignore
+
+    Incomplete(comment=NotRequired[str], tag=21)  # type: ignore
 
 
 @lru_cache

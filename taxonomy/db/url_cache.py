@@ -85,8 +85,9 @@ def get_database() -> sqlite3.Connection:
 
 def run_query(sql: str, args: tuple[object, ...]) -> list[tuple[Any, ...]]:
     db = get_database()
-    cursor = db.execute(sql, args)
-    return cursor.fetchall()
+    with db:
+        cursor = db.execute(sql, args)
+        return cursor.fetchall()
 
 
 def cached(domain: CacheDomain) -> Callable[[CachedCallable], CachedCallable]:

@@ -379,6 +379,8 @@ class UrlType(enum.Enum):
     other_biostor = enum.auto()
     google_books = enum.auto()
     archive_org = enum.auto()
+    hdl = enum.auto()
+    hathitrust = enum.auto()
     other = enum.auto()
 
 
@@ -408,6 +410,8 @@ class ParsedUrl:
                 | UrlType.google_books
                 | UrlType.archive_org
                 | UrlType.other
+                | UrlType.hathitrust
+                | UrlType.hdl
             ):
                 return self.payload
         return "<unknown url>"
@@ -447,6 +451,10 @@ def parse_possible_bhl_url(url: str) -> ParsedUrl:
         return ParsedUrl(UrlType.google_books, url)
     elif "archive.org" in url:
         return ParsedUrl(UrlType.archive_org, url)
+    elif "hdl.handle.net" in url:
+        return ParsedUrl(UrlType.hdl, url)
+    elif "hathitrust.org" in url:
+        return ParsedUrl(UrlType.hathitrust, url)
     return ParsedUrl(UrlType.other, url)
 
 

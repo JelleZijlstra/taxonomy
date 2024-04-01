@@ -603,6 +603,16 @@ class CitationGroup(BaseModel):
         tags = self.get_tags(self.tags, CitationGroupTag.BHLBibliography)
         return [int(tag.text) for tag in tags]
 
+    def should_have_bhl_link_in_year(self, year: int) -> bool:
+        if not self.get_tag(CitationGroupTag.BHLBibliography):
+            return False
+        if tag := self.get_tag(CitationGroupTag.BHLYearRange):
+            if tag.start and year < int(tag.start):
+                return False
+            if tag.end and year > int(tag.end):
+                return False
+        return True
+
     def display_organized(self, depth: int = 0) -> None:
         region_str = f" ({self.region.name})" if self.region else ""
         print(f"{' ' * depth}{self.name}{region_str}")
@@ -719,3 +729,4 @@ class CitationGroupTag(adt.ADT):
     # Do not add more BHL bibliographies based on children
     SkipExtraBHLBibliographies(tag=28)  # type: ignore
     CitationGroupComment(text=str, tag=29)  # type: ignore
+    BHLYearRange(start=NotRequired[str], end=NotRequired[str], tag=30)  # type: ignore

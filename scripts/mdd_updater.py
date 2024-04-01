@@ -199,6 +199,36 @@ def get_tag_targets_string(
     )
 
 
+def get_authority_parens(nam: Name) -> str:
+    match nam.should_parenthesize_authority():
+        case None:
+            return "?"
+        case True:
+            return "1"
+        case False:
+            return "0"
+    assert False, "unreachable"
+
+
+def get_citation_kind(name: Name) -> str:
+    if name.original_citation is None:
+        return ""
+    kind = name.original_citation.get_effective_kind().name
+    if name.original_citation.has_tag(models.article.ArticleTag.NonOriginal):
+        kind += " (non-original)"
+    if name.original_citation.has_tag(models.article.ArticleTag.Incomplete):
+        kind += " (incomplete)"
+    return kind
+
+
+def get_type_specimen(nam: Name) -> str:
+    if nam.type_specimen:
+        return nam.type_specimen
+    elif nam.collection:
+        return f"{nam.collection.label} (number not known)"
+    return ""
+
+
 OMITTED_COLUMNS = {
     "MDD_old_type_locality",
     "MDD_emended_type_locality",
@@ -221,6 +251,7 @@ def get_hesp_row(
     mdd_style_author = mdd_diff.get_mdd_style_authority(name, need_initials)
     row["Hesp_author"] = mdd_style_author
     row["Hesp_year"] = name.year[:4] if name.year else ""
+    row["Hesp_authority_parentheses"] = get_authority_parens(name)
     row["Hesp_validity"] = get_mdd_status(name)
     row["Hesp_original_combination"] = name.original_name or ""
 
@@ -246,11 +277,10 @@ def get_hesp_row(
             name.original_citation, include_url=False
         )
         row["Hesp_authority_link"] = url or ""
-        row["Hesp_citation_kind"] = name.original_citation.get_effective_kind().name
     else:
         row["Hesp_authority_citation"] = ""
         row["Hesp_authority_link"] = ""
-        row["Hesp_citation_kind"] = ""
+    row["Hesp_citation_kind"] = get_citation_kind(name)
     if authority_link:
         row["Hesp_unchecked_authority_page_link"] = ""
     else:
@@ -296,7 +326,7 @@ def get_hesp_row(
     )
 
     # Type specimen
-    row["Hesp_holotype"] = name_for_types.type_specimen or ""
+    row["Hesp_holotype"] = get_type_specimen(name_for_types)
     row["Hesp_type_kind"] = (
         name_for_types.species_type_kind.name
         if name_for_types.species_type_kind
@@ -393,25 +423,24 @@ class FixableDifference:
                 if not dry_run:
                     self.hesp_name.original_citation.url = self.mdd_value
             case "MDD_authority_page_link":
-                if self.hesp_name.page_described is None:
-                    tag = models.name.TypeTag.AuthorityPageLink(
-                        self.mdd_value, True, ""
-                    )
-                else:
-                    pages = list(
-                        models.name.lint.extract_pages(self.hesp_name.page_described)
-                    )
-                    if len(pages) == 1:
-                        tag = models.name.TypeTag.AuthorityPageLink(
-                            self.mdd_value, True, pages[0]
-                        )
+                for text in self.mdd_value.split(" | "):
+                    if self.hesp_name.page_described is None:
+                        tag = models.name.TypeTag.AuthorityPageLink(text, True, "")
                     else:
-                        tag = models.name.TypeTag.AuthorityPageLink(
-                            self.mdd_value, True, ""
+                        pages = list(
+                            models.name.lint.extract_pages(
+                                self.hesp_name.page_described
+                            )
                         )
-                print(f"{self}: add tag {tag}")
-                if not dry_run:
-                    self.hesp_name.add_type_tag(tag)
+                        if len(pages) == 1:
+                            tag = models.name.TypeTag.AuthorityPageLink(
+                                text, True, pages[0]
+                            )
+                        else:
+                            tag = models.name.TypeTag.AuthorityPageLink(text, True, "")
+                    print(f"{self}: add tag {tag}")
+                    if not dry_run:
+                        self.hesp_name.add_type_tag(tag)
 
             case "MDD_authority_page":
                 print(
@@ -709,6 +738,8 @@ def run(*, dry_run: bool = True, taxon: Taxon, max_names: int | None = None) -> 
                     "mdd_value",
                     "hesp_id",
                     "mdd_id",
+                    "MDD_species",
+                    "MDD_original_combination",
                     "applied",
                 ],
             )
@@ -774,6 +805,10 @@ def run(*, dry_run: bool = True, taxon: Taxon, max_names: int | None = None) -> 
                             "mdd_value": diff.mdd_value,
                             "hesp_id": diff.hesp_name.id,
                             "mdd_id": diff.mdd_row["MDD_syn_ID"],
+                            "MDD_species": diff.mdd_row["MDD_species"],
+                            "MDD_original_combination": diff.mdd_row[
+                                "MDD_original_combination"
+                            ],
                             "applied": str(int(should_add_to_hesp)),
                         }
                     )

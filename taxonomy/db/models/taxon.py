@@ -1109,6 +1109,9 @@ class Taxon(BaseModel):
             return tag.genus
         return None
 
+    def get_current_genus(self) -> models.Name | None:
+        return self.get_logical_genus() or self.get_nominal_genus()
+
     def _valid_name_of_species(self, genus: str, name: models.Name) -> str:
         if self.rank == Rank.species_group:
             return f"{genus} ({name.root_name})"

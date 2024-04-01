@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import sys
 from collections.abc import Iterable, Sequence
 from typing import IO, Any, ClassVar
@@ -17,7 +18,7 @@ from ..constants import (
     SourceLanguage,
     SpeciesNameKind,
 )
-from .base import BaseModel
+from .base import BaseModel, LintConfig
 
 
 class SpeciesNameComplex(BaseModel):
@@ -450,6 +451,12 @@ class NameComplex(BaseModel):
                 "comment": self.comment,
             }
         ]
+
+    def lint(self, cfg: LintConfig) -> Iterable[str]:
+        if not re.fullmatch(r"[a-z]*", self.stem_add):
+            yield f"{self}: invalid stem_add: {self.stem_add!r}"
+        if not re.fullmatch(r"[a-z]*", self.stem_remove):
+            yield f"{self}: invalid stem_add: {self.stem_remove!r}"
 
     def __repr__(self) -> str:
         return (

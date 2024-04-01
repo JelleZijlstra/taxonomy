@@ -284,11 +284,13 @@ class Location(BaseModel):
             return objs[0]  # should only be one
 
         objs = list(
-            Location.select().filter(Location.name == name, Location.deleted == True)
+            Location.select().filter(
+                Location.name == name, Location.deleted == LocationStatus.deleted
+            )
         )
         if objs:
             obj = objs[0]
-            obj.deleted = False
+            obj.deleted = LocationStatus.valid
             print(f"Resurrected {obj}")
             return obj
 

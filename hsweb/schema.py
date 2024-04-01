@@ -157,7 +157,7 @@ def build_graphene_field(
 
         def fk_resolver(parent: ObjectType, info: ResolveInfo) -> ObjectType | None:
             model = get_model(model_cls, parent, info)
-            oid = model.__data__[name]
+            oid = getattr(model_cls, name).get_raw(model)
             if oid is None:
                 return None
             key = (call_sign, oid)
