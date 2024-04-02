@@ -37,6 +37,7 @@ from dataclasses import dataclass, field
 from typing import Any, TypeVar
 
 import gspread
+import httpx
 import Levenshtein
 
 from scripts import mdd_diff
@@ -285,10 +286,15 @@ def get_hesp_row(
         row["Hesp_unchecked_authority_page_link"] = ""
     else:
         # At most 3
-        candidates = models.name.lint.get_candidate_bhl_pages(name)
-        row["Hesp_unchecked_authority_page_link"] = " | ".join(
-            sorted(page.page_url for page in candidates)[:3]
-        )
+        try:
+            candidates = models.name.lint.get_candidate_bhl_pages(name)
+            unchecked_links = " | ".join(
+                sorted(page.page_url for page in candidates)[:3]
+            )
+        except httpx.ReadTimeout:
+            # We'll fill up the cache eventually
+            unchecked_links = ""
+        row["Hesp_unchecked_authority_page_link"] = unchecked_links
 
     # For nomina nova, get type data from original name
     names_for_tags = [name]
