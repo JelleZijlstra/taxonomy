@@ -372,6 +372,13 @@ def names_missing_field_resolver(
     return ret
 
 
+def num_names_missing_field_resolver(
+    parent: ObjectType, info: ResolveInfo, field: str
+) -> int:
+    model = get_model(Taxon, parent, info)
+    return len(model.names_missing_field(field))
+
+
 def num_locations_resolver(
     parent: ObjectType, info: ResolveInfo, first: int = 10, after: str | None = None
 ) -> int:
@@ -471,7 +478,12 @@ CUSTOM_FIELDS = {
             make_connection(Name),
             resolver=names_missing_field_resolver,
             field=graphene.Argument(String, required=True),
-        )
+        ),
+        "num_names_missing_field": Int(
+            required=True,
+            resolver=num_names_missing_field_resolver,
+            field=graphene.Argument(String, required=True),
+        ),
     },
 }
 

@@ -38,6 +38,11 @@ class Region(BaseModel):
         DerivedField(
             "has_associated_people", bool, lambda region: region.has_associated_people()
         ),
+        DerivedField(
+            "has_stratigraphic_units",
+            bool,
+            lambda region: region.has_stratigraphic_units(),
+        ),
         get_tag_based_derived_field(
             "associated_people",
             lambda: models.Person,
@@ -246,6 +251,11 @@ class Region(BaseModel):
         for _ in self.collections:
             return True
         return any(child.has_collections() for child in self.children)
+
+    def has_stratigraphic_units(self) -> bool:
+        for _ in self.stratigraphic_units:
+            return True
+        return any(child.has_stratigraphic_units() for child in self.children)
 
     def display_collections(
         self, full: bool = False, only_nonempty: bool = True, depth: int = 0
