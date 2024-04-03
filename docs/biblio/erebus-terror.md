@@ -89,7 +89,7 @@ to track down. It appears to refer to "A Monthly List of New Books Published in 
 Britain, sold by Mr. C. Muquardt". I found a copy on Google Books that I refer to as
 {Muquardt-catalogue.pdf}; it is a catalog of books sold by the bookseller C. Muquardt in
 Brussels, covering the years 1844 through 1855. The first entry, for January 1844, is
-entitled "new series–No. XVIII", indicating that Muquardt began publishng the list
+entitled "new series–No. XVIII", indicating that Muquardt began publishing the list
 earlier, but I have not attempted to track down earlier entries. References to the
 _Erebus and Terror_ relevant to mammals are:
 

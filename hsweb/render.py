@@ -74,6 +74,7 @@ def _match_to_md_ref(match: re.Match[str]) -> str:
             except clorm.DoesNotExist:
                 return match.group()
     else:
+        ref = ref.replace("+", " ").replace("_", " ")
         try:
             obj = Article.select().filter(Article.name == ref).get()
         except clorm.DoesNotExist:

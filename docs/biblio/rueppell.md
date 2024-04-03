@@ -36,19 +36,19 @@ by 1831.]"
 that contain birds. They write that the work was published in 20 parts ("Lieferungen" or
 "Hefte") of 6 plates each (almost consistent with the total of 119 plates), and each
 plate was issued together with the corresponding text. They refer to various earlier
-sources, but these were also focused on birds only. I have seen {Aves Ethiopia-Rueppell
-nomenclature.pdf} but not the other sources cited. This paper indicates that parts 5, 7,
-8, and 14 were examined in the original wrappers.
+sources, but these were also focused on birds only. I have seen
+{Aves_Ethiopia-Rueppell_nomenclature.pdf} but not the other sources cited. This paper
+indicates that parts 5, 7, 8, and 14 were examined in the original wrappers.
 
 {Placentalia S Africa (Meester et al. 1986).pdf} p. 1 writes "J. E. Hill (in litt.)
 kindly provided us with ... unpublished notes by T. C. S. Morrison-Scott, giving the
-dates ofCretzschmar's descriptions of mammals in Rüppell: _Atlas zu der Reise im
+dates of Cretzschmar's descriptions of mammals in Rüppell: _Atlas zu der Reise im
 nördlichen Afrika_."
 
 Other secondary sources were less helpful but are listed here for completeness.
-{Library-BMNH catalog 2.pdf} p. 612 merely recounts the imprint dates. {Mammalia
-Australia (Jackson & Groves 2015).pdf} cites the mammal section to 1826–1831 but gives
-no details.
+{Library-BMNH catalog 2.pdf} p. 612 merely recounts the imprint dates.
+{Mammalia+Australia+(Jackson+&+Groves+2015).pdf} cites the mammal section to 1826–1831
+but gives no details.
 
 Sherborn's reference to "Isis" is {Vertebrata-Rueppell review (Isis).pdf}, an anonymous
 review of the work up to 1829, including a very useful list of parts and the plates they
@@ -57,8 +57,8 @@ below.
 
 ## Data
 
-As the plate numbers repeat in the section, we use the codes "M" (mammals), "B" (birds),
-"R" (reptiles), "I" (invertebrates), and "F" (fish).
+As the plate numbers repeat in each section, we use the codes "M" (mammals), "B"
+(birds), "R" (reptiles), "I" (invertebrates), and "F" (fish).
 
 Data from {Vertebrata-Rueppell review (Isis).pdf}:
 
@@ -119,7 +119,7 @@ Other reviews:
     - Reviews reptiles and fish
   - Vol. 23, p. 134 (October 1830, TOC on p. 160)
     - Reviews invertebrates up to pl. 11
-  - Vol. 26, p. 185 (August 1831, {{Africa-Rueppell review (Bulletin 1831).pdf}})
+  - Vol. 26, p. 185 (August 1831, {Africa-Rueppell review (Bulletin 1831).pdf})
     - Covers the three last _livraisons_, here numbered 25 through 27, and all dated
       to 1830.
     - No. 25 has bats (_Dysopes pumilus_, _Taphozous nudiventris_, _Nycticejus_,
@@ -254,7 +254,7 @@ We can therefore assume that the contents of the parts are as follows:
 - Heft 11: pl. M21-26
 - Heft 12: pl. F7-12
 - Heft 13: pl. F13-18
-- Heft 14: pl. B26-B31 (and 32?)
+- Heft 14: pl. B26-B31 (and B32?)
 - Heft 15: pl. F19-24
 - Heft 16: pl. F25-30
 - Heft 17: pl. I7-12

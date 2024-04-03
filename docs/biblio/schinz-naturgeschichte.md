@@ -80,4 +80,4 @@ For now, we assume the following publication history:
 
 - pp. 1–130, Hefte 1–12, were published by 1825 ({Mammalia (Schinz 1825) (Heft 1-12)})
 - pp. 131 to the end were published by 1827, on the assumption that by the time the
-  second edition was started, the first was mostly complete ({})
+  second edition was started, the first was mostly complete
