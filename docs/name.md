@@ -291,7 +291,14 @@ of the name.
 
 Tags include the following:
 
-- _PreoccupiedBy_: The name is preoccupied by another name.
+- _PreoccupiedBy_: The name is preoccupied by another name. For species-group names,
+  generally _PrimaryHomonymOf_ or _SecondaryHomonymOf_ should be used instead.
+- _PrimaryHomonymOf_: The name is a species-group name that has previously been used for
+  a different name that was originally placed in the same genus.
+- _SecondaryHomonymOf_: The name is a species-group name that has previously been used
+  for a different name that is currently placed in the same genus.
+- _NotPreoccupiedBy_: Indicates that a name is _not_ preoccupied by another similar
+  name, though it is similar enough that confusion is possible.
 - _UnjustifiedEmendationOf_: The name is an unjustified emendation of another name.
 - _IncorrectSubsequentSpellingOf_: The name is an incorrect subsequent spelling of
   another name.
