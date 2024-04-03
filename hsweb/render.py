@@ -4,6 +4,8 @@ from collections.abc import Callable, Iterable, Sequence
 from functools import lru_cache
 from pathlib import Path
 
+import clorm
+
 from taxonomy.db.models import Article
 from taxonomy.db.models.base import BaseModel
 
@@ -61,7 +63,7 @@ def _match_to_md_ref(match: re.Match[str]) -> str:
         if rest.isnumeric():
             try:
                 obj = model_cls.get(id=int(rest))
-            except model_cls.DoesNotExist:
+            except clorm.DoesNotExist:
                 return match.group()
         elif not model_cls.label_field:
             return match.group()
@@ -69,12 +71,12 @@ def _match_to_md_ref(match: re.Match[str]) -> str:
             field = getattr(model_cls, model_cls.label_field)
             try:
                 obj = model_cls.select().filter(field == rest).get()
-            except model_cls.DoesNotExist:
+            except clorm.DoesNotExist:
                 return match.group()
     else:
         try:
             obj = Article.select().filter(Article.name == ref).get()
-        except Article.DoesNotExist:
+        except clorm.DoesNotExist:
             return match.group()
     obj = obj.resolve_redirect()
     return obj.markdown_link() if full else obj.concise_markdown_link()
@@ -86,5 +88,4 @@ def render_markdown(text: str) -> str:
     text = render_plain_text(text)
     text = re.sub(r"\{([^}]+)\}", _match_to_md_ref, text)
     text = re.sub(r" @$", " [brackets original]", text)
-    print(text)
     return text

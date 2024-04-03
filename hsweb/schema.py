@@ -133,7 +133,7 @@ def build_adt(adt_cls: type[ADT]) -> type[Interface]:
 def translate_adt_arg(arg: Any, attr_name: str) -> Any:
     if isinstance(arg, BaseModel):
         return build_object_type_from_model(type(arg))(id=arg.id, oid=arg.id)
-    elif attr_name == "comment" and isinstance(arg, str):
+    elif attr_name in ("comment", "text") and isinstance(arg, str):
         return render_markdown(arg)
     elif isinstance(arg, str):
         return render_plain_text(arg)

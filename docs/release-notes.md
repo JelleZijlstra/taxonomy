@@ -8,17 +8,21 @@ exports released on Zenodo.
 
 - Database
   - Fix species assignment for many extant mammal names based on comparisons with data
-    from the MDD
-  - Set more precise page numbers instead of page ranges for a few dozen names
-  - Add citations to many names, including most remaining names published in the
-    publications of the Geological Survey of India
+    from the MDD. The database's classification for extant mammals now exactly matches
+    the MDD (except for new changes that have not been published in the MDD's latest
+    release yet).
+  - Set more precise page numbers instead of page ranges for a few dozen names.
   - Add coverage of Cynognathia, a group of Triassic cynodonts closely related to
-    mammals
-  - Add full authority citations for many more names
+    mammals.
+  - Add full authority citations for many more names, notably including many published
+    in the publications of the Geological Survey of India and many with type specimens
+    in the ZMMU.
   - Set the _page_described_ field for several thousand more names.
   - Move to a more consistent format for type specimens. All type specimen references
     now start with the institution code.
   - Mark numerous names as junior homonyms.
+  - Add links to many more citations (primarily in the Biodiversity Heritage Library).
+  - Add direct page links to original citations in over 30,000 names.
 - Backend
   - Add support for ORCID identifiers (though they are currently set for very few
     people)
@@ -29,10 +33,17 @@ exports released on Zenodo.
   - Revamp system for computing the nomenclatural status of names.
   - Fill the citation group column for names with a checked original citation in the
     exported data.
+  - Add support for linking names directly to an online resource (primarily the
+    Biodiversity Heritage Library).
 - Frontend
-  - Add option to show names in a taxon that are missing a field
+  - Add option to show names in a taxon that are missing a field.
+  - Add frontend support for new information (authority page links and PhyloCode numbers
+    on names; bibliographic notes and alternative URLs on articles; comments on citation
+    groups).
+  - List basal, incertae sedis, and dubious child taxa separately.
 
-Thanks to Rudolf Haslauer and Severin Uebbing for supplying information.
+Thanks to Rudolf Haslauer, Severin Uebbing, and especially Connor J. Burgin for
+supplying information and literature.
 
 # 24.1.0 (January 10, 2024)
 
