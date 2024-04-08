@@ -17,7 +17,7 @@ def test_citenormal() -> None:
     assert (
         citations.citenormal(article)
         == "*Zijlstra, J.S., Madern, P.A. and Hoek Ostende, L.W. van den. 2010."
-        " [http://dx.doi.org/10.1644/09-MAMM-A-208.1 New genus and two new species"
+        " [https://doi.org/10.1644/09-MAMM-A-208.1 New genus and two new species"
         " of Pleistocene oryzomyines (Cricetidae: Sigmodontinae) from Bonaire,"
         " Netherlands Antilles] (subscription required). Journal of Mammalogy"
         " 91(4):860-873."

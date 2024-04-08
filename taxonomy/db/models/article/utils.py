@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import Any
 
@@ -7,28 +6,28 @@ from ..person import AuthorTag, Person
 from .article import Article
 
 
-@dataclass
 class _FakeArticle(Article):
-    __data__: dict[str, Any]
-    _dirty: bool = False
+    for field in Article.clirm_fields:
+        locals()[field] = property(lambda self, field=field: self.__dict__.get(field))  # type: ignore
 
-    def __getattribute__(self, attr: str) -> Any:
-        data = object.__getattribute__(self, "__data__")
-        if attr in data:
-            return data[attr]
-        return super().__getattribute__(attr)
+    def __new__(cls, data: dict[str, Any]) -> Any:
+        obj = object.__new__(cls)
+        obj.__init__(None)  # type: ignore
+        for k in Article.clirm_fields:
+            obj.__dict__[k] = data.get(k)
+        return obj
 
 
-@dataclass
 class _FakePerson(Person):
-    __data__: dict[str, Any]
-    _dirty: bool = False
+    for field in Person.clirm_fields:
+        locals()[field] = property(lambda self, field=field: self.__dict__.get(field))  # type: ignore
 
-    def __getattribute__(self, attr: str) -> Any:
-        data = object.__getattribute__(self, "__data__")
-        if attr in data:
-            return data[attr]
-        return super().__getattribute__(attr)
+    def __new__(cls, data: dict[str, Any]) -> Any:
+        obj = object.__new__(cls)
+        obj.__init__(None)  # type: ignore
+        for k in Person.clirm_fields:
+            obj.__dict__[k] = data.get(k)
+        return obj
 
 
 def make_journal_article() -> Article:

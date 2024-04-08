@@ -37,6 +37,7 @@ classifiers = [
 ]
 dependencies = [
     "clirm",
+    "httpx",
     "IPython>8",
     "prompt_toolkit",
     "requests",
