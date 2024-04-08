@@ -27,8 +27,31 @@ from .. import derived_data, helpers, models
 
 settings = config.get_options()
 
-# static analysis: ignore[internal_error]
-CLIRM = Clirm(sqlite3.connect(str(settings.db_filename)))
+
+class LazyClirm(Clirm):
+    _conn: sqlite3.Connection | None = None
+
+    @property
+    def conn(self) -> sqlite3.Connection:
+        if self._conn is None:
+            self._conn = self.make_connection()
+        return self._conn
+
+    @conn.setter
+    def conn(self, value: sqlite3.Connection) -> None:
+        self._conn = value
+
+    def reconnect(self) -> None:
+        if self._conn is not None:
+            self._conn.close()
+        self._conn = self.make_connection()
+
+    def make_connection(self) -> sqlite3.Connection:
+        # static analysis: ignore[internal_error]
+        return sqlite3.connect(str(settings.db_filename))
+
+    def __init__(self) -> None:
+        super().__init__(None)  # static analysis: ignore[incompatible_argument]
 
 
 _getters: dict[tuple[type[Model], str | None], _NameGetter[Any]] = {}
@@ -83,7 +106,7 @@ class BaseModel(Model):
     markdown_fields: ClassVar[set[str]] = set()
     search_fields: ClassVar[Sequence[SearchField]] = ()
 
-    clirm = CLIRM
+    clirm = LazyClirm()
 
     e = _FieldEditor()
 
