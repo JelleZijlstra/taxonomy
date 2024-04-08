@@ -39,7 +39,8 @@ repos:
         files: ^taxonomy/.*\.py$
         additional_dependencies:
           - pyanalyze>=0.10.1
-          - peewee==3.13.3
+          - httpx
+          - clirm
           - IPython>8
           - prompt_toolkit
           - requests

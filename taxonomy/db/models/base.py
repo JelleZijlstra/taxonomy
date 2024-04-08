@@ -18,7 +18,7 @@ from types import NoneType
 from typing import Any, ClassVar, Generic, Self, TypeVar
 
 import typing_inspect
-from clorm import Clorm, Field, Model, Query
+from clirm import Clirm, Field, Model, Query
 
 from taxonomy.apis.cloud_search import SearchField
 
@@ -28,7 +28,7 @@ from .. import derived_data, helpers, models
 settings = config.get_options()
 
 # static analysis: ignore[internal_error]
-CLORM = Clorm(sqlite3.connect(str(settings.db_filename)))
+CLIRM = Clirm(sqlite3.connect(str(settings.db_filename)))
 
 
 _getters: dict[tuple[type[Model], str | None], _NameGetter[Any]] = {}
@@ -51,7 +51,7 @@ class _FieldEditor:
         return None
 
     def __dir__(self) -> list[str]:
-        return ["all"] + sorted(self.instance.clorm_fields.keys())
+        return ["all"] + sorted(self.instance.clirm_fields.keys())
 
 
 @dataclass(frozen=True)
@@ -83,7 +83,7 @@ class BaseModel(Model):
     markdown_fields: ClassVar[set[str]] = set()
     search_fields: ClassVar[Sequence[SearchField]] = ()
 
-    clorm = CLORM
+    clirm = CLIRM
 
     e = _FieldEditor()
 
@@ -548,7 +548,7 @@ class BaseModel(Model):
 
     @classmethod
     def fields(cls) -> Iterable[str]:
-        yield from cls.clorm_fields.keys()
+        yield from cls.clirm_fields.keys()
 
     def short_description(self) -> str:
         """Used as the prompt when editing this object."""
@@ -601,7 +601,7 @@ class BaseModel(Model):
         **kwargs: Any,
     ) -> list[ModelT]:
         filters = [*args]
-        fields = cls.clorm_fields
+        fields = cls.clirm_fields
         for key, value in kwargs.items():
             if key not in fields:
                 raise ValueError(f"{key} is not a valid field")
@@ -849,7 +849,7 @@ class BaseModel(Model):
         return obj, sig
 
     def edit_reverse_rel(self) -> None:
-        options = [field.related_name for field in self.clorm_backrefs]
+        options = [field.related_name for field in self.clirm_backrefs]
         chosen = getinput.choose_one_by_name(options)
         if chosen is None:
             return
@@ -861,7 +861,7 @@ class BaseModel(Model):
                 return
 
     def lint_reverse_rel(self) -> None:
-        options = [field.related_name for field in self.clorm_backrefs]
+        options = [field.related_name for field in self.clirm_backrefs]
         chosen = getinput.choose_one_by_name(options)
         if chosen is None:
             return
@@ -869,7 +869,7 @@ class BaseModel(Model):
             obj.format(quiet=True)
 
     def lint_and_fix(self) -> None:
-        options = [field.related_name for field in self.clorm_backrefs]
+        options = [field.related_name for field in self.clirm_backrefs]
         chosen = getinput.choose_one_by_name(options)
         if chosen is None:
             return
@@ -935,7 +935,7 @@ class BaseModel(Model):
     def edit_foreign(self) -> None:
         options = {
             name: field
-            for name, field in self.clorm_fields.items()
+            for name, field in self.clirm_fields.items()
             if issubclass(field.type_object, Model)
         }
         chosen = getinput.get_with_completion(
@@ -1079,7 +1079,7 @@ class BaseModel(Model):
 
     @classmethod
     def get_field_names(cls) -> list[str]:
-        return [field for field in cls.clorm_fields if field != "id"]
+        return [field for field in cls.clirm_fields if field != "id"]
 
     def get_required_fields(self) -> Iterable[str]:
         yield from self.get_field_names()

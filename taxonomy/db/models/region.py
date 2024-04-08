@@ -5,7 +5,7 @@ import sys
 from collections.abc import Iterable
 from typing import IO, Any, Self
 
-from clorm import Field
+from clirm import Field
 
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
 
@@ -20,7 +20,7 @@ class Region(BaseModel):
     save_event = events.Event["Region"]()
     label_field = "name"
     call_sign = "R"
-    clorm_table_name = "region"
+    clirm_table_name = "region"
 
     name = Field[str]()
     comment = Field[str | None]()

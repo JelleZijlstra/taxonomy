@@ -6,7 +6,7 @@ from collections.abc import Iterable
 from functools import lru_cache
 from typing import IO, Any, Self, TypeVar
 
-from clorm import Field
+from clirm import Field
 
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
 
@@ -30,7 +30,7 @@ class Period(BaseModel):
     save_event = events.Event["Period"]()
     label_field = "name"
     call_sign = "P"
-    clorm_table_name = "period"
+    clirm_table_name = "period"
 
     name = Field[str]()
     parent = Field[Self | None]("parent_id", related_name="children")

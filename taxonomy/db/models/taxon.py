@@ -9,7 +9,7 @@ from collections.abc import Callable, Container, Iterable, Sequence
 from functools import lru_cache
 from typing import IO, Any, Self, assert_never, cast
 
-from clorm import DoesNotExist, Field
+from clirm import DoesNotExist, Field
 
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
 
@@ -72,7 +72,7 @@ class Taxon(BaseModel):
     label_field = "valid_name"
     grouping_field = "age"
     call_sign = "T"
-    clorm_table_name = "taxon"
+    clirm_table_name = "taxon"
 
     rank = Field[Rank]()
     valid_name = Field[str](default="")

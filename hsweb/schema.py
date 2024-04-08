@@ -7,7 +7,7 @@ from collections.abc import Callable
 from itertools import islice
 from typing import TYPE_CHECKING, Any, TypeVar
 
-import clorm
+import clirm
 import graphene
 import typing_inspect
 from graphene import (
@@ -142,17 +142,17 @@ def translate_adt_arg(arg: Any, attr_name: str) -> Any:
 
 
 def build_graphene_field(
-    model_cls: type[BaseModel], name: str, clorm_field: clorm.Field
+    model_cls: type[BaseModel], name: str, clirm_field: clirm.Field
 ) -> Field:
-    if issubclass(clorm_field.type_object, enum.Enum):
+    if issubclass(clirm_field.type_object, enum.Enum):
         return Field(
-            make_enum(clorm_field.type_object),
-            required=not clorm_field.allow_none,
+            make_enum(clirm_field.type_object),
+            required=not clirm_field.allow_none,
             resolver=lambda parent, info: getattr(
                 get_model(model_cls, parent, info), name
             ),
         )
-    elif issubclass(clorm_field.type_object, BaseModel):
+    elif issubclass(clirm_field.type_object, BaseModel):
         call_sign = getattr(model_cls, name).type_object.call_sign
 
         def fk_resolver(parent: ObjectType, info: ResolveInfo) -> ObjectType | None:
@@ -169,17 +169,17 @@ def build_graphene_field(
                 if foreign_model is None:
                     return None
                 cache[key] = foreign_model
-            return build_object_type_from_model(clorm_field.type_object)(
+            return build_object_type_from_model(clirm_field.type_object)(
                 id=foreign_model.id, oid=foreign_model.id
             )
 
         return Field(
-            lambda: build_object_type_from_model(clorm_field.type_object),
-            required=not clorm_field.allow_none,
+            lambda: build_object_type_from_model(clirm_field.type_object),
+            required=not clirm_field.allow_none,
             resolver=fk_resolver,
         )
-    elif isinstance(clorm_field, ADTField):
-        adt_cls = clorm_field.adt_type
+    elif isinstance(clirm_field, ADTField):
+        adt_cls = clirm_field.adt_type
 
         def adt_resolver(parent: ObjectType, info: ResolveInfo) -> list[ObjectType]:
             model = get_model(model_cls, parent, info)
@@ -205,7 +205,7 @@ def build_graphene_field(
 
         return List(NonNull(build_adt(adt_cls)), required=True, resolver=adt_resolver)
     elif (
-        isinstance(clorm_field, (TextField, TextOrNullField))
+        isinstance(clirm_field, (TextField, TextOrNullField))
         or name in model_cls.markdown_fields
     ):
 
@@ -215,8 +215,8 @@ def build_graphene_field(
                 return None
             return render_markdown(value)
 
-        return Field(String, required=not clorm_field.allow_none, resolver=md_resolver)
-    elif clorm_field.type_object is str:
+        return Field(String, required=not clirm_field.allow_none, resolver=md_resolver)
+    elif clirm_field.type_object is str:
 
         def str_resolver(parent: ObjectType, info: ResolveInfo) -> str | None:
             value = getattr(get_model(model_cls, parent, info), name)
@@ -224,19 +224,19 @@ def build_graphene_field(
                 return None
             return render_plain_text(value)
 
-        return Field(String, required=not clorm_field.allow_none, resolver=str_resolver)
-    elif clorm_field.type_object is int:
+        return Field(String, required=not clirm_field.allow_none, resolver=str_resolver)
+    elif clirm_field.type_object is int:
         return Field(
             Int,
-            required=not clorm_field.allow_none,
+            required=not clirm_field.allow_none,
             resolver=lambda parent, info: getattr(
                 get_model(model_cls, parent, info), name
             ),
         )
-    elif clorm_field.type_object is bool:
+    elif clirm_field.type_object is bool:
         return Field(
             Boolean,
-            required=not clorm_field.allow_none,
+            required=not clirm_field.allow_none,
             resolver=lambda parent, info: getattr(
                 get_model(model_cls, parent, info), name
             ),
@@ -244,7 +244,7 @@ def build_graphene_field(
     else:
         assert (
             False
-        ), f"failed to translate {clorm_field} with type {clorm_field.type_object}"
+        ), f"failed to translate {clirm_field} with type {clirm_field.type_object}"
 
 
 def get_model(model_cls: type[BaseModel], parent: Any, info: ResolveInfo) -> BaseModel:
@@ -267,7 +267,7 @@ def build_connection(object_type: type[ObjectType]) -> type[Connection]:
 
 
 def build_reverse_rel_count_field(
-    model_cls: type[BaseModel], name: str, clorm_field: clorm.Field
+    model_cls: type[BaseModel], name: str, clirm_field: clirm.Field
 ) -> Field:
     def resolver(parent: ObjectType, info: ResolveInfo) -> list[ObjectType]:
         model = get_model(model_cls, parent, info)
@@ -402,9 +402,9 @@ def numeric_year_resolver_article(parent: ObjectType, info: ResolveInfo) -> int 
 
 
 def build_reverse_rel_field(
-    model_cls: type[BaseModel], name: str, clorm_field: clorm.Field
+    model_cls: type[BaseModel], name: str, clirm_field: clirm.Field
 ) -> Field:
-    foreign_model = clorm_field.model_cls
+    foreign_model = clirm_field.model_cls
     call_sign = foreign_model.call_sign
 
     if hasattr(foreign_model, "label_field"):
@@ -586,17 +586,17 @@ def build_derived_count_field(
 @cache
 def build_object_type_from_model(model_cls: type[BaseModel]) -> type[ObjectType]:
     namespace = {}
-    for name, clorm_field in model_cls.clorm_fields.items():
+    for name, clirm_field in model_cls.clirm_fields.items():
         if name == "id":
             continue
-        namespace[name] = build_graphene_field(model_cls, name, clorm_field)
+        namespace[name] = build_graphene_field(model_cls, name, clirm_field)
 
-    for clorm_field in model_cls.clorm_backrefs:
-        namespace[clorm_field.related_name] = build_reverse_rel_field(
-            model_cls, clorm_field.related_name, clorm_field
+    for clirm_field in model_cls.clirm_backrefs:
+        namespace[clirm_field.related_name] = build_reverse_rel_field(
+            model_cls, clirm_field.related_name, clirm_field
         )
-        namespace[f"num_{clorm_field.related_name}"] = build_reverse_rel_count_field(
-            model_cls, clorm_field.related_name, clorm_field
+        namespace[f"num_{clirm_field.related_name}"] = build_reverse_rel_count_field(
+            model_cls, clirm_field.related_name, clirm_field
         )
 
     for derived_field in model_cls.derived_fields:

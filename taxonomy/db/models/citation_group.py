@@ -8,7 +8,7 @@ from collections.abc import Iterable
 from datetime import date
 from typing import Any, NotRequired, Self, TypeVar
 
-from clorm import Field
+from clirm import Field
 
 from taxonomy.apis import bhl
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
@@ -29,7 +29,7 @@ class CitationGroup(BaseModel):
     grouping_field = "type"
     call_sign = "CG"
     excluded_fields = {"tags", "archive"}
-    clorm_table_name = "citation_group"
+    clirm_table_name = "citation_group"
 
     name = Field[str]()
     region = Field[Region | None]("region_id", related_name="citation_groups")
@@ -660,7 +660,7 @@ class CitationGroup(BaseModel):
 class CitationGroupPattern(BaseModel):
     label_field = "pattern"
     call_sign = "CGP"
-    clorm_table_name = "citation_group_pattern"
+    clirm_table_name = "citation_group_pattern"
 
     pattern = Field[str]()
     citation_group = Field[CitationGroup]("citation_group_id", related_name="patterns")

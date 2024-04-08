@@ -4,7 +4,7 @@ import re
 from collections.abc import Iterable
 from typing import Any, NotRequired, Self
 
-from clorm import Field
+from clirm import Field
 
 from taxonomy import adt, events, getinput, parsing
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
@@ -37,7 +37,7 @@ class Collection(BaseModel):
     label_field = "label"
     grouping_field = "city"
     call_sign = "C"
-    clorm_table_name = "collection"
+    clirm_table_name = "collection"
 
     label = Field[str]()
     name = Field[str]()

@@ -1,4 +1,4 @@
-from clorm import Field
+from clirm import Field
 
 from ..constants import OccurrenceStatus
 from .article import Article
@@ -14,7 +14,7 @@ class Occurrence(BaseModel):
     status = Field[OccurrenceStatus](default=OccurrenceStatus.valid)
     source = Field[Article | None]("source_id", related_name="occurrences")
     call_sign = "O"
-    clorm_table_name = "occurrence"
+    clirm_table_name = "occurrence"
     # The taxon field can become invalid when a taxon is merged into another. Allowing this
     # is not ideal because we can also get an Occurrence from a location. Alternatively,
     # we could reassign the occurrence to the other taxon, but that may cause duplicate

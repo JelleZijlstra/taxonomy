@@ -12,7 +12,7 @@ from collections import Counter
 from collections.abc import Callable, Iterable, Sequence
 from typing import IO, TYPE_CHECKING, Any, ClassVar, NotRequired, Self, TypeAlias
 
-from clorm import DoesNotExist, Field, Query
+from clirm import DoesNotExist, Field, Query
 
 from taxonomy import adt, events, getinput, parsing
 from taxonomy.apis import bhl
@@ -92,7 +92,7 @@ class Name(BaseModel):
     }
     excluded_fields = {"data"}
     markdown_fields = {"verbatim_citation"}
-    clorm_table_name = "name"
+    clirm_table_name = "name"
 
     # Basic data
     group = Field[Group]()
@@ -2481,7 +2481,7 @@ class NameComment(BaseModel):
     call_sign = "NCO"
     grouping_field = "kind"
     fields_may_be_invalid = {"name"}
-    clorm_table_name = "name_comment"
+    clirm_table_name = "name_comment"
 
     name = Field[Name]("name_id", related_name="comments")
     kind = Field[constants.CommentKind]()

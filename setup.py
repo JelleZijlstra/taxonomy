@@ -16,7 +16,7 @@ setup(
     url="https://github.com/JelleZijlstra/taxoomy",
     packages=["taxonomy", "hsweb"],
     install_requires=[
-        "peewee==3.13.3",
+        "clirm",
         "IPython>8",
         "prompt_toolkit",
         "requests",

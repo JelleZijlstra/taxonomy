@@ -6,7 +6,7 @@ import time
 from collections import defaultdict
 from collections.abc import Iterable
 
-from clorm import Field
+from clirm import Field
 
 from ... import adt, events, getinput
 from .base import ADTField, BaseModel, LintConfig, TextField
@@ -20,7 +20,7 @@ class Specimen(BaseModel):
     save_event = events.Event["Specimen"]()
     call_sign = "JZ"
     label_field = "id"
-    clorm_table_name = "specimen"
+    clirm_table_name = "specimen"
 
     taxon = Field[Taxon]("taxon_id")
     region = Field[Region]("region_id")
@@ -166,7 +166,7 @@ class Specimen(BaseModel):
 
 class SpecimenComment(BaseModel):
     call_sign = "JZCO"
-    clorm_table_name = "specimen_comment"
+    clirm_table_name = "specimen_comment"
 
     specimen = Field[Specimen]("specimen_id", related_name="comments")
     date = Field[int]()

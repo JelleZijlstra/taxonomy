@@ -33,7 +33,7 @@ from itertools import groupby
 from pathlib import Path
 from typing import Any, Generic, NamedTuple, TypeVar, cast
 
-import clorm
+import clirm
 import httpx
 import IPython
 import requests
@@ -156,7 +156,7 @@ def taxon_of_name(name: str) -> Taxon:
     """Finds a taxon with the given name."""
     name = name.replace("_", " ")
     try:
-        return Taxon.select_valid().filter(Taxon.valid_name == name)[0]
+        return Taxon.select_valid().filter(Taxon.valid_name == name).get()
     except IndexError:
         raise LookupError(name) from None
 
@@ -475,55 +475,6 @@ class SuffixTree(Generic[T]):
         else:
             if char in self.children:
                 yield from self.children[char]._lookup(key)
-
-
-@command
-def find_patronyms(dry_run: bool = True, min_length: int = 4) -> dict[str, int]:
-    """Finds names based on patronyms of authors in the database."""
-    authors = set()
-    species_name_to_names: dict[str, list[Name]] = defaultdict(list)
-    for name in Name.select_valid():
-        if name.author_tags:
-            for author in name.author_set():
-                author = unidecode.unidecode(
-                    author.replace("-", "").replace(" ", "").replace("'", "")
-                ).lower()
-                authors.add(author)
-        if name.group == Group.species:
-            species_name_to_names[name.root_name].append(name)
-    masculine = models.SpeciesNameComplex.of_kind(
-        constants.SpeciesNameKind.patronym_masculine
-    )
-    feminine = models.SpeciesNameComplex.of_kind(
-        constants.SpeciesNameKind.patronym_feminine
-    )
-    latinized = models.SpeciesNameComplex.of_kind(
-        constants.SpeciesNameKind.patronym_latin
-    )
-    count = 0
-    names_applied: Counter[str] = Counter()
-    for author in authors:
-        masculine_name = author + "i"
-        feminine_name = author + "ae"
-        latinized_name = author + "ii"
-        for snc, name in [
-            (masculine, masculine_name),
-            (feminine, feminine_name),
-            (latinized, latinized_name),
-        ]:
-            for nam in species_name_to_names[name]:
-                if nam.species_name_complex is None:
-                    print(f"set {nam} to {snc} patronym")
-                    count += 1
-                    names_applied[name] += 1
-                    if not dry_run and len(author) >= min_length:
-                        snc.make_ending(name, full_name_only=True)
-                elif nam.species_name_complex != snc:
-                    print(f"{nam} has {nam.species_name_complex} but expected {snc}")
-    print(f"applied {count} names")
-    if not dry_run:
-        detect_species_name_complexes()
-    return names_applied
 
 
 @command
@@ -1112,7 +1063,8 @@ def print_percentages() -> None:
     print("Finished collecting statistics on names")
 
     parents = [
-        (Taxon.select_valid().filter(Taxon.id == parent_id)[0], data)
+        # static analysis: ignore[incompatible_argument]
+        (Taxon.select_valid().filter(Taxon.id == parent_id).get(), data)
         for parent_id, data in counts_of_parent.items()
     ]
 
@@ -1352,7 +1304,7 @@ def fill_citation_group_for_type(
         name = getattr(art, field)
         try:
             cg = CitationGroup.get(name=name)
-        except clorm.DoesNotExist:
+        except clirm.DoesNotExist:
             print(f"Create: {name}, type={article_type}")
             if dry_run:
                 continue
@@ -2478,7 +2430,7 @@ def occ(
         return None
     try:
         o = t.at(loc)
-    except clorm.DoesNotExist:
+    except clirm.DoesNotExist:
         o = t.add_occurrence(loc, source, **kwargs)
         print("ADDED: %s" % o)
     else:
@@ -2555,7 +2507,7 @@ def warm_all_caches() -> None:
         if hasattr(model, "label_field"):
             print(f"{model}: warming None getter")
             model.getter(None).rewarm_cache()
-        for name, field in model.clorm_fields.items():
+        for name, field in model.clirm_fields.items():
             getter = model.getter(name)
             if field.type_object is str or getter._cache_key() in keys:
                 print(f"{model}: warming {name} ({field})")
@@ -2565,7 +2517,7 @@ def warm_all_caches() -> None:
 
 @command
 def show_queries(on: bool) -> None:
-    # TODO make this work in clorm if we want to
+    # TODO make this work in clirm if we want to
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger("peewee")
     if on:

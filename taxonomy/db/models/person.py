@@ -8,7 +8,7 @@ from collections import defaultdict
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from typing import IO, Any, Self
 
-from clorm import Field
+from clirm import Field
 
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
 
@@ -115,7 +115,7 @@ class Person(BaseModel):
     save_event = events.Event["Person"]()
     label_field = "family_name"
     call_sign = "H"  # for human, P is taken for Period
-    clorm_table_name = "person"
+    clirm_table_name = "person"
 
     family_name = Field[str]()
     given_names = Field[str | None]()
@@ -499,7 +499,7 @@ class Person(BaseModel):
                     self.type = PersonType.unchecked
 
     def lint(self, cfg: LintConfig) -> Iterable[str]:
-        for field_name, field_obj in self.clorm_fields.items():
+        for field_name, field_obj in self.clirm_fields.items():
             if field_obj.type_object is str:
                 value = getattr(self, field_name)
                 if value is not None and not helpers.is_clean_string(value):

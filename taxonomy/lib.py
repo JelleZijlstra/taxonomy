@@ -11,7 +11,7 @@ from collections import defaultdict
 from collections.abc import Container, Iterable
 from functools import partial
 
-import clorm
+import clirm
 
 from taxonomy import getinput
 from taxonomy.db.constants import (
@@ -255,7 +255,7 @@ def make_genus() -> Taxon | None:
         existing = Taxon.select_valid().filter(Taxon.valid_name == name).get()
         print(f"{existing} already exists")
         return None
-    except clorm.DoesNotExist:
+    except clirm.DoesNotExist:
         pass
     authors = []
     while True:
@@ -286,7 +286,7 @@ def make_species() -> Taxon | None:
         existing = Taxon.select_valid().filter(Taxon.valid_name == name).get()
         print(f"{existing} already exists")
         return None
-    except clorm.DoesNotExist:
+    except clirm.DoesNotExist:
         pass
     authors = []
     while True:

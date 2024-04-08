@@ -1357,7 +1357,7 @@ def check_lsid(art: Article, cfg: LintConfig) -> Iterable[str]:
 def check_must_use_children(art: Article, cfg: LintConfig) -> Iterable[str]:
     if not any(art.get_tags(art.tags, ArticleTag.MustUseChildren)):
         return
-    for field in Article.clorm_backrefs:
+    for field in Article.clirm_backrefs:
         if (
             field is Article.parent
             or field is ArticleComment.article
@@ -1396,7 +1396,7 @@ def get_num_referencing_tags(
     model: BaseModel, art: Article, interactive: bool = True
 ) -> int:
     num_references = 0
-    for field in model.clorm_fields.values():
+    for field in model.clirm_fields.values():
         if not isinstance(field, ADTField):
             continue
 

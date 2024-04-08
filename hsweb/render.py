@@ -4,7 +4,7 @@ from collections.abc import Callable, Iterable, Sequence
 from functools import lru_cache
 from pathlib import Path
 
-import clorm
+import clirm
 
 from taxonomy.db.models import Article
 from taxonomy.db.models.base import BaseModel
@@ -63,7 +63,7 @@ def _match_to_md_ref(match: re.Match[str]) -> str:
         if rest.isnumeric():
             try:
                 obj = model_cls.get(id=int(rest))
-            except clorm.DoesNotExist:
+            except clirm.DoesNotExist:
                 return match.group()
         elif not model_cls.label_field:
             return match.group()
@@ -71,13 +71,13 @@ def _match_to_md_ref(match: re.Match[str]) -> str:
             field = getattr(model_cls, model_cls.label_field)
             try:
                 obj = model_cls.select().filter(field == rest).get()
-            except clorm.DoesNotExist:
+            except clirm.DoesNotExist:
                 return match.group()
     else:
         ref = ref.replace("+", " ").replace("_", " ")
         try:
             obj = Article.select().filter(Article.name == ref).get()
-        except clorm.DoesNotExist:
+        except clirm.DoesNotExist:
             return match.group()
     obj = obj.resolve_redirect()
     return obj.markdown_link() if full else obj.concise_markdown_link()

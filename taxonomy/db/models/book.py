@@ -4,7 +4,7 @@ import json
 from collections.abc import Iterable
 from typing import Any, TypeVar
 
-from clorm import Field
+from clirm import Field
 
 from taxonomy import getinput
 
@@ -24,7 +24,7 @@ class Book(BaseModel):
     save_event = events.Event["Book"]()
     label_field = "title"
     call_sign = "B"
-    clorm_table_name = "book"
+    clirm_table_name = "book"
 
     author_tags = ADTField["AuthorTag"]()
     year = Field[str | None]()
@@ -148,7 +148,7 @@ class Book(BaseModel):
     def get_required_fields(self) -> Iterable[str]:
         yield from [
             field
-            for field in self.clorm_fields
+            for field in self.clirm_fields
             if field not in ("subtitle", "data", "loc", "dewey")
         ]
 

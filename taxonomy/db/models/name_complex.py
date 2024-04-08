@@ -5,7 +5,7 @@ import sys
 from collections.abc import Iterable, Sequence
 from typing import IO, Any, ClassVar
 
-from clorm import DoesNotExist, Field
+from clirm import DoesNotExist, Field
 
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
 
@@ -33,7 +33,7 @@ class SpeciesNameComplex(BaseModel):
     label_field = "label"
     label_field_has_underscores = True
     call_sign = "SC"
-    clorm_table_name = "species_name_complex"
+    clirm_table_name = "species_name_complex"
 
     label = Field[str]()
     stem = Field[str | None]()
@@ -420,7 +420,7 @@ class NameComplex(BaseModel):
     label_field = "label"
     label_field_has_underscores = True
     call_sign = "NC"
-    clorm_table_name = "name_complex"
+    clirm_table_name = "name_complex"
 
     label = Field[str]()
     stem = Field[str | None]()
@@ -983,7 +983,7 @@ class NameEnding(BaseModel):
 
     label_field = "ending"
     call_sign = "NE"
-    clorm_table_name = "name_ending"
+    clirm_table_name = "name_ending"
 
     name_complex = Field[NameComplex]("name_complex_id", related_name="endings")
     ending = Field[str]()
@@ -995,7 +995,7 @@ class SpeciesNameEnding(BaseModel):
 
     label_field = "ending"
     call_sign = "SNE"
-    clorm_table_name = "species_name_ending"
+    clirm_table_name = "species_name_ending"
 
     name_complex = Field[SpeciesNameComplex]("name_complex_id", related_name="endings")
     ending = Field[str]()

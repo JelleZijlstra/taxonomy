@@ -10,7 +10,7 @@ from collections.abc import Iterable
 from functools import cache
 from typing import NotRequired
 
-from clorm import Field
+from clirm import Field
 
 from ... import events, getinput
 from ...adt import ADT
@@ -25,7 +25,7 @@ class IssueDate(BaseModel):
     save_event = events.Event["IssueDate"]()
     call_sign = "ID"
     label_field = "id"
-    clorm_table_name = "issue_date"
+    clirm_table_name = "issue_date"
 
     citation_group = Field[CitationGroup]("citation_group_id")
     series = Field[str | None]()
@@ -158,7 +158,7 @@ class IssueDateTag(ADT):
 
 @cache
 def _get_cgs_with_issue_dates() -> set[int]:
-    cursor = IssueDate.clorm.select(
+    cursor = IssueDate.clirm.select(
         "SELECT DISTINCT `citation_group_id` FROM `issue_date`"
     )
     return {cg_id for (cg_id,) in cursor}

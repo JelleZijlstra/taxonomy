@@ -13,7 +13,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, ClassVar, NamedTuple, NotRequired, Self, TypeVar, cast
 
-from clorm import Field, Query
+from clirm import Field, Query
 
 from taxonomy import adt, config, events, getinput
 from taxonomy.apis import bhl
@@ -104,7 +104,7 @@ class Article(BaseModel):
     label_field = "name"
     call_sign = "A"
     excluded_fields = {"path", "addmonth", "addday", "addyear", "kind", "tags"}
-    clorm_table_name = "article"
+    clirm_table_name = "article"
 
     # Properties that have a one-to-one correspondence with the database.
     addmonth = Field[str]()  # month added to catalog
@@ -1311,7 +1311,7 @@ class ArticleComment(BaseModel):
     text = TextField()
 
     call_sign = "AC"
-    clorm_table_name = "article_comment"
+    clirm_table_name = "article_comment"
 
     search_fields = [
         SearchField(SearchFieldType.literal, "kind"),

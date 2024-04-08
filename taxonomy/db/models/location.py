@@ -7,7 +7,7 @@ from collections import Counter
 from collections.abc import Callable, Iterable, Sequence
 from typing import IO, Any, ClassVar, Self
 
-from clorm import Field
+from clirm import Field
 
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
 
@@ -32,7 +32,7 @@ class Location(BaseModel):
     label_field = "name"
     grouping_field = "min_period"
     call_sign = "L"
-    clorm_table_name = "location"
+    clirm_table_name = "location"
 
     name = Field[str]()
     min_period = Field[Period | None]("min_period_id", related_name="locations_min")

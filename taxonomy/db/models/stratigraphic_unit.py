@@ -5,7 +5,7 @@ from collections.abc import Iterable
 from functools import lru_cache
 from typing import IO, Any, Self, TypeVar
 
-from clorm import Field
+from clirm import Field
 
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
 
@@ -25,7 +25,7 @@ class StratigraphicUnit(BaseModel):
     save_event = events.Event["StratigraphicUnit"]()
     label_field = "name"
     call_sign = "S"
-    clorm_table_name = "stratigraphic_unit"
+    clirm_table_name = "stratigraphic_unit"
 
     name = Field[str]()
     parent = Field[Self | None]("parent_id", related_name="children")
