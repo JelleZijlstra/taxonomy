@@ -24,14 +24,19 @@ keywords = [
   "hesperomys",
 ]
 classifiers = [
+  "Development Status :: 2 - Pre-Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
   "Operating System :: OS Independent",
   "Programming Language :: Python",
   "Programming Language :: Python :: 3 :: Only",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
 ]
 dependencies = [
-    "peewee==3.13.3",
+    "clirm",
     "IPython>8",
     "prompt_toolkit",
     "requests",
@@ -53,6 +58,13 @@ dependencies = [
 [project.urls]
 Changelog = "https://github.com/JelleZijlstra/taxonomy/blob/master/docs/release-notes.md"
 Homepage = "http://hesperomys.com/"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build]
+include = ["taxonomy/**/*.py", "hsweb/**/*.py"]
 
 [tool.ruff]
 line-length = 300
