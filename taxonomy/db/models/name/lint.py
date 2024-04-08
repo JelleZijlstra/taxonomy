@@ -48,7 +48,15 @@ from ..base import LintConfig
 from ..collection import BMNH_COLLECTION, MULTIPLE_COLLECTION, Collection
 from ..person import AuthorTag, PersonLevel
 from ..taxon import Taxon
-from .name import PREOCCUPIED_TAGS, STATUS_TO_TAG, Name, NameComment, NameTag, TypeTag
+from .name import (
+    PREOCCUPIED_TAGS,
+    STATUS_TO_TAG,
+    Name,
+    NameComment,
+    NameTag,
+    SelectionReason,
+    TypeTag,
+)
 from .organ import CHECKED_ORGANS, ParsedOrgan, ParseException, parse_organ_detail
 from .type_specimen import (
     BaseSpecimen,
@@ -1042,6 +1050,8 @@ def _check_preoccupation_tag(tag: NameTag, nam: Name) -> Generator[str, None, Na
                 new_tag = NameTag.PrimaryHomonymOf(tag.name, tag.comment)
             elif _get_parent(nam) == _get_parent(senior_name):
                 new_tag = NameTag.SecondaryHomonymOf(tag.name, tag.comment)
+            else:
+                yield f"{nam} is marked as preoccupied by {senior_name}, but is not a primary or secondary homonym"
     else:
         if isinstance(tag, (NameTag.PrimaryHomonymOf, NameTag.SecondaryHomonymOf)):
             yield f"{nam} is not a species-group name, but uses {type(tag).__name__} tag"
@@ -1150,6 +1160,12 @@ def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
             possibility = should_be_infrasubspecific(nam)
             if possibility is Possibility.no:
                 yield "is marked as a variety or form, but should not be"
+
+        elif isinstance(tag, NameTag.NeedsPrioritySelection):
+            if nam.has_priority_over(tag.over):
+                yield f"is marked as {tag}, but is known to have priority"
+            elif tag.over.has_priority_over(nam):
+                yield f"is marked as {tag}, but other name is known to have priority"
 
         # haven't handled TakesPriorityOf, NomenOblitum, MandatoryChangeOf
         if new_tag is not None:
@@ -2254,30 +2270,37 @@ def check_composites(nam: Name, cfg: LintConfig) -> Iterable[str]:
 
 
 # TODO:
-# - Add homonymy check for genus-group names
 # - Remove/lint against NotPreoccupiedBy if it *is* preoccupied
 @make_linter("species_secondary_homonym")
 def check_species_group_secondary_homonyms(nam: Name, cfg: LintConfig) -> Iterable[str]:
-    yield from _check_species_group_homonyms(nam, primary=False, fuzzy=False, cfg=cfg)
+    yield from _check_species_group_homonyms(
+        nam, reason=SelectionReason.secondary_homonymy, fuzzy=False, cfg=cfg
+    )
 
 
 @make_linter("species_primary_homonym")
 def check_species_group_primary_homonyms(nam: Name, cfg: LintConfig) -> Iterable[str]:
-    yield from _check_species_group_homonyms(nam, primary=True, fuzzy=False, cfg=cfg)
+    yield from _check_species_group_homonyms(
+        nam, reason=SelectionReason.primary_homonymy, fuzzy=False, cfg=cfg
+    )
 
 
 @make_linter("species_fuzzy_secondary_homonym")
 def check_species_group_fuzzy_secondary_homonyms(
     nam: Name, cfg: LintConfig
 ) -> Iterable[str]:
-    yield from _check_species_group_homonyms(nam, primary=False, fuzzy=True, cfg=cfg)
+    yield from _check_species_group_homonyms(
+        nam, reason=SelectionReason.secondary_homonymy, fuzzy=True, cfg=cfg
+    )
 
 
 @make_linter("species_fuzzy_primary_homonym")
 def check_species_group_fuzzy_primary_homonyms(
     nam: Name, cfg: LintConfig
 ) -> Iterable[str]:
-    yield from _check_species_group_homonyms(nam, primary=True, fuzzy=True, cfg=cfg)
+    yield from _check_species_group_homonyms(
+        nam, reason=SelectionReason.primary_homonymy, fuzzy=True, cfg=cfg
+    )
 
 
 @make_linter("genus_homonym")
@@ -2295,13 +2318,13 @@ def check_genus_group_homonyms(nam: Name, cfg: LintConfig) -> Iterable[str]:
 
 
 def _check_species_group_homonyms(
-    nam: Name, *, primary: bool, fuzzy: bool, cfg: LintConfig
+    nam: Name, *, reason: SelectionReason, fuzzy: bool, cfg: LintConfig
 ) -> Iterable[str]:
     if nam.group is not Group.species:
         return
     if not nam.can_preoccupy():
         return
-    if primary:
+    if reason is SelectionReason.primary_homonymy:
         genus = nam.original_parent
         if genus is None:
             return
@@ -2319,7 +2342,7 @@ def _check_species_group_homonyms(
     )
     possible_homonyms = name_dict.get(root, [])
     yield from _check_homonym_list(
-        nam, possible_homonyms, primary=primary, fuzzy=fuzzy, cfg=cfg
+        nam, possible_homonyms, reason=reason, fuzzy=fuzzy, cfg=cfg
     )
 
 
@@ -2327,7 +2350,7 @@ def _check_homonym_list(
     nam: Name,
     possible_homonyms: Sequence[Name],
     *,
-    primary: bool = True,
+    reason: SelectionReason = SelectionReason.primary_homonymy,
     fuzzy: bool = False,
     cfg: LintConfig,
 ) -> Iterable[str]:
@@ -2336,7 +2359,7 @@ def _check_homonym_list(
         for other_nam in possible_homonyms
         if nam != other_nam
         and other_nam.can_preoccupy()
-        and other_nam.get_date_object() < nam.get_date_object()
+        and not nam.has_priority_over(other_nam)
     ]
     if fuzzy:
         # Exclude non-fuzzy matches, the regular check will catch them.
@@ -2364,6 +2387,7 @@ def _check_homonym_list(
                 NameTag.IncorrectSubsequentSpellingOf,
                 NameTag.SubsequentUsageOf,
                 NameTag.NameCombinationOf,
+                NameTag.AsEmendedBy,
             ),
         )
     }
@@ -2371,7 +2395,7 @@ def _check_homonym_list(
     for senior_homonym in relevant_names:
         # Ignore secondary homonyms that are also primary homonyms
         if (
-            not primary
+            reason is SelectionReason.secondary_homonymy
             and nam.original_parent is not None
             and senior_homonym.original_parent == nam.original_parent
         ):
@@ -2381,18 +2405,34 @@ def _check_homonym_list(
         if senior_homonym in already_variant_of:
             continue
 
+        # Marked as needing resolution through First Reviser action
+        if nam.get_date_object() == senior_homonym.get_date_object() and any(
+            isinstance(tag, NameTag.NeedsPrioritySelection)
+            and tag.reason == reason
+            and tag.over == senior_homonym
+            for tag in nam.tags
+        ):
+            continue
+
         if cfg.interactive:
             getinput.print_header(nam)
             print(f"{nam}: preoccupied by {senior_homonym}")
             if getinput.yes_no("Accept preoccupation? "):
                 if nam.group is Group.species:
-                    if primary:
+                    if reason is SelectionReason.primary_homonymy:
                         tag = NameTag.PrimaryHomonymOf
                     else:
                         tag = NameTag.SecondaryHomonymOf
                 else:
                     tag = NameTag.PreoccupiedBy
                 nam.preoccupied_by(senior_homonym, tag=tag)
+            elif (
+                nam.get_date_object() == senior_homonym.get_date_object()
+                and getinput.yes_no("Mark as needing First Reviser selection instead? ")
+            ):
+                nam.add_tag(
+                    NameTag.NeedsPrioritySelection(over=senior_homonym, reason=reason)
+                )
             elif getinput.yes_no("Mark as subsequent usage instead? "):
                 nam.add_tag(NameTag.SubsequentUsageOf(senior_homonym, ""))
         yield f"preoccupied by {senior_homonym}"
@@ -2927,7 +2967,7 @@ def infer_bhl_page_from_other_names(
     (page,) = pages
     other_new_names = [
         nam
-        for nam in nam.original_citation.new_names
+        for nam in nam.original_citation.get_new_names()
         if nam.has_type_tag(TypeTag.AuthorityPageLink)
     ]
     if not other_new_names:

@@ -13,7 +13,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, ClassVar, NamedTuple, NotRequired, Self, TypeVar, cast
 
-from clorm import Field
+from clorm import Field, Query
 
 from taxonomy import adt, config, events, getinput
 from taxonomy.apis import bhl
@@ -146,7 +146,7 @@ class Article(BaseModel):
         DerivedField(
             "ordered_new_names",
             LazyType(lambda: list[models.Name]),
-            lambda art: models.name.name.get_ordered_names(art.new_names),
+            lambda art: models.name.name.get_ordered_names(art.get_new_names()),
         ),
         get_tag_based_derived_field(
             "partially_suppressed_names",
@@ -464,12 +464,15 @@ class Article(BaseModel):
             if isinstance(tag, ArticleTag.AlternativeURL):
                 bhl.clear_caches_related_to_url(tag.url)
 
+    def get_new_names(self) -> Query[models.Name]:
+        return models.Name.add_validity_check(self.new_names)
+
     def try_to_find_bhl_links(self) -> None:
-        for nam in self.new_names:
+        for nam in self.get_new_names():
             nam.try_to_find_bhl_links()
 
     def remove_all_author_page_links(self) -> None:
-        for nam in self.new_names:
+        for nam in self.get_new_names():
             author_links, other_tags = split_iterable(
                 nam.type_tags,
                 lambda tag: isinstance(tag, models.TypeTag.AuthorityPageLink),
@@ -1150,8 +1153,7 @@ class Article(BaseModel):
     def display_names(self, full: bool = False, organized: bool = True) -> None:
         print(repr(self))
         new_names = sorted(
-            models.Name.add_validity_check(self.new_names),
-            key=lambda nam: nam.numeric_page_described(),
+            self.get_new_names(), key=lambda nam: nam.numeric_page_described()
         )
         if new_names:
             print(f"New names ({len(new_names)}):")
@@ -1165,9 +1167,7 @@ class Article(BaseModel):
     def display_type_localities(self) -> None:
         print(repr(self))
         new_names = sorted(
-            models.Name.add_validity_check(self.new_names).filter(
-                models.Name.type_locality != None
-            ),
+            self.get_new_names().filter(models.Name.type_locality != None),
             key=lambda nam: nam.type_locality.name,
         )
         if new_names:
@@ -1196,7 +1196,7 @@ class Article(BaseModel):
             child.display_children(indent=indent + 4)
 
     def copy_year_for_names(self, force: bool = False) -> None:
-        new_names = list(models.Name.add_validity_check(self.new_names))
+        new_names = list(self.get_new_names())
         issue = None
         for nam in new_names:
             for issue in models.name.lint.check_year_matches(nam, LintConfig()):

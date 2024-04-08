@@ -295,7 +295,7 @@ def check_precise_date(art: Article, cfg: LintConfig) -> Iterable[str]:
         return
     if not art.citation_group.has_tag(CitationGroupTag.MustHavePreciseDate):
         return
-    if art.new_names.count() == 0:
+    if art.get_new_names().count() == 0:
         return
     if art.year is not None and "-" not in art.year:
         yield f"is in {art.citation_group} but has imprecise date {art.year}"
@@ -564,7 +564,7 @@ def bhl_part_from_page(art: Article, cfg: LintConfig) -> Iterable[str]:
 
 
 def _get_bhl_page_ids_from_names(art: Article) -> set[int]:
-    new_names = list(art.new_names)
+    new_names = list(art.get_new_names())
     if not new_names:
         return set()
     known_pages = [
@@ -1212,7 +1212,7 @@ def infer_lsid_from_names(art: Article, cfg: LintConfig) -> Iterable[str]:
         for tag in tags
     ):
         return
-    new_names = list(art.new_names)
+    new_names = list(art.get_new_names())
     if not new_names:
         return
     act_lsids = [

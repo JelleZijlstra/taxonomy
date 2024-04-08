@@ -1128,13 +1128,10 @@ class Taxon(BaseModel):
             return self.base_name
         names = set(self.get_names())
         if self.base_name.taxon != self:
-            names |= set(self.base_name.taxon.names)
+            names |= set(self.base_name.taxon.get_names())
         group = self.base_name.group
         available_names = {
-            nam
-            for nam in names
-            if nam.nomenclature_status == NomenclatureStatus.available
-            and nam.group == group
+            nam for nam in names if nam.group == group and nam.can_be_valid_base_name()
         }
         if available_names:
             names = available_names

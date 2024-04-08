@@ -15,10 +15,10 @@ from collections.abc import Callable, Container, Iterable, Sequence
 from dataclasses import dataclass
 from functools import partial
 from types import NoneType
-from typing import Any, ClassVar, Generic, TypeVar
+from typing import Any, ClassVar, Generic, Self, TypeVar
 
 import typing_inspect
-from clorm import Clorm, Field, Model
+from clorm import Clorm, Field, Model, Query
 
 from taxonomy.apis.cloud_search import SearchField
 
@@ -650,12 +650,12 @@ class BaseModel(Model):
         return cls(data)
 
     @classmethod
-    def select_valid(cls) -> Any:
+    def select_valid(cls) -> Query[Self]:
         """Subclasses may override this to filter out removed instances."""
         return cls.add_validity_check(cls.select())
 
     @classmethod
-    def add_validity_check(cls, query: Any) -> Any:
+    def add_validity_check(cls, query: Query[Self]) -> Query[Self]:
         """Add a filter to the query that removes invalid objects."""
         return query
 

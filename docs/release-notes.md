@@ -42,8 +42,8 @@ exports released on Zenodo.
     groups).
   - List basal, incertae sedis, and dubious child taxa separately.
 
-Thanks to Rudolf Haslauer, Severin Uebbing, and especially Connor J. Burgin for
-supplying information and literature.
+Thanks to Rudolf Haslauer, Severin Uebbing, and especially Connor Burgin for supplying
+information and literature.
 
 # 24.1.0 (January 10, 2024)
 

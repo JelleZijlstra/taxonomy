@@ -316,7 +316,7 @@ def fill_data_reverse_order(
         getinput.show(f"({i}; {percentage:.03}%) {art.name}")
         result = fill_data_from_paper(art, ask_before_opening=ask_before_opening)
         if include_lint:
-            for nam in art.new_names:
+            for nam in art.get_new_names():
                 if nam.is_lint_clean():
                     continue
                 nam.display()

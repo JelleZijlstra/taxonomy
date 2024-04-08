@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import builtins
 import datetime
+import enum
 import json
 import re
 import subprocess
@@ -1062,6 +1063,34 @@ class Name(BaseModel):
         if nam := self.get_variant_base_name():
             return nam.can_preoccupy(depth=depth + 1)
         return True
+
+    def has_priority_over(self, nam: Name) -> bool:
+        my_date = self.get_date_object()
+        their_date = nam.get_date_object()
+
+        # First, check the date
+        if my_date < their_date:
+            return True
+        if their_date < my_date:
+            return False
+
+        # Names with a higher original rank have priority
+        if (
+            self.original_rank is not None
+            and nam.original_rank is not None
+            and self.original_rank not in (Rank.other, Rank.unranked)
+            and nam.original_rank not in (Rank.other, Rank.unranked)
+        ):
+            if self.original_rank > nam.original_rank:
+                return True
+            if nam.original_rank > self.original_rank:
+                return False
+
+        # Check for explicit priority selection
+        for tag in self.tags:
+            if isinstance(tag, NameTag.SelectionOfPriority) and tag.over == nam:
+                return True
+        return False
 
     def can_be_valid_base_name(self) -> bool:
         if self.nomenclature_status is NomenclatureStatus.nomen_novum:
@@ -2354,7 +2383,8 @@ class Name(BaseModel):
     def possible_citation_groups(self) -> int:
         if self.verbatim_citation is not None:
             same_citation = list(
-                self.select_valid().filter(
+                # pyanalyze doesn't understand the .id field properly
+                self.select_valid().filter(  # static analysis: ignore[incompatible_argument]
                     Name.verbatim_citation == self.verbatim_citation, Name.id != self.id
                 )
             )
@@ -2671,6 +2701,12 @@ def _stringify_tag(tag: adt.ADT) -> str:
         return name
 
 
+class SelectionReason(enum.IntEnum):
+    primary_homonymy = 1
+    secondary_homonymy = 2
+    synonymy = 3
+
+
 class NameTag(adt.ADT):
     PreoccupiedBy(name=Name, comment=NotRequired[str], tag=1)  # type: ignore
     UnjustifiedEmendationOf(name=Name, comment=NotRequired[str], tag=2)  # type: ignore
@@ -2726,6 +2762,8 @@ class NameTag(adt.ADT):
     VarietyOrForm(comment=NotRequired[str], tag=28)  # type: ignore
     # Same for not_used_as_valid
     NotUsedAsValid(comment=NotRequired[str], tag=29)  # type: ignore
+
+    NeedsPrioritySelection(over=Name, reason=SelectionReason, tag=30)  # type: ignore
 
 
 CONSTRUCTABLE_STATUS_TO_TAG = {
