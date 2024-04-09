@@ -225,7 +225,7 @@ def data_for_name(name: Name) -> NameData:
 
 
 def stringify_detail_tag(tag: DetailTag) -> str:
-    if not tag.source:
+    if tag.source is None:
         return f'"{tag.text}"'
     authors, year = tag.source.taxonomicAuthority()
     url = tag.source.get_absolute_url()
@@ -319,7 +319,7 @@ def data_for_collection(collection: Collection) -> CollectionData:
         "location": loc.name,
         "state": state.name if state else "",
         "country": country.name if country else "",
-        "num_type_specimens": collection.type_specimens.count(),
+        "num_type_specimens": str(collection.type_specimens.count()),
     }
 
 
