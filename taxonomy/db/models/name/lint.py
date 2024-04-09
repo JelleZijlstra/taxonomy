@@ -996,7 +996,10 @@ TAG_TO_STATUS = {
 }
 
 
-def _check_preoccupation_tag(tag: NameTag, nam: Name) -> Generator[str, None, NameTag]:
+def _check_preoccupation_tag(
+    tag: NameTag.PreoccupiedBy | NameTag.PrimaryHomonymOf | NameTag.SecondaryHomonymOf,  # type: ignore[name-defined]
+    nam: Name,
+) -> Generator[str, None, NameTag]:
     senior_name = tag.name
     new_tag = tag
     if nam.group != senior_name.group:
