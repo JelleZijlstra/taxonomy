@@ -136,14 +136,17 @@ def _citenormal(
         # journals (most common case)
         if article.citation_group:
             out += f"{article.citation_group.name} "
-        if article.series:
-            # need to catch "double series"
-            series = str(article.series).replace(";", ") (")
-            out += f"({series})"
-        out += str(article.volume)
-        if article.issue:
-            out += f"({article.issue})"
-        out += f":{page_range(article)}."
+        if article.is_in_press():
+            out += "(in press)."
+        else:
+            if article.series:
+                # need to catch "double series"
+                series = str(article.series).replace(";", ") (")
+                out += f"({series})"
+            out += str(article.volume)
+            if article.issue:
+                out += f"({article.issue})"
+            out += f":{page_range(article)}."
     elif article.type in (ArticleType.CHAPTER, ArticleType.PART):
         if article.start_page and article.end_page:
             if article.start_page == article.end_page:
