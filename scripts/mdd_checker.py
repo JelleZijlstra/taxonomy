@@ -101,7 +101,7 @@ COLUMN_TO_REGEX = {
     "flagged": r"[01]",
     "CMW_sciName": r"[A-Z][a-z]+_[a-z]+|NA",
     "diffSinceCMW": r"[01]",
-    "MSW3_sciName": r"[A-Z][a-z]+_[a-z]+|NA",
+    "MSW3_sciName": r"[A-Z][a-z]+_[a-zü]+|NA",
     "diffSinceMSW3": r"[01]",
 }
 
@@ -154,7 +154,7 @@ COUNTRIES: dict[str, CountryInfo] = {
     "Azerbaijan": {"continents": {"Asia"}, "realms": {"Palearctic"}},
     "Azores": {"continents": {"Europe"}, "realms": {"Palearctic"}},
     "Bahamas": {"continents": {"North America"}, "realms": {"Neotropic"}},
-    "Bahrain": {"continents": {"Asia"}, "realms": {"Palearctic"}},
+    "Bahrain": {"continents": {"Asia"}, "realms": {"Afrotropic"}},
     "Bangladesh": {"continents": {"Asia"}, "realms": {"Indomalaya"}},
     "Barbados": {"continents": {"North America"}, "realms": {"Neotropic"}},
     "Belarus": {"continents": {"Europe"}, "realms": {"Palearctic"}},
@@ -327,7 +327,7 @@ COUNTRIES: dict[str, CountryInfo] = {
     "Portugal": {"continents": {"Europe"}, "realms": {"Palearctic"}},
     "Prince Edward Islands": {"continents": {"Antarctica"}, "realms": set()},
     "Puerto Rico": {"continents": {"North America"}, "realms": {"Neotropic"}},
-    "Qatar": {"continents": {"Asia"}, "realms": {"Palearctic"}},
+    "Qatar": {"continents": {"Asia"}, "realms": {"Afrotropic"}},
     "Republic of the Congo": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
     "Reunion": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
     "Romania": {"continents": {"Europe"}, "realms": {"Palearctic"}},
@@ -344,7 +344,7 @@ COUNTRIES: dict[str, CountryInfo] = {
         "realms": {"Neotropic"},
     },
     "Samoa": {"continents": {"Oceania"}, "realms": {"Oceania"}},
-    "Saudi Arabia": {"continents": {"Asia"}, "realms": {"Palearctic"}},
+    "Saudi Arabia": {"continents": {"Asia"}, "realms": {"Palearctic", "Afrotropic"}},
     "Senegal": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
     "Serbia": {"continents": {"Europe"}, "realms": {"Palearctic"}},
     "Seychelles": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
@@ -388,7 +388,7 @@ COUNTRIES: dict[str, CountryInfo] = {
     "Tuvalu": {"continents": {"Oceania"}, "realms": {"Oceania"}},
     "Uganda": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
     "Ukraine": {"continents": {"Europe"}, "realms": {"Palearctic"}},
-    "United Arab Emirates": {"continents": {"Asia"}, "realms": {"Palearctic"}},
+    "United Arab Emirates": {"continents": {"Asia"}, "realms": {"Afrotropic"}},
     "United Kingdom": {"continents": {"Europe"}, "realms": {"Palearctic"}},
     "United States": {"continents": {"North America"}, "realms": {"Nearctic"}},
     "United States Virgin Islands": {
@@ -404,7 +404,7 @@ COUNTRIES: dict[str, CountryInfo] = {
     "Yemen": {"continents": {"Asia", "Africa"}, "realms": {"Afrotropic"}},
     "Zambia": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
     "Zimbabwe": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
-    "NA": {"continents": {"NA"}, "realms": set()},
+    "NA": {"continents": {"NA"}, "realms": {"NA"}},
 }
 if PERMISSIVE_RANGES:
     COUNTRIES["Bhutan"]["realms"].add("Palearctic")
@@ -418,10 +418,13 @@ if PERMISSIVE_RANGES:
     COUNTRIES["Morocco"]["realms"].add("Afrotropic")
     COUNTRIES["Tunisia"]["realms"].add("Afrotropic")
     COUNTRIES["Algeria"]["realms"].add("Afrotropic")
+    COUNTRIES["Mali"]["realms"].add("Palearctic")
+    COUNTRIES["Niger"]["realms"].add("Palearctic")
     COUNTRIES["Oman"]["realms"].add("Palearctic")
     COUNTRIES["Yemen"]["realms"].add("Palearctic")
     COUNTRIES["Saudi Arabia"]["realms"].add("Afrotropic")
     COUNTRIES["United States"]["realms"].add("Neotropic")
+    COUNTRIES["Kazakhstan"]["continents"].add("Europe")
 
 T = TypeVar("T")
 
@@ -636,7 +639,7 @@ class MDDSpecies:
             missing_expected_realm := (expected_realms - realms)
         ):
             text = ", ".join(
-                f"{realm} (based on {expected_realm_to_countries[realm]})"
+                f"{realm} (based on {sorted(expected_realm_to_countries[realm])})"
                 for realm in sorted(missing_expected_realm)
             )
             yield self.make_issue(
@@ -657,7 +660,15 @@ class SpeciesWithSyns:
             if syn["MDD_nomenclature_status"]
             not in ("name_combination", "subsequent_usage")
         ]
-        names = sorted(names, key=lambda syn: (syn["MDD_year"], syn["MDD_root_name"]))
+        names = sorted(
+            names,
+            key=lambda syn: (
+                syn["MDD_year"],
+                syn["MDD_root_name"],
+                syn["MDD_nomenclature_status"],
+                syn["MDD_syn_ID"],
+            ),
+        )
         return "|".join(self.stringify_syn(syn) for syn in names)
 
     def stringify_syn(self, syn: Syn) -> str:

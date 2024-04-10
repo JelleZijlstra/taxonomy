@@ -43,7 +43,7 @@ import Levenshtein
 from scripts import mdd_diff
 from taxonomy import getinput
 from taxonomy.config import get_options
-from taxonomy.db import export, models
+from taxonomy.db import export, helpers, models
 from taxonomy.db.constants import (
     AgeClass,
     Group,
@@ -117,6 +117,7 @@ def get_type_locality_country_and_subregion(nam: Name) -> tuple[str, str]:
         RegionKind.planet,
         RegionKind.continent,
         RegionKind.country,
+        RegionKind.sea,
     ):
         region = region.parent
         regions.append(region.name)
@@ -233,8 +234,6 @@ def get_type_specimen(nam: Name) -> str:
 OMITTED_COLUMNS = {
     "MDD_old_type_locality",
     "MDD_emended_type_locality",
-    "MDD_type_latitude",
-    "MDD_type_longitude",
     "MDD_subspecificEpithet",
     "MDD_comments",
     # Identifiers
@@ -312,6 +311,8 @@ def get_hesp_row(
     # Omit: MDD_emended_type_locality
     verbatim_tl = []
     emended_tl = []
+    row["Hesp_type_latitude"] = ""
+    row["Hesp_type_longitude"] = ""
     for nam in names_for_tags:
         for tag in nam.type_tags:
             if isinstance(tag, TypeTag.LocationDetail):
@@ -321,8 +322,12 @@ def get_hesp_row(
                     citation = ", ".join(tag.source.taxonomicAuthority())
                     emended_tl.append(f'"{tag.text}" ({citation})')
             elif isinstance(tag, TypeTag.Coordinates):
-                row["Hesp_type_latitude"] = tag.latitude
-                row["Hesp_type_longitude"] = tag.longitude
+                _, lat = helpers.standardize_coordinates(tag.latitude, is_latitude=True)
+                row["Hesp_type_latitude"] = str(lat)
+                _, long = helpers.standardize_coordinates(
+                    tag.longitude, is_latitude=False
+                )
+                row["Hesp_type_longitude"] = str(long)
     if verbatim_tl:
         row["Hesp_original_type_locality"] = " | ".join(verbatim_tl)
     if emended_tl:
@@ -497,6 +502,14 @@ def compare_column(
             explanation = "M only"
         case (True, True):
             if hesp_value != mdd_value:
+                if mdd_column in ("MDD_type_latitude", "MDD_type_longitude"):
+                    try:
+                        hesp_float = float(hesp_value)
+                        mdd_float = float(mdd_value)
+                        if abs(hesp_float - mdd_float) < 0.1:
+                            return None
+                    except ValueError:
+                        pass
                 comparison = f"{hesp_value} (H) / {mdd_value} (M)"
                 if compare_func is not None:
                     extra = compare_func(hesp_value, mdd_value)
@@ -571,7 +584,7 @@ def run(*, dry_run: bool = True, taxon: Taxon, max_names: int | None = None) -> 
     column_to_idx = {heading: i for i, heading in enumerate(headings, start=1)}
     rows = [dict(zip(headings, row, strict=False)) for row in raw_rows[1:]]
     hesp_id_to_mdd_id = {
-        int(row["Hesp_id"]): row["MDD_syn_ID"] for row in rows if row["Hesp_id"]
+        int(row["Hesp_id"]): row["MDD_syn_ID"] for row in rows if row.get("Hesp_id")
     }
     print(f"done, {len(rows)} found")
 
@@ -603,6 +616,9 @@ def run(*, dry_run: bool = True, taxon: Taxon, max_names: int | None = None) -> 
             break
         mdd_id = int(mdd_row["MDD_syn_ID"])
         max_mdd_id = max(max_mdd_id, mdd_id)
+        if "Hesp_id" not in mdd_row:
+            missing_in_hesp.append(("missing in H", mdd_row))
+            continue
         hesp_id = resolve_hesp_id(mdd_row["Hesp_id"])
         if hesp_id is None:
             missing_in_hesp.append(("missing in H", mdd_row))
