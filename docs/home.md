@@ -60,6 +60,7 @@ Other aspects of the database:
 - [Data sources](/docs/data-sources)
 - [Scores](/docs/scores)
 - [Text conventions](/docs/text)
+- [Finding citations](/docs/finding-citations)
 
 Source code:
 
