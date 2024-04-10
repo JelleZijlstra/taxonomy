@@ -452,6 +452,7 @@ class RegionKind(enum.IntEnum):
     prefecture = 12
     territory = 13
     supranational = 14  # Supranational regions from the UN geoscheme
+    sea = 15
 
 
 class PeriodSystem(enum.IntEnum):
