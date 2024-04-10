@@ -336,7 +336,7 @@ COORDINATE_RGX = re.compile(
     ((?P<minutes>\d+(\.\d+)?)'
     ((?P<seconds>\d+(\.\d+)?)")?)?
     (?P<direction>[NSWE])$
-""",
+    """,
     re.VERBOSE,
 )
 
@@ -345,7 +345,7 @@ class InvalidCoordinates(Exception):
     pass
 
 
-def standardize_coordinates(text: str, *, is_latitude: bool) -> str:
+def standardize_coordinates(text: str, *, is_latitude: bool) -> tuple[str, float]:
     text = re.sub(r"\s", "", text)
     text = text.replace("·", ".")
     text = re.sub(r"[\*◦]", "°", text)
@@ -363,7 +363,9 @@ def standardize_coordinates(text: str, *, is_latitude: bool) -> str:
 
     if "." in degrees and minutes:
         raise InvalidCoordinates("fractional degrees when minutes are given")
-    if float(degrees) > (90 if is_latitude else 180):
+
+    numeric_value = float(degrees)
+    if numeric_value > (90 if is_latitude else 180):
         raise InvalidCoordinates(f"invalid degree {degrees}")
 
     if minutes:
@@ -371,18 +373,27 @@ def standardize_coordinates(text: str, *, is_latitude: bool) -> str:
             raise InvalidCoordinates("fractional degrees when minutes are given")
         if float(minutes) > 60:
             raise InvalidCoordinates(f"invalid minutes {minutes}")
+        numeric_value += float(minutes) / 60
 
     if seconds:
         if float(seconds) > 60:
             raise InvalidCoordinates(f"invalid seconds {seconds}")
+        numeric_value += float(seconds) / 3600
+
+    if numeric_value > (90 if is_latitude else 180):
+        raise InvalidCoordinates(f"invalid coordinates {text}")
 
     if is_latitude:
         if direction not in ("N", "S"):
             raise InvalidCoordinates(f"invalid latitude {direction}")
+        if direction == "S":
+            numeric_value = -numeric_value
     else:
         if direction not in ("W", "E"):
             raise InvalidCoordinates(f"invalid longitude {direction}")
-    return text
+        if direction == "W":
+            numeric_value = -numeric_value
+    return text, numeric_value
 
 
 def extract_coordinates(text: str) -> tuple[str, str] | None:
@@ -390,13 +401,13 @@ def extract_coordinates(text: str) -> tuple[str, str] | None:
     match = LATLONG.search(text)
     if match:
         try:
-            latitude = standardize_coordinates(
+            latitude, _ = standardize_coordinates(
                 match.group("latitude"), is_latitude=True
             )
         except InvalidCoordinates:
             return None
         try:
-            longitude = standardize_coordinates(
+            longitude, _ = standardize_coordinates(
                 match.group("longitude"), is_latitude=False
             )
         except InvalidCoordinates:

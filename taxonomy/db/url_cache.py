@@ -41,6 +41,7 @@ class CacheDomain(enum.Enum):
     bhl_page = 8  # BHL GetPageMetadata
     bhl_part = 9  # BHL GetPartMetadata
     doi_resolution = 10  # https://www.doi.org/the-identifier/resources/factsheets/doi-resolution-documentation
+    nominatim = 11  # https://nominatim.org/release-docs/latest/api/Reverse/#examples
 
 
 KeyT = TypeVar("KeyT")

@@ -676,7 +676,14 @@ class Name(BaseModel):
             "add_authority_page_link": self.add_authority_page_link,
             "try_to_find_bhl_links": self.try_to_find_bhl_links,
             "clear_bhl_caches": self.clear_bhl_caches,
+            "open_coordinates": self.open_coordinates,
         }
+
+    def open_coordinates(self) -> None:
+        for tag in self.get_tags(self.type_tags, TypeTag.Coordinates):
+            point = models.name.lint.make_point(tag)
+            if point is not None:
+                subprocess.check_call(["open", point.openstreetmap_url])
 
     def clear_bhl_caches(self) -> None:
         for tag in self.type_tags:

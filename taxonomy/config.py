@@ -50,6 +50,8 @@ class Options(NamedTuple):
 
     bhl_api_key: str = ""
 
+    geojson_path: Path = Path()
+
     @property
     def burst_path(self) -> Path:
         return self.new_path / "Burst"
@@ -132,6 +134,7 @@ def parse_config_file(filename: Path) -> Options:
                 section.get("mdd_species_worksheet_gid", "0")
             ),
             bhl_api_key=section.get("bhl_api_key", ""),
+            geojson_path=parse_path(section, "geojson_path", base_path),
         )
 
 

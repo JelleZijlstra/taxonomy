@@ -20,7 +20,8 @@ from typing import Any, TypeVar
 
 import requests
 
-from taxonomy.apis import bhl
+from taxonomy import coordinates
+from taxonomy.apis import bhl, nominatim
 
 from .... import adt, getinput
 from ....apis.zoobank import clean_lsid, get_zoobank_data, is_valid_lsid
@@ -37,6 +38,7 @@ from ...constants import (
     NomenclatureStatus,
     OriginalCitationDataLevel,
     Rank,
+    RegionKind,
     SpeciesGroupType,
     SpeciesNameKind,
     SpecimenOrgan,
@@ -454,18 +456,16 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
             tags.append(tag)
         elif isinstance(tag, TypeTag.Coordinates):
             try:
-                lat = helpers.standardize_coordinates(tag.latitude, is_latitude=True)
+                lat, _ = helpers.standardize_coordinates(tag.latitude, is_latitude=True)
             except helpers.InvalidCoordinates as e:
-                print(f"{nam} has invalid latitude {tag.latitude}: {e}")
-                yield f"invalid latitude {tag.latitude}"
+                yield f"invalid latitude {tag.latitude}: {e}"
                 lat = tag.latitude
             try:
-                longitude = helpers.standardize_coordinates(
+                longitude, _ = helpers.standardize_coordinates(
                     tag.longitude, is_latitude=False
                 )
             except helpers.InvalidCoordinates as e:
-                print(f"{nam} has invalid longitude {tag.longitude}: {e}")
-                yield f"invalid longitude {tag.longitude}"
+                yield f"invalid longitude {tag.longitude}: {e}"
                 longitude = tag.longitude
             tags.append(TypeTag.Coordinates(lat, longitude))
         elif isinstance(tag, TypeTag.LSIDName):
@@ -569,6 +569,46 @@ def fix_type_specimen_link(url: str) -> str:
     ):
         return url.replace("http://", "https://")
     return url
+
+
+def make_point(tag: TypeTag.Coordinates) -> coordinates.Point | None:  # type: ignore[name-defined]
+    try:
+        _, lat = helpers.standardize_coordinates(tag.latitude, is_latitude=True)
+        _, lon = helpers.standardize_coordinates(tag.longitude, is_latitude=False)
+    except helpers.InvalidCoordinates:
+        return None
+    return coordinates.Point(lon, lat)
+
+
+@make_linter("coordinates")
+def check_coordinates(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    if nam.type_locality is None:
+        return
+    for tag in nam.get_tags(nam.type_tags, TypeTag.Coordinates):
+        point = make_point(tag)
+        if point is None:
+            continue  # reported elsewhere
+
+        tl_region = nam.type_locality.region
+        tl_country = tl_region.parent_of_kind(RegionKind.country)
+        if tl_country is None:
+            continue
+        polygon_path = coordinates.get_path(tl_country.name)
+        if polygon_path is not None and coordinates.is_in_polygon(point, polygon_path):
+            continue
+        osm_country = nominatim.get_openstreetmap_country(point)
+        if osm_country is None:
+            yield f"cannot place coordinates {point} in any country (expected {tl_country.name})"
+            continue
+        our_country = tl_country.name
+        if osm_country == our_country:
+            continue
+        our_country = nominatim.HESP_COUNTRY_TO_OSM_COUNTRY.get(
+            our_country, our_country
+        )
+        if our_country == osm_country:
+            continue
+        yield f"coordinates {point} are in {osm_country}, not {tl_country.name}"
 
 
 @make_linter("type_designations", disabled=True)
