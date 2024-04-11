@@ -13,6 +13,9 @@ and archaea), the geography at [Earth](/r/Earth) (until extraterrestrial life is
 discovered), or the chronology at [Phanerozoic](/p/Phanerozoic) (until I incorporate
 Precambrian fossils into the database).
 
+Use the [Homonym Finder](/homonym-finder) tool to find species-group homonyms (useful if
+you are considering naming a new species).
+
 To cite this project, use:
 
 - Zijlstra, J.S. 2024. Hesperomys Project (Version 24.1.0) [Data set]. Zenodo.

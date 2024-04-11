@@ -37,6 +37,7 @@ exports released on Zenodo.
     Biodiversity Heritage Library).
 - Frontend
   - Add option to show names in a taxon that are missing a field.
+  - Add tool for finding homonyms in the species group.
   - Add frontend support for new information (authority page links and PhyloCode numbers
     on names; bibliographic notes and alternative URLs on articles; comments on citation
     groups).
