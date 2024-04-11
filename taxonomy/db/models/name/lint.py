@@ -1039,7 +1039,7 @@ TAG_TO_STATUS = {
 
 
 def _check_preoccupation_tag(
-    tag: NameTag.PreoccupiedBy | NameTag.PrimaryHomonymOf | NameTag.SecondaryHomonymOf,  # type: ignore[name-defined]
+    tag: NameTag.PreoccupiedBy | NameTag.PrimaryHomonymOf | NameTag.SecondaryHomonymOf | NameTag.PermanentlyReplacedSecondaryHomonymOf,  # type: ignore[name-defined]
     nam: Name,
 ) -> Generator[str, None, NameTag]:
     senior_name = tag.name
@@ -1240,6 +1240,11 @@ def get_applicable_nomenclature_statuses_from_tags(
         if not exclude_condition and isinstance(tag, NameTag.Condition):
             yield tag.status
         elif isinstance(tag, PREOCCUPIED_TAGS):
+            if (
+                isinstance(tag, NameTag.PermanentlyReplacedSecondaryHomonymOf)
+                and tag.is_in_use
+            ):
+                continue
             yield NomenclatureStatus.preoccupied
         elif isinstance(tag, NameTag.VarietyOrForm):
             # ICZN Art. 45.6.4.1: a name originally published as a variety or form before 1961
@@ -2390,8 +2395,6 @@ def get_possible_homonyms(
     return genera, name_dict.items()
 
 
-# TODO:
-# - Remove/lint against NotPreoccupiedBy if it *is* preoccupied
 @make_linter("species_secondary_homonym")
 def check_species_group_secondary_homonyms(nam: Name, cfg: LintConfig) -> Iterable[str]:
     yield from _check_species_group_homonyms(
@@ -2478,9 +2481,9 @@ def _check_homonym_list(
     relevant_names = [
         other_nam
         for other_nam in possible_homonyms
-        if nam != other_nam
-        and other_nam.can_preoccupy()
-        and not nam.has_priority_over(other_nam)
+        if nam != other_nam and other_nam.can_preoccupy()
+        # TODO: not nam.has_priority_over(other_nam)
+        and other_nam.has_priority_over(nam)
     ]
     if fuzzy:
         # Exclude non-fuzzy matches, the regular check will catch them.
@@ -2492,25 +2495,23 @@ def _check_homonym_list(
 
     if not relevant_names:
         return
+    relevant_tags: tuple[type[NameTag], ...] = (
+        NameTag.PreoccupiedBy,
+        NameTag.UnjustifiedEmendationOf,
+        NameTag.JustifiedEmendationOf,
+        NameTag.PrimaryHomonymOf,
+        NameTag.SecondaryHomonymOf,
+        NameTag.VariantOf,
+        NameTag.IncorrectSubsequentSpellingOf,
+        NameTag.SubsequentUsageOf,
+        NameTag.NameCombinationOf,
+        NameTag.AsEmendedBy,
+    )
+    if fuzzy:
+        # Allow ignoring preoccupation only for fuzzy matches
+        relevant_tags += (NameTag.IgnorePreoccupationBy,)
     already_variant_of = {
-        tag.name
-        for tag in nam.tags
-        if isinstance(
-            tag,
-            (
-                NameTag.PreoccupiedBy,
-                NameTag.UnjustifiedEmendationOf,
-                NameTag.JustifiedEmendationOf,
-                NameTag.PrimaryHomonymOf,
-                NameTag.SecondaryHomonymOf,
-                NameTag.NotPreoccupiedBy,
-                NameTag.VariantOf,
-                NameTag.IncorrectSubsequentSpellingOf,
-                NameTag.SubsequentUsageOf,
-                NameTag.NameCombinationOf,
-                NameTag.AsEmendedBy,
-            ),
-        )
+        tag.name for tag in nam.tags if isinstance(tag, relevant_tags)
     }
 
     for senior_homonym in relevant_names:

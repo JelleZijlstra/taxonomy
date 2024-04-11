@@ -2723,6 +2723,15 @@ class NameTag(adt.ADT):
 
     NeedsPrioritySelection(over=Name, reason=SelectionReason, tag=30)  # type: ignore
 
+    PermanentlyReplacedSecondaryHomonymOf(  # type: ignore
+        name=Name,
+        optional_source=NotRequired[Article],
+        is_in_use=bool,
+        comment=str,
+        tag=31,
+    )
+    IgnorePreoccupationBy(name=Name, comment=str, tag=32)  # type: ignore
+
 
 CONSTRUCTABLE_STATUS_TO_TAG = {
     NomenclatureStatus.unjustified_emendation: NameTag.UnjustifiedEmendationOf,
@@ -2745,6 +2754,7 @@ PREOCCUPIED_TAGS = (
     NameTag.PreoccupiedBy,
     NameTag.PrimaryHomonymOf,
     NameTag.SecondaryHomonymOf,
+    NameTag.PermanentlyReplacedSecondaryHomonymOf,
 )
 
 

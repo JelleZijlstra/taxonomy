@@ -297,8 +297,15 @@ Tags include the following:
   a different name that was originally placed in the same genus.
 - _SecondaryHomonymOf_: The name is a species-group name that has previously been used
   for a different name that is currently placed in the same genus.
+- _PermanentlyReplacedSecondaryHomonym_: The name is not currently a secondary homonym
+  of another name, but was replaced before 1961 and is therefore now permanently
+  invalid. This condition only applies if the junior homonym is not in use, so the tag
+  has a field _is_in_use_ that should be set to True if the junior homonym is currently
+  in use.
 - _NotPreoccupiedBy_: Indicates that a name is _not_ preoccupied by another similar
   name, though it is similar enough that confusion is possible.
+- _IgnorePreoccupationBy_: Mark that a name should not be considered as preoccupied by
+  another name. This is used to deal with false positives in fuzzy homonym matching.
 - _UnjustifiedEmendationOf_: The name is an unjustified emendation of another name.
 - _IncorrectSubsequentSpellingOf_: The name is an incorrect subsequent spelling of
   another name.
