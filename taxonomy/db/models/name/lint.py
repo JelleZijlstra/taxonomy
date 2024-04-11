@@ -18,7 +18,9 @@ from dataclasses import replace
 from datetime import datetime
 from typing import Any, TypeVar
 
+import Levenshtein
 import requests
+from attr import dataclass
 
 from taxonomy import coordinates
 from taxonomy.apis import bhl, nominatim
@@ -2310,6 +2312,82 @@ def check_composites(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 f"is of status {nam.status} and must have at least two PartialTaxon"
                 f" tags (got {tags})"
             )
+
+
+@dataclass
+class PossibleHomonym:
+    exact_name_match: bool = False
+    fuzzy_name_match: bool = False
+    same_original_genus: bool = False
+    same_current_genus: bool = False
+    edit_distance: int | None = None
+    related_genus: bool = False
+
+    def is_current_homonym(self) -> bool:
+        return (self.same_original_genus or self.same_current_genus) and (
+            self.exact_name_match or self.fuzzy_name_match
+        )
+
+
+def get_possible_homonyms(
+    genus_name: str, root_name: str
+) -> tuple[Iterable[Name], Iterable[tuple[Name, PossibleHomonym]]]:
+    name_dict: dict[Name, PossibleHomonym] = defaultdict(PossibleHomonym)
+    normalized_root_name = helpers.normalize_root_name_for_homonymy(root_name)
+    genera = {
+        genus.resolve_name()
+        for genus in Name.select_valid().filter(
+            Name.group == Group.genus, Name.root_name == genus_name
+        )
+    }
+    for genus in genera:
+        primary_nonfuzzy = _get_primary_names_of_genus_and_variants(genus, fuzzy=False)
+        for nam in primary_nonfuzzy.get(root_name, []):
+            name_dict[nam].exact_name_match = True
+            name_dict[nam].same_original_genus = True
+        for other_root_name, nams in primary_nonfuzzy.items():
+            distance = Levenshtein.distance(root_name, other_root_name)
+            if distance <= 2:
+                for nam in nams:
+                    name_dict[nam].same_original_genus = True
+                    name_dict[nam].edit_distance = distance
+        primary_fuzzy = _get_primary_names_of_genus_and_variants(genus, fuzzy=True)
+        for nam in primary_fuzzy.get(normalized_root_name, []):
+            name_dict[nam].fuzzy_name_match = True
+            name_dict[nam].same_original_genus = True
+        taxon = _get_parent(genus)
+        if taxon is not None:
+            secondary_nonfuzzy = _get_secondary_names_of_genus(taxon, fuzzy=False)
+            for nam in secondary_nonfuzzy.get(root_name, []):
+                name_dict[nam].exact_name_match = True
+                name_dict[nam].same_current_genus = True
+            for other_root_name, nams in secondary_nonfuzzy.items():
+                distance = Levenshtein.distance(root_name, other_root_name)
+                if distance <= 2:
+                    for nam in nams:
+                        name_dict[nam].same_current_genus = True
+                        name_dict[nam].edit_distance = distance
+
+            secondary_fuzzy = _get_secondary_names_of_genus(taxon, fuzzy=True)
+            for nam in secondary_fuzzy.get(normalized_root_name, []):
+                name_dict[nam].fuzzy_name_match = True
+                name_dict[nam].same_current_genus = True
+
+            if taxon.parent is not None:
+                for related_genus in taxon.parent.get_children().filter(
+                    Taxon.rank == Rank.genus
+                ):
+                    secondary_nonfuzzy = _get_secondary_names_of_genus(
+                        related_genus, fuzzy=False
+                    )
+                    for other_root_name, nams in secondary_nonfuzzy.items():
+                        distance = Levenshtein.distance(root_name, other_root_name)
+                        if distance <= 2:
+                            for nam in nams:
+                                name_dict[nam].related_genus = True
+                                name_dict[nam].edit_distance = distance
+
+    return genera, name_dict.items()
 
 
 # TODO:

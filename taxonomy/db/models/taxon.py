@@ -9,6 +9,7 @@ from collections.abc import Callable, Container, Iterable, Sequence
 from functools import lru_cache
 from typing import IO, Any, Self, assert_never, cast
 
+import clirm
 from clirm import DoesNotExist, Field
 
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
@@ -258,7 +259,7 @@ class Taxon(BaseModel):
 
         return sorted(names, key=sort_key)
 
-    def get_children(self) -> Iterable[Taxon]:
+    def get_children(self) -> clirm.Query[Taxon]:
         return self.add_validity_check(self.children)
 
     def sorted_children(self) -> list[Taxon]:

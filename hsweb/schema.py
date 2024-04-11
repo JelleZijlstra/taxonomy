@@ -30,6 +30,7 @@ from graphene.utils.str_converters import to_snake_case
 
 from taxonomy.adt import ADT
 from taxonomy.config import get_options
+from taxonomy.db import models
 from taxonomy.db.constants import CommentKind
 from taxonomy.db.derived_data import DerivedField
 from taxonomy.db.models import (
@@ -804,6 +805,55 @@ def resolve_search(
     return [None] * offset + [SearchResult.from_hit(hit) for hit in result["hit"]]
 
 
+class PossibleHomonym(ObjectType):
+    name = Field(build_object_type_from_model(Name), required=True)
+    exact_name_match = Boolean(required=True)
+    fuzzy_name_match = Boolean(required=True)
+    same_original_genus = Boolean(required=True)
+    same_current_genus = Boolean(required=True)
+    edit_distance = Int(required=False)
+    related_genus = Boolean(required=True)
+    is_current_homonym = Boolean(required=True)
+
+
+class HomonymData(ObjectType):
+    genera = List(NonNull(build_object_type_from_model(Name)), required=True)
+    homonyms = List(NonNull(PossibleHomonym), required=True)
+
+
+def resolve_possible_homonyms(
+    parent: ObjectType, info: ResolveInfo, genus_name: str, root_name: str
+) -> HomonymData:
+    genera, names = models.name.lint.get_possible_homonyms(genus_name, root_name)
+    name_cls = build_object_type_from_model(Name)
+    homonyms = [
+        PossibleHomonym(
+            name=name_cls(oid=nam.id, id=nam.id),
+            exact_name_match=ph.exact_name_match,
+            fuzzy_name_match=ph.fuzzy_name_match,
+            same_original_genus=ph.same_original_genus,
+            same_current_genus=ph.same_current_genus,
+            edit_distance=ph.edit_distance,
+            related_genus=ph.related_genus,
+            is_current_homonym=ph.is_current_homonym(),
+        )
+        for (nam, ph) in sorted(
+            names,
+            key=lambda pair: (
+                not pair[1].is_current_homonym(),
+                pair[0].get_date_object(),
+            ),
+        )
+    ]
+    return HomonymData(
+        genera=[
+            name_cls(oid=nam.id, id=nam.id)
+            for nam in sorted(genera, key=lambda nam: nam.get_date_object())
+        ],
+        homonyms=homonyms,
+    )
+
+
 class QueryRoot(ObjectType):
     node = Node.Field()
     by_call_sign = List(
@@ -823,6 +873,12 @@ class QueryRoot(ObjectType):
     )
     search = ConnectionField(
         SearchResultConnection, query=String(required=True), resolver=resolve_search
+    )
+    species_homonyms = Field(
+        HomonymData,
+        genus_name=String(required=True),
+        root_name=String(required=True),
+        resolver=resolve_possible_homonyms,
     )
     locals().update(get_model_resolvers())
 
