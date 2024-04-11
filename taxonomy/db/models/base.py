@@ -825,6 +825,7 @@ class BaseModel(Model):
         return {
             **get_static_callbacks(),
             **field_editors,
+            **self.get_tag_callbacks(),
             "d": self.display,
             "f": lambda: self.display(full=True),
             "foreign": self.edit_foreign,
@@ -841,6 +842,27 @@ class BaseModel(Model):
             "lint_and_fix": self.lint_and_fix,
             "edit_derived_field": self.edit_derived_field,
         }
+
+    def get_tag_callbacks(self) -> getinput.CallbackMap:
+        def make_tag_callback(field: ADTField[Any], member: str) -> Callable[[], None]:
+            def callback() -> None:
+                constructor = getattr(field.adt_type, member)
+                tag = getinput.get_adt_member(
+                    constructor,
+                    completers=self.get_completers_for_adt_field(field.name),
+                )
+                existing_value = getattr(self, field.name)
+                setattr(self, field.name, (*existing_value, tag))
+
+            return callback
+
+        callbacks = {}
+        for field in self.clirm_fields.values():
+            if not isinstance(field, ADTField):
+                continue
+            for member in field.adt_type._members:
+                callbacks[f"+{member.lower()}"] = make_tag_callback(field, member)
+        return callbacks
 
     def call(self) -> None:
         """Call an arbitrary method interactively."""
