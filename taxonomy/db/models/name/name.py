@@ -1085,12 +1085,12 @@ class Name(BaseModel):
         if (
             self.original_rank is not None
             and nam.original_rank is not None
-            and self.original_rank not in (Rank.other, Rank.unranked)
-            and nam.original_rank not in (Rank.other, Rank.unranked)
+            and self.original_rank not in (Rank.other, Rank.unranked, Rank.synonym)
+            and nam.original_rank not in (Rank.other, Rank.unranked, Rank.synonym)
         ):
-            if self.original_rank > nam.original_rank:
+            if self.original_rank.comparison_value > nam.original_rank.comparison_value:
                 return True
-            if nam.original_rank > self.original_rank:
+            if nam.original_rank.comparison_value > self.original_rank.comparison_value:
                 return False
 
         # Check for explicit priority selection

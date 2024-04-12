@@ -1056,8 +1056,8 @@ def _check_preoccupation_tag(
             senior_name.tags, NameTag.NameCombinationOf
         ):
             senior_name = senior_name_tag.name
-    if nam.get_date_object() < senior_name.get_date_object():
-        yield f"predates supposed senior name {senior_name}"
+    if nam.has_priority_over(senior_name):
+        yield f"has priority over supposed senior name {senior_name}"
     if nam.group is Group.species:
         if nam.original_parent is None:
             my_original = None
@@ -1828,6 +1828,8 @@ def _check_as_emended_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if (
         as_emended_target.nomenclature_status
         is not NomenclatureStatus.justified_emendation
+        and NomenclatureStatus.justified_emendation
+        not in get_applicable_nomenclature_statuses_from_tags(as_emended_target)
     ):
         yield f"target {as_emended_target} is not a justified_emendation"
         return

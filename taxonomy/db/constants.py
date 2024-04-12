@@ -434,6 +434,12 @@ class Rank(enum.IntEnum):
         219  # for original rank; if the name was not treated as valid when created
     )
 
+    @property
+    def comparison_value(self) -> int:
+        if self in (Rank.variety, Rank.form, Rank.infrasubspecific):
+            return -1
+        return self.value
+
 
 class RegionKind(enum.IntEnum):
     continent = 0
