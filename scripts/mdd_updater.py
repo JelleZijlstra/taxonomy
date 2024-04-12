@@ -159,6 +159,7 @@ HOMONYM_TAGS = (
     NameTag.PreoccupiedBy,
     NameTag.PrimaryHomonymOf,
     NameTag.SecondaryHomonymOf,
+    NameTag.PermanentlyReplacedSecondaryHomonymOf,
 )
 
 
@@ -322,12 +323,17 @@ def get_hesp_row(
                     citation = ", ".join(tag.source.taxonomicAuthority())
                     emended_tl.append(f'"{tag.text}" ({citation})')
             elif isinstance(tag, TypeTag.Coordinates):
-                _, lat = helpers.standardize_coordinates(tag.latitude, is_latitude=True)
-                row["Hesp_type_latitude"] = str(lat)
-                _, long = helpers.standardize_coordinates(
-                    tag.longitude, is_latitude=False
-                )
-                row["Hesp_type_longitude"] = str(long)
+                try:
+                    _, lat = helpers.standardize_coordinates(
+                        tag.latitude, is_latitude=True
+                    )
+                    row["Hesp_type_latitude"] = str(lat)
+                    _, long = helpers.standardize_coordinates(
+                        tag.longitude, is_latitude=False
+                    )
+                    row["Hesp_type_longitude"] = str(long)
+                except helpers.InvalidCoordinates:
+                    pass
     if verbatim_tl:
         row["Hesp_original_type_locality"] = " | ".join(verbatim_tl)
     if emended_tl:
