@@ -107,13 +107,6 @@ _RANKS = {
     "Genus": Rank.genus,
     "Subgenus": Rank.subgenus,
 }
-LATLONG = re.compile(
-    r"""
-    (?P<latitude>\d+(\.\d+)?\s*[°*]\s*(\d+(\.\d+)?\s*')?\s*[NS])[,\s\[\]]+
-    (long\.\s)?(?P<longitude>\d+(\.\d+)?\s*[°*]\s*(\d+(\.\d+)?\s*')?\s*[EW])
-""",
-    re.VERBOSE,
-)
 
 
 def group_of_rank(rank: Rank) -> Group:
@@ -332,9 +325,10 @@ def _standardize_inner(date: str) -> str:
 
 COORDINATE_RGX = re.compile(
     r"""
-    ^(?P<degrees>\d+(\.\d+)?)°
+    ^(?P<degrees>\d+(\.\d+)?)°?
     ((?P<minutes>\d+(\.\d+)?)'
     ((?P<seconds>\d+(\.\d+)?)")?)?
+    \s*
     (?P<direction>[NSWE])$
     """,
     re.VERBOSE,
@@ -396,25 +390,42 @@ def standardize_coordinates(text: str, *, is_latitude: bool) -> tuple[str, float
     return text, numeric_value
 
 
+LATLONG = re.compile(
+    r"""
+    (?P<latitude>\d+(\.\d+)?\s*[°*]\s*(\d+(\.\d+)?\s*')?(\d+(\.\d+)?\s*")?\s*[NS])[,\s\[\]]+
+    (long\.\s)?(?P<longitude>\d+(\.\d+)?\s*[°*]\s*(\d+(\.\d+)?\s*')?(\d+(\.\d+)?\s*")?\s*[EW])
+    """,
+    re.VERBOSE,
+)
+LATLONG_NO_SIGN = re.compile(
+    r"""
+    (?P<latitude>\d+\.\d+\s*[NS])[,\s]+
+    (?P<longitude>\d+\.\d+\s*[EW])
+    """,
+    re.VERBOSE,
+)
+
+
 def extract_coordinates(text: str) -> tuple[str, str] | None:
     """Attempts to extract latitude and longitude from a location description."""
-    match = LATLONG.search(text)
-    if match:
+    for rgx in (LATLONG, LATLONG_NO_SIGN):
+        match = rgx.search(text)
+        if not match:
+            continue
         try:
             latitude, _ = standardize_coordinates(
                 match.group("latitude"), is_latitude=True
             )
         except InvalidCoordinates:
-            return None
+            continue
         try:
             longitude, _ = standardize_coordinates(
                 match.group("longitude"), is_latitude=False
             )
         except InvalidCoordinates:
-            return None
+            continue
         return latitude, longitude
-    else:
-        return None
+    return None
 
 
 def clean_text(text: str) -> str:
@@ -427,6 +438,7 @@ def clean_text(text: str) -> str:
     text = text.replace("a ̃", "ã")
     text = text.replace("‘‘", '"')
     text = text.replace("’’", '"')
+    text = text.replace("ʹ", "'")
     text = re.sub(r"(?<=[a-z])- (?=[a-z])", "", text)
     text = re.sub(r" @$", " [brackets original]", text)
     return text
@@ -827,6 +839,7 @@ def clean_string(text: str, *, clean_whitespace: bool = True) -> str:
     text = text.replace("\xad", "")
     text = text.replace("’", "'")
     text = text.replace("′", "'")
+    text = text.replace("ʹ", "'")
     text = text.replace("‐", "-")  # use ASCII hyphen
     text = text.replace("◦", "°")
     text = re.sub(r"[“”]", '"', text)
