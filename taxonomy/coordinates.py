@@ -1,3 +1,4 @@
+# static analysis: ignore[attribute_is_never_set]
 import functools
 import json
 from dataclasses import dataclass
