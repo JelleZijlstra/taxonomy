@@ -419,6 +419,7 @@ class BaseModel(Model):
         return f"{self.__class__.__name__}({self.__dict__!r})"
 
     def full_data(self) -> None:
+        print(f"id: {self.id}")
         for field in sorted(self.fields()):
             try:
                 value = getattr(self, field)
