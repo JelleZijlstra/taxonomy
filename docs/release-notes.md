@@ -23,6 +23,8 @@ exports released on Zenodo.
   - Mark numerous names as junior homonyms.
   - Add links to many more citations (primarily in the Biodiversity Heritage Library).
   - Add direct page links to original citations in over 30,000 names.
+  - Add a few hundred more type locality coordinates and correct more than a hundred
+    incorrect coordinates.
 - Backend
   - Add support for ORCID identifiers (though they are currently set for very few
     people)
@@ -35,6 +37,7 @@ exports released on Zenodo.
     exported data.
   - Add support for linking names directly to an online resource (primarily the
     Biodiversity Heritage Library).
+  - Check that type locality coordinates are in the right country.
 - Frontend
   - Add option to show names in a taxon that are missing a field.
   - Add tool for finding homonyms in the species group.
