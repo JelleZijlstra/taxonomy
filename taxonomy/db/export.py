@@ -46,6 +46,7 @@ class NameData(TypedDict):
     year: str
     publication_date: str
     page_described: str
+    page_links: str
     original_citation: str
     original_citation_link: str
     verbatim_citation: str
@@ -55,6 +56,7 @@ class NameData(TypedDict):
     type_locality_country: str
     type_locality_detail: str
     type_specimen: str
+    type_specimen_links: str
     species_type_kind: str
     collection_link: str
     type_specimen_detail: str
@@ -167,6 +169,14 @@ def data_for_name(name: Name) -> NameData:
         tl_country_object = name.type_locality.region.parent_of_kind(RegionKind.country)
         if tl_country_object is not None:
             tl_country = tl_country_object.name
+    page_links = " | ".join(
+        tag.url for tag in name.type_tags if isinstance(tag, TypeTag.AuthorityPageLink)
+    )
+    type_specimen_links = " | ".join(
+        tag.url
+        for tag in name.type_tags
+        if isinstance(tag, TypeTag.TypeSpecimenLinkFor)
+    )
     return {
         "id": str(name.id),
         "link": name.get_absolute_url(),
@@ -190,6 +200,7 @@ def data_for_name(name: Name) -> NameData:
         "year": name.year[:4] if name.year else "",
         "publication_date": name.year or "",
         "page_described": name.page_described or "",
+        "page_links": page_links,
         "original_citation": citation.cite("paper") if citation else "",
         "original_citation_link": citation.get_absolute_url() if citation else "",
         "verbatim_citation": name.verbatim_citation or "",
@@ -199,6 +210,7 @@ def data_for_name(name: Name) -> NameData:
         "type_locality_country": tl_country,
         "type_locality_detail": loc_detail,
         "type_specimen": name.type_specimen or "",
+        "type_specimen_links": type_specimen_links,
         "species_type_kind": (
             name.species_type_kind.name if name.species_type_kind else ""
         ),

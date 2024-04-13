@@ -45,6 +45,8 @@ exports released on Zenodo.
     on names; bibliographic notes and alternative URLs on articles; comments on citation
     groups).
   - List basal, incertae sedis, and dubious child taxa separately.
+- Exported files
+  - Add page links and type specimen links to Name export files.
 
 Thanks to Rudolf Haslauer, Severin Uebbing, and especially Connor Burgin for supplying
 information and literature.
