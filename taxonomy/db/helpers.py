@@ -358,9 +358,10 @@ def standardize_coordinates(text: str, *, is_latitude: bool) -> tuple[str, float
     if "." in degrees and minutes:
         raise InvalidCoordinates("fractional degrees when minutes are given")
 
-    numeric_value = float(degrees)
-    if numeric_value > (90 if is_latitude else 180):
+    numeric_degrees = float(degrees)
+    if numeric_degrees > (90 if is_latitude else 180):
         raise InvalidCoordinates(f"invalid degree {degrees}")
+    numeric_value = numeric_degrees
 
     if minutes:
         if "." in minutes and seconds:
@@ -387,7 +388,20 @@ def standardize_coordinates(text: str, *, is_latitude: bool) -> tuple[str, float
             raise InvalidCoordinates(f"invalid longitude {direction}")
         if direction == "W":
             numeric_value = -numeric_value
+    text = f"{_display(numeric_degrees)}°"
+    if minutes:
+        text += f"{_display(float(minutes))}'"
+        if seconds:
+            text += f'{_display(float(seconds))}"'
+    text += direction
     return text, numeric_value
+
+
+def _display(value: float) -> str:
+    if value == int(value):
+        return str(int(value))
+    else:
+        return str(value)
 
 
 LATLONG = re.compile(
