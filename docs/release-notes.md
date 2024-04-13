@@ -4,7 +4,13 @@ Version numbers correspond to Git tags in the
 [backend](https://github.com/JelleZijlstra/taxonomy/) repositories, and to database
 exports released on Zenodo.
 
-# Unreleased
+# 24.4.0 (April 13, 2024)
+
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.10969300)](https://doi.org/10.5281/zenodo.10969300)
+
+This release focuses on compatibility with the MDD and improved automatic data
+extraction. More than a third of names are now linked directly to pages in the
+Biodiversity Heritage Library.
 
 - Database
   - Fix species assignment for many extant mammal names based on comparisons with data
