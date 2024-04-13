@@ -15,6 +15,7 @@ import httpx
 import Levenshtein
 
 from taxonomy import config
+from taxonomy.db import helpers
 
 from ..db.url_cache import CacheDomain, cached, dirty_cache
 
@@ -161,7 +162,7 @@ def get_page_id_to_index(item_id: int) -> dict[int, int]:
     return {page["PageID"]: i for i, page in enumerate(item_metadata["Pages"])}
 
 
-def is_contigous_range(
+def is_contiguous_range(
     item_id: int,
     start_page_id: int,
     end_page_id: int,
@@ -234,16 +235,34 @@ def get_possible_pages(item_id: int, page_number: str) -> list[int]:
 def _get_matching_pages(pages: list[dict[str, Any]], page_number: str) -> list[int]:
     page_ids = []
     for page in pages:
-        if any(
-            (
-                _is_numbered_page(number)
-                and number.get("Number", "").casefold() == page_number.casefold()
-            )
-            or str(_get_number_from_page(page)) == page_number
-            for number in page["PageNumbers"]
-        ):
+        if _page_number_matches(page, page_number):
             page_ids.append(page["PageID"])
     return page_ids
+
+
+def _page_number_matches(page: dict[str, Any], page_number: str) -> bool:
+    if str(_get_number_from_page(page)) == page_number:
+        return True
+    for number in page["PageNumbers"]:
+        if (
+            _is_numbered_page(number)
+            and number.get("Number", "").casefold() == page_number.casefold()
+        ):
+            return True
+        if number.get("Prefix") == "Plate":
+            if m := re.fullmatch(r"pl. (\d+)", page_number):
+                plate_number = m.group(1)
+                if plate_number == number["Number"]:
+                    return True
+                try:
+                    numeric_bhl_number = helpers.parse_roman_numeral(number["Number"])
+                    numeric_hesp_number = int(plate_number)
+                except ValueError:
+                    pass
+                else:
+                    if numeric_bhl_number == numeric_hesp_number:
+                        return True
+    return False
 
 
 def get_possible_pages_from_part(part_id: int, page_number: str) -> list[int]:

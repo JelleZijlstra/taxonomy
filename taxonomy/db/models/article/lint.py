@@ -677,7 +677,7 @@ def infer_bhl_page_from_names(
     for possible_start_page, possible_end_page in zip(
         possible_start_pages, possible_end_pages, strict=True
     ):
-        if not bhl.is_contigous_range(
+        if not bhl.is_contiguous_range(
             item_id, possible_start_page, possible_end_page, page_mapping
         ):
             if verbose:
@@ -753,27 +753,56 @@ def get_inferred_bhl_page(
         or art.title is None
     ):
         return None
-    cg = art.get_citation_group()
-    if cg is None:
-        return None
-    title_ids = cg.get_bhl_title_ids()
-    if not title_ids:
-        return None
-    year = art.numeric_year()
-    contains_text = [art.title]
-    start_page = art.start_page
-    end_page = art.end_page
-    possible_pages = sorted(
-        bhl.find_possible_pages(
-            title_ids,
-            year=year,
-            start_page=start_page,
-            end_page=end_page,
-            volume=art.volume,
-            contains_text=contains_text,
-        ),
-        key=lambda page: page.sort_key(),
-    )
+    if art.type in (ArticleType.CHAPTER, ArticleType.PART):
+        url = art.parent.url
+        if url is None:
+            return None
+        item_id = bhl.get_bhl_item_from_url(url)
+        if item_id is None:
+            return None
+        start_pages = bhl.get_possible_pages(item_id, art.start_page)
+        if len(start_pages) != 1:
+            return None
+        end_pages = bhl.get_possible_pages(item_id, art.end_page)
+        if len(end_pages) != 1:
+            return None
+        page_mapping = bhl.get_page_id_to_index(item_id)
+        if not bhl.is_contiguous_range(
+            item_id, start_pages[0], end_pages[0], page_mapping
+        ):
+            return None
+        page_metadata = bhl.get_page_metadata(start_pages[0])
+        return bhl.PossiblePage(
+            start_pages[0],
+            art.start_page,
+            contains_text=True,
+            contains_end_page=True,
+            year_matches=True,
+            ocr_text=page_metadata.get("OCRText", ""),
+            item_id=item_id,
+        )
+    else:
+        cg = art.get_citation_group()
+        if cg is None:
+            return None
+        title_ids = cg.get_bhl_title_ids()
+        if not title_ids:
+            return None
+        year = art.numeric_year()
+        contains_text = [art.title]
+        start_page = art.start_page
+        end_page = art.end_page
+        possible_pages = sorted(
+            bhl.find_possible_pages(
+                title_ids,
+                year=year,
+                start_page=start_page,
+                end_page=end_page,
+                volume=art.volume,
+                contains_text=contains_text,
+            ),
+            key=lambda page: page.sort_key(),
+        )
     confident_pages = [page for page in possible_pages if page.is_confident]
     # Even if there is more than one, just pick the first
     if len(confident_pages) >= 1:

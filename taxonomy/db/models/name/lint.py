@@ -3139,7 +3139,7 @@ def infer_bhl_page_from_other_names(
             else:
                 start = inferred_page_id
                 end = existing_page_id
-            if not bhl.is_contigous_range(
+            if not bhl.is_contiguous_range(
                 item_id,
                 start,
                 end,
@@ -3189,11 +3189,12 @@ def infer_bhl_page_from_article(
         if verbose:
             print(f"{nam}: no page described")
         return
-    if nam.original_citation is None or nam.original_citation.url is None:
+    art = nam.original_citation
+    if art is None or art.url is None:
         if verbose:
             print(f"{nam}: no original citation or URL")
         return
-    parsed = bhl.parse_possible_bhl_url(nam.original_citation.url)
+    parsed = bhl.parse_possible_bhl_url(art.url)
     for page_described in extract_pages(nam.page_described):
         if any(
             isinstance(tag, TypeTag.AuthorityPageLink) and tag.page == page_described
@@ -3203,6 +3204,21 @@ def infer_bhl_page_from_article(
         match parsed.url_type:
             case bhl.UrlType.bhl_page:
                 start_page_id = int(parsed.payload)
+                if (
+                    art.start_page is not None
+                    and art.start_page == art.end_page == page_described
+                ):
+                    tag = TypeTag.AuthorityPageLink(
+                        f"https://www.biodiversitylibrary.org/page/{start_page_id}",
+                        True,
+                        page_described,
+                    )
+                    message = f"inferred BHL page {start_page_id} from article citation where start_page == end_page (add {tag})"
+                    if cfg.autofix:
+                        print(f"{nam}: {message}")
+                        nam.add_type_tag(tag)
+                    else:
+                        yield message
                 yield from _infer_bhl_page_from_article_page(
                     nam, cfg, start_page_id, page_described, verbose
                 )
@@ -3281,13 +3297,13 @@ def _infer_bhl_page_from_article_page(
     possible_end_pages = [
         page
         for page in possible_end_pages
-        if bhl.is_contigous_range(item_id, start_page_id, page, page_mapping)
+        if bhl.is_contiguous_range(item_id, start_page_id, page, page_mapping)
     ]
     possible_pages = bhl.get_possible_pages(item_id, page_described)
     possible_pages = [
         page
         for page in possible_pages
-        if bhl.is_contigous_range(item_id, start_page_id, page, page_mapping)
+        if bhl.is_contiguous_range(item_id, start_page_id, page, page_mapping)
     ]
     if len(possible_pages) != len(possible_end_pages):
         if verbose:
@@ -3303,7 +3319,7 @@ def _infer_bhl_page_from_article_page(
     for possible_page, possible_end_page in zip(
         possible_pages, possible_end_pages, strict=True
     ):
-        if not bhl.is_contigous_range(
+        if not bhl.is_contiguous_range(
             item_id, start_page_id, possible_page, page_mapping
         ):
             if verbose:
@@ -3311,7 +3327,7 @@ def _infer_bhl_page_from_article_page(
                     f"{nam}: page {possible_page} is not contiguous with start page {start_page_id}"
                 )
             continue
-        if not bhl.is_contigous_range(
+        if not bhl.is_contiguous_range(
             item_id, possible_page, possible_end_page, page_mapping
         ):
             if verbose:
