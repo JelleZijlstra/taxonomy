@@ -355,7 +355,7 @@ def is_valid_hdl(hdl: str) -> bool:
 
 
 def is_valid_doi(doi: str) -> bool:
-    return bool(re.fullmatch(r"^10\.[A-Za-z0-9\.\/\[\]<>\-;:_()+]+$", doi))
+    return bool(re.fullmatch(r"^10\.[A-Za-z0-9\.\/\[\]<>\-;:_()+#]+$", doi))
 
 
 @make_linter("must_have_url")
