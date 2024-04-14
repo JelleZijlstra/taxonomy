@@ -6,16 +6,16 @@ paleontological research in high school. I moved to the United States for colleg
 currently live in California, where I work for [Quora](https://www.quora.com) as a
 software engineer.
 
-I started the database as a child after I acquired a book that purported to list all
-known species of birds. I figured the birds were already done, so I should work on
-something else and picked mammals. I quickly lost any interest I may have had in birds.
-Using various books and websites, I put together a spreadsheet that I proudly named
-"4611 Dieren" (4611 Animals) because it listed 4611 species of extant mammals. But as I
-put together the list, I started learning about issues of taxonomy (different lists
-disagreed on which species were valid) and synonymy (sometimes old books listed names
-that were no longer in use). I started collecting taxonomic literature in order to make
-more informed decisions, and adding synonyms to the database so I could figure out what
-my old books were talking about.
+I started the database as a child, probably around 2004, after I acquired a book that
+purported to list all known species of birds. I figured the birds were already done, so
+I should work on something else and picked mammals. I quickly lost any interest I may
+have had in birds. Using various books and websites, I put together a spreadsheet that I
+proudly named "4611 Dieren" (4611 Animals) because it listed 4611 species of extant
+mammals. But as I put together the list, I started learning about issues of taxonomy
+(different lists disagreed on which species were valid) and synonymy (sometimes old
+books listed names that were no longer in use). I started collecting taxonomic
+literature in order to make more informed decisions, and adding synonyms to the database
+so I could figure out what my old books were talking about.
 
 Over the years, I worked on the database on and off and it grew in size and scope. In
 college I learned programming and started writing tools to make it easier to maintain my
@@ -28,6 +28,28 @@ Nomenclature and used it as a guide to refine the information I would include in
 database: type localities, type specimens, type species designations, and other data
 important to nomenclature. Since then I have worked on filling out the database to these
 specifications, and what you see today is the result.
+
+It felt like a shame to have this huge resource without making it available to other
+people, so in 2020 I created this website and made the database available on the
+Internet. Since then, the database has benefited from feedback provided by several
+people who found it online. Most importantly, I have started collaborating with the
+[Mammal Diversity Database](https://www.mammaldiversity.org), a database of extant
+mammals. This collaboration has improved the taxonomic and nomenclatural data in both
+databases immeasurably.
+
+## Why "Hesperomys"?
+
+A few people have asked me why the database is named "Hesperomys". For context,
+[_Hesperomys_](/n/Hesperomys) is an obsolete name that was once widely used for many
+American cricetid rodents; it is now considered a junior synonym of
+[_Calomys_](/t/Calomys). Because I spent a lot of time gathering data on sigmodontines
+when I first became interested in mammals, I encountered the name "_Hesperomys_" a lot.
+
+For a long time my database did not have a name; it was just "my spreadsheets" and "my
+database". But when I put it online, I had to pick some domain name, and "Hesperomys"
+felt like a good choice. It is recognizable and unique. As the name is a junior synonym,
+it fits with the database's focus on nomenclature and comprehensive listings of
+synonyms.
 
 ## My research
 
