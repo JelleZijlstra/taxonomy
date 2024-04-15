@@ -111,10 +111,15 @@ def restart(options: Options, kill: bool = True, port: int = 80) -> None:
     if kill:
         run_ssh(options, "sudo pkill -f hsweb")
         time.sleep(1)
+    run_scp(
+        options,
+        options.taxonomy_repo / "aws" / "run_hsweb.sh",
+        "/home/ec2-user/run_hsweb.sh",
+        is_directory=False,
+    )
     run_ssh(
         options,
-        f"TAXONOMY_CONFIG_FILE=~/taxonomy/taxonomy.ini sudo nohup {PYTHON} -m hsweb"
-        f" -p {port} -b ~/hesperomys >/home/ec2-user/hesperomys.log 2>&1 &",
+        f"/home/ec2-user/run_hsweb.sh {PYTHON} {port} >/home/ec2-user/hesperomys_runner.log 2>&1 &",
     )
 
 
