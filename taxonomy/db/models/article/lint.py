@@ -18,14 +18,15 @@ from typing import Any
 import httpx
 import requests
 
+from taxonomy import getinput
 from taxonomy.apis import bhl
+from taxonomy.apis.zoobank import clean_lsid, get_zoobank_data_for_act, is_valid_lsid
+from taxonomy.db import helpers, models
+from taxonomy.db.constants import ArticleKind, ArticleType, DateSource
 
-from .... import getinput
-from ....apis.zoobank import clean_lsid, get_zoobank_data_for_act, is_valid_lsid
-from ... import helpers, models
-from ...constants import ArticleKind, ArticleType, DateSource
 from ..base import ADTField, BaseModel, LintConfig
-from ..citation_group.cg import CitationGroup, CitationGroupTag, get_biblio_pages
+from ..citation_group.cg import CitationGroup, CitationGroupTag
+from ..citation_group.lint import get_biblio_pages
 from ..issue_date import IssueDate
 from .article import Article, ArticleComment, ArticleTag, PresenceStatus
 from .name_parser import get_name_parser

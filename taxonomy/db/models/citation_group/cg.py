@@ -1,16 +1,12 @@
 import builtins
-import functools
-import re
 import sqlite3
 import subprocess
-from collections import Counter, defaultdict
 from collections.abc import Iterable
-from datetime import date
 from typing import Any, NotRequired, Self, TypeVar
 
 from clirm import Field
 
-from taxonomy import adt, config, events, getinput
+from taxonomy import adt, events, getinput
 from taxonomy.apis import bhl
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
 from taxonomy.db import constants, helpers, models
@@ -124,189 +120,7 @@ class CitationGroup(BaseModel):
             yield "region"
 
     def lint(self, cfg: LintConfig) -> Iterable[str]:
-        if not self.tags:
-            return
-        num_bhl_biblios = 0
-        for tag in self.tags:
-            if tag is CitationGroupTag.MustHave or isinstance(
-                tag, CitationGroupTag.MustHaveAfter
-            ):
-                if (
-                    not self.archive
-                    and not self.get_tag(CitationGroupTag.CitationGroupURL)
-                    and not self.get_tag(CitationGroupTag.BHLBibliography)
-                ):
-                    yield f"{self}: has MustHave tag but no URL"
-            if isinstance(tag, CitationGroupTag.MustHaveAfter):
-                if issue := helpers.is_valid_year(tag.year):
-                    yield f"{self}: invalid MustHaveAfterTag {tag}: {issue}"
-            if isinstance(tag, CitationGroupTag.MustHaveSeries) and not self.get_tag(
-                CitationGroupTag.SeriesRegex
-            ):
-                yield f"{self}: MustHaveSeries tag but no SeriesRegex tag"
-            if isinstance(tag, CitationGroupTag.OnlineRepository):
-                yield f"{self}: use of deprecated OnlineRepository tag"
-            if isinstance(tag, (CitationGroupTag.ISSN, CitationGroupTag.ISSNOnline)):
-                # TODO check that the checksum digit is right
-                if not re.fullmatch(r"^\d{4}-\d{3}[X\d]$", tag.text):
-                    yield f"{self}: invalid ISSN {tag}"
-            if isinstance(tag, CitationGroupTag.BHLBibliography):
-                if not tag.text.isnumeric():
-                    yield f"{self}: invalid BHL tag {tag}"
-                num_bhl_biblios += 1
-            if isinstance(tag, CitationGroupTag.YearRange):
-                if issue := helpers.is_valid_year(tag.start):
-                    yield f"{self}: invalid start year in {tag}: {issue}"
-                if tag.end and (issue := helpers.is_valid_year(tag.end)):
-                    yield f"{self}: invalid end year in {tag}: {issue}"
-                if tag.start and tag.end and int(tag.start) > int(tag.end):
-                    yield f"{self}: {tag}: start is after end"
-                if tag.end and int(tag.end) > date.today().year:
-                    yield f"{self}: {tag} is predicting the future"
-            if isinstance(tag, CitationGroupTag.BiblioNote):
-                if tag.text not in get_biblio_pages():
-                    yield f"{self}: references non-existent page {tag.text!r}"
-            # TODO if there is a Predecessor, check that the YearRange tags make sense
-            if isinstance(
-                tag,
-                (
-                    CitationGroupTag.SeriesRegex,
-                    CitationGroupTag.VolumeRegex,
-                    CitationGroupTag.IssueRegex,
-                ),
-            ):
-                if issue := helpers.is_valid_regex(tag.text):
-                    yield f"{self}: invalid tag {tag}: {issue}"
-            if isinstance(tag, CitationGroupTag.PageRegex):
-                if tag.start_page_regex is not None:
-                    if issue := helpers.is_valid_regex(tag.start_page_regex):
-                        yield f"{self}: invalid start_page_regex in tag {tag}: {issue}"
-                if tag.pages_regex is not None:
-                    if issue := helpers.is_valid_regex(tag.pages_regex):
-                        yield f"{self}: invalid pages_regex in tag {tag}: {issue}"
-
-        tags = sorted(set(self.tags))
-        counts = Counter(type(tag) for tag in tags)
-        for tag_type, count in counts.items():
-            if count > 1 and tag_type not in (
-                CitationGroupTag.Predecessor,
-                CitationGroupTag.CitationGroupURL,
-                CitationGroupTag.ISSN,
-                CitationGroupTag.ISSNOnline,
-                CitationGroupTag.BHLBibliography,
-            ):
-                yield f"{self}: multiple {tag_type} tags"
-
-        if tuple(tags) != tuple(self.tags):
-            message = f"{self}: changing tags"
-            getinput.print_diff(sorted(self.tags), tags)
-            if cfg.autofix:
-                print(message)
-                self.tags = tags  # type: ignore
-            else:
-                yield message
-
-        if num_bhl_biblios > 5:
-            yield f"{self}: has {num_bhl_biblios} BHL bibliographies"
-
-        if not num_bhl_biblios:
-            yield from self.infer_bhl_biblio(cfg)
-        if not self.has_tag(CitationGroupTag.SkipExtraBHLBibliographies):
-            yield from self.infer_bhl_biblio_from_children(cfg)
-
-    def infer_bhl_biblio_from_children(self, cfg: LintConfig) -> Iterable[str]:
-        if self.type is not constants.ArticleType.JOURNAL:
-            return
-        bibliographies: dict[int, list[object]] = defaultdict(list)
-        for nam in self.get_names():
-            for tag in nam.get_tags(
-                nam.type_tags, models.name.TypeTag.AuthorityPageLink
-            ):
-                if biblio := bhl.get_bhl_bibliography_from_url(tag.url):
-                    bibliographies[biblio].append(nam)
-        for art in self.get_articles():
-            if art.url:
-                if biblio := bhl.get_bhl_bibliography_from_url(art.url):
-                    bibliographies[biblio].append(art)
-        if not bibliographies:
-            return
-        existing = self.get_bhl_title_ids()
-        for biblio in existing:
-            bibliographies.pop(biblio, None)
-        if not bibliographies:
-            return
-        message = (
-            f"{self}: inferred BHL tags {bibliographies} "
-            f"from child articles and names"
-        )
-        if cfg.autofix:
-            print(message)
-            for biblio in bibliographies:
-                self.add_tag(CitationGroupTag.BHLBibliography(text=str(biblio)))
-        else:
-            yield message
-
-    def infer_bhl_biblio(
-        self, cfg: LintConfig, interactive_mode: bool = False
-    ) -> Iterable[str]:
-        if self.type is not constants.ArticleType.JOURNAL:
-            return
-        title_dict = bhl.get_title_to_data()
-        name = self.name.casefold()
-        if name not in title_dict:
-            return
-        candidates = title_dict[name]
-        if len(candidates) > 1:
-            urls = [cand["TitleURL"] for cand in candidates]
-            message = f"{self}: multiple possible BHL entries: {urls}"
-            if interactive_mode:
-                getinput.print_header(self)
-                print(message)
-
-                def open_all() -> None:
-                    for cand in candidates:
-                        subprocess.check_call(["open", cand["TitleURL"]])
-
-                data = getinput.choose_one(
-                    candidates,
-                    callbacks={**self.get_adt_callbacks(), "open_all": open_all},
-                    history_key=(self, "infer_bhl_biblio"),
-                )
-                if data is None:
-                    return
-                # help pyanalyze, which picks "object" as the type otherwise
-                assert isinstance(data, dict)
-            else:
-                return
-        else:
-            data = candidates[0]
-            active_years = self.get_active_year_range()
-            if active_years is None:
-                message = f"{self}: no active years, but may match {data['TitleURL']}"
-                if interactive_mode:
-                    print(message)
-                    subprocess.check_call(["open", data["TitleURL"]])
-                    if not getinput.yes_no(
-                        "Accept anyway? ", callbacks=self.get_adt_callbacks()
-                    ):
-                        return
-                else:
-                    yield message
-                return
-            my_start_year, my_end_year = active_years
-            if not data["StartYear"]:
-                return
-            if my_start_year < int(data["StartYear"]) or (
-                data["EndYear"] and my_end_year > int(data["EndYear"])
-            ):
-                yield f"{self}: active years {my_start_year}-{my_end_year} don't match {data['TitleURL']} {data['StartYear']}-{data['EndYear']}"
-                return
-        message = f"{self}: inferred BHL tag {data['TitleID']}"
-        if cfg.autofix:
-            print(message)
-            self.add_tag(CitationGroupTag.BHLBibliography(text=str(data["TitleID"])))
-        else:
-            yield message
+        yield from models.citation_group.lint.run_linters(self, cfg)
 
     def has_tag(self, tag: adt.ADT) -> bool:
         if self.tags is None:
@@ -692,13 +506,6 @@ class CitationGroupPattern(BaseModel):
             return existing
 
 
-@functools.cache
-def get_biblio_pages() -> set[str]:
-    options = config.get_options()
-    biblio_dir = options.taxonomy_repo / "docs" / "biblio"
-    return {path.stem for path in biblio_dir.glob("*.md")}
-
-
 class CitationGroupTag(adt.ADT):
     # Must have articles for all citations in this group
     MustHave(tag=1)  # type: ignore
@@ -741,3 +548,4 @@ class CitationGroupTag(adt.ADT):
     SkipExtraBHLBibliographies(tag=28)  # type: ignore
     CitationGroupComment(text=str, tag=29)  # type: ignore
     BHLYearRange(start=NotRequired[str], end=NotRequired[str], tag=30)  # type: ignore
+    IgnoreLintCitationGroup(label=str, comment=NotRequired[str], tag=31)  # type: ignore
