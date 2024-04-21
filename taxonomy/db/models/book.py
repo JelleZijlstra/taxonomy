@@ -25,6 +25,7 @@ class Book(BaseModel):
     label_field = "title"
     call_sign = "B"
     clirm_table_name = "book"
+    fields_without_completers = {"data"}
 
     author_tags = ADTField["AuthorTag"]()
     year = Field[str | None]()

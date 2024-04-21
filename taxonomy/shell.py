@@ -1952,9 +1952,17 @@ def run_linter_and_fix(
     linter: Linter[ModelT] | None = None,
     query: Iterable[ModelT] | None = None,
     interactive: bool = False,
+    verbose: bool = False,
+    manual_mode: bool = False,
 ) -> None:
     """Helper for running a lint on a subset of objects and fixing the issues."""
-    bad = model_cls.lint_all(linter, query=query, interactive=interactive)
+    bad = model_cls.lint_all(
+        linter,
+        query=query,
+        interactive=interactive,
+        verbose=verbose,
+        manual_mode=manual_mode,
+    )
     print(f"Found {len(bad)} issues")
     if not bad:
         return
@@ -2509,6 +2517,8 @@ def warm_all_caches() -> None:
             model.getter(None).rewarm_cache()
         for name, field in model.clirm_fields.items():
             getter = model.getter(name)
+            if field.name in model.fields_without_completers:
+                continue
             if field.type_object is str or getter._cache_key() in keys:
                 print(f"{model}: warming {name} ({field})")
                 getter.rewarm_cache()

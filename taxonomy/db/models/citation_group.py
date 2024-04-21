@@ -492,6 +492,14 @@ class CitationGroup(BaseModel):
             "open_bhl_pages": self.open_bhl_pages,
         }
 
+    def open_url(self) -> None:
+        for tag in self.tags:
+            if isinstance(tag, CitationGroupTag.CitationGroupURL):
+                subprocess.check_call(["open", tag.text])
+            elif isinstance(tag, CitationGroupTag.BHLBibliography):
+                url = f"https://www.biodiversitylibrary.org/bibliography/{tag.text}"
+                subprocess.check_call(["open", url])
+
     def open_bhl_pages(self) -> None:
         for nam in self.get_names():
             nam.load()
@@ -636,10 +644,14 @@ class CitationGroup(BaseModel):
             print(f"- {series} ({len(arts)})")
 
     def interactively_add_bhl_urls(self) -> None:
-        for art in self.get_articles():
-            if art.doi is not None:
-                continue
-            for _ in models.article.lint.infer_bhl_page(art, interactive_mode=True):
+        cfg = LintConfig(manual_mode=True)
+        for art in self.get_articles().filter(
+            ~models.Article.url.contains("biodiversitylibrary.org/page/"),
+            ~models.Article.url.contains("biodiversitylibrary.org/part/"),
+        ):
+            # Bypass Article.format() so we don't have to set all the authors
+            BaseModel.format(art, quiet=True)
+            for _ in models.article.lint.infer_bhl_page(art, cfg):
                 pass
 
     def _display_nams(self, nams: Iterable["models.Name"], depth: int = 0) -> None:

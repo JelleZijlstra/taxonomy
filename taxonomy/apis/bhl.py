@@ -123,10 +123,17 @@ def _get_part_metadata_string(part_id: str) -> str:
     return httpx.get(url).text
 
 
+def is_external_item(item_id: int) -> bool:
+    metadata = get_item_metadata(item_id)
+    if metadata is None:
+        return False
+    return not metadata.get("Pages") and bool(metadata.get("ExternalUrl"))
+
+
 def volume_matches(our_volume: str, bhl_volume: str) -> bool:
     if our_volume == bhl_volume:
         return True
-    return bool(re.match(rf"v\.{our_volume}(\s|$|:)", bhl_volume))
+    return bool(re.match(rf"(v|V|Jahrg)\.{our_volume}(\s|$|:|=)", bhl_volume))
 
 
 def get_possible_items(
@@ -134,6 +141,7 @@ def get_possible_items(
 ) -> list[int]:
     title_metadata = get_title_metadata(title_id)
     item_ids = []
+    matching_volume_item_ids = []
     for item in title_metadata["Items"]:
         if "Year" not in item:
             continue
@@ -144,7 +152,7 @@ def get_possible_items(
             and volume_matches(volume, item["Volume"])
             and abs(item_year - year) <= 5
         ):
-            item_ids.append(item["ItemID"])
+            matching_volume_item_ids.append(item["ItemID"])
         # Allow the year before in case it was published late
         elif item_year == year or item_year == year - 1:
             item_ids.append(item["ItemID"])
@@ -152,6 +160,13 @@ def get_possible_items(
             item_end_year = int(item["EndYear"])
             if item_year <= year <= item_end_year:
                 item_ids.append(item["ItemID"])
+        elif "Volume" in item:
+            if m := re.fullmatch(r"v.\d+ \((\d+)\)", item["Volume"]):
+                volume_year = int(m.group(1))
+                if year == volume_year or year == volume_year + 1:
+                    item_ids.append(item["ItemID"])
+    if matching_volume_item_ids:
+        return matching_volume_item_ids
     return item_ids
 
 
@@ -162,13 +177,24 @@ def get_page_id_to_index(item_id: int) -> dict[int, int]:
     return {page["PageID"]: i for i, page in enumerate(item_metadata["Pages"])}
 
 
+def get_filtered_pages_and_indices(
+    item_id: int,
+) -> tuple[dict[int, int], list[dict[str, Any]]]:
+    item_metadata = get_item_metadata(item_id)
+    if item_metadata is None:
+        return {}, []
+    pages = [page for page in item_metadata["Pages"] if not _is_plate_page(page)]
+    return {page["PageID"]: i for i, page in enumerate(pages)}, pages
+
+
 def is_contiguous_range(
     item_id: int,
     start_page_id: int,
     end_page_id: int,
-    page_id_to_index: dict[int, int],
+    page_id_to_index: dict[int, int] | None = None,
     *,
     allow_unnumbered: bool = True,
+    ignore_plates: bool = False,
     verbose: bool = False,
 ) -> bool:
     if start_page_id == end_page_id:
@@ -178,6 +204,8 @@ def is_contiguous_range(
         if verbose:
             print(f"not contiguous: Item {item_id} not found")
         return False
+    if page_id_to_index is None:
+        page_id_to_index = get_page_id_to_index(item_id)
     start_index = page_id_to_index.get(start_page_id)
     end_index = page_id_to_index.get(end_page_id)
     if start_index is None or end_index is None or end_index < start_index:
@@ -195,17 +223,29 @@ def is_contiguous_range(
     for page in item_metadata["Pages"][start_index + 1 : end_index + 1]:
         page_no = _get_number_from_page(page)
         if page_no is None:
-            if not allow_unnumbered:
-                if verbose:
-                    print(f"not contiguous: Unnumbered page {page}")
-                return False
-            continue
+            if allow_unnumbered:
+                continue
+            if ignore_plates and _is_plate_page(page):
+                continue
+            if verbose:
+                print(f"not contiguous: Unnumbered page {page}")
+            return False
         if page_no <= start_page_no:
             if verbose:
                 print(f"not contiguous: Page {page_no} is not after {start_page_no}")
             return False
         start_page_no = page_no
     return True
+
+
+def _is_plate_page(page: dict[str, Any]) -> bool:
+    page_types = {t["PageTypeName"].strip() for t in page["PageTypes"]}
+    if not (page_types <= {"Blank", "Illustration", "Text"}):
+        return False
+    if "Illustration" in page_types:
+        return not any(_is_numbered_page(number) for number in page["PageNumbers"])
+    else:
+        return not page["PageNumbers"]
 
 
 def _get_number_from_page(item: dict[str, Any]) -> int | None:
@@ -286,22 +326,44 @@ def get_possible_parts_from_page(page_id: int) -> Iterable[int]:
 
 
 def contains_name(page_id: int, name: str, max_distance: int = 3) -> bool:
+    if len(name) <= 6:
+        max_distance = 0
+    elif len(name) <= 10:
+        max_distance = min(max_distance, 1)
+    closest = closest_match(page_id, name)
+    return closest < max_distance
+
+
+def contains_name_with_distance(
+    page_id: int, name: str, max_distance: int = 3
+) -> tuple[bool, int]:
+    if len(name) <= 6:
+        max_distance = 0
+    elif len(name) <= 10:
+        max_distance = min(max_distance, 1)
+    closest = closest_match(page_id, name)
+    return closest < max_distance, closest
+
+
+def closest_match(page_id: int, name: str) -> int:
     page_metadata = get_page_metadata(page_id)
     folded_name = name.casefold().replace("_", "").replace(".", "").replace(",", "")
     for name_data in page_metadata["Names"]:
         for name in name_data.values():
             if name.casefold() == folded_name:
-                return True
+                return 0
 
     ocr_text = page_metadata["OcrText"].casefold().replace(".", "").replace(",", "")
     if folded_name in ocr_text:
-        return True
+        return 0
     words = folded_name.split()
-    for window in _sliding_window(ocr_text.split(), len(words)):
-        if Levenshtein.distance(" ".join(window), folded_name) < max_distance:
-            return True
-
-    return False
+    return min(
+        (
+            Levenshtein.distance(" ".join(window), folded_name)
+            for window in _sliding_window(ocr_text.split(), len(words))
+        ),
+        default=1000,
+    )
 
 
 @dataclass
@@ -313,6 +375,7 @@ class PossiblePage:
     year_matches: bool
     ocr_text: str = field(repr=False)
     item_id: int
+    min_distance: int
 
     @property
     def page_url(self) -> str:
@@ -328,6 +391,7 @@ class PossiblePage:
             not self.contains_text,
             not self.year_matches,
             not self.contains_end_page,
+            self.min_distance,
             self.page_id,
         )
 
@@ -373,10 +437,15 @@ def find_possible_pages(
                     year_matches=year_matches,
                     ocr_text="",
                     item_id=item,
+                    min_distance=1000,
                 )
                 continue
             ocr_text = page_metadata["OcrText"]
-            contains = any(contains_name(page_id, name) for name in contains_text)
+            pairs = [
+                contains_name_with_distance(page_id, name) for name in contains_text
+            ]
+            contains = any(c for c, _ in pairs)
+            min_distance = min(distance for _, distance in pairs)
             yield PossiblePage(
                 page_id=page_id,
                 page_number=start_page,
@@ -385,6 +454,7 @@ def find_possible_pages(
                 year_matches=year_matches,
                 ocr_text=ocr_text,
                 item_id=item,
+                min_distance=min_distance,
             )
 
 

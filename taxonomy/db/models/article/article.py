@@ -440,6 +440,7 @@ class Article(BaseModel):
             "copy_year_for_names": self.copy_year_for_names,
             "modernize_in_press": self.modernize_in_press,
             "open_url": self.openurl,
+            "open_cg_url": self.open_cg_url,
             "remove": self.remove,
             "merge": self.merge,
             "make_alternative_version": self.make_alternative_version,
@@ -455,7 +456,13 @@ class Article(BaseModel):
             "try_to_find_bhl_links": self.try_to_find_bhl_links,
             "remove_all_author_page_links": self.remove_all_author_page_links,
             "clear_bhl_caches": self.clear_bhl_caches,
+            "set_or_replace_url": self.set_or_replace_url,
         }
+
+    def open_cg_url(self) -> None:
+        cg = self.get_citation_group()
+        if cg is not None:
+            cg.open_url()
 
     def clear_bhl_caches(self) -> None:
         if self.url is not None:
@@ -732,6 +739,8 @@ class Article(BaseModel):
         return self.get_date_object().year
 
     def get_date_object(self) -> datetime.date:
+        if self.type is ArticleType.SUPPLEMENT and self.parent is not None:
+            return self.parent.get_date_object()
         return get_date_object(self.year)
 
     def valid_numeric_year(self) -> int | None:
@@ -825,7 +834,11 @@ class Article(BaseModel):
         else:
             self.tags = self.tags + (tag,)
 
-    def set_or_replace_url(self, url: str) -> None:
+    def set_or_replace_url(self, url: str | None = None) -> None:
+        if url is None:
+            url = getinput.get_line("url> ")
+            if url is None:
+                return
         if self.url:
             self.add_tag(ArticleTag.AlternativeURL(self.url))
         self.url = url
@@ -865,6 +878,21 @@ class Article(BaseModel):
             bhl.UrlType.bhl_part,
         )
 
+    def has_bhl_link_with_pages(self) -> bool:
+        if not self.url:
+            return False
+        parsed = bhl.parse_possible_bhl_url(self.url)
+        match parsed.url_type:
+            case bhl.UrlType.bhl_item:
+                return not bhl.is_external_item(int(parsed.payload))
+            case (
+                bhl.UrlType.bhl_bibliography
+                | bhl.UrlType.bhl_page
+                | bhl.UrlType.bhl_part
+            ):
+                return True
+        return False
+
     def openurl(self) -> bool:
         # open the URL associated with the file
         url = self.geturl()
@@ -900,10 +928,22 @@ class Article(BaseModel):
         return f"[{cite}](/a/{self.id})"
 
     def format(
-        self, *, quiet: bool = False, autofix: bool = True, interactive: bool = True
+        self,
+        *,
+        quiet: bool = False,
+        autofix: bool = True,
+        interactive: bool = True,
+        verbose: bool = False,
+        manual_mode: bool = False,
     ) -> bool:
         self.specify_authors()
-        return super().format(quiet=quiet, autofix=autofix, interactive=interactive)
+        return super().format(
+            quiet=quiet,
+            autofix=autofix,
+            interactive=interactive,
+            verbose=verbose,
+            manual_mode=manual_mode,
+        )
 
     def lint(self, cfg: LintConfig) -> Iterable[str]:
         try:

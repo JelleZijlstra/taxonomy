@@ -413,7 +413,7 @@ def check_url(art: Article, cfg: LintConfig) -> Iterable[str]:
 
     match parsed_url:
         case bhl.ParsedUrl(bhl.UrlType.biostor_ref, _):
-            if (bhl_page := get_inferred_bhl_page(art)) is not None:
+            if (bhl_page := get_inferred_bhl_page(art, cfg)) is not None:
                 message = f"inferred BHL page {bhl_page} from url {art.url}"
                 if cfg.autofix:
                     print(f"{art}: {message}")
@@ -720,12 +720,23 @@ def should_look_for_bhl_url(art: Article) -> bool:
     return True
 
 
-def infer_bhl_page(
-    art: Article, cfg: LintConfig = LintConfig(), *, interactive_mode: bool = False
-) -> Iterable[str]:
+def must_have_bhl_link(art: Article, cfg: LintConfig) -> Iterable[str]:
     if not should_look_for_bhl_url(art):
         return
-    page_obj = get_inferred_bhl_page(art, interactive_mode=interactive_mode)
+    cg = art.get_citation_group()
+    if cg is None:
+        return
+    year = art.numeric_year()
+    if not cg.should_have_bhl_link_in_year(year):
+        return
+    yield f"{art}: should have BHL link"
+
+
+@make_linter("bhl_page")
+def infer_bhl_page(art: Article, cfg: LintConfig = LintConfig()) -> Iterable[str]:
+    if not should_look_for_bhl_url(art):
+        return
+    page_obj = get_inferred_bhl_page(art, cfg)
     if page_obj is None:
         return
     message = f"inferred BHL page {page_obj} from {art.start_page}–{art.end_page}"
@@ -739,13 +750,7 @@ def infer_bhl_page(
     print(page_obj.page_url)
 
 
-# allow direct calls too
-infer_bhl_page_linter = make_linter("bhl_page")(infer_bhl_page)
-
-
-def get_inferred_bhl_page(
-    art: Article, *, interactive_mode: bool = False
-) -> bhl.PossiblePage | None:
+def get_inferred_bhl_page(art: Article, cfg: LintConfig) -> bhl.PossiblePage | None:
     if (
         art.start_page is None
         or art.end_page is None
@@ -753,6 +758,8 @@ def get_inferred_bhl_page(
         or art.title is None
     ):
         return None
+    year = art.numeric_year()
+    cg = art.get_citation_group()
     if art.type in (ArticleType.CHAPTER, ArticleType.PART):
         url = art.parent.url
         if url is None:
@@ -780,15 +787,14 @@ def get_inferred_bhl_page(
             year_matches=True,
             ocr_text=page_metadata.get("OCRText", ""),
             item_id=item_id,
+            min_distance=0,
         )
     else:
-        cg = art.get_citation_group()
         if cg is None:
             return None
         title_ids = cg.get_bhl_title_ids()
         if not title_ids:
             return None
-        year = art.numeric_year()
         contains_text = [art.title]
         start_page = art.start_page
         end_page = art.end_page
@@ -807,13 +813,17 @@ def get_inferred_bhl_page(
     # Even if there is more than one, just pick the first
     if len(confident_pages) >= 1:
         return confident_pages[0]
-    if not interactive_mode:
+    if not cfg.manual_mode:
+        return None
+    if cg is not None and not cg.should_have_bhl_link_in_year(year):
         return None
     if possible_pages:
         getinput.print_header(art.name)
         art.display()
         print(f"Unconfirmed pages found: {possible_pages}")
         for page in possible_pages[:4]:
+            if page.min_distance >= 50:
+                continue
             getinput.print_header(page)
             ocr_text = page.ocr_text.replace("\n\n", "\n")
             print(ocr_text)
@@ -821,18 +831,185 @@ def get_inferred_bhl_page(
             if getinput.yes_no("Is this the correct page?"):
                 return page
 
-        for page in possible_pages[:4]:
-            print(page)
-            subprocess.check_call(["open", page.page_url])
+        def open_urls() -> None:
+            for page in possible_pages[:2]:
+                print(page)
+                subprocess.check_call(["open", page.page_url])
+
+        callbacks = {**art.get_adt_callbacks(), "u": open_urls}
         url_to_page = {page.page_url: page for page in possible_pages}
-        choice = getinput.choose_one_by_name(
-            list(url_to_page), callbacks=art.get_adt_callbacks()
-        )
+        choice = getinput.choose_one_by_name(list(url_to_page), callbacks=callbacks)
         if choice is None:
             return None
         print("Chose", choice, "for", art)
         return url_to_page[choice]
     return None
+
+
+@make_linter("bhl_page_from_other_articles")
+def infer_bhl_page_from_other_articles(
+    art: Article, cfg: LintConfig = LintConfig()
+) -> Iterable[str]:
+    if not should_look_for_bhl_url(art):
+        return
+    page_id = get_inferred_bhl_page_from_articles(art, cfg)
+    if page_id is None:
+        return
+    message = f"inferred BHL page {page_id} from other articles in {art.citation_group} {art.volume}"
+    if art.url is not None:
+        message += f" (replacing {art.url})"
+    page_url = f"https://www.biodiversitylibrary.org/page/{page_id}"
+    if cfg.autofix:
+        print(f"{art}: {message}")
+        art.set_or_replace_url(page_url)
+    else:
+        yield message
+    print(page_url)
+
+
+def get_inferred_bhl_page_from_articles(art: Article, cfg: LintConfig) -> int | None:
+    if art.volume is None:
+        if cfg.verbose:
+            print(f"{art}: no volume")
+        return None
+    if (
+        art.start_page is None
+        or art.end_page is None
+        or not art.start_page.isnumeric()
+        or not art.end_page.isnumeric()
+    ):
+        if cfg.verbose:
+            print(f"{art}: no numeric page range")
+        return None
+    cg = art.get_citation_group()
+    if cg is None:
+        if cfg.verbose:
+            print(f"{art}: no journal")
+        return None
+    other_articles = list(
+        Article.select_valid().filter(
+            Article.citation_group == cg,
+            Article.volume == art.volume,
+            Article.issue == art.issue,
+            Article.url != None,
+            Article.series == art.series,
+        )
+    )
+    if not other_articles:
+        if cfg.verbose:
+            print(f"{art}: no other articles")
+        return None
+    inferred_pages: dict[int, set[Article]] = {}
+    for other_art in other_articles:
+        if other_art.numeric_year() != art.numeric_year():
+            if cfg.verbose:
+                print(f"{other_art}: different year")
+            continue
+        if other_art.url is None:
+            if cfg.verbose:
+                print(f"{other_art}: no URL")
+            continue
+        parsed = bhl.parse_possible_bhl_url(other_art.url)
+        if parsed.url_type is bhl.UrlType.bhl_page:
+            existing_page_id = int(parsed.payload)
+        elif parsed.url_type is bhl.UrlType.bhl_part:
+            part_metadata = bhl.get_part_metadata(int(parsed.payload))
+            existing_page_id = int(part_metadata["StartPageID"])
+        else:
+            if cfg.verbose:
+                print(f"{other_art}: {other_art.url} is not a BHL page URL")
+            continue
+        if other_art.start_page == art.start_page:
+            inferred_pages.setdefault(existing_page_id, set()).add(other_art)
+        if other_art.start_page is None or not other_art.start_page.isnumeric():
+            if cfg.verbose:
+                print(f"{other_art}: {other_art.start_page} is not numeric")
+            continue
+        diff = int(art.start_page) - int(other_art.start_page)
+        page_metadata = bhl.get_page_metadata(existing_page_id)
+        item_id = int(page_metadata["ItemID"])
+
+        # Check start page
+        page_mapping, pages = bhl.get_filtered_pages_and_indices(item_id)
+        existing_page_idx = page_mapping.get(existing_page_id)
+        if existing_page_idx is None:
+            if cfg.verbose:
+                print(f"{other_art}: no index for page {existing_page_id}")
+            continue
+        expected_page_idx = existing_page_idx + diff
+        if not (0 <= expected_page_idx < len(pages)):
+            if cfg.verbose:
+                print(f"{other_art}: {expected_page_idx} is out of range")
+            continue
+        inferred_page_id = pages[expected_page_idx]["PageID"]
+        if diff > 0:
+            start = existing_page_id
+            end = inferred_page_id
+        else:
+            start = inferred_page_id
+            end = existing_page_id
+        if not bhl.is_contiguous_range(
+            item_id,
+            start,
+            end,
+            allow_unnumbered=False,
+            verbose=cfg.verbose,
+            ignore_plates=True,
+        ):
+            if cfg.verbose:
+                print(
+                    f"{other_art}: {existing_page_id} and {inferred_page_id} are not"
+                    " contiguous"
+                )
+            continue
+
+        # Check end page
+        this_art_diff = int(art.end_page) - int(art.start_page)
+        expected_end_page_idx = expected_page_idx + this_art_diff
+        if not (0 <= expected_end_page_idx < len(pages)):
+            if cfg.verbose:
+                print(
+                    f"{other_art}: end page index {expected_end_page_idx} is out of range"
+                )
+            continue
+        inferred_end_page_id = pages[expected_end_page_idx]["PageID"]
+        if not bhl.is_contiguous_range(
+            item_id,
+            inferred_page_id,
+            inferred_end_page_id,
+            allow_unnumbered=False,
+            verbose=cfg.verbose,
+            ignore_plates=True,
+        ):
+            if cfg.verbose:
+                print(
+                    f"{other_art}: start {inferred_page_id} and end {inferred_end_page_id} are not"
+                    " contiguous"
+                )
+            continue
+
+        possible_pages = bhl.get_possible_pages(item_id, art.start_page)
+        if inferred_page_id not in possible_pages:
+            if cfg.verbose:
+                print(
+                    f"{other_art}: {inferred_page_id} not in possible pages {possible_pages}"
+                )
+            continue
+        inferred_pages.setdefault(inferred_page_id, set()).add(other_art)
+    if len(inferred_pages) != 1:
+        if cfg.verbose:
+            print(f"{art}: no single inferred page from other names ({inferred_pages})")
+        if inferred_pages and cfg.interactive:
+            for page_id, arts in inferred_pages.items():
+                url = f"https://www.biodiversitylibrary.org/page/{page_id}"
+                getinput.print_header(f"{url} ({len(arts)})")
+                subprocess.check_call(["open", url])
+                for other_art in arts:
+                    print(f"- {other_art!r}")
+            art.edit()
+        return None
+    (inferred_page_id,) = inferred_pages
+    return inferred_page_id
 
 
 # remove final period and curly quotes, italicize cyt b, other stuff

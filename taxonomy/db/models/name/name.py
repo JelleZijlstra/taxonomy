@@ -91,6 +91,7 @@ class Name(BaseModel):
         "status": Status.valid,
     }
     excluded_fields = {"data"}
+    fields_without_completers = {"data"}
     markdown_fields = {"verbatim_citation"}
     clirm_table_name = "name"
 
@@ -702,16 +703,14 @@ class Name(BaseModel):
         self.add_type_tag(TypeTag.AuthorityPageLink(link, True, self.page_described))
 
     def try_to_find_bhl_links(self) -> None:
-        cfg = LintConfig()
+        cfg = LintConfig(verbose=True)
         if self.has_type_tag(models.name.TypeTag.AuthorityPageLink):
             return
-        for _ in models.name.lint.infer_bhl_page(self, cfg, verbose=True):  # type: ignore[call-arg]
+        for _ in models.name.lint.infer_bhl_page(self, cfg):
             pass
-        for _ in models.name.lint.infer_bhl_page_from_other_names(
-            self, cfg, verbose=True  # type: ignore[call-arg]
-        ):
+        for _ in models.name.lint.infer_bhl_page_from_other_names(self, cfg):
             pass
-        for _ in models.name.lint.infer_bhl_page_from_article(self, cfg, verbose=True):  # type: ignore[call-arg]
+        for _ in models.name.lint.infer_bhl_page_from_article(self, cfg):
             pass
 
     def print_type_specimen(self) -> None:
@@ -2440,6 +2439,7 @@ class NameComment(BaseModel):
     grouping_field = "kind"
     fields_may_be_invalid = {"name"}
     clirm_table_name = "name_comment"
+    fields_without_completers = {"text"}
 
     name = Field[Name]("name_id", related_name="comments")
     kind = Field[constants.CommentKind]()

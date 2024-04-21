@@ -11,7 +11,7 @@ import sqlite3
 import traceback
 import typing
 from collections import defaultdict
-from collections.abc import Callable, Container, Iterable, Sequence
+from collections.abc import Callable, Collection, Container, Iterable, Sequence
 from dataclasses import dataclass
 from functools import partial
 from types import NoneType
@@ -81,6 +81,8 @@ class _FieldEditor:
 class LintConfig:
     autofix: bool = True
     interactive: bool = True
+    verbose: bool = False
+    manual_mode: bool = False
 
 
 ADTT = TypeVar("ADTT", bound=adt.ADT)
@@ -105,6 +107,7 @@ class BaseModel(Model):
     fields_may_be_invalid: ClassVar[set[str]] = set()
     markdown_fields: ClassVar[set[str]] = set()
     search_fields: ClassVar[Sequence[SearchField]] = ()
+    fields_without_completers: ClassVar[Collection[str]] = set()
 
     clirm = LazyClirm()
 
@@ -133,9 +136,16 @@ class BaseModel(Model):
         *,
         autofix: bool = True,
         interactive: bool = False,
+        verbose: bool = False,
+        manual_mode: bool = False,
         query: Iterable[ModelT] | None = None,
     ) -> list[tuple[ModelT, list[str]]]:
-        cfg = LintConfig(autofix=autofix, interactive=interactive)
+        cfg = LintConfig(
+            autofix=autofix,
+            interactive=interactive,
+            verbose=verbose,
+            manual_mode=manual_mode,
+        )
         if query is None:
             if linter is None:
                 query = cls.select()
@@ -154,14 +164,34 @@ class BaseModel(Model):
         return bad
 
     def format(
-        self, *, quiet: bool = False, autofix: bool = True, interactive: bool = True
+        self,
+        *,
+        quiet: bool = False,
+        autofix: bool = True,
+        interactive: bool = True,
+        verbose: bool = False,
+        manual_mode: bool = False,
     ) -> bool:
         # First autofix
-        for _ in self.general_lint(LintConfig(autofix=autofix, interactive=False)):
+        for _ in self.general_lint(
+            LintConfig(
+                autofix=autofix,
+                interactive=False,
+                verbose=verbose,
+                manual_mode=manual_mode,
+            )
+        ):
             pass
         # Then allow interactive fixing
         messages = list(
-            self.general_lint(LintConfig(autofix=autofix, interactive=interactive))
+            self.general_lint(
+                LintConfig(
+                    autofix=autofix,
+                    interactive=interactive,
+                    verbose=verbose,
+                    manual_mode=manual_mode,
+                )
+            )
         )
         if not messages:
             if not quiet:
@@ -837,6 +867,8 @@ class BaseModel(Model):
             "debug": self.debug_data,
             "call": self.call,
             "lint": self.format,
+            "manual_lint": lambda: self.format(manual_mode=True),
+            "verbose_lint": lambda: self.format(verbose=True),
             "print_character_names": self.print_character_names_for_field,
             "edit_reverse_rel": self.edit_reverse_rel,
             "lint_reverse_rel": self.lint_reverse_rel,
