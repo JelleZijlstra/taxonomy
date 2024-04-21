@@ -284,11 +284,7 @@ class CitationGroup(BaseModel):
             art.edit()
 
     def has_lint_ignore(self, label: str) -> bool:
-        return any(
-            isinstance(tag, CitationGroupTag.IgnoreLintCitationGroup)
-            and tag.label == label
-            for tag in self.tags
-        )
+        return models.citation_group.lint.LINT.is_ignoring_lint(self, label)
 
     def get_adt_callbacks(self) -> getinput.CallbackMap:
         return {
@@ -301,9 +297,7 @@ class CitationGroup(BaseModel):
             "edit_all_members": self.edit_all_members,
             "print_field_value_for_articles": self.print_field_value_for_articles,
             "lint_articles": lambda: models.Article.lint_all(query=self.get_articles()),
-            "lint_names": lambda: models.Name.lint_all(
-                query=models.Name.add_validity_check(self.names)
-            ),
+            "lint_names": lambda: models.Name.lint_all(query=self.get_names()),
             "missing_high_names": self.print_missing_high_names,
             "for_years": self._for_years_interactive,
             "fill_field_for_names": self.fill_field_for_names,
@@ -465,12 +459,15 @@ class CitationGroup(BaseModel):
 
     def interactively_add_bhl_urls(self) -> None:
         cfg = LintConfig(manual_mode=True)
-        for art in self.get_articles().filter(
+        arts = self.get_articles().filter(
             ~models.Article.url.contains("biodiversitylibrary.org/page/"),
             ~models.Article.url.contains("biodiversitylibrary.org/part/"),
-        ):
+        )
+        for art in sorted(arts, key=models.article.article.volume_sort_key):
             # Bypass Article.format() so we don't have to set all the authors
             BaseModel.format(art, quiet=True)
+            if models.article.lint.LINT.is_ignoring_lint(art, "must_have_bhl"):
+                continue
             for _ in models.article.lint.infer_bhl_page(art, cfg):
                 pass
 

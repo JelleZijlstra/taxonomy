@@ -89,6 +89,10 @@ class Lint(Generic[ModelT]):
             else:
                 yield f"{obj}: has unused IgnoreLint tags {', '.join(unused)}"
 
+    def is_ignoring_lint(self, obj: ModelT, label: str) -> bool:
+        ignored_lints = self.get_ignored_lints(obj)
+        return label in ignored_lints
+
     def get_ignored_lints(self, obj: ModelT) -> set[str]:
         tags = self.get_ignores(obj)
         return {tag.label for tag in tags}

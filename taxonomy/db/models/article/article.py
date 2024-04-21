@@ -1475,6 +1475,26 @@ def citation_order_sort_key(art: Article) -> tuple[object, ...]:
     )
 
 
+def volume_sort_key(art: Article) -> tuple[object, ...]:
+    return (
+        _make_sortable(art.series),
+        _make_sortable(art.volume),
+        _make_sortable(art.issue),
+        art.numeric_start_page(),
+        art.numeric_end_page(),
+        art.title or "",
+    )
+
+
+def _make_sortable(val: str | None) -> tuple[object, ...]:
+    if val is None:
+        return (0,)
+    elif val.isnumeric():
+        return (1, int(val))
+    else:
+        return (2, val)
+
+
 def get_ordered_articles(arts: Iterable[Article] | None) -> list[Article]:
     if arts is None:
         return []

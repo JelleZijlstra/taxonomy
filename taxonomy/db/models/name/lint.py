@@ -2216,9 +2216,7 @@ def check_specific_authors(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 "has original citation, but has family name-only author"
                 f" {author} (position {i})"
             )
-            if cfg.interactive and "specific_authors" not in LINT.get_ignored_lints(
-                nam
-            ):
+            if cfg.interactive and not LINT.is_ignoring_lint(nam, "specific_authors"):
                 author.edit_tag_sequence_on_object(
                     nam, "author_tags", AuthorTag.Author, "names"
                 )
@@ -2226,9 +2224,7 @@ def check_specific_authors(nam: Name, cfg: LintConfig) -> Iterable[str]:
             author.family_name
         ) in helpers.simplify_string(nam.verbatim_citation):
             yield f"author {author} (position {i}) appears in verbatim citation"
-            if cfg.interactive and "specific_authors" not in LINT.get_ignored_lints(
-                nam
-            ):
+            if cfg.interactive and not LINT.is_ignoring_lint(nam, "specific_authors"):
                 author.edit_tag_sequence_on_object(
                     nam, "author_tags", AuthorTag.Author, "names"
                 )

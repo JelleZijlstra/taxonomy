@@ -1966,7 +1966,9 @@ def run_linter_and_fix(
     print(f"Found {len(bad)} issues")
     if not bad:
         return
-    cfg = LintConfig(autofix=True, interactive=True)
+    cfg = LintConfig(
+        autofix=True, interactive=True, verbose=verbose, manual_mode=manual_mode
+    )
     for obj, messages in getinput.print_every_n(bad, label="issues", n=5):
         obj = obj.reload()
         getinput.print_header(obj)

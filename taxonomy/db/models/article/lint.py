@@ -696,6 +696,7 @@ def should_look_for_bhl_url(art: Article) -> bool:
     return True
 
 
+@LINT.add("must_have_bhl", disabled=True)
 def must_have_bhl_link(art: Article, cfg: LintConfig) -> Iterable[str]:
     if not should_look_for_bhl_url(art):
         return
