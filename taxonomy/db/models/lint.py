@@ -4,7 +4,8 @@ Abstraction for linting models.
 
 """
 
-import functools
+from __future__ import annotations
+
 import traceback
 from collections.abc import Callable, Collection, Generator, Iterable
 from dataclasses import dataclass, field
@@ -15,7 +16,6 @@ from .base import BaseModel, LintConfig
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
 Linter = Callable[[ModelT, LintConfig], Iterable[str]]
-IgnorableLinter = Callable[[ModelT, LintConfig], Generator[str, None, set[str]]]
 
 
 class IgnoreLint(Protocol):
@@ -23,39 +23,47 @@ class IgnoreLint(Protocol):
 
 
 @dataclass
+class LintWrapper(Generic[ModelT]):
+    linter: Linter[ModelT]
+    disabled: bool
+    label: str
+    lint: Lint[ModelT]
+
+    def __call__(self, obj: ModelT, cfg: LintConfig) -> Generator[str, None, set[str]]:
+        try:
+            issues = list(self.linter(obj, cfg))
+        except Exception as e:
+            traceback.print_exc()
+            yield f"{obj}: error running {self.label} linter: {e}"
+            return set()
+        if not issues:
+            return set()
+        ignored_lints = self.lint.get_ignored_lints(obj)
+        if self.label in ignored_lints:
+            return {self.label}
+        for issue in issues:
+            yield f"{obj}: {issue} [{self.label}]"
+        return set()
+
+
+@dataclass
 class Lint(Generic[ModelT]):
     get_ignores: Callable[[ModelT], Iterable[IgnoreLint]]
     remove_unused_ignores: Callable[[ModelT, Collection[str]], None]
 
-    linters: list[IgnorableLinter[ModelT]] = field(default_factory=list)
-    disabled_linters: list[IgnorableLinter[ModelT]] = field(default_factory=list)
+    linters: list[LintWrapper[ModelT]] = field(default_factory=list)
+    disabled_linters: list[LintWrapper[ModelT]] = field(default_factory=list)
 
     def add(
         self, label: str, *, disabled: bool = False
-    ) -> Callable[[Linter[ModelT]], IgnorableLinter[ModelT]]:
-        def decorator(linter: Linter[ModelT]) -> IgnorableLinter[ModelT]:
-            @functools.wraps(linter)
-            def wrapper(obj: ModelT, cfg: LintConfig) -> Generator[str, None, set[str]]:
-                try:
-                    issues = list(linter(obj, cfg))
-                except Exception as e:
-                    traceback.print_exc()
-                    yield f"{obj}: error running {label} linter: {e}"
-                    return set()
-                if not issues:
-                    return set()
-                ignored_lints = self.get_ignored_lints(obj)
-                if label in ignored_lints:
-                    return {label}
-                for issue in issues:
-                    yield f"{obj}: {issue} [{label}]"
-                return set()
-
+    ) -> Callable[[Linter[ModelT]], LintWrapper[ModelT]]:
+        def decorator(linter: Linter[ModelT]) -> LintWrapper[ModelT]:
+            lint_wrapper = LintWrapper(linter, disabled, label, self)
             if disabled:
-                self.disabled_linters.append(wrapper)
+                self.disabled_linters.append(lint_wrapper)
             else:
-                self.linters.append(wrapper)
-            return wrapper
+                self.linters.append(lint_wrapper)
+            return lint_wrapper
 
         return decorator
 
@@ -72,6 +80,9 @@ class Lint(Generic[ModelT]):
             used_ignores |= yield from linter(obj, cfg)
         actual_ignores = self.get_ignored_lints(obj)
         unused = actual_ignores - used_ignores
+        if unused:
+            # Don't remove IgnoreLints for disabled linters
+            unused -= {linter.label for linter in self.disabled_linters}
         if unused:
             if cfg.autofix:
                 self.remove_unused_ignores(obj, unused)
