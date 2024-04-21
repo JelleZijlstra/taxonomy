@@ -3158,6 +3158,15 @@ def confirm_zmmu_types() -> None:
             models.article.check.check_new()
 
 
+@command
+def add_bhl_pages_by_cg() -> None:
+    for cg in CitationGroup.select_valid():
+        if not cg.get_bhl_title_ids():
+            continue
+        getinput.print_header(cg)
+        cg.interactively_add_bhl_urls()
+
+
 def run_shell() -> None:
     # GC does bad things on my current setup for some reason
     gc.disable()

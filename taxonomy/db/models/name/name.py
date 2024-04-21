@@ -1954,9 +1954,7 @@ class Name(BaseModel):
         except Exception as e:
             yield f"{self.id}: cannot display due to {e}"
             return
-        if self.status is Status.removed:
-            return
-        yield from models.name.lint.run_linters(self, cfg)
+        yield from models.name.lint.LINT.run(self, cfg)
         if not self.check_authors():
             yield f"{self}: discrepancy in authors"
 

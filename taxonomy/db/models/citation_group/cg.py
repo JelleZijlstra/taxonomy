@@ -120,7 +120,7 @@ class CitationGroup(BaseModel):
             yield "region"
 
     def lint(self, cfg: LintConfig) -> Iterable[str]:
-        yield from models.citation_group.lint.run_linters(self, cfg)
+        yield from models.citation_group.lint.LINT.run(self, cfg)
 
     def has_tag(self, tag: adt.ADT) -> bool:
         if self.tags is None:
@@ -282,6 +282,13 @@ class CitationGroup(BaseModel):
         for art in self.get_articles():
             art.display()
             art.edit()
+
+    def has_lint_ignore(self, label: str) -> bool:
+        return any(
+            isinstance(tag, CitationGroupTag.IgnoreLintCitationGroup)
+            and tag.label == label
+            for tag in self.tags
+        )
 
     def get_adt_callbacks(self) -> getinput.CallbackMap:
         return {
@@ -547,5 +554,7 @@ class CitationGroupTag(adt.ADT):
     # Do not add more BHL bibliographies based on children
     SkipExtraBHLBibliographies(tag=28)  # type: ignore
     CitationGroupComment(text=str, tag=29)  # type: ignore
+    # This exists mostly so we can avoid complaining about missing BHL links. Should
+    # not be exposed on the website.
     BHLYearRange(start=NotRequired[str], end=NotRequired[str], tag=30)  # type: ignore
     IgnoreLintCitationGroup(label=str, comment=NotRequired[str], tag=31)  # type: ignore

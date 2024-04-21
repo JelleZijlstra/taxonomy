@@ -12,12 +12,10 @@ import itertools
 import json
 import re
 import subprocess
-import traceback
 from collections import defaultdict
-from collections.abc import Callable, Generator, Iterable, Iterator, Sequence
-from dataclasses import replace
+from collections.abc import Container, Generator, Iterable, Iterator, Sequence
 from datetime import datetime
-from typing import Any, TypeVar
+from typing import TypeVar
 
 import Levenshtein
 import requests
@@ -51,6 +49,7 @@ from ...constants import (
 from ..article import Article, ArticleTag, PresenceStatus
 from ..base import LintConfig
 from ..collection import BMNH_COLLECTION, MULTIPLE_COLLECTION, Collection
+from ..lint import IgnoreLint, Lint
 from ..person import AuthorTag, PersonLevel
 from ..taxon import Taxon
 from .name import (
@@ -79,51 +78,22 @@ from .type_specimen import (
 T = TypeVar("T")
 ADTT = TypeVar("ADTT", bound=adt.ADT)
 
-Linter = Callable[[Name, LintConfig], Iterable[str]]
-IgnorableLinter = Callable[[Name, LintConfig], Generator[str, None, set[str]]]
 
-LINTERS = []
-DISABLED_LINTERS = []
-
-
-def get_ignored_lints(nam: Name) -> set[str]:
-    tags = nam.get_tags(nam.type_tags, TypeTag.IgnoreLintName)
-    return {tag.label for tag in tags}
-
-
-def make_linter(
-    label: str, *, disabled: bool = False
-) -> Callable[[Linter], IgnorableLinter]:
-    def decorator(linter: Linter) -> IgnorableLinter:
-        @functools.wraps(linter)
-        def wrapper(
-            nam: Name, cfg: LintConfig, **kwargs: Any
-        ) -> Generator[str, None, set[str]]:
-            ignored_lints = get_ignored_lints(nam)
-            if label in ignored_lints:
-                cfg = replace(cfg, interactive=False)
-            try:
-                # static analysis: ignore[incompatible_call]
-                issues = list(linter(nam, cfg, **kwargs))
-            except Exception as e:
-                traceback.print_exc()
-                yield f"{nam}: error running {label} linter: {e}"
-                return set()
-            if not issues:
-                return set()
-            if label in ignored_lints:
-                return {label}
-            for issue in issues:
-                yield f"{nam}: {issue} [{label}]"
-            return set()
-
-        if disabled:
-            DISABLED_LINTERS.append(wrapper)
+def remove_unused_ignores(nam: Name, unused: Container[str]) -> None:
+    new_tags = []
+    for tag in nam.type_tags:
+        if isinstance(tag, TypeTag.IgnoreLintName) and tag.label in unused:
+            print(f"{nam}: removing unused IgnoreLint tag: {tag}")
         else:
-            LINTERS.append(wrapper)
-        return wrapper
+            new_tags.append(tag)
+    nam.type_tags = new_tags  # type: ignore
 
-    return decorator
+
+def get_ignores(nam: Name) -> Iterable[IgnoreLint]:
+    return nam.get_tags(nam.type_tags, TypeTag.IgnoreLintName)
+
+
+LINT = Lint(get_ignores, remove_unused_ignores)
 
 
 def replace_arg(tag: ADTT, arg: str, val: object) -> ADTT:
@@ -337,7 +307,7 @@ ALLOWED_AUTHORITY_PAGE_LINK_TYPES = {
 }
 
 
-@make_linter("type_tags")
+@LINT.add("type_tags")
 def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if not nam.type_tags:
         return
@@ -532,7 +502,7 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
             nam.type_tags = tags  # type: ignore
 
 
-@make_linter("dedupe_tags")
+@LINT.add("dedupe_tags")
 def dedupe_and_sort_tags(nam: Name, cfg: LintConfig) -> Iterable[str]:
     original_tags = list(nam.type_tags)
     organ_tags_to_merge = defaultdict(list)
@@ -583,7 +553,7 @@ def make_point(tag: TypeTag.Coordinates) -> coordinates.Point | None:  # type: i
     return coordinates.Point(lon, lat)
 
 
-@make_linter("coordinates")
+@LINT.add("coordinates")
 def check_coordinates(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.type_locality is None:
         return
@@ -614,7 +584,7 @@ def check_coordinates(nam: Name, cfg: LintConfig) -> Iterable[str]:
         yield f"coordinates {point} are in {osm_country}, not {tl_country.name}"
 
 
-@make_linter("type_designations", disabled=True)
+@LINT.add("type_designations", disabled=True)
 def check_type_designations_present(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.genus_type_kind is TypeSpeciesDesignation.subsequent_designation:
         if not any(
@@ -667,7 +637,7 @@ def _get_repositories(nam: Name) -> set[tuple[RepositoryKind, Collection]]:
     return repos
 
 
-@make_linter("type_specimen_order")
+@LINT.add("type_specimen_order")
 def check_type_specimen_order(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.type_specimen is None:
         return
@@ -689,7 +659,7 @@ def check_type_specimen_order(nam: Name, cfg: LintConfig) -> Iterable[str]:
         yield message
 
 
-@make_linter("type_specimen")
+@LINT.add("type_specimen")
 def check_type_specimen(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.type_specimen is None:
         return
@@ -765,7 +735,7 @@ _BMNH_REGEXES = [
 ]
 
 
-@make_linter("bmnh_types")
+@LINT.add("bmnh_types")
 def check_bmnh_type_specimens(nam: Name, cfg: LintConfig) -> Iterable[str]:
     """Fix some simple issues with BMNH type specimens."""
     if nam.type_specimen is None:
@@ -810,7 +780,7 @@ def _get_all_type_specimen_texts_from_specimen(spec: Specimen) -> Iterable[str]:
         yield spec.base.stringify()
 
 
-@make_linter("type_specimen_link")
+@LINT.add("type_specimen_link")
 def check_must_have_type_specimen_link(nam: Name, cfg: LintConfig) -> Iterable[str]:
     # TODO: cover multiple, ExtraRepository etc. here
     # After replacing all TypeSpecimenLink tags. Then we should be able to associate every TypeSpecimenLinkFor tag with some part of the type_specimen text.
@@ -842,7 +812,7 @@ def check_must_have_type_specimen_link(nam: Name, cfg: LintConfig) -> Iterable[s
         )
 
 
-@make_linter("duplicate_type_specimen_links")
+@LINT.add("duplicate_type_specimen_links")
 def check_duplicate_type_specimen_links(nam: Name, cfg: LintConfig) -> Iterable[str]:
     tags_with_specimens = {
         tag.url for tag in nam.type_tags if isinstance(tag, TypeTag.TypeSpecimenLinkFor)
@@ -865,7 +835,7 @@ def check_duplicate_type_specimen_links(nam: Name, cfg: LintConfig) -> Iterable[
             yield message
 
 
-@make_linter("replace_simple_type_specimen_link")
+@LINT.add("replace_simple_type_specimen_link")
 def replace_simple_type_specimen_link(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.type_specimen is None:
         return
@@ -907,7 +877,7 @@ def _parse_specimen_detail(text: str) -> dict[str, str] | None:
     return out
 
 
-@make_linter("replace_type_specimen_link")
+@LINT.add("replace_type_specimen_link")
 def replace_type_specimen_link(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.type_specimen is None:
         return
@@ -1112,7 +1082,7 @@ def _check_preoccupation_tag(
     return new_tag
 
 
-@make_linter("tags")
+@LINT.add("tags")
 def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
     """Looks at all tags set on names and applies related changes."""
     try:
@@ -1303,7 +1273,7 @@ def get_sorted_applicable_statuses(nam: Name) -> list[NomenclatureStatus]:
     return sorted(applicable, key=lambda status: _priority_map[status])
 
 
-@make_linter("expected_nomenclature_status")
+@LINT.add("expected_nomenclature_status")
 def check_expected_nomenclature_status(nam: Name, cfg: LintConfig) -> Iterable[str]:
     """Check if the nomenclature status is as expected."""
     applicable_from_tags = set(get_applicable_nomenclature_statuses_from_tags(nam))
@@ -1333,7 +1303,7 @@ def check_expected_nomenclature_status(nam: Name, cfg: LintConfig) -> Iterable[s
             yield message
 
 
-@make_linter("redundant_fields")
+@LINT.add("redundant_fields")
 def check_redundant_fields(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.nomenclature_status is not NomenclatureStatus.nomen_novum:
         return
@@ -1351,7 +1321,7 @@ def check_redundant_fields(nam: Name, cfg: LintConfig) -> Iterable[str]:
             yield message
 
 
-@make_linter("lsid")
+@LINT.add("lsid")
 def check_for_lsid(nam: Name, cfg: LintConfig) -> Iterable[str]:
     # ICZN Art. 8.5.1: ZooBank is relevant to availability only starting in 2012
     if (
@@ -1399,7 +1369,7 @@ def check_for_lsid(nam: Name, cfg: LintConfig) -> Iterable[str]:
         yield message
 
 
-@make_linter("year")
+@LINT.add("year")
 def check_year(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.year is None:
         return
@@ -1409,7 +1379,7 @@ def check_year(nam: Name, cfg: LintConfig) -> Iterable[str]:
         yield "year is a range"
 
 
-@make_linter("year_matches")
+@LINT.add("year_matches")
 def check_year_matches(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.original_citation is None:
         return
@@ -1439,7 +1409,7 @@ ATTRIBUTES_BY_GROUP = {
 }
 
 
-@make_linter("disallowed_attributes")
+@LINT.add("disallowed_attributes")
 def check_disallowed_attributes(nam: Name, cfg: LintConfig) -> Iterable[str]:
     for field_name, groups in ATTRIBUTES_BY_GROUP.items():
         if nam.group not in groups:
@@ -1455,7 +1425,7 @@ def _make_con_messsage(nam: Name, text: str) -> str:
 CON_REGEX = re.compile(r"^[A-Z][a-z]+( [a-z]+){0,3}$")
 
 
-@make_linter("corrected_original_name")
+@LINT.add("corrected_original_name")
 def check_corrected_original_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
     """Check that corrected_original_names are correct."""
     if nam.corrected_original_name is None:
@@ -1526,7 +1496,7 @@ def _make_rn_message(nam: Name, text: str) -> str:
     return f"root name {nam.root_name!r} {text}"
 
 
-@make_linter("root_name")
+@LINT.add("root_name")
 def check_root_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
     """Check that root_names are correct."""
     if nam.nomenclature_status.permissive_corrected_original_name():
@@ -1624,7 +1594,7 @@ def _check_species_name_gender(nam: Name, cfg: LintConfig) -> Iterable[str]:
             yield message
 
 
-@make_linter("family_root_name")
+@LINT.add("family_root_name")
 def check_family_root_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.group is not Group.family or nam.type is None:
         return
@@ -1654,7 +1624,7 @@ def check_family_root_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
         yield f"Stem mismatch: {nam.root_name} vs. {stem_name}"
 
 
-@make_linter("type_taxon")
+@LINT.add("type_taxon")
 def correct_type_taxon(nam: Name, cfg: LintConfig) -> Iterable[str]:
     """Moves names to child taxa if the type allows it."""
     if nam.group not in (Group.genus, Group.family):
@@ -1681,7 +1651,7 @@ def correct_type_taxon(nam: Name, cfg: LintConfig) -> Iterable[str]:
             yield message
 
 
-@make_linter("type_is_child")
+@LINT.add("type_is_child")
 def check_type_is_child(nam: Name, cfg: LintConfig) -> Iterable[str]:
     """Checks that the type taxon is a child of the name's taxon."""
     if nam.type is None:
@@ -1691,7 +1661,7 @@ def check_type_is_child(nam: Name, cfg: LintConfig) -> Iterable[str]:
     yield f"type {nam.type} is not a child of {nam.taxon}"
 
 
-@make_linter("infer_family_group_type")
+@LINT.add("infer_family_group_type")
 def infer_family_group_type(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if (
         nam.group is not Group.family
@@ -1716,7 +1686,7 @@ def infer_family_group_type(nam: Name, cfg: LintConfig) -> Iterable[str]:
         yield message
 
 
-@make_linter("name_complex")
+@LINT.add("name_complex")
 def check_name_complex(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if (
         nam.name_complex is not None
@@ -1731,7 +1701,7 @@ def check_name_complex(nam: Name, cfg: LintConfig) -> Iterable[str]:
         return
 
 
-@make_linter("verbatim")
+@LINT.add("verbatim")
 def clean_up_verbatim(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.verbatim_type is not None and (
         nam.type is not None or "type" not in nam.get_required_fields()
@@ -1780,7 +1750,7 @@ def clean_up_verbatim(nam: Name, cfg: LintConfig) -> Iterable[str]:
             yield message
 
 
-@make_linter("status")
+@LINT.add("status")
 def check_correct_status(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.status.is_base_name() and nam != nam.taxon.base_name:
         yield f"is of status {nam.status!r} and should be base name of {nam.taxon}"
@@ -1844,7 +1814,7 @@ def _check_as_emended_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
         yield f"incorrect original spelling traces back to {original}, not this name"
 
 
-@make_linter("justified_emendation")
+@LINT.add("justified_emendation")
 def check_justified_emendations(nam: Name, cfg: LintConfig) -> Iterable[str]:
     """Check for issues around justified emendations.
 
@@ -1900,13 +1870,13 @@ def check_justified_emendations(nam: Name, cfg: LintConfig) -> Iterable[str]:
         yield from _check_names_match(nam, ios_target)
 
 
-@make_linter("autoset_original_rank")
+@LINT.add("autoset_original_rank")
 def autoset_original_rank(nam: Name, cfg: LintConfig) -> Iterable[str]:
     nam.autoset_original_rank(dry_run=not cfg.autofix)
     return []
 
 
-@make_linter("corrected_original_name")
+@LINT.add("corrected_original_name")
 def autoset_corrected_original_name(
     nam: Name, cfg: LintConfig, aggressive: bool = False
 ) -> Iterable[str]:
@@ -1929,7 +1899,7 @@ def autoset_corrected_original_name(
         yield (f"could not infer corrected original name from {nam.original_name!r}")
 
 
-@make_linter("data_level")
+@LINT.add("data_level")
 def check_data_level(nam: Name, cfg: LintConfig) -> Iterable[str]:
     ocdl, ocdl_reason = nam.original_citation_data_level()
     ndl, ndl_reason = nam.name_data_level()
@@ -1947,7 +1917,7 @@ def check_data_level(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 yield f"has data from original, but missing crucial data: {ndl_reason}"
 
 
-@make_linter("citation_group")
+@LINT.add("citation_group")
 def check_citation_group(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.citation_group is None or nam.year is None:
         return
@@ -1955,7 +1925,7 @@ def check_citation_group(nam: Name, cfg: LintConfig) -> Iterable[str]:
         yield message
 
 
-@make_linter("matches_citation")
+@LINT.add("matches_citation")
 def check_matches_citation(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.original_citation is None or nam.page_described is None:
         return
@@ -1984,7 +1954,7 @@ def extract_pages(page_described: str) -> Iterable[str]:
         yield part
 
 
-@make_linter("no_page_ranges")
+@LINT.add("no_page_ranges")
 def no_page_ranges(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.page_described is None:
         return
@@ -2000,7 +1970,7 @@ def no_page_ranges(nam: Name, cfg: LintConfig) -> Iterable[str]:
             yield f"page_describes contains range: {part}"
 
 
-@make_linter("infer_page_described")
+@LINT.add("infer_page_described")
 def infer_page_described(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if (
         nam.page_described is not None
@@ -2041,7 +2011,7 @@ def infer_page_described(nam: Name, cfg: LintConfig) -> Iterable[str]:
         yield message
 
 
-@make_linter("page_described")
+@LINT.add("page_described")
 def check_page_described(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.page_described is None:
         return
@@ -2081,7 +2051,7 @@ _JG2015_RE = re.compile(rf"\[From {re.escape(_JG2015)}: [^\[\]]+ \[([A-Za-z\s\d]
 _JG2015_RE2 = re.compile(rf" \[([A-Za-z\s\d]+)\]\ \[from {re.escape(_JG2015)}\]")
 
 
-@make_linter("extract_date_from_verbatim")
+@LINT.add("extract_date_from_verbatim")
 def extract_date_from_verbatim(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.original_citation is None or not nam.data:
         return
@@ -2148,7 +2118,7 @@ AMNH_RGX = re.compile(
 )
 
 
-@make_linter("extract_date_from_structured_quote")
+@LINT.add("extract_date_from_structured_quote")
 def extract_date_from_structured_quotes(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if not nam.original_citation:
         return
@@ -2214,7 +2184,7 @@ def parse_date(date_str: str) -> str | None:
     return None
 
 
-@make_linter("data")
+@LINT.add("data")
 def check_data(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if not nam.data:
         return
@@ -2231,7 +2201,7 @@ def check_data(nam: Name, cfg: LintConfig) -> Iterable[str]:
             yield f"invalid verbatim_citation data: {data['verbatim_citation']}"
 
 
-@make_linter("specific_authors")
+@LINT.add("specific_authors")
 def check_specific_authors(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if not nam.original_citation and not nam.verbatim_citation:
         return
@@ -2246,7 +2216,9 @@ def check_specific_authors(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 "has original citation, but has family name-only author"
                 f" {author} (position {i})"
             )
-            if cfg.interactive and "specific_authors" not in get_ignored_lints(nam):
+            if cfg.interactive and "specific_authors" not in LINT.get_ignored_lints(
+                nam
+            ):
                 author.edit_tag_sequence_on_object(
                     nam, "author_tags", AuthorTag.Author, "names"
                 )
@@ -2254,13 +2226,15 @@ def check_specific_authors(nam: Name, cfg: LintConfig) -> Iterable[str]:
             author.family_name
         ) in helpers.simplify_string(nam.verbatim_citation):
             yield f"author {author} (position {i}) appears in verbatim citation"
-            if cfg.interactive and "specific_authors" not in get_ignored_lints(nam):
+            if cfg.interactive and "specific_authors" not in LINT.get_ignored_lints(
+                nam
+            ):
                 author.edit_tag_sequence_on_object(
                     nam, "author_tags", AuthorTag.Author, "names"
                 )
 
 
-@make_linter("required_fields")
+@LINT.add("required_fields")
 def check_required_fields(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.verbatim_citation and not nam.citation_group:
         yield "has verbatim citation but no citation group"
@@ -2281,7 +2255,7 @@ def check_required_fields(nam: Name, cfg: LintConfig) -> Iterable[str]:
         yield "has type_specimen but no species_type_kind"
 
 
-@make_linter("synonym_group")
+@LINT.add("synonym_group")
 def check_synonym_group(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.group not in (Group.genus, Group.species):
         return
@@ -2299,7 +2273,7 @@ def check_synonym_group(nam: Name, cfg: LintConfig) -> Iterable[str]:
         )
 
 
-@make_linter("composites")
+@LINT.add("composites")
 def check_composites(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.status not in (Status.composite, Status.hybrid):
         return
@@ -2398,21 +2372,21 @@ def get_possible_homonyms(
     return genera, name_dict.items()
 
 
-@make_linter("species_secondary_homonym")
+@LINT.add("species_secondary_homonym")
 def check_species_group_secondary_homonyms(nam: Name, cfg: LintConfig) -> Iterable[str]:
     yield from _check_species_group_homonyms(
         nam, reason=SelectionReason.secondary_homonymy, fuzzy=False, cfg=cfg
     )
 
 
-@make_linter("species_primary_homonym")
+@LINT.add("species_primary_homonym")
 def check_species_group_primary_homonyms(nam: Name, cfg: LintConfig) -> Iterable[str]:
     yield from _check_species_group_homonyms(
         nam, reason=SelectionReason.primary_homonymy, fuzzy=False, cfg=cfg
     )
 
 
-@make_linter("species_fuzzy_secondary_homonym")
+@LINT.add("species_fuzzy_secondary_homonym")
 def check_species_group_fuzzy_secondary_homonyms(
     nam: Name, cfg: LintConfig
 ) -> Iterable[str]:
@@ -2421,7 +2395,7 @@ def check_species_group_fuzzy_secondary_homonyms(
     )
 
 
-@make_linter("species_fuzzy_primary_homonym")
+@LINT.add("species_fuzzy_primary_homonym")
 def check_species_group_fuzzy_primary_homonyms(
     nam: Name, cfg: LintConfig
 ) -> Iterable[str]:
@@ -2430,7 +2404,7 @@ def check_species_group_fuzzy_primary_homonyms(
     )
 
 
-@make_linter("genus_homonym")
+@LINT.add("genus_homonym")
 def check_genus_group_homonyms(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.group is not Group.genus:
         return
@@ -2621,7 +2595,7 @@ def _get_secondary_names_of_genus(
     return root_name_to_names
 
 
-@make_linter("check_original_parent")
+@LINT.add("check_original_parent")
 def check_original_parent(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.original_parent is None:
         return
@@ -2644,7 +2618,7 @@ def check_original_parent(nam: Name, cfg: LintConfig) -> Iterable[str]:
         )
 
 
-@make_linter("infer_original_parent")
+@LINT.add("infer_original_parent")
 def infer_original_parent(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if (
         nam.group is not Group.species
@@ -2763,7 +2737,7 @@ def should_be_infrasubspecific(nam: Name) -> Possibility:
     assert False, "unreachable"
 
 
-@make_linter("infrasubspecific")
+@LINT.add("infrasubspecific")
 def check_infrasubspecific(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.group is not Group.species:
         return
@@ -2812,7 +2786,7 @@ def _autoset_original_citation_url(nam: Name) -> None:
     nam.original_citation.set_or_replace_url(url)
 
 
-@make_linter("authority_page_link")
+@LINT.add("authority_page_link")
 def check_must_have_authority_page_link(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.has_type_tag(TypeTag.AuthorityPageLink):
         return
@@ -2824,7 +2798,7 @@ def check_must_have_authority_page_link(nam: Name, cfg: LintConfig) -> Iterable[
     yield "must have authority page link"
 
 
-@make_linter("check_bhl_page")
+@LINT.add("check_bhl_page")
 def check_bhl_page(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.original_citation is None:
         return
@@ -2998,7 +2972,7 @@ def _maybe_add_bhl_page(
     print(page_obj.page_url)
 
 
-@make_linter("infer_bhl_page")
+@LINT.add("infer_bhl_page")
 def infer_bhl_page(
     nam: Name, cfg: LintConfig = LintConfig(autofix=False, interactive=False)
 ) -> Iterable[str]:
@@ -3101,7 +3075,7 @@ def get_candidate_bhl_pages(
             yield from confident_pages
 
 
-@make_linter("infer_bhl_page_from_other_names")
+@LINT.add("infer_bhl_page_from_other_names")
 def infer_bhl_page_from_other_names(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if not _should_look_for_page_links(nam):
         if cfg.verbose:
@@ -3215,7 +3189,7 @@ def infer_bhl_page_from_other_names(nam: Name, cfg: LintConfig) -> Iterable[str]
         yield message
 
 
-@make_linter("bhl_page_from_article")
+@LINT.add("bhl_page_from_article")
 def infer_bhl_page_from_article(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if not _should_look_for_page_links(nam):
         if cfg.verbose:
@@ -3379,30 +3353,3 @@ def _infer_bhl_page_from_article_page(
             nam.add_type_tag(tag)
         else:
             yield message
-
-
-def run_linters(
-    nam: Name, cfg: LintConfig, *, include_disabled: bool = False
-) -> Iterable[str]:
-    if include_disabled:
-        linters = [*LINTERS, *DISABLED_LINTERS]
-    else:
-        linters = [*LINTERS]
-
-    used_ignores = set()
-    for linter in linters:
-        used_ignores |= yield from linter(nam, cfg)
-    actual_ignores = get_ignored_lints(nam)
-    unused = actual_ignores - used_ignores
-    if unused:
-        if cfg.autofix:
-            tags = nam.type_tags or ()
-            new_tags = []
-            for tag in tags:
-                if isinstance(tag, TypeTag.IgnoreLintName) and tag.label in unused:
-                    print(f"{nam}: removing unused IgnoreLint tag: {tag}")
-                else:
-                    new_tags.append(tag)
-            nam.type_tags = new_tags  # type: ignore
-        else:
-            yield f"{nam}: has unused IgnoreLint tags {', '.join(unused)}"

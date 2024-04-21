@@ -946,14 +946,7 @@ class Article(BaseModel):
         )
 
     def lint(self, cfg: LintConfig) -> Iterable[str]:
-        try:
-            repr(self)
-        except Exception as e:
-            yield f"{self.id}: cannot display due to {e}"
-            return
-        if self.kind is ArticleKind.removed:
-            return
-        yield from models.article.lint.run_linters(self, cfg)
+        yield from models.article.lint.LINT.run(self, cfg)
 
     def cite_interactive(self) -> None:
         citetype = getinput.get_with_completion(

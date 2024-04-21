@@ -133,7 +133,9 @@ def is_external_item(item_id: int) -> bool:
 def volume_matches(our_volume: str, bhl_volume: str) -> bool:
     if our_volume == bhl_volume:
         return True
-    return bool(re.match(rf"(v|V|Jahrg)\.{our_volume}(\s|$|:|=)", bhl_volume))
+    return bool(
+        re.match(rf"(n\.s\. )?(no|v|V|Jahrg)\.{our_volume}(\s|$|:|=)", bhl_volume)
+    )
 
 
 def get_possible_items(

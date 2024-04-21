@@ -7,23 +7,37 @@ Lint steps for Articles.
 import functools
 import re
 import subprocess
-import traceback
 from collections import Counter, defaultdict
-from collections.abc import Callable, Generator, Iterable
+from collections.abc import Container, Iterable
 from datetime import date
 
 from taxonomy import config, getinput
 from taxonomy.apis import bhl
 from taxonomy.db import constants, helpers, models
 from taxonomy.db.models.base import LintConfig
+from taxonomy.db.models.lint import IgnoreLint, Lint
 
 from .cg import CitationGroup, CitationGroupTag
 
-Linter = Callable[[CitationGroup, LintConfig], Iterable[str]]
-IgnorableLinter = Callable[[CitationGroup, LintConfig], Generator[str, None, set[str]]]
 
-LINTERS = []
-DISABLED_LINTERS = []
+def remove_unused_ignores(cg: CitationGroup, unused: Container[str]) -> None:
+    new_tags = []
+    for tag in cg.tags:
+        if (
+            isinstance(tag, CitationGroupTag.IgnoreLintCitationGroup)
+            and tag.label in unused
+        ):
+            print(f"{cg}: removing unused IgnoreLint tag: {tag}")
+        else:
+            new_tags.append(tag)
+    cg.tags = new_tags  # type: ignore[assignment]
+
+
+def get_ignores(cg: CitationGroup) -> Iterable[IgnoreLint]:
+    return cg.get_tags(cg.tags, CitationGroupTag.IgnoreLintCitationGroup)
+
+
+LINT = Lint(get_ignores, remove_unused_ignores)
 
 
 @functools.cache
@@ -33,44 +47,7 @@ def get_biblio_pages() -> set[str]:
     return {path.stem for path in biblio_dir.glob("*.md")}
 
 
-def get_ignored_lints(cg: CitationGroup) -> set[str]:
-    tags = cg.get_tags(cg.tags, CitationGroupTag.IgnoreLintCitationGroup)
-    return {tag.label for tag in tags}
-
-
-def make_linter(
-    label: str, *, disabled: bool = False
-) -> Callable[[Linter], IgnorableLinter]:
-    def decorator(linter: Linter) -> IgnorableLinter:
-        @functools.wraps(linter)
-        def wrapper(
-            cg: CitationGroup, cfg: LintConfig
-        ) -> Generator[str, None, set[str]]:
-            try:
-                issues = list(linter(cg, cfg))
-            except Exception as e:
-                traceback.print_exc()
-                yield f"{cg}: error running {label} linter: {e}"
-                return set()
-            if not issues:
-                return set()
-            ignored_lints = get_ignored_lints(cg)
-            if label in ignored_lints:
-                return {label}
-            for issue in issues:
-                yield f"{cg}: {issue} [{label}]"
-            return set()
-
-        if disabled:
-            DISABLED_LINTERS.append(wrapper)
-        else:
-            LINTERS.append(wrapper)
-        return wrapper
-
-    return decorator
-
-
-@make_linter("check_tags")
+@LINT.add("check_tags")
 def check_tags(cg: CitationGroup, cfg: LintConfig) -> Iterable[str]:
     for tag in cg.tags:
         if tag is CitationGroupTag.MustHave or isinstance(
@@ -130,7 +107,7 @@ def check_tags(cg: CitationGroup, cfg: LintConfig) -> Iterable[str]:
                     yield f"invalid pages_regex in tag {tag}: {issue}"
 
 
-@make_linter("format_tags")
+@LINT.add("format_tags")
 def format_tags(cg: CitationGroup, cfg: LintConfig) -> Iterable[str]:
     tags = sorted(set(cg.tags))
     counts = Counter(type(tag) for tag in tags)
@@ -148,13 +125,13 @@ def format_tags(cg: CitationGroup, cfg: LintConfig) -> Iterable[str]:
         message = "changing tags"
         getinput.print_diff(sorted(cg.tags), tags)
         if cfg.autofix:
-            print(message)
-            cg.tags = tags  # type: ignore
+            print(f"{cg}: {message}")
+            cg.tags = tags  # type: ignore[assignment]
         else:
             yield message
 
 
-@make_linter("too_many_bhl")
+@LINT.add("too_many_bhl")
 def check_too_many_bhl_bibliographies(
     cg: CitationGroup, cfg: LintConfig
 ) -> Iterable[str]:
@@ -163,7 +140,7 @@ def check_too_many_bhl_bibliographies(
         yield f"has {num_bhl_biblios} BHL bibliographies"
 
 
-@make_linter("infer_bhl_from_children")
+@LINT.add("infer_bhl_from_children")
 def infer_bhl_biblio_from_children(cg: CitationGroup, cfg: LintConfig) -> Iterable[str]:
     if cg.has_tag(CitationGroupTag.SkipExtraBHLBibliographies):
         return
@@ -187,14 +164,14 @@ def infer_bhl_biblio_from_children(cg: CitationGroup, cfg: LintConfig) -> Iterab
         return
     message = f"inferred BHL tags {bibliographies} " f"from child articles and names"
     if cfg.autofix:
-        print(message)
+        print(f"{cg}: {message}")
         for biblio in bibliographies:
             cg.add_tag(CitationGroupTag.BHLBibliography(text=str(biblio)))
     else:
         yield message
 
 
-@make_linter("infer_bhl")
+@LINT.add("infer_bhl")
 def infer_bhl_biblio(
     cg: CitationGroup, cfg: LintConfig, interactive_mode: bool = False
 ) -> Iterable[str]:
@@ -235,7 +212,7 @@ def infer_bhl_biblio(
         if active_years is None:
             message = f"no active years, but may match {data['TitleURL']}"
             if interactive_mode:
-                print(message)
+                print(f"{cg}: {message}")
                 subprocess.check_call(["open", data["TitleURL"]])
                 if not getinput.yes_no(
                     "Accept anyway? ", callbacks=cg.get_adt_callbacks()
@@ -254,37 +231,44 @@ def infer_bhl_biblio(
             return
     message = f"inferred BHL tag {data['TitleID']}"
     if cfg.autofix:
-        print(message)
+        print(f"{cg}: {message}")
         cg.add_tag(CitationGroupTag.BHLBibliography(text=str(data["TitleID"])))
     else:
         yield message
 
 
-def run_linters(
-    cg: CitationGroup, cfg: LintConfig, *, include_disabled: bool = False
-) -> Iterable[str]:
-    if include_disabled:
-        linters = [*LINTERS, *DISABLED_LINTERS]
+@LINT.add("bhl_year_range")
+def infer_bhl_year_range(cg: CitationGroup, cfg: LintConfig) -> Iterable[str]:
+    title_ids = cg.get_bhl_title_ids()
+    if not title_ids:
+        return
+    if cg.get_tag(CitationGroupTag.BHLYearRange):
+        return
+    years: set[int] = set()
+    for title_id in title_ids:
+        title_metadata = bhl.get_title_metadata(title_id)
+        if title_metadata is None:
+            continue
+        for item in title_metadata["Items"]:
+            try:
+                years.add(int(item["Year"]))
+            except KeyError:
+                pass
+            except ValueError:
+                print(item)
+            try:
+                years.add(int(item["EndYear"]))
+            except KeyError:
+                pass
+            except ValueError:
+                print(item)
+    if not years:
+        return
+    # Add one year on either end in case the stated years are off a little
+    tag = CitationGroupTag.BHLYearRange(str(min(years) - 1), str(max(years) + 1))
+    message = f"add tag {tag}"
+    if cfg.autofix:
+        print(f"{cg}: {message}")
+        cg.add_tag(tag)
     else:
-        linters = [*LINTERS]
-
-    used_ignores = set()
-    for linter in linters:
-        used_ignores |= yield from linter(cg, cfg)
-    actual_ignores = get_ignored_lints(cg)
-    unused = actual_ignores - used_ignores
-    if unused:
-        if cfg.autofix:
-            tags = cg.tags or ()
-            new_tags = []
-            for tag in tags:
-                if (
-                    isinstance(tag, CitationGroupTag.IgnoreLintCitationGroup)
-                    and tag.label in unused
-                ):
-                    print(f"{cg}: removing unused IgnoreLint tag: {tag}")
-                else:
-                    new_tags.append(tag)
-            cg.tags = new_tags  # type: ignore
-        else:
-            yield f"{cg}: has unused IgnoreLint tags {', '.join(unused)}"
+        yield message

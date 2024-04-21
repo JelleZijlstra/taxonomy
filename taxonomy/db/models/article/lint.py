@@ -5,14 +5,12 @@ Lint steps for Articles.
 """
 
 import bisect
-import functools
 import re
 import subprocess
-import traceback
 import unicodedata
 import urllib.parse
 from collections import defaultdict
-from collections.abc import Callable, Generator, Iterable, Sequence
+from collections.abc import Collection, Iterable, Sequence
 from typing import Any
 
 import httpx
@@ -28,52 +26,29 @@ from ..base import ADTField, BaseModel, LintConfig
 from ..citation_group.cg import CitationGroup, CitationGroupTag
 from ..citation_group.lint import get_biblio_pages
 from ..issue_date import IssueDate
+from ..lint import IgnoreLint, Lint
 from .article import Article, ArticleComment, ArticleTag, PresenceStatus
 from .name_parser import get_name_parser
 
-Linter = Callable[[Article, LintConfig], Iterable[str]]
-IgnorableLinter = Callable[[Article, LintConfig], Generator[str, None, set[str]]]
 
-LINTERS = []
-DISABLED_LINTERS = []
-
-
-def get_ignored_lints(art: Article) -> set[str]:
-    tags = art.get_tags(art.tags, ArticleTag.IgnoreLint)
-    return {tag.label for tag in tags}
-
-
-def make_linter(
-    label: str, *, disabled: bool = False
-) -> Callable[[Linter], IgnorableLinter]:
-    def decorator(linter: Linter) -> IgnorableLinter:
-        @functools.wraps(linter)
-        def wrapper(art: Article, cfg: LintConfig) -> Generator[str, None, set[str]]:
-            try:
-                issues = list(linter(art, cfg))
-            except Exception as e:
-                traceback.print_exc()
-                yield f"{art}: error running {label} linter: {e}"
-                return set()
-            if not issues:
-                return set()
-            ignored_lints = get_ignored_lints(art)
-            if label in ignored_lints:
-                return {label}
-            for issue in issues:
-                yield f"{art}: {issue} [{label}]"
-            return set()
-
-        if disabled:
-            DISABLED_LINTERS.append(wrapper)
+def remove_unused_ignores(art: Article, unused: Collection[str]) -> None:
+    new_tags = []
+    for tag in art.tags:
+        if isinstance(tag, ArticleTag.IgnoreLint) and tag.label in unused:
+            print(f"{art}: removing unused IgnoreLint tag: {tag}")
         else:
-            LINTERS.append(wrapper)
-        return wrapper
-
-    return decorator
+            new_tags.append(tag)
+    art.tags = new_tags  # type: ignore[assignment]
 
 
-@make_linter("name")
+def get_ignores(art: Article) -> Iterable[IgnoreLint]:
+    return art.get_tags(art.tags, ArticleTag.IgnoreLint)
+
+
+LINT = Lint[Article](get_ignores, remove_unused_ignores)
+
+
+@LINT.add("name")
 def check_name(art: Article, cfg: LintConfig) -> Iterable[str]:
     # Names are restricted to printable ASCII because a long time ago I stored
     # files on a file system that didn't handle non-ASCII properly. It's probably
@@ -95,7 +70,7 @@ def check_name(art: Article, cfg: LintConfig) -> Iterable[str]:
             yield "electronic article should have a file extension"
 
 
-@make_linter("path")
+@LINT.add("path")
 def check_path(art: Article, cfg: LintConfig) -> Iterable[str]:
     if art.kind.is_electronic():
         if art.path is None or art.path == "NOFILE":
@@ -113,7 +88,7 @@ def check_path(art: Article, cfg: LintConfig) -> Iterable[str]:
                 yield message
 
 
-@make_linter("type_kind")
+@LINT.add("type_kind")
 def check_type_and_kind(art: Article, cfg: LintConfig) -> Iterable[str]:
     # The difference between kind and type is:
     # * kind is about how this article is stored in the database (electronic copy,
@@ -243,7 +218,7 @@ def infer_publication_date_from_issue_date(
     return None
 
 
-@make_linter("year")
+@LINT.add("year")
 def check_year(art: Article, cfg: LintConfig) -> Iterable[str]:
     if not art.year:
         return
@@ -290,7 +265,7 @@ def check_year(art: Article, cfg: LintConfig) -> Iterable[str]:
             yield message
 
 
-@make_linter("precise_date")
+@LINT.add("precise_date")
 def check_precise_date(art: Article, cfg: LintConfig) -> Iterable[str]:
     if art.citation_group is None:
         return
@@ -302,7 +277,7 @@ def check_precise_date(art: Article, cfg: LintConfig) -> Iterable[str]:
         yield f"is in {art.citation_group} but has imprecise date {art.year}"
 
 
-@make_linter("infer_precise_date")
+@LINT.add("infer_precise_date")
 def infer_precise_date(art: Article, cfg: LintConfig) -> Iterable[str]:
     if (
         art.citation_group is None
@@ -359,7 +334,7 @@ def is_valid_doi(doi: str) -> bool:
     return bool(re.fullmatch(r"^10\.[A-Za-z0-9\.\/\[\]<>\-;:_()+#]+$", doi))
 
 
-@make_linter("must_have_url")
+@LINT.add("must_have_url")
 def check_must_have_url(art: Article, cfg: LintConfig) -> Iterable[str]:
     if art.citation_group is None:
         return
@@ -375,7 +350,7 @@ def check_must_have_url(art: Article, cfg: LintConfig) -> Iterable[str]:
     yield f"has no URL, but is in {art.citation_group}"
 
 
-@make_linter("url")
+@LINT.add("url")
 def check_url(art: Article, cfg: LintConfig) -> Iterable[str]:
     if art.url is None:
         return
@@ -450,7 +425,7 @@ def get_bhl_url_from_biostor(biostor_id: str) -> str | None:
     return None
 
 
-@make_linter("doi")
+@LINT.add("doi")
 def check_doi(art: Article, cfg: LintConfig) -> Iterable[str]:
     if art.doi is None:
         return
@@ -472,7 +447,7 @@ def check_doi(art: Article, cfg: LintConfig) -> Iterable[str]:
             yield message
 
 
-@make_linter("infer_doi")
+@LINT.add("infer_doi")
 def infer_doi(art: Article, cfg: LintConfig) -> Iterable[str]:
     if art.doi is None and art.url is not None:
         doi = infer_doi_from_url(art.url)
@@ -512,7 +487,7 @@ def _infer_hdl_from_url(url: str) -> str | None:
     return None
 
 
-@make_linter("bhl_item_from_bibliography")
+@LINT.add("bhl_item_from_bibliography")
 def bhl_item_from_bibliography(art: Article, cfg: LintConfig) -> Iterable[str]:
     if art.url is None:
         return
@@ -531,7 +506,7 @@ def bhl_item_from_bibliography(art: Article, cfg: LintConfig) -> Iterable[str]:
             yield message
 
 
-@make_linter("bhl_part_from_page")
+@LINT.add("bhl_part_from_page")
 def bhl_part_from_page(art: Article, cfg: LintConfig) -> Iterable[str]:
     if art.url is None or art.title is None:
         return
@@ -581,7 +556,7 @@ def _get_bhl_page_ids_from_names(art: Article) -> set[int]:
     return bhl_page_ids
 
 
-@make_linter("must_have_bhl_url")
+@LINT.add("must_have_bhl_url")
 def must_have_bhl_url(art: Article, cfg: LintConfig) -> Iterable[str]:
     if not should_look_for_bhl_url(art):
         return
@@ -591,7 +566,7 @@ def must_have_bhl_url(art: Article, cfg: LintConfig) -> Iterable[str]:
     yield f"has new names with BHL page IDs {bhl_page_ids} but no BHL URL"
 
 
-@make_linter("bhl_page_from_names")
+@LINT.add("bhl_page_from_names")
 def infer_bhl_page_from_names(
     art: Article, cfg: LintConfig, verbose: bool = False
 ) -> Iterable[str]:
@@ -733,7 +708,7 @@ def must_have_bhl_link(art: Article, cfg: LintConfig) -> Iterable[str]:
     yield f"{art}: should have BHL link"
 
 
-@make_linter("bhl_page")
+@LINT.add("bhl_page")
 def infer_bhl_page(art: Article, cfg: LintConfig = LintConfig()) -> Iterable[str]:
     if not should_look_for_bhl_url(art):
         return
@@ -847,7 +822,7 @@ def get_inferred_bhl_page(art: Article, cfg: LintConfig) -> bhl.PossiblePage | N
     return None
 
 
-@make_linter("bhl_page_from_other_articles")
+@LINT.add("bhl_page_from_other_articles")
 def infer_bhl_page_from_other_articles(
     art: Article, cfg: LintConfig = LintConfig()
 ) -> Iterable[str]:
@@ -1051,7 +1026,7 @@ _TITLE_REGEXES = [
 ]
 
 
-@make_linter("title")
+@LINT.add("title")
 def check_title(art: Article, cfg: LintConfig) -> Iterable[str]:
     if art.title is None:
         return
@@ -1142,7 +1117,7 @@ def md_lint(text: str) -> Iterable[str]:
                 yield f"unexpected italicized character at {i}: {text}"
 
 
-@make_linter("journal_specific")
+@LINT.add("journal_specific")
 def journal_specific_cleanup(art: Article, cfg: LintConfig) -> Iterable[str]:
     cg = art.citation_group
     if cg is None:
@@ -1220,7 +1195,7 @@ def journal_specific_cleanup(art: Article, cfg: LintConfig) -> Iterable[str]:
             yield message
 
 
-@make_linter("citation_group")
+@LINT.add("citation_group")
 def check_citation_group(art: Article, cfg: LintConfig) -> Iterable[str]:
     if art.type is ArticleType.JOURNAL:
         if art.citation_group is None:
@@ -1254,7 +1229,7 @@ def _clean_string_field(value: str) -> str:
     return re.sub(r"\s+", " ", value)
 
 
-@make_linter("string_fields")
+@LINT.add("string_fields")
 def check_string_fields(art: Article, cfg: LintConfig) -> Iterable[str]:
     for field in art.fields():
         value = getattr(art, field)
@@ -1266,7 +1241,7 @@ def check_string_fields(art: Article, cfg: LintConfig) -> Iterable[str]:
             yield f"double question mark in field {field}: {value!r}"
 
 
-@make_linter("required")
+@LINT.add("required")
 def check_required_fields(art: Article, cfg: LintConfig) -> Iterable[str]:
     if art.title is None and not art.is_full_issue():
         yield "missing title"
@@ -1284,7 +1259,7 @@ DEFAULT_VOLUME_REGEX = r"(Suppl\. )?\d{1,4}"
 DEFAULT_ISSUE_REGEX = r"\d{1,3}|\d{1,2}-\d{1,2}|Suppl\. \d{1,2}"
 
 
-@make_linter("journal")
+@LINT.add("journal")
 def check_journal(art: Article, cfg: LintConfig) -> Iterable[str]:
     if art.type is not ArticleType.JOURNAL:
         return
@@ -1314,7 +1289,7 @@ def check_journal(art: Article, cfg: LintConfig) -> Iterable[str]:
             yield f"issue {issue!r} does not match {message} (CG {cg})"
 
 
-@make_linter("pages")
+@LINT.add("pages")
 def check_start_end_page(art: Article, cfg: LintConfig) -> Iterable[str]:
     if art.type is not ArticleType.JOURNAL:
         return  # TODO similar check for chapters
@@ -1374,7 +1349,7 @@ def check_start_end_page(art: Article, cfg: LintConfig) -> Iterable[str]:
         yield f"end page {end_page} does not match regex {tag.pages_regex} for {cg}"
 
 
-@make_linter("tags")
+@LINT.add("tags")
 def check_tags(art: Article, cfg: LintConfig) -> Iterable[str]:
     if not art.tags:
         return
@@ -1409,7 +1384,7 @@ def check_tags(art: Article, cfg: LintConfig) -> Iterable[str]:
             yield f"{art}: needs change to tags"
 
 
-@make_linter("infer_lsid")
+@LINT.add("infer_lsid")
 def infer_lsid_from_names(art: Article, cfg: LintConfig) -> Iterable[str]:
     if art.numeric_year() < 2012:
         return
@@ -1454,7 +1429,7 @@ def infer_lsid_from_names(art: Article, cfg: LintConfig) -> Iterable[str]:
                     yield message
 
 
-@make_linter("lsid")
+@LINT.add("lsid")
 def check_lsid(art: Article, cfg: LintConfig) -> Iterable[str]:
     tags = list(art.get_tags(art.tags, ArticleTag.LSIDArticle))
     if not tags:
@@ -1560,7 +1535,7 @@ def check_lsid(art: Article, cfg: LintConfig) -> Iterable[str]:
             art.tags = new_tags  # type: ignore[assignment]
 
 
-@make_linter("must_use_children")
+@LINT.add("must_use_children")
 def check_must_use_children(art: Article, cfg: LintConfig) -> Iterable[str]:
     if not any(art.get_tags(art.tags, ArticleTag.MustUseChildren)):
         return
@@ -1635,30 +1610,3 @@ def _maybe_clean(
             setattr(art, field, cleaned)
         else:
             yield message
-
-
-def run_linters(
-    art: Article, cfg: LintConfig, *, include_disabled: bool = False
-) -> Iterable[str]:
-    if include_disabled:
-        linters = [*LINTERS, *DISABLED_LINTERS]
-    else:
-        linters = [*LINTERS]
-
-    used_ignores = set()
-    for linter in linters:
-        used_ignores |= yield from linter(art, cfg)
-    actual_ignores = get_ignored_lints(art)
-    unused = actual_ignores - used_ignores
-    if unused:
-        if cfg.autofix:
-            tags = art.tags or ()
-            new_tags = []
-            for tag in tags:
-                if isinstance(tag, ArticleTag.IgnoreLint) and tag.label in unused:
-                    print(f"{art}: removing unused IgnoreLint tag: {tag}")
-                else:
-                    new_tags.append(tag)
-            art.tags = new_tags  # type: ignore
-        else:
-            yield f"{art}: has unused IgnoreLint tags {', '.join(unused)}"
