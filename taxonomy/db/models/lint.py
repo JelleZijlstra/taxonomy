@@ -73,7 +73,7 @@ class Lint(Generic[ModelT]):
         if include_disabled:
             linters = [*self.linters, *self.disabled_linters]
         else:
-            linters = [*self.linters]
+            linters = self.linters
 
         used_ignores: set[str] = set()
         for linter in linters:
