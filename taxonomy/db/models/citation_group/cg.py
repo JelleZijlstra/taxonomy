@@ -10,14 +10,13 @@ from typing import Any, NotRequired, Self, TypeVar
 
 from clirm import Field
 
+from taxonomy import adt, config, events, getinput
 from taxonomy.apis import bhl
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
-
-from ... import adt, config, events, getinput
-from .. import constants, helpers, models
-from ..derived_data import DerivedField, LazyType
-from .base import ADTField, BaseModel, LintConfig
-from .region import Region
+from taxonomy.db import constants, helpers, models
+from taxonomy.db.derived_data import DerivedField, LazyType
+from taxonomy.db.models.base import ADTField, BaseModel, LintConfig
+from taxonomy.db.models.region import Region
 
 CGTagT = TypeVar("CGTagT", bound="CitationGroupTag")
 

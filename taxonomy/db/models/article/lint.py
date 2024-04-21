@@ -25,7 +25,7 @@ from ....apis.zoobank import clean_lsid, get_zoobank_data_for_act, is_valid_lsid
 from ... import helpers, models
 from ...constants import ArticleKind, ArticleType, DateSource
 from ..base import ADTField, BaseModel, LintConfig
-from ..citation_group import CitationGroup, CitationGroupTag, get_biblio_pages
+from ..citation_group.cg import CitationGroup, CitationGroupTag, get_biblio_pages
 from ..issue_date import IssueDate
 from .article import Article, ArticleComment, ArticleTag, PresenceStatus
 from .name_parser import get_name_parser
