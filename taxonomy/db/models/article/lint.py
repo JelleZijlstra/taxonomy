@@ -702,16 +702,19 @@ def should_look_for_bhl_url(art: Article) -> bool:
 def must_have_bhl_link(art: Article, cfg: LintConfig) -> Iterable[str]:
     if not should_look_for_bhl_url(art):
         return
-    cg = art.citation_group
-    if cg is None:
-        return
-    year = art.numeric_year()
-    if not cg.should_have_bhl_link_in_year(year):
-        return
-    if not art.get_new_names().count() and not LINT.is_ignoring_lint(
-        art, "must_have_bhl"
-    ):
-        return
+    if not LINT.is_ignoring_lint(art, "must_have_bhl"):
+        cg = art.citation_group
+        if cg is None:
+            return
+        year = art.numeric_year()
+        if not cg.should_have_bhl_link_in_year(year):
+            return
+        if (
+            cg.type is ArticleType.JOURNAL
+            and art.addyear < "2024"
+            and not art.get_new_names().count()
+        ):
+            return
     yield "should have BHL link"
 
 
