@@ -26,7 +26,7 @@ def is_valid_lsid(lsid: str) -> bool:
 @cached(CacheDomain.zoobank_act)
 def _get_zoobank_act_data(query: str) -> str:
     url = f"https://zoobank.org/NomenclaturalActs.json/{query}"
-    response = requests.get(url)
+    response = requests.get(url, timeout=1)
     if response.status_code == 404:
         return "[]"
     response.raise_for_status()
@@ -36,7 +36,7 @@ def _get_zoobank_act_data(query: str) -> str:
 @cached(CacheDomain.zoobank_publication)
 def _get_zoobank_publication_data(query: str) -> str:
     url = f"https://zoobank.org/References.json/{query}"
-    response = requests.get(url)
+    response = requests.get(url, timeout=1)
     if response.status_code == 404:
         return "[]"
     response.raise_for_status()
