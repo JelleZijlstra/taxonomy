@@ -1620,3 +1620,20 @@ def _maybe_clean(
             setattr(art, field, cleaned)
         else:
             yield message
+
+
+@LINT.add("specify_authors")
+def specify_authors(art: Article, cfg: LintConfig) -> Iterable[str]:
+    if art.has_tag(ArticleTag.InitialsOnly):
+        return
+    if not art.has_initials_only_authors():
+        return
+    if art.addyear < "2021" and not art.get_new_names().count():
+        return
+    if cfg.autofix:
+        art.specify_authors()
+    yield "has initials-only authors"
+
+
+def has_valid_children(art: Article) -> bool:
+    return Article.add_validity_check(art.article_set).count() > 0
