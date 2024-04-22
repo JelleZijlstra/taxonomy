@@ -179,6 +179,8 @@ def infer_bhl_biblio(
         return
     if cg.type is not constants.ArticleType.JOURNAL:
         return
+    if LINT.is_ignoring_lint(cg, "infer_bhl_biblio"):
+        return
     title_dict = bhl.get_title_to_data()
     name = cg.name.casefold()
     if name not in title_dict:

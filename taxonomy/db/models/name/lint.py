@@ -2899,7 +2899,7 @@ def _check_bhl_bibliography_matches(
 ) -> Iterable[str]:
     bibliography_id = bhl.get_bhl_bibliography_from_url(tag.url)
     if bibliography_id is None:
-        yield f"cannot find BHL bibliograohy for {tag.url}"
+        yield f"cannot find BHL bibliography for {tag.url}"
         return
     if nam.original_citation is None or nam.original_citation.url is None:
         return

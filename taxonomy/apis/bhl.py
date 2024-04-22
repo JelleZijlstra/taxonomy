@@ -134,7 +134,7 @@ def volume_matches(our_volume: str, bhl_volume: str) -> bool:
     if our_volume == bhl_volume:
         return True
     return bool(
-        re.match(rf"(n\.s\. )?(no|v|V|Jahrg)\.{our_volume}(\s|$|:|=)", bhl_volume)
+        re.match(rf"(n\.s\. )?(no|v|V|Jahrg|Bd)\.{our_volume}(\s|$|:|=)", bhl_volume)
     )
 
 
@@ -251,8 +251,10 @@ def _is_plate_page(page: dict[str, Any]) -> bool:
 
 
 def _get_number_from_page(item: dict[str, Any]) -> int | None:
+    page_types = {t["PageTypeName"].strip() for t in item["PageTypes"]}
+    is_issue_start = "Issue Start" in page_types
     for number in item["PageNumbers"]:
-        if _is_numbered_page(number):
+        if is_issue_start or _is_numbered_page(number):
             try:
                 return int(number["Number"])
             except ValueError:

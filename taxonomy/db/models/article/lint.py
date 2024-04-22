@@ -683,6 +683,8 @@ def infer_bhl_page_from_names(
 
 
 def should_look_for_bhl_url(art: Article) -> bool:
+    if art.type is ArticleType.SUPPLEMENT:
+        return False
     if art.url is None:
         return True
     match bhl.parse_possible_bhl_url(art.url).url_type:
@@ -696,17 +698,21 @@ def should_look_for_bhl_url(art: Article) -> bool:
     return True
 
 
-@LINT.add("must_have_bhl", disabled=True)
+@LINT.add("must_have_bhl")
 def must_have_bhl_link(art: Article, cfg: LintConfig) -> Iterable[str]:
     if not should_look_for_bhl_url(art):
         return
-    cg = art.get_citation_group()
+    cg = art.citation_group
     if cg is None:
         return
     year = art.numeric_year()
     if not cg.should_have_bhl_link_in_year(year):
         return
-    yield f"{art}: should have BHL link"
+    if not art.get_new_names().count() and not LINT.is_ignoring_lint(
+        art, "must_have_bhl"
+    ):
+        return
+    yield "should have BHL link"
 
 
 @LINT.add("bhl_page")
