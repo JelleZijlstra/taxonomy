@@ -692,8 +692,8 @@ class Name(BaseModel):
                 bhl.clear_caches_related_to_url(tag.url)
 
     def add_authority_page_link(self) -> None:
-        if self.page_described is None or not self.page_described.isnumeric():
-            print("Page described is too complex; add AuthorityPageLink tag directly")
+        if self.page_described is None:
+            print("Page described is missing; add AuthorityPageLink tag directly")
             return
         link = getinput.get_line("link> ")
         if not link:

@@ -472,8 +472,14 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 yield f"invalid authority page link {url!r}"
             if nam.page_described is not None:
                 allowed_pages = list(extract_pages(nam.page_described))
-                if tag.page not in allowed_pages:
-                    yield f"authority page link {tag.url} for page {tag.page!r}" f" does not match any pages in page_described ({allowed_pages})"
+                if tag.page not in allowed_pages and not (
+                    tag.page in nam.page_described
+                    and remove_parentheses_from_page(tag.page) in allowed_pages
+                ):
+                    yield (
+                        f"authority page link {tag.url} for page {tag.page!r}"
+                        f" does not match any pages in page_described ({allowed_pages})"
+                    )
             tags.append(
                 TypeTag.AuthorityPageLink(str(url), tag.confirmed, str(tag.page))
             )
@@ -1946,8 +1952,12 @@ def check_matches_citation(nam: Name, cfg: LintConfig) -> Iterable[str]:
             yield (f"{nam.page_described} is not in {start_page}–{end_page} for {art}")
 
 
+def remove_parentheses_from_page(page_described: str) -> str:
+    return re.sub(r" \([^\)]+\)(?=, |$)", "", page_described)
+
+
 def extract_pages(page_described: str) -> Iterable[str]:
-    page_described = re.sub(r" \([^\)]+\)(?=, |$)", "", page_described)
+    page_described = remove_parentheses_from_page(page_described)
     parts = page_described.split(", ")
     for part in parts:
         part = re.sub(r" \[as [0-9]+\]$", "", part)

@@ -556,8 +556,8 @@ def _get_bhl_page_ids_from_names(art: Article) -> set[int]:
     return bhl_page_ids
 
 
-@LINT.add("must_have_bhl_url")
-def must_have_bhl_url(art: Article, cfg: LintConfig) -> Iterable[str]:
+@LINT.add("must_have_bhl_from_names")
+def must_have_bhl_url_from_names(art: Article, cfg: LintConfig) -> Iterable[str]:
     if not should_look_for_bhl_url(art):
         return
     bhl_page_ids = _get_bhl_page_ids_from_names(art)
@@ -685,8 +685,12 @@ def infer_bhl_page_from_names(
 def should_look_for_bhl_url(art: Article) -> bool:
     if art.type is ArticleType.SUPPLEMENT:
         return False
+    return not has_bhl_url(art)
+
+
+def has_bhl_url(art: Article) -> bool:
     if art.url is None:
-        return True
+        return False
     match bhl.parse_possible_bhl_url(art.url).url_type:
         case (
             bhl.UrlType.bhl_page
@@ -694,27 +698,37 @@ def should_look_for_bhl_url(art: Article) -> bool:
             | bhl.UrlType.bhl_part
             | bhl.UrlType.bhl_bibliography
         ):
-            return False
-    return True
+            return True
+    return False
+
+
+def should_require_bhl_link(art: Article) -> bool:
+    if LINT.is_ignoring_lint(art, "must_have_bhl"):
+        return True
+    match art.type:
+        case ArticleType.JOURNAL:
+            cg = art.citation_group
+            if cg is None:
+                return False
+            year = art.numeric_year()
+            if not cg.should_have_bhl_link_in_year(year):
+                return False
+            if art.addyear < "2024" and not art.get_new_names().count():
+                return False
+            return True
+        case ArticleType.CHAPTER | ArticleType.PART:
+            if art.parent is None:
+                return False
+            return has_bhl_url(art.parent)
+    return False
 
 
 @LINT.add("must_have_bhl")
 def must_have_bhl_link(art: Article, cfg: LintConfig) -> Iterable[str]:
     if not should_look_for_bhl_url(art):
         return
-    if not LINT.is_ignoring_lint(art, "must_have_bhl"):
-        cg = art.citation_group
-        if cg is None:
-            return
-        year = art.numeric_year()
-        if not cg.should_have_bhl_link_in_year(year):
-            return
-        if (
-            cg.type is ArticleType.JOURNAL
-            and art.addyear < "2024"
-            and not art.get_new_names().count()
-        ):
-            return
+    if not should_require_bhl_link(art):
+        return
     yield "should have BHL link"
 
 

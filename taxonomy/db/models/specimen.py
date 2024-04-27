@@ -29,7 +29,7 @@ class Specimen(BaseModel):
     location_text = Field[str]()
     date = Field[str]()
     description = Field[str]()
-    link = Field[str]()
+    link = Field[str | None]()
     tags = ADTField["SpecimenTag"](is_ordered=False)
 
     @classmethod
