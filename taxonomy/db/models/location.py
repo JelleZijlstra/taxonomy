@@ -122,7 +122,7 @@ class Location(BaseModel):
         if self.max_period is not None:
             age_str = self.max_period.name
             if self.min_period is not None and self.min_period != self.max_period:
-                age_str += "–%s" % self.min_period.name
+                age_str += f"–{self.min_period.name}"
             parts.append(age_str)
         if self.min_age is not None and self.max_age is not None:
             parts.append(f"{self.max_age}–{self.min_age}")

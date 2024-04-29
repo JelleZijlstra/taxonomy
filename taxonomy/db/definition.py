@@ -55,9 +55,9 @@ class Node(Definition):
 
     def __init__(self, *raw_anchors: _Taxon) -> None:
         anchors = list(map(_make_anchor, raw_anchors))
-        assert len(anchors) >= 2, (
-            "Node-based definitions need at least two anchors (got %s)." % anchors
-        )
+        assert (
+            len(anchors) >= 2
+        ), f"Node-based definitions need at least two anchors (got {anchors})."
         super().__init__(DefinitionType.node, anchors)
 
     def __str__(self) -> str:
@@ -70,10 +70,9 @@ class Branch(Definition):
     def __init__(self, anchor: _Taxon, *excluded: _Taxon) -> None:
         self.anchor = _make_anchor(anchor)
         self.excluded = list(map(_make_anchor, excluded))
-        assert len(self.excluded) >= 1, (
-            "Brancho-based defitions need at least one excluded taxon (got %s)."
-            % self.excluded
-        )
+        assert (
+            len(self.excluded) >= 1
+        ), f"Brancho-based defitions need at least one excluded taxon (got {self.excluded})."
         super().__init__(DefinitionType.branch, [self.anchor] + self.excluded)
 
     def __str__(self) -> str:
@@ -117,5 +116,5 @@ _cls_of_type = {
 def _make_anchor(argument: _Taxon) -> "Taxon":
     if isinstance(argument, int):
         argument = taxon_cls.get(taxon_cls.id == argument)
-    assert isinstance(argument, taxon_cls), "Expected a Taxon but got %s" % argument
+    assert isinstance(argument, taxon_cls), f"Expected a Taxon but got {argument}"
     return argument

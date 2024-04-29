@@ -1028,7 +1028,7 @@ class Name(BaseModel):
         else:
             out = "<no name>"
         if self.author_tags:
-            out += " %s" % self.taxonomic_authority()
+            out += f" {self.taxonomic_authority()}"
         if self.year:
             out += f", {self.year}"
         if self.page_described:
@@ -1548,13 +1548,13 @@ class Name(BaseModel):
         else:
             out = self.original_name
         if self.author_tags is not None:
-            out += " %s" % self.taxonomic_authority()
+            out += f" {self.taxonomic_authority()}"
         if self.year is not None:
-            out += ", %s" % self.year
+            out += f", {self.year}"
         if self.page_described is not None:
-            out += ":%s" % self.page_described
+            out += f":{self.page_described}"
         if self.original_citation is not None:
-            out += " {%s}" % self.original_citation.name
+            out += f" {{{self.original_citation.name}}}"
         if self.type is not None:
             kind = f"; {self.genus_type_kind.name}" if self.genus_type_kind else ""
             out += f" (type: {self.type}{kind})"
@@ -1581,7 +1581,7 @@ class Name(BaseModel):
             if self.definition is not None:
                 parts.append(str(self.definition))
             parts.append(f"#{self.id}")
-            out += " (%s)" % "; ".join(parts)
+            out += " ({})".format("; ".join(parts))
         if include_taxon:
             out += f" (={self.taxon})"
         knowledge_level = self.knowledge_level()
@@ -2041,14 +2041,14 @@ class Name(BaseModel):
 
     def open_description(self) -> bool:
         if self.original_citation is None:
-            print("%s: original citation unknown" % self.description())
+            print(f"{self.description()}: original citation unknown")
         else:
             self.original_citation.openf()
         return True
 
     def open_url(self) -> bool:
         if self.original_citation is None:
-            print("%s: original citation unknown" % self.description())
+            print(f"{self.description()}: original citation unknown")
         else:
             self.original_citation.openurl()
         for tag in self.get_tags(self.type_tags, TypeTag.AuthorityPageLink):
@@ -2189,7 +2189,7 @@ class Name(BaseModel):
             return False
         elif len(candidates) == 1:
             if verbose:
-                print("Detected type: %s" % candidates[0])
+                print(f"Detected type: {candidates[0]}")
             self.type = candidates[0]
             return True
         else:
@@ -2237,7 +2237,7 @@ class Name(BaseModel):
             new_verbatim = cleanup(step(verbatim_type))
             if verbatim_type != new_verbatim or candidates is None:
                 if verbose:
-                    print("Trying verbatim type: %s" % new_verbatim)
+                    print(f"Trying verbatim type: {new_verbatim}")
                 verbatim_type = new_verbatim
                 candidates = self.detect_type_from_verbatim_type(verbatim_type)
                 if candidates:
