@@ -72,7 +72,7 @@ class _FieldEditor:
             self.instance.fill_field(field)
 
     def __dir__(self) -> list[str]:
-        return ["all"] + sorted(self.instance.clirm_fields.keys())
+        return ["all", *sorted(self.instance.clirm_fields.keys())]
 
 
 @dataclass(frozen=True)
@@ -100,7 +100,7 @@ class BaseModel(Model):
     field_defaults: ClassVar[dict[str, Any]] = {}
     excluded_fields: ClassVar[set[str]] = set()
     derived_fields: ClassVar[list[derived_data.DerivedField[Any]]] = []
-    _name_to_derived_field: dict[str, derived_data.DerivedField[Any]] = {}
+    _name_to_derived_field: ClassVar[dict[str, derived_data.DerivedField[Any]]] = {}
     call_sign_to_model: ClassVar[dict[str, type[BaseModel]]] = {}
     fields_may_be_invalid: ClassVar[set[str]] = set()
     markdown_fields: ClassVar[set[str]] = set()
@@ -475,12 +475,12 @@ class BaseModel(Model):
         """
         self.full_data()
 
-    def get_derived_field(self, name: str, force_recompute: bool = False) -> Any:
+    def get_derived_field(self, name: str, *, force_recompute: bool = False) -> Any:
         return self._name_to_derived_field[name].get_value(
             self, force_recompute=force_recompute
         )
 
-    def get_raw_derived_field(self, name: str, force_recompute: bool = False) -> Any:
+    def get_raw_derived_field(self, name: str, *, force_recompute: bool = False) -> Any:
         return self._name_to_derived_field[name].get_raw_value(
             self, force_recompute=force_recompute
         )
@@ -1048,7 +1048,7 @@ class BaseModel(Model):
             callbacks=self.get_adt_callbacks(),
         )
 
-    def edit_until_clean(self, initial_edit: bool = False) -> None:
+    def edit_until_clean(self, *, initial_edit: bool = False) -> None:
         if initial_edit:
             self.edit()
         while not self.is_lint_clean():
@@ -1523,6 +1523,7 @@ def get_tag_based_derived_field(
     tag_field: str,
     lazy_tag_cls: Callable[[], type[adt.ADT]],
     field_index: int,
+    *,
     skip_filter: bool = False,
 ) -> derived_data.DerivedField[list[Any]]:
     def compute_all() -> dict[int, list[BaseModel]]:
@@ -1542,7 +1543,7 @@ def get_tag_based_derived_field(
 
     return derived_data.DerivedField(
         name,
-        derived_data.LazyType(lambda: list[lazy_model_cls()]),  # type: ignore
+        derived_data.LazyType(lambda: list[lazy_model_cls()]),  # type: ignore[misc]
         compute_all=compute_all,
         pull_on_miss=False,
     )

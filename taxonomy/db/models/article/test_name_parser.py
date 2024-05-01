@@ -7,6 +7,7 @@ from .name_parser import NameParser
 
 def check(
     raw_name: str,
+    *,
     base_name: Mapping[str, Any] = {},
     authorship: tuple[None | str | list[str], str | None] = (None, None),
     modifier: str = "",
@@ -15,12 +16,12 @@ def check(
 ) -> None:
     data_path = Path(__file__).parent / "parserdata"
     parser = NameParser(raw_name, data_path)
-    assert expect_errors == bool(parser.errorDescription)
+    assert expect_errors == bool(parser.error_description)
     assert parser.extension == extension
-    assert parser.rawName == raw_name
+    assert parser.raw_name == raw_name
     assert parser.modifier == modifier
     assert parser.authorship == authorship
-    assert parser.baseName == base_name
+    assert parser.base_name == base_name
 
 
 def test_nov() -> None:

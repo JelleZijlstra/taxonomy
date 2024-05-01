@@ -9,11 +9,11 @@ from .article import Article
 
 class _FakeArticle(Article):
     for field in Article.clirm_fields:
-        locals()[field] = property(lambda self, field=field: self.__dict__.get(field))  # type: ignore
+        locals()[field] = property(lambda self, field=field: self.__dict__.get(field))  # type: ignore[misc]
 
     def __new__(cls, data: dict[str, Any]) -> Any:
         obj = object.__new__(cls)
-        obj.__init__(None)  # type: ignore
+        obj.__init__(None)  # type: ignore[misc]
         for k in Article.clirm_fields:
             obj.__dict__[k] = data.get(k)
         return obj
@@ -21,11 +21,11 @@ class _FakeArticle(Article):
 
 class _FakePerson(Person):
     for field in Person.clirm_fields:
-        locals()[field] = property(lambda self, field=field: self.__dict__.get(field))  # type: ignore
+        locals()[field] = property(lambda self, field=field: self.__dict__.get(field))  # type: ignore[misc]
 
     def __new__(cls, data: dict[str, Any]) -> Any:
         obj = object.__new__(cls)
-        obj.__init__(None)  # type: ignore
+        obj.__init__(None)  # type: ignore[misc]
         for k in Person.clirm_fields:
             obj.__dict__[k] = data.get(k)
         return obj

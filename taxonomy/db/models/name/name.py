@@ -86,13 +86,13 @@ class Name(BaseModel):
     label_field = "corrected_original_name"
     grouping_field = "status"
     call_sign = "N"
-    field_defaults = {
+    field_defaults: ClassVar[dict[str, Any]] = {
         "nomenclature_status": NomenclatureStatus.available,
         "status": Status.valid,
     }
-    excluded_fields = {"data"}
-    fields_without_completers = {"data"}
-    markdown_fields = {"verbatim_citation"}
+    excluded_fields: ClassVar[set[str]] = {"data"}
+    fields_without_completers: ClassVar[set[str]] = {"data"}
+    markdown_fields: ClassVar[set[str]] = {"verbatim_citation"}
     clirm_table_name = "name"
 
     # Basic data
@@ -154,7 +154,7 @@ class Name(BaseModel):
     _definition = Field[str | None]("definition")
     tags = ADTField["NameTag"](is_ordered=False)
 
-    derived_fields = [
+    derived_fields: ClassVar[list[DerivedField[Any]]] = [
         DerivedField(
             "fill_data_level", FillDataLevel, lambda nam: nam.fill_data_level()[0]
         ),
@@ -457,7 +457,7 @@ class Name(BaseModel):
         return None
 
     def autoset_original_rank(
-        self, interactive: bool = False, quiet: bool = True, dry_run: bool = False
+        self, *, interactive: bool = False, quiet: bool = True, dry_run: bool = False
     ) -> bool:
         if self.original_rank is not None:
             return False
@@ -481,7 +481,7 @@ class Name(BaseModel):
                 self.fill_field("original_rank")
             return False
 
-    def infer_corrected_original_name(self, aggressive: bool = False) -> str | None:
+    def infer_corrected_original_name(self, *, aggressive: bool = False) -> str | None:
         if not self.original_name:
             return None
         original_name = clean_original_name(self.original_name)
@@ -700,7 +700,11 @@ class Name(BaseModel):
             return
         if link.isnumeric():
             link = f"https://www.biodiversitylibrary.org/page/{link}"
-        self.add_type_tag(TypeTag.AuthorityPageLink(link, True, self.page_described))
+        self.add_type_tag(
+            TypeTag.AuthorityPageLink(
+                url=link, confirmed=True, page=self.page_described
+            )
+        )
 
     def try_to_find_bhl_links(self) -> None:
         cfg = LintConfig(verbose=True)
@@ -865,13 +869,15 @@ class Name(BaseModel):
         data["additional"].append(new_data)
         self.data = json.dumps(data)  # type: ignore[assignment]
 
-    def add_data(self, field: str, value: Any, concat_duplicate: bool = False) -> None:
+    def add_data(
+        self, field: str, value: Any, *, concat_duplicate: bool = False
+    ) -> None:
         data = self._load_data()
         if field in data:
             if concat_duplicate:
                 existing = data[field]
                 if isinstance(existing, list):
-                    value = existing + [value]
+                    value = [*existing, value]
                 else:
                     value = [existing, value]
             else:
@@ -902,14 +908,14 @@ class Name(BaseModel):
         if tags is None:
             self.tags = [tag]
         else:
-            self.tags = tags + (tag,)
+            self.tags = (*tags, tag)  # type: ignore[assignment]
 
     def add_type_tag(self, tag: TypeTag) -> None:
         type_tags = self.type_tags
         if type_tags is None:
             self.type_tags = [tag]
         elif tag not in type_tags:
-            self.type_tags = type_tags + (tag,)
+            self.type_tags = (*type_tags, tag)  # type: ignore[assignment]
 
     def remove_type_tag(self, tag: TypeTag) -> None:
         type_tags = self.type_tags
@@ -1246,7 +1252,7 @@ class Name(BaseModel):
             return None
         return self.add_variant(root_name, paper=paper)
 
-    def add_combination(self, from_paper: bool = False) -> Name | None:
+    def add_combination(self, *, from_paper: bool = False) -> Name | None:
         original_name = Name.getter("original_name").get_one_key(
             prompt="original_name> "
         )
@@ -2016,7 +2022,7 @@ class Name(BaseModel):
         new_taxon.recompute_name()
         return new_taxon
 
-    def merge(self, into: Name, allow_valid: bool = False) -> None:
+    def merge(self, into: Name, *, allow_valid: bool = False) -> None:
         if not allow_valid:
             assert self.status in (
                 Status.synonym,
@@ -2070,7 +2076,7 @@ class Name(BaseModel):
         assert self.status == Status.valid
         self.original_name = self.taxon.valid_name
 
-    def compute_gender(self, dry_run: bool = True) -> bool:
+    def compute_gender(self, *, dry_run: bool = True) -> bool:
         if (
             self.group != Group.species
             or self.species_name_complex is None
@@ -2138,6 +2144,7 @@ class Name(BaseModel):
 
     def set_paper(
         self,
+        *,
         paper: Article | None = None,
         page_described: None | int | str = None,
         original_name: int | None = None,
@@ -2175,7 +2182,7 @@ class Name(BaseModel):
         self.fill_required_fields()
 
     def detect_and_set_type(
-        self, verbatim_type: str | None = None, verbose: bool = False
+        self, verbatim_type: str | None = None, *, verbose: bool = False
     ) -> bool:
         if verbatim_type is None:
             verbatim_type = self.verbatim_type
@@ -2200,7 +2207,7 @@ class Name(BaseModel):
             return False
 
     def detect_type(
-        self, verbatim_type: str | None = None, verbose: bool = False
+        self, verbatim_type: str | None = None, *, verbose: bool = False
     ) -> list[Name]:
         def cleanup(name: str) -> str:
             return re.sub(
@@ -2435,9 +2442,9 @@ class Name(BaseModel):
 class NameComment(BaseModel):
     call_sign = "NCO"
     grouping_field = "kind"
-    fields_may_be_invalid = {"name"}
+    fields_may_be_invalid: ClassVar[set[str]] = {"name"}
     clirm_table_name = "name_comment"
-    fields_without_completers = {"text"}
+    fields_without_completers: ClassVar[set[str]] = {"text"}
 
     name = Field[Name]("name_id", related_name="comments")
     kind = Field[constants.CommentKind]()
@@ -2446,7 +2453,7 @@ class NameComment(BaseModel):
     source = Field[Article | None]("source_id", related_name="name_comments")
     page = Field[str | None]()
 
-    search_fields = [
+    search_fields: ClassVar[list[SearchField]] = [
         SearchField(SearchFieldType.literal, "kind"),
         SearchField(SearchFieldType.text, "text", highlight_enabled=True),
     ]
@@ -2527,7 +2534,9 @@ class NameComment(BaseModel):
     def get_description(self) -> str:
         components = [
             self.kind.name,
-            datetime.datetime.fromtimestamp(self.date).strftime("%b %d, %Y %H:%M:%S"),
+            datetime.datetime.fromtimestamp(self.date, tz=datetime.UTC).strftime(
+                "%b %d, %Y %H:%M:%S"
+            ),
         ]
         if self.source:
             components.append(

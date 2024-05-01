@@ -2,7 +2,7 @@ import builtins
 import sqlite3
 import subprocess
 from collections.abc import Iterable
-from typing import Any, NotRequired, Self, TypeVar
+from typing import Any, ClassVar, NotRequired, Self, TypeVar
 
 from clirm import Field
 
@@ -23,7 +23,7 @@ class CitationGroup(BaseModel):
     label_field = "name"
     grouping_field = "type"
     call_sign = "CG"
-    excluded_fields = {"tags", "archive"}
+    excluded_fields: ClassVar[set[str]] = {"tags", "archive"}
     clirm_table_name = "citation_group"
 
     name = Field[str]()
@@ -34,7 +34,7 @@ class CitationGroup(BaseModel):
     tags = ADTField["CitationGroupTag"](is_ordered=False)
     archive = Field[str | None]()
 
-    derived_fields = [
+    derived_fields: ClassVar[list[DerivedField[Any]]] = [
         DerivedField(
             "ordered_names",
             LazyType(lambda: list[models.Name]),
@@ -47,7 +47,7 @@ class CitationGroup(BaseModel):
         ),
     ]
 
-    search_fields = [
+    search_fields: ClassVar[list[SearchField]] = [
         SearchField(SearchFieldType.text, "name"),
         SearchField(SearchFieldType.literal, "type"),
         SearchField(SearchFieldType.text_array, "tags", highlight_enabled=True),
@@ -139,7 +139,7 @@ class CitationGroup(BaseModel):
         if self.tags is None:
             self.tags = [tag]
         else:
-            self.tags = self.tags + (tag,)
+            self.tags = (*self.tags, tag)  # type: ignore[assignment]
 
     def apply_to_patterns(self) -> None:
         getinput.add_to_clipboard(self.name)
@@ -179,13 +179,14 @@ class CitationGroup(BaseModel):
             self.get_names(),
             key=lambda nam: (nam.taxonomic_authority(), nam.year or ""),
         ):
-            name = name.reload()
+            name.load()
             name.fill_field_if_empty(field)
 
     def for_years(
         self,
         start_year: int,
         end_year: int | None = None,
+        *,
         author: str | None = None,
         include_articles: bool = False,
     ) -> list["models.Name"]:
@@ -239,7 +240,7 @@ class CitationGroup(BaseModel):
         )
 
     def display(
-        self, depth: int = 0, full: bool = False, include_articles: bool = False
+        self, *, depth: int = 0, full: bool = False, include_articles: bool = False
     ) -> None:
         nams = self.get_names()
         arts = list(self.get_articles())
@@ -512,46 +513,46 @@ class CitationGroupPattern(BaseModel):
 
 class CitationGroupTag(adt.ADT):
     # Must have articles for all citations in this group
-    MustHave(tag=1)  # type: ignore
-    # Ignore in find_potential_citations()
-    IgnorePotentialCitations(tag=2)  # type: ignore
+    MustHave(tag=1)  # type: ignore[name-defined]
+    # Ignore this CG in find_potential_citations()
+    IgnorePotentialCitations(tag=2)  # type: ignore[name-defined]
     # Like MustHave, but only for articles published after this year
-    MustHaveAfter(tag=3, year=str)  # type: ignore
+    MustHaveAfter(tag=3, year=str)  # type: ignore[name-defined]
     # Articles in this citation group must have a series set.
-    MustHaveSeries(comment=NotRequired[str], tag=11)  # type: ignore
+    MustHaveSeries(comment=NotRequired[str], tag=11)  # type: ignore[name-defined]
     # Information on where to find it.
-    OnlineRepository(url=str, comment=NotRequired[str], tag=12)  # type: ignore
-    ISSN(text=str, tag=13)  # type: ignore
-    BHLBibliography(text=str, tag=14)  # type: ignore
+    OnlineRepository(url=str, comment=NotRequired[str], tag=12)  # type: ignore[name-defined]
+    ISSN(text=str, tag=13)  # type: ignore[name-defined]
+    BHLBibliography(text=str, tag=14)  # type: ignore[name-defined]
     # ISSN for online edition
-    ISSNOnline(text=str, tag=15)  # type: ignore
-    CitationGroupURL(text=str, tag=16)  # type: ignore
+    ISSNOnline(text=str, tag=15)  # type: ignore[name-defined]
+    CitationGroupURL(text=str, tag=16)  # type: ignore[name-defined]
     # The journal existed during this period
-    YearRange(start=str, end=NotRequired[str], tag=17)  # type: ignore
+    YearRange(start=str, end=NotRequired[str], tag=17)  # type: ignore[name-defined]
     # If a journal got renamed, a reference to the previous name
-    Predecessor(cg=CitationGroup, tag=18)  # type: ignore
+    Predecessor(cg=CitationGroup, tag=18)  # type: ignore[name-defined]
     # Series may be present and must conform to the regex in the tag
-    SeriesRegex(text=str, tag=19)  # type: ignore
+    SeriesRegex(text=str, tag=19)  # type: ignore[name-defined]
     # Volumes must conform to this regex
-    VolumeRegex(text=str, tag=20)  # type: ignore
+    VolumeRegex(text=str, tag=20)  # type: ignore[name-defined]
     # Issues must conform to this regex
-    IssueRegex(text=str, tag=21)  # type: ignore
+    IssueRegex(text=str, tag=21)  # type: ignore[name-defined]
     # Control start and end page (see citation-group.md)
-    PageRegex(start_page_regex=NotRequired[str], pages_regex=NotRequired[str], allow_standard=bool, tag=22)  # type: ignore
+    PageRegex(start_page_regex=NotRequired[str], pages_regex=NotRequired[str], allow_standard=bool, tag=22)  # type: ignore[name-defined]
     # Comments on how to date publications in this journal
-    DatingTools(text=str, tag=23)  # type: ignore
+    DatingTools(text=str, tag=23)  # type: ignore[name-defined]
     # Link to a relevant page in docs/biblio/
-    BiblioNote(text=str, tag=24)  # type: ignore
+    BiblioNote(text=str, tag=24)  # type: ignore[name-defined]
     # Articles must have a month or day in publication date
     # (only enforced for articles containing new names)
-    MustHavePreciseDate(tag=25)  # type: ignore
+    MustHavePreciseDate(tag=25)  # type: ignore[name-defined]
     # Articles must have a URL (or DOI, HDL, etc.)
-    MustHaveURL(tag=26)  # type: ignore
-    URLPattern(text=str, tag=27)  # type: ignore
+    MustHaveURL(tag=26)  # type: ignore[name-defined]
+    URLPattern(text=str, tag=27)  # type: ignore[name-defined]
     # Do not add more BHL bibliographies based on children
-    SkipExtraBHLBibliographies(tag=28)  # type: ignore
-    CitationGroupComment(text=str, tag=29)  # type: ignore
+    SkipExtraBHLBibliographies(tag=28)  # type: ignore[name-defined]
+    CitationGroupComment(text=str, tag=29)  # type: ignore[name-defined]
     # This exists mostly so we can avoid complaining about missing BHL links. Should
     # not be exposed on the website.
-    BHLYearRange(start=NotRequired[str], end=NotRequired[str], tag=30)  # type: ignore
-    IgnoreLintCitationGroup(label=str, comment=NotRequired[str], tag=31)  # type: ignore
+    BHLYearRange(start=NotRequired[str], end=NotRequired[str], tag=30)  # type: ignore[name-defined]
+    IgnoreLintCitationGroup(label=str, comment=NotRequired[str], tag=31)  # type: ignore[name-defined]

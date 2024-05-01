@@ -23,17 +23,17 @@ _NAME_VALIDATOR = re.compile(
 
 
 class NameParser:
-    geographicTerms: ClassVar[set[str]]
-    geographicModifiers: ClassVar[set[str]]
-    geographicWords: ClassVar[set[str]]
-    periodTerms: ClassVar[set[str]]
-    periodModifiers: ClassVar[set[str]]
-    periodWords: ClassVar[set[str]]
+    geographic_terms: ClassVar[set[str]]
+    geographic_modifiers: ClassVar[set[str]]
+    geographic_words: ClassVar[set[str]]
+    period_terms: ClassVar[set[str]]
+    period_modifiers: ClassVar[set[str]]
+    period_words: ClassVar[set[str]]
 
     # Whether an error occurred, and a description.
-    errorDescription: list[str]
+    error_description: list[str]
 
-    rawName: str  # The raw file name parsed
+    raw_name: str  # The raw file name parsed
     extension: str  # The file extension (e.g., "pdf").
     modifier: str  # Modifier (e.g., "part 2").
 
@@ -44,18 +44,18 @@ class NameParser:
     # single element if "et al." is given. The second element is the year.
     authorship: tuple[None | str | list[str], str | None]
 
-    # baseName is an array with elements representing parts of the title. The
+    # base_name is an array with elements representing parts of the title. The
     # keys may be "nov" or "normal", representing <nov-phrase> and
     # <normal-name>.
-    baseName: dict[str, Any]
+    base_name: dict[str, Any]
 
     def __init__(self, name: str, data_path: Path) -> None:
-        self.errorDescription = []
-        self.buildLists(data_path)
-        self.rawName = name
-        self.baseName = {}
-        name = self.splitExtension(name)
-        name = self.splitModifiers(name)
+        self.error_description = []
+        self.build_lists(data_path)
+        self.raw_name = name
+        self.base_name = {}
+        name = self.split_extension(name)
+        name = self.split_modifiers(name)
         # Now, a name may be:
         # (1) <nov-phrase>
         #      [e.g., "Agathaeromys nov" or "Dilambdogale, Qatranilestes nov"]
@@ -70,57 +70,59 @@ class NameParser:
         #      "Oryzomys palustris-Hoplopleura oryzomydis nov.pdf",
         # used with parasites.
         if name.endswith("nov") and not re.search(r"-[A-Z]", name):
-            # possibility (1)
-            self.parseNovPhrase(name)
+            # possibility 1
+            self.parse_nov_phrase(name)
         elif " nov, " in name:
             parts = re.split(r"(?<= nov), ", name, maxsplit=1)
-            self.parseNovPhrase(parts[0])
-            self.parseNormalName(parts[1])
+            self.parse_nov_phrase(parts[0])
+            self.parse_normal_name(parts[1])
         elif re.search(r"^[A-Z][a-z]+( [a-z]+){0,2} for [A-Za-z][a-z]+$", name):
-            self.parseForPhrase(name)
+            self.parse_for_phrase(name)
         elif name.startswith("MS "):
-            self.parseMsPhrase(name)
+            self.parse_ms_phrase(name)
         elif re.search(r"^[A-Za-z\-\s]+ (\d+)(\(\d+\))?$", name):
-            self.parseFullIssue(name)
+            self.parse_full_issue(name)
         else:
-            self.parseNormalName(name)
+            self.parse_normal_name(name)
         self.validate_names()
 
-    def errorOccurred(self) -> bool:
-        return bool(self.errorDescription)
+    def error_occurred(self) -> bool:
+        return bool(self.error_description)
 
-    def getErrors(self) -> Sequence[str]:
-        return self.errorDescription
+    def get_errors(self) -> Sequence[str]:
+        return self.error_description
 
-    def printErrors(self) -> None:
-        print(f"{len(self.errorDescription)} errors while parsing name: {self.rawName}")
-        for error in self.errorDescription:
+    def print_errors(self) -> None:
+        print(
+            f"{len(self.error_description)} errors while parsing name: {self.raw_name}"
+        )
+        for error in self.error_description:
             print(f"- {error}")
 
-    def addError(self, description: str) -> None:
-        self.errorDescription.append(description.strip())
+    def add_error(self, description: str) -> None:
+        self.error_description.append(description.strip())
 
-    def printParsed(self) -> None:
+    def print_parsed(self) -> None:
         """Print as parsed."""
-        print(f"Parsing name: {self.rawName}")
+        print(f"Parsing name: {self.raw_name}")
 
-        def printIfNotEmpty(field: str) -> None:
+        def print_if_not_empty(field: str) -> None:
             value = getattr(self, field)
             if value:
                 print(f"{field.title()}: {value}")
 
-        printIfNotEmpty("extension")
-        printIfNotEmpty("modifier")
+        print_if_not_empty("extension")
+        print_if_not_empty("modifier")
         if self.authorship != (None, None):
             print("Authorship:")
             if self.authorship[0] is not None:
                 print(f'\tAuthors: {"; ".join(self.authorship[0])}')
             print(f"\tYear: {self.authorship[1]}")
-        printIfNotEmpty("baseName")
+        print_if_not_empty("base_name")
         print()
 
     # Parsing functions.
-    def splitExtension(self, name: str) -> str:
+    def split_extension(self, name: str) -> str:
         match = re.match(r"^(.*)\.([a-z]+)$", name)
         if match:
             self.extension = match.group(2)
@@ -131,57 +133,57 @@ class NameParser:
 
     # A name may end in "(<author-modifier>)? (<free-modifier>)?". Any other
     # pattern of parenthesized expressions is an error.
-    def splitModifiers(self, name: str) -> str:
+    def split_modifiers(self, name: str) -> str:
         self.modifier = ""
         self.authorship = (None, None)
-        firstSet = self.splitParentheses(name)
-        if not isinstance(firstSet, tuple):
+        first_set = self.split_parentheses(name)
+        if not isinstance(first_set, tuple):
             return name
 
-        name = firstSet[0]
-        if self.isAuthorModifier(firstSet[1]):
+        name = first_set[0]
+        if self.is_author_modifier(first_set[1]):
             # one modifier
-            self.parseAuthorModifier(firstSet[1])
+            self.parse_author_modifier(first_set[1])
         else:
             # last modifier is free-form
-            self.modifier = firstSet[1]
-            secondSet = self.splitParentheses(name)
-            if not isinstance(secondSet, tuple):
+            self.modifier = first_set[1]
+            second_set = self.split_parentheses(name)
+            if not isinstance(second_set, tuple):
                 return name
 
-            name = secondSet[0]
+            name = second_set[0]
             # possible author modifier
-            if self.isAuthorModifier(secondSet[1]):
-                self.parseAuthorModifier(secondSet[1])
+            if self.is_author_modifier(second_set[1]):
+                self.parse_author_modifier(second_set[1])
             else:
-                self.addError("Too many modifiers")
+                self.add_error("Too many modifiers")
                 return name
 
         # any other modifiers now would be an error, but check
-        thirdSet = self.splitParentheses(name)
-        if isinstance(thirdSet, tuple):
-            self.addError("Too many modifiers")
+        third_set = self.split_parentheses(name)
+        if isinstance(third_set, tuple):
+            self.add_error("Too many modifiers")
             # attempt error recovery, but if there are even more modifiers even
             # this won't work
-            return thirdSet[0]
+            return third_set[0]
         else:
             return name
 
-    def splitParentheses(self, input: str) -> Any:
+    def split_parentheses(self, input: str) -> Any:
         match = re.match(r"^(.*) \(([^()]+)\)$", input)
         if match:
             return (match.group(1), match.group(2))
         else:
             return input
 
-    def isAuthorModifier(self, input: str) -> bool:
+    def is_author_modifier(self, input: str) -> bool:
         return bool(re.search(r"\d{4}$", input))
 
-    def parseAuthorModifier(self, input: str) -> None:
+    def parse_author_modifier(self, input: str) -> None:
         # <author-modifier> is <authors>? year
 
         # this should always match, because we assume that input passed the
-        # isAuthorModifier function
+        # is_author_modifier function
         match = re.match(r"^(.*)(\d{4})$", input)
         assert match is not None
         # year
@@ -214,23 +216,23 @@ class NameParser:
     # (2) is parsed into 'nov': ['Agathaeromys']
     # (3) becomes 'nov': ['Murina beelzebub', 'Murina cinerea', 'Murina walstoni']
 
-    def parseNovPhrase(self, input: str) -> None:
+    def parse_nov_phrase(self, input: str) -> None:
         match = re.match(r"^(\w+) (\d+)nov$", input)
         nov: Any
         if match:
             nov = int(match[2]), match[1]
         else:
             if not input.endswith(" nov"):
-                self.addError("Invalid nov phrase")
+                self.add_error("Invalid nov phrase")
                 return
             nov = self.parse_names(input[:-4])
-        self.baseName["nov"] = nov
+        self.base_name["nov"] = nov
 
     # For phrases.
     # "Churcheria for Anonymus.pdf" -> 'for': ['Churcheria', 'Anonymus']
     # "Neurotrichus skoczeni for minor.pdf" ->
     #          'for': ['Neurotrichus skoczeni', 'Neurotrichus minor']
-    def parseForPhrase(self, input: str) -> None:
+    def parse_for_phrase(self, input: str) -> None:
         match = re.match(r"(\w+)( (\w+))?( (\w+))? for (\w+)", input)
         assert match is not None, f"failed to match {input}"
         replacement = match[1]
@@ -246,18 +248,18 @@ class NameParser:
         else:
             preoccupied = match[6]
 
-        self.baseName["for"] = [replacement, preoccupied]
+        self.base_name["for"] = [replacement, preoccupied]
 
     # Mammalian Species
-    def parseMsPhrase(self, input: str) -> None:
-        self.baseName["mammalianspecies"] = self.parse_names(input[3:])
+    def parse_ms_phrase(self, input: str) -> None:
+        self.base_name["mammalianspecies"] = self.parse_names(input[3:])
 
     # Names of type "Lemur News 12.pdf" ->
     #      'fullissue': ['Lemur News', '12']
-    def parseFullIssue(self, input: str) -> None:
+    def parse_full_issue(self, input: str) -> None:
         match = re.search(r"^(.*) (\d+(\(\d+\))?)$", input)
         assert match is not None, f"failed to match {input}"
-        self.baseName["fullissue"] = [match[1], match[2]]
+        self.base_name["fullissue"] = [match[1], match[2]]
 
     # Normal names
 
@@ -281,7 +283,7 @@ class NameParser:
     #                      represented as array of modifier + major unit)
     #      'topic' => (array of topics)
 
-    def parseNormalName(self, input: str) -> None:
+    def parse_normal_name(self, input: str) -> None:
         out: dict[str, Any] = {}
         # first, consume names until we find a geographic or period term
         names = ""
@@ -295,116 +297,116 @@ class NameParser:
                 break
 
             if input.startswith("-"):
-                out.update(self.parseNormalAtTopic(input))
+                out.update(self.parse_normal_at_topic(input))
                 break
 
             if self.check_period_words(input):
-                out.update(self.parseNormalAtTime(input))
+                out.update(self.parse_normal_at_time(input))
                 break
 
-            if self.find_term(input, self.geographicWords):
-                out.update(self.parseNormalAtGeography(input))
+            if self.find_term(input, self.geographic_words):
+                out.update(self.parse_normal_at_geography(input))
                 break
-            name, rest = self.getFirstWord(input)
+            name, rest = self.get_first_word(input)
             names += " " + name
             input = rest.strip()
 
         if names:
             out["names"] = self.parse_names(names.strip())
-        self.baseName["normal"] = out
+        self.base_name["normal"] = out
 
-    def parseNormalAtTopic(self, input: str) -> dict[str, Any]:
+    def parse_normal_at_topic(self, input: str) -> dict[str, Any]:
         # input begins with -
         topic = input[1:].split(", ")
         return {"topic": topic}
 
-    def parseNormalAtTime(self, input: str) -> dict[str, Any]:
+    def parse_normal_at_time(self, input: str) -> dict[str, Any]:
         # Here we can assume that period terms are always one word
         # Except for MN7-8, that is, which we'll have to hard-code
         out: dict[str, Any] = {}
         times: list[tuple[str | None, str | None]] = []
         time: tuple[str | None, str | None] = (None, None)
-        inRange = False
+        in_range = False
         while True:
-            firstWord, rest = self.getFirstWord(input)
-            if firstWord in self.periodModifiers:
+            first_word, rest = self.get_first_word(input)
+            if first_word in self.period_modifiers:
                 # next word must be a periodTerm followed by [,-], or -
                 # followed by another modifier
                 if rest.startswith("-"):
-                    times.append((firstWord, None))
-                    inRange = True
+                    times.append((first_word, None))
+                    in_range = True
                 else:
-                    secondWord, rest = self.getFirstWord(rest.strip())
+                    second_word, rest = self.get_first_word(rest.strip())
 
-                    if secondWord not in self.periodTerms:
-                        self.addError("Period modifier not followed by period term")
+                    if second_word not in self.period_terms:
+                        self.add_error("Period modifier not followed by period term")
                         break
-                    time = (firstWord, secondWord)
-            elif firstWord in self.periodTerms:
-                time = (None, firstWord)
-            elif firstWord == "MN7" and rest.startswith("-8"):
+                    time = (first_word, second_word)
+            elif first_word in self.period_terms:
+                time = (None, first_word)
+            elif first_word == "MN7" and rest.startswith("-8"):
                 time = (None, "MN7-8")
                 rest = rest[2:]
             else:
-                self.addError("Invalid word in period: " + firstWord)
+                self.add_error("Invalid word in period: " + first_word)
                 break
             input = rest.strip()
             if input == "" or input.startswith(", "):
-                if inRange:
+                if in_range:
                     # handle "M-L Miocene" kind of stuff
-                    firstTime = times.pop()
-                    if firstTime[1] is None:
-                        firstTime = (firstTime[0], time[1])
-                    times.append(firstTime)
-                    inRange = False
+                    first_time = times.pop()
+                    if first_time[1] is None:
+                        first_time = (first_time[0], time[1])
+                    times.append(first_time)
+                    in_range = False
                 times.append(time)
                 if input == "":
                     break
                 input = input[2:]
             elif input.startswith("-"):
                 input = input[1:]
-                if not self.find_term(input, self.periodWords):
-                    out.update(self.parseNormalAtTopic("-" + input))
+                if not self.find_term(input, self.period_words):
+                    out.update(self.parse_normal_at_topic("-" + input))
                     break
             else:
-                self.addError("Syntax error in period")
+                self.add_error("Syntax error in period")
                 break
         if times:
             out["times"] = times
         return out
 
-    def parseNormalAtGeography(self, input: str) -> dict[str, Any]:
+    def parse_normal_at_geography(self, input: str) -> dict[str, Any]:
         # first find a major term, then minor terms
         out: dict[str, Any] = {}
         places = []
-        currentMajor: list[str] = []
-        currentMinor = ""
+        current_major: list[str] = []
+        current_minor = ""
         while True:
-            if currentMinor == "":
-                findModifier = self.find_term(input, self.geographicModifiers)
-                if findModifier is None:
+            if current_minor == "":
+                find_modifier = self.find_term(input, self.geographic_modifiers)
+                if find_modifier is None:
                     modifier = ""
                 else:
-                    modifier = findModifier[1] + " "
-                    input = findModifier[0].strip()
-                findMajor = self.find_term(input, self.geographicTerms)
-                if findMajor is None:
-                    if not currentMajor:
-                        self.addError(f"Invalid geography at {input}")
+                    modifier = find_modifier[1] + " "
+                    input = find_modifier[0].strip()
+                find_major = self.find_term(input, self.geographic_terms)
+                if find_major is None:
+                    if not current_major:
+                        self.add_error(f"Invalid geography at {input}")
                         break
                     else:
-                        # retain currentMajor and in
+                        # retain current_major and in
                         pass
                 else:
-                    currentMajor = [modifier, findMajor[1]]
-                    input = findMajor[0]
+                    current_major = [modifier, find_major[1]]
+                    input = find_major[0]
             input = input.strip()
             if not input:
-                places.append((tuple(currentMajor), currentMinor))
+                places.append((tuple(current_major), current_minor))
                 break
             if input.startswith(","):
-                places.append((tuple(currentMajor), currentMinor))
-                currentMinor = ""
+                places.append((tuple(current_major), current_minor))
+                current_minor = ""
                 input = input[1:].strip()
             elif input.startswith("-"):
                 # decide whether this starts the topic (if there's another -
@@ -412,56 +414,56 @@ class NameParser:
                 # doesn't)
                 if (
                     "-" not in input[1:]
-                    and self.getLastWord(input) not in self.periodTerms
+                    and self.get_last_word(input) not in self.period_terms
                 ):
-                    places.append((tuple(currentMajor), currentMinor))
-                    out.update(self.parseNormalAtTopic(input))
+                    places.append((tuple(current_major), current_minor))
+                    out.update(self.parse_normal_at_topic(input))
                     break
                 else:
-                    currentMinor += "-"
-                    minor, input = self.getFirstWord(input[1:])
-                    currentMinor += minor
+                    current_minor += "-"
+                    minor, input = self.get_first_word(input[1:])
+                    current_minor += minor
             elif self.check_period_words(input):
-                places.append((tuple(currentMajor), currentMinor))
-                out.update(self.parseNormalAtTime(input))
+                places.append((tuple(current_major), current_minor))
+                out.update(self.parse_normal_at_time(input))
                 break
             else:
                 # then it's a minor term
-                if currentMinor != "":
-                    currentMinor += " "
-                minor, input = self.getFirstWord(input)
-                currentMinor += minor
+                if current_minor != "":
+                    current_minor += " "
+                minor, input = self.get_first_word(input)
+                current_minor += minor
         out["geography"] = places
         return out
 
     # Data handling.
-    didBuildLists: ClassVar[bool] = False
+    did_build_lists: ClassVar[bool] = False
 
     @classmethod
-    def buildLists(cls, data_path: Path) -> None:
-        if cls.didBuildLists:
+    def build_lists(cls, data_path: Path) -> None:
+        if cls.did_build_lists:
             return
 
-        def getData(fileName: str) -> set[str]:
-            path = data_path / fileName
+        def get_data(file_name: str) -> set[str]:
+            path = data_path / file_name
             with path.open() as f:
                 lines = (re.sub(r"#.*$", "", line).strip() for line in f.readlines())
                 return {line for line in lines if line}
 
-        cls.geographicTerms = getData("geography.txt")
-        cls.geographicModifiers = getData("geography_modifiers.txt")
-        cls.periodTerms = getData("periods.txt")
-        cls.periodModifiers = getData("period_modifiers.txt")
+        cls.geographic_terms = get_data("geography.txt")
+        cls.geographic_modifiers = get_data("geography_modifiers.txt")
+        cls.period_terms = get_data("periods.txt")
+        cls.period_modifiers = get_data("period_modifiers.txt")
 
         # overall arrays that are sometimes useful
-        cls.geographicWords = cls.geographicTerms | cls.geographicModifiers
-        cls.periodWords = cls.periodTerms | cls.periodModifiers
+        cls.geographic_words = cls.geographic_terms | cls.geographic_modifiers
+        cls.period_words = cls.period_terms | cls.period_modifiers
 
-        cls.didBuildLists = True
+        cls.did_build_lists = True
 
     # Helper methods.
     @staticmethod
-    def getFirstWord(input: str) -> tuple[str, str]:
+    def get_first_word(input: str) -> tuple[str, str]:
         output = re.split(r"[ \-,]", input, maxsplit=1)
         # simplify life for callers
         if len(output) == 1:
@@ -469,14 +471,14 @@ class NameParser:
         return (output[0], input[len(output[0]) :])
 
     @staticmethod
-    def getLastWord(input: str) -> str:
+    def get_last_word(input: str) -> str:
         output = re.split(r"[ \-,]", input)
         return output[-1].strip()
 
     # We need a separate function to fix the "E" issue.
     @classmethod
     def check_period_words(cls, input: str) -> bool:
-        res = cls.find_term(input, cls.periodWords)
+        res = cls.find_term(input, cls.period_words)
         if not res:
             return False
         elif res[1] != "E":
@@ -485,7 +487,7 @@ class NameParser:
             # that's a range, so it's indeed time
             return True
         else:
-            return cls.find_term(res[0].strip(), cls.periodTerms) is not None
+            return cls.find_term(res[0].strip(), cls.period_terms) is not None
 
     # Finds whether any of the phrases in array terms occur in haystack.
     # Returns an array of the haystack without the word plus the word, or
@@ -503,20 +505,20 @@ class NameParser:
     def parse_names(self, input: str) -> list[str]:
         out = []
         names = input.split(", ")
-        lastName: str | None = None
+        last_name: str | None = None
         for name in names:
             if name.islower():
-                if not lastName:
-                    self.addError("Invalid lowercase name")
+                if not last_name:
+                    self.add_error("Invalid lowercase name")
                 else:
-                    name = self.getFirstWord(lastName)[0] + " " + name
+                    name = self.get_first_word(last_name)[0] + " " + name
             out.append(name)
-            lastName = name
+            last_name = name
         return out
 
     # After parsing is completed, check whether scientific names are valid.
     def validate_names(self) -> None:
-        for key, value in self.baseName.items():
+        for key, value in self.base_name.items():
             if key == "nov":
                 if isinstance(value, tuple):
                     # "Oryzomyini 10nov" type
@@ -548,22 +550,22 @@ class NameParser:
                         "meeting",
                         "collection",
                     }
-                    topicIsSpecial = bool(topics & allowed_topics)
+                    topic_is_special = bool(topics & allowed_topics)
                 else:
-                    topicIsSpecial = False
+                    topic_is_special = False
                 for name in value["names"]:
-                    self.validate_name(name, topicIsSpecial)
+                    self.validate_name(name, topic_is_special=topic_is_special)
             elif key == "fullissue":
                 break
             else:
                 raise RuntimeError(f"unrecognized key {key}")
 
-    def validate_name(self, name: str, topicIsSpecial: bool = False) -> None:
-        if topicIsSpecial:
+    def validate_name(self, name: str, *, topic_is_special: bool = False) -> None:
+        if topic_is_special:
             return
         # valid name forms
         if not _NAME_VALIDATOR.match(name):
-            self.addError("Invalid name: " + name)
+            self.add_error("Invalid name: " + name)
 
 
 @functools.lru_cache(8192)

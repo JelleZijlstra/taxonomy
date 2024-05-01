@@ -52,8 +52,8 @@ def check_name(art: Article, cfg: LintConfig) -> Iterable[str]:
     if not re.fullmatch(r"^[ -~]+$", art.name):
         yield "name contains invalid characters"
     parser = get_name_parser(art.name)
-    if parser.errorOccurred():
-        parser.printErrors()
+    if parser.error_occurred():
+        parser.print_errors()
         yield "name failed to parse"
     if parser.extension:
         if not art.kind.is_electronic():

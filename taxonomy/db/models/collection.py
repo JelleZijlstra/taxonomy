@@ -123,7 +123,7 @@ class Collection(BaseModel):
             )
         except getinput.StopException:
             return
-        self.tags = self.tags + (tag,)
+        self.tags = (*self.tags, tag)  # type: ignore[assignment]
 
     def lint(self, cfg: LintConfig) -> Iterable[str]:
         for tag in self.tags:
@@ -550,15 +550,15 @@ def _validate_bmnh(collection_code: str, catalog_number: str) -> str | None:
 
 
 class CollectionTag(adt.ADT):
-    CollectionDatabase(citation=Article, comment=NotRequired[str], tag=1)  # type: ignore
-    TypeCatalog(citation=Article, coverage=str, tag=2)  # type: ignore
-    SpecimenRegex(regex=str, tag=3)  # type: ignore
-    MustUseChildrenCollection(tag=4)  # type: ignore
-    ChildRule(collection=Collection, regex=str, taxon=NotRequired[Taxon], age=NotRequired[constants.AgeClass], tag=5)  # type: ignore
-    MustHaveSpecimenLinks(tag=6)  # type: ignore
-    ConditionalMustHaveSpecimenLinks(regex=str, taxon=NotRequired[Taxon], age=NotRequired[constants.AgeClass], tag=7)  # type: ignore
+    CollectionDatabase(citation=Article, comment=NotRequired[str], tag=1)  # type: ignore[name-defined]
+    TypeCatalog(citation=Article, coverage=str, tag=2)  # type: ignore[name-defined]
+    SpecimenRegex(regex=str, tag=3)  # type: ignore[name-defined]
+    MustUseChildrenCollection(tag=4)  # type: ignore[name-defined]
+    ChildRule(collection=Collection, regex=str, taxon=NotRequired[Taxon], age=NotRequired[constants.AgeClass], tag=5)  # type: ignore[name-defined]
+    MustHaveSpecimenLinks(tag=6)  # type: ignore[name-defined]
+    ConditionalMustHaveSpecimenLinks(regex=str, taxon=NotRequired[Taxon], age=NotRequired[constants.AgeClass], tag=7)  # type: ignore[name-defined]
     # To be counted as a specimen link for this collection, a link must have this prefix.
     # Multiple copies of this tag may be present.
-    SpecimenLinkPrefix(prefix=str, tag=8)  # type: ignore
-    MustUseTriplets(tag=9)  # type: ignore
-    CollectionCode(label=str, comment=str, specimen_regex=NotRequired[str], tag=10)  # type: ignore
+    SpecimenLinkPrefix(prefix=str, tag=8)  # type: ignore[name-defined]
+    MustUseTriplets(tag=9)  # type: ignore[name-defined]
+    CollectionCode(label=str, comment=str, specimen_regex=NotRequired[str], tag=10)  # type: ignore[name-defined]

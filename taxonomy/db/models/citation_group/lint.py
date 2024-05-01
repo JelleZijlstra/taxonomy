@@ -65,7 +65,7 @@ def check_tags(cg: CitationGroup, cfg: LintConfig) -> Iterable[str]:
         if isinstance(tag, CitationGroupTag.OnlineRepository):
             yield "use of deprecated OnlineRepository tag"
         if isinstance(tag, (CitationGroupTag.ISSN, CitationGroupTag.ISSNOnline)):
-            # TODO check that the checksum digit is right
+            # TODO: check that the checksum digit is right
             if not re.fullmatch(r"^\d{4}-\d{3}[X\d]$", tag.text):
                 yield f"invalid ISSN {tag}"
         if isinstance(tag, CitationGroupTag.BHLBibliography):
@@ -83,7 +83,7 @@ def check_tags(cg: CitationGroup, cfg: LintConfig) -> Iterable[str]:
         if isinstance(tag, CitationGroupTag.BiblioNote):
             if tag.text not in get_biblio_pages():
                 yield f"references non-existent page {tag.text!r}"
-        # TODO if there is a Predecessor, check that the YearRange tags make sense
+        # TODO: if there is a Predecessor, check that the YearRange tags make sense
         if isinstance(
             tag,
             (
@@ -168,9 +168,7 @@ def infer_bhl_biblio_from_children(cg: CitationGroup, cfg: LintConfig) -> Iterab
 
 
 @LINT.add("infer_bhl")
-def infer_bhl_biblio(
-    cg: CitationGroup, cfg: LintConfig, interactive_mode: bool = False
-) -> Iterable[str]:
+def infer_bhl_biblio(cg: CitationGroup, cfg: LintConfig) -> Iterable[str]:
     if cg.get_bhl_title_ids():
         return
     if cg.type is not constants.ArticleType.JOURNAL:
@@ -185,7 +183,7 @@ def infer_bhl_biblio(
     if len(candidates) > 1:
         urls = [cand["TitleURL"] for cand in candidates]
         message = f"multiple possible BHL entries: {urls}"
-        if interactive_mode:
+        if cfg.manual_mode:
             getinput.print_header(cg)
             print(message)
 
@@ -209,7 +207,7 @@ def infer_bhl_biblio(
         active_years = cg.get_active_year_range()
         if active_years is None:
             message = f"no active years, but may match {data['TitleURL']}"
-            if interactive_mode:
+            if cfg.manual_mode:
                 print(f"{cg}: {message}")
                 subprocess.check_call(["open", data["TitleURL"]])
                 if not getinput.yes_no(

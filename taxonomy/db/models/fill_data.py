@@ -71,7 +71,7 @@ def fill_data_from_paper(
             nams = get_names(paper)
 
         for nam in nams:
-            nam = nam.reload()
+            nam.load()
             while (
                 nam.original_citation_data_level()[0]
                 is not OriginalCitationDataLevel.all_required_data
@@ -272,7 +272,7 @@ def fill_data_for_children(
 
 
 @CS.register
-def fill_data_random(batch_size: int = 20, ask_before_opening: bool = True) -> None:
+def fill_data_random(batch_size: int = 20, *, ask_before_opening: bool = True) -> None:
     for count, art in enumerate(
         Article.select_valid().order_by(clirm.Func("RANDOM")).limit(batch_size)
     ):

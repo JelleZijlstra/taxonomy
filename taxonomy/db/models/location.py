@@ -228,7 +228,7 @@ class Location(BaseModel):
         if self.tags is None:
             self.tags = (tag,)
         else:
-            self.tags = self.tags + (tag,)
+            self.tags = (*self.tags, tag)  # type: ignore[assignment]
 
     def is_in_region(self, query: Region) -> bool:
         region = self.region

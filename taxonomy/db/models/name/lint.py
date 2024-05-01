@@ -85,7 +85,7 @@ def remove_unused_ignores(nam: Name, unused: Container[str]) -> None:
             print(f"{nam}: removing unused IgnoreLint tag: {tag}")
         else:
             new_tags.append(tag)
-    nam.type_tags = new_tags  # type: ignore
+    nam.type_tags = new_tags  # type: ignore[assignment]
 
 
 def get_ignores(nam: Name) -> Iterable[IgnoreLint]:
@@ -504,7 +504,7 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
             print(f"changing tags for {nam}")
             getinput.print_diff(sorted(original_tags), tags)
         if cfg.autofix:
-            nam.type_tags = tags  # type: ignore
+            nam.type_tags = tags  # type: ignore[assignment]
 
 
 @LINT.add("dedupe_tags")
@@ -533,7 +533,7 @@ def dedupe_and_sort_tags(nam: Name, cfg: LintConfig) -> Iterable[str]:
             print(f"changing tags for {nam}")
             getinput.print_diff(sorted(original_tags), tags)
         if cfg.autofix:
-            nam.type_tags = tags  # type: ignore
+            nam.type_tags = tags  # type: ignore[assignment]
     return []
 
 
@@ -835,7 +835,7 @@ def check_duplicate_type_specimen_links(nam: Name, cfg: LintConfig) -> Iterable[
         message = f"remove redundant tags: {removed}"
         if cfg.autofix:
             print(f"{nam}: {message}")
-            nam.type_tags = new_tags  # type: ignore
+            nam.type_tags = new_tags  # type: ignore[assignment]
         else:
             yield message
 
@@ -863,7 +863,7 @@ def replace_simple_type_specimen_link(nam: Name, cfg: LintConfig) -> Iterable[st
     message = "replace TypeSpecimenLink tag with TypeSpecimenLinkFor"
     if cfg.autofix:
         print(f"{nam}: {message}")
-        nam.type_tags = new_tags  # type: ignore
+        nam.type_tags = new_tags  # type: ignore[assignment]
     else:
         yield message
 
@@ -973,7 +973,7 @@ def replace_type_specimen_link(nam: Name, cfg: LintConfig) -> Iterable[str]:
     )
     if cfg.autofix:
         print(f"{nam}: {message}")
-        nam.type_tags = new_tags  # type: ignore
+        nam.type_tags = new_tags  # type: ignore[assignment]
     else:
         yield message
 
@@ -1080,7 +1080,7 @@ def _check_preoccupation_tag(
         nam.get_normalized_root_name_for_homonymy()
         != senior_name.get_normalized_root_name_for_homonymy()
     ):
-        yield ("has a different root name than supposed senior name" f" {senior_name}")
+        yield f"has a different root name than supposed senior name {senior_name}"
     if not senior_name.can_preoccupy():
         yield f"senior name {senior_name} is not available"
     return new_tag
@@ -1878,7 +1878,7 @@ def autoset_original_rank(nam: Name, cfg: LintConfig) -> Iterable[str]:
 
 @LINT.add("corrected_original_name")
 def autoset_corrected_original_name(
-    nam: Name, cfg: LintConfig, aggressive: bool = False
+    nam: Name, cfg: LintConfig, *, aggressive: bool = False
 ) -> Iterable[str]:
     if nam.original_name is None or nam.corrected_original_name is not None:
         return
@@ -1954,8 +1954,7 @@ def extract_pages(page_described: str) -> Iterable[str]:
     page_described = remove_parentheses_from_page(page_described)
     parts = page_described.split(", ")
     for part in parts:
-        part = re.sub(r" \[as [0-9]+\]$", "", part)
-        yield part
+        yield re.sub(r" \[as [0-9]+\]$", "", part)
 
 
 @LINT.add("no_page_ranges")
@@ -2590,7 +2589,7 @@ def _check_homonym_list(
 
 
 def _get_primary_names_of_genus_and_variants(
-    genus: Name, fuzzy: bool = False
+    genus: Name, *, fuzzy: bool = False
 ) -> dict[str, list[Name]]:
     all_genera = {genus}
     stack = [genus]
@@ -2619,7 +2618,7 @@ def _get_primary_names_of_genus_and_variants(
 
 @functools.lru_cache(maxsize=8192)
 def _get_primary_names_of_genus(
-    genus: Name, fuzzy: bool = False
+    genus: Name, *, fuzzy: bool = False
 ) -> dict[str, list[Name]]:
     root_name_to_names: dict[str, list[Name]] = {}
     for nam in Name.add_validity_check(genus.original_children):
@@ -2634,7 +2633,7 @@ def _get_primary_names_of_genus(
 
 @functools.lru_cache(maxsize=8192)
 def _get_secondary_names_of_genus(
-    genus: Taxon, fuzzy: bool = False
+    genus: Taxon, *, fuzzy: bool = False
 ) -> dict[str, list[Name]]:
     root_name_to_names: dict[str, list[Name]] = {}
     for nam in genus.all_names():
@@ -2899,7 +2898,9 @@ def _check_bhl_item_matches(
             if page.item_id in citation_item_ids and page.is_confident
         ]
         if len(replacement) == 1:
-            new_tag = TypeTag.AuthorityPageLink(replacement[0].page_url, True, tag.page)
+            new_tag = TypeTag.AuthorityPageLink(
+                url=replacement[0].page_url, confirmed=True, page=tag.page
+            )
             yield from _replace_page_link(nam, tag, new_tag, cfg)
             return
         if nam.original_citation.url is not None and nam.page_described is not None:
@@ -2910,9 +2911,9 @@ def _check_bhl_item_matches(
                 )
                 if len(pages) == 1:
                     new_tag = TypeTag.AuthorityPageLink(
-                        f"https://www.biodiversitylibrary.org/page/{pages[0]}",
-                        True,
-                        nam.page_described,
+                        url=f"https://www.biodiversitylibrary.org/page/{pages[0]}",
+                        confirmed=True,
+                        page=nam.page_described,
                     )
                     yield from _replace_page_link(nam, tag, new_tag, cfg)
                     return
@@ -2978,7 +2979,7 @@ def _check_bhl_bibliography_matches(
                         existing_tag
                         if existing_tag != tag
                         else TypeTag.AuthorityPageLink(
-                            replacement[0].page_url, True, tag.page
+                            url=replacement[0].page_url, confirmed=True, page=tag.page
                         )
                     )
                     for existing_tag in nam.type_tags
@@ -3016,7 +3017,7 @@ def _maybe_add_bhl_page(
     if cfg.autofix:
         print(f"{nam}: {message}")
         tag = TypeTag.AuthorityPageLink(
-            page_obj.page_url, True, str(page_obj.page_number)
+            url=page_obj.page_url, confirmed=True, page=str(page_obj.page_number)
         )
         nam.add_type_tag(tag)
     else:
@@ -3063,7 +3064,7 @@ def infer_bhl_page(
 
 
 def get_candidate_bhl_pages(
-    nam: Name, verbose: bool = False
+    nam: Name, *, verbose: bool = False
 ) -> Iterable[bhl.PossiblePage]:
     if nam.page_described is None or nam.year is None:
         if verbose:
@@ -3231,7 +3232,9 @@ def infer_bhl_page_from_other_names(nam: Name, cfg: LintConfig) -> Iterable[str]
         return
     (inferred_page_id,) = inferred_pages
     tag = TypeTag.AuthorityPageLink(
-        f"https://www.biodiversitylibrary.org/page/{inferred_page_id}", True, page
+        url=f"https://www.biodiversitylibrary.org/page/{inferred_page_id}",
+        confirmed=True,
+        page=page,
     )
     message = f"inferred BHL page {inferred_page_id} from other names (add {tag})"
     if cfg.autofix:
@@ -3271,9 +3274,9 @@ def infer_bhl_page_from_article(nam: Name, cfg: LintConfig) -> Iterable[str]:
                     and art.start_page == art.end_page == page_described
                 ):
                     tag = TypeTag.AuthorityPageLink(
-                        f"https://www.biodiversitylibrary.org/page/{start_page_id}",
-                        True,
-                        page_described,
+                        url=f"https://www.biodiversitylibrary.org/page/{start_page_id}",
+                        confirmed=True,
+                        page=page_described,
                     )
                     message = f"inferred BHL page {start_page_id} from article citation where start_page == end_page (add {tag})"
                     if cfg.autofix:
@@ -3307,7 +3310,9 @@ def _infer_bhl_page_from_part(
         return
 
     tag = TypeTag.AuthorityPageLink(
-        f"https://www.biodiversitylibrary.org/page/{pages[0]}", True, page_described
+        url=f"https://www.biodiversitylibrary.org/page/{pages[0]}",
+        confirmed=True,
+        page=page_described,
     )
     message = f"inferred BHL page {pages[0]} from part citation (add {tag})"
     if cfg.autofix:
@@ -3327,7 +3332,9 @@ def _infer_bhl_page_from_item(
         return
 
     tag = TypeTag.AuthorityPageLink(
-        f"https://www.biodiversitylibrary.org/page/{pages[0]}", True, page_described
+        url=f"https://www.biodiversitylibrary.org/page/{pages[0]}",
+        confirmed=True,
+        page=page_described,
     )
     message = f"inferred BHL page {pages[0]} from item citation (add {tag})"
     if cfg.autofix:
@@ -3395,9 +3402,9 @@ def _infer_bhl_page_from_article_page(
             continue
 
         tag = TypeTag.AuthorityPageLink(
-            f"https://www.biodiversitylibrary.org/page/{possible_page}",
-            True,
-            page_described,
+            url=f"https://www.biodiversitylibrary.org/page/{possible_page}",
+            confirmed=True,
+            page=page_described,
         )
         message = f"inferred BHL page {possible_page} from page citation (add {tag})"
         if cfg.autofix:
