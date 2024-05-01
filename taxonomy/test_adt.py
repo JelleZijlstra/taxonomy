@@ -13,9 +13,9 @@ class SomeEnum(enum.IntEnum):
 
 
 class Tree(ADT):
-    Leaf(tag=LEAF)  # type: ignore
-    Node(left=Tree, right=Tree, tag=NODE)  # type: ignore
-    Tag(val=SomeEnum, tag=TAG)  # type: ignore
+    Leaf(tag=LEAF)  # type: ignore[name-defined]
+    Node(left=Tree, right=Tree, tag=NODE)  # type: ignore[name-defined]
+    Tag(val=SomeEnum, tag=TAG)  # type: ignore[name-defined]
 
     def __repr__(self) -> str:
         if self is Tree.Leaf:

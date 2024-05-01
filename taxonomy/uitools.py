@@ -29,7 +29,7 @@ def _default_valid_function(command: str, options: dict[str, str]) -> bool:
 Processor = Callable[[str, Any], bool]
 
 
-def make_callback(cb: Callable[[], Any], result: bool = True) -> Processor:
+def make_callback(cb: Callable[[], Any], *, result: bool = True) -> Processor:
     def processor(cmd: str, data: Any) -> bool:
         cb()
         return result
