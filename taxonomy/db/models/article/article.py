@@ -34,16 +34,21 @@ from taxonomy.db.helpers import (
     split_iterable,
     to_int,
 )
-
-from ..base import (
+from taxonomy.db.models.base import (
     ADTField,
     BaseModel,
     LintConfig,
     TextField,
     get_tag_based_derived_field,
 )
-from ..citation_group import CitationGroup
-from ..person import AuthorTag, Person, PersonLevel, get_new_authors_list
+from taxonomy.db.models.citation_group import CitationGroup
+from taxonomy.db.models.person import (
+    AuthorTag,
+    Person,
+    PersonLevel,
+    get_new_authors_list,
+)
+
 from .folder_tree import FolderTree
 
 T = TypeVar("T", bound="Article")

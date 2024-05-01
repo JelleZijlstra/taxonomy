@@ -19,10 +19,10 @@ from taxonomy.apis import bhl
 from taxonomy.db.constants import ArticleKind, ArticleType, DateSource
 from taxonomy.db.helpers import clean_string, clean_strings_recursively, trimdoi
 from taxonomy.db.models.article import lint
+from taxonomy.db.models.citation_group import CitationGroup, CitationGroupTag
+from taxonomy.db.models.person import AuthorTag, Person
 from taxonomy.db.url_cache import CacheDomain, cached, dirty_cache
 
-from ..citation_group import CitationGroup, CitationGroupTag
-from ..person import AuthorTag, Person
 from .article import Article, ArticleTag
 from .lint import infer_publication_date_from_tags, is_valid_doi
 

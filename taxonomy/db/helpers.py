@@ -12,7 +12,8 @@ from typing import TypeVar, cast
 
 import unidecode
 
-from .. import getinput
+from taxonomy import getinput
+
 from . import constants
 from .constants import Group, Rank
 

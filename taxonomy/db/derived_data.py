@@ -10,8 +10,7 @@ from typing import Any, Generic, Protocol, TypeVar
 import typing_inspect
 
 import taxonomy
-
-from .. import config
+from taxonomy import config
 
 T = TypeVar("T")
 T_co = TypeVar("T_co", covariant=True)

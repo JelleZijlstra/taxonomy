@@ -6,8 +6,9 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import TypeVar
 
-from ... import getinput
-from ..constants import OccurrenceStatus, PeriodSystem, RegionKind
+from taxonomy import getinput
+from taxonomy.db.constants import OccurrenceStatus, PeriodSystem, RegionKind
+
 from .article import Article
 from .location import Location
 from .name import Name

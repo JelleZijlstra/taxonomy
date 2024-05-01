@@ -3,7 +3,8 @@
 from collections.abc import Sequence
 from itertools import islice
 
-from .... import getinput, uitools
+from taxonomy import getinput, uitools
+
 from .article import Article
 
 

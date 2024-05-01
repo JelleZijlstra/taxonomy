@@ -17,13 +17,11 @@ import Levenshtein
 import requests
 from attr import dataclass
 
-from taxonomy import coordinates
+from taxonomy import adt, coordinates, getinput
 from taxonomy.apis import bhl, nominatim
-
-from .... import adt, getinput
-from ....apis.zoobank import clean_lsid, get_zoobank_data, is_valid_lsid
-from ... import helpers
-from ...constants import (
+from taxonomy.apis.zoobank import clean_lsid, get_zoobank_data, is_valid_lsid
+from taxonomy.db import helpers
+from taxonomy.db.constants import (
     ArticleKind,
     ArticleType,
     CommentKind,
@@ -42,12 +40,17 @@ from ...constants import (
     Status,
     TypeSpeciesDesignation,
 )
-from ..article import Article, ArticleTag, PresenceStatus
-from ..base import LintConfig
-from ..collection import BMNH_COLLECTION, MULTIPLE_COLLECTION, Collection
-from ..lint import IgnoreLint, Lint
-from ..person import AuthorTag, PersonLevel
-from ..taxon import Taxon
+from taxonomy.db.models.article import Article, ArticleTag, PresenceStatus
+from taxonomy.db.models.base import LintConfig
+from taxonomy.db.models.collection import (
+    BMNH_COLLECTION,
+    MULTIPLE_COLLECTION,
+    Collection,
+)
+from taxonomy.db.models.lint import IgnoreLint, Lint
+from taxonomy.db.models.person import AuthorTag, PersonLevel
+from taxonomy.db.models.taxon import Taxon
+
 from .name import (
     PREOCCUPIED_TAGS,
     STATUS_TO_TAG,

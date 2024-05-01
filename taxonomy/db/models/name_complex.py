@@ -7,17 +7,17 @@ from typing import IO, Any, ClassVar
 
 from clirm import DoesNotExist, Field
 
+from taxonomy import events, getinput
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
-
-from ... import events, getinput
-from .. import models
-from ..constants import (
+from taxonomy.db import models
+from taxonomy.db.constants import (
     GenderArticle,
     GrammaticalGender,
     Group,
     SourceLanguage,
     SpeciesNameKind,
 )
+
 from .base import BaseModel, LintConfig
 
 

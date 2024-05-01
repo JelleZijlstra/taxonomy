@@ -8,9 +8,10 @@ import time
 from pathlib import Path
 from typing import NamedTuple, NoReturn
 
-from .... import config, getinput, uitools
-from ....command_set import CommandSet
-from ...constants import ArticleKind
+from taxonomy import config, getinput, uitools
+from taxonomy.command_set import CommandSet
+from taxonomy.db.constants import ArticleKind
+
 from .add_data import add_data_for_new_file
 from .article import Article
 from .name_parser import get_name_parser

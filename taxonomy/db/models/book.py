@@ -6,12 +6,11 @@ from typing import Any, TypeVar
 
 from clirm import Field
 
-from taxonomy import getinput
+from taxonomy import adt, events, getinput
+from taxonomy.db.constants import SOURCE_LANGUAGE_SYNONYMS, SourceLanguage
+from taxonomy.db.helpers import to_int
+from taxonomy.db.openlibrary import get_from_isbn
 
-from ... import adt, events
-from ..constants import SOURCE_LANGUAGE_SYNONYMS, SourceLanguage
-from ..helpers import to_int
-from ..openlibrary import get_from_isbn
 from .base import ADTField, BaseModel, TextOrNullField
 from .citation_group import CitationGroup
 from .person import AuthorTag, Person, get_new_authors_list

@@ -7,11 +7,11 @@ from typing import IO, Any, Self
 
 from clirm import Field
 
+from taxonomy import events, getinput
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
+from taxonomy.db import constants, models
+from taxonomy.db.derived_data import DerivedField
 
-from ... import events, getinput
-from .. import constants, models
-from ..derived_data import DerivedField
 from .base import BaseModel, get_tag_based_derived_field
 
 

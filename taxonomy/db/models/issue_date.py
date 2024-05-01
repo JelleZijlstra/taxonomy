@@ -8,9 +8,10 @@ from typing import NotRequired
 
 from clirm import Field
 
-from ... import events, getinput
-from ...adt import ADT
-from .. import helpers
+from taxonomy import events, getinput
+from taxonomy.adt import ADT
+from taxonomy.db import helpers
+
 from .article import Article
 from .base import ADTField, BaseModel, LintConfig
 from .citation_group import CitationGroup

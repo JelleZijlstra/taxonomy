@@ -16,8 +16,7 @@ import Levenshtein
 
 from taxonomy import config
 from taxonomy.db import helpers
-
-from ..db.url_cache import CacheDomain, cached, dirty_cache
+from taxonomy.db.url_cache import CacheDomain, cached, dirty_cache
 
 T = TypeVar("T")
 

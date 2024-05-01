@@ -9,10 +9,10 @@ from typing import IO, Any, ClassVar, Self
 
 from clirm import Field
 
+from taxonomy import adt, events, getinput
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
+from taxonomy.db import models
 
-from ... import adt, events, getinput
-from .. import models
 from .article import Article
 from .base import ADTField, BaseModel, LintConfig, TextField
 from .period import Period, period_sort_key

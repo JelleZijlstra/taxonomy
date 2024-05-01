@@ -1,8 +1,9 @@
 from types import SimpleNamespace
 from typing import Any
 
-from ...constants import ArticleType
-from ..person import AuthorTag, Person
+from taxonomy.db.constants import ArticleType
+from taxonomy.db.models.person import AuthorTag, Person
+
 from .article import Article
 
 

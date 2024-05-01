@@ -8,17 +8,17 @@ from typing import IO, Any, Self, TypeVar
 
 from clirm import Field
 
+from taxonomy import events, getinput
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
-
-from ... import events, getinput
-from .. import models
-from ..constants import (
+from taxonomy.db import models
+from taxonomy.db.constants import (
     SYSTEM_TO_ALLOWED_RANKS,
     PeriodRank,
     PeriodSystem,
     RequirednessLevel,
 )
-from ..derived_data import DerivedField
+from taxonomy.db.derived_data import DerivedField
+
 from .base import BaseModel, LintConfig
 from .region import Region
 

@@ -34,9 +34,8 @@ from taxonomy.db.constants import (
 )
 from taxonomy.db.definition import Definition
 from taxonomy.db.derived_data import DerivedField
-
-from ..article import Article
-from ..base import (
+from taxonomy.db.models.article import Article
+from taxonomy.db.models.base import (
     ADTField,
     BaseModel,
     LintConfig,
@@ -45,17 +44,18 @@ from ..base import (
     get_str_completer,
     get_tag_based_derived_field,
 )
-from ..citation_group import CitationGroup
-from ..collection import (
+from taxonomy.db.models.citation_group import CitationGroup
+from taxonomy.db.models.collection import (
     LOST_COLLECTION,
     MULTIPLE_COLLECTION,
     UNTRACED_COLLECTION,
     Collection,
 )
-from ..location import Location
-from ..name_complex import NameComplex, SpeciesNameComplex
-from ..person import AuthorTag, Person, get_new_authors_list
-from ..taxon import Taxon, display_organized
+from taxonomy.db.models.location import Location
+from taxonomy.db.models.name_complex import NameComplex, SpeciesNameComplex
+from taxonomy.db.models.person import AuthorTag, Person, get_new_authors_list
+from taxonomy.db.models.taxon import Taxon, display_organized
+
 from .type_specimen import parse_type_specimen
 
 _CRUCIAL_MISSING_FIELDS_ALL_GROUPS = {

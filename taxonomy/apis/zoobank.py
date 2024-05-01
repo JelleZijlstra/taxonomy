@@ -5,7 +5,7 @@ from typing import Any
 
 import requests
 
-from ..db.url_cache import CacheDomain, cached
+from taxonomy.db.url_cache import CacheDomain, cached
 
 
 def clean_lsid(lsid: str) -> str:

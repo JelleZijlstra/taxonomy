@@ -8,7 +8,8 @@ from collections.abc import Iterable
 
 from clirm import Field
 
-from ... import adt, events, getinput
+from taxonomy import adt, events, getinput
+
 from .base import ADTField, BaseModel, LintConfig, TextField
 from .location import Location
 from .region import Region

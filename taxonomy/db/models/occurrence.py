@@ -1,6 +1,7 @@
 from clirm import Field
 
-from ..constants import OccurrenceStatus
+from taxonomy.db.constants import OccurrenceStatus
+
 from .article import Article
 from .base import BaseModel
 from .location import Location

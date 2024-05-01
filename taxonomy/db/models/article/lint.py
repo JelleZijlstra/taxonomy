@@ -17,12 +17,12 @@ from taxonomy.apis import bhl
 from taxonomy.apis.zoobank import clean_lsid, get_zoobank_data_for_act, is_valid_lsid
 from taxonomy.db import helpers, models
 from taxonomy.db.constants import ArticleKind, ArticleType, DateSource
+from taxonomy.db.models.base import ADTField, BaseModel, LintConfig
+from taxonomy.db.models.citation_group.cg import CitationGroup, CitationGroupTag
+from taxonomy.db.models.citation_group.lint import get_biblio_pages
+from taxonomy.db.models.issue_date import IssueDate
+from taxonomy.db.models.lint import IgnoreLint, Lint
 
-from ..base import ADTField, BaseModel, LintConfig
-from ..citation_group.cg import CitationGroup, CitationGroupTag
-from ..citation_group.lint import get_biblio_pages
-from ..issue_date import IssueDate
-from ..lint import IgnoreLint, Lint
 from .article import Article, ArticleComment, ArticleTag, PresenceStatus
 from .name_parser import get_name_parser
 

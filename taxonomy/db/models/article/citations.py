@@ -2,7 +2,8 @@
 
 import re
 
-from ...constants import ArticleType, NamingConvention
+from taxonomy.db.constants import ArticleType, NamingConvention
+
 from .article import Article, ArticleTag, register_cite_function
 
 
