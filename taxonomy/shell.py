@@ -2,15 +2,13 @@
 
 Shell commands, functions that can be called directly from the shell.
 
-This is mostly used for functions that check certain invariants in the database.
+This is used for a variety of useful tools. It contains some functions that
+iterate over objects in the database and check for issues. However, such functions
+should ideally be replaced with lint functions on individual models.
 
 Possible ones to add:
 - The valid name for a taxon should always be the oldest name that does not have some sort of
   nomenclatural trouble (preoccupied, unavailable, etc.).
-- The root name should match the last part of the corrected original name, unless there is a
-  justified emendation.
-- Emendations and subsequent spellings should be synonyms of the name they are based on.
-- Nomina nova and similar should not themselves have a type locality.
 
 """
 
