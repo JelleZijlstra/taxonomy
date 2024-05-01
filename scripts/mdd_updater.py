@@ -440,7 +440,9 @@ class FixableDifference:
             case "MDD_authority_page_link":
                 for text in self.mdd_value.split(" | "):
                     if self.hesp_name.page_described is None:
-                        tag = models.name.TypeTag.AuthorityPageLink(text, True, "")
+                        tag = models.name.TypeTag.AuthorityPageLink(
+                            url=text, confirmed=True, page=""
+                        )
                     else:
                         pages = list(
                             models.name.lint.extract_pages(
@@ -449,10 +451,12 @@ class FixableDifference:
                         )
                         if len(pages) == 1:
                             tag = models.name.TypeTag.AuthorityPageLink(
-                                text, True, pages[0]
+                                url=text, confirmed=True, page=pages[0]
                             )
                         else:
-                            tag = models.name.TypeTag.AuthorityPageLink(text, True, "")
+                            tag = models.name.TypeTag.AuthorityPageLink(
+                                url=text, confirmed=True, page=""
+                            )
                     print(f"{self}: add tag {tag}")
                     if not dry_run:
                         self.hesp_name.add_type_tag(tag)
@@ -575,7 +579,9 @@ def run_gspread_test() -> None:
 def run(*, dry_run: bool = True, taxon: Taxon, max_names: int | None = None) -> None:
     options = get_options()
     backup_path = (
-        options.data_path / "mdd_updater" / datetime.datetime.now().isoformat()
+        options.data_path
+        / "mdd_updater"
+        / datetime.datetime.now(tz=datetime.UTC).isoformat()
     )
     backup_path.mkdir(parents=True, exist_ok=True)
 

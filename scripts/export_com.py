@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import csv
 from collections.abc import Iterable
+from pathlib import Path
 
 from typing_extensions import TypedDict
 
@@ -128,7 +129,7 @@ def generate_report(taxon_name: str, output_file: str) -> None:
     taxon = Taxon.getter("valid_name")(taxon_name)
     assert taxon is not None, f"cannot find {taxon_name}"
 
-    with open(output_file, "w") as f:
+    with Path(output_file).open("w") as f:
         writer = csv.DictWriter(f, list(Row.__annotations__))
         writer.writeheader()
         for row in getinput.print_every_n(generate_rows(taxon), label="rows", n=100):

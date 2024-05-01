@@ -10,6 +10,7 @@ import time
 from collections import defaultdict
 from collections.abc import Container, Generator, Iterable, Sequence
 from dataclasses import dataclass, fields
+from pathlib import Path
 from typing import Any, TypedDict, TypeVar, cast
 
 import gspread
@@ -857,7 +858,7 @@ def lint_species(species: list[MDDSpecies]) -> Iterable[Issue]:
 
 
 def maybe_fix_issues(
-    issues: list[Issue], column_to_idx: dict[str, int], dry_run: bool
+    issues: list[Issue], column_to_idx: dict[str, int], *, dry_run: bool
 ) -> None:
     def _issue_sort_key(issue: Issue) -> tuple[int, bool, bool]:
         return (
@@ -905,7 +906,7 @@ def maybe_fix_issues(
                     gspread.cell.Cell(
                         row=diff.row_idx,
                         col=column_to_idx[diff.mdd_column],
-                        value=process_value_for_sheets(diff.suggested_change),  # type: ignore
+                        value=process_value_for_sheets(diff.suggested_change),  # type: ignore[arg-type]
                     )
                 )
 
@@ -937,7 +938,7 @@ def get_mdd_species(input_csv: str | None = None) -> dict[str, MDDSpecies]:
         worksheet = sheet.get_worksheet_by_id(options.mdd_species_worksheet_gid)
         raw_rows = worksheet.get()
     else:
-        with open(input_csv) as f:
+        with Path(input_csv).open() as f:
             raw_rows = list(csv.reader(f))
     headings = raw_rows[0]
     species = [
@@ -955,7 +956,9 @@ def run(
 ) -> None:
     options = get_options()
     backup_path = (
-        options.data_path / "mdd_checker" / datetime.datetime.now().isoformat()
+        options.data_path
+        / "mdd_checker"
+        / datetime.datetime.now(datetime.UTC).isoformat()
     )
     backup_path.mkdir(parents=True, exist_ok=True)
 
@@ -965,7 +968,7 @@ def run(
         worksheet = sheet.get_worksheet_by_id(options.mdd_species_worksheet_gid)
         raw_rows = worksheet.get()
     else:
-        with open(input_csv) as f:
+        with Path(input_csv).open() as f:
             raw_rows = list(csv.reader(f))
     headings = raw_rows[0]
     column_to_idx = {heading: i for i, heading in enumerate(headings, start=1)}
@@ -985,7 +988,7 @@ def run(
     issues = list(lint_species(species))
 
     if syn_sheet_csv is not None:
-        with open(syn_sheet_csv) as f:
+        with Path(syn_sheet_csv).open() as f:
             syn_sheet_rows = list(csv.reader(f))
     else:
         sheet = get_sheet()
@@ -1009,7 +1012,7 @@ def run(
                 {heading: getattr(issue, heading) or "" for heading in headings}
             )
 
-    maybe_fix_issues(issues, column_to_idx, dry_run)
+    maybe_fix_issues(issues, column_to_idx, dry_run=dry_run)
 
 
 if __name__ == "__main__":

@@ -205,7 +205,9 @@ def get_rows() -> Iterable[tuple[Row, CitationGroup]]:
 def run(*, dry_run: bool = True, taxon: Taxon) -> None:
     options = get_options()
     backup_path = (
-        options.data_path / "mdd_cg_updater" / datetime.datetime.now().isoformat()
+        options.data_path
+        / "mdd_cg_updater"
+        / datetime.datetime.now(datetime.UTC).isoformat()
     )
     backup_path.mkdir(parents=True, exist_ok=True)
 

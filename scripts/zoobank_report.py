@@ -1,5 +1,6 @@
 import argparse
 import re
+from pathlib import Path
 from typing import IO
 
 from taxonomy import getinput
@@ -81,7 +82,7 @@ def run_articles(output_f: IO[str]) -> None:
 
 
 def run(filename: str) -> None:
-    with open(filename, "w") as f:
+    with Path(filename).open("w") as f:
         run_articles(f)
         print(file=f)
         run_names(f)

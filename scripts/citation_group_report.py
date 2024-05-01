@@ -4,6 +4,8 @@ from collections import Counter
 from collections.abc import Iterable
 from typing import TypedDict
 
+from zipp import Path
+
 from taxonomy.db import export
 from taxonomy.db.constants import AgeClass, ArticleType, Group, Rank
 from taxonomy.db.models import Taxon
@@ -60,7 +62,7 @@ def main() -> None:
     parser.add_argument("--csv")
     args = parser.parse_args()
     if args.csv is not None:
-        with open(args.csv, "w") as f:
+        with Path(args.csv).open("w") as f:
             writer = csv.DictWriter(f, list(CitationGroupRow.__annotations__))
             writer.writeheader()
             for row in get_rows():

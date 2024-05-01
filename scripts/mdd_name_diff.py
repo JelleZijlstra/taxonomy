@@ -363,9 +363,9 @@ def run(
 
     mdd_id_to_row = {row["MDD_syn_ID"]: row for row in mdd_rows}
 
-    for row in match_rows:
-        mdd_id = row["MDD_syn_ID"]
-        row = {COLUMN_RENAMES.get(key, key): value for key, value in row.items()}
+    for raw_row in match_rows:
+        mdd_id = raw_row["MDD_syn_ID"]
+        row = {COLUMN_RENAMES.get(key, key): value for key, value in raw_row.items()}
         for key, value in row.items():
             if value and key not in COLUMNS and key not in REMOVED_COLUMNS:
                 print(f"warning: unknown column: {key}")

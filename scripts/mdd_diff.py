@@ -112,7 +112,7 @@ class Difference:
     mdd_id: str | None = None
     taxon: Taxon | None = None
 
-    def to_markdown(self, extra: str | None = None, concise: bool = False) -> str:
+    def to_markdown(self, *, extra: str | None = None, concise: bool = False) -> str:
         parts = []
         if self.kind is DifferenceKind.missing_in_hesperomys:
             parts.append(f"Missing in Hesperomys: _{self.mdd}_")
@@ -209,7 +209,7 @@ def split_mdd_type(text: str) -> Iterable[tuple[str, str | None]]:
     text = re.sub(r"\[([^,\]]+),([^\]]+)\]", r"[\1]", text)
     pieces = text.split(",")
     for piece in pieces:
-        piece = piece.strip()
+        piece = piece.strip()  # noqa: PLW2901
         if match := re.fullmatch(r"(.*) \[([^\]]+)\]", piece):
             yield match.group(1), match.group(2)
         else:
@@ -239,11 +239,11 @@ def process_mdd_type(text: str) -> str | None:
     for piece, label in split_mdd_type(text):
         if label in ("paratype", "paralectotype"):
             continue
-        piece = piece.strip().rstrip(".")
+        piece = piece.strip().rstrip(".")  # noqa: PLW2901
         for rgx, sub in MDD_TYPE_REGEXES:
-            piece = re.sub(rgx, sub, piece)
+            piece = re.sub(rgx, sub, piece)  # noqa: PLW2901
         if "BMNH" in piece:
-            piece = models.name.lint.clean_up_bmnh_type(piece)
+            piece = models.name.lint.clean_up_bmnh_type(piece)  # noqa: PLW2901
         final.append(piece)
     return ", ".join(sorted(final))
 
@@ -349,15 +349,6 @@ def get_mdd_style_authority_for_single_person(
             return f"{initials} {family_name}"
 
 
-def process_mdd_authority(text: str) -> str:
-    text = re.sub(r" in .*", "", text)
-    text = text.replace("J. Edwards Hill", "Hill")
-    # TODO compare initials too
-    text = re.sub(r"\b[A-ZÉ]\. ", "", text)
-    text = text.replace(", & ", " & ")
-    return re.sub(r"^(von|de) ", "", text)
-
-
 def _possible_family_names(hesp_author: Person) -> Iterable[str]:
     yield hesp_author.family_name
     if hesp_author.family_name[0].islower():
@@ -396,7 +387,7 @@ def possible_mdd_authors(hesp_author: Person) -> Iterable[str]:
         yield hesp_author.get_transliterated_family_name()
 
     for family_name in _possible_family_names(hesp_author):
-        family_name = helpers.romanize_russian(family_name)
+        family_name = helpers.romanize_russian(family_name)  # noqa: PLW2901
         yield family_name
         if initials := hesp_author.get_initials():
             initials = helpers.romanize_russian(initials)
@@ -771,6 +762,7 @@ def generate_markdown_for_kind(
 
 
 def run(
+    *,
     mdd_file: Path,
     md_output: Path | None = None,
     csv_output: Path | None = None,
