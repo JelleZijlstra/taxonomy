@@ -2,7 +2,7 @@ import pprint
 from functools import lru_cache
 from typing import Any
 
-import requests
+import httpx
 
 DOMAIN = "http://openlibrary.org/"
 
@@ -10,7 +10,7 @@ DOMAIN = "http://openlibrary.org/"
 @lru_cache
 def get_json(api: str, identifier: str) -> dict[str, Any]:
     url = f"{DOMAIN}{api}/{identifier}.json"
-    response = requests.get(url)
+    response = httpx.get(url)
     try:
         data = response.json()
     except Exception as e:

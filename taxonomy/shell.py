@@ -2144,7 +2144,9 @@ def fgsyn(off: Name | None = None) -> Name | None:
     kwargs = {}
     if off is not None:
         kwargs["type"] = off.type
-    return taxon.syn_from_paper(root_name, source, original_name=root_name, **kwargs)
+    return taxon.syn_from_paper(
+        root_name=root_name, paper=source, original_name=root_name, **kwargs
+    )
 
 
 @command
@@ -2427,7 +2429,9 @@ def occ(
     try:
         o = t.at(loc)
     except clirm.DoesNotExist:
-        o = t.add_occurrence(loc, source, **kwargs)
+        maybe_o = t.add_occurrence(loc, source, **kwargs)
+        assert maybe_o is not None, "must be non-None if loc is given"
+        o = maybe_o
         print(f"ADDED: {o}")
     else:
         print(f"EXISTING: {o}")

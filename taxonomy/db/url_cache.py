@@ -139,4 +139,4 @@ def dirty_cache(domain: CacheDomain, key: str) -> None:
 @cached(CacheDomain.test)
 def example_cached(key: str) -> str:
     print("Called with key:", key)
-    return f"{key} at {datetime.datetime.now().isoformat()}"
+    return f"{key} at {datetime.datetime.now(tz=datetime.UTC).isoformat()}"

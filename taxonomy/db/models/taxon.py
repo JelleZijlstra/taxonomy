@@ -7,16 +7,15 @@ import sys
 from collections import Counter, defaultdict
 from collections.abc import Callable, Container, Iterable, Sequence
 from functools import lru_cache
-from typing import IO, Any, Self, assert_never, cast
+from typing import IO, Any, ClassVar, Self, assert_never, cast
 
 import clirm
 from clirm import DoesNotExist, Field
 
+from taxonomy import events, getinput
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
-
-from ... import events, getinput
-from .. import definition, helpers, models
-from ..constants import (
+from taxonomy.db import definition, helpers, models
+from taxonomy.db.constants import (
     AgeClass,
     Group,
     NameDataLevel,
@@ -26,7 +25,8 @@ from ..constants import (
     Rank,
     Status,
 )
-from ..derived_data import DerivedField, SetLater
+from taxonomy.db.derived_data import DerivedField, SetLater
+
 from .article import Article
 from .base import ADTField, BaseModel, LintConfig, TextOrNullField
 from .fill_data import fill_data_for_names
@@ -85,12 +85,12 @@ class Taxon(BaseModel):
     base_name = Field["models.Name"]("base_name_id")
     tags = ADTField["models.tags.TaxonTag"](is_ordered=False)
 
-    derived_fields = [
+    derived_fields: ClassVar[list[DerivedField[Any]]] = [
         DerivedField("class_", SetLater, _make_parent_getter(0)),
         DerivedField("order", SetLater, _make_parent_getter(1)),
         DerivedField("family", SetLater, _make_parent_getter(2)),
     ]
-    search_fields = [
+    search_fields: ClassVar[list[SearchField]] = [
         SearchField(SearchFieldType.text, "name"),
         SearchField(SearchFieldType.literal, "age"),
         SearchField(SearchFieldType.literal, "rank"),
@@ -245,7 +245,7 @@ class Taxon(BaseModel):
     def get_names(self) -> Iterable[models.Name]:
         return models.Name.add_validity_check(self.names)
 
-    def sorted_names(self, exclude_valid: bool = False) -> list[models.Name]:
+    def sorted_names(self, *, exclude_valid: bool = False) -> list[models.Name]:
         names: Iterable[models.Name] = self.get_names()
         if exclude_valid:
             names = filter(lambda name: name.status != Status.valid, names)
@@ -348,7 +348,7 @@ class Taxon(BaseModel):
         if self.tags:
             self.tags += (tag,)
         else:
-            self.tags = (tag,)  # type: ignore
+            self.tags = (tag,)  # type: ignore[assignment]
 
     def has_parent_of_rank(self, rank: Rank) -> bool:
         try:
@@ -434,7 +434,7 @@ class Taxon(BaseModel):
             nam.display(full=False)
 
     def find_names(
-        self, root_name: str, group: Group | None = None, fuzzy: bool = True
+        self, root_name: str, *, group: Group | None = None, fuzzy: bool = True
     ) -> list[models.Name]:
         """Find instances of the given root_name within the given container taxon."""
         if fuzzy:
@@ -466,6 +466,7 @@ class Taxon(BaseModel):
 
     def display(
         self,
+        *,
         full: bool = False,
         max_depth: int | None = 2,
         file: IO[str] = sys.stdout,
@@ -587,6 +588,7 @@ class Taxon(BaseModel):
     def _display_children(
         self,
         children: list[Taxon],
+        *,
         full: bool,
         max_depth: int | None,
         file: IO[str],
@@ -645,6 +647,7 @@ class Taxon(BaseModel):
 
     def display_type_localities(
         self,
+        *,
         full: bool = False,
         geographically: bool = False,
         region: models.Region | None = None,
@@ -831,6 +834,7 @@ class Taxon(BaseModel):
 
     def add_syn(
         self,
+        *,
         root_name: str | None = None,
         year: None | int | str = None,
         original_name: str | None = None,
@@ -893,9 +897,11 @@ class Taxon(BaseModel):
         paper: Article | None = None,
         comment: str | None = None,
         status: OccurrenceStatus = OccurrenceStatus.valid,
-    ) -> models.Occurrence:
+    ) -> models.Occurrence | None:
         if location is None:
             location = models.Location.getter(None).get_one("location> ")
+        if location is None:
+            return None
         if paper is None:
             paper = Article.getter(None).get_one("source> ")
         try:
@@ -908,7 +914,7 @@ class Taxon(BaseModel):
             )
         except sqlite3.IntegrityError:
             print("DUPLICATE OCCURRENCE")
-            return self.at(location)  # type: ignore
+            return self.at(location)
 
     def edit_occurrence(self) -> None:
         occs = {occ.location.name: occ for occ in self.occurrences}
@@ -921,6 +927,7 @@ class Taxon(BaseModel):
 
     def syn_from_paper(
         self,
+        *,
         root_name: str | None = None,
         paper: Article | None = None,
         page_described: None | int | str = None,
@@ -1069,7 +1076,7 @@ class Taxon(BaseModel):
         elif self.is_nominate_subgenus():
             return f"{name.root_name} ({name.root_name})"
         group: Group = name.group
-        # TODO there seems to be no way to combine these ifs and still make
+        # TODO: there seems to be no way to combine these ifs and still make
         # both mypy and pyanalyze accept the assert_never.
         if group is Group.genus:
             return name.root_name
@@ -1357,7 +1364,7 @@ class Taxon(BaseModel):
             if author.get_level() is not models.person.PersonLevel.family_name_only:
                 continue
             getinput.print_header(author)
-            author.reassign_names_with_verbatim(True)
+            author.reassign_names_with_verbatim(filter_for_name=True)
 
     def names_missing_field(
         self,
@@ -1405,6 +1412,7 @@ class Taxon(BaseModel):
 
     def stats(
         self,
+        *,
         age: AgeClass | None = None,
         graphical: bool = False,
         focus_field: str | None = None,
@@ -1484,6 +1492,7 @@ class Taxon(BaseModel):
         self,
         ocdl: OriginalCitationDataLevel | None = None,
         ndl: NameDataLevel | None = NameDataLevel.missing_derived_tags,
+        *,
         age: AgeClass | None = None,
         reverse: bool = True,
     ) -> None:
@@ -1538,7 +1547,7 @@ class Taxon(BaseModel):
 
         if not only_with_original:
             for nam in self.all_names(age=age):
-                nam = nam.reload()
+                nam.load()
                 if nam.original_citation is None:
                     print(nam)
                     nam.fill_required_fields()
@@ -1563,7 +1572,7 @@ class Taxon(BaseModel):
             self.all_names(exclude=exclude, min_year=min_year),
             key=lambda nam: (nam.taxonomic_authority(), nam.year or ""),
         ):
-            name = name.reload()
+            name.load()
             name.fill_field_if_empty(field)
 
     def fill_citation_group(self, age: AgeClass | None = None) -> None:
@@ -1575,7 +1584,7 @@ class Taxon(BaseModel):
                 nam.numeric_page_described(),
             ),
         ):
-            name = name.reload()
+            name.load()
             if name.verbatim_citation is not None and name.citation_group is None:
                 name.possible_citation_groups()
                 print("=== name")

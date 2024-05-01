@@ -98,9 +98,9 @@ class BaseModel(Model):
     call_sign: str
     creation_event: events.Event[Any]
     save_event: events.Event[Any]
-    field_defaults: dict[str, Any] = {}
-    excluded_fields: set[str] = set()
-    derived_fields: list[derived_data.DerivedField[Any]] = []
+    field_defaults: ClassVar[dict[str, Any]] = {}
+    excluded_fields: ClassVar[set[str]] = set()
+    derived_fields: ClassVar[list[derived_data.DerivedField[Any]]] = []
     _name_to_derived_field: dict[str, derived_data.DerivedField[Any]] = {}
     call_sign_to_model: ClassVar[dict[str, type[BaseModel]]] = {}
     fields_may_be_invalid: ClassVar[set[str]] = set()
