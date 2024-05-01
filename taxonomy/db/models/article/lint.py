@@ -720,6 +720,16 @@ def should_require_bhl_link(art: Article) -> bool:
             if art.parent is None:
                 return False
             return has_bhl_url(art.parent)
+        case ArticleType.BOOK:
+            if art.numeric_year() > 1922:
+                # probably not in BHL
+                return False
+            if art.geturl() is not None:
+                # probably got it from elsewhere
+                return False
+            if art.addyear >= "2024":
+                return True
+            return bool(art.get_new_names().count())
     return False
 
 

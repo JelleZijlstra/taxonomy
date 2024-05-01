@@ -15,7 +15,7 @@ import subprocess
 from collections import defaultdict
 from collections.abc import Container, Generator, Iterable, Iterator, Sequence
 from datetime import datetime
-from typing import TypeVar
+from typing import TypeVar, assert_never
 
 import Levenshtein
 import requests
@@ -2392,7 +2392,23 @@ def check_species_group_primary_homonyms(nam: Name, cfg: LintConfig) -> Iterable
     )
 
 
-@LINT.add("species_fuzzy_secondary_homonym")
+@LINT.add("species_mixed_homonym")
+def check_species_group_mixed_homonyms(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    yield from _check_species_group_homonyms(
+        nam, reason=SelectionReason.mixed_homonymy, fuzzy=False, cfg=cfg
+    )
+
+
+@LINT.add("species_reverse_mixed_homonym")
+def check_species_group_reverse_mixed_homonyms(
+    nam: Name, cfg: LintConfig
+) -> Iterable[str]:
+    yield from _check_species_group_homonyms(
+        nam, reason=SelectionReason.reverse_mixed_homonymy, fuzzy=False, cfg=cfg
+    )
+
+
+@LINT.add("species_fuzzy_secondary_homonym", disabled=True)
 def check_species_group_fuzzy_secondary_homonyms(
     nam: Name, cfg: LintConfig
 ) -> Iterable[str]:
@@ -2401,12 +2417,30 @@ def check_species_group_fuzzy_secondary_homonyms(
     )
 
 
-@LINT.add("species_fuzzy_primary_homonym")
+@LINT.add("species_fuzzy_primary_homonym", disabled=True)
 def check_species_group_fuzzy_primary_homonyms(
     nam: Name, cfg: LintConfig
 ) -> Iterable[str]:
     yield from _check_species_group_homonyms(
         nam, reason=SelectionReason.primary_homonymy, fuzzy=True, cfg=cfg
+    )
+
+
+@LINT.add("species_fuzzy_mixed_homonym", disabled=True)
+def check_species_group_fuzzy_mixed_homonyms(
+    nam: Name, cfg: LintConfig
+) -> Iterable[str]:
+    yield from _check_species_group_homonyms(
+        nam, reason=SelectionReason.mixed_homonymy, fuzzy=True, cfg=cfg
+    )
+
+
+@LINT.add("species_fuzzy_reverse_mixed_homonym", disabled=True)
+def check_species_group_fuzzy_reverse_mixed_homonyms(
+    nam: Name, cfg: LintConfig
+) -> Iterable[str]:
+    yield from _check_species_group_homonyms(
+        nam, reason=SelectionReason.reverse_mixed_homonymy, fuzzy=True, cfg=cfg
     )
 
 
@@ -2431,17 +2465,35 @@ def _check_species_group_homonyms(
         return
     if not nam.can_preoccupy():
         return
-    if reason is SelectionReason.primary_homonymy:
-        genus = nam.original_parent
-        if genus is None:
+    # TODO: pyanalyze otherwise thinks it may be uninitialized
+    name_dict: dict[str, list[Name]] = {}
+    match reason:
+        case SelectionReason.primary_homonymy:
+            genus = nam.original_parent
+            if genus is None:
+                return
+            genus = genus.resolve_name()
+            name_dict = _get_primary_names_of_genus_and_variants(genus, fuzzy=fuzzy)
+        case SelectionReason.secondary_homonymy:
+            genus = _get_parent(nam)
+            if genus is None:
+                return
+            name_dict = _get_secondary_names_of_genus(genus, fuzzy=fuzzy)
+        case SelectionReason.mixed_homonymy:
+            genus = _get_parent(nam)
+            if genus is None:
+                return
+            genus = genus.base_name.resolve_name()
+            name_dict = _get_primary_names_of_genus_and_variants(genus, fuzzy=fuzzy)
+        case SelectionReason.reverse_mixed_homonymy:
+            genus = nam.original_parent
+            if genus is None:
+                return
+            name_dict = _get_secondary_names_of_genus(genus.taxon, fuzzy=fuzzy)
+        case SelectionReason.synonymy:
             return
-        genus = genus.resolve_name()
-        name_dict = _get_primary_names_of_genus_and_variants(genus, fuzzy=fuzzy)
-    else:
-        genus = _get_parent(nam)
-        if genus is None:
-            return
-        name_dict = _get_secondary_names_of_genus(genus, fuzzy=fuzzy)
+        case _:
+            assert_never(reason)
     root = (
         nam.get_normalized_root_name_for_homonymy()
         if fuzzy

@@ -716,21 +716,23 @@ def set_author_tags_from_raw(
     art.author_tags = new_tags
 
 
+def _processcommand_for_doi_input(cmd: str) -> tuple[str | None, object]:
+    if cmd in ("o", "r"):
+        return cmd, None
+    try:
+        typ = _string_to_type[cmd]
+    except KeyError:
+        pass
+    else:
+        if typ:
+            return "t", typ
+    cmd = trimdoi(cmd)
+    if is_valid_doi(cmd) or "biodiversitylibrary.org" in cmd:
+        return "d", cmd
+    return None, None
+
+
 def doi_input(art: Article) -> bool:
-    def processcommand(cmd: str) -> tuple[str | None, object]:
-        if cmd in ("o", "r"):
-            return cmd, None
-        try:
-            typ = _string_to_type[cmd]
-        except KeyError:
-            pass
-        else:
-            if typ:
-                return "t", typ
-        cmd = trimdoi(cmd)
-        if is_valid_doi(cmd) or "biodiversitylibrary.org" in cmd:
-            return "d", cmd
-        return None, None
 
     def reuse(cmd: str, data: object) -> bool:
         return not reuse_nofile(art)
@@ -775,12 +777,11 @@ def doi_input(art: Article) -> bool:
         options={
             "o": "open the file",
             "r": "re-use a citation from a NOFILE entry",
-            "p": "print PDF content",
             # fake commands:
             # 't': 'set type',
             # 'd': 'enter doi',
         },
-        processcommand=processcommand,
+        processcommand=_processcommand_for_doi_input,
         validfunction=lambda *args: True,
         process={"o": opener, "r": reuse, "t": set_type, "d": set_doi},
     )

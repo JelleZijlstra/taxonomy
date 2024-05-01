@@ -457,6 +457,7 @@ class Article(BaseModel):
             "remove_all_author_page_links": self.remove_all_author_page_links,
             "clear_bhl_caches": self.clear_bhl_caches,
             "set_or_replace_url": self.set_or_replace_url,
+            "add_bibliography_url": self.add_bibliography_url,
         }
 
     def open_cg_url(self) -> None:
@@ -642,10 +643,16 @@ class Article(BaseModel):
         if self.kind == ArticleKind.electronic:
             yield "path"
         yield "name"
-        yield from _TYPE_TO_FIELDS[self.type]
+        try:
+            yield from _TYPE_TO_FIELDS[self.type]
+        except KeyError:
+            pass
 
     def trymanual(self) -> bool:
-        fields = _TYPE_TO_FIELDS[self.type]
+        try:
+            fields = _TYPE_TO_FIELDS[self.type]
+        except KeyError:
+            return False
         for field in fields:
             if getattr(self, field, None):
                 continue
@@ -833,6 +840,16 @@ class Article(BaseModel):
             self.tags = [tag]
         else:
             self.tags = self.tags + (tag,)
+
+    def add_bibliography_url(self) -> None:
+        biblio = getinput.get_line("Bibliography> ")
+        if not biblio:
+            return
+        if not biblio.isnumeric():
+            print("Bibliography must be a number")
+            return
+        url = f"https://www.biodiversitylibrary.org/bibliography/{biblio}"
+        self.set_or_replace_url(url)
 
     def set_or_replace_url(self, url: str | None = None) -> None:
         if url is None:

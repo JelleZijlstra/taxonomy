@@ -2661,6 +2661,8 @@ class SelectionReason(enum.IntEnum):
     primary_homonymy = 1
     secondary_homonymy = 2
     synonymy = 3
+    mixed_homonymy = 4
+    reverse_mixed_homonymy = 5
 
 
 class NameTag(adt.ADT):
