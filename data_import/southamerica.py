@@ -376,8 +376,8 @@ def main() -> None:
             ("Myrmecophaga tamandua", "Var. Mexicana Saussure"),
         },
     )
-    names = lib.associate_types(names, config)
-    names = lib.associate_variants(names, config)
+    names = lib.associate_types(names, name_config=config)
+    names = lib.associate_variants(names, name_config=config)
     names = lib.associate_names(names, config)
     lib.write_to_db(names, SOURCE, dry_run=False, edit_if_no_holotype=False)
     # for name in names:

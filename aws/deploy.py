@@ -51,7 +51,7 @@ def deploy_data(options: Options) -> None:
 
 
 def validate_version(version: str) -> None:
-    today = datetime.date.today()
+    today = datetime.datetime.now(tz=datetime.UTC).date()
     expected_start = f"{str(today.year)[-2:]}.{today.month}."
     assert version.startswith(expected_start)
 
@@ -107,7 +107,7 @@ def deploy_taxonomy(options: Options) -> None:
     )
 
 
-def restart(options: Options, kill: bool = True, port: int = 80) -> None:
+def restart(options: Options, *, kill: bool = True, port: int = 80) -> None:
     if kill:
         run_ssh(options, "sudo pkill -f hsweb")
         time.sleep(1)

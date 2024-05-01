@@ -421,8 +421,8 @@ def main() -> None:
             ("Sciurus pusillus", "Desmarest"),
         },
     )
-    names = lib.associate_types(names, config, quiet=True)
-    names = lib.associate_variants(names, config, quiet=True)
+    names = lib.associate_types(names, name_config=config, quiet=True)
+    names = lib.associate_variants(names, name_config=config, quiet=True)
     names = lib.associate_names(
         names,
         config,
