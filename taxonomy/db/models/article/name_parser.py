@@ -511,7 +511,9 @@ class NameParser:
                 if not last_name:
                     self.add_error("Invalid lowercase name")
                 else:
-                    name = self.get_first_word(last_name)[0] + " " + name
+                    name = (  # noqa: PLW2901
+                        self.get_first_word(last_name)[0] + " " + name
+                    )
             out.append(name)
             last_name = name
         return out

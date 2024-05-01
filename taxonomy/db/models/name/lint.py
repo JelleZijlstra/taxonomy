@@ -10,7 +10,7 @@ import re
 import subprocess
 from collections import defaultdict
 from collections.abc import Container, Generator, Iterable, Iterator, Sequence
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TypeVar, assert_never
 
 import Levenshtein
@@ -324,7 +324,7 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 if art.parent is None or art.parent.should_skip():
                     yield f"bad redirected article in tag {tag}"
                 elif cfg.autofix:
-                    tag = replace_arg(tag, arg_name, art.parent)
+                    tag = replace_arg(tag, arg_name, art.parent)  # noqa: PLW2901
         for arg_name, tag_nam in get_tag_fields_of_type(tag, Name):
             if tag_nam.is_invalid():
                 print(
@@ -2172,14 +2172,16 @@ def extract_date_from_structured_quotes(nam: Name, cfg: LintConfig) -> Iterable[
 def parse_date(date_str: str) -> str | None:
     for month in ("%b", "%B"):
         try:
-            dt = datetime.strptime(date_str, f"{month} %Y")
+            dt = datetime.strptime(date_str, f"{month} %Y").astimezone(UTC)
         except ValueError:
             pass
         else:
             return f"{dt.year}-{dt.month:02d}"
         for prefix in ("", "0"):
             try:
-                dt = datetime.strptime(date_str, f"{prefix}%d {month} %Y")
+                dt = datetime.strptime(date_str, f"{prefix}%d {month} %Y").astimezone(
+                    UTC
+                )
             except ValueError:
                 pass
             else:

@@ -5,6 +5,7 @@ import re
 import shutil
 import subprocess
 import time
+from collections.abc import Sequence
 from pathlib import Path
 from typing import NamedTuple, NoReturn
 
@@ -25,9 +26,9 @@ _options = config.get_options()
 
 class LsFile(NamedTuple):
     name: str
-    raw_path: list[str] = []
+    raw_path: Sequence[str] = ()
 
-    def path_list(self) -> list[str]:
+    def path_list(self) -> Sequence[str]:
         return self.raw_path
 
     @property

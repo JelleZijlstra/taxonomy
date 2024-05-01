@@ -5,7 +5,7 @@ import re
 import subprocess
 from collections import Counter, defaultdict
 from collections.abc import Container, Iterable
-from datetime import date
+from datetime import UTC, datetime
 
 from taxonomy import config, getinput
 from taxonomy.apis import bhl
@@ -78,7 +78,7 @@ def check_tags(cg: CitationGroup, cfg: LintConfig) -> Iterable[str]:
                 yield f"invalid end year in {tag}: {issue}"
             if tag.start and tag.end and int(tag.start) > int(tag.end):
                 yield f"{tag}: start is after end"
-            if tag.end and int(tag.end) > date.today().year:
+            if tag.end and int(tag.end) > datetime.now(tz=UTC).year:
                 yield f"{tag} is predicting the future"
         if isinstance(tag, CitationGroupTag.BiblioNote):
             if tag.text not in get_biblio_pages():
