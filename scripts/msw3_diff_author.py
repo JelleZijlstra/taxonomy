@@ -56,8 +56,7 @@ def clean_up_author(authority: str) -> str:
     authority = re.sub(r"^(de|De|von|Von|van|Van) ", "", authority)
     authority = authority.replace("ue", "ü")
     authority = authority.replace("ae", "ä")
-    authority = authority.replace(" [von Waldheim]", "")
-    return authority
+    return authority.replace(" [von Waldheim]", "")
 
 
 if __name__ == "__main__":

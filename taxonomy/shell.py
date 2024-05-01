@@ -2428,13 +2428,13 @@ def occ(
         o = t.at(loc)
     except clirm.DoesNotExist:
         o = t.add_occurrence(loc, source, **kwargs)
-        print("ADDED: %s" % o)
+        print(f"ADDED: {o}")
     else:
-        print("EXISTING: %s" % o)
+        print(f"EXISTING: {o}")
         if replace_source and o.source != source:
             o.source = source
             o.s(**kwargs)
-            print("Replaced source: %s" % o)
+            print(f"Replaced source: {o}")
     return o
 
 

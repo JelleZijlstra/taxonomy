@@ -587,7 +587,7 @@ class BaseModel(Model):
 
         """
         for name, value in kwargs.items():
-            assert hasattr(self, name), "Invalid attribute %s" % name
+            assert hasattr(self, name), f"Invalid attribute {name}"
             setattr(self, name, value)
 
     def __hash__(self) -> int:

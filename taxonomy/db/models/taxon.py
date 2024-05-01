@@ -1065,7 +1065,7 @@ class Taxon(BaseModel):
         if name is None:
             raise DoesNotExist("Taxon with id %d has an invalid base_name" % self.id)
         if self.rank == Rank.division:
-            return "%s Division" % name.root_name
+            return f"{name.root_name} Division"
         elif self.is_nominate_subgenus():
             return f"{name.root_name} ({name.root_name})"
         group: Group = name.group
@@ -1189,7 +1189,7 @@ class Taxon(BaseModel):
             if to_taxon is None:
                 return self.base_name
         if self.data is not None:
-            print("Warning: removing data: %s" % self.data)
+            print(f"Warning: removing data: {self.data}")
         if self == to_taxon:
             print(f"Cannot synonymize {self} with itself")
             return self.base_name
@@ -1205,9 +1205,9 @@ class Taxon(BaseModel):
             comment = occ.comment
             try:
                 occ.taxon = to_taxon
-                occ.add_comment("Previously under _%s_." % self.name)
+                occ.add_comment(f"Previously under _{self.name}_.")
             except sqlite3.IntegrityError:
-                print("dropping duplicate occurrence %s" % occ)
+                print(f"dropping duplicate occurrence {occ}")
                 existing = to_taxon.at(occ.location)
                 additional_comment = (
                     f"Also under _{self.name}_ with source {{{occ.source}}}."
@@ -1300,9 +1300,9 @@ class Taxon(BaseModel):
 
     def remove(self, reason: str | None = None, *, remove_names: bool = True) -> None:
         for _ in self.get_children():
-            print("Cannot remove %s since it has unremoved children" % self)
+            print(f"Cannot remove {self} since it has unremoved children")
             return
-        print("Removing taxon %s" % self)
+        print(f"Removing taxon {self}")
         if remove_names:
             for name in self.sorted_names():
                 name.remove(reason=reason)

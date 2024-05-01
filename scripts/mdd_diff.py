@@ -233,7 +233,7 @@ MDD_TYPE_REGEXES = [
 
 
 def process_mdd_type(text: str) -> str | None:
-    if text == "" or text == "NA":
+    if text in ("", "NA"):
         return None
     final = []
     for piece, label in split_mdd_type(text):
@@ -355,8 +355,7 @@ def process_mdd_authority(text: str) -> str:
     # TODO compare initials too
     text = re.sub(r"\b[A-ZÉ]\. ", "", text)
     text = text.replace(", & ", " & ")
-    text = re.sub(r"^(von|de) ", "", text)
-    return text
+    return re.sub(r"^(von|de) ", "", text)
 
 
 def _possible_family_names(hesp_author: Person) -> Iterable[str]:

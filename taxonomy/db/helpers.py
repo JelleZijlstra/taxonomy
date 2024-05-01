@@ -126,7 +126,7 @@ def name_with_suffixes_removed(name: str) -> Iterable[str]:
     suffixes = list(SUFFIXES.values()) + ["ida", "oidae", "ides", "i", "a", "ae", "ia"]
     for suffix in suffixes:
         if name.endswith(suffix):
-            yield re.sub(r"%s$" % suffix, "", name)
+            yield re.sub(rf"{suffix}$", "", name)
 
 
 def suffix_of_rank(rank: Rank) -> str:
