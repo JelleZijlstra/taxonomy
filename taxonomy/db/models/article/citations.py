@@ -31,21 +31,22 @@ def page_range(article: Article) -> str:
 
 def format_authors(
     art: Article,
+    *,
     separator: str = ";",  # Text between two authors
-    lastSeparator: str | None = None,  # Text between last two authors
-    separatorWithTwoAuthors: (
+    last_separator: str | None = None,  # Text between last two authors
+    separator_with_two_authors: (
         None | str
     ) = None,  # Text between authors if there are only two
-    capitalizeNames: bool = False,  # Whether to capitalize names
-    spaceInitials: bool = False,  # Whether to space initials
-    initialsBeforeName: bool = False,  # Whether to place initials before the surname
-    firstInitialsBeforeName: bool = False,  # Whether to place the first author's initials before their surname
-    includeInitials: bool = True,  # Whether to include initials
+    capitalize_names: bool = False,  # Whether to capitalize names
+    space_initials: bool = False,  # Whether to space initials
+    initials_before_name: bool = False,  # Whether to place initials before the surname
+    first_initials_before_name: bool = False,  # Whether to place the first author's initials before their surname
+    include_initials: bool = True,  # Whether to include initials
 ) -> str:
-    if lastSeparator is None:
-        lastSeparator = separator
-    if separatorWithTwoAuthors is None:
-        separatorWithTwoAuthors = lastSeparator
+    if last_separator is None:
+        last_separator = separator
+    if separator_with_two_authors is None:
+        separator_with_two_authors = last_separator
     array = art.get_authors()
     out = ""
     num_authors = len(array)
@@ -55,24 +56,24 @@ def format_authors(
             if i < num_authors - 1:
                 out += f"{separator} "
             elif i == 1:
-                out += f"{separatorWithTwoAuthors} "
+                out += f"{separator_with_two_authors} "
             else:
-                out += f"{lastSeparator} "
+                out += f"{last_separator} "
 
         # Process author
-        if capitalizeNames:
+        if capitalize_names:
             family_name = author.family_name.upper()
         else:
             family_name = author.family_name
         initials = author.get_initials()
 
-        if spaceInitials and initials:
+        if space_initials and initials:
             initials = re.sub(r"\.(?![- ]|$)", ". ", initials)
         if initials and author.tussenvoegsel:
             initials += f" {author.tussenvoegsel}"
 
-        if initials and includeInitials:
-            if firstInitialsBeforeName if i == 0 else initialsBeforeName:
+        if initials and include_initials:
+            if first_initials_before_name if i == 0 else initials_before_name:
                 author_str = f"{initials} {family_name}"
             else:
                 author_str = f"{family_name}, {initials}"
@@ -89,7 +90,7 @@ def format_authors(
 
 
 @register_cite_function("paper")
-def citepaper(article: Article, include_url: bool = True) -> str:
+def citepaper(article: Article, *, include_url: bool = True) -> str:
     # like citenormal(), but without WP style links and things
     return _citenormal(article, mw=False, include_url=include_url)
 
@@ -114,7 +115,7 @@ def _citenormal(
     else:
         out = ""
     # replace last ; with ", and"; others with ","
-    out += format_authors(article, separator=",", lastSeparator=" and")
+    out += format_authors(article, separator=",", last_separator=" and")
     if child_article is not None and child_article.type is ArticleType.CHAPTER:
         out += ". (eds.)"
     if child_article is not None and child_article.year == article.year:
@@ -223,13 +224,13 @@ def citelemurnews(article: Article) -> str:
         raise NotImplementedError(article.type)
     # TODO: support non-journal citations
     # Ranaivoarisoa, J.F.; Ramanamahefa, R.; Louis, Jr., E.E.; Brenneman, R.A. 2006. Range extension
-    # of Perrier’s sifaka, <i>Propithecus perrieri</i>, in the Andrafiamena Classified Forest. Lemur
+    # of Perrier's sifaka, <i>Propithecus perrieri</i>, in the Andrafiamena Classified Forest. Lemur
     # News 11: 17-21.
 
     # Book chapter
     # Ganzhorn, J.U. 1994. Les lémuriens. Pp. 70-72. In: S.M. Goodman; O. Langrand (eds.).
     # Inventaire biologique; Forêt de Zombitse. Recherches pour le Développement, Série Sciences
-    # Biologiques, n° Spécial. Centre d’Information et de Documentation Scientifique et Technique,
+    # Biologiques, n° Spécial. Centre d'Information et de Documentation Scientifique et Technique,
     # Antananarivo, Madagascar.
 
     # Book
@@ -238,7 +239,7 @@ def citelemurnews(article: Article) -> str:
     # Lemurs of Madagascar. Second edition. Conservation International, Washington, DC, USA.
 
     # Thesis
-    # Freed, B.Z. 1996. Co-occurrence among crowned lemurs (<i>Lemur coronatus</i>) and Sanford’s
+    # Freed, B.Z. 1996. Co-occurrence among crowned lemurs (<i>Lemur coronatus</i>) and Sanford's
     # lemur (<i>Lemur fulvus sanfordi</i>) of Madagascar. Ph.D. thesis, Washington University, St.
     # Louis, USA.
 
@@ -254,7 +255,7 @@ def citebzn(article: Article) -> str:
     # cites according to BZN citation style
     # replace last ; with " &"; others with ","
     out = "<b>"
-    out += format_authors(article, separator=",", lastSeparator=" &")
+    out += format_authors(article, separator=",", last_separator=" &")
     out += f"</b> {article.year}. "
     if article.type == ArticleType.JOURNAL:
         out += f"{article.title}. "
@@ -268,7 +269,7 @@ def citebzn(article: Article) -> str:
         out += f"{page_range(article)}."
     elif article.type == ArticleType.CHAPTER:
         out += f"{article.title}."
-        enclosing = article.getEnclosing()
+        enclosing = article.get_enclosing()
         if enclosing is not None:
             out += " <i>in</i> "
             out += format_authors(enclosing).replace("(Ed", "(ed")
@@ -303,7 +304,7 @@ def citejhe(article: Article) -> str:
     elif article.type == ArticleType.BOOK:
         out += f"{article.publisher}, {article.place_of_publication}"
     elif article.type == ArticleType.CHAPTER:
-        enclosing = article.getEnclosing()
+        enclosing = article.get_enclosing()
         if enclosing is not None:
             out += "In: "
             out += format_authors(enclosing, separator=",")
@@ -332,9 +333,9 @@ def citearchnathist(article: Article) -> str:
         format_authors(
             article,
             separator=", ",
-            lastSeparator=" and",
-            capitalizeNames=True,
-            spaceInitials=True,
+            last_separator=" and",
+            capitalize_names=True,
+            space_initials=True,
         )
     )
     out.append(f", {article.numeric_year()}. ")
@@ -357,10 +358,10 @@ def citepalaeontology(article: Article) -> str:
 
     out += format_authors(
         article,
-        capitalizeNames=True,
-        spaceInitials=True,
+        capitalize_names=True,
+        space_initials=True,
         separator=", ",
-        lastSeparator=" and",
+        last_separator=" and",
     )
     out += f". {article.year}. "
     if article.type == ArticleType.JOURNAL and article.citation_group is not None:
@@ -375,15 +376,15 @@ def citepalaeontology(article: Article) -> str:
         out += f"{article.pages} pp."
     elif article.type == ArticleType.CHAPTER:
         out += f"{article.title}."
-        enclosing = article.getEnclosing()
+        enclosing = article.get_enclosing()
         if enclosing is not None:
             out += " <i>In</i> "
             out += format_authors(
                 enclosing,
-                capitalizeNames=True,
-                spaceInitials=True,
+                capitalize_names=True,
+                space_initials=True,
                 separator=", ",
-                lastSeparator=" and",
+                last_separator=" and",
             )
             out += f" (eds). {enclosing.title}.</i> "
             out += f"{enclosing.publisher}, "
@@ -409,12 +410,12 @@ def citejpal(article: Article) -> str:
     out = ""
     out += format_authors(
         article,
-        capitalizeNames=True,
-        initialsBeforeName=True,
+        capitalize_names=True,
+        initials_before_name=True,
         separator=",",
-        lastSeparator=", and",
-        separatorWithTwoAuthors=" and",
-        spaceInitials=True,
+        last_separator=", and",
+        separator_with_two_authors=" and",
+        space_initials=True,
     )
     out += f" {article.year}. {article.title}"
     if article.type == ArticleType.JOURNAL:
@@ -425,18 +426,18 @@ def citejpal(article: Article) -> str:
         out += f"{article.volume}:{page_range(article)}"
     elif article.type == ArticleType.CHAPTER:
         out += f", {page_range(article)}."
-        enclosing = article.getEnclosing()
+        enclosing = article.get_enclosing()
         if enclosing is not None:
             out += " <i>In</i> "
             bauthors = format_authors(
                 enclosing,
-                capitalizeNames=True,
-                firstInitialsBeforeName=True,
-                initialsBeforeName=True,
+                capitalize_names=True,
+                first_initials_before_name=True,
+                initials_before_name=True,
                 separator=",",
-                lastSeparator=", and",
-                separatorWithTwoAuthors=" and",
-                spaceInitials=True,
+                last_separator=", and",
+                separator_with_two_authors=" and",
+                space_initials=True,
             )
             out += bauthors
             if "and " in bauthors:
@@ -464,7 +465,7 @@ def citepalevol(article: Article) -> str:
     # this is going to be the citation
     out = ""
     out += format_authors(
-        article, initialsBeforeName=False, separator=",", spaceInitials=False
+        article, initials_before_name=False, separator=",", space_initials=False
     )
     out += f", {article.year}. {article.title}"
     if article.type == ArticleType.JOURNAL and article.citation_group is not None:
@@ -474,11 +475,14 @@ def citepalevol(article: Article) -> str:
         out += f"{article.volume}, {page_range(article)}"
     elif article.type == ArticleType.CHAPTER:
         out += "."
-        enclosing = article.getEnclosing()
+        enclosing = article.get_enclosing()
         if enclosing is not None:
             out += ". In: "
             bauthors = format_authors(
-                enclosing, initialsBeforeName=False, separator=",", spaceInitials=False
+                enclosing,
+                initials_before_name=False,
+                separator=",",
+                space_initials=False,
             )
             out += bauthors
             if bauthors.count(",") > 2:
@@ -509,11 +513,11 @@ def citejvp(article: Article) -> str:
     out = ""
     out += format_authors(
         article,
-        initialsBeforeName=True,
+        initials_before_name=True,
         separator=",",
-        lastSeparator=", and",
-        spaceInitials=True,
-        firstInitialsBeforeName=False,
+        last_separator=", and",
+        space_initials=True,
+        first_initials_before_name=False,
     )
     out += f". {article.year}. {article.title}"
     if article.type == ArticleType.JOURNAL:
@@ -524,15 +528,15 @@ def citejvp(article: Article) -> str:
         out += f"{article.volume}:{page_range(article)}"
     elif article.type == ArticleType.CHAPTER:
         out += f"; pp. {page_range(article)}"
-        enclosing = article.getEnclosing()
+        enclosing = article.get_enclosing()
         if enclosing is not None:
             out += " in "
             bauthors = format_authors(
                 enclosing,
-                initialsBeforeName=False,
+                initials_before_name=False,
                 separator=",",
-                lastSeparator=", and",
-                spaceInitials=True,
+                last_separator=", and",
+                space_initials=True,
             )
             out += bauthors
             if bauthors.count(",") > 2:
@@ -575,7 +579,7 @@ def getrefname(art: Article) -> str:
 def citebibtex(article: Article) -> str:
     out = "@"
 
-    def add(key: str, value: str | None, mandatory: bool = False) -> None:
+    def add(key: str, value: str | None, *, mandatory: bool = False) -> None:
         nonlocal out
         if not value:
             if mandatory:
@@ -600,26 +604,26 @@ def citebibtex(article: Article) -> str:
     else:
         out += "misc"
     out += f"{{{getrefname(article)},\n"
-    authors = format_authors(article, spaceInitials=True, separator=" and")
+    authors = format_authors(article, space_initials=True, separator=" and")
     # stuff that goes in every citation type
-    add("author", authors, True)
-    add("year", article.year, True)
+    add("author", authors, mandatory=True)
+    add("year", article.year, mandatory=True)
     if article.title is not None:
         title = re.sub(r"_([^_]+)_", r"\textit{\1}", article.title)
         title = f"{{{title}}}"
-        add("title", title, True)
+        add("title", title, mandatory=True)
     if article.type == ArticleType.THESIS:
-        add("school", article.institution, True)
+        add("school", article.institution, mandatory=True)
     elif article.type == ArticleType.JOURNAL:
         if article.citation_group:
-            add("journal", article.citation_group.name, True)
+            add("journal", article.citation_group.name, mandatory=True)
         add("volume", article.volume)
         add("number", article.issue)
         add("pages", f"{article.start_page}--{article.end_page}")
     elif article.type == ArticleType.BOOK:
-        add("publisher", article.publisher, True)
+        add("publisher", article.publisher, mandatory=True)
         add("address", article.place_of_publication)
-    isbn = article.getIdentifier(ArticleTag.ISBN)
+    isbn = article.get_identifier(ArticleTag.ISBN)
     if isbn:
         add("note", f"ISBN {isbn}")
     out += "}"
@@ -630,17 +634,17 @@ def citebibtex(article: Article) -> str:
 def citezootaxa(article: Article) -> str:
     # this is going to be the citation
     out = ""
-    out += format_authors(article, separator=",", lastSeparator=" &")
+    out += format_authors(article, separator=",", last_separator=" &")
     out += f" ({article.year}) "
     if article.type == ArticleType.JOURNAL and article.citation_group is not None:
         out += f"{article.title}. <i>{article.citation_group.name}</i>, "
         out += f"{article.volume}, {page_range(article)}"
     elif article.type == ArticleType.CHAPTER:
         out += f"{article.title}."
-        enclosing = article.getEnclosing()
+        enclosing = article.get_enclosing()
         if enclosing is not None:
             out += " <i>In</i>: "
-            out += format_authors(enclosing, separator=",", lastSeparator=" &")
+            out += format_authors(enclosing, separator=",", last_separator=" &")
             out += f" (Eds), <i>{enclosing.title}</i>. "
             out += f"{enclosing.publisher}, {enclosing.place_of_publication}"
             out += f", pp. {page_range(article)}"
@@ -676,7 +680,7 @@ def citewp(article: Article, *, commons: bool = False) -> str:
     else:
         doi = ""
     out1 = ""
-    hdl = article.getIdentifier(ArticleTag.HDL)
+    hdl = article.get_identifier(ArticleTag.HDL)
     if article.type == ArticleType.JOURNAL:
         label = "journal"
     elif article.type in (ArticleType.BOOK, ArticleType.CHAPTER):
@@ -707,14 +711,14 @@ def citewp(article: Article, *, commons: bool = False) -> str:
     paras["year"] = str(article.numeric_year())
     if hdl:
         paras["id"] = f"{{hdl|{hdl}}}"
-    paras["jstor"] = article.getIdentifier(ArticleTag.JSTOR)
-    paras["pmid"] = article.getIdentifier(ArticleTag.PMID)
+    paras["jstor"] = article.get_identifier(ArticleTag.JSTOR)
+    paras["pmid"] = article.get_identifier(ArticleTag.PMID)
     paras["url"] = article.url
     paras["doi"] = doi if doi else ""
-    paras["pmc"] = article.getIdentifier(ArticleTag.PMC)
+    paras["pmc"] = article.get_identifier(ArticleTag.PMC)
     paras["publisher"] = article.publisher
     paras["location"] = article.place_of_publication
-    paras["isbn"] = article.getIdentifier(ArticleTag.ISBN)
+    paras["isbn"] = article.get_identifier(ArticleTag.ISBN)
     paras["pages"] = page_range(article)
     if article.type == ArticleType.JOURNAL:
         paras["title"] = article.title
@@ -726,15 +730,15 @@ def citewp(article: Article, *, commons: bool = False) -> str:
         paras["title"] = article.title
         if not paras["pages"]:
             paras["pages"] = article.pages
-        paras["edition"] = article.getIdentifier(ArticleTag.Edition)
+        paras["edition"] = article.get_identifier(ArticleTag.Edition)
     elif article.type == ArticleType.CHAPTER:
         paras["chapter"] = article.title
-        enclosing = article.getEnclosing()
+        enclosing = article.get_enclosing()
         if enclosing is not None:
             paras["title"] = enclosing.title
             paras["publisher"] = enclosing.publisher
             paras["location"] = enclosing.place_of_publication
-            paras["edition"] = enclosing.getIdentifier(ArticleTag.Edition)
+            paras["edition"] = enclosing.get_identifier(ArticleTag.Edition)
             bauthors = enclosing.get_authors()
             for i, author in enumerate(bauthors):
                 # only four editors supported

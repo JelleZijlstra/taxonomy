@@ -232,7 +232,7 @@ def get_hesp_row(name: Name, need_initials: set[str]) -> dict[str, Any]:
             if tag.source == name.original_citation:
                 verbatim_tl.append(tag.text)
             else:
-                citation = ", ".join(tag.source.taxonomicAuthority())
+                citation = ", ".join(tag.source.taxonomic_authority())
                 emended_tl.append(f'"{tag.text}" ({citation})')
         elif isinstance(tag, TypeTag.Coordinates):
             row["Hesp_type_latitude"] = tag.latitude

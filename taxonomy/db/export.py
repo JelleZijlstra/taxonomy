@@ -235,7 +235,7 @@ def data_for_name(name: Name) -> NameData:
 def stringify_detail_tag(tag: DetailTag) -> str:
     if tag.source is None:
         return f'"{tag.text}"'
-    authors, year = tag.source.taxonomicAuthority()
+    authors, year = tag.source.taxonomic_authority()
     url = tag.source.get_absolute_url()
     return f'"{tag.text}" ({authors}, {year}, {url})'
 

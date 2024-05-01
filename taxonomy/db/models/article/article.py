@@ -3,7 +3,6 @@ from __future__ import annotations
 import builtins
 import datetime
 import enum
-import os
 import pprint
 import shutil
 import subprocess
@@ -108,7 +107,14 @@ class Article(BaseModel):
     save_event = events.Event["Article"]()
     label_field = "name"
     call_sign = "A"
-    excluded_fields = {"path", "addmonth", "addday", "addyear", "kind", "tags"}
+    excluded_fields: ClassVar[set[str]] = {
+        "path",
+        "addmonth",
+        "addday",
+        "addyear",
+        "kind",
+        "tags",
+    }
     clirm_table_name = "article"
 
     # Properties that have a one-to-one correspondence with the database.
@@ -147,7 +153,7 @@ class Article(BaseModel):
 
     folder_tree: ClassVar[FolderTree] = FolderTree()
     save_event.on(folder_tree.add)
-    derived_fields = [
+    derived_fields: ClassVar[list[DerivedField[Any]]] = [
         DerivedField(
             "ordered_new_names",
             LazyType(lambda: list[models.Name]),
@@ -280,7 +286,7 @@ class Article(BaseModel):
             1,
         ),
     ]
-    search_fields = [
+    search_fields: ClassVar[list[SearchField]] = [
         SearchField(SearchFieldType.text, "name"),
         SearchField(SearchFieldType.text_array, "authors"),
         SearchField(SearchFieldType.text, "year"),
@@ -518,7 +524,7 @@ class Article(BaseModel):
     def add_to_clipboard(self) -> None:
         getinput.add_to_clipboard(self.name)
 
-    def remove(self, force: bool = False) -> None:
+    def remove(self, *, force: bool = False) -> None:
         """Remove a file. If force is True, do not ask for confirmation."""
         if not force:
             if not getinput.yes_no(
@@ -526,11 +532,11 @@ class Article(BaseModel):
             ):
                 return
         if self.kind == ArticleKind.electronic and self.path:
-            os.unlink(self.get_path())
+            self.get_path().unlink()
         print(f"File {self.name} removed.")
         self.kind = ArticleKind.removed
 
-    def merge(self, target: Article | None = None, force: bool = False) -> None:
+    def merge(self, target: Article | None = None, *, force: bool = False) -> None:
         """Merges this file into another file."""
         if target is None:
             target = self.getter(None).get_one("merge target> ")
@@ -546,7 +552,7 @@ class Article(BaseModel):
                     f" {self.name}?"
                 ):
                     return
-            os.unlink(self.get_path())
+            self.get_path().unlink()
         self.kind = ArticleKind.redirect
         self.path = None
         self.parent = target
@@ -625,7 +631,7 @@ class Article(BaseModel):
             shutil.move(str(temp_path), str(path))
             return True
         else:
-            os.unlink(temp_path)
+            temp_path.unlink()
             return False
 
     def get_value_to_show_for_field(self, field: str | None) -> str:
@@ -798,7 +804,7 @@ class Article(BaseModel):
             return []
         return text_path.read_text().split("\x0c")
 
-    def store_pdf_content(self, force: bool = False) -> Path | None:
+    def store_pdf_content(self, *, force: bool = False) -> Path | None:
         if not self.ispdf() or self.isredirect():
             return None
         expected_path = _options.pdf_text_path / f"{self.id}.txt"
@@ -819,11 +825,11 @@ class Article(BaseModel):
 
     def reverse_authors(self) -> None:
         authors = self.get_authors()
-        self.author_tags = [
-            AuthorTag.Author(person=person) for person in reversed(authors)  # type: ignore
+        self.author_tags = [  # type: ignore[assignment]
+            AuthorTag.Author(person=person) for person in reversed(authors)
         ]
 
-    def taxonomicAuthority(self) -> tuple[str, str]:
+    def taxonomic_authority(self) -> tuple[str, str]:
         return (Person.join_authors(self.get_authors()), self.year or "")
 
     def author_set(self) -> set[int]:
@@ -844,7 +850,7 @@ class Article(BaseModel):
         if self.tags is None:
             self.tags = [tag]
         else:
-            self.tags = self.tags + (tag,)
+            self.tags = (*self.tags, tag)  # type: ignore[assignment]
 
     def add_bibliography_url(self) -> None:
         biblio = getinput.get_line("Bibliography> ")
@@ -865,7 +871,7 @@ class Article(BaseModel):
             self.add_tag(ArticleTag.AlternativeURL(self.url))
         self.url = url
 
-    def has_tag(self, tag_cls: ArticleTag._Constructor) -> bool:  # type: ignore
+    def has_tag(self, tag_cls: ArticleTag._Constructor) -> bool:  # type: ignore[name-defined]
         tag_id = tag_cls._tag
         return any(tag[0] == tag_id for tag in self.get_raw_tags_field("tags"))
 
@@ -882,7 +888,7 @@ class Article(BaseModel):
             ArticleTag.PMC: "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC",
         }
         for identifier, url in tries.items():
-            value = self.getIdentifier(identifier)
+            value = self.get_identifier(identifier)
             if value:
                 return url + value
         if self.parent is not None:
@@ -925,13 +931,13 @@ class Article(BaseModel):
             subprocess.check_call(["open", url])
             return True
 
-    def getIdentifier(self, identifier: builtins.type[adt.ADT]) -> str | None:
+    def get_identifier(self, identifier: builtins.type[adt.ADT]) -> str | None:
         for tag in self.get_tags(self.tags, identifier):
             if hasattr(tag, "text"):
                 return tag.text
         return None
 
-    def getEnclosing(self: T) -> T | None:
+    def get_enclosing(self: T) -> T | None:
         if self.parent is not None:
             return cast(T, self.parent)
         else:
@@ -942,7 +948,7 @@ class Article(BaseModel):
         if len(authors_list) > 2:
             authors = f"{authors_list[0].taxonomic_authority()} et al."
         else:
-            authors, _ = self.taxonomicAuthority()
+            authors, _ = self.taxonomic_authority()
         return f"[{authors} ({self.valid_numeric_year() or self.year})](/a/{self.id})"
 
     def markdown_link(self) -> str:
@@ -1081,6 +1087,7 @@ class Article(BaseModel):
     def set_author_tags_from_raw(
         self,
         value: Any,
+        *,
         confirm_creation: bool = False,
         confirm_replacement: bool = False,
     ) -> None:
@@ -1111,7 +1118,7 @@ class Article(BaseModel):
             if not getinput.yes_no("Replace authors? "):
                 self.fill_field("author_tags")
                 return
-        self.author_tags = new_tags  # type: ignore
+        self.author_tags = new_tags  # type: ignore[assignment]
 
     def has_initials_only_authors(self) -> bool:
         return any(
@@ -1122,6 +1129,7 @@ class Article(BaseModel):
     def specify_authors(
         self,
         level: PersonLevel | None = PersonLevel.initials_only,
+        *,
         should_open: bool = True,
     ) -> None:
         if self.has_tag(ArticleTag.InitialsOnly):
@@ -1148,7 +1156,7 @@ class Article(BaseModel):
                     self.edit()
 
     def recompute_authors_from_jstor(
-        self, confirm: bool = True, force: bool = False
+        self, *, confirm: bool = True, force: bool = False
     ) -> None:
         if not self.doi:
             return
@@ -1158,10 +1166,10 @@ class Article(BaseModel):
         ):
             return
         data = models.article.add_data.get_jstor_data(self)
-        self._recompute_authors_from_data(data, confirm)
+        self._recompute_authors_from_data(data, confirm=confirm)
 
     def recompute_authors_from_doi(
-        self, confirm: bool = True, force: bool = False
+        self, *, confirm: bool = True, force: bool = False
     ) -> None:
         if not self.doi:
             return
@@ -1171,9 +1179,11 @@ class Article(BaseModel):
         ):
             return
         data = models.article.add_data.expand_doi_json(self.doi)
-        self._recompute_authors_from_data(data, confirm)
+        self._recompute_authors_from_data(data, confirm=confirm)
 
-    def _recompute_authors_from_data(self, data: dict[str, Any], confirm: bool) -> None:
+    def _recompute_authors_from_data(
+        self, data: dict[str, Any], *, confirm: bool
+    ) -> None:
         if not data or "author_tags" not in data:
             print(f"Skipping because of no authors in {data}")
             return
@@ -1202,10 +1212,10 @@ class Article(BaseModel):
                 art.recompute_authors_from_doi(confirm=False)
                 getinput.flush()
 
-    def display(self, full: bool = False) -> None:
+    def display(self, *, full: bool = False) -> None:
         print(self.cite())
 
-    def display_names(self, full: bool = False, organized: bool = True) -> None:
+    def display_names(self, *, full: bool = False, organized: bool = True) -> None:
         print(repr(self))
         new_names = sorted(
             self.get_new_names(), key=lambda nam: nam.numeric_page_described()
@@ -1250,7 +1260,7 @@ class Article(BaseModel):
             )
             child.display_children(indent=indent + 4)
 
-    def copy_year_for_names(self, force: bool = False) -> None:
+    def copy_year_for_names(self, *, force: bool = False) -> None:
         new_names = list(self.get_new_names())
         issue = None
         for nam in new_names:
@@ -1340,7 +1350,7 @@ class Article(BaseModel):
 
     @classmethod
     def make(cls, name: str, **values: Any) -> Article:
-        dt = datetime.datetime.now()
+        dt = datetime.datetime.now(tz=datetime.UTC)
         return cls.create(
             name=name,
             addmonth=str(dt.month),
@@ -1368,7 +1378,7 @@ class ArticleComment(BaseModel):
     call_sign = "AC"
     clirm_table_name = "article_comment"
 
-    search_fields = [
+    search_fields: ClassVar[list[SearchField]] = [
         SearchField(SearchFieldType.literal, "kind"),
         SearchField(SearchFieldType.text, "text", highlight_enabled=True),
     ]
@@ -1409,7 +1419,9 @@ class ArticleComment(BaseModel):
     def get_description(self) -> str:
         components = [
             self.kind.name,
-            datetime.datetime.fromtimestamp(self.date).strftime("%b %d, %Y %H:%M:%S"),
+            datetime.datetime.fromtimestamp(self.date, tz=datetime.UTC).strftime(
+                "%b %d, %Y %H:%M:%S"
+            ),
         ]
         return f'{self.text} ({"; ".join(components)})'
 
@@ -1437,48 +1449,48 @@ class PresenceStatus(enum.IntEnum):
 
 class ArticleTag(adt.ADT):
     # identifiers
-    ISBN(text=str, tag=1)  # type: ignore
-    Eurobats(text=str, tag=2)  # type: ignore
-    HDL(text=str, tag=3)  # type: ignore
-    JSTOR(text=str, tag=4)  # type: ignore
-    PMID(text=str, tag=5)  # type: ignore
+    ISBN(text=str, tag=1)  # type: ignore[name-defined]
+    Eurobats(text=str, tag=2)  # type: ignore[name-defined]
+    HDL(text=str, tag=3)  # type: ignore[name-defined]
+    JSTOR(text=str, tag=4)  # type: ignore[name-defined]
+    PMID(text=str, tag=5)  # type: ignore[name-defined]
     # TODO: Why does this exist? Should be on the CitationGroup
-    ArticleISSN(text=str, tag=6)  # type: ignore
-    PMC(text=str, tag=7)  # type: ignore
+    ArticleISSN(text=str, tag=6)  # type: ignore[name-defined]
+    PMC(text=str, tag=7)  # type: ignore[name-defined]
 
     # other
-    Edition(text=str, tag=8)  # type: ignore
-    FullIssue(comment=NotRequired[str], tag=9)  # type: ignore
-    PartLocation(  # type: ignore
+    Edition(text=str, tag=8)  # type: ignore[name-defined]
+    FullIssue(comment=NotRequired[str], tag=9)  # type: ignore[name-defined]
+    PartLocation(  # type: ignore[name-defined]
         parent=Article, start_page=int, end_page=int, comment=NotRequired[str], tag=22
     )
-    NonOriginal(comment=NotRequired[str], tag=10)  # type: ignore
+    NonOriginal(comment=NotRequired[str], tag=10)  # type: ignore[name-defined]
     # The article doesn't give full names for the authors
-    InitialsOnly(tag=11)  # type: ignore
+    InitialsOnly(tag=11)  # type: ignore[name-defined]
     # We can't fill_data_from_paper() because the article is in a language
     # I don't understand.
-    NeedsTranslation(language=SourceLanguage, tag=12)  # type: ignore
+    NeedsTranslation(language=SourceLanguage, tag=12)  # type: ignore[name-defined]
     # Ignore lints with a specific label
-    IgnoreLint(label=str, comment=NotRequired[str], tag=13)  # type: ignore
+    IgnoreLint(label=str, comment=NotRequired[str], tag=13)  # type: ignore[name-defined]
 
-    PublicationDate(source=DateSource, date=str, comment=NotRequired[str], tag=14)  # type: ignore
-    LSIDArticle(text=str, present_in_article=PresenceStatus, tag=15)  # type: ignore
+    PublicationDate(source=DateSource, date=str, comment=NotRequired[str], tag=14)  # type: ignore[name-defined]
+    LSIDArticle(text=str, present_in_article=PresenceStatus, tag=15)  # type: ignore[name-defined]
 
     # All references must be moved to children
-    MustUseChildren(tag=16)  # type: ignore
+    MustUseChildren(tag=16)  # type: ignore[name-defined]
 
     # Electronic-only publication that is not available according to the ICZN
     # (e.g., it doesn't have an LSID present in the article)
-    UnavailableElectronic(comment=NotRequired[str], tag=17)  # type: ignore
+    UnavailableElectronic(comment=NotRequired[str], tag=17)  # type: ignore[name-defined]
     # Like UnavailableElectronic, but expected to be available in the future
-    InPress(comment=NotRequired[str], tag=18)  # type: ignore
+    InPress(comment=NotRequired[str], tag=18)  # type: ignore[name-defined]
 
     # Link to a relevant page in docs/biblio/
-    BiblioNoteArticle(text=str, tag=19)  # type: ignore
+    BiblioNoteArticle(text=str, tag=19)  # type: ignore[name-defined]
 
-    AlternativeURL(url=str, tag=20)  # type: ignore
+    AlternativeURL(url=str, tag=20)  # type: ignore[name-defined]
 
-    Incomplete(comment=NotRequired[str], tag=21)  # type: ignore
+    Incomplete(comment=NotRequired[str], tag=21)  # type: ignore[name-defined]
 
 
 @lru_cache

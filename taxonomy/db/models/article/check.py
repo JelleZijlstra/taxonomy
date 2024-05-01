@@ -115,7 +115,7 @@ def check_new() -> None:
 
 
 @CS.register
-def check(dry_run: bool = False) -> None:
+def check(*, dry_run: bool = False) -> None:
     """Checks the catalog for things to be changed:
     - Checks whether there are any files in the catalog that are not in the
         library
@@ -147,7 +147,7 @@ def check(dry_run: bool = False) -> None:
         print(f"Exiting from check ({e!r})")
 
 
-def setpath(art: Article, fromfile: LsFile, verbose: bool = True) -> None:
+def setpath(art: Article, fromfile: LsFile, *, verbose: bool = True) -> None:
     if art.path != fromfile.path:
         if verbose:
             print(f"Updating folders for file {art.name}")
@@ -157,7 +157,7 @@ def setpath(art: Article, fromfile: LsFile, verbose: bool = True) -> None:
         art.path = fromfile.path
 
 
-def csvcheck(lslist: LsFileList, csvlist: FileList, dry_run: bool = False) -> bool:
+def csvcheck(lslist: LsFileList, csvlist: FileList, *, dry_run: bool = False) -> bool:
     # check CSV list for problems
     # - detect articles in catalog that are not in the actual library
     # - correct filepaths
@@ -209,7 +209,7 @@ def csvcheck(lslist: LsFileList, csvlist: FileList, dry_run: bool = False) -> bo
 
 
 def _lscheck_name(
-    name: str, lsfile: LsFile, csvlist: FileList, dry_run: bool = False
+    name: str, lsfile: LsFile, csvlist: FileList, *, dry_run: bool = False
 ) -> bool:
     """Return whether lscheck() should return immediately."""
     if name in csvlist:
@@ -266,7 +266,7 @@ def _lscheck_name(
     return cmd == "m"
 
 
-def lscheck(lslist: LsFileList, csvlist: FileList, dry_run: bool = False) -> bool:
+def lscheck(lslist: LsFileList, csvlist: FileList, *, dry_run: bool = False) -> bool:
     # check LS list for errors
     # - Detect articles in the library that are not in the catalog.
     print("checking whether articles in library are in catalog... ")
@@ -277,7 +277,7 @@ def lscheck(lslist: LsFileList, csvlist: FileList, dry_run: bool = False) -> boo
     return True
 
 
-def burstcheck(dry_run: bool = False) -> bool:
+def burstcheck(*, dry_run: bool = False) -> bool:
     print("checking for files to be bursted... ", end="")
     burstlist = build_newlist(_options.burst_path)
     for file in burstlist.values():
@@ -289,7 +289,7 @@ def burstcheck(dry_run: bool = False) -> bool:
     return True
 
 
-def newcheck(dry_run: bool = False) -> bool:
+def newcheck(*, dry_run: bool = False) -> bool:
     # look for new files
     print("checking for newly added articles... ", end="")
     newlist = build_newlist()
@@ -303,7 +303,7 @@ def newcheck(dry_run: bool = False) -> bool:
 
 
 def add_new_file(file: LsFile) -> bool:
-    def renameFunction(*args: object) -> bool:
+    def rename_function(*args: object) -> bool:
         nonlocal file
         oldname = file.name
         newname = Article.getter("name").get_one_key(
@@ -344,7 +344,7 @@ def add_new_file(file: LsFile) -> bool:
         )
         if cmd:
             open_new(file)
-            renameFunction()
+            rename_function()
 
     getinput.add_to_clipboard(file.name)
 
@@ -361,7 +361,7 @@ def add_new_file(file: LsFile) -> bool:
         },
         process={
             "o": opener,
-            "r": renameFunction,
+            "r": rename_function,
             "n": archiver,
             "q": quitter,
             "open_dir": open_dir_cb,
@@ -432,7 +432,7 @@ def check_for_existing_file(lsfile: LsFile) -> str | None:
         return False
 
     def deleter(cmd: str, data: object) -> bool:
-        os.unlink(_options.new_path / lsfile.name)
+        (_options.new_path / lsfile.name).unlink()
         return False
 
     def renamer(cmd: str, data: str) -> bool:
@@ -569,7 +569,7 @@ def burst(lsfile: LsFile) -> bool:
 
 @CS.register
 def oversized_folders(
-    limit: int = FOLDER_SIZE_LIMIT, should_open: bool = False
+    limit: int = FOLDER_SIZE_LIMIT, *, should_open: bool = False
 ) -> None:
     oversized = Article.get_foldertree().count_tree.print_if_too_big(limit=limit)
     if should_open:
@@ -587,14 +587,14 @@ def open_dir() -> None:
 
 
 @CS.register
-def rename_regex(pattern: str, replacement: str, force: bool = False) -> bool:
+def rename_regex(pattern: str, replacement: str, *, force: bool = False) -> bool:
     """Rename all files matching the given regex."""
     rgx = re.compile(pattern)
 
     for e in Article.select_valid():
         if rgx.search(e.name):
-            newTitle = rgx.sub(replacement, e.name)
-            if force or getinput.yes_no(f"Rename {e.name!r} to {newTitle!r}?"):
-                e.move(newTitle)
+            new_title = rgx.sub(replacement, e.name)
+            if force or getinput.yes_no(f"Rename {e.name!r} to {new_title!r}?"):
+                e.move(new_title)
 
     return True

@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 import clirm
+import httpx
 import requests
 from bs4 import BeautifulSoup
 
@@ -50,7 +51,7 @@ def clear_doi_cache(doi: str) -> None:
 def get_doi_json_cached(doi: str) -> str:
     # "Good manners" section in https://api.crossref.org/swagger-ui/index.html
     url = f"https://api.crossref.org/works/{urllib.parse.quote(doi)}?mailto=jelle.zijlstra@gmail.com"
-    response = requests.get(url)
+    response = httpx.get(url)
     response.raise_for_status()
     return response.text
 
@@ -59,7 +60,7 @@ def get_doi_json_cached(doi: str) -> str:
 def _get_doi_from_crossref_inner(params: str) -> str:
     query_dict = json.loads(params)
     url = "https://www.crossref.org/openurl"
-    response = requests.get(url, query_dict)
+    response = httpx.get(url, params=query_dict)
     response.raise_for_status()
     return response.text
 
@@ -67,7 +68,7 @@ def _get_doi_from_crossref_inner(params: str) -> str:
 @cached(CacheDomain.doi_resolution)
 def get_doi_resolution(doi: str) -> str:
     url = f"https://doi.org/api/handles/{doi}"
-    response = requests.get(url)
+    response = httpx.get(url)
     response.raise_for_status()
     text = response.text
     data = json.loads(text)
@@ -259,9 +260,11 @@ def extract_doi(art: Article) -> str | None:
             doi = re.sub(r".*?10\.(\d{4})\/? ([^\s]+).*", r"10.\1/\2", pdfcontent)
         # Elsevier accepted manuscripts
         if doi in ("Reference:", "Accepted Manuscript"):
-            match = re.search(r"Accepted date: [^\s]+ ([^\s]+)", pdfcontent, re.DOTALL)
-            if match:
-                doi = match.group(1)
+            doi_match = re.search(
+                r"Accepted date: [^\s]+ ([^\s]+)", pdfcontent, re.DOTALL
+            )
+            if doi_match:
+                doi = doi_match.group(1)
             else:
                 print("Could not find DOI")
                 return None
@@ -292,7 +295,7 @@ class ISSNKind(enum.Enum):
 
 
 def get_issns(
-    doi: str, verbose: bool = False
+    doi: str, *, verbose: bool = False
 ) -> tuple[str, list[tuple[ISSNKind, str]]] | None:
     data = get_doi_json(doi)
     if data is None:
@@ -337,7 +340,7 @@ def get_cg_by_name(name: str) -> CitationGroup | None:
 
 
 @CS.register
-def fill_issns(limit: int | None = None, verbose: bool = False) -> None:
+def fill_issns(limit: int | None = None, *, verbose: bool = False) -> None:
     for art in (
         Article.select_valid()
         .filter(
@@ -637,7 +640,7 @@ def set_multi(
             print(f"{art}: set citation group to {value}")
             art.citation_group = CitationGroup.get_or_create(value)
         elif attr == "isbn":
-            existing = art.getIdentifier(ArticleTag.ISBN)
+            existing = art.get_identifier(ArticleTag.ISBN)
             if existing:
                 if existing == value:
                     continue

@@ -318,7 +318,7 @@ def get_hesp_row(
                 if tag.source == nam.original_citation:
                     verbatim_tl.append(tag.text)
                 else:
-                    citation = ", ".join(tag.source.taxonomicAuthority())
+                    citation = ", ".join(tag.source.taxonomic_authority())
                     emended_tl.append(f'"{tag.text}" ({citation})')
             elif isinstance(tag, TypeTag.Coordinates):
                 try:

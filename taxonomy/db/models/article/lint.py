@@ -561,16 +561,14 @@ def must_have_bhl_url_from_names(art: Article, cfg: LintConfig) -> Iterable[str]
 
 
 @LINT.add("bhl_page_from_names")
-def infer_bhl_page_from_names(
-    art: Article, cfg: LintConfig, verbose: bool = False
-) -> Iterable[str]:
+def infer_bhl_page_from_names(art: Article, cfg: LintConfig) -> Iterable[str]:
     if not should_look_for_bhl_url(art):
-        if verbose:
+        if cfg.verbose:
             print(f"{art}: not looking for BHL URL")
         return
     bhl_page_ids = _get_bhl_page_ids_from_names(art)
     if not bhl_page_ids:
-        if verbose:
+        if cfg.verbose:
             print(f"{art}: no BHL page IDs from names")
         return
     item_ids = set()
@@ -582,20 +580,20 @@ def infer_bhl_page_from_names(
         yield f"names are on multiple BHL items: {item_ids} (from {bhl_page_ids})"
         return
     if not item_ids:
-        if verbose:
+        if cfg.verbose:
             print(f"{art}: no BHL item IDs from names")
         return
     item_id = item_ids.pop()
     item_metadata = bhl.get_item_metadata(item_id)
     if art.title is None:
-        if verbose:
+        if cfg.verbose:
             print(f"{art}: no title")
     elif item_metadata is not None and "Parts" in item_metadata:
         for part in item_metadata["Parts"]:
             simplified_part_title = helpers.simplify_string(part["Title"])
             simplified_my_title = helpers.simplify_string(art.title)
             if simplified_part_title != simplified_my_title:
-                if verbose:
+                if cfg.verbose:
                     print(
                         f"{art}: title {art.title!r} ({simplified_my_title!r}) does not match part title"
                         f" {part['Title']!r} ({simplified_part_title!r})"
@@ -604,7 +602,7 @@ def infer_bhl_page_from_names(
             part_id = part["PartID"]
             part_metadata = bhl.get_part_metadata(part_id)
             if part_metadata is None:
-                if verbose:
+                if cfg.verbose:
                     print(f"{art}: no metadata for part {part_id}")
                 continue
             part_page_ids = {page["PageID"] for page in part_metadata["Pages"]}
@@ -618,15 +616,15 @@ def infer_bhl_page_from_names(
                 else:
                     yield message
                 return
-            elif verbose:
+            elif cfg.verbose:
                 print(
                     f"{art}: not all known pages ({bhl_page_ids}) are in part {part_id} {part_page_ids}"
                 )
-    elif verbose:
+    elif cfg.verbose:
         print(f"{art}: no item metadata for {item_id}")
 
     if art.start_page is None or art.end_page is None:
-        if verbose:
+        if cfg.verbose:
             print(f"{art}: no start or end page")
         return
 
@@ -635,7 +633,7 @@ def infer_bhl_page_from_names(
     possible_start_pages = bhl.get_possible_pages(item_id, start_page)
     possible_end_pages = bhl.get_possible_pages(item_id, end_page)
     if len(possible_start_pages) != len(possible_end_pages):
-        if verbose:
+        if cfg.verbose:
             print(
                 f"{art}: different number of possible start and end pages"
                 f" {possible_start_pages} {possible_end_pages}"
@@ -648,7 +646,7 @@ def infer_bhl_page_from_names(
         if not bhl.is_contiguous_range(
             item_id, possible_start_page, possible_end_page, page_mapping
         ):
-            if verbose:
+            if cfg.verbose:
                 print(
                     f"{art}: non-contiguous range {possible_start_page}–{possible_end_page}"
                 )
@@ -659,7 +657,7 @@ def infer_bhl_page_from_names(
             start_page_idx <= page_mapping[page_id] <= end_page_idx
             for page_id in bhl_page_ids
         ):
-            if verbose:
+            if cfg.verbose:
                 print(
                     f"{art}: not all known pages are in range {possible_start_page}–{possible_end_page}"
                 )
@@ -1273,7 +1271,7 @@ def check_required_fields(art: Article, cfg: LintConfig) -> Iterable[str]:
         not art.author_tags
         and art.type is not ArticleType.SUPPLEMENT
         and not art.is_full_issue()
-        # TODO these should also have authors
+        # TODO: these should also have authors
         and art.kind is not ArticleKind.no_copy
     ):
         yield "missing author_tags"
@@ -1315,7 +1313,7 @@ def check_journal(art: Article, cfg: LintConfig) -> Iterable[str]:
 @LINT.add("pages")
 def check_start_end_page(art: Article, cfg: LintConfig) -> Iterable[str]:
     if art.type is not ArticleType.JOURNAL:
-        return  # TODO similar check for chapters
+        return  # TODO: similar check for chapters
     cg = art.citation_group
     if cg is None:
         return  # error emitted in check_journal()
@@ -1402,7 +1400,7 @@ def check_tags(art: Article, cfg: LintConfig) -> Iterable[str]:
             print(f"changing tags for {art}")
             getinput.print_diff(sorted(original_tags), tags)
         if cfg.autofix:
-            art.tags = tags  # type: ignore
+            art.tags = tags  # type: ignore[assignment]
         else:
             yield f"{art}: needs change to tags"
 
@@ -1598,7 +1596,7 @@ def check_must_use_children(art: Article, cfg: LintConfig) -> Iterable[str]:
 
 
 def get_num_referencing_tags(
-    model: BaseModel, art: Article, interactive: bool = True
+    model: BaseModel, art: Article, *, interactive: bool = True
 ) -> int:
     num_references = 0
     for field in model.clirm_fields.values():

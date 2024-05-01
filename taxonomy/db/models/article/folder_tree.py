@@ -70,7 +70,7 @@ class CountTreeNode:
     ) -> None:
         callback(self, path)
         for name, child in sorted(self.children.items()):
-            child.walk(path=path + (name,), callback=callback)
+            child.walk(path=(*path, name), callback=callback)
 
     def display(
         self,
@@ -173,7 +173,7 @@ class FolderTree:
             return
         self.full_path_suggestions[name_key][path_key].add(article.name)
         tree = self.count_tree
-        for i, part in enumerate(path_key + ("",)):
+        for i, part in enumerate((*path_key, "")):
             if not part:
                 tree.entries.add(article.name)
                 break
