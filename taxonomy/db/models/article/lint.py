@@ -1380,9 +1380,7 @@ def check_tags(art: Article, cfg: LintConfig) -> Iterable[str]:
         if isinstance(tag, ArticleTag.LSIDArticle):
             if not tag.text:
                 continue
-            tag = ArticleTag.LSIDArticle(  # noqa: PLW2901
-                clean_lsid(tag.text), tag.present_in_article
-            )
+            tag = ArticleTag.LSIDArticle(clean_lsid(tag.text), tag.present_in_article)
             if not is_valid_lsid(tag.text):
                 yield f"invalid LSID {tag.text}"
         elif isinstance(tag, ArticleTag.BiblioNoteArticle):

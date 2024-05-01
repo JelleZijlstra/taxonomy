@@ -531,7 +531,7 @@ def romanize_russian(cyrillic: str) -> str:
     out = []
     for i, c in enumerate(cyrillic):
         is_upper = c.isupper()
-        c = c.lower()  # noqa: PLW2901
+        c = c.lower()
         if c in TABLE:
             new_c = TABLE[c]
         elif c in ("е", "ё"):

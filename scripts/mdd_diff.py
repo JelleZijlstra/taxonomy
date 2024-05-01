@@ -209,7 +209,7 @@ def split_mdd_type(text: str) -> Iterable[tuple[str, str | None]]:
     text = re.sub(r"\[([^,\]]+),([^\]]+)\]", r"[\1]", text)
     pieces = text.split(",")
     for piece in pieces:
-        piece = piece.strip()  # noqa: PLW2901
+        piece = piece.strip()
         if match := re.fullmatch(r"(.*) \[([^\]]+)\]", piece):
             yield match.group(1), match.group(2)
         else:
@@ -239,11 +239,11 @@ def process_mdd_type(text: str) -> str | None:
     for piece, label in split_mdd_type(text):
         if label in ("paratype", "paralectotype"):
             continue
-        piece = piece.strip().rstrip(".")  # noqa: PLW2901
+        piece = piece.strip().rstrip(".")
         for rgx, sub in MDD_TYPE_REGEXES:
-            piece = re.sub(rgx, sub, piece)  # noqa: PLW2901
+            piece = re.sub(rgx, sub, piece)
         if "BMNH" in piece:
-            piece = models.name.lint.clean_up_bmnh_type(piece)  # noqa: PLW2901
+            piece = models.name.lint.clean_up_bmnh_type(piece)
         final.append(piece)
     return ", ".join(sorted(final))
 
@@ -387,7 +387,7 @@ def possible_mdd_authors(hesp_author: Person) -> Iterable[str]:
         yield hesp_author.get_transliterated_family_name()
 
     for family_name in _possible_family_names(hesp_author):
-        family_name = helpers.romanize_russian(family_name)  # noqa: PLW2901
+        family_name = helpers.romanize_russian(family_name)
         yield family_name
         if initials := hesp_author.get_initials():
             initials = helpers.romanize_russian(initials)

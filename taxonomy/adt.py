@@ -153,10 +153,10 @@ class _ADTMeta(type):
                 for key, value in member.kwargs.items():
                     origin = typing.get_origin(value)
                     if origin is typing.Required:
-                        (value,) = typing.get_args(value)  # noqa: PLW2901
+                        (value,) = typing.get_args(value)
                         required = True
                     elif origin is typing.NotRequired:
-                        (value,) = typing.get_args(value)  # noqa: PLW2901
+                        (value,) = typing.get_args(value)
                         required = False
                     else:
                         required = True

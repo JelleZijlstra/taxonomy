@@ -324,7 +324,7 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 if art.parent is None or art.parent.should_skip():
                     yield f"bad redirected article in tag {tag}"
                 elif cfg.autofix:
-                    tag = replace_arg(tag, arg_name, art.parent)  # noqa: PLW2901
+                    tag = replace_arg(tag, arg_name, art.parent)
         for arg_name, tag_nam in get_tag_fields_of_type(tag, Name):
             if tag_nam.is_invalid():
                 print(
