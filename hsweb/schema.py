@@ -74,7 +74,7 @@ def make_enum(python_enum: type[enum.Enum]) -> type[Enum]:
     return Enum.from_enum(python_enum)
 
 
-def build_graphene_field_from_adt_arg(typ: type[Any], is_required: bool) -> Field:
+def build_graphene_field_from_adt_arg(typ: type[Any], *, is_required: bool) -> Field:
     if typ is str:
         graphene_type = String
     elif typ is int:

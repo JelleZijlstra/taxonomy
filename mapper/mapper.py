@@ -372,7 +372,9 @@ LOCALITY_REPORT_TEMPLATE = {
 FORMAT_TO_STYLE = {ReportFormat.markdown: "paper", ReportFormat.wiki: "commons"}
 
 
-def print_report(map_data: MapData, format: ReportFormat, only_unsourced: bool) -> None:
+def print_report(
+    map_data: MapData, format: ReportFormat, *, only_unsourced: bool
+) -> None:
     for group in map_data["data"]:
         localities = group["localities"]
         if only_unsourced:
@@ -439,9 +441,11 @@ def main() -> None:
     with Path(args.datafile).open(encoding="utf-8") as f:
         map_data = json.load(f)
     if args.wiki_report:
-        print_report(map_data, ReportFormat.wiki, args.only_unsourced)
+        print_report(map_data, ReportFormat.wiki, only_unsourced=args.only_unsourced)
     elif args.markdown_report:
-        print_report(map_data, ReportFormat.markdown, args.only_unsourced)
+        print_report(
+            map_data, ReportFormat.markdown, only_unsourced=args.only_unsourced
+        )
     else:
         root_dir = Path(__file__).parent
         map_to_svg(map_data, root_dir)

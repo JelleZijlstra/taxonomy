@@ -61,7 +61,7 @@ def make_app(build_root: str | None = None) -> web.Application:
         ]
     )
     # invariance is too strict here
-    app.on_response_prepare.append(on_prepare)  # type: ignore
+    app.on_response_prepare.append(on_prepare)  # type: ignore[arg-type]
 
     graphql_schema = hesperomys_dir / "hesperomys.graphql"
     graphql_schema.write_text(schema.get_schema_string(schema.schema))
