@@ -156,7 +156,7 @@ def get_possible_items(
         ):
             matching_volume_item_ids.append(item["ItemID"])
         # Allow the year before in case it was published late
-        elif item_year == year or item_year == year - 1:
+        elif item_year in (year, year - 1):
             item_ids.append(item["ItemID"])
         elif "EndYear" in item:
             item_end_year = int(item["EndYear"])
@@ -165,7 +165,7 @@ def get_possible_items(
         elif "Volume" in item:
             if m := re.fullmatch(r"v.\d+ \((\d+)\)", item["Volume"]):
                 volume_year = int(m.group(1))
-                if year == volume_year or year == volume_year + 1:
+                if year in (volume_year, volume_year + 1):
                     item_ids.append(item["ItemID"])
     if matching_volume_item_ids:
         return matching_volume_item_ids

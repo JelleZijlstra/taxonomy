@@ -88,5 +88,4 @@ def render_markdown(text: str) -> str:
     """Turn '{x.pdf}' into '[A & B (2016](/a/123)'."""
     text = render_plain_text(text)
     text = re.sub(r"\{([^}]+)\}", _match_to_md_ref, text)
-    text = re.sub(r" @$", " [brackets original]", text)
-    return text
+    return re.sub(r" @$", " [brackets original]", text)

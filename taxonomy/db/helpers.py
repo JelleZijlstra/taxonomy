@@ -141,7 +141,7 @@ def rank_of_string(s: str) -> Rank:
 
 
 def root_name_of_name(s: str, rank: Rank) -> str:
-    if rank == Rank.species or rank == Rank.subspecies:
+    if rank in (Rank.species, Rank.subspecies):
         return s.split()[-1]
     elif group_of_rank(rank) == Group.family:
         return strip_rank(s, rank)
@@ -454,8 +454,7 @@ def clean_text(text: str) -> str:
     text = text.replace("’’", '"')
     text = text.replace("ʹ", "'")
     text = re.sub(r"(?<=[a-z])- (?=[a-z])", "", text)
-    text = re.sub(r" @$", " [brackets original]", text)
-    return text
+    return re.sub(r" @$", " [brackets original]", text)
 
 
 def unsplit_authors(authors: Sequence[str]) -> str:
@@ -1195,5 +1194,4 @@ def normalize_root_name_for_homonymy(root_name: str) -> str:
     root_name = re.sub(r"ianus$", "anus", root_name)
     # Adding one: "monticola" vs. "monticolus", where one is interpreted as an
     # adjective and the other as a noun in apposition.
-    root_name = re.sub(r"(a|um)$", "us", root_name)
-    return root_name
+    return re.sub(r"(a|um)$", "us", root_name)

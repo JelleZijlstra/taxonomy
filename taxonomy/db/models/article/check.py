@@ -467,7 +467,7 @@ def check_for_existing_file(lsfile: LsFile) -> str | None:
             "w": overwrite_redirect,
         },
     )
-    if cmd == "s" or cmd == "w":
+    if cmd in ("s", "w"):
         return name
     else:
         return None

@@ -153,8 +153,7 @@ def main() -> DataT:
     names = split_fields(names)
     names = translate_to_db(names)
     names = associate_names(names)
-    names = lib.write_to_db(names, SOURCE, dry_run=False)
-    return names
+    return lib.write_to_db(names, SOURCE, dry_run=False)
 
 
 if __name__ == "__main__":

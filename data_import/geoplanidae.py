@@ -20,7 +20,7 @@ def extract_raw_refs(filename: Path) -> list[list[str]]:
         if span.get("style") != 'font-size:4px;font-family:"Times"':
             continue
         text = span.get_text()
-        if text == "\nFEO\n" or text == "\nsum\n":
+        if text in ("\nFEO\n", "\nsum\n"):
             continue
         if "). See " in text:
             continue

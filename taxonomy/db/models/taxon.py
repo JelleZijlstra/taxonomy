@@ -1438,14 +1438,14 @@ class Taxon(BaseModel):
             print(f"Total names: {total} ({by_group})")
 
         def print_percentage(num: int, total: int, label: str) -> float:
-            if total == 0 or num == total:
+            if total in (0, num):
                 return 100.0
             return num * 100.0 / total
 
         def sort_key(pair: tuple[str, int]) -> tuple[float, int]:
             attribute, total = pair
             count = counts[attribute]
-            if total == 0 or count == total:
+            if total in (0, count):
                 return (100.0, total)
             else:
                 percentage = count * 100.0 / total
@@ -1603,7 +1603,7 @@ class Taxon(BaseModel):
         candidates = [
             name
             for name in self.sorted_names()
-            if name.root_name == attr or name.original_name == attr
+            if attr in (name.root_name, name.original_name)
         ]
         if len(candidates) == 1:
             return candidates[0]

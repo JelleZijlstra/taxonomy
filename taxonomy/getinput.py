@@ -370,8 +370,7 @@ def _smart_divide(word: str) -> str:
     # comma followed by letter
     word = re.sub(r"(?<=,)(?=[a-zA-Z])", " ", word)
     # right parenthesis not at end of word
-    word = re.sub(r"(?<=\))(?![$,])", " ", word)
-    return word
+    return re.sub(r"(?<=\))(?![$,])", " ", word)
 
 
 _WordRangeCommand = Callable[[int, int], object]
@@ -578,7 +577,7 @@ def get_adt_list(
                         existing=existing_member,
                         completers=completers,
                     )
-        elif member == "r" or member == "remove_all":
+        elif member in ("r", "remove_all"):
             if yes_no("Are you sure you want to remove all tags? "):
                 out[:] = []
         elif member.startswith("r") and member[1:].isnumeric():

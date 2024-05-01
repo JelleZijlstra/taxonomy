@@ -245,8 +245,7 @@ def citelemurnews(article: Article) -> str:
     # IUCN. 2008. IUCN Red List of Threatened Species. <www.iucnredlist.org>. Downloaded on 21 April
     # 2009.
     # final cleanup
-    out = re.sub(r"\s+", " ", re.sub(r"(?<!\.)\.\.(?!\.)", ".", out))
-    return out
+    return re.sub(r"\s+", " ", re.sub(r"(?<!\.)\.\.(?!\.)", ".", out))
 
 
 @register_cite_function("bzn")
@@ -286,8 +285,7 @@ def citebzn(article: Article) -> str:
             out += f", {article.place_of_publication}"
         out += "."
     # final cleanup
-    out = out.replace("  ", " ").replace("..", ".")
-    return out
+    return out.replace("  ", " ").replace("..", ".")
 
 
 @register_cite_function("jhe")
@@ -323,8 +321,7 @@ def citejhe(article: Article) -> str:
         out += "<!--Unknown citation type; fallback citation-->"
     # final cleanup
     out += "."
-    out = re.sub(r"\s+", " ", re.sub(r"(?<!\.)\.\.(?!\.)", ".", out))
-    return out
+    return re.sub(r"\s+", " ", re.sub(r"(?<!\.)\.\.(?!\.)", ".", out))
 
 
 @register_cite_function("archnathist")
@@ -402,8 +399,7 @@ def citepalaeontology(article: Article) -> str:
         out += "<!--Unknown citation type; fallback citation-->"
     # final cleanup
     out += "."
-    out = re.sub(r"\s+", " ", re.sub(r"(?<!\.)\.\.(?!\.)", ".", out))
-    return out
+    return re.sub(r"\s+", " ", re.sub(r"(?<!\.)\.\.(?!\.)", ".", out))
 
 
 @register_cite_function("jpal")
@@ -459,8 +455,7 @@ def citejpal(article: Article) -> str:
         out += "<!--Unknown citation type; fallback citation-->"
     # final cleanup
     out += "."
-    out = re.sub(r"\s+", " ", re.sub(r"(?<!\.)\.\.(?!\.)", ".", out))
-    return out
+    return re.sub(r"\s+", " ", re.sub(r"(?<!\.)\.\.(?!\.)", ".", out))
 
 
 @register_cite_function("palevol")
@@ -504,8 +499,7 @@ def citepalevol(article: Article) -> str:
         out += "<!--Unknown citation type; fallback citation-->"
     # final cleanup
     out += "."
-    out = re.sub(r"\s+", " ", re.sub(r"(?<!\.)\.\.(?!\.)", ".", out))
-    return out
+    return re.sub(r"\s+", " ", re.sub(r"(?<!\.)\.\.(?!\.)", ".", out))
 
 
 @register_cite_function("jvp")
@@ -558,8 +552,7 @@ def citejvp(article: Article) -> str:
         out += "<!--Unknown citation type; fallback citation-->"
     # final cleanup
     out += "."
-    out = re.sub(r"\s+", " ", re.sub(r"(?<!\.)\.\.(?!\.)", ".", out))
-    return out
+    return re.sub(r"\s+", " ", re.sub(r"(?<!\.)\.\.(?!\.)", ".", out))
 
 
 def getrefname(art: Article) -> str:
@@ -661,8 +654,7 @@ def citezootaxa(article: Article) -> str:
         out += "<!--Unknown citation type; fallback citation-->"
     # final cleanup
     out += "."
-    out = re.sub(r"\s+", " ", re.sub(r"(?<!\.)\.\.(?!\.)", ".", out))
-    return out
+    return re.sub(r"\s+", " ", re.sub(r"(?<!\.)\.\.(?!\.)", ".", out))
 
 
 @register_cite_function("commons")

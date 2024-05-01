@@ -686,12 +686,12 @@ def extract_gender_age(text: str) -> list[TypeTag]:
         out.append(TypeTag.Age(constants.SpecimenAge[text]))
     elif enum_has_member(constants.SpecimenGender, text):
         out.append(TypeTag.Gender(constants.SpecimenGender[text]))
-    elif (
-        text == "unsexed adult"
-        or text == "adult, sex not given"
-        or text == "adult, sex unknown"
-        or text == "adult unsexed"
-        or text == "adult (not sexed)"
+    elif text in (
+        "unsexed adult",
+        "adult, sex not given",
+        "adult, sex unknown",
+        "adult unsexed",
+        "adult (not sexed)",
     ):
         out.append(TypeTag.Age(constants.SpecimenAge.adult))
         out.append(TypeTag.Gender(constants.SpecimenGender.unknown))
@@ -703,11 +703,11 @@ def extract_gender_age(text: str) -> list[TypeTag]:
         age, gender = text.rsplit(maxsplit=1)
         if enum_has_member(constants.SpecimenAge, age):
             out.append(TypeTag.Age(constants.SpecimenAge[age]))
-        elif age == "immature" or age == "young":
+        elif age in ("immature", "young"):
             out.append(TypeTag.Age(constants.SpecimenAge.juvenile))
         elif age == "young adult":
             out.append(TypeTag.Age(constants.SpecimenAge.subadult))
-        elif age == "old" or age == "old adult" or age == "aged":
+        elif age in ("old", "old adult", "aged"):
             out.append(TypeTag.Age(constants.SpecimenAge.adult))
         if enum_has_member(constants.SpecimenGender, gender):
             out.append(TypeTag.Gender(constants.SpecimenGender[gender]))

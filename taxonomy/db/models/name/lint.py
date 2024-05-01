@@ -1613,7 +1613,7 @@ def check_family_root_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
         # The Code allows eliding -id- from the stem.
         return
     for stripped in helpers.name_with_suffixes_removed(nam.root_name):
-        if stripped == stem_name or stripped + "i" == stem_name:
+        if stem_name in (stripped, stripped + "i"):
             print(f"{nam}: Autocorrecting root name: {nam.root_name} -> {stem_name}")
             if cfg.autofix:
                 nam.root_name = stem_name

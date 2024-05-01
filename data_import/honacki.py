@@ -224,8 +224,7 @@ def resolve_original(nam: models.Name) -> models.Name:
 
 def get_authority(name: dict[str, Any]) -> str | None:
     if "authority" in name:
-        authority = re.sub(r"[A-Z]\. ", "", name["authority"])
-        return authority
+        return re.sub(r"[A-Z]\. ", "", name["authority"])
     return None
 
 

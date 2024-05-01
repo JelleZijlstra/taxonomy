@@ -1226,8 +1226,7 @@ class BaseModel(Model):
                     data[field] = cls.get_value_for_field_on_class(field)
                 except getinput.StopException:
                     return None
-        obj = cls.create(**data)
-        return obj
+        return cls.create(**data)
 
     @classmethod
     def create_many(cls) -> None:
