@@ -71,7 +71,7 @@ class Specimen(BaseModel):
     def add_comment(self, text: str | None = None) -> SpecimenComment | None:
         return SpecimenComment.create_interactively(specimen=self, text=text)
 
-    def display(self, full: bool = False) -> None:
+    def display(self, *, full: bool = False) -> None:
         super().display(full=full)
         for comment in SpecimenComment.select_valid().filter(
             SpecimenComment.specimen == self
@@ -196,7 +196,9 @@ class SpecimenComment(BaseModel):
     def get_description(self) -> str:
         components = [
             self.kind.name,
-            datetime.datetime.fromtimestamp(self.date).strftime("%b %d, %Y %H:%M:%S"),
+            datetime.datetime.fromtimestamp(self.date, tz=datetime.UTC).strftime(
+                "%b %d, %Y %H:%M:%S"
+            ),
         ]
         return f'{self.text} ({"; ".join(components)})'
 
@@ -213,6 +215,6 @@ class BoxType(enum.IntEnum):
 
 
 class SpecimenTag(adt.ADT):
-    TaxonCount(count=int, taxon=str, tag=1)  # type: ignore
-    FindKind(kind=KindOfFind, tag=2)  # type: ignore
-    Box(type=BoxType, taxon=str, description=str, tag=3)  # type: ignore
+    TaxonCount(count=int, taxon=str, tag=1)  # type: ignore[name-defined]
+    FindKind(kind=KindOfFind, tag=2)  # type: ignore[name-defined]
+    Box(type=BoxType, taxon=str, description=str, tag=3)  # type: ignore[name-defined]

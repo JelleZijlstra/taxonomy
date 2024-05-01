@@ -4,7 +4,7 @@ import sys
 from collections import defaultdict
 from collections.abc import Iterable
 from functools import lru_cache
-from typing import IO, Any, Self, TypeVar
+from typing import IO, Any, ClassVar, Self, TypeVar
 
 from clirm import Field
 
@@ -46,10 +46,10 @@ class Period(BaseModel):
     region = Field[Region | None]("region_id", related_name="periods")
     deleted = Field[bool](default=False)
 
-    derived_fields = [
+    derived_fields: ClassVar[list[DerivedField[Any]]] = [
         DerivedField("has_locations", bool, lambda period: period.has_locations())
     ]
-    search_fields = [
+    search_fields: ClassVar[list[SearchField]] = [
         SearchField(SearchFieldType.text, "name"),
         SearchField(SearchFieldType.literal, "system"),
         SearchField(SearchFieldType.literal, "rank"),
@@ -228,6 +228,7 @@ class Period(BaseModel):
 
     def display(
         self,
+        *,
         full: bool = False,
         depth: int = 0,
         file: IO[str] = sys.stdout,
@@ -258,7 +259,7 @@ class Period(BaseModel):
                     full=full, depth=depth + 2, file=file, locations=locations
                 )
 
-    def display_locations(self, full: bool = False) -> None:
+    def display_locations(self, *, full: bool = False) -> None:
         self.display(full=full, locations=True, children=True)
 
     def max_only_localities(self) -> Iterable[models.Location]:
@@ -275,7 +276,7 @@ class Period(BaseModel):
         return models.Location.make(self.name, region, self)
 
     def all_localities(
-        self, include_children: bool = True, include_partial: bool = False
+        self, *, include_children: bool = True, include_partial: bool = False
     ) -> set[models.Location]:
         if include_partial:
             locations = {*self.locations_min, *self.locations_max}
@@ -298,7 +299,7 @@ class Period(BaseModel):
         return {loc for loc in locations if loc.deleted is not True}
 
     def all_type_localities(
-        self, include_children: bool = True, include_partial: bool = False
+        self, *, include_children: bool = True, include_partial: bool = False
     ) -> list[models.Name]:
         return [
             nam
@@ -309,7 +310,7 @@ class Period(BaseModel):
         ]
 
     def display_type_localities(
-        self, include_children: bool = True, include_partial: bool = False
+        self, *, include_children: bool = True, include_partial: bool = False
     ) -> None:
         models.name.name.write_names(
             self.all_type_localities(
@@ -442,6 +443,7 @@ def _apply_next_correction(
 
 
 def display_period_tree(
+    *,
     min_count: int = 0,
     system: PeriodSystem | None = None,
     full: bool = False,

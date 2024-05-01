@@ -139,9 +139,9 @@ class Location(BaseModel):
 
     def display(
         self,
+        *,
         full: bool = False,
         organized: bool = False,
-        *,
         include_occurrences: bool = False,
         depth: int = 0,
         file: IO[str] = sys.stdout,
@@ -302,11 +302,11 @@ class Location(BaseModel):
             return obj
 
     @classmethod
-    def autodelete(cls, dry_run: bool = False) -> None:
+    def autodelete(cls, *, dry_run: bool = False) -> None:
         for loc in cls.select_valid():
             loc.maybe_autodelete(dry_run=dry_run)
 
-    def maybe_autodelete(self, dry_run: bool = True) -> None:
+    def maybe_autodelete(self, *, dry_run: bool = True) -> None:
         if self.deleted is LocationStatus.alias or not self.is_empty():
             return
         print(f"Autodeleting {self!r}")
@@ -369,19 +369,19 @@ class Location(BaseModel):
 
 class LocationTag(adt.ADT):
     # General locality; should be simplified if possible.
-    General(tag=1)  # type: ignore
+    General(tag=1)  # type: ignore[name-defined]
 
     # Locality identifiers in other databases
 
     # Paleobiology Database
-    PBDB(id=str, tag=2)  # type: ignore
+    PBDB(id=str, tag=2)  # type: ignore[name-defined]
 
     # {North America Tertiary-localities.pdf}, appendix to
     # Evolution of Tertiary Mammals of North America
-    ETMNA(id=str, tag=3)  # type: ignore
+    ETMNA(id=str, tag=3)  # type: ignore[name-defined]
 
     # Neogene of the Old World database
-    NOW(id=str, tag=4)  # type: ignore
+    NOW(id=str, tag=4)  # type: ignore[name-defined]
 
 
 def get_expected_general_name(region: Region, period: Period) -> str:

@@ -3,7 +3,7 @@ from __future__ import annotations
 import collections
 import sys
 from collections.abc import Iterable
-from typing import IO, Any, Self
+from typing import IO, Any, ClassVar, Self
 
 from clirm import Field
 
@@ -27,7 +27,7 @@ class Region(BaseModel):
     parent = Field[Self | None]("parent_id", related_name="children")
     kind = Field[constants.RegionKind]()
 
-    derived_fields = [
+    derived_fields: ClassVar[list[DerivedField[Any]]] = [
         DerivedField("has_collections", bool, lambda region: region.has_collections()),
         DerivedField(
             "has_citation_groups", bool, lambda region: region.has_citation_groups()
@@ -51,7 +51,7 @@ class Region(BaseModel):
             1,
         ),
     ]
-    search_fields = [
+    search_fields: ClassVar[list[SearchField]] = [
         SearchField(SearchFieldType.text, "name"),
         SearchField(SearchFieldType.literal, "kind"),
     ]
@@ -124,6 +124,7 @@ class Region(BaseModel):
 
     def display(
         self,
+        *,
         full: bool = False,
         depth: int = 0,
         file: IO[str] = sys.stdout,
@@ -154,6 +155,7 @@ class Region(BaseModel):
 
     def display_without_stratigraphy(
         self,
+        *,
         full: bool = False,
         depth: int = 0,
         file: IO[str] = sys.stdout,
@@ -221,6 +223,7 @@ class Region(BaseModel):
 
     def display_citation_groups(
         self,
+        *,
         full: bool = False,
         only_nonempty: bool = True,
         depth: int = 0,
@@ -258,7 +261,7 @@ class Region(BaseModel):
         return any(child.has_stratigraphic_units() for child in self.children)
 
     def display_collections(
-        self, full: bool = False, only_nonempty: bool = True, depth: int = 0
+        self, *, full: bool = False, only_nonempty: bool = True, depth: int = 0
     ) -> None:
         if only_nonempty and not self.has_collections():
             return
@@ -296,7 +299,7 @@ class Region(BaseModel):
             return True
         return any(child.has_periods() for child in self.children)
 
-    def display_periods(self, full: bool = False, depth: int = 0) -> None:
+    def display_periods(self, *, full: bool = False, depth: int = 0) -> None:
         if not self.has_periods():
             return
         print(" " * depth + self.name)

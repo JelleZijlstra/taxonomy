@@ -34,7 +34,7 @@ def get_names(paper: Article) -> list[models.Name]:
 
 
 def fill_data_from_paper(
-    paper: Article, ask_before_opening: bool = False, should_open: bool = True
+    paper: Article, *, ask_before_opening: bool = False, should_open: bool = True
 ) -> bool:
     if paper.id in _finished_papers:
         return True
@@ -222,6 +222,7 @@ CS = CommandSet(
 @CS.register
 def fill_data_from_paper_interactive(
     paper: Article | None = None,
+    *,
     ask_before_opening: bool = True,
     should_open: bool = True,
 ) -> None:
@@ -238,7 +239,7 @@ def fill_data_from_paper_interactive(
 
 @CS.register
 def fill_data_from_author(
-    author: Person | None = None, skip_nofile: bool = True
+    author: Person | None = None, *, skip_nofile: bool = True
 ) -> None:
     if author is None:
         author = Person.getter(None).get_one()
@@ -254,7 +255,7 @@ def fill_data_from_author(
 
 @CS.register
 def fill_data_for_children(
-    paper: Article | None = None, skip_nofile: bool = False
+    paper: Article | None = None, *, skip_nofile: bool = False
 ) -> None:
     if paper is None:
         paper = BaseModel.get_value_for_foreign_class(
@@ -296,6 +297,7 @@ def fill_data_on_taxon() -> None:
 
 @CS.register
 def fill_data_reverse_order(
+    *,
     ask_before_opening: bool = True,
     max_count: int | None = 500,
     include_lint: bool = True,
@@ -323,7 +325,10 @@ def fill_data_reverse_order(
 
 @CS.register
 def fill_data_from_folder(
-    folder: str | None = None, ask_before_opening: bool = True, skip_nofile: bool = True
+    folder: str | None = None,
+    *,
+    ask_before_opening: bool = True,
+    skip_nofile: bool = True,
 ) -> None:
     if folder is None:
         folder = Article.getter("path").get_one_key() or ""
@@ -338,6 +343,7 @@ def fill_data_from_folder(
 @CS.register
 def fill_data_from_citation_group(
     cg: CitationGroup | None = None,
+    *,
     ask_before_opening: bool = True,
     skip_nofile: bool = True,
 ) -> None:

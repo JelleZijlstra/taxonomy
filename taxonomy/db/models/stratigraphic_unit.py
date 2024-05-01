@@ -3,7 +3,7 @@ from __future__ import annotations
 import sys
 from collections.abc import Iterable
 from functools import lru_cache
-from typing import IO, Any, Self, TypeVar
+from typing import IO, Any, ClassVar, Self, TypeVar
 
 from clirm import Field
 
@@ -41,10 +41,10 @@ class StratigraphicUnit(BaseModel):
     region = Field[Region | None]("region_id", related_name="stratigraphic_units")
     deleted = Field[bool](default=False)
 
-    derived_fields = [
+    derived_fields: ClassVar[list[DerivedField[Any]]] = [
         DerivedField("has_locations", bool, lambda unit: unit.has_locations())
     ]
-    search_fields = [
+    search_fields: ClassVar[list[SearchField]] = [
         SearchField(SearchFieldType.text, "name"),
         SearchField(SearchFieldType.literal, "rank"),
         SearchField(SearchFieldType.text, "comment", highlight_enabled=True),
@@ -165,6 +165,7 @@ class StratigraphicUnit(BaseModel):
 
     def display(
         self,
+        *,
         full: bool = False,
         depth: int = 0,
         file: IO[str] = sys.stdout,
@@ -186,14 +187,16 @@ class StratigraphicUnit(BaseModel):
         for child in self.children:
             yield from child.all_localities()
 
-    def all_type_localities(self, include_children: bool = True) -> list[models.Name]:
+    def all_type_localities(
+        self, *, include_children: bool = True
+    ) -> list[models.Name]:
         if include_children:
             locs = self.all_localities()
         else:
             locs = self.locations
         return [nam for loc in locs for nam in loc.type_localities]
 
-    def display_type_localities(self, include_children: bool = True) -> None:
+    def display_type_localities(self, *, include_children: bool = True) -> None:
         models.name.name.write_names(
             self.all_type_localities(include_children=include_children), organized=True
         )

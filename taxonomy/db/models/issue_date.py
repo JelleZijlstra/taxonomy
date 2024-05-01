@@ -79,7 +79,7 @@ class IssueDate(BaseModel):
         return "".join(parts)
 
     @classmethod
-    def find_interactively(cls, edit: bool = True) -> IssueDate | None:
+    def find_interactively(cls, *, edit: bool = True) -> IssueDate | None:
         available_cgs = [
             CitationGroup.get(id=cgid) for cgid in _get_cgs_with_issue_dates()
         ]
@@ -90,7 +90,7 @@ class IssueDate(BaseModel):
 
     @classmethod
     def find_interactively_in_cg(
-        cls, cg: CitationGroup, edit: bool = True
+        cls, cg: CitationGroup, *, edit: bool = True
     ) -> IssueDate | None:
         options = list(cls.select_valid().filter(cls.citation_group == cg))
         volumes = sorted({issue_date.volume for issue_date in options})
@@ -150,7 +150,7 @@ class IssueDate(BaseModel):
 
 
 class IssueDateTag(ADT):
-    CommentIssueDate(text=str, optional_source=NotRequired[Article], tag=1)  # type: ignore
+    CommentIssueDate(text=str, optional_source=NotRequired[Article], tag=1)  # type: ignore[name-defined]
 
 
 @cache

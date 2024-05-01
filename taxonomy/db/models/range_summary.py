@@ -86,7 +86,7 @@ def get_age_bucket(
     return min_period_index, max_period_index
 
 
-def check_age_buckets(system: PeriodSystem, verbose: bool = False) -> None:
+def check_age_buckets(system: PeriodSystem, *, verbose: bool = False) -> None:
     periods = Period.select_valid().filter(Period.system == system)
     for period in periods:
         bucket = get_age_bucket(period, period)
@@ -117,7 +117,7 @@ class DataPoint:
         return self._bucket
 
     def _get_bucket(self) -> BucketKey | str:
-        # TODO minimize the number of cases we return None
+        # TODO: minimize the number of cases we return None
         region = self.location.region.parent_of_kind(RegionKind.continent)
         if region is None:
             return "no continent"
@@ -242,7 +242,7 @@ class RangeSummary:
                 reason_to_datapoints.setdefault(
                     "covers multiple age buckets", []
                 ).extend(buckets)
-                # TODO
+                # TODO: deal with this case
                 continue
             if region != current_continent:
                 if current_continent is not None:

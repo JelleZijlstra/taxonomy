@@ -6,7 +6,7 @@ import re
 import sys
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from typing import IO, Any, Self
+from typing import IO, Any, ClassVar, Self
 
 from clirm import Field
 
@@ -104,7 +104,7 @@ def get_derived_field_with_aliases(
 
     return DerivedField(
         name,
-        LazyType(lambda: list[lazy_model_cls()]),  # type: ignore
+        LazyType(lambda: list[lazy_model_cls()]),  # type: ignore[misc]
         compute_all=compute_all,
         pull_on_miss=False,
     )
@@ -131,7 +131,7 @@ class Person(BaseModel):
     bio = TextOrNullField()
     ol_id = Field[str | None]()
 
-    search_fields = [
+    search_fields: ClassVar[list[SearchField]] = [
         SearchField(SearchFieldType.text, "name"),
         SearchField(SearchFieldType.literal, "family_name"),
         SearchField(SearchFieldType.text, "bio"),
@@ -139,7 +139,7 @@ class Person(BaseModel):
         SearchField(SearchFieldType.literal, "naming_convention"),
     ]
 
-    derived_fields = [
+    derived_fields: ClassVar[list[DerivedField[Any]]] = [
         get_tag_based_derived_field(
             "patronyms",
             lambda: models.Name,
@@ -226,8 +226,8 @@ class Person(BaseModel):
     def __str__(self) -> str:
         return self.get_description()
 
-    def get_description(self, family_first: bool = False, url: bool = False) -> str:
-        parts = [self.get_full_name(family_first)]
+    def get_description(self, *, family_first: bool = False, url: bool = False) -> str:
+        parts = [self.get_full_name(family_first=family_first)]
         parens = []
         if self.birth or self.death:
             parens.append(f"{_display_year(self.birth)}–{_display_year(self.death)}")
@@ -242,7 +242,7 @@ class Person(BaseModel):
         parts.append(f" ({'; '.join(parens)})")
         return "".join(parts)
 
-    def get_full_name(self, family_first: bool = False) -> str:
+    def get_full_name(self, *, family_first: bool = False) -> str:
         parts = []
         if family_first:
             parts.append(self.family_name)
@@ -367,6 +367,7 @@ class Person(BaseModel):
 
     def display(
         self,
+        *,
         full: bool = False,
         depth: int = 0,
         file: IO[str] = sys.stdout,
@@ -639,7 +640,7 @@ class Person(BaseModel):
                 person.maybe_reassign_references()
 
     @classmethod
-    def find_duplicates(cls, autofix: bool = False) -> list[list[Person]]:
+    def find_duplicates(cls, *, autofix: bool = False) -> list[list[Person]]:
         by_key: dict[tuple[str | None, ...], list[Person]] = defaultdict(list)
         for person in cls.select_valid().filter(Person.type.is_in(UNCHECKED_TYPES)):
             key = (
@@ -671,6 +672,7 @@ class Person(BaseModel):
     def display_duplicates(
         cls,
         by_key: Mapping[Any, list[Person]],
+        *,
         autofix: bool = False,
         min_count: int = 0,
     ) -> list[list[Person]]:
@@ -775,11 +777,11 @@ class Person(BaseModel):
     def reassign_initials_only(self) -> None:
         arts = self.get_sorted_derived_field("articles")
         for art in arts:
-            art = art.reload()
+            art.load()
             art.specify_authors()
 
     def reassign_references(
-        self, target: Person | None = None, respect_ignore_lint: bool = True
+        self, target: Person | None = None, *, respect_ignore_lint: bool = True
     ) -> None:
         for field_name, tag_name, tag_cls in [
             ("books", "author_tags", AuthorTag.Author),
@@ -845,7 +847,7 @@ class Person(BaseModel):
             print("=== tussenvoegsel ===")
             helpers.print_character_names(self.tussenvoegsel)
 
-    def maybe_reassign_references(self, auto: bool = False) -> None:
+    def maybe_reassign_references(self, *, auto: bool = False) -> None:
         num_refs = self.total_references()
         if num_refs == 0:
             return
@@ -889,7 +891,7 @@ class Person(BaseModel):
                 self.reassign_references(respect_ignore_lint=auto)
                 return
 
-    def reassign_names_with_verbatim(self, filter_for_name: bool = False) -> None:
+    def reassign_names_with_verbatim(self, *, filter_for_name: bool = False) -> None:
         nams = self.get_derived_field("names")
         if not nams:
             return
@@ -976,7 +978,7 @@ class Person(BaseModel):
         self.target = target
         self.reassign_references(target=target)
 
-    def maybe_autodelete(self, dry_run: bool = True) -> None:
+    def maybe_autodelete(self, *, dry_run: bool = True) -> None:
         if self.type is not PersonType.unchecked:
             return
         num_refs = sum(self.num_references().values())
@@ -1037,7 +1039,7 @@ class Person(BaseModel):
                     person.reassign_references(target)
 
     @classmethod
-    def autodelete(cls, dry_run: bool = False) -> None:
+    def autodelete(cls, *, dry_run: bool = False) -> None:
         cls.compute_all_derived_fields()
         for person in cls.select_valid().filter(Person.type == PersonType.unchecked):
             person.maybe_autodelete(dry_run=dry_run)
@@ -1197,7 +1199,7 @@ class Person(BaseModel):
 
 # Reused in Article and Name
 class AuthorTag(adt.ADT):
-    Author(person=Person, tag=2)  # type: ignore
+    Author(person=Person, tag=2)  # type: ignore[name-defined]
 
 
 def get_new_authors_list() -> list[AuthorTag]:

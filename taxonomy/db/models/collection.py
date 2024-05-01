@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable
-from typing import Any, NotRequired, Self
+from typing import Any, ClassVar, NotRequired, Self
 
 from clirm import Field
 
 from taxonomy import adt, events, getinput, parsing
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
 from taxonomy.db import constants, helpers, models
+from taxonomy.db.derived_data import DerivedField
 
 from .article import Article
 from .base import ADTField, BaseModel, LintConfig, get_tag_based_derived_field
@@ -48,7 +49,7 @@ class Collection(BaseModel):
     tags = ADTField["CollectionTag"](is_ordered=False)
     parent = Field[Self | None]("parent_id", related_name="children")
 
-    derived_fields = [
+    derived_fields: ClassVar[list[DerivedField[Any]]] = [
         get_tag_based_derived_field(
             "associated_people",
             lambda: models.Person,
@@ -92,7 +93,7 @@ class Collection(BaseModel):
             1,
         ),
     ]
-    search_fields = [
+    search_fields: ClassVar[list[SearchField]] = [
         SearchField(SearchFieldType.text, "name"),
         SearchField(SearchFieldType.literal, "label"),
         SearchField(SearchFieldType.text, "comment", highlight_enabled=True),
@@ -206,7 +207,7 @@ class Collection(BaseModel):
         return obj
 
     def display(
-        self, full: bool = False, depth: int = 0, organized: bool = False
+        self, *, full: bool = False, depth: int = 0, organized: bool = False
     ) -> None:
         city = f", {self.city}" if self.city else ""
         print(" " * depth + f"{self!r}{city}, {self.location}")
@@ -231,7 +232,7 @@ class Collection(BaseModel):
                             print(" " * (depth + 8) + str(tag))
 
     def get_partial(
-        self, display: bool = False
+        self, *, display: bool = False
     ) -> tuple[list[models.name.Name], list[models.name.Name]]:
         multiple = []
         probable_repo = []

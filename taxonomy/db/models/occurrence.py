@@ -1,3 +1,5 @@
+from typing import ClassVar
+
 from clirm import Field
 
 from taxonomy.db.constants import OccurrenceStatus
@@ -20,7 +22,7 @@ class Occurrence(BaseModel):
     # is not ideal because we can also get an Occurrence from a location. Alternatively,
     # we could reassign the occurrence to the other taxon, but that may cause duplicate
     # occurrences.
-    fields_may_be_invalid = {"taxon"}
+    fields_may_be_invalid: ClassVar[set[str]] = {"taxon"}
 
     def add_comment(self, new_comment: str) -> None:
         if self.comment is None:

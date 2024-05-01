@@ -42,7 +42,7 @@ class SpeciesNameComplex(BaseModel):
     feminine_ending = Field[str]()
     neuter_ending = Field[str]()
     comment = Field[str | None]()
-    markdown_fields = {"comment"}
+    markdown_fields: ClassVar[set[str]] = {"comment"}
 
     search_fields: ClassVar[Sequence[SearchField]] = [
         SearchField(SearchFieldType.literal, "label"),
@@ -79,9 +79,9 @@ class SpeciesNameComplex(BaseModel):
 
     def display(
         self,
+        *,
         full: bool = False,
         organized: bool = False,
-        *,
         depth: int = 0,
         file: IO[str] = sys.stdout,
     ) -> None:
@@ -100,12 +100,13 @@ class SpeciesNameComplex(BaseModel):
                 tag_classes=(models.name.TypeTag.EtymologyDetail,),
             )
 
-    def self_apply(self, dry_run: bool = True) -> list[models.Name]:
+    def self_apply(self, *, dry_run: bool = True) -> list[models.Name]:
         return self.apply_to_ending(self.label, dry_run=dry_run)
 
     def apply_to_ending(
         self,
         ending: str,
+        *,
         dry_run: bool = True,
         interactive: bool = False,
         full_name_only: bool = True,
@@ -225,7 +226,7 @@ class SpeciesNameComplex(BaseModel):
         return list(self.names)
 
     def make_ending(
-        self, ending: str, comment: str | None = "", full_name_only: bool = False
+        self, ending: str, *, comment: str | None = "", full_name_only: bool = False
     ) -> SpeciesNameEnding:
         return SpeciesNameEnding.get_or_create(
             name_complex=self,
@@ -323,6 +324,7 @@ class SpeciesNameComplex(BaseModel):
         masculine_ending: str,
         feminine_ending: str,
         neuter_ending: str,
+        *,
         auto_apply: bool = False,
     ) -> SpeciesNameComplex:
         """Name based on a Latin adjective."""
@@ -341,19 +343,19 @@ class SpeciesNameComplex(BaseModel):
 
     @classmethod
     def first_declension(
-        cls, stem: str, auto_apply: bool = False, comment: str | None = None
+        cls, stem: str, *, auto_apply: bool = False, comment: str | None = None
     ) -> SpeciesNameComplex:
         return cls.adjective(stem, comment, "us", "a", "um", auto_apply=auto_apply)
 
     @classmethod
     def third_declension(
-        cls, stem: str, auto_apply: bool = False, comment: str | None = None
+        cls, stem: str, *, auto_apply: bool = False, comment: str | None = None
     ) -> SpeciesNameComplex:
         return cls.adjective(stem, comment, "is", "is", "e", auto_apply=auto_apply)
 
     @classmethod
     def invariant(
-        cls, stem: str, auto_apply: bool = False, comment: str | None = None
+        cls, stem: str, *, auto_apply: bool = False, comment: str | None = None
     ) -> SpeciesNameComplex:
         return cls.adjective(stem, comment, "", "", "", auto_apply=auto_apply)
 
@@ -397,7 +399,7 @@ class SpeciesNameComplex(BaseModel):
             return getattr(cls, kind)(stem=stem, comment=comment)
 
     def fill_data(
-        self, ask_before_opening: bool = True, skip_nofile: bool = True
+        self, *, ask_before_opening: bool = True, skip_nofile: bool = True
     ) -> None:
         citations = sorted(
             {
@@ -472,9 +474,9 @@ class NameComplex(BaseModel):
 
     def display(
         self,
+        *,
         full: bool = False,
         organized: bool = False,
-        *,
         depth: int = 0,
         file: IO[str] = sys.stdout,
     ) -> None:
@@ -496,10 +498,12 @@ class NameComplex(BaseModel):
                 tag_classes=(models.name.TypeTag.EtymologyDetail,),
             )
 
-    def self_apply(self, dry_run: bool = True) -> list[models.Name]:
+    def self_apply(self, *, dry_run: bool = True) -> list[models.Name]:
         return self.apply_to_ending(self.label, dry_run=dry_run)
 
-    def apply_to_ending(self, ending: str, dry_run: bool = True) -> list[models.Name]:
+    def apply_to_ending(
+        self, ending: str, *, dry_run: bool = True
+    ) -> list[models.Name]:
         """Adds the name complex to all names with a specific ending."""
         names = [
             name
@@ -1007,6 +1011,7 @@ class SpeciesNameEnding(BaseModel):
         cls,
         name_complex: SpeciesNameComplex,
         ending: str,
+        *,
         comment: str | None = None,
         full_name_only: bool = False,
     ) -> SpeciesNameEnding:

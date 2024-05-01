@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterable
-from typing import Any, TypeVar
+from typing import Any, ClassVar, TypeVar
 
 from clirm import Field
 
@@ -24,7 +24,7 @@ class Book(BaseModel):
     label_field = "title"
     call_sign = "B"
     clirm_table_name = "book"
-    fields_without_completers = {"data"}
+    fields_without_completers: ClassVar[set[str]] = {"data"}
 
     author_tags = ADTField["AuthorTag"]()
     year = Field[str | None]()
@@ -182,9 +182,9 @@ class Book(BaseModel):
 
 
 class BookTag(adt.ADT):
-    Language(language=SourceLanguage, tag=1)  # type: ignore
-    OriginalLanguage(language=SourceLanguage, tag=2)  # type: ignore
-    BookEdition(text=str, tag=3)  # type: ignore
+    Language(language=SourceLanguage, tag=1)  # type: ignore[name-defined]
+    OriginalLanguage(language=SourceLanguage, tag=2)  # type: ignore[name-defined]
+    BookEdition(text=str, tag=3)  # type: ignore[name-defined]
 
 
 def sort_key(book: Book) -> tuple[str, ...]:

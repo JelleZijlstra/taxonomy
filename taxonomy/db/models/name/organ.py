@@ -558,7 +558,7 @@ class Phalanx:
             # https://github.com/python/mypy/issues/16736
             case pos:  # type: ignore[misc]
                 pass
-        # TODO pyanalyze bug
+        # TODO: pyanalyze bug
         # static analysis: ignore[possibly_undefined_name]
         return ("Phalanx", self.digit, pos)
 
@@ -959,7 +959,7 @@ class ParsedOrgan:
             "posterior",
         )
         if organ is not SpecimenOrgan.vertebra:
-            affixes = affixes + ("L", "R")
+            affixes = (*affixes, "L", "R")
         while True:
             text, affix = remove_affix(text, affixes)
             if affix is not None:
