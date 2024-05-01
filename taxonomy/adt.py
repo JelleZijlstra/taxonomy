@@ -5,7 +5,7 @@ import operator
 import sys
 import typing
 from collections.abc import Callable, Iterable, Iterator, MutableMapping
-from typing import TYPE_CHECKING, Any, Literal, TypeVar
+from typing import TYPE_CHECKING, Any, Literal, Self, TypeVar
 
 BASIC_TYPES: tuple[type[Any], ...] = (int, str, float, bool)
 
@@ -106,21 +106,21 @@ def _adt_member_replace(self: Any, **kwargs: Any) -> Any:
 
 class _ADTMeta(type):
     @classmethod
-    def __prepare__(mcs, name: str, bases: Any) -> _ADTNamespace:  # type: ignore
+    def __prepare__(cls, name: str, bases: Any) -> _ADTNamespace:  # type: ignore[override]
         return _ADTNamespace(sys._getframe(1).f_globals)
 
-    def __new__(mcs, name: str, bases: Any, ns: Any) -> Any:
-        if "_is_member" in ns and ns["_is_member"]:
-            return super().__new__(mcs, name, bases, ns)
+    def __new__(cls, name: str, bases: Any, ns: Any) -> Any:
+        if "_is_member" in ns and ns["_is_member"]:  # noqa: RUF019
+            return super().__new__(cls, name, bases, ns)
         members = {}
         for key, value in list(ns.items()):
             if isinstance(value, _ADTMember):
                 members[key] = value
                 del ns[key]
         new_cls = super().__new__(
-            mcs, name, bases, dict(ns.items(), _members=tuple(members))
+            cls, name, bases, dict(ns.items(), _members=tuple(members))
         )
-        new_cls._tag_to_member = {}  # type: ignore
+        new_cls._tag_to_member = {}  # type: ignore[attr-defined]
         if name in members and not members[name].called:
             del members[name]
             has_self_cls = True
@@ -153,10 +153,10 @@ class _ADTMeta(type):
                 for key, value in member.kwargs.items():
                     origin = typing.get_origin(value)
                     if origin is typing.Required:
-                        (value,) = typing.get_args(value)
+                        (value,) = typing.get_args(value)  # noqa: PLW2901
                         required = True
                     elif origin is typing.NotRequired:
-                        (value,) = typing.get_args(value)
+                        (value,) = typing.get_args(value)  # noqa: PLW2901
                         required = False
                     else:
                         required = True
@@ -210,10 +210,10 @@ class _ADTMeta(type):
 
                 cls_obj.__init__ = make_init(member_cls)
             constructors.append(Literal[member_cls])
-            new_cls._tag_to_member[member.tag] = member_cls  # type: ignore
+            new_cls._tag_to_member[member.tag] = member_cls  # type: ignore[attr-defined]
             setattr(new_cls, member.name, member_cls)
         if constructors:
-            new_cls._Constructors = functools.reduce(operator.or_, constructors)  # type: ignore
+            new_cls._Constructors = functools.reduce(operator.or_, constructors)  # type: ignore[attr-defined]
         return new_cls
 
 
@@ -255,7 +255,7 @@ class ADT(_ADTBase, metaclass=_ADTMeta):
             return [self._tag]
 
     @classmethod
-    def unserialize(cls: type[_ADTT], value: list[Any]) -> _ADTT:
+    def unserialize(cls, value: list[Any]) -> Self:
         tag = value[0]
         member_cls = cls._tag_to_member[tag]
         if member_cls._has_args:
@@ -278,7 +278,7 @@ class ADT(_ADTBase, metaclass=_ADTMeta):
                     args.append(serialized)
             return member_cls(*args)
         else:
-            return member_cls  # type: ignore
+            return member_cls  # type: ignore[return-value]
 
     def __repr__(self) -> str:
         member_name = type(self).__name__

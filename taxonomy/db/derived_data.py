@@ -56,7 +56,10 @@ class DerivedField(Generic[T]):
     pull_on_miss: bool = True
 
     def get_value(
-        self, model: "taxonomy.db.models.base.BaseModel", force_recompute: bool = False
+        self,
+        model: "taxonomy.db.models.base.BaseModel",
+        *,
+        force_recompute: bool = False,
     ) -> T:
         data = load_derived_data()
         model_data = data.setdefault(model.call_sign, {})
@@ -74,7 +77,10 @@ class DerivedField(Generic[T]):
             return self.deserialize(object_data.get(self.name), self.get_type())
 
     def get_raw_value(
-        self, model: "taxonomy.db.models.base.BaseModel", force_recompute: bool = False
+        self,
+        model: "taxonomy.db.models.base.BaseModel",
+        *,
+        force_recompute: bool = False,
     ) -> T:
         data = load_derived_data()
         model_data = data.setdefault(model.call_sign, {})
@@ -89,7 +95,7 @@ class DerivedField(Generic[T]):
             object_data[self.name] = self.serialize(value)
             return object_data[self.name]
         else:
-            return object_data.get(self.name)  # type: ignore
+            return object_data.get(self.name)  # type: ignore[return-value]
 
     def set_value(self, model: "taxonomy.db.models.base.BaseModel", value: T) -> None:
         data = load_derived_data()

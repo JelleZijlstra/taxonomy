@@ -28,7 +28,7 @@ def get_cache_dir() -> Path:
     return path
 
 
-def get_titles_data(force: bool = False) -> list[dict[str, str]]:
+def get_titles_data(*, force: bool = False) -> list[dict[str, str]]:
     cache_dir = get_cache_dir()
     cache_file = cache_dir / "titles.txt"
     if force or not cache_file.exists():
@@ -536,7 +536,7 @@ def parse_possible_bhl_url(url: str) -> ParsedUrl:
         return ParsedUrl(UrlType.other_bhl, url)
     elif "biostor.org" in url:
         return ParsedUrl(UrlType.other_biostor, url)
-    # TODO parse these more precisely so we get consistent URLs
+    # TODO: parse these more precisely so we get consistent URLs
     # Maybe make specific types into subclasses of ParsedUrl instead,
     # so they can have different types of payloads.
     elif "books.google.com" in url:

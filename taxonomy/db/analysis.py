@@ -57,7 +57,7 @@ class _SuffixTree:
             raise AttributeError(attr)
 
 
-def genus_suffix_tree(no_complex_only: bool = False) -> _SuffixTree:
+def genus_suffix_tree(*, no_complex_only: bool = False) -> _SuffixTree:
     query = models.Name.select().filter(models.Name.group == constants.Group.genus)
     if no_complex_only:
         query = query.filter(models.Name.name_complex == None)

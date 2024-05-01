@@ -2,6 +2,7 @@
 
 import csv
 from collections.abc import Container
+from pathlib import Path
 from typing import Protocol, TypedDict
 
 from taxonomy import getinput
@@ -121,7 +122,7 @@ def export_names(
     """Export data about names to a CSV file."""
     names = get_names_for_export(taxon, ages, group, limit, min_rank_for_age_filtering)
 
-    with open(filename, "w") as f:
+    with Path(filename).open("w") as f:
         writer: "csv.DictWriter[str]" = csv.DictWriter(
             f, list(NameData.__annotations__), escapechar="\\"
         )
@@ -289,7 +290,7 @@ def export_taxa(filename: str, *, limit: int | None = None) -> None:
     """Export data about taxa to a CSV file."""
     taxa = Taxon.select_valid().limit(limit)
 
-    with open(filename, "w") as f:
+    with Path(filename).open("w") as f:
         writer: "csv.DictWriter[str]" = csv.DictWriter(
             f, list(TaxonData.__annotations__), escapechar="\\"
         )
@@ -333,7 +334,7 @@ def data_for_collection(collection: Collection) -> CollectionData:
 
 @CS.register
 def export_collections(filename: str) -> None:
-    with open(filename, "w") as f:
+    with Path(filename).open("w") as f:
         writer: "csv.DictWriter[str]" = csv.DictWriter(
             f, list(CollectionData.__annotations__)
         )
@@ -357,7 +358,7 @@ class OccurrenceData(TypedDict):
 
 @CS.register
 def export_occurrences(filename: str) -> None:
-    with open(filename, "w") as f:
+    with Path(filename).open("w") as f:
         writer: "csv.DictWriter[str]" = csv.DictWriter(
             f, list(OccurrenceData.__annotations__)
         )

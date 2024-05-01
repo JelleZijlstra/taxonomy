@@ -71,7 +71,7 @@ class Branch(Definition):
         assert (
             len(self.excluded) >= 1
         ), f"Brancho-based defitions need at least one excluded taxon (got {self.excluded})."
-        super().__init__(DefinitionType.branch, [self.anchor] + self.excluded)
+        super().__init__(DefinitionType.branch, [self.anchor, *self.excluded])
 
     def __str__(self) -> str:
         return ">{}~{}".format(

@@ -124,7 +124,7 @@ def group_of_rank(rank: Rank) -> Group:
 
 
 def name_with_suffixes_removed(name: str) -> Iterable[str]:
-    suffixes = list(SUFFIXES.values()) + ["ida", "oidae", "ides", "i", "a", "ae", "ia"]
+    suffixes = [*SUFFIXES.values(), "ida", "oidae", "ides", "i", "a", "ae", "ia"]
     for suffix in suffixes:
         if name.endswith(suffix):
             yield re.sub(rf"{suffix}$", "", name)
@@ -150,7 +150,7 @@ def root_name_of_name(s: str, rank: Rank) -> str:
         return s
 
 
-def strip_rank(name: str, rank: Rank, quiet: bool = False) -> str:
+def strip_rank(name: str, rank: Rank, *, quiet: bool = False) -> str:
     def strip_of_suffix(name: str, suffix: str) -> str | None:
         if re.search(suffix + "$", name):
             return re.sub(suffix + "$", "", name)
@@ -187,7 +187,7 @@ def is_nominate_subspecies(ssp: str) -> bool:
     parts = re.sub(r' \(([A-Za-z"\-\. ]+)\)', "", ssp).split(" ")
     if len(parts) != 3:
         print(parts)
-        raise Exception("Invalid subspecies name: " + ssp)
+        raise ValueError("Invalid subspecies name: " + ssp)
     return parts[1] == parts[2]
 
 
@@ -225,7 +225,7 @@ def convert_gender(name: str, gender: constants.GrammaticalGender) -> str:
     if gender == constants.GrammaticalGender.masculine:
         return name
     elif gender == constants.GrammaticalGender.feminine:
-        # TODO this will fail occasionally
+        # TODO: this will fail occasionally
         if name.endswith("us"):
             return re.sub(r"us$", "a", name)
         elif name.endswith("er"):
@@ -250,10 +250,10 @@ def _canonicalize_gender(name: str) -> str:
     elif name.endswith("era"):
         return name[:-1]
     elif name.endswith("a"):
-        # TODO this will have a boatload of false positives
+        # TODO: this will have a boatload of false positives
         return re.sub(r"a$", "us", name)
     elif name.endswith("um"):
-        # TODO this will have a boatload of false positives
+        # TODO: this will have a boatload of false positives
         return re.sub(r"um$", "us", name)
     else:
         return name
@@ -297,7 +297,7 @@ def _standardize_inner(date: str) -> str:
     ]
     for fmt in date_month_formats:
         try:
-            dt = datetime.datetime.strptime(date, fmt)
+            dt = datetime.datetime.strptime(date, fmt).astimezone(datetime.UTC)
         except ValueError:
             pass
         else:
@@ -316,7 +316,7 @@ def _standardize_inner(date: str) -> str:
     ]
     for fmt in dmy_formats:
         try:
-            dt = datetime.datetime.strptime(date, fmt)
+            dt = datetime.datetime.strptime(date, fmt).astimezone(datetime.UTC)
         except ValueError:
             pass
         else:
@@ -531,7 +531,7 @@ def romanize_russian(cyrillic: str) -> str:
     out = []
     for i, c in enumerate(cyrillic):
         is_upper = c.isupper()
-        c = c.lower()
+        c = c.lower()  # noqa: PLW2901
         if c in TABLE:
             new_c = TABLE[c]
         elif c in ("е", "ё"):
@@ -559,7 +559,7 @@ def _clean_up_word(word: str) -> str:
     return word.rstrip("s")
 
 
-def simplify_string(text: str, clean_words: bool = True) -> str:
+def simplify_string(text: str, *, clean_words: bool = True) -> str:
     """Simplify a string.
 
     This is intended to remove punctuation, casing, and similar
@@ -1100,7 +1100,7 @@ def parse_date(year: str, month: str | None, day: str | None) -> str:
 
 
 def is_valid_roman_numeral(s: str) -> bool:
-    # TODO stricter validation
+    # TODO: stricter validation
     return bool(re.fullmatch(r"[ivxlc]+", s))
 
 
