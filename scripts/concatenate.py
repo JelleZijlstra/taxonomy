@@ -1,6 +1,4 @@
-"""
-
-Script to concatenate a series of PDFs into one.
+"""Script to concatenate a series of PDFs into one.
 
 Requires GhostScript to be installed.
 

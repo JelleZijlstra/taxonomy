@@ -233,14 +233,16 @@ def handle_template(template: Template) -> None:
             return
         elif command in ("d", "doi"):
             if "doi" in template.args:
-                subprocess.run(["open", f"http://dx.doi.org/{template.args['doi']}"])
+                subprocess.run(
+                    ["open", f"http://dx.doi.org/{template.args['doi']}"], check=False
+                )
             else:
                 print("no doi", flush=True)
         elif command in ("u", "url"):
             if "chapter-url" in template.args:
-                subprocess.run(["open", template.args["chapter-url"]])
+                subprocess.run(["open", template.args["chapter-url"]], check=False)
             elif "url" in template.args:
-                subprocess.run(["open", template.args["url"]])
+                subprocess.run(["open", template.args["url"]], check=False)
             else:
                 print("no url", flush=True)
         elif command in ("p", "print"):

@@ -1,8 +1,4 @@
-"""
-
-Package for Article and related code.
-
-"""
+"""Package for Article and related code."""
 
 __all__ = [
     "add_data",

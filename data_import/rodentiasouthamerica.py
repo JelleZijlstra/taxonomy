@@ -57,41 +57,36 @@ def extract_names(pages: Iterable[tuple[int, list[str]]]) -> DataT:
                     current_lines = [line]
                     current_pages = [page]
                     last_author = re.sub(r" \[?\d{4}[a-z]?\]?\..*$", "", line)
+            elif not line:
+                pass
+            elif line.strip() == "Literature Cited":
+                found_references = True
+            elif line.replace(" ", "").startswith(("synonym:", "synonyms:")):
+                in_synonymy = True
+            elif not in_synonymy:
+                pass
+            elif re.match(
+                (
+                    r" +([a-z] ){5,}| +This subspecies| +This is|KEY TO| +The |"
+                    r" +Endemic to| +Additional| +Distribution:| +Although| +In"
+                    r" South| +A gray| +Known primarily|Map \d+"
+                ),
+                line,
+            ):
+                in_synonymy = False
+            elif re.search(
+                r"^[A-Z][a-z]+ [a-z]+ \(?[A-ZÉ][\. a-zA-Z\-]+, \d{4}\)?$", line
+            ):
+                in_synonymy = False
+            elif line.startswith(" "):
+                assert current_lines
+                current_lines.append(line)
             else:
-                if not line:
-                    pass
-                elif line.strip() == "Literature Cited":
-                    found_references = True
-                elif line.replace(" ", "").startswith(("synonym:", "synonyms:")):
-                    in_synonymy = True
-                elif not in_synonymy:
-                    pass
-                elif re.match(
-                    (
-                        r" +([a-z] ){5,}| +This subspecies| +This is|KEY TO| +The |"
-                        r" +Endemic to| +Additional| +Distribution:| +Although| +In"
-                        r" South| +A gray| +Known primarily|Map \d+"
-                    ),
-                    line,
-                ):
-                    in_synonymy = False
-                elif re.search(
-                    r"^[A-Z][a-z]+ [a-z]+ \(?[A-ZÉ][\. a-zA-Z\-]+, \d{4}\)?$", line
-                ):
-                    in_synonymy = False
-                elif line.startswith(" "):
-                    assert current_lines
-                    current_lines.append(line)
-                else:
-                    if current_lines:
-                        yield {
-                            "raw_text": current_lines,
-                            "pages": current_pages,
-                            "t": 1,
-                        }
-                        current_lines = []
-                    current_lines = [line]
-                    current_pages = [page]
+                if current_lines:
+                    yield {"raw_text": current_lines, "pages": current_pages, "t": 1}
+                    current_lines = []
+                current_lines = [line]
+                current_pages = [page]
 
 
 def build_refs_dict(refs: DataT) -> RefsDictT:

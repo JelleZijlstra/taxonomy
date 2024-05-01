@@ -1,6 +1,4 @@
-"""
-
-This is an OK state except that many names cannot easily be matched yet.
+"""This is an OK state except that many names cannot easily be matched yet.
 Probably best to first do some work adding name combinations to the DB.
 
 """

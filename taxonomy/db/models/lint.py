@@ -1,8 +1,4 @@
-"""
-
-Abstraction for linting models.
-
-"""
+"""Abstraction for linting models."""
 
 from __future__ import annotations
 

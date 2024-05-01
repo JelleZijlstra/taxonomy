@@ -1,6 +1,4 @@
-"""
-
-Example invocation:
+"""Example invocation:
 
 python -m scripts.mdd_diff notes/mdd/v1.12/MDD_v1.12_6718species.csv --csv mdd-compare.csv -i authority -i authority_exact -i higher_classification -i original_name -i original_name_missing_mdd -i type_specimen -i type_specimen_missing_hesp -i type_specimen_missing_mdd -i year
 

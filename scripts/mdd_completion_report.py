@@ -1,8 +1,4 @@
-"""
-
-Script to print completion rates for MDD.
-
-"""
+"""Script to print completion rates for MDD."""
 
 import gspread
 

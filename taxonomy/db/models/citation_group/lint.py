@@ -1,8 +1,4 @@
-"""
-
-Lint steps for Articles.
-
-"""
+"""Lint steps for Articles."""
 
 import functools
 import re
@@ -162,7 +158,7 @@ def infer_bhl_biblio_from_children(cg: CitationGroup, cfg: LintConfig) -> Iterab
         bibliographies.pop(biblio, None)
     if not bibliographies:
         return
-    message = f"inferred BHL tags {bibliographies} " f"from child articles and names"
+    message = f"inferred BHL tags {bibliographies} from child articles and names"
     if cfg.autofix:
         print(f"{cg}: {message}")
         for biblio in bibliographies:

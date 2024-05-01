@@ -1669,11 +1669,10 @@ class Name(BaseModel):
                     if verbose:
                         print(f"1 because {field} is set")
                     return 1
-            else:
-                if getattr(self, field) is None:
-                    if verbose:
-                        print(f"1 because {field} is missing")
-                    return 1
+            elif getattr(self, field) is None:
+                if verbose:
+                    print(f"1 because {field} is missing")
+                return 1
         if verbose:
             print("2 because all fields are set")
         return 2
@@ -1782,23 +1781,22 @@ class Name(BaseModel):
                     tag_list(missing_derived_tags),
                 )
             return (FillDataLevel.nothing_needed, "")
+        elif missing_fields:
+            return (
+                FillDataLevel.needs_basic_data,
+                f"missing {', '.join(sorted(missing_fields))}",
+            )
+        elif missing_details_tags:
+            return (FillDataLevel.missing_detail, tag_list(missing_details_tags))
+        elif missing_derived_tags:
+            return (FillDataLevel.missing_detail, tag_list(missing_derived_tags))
+        elif required_details_tags:
+            return (
+                FillDataLevel.no_data_from_original,
+                "has all required tags, but no data from original",
+            )
         else:
-            if missing_fields:
-                return (
-                    FillDataLevel.needs_basic_data,
-                    f"missing {', '.join(sorted(missing_fields))}",
-                )
-            elif missing_details_tags:
-                return (FillDataLevel.missing_detail, tag_list(missing_details_tags))
-            elif missing_derived_tags:
-                return (FillDataLevel.missing_detail, tag_list(missing_derived_tags))
-            elif required_details_tags:
-                return (
-                    FillDataLevel.no_data_from_original,
-                    "has all required tags, but no data from original",
-                )
-            else:
-                return (FillDataLevel.nothing_needed, "")
+            return (FillDataLevel.nothing_needed, "")
 
     def has_tag_from_source(self, tag_cls: TypeTagCons, source: Article) -> bool:
         tag_id = tag_cls._tag

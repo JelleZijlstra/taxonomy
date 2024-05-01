@@ -336,9 +336,8 @@ class Collection(BaseModel):
             if code_tag.specimen_regex:
                 if not re.fullmatch(code_tag.specimen_regex, spec.catalog_number):
                     return f"catalog number {spec.catalog_number!r} does not match regex {code_tag.specimen_regex}"
-            else:
-                if not DEFAULT_TRIPLET_REGEX.fullmatch(spec.catalog_number):
-                    return f"catalog number {spec.catalog_number!r} does not match default regex"
+            elif not DEFAULT_TRIPLET_REGEX.fullmatch(spec.catalog_number):
+                return f"catalog number {spec.catalog_number!r} does not match default regex"
             if self.id == BMNH_COLLECTION:
                 return _validate_bmnh(spec.collection_code, spec.catalog_number)
         return None

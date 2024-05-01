@@ -1,8 +1,4 @@
-"""
-
-Exporting data.
-
-"""
+"""Exporting data."""
 
 import csv
 from collections.abc import Container

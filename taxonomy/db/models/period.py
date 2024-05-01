@@ -108,9 +108,8 @@ class Period(BaseModel):
         if self.parent is None:
             if requires_parent is RequirednessLevel.required:
                 yield f"{self}: must have a parent"
-        else:
-            if requires_parent is RequirednessLevel.disallowed:
-                yield f"{self}: may not have a parent"
+        elif requires_parent is RequirednessLevel.disallowed:
+            yield f"{self}: may not have a parent"
         if (
             self.system.is_continuous()
             and self.next is not None

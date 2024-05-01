@@ -1,8 +1,4 @@
-"""
-
-Helpers for retrieving user input.
-
-"""
+"""Helpers for retrieving user input."""
 
 import difflib
 import enum

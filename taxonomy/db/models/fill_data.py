@@ -1,8 +1,4 @@
-"""
-
-System for ensuring that names with original citations have their data filled out.
-
-"""
+"""System for ensuring that names with original citations have their data filled out."""
 
 from __future__ import annotations
 

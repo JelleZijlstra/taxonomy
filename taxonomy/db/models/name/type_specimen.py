@@ -1,6 +1,4 @@
-"""
-
-Code for parsing and processing type specimen texts.
+"""Code for parsing and processing type specimen texts.
 
 The main interface is parse_type_specimen().
 

@@ -1,6 +1,4 @@
-"""
-
-Cache for arbitrary external data.
+"""Cache for arbitrary external data.
 
 Motivating use case: caching CrossRef API responses.
 

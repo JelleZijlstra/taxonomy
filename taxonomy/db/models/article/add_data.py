@@ -1,8 +1,4 @@
-"""
-
-Adding data to (usually new) files.
-
-"""
+"""Adding data to (usually new) files."""
 
 import enum
 import json

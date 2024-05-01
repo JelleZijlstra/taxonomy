@@ -1,8 +1,4 @@
-"""
-
-Module for high-level analysis of the database.
-
-"""
+"""Module for high-level analysis of the database."""
 
 import collections
 from collections import Counter

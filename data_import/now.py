@@ -1,6 +1,4 @@
-"""
-
-Importing data from the NOW database.
+"""Importing data from the NOW database.
 
 Needs an import file "nowlocs.tsv", to be downloaded from
 http://pantodon.science.helsinki.fi/now/locality_list.php

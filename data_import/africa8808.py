@@ -28,9 +28,8 @@ def extract_names(pages: PagesT) -> DataT:
                         current_name = []
                     current_name = [line]
                     starting_page = page
-            else:
-                if current_name:
-                    current_name.append(line)
+            elif current_name:
+                current_name.append(line)
 
 
 def split_fields(names: DataT) -> DataT:

@@ -1,8 +1,4 @@
-"""
-
-Implementation of pre-computed derived data.
-
-"""
+"""Implementation of pre-computed derived data."""
 
 import enum
 import pickle

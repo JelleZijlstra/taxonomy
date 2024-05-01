@@ -1,6 +1,4 @@
-"""
-
-Shell commands, functions that can be called directly from the shell.
+"""Shell commands, functions that can be called directly from the shell.
 
 This is mostly used for functions that check certain invariants in the database.
 
@@ -593,10 +591,9 @@ def species_root_name_mismatch() -> Iterable[Name]:
             if original_root_name not in forms:
                 print(f"{nam}: {original_root_name} does not match {nam.root_name}")
                 yield nam
-        else:
-            if original_root_name != nam.root_name:
-                print(f"{nam}: {original_root_name} does not match {nam.root_name}")
-                yield nam
+        elif original_root_name != nam.root_name:
+            print(f"{nam}: {original_root_name} does not match {nam.root_name}")
+            yield nam
 
 
 def _duplicate_finder(
@@ -2462,11 +2459,11 @@ def mocc(
     if t is None:
         t = Taxon.getter(None).get_one("taxon> ")
     if t is None:
-        return None
+        return
     if source is None:
         source = Article.getter(None).get_one("source> ")
     if source is None:
-        return None
+        return
     while True:
         loc = models.Location.getter(None).get_one("location> ")
         if loc is None:
@@ -2484,11 +2481,11 @@ def multi_taxon(
     if loc is None:
         loc = models.Location.getter(None).get_one("location> ")
     if loc is None:
-        return None
+        return
     if source is None:
         source = Article.getter(None).get_one("source> ")
     if source is None:
-        return None
+        return
     while True:
         t = Taxon.getter(None).get_one("taxon> ")
         if t is None:

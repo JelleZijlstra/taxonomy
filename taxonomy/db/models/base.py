@@ -71,7 +71,6 @@ class _FieldEditor:
             self.instance.fill_required_fields()
         else:
             self.instance.fill_field(field)
-        return None
 
     def __dir__(self) -> list[str]:
         return ["all"] + sorted(self.instance.clirm_fields.keys())
@@ -1169,9 +1168,8 @@ class BaseModel(Model):
             if field in deprecated_fields:
                 if value is not None and value != ():
                     yield field
-            else:
-                if value is None or value == ():
-                    yield field
+            elif value is None or value == ():
+                yield field
 
     def get_deprecated_fields(self) -> Iterable[str]:
         return ()
@@ -1217,7 +1215,7 @@ class BaseModel(Model):
         return self.markdown_link()
 
     def markdown_link(self) -> str:
-        return f"[{str(self)}]({self.get_url()})"
+        return f"[{self!s}]({self.get_url()})"
 
     @classmethod
     def create_interactively(cls: type[ModelT], **kwargs: Any) -> ModelT | None:
@@ -1609,7 +1607,7 @@ def _call_obj(
             try:
                 args[name] = _fill_param(name, param, use_default=use_default)
             except getinput.StopException:
-                return None
+                return
     result = obj(**args)
     print("Result:", result)
 

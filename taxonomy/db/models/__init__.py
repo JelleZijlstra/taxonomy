@@ -1,8 +1,4 @@
-"""
-
-Definitions of various models.
-
-"""
+"""Definitions of various models."""
 
 __all__ = [
     "Article",

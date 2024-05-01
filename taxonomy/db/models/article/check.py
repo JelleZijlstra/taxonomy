@@ -1,8 +1,4 @@
-"""
-
-Checking for new files.
-
-"""
+"""Checking for new files."""
 
 import os
 import re

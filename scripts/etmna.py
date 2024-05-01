@@ -1,6 +1,4 @@
-"""
-
-Script for associating data from the book
+"""Script for associating data from the book
 Evolution of Tertiary Mammals in North America (ETMNA).
 
 """

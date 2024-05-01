@@ -1,8 +1,4 @@
-"""
-
-Lint steps for Names.
-
-"""
+"""Lint steps for Names."""
 
 from __future__ import annotations
 
@@ -1074,10 +1070,9 @@ def _check_preoccupation_tag(
                 new_tag = NameTag.SecondaryHomonymOf(tag.name, tag.comment)
             else:
                 yield f"{nam} is marked as preoccupied by {senior_name}, but is not a primary or secondary homonym"
-    else:
-        if isinstance(tag, (NameTag.PrimaryHomonymOf, NameTag.SecondaryHomonymOf)):
-            yield f"{nam} is not a species-group name, but uses {type(tag).__name__} tag"
-            new_tag = NameTag.PreoccupiedBy(tag.name, tag.comment)
+    elif isinstance(tag, (NameTag.PrimaryHomonymOf, NameTag.SecondaryHomonymOf)):
+        yield f"{nam} is not a species-group name, but uses {type(tag).__name__} tag"
+        new_tag = NameTag.PreoccupiedBy(tag.name, tag.comment)
     if (
         nam.get_normalized_root_name_for_homonymy()
         != senior_name.get_normalized_root_name_for_homonymy()
@@ -1130,9 +1125,8 @@ def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                         f" target {tag.name}"
                     )
                     new_tag = NameTag.NameCombinationOf(tag.name, tag.comment)
-            else:
-                if nam.taxon != tag.name.taxon:
-                    yield f"{nam} is not assigned to the same name as {tag.name}"
+            elif nam.taxon != tag.name.taxon:
+                yield f"{nam} is not assigned to the same name as {tag.name}"
             if isinstance(tag, NameTag.VariantOf) and nam.original_citation is not None:
                 # should be specified to unjustified emendation or incorrect subsequent spelling
                 yield f"{nam} is marked as a variant, but has an original citation"
@@ -1857,14 +1851,11 @@ def check_justified_emendations(nam: Name, cfg: LintConfig) -> Iterable[str]:
                     f" name {nam.root_name}"
                 )
             yield from _check_as_emended_name(target, cfg)
-        else:
+        elif nam.root_name != target.root_name:
             # Else it should be a justified emendation for something straightforward
             # (e.g., removing diacritics), so the root_name should match.
             # But the CON may not match exactly, because the species may have moved genera etc.
-            if nam.root_name != target.root_name:
-                yield (
-                    f"root name {nam.root_name} does not match emended name {target}"
-                )
+            yield f"root name {nam.root_name} does not match emended name {target}"
     elif nam.nomenclature_status is NomenclatureStatus.incorrect_original_spelling:
         ios_target = nam.get_tag_target(NameTag.IncorrectOriginalSpellingOf)
         if ios_target is None:

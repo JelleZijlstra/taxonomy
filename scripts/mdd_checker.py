@@ -1,8 +1,4 @@
-"""
-
-Script to check for and fix issues in the MDD species sheet.
-
-"""
+"""Script to check for and fix issues in the MDD species sheet."""
 
 import argparse
 import csv

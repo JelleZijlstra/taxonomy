@@ -1480,7 +1480,7 @@ class ArticleTag(adt.ADT):
 def _getpdfcontent(path: str) -> str:
     # only get first page
     return subprocess.run(
-        ["pdftotext", path, "-", "-l", "1"], stdout=subprocess.PIPE
+        ["pdftotext", path, "-", "-l", "1"], stdout=subprocess.PIPE, check=False
     ).stdout.decode("utf-8", "replace")
 
 

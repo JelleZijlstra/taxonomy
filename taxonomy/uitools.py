@@ -145,7 +145,7 @@ def get_line(
             message=message, default=default, history=history, completer=completer
         )
     except EOFError:
-        raise EndOfInput() from None
+        raise EndOfInput from None
 
 
 class _Completer(prompt_toolkit.completion.Completer):

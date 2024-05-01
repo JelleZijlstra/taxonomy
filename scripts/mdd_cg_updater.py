@@ -1,7 +1,4 @@
-"""
-Script to sync the journals sheet.
-
-"""
+"""Script to sync the journals sheet."""
 
 import argparse
 import csv

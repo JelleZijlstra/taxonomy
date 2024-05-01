@@ -48,7 +48,7 @@ def run_names(output_f: IO[str]) -> None:
         tags = list(nam.get_tags(nam.type_tags, TypeTag.LSIDName))
         if len(tags) < 2:
             continue
-        print(f"- {str(nam)}", file=output_f)
+        print(f"- {nam!s}", file=output_f)
         for tag in tags:
             presence = is_present(nam.original_citation, tag.text)
             print(

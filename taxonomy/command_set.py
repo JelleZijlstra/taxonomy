@@ -1,8 +1,4 @@
-"""
-
-Registration for a set of commands to be used in the shell.
-
-"""
+"""Registration for a set of commands to be used in the shell."""
 
 from collections.abc import Callable
 from dataclasses import dataclass, field

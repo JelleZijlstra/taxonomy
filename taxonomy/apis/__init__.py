@@ -1,5 +1,1 @@
-"""
-
-Interacting with external APIs.
-
-"""
+"""Interacting with external APIs."""

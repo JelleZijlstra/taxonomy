@@ -1,8 +1,4 @@
-"""
-
-Interacting with AWS CloudSearch.
-
-"""
+"""Interacting with AWS CloudSearch."""
 
 import enum
 from dataclasses import dataclass

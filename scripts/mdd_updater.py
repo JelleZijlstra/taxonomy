@@ -1,6 +1,4 @@
-"""
-
-Notes for auto-gsheet updating:
+"""Notes for auto-gsheet updating:
 
 - Use https://pypi.org/project/gspread/
 - For now, leave alone species status (_S. borbonicus_, squirrels) and spelling (bats)
@@ -482,7 +480,7 @@ class FixableDifference:
 
 def _open_urls(urls: str) -> None:
     for url in urls.split(" | "):
-        subprocess.run(["open", url])
+        subprocess.run(["open", url], check=False)
 
 
 def compare_column(

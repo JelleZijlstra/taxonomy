@@ -1,6 +1,4 @@
-"""
-
-File that gets loaded on startup of the taxonomy shell.
+"""File that gets loaded on startup of the taxonomy shell.
 
 Contents overlap with shell.py, which defines "commands".
 
@@ -364,8 +362,7 @@ def clean_regions(kind: RegionKind, print_only: bool = False) -> None:
                 child.kind = new_kind
             print("Perform fixup")
             Region.getter(None).get_and_edit()
-        else:
-            if getinput.yes_no("Edit manually?"):
-                for child in children:
-                    print(child)
-                    child.fill_field("kind")
+        elif getinput.yes_no("Edit manually?"):
+            for child in children:
+                print(child)
+                child.fill_field("kind")

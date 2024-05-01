@@ -1,8 +1,4 @@
-"""
-
-Dates of publication for issues.
-
-"""
+"""Dates of publication for issues."""
 
 from __future__ import annotations
 

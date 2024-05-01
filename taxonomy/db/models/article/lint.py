@@ -1,8 +1,4 @@
-"""
-
-Lint steps for Articles.
-
-"""
+"""Lint steps for Articles."""
 
 import bisect
 import re
@@ -65,9 +61,8 @@ def check_name(art: Article, cfg: LintConfig) -> Iterable[str]:
                 f"non-electronic article (kind {art.kind!r}) should not have a"
                 " file extension"
             )
-    else:
-        if art.kind.is_electronic():
-            yield "electronic article should have a file extension"
+    elif art.kind.is_electronic():
+        yield "electronic article should have a file extension"
 
 
 @LINT.add("path")
@@ -75,17 +70,16 @@ def check_path(art: Article, cfg: LintConfig) -> Iterable[str]:
     if art.kind.is_electronic():
         if art.path is None or art.path == "NOFILE":
             yield "electronic article should have a path"
-    else:
-        if art.path is not None:
-            message = (
-                f"non-electronic article (kind {art.kind!r}) should have no"
-                f" path, but has {art.path}"
-            )
-            if cfg.autofix:
-                print(f"{art}: {message}")
-                art.path = None
-            else:
-                yield message
+    elif art.path is not None:
+        message = (
+            f"non-electronic article (kind {art.kind!r}) should have no"
+            f" path, but has {art.path}"
+        )
+        if cfg.autofix:
+            print(f"{art}: {message}")
+            art.path = None
+        else:
+            yield message
 
 
 @LINT.add("type_kind")
@@ -624,14 +618,12 @@ def infer_bhl_page_from_names(
                 else:
                     yield message
                 return
-            else:
-                if verbose:
-                    print(
-                        f"{art}: not all known pages ({bhl_page_ids}) are in part {part_id} {part_page_ids}"
-                    )
-    else:
-        if verbose:
-            print(f"{art}: no item metadata for {item_id}")
+            elif verbose:
+                print(
+                    f"{art}: not all known pages ({bhl_page_ids}) are in part {part_id} {part_page_ids}"
+                )
+    elif verbose:
+        print(f"{art}: no item metadata for {item_id}")
 
     if art.start_page is None or art.end_page is None:
         if verbose:
@@ -1169,9 +1161,8 @@ def journal_specific_cleanup(art: Article, cfg: LintConfig) -> Iterable[str]:
                     f"series {art.series} does not match regex"
                     f" {may_have_series.text} for {cg}"
                 )
-        else:
-            if art.series is not None:
-                yield f"is in {cg}, which does not support series"
+        elif art.series is not None:
+            yield f"is in {cg}, which does not support series"
     if cg.name == "Proceedings of the Zoological Society of London":
         year = art.numeric_year()
         if art.volume is None:
@@ -1200,9 +1191,8 @@ def journal_specific_cleanup(art: Article, cfg: LintConfig) -> Iterable[str]:
         if 107 <= volume <= 113:
             if art.series not in ("A", "B"):
                 yield "PZSL articles in volumes 107–113 must have series"
-        else:
-            if art.series:
-                yield "PZSL article may not have series"
+        elif art.series:
+            yield "PZSL article may not have series"
     jnh = "Journal of Natural History Series "
     if cg.name.startswith(jnh):
         message = "fixing Annals and Magazine citation group"
@@ -1309,9 +1299,8 @@ def check_journal(art: Article, cfg: LintConfig) -> Iterable[str]:
         if not re.fullmatch(rgx, volume):
             message = f"regex {tag.text!r}" if tag else "default volume regex"
             yield f"volume {volume!r} does not match {message} (CG {cg})"
-    else:
-        if not art.is_in_press():
-            yield "missing volume"
+    elif not art.is_in_press():
+        yield "missing volume"
     if art.issue is not None:
         issue = re.sub(r"[–_]", "-", art.issue)
         issue = re.sub(r"^(\d+)/(\d+)$", r"\1–\2", issue)

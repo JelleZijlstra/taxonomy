@@ -1,8 +1,4 @@
-"""
-
-Tag classes that need to defined after all models for import cycle reasons.
-
-"""
+"""Tag classes that need to defined after all models for import cycle reasons."""
 
 from __future__ import annotations
 

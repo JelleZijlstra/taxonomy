@@ -1,8 +1,4 @@
-"""
-
-Code for parsing organ texts.
-
-"""
+"""Code for parsing organ texts."""
 
 from __future__ import annotations
 

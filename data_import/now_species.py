@@ -1,6 +1,4 @@
-"""
-
-Match up data with NOW.
+"""Match up data with NOW.
 
 Needs an export file from NOW containing its locality and species data.
 

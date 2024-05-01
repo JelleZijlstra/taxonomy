@@ -1,6 +1,4 @@
-"""
-
-Code to encode phylogenetic definitions.
+"""Code to encode phylogenetic definitions.
 
 Generally follows Article 9 of the PhyloCode: http://www.ohio.edu/phylocode/art9.html
 
@@ -12,7 +10,7 @@ from collections.abc import Iterable
 from typing import TYPE_CHECKING, Any, Union
 
 if TYPE_CHECKING:
-    from .models.taxon import Taxon  # noqa: F401
+    from .models.taxon import Taxon
 
 _Taxon = Union[int, "Taxon"]
 
