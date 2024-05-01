@@ -73,16 +73,7 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = [
-  "F",
-  "E",
-  "I",  # import sorting
-  "ANN",  # type annotations for everything
-  "C4",  # flake8-comprehensions
-  "B",  # bugbear
-  "SIM",  # simplify
-  "UP",  # pyupgrade
-  "PIE",  # various nice rules
-  "PERF",  # unnecessary list() calls that can be replaced with literals
+  "ALL",
 ]
 
 ignore = [
@@ -104,6 +95,69 @@ ignore = [
   "SIM110",  # doesn't always make code better
   "SIM115",  # needs a bigger rewrite
   "PERF401",  # too eager to add list comprehensions
+  "T201",  # print is useful in a command-line app
+  "T203",  # so is pprint
+  "COM812",  # Black can take care of trailing commas
+  "D103",  # I don't want to write docstrings for everything
+  "D105",  # more docstring
+  "D100",  # more docstring
+  "D101",  # more docstring
+  "D102",  # more docstring
+  "D104",  # more docstring
+  "D106",  # more docstring
+  "D107",  # why would I want a docstring on __init__
+  "D401",  # don't want to rewrite docstring syntax
+  "D400",  # same
+  "D404",  # same
+  "D415",  # same
+  "D205",  # same
+  "S101",  # assert is fine
+  "C901",  # I will make my code as complex as I want
+  "PLR0913",  # more complexity
+  "PLR0912",  # more complexity
+  "PLR0916", # more complexity
+  "PLR0915", # more complexity
+  "PLR0911", # more complexity
+  "ARG001",  # unused function arguments are often necessary
+  "ARG002",  # same for methods
+  "ARG005",  # same for lambdas
+  "ARG003",  # same for classmethods
+  "PT015",  # shouldn't use pytest.fail outside tests
+  "RET505",  # I like to keep the if and else symmetrical
+  "RET506",  # same
+  "RET507",  # same
+  "RET508",  # same
+  "N818",  # not every exception needs to end with Error
+  "S607",  # overly paranoid subprocess stuff
+  "S603",  # same
+  "PLR2004",  # not everything needs to be a constant
+  "SLF001",  # nothing is private
+  "RUF001",  # yes, I am using an en dash
+  "RUF003",  # yes, I am using an en dash
+  "TCH003",  # no "if TYPE_CHECKING"
+  "TCH001",  # same
+  "TCH002",  # same
+  "EM101",  # really weak justification
+  "TD002",  # leave my TODOs
+  "TD003",  # leave my TODOs
+  "FIX002", # leave my TODOs
+  "TRY003",  # long messages are useful
+  "EM102",  # I can't use f-strings in exceptions?
+  "A002",  # sometimes "type" is the best name
+  "A001",  # or "input"
+  "D203",  # these are conflicting and none of them sound appealing
+  "D211",
+  "D212",
+  "D213",
+  "BLE001",  # I only blindly catch exceptions if I know it's the right thing to do
+  "S110",  # some exceptions are not worth logging
+  "ERA001",  # false positives
+  "PLC0414",  # import renaming is good for type checkers
+  "PLW0603",  # sometimes a global is the right tool
+  "S301",  # sometimes pickle is useful
+  "S102",  # and so is exec()
+  "N807",  # __init__ was the right name
+  "PLW2901",  # too many false positives
 ]
 
 [tool.ruff.lint.per-file-ignores]
