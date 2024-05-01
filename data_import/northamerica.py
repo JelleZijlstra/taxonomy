@@ -13,7 +13,7 @@ NAME_REGEX = re.compile(
     (?P<verbatim_citation>.+)\.
     (\s\((?P<note>.+)\))?
     $
-""",
+    """,
     re.VERBOSE,
 )
 HARDCODED = {
@@ -154,7 +154,7 @@ def extract_taxa(pages: Iterable[tuple[int, list[str]]]) -> DataT:
     yield current_taxon
 
 
-def name_of_text(text: str, is_genus: bool) -> dict[str, Any]:
+def name_of_text(text: str, *, is_genus: bool) -> dict[str, Any]:
     match = NAME_REGEX.match(text)
     assert match, f"failed to match {text}"
     name: dict[str, Any] = {

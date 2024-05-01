@@ -2,6 +2,7 @@ import copy
 import re
 import unicodedata
 from collections.abc import Iterable
+from pathlib import Path
 from typing import Any
 
 from taxonomy.db import constants, models
@@ -43,7 +44,7 @@ KEY_TO_KIND = {
 
 def make_translation_table() -> dict[str, str]:
     out = {}
-    with open("data_import/data/zmmu-transcribe.txt") as f:
+    with Path("data_import/data/zmmu-transcribe.txt").open() as f:
         for line in f:
             line = unicodedata.normalize("NFC", line.strip())
             if " " in line:
@@ -297,7 +298,9 @@ def main() -> DataT:
     refs_dict = make_references_dict(refs)
     names = lib.clean_text(names)
     names = split_fields(names, refs_dict)
-    names = lib.translate_to_db(names, "ZMMU", SOURCE, verbose=False)
+    names = lib.translate_to_db(
+        names, collection_name="ZMMU", source=SOURCE, verbose=False
+    )
     conf = lib.NameConfig(
         original_name_fixes={
             "Neomys fodiens brachyotis": "Neomys fodiens brachyotus",

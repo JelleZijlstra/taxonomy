@@ -96,7 +96,7 @@ def split_fields(names: DataT) -> DataT:
 
 def translate_type_localities(names: DataT) -> DataT:
     for name in names:
-        # hack
+        # special cases
         if "original_name" in name:
             if "kalubu" in name["original_name"]:
                 name["authority"] = "Fischer"
@@ -163,7 +163,7 @@ def main() -> DataT:
         "Lemur spectrum": "Simia spectrum",
     }
     config = lib.NameConfig(author_fixes, original_name_fixes)
-    names = lib.associate_types(names, config)
+    names = lib.associate_types(names, name_config=config)
     names = lib.associate_names(names, config, start_at="Babirusa celebensis")
     lib.write_to_db(names, SOURCE, dry_run=False, edit_if_no_holotype=False)
     # lib.print_counts(names, 'type_locality')

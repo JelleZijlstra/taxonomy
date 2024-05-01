@@ -195,7 +195,7 @@ def maybe_get(exclude_list: IO[str], cat_num: str) -> Name | None:
 
 
 def handle_cannot_find(
-    row: dict[str, str], cat_num: str, exclude_list: IO[str], dry_run: bool
+    row: dict[str, str], cat_num: str, exclude_list: IO[str], *, dry_run: bool
 ) -> str:
     maybe_name = extract_name_and_status(row)
     if maybe_name is None:
@@ -354,7 +354,7 @@ def should_exclude_type(type_status: str) -> bool:
     )
 
 
-def main(dry_run: bool = True) -> None:
+def main(*, dry_run: bool = True) -> None:
     hesp_data = get_hesp_data()
     total = cannot_find = added_tag = tag_present = excluded_count = excluded_status = 0
     statuses: Counter[str] = Counter()
@@ -371,7 +371,7 @@ def main(dry_run: bool = True) -> None:
                 excluded_count += 1
                 continue
             if cat_num not in hesp_data:
-                result = handle_cannot_find(row, cat_num, exclude_f, dry_run)
+                result = handle_cannot_find(row, cat_num, exclude_f, dry_run=dry_run)
                 statuses[result] += 1
                 if result == "not a type":
                     excluded_status += 1

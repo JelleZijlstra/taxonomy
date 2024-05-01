@@ -172,7 +172,7 @@ def extract_names(pages: Iterable[tuple[int, list[str]]]) -> DataT:
                         elif can_be_name_header(line):
                             line_kind = LineKind.name_header
                         else:
-                            # TODO this probably has false negatives
+                            # TODO: this probably has false negatives
                             line_kind = LineKind.continuation
 
                     line_kinds.append(line_kind)

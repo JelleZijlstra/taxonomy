@@ -68,7 +68,7 @@ def extract_names(pages: PagesT) -> DataT:
     yield current_name
 
 
-def split_fields(names: DataT, verbose: bool = False) -> DataT:
+def split_fields(names: DataT, *, verbose: bool = False) -> DataT:
     for name in names:
         name["raw_text"] = dict(name)
         text = name["name"]

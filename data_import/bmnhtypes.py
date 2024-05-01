@@ -30,7 +30,7 @@ def split_fields(names: DataT) -> DataT:
         yield name
 
 
-def filter_known(names: DataT, verbose: bool = False) -> DataT:
+def filter_known(names: DataT, *, verbose: bool = False) -> DataT:
     types = {
         nam.type_specimen: nam
         for nam in Name.filter(Name.collection == models.Collection.by_label("FMNH"))

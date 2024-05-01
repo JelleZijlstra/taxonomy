@@ -216,7 +216,7 @@ def _get_hesp_data() -> dict[str, list[Name]]:
 
 def get_vertnet_db(filename: Path) -> Iterable[Row]:
     with filename.open() as f:
-        rows: Iterable[Row] = csv.DictReader(f, dialect="excel-tab")  # type: ignore
+        rows: Iterable[Row] = csv.DictReader(f, dialect="excel-tab")  # type: ignore[assignment]
         yield from rows
 
 
@@ -294,14 +294,14 @@ def _get_ts_link(row: Row) -> TypeTag:
 
 def get_tags(row: Row) -> Iterable[TypeTag]:
     locality = " ... ".join(
-        f"{row[column]}" for column in LOCALITY_COLUMNS if row[column]  # type: ignore
+        f"{row[column]}" for column in LOCALITY_COLUMNS if row[column]  # type: ignore[literal-required]
     )
     if "[" in locality:
         locality += " [brackets original]"
     if locality:
         yield TypeTag.LocationDetail(locality, get_source())
     text = " ... ".join(
-        f"[{column}] {row[column]}" for column in DETAIL_COLUMNS if row[column]  # type: ignore
+        f"[{column}] {row[column]}" for column in DETAIL_COLUMNS if row[column]  # type: ignore[literal-required]
     )
     text += f" [at {row['references']}]"
     yield TypeTag.SpecimenDetail(text, get_source())
@@ -334,7 +334,7 @@ def parse_sex(text: str) -> constants.SpecimenGender | None:
 
 
 def _handle_interactively(
-    nam: Name, row: Row, cat_num: str, exclude_list: IO[str], interactive: bool
+    nam: Name, row: Row, cat_num: str, exclude_list: IO[str], *, interactive: bool
 ) -> None:
     if not interactive:
         return
@@ -373,7 +373,9 @@ def _can_add_to_type_specimen(nam: Name, row: Row) -> bool:
             return False
 
 
-def _maybe_get(exclude_list: IO[str], cat_num: str, interactive: bool) -> Name | None:
+def _maybe_get(
+    exclude_list: IO[str], cat_num: str, *, interactive: bool
+) -> Name | None:
     if interactive:
         nam = Name.getter(None).get_one("name> ")
         if nam is None:
@@ -389,7 +391,7 @@ def _maybe_get(exclude_list: IO[str], cat_num: str, interactive: bool) -> Name |
 
 
 def _handle_cannot_find(
-    row: Row, cat_num: str, exclude_list: IO[str], dry_run: bool, interactive: bool
+    row: Row, cat_num: str, exclude_list: IO[str], *, dry_run: bool, interactive: bool
 ) -> str:
     parsed = _split_name(row)
     if parsed is None:
@@ -415,7 +417,7 @@ def _handle_cannot_find(
                 f"cannot find {name} {authority}, {year} ({cat_num},"
                 f" {row['typestatus']})"
             )
-            nam = _maybe_get(exclude_list, cat_num, interactive)
+            nam = _maybe_get(exclude_list, cat_num, interactive=interactive)
             if nam is None:
                 return "cannot find name"
     tags = list(get_tags(row))
@@ -430,7 +432,7 @@ def _handle_cannot_find(
             f"{cat_num} {row['typestatus']}: mapped to {nam}, {nam.type_specimen},"
             f" {nam.collection}, {tags}"
         )
-        new_nam = _maybe_get(exclude_list, cat_num, interactive)
+        new_nam = _maybe_get(exclude_list, cat_num, interactive=interactive)
         if new_nam is None:
             return f"has status {nam.nomenclature_status.name}"
         nam = new_nam
@@ -438,7 +440,7 @@ def _handle_cannot_find(
         not _can_replace_type_secimen(nam.type_specimen, row)
         and not _can_add_to_type_specimen(nam, row)
     ):
-        _handle_interactively(nam, row, cat_num, exclude_list, interactive)
+        _handle_interactively(nam, row, cat_num, exclude_list, interactive=interactive)
         return "matched with existing type"
     print("matched:", cat_num, nam)
     print(
@@ -545,7 +547,7 @@ def get_type_kind(type_status: str) -> constants.SpeciesGroupType | None:
     return None
 
 
-def print_row(row: Row, concise: bool = False, full: bool = False) -> None:
+def print_row(row: Row, *, concise: bool = False, full: bool = False) -> None:
     if concise:
         text = (
             f"{_get_cat_num(row)},"
@@ -750,6 +752,7 @@ def _all_collections() -> list[Collection]:
 
 def main(
     filename: Path,
+    *,
     dry_run: bool = True,
     interactive: bool = False,
     include_non_types: bool = False,
@@ -803,7 +806,7 @@ def main(
                 if not interactive:
                     print_row(row, concise=True)
                 result = _handle_cannot_find(
-                    row, cat_num, exclude_f, dry_run, interactive
+                    row, cat_num, exclude_f, dry_run=dry_run, interactive=interactive
                 )
                 statuses[result] += 1
                 cannot_find += 1

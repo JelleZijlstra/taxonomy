@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from itertools import chain
 from pathlib import Path
 
-import requests
+import httpx
 import wikitextparser
 
 from taxonomy import getinput
@@ -58,6 +58,7 @@ class Template:
     def from_wtp_template(
         cls,
         template: wikitextparser.Template,
+        *,
         heading: str | None,
         subheading: str | None,
         in_table: bool,
@@ -76,7 +77,7 @@ def get_text(name: str, language: str = "en") -> str:
     cache_file = CACHE_DIR / name
     if cache_file.exists():
         return cache_file.read_text()
-    result = requests.get(
+    result = httpx.get(
         f"https://{language}.wikipedia.org/w/index.php?title={name}&action=raw"
     )
     cache_file.write_text(result.text)
@@ -97,14 +98,17 @@ def get_templates_wtp(text: str) -> Iterable[Template]:
                 for template in table.templates:
                     if template.string not in seen_templates:
                         yield Template.from_wtp_template(
-                            template, heading, subheading, in_table=True
+                            template,
+                            heading=heading,
+                            subheading=subheading,
+                            in_table=True,
                         )
                         seen_templates.add(template.string)
 
             for template in subsection.templates:
                 if template.string not in seen_templates:
                     yield Template.from_wtp_template(
-                        template, heading, subheading, in_table=False
+                        template, heading=heading, subheading=subheading, in_table=False
                     )
                     seen_templates.add(template.string)
 

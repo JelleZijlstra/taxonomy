@@ -6,6 +6,7 @@ import traceback
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from functools import cache, cached_property
+from pathlib import Path
 from typing import Any, Self, assert_never
 
 from data_import.lib import Source, clean_string, extract_pages, get_text, split_lines
@@ -310,7 +311,7 @@ def parse_refs() -> dict[RefKey, str]:
         current_key = tuple(" ".join(authors.split(", ")).split()), year
         refs[current_key] = clean_string(ref_text)
 
-    with open("data_import/data/expt/ref_keys.txt", "w") as f:
+    with Path("data_import/data/expt/ref_keys.txt").open("w") as f:
         for key in sorted(refs):
             print(key, file=f)
     return refs
@@ -564,7 +565,7 @@ def fill_name(nam: models.Name, name: Name) -> None:
 
 
 def key_for_name(
-    nam: models.Name, include_tussenvoegsel: bool = False
+    nam: models.Name, *, include_tussenvoegsel: bool = False
 ) -> tuple[object, ...]:
     names = []
     if nam.author_tags:
@@ -641,7 +642,7 @@ def handle_taxon(taxon: Taxon) -> None:
                 print(f"Add new name for {name}", possible_names, key)
                 if not DRY_RUN:
                     nam = models_taxon.add_syn(
-                        name.details.root_name, interactive=False
+                        root_name=name.details.root_name, interactive=False
                     )
         elif VERBOSE:
             print(f"Name: Associate {nam} with {name}")

@@ -5,7 +5,7 @@ import json
 import re
 import unicodedata
 from collections import Counter, defaultdict
-from collections.abc import Callable, Container, Iterable, Mapping, Sequence
+from collections.abc import Callable, Collection, Container, Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Any, NamedTuple
 
@@ -197,7 +197,7 @@ NAME_SYNONYMS = {
     "Gaboon": "Gabon",
     "Gold Coast": "Ghana",
     "Somaliland": "Somalia",
-    "Lado Enclave": "Africa",  # TODO
+    "Lado Enclave": "Africa",  # TODO: it's in Uganda?
     "British Somaliland": "Somalia",
     "Fernando Po": "Bioko",
     "Northern Rhodesia": "Zambia",
@@ -242,7 +242,7 @@ class Source(NamedTuple):
 class NameConfig(NamedTuple):
     original_name_fixes: Mapping[str, str] = {}
     authority_fixes: Mapping[str, str] = {}
-    ignored_names: set[tuple[str, str]] = set()
+    ignored_names: Collection[tuple[str, str]] = ()
 
 
 def initial_count(s: str, char: str) -> int:
@@ -303,7 +303,9 @@ def extract_pages(lines: Iterable[str], *, permissive: bool = False) -> PagesT:
     yield current_page, current_lines
 
 
-def validate_pages(pages: PagesT, verbose: bool = True, check: bool = True) -> PagesT:
+def validate_pages(
+    pages: PagesT, *, verbose: bool = True, check: bool = True
+) -> PagesT:
     current_page: int | None = None
     for page, lines in pages:
         if verbose:
@@ -326,6 +328,7 @@ class NoSplitFound(Exception):
 def split_lines(
     lines: list[str],
     page: int,
+    *,
     single_column_pages: Container[int] = frozenset(),
     use_first: bool = False,
     min_column: int = 0,
@@ -369,6 +372,7 @@ def split_lines(
 
 def align_columns(
     pages: PagesT,
+    *,
     single_column_pages: Container[int] = frozenset(),
     use_first: bool = False,
     min_column: int = 0,
@@ -377,20 +381,27 @@ def align_columns(
     """Rearrange the text to separate the two columns on each page."""
     for page, lines in pages:
         lines = split_lines(
-            lines, page, single_column_pages, use_first, min_column, dedent_right
+            lines,
+            page,
+            single_column_pages=single_column_pages,
+            use_first=use_first,
+            min_column=min_column,
+            dedent_right=dedent_right,
         )
         if not lines:
             continue
         yield page, lines
 
 
-def clean_text(names: DataT, clean_labels: bool = True) -> DataT:
+def clean_text(names: DataT, *, clean_labels: bool = True) -> DataT:
     """Puts each field into a single line and undoes line breaks within words."""
     for name in names:
         yield clean_text_dict(name, clean_labels=clean_labels)
 
 
-def clean_text_dict(name: dict[str, Any], clean_labels: bool = True) -> dict[str, Any]:
+def clean_text_dict(
+    name: dict[str, Any], *, clean_labels: bool = True
+) -> dict[str, Any]:
     new_name = {}
     for key, value in name.items():
         if key == "pages" or not isinstance(value, list):
@@ -495,6 +506,7 @@ def translate_to_db(
     names: DataT,
     collection_name: str | None = None,
     source: Source | None = None,
+    *,
     verbose: bool = False,
 ) -> DataT:
     coll: models.Collection | None
@@ -606,7 +618,7 @@ def translate_to_db(
 
 
 def translate_type_locality(
-    names: DataT, start_at_end: bool = False, quiet: bool = False
+    names: DataT, *, start_at_end: bool = False, quiet: bool = False
 ) -> DataT:
     for name in names:
         if "loc" in name:
@@ -1037,7 +1049,7 @@ def get_initials_map() -> dict[str, set[str]]:
 
 
 def associate_types(
-    names: DataT, name_config: NameConfig = NameConfig(), quiet: bool = False
+    names: DataT, *, name_config: NameConfig = NameConfig(), quiet: bool = False
 ) -> DataT:
     success = tried = 0
     for name in names:
@@ -1054,7 +1066,7 @@ def associate_types(
 
 
 def associate_variants(
-    names: DataT, name_config: NameConfig = NameConfig(), quiet: bool = False
+    names: DataT, *, name_config: NameConfig = NameConfig(), quiet: bool = False
 ) -> DataT:
     success = tried = 0
     for name in names:
@@ -1162,6 +1174,7 @@ def manually_associate_name(name: dict[str, Any]) -> models.Name | None:
 def associate_names(
     names: DataT,
     name_config: NameConfig = NameConfig(),
+    *,
     start_at: str | None = None,
     name_field: str = "original_name",
     quiet: bool = False,
@@ -1241,6 +1254,7 @@ def maybe_add_iss(name: dict[str, Any]) -> models.Name | None:
 def write_to_db(
     names: DataT,
     source: Source,
+    *,
     dry_run: bool = True,
     edit_if_no_holotype: bool = True,
     edit_if: Callable[[dict[str, Any]], bool] = lambda _: False,

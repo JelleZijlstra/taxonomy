@@ -44,7 +44,7 @@ def extract_names(pages: Iterable[tuple[int, list[str]]]) -> DataT:
     line_kinds: deque[LineKind] = deque([], 5)
     current_label = ""
 
-    def classify_line(line: str, spaces: int, is_first: bool) -> LineKind:
+    def classify_line(line: str, spaces: int, *, is_first: bool) -> LineKind:
         if not line:
             return LineKind.blank
         if line.startswith(("Family ", "ORDER ")):

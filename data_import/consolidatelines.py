@@ -105,7 +105,7 @@ def clean_up_lines(lines: list[str]) -> list[str]:
     return new_lines
 
 
-def run(file: Path, dry_run: bool) -> None:
+def run(file: Path, *, dry_run: bool) -> None:
     lines = file.read_text().splitlines()
     lines = consolidate_lines(lines)
     lines = remove_lines(lines)
@@ -116,4 +116,4 @@ def run(file: Path, dry_run: bool) -> None:
 
 
 if __name__ == "__main__":
-    run(Path(sys.argv[1]), len(sys.argv) > 2)
+    run(Path(sys.argv[1]), dry_run=len(sys.argv) > 2)

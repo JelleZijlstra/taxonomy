@@ -522,7 +522,7 @@ def associate_names() -> Iterable[dict[str, Any]]:
     print(f"found: {found}/{total}")
 
 
-def write_to_db(dry_run: bool = True) -> None:
+def write_to_db(*, dry_run: bool = True) -> None:
     name_discrepancies = []
     num_changed: Counter[str] = Counter()
     for name in associate_names():

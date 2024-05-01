@@ -172,7 +172,7 @@ def associate_names(names: DataT) -> DataT:
     print(f"found: {found}/{total}")
 
 
-def write_to_db(names: DataT, dry_run: bool = True) -> None:
+def write_to_db(names: DataT, *, dry_run: bool = True) -> None:
     name_discrepancies = []
     num_changed: Counter[str] = Counter()
     for name in names:

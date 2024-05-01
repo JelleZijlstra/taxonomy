@@ -121,7 +121,7 @@ class NowRow(TypedDict):
 
 def read_file() -> list[NowRow]:
     with INPUT_FILE.open() as f:
-        rows: list[NowRow] = list(csv.DictReader(f))  # type: ignore
+        rows: list[NowRow] = list(csv.DictReader(f))  # type: ignore[arg-type]
     return sorted(
         rows,
         key=lambda row: (row["ORDER"], row["FAMILY"], row["GENUS"], row["SPECIES"]),
@@ -150,7 +150,7 @@ def match_up_species(genus_name: str, species_name: str) -> list[Taxon]:
 @functools.cache
 def match_up_and_report(genus_name: str, species_name: str) -> None:
     if species_name in ("indet.", "sp.") or "/" in species_name:
-        # TODO find the genus for these
+        # TODO: find the genus for these
         return
     result = match_up_species(genus_name, species_name)
     if not result:

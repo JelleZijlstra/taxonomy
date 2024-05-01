@@ -160,7 +160,7 @@ def split_fields(names: DataT) -> DataT:
                 name["species_type_kind"] = constants.SpeciesGroupType[field.lower()]
                 raw_data = data = name[field]
                 data = re.sub(r"^as designated.*?: ", "", data)
-                # TODO handle field starting with "Lectotype as designated by ..."
+                # TODO: handle field starting with "Lectotype as designated by ..."
                 match = re.match(
                     (
                         r"^(USNM [\d/]+)\. ([^\.]+)\. ([^\.]+)\."

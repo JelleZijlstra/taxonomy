@@ -89,12 +89,12 @@ def fossil_collections() -> list[Collection]:
     return [collection_by_label("RMNH"), collection_by_label("RGM")]
 
 
-def get_hesp_data(fossil: bool) -> dict[str, list[Name]]:
+def get_hesp_data(*, fossil: bool) -> dict[str, list[Name]]:
     colls = fossil_collections() if fossil else all_rmnh_collections()
     return get_type_specimens(*colls)
 
 
-def get_rmnh_db(fossil: bool, herps: bool) -> Iterable[Row]:
+def get_rmnh_db(*, fossil: bool, herps: bool) -> Iterable[Row]:
     for path in (
         (
             "rmnh-paleontology.csv"
@@ -103,7 +103,7 @@ def get_rmnh_db(fossil: bool, herps: bool) -> Iterable[Row]:
         ),
     ):
         with (DATA_DIR / path).open() as f:
-            rows: Iterable[Row] = csv.DictReader(f)  # type: ignore
+            rows: Iterable[Row] = csv.DictReader(f)  # type: ignore[assignment]
             yield from sorted(
                 rows, key=lambda row: (row["typeStatus"], row["scientificName"])
             )
@@ -172,14 +172,14 @@ LOCALITY_COLUMNS = ["country", "island", "locality", "altitude"]
 
 def get_tags(row: Row) -> Iterable[TypeTag]:
     locality = " ... ".join(
-        f"{row[column]}" for column in LOCALITY_COLUMNS if row[column]  # type: ignore
+        f"{row[column]}" for column in LOCALITY_COLUMNS if row[column]  # type: ignore[literal-required]
     )
     if "[" in locality:
         locality += " [brackets original]"
     if locality:
         yield TypeTag.LocationDetail(locality, get_source())
     text = " ... ".join(
-        f"[{column}] {row[column]}" for column in DETAIL_COLUMNS if row[column]  # type: ignore
+        f"[{column}] {row[column]}" for column in DETAIL_COLUMNS if row[column]  # type: ignore[literal-required]
     )
     text += f" [at {row['occurrenceID']}]"
     yield TypeTag.SpecimenDetail(text, get_source())
@@ -225,7 +225,7 @@ def handle_interactively(
             exclude_list.write(f"{cat_num}\n")
 
 
-def can_replace_collection(coll: Collection | None, fossil: bool) -> bool:
+def can_replace_collection(coll: Collection | None, *, fossil: bool) -> bool:
     return coll is None or coll in (
         fossil_collections() if fossil else all_rmnh_collections()
     )
@@ -300,7 +300,7 @@ def maybe_get(exclude_list: IO[str], cat_num: str) -> Name | None:
 
 
 def handle_cannot_find(
-    row: Row, cat_num: str, exclude_list: IO[str], dry_run: bool, fossil: bool
+    row: Row, cat_num: str, exclude_list: IO[str], *, dry_run: bool, fossil: bool
 ) -> str:
     parsed = split_name(row["scientificName"])
     if parsed is None:
@@ -345,7 +345,7 @@ def handle_cannot_find(
         if new_nam is None:
             return f"has status {nam.nomenclature_status.name}"
         nam = new_nam
-    if not can_replace_collection(nam.collection, fossil) or (
+    if not can_replace_collection(nam.collection, fossil=fossil) or (
         not can_replace_type_secimen(nam.type_specimen, row)
         and not can_add_to_type_specimen(nam, row)
     ):
@@ -371,7 +371,7 @@ def handle_cannot_find(
         print(f"{nam}: set type {nam.type_specimen!r} -> {new_type!r}")
         if not dry_run:
             nam.type_specimen = new_type
-    if can_replace_collection(nam.collection, fossil):
+    if can_replace_collection(nam.collection, fossil=fossil):
         coll = get_collection(row)
         if coll != nam.collection:
             print(f"{nam}: set collection {nam.collection!r} -> {coll!r}")
@@ -434,15 +434,15 @@ def print_row(row: Row) -> None:
             print(f"{k}: {v}")
 
 
-def main(dry_run: bool = True, fossil: bool = False, herps: bool = False) -> None:
-    hesp_data = get_hesp_data(fossil)
+def main(*, dry_run: bool = True, fossil: bool = False, herps: bool = False) -> None:
+    hesp_data = get_hesp_data(fossil=fossil)
     total = cannot_find = added_tag = tag_present = excluded_count = excluded_status = 0
     statuses: Counter[str] = Counter()
     exclude_file = DATA_DIR / "rmnh-exclude.txt"
     excluded = {line.strip() for line in exclude_file.read_text().splitlines()}
     with exclude_file.open("a") as exclude_f:
         for row in getinput.print_every_n(
-            get_rmnh_db(fossil, herps), label="specimens", n=1000
+            get_rmnh_db(fossil=fossil, herps=herps), label="specimens", n=1000
         ):
             type_status = get_type_kind(row["typeStatus"])
             not_a_type = type_status is None or (
@@ -457,7 +457,9 @@ def main(dry_run: bool = True, fossil: bool = False, herps: bool = False) -> Non
                 if not_a_type:
                     excluded_status += 1
                     continue
-                result = handle_cannot_find(row, cat_num, exclude_f, dry_run, fossil)
+                result = handle_cannot_find(
+                    row, cat_num, exclude_f, dry_run=dry_run, fossil=fossil
+                )
                 statuses[result] += 1
                 cannot_find += 1
                 continue

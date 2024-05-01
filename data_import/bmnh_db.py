@@ -145,7 +145,7 @@ def handle_interactively(
 
 
 def handle_cannot_find(
-    row: dict[str, str], cat_num: str, url: str, exclude_list: IO[str], dry_run: bool
+    row: dict[str, str], cat_num: str, url: str, exclude_list: IO[str], *, dry_run: bool
 ) -> str:
     parsed = split_name(row["determinationNames"])
     if parsed is None:
@@ -344,7 +344,7 @@ def print_row(row: dict[str, str]) -> None:
             print(f"{k}: {v}")
 
 
-def main(dry_run: bool = True) -> None:
+def main(*, dry_run: bool = True) -> None:
     hesp_data = get_hesp_data()
     total = cannot_find = added_tag = tag_present = excluded_count = not_a_type = (
         name_doesnt_match
@@ -371,7 +371,9 @@ def main(dry_run: bool = True) -> None:
                     not_a_type += 1
                     continue
                 # print(f"Cannot find: {cat_num}: {row['determinationNames']}, {row['typeStatus']}, {url}")
-                statuses[handle_cannot_find(row, cat_num, url, exclude_f, dry_run)] += 1
+                statuses[
+                    handle_cannot_find(row, cat_num, url, exclude_f, dry_run=dry_run)
+                ] += 1
                 cannot_find += 1
                 continue
             for nam in hesp_data[cat_num]:

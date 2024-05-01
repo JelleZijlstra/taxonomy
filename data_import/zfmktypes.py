@@ -70,7 +70,7 @@ def extract_names(pages: PagesT) -> DataT:
     yield current_name
 
 
-def split_fields(names: DataT, verbose: bool = True) -> DataT:
+def split_fields(names: DataT, *, verbose: bool = True) -> DataT:
     for name in names:
         name["raw_text"] = dict(name)
         if "Holotype" in name:

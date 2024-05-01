@@ -20,10 +20,10 @@ def load_locs() -> list[dict[str, str]]:
         return [dict(row) for row in rows]
 
 
-def link_locs(dry_run: bool = True) -> None:
+def link_locs(*, dry_run: bool = True) -> None:
     """Finds locations with matching names in NOW and links them.
 
-    TODO look also at aliases in NOW.
+    TODO: look also at aliases in NOW.
 
     """
     recent = Period.get(name="Recent")
