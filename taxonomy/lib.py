@@ -103,6 +103,7 @@ def names_with_attribute(
 def f(
     nams: Name | Taxon | list[Name] | list[Taxon],
     skip_fields: Container[str] = frozenset(),
+    *,
     always_edit: bool = False,
 ) -> None:
     if isinstance(nams, list):
@@ -126,7 +127,7 @@ g = partial(
 
 
 def h(
-    author: str, year: int, page: int | None = None, uncited_only: bool = False
+    author: str, year: int, page: int | None = None, *, uncited_only: bool = False
 ) -> tuple[list[Article], list[Name]]:
     authors = Person.select_valid().filter(Person.family_name == author)
     nams = []
@@ -251,10 +252,11 @@ def make_genus() -> Taxon | None:
         return None
     try:
         existing = Taxon.select_valid().filter(Taxon.valid_name == name).get()
-        print(f"{existing} already exists")
-        return None
     except clirm.DoesNotExist:
         pass
+    else:
+        print(f"{existing} already exists")
+        return None
     authors = []
     while True:
         author = Person.getter("family_name").get_one_key("author> ")
@@ -282,10 +284,11 @@ def make_species() -> Taxon | None:
     name = f"{parent.valid_name} {root_name}"
     try:
         existing = Taxon.select_valid().filter(Taxon.valid_name == name).get()
-        print(f"{existing} already exists")
-        return None
     except clirm.DoesNotExist:
         pass
+    else:
+        print(f"{existing} already exists")
+        return None
     authors = []
     while True:
         author = Person.getter("family_name").get_one_key("author> ")
@@ -310,7 +313,7 @@ def make_species() -> Taxon | None:
         tuple(name.lower().replace("von ", "").replace("du ", "") for name in authors),
         year,
     )
-    verbatim_citation = refs.get(key)  # type: ignore
+    verbatim_citation = refs.get(key)  # type: ignore[name-defined]
     if verbatim_citation is not None:
         print(f"found cite: {verbatim_citation}")
     tags = [AuthorTag.Author(person=person) for person in people]
@@ -344,7 +347,7 @@ def print_prefix(prefix: str) -> None:
         print(book.dewey, repr(book))
 
 
-def clean_regions(kind: RegionKind, print_only: bool = False) -> None:
+def clean_regions(kind: RegionKind, *, print_only: bool = False) -> None:
     regions = Region.bfind(kind=kind, quiet=True)
     print(f"{len(regions)} total")
     by_parent: dict[Region | None, list[Region]] = defaultdict(list)

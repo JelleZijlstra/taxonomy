@@ -58,6 +58,7 @@ def blue(text: str) -> str:
 
 def get_line(
     prompt: str,
+    *,
     validate: Callable[[str], bool] | None = None,
     callbacks: CallbackMap = {},
     should_stop: Callable[[str], bool] = lambda _: False,
@@ -573,7 +574,7 @@ def get_adt_list(
             else:
                 if existing_member._has_args:
                     out[index] = get_adt_member(
-                        type(existing_member),  # type: ignore
+                        type(existing_member),  # type: ignore[arg-type]
                         existing=existing_member,
                         completers=completers,
                     )
@@ -599,14 +600,13 @@ def get_adt_list(
 def display_tags(
     spacing: str,
     tags: Iterable[adt.ADT | type[adt.ADT]] | None,
+    *,
     show_indexes: bool = False,
 ) -> Iterable[str]:
     if tags is None:
         return
     tags = list(tags)
-    if show_indexes:
-        tags = tags
-    else:
+    if not show_indexes:
         tags = sorted(tags)
     for i, tag in enumerate(tags):
         if show_indexes:

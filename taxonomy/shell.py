@@ -2102,7 +2102,7 @@ def find_multiple_repository_names(
     for nam in all_nams:
         type_specimen = re.sub(r" \([^\)]+\)", "", nam.type_specimen)
         parts = {re.split(r"[ \-]", part)[0] for part in type_specimen.split(", ")}
-        if len(parts) == 1 and re.match(r"^[A-Z]+$", list(parts)[0]):
+        if len(parts) == 1 and re.match(r"^[A-Z]+$", next(iter(parts))):
             continue  # All from same collection
         if substring is not None:
             if not nam.type_specimen.startswith(substring):
@@ -2551,7 +2551,7 @@ def cg_recent_report(
     if cg is None:
         cg = CitationGroup.getter(None).get_one("citation group> ")
     if min_year is None:
-        min_year = datetime.date.today().year - 3
+        min_year = datetime.datetime.now(tz=datetime.UTC).year - 3
     query = Article.select_valid().filter(Article.citation_group == cg)
     # the format is {volume: {issue: [articles]}}
     arts: dict[str, dict[str, list[Article]]] = defaultdict(lambda: defaultdict(list))
