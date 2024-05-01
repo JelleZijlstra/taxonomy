@@ -2604,26 +2604,6 @@ def tag_list(tags: Iterable[tuple[TypeTagCons, ...]]) -> str:
     )
 
 
-def is_valid_page_described(page_described: str) -> bool:
-    parts = re.split(r", |-", page_described)
-    return all(is_valid_page_described_single(part) for part in parts)
-
-
-def is_valid_page_described_single(page_described: str) -> bool:
-    pattern = r" \(footnote( \d+)?\)$"
-    if re.search(pattern, page_described):
-        return is_valid_page_described_single(re.sub(pattern, "", page_described))
-    if page_described.isnumeric():
-        return True
-    # Roman numerals
-    if set(page_described) <= set("ixvcl"):
-        return True
-    for prefix in ("pl. ", "fig. ", "figs. ", "pls. "):
-        if page_described.startswith(prefix):
-            return is_valid_page_described_single(page_described[len(prefix) :])
-    return False
-
-
 def clean_original_name(original_name: str) -> str:
     original_name = (
         original_name.replace("(?)", "")

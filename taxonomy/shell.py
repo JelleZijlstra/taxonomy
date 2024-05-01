@@ -17,7 +17,6 @@ import csv
 import datetime
 import functools
 import gc
-import logging
 import operator
 import os
 import os.path
@@ -27,14 +26,13 @@ import sqlite3
 import subprocess
 from collections import Counter, defaultdict
 from collections.abc import Callable, Hashable, Iterable, Iterator, Mapping, Sequence
-from itertools import groupby
+from itertools import groupby, pairwise
 from pathlib import Path
 from typing import Any, Generic, NamedTuple, TypeVar, cast
 
 import clirm
 import httpx
 import IPython
-import requests
 import unidecode
 from traitlets.config.loader import Config
 
@@ -221,7 +219,7 @@ def add_page_described() -> Iterable[tuple[Name, str]]:
 
 @command
 def make_county_regions(
-    state: models.Region, name: str | None = None, dry_run: bool = True
+    state: models.Region, name: str | None = None, *, dry_run: bool = True
 ) -> None:
     if name is None:
         name = state.name
@@ -246,7 +244,7 @@ def make_county_regions(
 
 
 @command
-def infer_min_max_age(dry_run: bool = True) -> None:
+def infer_min_max_age(*, dry_run: bool = True) -> None:
     for period in Period.select_valid().filter(Period.min_age == None):
         children = list(period.children)
         if not children:
@@ -299,7 +297,7 @@ def add_types() -> None:
 
 
 @command
-def detect_corrected_original_names(aggressive: bool = False) -> None:
+def detect_corrected_original_names(*, aggressive: bool = False) -> None:
     query = Name.select_valid().filter(
         Name.original_name != None, Name.corrected_original_name == None
     )
@@ -318,7 +316,7 @@ def detect_original_rank() -> None:
 
 
 @command
-def detect_types(max_count: int | None = None, verbose: bool = False) -> None:
+def detect_types(*, max_count: int | None = None, verbose: bool = False) -> None:
     """Converts verbatim_types into references to the actual names."""
     count = 0
     successful_count = 0
@@ -384,7 +382,7 @@ def detect_types_from_root_names(max_count: int | None = None) -> None:
 def endswith(end: str) -> list[Name]:
     return list(
         Name.select_valid().filter(
-            Name.group == Group.genus, Name.root_name % ("%%%s" % end)
+            Name.group == Group.genus, Name.root_name % f"%{end}"
         )
     )
 
@@ -404,7 +402,7 @@ def detect_complexes() -> None:
 
 
 @command
-def detect_species_name_complexes(dry_run: bool = False) -> None:
+def detect_species_name_complexes(*, dry_run: bool = False) -> None:
     endings_tree: SuffixTree[models.SpeciesNameEnding] = SuffixTree()
     full_names: dict[str, tuple[models.SpeciesNameComplex, str]] = {}
     for ending in models.SpeciesNameEnding.select():
@@ -476,7 +474,7 @@ class SuffixTree(Generic[T]):
 
 
 @command
-def find_first_declension_adjectives(dry_run: bool = True) -> dict[str, int]:
+def find_first_declension_adjectives(*, dry_run: bool = True) -> dict[str, int]:
     adjectives = get_pages_in_wiki_category(
         "en.wiktionary.org", "Latin first and second declension adjectives"
     )
@@ -521,7 +519,7 @@ def get_pages_in_wiki_category(domain: str, category_name: str) -> Iterable[str]
         }
         if cmcontinue:
             params["cmcontinue"] = cmcontinue
-        json = requests.get(url, params).json()
+        json = httpx.get(url, params=params).json()
         for entry in json["query"]["categorymembers"]:
             if entry["ns"] == 0:
                 yield entry["title"]
@@ -563,7 +561,7 @@ def generate_word_list() -> set[str]:
 
 
 @generator_command
-def correct_species_root_names(dry_run: bool = True) -> Iterable[Name]:
+def correct_species_root_names(*, dry_run: bool = True) -> Iterable[Name]:
     for nam in Name.select_valid().filter(
         Name.group == Group.species, Name.species_name_complex != None
     ):
@@ -601,7 +599,7 @@ def _duplicate_finder(
 ) -> Callable[[], list[Sequence[ModelT]] | None]:
     @generator_command
     @functools.wraps(fn)
-    def wrapper(interactive: bool = False) -> Iterable[Sequence[ModelT]]:
+    def wrapper(*, interactive: bool = False) -> Iterable[Sequence[ModelT]]:
         for dups_dict in fn():
             for key, entries_list in dups_dict.items():
                 if len(entries_list) > 1:
@@ -742,6 +740,7 @@ def dup_journal_articles() -> None:
 
 @command
 def dup_articles(
+    *,
     key: Callable[[Article], Hashable] = lambda art: art.doi,
     interactive: bool = False,
     query: Iterable[Article] | None = None,
@@ -796,6 +795,7 @@ class ScoreHolder:
     def by_field(
         self,
         field: str,
+        *,
         min_count: int = 0,
         max_score: float = 101,
         graphical: bool = False,
@@ -859,6 +859,7 @@ class ScoreHolder:
     def from_taxa(
         cls,
         taxa: Iterable[Taxon],
+        *,
         age: AgeClass | None = None,
         graphical: bool = False,
         focus_field: str | None = None,
@@ -878,6 +879,7 @@ class ScoreHolder:
 @command
 def get_scores(
     rank: Rank,
+    *,
     within_taxon: Taxon | None = None,
     age: AgeClass | None = None,
     graphical: bool = False,
@@ -895,7 +897,11 @@ def get_scores(
 
 @command
 def get_scores_for_period(
-    rank: Rank, period: Period, focus_field: str | None = None, graphical: bool = False
+    rank: Rank,
+    period: Period,
+    *,
+    focus_field: str | None = None,
+    graphical: bool = False,
 ) -> ScoreHolder:
     taxa = set()
     for nam in period.all_type_localities():
@@ -1076,7 +1082,7 @@ def print_percentages() -> None:
 
 
 @command
-def article_stats(includefoldertree: bool = False) -> None:
+def article_stats(*, includefoldertree: bool = False) -> None:
     results: Counter[str] = Counter()
     nredirects = nnonfiles = 0
     for file in Article.select():
@@ -1088,8 +1094,8 @@ def article_stats(includefoldertree: bool = False) -> None:
                 if value:
                     results[prop] += 1
                 if isinstance(value, dict):
-                    for key, prop in value.items():
-                        if prop:
+                    for key, inner_prop in value.items():
+                        if inner_prop:
                             results[key] += 1
 
             if file.kind != ArticleKind.electronic:
@@ -1119,23 +1125,13 @@ def autoset_original_name() -> None:
 
 @generator_command
 def childless_taxa() -> Iterable[Taxon]:
-    # TODO make this work again
-    return Taxon.raw(  # static analysis: ignore[undefined_attribute]
-        f"""
-            SELECT *
-            FROM taxon
-            WHERE
-                rank > 5 AND
-                age != {AgeClass.removed.value} AND
-                id NOT IN (
-                    SELECT parent_id
-                    FROM taxon
-                    WHERE
-                        parent_id IS NOT NULL AND
-                        age != {AgeClass.removed.value}
-                )
-        """
-    )
+    taxa = list(Taxon.select_valid())
+    all_parents = {taxon.parent.id for taxon in taxa if taxon.parent is not None}
+    return [
+        taxon
+        for taxon in taxa
+        if taxon.id not in all_parents and taxon.rank > Rank.species
+    ]
 
 
 @generator_command
@@ -1181,16 +1177,6 @@ def sorted_field_values(
 
 
 @command
-def bad_page_described() -> None:
-    # TODO clean this, currently matches a lot of fields
-    sorted_field_values(
-        "page_described",
-        filters=[Name.original_citation != None],
-        exclude_fn=models.name.name.is_valid_page_described,
-    )
-
-
-@command
 def field_counts() -> None:
     for field in ("verbatim_citation", "verbatim_type"):
         print(field, Name.select_valid().filter(getattr(Name, field) != None).count())
@@ -1199,7 +1185,7 @@ def field_counts() -> None:
 
 @command
 def clean_column(
-    cls: type[models.BaseModel], column: str, dry_run: bool = True
+    cls: type[models.BaseModel], column: str, *, dry_run: bool = True
 ) -> None:
     for obj in cls.select_valid().filter(getattr(cls, column) != None):
         old_value = getattr(obj, column)
@@ -1248,7 +1234,7 @@ def _set_name_complex_for_names(nams: Sequence[Name]) -> None:
 
 @command
 def set_citation_group_for_matching_citation(
-    dry_run: bool = False, fix: bool = False
+    *, dry_run: bool = False, fix: bool = False
 ) -> None:
     cite_to_nams: dict[str, list[Name]] = defaultdict(list)
     cite_to_group: dict[str, set[CitationGroup]] = defaultdict(set)
@@ -1279,7 +1265,7 @@ def set_citation_group_for_matching_citation(
 
 @command
 def set_empty_to_none(
-    model_cls: type[models.BaseModel], field: str, dry_run: bool = False
+    model_cls: type[models.BaseModel], field: str, *, dry_run: bool = False
 ) -> None:
     for obj in model_cls.filter(getattr(model_cls, field) == ""):
         print(f"{obj}: set {field} to None")
@@ -1289,7 +1275,7 @@ def set_empty_to_none(
 
 @command
 def fill_citation_group_for_type(
-    article_type: constants.ArticleType, field: str, dry_run: bool = False
+    article_type: constants.ArticleType, field: str, *, dry_run: bool = False
 ) -> None:
     for art in Article.bfind(
         Article.citation_group == None,
@@ -1324,6 +1310,7 @@ def set_region_for_groups(*queries: Any) -> None:
 
 @command
 def fill_citation_groups(
+    *,
     book: bool = False,
     interactive: bool = True,
     only_with_hints: bool = False,
@@ -1375,7 +1362,7 @@ def fill_citation_groups(
             nam.verbatim_citation or "",
         ),
     ):
-        nam = nam.reload()
+        nam.load()
         if book:
             condition = nam.citation_group == book_cg
         else:
@@ -1423,7 +1410,7 @@ def field_by_year(field: str | None = None) -> None:
 
 
 @command
-def type_localities_like(substring: str, full: bool = False) -> None:
+def type_localities_like(substring: str, *, full: bool = False) -> None:
     nams = Name.bfind(
         Name.type_tags.contains(substring), Name.type_locality != None, quiet=True
     )
@@ -1597,6 +1584,7 @@ def more_precise_type_localities(
 def more_precise_periods(
     period: models.Period,
     region: models.Region | None = None,
+    *,
     include_children: bool = False,
     set_stratigraphy: bool = True,
 ) -> None:
@@ -1783,6 +1771,7 @@ def rio_taxon() -> None:
 @command
 def reassign_references(
     family_name: str | None = None,
+    *,
     substring: bool = True,
     max_level: PersonLevel | None = PersonLevel.has_given_name,
     min_level: PersonLevel | None = None,
@@ -1809,7 +1798,7 @@ def reassign_references(
 
 
 @command
-def reassign_references_auto(substring: bool = False) -> None:
+def reassign_references_auto(*, substring: bool = False) -> None:
     reassign_references(auto=True, substring=substring)
 
 
@@ -1832,7 +1821,7 @@ def reassign_references_for_convention(
 
 
 @command
-def doubled_authors(autofix: bool = False) -> list[Name]:
+def doubled_authors(*, autofix: bool = False) -> list[Name]:
     nams = Name.select_valid().filter(Name.author_tags != None)
     bad_nams = []
     for nam in nams:
@@ -1850,7 +1839,10 @@ def doubled_authors(autofix: bool = False) -> list[Name]:
 
 @command
 def reassign_authors(
-    taxon: Taxon | None = None, skip_family: bool = False, skip_initials: bool = False
+    taxon: Taxon | None = None,
+    *,
+    skip_family: bool = False,
+    skip_initials: bool = False,
 ) -> None:
     if taxon is None:
         taxon = Taxon.getter(None).get_one()
@@ -1948,6 +1940,7 @@ def run_linter_and_fix(
     model_cls: type[ModelT],
     linter: Linter[ModelT] | None = None,
     query: Iterable[ModelT] | None = None,
+    *,
     interactive: bool = False,
     verbose: bool = False,
     manual_mode: bool = False,
@@ -1967,7 +1960,7 @@ def run_linter_and_fix(
         autofix=True, interactive=True, verbose=verbose, manual_mode=manual_mode
     )
     for obj, messages in getinput.print_every_n(bad, label="issues", n=5):
-        obj = obj.reload()
+        obj.load()
         getinput.print_header(obj)
         obj.display()
         for message in messages:
@@ -1977,11 +1970,11 @@ def run_linter_and_fix(
                 obj.edit()
             except getinput.StopException:
                 return
-            obj = obj.reload()
+            obj.load()
 
 
 @generator_command
-def move_to_lowest_rank(dry_run: bool = False) -> Iterable[tuple[Name, str]]:
+def move_to_lowest_rank(*, dry_run: bool = False) -> Iterable[tuple[Name, str]]:
     for nam in getinput.print_every_n(Name.select_valid(), label="names"):
         query = Taxon.select_valid().filter(Taxon.base_name == nam)
         if query.count() < 2:
@@ -2006,7 +1999,7 @@ def move_to_lowest_rank(dry_run: bool = False) -> Iterable[tuple[Name, str]]:
 
 
 @command
-def resolve_redirects(dry_run: bool = False) -> None:
+def resolve_redirects(*, dry_run: bool = False) -> None:
     cfg = LintConfig(autofix=not dry_run)
     for model_cls in models.BaseModel.__subclasses__():
         for obj in getinput.print_every_n(
@@ -2017,7 +2010,7 @@ def resolve_redirects(dry_run: bool = False) -> None:
 
 
 @command
-def run_maintenance(skip_slow: bool = True) -> dict[Any, Any]:
+def run_maintenance(*, skip_slow: bool = True) -> dict[Any, Any]:
     """Runs maintenance checks that are expected to pass for the entire database."""
     fns: list[Callable[[], Any]] = [
         labeled_authorless_names,
@@ -2060,7 +2053,7 @@ def run_maintenance(skip_slow: bool = True) -> dict[Any, Any]:
     return out
 
 
-def names_of_author(author: str, include_partial: bool) -> list[Name]:
+def names_of_author(author: str, *, include_partial: bool) -> list[Name]:
     persons = Person.select_valid().filter(
         Person.family_name.contains(author)
         if include_partial
@@ -2072,7 +2065,7 @@ def names_of_author(author: str, include_partial: bool) -> list[Name]:
 
 
 @command
-def names_of_authority(author: str, year: int, edit: bool = False) -> list[Name]:
+def names_of_authority(author: str, year: int, *, edit: bool = False) -> list[Name]:
     nams = names_of_author(author, include_partial=False)
     nams = [nam for nam in nams if nam.year == year]
 
@@ -2099,7 +2092,7 @@ def names_of_authority(author: str, year: int, edit: bool = False) -> list[Name]
 
 @command
 def find_multiple_repository_names(
-    filter: str | None = None, edit: bool = False
+    *, substring: str | None = None, edit: bool = False
 ) -> list[Name]:
     all_nams = Name.select_valid().filter(
         Name.type_specimen.contains(", "),
@@ -2111,8 +2104,8 @@ def find_multiple_repository_names(
         parts = {re.split(r"[ \-]", part)[0] for part in type_specimen.split(", ")}
         if len(parts) == 1 and re.match(r"^[A-Z]+$", list(parts)[0]):
             continue  # All from same collection
-        if filter is not None:
-            if not nam.type_specimen.startswith(filter):
+        if substring is not None:
+            if not nam.type_specimen.startswith(substring):
                 continue
         print(nam)
         print(f" - {nam.type_specimen}")
@@ -2157,6 +2150,7 @@ def fgsyn(off: Name | None = None) -> Name | None:
 @command
 def author_report(
     author: str | None = None,
+    *,
     partial: bool = False,
     missing_attribute: str | None = None,
 ) -> list[Name]:
@@ -2201,7 +2195,7 @@ def author_report(
 
 
 @generator_command
-def enforce_must_have(fix: bool = True) -> Iterator[Name]:
+def enforce_must_have(*, fix: bool = True) -> Iterator[Name]:
     for cg in sorted(_must_have_citation_groups(), key=lambda cg: cg.archive or ""):
         after_tag = cg.get_tag(CitationGroupTag.MustHaveAfter)
         found_any = False
@@ -2222,7 +2216,7 @@ def enforce_must_have(fix: bool = True) -> Iterator[Name]:
 
 
 @generator_command
-def archive_for_must_have(fix: bool = True) -> Iterator[CitationGroup]:
+def archive_for_must_have() -> Iterator[CitationGroup]:
     for cg in _must_have_citation_groups():
         if cg.archive is None:
             getinput.print_header(cg)
@@ -2242,18 +2236,17 @@ def _must_have_citation_groups() -> list[CitationGroup]:
 
 @command
 def find_potential_citations(
-    fix: bool = True, region: models.Region | None = None, aggressive: bool = True
+    *, fix: bool = True, region: models.Region | None = None, aggressive: bool = True
 ) -> int:
     if region is None:
         cgs = CitationGroup.select_valid()
     else:
         cgs = region.all_citation_groups()
-    count = sum(
+    return sum(
         find_potential_citations_for_group(cg, fix=fix, aggressive=aggressive) or 0
         for cg in cgs
         if not cg.has_tag(CitationGroupTag.IgnorePotentialCitations)
     )
-    return count
 
 
 def _author_names(obj: Article | Name) -> set[str]:
@@ -2262,7 +2255,7 @@ def _author_names(obj: Article | Name) -> set[str]:
 
 @command
 def find_potential_citations_for_group(
-    cg: CitationGroup | None = None, fix: bool = True, aggressive: bool = True
+    cg: CitationGroup | None = None, *, fix: bool = True, aggressive: bool = True
 ) -> int:
     if cg is None:
         cg = CitationGroup.getter(None).get_one()
@@ -2288,7 +2281,7 @@ def find_potential_citations_for_group(
 
     count = 0
     for nam in cg.get_names():
-        nam = nam.reload()
+        nam.load()
         if nam.original_citation is not None:
             continue
         page = nam.extract_page_described()
@@ -2319,7 +2312,7 @@ def find_potential_citations_for_group(
 
 @generator_command
 def recent_names_without_verbatim(
-    threshold: int = 1990, fix: bool = False
+    threshold: int = 1990, *, fix: bool = False
 ) -> Iterator[Name]:
     return fill_verbatim_citation_for_names(Name.year >= str(threshold), fix=fix)
 
@@ -2338,7 +2331,7 @@ def fill_verbatim_citation_for_names(
             nam.root_name,
         ),
     ):
-        nam = nam.reload()
+        nam.load()
         if "verbatim_citation" not in nam.get_empty_required_fields():
             continue
         if fix:
@@ -2403,11 +2396,6 @@ def find_dois() -> None:
 
 
 @command
-def reset_db() -> None:
-    pass  # TODO
-
-
-@command
 def print_parent() -> Taxon | None:
     taxon = Taxon.getter("valid_name").get_one()
     if taxon:
@@ -2420,6 +2408,7 @@ def occ(
     t: Taxon | None = None,
     loc: models.Location | None = None,
     source: Article | None = None,
+    *,
     replace_source: bool = False,
     **kwargs: Any,
 ) -> models.Occurrence | None:
@@ -2453,6 +2442,7 @@ def occ(
 def mocc(
     t: Taxon | None = None,
     source: Article | None = None,
+    *,
     replace_source: bool = False,
     **kwargs: Any,
 ) -> None:
@@ -2475,6 +2465,7 @@ def mocc(
 def multi_taxon(
     loc: models.Location | None = None,
     source: Article | None = None,
+    *,
     replace_source: bool = False,
     **kwargs: Any,
 ) -> None:
@@ -2525,18 +2516,7 @@ def warm_all_caches() -> None:
 
 
 @command
-def show_queries(on: bool) -> None:
-    # TODO make this work in clirm if we want to
-    logging.basicConfig(level=logging.INFO)
-    logger = logging.getLogger("peewee")
-    if on:
-        logger.setLevel(logging.DEBUG)
-    else:
-        logger.setLevel(logging.INFO)
-
-
-@command
-def rename_specimen_photos(dry_run: bool = True) -> None:
+def rename_specimen_photos(*, dry_run: bool = True) -> None:
     base_path = models.base.settings.photos_path
     for dirname, _, paths in os.walk(base_path):
         for filename in paths:
@@ -2573,7 +2553,7 @@ def cg_recent_report(
     if min_year is None:
         min_year = datetime.date.today().year - 3
     query = Article.select_valid().filter(Article.citation_group == cg)
-    # {volume: {issue: [articles]}}
+    # the format is {volume: {issue: [articles]}}
     arts: dict[str, dict[str, list[Article]]] = defaultdict(lambda: defaultdict(list))
     for art in query:
         if art.kind is ArticleKind.alternative_version:
@@ -2674,7 +2654,7 @@ def generate_summary_paragraph() -> str:
 @command
 def check_wikipedia_links(path: str) -> None:
     url = f"https://en.wikipedia.org/w/index.php?title={path}&action=raw"
-    data = requests.get(url).text
+    data = httpx.get(url).text
     for match in re.finditer(r"''\[\[([A-Za-z ]+)\]\]''", data):
         name = match.group(1)
         nams = list(Name.select_valid().filter(Name.corrected_original_name == name))
@@ -2778,7 +2758,7 @@ def lint_recent(limit: int = 1000) -> None:
 
 @command
 def try_extract_page_described(
-    dry_run: bool = True, verbose: bool = False, limit: int | None = None
+    *, dry_run: bool = True, verbose: bool = False, limit: int | None = None
 ) -> None:
     query = Name.select_valid().filter(
         Name.verbatim_citation != None, Name.page_described == None
@@ -2788,7 +2768,7 @@ def try_extract_page_described(
     cfg = models.base.LintConfig(autofix=not dry_run)
     count = 0
     for nam in getinput.print_every_n(query, label="names", n=100):
-        nam = nam.reload()
+        nam.load()
         result = list(models.name.lint.infer_page_described(nam, cfg))
         for message in result:
             print(message)
@@ -2841,10 +2821,7 @@ def rename_papers(query: Iterable[Article] | None = None) -> None:
 
 def is_more_less_specific_sequence(persons: Iterable[Person]) -> bool:
     persons = sorted(persons, key=lambda pers: pers.get_full_name())
-    return all(
-        right.is_more_specific_than(left)
-        for left, right in zip(persons, persons[1:], strict=False)
-    )
+    return all(right.is_more_specific_than(left) for left, right in pairwise(persons))
 
 
 def sum_year_ranges(persons: Iterable[Person]) -> tuple[int, int] | None:
@@ -2865,7 +2842,7 @@ def sum_year_ranges(persons: Iterable[Person]) -> tuple[int, int] | None:
 
 
 @command
-def find_potential_person_clusters(interactive: bool = True) -> None:
+def find_potential_person_clusters(*, interactive: bool = True) -> None:
     for person in Person.select_valid().filter(
         Person.given_names == None, Person.initials == None
     ):
@@ -2891,8 +2868,8 @@ def find_potential_person_clusters(interactive: bool = True) -> None:
         if max_year - min_year > 70:
             continue
         getinput.print_header(person.family_name)
-        for person in all_persons:
-            person.display(full=True)
+        for related_person in all_persons:
+            related_person.display(full=True)
         if interactive:
             reassign_references(person.family_name, substring=False)
 
@@ -2903,7 +2880,7 @@ def fix_lints(
 ) -> None:
     """Use this after running bad = run_maintenance()."""
     for obj, lints in bad[cls.lint_all]:
-        obj = obj.reload()
+        obj.load()
         getinput.print_header(obj)
         obj.display()
         for lint in lints:
@@ -2933,7 +2910,7 @@ def rename_collections() -> None:
         key=lambda c: c.label,
     )
     for candidate in candidates:
-        candidate = candidate.reload()
+        candidate.load()
         if "(" not in candidate.label:
             continue
         getinput.print_header(candidate)
@@ -3013,7 +2990,7 @@ def download_bhl_parts(nams: Iterable[Name] | None = None) -> None:
             Name.original_citation == None
         )
     for nam in nams:
-        nam = nam.reload()
+        nam.load()
         if nam.original_citation is not None:
             continue
         for tag in nam.type_tags:
@@ -3044,7 +3021,7 @@ def download_bhl_items(nams: Iterable[Name] | None = None) -> None:
             Name.original_citation == None
         )
     for nam in nams:
-        nam = nam.reload()
+        nam.load()
         if nam.original_citation is not None:
             continue
         for tag in nam.type_tags:
@@ -3175,8 +3152,8 @@ def run_shell() -> None:
     config = Config()
     config.InteractiveShell.confirm_exit = False
     config.TerminalIPythonApp.display_banner = False
-    lib_file = os.path.join(os.path.dirname(__file__), "lib.py")
-    IPython.start_ipython(argv=[lib_file, "-i"], config=config, user_ns=ns)
+    lib_file = Path(__file__).parent / "lib.py"
+    IPython.start_ipython(argv=[str(lib_file), "-i"], config=config, user_ns=ns)
 
 
 if __name__ == "__main__":
