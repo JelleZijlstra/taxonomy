@@ -9,10 +9,9 @@ from collections import defaultdict
 from collections.abc import Collection, Iterable, Sequence
 from typing import Any
 
-import httpx
 import requests
 
-from taxonomy import getinput
+from taxonomy import getinput, urlparse
 from taxonomy.apis import bhl
 from taxonomy.apis.zoobank import clean_lsid, get_zoobank_data_for_act, is_valid_lsid
 from taxonomy.db import helpers, models
@@ -371,7 +370,7 @@ def check_url(art: Article, cfg: LintConfig) -> Iterable[str]:
             yield message
         return
 
-    parsed_url = bhl.parse_possible_bhl_url(art.url)
+    parsed_url = urlparse.parse_url(art.url)
     stringified = str(parsed_url)
     if stringified != art.url:
         message = f"reformatted url to {parsed_url} from {art.url}"
@@ -381,42 +380,8 @@ def check_url(art: Article, cfg: LintConfig) -> Iterable[str]:
         else:
             yield message
 
-    match parsed_url:
-        case bhl.ParsedUrl(bhl.UrlType.biostor_ref, _):
-            if (bhl_page := get_inferred_bhl_page(art, cfg)) is not None:
-                message = f"inferred BHL page {bhl_page} from url {art.url}"
-                if cfg.autofix:
-                    print(f"{art}: {message}")
-                    art.url = bhl_page.page_url
-                else:
-                    yield message
-            elif (bhl_url := get_bhl_url_from_biostor(parsed_url.payload)) is not None:
-                message = f"inferred BHL page {bhl_url} from url {art.url}"
-                if cfg.autofix:
-                    print(f"{art}: {message}")
-                    art.url = bhl_url
-                else:
-                    yield message
-
-    if parsed_url.url_type in (
-        bhl.UrlType.biostor_ref,
-        bhl.UrlType.other_bhl,
-        bhl.UrlType.other_biostor,
-    ):
-        yield f"unacceptable URL type {parsed_url.url_type} for {art.url}"
-
-
-def get_bhl_url_from_biostor(biostor_id: str) -> str | None:
-    response = httpx.get(f"https://biostor.org/reference/{biostor_id}")
-    response.raise_for_status()
-    data = response.text
-    # Line to match:
-    # BHL: <a href="https://www.biodiversitylibrary.org/page/7784406"
-    if match := re.search(
-        r"BHL: <a href=\"https://www\.biodiversitylibrary\.org/page/(\d+)\"", data
-    ):
-        return str(bhl.ParsedUrl(bhl.UrlType.bhl_page, match.group(1)))
-    return None
+    for message in parsed_url.lint():
+        yield f"URL {art.url}: {message}"
 
 
 @LINT.add("doi")
@@ -485,29 +450,28 @@ def _infer_hdl_from_url(url: str) -> str | None:
 def bhl_item_from_bibliography(art: Article, cfg: LintConfig) -> Iterable[str]:
     if art.url is None:
         return
-    parsed = bhl.parse_possible_bhl_url(art.url)
-    if parsed.url_type is not bhl.UrlType.bhl_bibliography:
-        return
-    metadata = bhl.get_title_metadata(int(parsed.payload))
-    if "Items" in metadata and len(metadata["Items"]) == 1:
-        item_id = metadata["Items"][0]["ItemID"]
-        new_url = f"https://www.biodiversitylibrary.org/item/{item_id}"
-        message = f"inferred BHL item {item_id} from bibliography {art.url}"
-        if cfg.autofix:
-            print(f"{art}: {message}")
-            art.url = new_url
-        else:
-            yield message
+    match urlparse.parse_url(art.url):
+        case urlparse.BhlBibliography(bib_id):
+            metadata = bhl.get_title_metadata(bib_id)
+            if "Items" in metadata and len(metadata["Items"]) == 1:
+                item_id = metadata["Items"][0]["ItemID"]
+                new_url = f"https://www.biodiversitylibrary.org/item/{item_id}"
+                message = f"inferred BHL item {item_id} from bibliography {art.url}"
+                if cfg.autofix:
+                    print(f"{art}: {message}")
+                    art.url = new_url
+                else:
+                    yield message
 
 
 @LINT.add("bhl_part_from_page")
 def bhl_part_from_page(art: Article, cfg: LintConfig) -> Iterable[str]:
     if art.url is None or art.title is None:
         return
-    parsed = bhl.parse_possible_bhl_url(art.url)
-    if parsed.url_type is not bhl.UrlType.bhl_page:
+    parsed = urlparse.parse_url(art.url)
+    if not isinstance(parsed, urlparse.BhlPage):
         return
-    metadata = bhl.get_page_metadata(int(parsed.payload))
+    metadata = bhl.get_page_metadata(parsed.page_id)
     if "ItemID" not in metadata:
         return
     item_metadata = bhl.get_item_metadata(int(metadata["ItemID"]))
@@ -520,7 +484,7 @@ def bhl_part_from_page(art: Article, cfg: LintConfig) -> Iterable[str]:
         part_metadata = bhl.get_part_metadata(part["PartID"])
         if "StartPageID" not in part_metadata:
             continue
-        if part_metadata["StartPageID"] == parsed.payload:
+        if str(part_metadata["StartPageID"]) == str(parsed.page_id):
             matching_part = part
             break
     if matching_part is None:
@@ -528,7 +492,7 @@ def bhl_part_from_page(art: Article, cfg: LintConfig) -> Iterable[str]:
     message = f"inferred BHL part {matching_part['PartID']} from page {art.url}"
     if cfg.autofix:
         print(f"{art}: {message}")
-        art.url = f"https://www.biodiversitylibrary.org/part/{matching_part['PartID']}"
+        art.url = str(urlparse.BhlPart(matching_part["PartID"]))
     else:
         yield message
 
@@ -544,9 +508,9 @@ def _get_bhl_page_ids_from_names(art: Article) -> set[int]:
     ]
     bhl_page_ids = set()
     for tag in known_pages:
-        parsed = bhl.parse_possible_bhl_url(tag.url)
-        if parsed.url_type is bhl.UrlType.bhl_page:
-            bhl_page_ids.add(int(parsed.payload))
+        match urlparse.parse_url(tag.url):
+            case urlparse.BhlPage(page_id):
+                bhl_page_ids.add(page_id)
     return bhl_page_ids
 
 
@@ -681,15 +645,7 @@ def should_look_for_bhl_url(art: Article) -> bool:
 def has_bhl_url(art: Article) -> bool:
     if art.url is None:
         return False
-    match bhl.parse_possible_bhl_url(art.url).url_type:
-        case (
-            bhl.UrlType.bhl_page
-            | bhl.UrlType.bhl_item
-            | bhl.UrlType.bhl_part
-            | bhl.UrlType.bhl_bibliography
-        ):
-            return True
-    return False
+    return isinstance(urlparse.parse_url(art.url), urlparse.BhlUrl)
 
 
 def should_require_bhl_link(art: Article) -> bool:
@@ -909,16 +865,17 @@ def get_inferred_bhl_page_from_articles(art: Article, cfg: LintConfig) -> int | 
             if cfg.verbose:
                 print(f"{other_art}: no URL")
             continue
-        parsed = bhl.parse_possible_bhl_url(other_art.url)
-        if parsed.url_type is bhl.UrlType.bhl_page:
-            existing_page_id = int(parsed.payload)
-        elif parsed.url_type is bhl.UrlType.bhl_part:
-            part_metadata = bhl.get_part_metadata(int(parsed.payload))
-            existing_page_id = int(part_metadata["StartPageID"])
-        else:
-            if cfg.verbose:
-                print(f"{other_art}: {other_art.url} is not a BHL page URL")
-            continue
+        existing_page_id = 0  # TODO: fix pyanalyze
+        match urlparse.parse_url(other_art.url):
+            case urlparse.BhlPage(page_id):
+                existing_page_id = page_id
+            case urlparse.BhlPart(part_id):
+                part_metadata = bhl.get_part_metadata(part_id)
+                existing_page_id = int(part_metadata["StartPageID"])
+            case _:
+                if cfg.verbose:
+                    print(f"{other_art}: {other_art.url} is not a BHL page URL")
+                continue
         if other_art.start_page == art.start_page:
             inferred_pages.setdefault(existing_page_id, set()).add(other_art)
         if other_art.start_page is None or not other_art.start_page.isnumeric():

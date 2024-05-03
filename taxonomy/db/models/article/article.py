@@ -14,7 +14,7 @@ from typing import Any, ClassVar, NamedTuple, NotRequired, Self, TypeVar, cast
 
 from clirm import Field, Query
 
-from taxonomy import adt, config, events, getinput
+from taxonomy import adt, config, events, getinput, urlparse
 from taxonomy.apis import bhl
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
 from taxonomy.db import models
@@ -879,8 +879,8 @@ class Article(BaseModel):
         # get the URL for this file from the data given. Preferences:
         # 1. BHL URL
         if self.url:
-            parsed = bhl.parse_possible_bhl_url(self.url)
-            if parsed.is_bhl():
+            parsed = urlparse.parse_url(self.url)
+            if isinstance(parsed, urlparse.BhlUrl):
                 return self.url
         # 2. DOI
         if self.doi:
@@ -907,26 +907,15 @@ class Article(BaseModel):
     def has_bhl_link(self) -> bool:
         if not self.url:
             return False
-        parsed = bhl.parse_possible_bhl_url(self.url)
-        return parsed.url_type in (
-            bhl.UrlType.bhl_bibliography,
-            bhl.UrlType.bhl_page,
-            bhl.UrlType.bhl_item,
-            bhl.UrlType.bhl_part,
-        )
+        return isinstance(urlparse.parse_url(self.url), urlparse.BhlUrl)
 
     def has_bhl_link_with_pages(self) -> bool:
         if not self.url:
             return False
-        parsed = bhl.parse_possible_bhl_url(self.url)
-        match parsed.url_type:
-            case bhl.UrlType.bhl_item:
-                return not bhl.is_external_item(int(parsed.payload))
-            case (
-                bhl.UrlType.bhl_bibliography
-                | bhl.UrlType.bhl_page
-                | bhl.UrlType.bhl_part
-            ):
+        match urlparse.parse_url(self.url):
+            case urlparse.BhlItem(item_id):
+                return not bhl.is_external_item(item_id)
+            case urlparse.BhlPart() | urlparse.BhlPage() | urlparse.BhlBibliography():
                 return True
         return False
 
@@ -1067,17 +1056,16 @@ class Article(BaseModel):
             url = self.url
         if not url:
             return {}
-        parsed = bhl.parse_possible_bhl_url(url)
-        if parsed.url_type is not bhl.UrlType.bhl_part:
-            return {}
-        data = models.article.add_data.get_bhl_part_data_from_part_id(
-            int(parsed.payload)
-        )
-        if set_fields:
-            models.article.add_data.set_multi(
-                self, data, only_new=not overwrite, verbose=verbose
-            )
-        return data
+        match urlparse.parse_url(url):
+            case urlparse.BhlPart(part_id):
+                data = models.article.add_data.get_bhl_part_data_from_part_id(part_id)
+                if set_fields:
+                    models.article.add_data.set_multi(
+                        self, data, only_new=not overwrite, verbose=verbose
+                    )
+            case _:
+                data = {}
+        return data  # static analysis: ignore[possibly_undefined_name]
 
     def set_multi(self, data: dict[str, Any]) -> None:
         for key, value in clean_strings_recursively(data).items():

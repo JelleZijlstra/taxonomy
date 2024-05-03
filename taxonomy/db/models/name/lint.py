@@ -17,7 +17,7 @@ import Levenshtein
 import requests
 from attr import dataclass
 
-from taxonomy import adt, coordinates, getinput
+from taxonomy import adt, coordinates, getinput, urlparse
 from taxonomy.apis import bhl, nominatim
 from taxonomy.apis.zoobank import clean_lsid, get_zoobank_data, is_valid_lsid
 from taxonomy.db import helpers
@@ -297,15 +297,6 @@ def check_organ_tag(tag: TypeTag.Organ) -> Generator[str, None, list[TypeTag.Org
     return new_tags
 
 
-ALLOWED_AUTHORITY_PAGE_LINK_TYPES = {
-    bhl.UrlType.bhl_page,
-    bhl.UrlType.google_books,
-    bhl.UrlType.archive_org,
-    bhl.UrlType.hathitrust,
-    bhl.UrlType.hdl,
-}
-
-
 @LINT.add("type_tags")
 def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if not nam.type_tags:
@@ -466,8 +457,17 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
             new_tags = yield from check_organ_tag(tag)
             tags += new_tags
         elif isinstance(tag, TypeTag.AuthorityPageLink):
-            url = bhl.parse_possible_bhl_url(tag.url)
-            if url.url_type not in ALLOWED_AUTHORITY_PAGE_LINK_TYPES:
+            url = urlparse.parse_url(tag.url)
+            # TODO: call url.lint()
+            if isinstance(
+                url,
+                (
+                    urlparse.BhlItem,
+                    urlparse.BhlBibliography,
+                    urlparse.BhlItem,
+                    urlparse.GoogleBooksVolume,
+                ),
+            ):
                 yield f"invalid authority page link {url!r}"
             if nam.page_described is not None:
                 allowed_pages = list(extract_pages(nam.page_described))
@@ -1114,6 +1114,8 @@ def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 NameTag.NameCombinationOf,
             ),
         ):
+            if nam == tag.name:
+                yield f"has a tag that points to itself: {tag}"
             if nam.get_date_object() < tag.name.get_date_object():
                 yield f"predates supposed original name {tag.name}"
             if isinstance(tag, NameTag.SubsequentUsageOf):
@@ -1133,6 +1135,19 @@ def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
             if isinstance(tag, NameTag.VariantOf) and nam.original_citation is not None:
                 # should be specified to unjustified emendation or incorrect subsequent spelling
                 yield f"{nam} is marked as a variant, but has an original citation"
+            if not isinstance(
+                tag,
+                (
+                    NameTag.SubsequentUsageOf,
+                    NameTag.NameCombinationOf,
+                    NameTag.JustifiedEmendationOf,
+                ),
+            ) and (
+                (nam.original_name == tag.name.original_name)
+                if nam.group is Group.family
+                else (nam.root_name == tag.name.root_name)
+            ):
+                yield f"{nam} has the same root name as {tag.name}, but is marked as {type(tag).__name__}"
 
         elif isinstance(tag, NameTag.Conserved):
             if nam.nomenclature_status not in (
@@ -2387,14 +2402,14 @@ def check_species_group_primary_homonyms(nam: Name, cfg: LintConfig) -> Iterable
     )
 
 
-@LINT.add("species_mixed_homonym")
+@LINT.add("species_mixed_homonym", disabled=True)
 def check_species_group_mixed_homonyms(nam: Name, cfg: LintConfig) -> Iterable[str]:
     yield from _check_species_group_homonyms(
         nam, reason=SelectionReason.mixed_homonymy, fuzzy=False, cfg=cfg
     )
 
 
-@LINT.add("species_reverse_mixed_homonym")
+@LINT.add("species_reverse_mixed_homonym", disabled=True)
 def check_species_group_reverse_mixed_homonyms(
     nam: Name, cfg: LintConfig
 ) -> Iterable[str]:
@@ -2403,7 +2418,7 @@ def check_species_group_reverse_mixed_homonyms(
     )
 
 
-@LINT.add("species_fuzzy_secondary_homonym", disabled=True)
+@LINT.add("species_fuzzy_secondary_homonym")
 def check_species_group_fuzzy_secondary_homonyms(
     nam: Name, cfg: LintConfig
 ) -> Iterable[str]:
@@ -2412,7 +2427,7 @@ def check_species_group_fuzzy_secondary_homonyms(
     )
 
 
-@LINT.add("species_fuzzy_primary_homonym", disabled=True)
+@LINT.add("species_fuzzy_primary_homonym")
 def check_species_group_fuzzy_primary_homonyms(
     nam: Name, cfg: LintConfig
 ) -> Iterable[str]:
@@ -2856,8 +2871,8 @@ def check_bhl_page(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.original_citation is None:
         return
     for tag in nam.get_tags(nam.type_tags, TypeTag.AuthorityPageLink):
-        parsed = bhl.parse_possible_bhl_url(tag.url)
-        if parsed.url_type is not bhl.UrlType.bhl_page:
+        parsed = urlparse.parse_url(tag.url)
+        if not isinstance(parsed, urlparse.BhlPage):
             continue
         if nam.original_citation.url is None:
             yield f"name has BHL page, but original citation has no URL: {nam.original_citation}"
@@ -2866,8 +2881,8 @@ def check_bhl_page(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 if nam.original_citation.url is None:
                     _autoset_original_citation_url(nam)
             continue
-        parsed_url = bhl.parse_possible_bhl_url(nam.original_citation.url)
-        if not parsed_url.is_bhl():
+        parsed_url = urlparse.parse_url(nam.original_citation.url)
+        if not isinstance(parsed_url, urlparse.BhlUrl):
             yield f"name has BHL page, but citation has non-BHL URL {nam.original_citation.url}"
             if cfg.interactive:
                 _autoset_original_citation_url(nam)
@@ -2906,14 +2921,14 @@ def _check_bhl_item_matches(
             yield from _replace_page_link(nam, tag, new_tag, cfg)
             return
         if nam.original_citation.url is not None and nam.page_described is not None:
-            parsed_url = bhl.parse_possible_bhl_url(nam.original_citation.url)
-            if parsed_url.url_type is bhl.UrlType.bhl_part:
+            parsed_url = urlparse.parse_url(nam.original_citation.url)
+            if isinstance(parsed_url, urlparse.BhlPart):
                 pages = bhl.get_possible_pages_from_part(
-                    int(parsed_url.payload), nam.page_described
+                    parsed_url.part_id, nam.page_described
                 )
                 if len(pages) == 1:
                     new_tag = TypeTag.AuthorityPageLink(
-                        url=f"https://www.biodiversitylibrary.org/page/{pages[0]}",
+                        url=str(urlparse.BhlPage(pages[0])),
                         confirmed=True,
                         page=nam.page_described,
                     )
@@ -3074,10 +3089,9 @@ def get_candidate_bhl_pages(
         return
     tags = list(nam.get_tags(nam.type_tags, TypeTag.AuthorityPageLink))
     known_pages = [
-        int(parsed_url.payload)
+        parsed_url.page_id
         for tag in tags
-        if (parsed_url := bhl.parse_possible_bhl_url(tag.url)).url_type
-        is bhl.UrlType.bhl_page
+        if isinstance((parsed_url := urlparse.parse_url(tag.url)), urlparse.BhlPage)
     ]
     year = nam.numeric_year()
     contains_text: list[str] = []
@@ -3168,12 +3182,12 @@ def infer_bhl_page_from_other_names(nam: Name, cfg: LintConfig) -> Iterable[str]
     inferred_pages: set[int] = set()
     for other_nam in other_new_names:
         for tag in other_nam.get_tags(other_nam.type_tags, TypeTag.AuthorityPageLink):
-            parsed = bhl.parse_possible_bhl_url(tag.url)
-            if parsed.url_type is not bhl.UrlType.bhl_page:
+            parsed = urlparse.parse_url(tag.url)
+            if not isinstance(parsed, urlparse.BhlPage):
                 if cfg.verbose:
                     print(f"{other_nam}: {tag} is not a BHL page URL")
                 continue
-            existing_page_id = int(parsed.payload)
+            existing_page_id = parsed.page_id
             if tag.page == page and nam.page_described == other_nam.page_described:
                 inferred_pages.add(existing_page_id)
             if not tag.page.isnumeric() or not page.isnumeric():
@@ -3261,16 +3275,15 @@ def infer_bhl_page_from_article(nam: Name, cfg: LintConfig) -> Iterable[str]:
         if cfg.verbose:
             print(f"{nam}: no original citation or URL")
         return
-    parsed = bhl.parse_possible_bhl_url(art.url)
+    parsed = urlparse.parse_url(art.url)
     for page_described in extract_pages(nam.page_described):
         if any(
             isinstance(tag, TypeTag.AuthorityPageLink) and tag.page == page_described
             for tag in nam.type_tags
         ):
             continue
-        match parsed.url_type:
-            case bhl.UrlType.bhl_page:
-                start_page_id = int(parsed.payload)
+        match parsed:
+            case urlparse.BhlPage(start_page_id):
                 if (
                     art.start_page is not None
                     and art.start_page == art.end_page == page_described
@@ -3289,11 +3302,9 @@ def infer_bhl_page_from_article(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 yield from _infer_bhl_page_from_article_page(
                     nam, cfg, start_page_id, page_described
                 )
-            case bhl.UrlType.bhl_item:
-                item_id = int(parsed.payload)
+            case urlparse.BhlItem(item_id):
                 yield from _infer_bhl_page_from_item(nam, cfg, item_id, page_described)
-            case bhl.UrlType.bhl_part:
-                part_id = int(parsed.payload)
+            case urlparse.BhlPart(part_id):
                 yield from _infer_bhl_page_from_part(nam, cfg, part_id, page_described)
             case _:
                 if cfg.verbose:

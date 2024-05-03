@@ -1,6 +1,5 @@
 import collections
 import csv
-import enum
 import functools
 import itertools
 import json
@@ -14,7 +13,7 @@ from typing import Any, TypeVar
 import httpx
 import Levenshtein
 
-from taxonomy import config
+from taxonomy import config, urlparse
 from taxonomy.db import helpers
 from taxonomy.db.url_cache import CacheDomain, cached, dirty_cache
 
@@ -461,128 +460,39 @@ def find_possible_pages(
             )
 
 
-class UrlType(enum.Enum):
-    bhl_bibliography = enum.auto()
-    bhl_item = enum.auto()
-    bhl_page = enum.auto()
-    bhl_part = enum.auto()
-    other_bhl = enum.auto()
-    biostor_ref = enum.auto()
-    other_biostor = enum.auto()
-    google_books = enum.auto()
-    archive_org = enum.auto()
-    hdl = enum.auto()
-    hathitrust = enum.auto()
-    other = enum.auto()
-
-
-@dataclass
-class ParsedUrl:
-    url_type: UrlType
-    payload: str
-
-    def __str__(self) -> str:
-        match self.url_type:
-            case UrlType.bhl_bibliography:
-                return (
-                    f"https://www.biodiversitylibrary.org/bibliography/{self.payload}"
-                )
-            case UrlType.bhl_item:
-                return f"https://www.biodiversitylibrary.org/item/{self.payload}"
-            case UrlType.bhl_page:
-                return f"https://www.biodiversitylibrary.org/page/{self.payload}"
-            case UrlType.bhl_part:
-                return f"https://www.biodiversitylibrary.org/part/{self.payload}"
-            case UrlType.other_bhl:
-                return self.payload
-            case UrlType.biostor_ref:
-                return f"http://biostor.org/reference/{self.payload}"
-            case (
-                UrlType.other_biostor
-                | UrlType.google_books
-                | UrlType.archive_org
-                | UrlType.other
-                | UrlType.hathitrust
-                | UrlType.hdl
-            ):
-                return self.payload
-        return "<unknown url>"
-
-    def is_bhl(self) -> bool:
-        return self.url_type in {
-            UrlType.bhl_bibliography,
-            UrlType.bhl_item,
-            UrlType.bhl_page,
-            UrlType.bhl_part,
-        }
-
-
-def parse_possible_bhl_url(url: str) -> ParsedUrl:
-    if match := re.fullmatch(
-        r"https?://(?:www\.)?biodiversitylibrary\.org/([a-z]+)/(\d+)", url
-    ):
-        match match.group(1):
-            case "bibliography":
-                return ParsedUrl(UrlType.bhl_bibliography, match.group(2))
-            case "item" | "itempdf":
-                return ParsedUrl(UrlType.bhl_item, match.group(2))
-            case "page":
-                return ParsedUrl(UrlType.bhl_page, match.group(2))
-            case "part" | "partpdf":
-                return ParsedUrl(UrlType.bhl_part, match.group(2))
-    elif match := re.fullmatch(r"https?://biostor\.org/reference/(\d+)", url):
-        return ParsedUrl(UrlType.biostor_ref, match.group(1))
-    elif "biodiversitylibrary.org" in url:
-        return ParsedUrl(UrlType.other_bhl, url)
-    elif "biostor.org" in url:
-        return ParsedUrl(UrlType.other_biostor, url)
-    # TODO: parse these more precisely so we get consistent URLs
-    # Maybe make specific types into subclasses of ParsedUrl instead,
-    # so they can have different types of payloads.
-    elif "books.google.com" in url:
-        return ParsedUrl(UrlType.google_books, url)
-    elif "archive.org" in url:
-        return ParsedUrl(UrlType.archive_org, url)
-    elif "hdl.handle.net" in url:
-        return ParsedUrl(UrlType.hdl, url)
-    elif "hathitrust.org" in url:
-        return ParsedUrl(UrlType.hathitrust, url)
-    return ParsedUrl(UrlType.other, url)
-
-
 def get_bhl_item_from_url(url: str) -> int | None:
-    pair = parse_possible_bhl_url(url)
-    match pair:
-        case ParsedUrl(UrlType.bhl_item, id):
-            return int(id)
-        case ParsedUrl(UrlType.bhl_page, id):
-            data = get_page_metadata(int(id))
+    parsed = urlparse.parse_url(url)
+    match parsed:
+        case urlparse.BhlItem(id):
+            return id
+        case urlparse.BhlPage(id):
+            data = get_page_metadata(id)
             if data is not None:
                 return int(data["ItemID"])
-        case ParsedUrl(UrlType.bhl_part, id):
-            data = get_part_metadata(int(id))
+        case urlparse.BhlPart(id):
+            data = get_part_metadata(id)
             if data is not None:
                 return int(data["ItemID"])
     return None
 
 
 def get_bhl_bibliography_from_url(url: str) -> int | None:
-    match parse_possible_bhl_url(url):
-        case ParsedUrl(UrlType.bhl_bibliography, id):
-            return int(id)
-        case ParsedUrl(UrlType.bhl_item, id):
-            data = get_item_metadata(int(id))
+    match urlparse.parse_url(url):
+        case urlparse.BhlBibliography(id):
+            return id
+        case urlparse.BhlItem(id):
+            data = get_item_metadata(id)
             if data is not None:
                 return int(data["TitleID"])
-        case ParsedUrl(UrlType.bhl_page, id):
-            data = get_page_metadata(int(id))
+        case urlparse.BhlPage(id):
+            data = get_page_metadata(id)
             if data is not None:
                 item_id = data["ItemID"]
                 data = get_item_metadata(item_id)
                 if data is not None:
                     return int(data["TitleID"])
-        case ParsedUrl(UrlType.bhl_part, id):
-            data = get_part_metadata(int(id))
+        case urlparse.BhlPart(id):
+            data = get_part_metadata(id)
             if data is not None:
                 item_id = data["ItemID"]
                 data = get_item_metadata(item_id)
@@ -616,8 +526,8 @@ EXCLUDED_FROM_PRINTING = {
 
 
 def print_data_for_possible_bhl_url(url: str) -> bool:
-    parsed = parse_possible_bhl_url(url)
-    if not parsed.is_bhl():
+    parsed = urlparse.parse_url(url)
+    if not isinstance(parsed, urlparse.BhlUrl):
         return False
     item_id = get_bhl_item_from_url(url)
     if item_id is not None:
@@ -654,11 +564,11 @@ def clear_caches_related_to_url(url: str) -> None:
     biblio_id = get_bhl_bibliography_from_url(url)
     if biblio_id is not None:
         dirty_cache(CacheDomain.bhl_title, str(biblio_id))
-    match parse_possible_bhl_url(url):
-        case ParsedUrl(UrlType.bhl_page, id):
-            dirty_cache(CacheDomain.bhl_page, id)
-        case ParsedUrl(UrlType.bhl_part, id):
-            dirty_cache(CacheDomain.bhl_part, id)
+    match urlparse.parse_url(url):
+        case urlparse.BhlPage(id):
+            dirty_cache(CacheDomain.bhl_page, str(id))
+        case urlparse.BhlPart(id):
+            dirty_cache(CacheDomain.bhl_part, str(id))
 
 
 # From https://docs.python.org/3.10/library/itertools.html#itertools-recipes

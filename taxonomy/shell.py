@@ -39,7 +39,7 @@ from traitlets.config.loader import Config
 from taxonomy.apis import bhl
 from taxonomy.config import get_options
 
-from . import getinput
+from . import getinput, urlparse
 from .command_set import CommandSet
 from .db import constants, definition, derived_data, export, helpers, models
 from .db.constants import (
@@ -3000,10 +3000,10 @@ def download_bhl_parts(nams: Iterable[Name] | None = None) -> None:
         for tag in nam.type_tags:
             if not isinstance(tag, TypeTag.AuthorityPageLink):
                 continue
-            parsed = bhl.parse_possible_bhl_url(tag.url)
-            if parsed.url_type is not bhl.UrlType.bhl_page:
+            parsed = urlparse.parse_url(tag.url)
+            if not isinstance(parsed, urlparse.BhlPage):
                 continue
-            for part_id in bhl.get_possible_parts_from_page(int(parsed.payload)):
+            for part_id in bhl.get_possible_parts_from_page(int(parsed.page_id)):
                 url = f"https://www.biodiversitylibrary.org/partpdf/{part_id}"
                 if not getinput.yes_no(f"download {part_id} for {nam}?"):
                     return

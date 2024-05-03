@@ -15,7 +15,7 @@ import httpx
 import requests
 from bs4 import BeautifulSoup
 
-from taxonomy import command_set, config, getinput, parsing, uitools
+from taxonomy import command_set, config, getinput, parsing, uitools, urlparse
 from taxonomy.apis import bhl
 from taxonomy.db.constants import ArticleKind, ArticleType, DateSource
 from taxonomy.db.helpers import clean_string, clean_strings_recursively, trimdoi
@@ -446,11 +446,10 @@ def get_bhl_part_data_from_pdf(art: Article) -> RawData:
 def get_bhl_part_data(art: Article) -> RawData:
     if art.url is None:
         return {}
-    parsed = bhl.parse_possible_bhl_url(art.url)
-    if parsed.url_type is not bhl.UrlType.bhl_part:
-        return {}
-    part_id = int(parsed.payload)
-    return get_bhl_part_data_from_part_id(part_id)
+    match urlparse.parse_url(art.url):
+        case urlparse.BhlPart(part_id):
+            return get_bhl_part_data_from_part_id(part_id)
+    return {}
 
 
 def get_jstor_data(art: Article) -> RawData:
@@ -754,10 +753,10 @@ def doi_input(art: Article) -> bool:
             art.doi = doi
             print("Detected DOI", doi, "from url", data)
             return not art.expand_doi(set_fields=True)
-        parsed = bhl.parse_possible_bhl_url(data)
-        if parsed.url_type is bhl.UrlType.bhl_part:
-            print("Detected BHL part", data)
-            return not art.expand_bhl_part(url=data, set_fields=True)
+        match urlparse.parse_url(data):
+            case urlparse.BhlPart(part_id):
+                print("Detected BHL part", part_id)
+                return not art.expand_bhl_part(url=data, set_fields=True)
         return True
 
     def opener(cmd: str, data: object) -> bool:
