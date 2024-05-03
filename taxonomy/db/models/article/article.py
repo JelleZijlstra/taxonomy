@@ -876,11 +876,16 @@ class Article(BaseModel):
         return any(tag[0] == tag_id for tag in self.get_raw_tags_field("tags"))
 
     def geturl(self) -> str | None:
-        # get the URL for this file from the data given
+        # get the URL for this file from the data given. Preferences:
+        # 1. BHL URL
         if self.url:
-            return self.url
+            parsed = bhl.parse_possible_bhl_url(self.url)
+            if parsed.is_bhl():
+                return self.url
+        # 2. DOI
         if self.doi:
             return f"https://doi.org/{self.doi}"
+        # 3. Other identifiers
         tries = {
             ArticleTag.JSTOR: "https://www.jstor.org/stable/",
             ArticleTag.HDL: "https://hdl.handle.net/",
@@ -891,6 +896,10 @@ class Article(BaseModel):
             value = self.get_identifier(identifier)
             if value:
                 return url + value
+        # 4. Other URL
+        if self.url:
+            return self.url
+        # 5. Parent URL
         if self.parent is not None:
             return self.parent.geturl()
         return None

@@ -53,6 +53,8 @@ from taxonomy.db.constants import (
 from taxonomy.db.models import Name, Taxon
 from taxonomy.db.models.name import NameTag, TypeTag
 
+LIMIT_AUTH_LINKS = False
+
 
 @functools.cache
 def resolve_hesp_id(hesp_id_str: str) -> int | None:
@@ -429,9 +431,6 @@ class FixableDifference:
                 if self.hesp_name.original_citation is None:
                     print(f"{self}: skip applying because no original citation")
                     return
-                if self.hesp_name.original_citation.geturl() is not None:
-                    print(f"{self}: skip applying because already has a link")
-                    return
                 print(
                     f"{self}: set url to {self.mdd_value} for {self.hesp_name.original_citation}"
                 )
@@ -518,6 +517,13 @@ def compare_column(
                             return None
                     except ValueError:
                         pass
+                if (
+                    LIMIT_AUTH_LINKS
+                    and mdd_column == "MDD_authority_link"
+                    and "biodiversitylibrary.org" not in hesp_value
+                    and "//doi.org" not in hesp_value
+                ):
+                    return None
                 comparison = f"{hesp_value} (H) / {mdd_value} (M)"
                 if compare_func is not None:
                     extra = compare_func(hesp_value, mdd_value)
