@@ -458,7 +458,6 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
             tags += new_tags
         elif isinstance(tag, TypeTag.AuthorityPageLink):
             url = urlparse.parse_url(tag.url)
-            # TODO: call url.lint()
             if isinstance(
                 url,
                 (
@@ -469,6 +468,8 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 ),
             ):
                 yield f"invalid authority page link {url!r}"
+            for message in url.lint():
+                yield f"page link {tag}: {message}"
             if nam.page_described is not None:
                 allowed_pages = list(extract_pages(nam.page_described))
                 if tag.page not in allowed_pages and not (
