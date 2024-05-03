@@ -64,7 +64,25 @@ class BhlPart(BhlUrl):
 
 @dataclass
 class GoogleBooksUrl(ParsedUrl):
-    pass
+    """
+    Google Books URLs have two useful parameters:
+    - id: the volume ID
+    - pg: the page number to link to directly
+
+    We allow links with only "id" to link to the whole volume, and links
+    with "id" and "pg" to link to a specific page.
+
+    Other URL parameters include:
+    - newbks: something about the "new" Google Books interface
+    - newbks_redir: similar
+    - dq: search query that led to the book
+    - lpg: the page number that the user originally landed on
+    - f: unknown
+    - q: unknown
+
+    We strip out these parameters to make the links simpler and more consistent.
+
+    """
 
 
 @dataclass
@@ -104,6 +122,8 @@ class OtherUrl(ParsedUrl):
             yield "URL should be replaced with a DOI"
         if self.split_url.netloc in DEPRECATED_DOMAINS:
             yield f"URL uses deprecated domain {self.split_url.netloc}"
+        if is_google_domain(self.split_url.netloc):
+            yield "unrecognized Google URL"
 
 
 def parse_url(url: str) -> ParsedUrl:
@@ -122,18 +142,32 @@ def parse_url(url: str) -> ParsedUrl:
                     return BhlPart(int(match.group(2)))
     elif re.fullmatch(r"books\.google\.[a-z]+", split.netloc):
         query_dict = urllib.parse.parse_qs(split.query)
-        if query_dict.keys() == {"id"} and len(query_dict["id"]) == 1:
-            return GoogleBooksVolume(query_dict["id"][0])
-        elif (
-            query_dict.keys() == {"id", "pg"}
+        if (
+            "id" in query_dict
+            and "pg" in query_dict
             and len(query_dict["id"]) == 1
             and len(query_dict["pg"]) == 1
         ):
             return GoogleBooksPage(query_dict["id"][0], query_dict["pg"][0])
-        # TODO: if there are other URL parameters, drop them
+        elif (
+            "id" in query_dict and "pg" not in query_dict and len(query_dict["id"]) == 1
+        ):
+            return GoogleBooksVolume(query_dict["id"][0])
+    elif re.fullmatch(r"(www\.)?google\.[a-z]+", split.netloc):
+        match = re.fullmatch(r"/books/edition/[^/]+/([^/]+)", split.path)
+        if match is not None:
+            book_id = match.group(1)
+            query_dict = urllib.parse.parse_qs(split.query)
+            if "pg" in query_dict:
+                return GoogleBooksPage(book_id, query_dict["pg"][0])
+            else:
+                return GoogleBooksVolume(book_id)
     # TODO: other domains for which to consider parsing more specifically:
-    # - google.com (replace with books.google.com)
     # - archive.org
     # - hathitrust.org
     # - gallica.bnf.fr
     return OtherUrl(split)
+
+
+def is_google_domain(domain: str) -> bool:
+    return re.fullmatch(r"(?:books\.|www\.)?google\.[a-z]+", domain) is not None
