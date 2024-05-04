@@ -24,3 +24,4 @@ class TaxonTag(adt.ADT):
     EnglishCommonName(name=str, tag=4)  # type: ignore[name-defined]
     IncertaeSedis(comment=NotRequired[str], tag=5)  # type: ignore[name-defined]
     Basal(comment=NotRequired[str], tag=6)  # type: ignore[name-defined]
+    IgnoreLintTaxon(label=str, comment=NotRequired[str], tag=7)  # type: ignore[name-defined]

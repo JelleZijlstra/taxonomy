@@ -122,36 +122,7 @@ class Taxon(BaseModel):
         return self.age in (AgeClass.removed, AgeClass.redirect)
 
     def lint(self, cfg: LintConfig) -> Iterable[str]:
-        if self.parent is None and self.id != 1:
-            yield f"{self}: missing parent"
-        if self.parent is not None and not self.age.can_have_parent_of_age(
-            self.parent.age
-        ):
-            yield (
-                f"{self}: is {self.age!r}, but its parent {self.parent} is"
-                f" {self.parent.age!r}"
-            )
-        if not self.base_name.status.is_base_name():
-            yield f"{self}: base name has invalid status {self.base_name.status}"
-        expected_group = helpers.group_of_rank(self.rank)
-        if expected_group != self.base_name.group:
-            rank = self.rank.name
-            group = self.base_name.group.name
-            yield f"{self}: group mismatch: rank {rank} but group {group}"
-        parent = self.parent
-        if (
-            parent is not None
-            and parent.rank is not Rank.unranked
-            and self.rank is not Rank.unranked
-        ):
-            if self.rank >= parent.rank:
-                yield (
-                    f"{self}: is of rank {self.rank.name}, but parent is of rank"
-                    f" {parent.rank.name}"
-                )
-        yield from self.check_nominal_genus(cfg)
-        yield from self.check_valid_name(cfg)
-        yield from self.check_basal_tags(cfg)
+        yield from models.taxon.lint.LINT.run(self, cfg)
 
     def needs_basal_tag(self) -> bool:
         if self.base_name.status != Status.valid:
@@ -162,81 +133,8 @@ class Taxon(BaseModel):
             return False
         return True
 
-    def check_basal_tags(self, cfg: LintConfig) -> Iterable[str]:
-        has_is = self.has_tag(models.tags.TaxonTag.IncertaeSedis)
-        has_basal = self.has_tag(models.tags.TaxonTag.Basal)
-        if has_is and has_basal:
-            yield f"{self}: has both IncertaeSedis and Basal tags"
-        if self.needs_basal_tag():
-            if not has_is and not has_basal:
-                yield (
-                    f"{self}: parent taxon {self.parent} has higher-ranked children,"
-                    " but child lacks 'incertae sedis' or 'basal' tag"
-                )
-        else:
-            if has_is:
-                yield f"{self}: has unnecessary IncertaeSedis tag"
-            if has_basal:
-                yield f"{self}: has unnecessary Basal tag"
-
     def has_tag(self, tag: type[models.tags.TaxonTag]) -> bool:
         return any(self.get_tags(self.tags, tag))
-
-    def check_nominal_genus(self, cfg: LintConfig) -> Iterable[str]:
-        nominal_genus_tags = list(
-            self.get_tags(self.tags, models.tags.TaxonTag.NominalGenus)
-        )
-        if len(nominal_genus_tags) > 1:
-            yield f"{self}: has multiple nominal genus tags: {nominal_genus_tags}"
-        elif len(nominal_genus_tags) == 1:
-            nominal_genus = nominal_genus_tags[0].genus
-            if nominal_genus.group is not Group.genus:
-                yield f"{self}: nominal genus {nominal_genus} is not a genus"
-        if (
-            self.base_name.group is Group.species
-            and self.base_name.status is Status.valid
-            and not nominal_genus_tags
-            and not self.has_parent_of_rank(Rank.genus)
-        ):
-            if cfg.autofix:
-                orig_nam = self.base_name.corrected_original_name
-                if orig_nam:
-                    orig_genus, *_ = orig_nam.split()
-                    candidates = list(
-                        models.Name.select_valid().filter(
-                            models.Name.group == Group.genus,
-                            models.Name.root_name == orig_genus,
-                        )
-                    )
-                    if len(candidates) == 1:
-                        print(f"{self}: adding NominalGenus tag: {candidates[0]}")
-                        self.add_tag(
-                            models.tags.TaxonTag.NominalGenus(genus=candidates[0])
-                        )
-                        return
-            yield f"{self}: should have NominalGenus tag"
-
-    def check_valid_name(self, cfg: LintConfig) -> Iterable[str]:
-        computed = self.compute_valid_name()
-        if computed is None or self.valid_name == computed:
-            return
-        message = (
-            f"{self}: valid name mismatch: {self.valid_name} (actual) vs."
-            f" {computed} (computed)"
-        )
-        # For species-group taxa, we always trust the computed name. Usually these
-        # have been reassigned to a different genus, or changed between species and
-        # subspecies, or they have become nomina dubia (in which case we use the
-        # corrected original name). For family-group names we don't always trust the
-        # computed name, because stems may be arbitrary.
-        can_fix = cfg.autofix and (
-            self.base_name.group == Group.species or self.is_nominate_subgenus()
-        )
-        if can_fix:
-            print(message)
-            self.recompute_name()
-        else:
-            yield message
 
     def group(self) -> Group:
         return helpers.group_of_rank(self.rank)
