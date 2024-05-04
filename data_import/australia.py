@@ -6,6 +6,7 @@ from collections.abc import Iterable
 from typing import Any
 
 from taxonomy import shell
+from taxonomy.db.models.name import TypeTag
 
 from . import lib
 from .lib import DataT
@@ -317,9 +318,13 @@ def split_text(names: DataT) -> DataT:
             if not name["loc"].strip():
                 print(name)
         if "type species" in name:
-            name["verbatim_type"] = name["type species"]
+            name["verbatim_type"] = TypeTag.TypeSpeciesDetail(
+                name["type species"], SOURCE.get_source()
+            )
         if "type genus" in name:
-            name["verbatim_type"] = name["type genus"]
+            name["verbatim_type"] = TypeTag.TypeSpeciesDetail(
+                name["type genus"], SOURCE.get_source()
+            )
         yield name
 
 

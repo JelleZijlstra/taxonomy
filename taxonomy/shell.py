@@ -316,23 +316,6 @@ def detect_original_rank() -> None:
 
 
 @command
-def detect_types(*, max_count: int | None = None, verbose: bool = False) -> None:
-    """Converts verbatim_types into references to the actual names."""
-    count = 0
-    successful_count = 0
-    group = (Group.family, Group.genus)
-    for name in (
-        Name.select_valid()
-        .filter(Name.verbatim_type != None, Name.type == None, Name.group.is_in(group))
-        .limit(max_count)
-    ):
-        count += 1
-        if name.detect_and_set_type(verbatim_type=name.verbatim_type, verbose=verbose):
-            successful_count += 1
-    print("Success: %d/%d" % (successful_count, count))
-
-
-@command
 def detect_types_from_root_names(max_count: int | None = None) -> None:
     """Detects types for family-group names on the basis of the root_name."""
 
@@ -1072,7 +1055,7 @@ def sorted_field_values(
 
 @command
 def field_counts() -> None:
-    for field in ("verbatim_citation", "verbatim_type"):
+    for field in ("verbatim_citation",):
         print(field, Name.select_valid().filter(getattr(Name, field) != None).count())
     print("Total", Name.select_valid().count())
 

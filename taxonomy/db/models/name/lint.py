@@ -1734,28 +1734,6 @@ def check_name_complex(nam: Name, cfg: LintConfig) -> Iterable[str]:
 
 @LINT.add("verbatim")
 def clean_up_verbatim(nam: Name, cfg: LintConfig) -> Iterable[str]:
-    if nam.verbatim_type is not None and (
-        nam.type is not None or "type" not in nam.get_required_fields()
-    ):
-        message = f"cleaning up verbatim type: {nam.type}, {nam.verbatim_type}"
-        if cfg.autofix:
-            print(f"{nam}: {message}")
-            nam.add_data("verbatim_type", nam.verbatim_type, concat_duplicate=True)
-            nam.verbatim_type = None
-        else:
-            yield message
-    if (
-        nam.group is Group.species
-        and nam.verbatim_type is not None
-        and nam.type_specimen is not None
-    ):
-        message = f"cleaning up verbatim type: {nam.type_specimen}, {nam.verbatim_type}"
-        if cfg.autofix:
-            print(f"{nam}: {message}")
-            nam.add_data("verbatim_type", nam.verbatim_type, concat_duplicate=True)
-            nam.verbatim_type = None
-        else:
-            yield message
     if nam.verbatim_citation is not None and nam.original_citation is not None:
         message = (
             f"cleaning up verbatim citation: {nam.original_citation.name},"

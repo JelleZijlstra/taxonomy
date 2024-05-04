@@ -132,7 +132,6 @@ class Name(BaseModel):
     type = Field[Self | None](
         "type_id", related_name="typified_names"
     )  # for family and genus group
-    verbatim_type = Field[str | None]()  # deprecated
     type_locality = Field[Location | None](
         "type_locality_id", related_name="type_localities"
     )
@@ -1631,7 +1630,6 @@ class Name(BaseModel):
             if self.citation_group is not None:
                 data["citation_group"] = self.citation_group.name
             data["verbatim_citation"] = self.verbatim_citation
-            data["verbatim_type"] = self.verbatim_type
             if include_data:
                 data["data"] = self.data
 
@@ -2153,166 +2151,11 @@ class Name(BaseModel):
         self.s(**kwargs)
         self.fill_required_fields()
 
-    def detect_and_set_type(
-        self, verbatim_type: str | None = None, *, verbose: bool = False
-    ) -> bool:
-        if verbatim_type is None:
-            verbatim_type = self.verbatim_type
-        if verbose:
-            print(f"=== Detecting type for {self} from {verbatim_type}")
-        candidates = self.detect_type(verbatim_type=verbatim_type, verbose=verbose)
-        if candidates is None or not candidates:
-            print(
-                f"Verbatim type {verbatim_type} for name {self} could not be recognized"
-            )
-            return False
-        elif len(candidates) == 1:
-            if verbose:
-                print(f"Detected type: {candidates[0]}")
-            self.type = candidates[0]
-            return True
-        else:
-            print(
-                f"Verbatim type {verbatim_type} for name {self} yielded multiple"
-                f" possible names: {candidates}"
-            )
-            return False
-
-    def detect_type(
-        self, verbatim_type: str | None = None, *, verbose: bool = False
-    ) -> list[Name]:
-        def cleanup(name: str) -> str:
-            return re.sub(
-                r"\s+",
-                " ",
-                name.strip().rstrip(".").replace("<i>", "").replace("</i>", ""),
-            )
-
-        steps = [
-            lambda verbatim: verbatim,
-            lambda verbatim: re.sub(r"\([^)]+\)", "", verbatim),
-            lambda verbatim: re.sub(r"=.*$", "", verbatim),
-            lambda verbatim: re.sub(r"\(.*$", "", verbatim),
-            lambda verbatim: re.sub(r"\[.*$", "", verbatim),
-            lambda verbatim: re.sub(r",.*$", "", verbatim),
-            lambda verbatim: self._split_authority(verbatim)[0],
-            lambda verbatim: verbatim.split()[1] if " " in verbatim else verbatim,
-            lambda verbatim: helpers.convert_gender(
-                verbatim, constants.GrammaticalGender.masculine
-            ),
-            lambda verbatim: helpers.convert_gender(
-                verbatim, constants.GrammaticalGender.feminine
-            ),
-            lambda verbatim: helpers.convert_gender(
-                verbatim, constants.GrammaticalGender.neuter
-            ),
-        ]
-        if verbatim_type is None:
-            verbatim_type = self.verbatim_type
-        if not verbatim_type:
-            return []
-        candidates = None
-        for step in steps:
-            new_verbatim = cleanup(step(verbatim_type))
-            if verbatim_type != new_verbatim or candidates is None:
-                if verbose:
-                    print(f"Trying verbatim type: {new_verbatim}")
-                verbatim_type = new_verbatim
-                candidates = self.detect_type_from_verbatim_type(verbatim_type)
-                if candidates:
-                    return candidates
-        return []
-
-    @staticmethod
-    def _split_authority(verbatim_type: str) -> tuple[str, str | None]:
-        # if there is an uppercase letter following an all-lowercase word (the species name),
-        # the authority is included
-        find_authority = re.match(r"^(.* [a-z]+) ([A-Z+].+)$", verbatim_type)
-        if find_authority:
-            return find_authority.group(1), find_authority.group(2)
-        else:
-            return verbatim_type, None
-
     def has_lint_ignore(self, label: str) -> bool:
         return any(
             isinstance(tag, TypeTag.IgnoreLintName) and tag.label == label
             for tag in self.type_tags
         )
-
-    def detect_type_from_verbatim_type(self, verbatim_type: str) -> list[Name]:
-        def _filter_by_authority(
-            candidates: Iterable[Name], authority: str | None
-        ) -> Iterable[Name]:
-            if authority is None:
-                return candidates
-            split = re.split(r", (?=\d)", authority, maxsplit=1)
-            if len(split) == 1:
-                author, year = authority, None
-            else:
-                author, year = split
-            result = []
-            for candidate in candidates:
-                if candidate.taxonomic_authority() != author:
-                    continue
-                if year is not None and candidate.year != year:
-                    continue
-                result.append(candidate)
-            return result
-
-        parent = self.taxon
-        if self.group == Group.family:
-            verbatim = verbatim_type.split(maxsplit=1)
-            if len(verbatim) == 1:
-                type_name, authority = verbatim[0], None
-            else:
-                type_name, authority = verbatim
-            return list(
-                _filter_by_authority(
-                    parent.find_names(verbatim[0], group=Group.genus), authority
-                )
-            )
-        else:
-            type_name, authority = self._split_authority(verbatim_type)
-            if " " not in type_name:
-                root_name = type_name
-                candidates = Name.filter(
-                    Name.root_name == root_name, Name.group == Group.species
-                )
-                find_abbrev = False
-            else:
-                match = re.match(r"^[A-Z]\. ([a-z]+)$", type_name)
-                find_abbrev = bool(match)
-                if match:
-                    root_name = match.group(1)
-                    candidates = Name.filter(
-                        Name.root_name == root_name, Name.group == Group.species
-                    )
-                else:
-                    candidates = Name.filter(
-                        Name.original_name == type_name, Name.group == Group.species
-                    )
-            # filter by authority first because it's cheaper
-            candidates = _filter_by_authority(candidates, authority)
-            candidates = [
-                candidate
-                for candidate in candidates
-                if candidate.taxon.is_child_of(parent)
-            ]
-            # if we failed to find using the original_name, try the valid_name
-            if not candidates and not find_abbrev:
-                candidate_taxa = Taxon.select().filter(valid_name=type_name)
-                candidates = [
-                    taxon.base_name
-                    for taxon in candidate_taxa
-                    if taxon.base_name.status is Status.valid
-                ]
-                candidates = _filter_by_authority(candidates, authority)
-                candidates = [
-                    candidate
-                    for candidate in candidates
-                    if candidate.taxon.is_child_of(parent)
-                ]
-            return candidates
 
     def possible_citation_groups(self) -> int:
         if self.verbatim_citation is not None:

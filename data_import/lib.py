@@ -611,6 +611,13 @@ def translate_to_db(
             name["original_name"] = re.sub(
                 r"\[([a-z]+)\]\.", r"\1", name["original_name"]
             )
+        if "verbatim_type" in name:
+            assert source is not None, f"missing source (at {name})"
+            type_tags.append(
+                models.TypeTag.TypeSpeciesDetail(
+                    name["verbatim_type"], source.get_source()
+                )
+            )
 
         if type_tags:
             name["type_tags"] = type_tags
@@ -1309,7 +1316,6 @@ def write_to_db(
             "nomenclature_status",
             "genus_type_kind",
             "page_described",
-            "verbatim_type",
             "authority",
             "year",
             "taxon",
@@ -1368,7 +1374,7 @@ def write_to_db(
                     ) or current_value.is_child_of(new_value):
                         continue
 
-                if attr in ("verbatim_citation", "verbatim_type"):
+                if attr == "verbatim_citation":
                     if new_value in current_value:
                         continue
                     new_value = (
@@ -1425,7 +1431,7 @@ def write_to_db(
                             if existing.original_citation == source.get_source():
                                 continue
 
-                if attr not in ("verbatim_citation", "verbatim_type") and not (
+                if attr != "verbatim_citation" and not (
                     attr == "nomenclature_status"
                     and current_value == constants.NomenclatureStatus.available
                 ):
@@ -1434,7 +1440,7 @@ def write_to_db(
                         nam.open_description()
                         nam.fill_field(attr)
                     continue
-            elif attr in ("verbatim_citation", "verbatim_type"):
+            elif attr == "verbatim_citation":
                 new_value = f"{new_value} [from {{{source.source}}}]"
             num_changed[attr] += 1
             if not dry_run:
