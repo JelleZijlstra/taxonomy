@@ -3426,3 +3426,30 @@ def _infer_bhl_page_from_article_page(
             nam.add_type_tag(tag)
         else:
             yield message
+
+
+@LINT.add("move_to_lowest_rank")
+def move_to_lowest_rank(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    query = Taxon.select_valid().filter(Taxon.base_name == nam)
+    if query.count() < 2:
+        return
+    if nam.group is Group.high:
+        yield "high-group names cannot be the base name of multiple taxa"
+        return
+    lowest, *ts = sorted(query, key=lambda t: t.rank)
+    last_seen = lowest
+    for t in ts:
+        while last_seen is not None and last_seen != t:
+            last_seen = last_seen.parent
+        if last_seen is None:
+            yield f"taxon {t} is not a parent of {lowest}"
+            break
+    if last_seen is None:
+        return
+    if nam.taxon != lowest:
+        message = f"changing taxon of {nam} to {lowest}"
+        if cfg.autofix:
+            print(f"{nam}: {message}")
+            nam.taxon = lowest
+        else:
+            yield message

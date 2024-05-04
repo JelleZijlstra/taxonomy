@@ -1973,31 +1973,6 @@ def run_linter_and_fix(
             obj.load()
 
 
-@generator_command
-def move_to_lowest_rank(*, dry_run: bool = False) -> Iterable[tuple[Name, str]]:
-    for nam in getinput.print_every_n(Name.select_valid(), label="names"):
-        query = Taxon.select_valid().filter(Taxon.base_name == nam)
-        if query.count() < 2:
-            continue
-        if nam.group == Group.high:
-            yield nam, "high-group names cannot be the base name of multiple taxa"
-            continue
-        lowest, *ts = sorted(query, key=lambda t: t.rank)
-        last_seen = lowest
-        for t in ts:
-            while last_seen is not None and last_seen != t:
-                last_seen = last_seen.parent
-            if last_seen is None:
-                yield nam, f"taxon {t} is not a parent of {lowest}"
-                break
-        if last_seen is None:
-            continue
-        if nam.taxon != lowest:
-            print(f"changing taxon of {nam} to {lowest}")
-            if not dry_run:
-                nam.taxon = lowest
-
-
 @command
 def resolve_redirects(*, dry_run: bool = False) -> None:
     cfg = LintConfig(autofix=not dry_run)
@@ -2033,8 +2008,7 @@ def run_maintenance(*, skip_slow: bool = True) -> dict[Any, Any]:
     ]
     # these each take >60 s
     slow: list[Callable[[], Any]] = [
-        move_to_lowest_rank,
-        *[cls.lint_all for cls in models.BaseModel.__subclasses__()],
+        *[cls.lint_all for cls in models.BaseModel.__subclasses__()]
     ]
     if not skip_slow:
         fns += slow
@@ -2324,7 +2298,7 @@ def find_dois() -> None:
         if cg is not None
         for art in cg.get_articles().filter(Article.doi == None)
     }
-    for art in doiless:
+    for art in sorted(doiless, key=lambda art: art.name):
         art.finddoi()
 
 
