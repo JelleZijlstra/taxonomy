@@ -1810,7 +1810,6 @@ def run_maintenance(*, skip_slow: bool = True) -> dict[Any, Any]:
         set_citation_group_for_matching_citation,
         enforce_must_have,
         fix_citation_group_redirects,
-        recent_names_without_verbatim,
         Person.autodelete,
         Person.find_duplicates,
         Person.resolve_redirects,
@@ -2024,39 +2023,6 @@ def find_potential_citations_for_group(
     if count:
         print(f"{cg} had {count} potential citations", flush=True)
     return count
-
-
-@generator_command
-def recent_names_without_verbatim(
-    threshold: int = 1990, *, fix: bool = False
-) -> Iterator[Name]:
-    return fill_verbatim_citation_for_names(Name.year >= str(threshold), fix=fix)
-
-
-def fill_verbatim_citation_for_names(
-    *queries: Any, fix: bool = False
-) -> Iterator[Name]:
-    for nam in sorted(
-        Name.bfind(
-            *queries, Name.original_citation == None, Name.verbatim_citation == None
-        ),
-        key=lambda nam: (
-            -nam.numeric_year(),
-            nam.taxonomic_authority(),
-            nam.corrected_original_name or "",
-            nam.root_name,
-        ),
-    ):
-        nam.load()
-        if "verbatim_citation" not in nam.get_empty_required_fields():
-            continue
-        if fix:
-            getinput.print_header(nam)
-            nam.possible_citation_groups()
-        nam.display()
-        if fix:
-            nam.fill_field("verbatim_citation")
-        yield nam
 
 
 @command
