@@ -988,6 +988,8 @@ class NameEnding(BaseModel):
     label_field = "ending"
     call_sign = "NE"
     clirm_table_name = "name_ending"
+    creation_event = events.Event["NameEnding"]()
+    save_event = events.Event["NameEnding"]()
 
     name_complex = Field[NameComplex]("name_complex_id", related_name="endings")
     ending = Field[str]()
@@ -1000,6 +1002,8 @@ class SpeciesNameEnding(BaseModel):
     label_field = "ending"
     call_sign = "SNE"
     clirm_table_name = "species_name_ending"
+    creation_event = events.Event["SpeciesNameEnding"]()
+    save_event = events.Event["SpeciesNameEnding"]()
 
     name_complex = Field[SpeciesNameComplex]("name_complex_id", related_name="endings")
     ending = Field[str]()

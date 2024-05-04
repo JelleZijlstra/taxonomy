@@ -28,7 +28,7 @@ from collections import Counter, defaultdict
 from collections.abc import Callable, Hashable, Iterable, Iterator, Mapping, Sequence
 from itertools import groupby, pairwise
 from pathlib import Path
-from typing import Any, Generic, NamedTuple, TypeVar, cast
+from typing import Any, NamedTuple, TypeVar, cast
 
 import clirm
 import httpx
@@ -388,92 +388,6 @@ def endswith(end: str) -> list[Name]:
 
 
 @command
-def detect_complexes() -> None:
-    endings = list(models.NameEnding.select())
-    for name in Name.select_valid().filter(
-        Name.group == Group.genus, Name.name_complex == None
-    ):
-        inferred = find_ending(name, endings)
-        if inferred is None:
-            continue
-        stem = inferred.get_stem_from_name(name.root_name)
-        print(f"Inferred stem and complex for {name}: {stem}, {inferred}")
-        name.name_complex = inferred
-
-
-@command
-def detect_species_name_complexes(*, dry_run: bool = False) -> None:
-    endings_tree: SuffixTree[models.SpeciesNameEnding] = SuffixTree()
-    full_names: dict[str, tuple[models.SpeciesNameComplex, str]] = {}
-    for ending in models.SpeciesNameEnding.select():
-        for form in ending.name_complex.get_forms(ending.ending):
-            if ending.full_name_only:
-                full_names[form] = (ending.name_complex, str(ending))
-            else:
-                endings_tree.add(form, ending)
-    for snc in models.SpeciesNameComplex.filter(
-        models.SpeciesNameComplex.kind == constants.SpeciesNameKind.adjective
-    ):
-        for form in snc.get_forms(snc.stem):
-            full_names[form] = (snc, "(full name)")
-    success = 0
-    total = 0
-    for name in Name.select_valid().filter(
-        Name.group == Group.species, Name.species_name_complex == None
-    ):
-        if not name.nomenclature_status.requires_name_complex():
-            continue
-        total += 1
-        if name.root_name in full_names:
-            inferred, reason = full_names[name.root_name]
-        else:
-            endings = endings_tree.lookup(name.root_name)
-            try:
-                inferred = max(endings, key=lambda e: -len(e.ending)).name_complex
-            except ValueError:
-                continue
-            reason = str(endings)
-        print(f"inferred complex for {name}: {inferred}, using {reason}")
-        success += 1
-        if not dry_run:
-            name.species_name_complex = inferred
-    print(f"{success}/{total} inferred")
-
-
-class SuffixTree(Generic[T]):
-    def __init__(self) -> None:
-        self.children: dict[str, SuffixTree[T]] = defaultdict(SuffixTree)
-        self.values: list[T] = []
-
-    def add(self, key: str, value: T) -> None:
-        self._add(iter(reversed(key)), value)
-
-    def count(self) -> int:
-        return len(self.values) + sum(child.count() for child in self.children.values())
-
-    def lookup(self, key: str) -> Iterable[T]:
-        yield from self._lookup(iter(reversed(key)))
-
-    def _add(self, key: Iterator[str], value: T) -> None:
-        try:
-            char = next(key)
-        except StopIteration:
-            self.values.append(value)
-        else:
-            self.children[char]._add(key, value)
-
-    def _lookup(self, key: Iterator[str]) -> Iterable[T]:
-        yield from self.values
-        try:
-            char = next(key)
-        except StopIteration:
-            pass
-        else:
-            if char in self.children:
-                yield from self.children[char]._lookup(key)
-
-
-@command
 def find_first_declension_adjectives(*, dry_run: bool = True) -> dict[str, int]:
     adjectives = get_pages_in_wiki_category(
         "en.wiktionary.org", "Latin first and second declension adjectives"
@@ -501,7 +415,13 @@ def find_first_declension_adjectives(*, dry_run: bool = True) -> dict[str, int]:
                     snc.make_ending(adjective, full_name_only=len(adjective) < 6)
     print(f"applied {count} names")
     if not dry_run:
-        detect_species_name_complexes()
+        run_linter_and_fix(
+            Name,
+            query=Name.select_valid().filter(
+                Name.species_name_complex == None, Name.group == Group.species
+            ),
+            linter=models.name.lint.infer_species_name_complex,
+        )
     return names_applied
 
 
@@ -527,15 +447,6 @@ def get_pages_in_wiki_category(domain: str, category_name: str) -> Iterable[str]
             cmcontinue = json["continue"]["cmcontinue"]
         else:
             break
-
-
-def find_ending(
-    name: Name, endings: Iterable[models.NameEnding]
-) -> models.NameComplex | None:
-    for ending in endings:
-        if name.root_name.endswith(ending.ending):
-            return ending.name_complex
-    return None
 
 
 @command
@@ -1972,8 +1883,6 @@ def run_maintenance(*, skip_slow: bool = True) -> dict[Any, Any]:
     """Runs maintenance checks that are expected to pass for the entire database."""
     fns: list[Callable[[], Any]] = [
         labeled_authorless_names,
-        detect_complexes,
-        detect_species_name_complexes,
         dup_collections,
         dup_citation_groups,
         # dup_names,

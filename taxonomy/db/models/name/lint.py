@@ -9,9 +9,10 @@ import json
 import re
 import subprocess
 from collections import defaultdict
-from collections.abc import Container, Generator, Iterable, Iterator, Sequence
+from collections.abc import Callable, Container, Generator, Iterable, Iterator, Sequence
 from datetime import UTC, datetime
-from typing import TypeVar, assert_never
+from functools import cache
+from typing import Generic, TypeVar, assert_never
 
 import Levenshtein
 import requests
@@ -48,6 +49,12 @@ from taxonomy.db.models.collection import (
     Collection,
 )
 from taxonomy.db.models.lint import IgnoreLint, Lint
+from taxonomy.db.models.name_complex import (
+    NameComplex,
+    NameEnding,
+    SpeciesNameComplex,
+    SpeciesNameEnding,
+)
 from taxonomy.db.models.person import AuthorTag, PersonLevel
 from taxonomy.db.models.taxon import Taxon
 
@@ -3472,3 +3479,144 @@ def infer_original_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
         nam.original_name = nam.root_name
     else:
         yield message
+
+
+@LINT.add("infer_name_complex")
+def infer_name_complex(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    if nam.name_complex is not None:
+        return
+    if nam.group is not Group.genus:
+        return
+    if not nam.nomenclature_status.requires_name_complex():
+        return
+    finder = get_name_complex_finder()
+    result = finder(nam.root_name)
+    if result is None:
+        return
+    nc, reason = result
+    message = f"inferred name complex {nc} from root name {nam.root_name} ({reason})"
+    if cfg.autofix:
+        print(f"{nam}: {message}")
+        nam.name_complex = nc
+    else:
+        yield message
+
+
+@cache
+def get_name_complex_finder() -> Callable[[str], tuple[NameComplex, str] | None]:
+    endings_tree: SuffixTree[NameEnding] = SuffixTree()
+    for ending in NameEnding.select_valid():
+        endings_tree.add(ending.ending, ending)
+
+    def finder(root_name: str) -> tuple[NameComplex, str] | None:
+        endings = list(endings_tree.lookup(root_name))
+        if not endings:
+            return None
+        inferred = max(endings, key=lambda e: -len(e.ending)).name_complex
+        return inferred, f"matches endings {endings}"
+
+    return finder
+
+
+NameComplex.creation_event.on(lambda _: get_name_complex_finder.cache_clear())
+NameEnding.creation_event.on(lambda _: get_name_complex_finder.cache_clear())
+NameComplex.save_event.on(lambda _: get_name_complex_finder.cache_clear())
+NameEnding.save_event.on(lambda _: get_name_complex_finder.cache_clear())
+
+
+@LINT.add("infer_species_name_complex")
+def infer_species_name_complex(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    if nam.species_name_complex is not None:
+        return
+    if nam.group is not Group.species:
+        return
+    if not nam.nomenclature_status.requires_name_complex():
+        return
+    finder = get_species_name_complex_finder()
+    result = finder(nam.root_name)
+    if result is None:
+        return
+    snc, reason = result
+    message = (
+        f"inferred species name complex {snc} from root name {nam.root_name} ({reason})"
+    )
+    if cfg.autofix:
+        print(f"{nam}: {message}")
+        nam.species_name_complex = snc
+    else:
+        yield message
+
+
+@cache
+def get_species_name_complex_finder() -> (
+    Callable[[str], tuple[SpeciesNameComplex, str] | None]
+):
+    endings_tree: SuffixTree[SpeciesNameEnding] = SuffixTree()
+    full_names: dict[str, tuple[SpeciesNameComplex, str]] = {}
+    for ending in SpeciesNameEnding.select_valid():
+        for form in ending.name_complex.get_forms(ending.ending):
+            if ending.full_name_only:
+                full_names[form] = (ending.name_complex, f"matches ending {ending}")
+            else:
+                endings_tree.add(form, ending)
+    for snc in SpeciesNameComplex.filter(
+        SpeciesNameComplex.kind == SpeciesNameKind.adjective
+    ):
+        for form in snc.get_forms(snc.stem):
+            full_names[form] = (snc, "matches a form of the stem")
+
+    def finder(root_name: str) -> tuple[SpeciesNameComplex, str] | None:
+        if root_name in full_names:
+            return full_names[root_name]
+        endings = list(endings_tree.lookup(root_name))
+        if not endings:
+            return None
+        inferred = max(endings, key=lambda e: -len(e.ending)).name_complex
+        return inferred, f"matches endings {endings}"
+
+    return finder
+
+
+SpeciesNameComplex.creation_event.on(
+    lambda _: get_species_name_complex_finder.cache_clear()
+)
+SpeciesNameEnding.creation_event.on(
+    lambda _: get_species_name_complex_finder.cache_clear()
+)
+SpeciesNameComplex.save_event.on(
+    lambda _: get_species_name_complex_finder.cache_clear()
+)
+SpeciesNameEnding.save_event.on(lambda _: get_species_name_complex_finder.cache_clear())
+
+
+class SuffixTree(Generic[T]):
+    def __init__(self) -> None:
+        self.children: dict[str, SuffixTree[T]] = defaultdict(SuffixTree)
+        self.values: list[T] = []
+
+    def add(self, key: str, value: T) -> None:
+        self._add(iter(reversed(key)), value)
+
+    def count(self) -> int:
+        return len(self.values) + sum(child.count() for child in self.children.values())
+
+    def lookup(self, key: str) -> Iterable[T]:
+        yield from self._lookup(iter(reversed(key)))
+
+    def _add(self, key: Iterator[str], value: T) -> None:
+        try:
+            char = next(key)
+        except StopIteration:
+            self.values.append(value)
+        else:
+            self.children[char]._add(key, value)
+
+    def _lookup(self, key: Iterator[str]) -> Iterable[T]:
+        yield from self.values
+        try:
+            char = next(key)
+        except StopIteration:
+            pass
+        else:
+            if char in self.children:
+                yield from self.children[char]._lookup(key)
