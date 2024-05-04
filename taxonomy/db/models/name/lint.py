@@ -3600,3 +3600,18 @@ class SuffixTree(Generic[T]):
         else:
             if char in self.children:
                 yield from self.children[char]._lookup(key)
+
+
+@LINT.add_duplicate_finder("duplicate_genus")
+def duplicate_genus() -> Iterable[tuple[str, Name]]:
+    for name in Name.select_valid().filter(Name.group == Group.genus):
+        if name.original_citation is not None:
+            citation = name.original_citation.name
+        elif name.citation_group is not None:
+            citation = name.citation_group.name
+        else:
+            citation = ""
+        yield (
+            f"{name.root_name} {name.taxonomic_authority()}, {name.year}, {citation}",
+            name,
+        )

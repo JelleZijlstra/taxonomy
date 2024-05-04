@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import traceback
-from collections.abc import Callable, Collection, Generator, Iterable
+from collections.abc import Callable, Collection, Generator, Hashable, Iterable
 from dataclasses import dataclass, field
+from functools import cache
 from typing import Generic, Protocol, TypeVar
 
 from .base import BaseModel, LintConfig
@@ -12,6 +13,7 @@ from .base import BaseModel, LintConfig
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
 Linter = Callable[[ModelT, LintConfig], Iterable[str]]
+DuplicateFinder = Callable[[], Iterable[tuple[Hashable, ModelT]]]
 
 
 class IgnoreLint(Protocol):
@@ -60,6 +62,33 @@ class Lint(Generic[ModelT]):
             else:
                 self.linters.append(lint_wrapper)
             return lint_wrapper
+
+        return decorator
+
+    def add_duplicate_finder(
+        self, label: str, *, disabled: bool = False
+    ) -> Callable[[DuplicateFinder[ModelT]], LintWrapper[ModelT]]:
+        def decorator(duplicate_finder: DuplicateFinder[ModelT]) -> LintWrapper[ModelT]:
+            @cache
+            def get_object_to_issues() -> dict[int, list[str]]:
+                key_to_objs: dict[Hashable, list[ModelT]] = {}
+                for key, obj in duplicate_finder():
+                    key_to_objs.setdefault(key, []).append(obj)
+                output: dict[int, list[str]] = {}
+                for key, objs in key_to_objs.items():
+                    if len(objs) > 1:
+                        for obj in objs:
+                            others = [o for o in objs if o != obj]
+                            message = f"Duplicate of {others} (key {key!r})"
+                            output.setdefault(obj.id, []).append(message)
+                return output
+
+            def linter(obj: ModelT, cfg: LintConfig) -> Iterable[str]:
+                mapping = get_object_to_issues()
+                if obj.id in mapping:
+                    yield from mapping[obj.id]
+
+            return self.add(label, disabled=disabled)(linter)
 
         return decorator
 

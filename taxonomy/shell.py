@@ -502,21 +502,6 @@ def dup_taxa() -> list[dict[str, list[Taxon]]]:
 
 
 @_duplicate_finder
-def dup_genus() -> list[dict[str, list[Name]]]:
-    names: dict[str, list[Name]] = defaultdict(list)
-    for name in Name.select_valid().filter(Name.group == Group.genus):
-        if name.original_citation is not None:
-            citation = name.original_citation.name
-        else:
-            citation = ""
-        full_name = (
-            f"{name.root_name} {name.taxonomic_authority()}, {name.year}, {citation}"
-        )
-        names[full_name].append(name)
-    return [names]
-
-
-@_duplicate_finder
 def dup_names() -> (
     list[
         dict[
