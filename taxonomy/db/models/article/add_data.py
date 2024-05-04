@@ -78,7 +78,7 @@ def get_doi_resolution(doi: str) -> str:
 
 
 def get_doi_from_crossref(art: Article) -> str | None:
-    if art.citation_group is None:
+    if art.citation_group is None or art.volume is None or art.start_page is None:
         return None
     query_dict = {
         "pid": _options.crossrefid,
