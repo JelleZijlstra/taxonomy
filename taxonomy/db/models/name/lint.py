@@ -1708,6 +1708,8 @@ def infer_family_group_type(nam: Name, cfg: LintConfig) -> Iterable[str]:
         and child_nam.safe_get_stem() == nam.root_name
     ]
     if len(possible_types) != 1:
+        if cfg.verbose:
+            print(f"{nam}: could not infer type for family {nam.root_name}")
         return
     message = f"inferred type {possible_types[0]} for family {nam}"
     if cfg.autofix:

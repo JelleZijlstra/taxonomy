@@ -316,52 +316,6 @@ def detect_original_rank() -> None:
 
 
 @command
-def detect_types_from_root_names(max_count: int | None = None) -> None:
-    """Detects types for family-group names on the basis of the root_name."""
-
-    def detect_from_root_name(name: Name, root_name: str) -> bool:
-        candidates = Name.select_valid().filter(Name.group == Group.genus)
-        candidates = list(filter(lambda c: c.taxon.is_child_of(name.taxon), candidates))
-        if len(candidates) == 1:
-            print(f"Detected type for name {name}: {candidates[0]}")
-            name.type = candidates[0]
-            return True
-        else:
-            if candidates:
-                print(
-                    f"found multiple candidates for {name} using root {root_name}:"
-                    f" {candidates}"
-                )
-            return False
-
-    count = 0
-    successful_count = 0
-    for name in (
-        Name.select_valid()
-        .filter(Name.group == Group.family, Name.type == None)
-        # static analysis: ignore[undefined_attribute]
-        .order_by(Name.id.desc())  # type: ignore[attr-defined]
-        .limit(max_count)
-    ):
-        if name.is_unavailable():
-            continue
-        count += 1
-        if detect_from_root_name(name, name.root_name):
-            successful_count += 1
-        else:
-            for stripped in helpers.name_with_suffixes_removed(name.root_name):
-                if detect_from_root_name(name, stripped):
-                    successful_count += 1
-                    break
-            else:
-                print(
-                    f"Could not detect type for name {name} (root_name ="
-                    f" {name.root_name})"
-                )
-    print("Success: %d/%d" % (successful_count, count))
-
-
-@command
 def endswith(end: str) -> list[Name]:
     return list(
         Name.select_valid().filter(
