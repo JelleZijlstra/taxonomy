@@ -561,15 +561,6 @@ def generate_word_list() -> set[str]:
 
 
 @generator_command
-def correct_species_root_names(*, dry_run: bool = True) -> Iterable[Name]:
-    for nam in Name.select_valid().filter(
-        Name.group == Group.species, Name.species_name_complex != None
-    ):
-        if not nam.compute_gender(dry_run=dry_run):
-            yield nam
-
-
-@generator_command
 def species_root_name_mismatch() -> Iterable[Name]:
     for nam in Name.select_valid().filter(
         Name.group == Group.species,

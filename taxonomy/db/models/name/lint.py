@@ -1552,30 +1552,35 @@ def _check_species_name_gender(nam: Name, cfg: LintConfig) -> Iterable[str]:
         corrected_original_name = emending_name.corrected_original_name
     else:
         corrected_original_name = nam.corrected_original_name
-    if corrected_original_name is None:
-        return
-    con_root = corrected_original_name.split()[-1]
+    if corrected_original_name is not None:
+        con_root = corrected_original_name.split()[-1]
+    else:
+        con_root = None
     # For nomina dubia we always follow the original name
     if nam.status in (Status.nomen_dubium, Status.species_inquirenda):
-        yield from _check_rn_matches_original(
-            nam, corrected_original_name, cfg, nam.status.name
-        )
+        if corrected_original_name is not None:
+            yield from _check_rn_matches_original(
+                nam, corrected_original_name, cfg, nam.status.name
+            )
         return
     # If there is no name complex, the root_name should match exactly
     if nam.species_name_complex is None:
-        yield from _check_rn_matches_original(
-            nam, corrected_original_name, cfg, "no name complex"
-        )
+        if corrected_original_name is not None:
+            yield from _check_rn_matches_original(
+                nam, corrected_original_name, cfg, "no name complex"
+            )
         return
     if nam.species_name_complex.kind is not SpeciesNameKind.adjective:
-        yield from _check_rn_matches_original(
-            nam, corrected_original_name, cfg, "not an adjective"
-        )
+        if corrected_original_name is not None:
+            yield from _check_rn_matches_original(
+                nam, corrected_original_name, cfg, "not an adjective"
+            )
         return
     if nam.species_name_complex.is_invariant_adjective():
-        yield from _check_rn_matches_original(
-            nam, corrected_original_name, cfg, "invariant adjective"
-        )
+        if corrected_original_name is not None:
+            yield from _check_rn_matches_original(
+                nam, corrected_original_name, cfg, "invariant adjective"
+            )
         return
     # Now we have an adjective that needs to agree in gender with its genus, so we
     # have to find the genus. But first we check whether the name even makes sense.
@@ -1584,7 +1589,7 @@ def _check_species_name_gender(nam: Name, cfg: LintConfig) -> Iterable[str]:
     except ValueError as e:
         yield _make_con_messsage(nam, f"has invalid name complex: {e!r}")
         return
-    if con_root not in forms:
+    if con_root is not None and con_root not in forms:
         yield _make_con_messsage(nam, f"does not match root_name {nam.root_name!r}")
         return
 
@@ -1594,7 +1599,7 @@ def _check_species_name_gender(nam: Name, cfg: LintConfig) -> Iterable[str]:
         return
 
     genus_gender = genus.name_complex.gender
-    expected_form = nam.species_name_complex.get_form(con_root, genus_gender)
+    expected_form = nam.species_name_complex.get_form(nam.root_name, genus_gender)
     if expected_form != nam.root_name:
         message = _make_rn_message(
             nam,

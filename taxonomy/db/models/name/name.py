@@ -29,7 +29,6 @@ from taxonomy.db.constants import (
     OriginalCitationDataLevel,
     Rank,
     RegionKind,
-    SpeciesNameKind,
     Status,
 )
 from taxonomy.db.definition import Definition
@@ -2075,33 +2074,6 @@ class Name(BaseModel):
         assert self.original_name is None
         assert self.status == Status.valid
         self.original_name = self.taxon.valid_name
-
-    def compute_gender(self, *, dry_run: bool = True) -> bool:
-        if (
-            self.group != Group.species
-            or self.species_name_complex is None
-            or self.species_name_complex.kind != SpeciesNameKind.adjective
-        ):
-            return True
-        try:
-            genus = self.taxon.parent_of_rank(Rank.genus)
-        except ValueError:
-            return True
-        if genus.base_name.name_complex is None:
-            return True
-
-        gender = genus.base_name.name_complex.gender
-        try:
-            computed = self.species_name_complex.get_form(self.root_name, gender)
-        except ValueError:
-            print(f"Invalid root_name for {self} (complex {self.species_name_complex})")
-            return False
-        if computed != self.root_name:
-            print(f"Modifying root_name for {self}: {self.root_name} -> {computed}")
-            if not dry_run:
-                self.root_name = computed
-            return False
-        return True
 
     def get_normalized_root_name(self) -> str:
         if self.species_name_complex is None:
