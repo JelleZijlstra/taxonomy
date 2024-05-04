@@ -2091,65 +2091,6 @@ def names_of_authority(author: str, year: int, *, edit: bool = False) -> list[Na
 
 
 @command
-def find_multiple_repository_names(
-    *, substring: str | None = None, edit: bool = False
-) -> list[Name]:
-    all_nams = Name.select_valid().filter(
-        Name.type_specimen.contains(", "),
-        Name.collection != Collection.by_label("multiple"),
-    )
-    nams = []
-    for nam in all_nams:
-        type_specimen = re.sub(r" \([^\)]+\)", "", nam.type_specimen)
-        parts = {re.split(r"[ \-]", part)[0] for part in type_specimen.split(", ")}
-        if len(parts) == 1 and re.match(r"^[A-Z]+$", next(iter(parts))):
-            continue  # All from same collection
-        if substring is not None:
-            if not nam.type_specimen.startswith(substring):
-                continue
-        print(nam)
-        print(f" - {nam.type_specimen}")
-        print(f" - {nam.collection}")
-        nams.append(nam)
-    if edit:
-        for nam in nams:
-            nam.display()
-            nam.fill_field("type_specimen")
-            nam.fill_field("collection")
-            nam.edit()
-    return nams
-
-
-@command
-def moreau(nam: Name) -> None:
-    nam.display()
-    nam.fill_field("type_locality")
-    nam.edit()
-
-
-def fgsyn(off: Name | None = None) -> Name | None:
-    """Adds a family-group synonym."""
-    if off is not None:
-        taxon = off.taxon
-    else:
-        taxon = Taxon.get_one_by("valid_name", prompt="taxon> ")
-        if taxon is None:
-            return None
-    root_name = Name.getter("corrected_original_name").get_one_key(
-        "name> ", allow_empty=False
-    )
-    source = Name.get_value_for_foreign_class(
-        "source", models.Article, allow_none=False
-    )
-    kwargs = {}
-    if off is not None:
-        kwargs["type"] = off.type
-    return taxon.syn_from_paper(
-        root_name=root_name, paper=source, original_name=root_name, **kwargs
-    )
-
-
-@command
 def author_report(
     author: str | None = None,
     *,
@@ -2215,16 +2156,6 @@ def enforce_must_have(*, fix: bool = True) -> Iterator[Name]:
             yield nam
         if found_any:
             find_potential_citations_for_group(cg, fix=fix)
-
-
-@generator_command
-def archive_for_must_have() -> Iterator[CitationGroup]:
-    for cg in _must_have_citation_groups():
-        if cg.archive is None:
-            getinput.print_header(cg)
-            cg.display()
-            cg.fill_field("archive")
-            yield cg
 
 
 def _must_have_citation_groups() -> list[CitationGroup]:
@@ -2760,33 +2691,6 @@ def lint_recent(limit: int = 1000) -> None:
         )
 
 
-@command
-def try_extract_page_described(
-    *, dry_run: bool = True, verbose: bool = False, limit: int | None = None
-) -> None:
-    query = Name.select_valid().filter(
-        Name.verbatim_citation != None, Name.page_described == None
-    )
-    if limit is not None:
-        query = query.limit(limit)
-    cfg = models.base.LintConfig(autofix=not dry_run)
-    count = 0
-    for nam in getinput.print_every_n(query, label="names", n=100):
-        nam.load()
-        result = list(models.name.lint.infer_page_described(nam, cfg))
-        for message in result:
-            print(message)
-        if dry_run:
-            success = any(result)
-        else:
-            success = nam.page_described is not None
-        if success:
-            count += 1
-        elif verbose:
-            print(nam.verbatim_citation)
-    print(f"extracted {count} page_described")
-
-
 def maybe_rename_paper(art: Article) -> str | None:
     if art.name.startswith(("Theria ", "Placentalia ")):
         return re.sub(r"^(Theria|Placentalia) ", "Mammalia ", art.name)
@@ -2853,10 +2757,8 @@ def find_potential_person_clusters(*, interactive: bool = True) -> None:
         all_persons = list(
             Person.select_valid().filter(
                 Person.family_name == person.family_name,
-                (
-                    Person.type.is_not_in(
-                        (PersonType.soft_redirect, PersonType.hard_redirect)
-                    )
+                Person.type.is_not_in(
+                    (PersonType.soft_redirect, PersonType.hard_redirect)
                 ),
             )
         )
@@ -2905,33 +2807,6 @@ def run_command_shell() -> None:
             break
         if cmd == "q":
             break
-
-
-@command
-def rename_collections() -> None:
-    candidates = sorted(
-        models.Collection.select_valid().filter(models.Collection.label.contains("(")),
-        key=lambda c: c.label,
-    )
-    for candidate in candidates:
-        candidate.load()
-        if "(" not in candidate.label:
-            continue
-        getinput.print_header(candidate)
-        without_parens = re.sub(r" \(.*\)", "", candidate.label)
-        similar = sorted(
-            models.Collection.select_valid().filter(
-                models.Collection.label.startswith(without_parens)
-            ),
-            key=lambda c: c.label,
-        )
-        for coll in similar:
-            coll.display()
-        print("---")
-        candidate.display(full=True)
-        while "(" in candidate.label and not candidate.removed:
-            candidate.edit()
-        run_linter_and_fix(models.Name, query=candidate.type_specimens)
 
 
 def lint_collections() -> None:
