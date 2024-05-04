@@ -297,25 +297,6 @@ def add_types() -> None:
 
 
 @command
-def detect_corrected_original_names(*, aggressive: bool = False) -> None:
-    query = Name.select_valid().filter(
-        Name.original_name != None, Name.corrected_original_name == None
-    )
-    linter = functools.partial(
-        models.name.lint.autoset_corrected_original_name, aggressive=aggressive
-    )
-    run_linter_and_fix(Name, linter, query)
-
-
-@command
-def detect_original_rank() -> None:
-    query = Name.select_valid().filter(
-        Name.corrected_original_name != None, Name.original_rank == None
-    )
-    run_linter_and_fix(Name, models.name.lint.autoset_original_rank, query)
-
-
-@command
 def endswith(end: str) -> list[Name]:
     return list(
         Name.select_valid().filter(

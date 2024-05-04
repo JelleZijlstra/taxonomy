@@ -1904,7 +1904,7 @@ def autoset_corrected_original_name(
         else:
             yield message
     else:
-        yield (f"could not infer corrected original name from {nam.original_name!r}")
+        yield f"could not infer corrected original name from {nam.original_name!r}"
 
 
 @LINT.add("data_level")
