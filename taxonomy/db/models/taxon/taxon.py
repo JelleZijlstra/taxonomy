@@ -26,10 +26,9 @@ from taxonomy.db.constants import (
     Status,
 )
 from taxonomy.db.derived_data import DerivedField, SetLater
-
-from .article import Article
-from .base import ADTField, BaseModel, LintConfig, TextOrNullField
-from .fill_data import fill_data_for_names
+from taxonomy.db.models.article import Article
+from taxonomy.db.models.base import ADTField, BaseModel, LintConfig, TextOrNullField
+from taxonomy.db.models.fill_data import fill_data_for_names
 
 
 class _OccurrenceGetter:
