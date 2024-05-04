@@ -2297,6 +2297,7 @@ def find_dois() -> None:
         for cg in cgs
         if cg is not None
         for art in cg.get_articles().filter(Article.doi == None)
+        if not art.has_tag(models.article.ArticleTag.JSTOR)
     }
     for art in sorted(doiless, key=lambda art: art.name):
         art.finddoi()
