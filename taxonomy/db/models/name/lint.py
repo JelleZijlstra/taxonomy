@@ -3453,3 +3453,17 @@ def move_to_lowest_rank(nam: Name, cfg: LintConfig) -> Iterable[str]:
             nam.taxon = lowest
         else:
             yield message
+
+
+@LINT.add("infer_original_name")
+def infer_original_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    if nam.original_name is not None:
+        return
+    if nam.group not in (Group.genus, Group.high):
+        return
+    message = f"inferred original name from root name {nam.root_name}"
+    if cfg.autofix:
+        print(f"{nam}: {message}")
+        nam.original_name = nam.root_name
+    else:
+        yield message

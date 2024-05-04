@@ -7,6 +7,7 @@ import unicodedata
 import urllib.parse
 from collections import defaultdict
 from collections.abc import Collection, Iterable, Sequence
+from functools import cache
 from typing import Any
 
 import requests
@@ -1601,6 +1602,33 @@ def specify_authors(art: Article, cfg: LintConfig) -> Iterable[str]:
     if cfg.autofix:
         art.specify_authors()
     yield "has initials-only authors"
+
+
+@LINT.add("find_doi")
+def find_doi(art: Article, cfg: LintConfig) -> Iterable[str]:
+    if art.doi is not None or art.has_tag(ArticleTag.JSTOR):
+        return
+    if art.citation_group is None:
+        return
+    if art.citation_group.id not in get_cgs_with_dois():
+        return
+    doi = models.article.add_data.get_doi_from_crossref(art)
+    if doi is None:
+        return
+    message = f"found DOI {doi}"
+    if cfg.autofix:
+        art.doi = doi
+        print(f"{art}: {message}")
+    else:
+        yield message
+
+
+@cache
+def get_cgs_with_dois() -> set[int]:
+    arts = Article.select_valid().filter(
+        Article.type == ArticleType.JOURNAL, Article.doi != None
+    )
+    return {art.citation_group.id for art in arts if art.citation_group is not None}
 
 
 def has_valid_children(art: Article) -> bool:

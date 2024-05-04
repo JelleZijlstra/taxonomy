@@ -1115,14 +1115,6 @@ def article_stats(*, includefoldertree: bool = False) -> None:
         Article.get_foldertree().count_tree.display()
 
 
-@command
-def autoset_original_name() -> None:
-    for nam in Name.select_valid().filter(
-        Name.original_name == None, Name.group.is_in((Group.genus, Group.high))
-    ):
-        nam.original_name = nam.root_name
-
-
 @generator_command
 def childless_taxa() -> Iterable[Taxon]:
     taxa = list(Taxon.select_valid())
@@ -1991,7 +1983,6 @@ def run_maintenance(*, skip_slow: bool = True) -> dict[Any, Any]:
         labeled_authorless_names,
         detect_complexes,
         detect_species_name_complexes,
-        autoset_original_name,
         dup_collections,
         dup_citation_groups,
         # dup_names,
@@ -2284,23 +2275,6 @@ def fix_citation_group_redirects() -> None:
         for art in cg.get_articles():
             print(f"update {art} -> {cg.target}")
             art.citation_group = cg.target
-
-
-@command
-def find_dois() -> None:
-    arts = Article.bfind(
-        Article.doi != None, Article.type == constants.ArticleType.JOURNAL, quiet=True
-    )
-    cgs = {art.citation_group for art in arts}
-    doiless = {
-        art
-        for cg in cgs
-        if cg is not None
-        for art in cg.get_articles().filter(Article.doi == None)
-        if not art.has_tag(models.article.ArticleTag.JSTOR)
-    }
-    for art in sorted(doiless, key=lambda art: art.name):
-        art.finddoi()
 
 
 @command
