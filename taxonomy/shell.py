@@ -1809,7 +1809,6 @@ def run_maintenance(*, skip_slow: bool = True) -> dict[Any, Any]:
         dup_articles,
         set_citation_group_for_matching_citation,
         enforce_must_have,
-        fix_citation_group_redirects,
         Person.autodelete,
         Person.find_duplicates,
         Person.resolve_redirects,
@@ -2046,19 +2045,6 @@ def citation_groups_with_recent_names(threshold: int = 1923) -> None:
         for nam in sorted(names, key=lambda nam: nam.sort_key()):
             nam.display()
         getinput.flush()
-
-
-@command
-def fix_citation_group_redirects() -> None:
-    for cg in CitationGroup.select_valid().filter(
-        CitationGroup.type == constants.ArticleType.REDIRECT
-    ):
-        for nam in cg.get_names():
-            print(f"update {nam} -> {cg.target}")
-            nam.citation_group = cg.target
-        for art in cg.get_articles():
-            print(f"update {art} -> {cg.target}")
-            art.citation_group = cg.target
 
 
 @command
