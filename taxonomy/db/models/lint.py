@@ -13,7 +13,8 @@ from .base import BaseModel, LintConfig
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
 Linter = Callable[[ModelT, LintConfig], Iterable[str]]
-DuplicateFinder = Callable[[], Iterable[tuple[Hashable, ModelT]]]
+DuplicateKey = Callable[[ModelT], Hashable | None]
+DuplicateFixer = Callable[[Hashable, list[ModelT], LintConfig], None]
 
 
 class IgnoreLint(Protocol):
@@ -46,6 +47,7 @@ class LintWrapper(Generic[ModelT]):
 
 @dataclass
 class Lint(Generic[ModelT]):
+    model_cls: type[ModelT]
     get_ignores: Callable[[ModelT], Iterable[IgnoreLint]]
     remove_unused_ignores: Callable[[ModelT, Collection[str]], None]
 
@@ -66,27 +68,51 @@ class Lint(Generic[ModelT]):
         return decorator
 
     def add_duplicate_finder(
-        self, label: str, *, disabled: bool = False
-    ) -> Callable[[DuplicateFinder[ModelT]], LintWrapper[ModelT]]:
-        def decorator(duplicate_finder: DuplicateFinder[ModelT]) -> LintWrapper[ModelT]:
+        self,
+        label: str,
+        *,
+        disabled: bool = False,
+        query: Iterable[ModelT] | None = None,
+        fixer: DuplicateFixer[ModelT] | None = None,
+    ) -> Callable[[DuplicateKey[ModelT]], LintWrapper[ModelT]]:
+        def decorator(dupe_key: DuplicateKey[ModelT]) -> LintWrapper[ModelT]:
             @cache
-            def get_object_to_issues() -> dict[int, list[str]]:
+            def get_object_to_issues() -> dict[int, list[tuple[str, list[ModelT]]]]:
                 key_to_objs: dict[Hashable, list[ModelT]] = {}
-                for key, obj in duplicate_finder():
-                    key_to_objs.setdefault(key, []).append(obj)
-                output: dict[int, list[str]] = {}
+                for obj in query or self.model_cls.select_valid():
+                    key = dupe_key(obj)
+                    if key is not None:
+                        key_to_objs.setdefault(key, []).append(obj)
+                output: dict[int, list[tuple[str, list[ModelT]]]] = {}
                 for key, objs in key_to_objs.items():
                     if len(objs) > 1:
-                        for obj in objs:
+                        objs = sorted(objs, key=lambda o: o.id)
+                        # Skip the first object, as it's likely the one we'd want to keep
+                        for obj in objs[1:]:
                             others = [o for o in objs if o != obj]
                             message = f"Duplicate of {others} (key {key!r})"
-                            output.setdefault(obj.id, []).append(message)
+                            output.setdefault(obj.id, []).append((message, others))
                 return output
 
             def linter(obj: ModelT, cfg: LintConfig) -> Iterable[str]:
+                if obj.is_invalid():
+                    return
                 mapping = get_object_to_issues()
                 if obj.id in mapping:
-                    yield from mapping[obj.id]
+                    my_key = dupe_key(obj)
+                    if my_key is None:
+                        return
+                    for message, others in mapping[obj.id]:
+                        # Recheck in case information has changed
+                        matching_others = [
+                            o
+                            for o in others
+                            if dupe_key(o) == my_key and not o.is_invalid()
+                        ]
+                        if matching_others:
+                            yield message
+                            if fixer is not None:
+                                fixer(my_key, [obj, *matching_others], cfg)
 
             return self.add(label, disabled=disabled)(linter)
 

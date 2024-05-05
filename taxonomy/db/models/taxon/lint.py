@@ -27,7 +27,7 @@ def get_ignores(taxon: Taxon) -> Iterable[IgnoreLint]:
     return taxon.get_tags(taxon.tags, models.tags.TaxonTag.IgnoreLintTaxon)
 
 
-LINT = Lint(get_ignores, remove_unused_ignores)
+LINT = Lint(Taxon, get_ignores, remove_unused_ignores)
 
 
 @LINT.add("parent")

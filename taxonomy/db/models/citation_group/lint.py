@@ -33,7 +33,7 @@ def get_ignores(cg: CitationGroup) -> Iterable[IgnoreLint]:
     return cg.get_tags(cg.tags, CitationGroupTag.IgnoreLintCitationGroup)
 
 
-LINT = Lint(get_ignores, remove_unused_ignores)
+LINT = Lint(CitationGroup, get_ignores, remove_unused_ignores)
 
 
 @functools.cache

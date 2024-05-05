@@ -556,6 +556,14 @@ class Article(BaseModel):
         self.kind = ArticleKind.redirect
         self.path = None
         self.parent = target
+        if self.doi is not None and target.doi is None:
+            target.doi = self.doi
+        if self.url is not None:
+            target.add_tag(ArticleTag.AlternativeURL(self.url))
+        for tag in self.tags:
+            if isinstance(tag, (ArticleTag.Incomplete, ArticleTag.NonOriginal)):
+                continue
+            target.add_tag(tag)
 
     def make_alternative_version(self, target: Article | None = None) -> None:
         """Make this version into an alternative version of another file."""
@@ -1488,6 +1496,12 @@ class ArticleTag(adt.ADT):
     AlternativeURL(url=str, tag=20)  # type: ignore[name-defined]
 
     Incomplete(comment=NotRequired[str], tag=21)  # type: ignore[name-defined]
+
+    # Indicates there are multiple articles on a single page
+    PartialPage(tag=22)  # type: ignore[name-defined]
+
+    # DOI is for a more general work (e.g., the entire "Notes" section)
+    GeneralDOI(comment=NotRequired[str], tag=23)  # type: ignore[name-defined]
 
 
 @lru_cache

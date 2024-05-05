@@ -10,6 +10,7 @@ import subprocess
 import sys
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
+from itertools import zip_longest
 from typing import Any, Literal, TypeVar, overload
 
 import prompt_toolkit
@@ -776,6 +777,18 @@ def print_diff(a: Sequence[Any], b: Sequence[Any]) -> None:
             print(f"- {a[i]}")
         for i in range(b_lo, b_hi):
             print(f"+ {b[i]}")
+
+
+def diff_strings(a: str, b: str) -> None:
+    diff_line = []
+    for a_c, b_c in zip_longest(a, b, fillvalue=""):
+        if a_c == b_c:
+            diff_line.append(" ")
+        else:
+            diff_line.append("!")
+    print(a)
+    print(b)
+    print("".join(diff_line))
 
 
 def print_every_n(it: Iterable[T], *, label: str, n: int = 1000) -> Iterator[T]:

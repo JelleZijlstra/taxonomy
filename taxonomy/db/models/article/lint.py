@@ -6,7 +6,7 @@ import subprocess
 import unicodedata
 import urllib.parse
 from collections import defaultdict
-from collections.abc import Collection, Iterable, Sequence
+from collections.abc import Collection, Hashable, Iterable, Sequence
 from functools import cache
 from typing import Any
 
@@ -41,7 +41,7 @@ def get_ignores(art: Article) -> Iterable[IgnoreLint]:
     return art.get_tags(art.tags, ArticleTag.IgnoreLint)
 
 
-LINT = Lint[Article](get_ignores, remove_unused_ignores)
+LINT = Lint(Article, get_ignores, remove_unused_ignores)
 
 
 @LINT.add("name")
@@ -1604,7 +1604,7 @@ def specify_authors(art: Article, cfg: LintConfig) -> Iterable[str]:
     yield "has initials-only authors"
 
 
-@LINT.add("find_doi")
+@LINT.add("find_doi", disabled=True)  # false positives
 def find_doi(art: Article, cfg: LintConfig) -> Iterable[str]:
     if art.doi is not None or art.has_tag(ArticleTag.JSTOR):
         return
@@ -1616,7 +1616,7 @@ def find_doi(art: Article, cfg: LintConfig) -> Iterable[str]:
     if doi is None:
         return
     message = f"found DOI {doi}"
-    if cfg.autofix:
+    if cfg.autofix and not LINT.is_ignoring_lint(art, "find_doi"):
         art.doi = doi
         print(f"{art}: {message}")
     else:
@@ -1633,3 +1633,181 @@ def get_cgs_with_dois() -> set[int]:
 
 def has_valid_children(art: Article) -> bool:
     return Article.add_validity_check(art.article_set).count() > 0
+
+
+def dupe_fixer(key_val: Hashable, arts: list[Article], cfg: LintConfig) -> None:
+    if not cfg.interactive:
+        return
+    getinput.print_header(key_val)
+    for art in arts:
+        print(repr(art))
+        art.add_to_history(None)  # for merge()
+    name_to_art = {art.name: art for art in arts}
+
+    def open_all() -> None:
+        for art in arts:
+            art.openf()
+
+    def full_data() -> None:
+        for art in arts:
+            getinput.print_header(art)
+            art.full_data()
+
+    def display() -> None:
+        for art in arts:
+            print(repr(art))
+
+    def mark_as_partial_page() -> None:
+        for art in arts:
+            art.add_tag(ArticleTag.PartialPage)
+
+    while True:
+        choice = getinput.get_with_completion(
+            [art.name for art in arts],
+            history_key=key_val,
+            disallow_other=True,
+            callbacks={
+                "open_all": open_all,
+                "full_data": full_data,
+                "display": display,
+                "partial": mark_as_partial_page,
+            },
+        )
+        if not choice:
+            break
+        if choice in name_to_art:
+            name_to_art[choice].edit()
+
+
+@LINT.add_duplicate_finder(
+    "dupe_doi",
+    query=Article.select_valid().filter(
+        Article.doi != None,
+        Article.type != ArticleType.SUPPLEMENT,
+        Article.kind != ArticleKind.alternative_version,
+    ),
+    fixer=dupe_fixer,
+)
+def dupe_doi(art: Article) -> str | None:
+    if art.type is ArticleType.SUPPLEMENT:
+        return None
+    if art.kind == ArticleKind.alternative_version:
+        return None
+    return art.doi
+
+
+@LINT.add_duplicate_finder(
+    "dupe_journal",
+    query=Article.select_valid().filter(
+        Article.type == ArticleType.JOURNAL,
+        Article.kind != ArticleKind.alternative_version,
+    ),
+    fixer=dupe_fixer,
+)
+def dupe_journal(art: Article) -> tuple[object, ...] | None:
+    if art.kind == ArticleKind.alternative_version:
+        return None
+    if art.is_in_press():
+        return None
+    if art.has_tag(ArticleTag.Incomplete):
+        return None
+    if art.has_tag(ArticleTag.PartialPage):
+        return None
+    if art.citation_group is None:
+        return None
+    return (
+        art.citation_group.name,
+        art.series,
+        art.volume,
+        art.issue,
+        art.start_page,
+        art.end_page,
+    )
+
+
+@LINT.add_duplicate_finder(
+    "dupe_journal",
+    query=Article.select_valid().filter(
+        Article.type == ArticleType.JOURNAL,
+        Article.kind != ArticleKind.alternative_version,
+    ),
+    fixer=dupe_fixer,
+)
+def dupe_journal_with_title(art: Article) -> tuple[object, ...] | None:
+    if art.kind == ArticleKind.alternative_version:
+        return None
+    if art.is_in_press():
+        return None
+    if art.has_tag(ArticleTag.Incomplete):
+        return None
+    if art.citation_group is None:
+        return None
+    return (
+        art.citation_group.name,
+        art.title,
+        art.volume,
+        art.issue,
+        art.start_page,
+        art.end_page,
+    )
+
+
+@LINT.add("data_from_doi", disabled=True)  # TODO: lots of work to fix
+def data_from_doi(art: Article, cfg: LintConfig) -> Iterable[str]:
+    if (
+        art.doi is None
+        or art.kind is ArticleKind.alternative_version
+        or art.has_tag(ArticleTag.GeneralDOI)
+    ):
+        return
+    data = models.article.add_data.expand_doi_json(art.doi)
+    if not data:
+        return
+    if "title" in data and art.title is not None:
+        simplified_doi = helpers.simplify_string(data["title"], clean_words=False)
+        simplified_art = helpers.simplify_string(art.title, clean_words=False)
+        if simplified_doi != simplified_art:
+            if not LINT.is_ignoring_lint(art, "data_from_doi"):
+                getinput.diff_strings(simplified_doi, simplified_art)
+            yield f"title mismatch: {data['title']} (DOI) vs. {art.title} (article)"
+    if data.get("volume") and art.volume is not None:
+        if data["volume"] != art.volume:
+            yield f"volume mismatch: {data['volume']} (DOI) vs. {art.volume} (article)"
+    if data.get("issue") and art.issue is not None:
+        if data["issue"].replace("/", "-").replace("–", "-") != art.issue:
+            yield f"issue mismatch: {data['issue']} (DOI) vs. {art.issue} (article)"
+    if (
+        data.get("start_page")
+        and art.start_page is not None
+        and data["start_page"].isnumeric()
+    ):
+        if data["start_page"] != art.start_page:
+            yield f"start page mismatch: {data['start_page']} (DOI) vs. {art.start_page} (article)"
+    if (
+        data.get("end_page")
+        and art.end_page is not None
+        and data["end_page"] != "1"
+        and data["end_page"].isnumeric()
+    ):
+        if data["end_page"] != art.end_page:
+            yield f"end page mismatch: {data['end_page']} (DOI) vs. {art.end_page} (article)"
+    if "isbn" in data:
+        existing = art.get_identifier(ArticleTag.ISBN)
+        if existing is not None and existing != data["isbn"]:
+            yield f"ISBN mismatch: {data['isbn']} (DOI) vs. {existing} (article)"
+        else:
+            message = f"adding ISBN {data['isbn']} from DOI"
+            if cfg.autofix:
+                print(f"{art}: {message}")
+                art.add_tag(ArticleTag.ISBN(data["isbn"]))
+            else:
+                yield message
+    for tag in data["tags"]:
+        if tag not in art.tags:
+            message = f"adding tag {tag} from DOI"
+            if cfg.autofix:
+                print(f"{art}: {message}")
+                art.add_tag(tag)
+            else:
+                yield message
+    # TODO: authors

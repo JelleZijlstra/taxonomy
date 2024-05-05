@@ -99,7 +99,7 @@ def get_ignores(nam: Name) -> Iterable[IgnoreLint]:
     return nam.get_tags(nam.type_tags, TypeTag.IgnoreLintName)
 
 
-LINT = Lint(get_ignores, remove_unused_ignores)
+LINT = Lint(Name, get_ignores, remove_unused_ignores)
 
 
 def replace_arg(tag: ADTT, arg: str, val: object) -> ADTT:
@@ -3602,16 +3602,14 @@ class SuffixTree(Generic[T]):
                 yield from self.children[char]._lookup(key)
 
 
-@LINT.add_duplicate_finder("duplicate_genus")
-def duplicate_genus() -> Iterable[tuple[str, Name]]:
-    for name in Name.select_valid().filter(Name.group == Group.genus):
-        if name.original_citation is not None:
-            citation = name.original_citation.name
-        elif name.citation_group is not None:
-            citation = name.citation_group.name
-        else:
-            citation = ""
-        yield (
-            f"{name.root_name} {name.taxonomic_authority()}, {name.year}, {citation}",
-            name,
-        )
+@LINT.add_duplicate_finder(
+    "duplicate_genus", query=Name.select_valid().filter(Name.group == Group.genus)
+)
+def duplicate_genus(name: Name) -> str:
+    if name.original_citation is not None:
+        citation = name.original_citation.name
+    elif name.citation_group is not None:
+        citation = name.citation_group.name
+    else:
+        citation = ""
+    return f"{name.root_name} {name.taxonomic_authority()}, {name.year}, {citation}"

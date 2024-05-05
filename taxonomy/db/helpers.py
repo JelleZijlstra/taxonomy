@@ -566,8 +566,12 @@ def simplify_string(text: str, *, clean_words: bool = True) -> str:
     to help compare strings.
 
     """
-    text = re.sub(r"[\.,_]", "", text)
+    text = text.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
+    text = re.sub(r"^\d+", "", text)
+    text = re.sub(r"</?(b|i|strong|em)>", "", text)
+    text = re.sub(r"[\.,_\\]", "", text)
     text = unidecode.unidecode(text)
+    text = re.sub(r"[\-—–]+", "-", text)
     text = clean_string(text).lower()
     if clean_words:
         text = "".join(_clean_up_word(word) for word in text.split())
