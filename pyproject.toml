@@ -36,6 +36,10 @@ classifiers = [
   "Programming Language :: Python :: 3.12",
 ]
 dependencies = [
+    "pre-commit",
+    "black",
+    "ruff",
+    "gspread",
     "clirm",
     "httpx",
     "IPython>8",
