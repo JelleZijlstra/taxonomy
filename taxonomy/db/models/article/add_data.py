@@ -21,7 +21,7 @@ from taxonomy.db.constants import ArticleKind, ArticleType, DateSource
 from taxonomy.db.helpers import clean_string, clean_strings_recursively, trimdoi
 from taxonomy.db.models.article import lint
 from taxonomy.db.models.citation_group import CitationGroup, CitationGroupTag
-from taxonomy.db.models.person import AuthorTag, Person
+from taxonomy.db.models.person import AuthorTag, Person, VirtualPerson
 from taxonomy.db.url_cache import CacheDomain, cached, dirty_cache
 
 from .article import Article, ArticleTag
@@ -52,6 +52,9 @@ def get_doi_json_cached(doi: str) -> str:
     # "Good manners" section in https://api.crossref.org/swagger-ui/index.html
     url = f"https://api.crossref.org/works/{urllib.parse.quote(doi)}?mailto=jelle.zijlstra@gmail.com"
     response = httpx.get(url)
+    if response.status_code == 404:
+        # Cache "null" for missing data
+        return json.dumps(None)
     response.raise_for_status()
     return response.text
 
@@ -170,19 +173,29 @@ def expand_doi_json(doi: str) -> RawData:
             # they should be affiliations.
             if "family" not in author:
                 continue
-            info = {"family_name": clean_string(author["family"])}
+            family_name = clean_string(author["family"])
+            if family_name.isupper():
+                family_name = family_name.title()
+            initials = given_names = None
             if given := author.get("given"):
-                given_names = clean_string(given.title())
-                if given_names[-1].isupper():
-                    given_names = given_names + "."
-                if parsing.matches_grammar(
-                    given_names.replace(" ", ""), parsing.initials_pattern
-                ):
-                    info["initials"] = given_names.replace(" ", "")
-                else:
-                    info["given_names"] = re.sub(r"\. ([A-Z]\.)", r".\1", given_names)
-            authors.append(info)
-        data["author_tags"] = authors
+                given = clean_string(given.title())
+                if given:
+                    if given[-1].isupper():
+                        given = given + "."
+                    given = re.sub(r"\b([A-Z]) ", r"\1.", given)
+                    if parsing.matches_grammar(
+                        given.replace(" ", ""), parsing.initials_pattern
+                    ):
+                        initials = given.replace(" ", "")
+                    else:
+                        given_names = re.sub(r"\. ([A-Z]\.)", r".\1", given)
+            authors.append(
+                VirtualPerson(
+                    family_name=family_name, initials=initials, given_names=given_names
+                )
+            )
+        if authors:
+            data["author_tags"] = authors
 
     if volume := work.get("volume"):
         data["volume"] = volume.removeprefix("0")
@@ -686,16 +699,20 @@ def set_author_tags_from_raw(
     interactive: bool = False,
     verbose: bool = True,
 ) -> None:
-    if all(isinstance(elt, AuthorTag.Author) for elt in value):
-        new_tags = value
-    else:
-        for params in value:
-            if params["family_name"].isupper():
-                params["family_name"] = params["family_name"].title()
-        new_tags = [
-            AuthorTag.Author(person=Person.get_or_create_unchecked(**params))
-            for params in value
-        ]
+    new_tags = []
+    for elt in value:
+        if isinstance(elt, AuthorTag.Author):
+            new_tags.append(elt)
+        elif isinstance(elt, dict):
+            if elt["family_name"].isupper():
+                elt["family_name"] = elt["family_name"].title()
+            new_tags.append(
+                AuthorTag.Author(person=Person.get_or_create_unchecked(**elt))
+            )
+        elif isinstance(elt, VirtualPerson):
+            new_tags.append(AuthorTag.Author(person=elt.create_person()))
+        else:
+            print(f"warning: ignoring author tag {elt}")
     if art.author_tags:
         if only_new:
             if art.author_tags != new_tags and verbose:

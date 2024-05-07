@@ -1298,14 +1298,16 @@ class Name(BaseModel):
             return None
 
         if paper is not None:
-            nam = self.taxon.syn_from_paper(root_name, paper, interactive=False)
+            nam = self.taxon.syn_from_paper(
+                root_name=root_name, paper=paper, interactive=False
+            )
             if nam is None:
                 return None
             nam.original_name = original_name
             nam.nomenclature_status = status
         else:
             nam = self.taxon.add_syn(
-                root_name,
+                root_name=root_name,
                 nomenclature_status=status,
                 original_name=original_name,
                 interactive=False,

@@ -223,7 +223,10 @@ def infer_bhl_biblio(cg: CitationGroup, cfg: LintConfig) -> Iterable[str]:
         if my_start_year < int(data["StartYear"]) or (
             data["EndYear"] and my_end_year > int(data["EndYear"])
         ):
-            yield f"active years {my_start_year}-{my_end_year} don't match {data['TitleURL']} {data['StartYear']}-{data['EndYear']}"
+            yield (
+                f"active years {my_start_year}-{my_end_year} don't match"
+                f" {data['TitleURL']} {data['StartYear']}-{data['EndYear']}"
+            )
             return
     message = f"inferred BHL tag {data['TitleID']}"
     if cfg.autofix:
