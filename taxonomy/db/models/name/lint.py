@@ -1,4 +1,10 @@
-"""Lint steps for Names."""
+"""Lint steps for Names.
+
+TODOs:
+- For species-group names, disallow "other" and "unranked" as original ranks
+- Require original_rank for species-group names with an original name
+
+"""
 
 from __future__ import annotations
 
@@ -10,13 +16,13 @@ import re
 import subprocess
 from collections import defaultdict
 from collections.abc import Callable, Container, Generator, Iterable, Iterator, Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from functools import cache
 from typing import Generic, TypeVar, assert_never
 
 import Levenshtein
 import requests
-from attr import dataclass
 
 from taxonomy import adt, coordinates, getinput, urlparse
 from taxonomy.apis import bhl, nominatim

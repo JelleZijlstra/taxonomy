@@ -728,7 +728,7 @@ def set_author_tags_from_raw(
         if not getinput.yes_no("Replace authors? "):
             art.fill_field("author_tags")
             return
-    art.author_tags = new_tags
+    art.author_tags = new_tags  # type: ignore[assignment]
 
 
 def _processcommand_for_doi_input(cmd: str) -> tuple[str | None, object]:

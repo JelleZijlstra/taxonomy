@@ -255,6 +255,9 @@ def get_hesp_row(
     row["Hesp_authority_parentheses"] = get_authority_parens(name)
     row["Hesp_validity"] = get_mdd_status(name)
     row["Hesp_original_combination"] = name.original_name or ""
+    row["Hesp_original_rank"] = (
+        name.original_rank.name if name.original_rank is not None else ""
+    )
 
     # Nomenclature status
     row["Hesp_nomenclature_status"] = get_nomenclature_status_string(name)
