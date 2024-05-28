@@ -2869,10 +2869,20 @@ def check_must_have_authority_page_link(nam: Name, cfg: LintConfig) -> Iterable[
 def check_bhl_page(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.original_citation is None:
         return
+    wrong_bhl_pages = nam.original_citation.has_tag(ArticleTag.BHLWrongPageNumbers)
     for tag in nam.get_tags(nam.type_tags, TypeTag.AuthorityPageLink):
         parsed = urlparse.parse_url(tag.url)
         if not isinstance(parsed, urlparse.BhlPage):
             continue
+        if wrong_bhl_pages:
+            page_metadata = bhl.get_page_metadata(parsed.page_id)
+            try:
+                page_number = page_metadata["PageNumbers"][0]["Number"]
+            except LookupError:
+                pass
+            else:
+                if page_number == tag.page:
+                    yield f"page number {tag.page} matches BHL data for {tag.url}, but {nam.original_citation} is marked as having wrong page numbers"
         if nam.original_citation.url is None:
             yield f"name has BHL page, but original citation has no URL: {nam.original_citation}"
             if cfg.interactive:

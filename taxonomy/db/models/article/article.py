@@ -1511,6 +1511,8 @@ class ArticleTag(adt.ADT):
     # DOI is for a more general work (e.g., the entire "Notes" section)
     GeneralDOI(comment=NotRequired[str], tag=23)  # type: ignore[name-defined]
 
+    BHLWrongPageNumbers(comment=NotRequired[str], tag=24)  # type: ignore[name-defined]
+
 
 @lru_cache
 def _getpdfcontent(path: str) -> str:
