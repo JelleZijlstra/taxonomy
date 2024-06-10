@@ -123,7 +123,7 @@ def export_names(
     names = get_names_for_export(taxon, ages, group, limit, min_rank_for_age_filtering)
 
     with Path(filename).open("w") as f:
-        writer: "csv.DictWriter[str]" = csv.DictWriter(
+        writer: csv.DictWriter[str] = csv.DictWriter(
             f, list(NameData.__annotations__), escapechar="\\"
         )
         writer.writeheader()
@@ -291,7 +291,7 @@ def export_taxa(filename: str, *, limit: int | None = None) -> None:
     taxa = Taxon.select_valid().limit(limit)
 
     with Path(filename).open("w") as f:
-        writer: "csv.DictWriter[str]" = csv.DictWriter(
+        writer: csv.DictWriter[str] = csv.DictWriter(
             f, list(TaxonData.__annotations__), escapechar="\\"
         )
         writer.writeheader()
@@ -335,7 +335,7 @@ def data_for_collection(collection: Collection) -> CollectionData:
 @CS.register
 def export_collections(filename: str) -> None:
     with Path(filename).open("w") as f:
-        writer: "csv.DictWriter[str]" = csv.DictWriter(
+        writer: csv.DictWriter[str] = csv.DictWriter(
             f, list(CollectionData.__annotations__)
         )
         writer.writeheader()
@@ -359,7 +359,7 @@ class OccurrenceData(TypedDict):
 @CS.register
 def export_occurrences(filename: str) -> None:
     with Path(filename).open("w") as f:
-        writer: "csv.DictWriter[str]" = csv.DictWriter(
+        writer: csv.DictWriter[str] = csv.DictWriter(
             f, list(OccurrenceData.__annotations__)
         )
         writer.writeheader()
