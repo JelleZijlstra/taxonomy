@@ -173,8 +173,8 @@ evidence:
     - p. 11 cites pl. 39 of the _Zoologie et Paléontologie_
 - Sherborn's _Index Animalium_
   - {Animalia-index (A-Aff).pdf}
-    - p. lviii reads "Zool. et Paléont. Franç. 4to. Paris, 1848–. [Pp. 1–144 and descr.
-      to 21 pls. were issued by 23 Nov. 1850 and are here quoted.]"
+    - p. lviii reads "Zool. et Paléont. Franç. 4to. Paris, 1848–. [Pp. 1–144 and
+      descr. to 21 pls. were issued by 23 Nov. 1850 and are here quoted.]"
 
 Thus, there were 20 livraisons of 4 plates each. The plates did not necessarily appear
 in order.
