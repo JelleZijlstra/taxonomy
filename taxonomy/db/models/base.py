@@ -298,8 +298,8 @@ class BaseModel(Model):
                                     overrides[attr_name] = target
                                 elif not is_invalid and attr_value.is_invalid():
                                     yield (
-                                        f"{self}: references invalid object {attr_value} in"
-                                        f" {field} tag {tag}"
+                                        f"{self}: references invalid object"
+                                        f" {attr_value} in {field} tag {tag}"
                                     )
                             elif isinstance(attr_value, str):
                                 cleaned = helpers.interactive_clean_string(
@@ -315,7 +315,7 @@ class BaseModel(Model):
                                     overrides[attr_name] = cleaned
                                 if message := helpers.is_string_clean(cleaned):
                                     yield f"{self}: in tags: {message} in {cleaned!r}"
-                                if not cleaned.isprintable():
+                                if not is_invalid and not cleaned.isprintable():
                                     message = (
                                         f"{self}: contains unprintable characters:"
                                         f" {cleaned!r}"
@@ -346,8 +346,8 @@ class BaseModel(Model):
                             if isinstance(value, BaseModel):
                                 if not is_invalid and value.is_invalid():
                                     yield (
-                                        f"{self}: references invalid object {attr_value} in"
-                                        f" {field} tag {tag}"
+                                        f"{self}: references invalid object"
+                                        f" {attr_value} in {field} tag {tag}"
                                     )
                             elif isinstance(attr_value, str):
                                 cleaned = helpers.interactive_clean_string(
@@ -362,14 +362,17 @@ class BaseModel(Model):
                                     )
                                 if message := helpers.is_string_clean(cleaned):
                                     yield f"{self}: in tags: {message} in {cleaned!r}"
-                                if not cleaned.isprintable():
+                                if not is_invalid and not cleaned.isprintable():
                                     yield (
                                         f"{self}: contains unprintable characters:"
                                         f" {cleaned!r}"
                                     )
                     if not field_obj.is_ordered:
                         if list(value) != sorted(set(value)):
-                            yield f"{self}: contains duplicate or unsorted tags in {field}"
+                            yield (
+                                f"{self}: contains duplicate or unsorted tags in"
+                                f" {field}"
+                            )
             elif field_obj.type_object is str:
                 allow_newlines = isinstance(field_obj, (TextField, TextOrNullField))
                 if self.should_exempt_from_string_cleaning(field):
@@ -403,7 +406,7 @@ class BaseModel(Model):
                         yield message
                 if message := helpers.is_string_clean(cleaned):
                     yield f"{self}: field {field}: {message} in {cleaned!r}"
-                if not cleaned.isprintable():
+                if not is_invalid and not cleaned.isprintable():
                     if allow_newlines and cleaned.replace("\n", "").isprintable():
                         continue
                     message = (

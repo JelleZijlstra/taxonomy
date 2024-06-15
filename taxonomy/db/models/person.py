@@ -6,6 +6,7 @@ import re
 import sys
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Mapping, Sequence
+from dataclasses import dataclass
 from typing import IO, Any, ClassVar, Self
 
 from clirm import Field
@@ -108,6 +109,25 @@ def get_derived_field_with_aliases(
         compute_all=compute_all,
         pull_on_miss=False,
     )
+
+
+@dataclass(kw_only=True)
+class VirtualPerson:
+    family_name: str
+    given_names: str | None = None
+    initials: str | None = None
+    tussenvoegsel: str | None = None
+    suffix: str | None = None
+    naming_convention: NamingConvention = NamingConvention.unspecified
+
+    def create_person(self) -> Person:
+        return Person.get_or_create_unchecked(
+            family_name=self.family_name,
+            given_names=self.given_names,
+            initials=self.initials,
+            tussenvoegsel=self.tussenvoegsel,
+            suffix=self.suffix,
+        )
 
 
 class Person(BaseModel):
@@ -280,28 +300,7 @@ class Person(BaseModel):
         return "".join(parts)
 
     def get_initials(self) -> str | None:
-        if self.initials:
-            return self.initials
-        if self.given_names:
-            names = self.given_names.split(" ")
-
-            def name_to_initial(name: str) -> str:
-                if not name:
-                    return ""
-                elif "." in name:
-                    return name
-                elif "-" in name:
-                    return "-".join(name_to_initial(part) for part in name.split("-"))
-                elif (
-                    name[0].isupper()
-                    or self.naming_convention is NamingConvention.pinyin
-                ):
-                    return name[0] + "."
-                else:
-                    return f" {name} "
-
-            return "".join(name_to_initial(name) for name in names)
-        return None
+        return get_initials(self)
 
     @classmethod
     def join_authors(cls, authors: Sequence[Person]) -> str:
@@ -989,36 +988,7 @@ class Person(BaseModel):
             self.type = PersonType.deleted
 
     def is_more_specific_than(self, other: Person) -> bool:
-        if other.type in (PersonType.hard_redirect, PersonType.soft_redirect):
-            return other.target == self
-        if self.family_name != other.family_name:
-            return False
-        if self.given_names:
-            if other.given_names:
-                return self.given_names.startswith(other.given_names + " ")
-            elif other.initials:
-                return self._has_more_specific_initials(other)
-            else:
-                return True
-        elif self.initials:
-            if other.given_names:
-                return False
-            elif other.initials:
-                return self._has_more_specific_initials(other)
-            else:
-                return True
-        return False
-
-    def _has_more_specific_initials(self, other: Person) -> bool:
-        my_initials = self.get_initials()
-        other_initials = other.get_initials()
-        return (
-            my_initials is not None
-            and other_initials is not None
-            and my_initials.replace("-", "")
-            .lower()
-            .startswith(other_initials.replace("-", "").lower())
-        )
+        return is_more_specific_than(self, other)
 
     @classmethod
     def resolve_redirects(cls) -> None:
@@ -1228,3 +1198,77 @@ def _display_sort_key(obj: BaseModel) -> Any:
         return (obj.get_date_object(), obj.sort_key())
     else:
         return obj.sort_key()
+
+
+def is_more_specific_than(
+    left: Person | VirtualPerson, right: Person | VirtualPerson
+) -> bool:
+    if isinstance(left, Person) and isinstance(right, Person):
+        if right.type in (PersonType.hard_redirect, PersonType.soft_redirect):
+            return right.target == left
+    if isinstance(right, Person):
+        if right.type is PersonType.checked:
+            return False
+        if (
+            isinstance(left, VirtualPerson)
+            and right.naming_convention is not NamingConvention.unspecified
+        ):
+            return False
+    if left.family_name != right.family_name:
+        return False
+    if right.suffix and left.suffix != right.suffix:
+        return False
+    if right.tussenvoegsel and left.tussenvoegsel != right.tussenvoegsel:
+        return False
+    if left.given_names:
+        if right.given_names:
+            return left.given_names.startswith(right.given_names + " ")
+        elif right.initials:
+            return _has_more_specific_initials(left, right)
+        else:
+            return True
+    elif left.initials:
+        if right.given_names:
+            return False
+        elif right.initials:
+            return _has_more_specific_initials(left, right)
+        else:
+            return True
+    return False
+
+
+def _has_more_specific_initials(
+    left: Person | VirtualPerson, right: Person | VirtualPerson
+) -> bool:
+    my_initials = get_initials(left)
+    right_initials = get_initials(right)
+    if my_initials is None or right_initials is None:
+        return False
+    left_simplified = my_initials.replace("-", "").lower()
+    right_simplified = right_initials.replace("-", "").lower()
+    return left_simplified.startswith(right_simplified)
+
+
+def get_initials(person: Person | VirtualPerson) -> str | None:
+    if person.initials:
+        return person.initials
+    if person.given_names:
+        names = person.given_names.split(" ")
+
+        def name_to_initial(name: str) -> str:
+            if not name:
+                return ""
+            elif "." in name:
+                return name
+            elif "-" in name:
+                return "-".join(name_to_initial(part) for part in name.split("-"))
+            elif name[0].isupper() or person.naming_convention in (
+                NamingConvention.pinyin,
+                NamingConvention.chinese,
+            ):
+                return name[0] + "."
+            else:
+                return f" {name} "
+
+        return "".join(name_to_initial(name) for name in names)
+    return None

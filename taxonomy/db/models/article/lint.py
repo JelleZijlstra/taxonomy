@@ -22,6 +22,7 @@ from taxonomy.db.models.citation_group.cg import CitationGroup, CitationGroupTag
 from taxonomy.db.models.citation_group.lint import get_biblio_pages
 from taxonomy.db.models.issue_date import IssueDate
 from taxonomy.db.models.lint import IgnoreLint, Lint
+from taxonomy.db.models.person import AuthorTag, is_more_specific_than
 
 from .article import Article, ArticleComment, ArticleTag, PresenceStatus
 from .name_parser import get_name_parser
@@ -42,6 +43,53 @@ def get_ignores(art: Article) -> Iterable[IgnoreLint]:
 
 
 LINT = Lint(Article, get_ignores, remove_unused_ignores)
+
+
+@LINT.add("tags")
+def check_tags(art: Article, cfg: LintConfig) -> Iterable[str]:
+    if not art.tags:
+        return
+    tags: list[ArticleTag] = []
+    original_tags = list(art.tags)
+    for tag in original_tags:
+        if isinstance(tag, ArticleTag.LSIDArticle):
+            if not tag.text:
+                continue
+            tag = ArticleTag.LSIDArticle(clean_lsid(tag.text), tag.present_in_article)
+            if not is_valid_lsid(tag.text):
+                yield f"invalid LSID {tag.text}"
+        elif isinstance(tag, ArticleTag.BiblioNoteArticle):
+            if tag.text not in get_biblio_pages():
+                yield f"references non-existent page {tag.text!r}"
+        elif isinstance(tag, ArticleTag.HDL):
+            if not is_valid_hdl(tag.text):
+                yield f"invalid HDL {tag.text!r}"
+        elif isinstance(tag, ArticleTag.JSTOR):
+            jstor_id = tag.text
+            if len(jstor_id) < 4 or not jstor_id.isnumeric():
+                yield f"invalid JSTOR id {jstor_id!r}"
+        elif (
+            art.doi is None
+            and isinstance(tag, ArticleTag.PublicationDate)
+            and tag.source
+            in (
+                DateSource.doi_published,
+                DateSource.doi_published_online,
+                DateSource.doi_published_other,
+                DateSource.doi_published_print,
+            )
+        ):
+            continue
+        tags.append(tag)
+    tags = sorted(set(tags))
+    if tags != original_tags:
+        if set(tags) != set(original_tags):
+            print(f"changing tags for {art}")
+            getinput.print_diff(sorted(original_tags), tags)
+        if cfg.autofix:
+            art.tags = tags  # type: ignore[assignment]
+        else:
+            yield f"{art}: needs change to tags"
 
 
 @LINT.add("name")
@@ -236,6 +284,14 @@ def check_year(art: Article, cfg: LintConfig) -> Iterable[str]:
 
     inferred, issue, messages = infer_publication_date(art)
     yield from messages
+    if issue is not None and issue != art.issue:
+        message = f"issue mismatch: inferred {issue}, actual {art.issue}"
+        if cfg.autofix and art.issue is None:
+            print(f"{art}: {message}")
+            art.issue = issue
+        else:
+            yield message
+
     if inferred is not None and inferred != art.year:
         # Ignore obviously wrong ones (though eventually we should retire this)
         if inferred.startswith("20") and art.numeric_year() < 1990:
@@ -245,16 +301,20 @@ def check_year(art: Article, cfg: LintConfig) -> Iterable[str]:
             message = f"tags yield more specific date {inferred} instead of {art.year}"
         else:
             message = f"year mismatch: inferred {inferred}, actual {art.year}"
-        if cfg.autofix and is_more_specific:
+        can_autofix = is_more_specific
+        try:
+            inferred_year = int(inferred[:4])
+        except ValueError:
+            return
+        if (
+            inferred_year is not None
+            and not art.get_new_names().count()
+            and abs(art.numeric_year() - inferred_year) <= 1
+        ):
+            can_autofix = True
+        if cfg.autofix and can_autofix:
             print(f"{art}: {message}")
             art.year = inferred
-        else:
-            yield message
-    if issue is not None and issue != art.issue:
-        message = f"issue mismatch: inferred {issue}, actual {art.issue}"
-        if cfg.autofix and art.issue is None:
-            print(f"{art}: {message}")
-            art.issue = issue
         else:
             yield message
 
@@ -273,6 +333,22 @@ def check_precise_date(art: Article, cfg: LintConfig) -> Iterable[str]:
 
 @LINT.add("infer_precise_date")
 def infer_precise_date(art: Article, cfg: LintConfig) -> Iterable[str]:
+    siblings = get_inferred_date_from_position(art)
+    if siblings is None:
+        return
+    before, after = siblings
+    message = (
+        f"inferred publication date of {after.year} based on position between"
+        f" {before!r} and {after!r}"
+    )
+    if cfg.autofix:
+        print(f"{art}: {message}")
+        art.year = after.year
+    else:
+        yield message
+
+
+def get_inferred_date_from_position(art: Article) -> tuple[Article, Article] | None:
     if (
         art.citation_group is None
         or art.volume is None
@@ -281,10 +357,10 @@ def infer_precise_date(art: Article, cfg: LintConfig) -> Iterable[str]:
         or not art.start_page.isnumeric()
         or "-" in art.year
     ):
-        return
+        return None
     # If there is a DOI, we can get more reliable data
     if art.doi is not None:
-        return
+        return None
     siblings = [
         art
         for art in Article.select_valid().filter(
@@ -293,27 +369,32 @@ def infer_precise_date(art: Article, cfg: LintConfig) -> Iterable[str]:
             Article.volume == art.volume,
             Article.year.contains("-"),
         )
-        if art.start_page.isnumeric()
+        if art.start_page.isnumeric() and art.has_tag(ArticleTag.PublicationDate)
     ]
     if len(siblings) <= 1:
-        return
+        return None
     siblings = sorted(siblings, key=lambda art: int(art.start_page))
     index = bisect.bisect_left(
         siblings, int(art.start_page), key=lambda art: int(art.start_page)
     )
     if index == 0 or index == len(siblings):
-        return
+        return None
     if siblings[index - 1].year != siblings[index].year:
+        return None
+    return siblings[index - 1], siblings[index]
+
+
+@LINT.add("unsupported_year", disabled=True)
+def check_unsupported_year(art: Article, cfg: LintConfig) -> Iterable[str]:
+    if art.year is None or "-" not in art.year:
         return
-    message = (
-        f"inferred publication date of {siblings[index].year} based on position between"
-        f" {siblings[index - 1]!r} and {siblings[index]!r}"
-    )
-    if cfg.autofix:
-        print(f"{art}: {message}")
-        art.year = siblings[index].year
-    else:
-        yield message
+    if art.has_tag(ArticleTag.PublicationDate):
+        return
+    if get_inferred_date_from_position(art) is not None:
+        return
+    if infer_publication_date_from_issue_date(art) is not None:
+        return
+    yield f"precise date {art.year} is not supported by any evidence"
 
 
 _JSTOR_URL_REGEX = r"https?://www\.jstor\.org/stable/(\d+)"
@@ -1216,6 +1297,14 @@ def check_string_fields(art: Article, cfg: LintConfig) -> Iterable[str]:
         if not isinstance(value, str):
             continue
         cleaned = _clean_string_field(value)
+        if cleaned.isnumeric() and field in (
+            "series",
+            "volume",
+            "issue",
+            "start_page",
+            "end_page",
+        ):
+            cleaned = cleaned.lstrip("0")
         yield from _maybe_clean(art, field, cleaned, cfg)
         if "??" in value:
             yield f"double question mark in field {field}: {value!r}"
@@ -1326,41 +1415,6 @@ def check_start_end_page(art: Article, cfg: LintConfig) -> Iterable[str]:
         )
     if not re.fullmatch(tag.pages_regex, end_page):
         yield f"end page {end_page} does not match regex {tag.pages_regex} for {cg}"
-
-
-@LINT.add("tags")
-def check_tags(art: Article, cfg: LintConfig) -> Iterable[str]:
-    if not art.tags:
-        return
-    tags: list[ArticleTag] = []
-    original_tags = list(art.tags)
-    for tag in original_tags:
-        if isinstance(tag, ArticleTag.LSIDArticle):
-            if not tag.text:
-                continue
-            tag = ArticleTag.LSIDArticle(clean_lsid(tag.text), tag.present_in_article)
-            if not is_valid_lsid(tag.text):
-                yield f"invalid LSID {tag.text}"
-        elif isinstance(tag, ArticleTag.BiblioNoteArticle):
-            if tag.text not in get_biblio_pages():
-                yield f"references non-existent page {tag.text!r}"
-        elif isinstance(tag, ArticleTag.HDL):
-            if not is_valid_hdl(tag.text):
-                yield f"invalid HDL {tag.text!r}"
-        elif isinstance(tag, ArticleTag.JSTOR):
-            jstor_id = tag.text
-            if len(jstor_id) < 4 or not jstor_id.isnumeric():
-                yield f"invalid JSTOR id {jstor_id!r}"
-        tags.append(tag)
-    tags = sorted(set(tags))
-    if tags != original_tags:
-        if set(tags) != set(original_tags):
-            print(f"changing tags for {art}")
-            getinput.print_diff(sorted(original_tags), tags)
-        if cfg.autofix:
-            art.tags = tags  # type: ignore[assignment]
-        else:
-            yield f"{art}: needs change to tags"
 
 
 @LINT.add("infer_lsid")
@@ -1693,6 +1747,8 @@ def dupe_doi(art: Article) -> str | None:
         return None
     if art.kind == ArticleKind.alternative_version:
         return None
+    if art.has_tag(ArticleTag.GeneralDOI):
+        return None
     return art.doi
 
 
@@ -1752,7 +1808,7 @@ def dupe_journal_with_title(art: Article) -> tuple[object, ...] | None:
     )
 
 
-@LINT.add("data_from_doi", disabled=True)  # TODO: lots of work to fix
+@LINT.add("data_from_doi")
 def data_from_doi(art: Article, cfg: LintConfig) -> Iterable[str]:
     if (
         art.doi is None
@@ -1763,45 +1819,114 @@ def data_from_doi(art: Article, cfg: LintConfig) -> Iterable[str]:
     data = models.article.add_data.expand_doi_json(art.doi)
     if not data:
         return
-    if "title" in data and art.title is not None:
-        simplified_doi = helpers.simplify_string(data["title"], clean_words=False)
-        simplified_art = helpers.simplify_string(art.title, clean_words=False)
-        if simplified_doi != simplified_art:
-            if not LINT.is_ignoring_lint(art, "data_from_doi"):
-                getinput.diff_strings(simplified_doi, simplified_art)
-            yield f"title mismatch: {data['title']} (DOI) vs. {art.title} (article)"
-    if data.get("volume") and art.volume is not None:
-        if data["volume"] != art.volume:
-            yield f"volume mismatch: {data['volume']} (DOI) vs. {art.volume} (article)"
-    if data.get("issue") and art.issue is not None:
-        if data["issue"].replace("/", "-").replace("–", "-") != art.issue:
-            yield f"issue mismatch: {data['issue']} (DOI) vs. {art.issue} (article)"
+    yield from _check_doi_title(art, data)
+    yield from _check_doi_volume(art, data)
+    yield from _check_doi_issue(art, data)
+    yield from _check_doi_start_page(art, data)
+    yield from _check_doi_end_page(art, data)
+    yield from _check_doi_isbn(art, data, cfg)
+    yield from _check_doi_tags(art, data, cfg)
+    yield from _check_doi_authors(art, data, cfg)
+
+
+def _check_doi_title(art: Article, data: dict[str, Any]) -> Iterable[str]:
+    if "title" not in data or art.title is None:
+        return
+    title = data["title"]
+    title = re.sub(r"^[IVXCL]+\.\s*[–—\-]?", "", title)
+    title = re.sub(r"Citation for this article.*", "", title)
+    title = re.sub(r"^Chapter \d+\.?\s*", "", title)
+    title = re.sub(r"<sup>\d+</sup>", "", title)
+    title = title.replace(' class="HeadingRunIn"', "")
+    simplified_doi = helpers.simplify_string(title, clean_words=False).rstrip("*")
+    if not simplified_doi:
+        return
+    simplified_art = helpers.simplify_string(art.title, clean_words=False).rstrip("*")
+    if simplified_doi == simplified_art:
+        return
+    if not LINT.is_ignoring_lint(art, "data_from_doi"):
+        getinput.diff_strings(simplified_doi, simplified_art)
+    yield f"title mismatch: {data['title']} (DOI) vs. {art.title} (article)"
+
+
+def _check_doi_volume(art: Article, data: dict[str, Any]) -> Iterable[str]:
     if (
-        data.get("start_page")
-        and art.start_page is not None
-        and data["start_page"].isnumeric()
+        not data.get("volume")
+        or art.volume is None
+        or data["volume"].lstrip("0") == art.volume
     ):
-        if data["start_page"] != art.start_page:
-            yield f"start page mismatch: {data['start_page']} (DOI) vs. {art.start_page} (article)"
-    if (
-        data.get("end_page")
-        and art.end_page is not None
-        and data["end_page"] != "1"
-        and data["end_page"].isnumeric()
-    ):
-        if data["end_page"] != art.end_page:
-            yield f"end page mismatch: {data['end_page']} (DOI) vs. {art.end_page} (article)"
-    if "isbn" in data:
-        existing = art.get_identifier(ArticleTag.ISBN)
-        if existing is not None and existing != data["isbn"]:
-            yield f"ISBN mismatch: {data['isbn']} (DOI) vs. {existing} (article)"
+        return
+    # Happens for Am. Mus. Novitates
+    if "issue" in data and data["issue"] == art.volume:
+        return
+    if not data["volume"].isnumeric() or not art.volume.isnumeric():
+        return
+    # Probably a totally different convention
+    if abs(int(data["volume"]) - int(art.volume)) > 1000:
+        return
+    yield f"volume mismatch: {data['volume']} (DOI) vs. {art.volume} (article)"
+
+
+def _check_doi_issue(art: Article, data: dict[str, Any]) -> Iterable[str]:
+    if not data.get("issue") or art.issue is None:
+        return
+    doi_issue = data["issue"].replace("/", "-").replace("–", "-")
+    if doi_issue == "1":
+        return
+    if doi_issue.lstrip("0") == art.issue:
+        return
+    if not doi_issue.isnumeric() or not art.issue.isnumeric():
+        return
+    # Probably a totally different convention
+    if abs(int(doi_issue) - int(art.issue)) > 10:
+        return
+    yield f"issue mismatch: {data['issue']} (DOI) vs. {art.issue} (article)"
+
+
+def _check_doi_start_page(art: Article, data: dict[str, Any]) -> Iterable[str]:
+    if not data.get("start_page") or art.start_page is None:
+        return
+    if not data["start_page"].isnumeric():
+        return
+    if data["start_page"].lstrip("0") == art.start_page:
+        return
+    if data["start_page"] == data.get("end_page") and art.start_page != art.end_page:
+        return
+    yield f"start page mismatch: {data['start_page']} (DOI) vs. {art.start_page} (article)"
+
+
+def _check_doi_end_page(art: Article, data: dict[str, Any]) -> Iterable[str]:
+    if not data.get("end_page") or art.start_page is None:
+        return
+    if data["end_page"] == 1 or not data["end_page"].isnumeric():
+        return
+    if data["end_page"].lstrip("0") == art.end_page:
+        return
+    if data.get("start_page") == data["end_page"] and art.start_page != art.end_page:
+        return
+    yield f"end page mismatch: {data['end_page']} (DOI) vs. {art.end_page} (article)"
+
+
+def _check_doi_isbn(
+    art: Article, data: dict[str, Any], cfg: LintConfig
+) -> Iterable[str]:
+    if "isbn" not in data:
+        return
+    existing = art.get_identifier(ArticleTag.ISBN)
+    if existing is not None and existing != data["isbn"]:
+        yield f"ISBN mismatch: {data['isbn']} (DOI) vs. {existing} (article)"
+    else:
+        message = f"adding ISBN {data['isbn']} from DOI"
+        if cfg.autofix:
+            print(f"{art}: {message}")
+            art.add_tag(ArticleTag.ISBN(data["isbn"]))
         else:
-            message = f"adding ISBN {data['isbn']} from DOI"
-            if cfg.autofix:
-                print(f"{art}: {message}")
-                art.add_tag(ArticleTag.ISBN(data["isbn"]))
-            else:
-                yield message
+            yield message
+
+
+def _check_doi_tags(
+    art: Article, data: dict[str, Any], cfg: LintConfig
+) -> Iterable[str]:
     for tag in data["tags"]:
         if tag not in art.tags:
             message = f"adding tag {tag} from DOI"
@@ -1810,4 +1935,29 @@ def data_from_doi(art: Article, cfg: LintConfig) -> Iterable[str]:
                 art.add_tag(tag)
             else:
                 yield message
-    # TODO: authors
+
+
+def _check_doi_authors(
+    art: Article, data: dict[str, Any], cfg: LintConfig
+) -> Iterable[str]:
+    if "author_tags" not in data:
+        return
+    doi_authors = data["author_tags"]
+    if len(doi_authors) != len(art.author_tags):
+        return
+    new_authors = []
+    for doi_author, tag in zip(doi_authors, art.author_tags, strict=True):
+        art_author = tag.person
+        if is_more_specific_than(doi_author, art_author):
+            new_authors.append(AuthorTag.Author(doi_author.create_person()))
+        else:
+            new_authors.append(tag)
+    if new_authors == list(art.author_tags):
+        return
+    message = "updating authors from DOI"
+    getinput.print_diff(art.author_tags, new_authors)
+    if cfg.autofix:
+        print(f"{art}: {message}")
+        art.author_tags = new_authors  # type: ignore[assignment]
+    else:
+        yield message

@@ -4,6 +4,7 @@ import builtins
 import datetime
 import enum
 import pprint
+import re
 import shutil
 import subprocess
 import time
@@ -764,6 +765,13 @@ class Article(BaseModel):
     def numeric_year(self) -> int:
         return self.get_date_object().year
 
+    def get_year_only(self) -> str | None:
+        if self.year is None:
+            return None
+        if re.fullmatch(r"\d{4}-\d{4}", self.year):
+            return self.year
+        return self.year.split("-")[0]
+
     def get_date_object(self) -> datetime.date:
         if self.type is ArticleType.SUPPLEMENT and self.parent is not None:
             return self.parent.get_date_object()
@@ -838,7 +846,7 @@ class Article(BaseModel):
         ]
 
     def taxonomic_authority(self) -> tuple[str, str]:
-        return (Person.join_authors(self.get_authors()), self.year or "")
+        return (Person.join_authors(self.get_authors()), self.get_year_only() or "")
 
     def author_set(self) -> set[int]:
         return {pair[1] for pair in self.get_raw_tags_field("author_tags")}
@@ -1502,6 +1510,8 @@ class ArticleTag(adt.ADT):
 
     # DOI is for a more general work (e.g., the entire "Notes" section)
     GeneralDOI(comment=NotRequired[str], tag=23)  # type: ignore[name-defined]
+
+    BHLWrongPageNumbers(comment=NotRequired[str], tag=24)  # type: ignore[name-defined]
 
 
 @lru_cache

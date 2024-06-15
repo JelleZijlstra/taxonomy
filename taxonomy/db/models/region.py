@@ -188,13 +188,17 @@ class Region(BaseModel):
 
     def sorted_locations(self) -> list[models.Location]:
         return sorted(
-            self.locations.filter(models.Location.deleted != True),
+            self.locations.filter(
+                models.Location.deleted != models.location.LocationStatus.deleted
+            ),
             key=models.Location.sort_key,
         )
 
     def get_location(self) -> models.Location:
         """Returns the corresponding Recent Location."""
-        return models.Location.get(region=self, name=self.name, deleted=False)
+        return models.Location.get(
+            region=self, name=self.name, deleted=models.location.LocationStatus.valid
+        )
 
     def all_parents(self) -> Iterable[Region]:
         """Returns all parent regions of this region."""

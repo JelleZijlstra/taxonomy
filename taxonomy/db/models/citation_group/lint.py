@@ -177,6 +177,8 @@ def infer_bhl_biblio(cg: CitationGroup, cfg: LintConfig) -> Iterable[str]:
         return
     title_dict = bhl.get_title_to_data()
     name = cg.name.casefold()
+    if len(name) < 5:
+        return
     if name not in title_dict:
         return
     candidates = title_dict[name]
@@ -223,7 +225,10 @@ def infer_bhl_biblio(cg: CitationGroup, cfg: LintConfig) -> Iterable[str]:
         if my_start_year < int(data["StartYear"]) or (
             data["EndYear"] and my_end_year > int(data["EndYear"])
         ):
-            yield f"active years {my_start_year}-{my_end_year} don't match {data['TitleURL']} {data['StartYear']}-{data['EndYear']}"
+            yield (
+                f"active years {my_start_year}-{my_end_year} don't match"
+                f" {data['TitleURL']} {data['StartYear']}-{data['EndYear']}"
+            )
             return
     message = f"inferred BHL tag {data['TitleID']}"
     if cfg.autofix:

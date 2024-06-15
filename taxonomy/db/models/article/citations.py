@@ -2,6 +2,7 @@
 
 import re
 
+from taxonomy.db import helpers
 from taxonomy.db.constants import ArticleType, NamingConvention
 
 from .article import Article, ArticleTag, register_cite_function
@@ -42,6 +43,7 @@ def format_authors(
     initials_before_name: bool = False,  # Whether to place initials before the surname
     first_initials_before_name: bool = False,  # Whether to place the first author's initials before their surname
     include_initials: bool = True,  # Whether to include initials
+    romanize: bool = False,  # Whether to romanize names
 ) -> str:
     if last_separator is None:
         last_separator = separator
@@ -65,7 +67,11 @@ def format_authors(
             family_name = author.family_name.upper()
         else:
             family_name = author.family_name
+        if romanize:
+            family_name = helpers.romanize_russian(family_name)
         initials = author.get_initials()
+        if initials and romanize:
+            initials = helpers.romanize_russian(initials)
 
         if space_initials and initials:
             initials = re.sub(r"\.(?![- ]|$)", ". ", initials)
@@ -90,9 +96,13 @@ def format_authors(
 
 
 @register_cite_function("paper")
-def citepaper(article: Article, *, include_url: bool = True) -> str:
+def citepaper(
+    article: Article, *, include_url: bool = True, romanize_authors: bool = False
+) -> str:
     # like citenormal(), but without WP style links and things
-    return _citenormal(article, mw=False, include_url=include_url)
+    return _citenormal(
+        article, mw=False, include_url=include_url, romanize_authors=romanize_authors
+    )
 
 
 @register_cite_function("normal")
@@ -106,6 +116,7 @@ def _citenormal(
     mw: bool,
     child_article: Article | None = None,
     include_url: bool = True,
+    romanize_authors: bool = False,
 ) -> str:
     # cites according to normal WP citation style
     # if mw = False, no MediaWiki markup is used
@@ -115,7 +126,9 @@ def _citenormal(
     else:
         out = ""
     # replace last ; with ", and"; others with ","
-    out += format_authors(article, separator=",", last_separator=" and")
+    out += format_authors(
+        article, separator=",", last_separator=" and", romanize=romanize_authors
+    )
     if child_article is not None and child_article.type is ArticleType.CHAPTER:
         out += ". (eds.)"
     if child_article is not None and child_article.year == article.year:

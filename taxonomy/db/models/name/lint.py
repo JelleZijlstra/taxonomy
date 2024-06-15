@@ -1,4 +1,10 @@
-"""Lint steps for Names."""
+"""Lint steps for Names.
+
+TODOs:
+- For species-group names, disallow "other" and "unranked" as original ranks
+- Require original_rank for species-group names with an original name
+
+"""
 
 from __future__ import annotations
 
@@ -10,13 +16,14 @@ import re
 import subprocess
 from collections import defaultdict
 from collections.abc import Callable, Container, Generator, Iterable, Iterator, Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from functools import cache
 from typing import Generic, TypeVar, assert_never
 
+import clirm
 import Levenshtein
 import requests
-from attr import dataclass
 
 from taxonomy import adt, coordinates, getinput, urlparse
 from taxonomy.apis import bhl, nominatim
@@ -58,6 +65,7 @@ from taxonomy.db.models.name_complex import (
 from taxonomy.db.models.person import AuthorTag, PersonLevel
 from taxonomy.db.models.taxon import Taxon
 
+from .guess_repository import get_most_likely_repository
 from .name import (
     PREOCCUPIED_TAGS,
     STATUS_TO_TAG,
@@ -367,7 +375,10 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
             else:
                 yield message
 
-        if isinstance(tag, TypeTag.ProbableRepository) and nam.collection is not None:
+        if (
+            isinstance(tag, (TypeTag.ProbableRepository, TypeTag.GuessedRepository))
+            and nam.collection is not None
+        ):
             message = f"has {tag} but colllection is set to {nam.collection}"
             if cfg.autofix:
                 print(f"{nam}: {message}")
@@ -1761,6 +1772,73 @@ def clean_up_verbatim(nam: Name, cfg: LintConfig) -> Iterable[str]:
             yield message
 
 
+@LINT.add("verbatim_to_citation_detail")
+def verbatim_to_citation_detail(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    if nam.verbatim_citation is None:
+        return
+    for whole_match, source, text in re.findall(
+        r"(\[From \{([^}]+)\}: ([^\]]+)\])", nam.verbatim_citation
+    ):
+        try:
+            source_art = (
+                Article.select().filter(Article.name == source).get().resolve_redirect()
+            )
+        except clirm.DoesNotExist:
+            continue
+        tag = TypeTag.CitationDetail(text, source_art)
+        message = (
+            f"converting verbatim citation to citation detail: {whole_match} -> {tag}"
+        )
+        if cfg.autofix:
+            print(f"{nam}: {message}")
+            nam.add_type_tag(tag)
+            nam.verbatim_citation = nam.verbatim_citation.replace(whole_match, "")
+        else:
+            yield message
+    match = re.fullmatch(
+        r"([^\]]+(?: \[[^\[\]\{\}]+\])?|[^{]+) \[from \{([^\}]+)\}\]",
+        nam.verbatim_citation,
+    )
+    if match:
+        text, source = match.groups()
+        try:
+            source_art = (
+                Article.select().filter(Article.name == source).get().resolve_redirect()
+            )
+        except clirm.DoesNotExist:
+            pass
+        else:
+            tag = TypeTag.CitationDetail(text, source_art)
+            message = f"converting verbatim citation to citation detail: {nam.verbatim_citation} -> {tag}"
+            if cfg.autofix:
+                print(f"{nam}: {message}")
+                nam.add_type_tag(tag)
+                nam.verbatim_citation = None
+            else:
+                yield message
+
+    # if nam.verbatim_citation is not None and "{" in nam.verbatim_citation:
+    #     yield f"unhandled verbatim citation: {nam.verbatim_citation}"
+
+
+@LINT.add("verbatim_from_tags")
+def verbatim_citation_from_tags(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    if nam.verbatim_citation:
+        return
+    if "verbatim_citation" not in nam.get_required_fields():
+        return
+    tags = list(nam.get_tags(nam.type_tags, TypeTag.CitationDetail))
+    if not tags:
+        return
+    longest = max(tags, key=lambda tag: len(tag.text))
+    message = f"setting verbatim citation from tag {longest}"
+    if cfg.autofix:
+        print(f"{nam}: {message}")
+        nam.verbatim_citation = longest.text
+    else:
+        yield message
+
+
 @LINT.add("status")
 def check_correct_status(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.status.is_base_name() and nam != nam.taxon.base_name:
@@ -2863,10 +2941,20 @@ def check_must_have_authority_page_link(nam: Name, cfg: LintConfig) -> Iterable[
 def check_bhl_page(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.original_citation is None:
         return
+    wrong_bhl_pages = nam.original_citation.has_tag(ArticleTag.BHLWrongPageNumbers)
     for tag in nam.get_tags(nam.type_tags, TypeTag.AuthorityPageLink):
         parsed = urlparse.parse_url(tag.url)
         if not isinstance(parsed, urlparse.BhlPage):
             continue
+        if wrong_bhl_pages:
+            page_metadata = bhl.get_page_metadata(parsed.page_id)
+            try:
+                page_number = page_metadata["PageNumbers"][0]["Number"]
+            except LookupError:
+                pass
+            else:
+                if page_number == tag.page:
+                    yield f"page number {tag.page} matches BHL data for {tag.url}, but {nam.original_citation} is marked as having wrong page numbers"
         if nam.original_citation.url is None:
             yield f"name has BHL page, but original citation has no URL: {nam.original_citation}"
             if cfg.interactive:
@@ -3613,3 +3701,58 @@ def duplicate_genus(name: Name) -> str:
     else:
         citation = ""
     return f"{name.root_name} {name.taxonomic_authority()}, {name.year}, {citation}"
+
+
+@LINT.add("guess_repository")
+def guess_repository(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    if nam.collection is not None:
+        return
+    if nam.group is not Group.species:
+        return
+    if "collection" not in nam.get_required_fields():
+        return
+    if nam.has_type_tag(TypeTag.ProbableRepository):
+        expected_tag = None
+    else:
+        result = get_most_likely_repository(nam)
+        if result is None:
+            expected_tag = None
+        else:
+            repo, score = result
+            expected_tag = TypeTag.GuessedRepository(repo, score)
+    current_tags = list(nam.get_tags(nam.type_tags, TypeTag.GuessedRepository))
+    # TODO: fix pyanalyze
+    message = ""
+    new_tags = []
+    match (bool(current_tags), bool(expected_tag)):
+        case (True, True):
+            current_tag, *_ = current_tags
+            if current_tag == expected_tag:
+                return
+            if (
+                expected_tag is not None
+                and current_tag.repository == expected_tag.repository
+                and abs(current_tag.score - expected_tag.score) < 0.01
+            ):
+                return
+            message = (
+                f"changing inferred repository from {current_tag} to {expected_tag}"
+            )
+            new_tags = [
+                tag if tag != current_tag else expected_tag for tag in nam.type_tags
+            ]
+        case (True, False):
+            message = f"removing inferred repository {current_tags[0]}"
+            new_tags = [tag for tag in nam.type_tags if tag != current_tags[0]]
+        case (False, True):
+            message = f"inferred repository {expected_tag}"
+            new_tags = [*nam.type_tags, expected_tag]
+        case (False, False):
+            return
+
+    if cfg.autofix:
+        print(f"{nam}: {message}")
+        nam.type_tags = new_tags  # type: ignore[assignment]
+    else:
+        getinput.print_diff(nam.type_tags, new_tags)
+        yield message
