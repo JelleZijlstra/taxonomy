@@ -169,10 +169,10 @@ def get_training_data() -> list[tuple[NameData, bool]]:
     ]
 
 
-# score = 3472.6666666666665
+# score = 3473.3333333333335
 DEFAULT_PARAMS = Params(
     country_boost=1.425,
-    cg_boost=25.006,
+    cg_boost=25.975,
     author_boost=642.053,
     year_factor=1.299,
     year_boost=63.92333414042337,
