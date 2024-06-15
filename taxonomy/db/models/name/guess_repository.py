@@ -169,13 +169,13 @@ def get_training_data() -> list[tuple[NameData, bool]]:
     ]
 
 
-# score = 3464.6666666666665
+# score = 3472.6666666666665
 DEFAULT_PARAMS = Params(
     country_boost=1.425,
     cg_boost=25.006,
-    author_boost=584.512,
+    author_boost=642.053,
     year_factor=1.299,
-    year_boost=59.29373821049923,
+    year_boost=63.92333414042337,
     score_cutoff=1.637,
     probability_cutoff=0.747,
 )
@@ -283,18 +283,14 @@ def run(num_partitions: int = 100, max_tries: int = 1000) -> Params:
 def get_most_likely_repository(
     nam: models.Name,
 ) -> tuple[models.Collection, float] | None:
-    # Only trained for extant mammals
-    txn = nam.taxon
-    if txn.age is not constants.AgeClass.extant:
-        return None
-    if txn.get_derived_field("class_").valid_name != "Mammalia":
-        return None
-    data = get_training_data()
+    data = [name_data for name_data, _ in get_training_data()]
     name_data = make_name_data(nam)
     choice = get_top_choice(name_data, data, DEFAULT_PARAMS)
     if choice is None:
         return None
     coll_id, score = choice
+    if coll_id == 0:
+        return None
     return models.Collection(coll_id), score
 
 

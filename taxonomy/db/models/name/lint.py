@@ -375,7 +375,10 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
             else:
                 yield message
 
-        if isinstance(tag, TypeTag.ProbableRepository) and nam.collection is not None:
+        if (
+            isinstance(tag, (TypeTag.ProbableRepository, TypeTag.GuessedRepository))
+            and nam.collection is not None
+        ):
             message = f"has {tag} but colllection is set to {nam.collection}"
             if cfg.autofix:
                 print(f"{nam}: {message}")
@@ -3706,16 +3709,17 @@ def guess_repository(nam: Name, cfg: LintConfig) -> Iterable[str]:
         return
     if nam.group is not Group.species:
         return
-    if nam.has_type_tag(TypeTag.ProbableRepository):
-        return
     if "collection" not in nam.get_required_fields():
         return
-    result = get_most_likely_repository(nam)
-    if result is None:
+    if nam.has_type_tag(TypeTag.ProbableRepository):
         expected_tag = None
     else:
-        repo, score = result
-        expected_tag = TypeTag.GuessedRepository(repo, score)
+        result = get_most_likely_repository(nam)
+        if result is None:
+            expected_tag = None
+        else:
+            repo, score = result
+            expected_tag = TypeTag.GuessedRepository(repo, score)
     current_tags = list(nam.get_tags(nam.type_tags, TypeTag.GuessedRepository))
     # TODO: fix pyanalyze
     message = ""
@@ -3724,6 +3728,12 @@ def guess_repository(nam: Name, cfg: LintConfig) -> Iterable[str]:
         case (True, True):
             current_tag, *_ = current_tags
             if current_tag == expected_tag:
+                return
+            if (
+                expected_tag is not None
+                and current_tag.repository == expected_tag.repository
+                and abs(current_tag.score - expected_tag.score) < 0.01
+            ):
                 return
             message = (
                 f"changing inferred repository from {current_tag} to {expected_tag}"
