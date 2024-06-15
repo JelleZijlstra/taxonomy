@@ -21,6 +21,7 @@ from datetime import UTC, datetime
 from functools import cache
 from typing import Generic, TypeVar, assert_never
 
+import clirm
 import Levenshtein
 import requests
 
@@ -1765,6 +1766,73 @@ def clean_up_verbatim(nam: Name, cfg: LintConfig) -> Iterable[str]:
             nam.citation_group = None
         else:
             yield message
+
+
+@LINT.add("verbatim_to_citation_detail")
+def verbatim_to_citation_detail(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    if nam.verbatim_citation is None:
+        return
+    for whole_match, source, text in re.findall(
+        r"(\[From \{([^}]+)\}: ([^\]]+)\])", nam.verbatim_citation
+    ):
+        try:
+            source_art = (
+                Article.select().filter(Article.name == source).get().resolve_redirect()
+            )
+        except clirm.DoesNotExist:
+            continue
+        tag = TypeTag.CitationDetail(text, source_art)
+        message = (
+            f"converting verbatim citation to citation detail: {whole_match} -> {tag}"
+        )
+        if cfg.autofix:
+            print(f"{nam}: {message}")
+            nam.add_type_tag(tag)
+            nam.verbatim_citation = nam.verbatim_citation.replace(whole_match, "")
+        else:
+            yield message
+    match = re.fullmatch(
+        r"([^\]]+(?: \[[^\[\]\{\}]+\])?|[^{]+) \[from \{([^\}]+)\}\]",
+        nam.verbatim_citation,
+    )
+    if match:
+        text, source = match.groups()
+        try:
+            source_art = (
+                Article.select().filter(Article.name == source).get().resolve_redirect()
+            )
+        except clirm.DoesNotExist:
+            pass
+        else:
+            tag = TypeTag.CitationDetail(text, source_art)
+            message = f"converting verbatim citation to citation detail: {nam.verbatim_citation} -> {tag}"
+            if cfg.autofix:
+                print(f"{nam}: {message}")
+                nam.add_type_tag(tag)
+                nam.verbatim_citation = None
+            else:
+                yield message
+
+    # if nam.verbatim_citation is not None and "{" in nam.verbatim_citation:
+    #     yield f"unhandled verbatim citation: {nam.verbatim_citation}"
+
+
+@LINT.add("verbatim_from_tags")
+def verbatim_citation_from_tags(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    if nam.verbatim_citation:
+        return
+    if "verbatim_citation" not in nam.get_required_fields():
+        return
+    tags = list(nam.get_tags(nam.type_tags, TypeTag.CitationDetail))
+    if not tags:
+        return
+    longest = max(tags, key=lambda tag: len(tag.text))
+    message = f"setting verbatim citation from tag {longest}"
+    if cfg.autofix:
+        print(f"{nam}: {message}")
+        nam.verbatim_citation = longest.text
+    else:
+        yield message
 
 
 @LINT.add("status")

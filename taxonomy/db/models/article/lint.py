@@ -22,7 +22,7 @@ from taxonomy.db.models.citation_group.cg import CitationGroup, CitationGroupTag
 from taxonomy.db.models.citation_group.lint import get_biblio_pages
 from taxonomy.db.models.issue_date import IssueDate
 from taxonomy.db.models.lint import IgnoreLint, Lint
-from taxonomy.db.models.person import is_more_specific_than, AuthorTag
+from taxonomy.db.models.person import AuthorTag, is_more_specific_than
 
 from .article import Article, ArticleComment, ArticleTag, PresenceStatus
 from .name_parser import get_name_parser
@@ -384,7 +384,7 @@ def get_inferred_date_from_position(art: Article) -> tuple[Article, Article] | N
     return siblings[index - 1], siblings[index]
 
 
-@LINT.add("unsupported_year")
+@LINT.add("unsupported_year", disabled=True)
 def check_unsupported_year(art: Article, cfg: LintConfig) -> Iterable[str]:
     if art.year is None or "-" not in art.year:
         return

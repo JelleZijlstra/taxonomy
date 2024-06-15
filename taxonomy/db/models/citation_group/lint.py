@@ -177,6 +177,8 @@ def infer_bhl_biblio(cg: CitationGroup, cfg: LintConfig) -> Iterable[str]:
         return
     title_dict = bhl.get_title_to_data()
     name = cg.name.casefold()
+    if len(name) < 5:
+        return
     if name not in title_dict:
         return
     candidates = title_dict[name]

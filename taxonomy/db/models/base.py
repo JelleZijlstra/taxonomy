@@ -315,7 +315,7 @@ class BaseModel(Model):
                                     overrides[attr_name] = cleaned
                                 if message := helpers.is_string_clean(cleaned):
                                     yield f"{self}: in tags: {message} in {cleaned!r}"
-                                if not cleaned.isprintable():
+                                if not is_invalid and not cleaned.isprintable():
                                     message = (
                                         f"{self}: contains unprintable characters:"
                                         f" {cleaned!r}"
@@ -362,7 +362,7 @@ class BaseModel(Model):
                                     )
                                 if message := helpers.is_string_clean(cleaned):
                                     yield f"{self}: in tags: {message} in {cleaned!r}"
-                                if not cleaned.isprintable():
+                                if not is_invalid and not cleaned.isprintable():
                                     yield (
                                         f"{self}: contains unprintable characters:"
                                         f" {cleaned!r}"
@@ -406,7 +406,7 @@ class BaseModel(Model):
                         yield message
                 if message := helpers.is_string_clean(cleaned):
                     yield f"{self}: field {field}: {message} in {cleaned!r}"
-                if not cleaned.isprintable():
+                if not is_invalid and not cleaned.isprintable():
                     if allow_newlines and cleaned.replace("\n", "").isprintable():
                         continue
                     message = (

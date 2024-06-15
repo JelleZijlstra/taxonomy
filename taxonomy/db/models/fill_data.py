@@ -59,6 +59,7 @@ def fill_data_from_paper(
         for nam in nams
         if nam.original_citation_data_level()[0]
         is not OriginalCitationDataLevel.all_required_data
+        and nam.name_data_level()[0] is not NameDataLevel.nothing_needed
     ]
     if nams_below_level:
         print(f"{paper.name}: {len(nams_below_level)} names (fill_data_from_paper)")

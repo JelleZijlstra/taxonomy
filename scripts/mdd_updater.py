@@ -269,7 +269,12 @@ def get_hesp_row(
     )
 
     # Citation
-    row["Hesp_unchecked_authority_citation"] = name.verbatim_citation or ""
+    if name.verbatim_citation is not None:
+        row["Hesp_unchecked_authority_citation"] = name.verbatim_citation
+    elif name.original_citation is not None:
+        row["Hesp_unchecked_authority_citation"] = "NA"
+    else:
+        row["Hesp_unchecked_authority_citation"] = ""
     cg = name.get_citation_group()
     row["Hesp_citation_group"] = cg.name if cg else ""
     row["Hesp_authority_page"] = name.page_described or ""
@@ -278,7 +283,7 @@ def get_hesp_row(
     if name.original_citation is not None:
         url = name.original_citation.geturl()
         row["Hesp_authority_citation"] = models.article.citations.citepaper(
-            name.original_citation, include_url=False
+            name.original_citation, include_url=False, romanize_authors=True
         )
         row["Hesp_authority_link"] = url or ""
     else:
@@ -315,6 +320,7 @@ def get_hesp_row(
     # Omit: MDD_emended_type_locality
     verbatim_tl = []
     emended_tl = []
+    citation_details = []
     row["Hesp_type_latitude"] = ""
     row["Hesp_type_longitude"] = ""
     for nam in names_for_tags:
@@ -337,6 +343,11 @@ def get_hesp_row(
                     row["Hesp_type_longitude"] = str(long)
                 except helpers.InvalidCoordinates:
                     pass
+            elif isinstance(tag, TypeTag.CitationDetail):
+                citation = ", ".join(tag.source.taxonomic_authority())
+                citation_details.append(f'"{tag.text}" ({citation})')
+    row["Hesp_sourced_unverified_citations"] = " | ".join(citation_details)
+
     if verbatim_tl:
         row["Hesp_original_type_locality"] = " | ".join(verbatim_tl)
     if emended_tl:
@@ -386,7 +397,7 @@ def get_hesp_row(
     # Other
     # TODO: MDD_subspecificEpithet
     # TODO: MDD_comments
-    return row
+    return {key: value.replace("\\ ", " ") for key, value in row.items()}
 
 
 class DifferenceKind(enum.StrEnum):
@@ -468,6 +479,12 @@ class FixableDifference:
                     f"{self}: page_described {self.hesp_name.page_described!r} -> {self.mdd_value!r}"
                 )
                 self.hesp_name.page_described = self.mdd_value
+
+            case "MDD_unchecked_authority_citation":
+                print(
+                    f"{self}: verbatim_citation {self.hesp_name.verbatim_citation!r} -> {self.mdd_value!r}"
+                )
+                self.hesp_name.verbatim_citation = self.mdd_value
 
             case _:
                 print(

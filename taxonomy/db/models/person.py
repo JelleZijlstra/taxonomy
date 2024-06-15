@@ -1262,8 +1262,9 @@ def get_initials(person: Person | VirtualPerson) -> str | None:
                 return name
             elif "-" in name:
                 return "-".join(name_to_initial(part) for part in name.split("-"))
-            elif (
-                name[0].isupper() or person.naming_convention is NamingConvention.pinyin
+            elif name[0].isupper() or person.naming_convention in (
+                NamingConvention.pinyin,
+                NamingConvention.chinese,
             ):
                 return name[0] + "."
             else:
