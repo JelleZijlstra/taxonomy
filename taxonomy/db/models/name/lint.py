@@ -65,6 +65,7 @@ from taxonomy.db.models.name_complex import (
 from taxonomy.db.models.person import AuthorTag, PersonLevel
 from taxonomy.db.models.taxon import Taxon
 
+from .guess_repository import get_most_likely_repository
 from .name import (
     PREOCCUPIED_TAGS,
     STATUS_TO_TAG,
@@ -3697,3 +3698,51 @@ def duplicate_genus(name: Name) -> str:
     else:
         citation = ""
     return f"{name.root_name} {name.taxonomic_authority()}, {name.year}, {citation}"
+
+
+@LINT.add("guess_repository")
+def guess_repository(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    if nam.collection is not None:
+        return
+    if nam.group is not Group.species:
+        return
+    if nam.has_type_tag(TypeTag.ProbableRepository):
+        return
+    if "collection" not in nam.get_required_fields():
+        return
+    result = get_most_likely_repository(nam)
+    if result is None:
+        expected_tag = None
+    else:
+        repo, score = result
+        expected_tag = TypeTag.GuessedRepository(repo, score)
+    current_tags = list(nam.get_tags(nam.type_tags, TypeTag.GuessedRepository))
+    # TODO: fix pyanalyze
+    message = ""
+    new_tags = []
+    match (bool(current_tags), bool(expected_tag)):
+        case (True, True):
+            current_tag, *_ = current_tags
+            if current_tag == expected_tag:
+                return
+            message = (
+                f"changing inferred repository from {current_tag} to {expected_tag}"
+            )
+            new_tags = [
+                tag if tag != current_tag else expected_tag for tag in nam.type_tags
+            ]
+        case (True, False):
+            message = f"removing inferred repository {current_tags[0]}"
+            new_tags = [tag for tag in nam.type_tags if tag != current_tags[0]]
+        case (False, True):
+            message = f"inferred repository {expected_tag}"
+            new_tags = [*nam.type_tags, expected_tag]
+        case (False, False):
+            return
+
+    if cfg.autofix:
+        print(f"{nam}: {message}")
+        nam.type_tags = new_tags  # type: ignore[assignment]
+    else:
+        getinput.print_diff(nam.type_tags, new_tags)
+        yield message

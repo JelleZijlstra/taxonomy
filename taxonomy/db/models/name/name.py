@@ -2657,6 +2657,7 @@ class TypeTag(adt.ADT):
     TypeSpecimenLinkFor(url=str, specimen=str, tag=52)  # type: ignore[name-defined]
     PhyloCodeNumber(number=int, tag=53)  # type: ignore[name-defined]
     AuthorityPageLink(url=str, confirmed=bool, page=str, tag=54)  # type: ignore[name-defined]
+    GuessedRepository(repository=Collection, score=float, tag=55)  # type: ignore[name-defined]
 
 
 SOURCE_TAGS = (

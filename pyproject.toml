@@ -6,7 +6,7 @@ preview = true
 
 [tool.pyanalyze]
 class_attribute_transformers = [
-  "taxonomy.pyanalyze_config.class_attribute_transformer"
+  "taxonomy.pyanalyze_config.class_attribute_transformer",
 ]
 undefined_name = false
 paths = ["."]
@@ -16,13 +16,8 @@ name = "taxonomy"
 version = "0.0"
 description = "Taxonomic database management software."
 requires-python = ">=3.10"
-authors = [
-  { name = "Jelle Zijlstra", email = "jelle.zijlstra@gmail.com" },
-]
-keywords = [
-  "taxonomy",
-  "hesperomys",
-]
+authors = [{ name = "Jelle Zijlstra", email = "jelle.zijlstra@gmail.com" }]
+keywords = ["taxonomy", "hesperomys"]
 classifiers = [
   "Development Status :: 2 - Pre-Alpha",
   "Environment :: Console",
@@ -36,28 +31,28 @@ classifiers = [
   "Programming Language :: Python :: 3.12",
 ]
 dependencies = [
-    "pre-commit",
-    "black",
-    "ruff",
-    "gspread",
-    "clirm",
-    "httpx",
-    "IPython>8",
-    "prompt_toolkit",
-    "requests",
-    "unidecode",
-    "python-levenshtein",
-    "bs4",
-    "mypy",
-    "flake8",
-    "pytest",
-    "aiohttp",
-    "aiohttp_graphql",
-    "graphene",
-    "typing_inspect",
-    "types-requests",
-    "boto3",
-    "botocore",
+  "pre-commit",
+  "black",
+  "ruff",
+  "gspread",
+  "clirm",
+  "httpx",
+  "IPython>8",
+  "prompt_toolkit",
+  "requests",
+  "unidecode",
+  "python-levenshtein",
+  "bs4",
+  "mypy",
+  "flake8",
+  "pytest",
+  "aiohttp",
+  "aiohttp_graphql",
+  "graphene",
+  "typing_inspect",
+  "types-requests",
+  "boto3",
+  "botocore",
 ]
 
 [project.urls]
@@ -76,49 +71,47 @@ line-length = 300
 target-version = "py311"
 
 [tool.ruff.lint]
-select = [
-  "ALL",
-]
+select = ["ALL"]
 
 ignore = [
-  "B008",  # do not perform function calls in argument defaults
-  "B011",  # assert False is fine
+  "B008",    # do not perform function calls in argument defaults
+  "B011",    # assert False is fine
   "ANN101",  # missing type annotation for self in method
   "ANN102",  # missing type annotation for cls in classmethod
-  "F821",  # ADT definitions make lots of "undefined" names
+  "F821",    # ADT definitions make lots of "undefined" names
   "SIM108",  # I don't like ternaries that much
-  "E711",  # need "== None" in queries
-  "E712",  # need "== True" in queries
-  "UP038",  # no need to "X | Y" in isinstance
+  "E711",    # need "== None" in queries
+  "E712",    # need "== True" in queries
+  "UP038",   # no need to "X | Y" in isinstance
   "SIM105",  # I don't like contextlib.suppress
-  "E731",  # I'll assign a lambda if I want to
+  "E731",    # I'll assign a lambda if I want to
   "SIM114",  # not that worth it
   "SIM102",  # not that worth it
   "ANN401",  # let me use Any
-  "B006",  # just don't mutate it
+  "B006",    # just don't mutate it
   "SIM110",  # doesn't always make code better
   "SIM115",  # needs a bigger rewrite
-  "PERF401",  # too eager to add list comprehensions
-  "T201",  # print is useful in a command-line app
-  "T203",  # so is pprint
+  "PERF401", # too eager to add list comprehensions
+  "T201",    # print is useful in a command-line app
+  "T203",    # so is pprint
   "COM812",  # Black can take care of trailing commas
-  "D103",  # I don't want to write docstrings for everything
-  "D105",  # more docstring
-  "D100",  # more docstring
-  "D101",  # more docstring
-  "D102",  # more docstring
-  "D104",  # more docstring
-  "D106",  # more docstring
-  "D107",  # why would I want a docstring on __init__
-  "D401",  # don't want to rewrite docstring syntax
-  "D400",  # same
-  "D404",  # same
-  "D415",  # same
-  "D205",  # same
-  "S101",  # assert is fine
-  "C901",  # I will make my code as complex as I want
-  "PLR0913",  # more complexity
-  "PLR0912",  # more complexity
+  "D103",    # I don't want to write docstrings for everything
+  "D105",    # more docstring
+  "D100",    # more docstring
+  "D101",    # more docstring
+  "D102",    # more docstring
+  "D104",    # more docstring
+  "D106",    # more docstring
+  "D107",    # why would I want a docstring on __init__
+  "D401",    # don't want to rewrite docstring syntax
+  "D400",    # same
+  "D404",    # same
+  "D415",    # same
+  "D205",    # same
+  "S101",    # assert is fine
+  "C901",    # I will make my code as complex as I want
+  "PLR0913", # more complexity
+  "PLR0912", # more complexity
   "PLR0916", # more complexity
   "PLR0915", # more complexity
   "PLR0911", # more complexity
@@ -126,42 +119,43 @@ ignore = [
   "ARG002",  # same for methods
   "ARG005",  # same for lambdas
   "ARG003",  # same for classmethods
-  "PT015",  # shouldn't use pytest.fail outside tests
+  "PT015",   # shouldn't use pytest.fail outside tests
   "RET505",  # I like to keep the if and else symmetrical
   "RET506",  # same
   "RET507",  # same
   "RET508",  # same
-  "N818",  # not every exception needs to end with Error
-  "S607",  # overly paranoid subprocess stuff
-  "S603",  # same
-  "PLR2004",  # not everything needs to be a constant
+  "N818",    # not every exception needs to end with Error
+  "S607",    # overly paranoid subprocess stuff
+  "S603",    # same
+  "PLR2004", # not everything needs to be a constant
   "SLF001",  # nothing is private
   "RUF001",  # yes, I am using an en dash
   "RUF003",  # yes, I am using an en dash
   "TCH003",  # no "if TYPE_CHECKING"
   "TCH001",  # same
   "TCH002",  # same
-  "EM101",  # really weak justification
-  "TD002",  # leave my TODOs
-  "TD003",  # leave my TODOs
-  "FIX002", # leave my TODOs
+  "EM101",   # really weak justification
+  "TD002",   # leave my TODOs
+  "TD003",   # leave my TODOs
+  "FIX002",  # leave my TODOs
   "TRY003",  # long messages are useful
-  "EM102",  # I can't use f-strings in exceptions?
-  "A002",  # sometimes "type" is the best name
-  "A001",  # or "input"
-  "D203",  # these are conflicting and none of them sound appealing
+  "EM102",   # I can't use f-strings in exceptions?
+  "A002",    # sometimes "type" is the best name
+  "A001",    # or "input"
+  "D203",    # these are conflicting and none of them sound appealing
   "D211",
   "D212",
   "D213",
   "BLE001",  # I only blindly catch exceptions if I know it's the right thing to do
-  "S110",  # some exceptions are not worth logging
+  "S110",    # some exceptions are not worth logging
   "ERA001",  # false positives
-  "PLC0414",  # import renaming is good for type checkers
-  "PLW0603",  # sometimes a global is the right tool
-  "S301",  # sometimes pickle is useful
-  "S102",  # and so is exec()
-  "N807",  # __init__ was the right name
-  "PLW2901",  # too many false positives
+  "PLC0414", # import renaming is good for type checkers
+  "PLW0603", # sometimes a global is the right tool
+  "S301",    # sometimes pickle is useful
+  "S102",    # and so is exec()
+  "N807",    # __init__ was the right name
+  "PLW2901", # too many false positives
+  "S311",    # I don't need cryptographic randomness
 ]
 
 [tool.ruff.lint.per-file-ignores]
