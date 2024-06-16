@@ -156,6 +156,7 @@ ignore = [
   "N807",    # __init__ was the right name
   "PLW2901", # too many false positives
   "S311",    # I don't need cryptographic randomness
+  "UP037",   # incorrectly removes strings for locals
 ]
 
 [tool.ruff.lint.per-file-ignores]
