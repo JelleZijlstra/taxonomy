@@ -105,7 +105,7 @@ except ImportError:
         )
 
 
-def get_training_names() -> list[Name]:
+def get_training_names() -> list[tuple[Name, bool]]:
     nams = Name.select_valid().filter(
         Name.group == constants.Group.species,
         Name.species_type_kind != constants.SpeciesGroupType.neotype,
@@ -113,11 +113,13 @@ def get_training_names() -> list[Name]:
     )
     mammalia = models.Taxon.getter("valid_name")("Mammalia")
     return [
-        nam
+        (
+            nam,
+            nam.taxon.age is constants.AgeClass.extant
+            and nam.taxon.get_derived_field("class_") == mammalia,
+        )
         for nam in nams
         if "type_specimen" in nam.get_required_fields()
-        and nam.taxon.age is constants.AgeClass.extant
-        and nam.taxon.get_derived_field("class_") == mammalia
     ]
 
 
@@ -160,18 +162,21 @@ def make_name_data(nam: Name) -> NameData:
 
 
 @cache
-def get_training_data() -> list[NameData]:
-    return [make_name_data(nam) for nam in get_training_names()]
+def get_training_data() -> list[tuple[NameData, bool]]:
+    return [
+        (make_name_data(nam), is_extant_mammal)
+        for nam, is_extant_mammal, in get_training_names()
+    ]
 
 
-# score = 3450.3333333333335
+# score = 3473.3333333333335
 DEFAULT_PARAMS = Params(
-    country_boost=1.234,
-    cg_boost=27.621,
-    author_boost=616.060,
-    year_factor=1.295,
-    year_boost=59.29373821049923,
-    score_cutoff=1.000,
+    country_boost=1.425,
+    cg_boost=25.975,
+    author_boost=642.053,
+    year_factor=1.299,
+    year_boost=63.92333414042337,
+    score_cutoff=1.637,
     probability_cutoff=0.747,
 )
 
@@ -220,6 +225,7 @@ def tune(
     num_partitions: int,
     rand: random.Random,
     max_tries: int = 1000,
+    extra_training_data: list[NameData] = [],
 ) -> Params:
     n = len(data)
     train_size = n // 2
@@ -229,7 +235,7 @@ def tune(
     ]
     partitions = [
         (
-            [d for i, d in enumerate(data) if i in selected],
+            [d for i, d in enumerate(data) if i in selected] + extra_training_data,
             [d for i, d in enumerate(data) if i not in selected],
         )
         for selected in selected_numbers
@@ -255,8 +261,14 @@ def tune(
 
 
 def run(num_partitions: int = 100, max_tries: int = 1000) -> Params:
-    data = get_training_data()
-    print(f"Generated {len(data)} training names")
+    all_data = get_training_data()
+    data = [d for d, is_extant_mammal in all_data if is_extant_mammal]
+    extra_training_data = [
+        d for d, is_extant_mammal in all_data if not is_extant_mammal
+    ]
+    print(
+        f"Generated {len(data)} training names plus {len(extra_training_data)} extra training names."
+    )
     rand = random.Random(234235809)
     return tune(
         data,
@@ -264,24 +276,21 @@ def run(num_partitions: int = 100, max_tries: int = 1000) -> Params:
         rand=rand,
         num_partitions=num_partitions,
         max_tries=max_tries,
+        extra_training_data=extra_training_data,
     )
 
 
 def get_most_likely_repository(
     nam: models.Name,
 ) -> tuple[models.Collection, float] | None:
-    # Only trained for extant mammals
-    txn = nam.taxon
-    if txn.age is not constants.AgeClass.extant:
-        return None
-    if txn.get_derived_field("class_").valid_name != "Mammalia":
-        return None
-    data = get_training_data()
+    data = [name_data for name_data, _ in get_training_data()]
     name_data = make_name_data(nam)
     choice = get_top_choice(name_data, data, DEFAULT_PARAMS)
     if choice is None:
         return None
     coll_id, score = choice
+    if coll_id == 0:
+        return None
     return models.Collection(coll_id), score
 
 
