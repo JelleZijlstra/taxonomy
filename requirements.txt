@@ -157,7 +157,7 @@ pyyaml==6.0.1
     # via pre-commit
 rapidfuzz==3.9.0
     # via levenshtein
-requests==2.31.0
+requests==2.32.2
     # via requests-oauthlib
 requests-oauthlib==2.0.0
     # via google-auth-oauthlib
