@@ -14,7 +14,14 @@ from .name import Name
 
 try:
     # static analysis: ignore[import_failed]
-    from typeinfer import NameData, Params, ScoreInfo, evaluate_model, get_top_choice
+    from typeinfer import (
+        NameData,
+        Params,
+        ScoreInfo,
+        ScoringFunction,
+        evaluate_model,
+        get_top_choice,
+    )
 except ImportError:
 
     class NameData(NamedTuple):  # type: ignore[no-redef]
@@ -35,10 +42,14 @@ except ImportError:
         probability_cutoff: float
 
     class ScoreInfo(NamedTuple):  # type: ignore[no-redef]
-        score: int
+        score: float
         correct: int
         incorrect: int
         no_value: int
+
+    class ScoringFunction(NamedTuple):  # type: ignore[no-redef]
+        false_positive_cost: float
+        false_negative_cost: float
 
     def get_score(nam1: NameData, nam2: NameData, params: Params) -> float:
         if nam1.name_id == nam2.name_id:
@@ -84,7 +95,10 @@ except ImportError:
     FALSE_POS_COST = 10
 
     def evaluate_model(
-        train_data: list[NameData], test_data: list[NameData], params: Params
+        train_data: list[NameData],
+        test_data: list[NameData],
+        scoring_function: ScoringFunction,
+        params: Params,
     ) -> ScoreInfo:
         no_value = 0
         correct = 0
@@ -99,7 +113,11 @@ except ImportError:
                 correct += 1
             else:
                 incorrect += 1
-        score = correct - incorrect * FALSE_POS_COST
+        score = (
+            correct
+            - incorrect * scoring_function.false_positive_cost
+            - no_value * scoring_function.false_negative_cost
+        )
         return ScoreInfo(
             score=score, correct=correct, incorrect=incorrect, no_value=no_value
         )
@@ -169,15 +187,15 @@ def get_training_data() -> list[tuple[NameData, bool]]:
     ]
 
 
-# score = 3473.3333333333335
+# score = 2401.3333333333335 (with new scoring function)
 DEFAULT_PARAMS = Params(
-    country_boost=1.425,
-    cg_boost=25.975,
-    author_boost=642.053,
-    year_factor=1.299,
-    year_boost=63.92333414042337,
-    score_cutoff=1.637,
-    probability_cutoff=0.747,
+    country_boost=12.163,
+    cg_boost=61.783,
+    author_boost=2522.908,
+    year_factor=1.211,
+    year_boost=67.483,
+    score_cutoff=2.950,
+    probability_cutoff=0.500,
 )
 
 
@@ -208,11 +226,14 @@ def perturb_params(
     return Params(**kwargs), field, new_value > current_value
 
 
+SCORING_FUNCTION = ScoringFunction(false_positive_cost=5, false_negative_cost=1)
+
+
 def get_model_score(
     partitions: list[tuple[list[NameData], list[NameData]]], params: Params
 ) -> tuple[float, list[ScoreInfo]]:
     scores = [
-        evaluate_model(train_data, test_data, params)
+        evaluate_model(train_data, test_data, SCORING_FUNCTION, params)
         for train_data, test_data in partitions
     ]
     return sum(s.score for s in scores) / len(partitions), scores

@@ -81,6 +81,8 @@ def build_graphene_field_from_adt_arg(typ: type[Any], *, is_required: bool) -> F
         graphene_type = Int
     elif typ is bool:
         graphene_type = Boolean
+    elif typ is float:
+        graphene_type = graphene.Float
     elif issubclass(typ, BaseModel):
         graphene_type = lambda: build_object_type_from_model(typ)
     elif issubclass(typ, enum.Enum):

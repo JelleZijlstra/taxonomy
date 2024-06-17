@@ -65,6 +65,13 @@ class Collection(BaseModel):
             1,
         ),
         get_tag_based_derived_field(
+            "guessed_specimens",
+            lambda: models.Name,
+            "type_tags",
+            lambda: models.name.TypeTag.GuessedRepository,
+            1,
+        ),
+        get_tag_based_derived_field(
             "shared_specimens",
             lambda: models.Name,
             "type_tags",

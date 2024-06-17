@@ -3732,7 +3732,7 @@ def guess_repository(nam: Name, cfg: LintConfig) -> Iterable[str]:
             if (
                 expected_tag is not None
                 and current_tag.repository == expected_tag.repository
-                and abs(current_tag.score - expected_tag.score) < 0.01
+                and abs(current_tag.score - expected_tag.score) < 0.05
             ):
                 return
             message = (
