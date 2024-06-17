@@ -4,6 +4,21 @@ Version numbers correspond to Git tags in the
 [backend](https://github.com/JelleZijlstra/taxonomy/) repositories, and to database
 exports released on Zenodo.
 
+# 24.6.0 (June 17, 2024)
+
+- Database
+  - Add an algorithm that infers the most likely location of the type specimen in cases
+    where the database does not record the location of a type specimen. Type specimens
+    inferred by this algorithm are shown in a separate section on collection pages.
+  - Add more _CitationDetail_ tags containing the way a citation was quoted in a source.
+  - New species and recent taxonomic changes, mostly for extant mammals
+  - Add more nomenclatural data, such as original type localities, mostly for extant
+    mammals.
+- Backend
+  - Improvements to logic for finding Biodiversity Heritage Library links
+  - Detect more duplicate articles
+  - Clean up outdated code and move more checks into the lint system
+
 # 24.4.0 (April 13, 2024)
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.10969300)](https://doi.org/10.5281/zenodo.10969300)
