@@ -15,7 +15,7 @@ paths = ["."]
 name = "taxonomy"
 version = "0.0"
 description = "Taxonomic database management software."
-requires-python = ">=3.12"
+requires-python = ">=3.11"
 authors = [{ name = "Jelle Zijlstra", email = "jelle.zijlstra@gmail.com" }]
 keywords = ["taxonomy", "hesperomys"]
 classifiers = [
@@ -26,6 +26,7 @@ classifiers = [
   "Operating System :: OS Independent",
   "Programming Language :: Python",
   "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
 ]
 dependencies = [
@@ -67,7 +68,7 @@ include = ["taxonomy/**/*.py", "hsweb/**/*.py"]
 
 [tool.ruff]
 line-length = 300
-target-version = "py312"
+target-version = "py311"
 
 [tool.ruff.lint]
 select = ["ALL"]
