@@ -6,6 +6,8 @@ exports released on Zenodo.
 
 # 24.6.0 (June 17, 2024)
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.12047416.svg)](https://doi.org/10.5281/zenodo.12047416)
+
 - Database
   - Add an algorithm that infers the most likely location of the type specimen in cases
     where the database does not record the location of a type specimen. Type specimens
@@ -19,9 +21,11 @@ exports released on Zenodo.
   - Detect more duplicate articles
   - Clean up outdated code and move more checks into the lint system
 
+Thanks to Rudolf Haslauer and Connor Burgin for supplying literature.
+
 # 24.4.0 (April 13, 2024)
 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.10969300)](https://doi.org/10.5281/zenodo.10969300)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.10969300.svg)](https://doi.org/10.5281/zenodo.10969300)
 
 This release focuses on compatibility with the MDD and improved automatic data
 extraction. More than a third of names are now linked directly to pages in the
@@ -74,7 +78,7 @@ information and literature.
 
 # 24.1.0 (January 10, 2024)
 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.10481655)](https://doi.org/10.5281/zenodo.10481655)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.10481655.svg)](https://doi.org/10.5281/zenodo.10481655)
 
 - Database
   - Add many newly named taxa, though some recent literature may still be missing.
@@ -104,7 +108,7 @@ Thanks to Rudolf Haslauer and Connor Burgin for supplying literature.
 
 # 23.8.1 (August 29, 2023)
 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.8298623)](https://doi.org/10.5281/zenodo.8298623)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.8298623.svg)](https://doi.org/10.5281/zenodo.8298623)
 
 - Database
   - Add numerous additional links to type specimen catalog entries, primarily for US
