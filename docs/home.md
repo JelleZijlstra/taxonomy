@@ -22,14 +22,14 @@ To cite this project, use:
 
 # Size
 
-As of April 2024, the database contains:
+As of June 2024, the database contains:
 
-- 102147 [names](/docs/name), of which 78720 are [mammals](/t/Mammalia)
-- 11000 [locations](/docs/location) grouped into 4430 [regions](/docs/region), 367
+- 102267 [names](/docs/name), of which 78809 are [mammals](/t/Mammalia)
+- 11008 [locations](/docs/location) grouped into 4430 [regions](/docs/region), 367
   [periods](/docs/period), and 2285 [stratigraphic units](/docs/stratigraphic-unit)
-- 58288 [citations](/docs/article)
-- Type localities for 58973 names
-- Type specimens for 42427 names
+- 58708 [citations](/docs/article)
+- Type localities for 59004 names
+- Type specimens for 42518 names
 
 # Documentation
 
