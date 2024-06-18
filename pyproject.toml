@@ -156,6 +156,7 @@ ignore = [
   "PLW2901", # too many false positives
   "S311",    # I don't need cryptographic randomness
   "UP037",   # incorrectly removes strings for locals
+  "UP040",   # not ready
 ]
 
 [tool.ruff.lint.per-file-ignores]
