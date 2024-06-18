@@ -13,8 +13,7 @@ from taxonomy.db import constants, models
 from .name import Name
 
 try:
-    # static analysis: ignore[import_failed]
-    from typeinfer import (
+    from repoguess import (
         NameData,
         Params,
         ScoreInfo,

@@ -58,3 +58,4 @@ repos:
           - types-requests
           - boto3
           - botocore
+          - repoguess
