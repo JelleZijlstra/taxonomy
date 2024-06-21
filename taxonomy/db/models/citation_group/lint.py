@@ -167,18 +167,17 @@ def infer_bhl_biblio_from_children(cg: CitationGroup, cfg: LintConfig) -> Iterab
         yield message
 
 
-@LINT.add("infer_bhl")
+@LINT.add("infer_bhl_biblio")
 def infer_bhl_biblio(cg: CitationGroup, cfg: LintConfig) -> Iterable[str]:
     if cg.get_bhl_title_ids():
         return
     if cg.type is not constants.ArticleType.JOURNAL:
         return
     if LINT.is_ignoring_lint(cg, "infer_bhl_biblio"):
+        yield "ignoring lint"
         return
     title_dict = bhl.get_title_to_data()
     name = cg.name.casefold()
-    if len(name) < 5:
-        return
     if name not in title_dict:
         return
     candidates = title_dict[name]
