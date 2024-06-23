@@ -2,6 +2,8 @@
 
 import argparse
 import csv
+import re
+from collections import Counter
 from pathlib import Path
 
 import gspread
@@ -97,6 +99,56 @@ def print_percentage(column: str | list[str], names: Data) -> None:
     print(f"{', '.join(column)}: {count}/{len(names)} ({count/len(names):.1%})")
 
 
+def print_bhl_percentage(names: Data) -> None:
+    count = sum(
+        1
+        for row in names
+        if "biodiversitylibrary.org" in row["MDD_authority_page_link"]
+    )
+    print(f"BHL link: {count}/{len(names)} ({count/len(names):.1%})")
+
+
+def citation_stats(names: Data) -> None:
+    cites = Counter(row["MDD_authority_citation"] for row in names)
+    print("most common citations:")
+    for cite, count in cites.most_common(10):
+        print(f"{count} {cite} ({count/len(names):.1%})")
+
+    cgs = Counter(row["MDD_citation_group"] for row in names)
+    print("most common citation groups:")
+    for cg, count in cgs.most_common(10):
+        print(f"{count} {cg} ({count/len(names):.1%})")
+
+
+def tl_stats(names: Data) -> None:
+    tls = Counter(row["MDD_type_country"] for row in names)
+    print("most common type localities:")
+    for tl, count in tls.most_common(10):
+        print(f"{count} {tl} ({count/len(names):.1%})")
+
+    tls = Counter(row["MDD_type_subregion"] for row in names)
+    print("most common type localities:")
+    for tl, count in tls.most_common(30):
+        print(f"{count} {tl} ({count/len(names):.1%})")
+
+
+def extract_collection(text: str) -> str:
+    return re.split(r"[ :\-]", text, maxsplit=1)[0]
+
+
+def type_specimen_stats(names: Data) -> None:
+    tls = Counter(extract_collection(row["MDD_holotype"]) for row in names)
+    print("most common collections:")
+    for i, (tl, count) in enumerate(tls.most_common(41)):
+        print(f"{i}: {count} {tl} ({count/len(names):.1%})")
+
+    names_with_type_kind = [row for row in names if row["MDD_type_kind"]]
+    kinds = Counter(row["MDD_type_kind"] for row in names_with_type_kind)
+    print("most common type kinds:")
+    for kind, count in kinds.most_common(10):
+        print(f"{count} {kind} ({count/len(names_with_type_kind):.1%})")
+
+
 def print_stats(data: Data) -> None:
     available = [row for row in data if is_available(row)]
     need_types = [row for row in available if needs_type_data(row)]
@@ -118,6 +170,10 @@ def print_stats(data: Data) -> None:
     print_percentage("MDD_type_country", need_types)
     print_percentage("MDD_holotype", need_types)
     print_percentage("MDD_type_specimen_link", need_types)
+    print_bhl_percentage(available)
+    citation_stats(available)
+    tl_stats(need_types)
+    type_specimen_stats(need_types)
 
 
 def main() -> None:
