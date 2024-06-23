@@ -286,9 +286,6 @@ class Collection(BaseModel):
     def add_validity_check(cls, query: Any) -> Any:
         return query.filter(cls.removed == False)
 
-    def must_use_children(self) -> bool:
-        return any(tag is CollectionTag.MustUseChildrenCollection for tag in self.tags)
-
     def must_have_specimen_links(self, nam: models.Name) -> bool:
         for tag in self.tags:
             if tag is CollectionTag.MustHaveSpecimenLinks:
@@ -566,7 +563,7 @@ class CollectionTag(adt.ADT):
     CollectionDatabase(citation=Article, comment=NotRequired[str], tag=1)  # type: ignore[name-defined]
     TypeCatalog(citation=Article, coverage=str, tag=2)  # type: ignore[name-defined]
     SpecimenRegex(regex=str, tag=3)  # type: ignore[name-defined]
-    MustUseChildrenCollection(tag=4)  # type: ignore[name-defined]
+    MustUseChildrenCollection(tag=4)  # type: ignore[name-defined]  # deprecated
     ChildRule(collection=Collection, regex=str, taxon=NotRequired[Taxon], age=NotRequired[constants.AgeClass], tag=5)  # type: ignore[name-defined]
     MustHaveSpecimenLinks(tag=6)  # type: ignore[name-defined]
     ConditionalMustHaveSpecimenLinks(regex=str, taxon=NotRequired[Taxon], age=NotRequired[constants.AgeClass], tag=7)  # type: ignore[name-defined]

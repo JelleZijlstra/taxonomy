@@ -337,9 +337,6 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                     f"{nam} references a removed Name in argument {arg_name} to {tag}"
                 )
                 yield f"bad name in tag {tag}"
-        for arg_name, coll in get_tag_fields_of_type(tag, Collection):
-            if coll.must_use_children():
-                yield f"must use child collection in argument {arg_name} to {tag}"
 
         if isinstance(
             tag,
