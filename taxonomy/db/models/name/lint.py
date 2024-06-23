@@ -2738,12 +2738,12 @@ def _get_secondary_names_of_genus(
 def check_original_parent(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.original_parent is None:
         return
-    if nam.group is not Group.species:
-        yield "original_parent should only be set for species-group names"
+    if nam.group is not Group.species and nam.original_rank is not Rank.subgenus:
+        yield "original_parent should only be set for species-group names and subgenera"
         return
     if nam.original_parent.group is not Group.genus:
         yield f"original_parent is not a genus: {nam.original_parent}"
-    if nam.corrected_original_name is None:
+    if nam.group is not Group.species or nam.corrected_original_name is None:
         return
     original_genus, *_ = nam.corrected_original_name.split()
     # corrected_original_name is for the case where the genus name got a justified emendation
