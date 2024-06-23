@@ -379,7 +379,7 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
             isinstance(tag, (TypeTag.ProbableRepository, TypeTag.GuessedRepository))
             and nam.collection is not None
         ):
-            message = f"has {tag} but colllection is set to {nam.collection}"
+            message = f"has {tag} but collection is set to {nam.collection}"
             if cfg.autofix:
                 print(f"{nam}: {message}")
                 continue
@@ -2338,8 +2338,11 @@ def check_required_fields(nam: Name, cfg: LintConfig) -> Iterable[str]:
         and not nam.original_citation
     ):
         yield "recent name must have verbatim citation"
-    if nam.type_specimen is not None and nam.species_type_kind is None:
-        yield "has type_specimen but no species_type_kind"
+    if nam.species_type_kind is None and nam.nomenclature_status.requires_type():
+        if nam.type_specimen is not None:
+            yield "has type_specimen but no species_type_kind"
+        if nam.has_type_tag(TypeTag.Age) or nam.has_type_tag(TypeTag.Gender):
+            yield "has type specimen age or gender but no species_type_kind"
 
 
 @LINT.add("synonym_group")
