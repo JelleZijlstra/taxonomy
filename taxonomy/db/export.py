@@ -8,7 +8,7 @@ from typing import Protocol, TypedDict
 from taxonomy import getinput
 from taxonomy.command_set import CommandSet
 
-from .constants import AgeClass, Group, Rank, RegionKind
+from .constants import AgeClass, Group, Rank, RegionKind, Status
 from .models import Article, Collection, Name, Occurrence, Taxon
 from .models.name import TypeTag
 
@@ -174,10 +174,14 @@ def data_for_name(name: Name) -> NameData:
         for tag in name.type_tags
         if isinstance(tag, TypeTag.TypeSpecimenLinkFor)
     )
+    if name.status is Status.valid:
+        status = f"valid {name.taxon.rank.name}"
+    else:
+        status = name.status.name
     return {
         "id": str(name.id),
         "link": name.get_absolute_url(),
-        "status": name.status.name,
+        "status": status,
         "age_class": taxon.age.name,
         "class_": class_.valid_name if class_ else "",
         "order": order.valid_name if order else "",
@@ -190,7 +194,9 @@ def data_for_name(name: Name) -> NameData:
         "original_name": name.original_name or "",
         "corrected_original_name": name.corrected_original_name or "",
         "root_name": name.root_name,
-        "original_rank": name.original_rank.name if name.original_rank else "",
+        "original_rank": (
+            name.original_rank.name if name.original_rank is not None else ""
+        ),
         "group": name.group.name,
         "authority": name.taxonomic_authority(),
         "author_links": author_links,
