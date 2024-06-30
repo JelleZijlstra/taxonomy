@@ -505,6 +505,20 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
     for tag_type, tags_of_type in by_type.items():
         if tag_type in UNIQUE_TAGS and len(tags_of_type) > 1:
             yield f"has multiple tags of type {tag_type}: {tags_of_type}"
+    if TypeTag.Altitude in by_type and TypeTag.LocationDetail not in by_type:
+        yield "has Altitude tag but no LocationDetail tag"
+    if TypeTag.Coordinates in by_type and TypeTag.LocationDetail not in by_type:
+        yield "has Coordinates tag but no LocationDetail tag"
+    # TODO: add more tags here. Also consider requiring that the specimen details directly
+    # support the derived tags; e.g., the SpecimenDetail tag should contain the year of the Date
+    # tag.
+    if TypeTag.Age in by_type and TypeTag.SpecimenDetail not in by_type:
+        yield "has Age tag but no SpecimenDetail tag"
+    if TypeTag.Gender in by_type and TypeTag.SpecimenDetail not in by_type:
+        yield "has Gender tag but no SpecimenDetail tag"
+    if TypeTag.Date in by_type and TypeTag.SpecimenDetail not in by_type:
+        yield "has Date tag but no SpecimenDetail tag"
+
     if nam.collection is not None and nam.collection.id == MULTIPLE_COLLECTION:
         repos = by_type.get(TypeTag.Repository, [])
         if len(repos) < 2:

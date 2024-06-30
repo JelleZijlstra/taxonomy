@@ -773,9 +773,11 @@ class Person(BaseModel):
             if nam.year is not None:
                 yield nam.numeric_year()
 
-    def reassign_initials_only(self) -> None:
+    def reassign_initials_only(self, *, skip_nofile: bool = False) -> None:
         arts = self.get_sorted_derived_field("articles")
         for art in arts:
+            if skip_nofile and not art.isfile():
+                continue
             art.load()
             art.specify_authors()
 

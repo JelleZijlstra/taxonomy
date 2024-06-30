@@ -4,7 +4,7 @@ import subprocess
 from collections.abc import Iterable
 from typing import Any, ClassVar, NotRequired, Self, TypeVar
 
-from clirm import Field
+from clirm import Field, Query
 
 from taxonomy import adt, events, getinput
 from taxonomy.apis import bhl
@@ -297,8 +297,8 @@ class CitationGroup(BaseModel):
             "add_alias": self.add_alias,
             "edit_all_members": self.edit_all_members,
             "print_field_value_for_articles": self.print_field_value_for_articles,
-            "lint_articles": lambda: models.Article.lint_all(query=self.get_articles()),
-            "lint_names": lambda: models.Name.lint_all(query=self.get_names()),
+            "lint_articles": lambda: self.lint_object_list(self.get_sorted_articles()),
+            "lint_names": lambda: self.lint_object_list(self.get_names()),
             "missing_high_names": self.print_missing_high_names,
             "for_years": self._for_years_interactive,
             "fill_field_for_names": self.fill_field_for_names,
@@ -381,13 +381,16 @@ class CitationGroup(BaseModel):
             name=alias_name, type=constants.ArticleType.REDIRECT, target=self
         )
 
-    def get_books(self) -> Any:
+    def get_books(self) -> Query["models.Book"]:
         return models.Book.select_valid().filter(models.Book.citation_group == self)
 
-    def get_articles(self) -> Any:
+    def get_articles(self) -> Query["models.Article"]:
         return models.Article.select_valid().filter(
             models.Article.citation_group == self
         )
+
+    def get_sorted_articles(self) -> list["models.Article"]:
+        return sorted(self.get_articles(), key=models.article.article.volume_sort_key)
 
     def get_names(self) -> list["models.Name"]:
         names = models.Name.add_validity_check(self.names)

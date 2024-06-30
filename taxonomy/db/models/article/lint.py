@@ -331,6 +331,61 @@ def check_precise_date(art: Article, cfg: LintConfig) -> Iterable[str]:
         yield f"is in {art.citation_group} but has imprecise date {art.year}"
 
 
+def get_next_article_with_earlier_date(art: Article) -> Article | None:
+    group = models.citation_group.ordering.get_group_for_article(art)
+    if group is None:
+        return None
+    index = group.index(art)
+    if index == len(group) - 1:
+        return None
+    next = group[index + 1]
+    my_date = art.get_date_object()
+    next_date = next.get_date_object()
+    if my_date <= next_date:
+        return None
+    return next
+
+
+@LINT.add("date_order")
+def check_date_ordering(art: Article, cfg: LintConfig) -> Iterable[str]:
+    if art.citation_group is None:
+        return
+    if art.citation_group.type is not ArticleType.JOURNAL:
+        return
+    next = get_next_article_with_earlier_date(art)
+    if next is None:
+        return
+
+    # TODO: Eventually remove these conditions.
+    if not LINT.is_ignoring_lint(art, "date_order"):
+        if art.numeric_year() > 2010:
+            return None  # online publishing is too thoroughly out of order
+        if art.year is not None:
+            my_date = art.get_date_object()
+            next_date = next.get_date_object()
+            if my_date.year == next_date.year and "-" not in art.year:
+                return None
+            if (
+                my_date.year == next_date.year
+                and my_date.month == next_date.month
+                and art.year.count("-") == 1
+            ):
+                return None
+            # For now only consider cases where the year conflicts
+            if my_date.year == next_date.year:
+                return None
+
+    models.citation_group.ordering.clear_cache_for_cg(art.citation_group)
+    next = get_next_article_with_earlier_date(art)
+    if next is None:
+        return
+    print("- next: ", end="")
+    next.display()
+    print("- self: ", end="")
+    art.display()
+    yield f"date {art.year} is after next article {next.year} for {next!r}"
+
+
 @LINT.add("infer_precise_date")
 def infer_precise_date(art: Article, cfg: LintConfig) -> Iterable[str]:
     siblings = get_inferred_date_from_position(art)

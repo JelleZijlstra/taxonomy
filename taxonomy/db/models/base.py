@@ -952,7 +952,10 @@ class BaseModel(Model):
         chosen = getinput.choose_one_by_name(options)
         if chosen is None:
             return
-        for obj in getattr(self, chosen):
+        self.lint_object_list(getattr(self, chosen))
+
+    def lint_object_list(self, objs: Sequence[BaseModel]) -> None:
+        for obj in objs:
             obj.format(quiet=True)
             if obj.is_lint_clean():
                 continue
