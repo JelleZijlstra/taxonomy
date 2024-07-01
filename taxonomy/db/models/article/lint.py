@@ -379,10 +379,11 @@ def check_date_ordering(art: Article, cfg: LintConfig) -> Iterable[str]:
     next = get_next_article_with_earlier_date(art)
     if next is None:
         return
-    print("- next: ", end="")
-    next.display()
-    print("- self: ", end="")
-    art.display()
+    if not LINT.is_ignoring_lint(art, "date_order"):
+        print("- next: ", end="")
+        next.display()
+        print("- self: ", end="")
+        art.display()
     yield f"date {art.year} is after next article {next.year} for {next!r}"
 
 
