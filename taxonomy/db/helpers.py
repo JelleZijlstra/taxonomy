@@ -202,11 +202,7 @@ _T2 = TypeVar("_T2")
 
 
 def remove_null(d: Mapping[_T1, _T2 | None]) -> dict[_T1, _T2]:
-    out = {}
-    for k, v in d.items():
-        if v is not None:
-            out[k] = v
-    return out
+    return {k: v for k, v in d.items() if v is not None}
 
 
 def fix_data(data: str) -> str | None:

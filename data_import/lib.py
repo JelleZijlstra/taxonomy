@@ -638,7 +638,7 @@ def translate_type_locality(
             loc = re.sub(r"[\.,;:\[ ]+$", "", loc)
             parts = [[re.sub(r" \([^\(]+\)$", "", part)] for part in loc.split(", ")]
             if start_at_end:
-                parts = list(reversed(parts))
+                parts.reverse()
             type_loc = extract_region(parts)
             if type_loc is not None:
                 name["type_locality"] = type_loc
