@@ -672,16 +672,16 @@ def generate_markdown(
 
     print("## Summary", file=f)
     print(file=f)
-    for kind, differences in sorted(by_kind.items(), key=lambda pair: pair[0].name):
-        print(f"- {kind.name}: {len(differences)}", file=f)
+    for kind, diffs in sorted(by_kind.items(), key=lambda pair: pair[0].name):
+        print(f"- {kind.name}: {len(diffs)}", file=f)
     print(file=f)
 
-    for kind, differences in sorted(by_kind.items(), key=lambda pair: pair[0].name):
+    for kind, diffs in sorted(by_kind.items(), key=lambda pair: pair[0].name):
         if kind in ignore_kinds:
             continue
-        print(f"## {kind.name} ({len(differences)} differences)", file=f)
+        print(f"## {kind.name} ({len(diffs)} differences)", file=f)
         print(file=f)
-        generate_markdown_for_kind(kind, differences, f)
+        generate_markdown_for_kind(kind, diffs, f)
         print(file=f)
 
 
@@ -696,10 +696,10 @@ def generate_markdown_for_kind(
             for difference in differences:
                 key = (difference.comment, difference.mdd, difference.hesp)
                 by_difference.setdefault(key, []).append(difference)
-            for (comment, mdd, hesp), differences in by_difference.items():
+            for (comment, mdd, hesp), diffs in by_difference.items():
                 print(
                     f"- {comment} {mdd} (MDD) vs. {hesp} (Hesperomys):"
-                    f" {len(differences)} differences, e.g.:",
+                    f" {len(diffs)} differences, e.g.:",
                     file=f,
                 )
                 print(f"    - {differences[0].to_markdown()}", file=f)

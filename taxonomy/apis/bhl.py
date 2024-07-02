@@ -351,8 +351,8 @@ def closest_match(page_id: int, name: str) -> int:
     page_metadata = get_page_metadata(page_id)
     folded_name = name.casefold().replace("_", "").replace(".", "").replace(",", "")
     for name_data in page_metadata["Names"]:
-        for name in name_data.values():
-            if name.casefold() == folded_name:
+        for page_name in name_data.values():
+            if page_name.casefold() == folded_name:
                 return 0
 
     ocr_text = page_metadata["OcrText"].casefold().replace(".", "").replace(",", "")

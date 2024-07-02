@@ -158,6 +158,7 @@ ignore = [
   "S311",    # I don't need cryptographic randomness
   "UP037",   # incorrectly removes strings for locals
   "UP040",   # not ready
+  "SIM103",  # I like to end a sequence of ifs with one "return True"
 ]
 
 [tool.ruff.lint.per-file-ignores]
