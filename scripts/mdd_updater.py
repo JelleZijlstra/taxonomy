@@ -26,6 +26,7 @@ import enum
 import functools
 import itertools
 import pprint
+import re
 import subprocess
 import sys
 import time
@@ -50,10 +51,12 @@ from taxonomy.db.constants import (
     RegionKind,
     Status,
 )
-from taxonomy.db.models import Name, Taxon
+from taxonomy.db.models import Article, Name, Taxon
 from taxonomy.db.models.name import NameTag, TypeTag
 
 LIMIT_AUTH_LINKS = False
+
+MDD_ARTICLE_ID = 67057
 
 
 @functools.cache
@@ -205,6 +208,9 @@ def get_tag_targets_string(
 def get_authority_parens(nam: Name) -> str:
     match nam.should_parenthesize_authority():
         case None:
+            if nam.corrected_original_name is not None:
+                # probably some weird name that is not the current genus name
+                return "1"
             return "?"
         case True:
             return "1"
@@ -328,6 +334,8 @@ def get_hesp_row(
             if isinstance(tag, TypeTag.LocationDetail):
                 if tag.source == nam.original_citation:
                     verbatim_tl.append(tag.text)
+                elif tag.source.id == MDD_ARTICLE_ID:
+                    pass  # ignore
                 else:
                     citation = ", ".join(tag.source.taxonomic_authority())
                     emended_tl.append(f'"{tag.text}" ({citation})')
@@ -486,6 +494,44 @@ class FixableDifference:
                 )
                 self.hesp_name.verbatim_citation = self.mdd_value
 
+            case "MDD_type_latitude":
+                art = Article(MDD_ARTICLE_ID)
+                deg = "°"
+                if (
+                    self.mdd_row["MDD_type_latitude"]
+                    and self.mdd_row["MDD_type_longitude"]
+                    and re.fullmatch(
+                        r"-?\d+(\.\d+)?", self.mdd_row["MDD_type_latitude"]
+                    )
+                    and re.fullmatch(
+                        r"-?\d+(\.\d+)?", self.mdd_row["MDD_type_longitude"]
+                    )
+                ):
+                    latitude = (
+                        f"{self.mdd_row['MDD_type_latitude'][1:]}{deg}S"
+                        if self.mdd_row["MDD_type_latitude"][0] == "-"
+                        else f"{self.mdd_row['MDD_type_latitude']}{deg}N"
+                    )
+                    longitude = (
+                        f"{self.mdd_row['MDD_type_longitude'][1:]}{deg}W"
+                        if self.mdd_row["MDD_type_longitude"][0] == "-"
+                        else f"{self.mdd_row['MDD_type_longitude']}{deg}E"
+                    )
+
+                    tags = [
+                        TypeTag.LocationDetail(
+                            f"[Coordinates as given in MDD: {latitude}, {longitude}]",
+                            art,
+                        ),
+                        TypeTag.Coordinates(latitude, longitude),
+                    ]
+                    print(f"{self}: add tags {tags}")
+                    if not dry_run:
+                        for tag in tags:
+                            self.hesp_name.add_type_tag(tag)
+                else:
+                    print(f"{self}: skip applying because no valid coordinates")
+
             case _:
                 print(
                     f"{self}: skip applying because no action defined for {self.mdd_column}"
@@ -544,13 +590,18 @@ def compare_column(
                     and "//doi.org" not in hesp_value
                 ):
                     return None
-                comparison = f"{hesp_value} (H) / {mdd_value} (M)"
-                if compare_func is not None:
-                    extra = compare_func(hesp_value, mdd_value)
-                    comparison = f"{extra}: {comparison}"
-                    explanation = comparison
+                if mdd_column in ("MDD_type_latitude", "MDD_type_longitude"):
+                    hesp_full = f"{hesp_row['Hesp_type_latitude']} / {hesp_row['Hesp_type_longitude']}"
+                    mdd_full = f"{mdd_row['MDD_type_latitude']} / {mdd_row['MDD_type_longitude']}"
+                    explanation = f"{hesp_full} (H) / {mdd_full} (M)"
                 else:
-                    explanation = None
+                    comparison = f"{hesp_value} (H) / {mdd_value} (M)"
+                    if compare_func is not None:
+                        extra = compare_func(hesp_value, mdd_value)
+                        comparison = f"{extra}: {comparison}"
+                        explanation = comparison
+                    else:
+                        explanation = None
                 counts[f"{mdd_column} differences"] += 1
             else:
                 return None
