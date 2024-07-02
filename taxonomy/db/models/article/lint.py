@@ -262,25 +262,24 @@ def infer_publication_date_from_issue_date(
 
 @LINT.add("year")
 def check_year(art: Article, cfg: LintConfig) -> Iterable[str]:
-    if not art.year:
-        return
     if art.kind is ArticleKind.alternative_version:
         return
-    # use hyphens
-    year = art.year.replace("–", "-")
+    if art.year is not None:
+        # use hyphens
+        year = art.year.replace("–", "-")
 
-    # remove spaces around the dash
-    if match := re.match(r"(\d{4})\s+-\s+(\d{4})", year):
-        year = f"{match.group(1)}-{match.group(2)}"
+        # remove spaces around the dash
+        if match := re.match(r"(\d{4})\s+-\s+(\d{4})", year):
+            year = f"{match.group(1)}-{match.group(2)}"
 
-    yield from _maybe_clean(art, "year", year, cfg)
+        yield from _maybe_clean(art, "year", year, cfg)
 
-    if art.year != "undated" and not helpers.is_valid_date(art.year):
-        yield f"invalid year {art.year!r}"
-    if helpers.is_date_range(art.year) and not any(
-        art.get_tags(art.tags, ArticleTag.MustUseChildren)
-    ):
-        yield f"must have MustUseChildren tag because date is a range: {art.year}"
+        if art.year != "undated" and not helpers.is_valid_date(art.year):
+            yield f"invalid year {art.year!r}"
+        if helpers.is_date_range(art.year) and not any(
+            art.get_tags(art.tags, ArticleTag.MustUseChildren)
+        ):
+            yield f"must have MustUseChildren tag because date is a range: {art.year}"
 
     inferred, issue, messages = infer_publication_date(art)
     yield from messages
@@ -306,7 +305,7 @@ def check_year(art: Article, cfg: LintConfig) -> Iterable[str]:
             inferred_year = int(inferred[:4])
         except ValueError:
             return
-        if (
+        if art.year is None or (
             inferred_year is not None
             and not art.get_new_names().count()
             and abs(art.numeric_year() - inferred_year) <= 1
