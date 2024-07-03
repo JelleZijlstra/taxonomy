@@ -79,9 +79,10 @@ _TYPE_TO_FIELDS = {
         "author_tags",
         "year",
         "title",
-        "pages",
         "publisher",
         "citation_group",
+        "url",
+        "pages",
     ],
     ArticleType.THESIS: [
         "author_tags",
@@ -676,7 +677,18 @@ class Article(BaseModel):
         for field in fields:
             if getattr(self, field, None):
                 continue
-            self.fill_field(field)
+            if field == "year":
+                date = getinput.get_line(
+                    "internal publication date> ", history_key="date"
+                )
+                if date is not None:
+                    self.add_tag(
+                        ArticleTag.PublicationDate(
+                            date=date, source=DateSource.internal, comment=""
+                        )
+                    )
+            else:
+                self.fill_field(field)
         return True
 
     def get_citation_group(self) -> CitationGroup | None:

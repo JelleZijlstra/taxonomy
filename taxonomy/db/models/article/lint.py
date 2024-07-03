@@ -441,15 +441,69 @@ def get_inferred_date_from_position(art: Article) -> tuple[Article, Article] | N
 
 @LINT.add("unsupported_year", disabled=True)
 def check_unsupported_year(art: Article, cfg: LintConfig) -> Iterable[str]:
-    if art.year is None or "-" not in art.year:
+    if art.id < 67_000 and (
+        art.get_new_names().count() == 0
+        or art.type in (ArticleType.CHAPTER, ArticleType.PART, ArticleType.SUPPLEMENT)
+    ):
         return
-    if art.has_tag(ArticleTag.PublicationDate):
-        return
-    if get_inferred_date_from_position(art) is not None:
-        return
-    if infer_publication_date_from_issue_date(art) is not None:
+    if not has_unsupported_publication_date(art):
         return
     yield f"precise date {art.year} is not supported by any evidence"
+
+
+def has_unsupported_publication_date(art: Article) -> bool:
+    if art.year is None or "-" not in art.year or helpers.is_date_range(art.year):
+        return False
+    if art.has_tag(ArticleTag.PublicationDate):
+        return False
+    if get_inferred_date_from_position(art) is not None:
+        return False
+    if infer_publication_date_from_issue_date(art) is not None:
+        return False
+    return True
+
+
+def text_contains_date(art: Article) -> bool:
+    if art.year is None:
+        return False
+    date = art.get_date_object()
+    if art.year.count("-") == 2:
+        day = date.strftime("%d").lstrip("0")
+        possible_dates = {
+            date.strftime(f"{day} %B %Y"),
+            date.strftime(f"%B {day}, %Y"),
+            date.strftime(f"%B {day}st, %Y"),
+            date.strftime(f"%B {day}nd, %Y"),
+            date.strftime(f"%B {day}th, %Y"),
+        }
+    else:
+        possible_dates = {date.strftime("%B %Y"), date.strftime("%B, %Y")}
+    possible_dates = {date.casefold() for date in possible_dates}
+    pages = art.get_all_pdf_pages()
+    if pages:
+        first_page = re.sub(r"\s+", " ", pages[0].casefold())
+        if any(date.casefold() in first_page for date in possible_dates):
+            return True
+    if page_id := get_bhl_page_id(art):
+        text = bhl.get_page_metadata(page_id).get("OcrText", "")
+        text = re.sub(r"\s+", " ", text.casefold())
+        if any(date.casefold() in text for date in possible_dates):
+            return True
+    return False
+
+
+@LINT.add("add_internal_publication_date")
+def add_internal_publication_date(art: Article, cfg: LintConfig) -> Iterable[str]:
+    if art.year is None or not has_unsupported_publication_date(art):
+        return
+    if text_contains_date(art):
+        tag = ArticleTag.PublicationDate(DateSource.internal, art.year, "")
+        message = f"adding PublicationDate tag for {art.year}: {tag}"
+        if cfg.autofix:
+            print(f"{art}: adding PublicationDate tag for {art.year}")
+            art.add_tag(tag)
+        else:
+            yield message
 
 
 _JSTOR_URL_REGEX = r"https?://www\.jstor\.org/stable/(\d+)"
@@ -783,6 +837,19 @@ def has_bhl_url(art: Article) -> bool:
     if art.url is None:
         return False
     return isinstance(urlparse.parse_url(art.url), urlparse.BhlUrl)
+
+
+def get_bhl_page_id(art: Article) -> int | None:
+    if art.url is None:
+        return None
+    match urlparse.parse_url(art.url):
+        case urlparse.BhlPage(page_id):
+            return page_id
+        case urlparse.BhlPart(part_id):
+            part_metadata = bhl.get_part_metadata(part_id)
+            if part_metadata is not None and "StartPageID" in part_metadata:
+                return part_metadata["StartPageID"]
+    return None
 
 
 def should_require_bhl_link(art: Article) -> bool:

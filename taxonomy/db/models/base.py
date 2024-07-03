@@ -1265,9 +1265,13 @@ class ADTField(Field[Sequence[ADTT]]):
                 self._adt_cache = {}
             if raw_value in self._adt_cache:
                 return self._adt_cache[raw_value]
-            tags = tuple(
-                self.adt_type.unserialize(val) for val in json.loads(raw_value)
-            )
+            tags_list = []
+            for val in json.loads(raw_value):
+                try:
+                    tags_list.append(self.adt_type.unserialize(val))
+                except Exception:
+                    print("Drop value", val)
+            tags = tuple(tags_list)
             self._adt_cache[raw_value] = tags
             return tags
         else:
