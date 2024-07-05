@@ -2748,6 +2748,17 @@ def _get_secondary_names_of_genus(
     return root_name_to_names
 
 
+def should_require_subgenus_original_parent(nam: Name) -> bool:
+    if nam.original_rank is not Rank.subgenus:
+        return True
+    # Should ideally be set for all names, but let's lock in the progress already made
+    if nam.numeric_year() > 1909:
+        return True
+    if nam.original_citation is not None and nam.original_citation.id > 60332:
+        return True
+    return False
+
+
 @LINT.add("check_original_parent")
 def check_original_parent(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.original_parent is None:
@@ -2774,22 +2785,33 @@ def check_original_parent(nam: Name, cfg: LintConfig) -> Iterable[str]:
 @LINT.add("infer_original_parent")
 def infer_original_parent(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if (
-        nam.group is not Group.species
-        or nam.original_parent is not None
+        nam.original_parent is not None
         or not nam.nomenclature_status.requires_original_parent()
     ):
         return
-    if nam.corrected_original_name is None:
-        return
-    candidates = _get_inferred_original_parent(nam)
-    if len(candidates) != 1:
-        return
-    message = f"inferred original_parent to be {candidates} from {nam.corrected_original_name}"
-    if cfg.autofix:
-        print(f"{nam}: {message}")
-        nam.original_parent = candidates[0]
-    else:
-        yield message
+    if (
+        nam.original_rank is Rank.subgenus
+        and nam.type is not None
+        and nam.type.original_citation == nam.original_citation
+        and nam.type.original_parent is not None
+    ):
+        original_parent = nam.type.original_parent
+        message = f"inferred original_parent to be {original_parent} from type"
+        if cfg.autofix:
+            print(f"{nam}: {message}")
+            nam.original_parent = original_parent
+        else:
+            yield message
+    elif (nam.group is Group.species) and nam.corrected_original_name is not None:
+        candidates = _get_inferred_original_parent(nam)
+        if len(candidates) != 1:
+            return
+        message = f"inferred original_parent to be {candidates} from {nam.corrected_original_name}"
+        if cfg.autofix:
+            print(f"{nam}: {message}")
+            nam.original_parent = candidates[0]
+        else:
+            yield message
 
 
 def _get_inferred_original_parent(nam: Name) -> list[Name]:

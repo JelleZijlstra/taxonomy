@@ -7,6 +7,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 
 BHL_DOMAINS = {"biodiversitylibrary.org", "www.biodiversitylibrary.org"}
+JSTOR_DOMAINS = {"www.jstor.org", "jstor.org"}
 DEPRECATED_DOMAINS = {"biostor.org"}
 # Also consider: www.mapress.com, www.springerlink.com, linkinghub.elsevier.com, link.springer.com,
 # mbe.oxfordjournals.org, www.pnas.org, www.ingentaconnect.com
@@ -103,6 +104,30 @@ class GoogleBooksPage(GoogleBooksUrl):
 
 
 @dataclass
+class HDLUrl(ParsedUrl):
+    hdl: str
+
+    def __str__(self) -> str:
+        return f"https://hdl.handle.net/{self.hdl}"
+
+
+@dataclass
+class JStorUrl(ParsedUrl):
+    jstor_id: str
+
+    def __str__(self) -> str:
+        return f"https://www.jstor.org/stable/{self.jstor_id}"
+
+
+@dataclass
+class DOIURL(ParsedUrl):
+    doi: str
+
+    def __str__(self) -> str:
+        return f"https://doi.org/{self.doi}"
+
+
+@dataclass
 class OtherUrl(ParsedUrl):
     split_url: urllib.parse.SplitResult
 
@@ -122,6 +147,8 @@ class OtherUrl(ParsedUrl):
             yield "URL should be replaced with a DOI"
         if self.split_url.netloc in DEPRECATED_DOMAINS:
             yield f"URL uses deprecated domain {self.split_url.netloc}"
+        if self.split_url.netloc in JSTOR_DOMAINS:
+            yield "invalid JSTOR URL"
         if is_google_domain(self.split_url.netloc):
             yield "unrecognized Google URL"
 
@@ -162,6 +189,25 @@ def parse_url(url: str) -> ParsedUrl:
                 return GoogleBooksPage(book_id, query_dict["pg"][0])
             else:
                 return GoogleBooksVolume(book_id)
+    elif split.netloc in JSTOR_DOMAINS:
+        if match := re.fullmatch(r"/stable/(\d+)", split.path):
+            return JStorUrl(match.group(1))
+    elif split.netloc == "hdl.handle.net":
+        return HDLUrl(split.path.lstrip("/"))
+    elif split.netloc == "deepblue.lib.umich.edu":
+        if match := re.fullmatch(r"/handle/(.+)", split.path):
+            return HDLUrl(match.group(1))
+    elif split.netloc in ("dx.doi.org", "doi.org"):
+        return DOIURL(split.path.lstrip("/"))
+    elif split.netloc == "www.bioone.org":
+        match = re.fullmatch(r"/doi/(?:full|abs|pdf)/(.+)", split.path)
+        if match is not None:
+            return DOIURL(match.group(1))
+    elif split.netloc == "onlinelibrary.wiley.com":
+        match = re.fullmatch(r"/doi/(.+?)/(abs|full|pdf|abstract)", split.path)
+        if match is not None:
+            return DOIURL(match.group(1))
+
     # TODO: other domains for which to consider parsing more specifically:
     # - archive.org
     # - hathitrust.org

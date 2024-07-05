@@ -1157,7 +1157,7 @@ class Article(BaseModel):
         *,
         should_open: bool = True,
     ) -> None:
-        if self.has_tag(ArticleTag.InitialsOnly):
+        if self.has_tag(ArticleTag.InitialsOnly) or not self.author_tags:
             return
         opened = False
         for author in self.get_authors():

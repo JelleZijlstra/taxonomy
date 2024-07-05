@@ -1945,9 +1945,11 @@ class Name(BaseModel):
                 if self.type is not None:
                     yield "genus_type_kind"
         if (
-            self.group is Group.species
+            (self.group is Group.species or self.original_rank is Rank.subgenus)
             and self.corrected_original_name is not None
             and self.nomenclature_status.requires_original_parent()
+            and not self.has_type_tag(TypeTag.NoOriginalParent)
+            and models.name.lint.should_require_subgenus_original_parent(self)
         ):
             yield "original_parent"
 
@@ -2658,6 +2660,9 @@ class TypeTag(adt.ADT):
     PhyloCodeNumber(number=int, tag=53)  # type: ignore[name-defined]
     AuthorityPageLink(url=str, confirmed=bool, page=str, tag=54)  # type: ignore[name-defined]
     GuessedRepository(repository=Collection, score=float, tag=55)  # type: ignore[name-defined]
+
+    # Used for subgenera proposed without an associated genus
+    NoOriginalParent(tag=56)  # type: ignore[name-defined]
 
 
 SOURCE_TAGS = (

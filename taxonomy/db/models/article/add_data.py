@@ -19,7 +19,6 @@ from taxonomy import command_set, config, getinput, parsing, uitools, urlparse
 from taxonomy.apis import bhl
 from taxonomy.db.constants import ArticleKind, ArticleType, DateSource
 from taxonomy.db.helpers import clean_string, clean_strings_recursively, trimdoi
-from taxonomy.db.models.article import lint
 from taxonomy.db.models.citation_group import CitationGroup, CitationGroupTag
 from taxonomy.db.models.person import AuthorTag, Person, VirtualPerson
 from taxonomy.db.url_cache import CacheDomain, cached, dirty_cache
@@ -766,14 +765,14 @@ def doi_input(art: Article) -> bool:
             art.doi = data
             print("Detected DOI", data)
             return not art.expand_doi(set_fields=True)
-        elif doi := lint.infer_doi_from_url(data):
-            art.doi = doi
-            print("Detected DOI", doi, "from url", data)
-            return not art.expand_doi(set_fields=True)
         match urlparse.parse_url(data):
             case urlparse.BhlPart(part_id):
                 print("Detected BHL part", part_id)
                 return not art.expand_bhl_part(url=data, set_fields=True)
+            case urlparse.DOIURL(doi):
+                art.doi = doi
+                print("Detected DOI", doi)
+                return not art.expand_doi(set_fields=True)
         return True
 
     def opener(cmd: str, data: object) -> bool:

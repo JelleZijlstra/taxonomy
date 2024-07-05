@@ -538,30 +538,34 @@ def check_must_have_url(art: Article, cfg: LintConfig) -> Iterable[str]:
 def check_url(art: Article, cfg: LintConfig) -> Iterable[str]:
     if art.url is None:
         return
-    hdl = _infer_hdl_from_url(art.url)
-    if hdl is not None:
-        message = f"inferred HDL {hdl} from url {art.url}"
-        if cfg.autofix:
-            print(f"{art}: {message}")
-            art.add_tag(ArticleTag.HDL(hdl))
-            art.url = None
-        else:
-            yield message
-        return
-
-    if match := re.fullmatch(_JSTOR_URL_REGEX, art.url):
-        # put JSTOR in
-        jstor_id = match.group(1)
-        message = f"inferred JStor id {jstor_id} from url {art.url}"
-        if cfg.autofix:
-            print(f"{art}: {message}")
-            art.add_tag(ArticleTag.JSTOR(jstor_id))
-            art.url = None
-        else:
-            yield message
-        return
-
     parsed_url = urlparse.parse_url(art.url)
+    match parsed_url:
+        case urlparse.HDLUrl(hdl):
+            message = f"inferred HDL {hdl} from url {art.url}"
+            if cfg.autofix:
+                print(f"{art}: {message}")
+                art.add_tag(ArticleTag.HDL(hdl))
+                art.url = None
+            else:
+                yield message
+            return
+        case urlparse.JStorUrl(jstor_id):
+            message = f"inferred JStor id {jstor_id} from url {art.url}"
+            if cfg.autofix:
+                print(f"{art}: {message}")
+                art.add_tag(ArticleTag.JSTOR(jstor_id))
+                art.url = None
+            else:
+                yield message
+        case urlparse.DOIURL(doi):
+            message = f"inferred DOI {doi} from url {art.url}"
+            if cfg.autofix:
+                print(f"{art}: {message}")
+                art.doi = doi
+                art.url = None
+            else:
+                yield message
+
     stringified = str(parsed_url)
     if stringified != art.url:
         message = f"reformatted url to {parsed_url} from {art.url}"
@@ -595,46 +599,6 @@ def check_doi(art: Article, cfg: LintConfig) -> Iterable[str]:
             art.doi = None
         else:
             yield message
-
-
-@LINT.add("infer_doi")
-def infer_doi(art: Article, cfg: LintConfig) -> Iterable[str]:
-    if art.doi is None and art.url is not None:
-        doi = infer_doi_from_url(art.url)
-        if doi is not None:
-            message = f"inferred doi {doi} from url {art.url}"
-            if cfg.autofix:
-                print(f"{art}: {message}")
-                art.doi = doi
-                art.url = None
-            else:
-                yield message
-
-
-DOI_EXTRACTION_REGEXES = [
-    r"https?:\/\/(?:dx\.)?doi\.org\/(10\..+)",
-    r"https?:\/\/www\.bioone\.org\/doi\/(?:full|abs|pdf)\/(.*)",
-    r"https?:\/\/onlinelibrary\.wiley\.com\/doi\/(.*?)\/(abs|full|pdf|abstract)",
-]
-
-
-def infer_doi_from_url(url: str) -> str | None:
-    for rgx in DOI_EXTRACTION_REGEXES:
-        if match := re.match(rgx, url):
-            return match.group(1)
-    return None
-
-
-def _infer_hdl_from_url(url: str) -> str | None:
-    for prefix in ("http://hdl.handle.net/", "https://hdl.handle.net/"):
-        if url.startswith(prefix):
-            return url.removeprefix(prefix)
-    if match := re.search(
-        r"^http:\/\/(digitallibrary\.amnh\.org\/dspace|deepblue\.lib\.umich\.edu)\/handle\/(.*)$",
-        url,
-    ):
-        return match.group(2)
-    return None
 
 
 @LINT.add("bhl_item_from_bibliography")
