@@ -106,9 +106,13 @@ class GoogleBooksPage(GoogleBooksUrl):
 @dataclass
 class HDLUrl(ParsedUrl):
     hdl: str
+    query: str | None = None
 
     def __str__(self) -> str:
-        return f"https://hdl.handle.net/{self.hdl}"
+        base = f"https://hdl.handle.net/{self.hdl}"
+        if self.query is not None:
+            return f"{base}?{self.query}"
+        return base
 
 
 @dataclass
@@ -193,7 +197,7 @@ def parse_url(url: str) -> ParsedUrl:
         if match := re.fullmatch(r"/stable/(\d+)", split.path):
             return JStorUrl(match.group(1))
     elif split.netloc == "hdl.handle.net":
-        return HDLUrl(split.path.lstrip("/"))
+        return HDLUrl(split.path.lstrip("/"), split.query)
     elif split.netloc == "deepblue.lib.umich.edu":
         if match := re.fullmatch(r"/handle/(.+)", split.path):
             return HDLUrl(match.group(1))
