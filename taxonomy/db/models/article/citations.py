@@ -63,22 +63,24 @@ def format_authors(
                 out += f"{last_separator} "
 
         # Process author
-        if capitalize_names:
-            family_name = author.family_name.upper()
+        if romanize:
+            family_name = author.get_transliterated_family_name()
         else:
             family_name = author.family_name
-        if romanize:
-            family_name = helpers.romanize_russian(family_name)
-        initials = author.get_initials()
-        if initials and romanize:
-            initials = helpers.romanize_russian(initials)
+        if capitalize_names:
+            family_name = family_name.upper()
+        if include_initials:
+            initials = author.get_initials()
+        else:
+            initials = None
+        if initials:
+            if romanize:
+                initials = helpers.romanize_russian(initials)
+            if space_initials:
+                initials = re.sub(r"\.(?![- ]|$)", ". ", initials)
+            if author.tussenvoegsel:
+                initials += f" {author.tussenvoegsel}"
 
-        if space_initials and initials:
-            initials = re.sub(r"\.(?![- ]|$)", ". ", initials)
-        if initials and author.tussenvoegsel:
-            initials += f" {author.tussenvoegsel}"
-
-        if initials and include_initials:
             if first_initials_before_name if i == 0 else initials_before_name:
                 author_str = f"{initials} {family_name}"
             else:
