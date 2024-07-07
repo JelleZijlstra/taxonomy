@@ -2632,6 +2632,28 @@ def download_bhl_items(nams: Iterable[Name] | None = None) -> None:
 
 
 @command
+def fill_bhl_names(nams: Iterable[Name] | None = None) -> None:
+    if nams is None:
+        nams = Name.with_type_tag(TypeTag.AuthorityPageLink).filter(
+            Name.original_citation == None
+        )
+    for nam in nams:
+        nam.load()
+        if nam.original_citation is not None:
+            continue
+        tags = list(nam.get_tags(nam.type_tags, TypeTag.AuthorityPageLink))
+        if not tags:
+            continue
+        getinput.print_header(nam)
+        if nam.citation_group is not None:
+            year = nam.numeric_year()
+            nam.citation_group.for_years(year - 1, year + 2, include_articles=True)
+        for tag in tags:
+            subprocess.check_call(["open", tag.url])
+        nam.edit()
+
+
+@command
 def print_data_level_report() -> None:
     """Output as of March 2024:
 
