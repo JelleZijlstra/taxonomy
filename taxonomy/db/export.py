@@ -386,3 +386,42 @@ def data_for_occ(occ: Occurrence) -> OccurrenceData:
         "status": occ.status.name,
         "comment": occ.comment or "",
     }
+
+
+@CS.register
+def export_type_catalog(filename: str, *collections: Collection) -> None:
+    with Path(filename).open("w") as f:
+        writer: "csv.DictWriter[str]" = csv.DictWriter(
+            f, ["label", *NameData.__annotations__]
+        )
+        writer.writeheader()
+        for coll in collections:
+            nams: list[tuple[Name, str]] = []
+            nams += [(nam, "primary") for nam in coll.type_specimens]
+            nams += [
+                (nam, "probable")
+                for nam in coll.get_derived_field("probable_specimens") or ()
+            ]
+            nams += [
+                (nam, "shared")
+                for nam in coll.get_derived_field("shared_specimens") or ()
+            ]
+            nams += [
+                (nam, "possible")
+                for nam in coll.get_derived_field("guessed_specimens") or ()
+            ]
+            nams += [
+                (nam, "future")
+                for nam in coll.get_derived_field("future_specimens") or ()
+            ]
+            nams += [
+                (nam, "former")
+                for nam in coll.get_derived_field("former_specimens") or ()
+            ]
+            nams += [
+                (nam, "extra")
+                for nam in coll.get_derived_field("extra_specimens") or ()
+            ]
+            for nam, label in nams:
+                data = data_for_name(nam)
+                writer.writerow({"label": label, **data})
