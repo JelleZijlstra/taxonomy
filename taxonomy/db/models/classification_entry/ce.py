@@ -13,7 +13,6 @@ from taxonomy.db import models
 from taxonomy.db.constants import NomenclatureStatus, Rank
 from taxonomy.db.models.article import Article
 from taxonomy.db.models.base import ADTField, BaseModel, LintConfig
-from taxonomy.db.models.name.name import Name
 
 
 class ClassificationEntryTag(ADT):
@@ -32,7 +31,7 @@ class ClassificationEntry(BaseModel):
     rank = Field[Rank]()
     parent = Field[Self | None]("parent_id", related_name="children")
     page = Field[str | None]()
-    mapped_name = Field[Name | None](
+    mapped_name = Field["models.Name | None"](
         "mapped_name_id", related_name="classification_entries"
     )
     authority = Field[str | None]()
@@ -95,10 +94,15 @@ class ClassificationEntry(BaseModel):
         parts.append(f" (#{self.id})")
         return "".join(parts)
 
+    def display(self, *, full: bool = False, depth: int = 0) -> None:
+        print("  " * depth + str(self))
+        for child in self.children:
+            child.display(full=full, depth=depth + 4)
+
     def add_incorrect_subsequent_spelling_for_genus(self) -> None:
         genus_name, *_ = self.name.split()
         print(f"Adding incorrect subsequent spelling for genus {genus_name!r}...")
-        target = Name.getter(None).get_one("genus> ")
+        target = models.Name.getter(None).get_one("genus> ")
         if target is None:
             return
         nam = target.add_variant(
@@ -117,7 +121,7 @@ class ClassificationEntry(BaseModel):
 
     def add_incorrect_subsequent_spelling(self) -> None:
         print(f"Adding incorrect subsequent spelling for {self.name!r}...")
-        target = Name.getter(None).get_one("name> ")
+        target = models.Name.getter(None).get_one("name> ")
         if target is None:
             return
         nam = target.add_variant(

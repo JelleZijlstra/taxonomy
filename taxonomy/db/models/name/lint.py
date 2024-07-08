@@ -50,6 +50,7 @@ from taxonomy.db.constants import (
 )
 from taxonomy.db.models.article import Article, ArticleTag, PresenceStatus
 from taxonomy.db.models.base import LintConfig
+from taxonomy.db.models.classification_entry.ce import ClassificationEntry
 from taxonomy.db.models.collection import (
     BMNH_COLLECTION,
     MULTIPLE_COLLECTION,
@@ -3792,3 +3793,77 @@ def guess_repository(nam: Name, cfg: LintConfig) -> Iterable[str]:
     else:
         getinput.print_diff(nam.type_tags, new_tags)
         yield message
+
+
+@LINT.add("infer_name_combinations")
+def infer_name_combinations(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    if nam.group is not Group.species:
+        return
+    ces = nam.classification_entries
+    by_name: dict[str, list[ClassificationEntry]] = defaultdict(list)
+    for ce in ces:
+        by_name[ce.name].append(ce)
+    expected_name_combinations = [
+        min(ces, key=lambda ce: (ce.article.get_date_object(), ce.article.id))
+        for ces in by_name.values()
+    ]
+    for ce in expected_name_combinations:
+        if ce.name == nam.corrected_original_name:
+            continue
+        existing = [
+            nam
+            for nam in Name.select_valid().filter(
+                Name.corrected_original_name == ce.name,
+                Name.group == Group.species,
+                Name.taxon == nam.taxon,
+                Name.nomenclature_status == NomenclatureStatus.name_combination,
+            )
+            if any(nam.get_tags(nam.tags, NameTag.MappedClassificationEntry))
+        ]
+        match len(existing):
+            case 0:
+                message = f"adding name combination based on {ce}"
+                if cfg.autofix:
+                    print(f"{nam}: {message}")
+                    new_name = nam.add_variant(
+                        ce.name.split()[-1],
+                        status=NomenclatureStatus.name_combination,
+                        paper=ce.article,
+                        page_described=ce.page,
+                        original_name=ce.name,
+                        interactive=False,
+                    )
+                    if new_name is not None:
+                        new_name.add_tag(NameTag.MappedClassificationEntry(ce))
+                        new_name.format()
+                        if cfg.interactive:
+                            new_name.edit_until_clean()
+                else:
+                    yield message
+            case 1:
+                (existing_name,) = existing
+                if existing_name.original_citation != ce.article:
+                    message = (
+                        f"changing original citation of {existing_name} to {ce.article}"
+                    )
+                    if cfg.autofix:
+                        print(f"{existing_name}: {message}")
+                        existing_name.original_citation = ce.article
+                        existing_name.page_described = ce.page
+                        existing_name.author_tags = None
+                        existing_name.year = None
+                        existing_name.format()
+                        if cfg.interactive:
+                            existing_name.edit_until_clean()
+                    else:
+                        yield message
+            case _:
+                # multiple; remove the newest
+                existing.sort(key=lambda nam: (nam.year, nam.id))
+                for duplicate in existing[1:]:
+                    message = f"removing duplicate name combination {duplicate}"
+                    if cfg.autofix:
+                        print(f"{duplicate}: {message}")
+                        duplicate.status = Status.removed
+                    else:
+                        yield message

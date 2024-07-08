@@ -44,6 +44,7 @@ from taxonomy.db.models.base import (
     get_tag_based_derived_field,
 )
 from taxonomy.db.models.citation_group import CitationGroup
+from taxonomy.db.models.classification_entry.ce import ClassificationEntry
 from taxonomy.db.models.collection import (
     LOST_COLLECTION,
     MULTIPLE_COLLECTION,
@@ -1493,8 +1494,6 @@ class Name(BaseModel):
         return bad
 
     def check_authors(self, *, autofix: bool = True, quiet: bool = False) -> bool:
-        if self.author_tags is None:
-            return True
         if self.has_type_tag(TypeTag.DifferentAuthority):
             return True
         citation = self.original_citation
@@ -1513,30 +1512,33 @@ class Name(BaseModel):
         article_authors = citation.get_authors()
         if name_authors == article_authors:
             return True  # can happen with supplements
-        if len(name_authors) != len(article_authors):
-            maybe_print(
-                f"length mismatch {len(name_authors)} vs. {len(article_authors)}"
-            )
-            return False
-        new_authors = list(self.author_tags)
-        for i, (name_author, article_author) in enumerate(
-            zip(name_authors, article_authors, strict=True)
-        ):
-            if name_author == article_author:
-                continue
+        if name_authors:
+            if len(name_authors) != len(article_authors):
+                maybe_print(
+                    f"length mismatch {len(name_authors)} vs. {len(article_authors)}"
+                )
+                return False
+            new_authors = list(self.author_tags)
+            for i, (name_author, article_author) in enumerate(
+                zip(name_authors, article_authors, strict=True)
+            ):
+                if name_author == article_author:
+                    continue
 
-            if article_author.is_more_specific_than(name_author):
-                maybe_print(
-                    f"author {i}: {article_author} is more specific than {name_author}"
-                )
-                new_authors[i] = AuthorTag.Author(person=article_author)
-                if autofix:
-                    name_author.move_reference(article_author, "names", self)
-            else:
-                maybe_print(
-                    f"author {i}: {article_author} (article) does not match"
-                    f" {name_author} (name)"
-                )
+                if article_author.is_more_specific_than(name_author):
+                    maybe_print(
+                        f"author {i}: {article_author} is more specific than {name_author}"
+                    )
+                    new_authors[i] = AuthorTag.Author(person=article_author)
+                    if autofix:
+                        name_author.move_reference(article_author, "names", self)
+                else:
+                    maybe_print(
+                        f"author {i}: {article_author} (article) does not match"
+                        f" {name_author} (name)"
+                    )
+        else:
+            new_authors = []
         getinput.print_diff(self.author_tags, new_authors)
         if autofix:
             self.author_tags = new_authors  # type: ignore[assignment]
@@ -2539,6 +2541,10 @@ class NameTag(adt.ADT):
         tag=31,
     )
     IgnorePreoccupationBy(name=Name, comment=str, tag=32)  # type: ignore[name-defined]
+
+    # ClassificationEntry that a name combination is based on. If this is present, then the
+    # name can get replaced with a name combination from an earlier work.
+    MappedClassificationEntry(ce=ClassificationEntry, tag=33)  # type: ignore[name-defined]
 
 
 CONSTRUCTABLE_STATUS_TO_TAG = {
