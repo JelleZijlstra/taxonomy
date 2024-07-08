@@ -8,8 +8,8 @@ __all__ = [
     "CitationGroup",
     "CitationGroupPattern",
     "CitationGroupTag",
+    "ClassificationEntry",
     "Collection",
-    "database",
     "fill_data",
     "has_data_from_original",
     "IssueDate",
@@ -40,6 +40,7 @@ from .citation_group import (
     CitationGroupPattern as CitationGroupPattern,
     CitationGroupTag as CitationGroupTag,
 )
+from .classification_entry import ClassificationEntry as ClassificationEntry
 from .issue_date import IssueDate as IssueDate
 from .name.name import (
     Name as Name,

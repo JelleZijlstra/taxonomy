@@ -828,10 +828,12 @@ class BaseModel(Model):
         elif field_obj.type_object is str:
             return cls.getter(field).get_one_key(prompt, default=default) or None
         elif issubclass(field_obj.type_object, enum.Enum):
+            if default == "":
+                default = None
             if default is None and field in cls.field_defaults:
                 default = cls.field_defaults[field]
             return getinput.get_enum_member(
-                field_obj.enum_cls, prompt=prompt, default=default
+                field_obj.type_object, prompt=prompt, default=default
             )
         elif field_obj.type_object is int:
             result = getinput.get_line(prompt, default=default, mouse_support=True)

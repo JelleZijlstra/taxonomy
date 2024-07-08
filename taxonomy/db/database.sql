@@ -353,3 +353,18 @@ CREATE TABLE `issue_date` (
     `tags` TEXT DEFAULT NULL
 );
 CREATE INDEX "cg" on "issue_date" (`citation_group_id`);
+
+CREATE TABLE `classification_entry` (
+    `id` integer primary key,
+    `article_id` integer not null,
+    `name` varchar(255) not null,
+    `rank` integer not null,
+    `parent_id` integer default null,
+    `page` varchar(255) default null,
+    `mapped_name_id` integer default null,
+    `authority` varchar(255) default null,
+    `year` varchar(255) default null,
+    `citation` varchar(255) default null,
+    `type_locality` varchar(255) default null,
+    `tags` text default null
+);

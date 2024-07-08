@@ -155,10 +155,12 @@ def choose_one_by_name(
     display_fn: Callable[[T], str] = str,
     history_key: object = None,
     callbacks: CallbackMap = {},
+    print_choices: bool = True,
 ) -> T | None:
     choices = {display_fn(option): option for option in options}
-    for display in choices:
-        print(display)
+    if print_choices:
+        for display in choices:
+            print(display)
     if history_key is None:
         history_key = tuple(options)
     choice = get_with_completion(

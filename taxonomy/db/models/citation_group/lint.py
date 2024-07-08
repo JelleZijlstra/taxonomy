@@ -1,4 +1,4 @@
-"""Lint steps for Articles."""
+"""Lint steps for citation groups."""
 
 import functools
 import re
