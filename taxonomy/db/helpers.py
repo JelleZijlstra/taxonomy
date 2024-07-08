@@ -1203,4 +1203,7 @@ def normalize_root_name_for_homonymy(root_name: str) -> str:
     root_name = re.sub(r"ianus$", "anus", root_name)
     # Adding one: "monticola" vs. "monticolus", where one is interpreted as an
     # adjective and the other as a noun in apposition.
-    return re.sub(r"(a|um)$", "us", root_name)
+    root_name = re.sub(r"(a|um)$", "us", root_name)
+    # Similarly, -ventris vs. -venter
+    root_name = re.sub(r"ntris$", "nter", root_name)
+    return root_name

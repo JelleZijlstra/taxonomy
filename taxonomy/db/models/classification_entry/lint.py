@@ -4,7 +4,7 @@ from collections import defaultdict
 from collections.abc import Container, Iterable
 
 from taxonomy.db import helpers
-from taxonomy.db.constants import Group, NomenclatureStatus
+from taxonomy.db.constants import Group, NomenclatureStatus, Rank
 from taxonomy.db.models.base import LintConfig
 from taxonomy.db.models.lint import IgnoreLint, Lint
 from taxonomy.db.models.name import Name, NameTag
@@ -35,14 +35,17 @@ def check_missing_mapped_name(
     ce: ClassificationEntry, cfg: LintConfig
 ) -> Iterable[str]:
     if ce.mapped_name is None:
-        inferred = infer_mapped_name(ce)
-        if inferred is not None:
+        candidates = list(get_filtered_possible_mapped_names(ce))
+        if len(candidates) == 1:
+            inferred = candidates[0]
             message = f"inferred mapped_name: {inferred}"
             if cfg.autofix:
                 print(f"{ce}: {message}")
                 ce.mapped_name = inferred
             else:
                 yield message
+        else:
+            yield f"missing mapped_name (candidates: {candidates})"
 
 
 @LINT.add("mapped_name")
@@ -61,13 +64,40 @@ def check_mapped_name(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]
 
 
 def infer_mapped_name(ce: ClassificationEntry) -> Name | None:
-    nams = get_possible_mapped_names(ce)
-    nams = [
-        nam for nam in nams if nam.get_date_object() <= ce.article.get_date_object()
-    ]
+    nams = list(get_filtered_possible_mapped_names(ce))
     if len(nams) == 1:
         return nams[0]
     return None
+
+
+def get_genera_with_shared_species(genera: Iterable[Name]) -> Iterable[Taxon]:
+    taxa = set()
+    for genus in genera:
+        try:
+            taxa.add(genus.taxon.parent_of_rank(Rank.genus))
+        except ValueError:
+            pass
+        for nam in Name.select_valid().filter(
+            Name.group == Group.species, Name.original_parent == genus
+        ):
+            try:
+                taxa.add(nam.taxon.parent_of_rank(Rank.genus))
+            except ValueError:
+                pass
+    return taxa
+
+
+def get_filtered_possible_mapped_names(ce: ClassificationEntry) -> Iterable[Name]:
+    ce_date_obj = ce.article.get_date_object()
+    for nam in get_possible_mapped_names(ce):
+        if nam.get_date_object() > ce_date_obj:
+            continue
+        if nam.nomenclature_status in (
+            NomenclatureStatus.subsequent_usage,
+            NomenclatureStatus.name_combination,
+        ):
+            continue
+        yield nam
 
 
 def get_possible_mapped_names(ce: ClassificationEntry) -> Iterable[Name]:
@@ -93,8 +123,37 @@ def get_possible_mapped_names(ce: ClassificationEntry) -> Iterable[Name]:
             Name.group == Group.genus, Name.corrected_original_name == ce.name
         )
     elif group is Group.species:
-        yield from Name.select_valid().filter(
+        count = 0
+        for nam in Name.select_valid().filter(
             Name.group == Group.species, Name.corrected_original_name == ce.name
-        )
+        ):
+            count += 1
+            yield nam
         for taxon in Taxon.select_valid().filter(Taxon.valid_name == ce.name):
+            count += 1
             yield taxon.base_name
+        if count == 0:
+            genus_name, *_, root_name = ce.name.split()
+            normalized_root_name = helpers.normalize_root_name_for_homonymy(root_name)
+            genus_candidates = Name.select_valid().filter(
+                Name.group == Group.genus, Name.corrected_original_name == genus_name
+            )
+            variants = []
+            for genus in get_genera_with_shared_species(genus_candidates):
+                for nam in genus.all_names():
+                    if (
+                        nam.group == Group.species
+                        and nam.get_normalized_root_name_for_homonymy()
+                        == normalized_root_name
+                    ):
+                        if nam.nomenclature_status in (
+                            NomenclatureStatus.incorrect_subsequent_spelling,
+                            NomenclatureStatus.variant,
+                            NomenclatureStatus.unjustified_emendation,
+                        ):
+                            variants.append(nam)
+                        else:
+                            count += 1
+                            yield nam
+            if count == 0:
+                yield from variants

@@ -10,7 +10,7 @@ from clirm import Field
 from taxonomy import events, getinput
 from taxonomy.adt import ADT
 from taxonomy.db import models
-from taxonomy.db.constants import Rank
+from taxonomy.db.constants import NomenclatureStatus, Rank
 from taxonomy.db.models.article import Article
 from taxonomy.db.models.base import ADTField, BaseModel, LintConfig
 from taxonomy.db.models.name.name import Name
@@ -94,6 +94,51 @@ class ClassificationEntry(BaseModel):
         parts.append(")")
         parts.append(f" (#{self.id})")
         return "".join(parts)
+
+    def add_incorrect_subsequent_spelling_for_genus(self) -> None:
+        genus_name, *_ = self.name.split()
+        print(f"Adding incorrect subsequent spelling for genus {genus_name!r}...")
+        target = Name.getter(None).get_one("genus> ")
+        if target is None:
+            return
+        nam = target.add_variant(
+            genus_name,
+            status=NomenclatureStatus.incorrect_subsequent_spelling,
+            paper=self.article,
+            page_described=self.page,
+            original_name=genus_name,
+            interactive=False,
+        )
+        if nam is None:
+            return
+        nam.original_rank = Rank.genus
+        nam.format()
+        nam.edit_until_clean()
+
+    def add_incorrect_subsequent_spelling(self) -> None:
+        print(f"Adding incorrect subsequent spelling for {self.name!r}...")
+        target = Name.getter(None).get_one("name> ")
+        if target is None:
+            return
+        nam = target.add_variant(
+            self.name.split()[-1],
+            status=NomenclatureStatus.incorrect_subsequent_spelling,
+            paper=self.article,
+            page_described=self.page,
+            original_name=self.name,
+            interactive=False,
+        )
+        if nam is None:
+            return
+        nam.format()
+        nam.edit_until_clean()
+
+    def get_adt_callbacks(self) -> getinput.CallbackMap:
+        return {
+            **super().get_adt_callbacks(),
+            "add_incorrect_subsequent_spelling": self.add_incorrect_subsequent_spelling,
+            "add_incorrect_subsequent_spelling_for_genus": self.add_incorrect_subsequent_spelling_for_genus,
+        }
 
     @classmethod
     def get_parent_completion(

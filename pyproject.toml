@@ -159,6 +159,7 @@ ignore = [
   "UP037",   # incorrectly removes strings for locals
   "UP040",   # not ready
   "SIM103",  # I like to end a sequence of ifs with one "return True"
+  "RET504",  # Sometimes the extra assignment is worthwhile
 ]
 
 [tool.ruff.lint.per-file-ignores]
