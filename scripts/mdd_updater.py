@@ -1,7 +1,6 @@
 """Notes for auto-gsheet updating:
 
 - Use https://pypi.org/project/gspread/
-- For now, leave alone species status (_S. borbonicus_, squirrels) and spelling (bats)
 - Take a backup of the sheet before any changes
 - Generate a summary file with changes applied
 - For each category of changes, first show them all and ask whether to apply them all
@@ -9,12 +8,16 @@
 - For new names, first get the max() of the existing MDD ids and start from there.
 
 To set up gspread, follow the instructions in https://docs.gspread.org/en/latest/oauth2.html#oauth-client-id
-to get an OAuth client id. The tokens appears to expire after a week. Notes for next time:
+to get an OAuth client id. The tokens appears to expire after a week. To refresh, delete
+ ~/.config/gspread/authorized_user.json and run this script. It will open a web browser with a flow  to
+ re-authorize the token. Go through the flow, and then the script should run successfully.
+
+You can also create the whole token from scratch again:
 
 - Go to https://console.cloud.google.com/apis/api/sheets.googleapis.com/credentials?authuser=1&project=directed-tracer-123911&supportedpurview=project
 - Add an "OAuth 2.0 Client ID" credential for a desktop app
 - Download the credentials and put them in ~/.config/gspread/credentials.json
-- Delete ~/.config/gspread/authorized_user.json (maybe just deleting this file is enough? try it next time)
+- Delete ~/.config/gspread/authorized_user.json
 - Run this script with --gspread-test to re-authorize. Make sure to fix cell A1 in the MDD sheet back afterwards.
 
 """
