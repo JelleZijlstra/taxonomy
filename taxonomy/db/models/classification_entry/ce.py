@@ -176,6 +176,7 @@ class ClassificationEntry(BaseModel):
         )
         if nam is None:
             return None
+        nam.add_tag(models.name.NameTag.MappedClassificationEntry(ce=self))
         nam.format()
         nam.edit_until_clean()
         return nam
@@ -206,6 +207,7 @@ class ClassificationEntry(BaseModel):
         if nam is None:
             return None
         nam.author_tags = self.article.author_tags
+        nam.add_tag(models.name.NameTag.MappedClassificationEntry(ce=self))
         nam.format()
         nam.edit_until_clean()
         return nam
