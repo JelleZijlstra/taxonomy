@@ -4,6 +4,7 @@ Probably best to first do some work adding name combinations to the DB.
 """
 
 import enum
+import json
 import re
 from collections import Counter, deque
 from collections.abc import Iterable
@@ -11,6 +12,7 @@ from typing import Any
 
 from taxonomy.db import models
 from taxonomy.db.constants import NomenclatureStatus, Rank
+from taxonomy.db.models.classification_entry.ce import ClassificationEntry
 
 from . import lib
 from .lib import DataT
@@ -138,7 +140,9 @@ def extract_names(pages: Iterable[tuple[int, list[str]]]) -> DataT:
     yield current_name
 
 
-def split_name_line(name: dict[str, Any]) -> dict[str, Any]:
+def split_name_line(
+    name: dict[str, Any], parent_stack: list[tuple[Rank, str]]
+) -> dict[str, Any]:
     line = name["name_line"]
     if line.lower().startswith(("family ", "order ")):
         try:
@@ -146,36 +150,51 @@ def split_name_line(name: dict[str, Any]) -> dict[str, Any]:
         except ValueError:
             print(f"invalid higher taxon: {line!r}")
             return name
-        return {**name, "rank": Rank[rank_str], "taxon_name": taxon_name.title()}
-    if match := re.search(
-        r"^(?P<name>[A-Z][a-z]+) (?P<author>(d')?[A-Z][^\d]+), (?P<year>1\d{3})\."
-        r" (?P<verbatim>.*)$",
-        line,
-    ):
-        rank = Rank.genus
-    elif match := re.search(
-        r"^(?P<name>[A-Z][a-z]+ [a-z]+) \(?(?P<author>(de la |du |de |d')?[A-Z][^\d]+),"
-        r" (?P<year>1\d{3}(-\d{4})?)\)?\. (?P<verbatim>.*)$",
-        line,
-    ):
-        rank = Rank.species
+        rank = Rank[rank_str]
+        taxon_name = taxon_name.title()
+        extra_fields = {}
     else:
-        print(line)
-        return name
-        raise ValueError(line)
+        if match := re.search(
+            r"^(?P<name>[A-Z][a-z]+) (?P<author>(d')?[A-Z][^\d]+), (?P<year>1\d{3})\."
+            r" (?P<verbatim>.*)$",
+            line,
+        ):
+            rank = Rank.genus
+        elif match := re.search(
+            r"^(?P<name>[A-Z][a-z]+ [a-z]+) \(?(?P<author>(de la |du |de |d')?[A-Z][^\d]+),"
+            r" (?P<year>1\d{3}(-\d{4})?)\)?\. (?P<verbatim>.*)$",
+            line,
+        ):
+            rank = Rank.species
+        else:
+            print(line)
+            raise ValueError(line)
+        taxon_name = match.group("name")
+        extra_fields = {
+            "authority": match.group("author"),
+            "year": match.group("year"),
+            "verbatim_citation": match.group("verbatim"),
+        }
+    while parent_stack and parent_stack[-1][0] <= rank:
+        parent_stack.pop()
+    if parent_stack:
+        parent = parent_stack[-1]
+    else:
+        parent = None
+    parent_stack.append((rank, taxon_name))
     return {
         **name,
+        "parent": parent,
         "rank": rank,
-        "taxon_name": match.group("name"),
-        "authority": match.group("author"),
-        "year": match.group("year"),
-        "verbatim_citation": match.group("verbatim"),
+        "taxon_name": taxon_name,
+        **extra_fields,
     }
 
 
 def process_names(names: DataT) -> DataT:
+    parent_stack: list[tuple[Rank, str]] = []
     for name in names:
-        yield split_name_line(name)
+        yield split_name_line(name, parent_stack)
 
 
 def associate_name(name: dict[str, Any]) -> tuple[str, models.Name | None]:
@@ -253,6 +272,67 @@ def associate_names(names: DataT) -> DataT:
     print(counts)
 
 
+def check_parents(names: DataT) -> DataT:
+    names = list(names)
+    name_counter = Counter(name["taxon_name"] for name in names)
+    for name, count in name_counter.items():
+        if count > 1:
+            print(
+                name, count, [n["name_line"] for n in names if n["taxon_name"] == name]
+            )
+    for name in names:
+        if name["parent"] is None:
+            continue
+        parent_rank, parent_name = name["parent"]
+        if parent_name not in name_counter:
+            print(f"parent {parent_name} not found for {name['name_line']}")
+    return names
+
+
+def add_classification_entries(names: DataT, *, dry_run: bool = True) -> DataT:
+    art = SOURCE.get_source()
+    for name in names:
+        page = ", ".join(str(p) for p in name["pages"])
+        taxon_name = name["taxon_name"]
+        rank = name["rank"]
+        type_locality = name.get("type locality")
+        authority = name.get("authority")
+        year = name.get("year")
+        citation = name.get("verbatim_citation")
+        raw_data = json.dumps(name, ensure_ascii=False, separators=(",", ":"))
+        if not dry_run:
+            try:
+                existing = ClassificationEntry.get(
+                    name=taxon_name, rank=rank, article=art
+                )
+            except ClassificationEntry.DoesNotExist:
+                pass
+            else:
+                print(f"already exists: {existing}")
+                continue
+            if name["parent"] is None:
+                parent = None
+            else:
+                parent_rank, parent_name = name["parent"]
+                parent = ClassificationEntry.get(
+                    name=parent_name, rank=parent_rank, article=art
+                )
+            new_ce = ClassificationEntry.create(
+                article=art,
+                name=taxon_name,
+                rank=rank,
+                parent=parent,
+                authority=authority,
+                year=year,
+                citation=citation,
+                type_locality=type_locality,
+                raw_data=raw_data,
+                page=page,
+            )
+            print(new_ce)
+        yield name
+
+
 def main() -> None:
     lines = lib.get_text(SOURCE)
     pages = lib.extract_pages(lines, permissive=True)
@@ -260,16 +340,18 @@ def main() -> None:
     names = extract_names(pages)
     names = lib.clean_text(names)
     names = process_names(names)
-    names = list(lib.translate_to_db(names, None, SOURCE, verbose=False))
-    print(
-        f"Associated {len([n for n in names if 'taxon' in n])}/{len(names)} names with"
-        " current valid name"
-    )
-    names = associate_names(names)
+    names = check_parents(names)
+    names = add_classification_entries(names, dry_run=False)
+    # names = list(lib.translate_to_db(names, None, SOURCE, verbose=False))
+    # print(
+    #     f"Associated {len([n for n in names if 'taxon' in n])}/{len(names)} names with"
+    #     " current valid name"
+    # )
+    # names = associate_names(names)
     # names = lib.write_to_db(names, SOURCE, dry_run=True, edit_if_no_holotype=False)
-    for name in names:
-        if "name_obj" not in name:
-            print("not found:", name["name_line"])
+    # for name in names:
+    #     if "name_obj" not in name:
+    #         print("not found:", name["name_line"])
     lib.print_field_counts(names)
 
 

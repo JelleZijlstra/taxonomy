@@ -3798,6 +3798,30 @@ def _maybe_add_name_combination(
         yield message
 
 
+def take_over_name(nam: Name, ce: ClassificationEntry, cfg: LintConfig) -> None:
+    nam.original_citation = ce.article
+    nam.page_described = ce.page
+    nam.copy_authors()
+    nam.copy_year()
+    nam.format()
+    if cfg.interactive:
+        nam.edit_until_clean()
+
+
+def maybe_take_over_name(
+    nam: Name, ce: ClassificationEntry, cfg: LintConfig
+) -> Iterable[str]:
+    if any(nam.get_tags(nam.tags, NameTag.MappedClassificationEntry)):
+        message = f"changing original citation of {nam} to {ce.article}"
+        if cfg.autofix:
+            print(f"{nam}: {message}")
+            take_over_name(nam, ce, cfg)
+        else:
+            yield message
+    else:
+        yield f"replace name combination {nam} with {ce}"
+
+
 @LINT.add("infer_name_combinations")
 def infer_name_combinations(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.group is not Group.species:
@@ -3842,25 +3866,7 @@ def infer_name_combinations(nam: Name, cfg: LintConfig) -> Iterable[str]:
                     and ce.article.get_date_object()
                     < existing_name.original_citation.get_date_object()
                 ):
-                    if any(
-                        existing_name.get_tags(
-                            existing_name.tags, NameTag.MappedClassificationEntry
-                        )
-                    ):
-                        message = f"changing original citation of {existing_name} to {ce.article}"
-                        if cfg.autofix:
-                            print(f"{existing_name}: {message}")
-                            existing_name.original_citation = ce.article
-                            existing_name.page_described = ce.page
-                            existing_name.copy_authors()
-                            existing_name.copy_year()
-                            existing_name.format()
-                            if cfg.interactive:
-                                existing_name.edit_until_clean()
-                        else:
-                            yield message
-                    else:
-                        yield f"replace name combination {existing_name} with {ce}"
+                    yield from maybe_take_over_name(existing_name, ce, cfg)
             case _:
                 # multiple; remove the newest
                 existing.sort(key=lambda nam: (nam.year, nam.id))
@@ -3879,18 +3885,22 @@ def infer_name_combinations(nam: Name, cfg: LintConfig) -> Iterable[str]:
                         yield message
 
 
-@LINT.add("duplicate_name_combinations")
-def check_duplicate_name_combinations(nam: Name, cfg: LintConfig) -> Iterable[str]:
-    if nam.nomenclature_status != NomenclatureStatus.name_combination:
+@LINT.add("duplicate_variants")
+def check_duplicate_variants(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    nomenclature_status = nam.nomenclature_status
+    if nomenclature_status not in (
+        NomenclatureStatus.name_combination,
+        NomenclatureStatus.incorrect_subsequent_spelling,
+    ):
         return
     dupes = Name.select_valid().filter(
-        Name.nomenclature_status == NomenclatureStatus.name_combination,
+        Name.nomenclature_status == nomenclature_status,
         Name.taxon == nam.taxon,
         Name.corrected_original_name == nam.corrected_original_name,
     )
     earlier = sorted(
         [dupe for dupe in dupes if dupe.get_date_object() < nam.get_date_object()],
-        key=lambda dupe: dupe.get_date_object(),
+        key=lambda dupe: (dupe.get_date_object(), dupe.id),
     )
     if earlier:
         if any(
@@ -3906,11 +3916,16 @@ def check_duplicate_name_combinations(nam: Name, cfg: LintConfig) -> Iterable[st
             for tag in nam.type_tags
         ):
             return
-        message = f"remove because of earlier name combinations: {', '.join(str(dupe) for dupe in earlier)}"
-        if cfg.autofix and nam.has_name_tag(NameTag.MappedClassificationEntry):
+        message = f"remove because of earlier names with status {nomenclature_status}: {', '.join(str(dupe) for dupe in earlier)}"
+        has_mce = nam.has_name_tag(NameTag.MappedClassificationEntry)
+        if cfg.autofix and has_mce:
             print(f"{nam}: {message}")
             nam.merge(earlier[0], copy_fields=False)
-        else:
+        elif (
+            nomenclature_status is NomenclatureStatus.name_combination
+            or has_mce
+            or nam.id > 100_000
+        ):
             yield message
 
 

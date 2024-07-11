@@ -9,7 +9,7 @@ from itertools import takewhile
 
 from taxonomy import getinput, urlparse
 from taxonomy.apis import bhl
-from taxonomy.db import helpers
+from taxonomy.db import helpers, models
 from taxonomy.db.constants import Group, NomenclatureStatus, Rank
 from taxonomy.db.models.article.article import Article, ArticleTag
 from taxonomy.db.models.base import LintConfig
@@ -115,6 +115,7 @@ def check_mapped_name(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]
     if ce.mapped_name is not None:
         if ce.article.get_date_object() < ce.mapped_name.get_date_object():
             yield f"classification entry predates mapped name {ce.mapped_name}"
+            yield from models.name.lint.maybe_take_over_name(ce.mapped_name, ce, cfg)
         corrected_name = ce.get_corrected_name()
         if corrected_name is None:
             return
@@ -239,9 +240,9 @@ class CandidateName:
         if corrected_name is None:
             corrected_name = self.name
         if self.name.corrected_original_name != corrected_name:
-            score += 2
+            score += 10
         if self.name.original_name != corrected_name:
-            score += 2
+            score += 10
         associated_taxa = Taxon.select_valid().filter(Taxon.base_name == self.name)
         if not any(t.valid_name == corrected_name for t in associated_taxa):
             score += 2
