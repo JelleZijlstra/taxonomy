@@ -488,6 +488,33 @@ class Article(BaseModel):
     def get_new_names(self) -> Query[models.Name]:
         return models.Name.add_validity_check(self.new_names)
 
+    def get_classification_entries(self) -> Query[models.ClassificationEntry]:
+        return models.ClassificationEntry.add_validity_check(
+            self.classification_entries
+        )
+
+    def get_possible_bhl_item_ids(self) -> Iterable[int]:
+        if self.url is not None:
+            item_id = bhl.get_bhl_item_from_url(self.url)
+            if item_id is not None:
+                yield item_id
+        for tag in self.tags:
+            if isinstance(tag, ArticleTag.AlternativeURL):
+                item_id = bhl.get_bhl_item_from_url(tag.url)
+                if item_id is not None:
+                    yield item_id
+
+    def get_possible_bhl_bibliography_ids(self) -> Iterable[int]:
+        if self.url is not None:
+            bibliography_id = bhl.get_bhl_bibliography_from_url(self.url)
+            if bibliography_id is not None:
+                yield bibliography_id
+        for tag in self.tags:
+            if isinstance(tag, ArticleTag.AlternativeURL):
+                bibliography_id = bhl.get_bhl_bibliography_from_url(tag.url)
+                if bibliography_id is not None:
+                    yield bibliography_id
+
     def try_to_find_bhl_links(self) -> None:
         for nam in self.get_new_names():
             nam.try_to_find_bhl_links()

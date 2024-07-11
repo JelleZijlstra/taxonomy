@@ -19,7 +19,7 @@ class ClassificationEntryTag(ADT):
     CommentClassificationEntry(text=str, tag=1)  # type: ignore[name-defined]
     TextualRank(text=str, tag=2)  # type: ignore[name-defined]
     CorrectedName(text=str, tag=3)  # type: ignore[name-defined]
-    PageLink(link=str, page=str, tag=4)  # type: ignore[name-defined]
+    PageLink(url=str, page=str, tag=4)  # type: ignore[name-defined]
 
 
 class ClassificationEntry(BaseModel):
@@ -70,6 +70,13 @@ class ClassificationEntry(BaseModel):
 
     def lint(self, cfg: LintConfig) -> Iterable[str]:
         yield from models.classification_entry.lint.LINT.run(self, cfg)
+
+    def has_tag(self, tag_cls: ClassificationEntry._Constructors) -> bool:  # type: ignore[name-defined]
+        tag_id = tag_cls._tag
+        return any(tag[0] == tag_id for tag in self.get_raw_tags_field("tags"))
+
+    def add_tag(self, tag: ClassificationEntryTag) -> None:
+        self.tags = (*self.tags, tag)  # type: ignore[assignment]
 
     @classmethod
     def create_for_article(cls, art: Article, fields: Sequence[Field[Any]]) -> None:

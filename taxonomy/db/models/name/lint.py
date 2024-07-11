@@ -3020,12 +3020,10 @@ def _check_bhl_item_matches(
         return
     if nam.original_citation is None or nam.original_citation.url is None:
         return
-    citation_item_ids = list(_get_possible_bhl_item_ids(nam.original_citation))
+    citation_item_ids = list(nam.original_citation.get_possible_bhl_item_ids())
     if not citation_item_ids:
         return
     if item_id not in citation_item_ids:
-        # TODO: Ignore this for now; too noisy. In the future we can add more infrastructure and try
-        # to automatically replace the URL in this case.
         yield f"BHL item mismatch: {item_id} (name) not in {citation_item_ids} (citation)"
         replacement = [
             page
@@ -3072,18 +3070,6 @@ def _replace_page_link(
         yield message
 
 
-def _get_possible_bhl_item_ids(art: Article) -> Iterable[int]:
-    if art.url is not None:
-        item_id = bhl.get_bhl_item_from_url(art.url)
-        if item_id is not None:
-            yield item_id
-    for tag in art.tags:
-        if isinstance(tag, ArticleTag.AlternativeURL):
-            item_id = bhl.get_bhl_item_from_url(tag.url)
-            if item_id is not None:
-                yield item_id
-
-
 def _check_bhl_bibliography_matches(
     nam: Name,
     tag: TypeTag.AuthorityPageLink,  # type:ignore[name-defined]
@@ -3096,7 +3082,7 @@ def _check_bhl_bibliography_matches(
     if nam.original_citation is None or nam.original_citation.url is None:
         return
     citation_biblio_ids = list(
-        _get_possible_bhl_bibliography_ids(nam.original_citation)
+        nam.original_citation.get_possible_bhl_bibliography_ids()
     )
     if bibliography_id not in citation_biblio_ids:
         yield f"BHL item mismatch: {bibliography_id} (name) not in {citation_biblio_ids} (citation)"
@@ -3121,18 +3107,6 @@ def _check_bhl_bibliography_matches(
                 ]
             else:
                 yield message
-
-
-def _get_possible_bhl_bibliography_ids(art: Article) -> Iterable[int]:
-    if art.url is not None:
-        bibliography_id = bhl.get_bhl_bibliography_from_url(art.url)
-        if bibliography_id is not None:
-            yield bibliography_id
-    for tag in art.tags:
-        if isinstance(tag, ArticleTag.AlternativeURL):
-            bibliography_id = bhl.get_bhl_bibliography_from_url(tag.url)
-            if bibliography_id is not None:
-                yield bibliography_id
 
 
 def _should_look_for_page_links(nam: Name) -> bool:
@@ -3262,6 +3236,72 @@ def get_candidate_bhl_pages(
             yield from confident_pages
 
 
+def maybe_infer_page_from_other_name(
+    *,
+    cfg: LintConfig,
+    other_nam: object,
+    url: str,
+    my_page: str,
+    their_page: str,
+    is_same_page: bool,
+) -> int | None:
+    parsed = urlparse.parse_url(url)
+    if not isinstance(parsed, urlparse.BhlPage):
+        if cfg.verbose:
+            print(f"{other_nam}: {url} is not a BHL page URL")
+        return None
+    existing_page_id = parsed.page_id
+    if my_page == their_page and is_same_page:
+        return existing_page_id
+    if not my_page.isnumeric() or not their_page.isnumeric():
+        if cfg.verbose:
+            print(f"{other_nam}: {my_page} or {their_page} is not numeric")
+        return None
+    diff = int(my_page) - int(their_page)
+    page_metadata = bhl.get_page_metadata(existing_page_id)
+    item_id = int(page_metadata["ItemID"])
+    item_metadata = bhl.get_item_metadata(item_id)
+    if item_metadata is None:
+        if cfg.verbose:
+            print(f"{other_nam}: no metadata for item {item_id}")
+        return None
+    page_mapping = bhl.get_page_id_to_index(item_id)
+    existing_page_idx = page_mapping.get(existing_page_id)
+    if existing_page_idx is None:
+        if cfg.verbose:
+            print(f"{other_nam}: no index for page {existing_page_id}")
+        return None
+    expected_page_idx = existing_page_idx + diff
+    if not (0 <= expected_page_idx < len(item_metadata["Pages"])):
+        if cfg.verbose:
+            print(f"{other_nam}: {expected_page_idx} is out of range")
+        return None
+    inferred_page_id = item_metadata["Pages"][expected_page_idx]["PageID"]
+    if diff > 0:
+        start = existing_page_id
+        end = inferred_page_id
+    else:
+        start = inferred_page_id
+        end = existing_page_id
+    if not bhl.is_contiguous_range(
+        item_id, start, end, page_mapping, allow_unnumbered=False, verbose=cfg.verbose
+    ):
+        if cfg.verbose:
+            print(
+                f"{other_nam}: {existing_page_id} and {inferred_page_id} are not"
+                " contiguous"
+            )
+        return None
+    possible_pages = bhl.get_possible_pages(item_id, my_page)
+    if inferred_page_id not in possible_pages:
+        if cfg.verbose:
+            print(
+                f"{other_nam}: {inferred_page_id} not in possible pages {possible_pages}"
+            )
+        return None
+    return inferred_page_id
+
+
 @LINT.add("infer_bhl_page_from_other_names")
 def infer_bhl_page_from_other_names(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if not _should_look_for_page_links(nam):
@@ -3300,66 +3340,16 @@ def infer_bhl_page_from_other_names(nam: Name, cfg: LintConfig) -> Iterable[str]
     inferred_pages: set[int] = set()
     for other_nam in other_new_names:
         for tag in other_nam.get_tags(other_nam.type_tags, TypeTag.AuthorityPageLink):
-            parsed = urlparse.parse_url(tag.url)
-            if not isinstance(parsed, urlparse.BhlPage):
-                if cfg.verbose:
-                    print(f"{other_nam}: {tag} is not a BHL page URL")
-                continue
-            existing_page_id = parsed.page_id
-            if tag.page == page and nam.page_described == other_nam.page_described:
-                inferred_pages.add(existing_page_id)
-            if not tag.page.isnumeric() or not page.isnumeric():
-                if cfg.verbose:
-                    print(f"{other_nam}: {tag.page} or {page} is not numeric")
-                continue
-            diff = int(page) - int(tag.page)
-            page_metadata = bhl.get_page_metadata(existing_page_id)
-            item_id = int(page_metadata["ItemID"])
-            item_metadata = bhl.get_item_metadata(item_id)
-            if item_metadata is None:
-                if cfg.verbose:
-                    print(f"{other_nam}: no metadata for item {item_id}")
-                continue
-            page_mapping = bhl.get_page_id_to_index(item_id)
-            existing_page_idx = page_mapping.get(existing_page_id)
-            if existing_page_idx is None:
-                if cfg.verbose:
-                    print(f"{other_nam}: no index for page {existing_page_id}")
-                continue
-            expected_page_idx = existing_page_idx + diff
-            if not (0 <= expected_page_idx < len(item_metadata["Pages"])):
-                if cfg.verbose:
-                    print(f"{other_nam}: {expected_page_idx} is out of range")
-                continue
-            inferred_page_id = item_metadata["Pages"][expected_page_idx]["PageID"]
-            if diff > 0:
-                start = existing_page_id
-                end = inferred_page_id
-            else:
-                start = inferred_page_id
-                end = existing_page_id
-            if not bhl.is_contiguous_range(
-                item_id,
-                start,
-                end,
-                page_mapping,
-                allow_unnumbered=False,
-                verbose=cfg.verbose,
-            ):
-                if cfg.verbose:
-                    print(
-                        f"{other_nam}: {existing_page_id} and {inferred_page_id} are not"
-                        " contiguous"
-                    )
-                continue
-            possible_pages = bhl.get_possible_pages(item_id, page)
-            if inferred_page_id not in possible_pages:
-                if cfg.verbose:
-                    print(
-                        f"{other_nam}: {inferred_page_id} not in possible pages {possible_pages}"
-                    )
-                continue
-            inferred_pages.add(inferred_page_id)
+            inferred_page = maybe_infer_page_from_other_name(
+                cfg=cfg,
+                other_nam=other_nam,
+                my_page=page,
+                their_page=tag.page,
+                is_same_page=other_nam.page_described == nam.page_described,
+                url=tag.url,
+            )
+            if inferred_page is not None:
+                inferred_pages.add(inferred_page)
     if len(inferred_pages) != 1:
         if cfg.verbose:
             print(f"{nam}: no single inferred page from other names ({inferred_pages})")
@@ -3393,102 +3383,69 @@ def infer_bhl_page_from_article(nam: Name, cfg: LintConfig) -> Iterable[str]:
         if cfg.verbose:
             print(f"{nam}: no original citation or URL")
         return
-    parsed = urlparse.parse_url(art.url)
     for page_described in extract_pages(nam.page_described):
         if any(
             isinstance(tag, TypeTag.AuthorityPageLink) and tag.page == page_described
             for tag in nam.type_tags
         ):
             continue
-        match parsed:
-            case urlparse.BhlPage(start_page_id):
-                if (
-                    art.start_page is not None
-                    and art.start_page == art.end_page == page_described
-                ):
-                    tag = TypeTag.AuthorityPageLink(
-                        url=f"https://www.biodiversitylibrary.org/page/{start_page_id}",
-                        confirmed=True,
-                        page=page_described,
-                    )
-                    message = f"inferred BHL page {start_page_id} from article citation where start_page == end_page (add {tag})"
-                    if cfg.autofix:
-                        print(f"{nam}: {message}")
-                        nam.add_type_tag(tag)
-                    else:
-                        yield message
-                yield from _infer_bhl_page_from_article_page(
-                    nam, cfg, start_page_id, page_described
-                )
-            case urlparse.BhlItem(item_id):
-                yield from _infer_bhl_page_from_item(nam, cfg, item_id, page_described)
-            case urlparse.BhlPart(part_id):
-                yield from _infer_bhl_page_from_part(nam, cfg, part_id, page_described)
-            case _:
-                if cfg.verbose:
-                    print(f"{nam}: not a BHL page URL")
-
-
-def _infer_bhl_page_from_part(
-    nam: Name, cfg: LintConfig, part_id: int, page_described: str
-) -> Iterable[str]:
-    pages = bhl.get_possible_pages_from_part(part_id, page_described)
-    if len(pages) != 1:
-        if cfg.verbose:
-            print(
-                f"{nam}: no single page for {part_id} {pages} (using {page_described})"
+        maybe_pair = infer_bhl_page_id(page_described, nam, art, cfg)
+        if maybe_pair is not None:
+            page_id, message = maybe_pair
+            tag = TypeTag.AuthorityPageLink(
+                url=f"https://www.biodiversitylibrary.org/page/{page_id}",
+                confirmed=True,
+                page=page_described,
             )
-        return
-
-    tag = TypeTag.AuthorityPageLink(
-        url=f"https://www.biodiversitylibrary.org/page/{pages[0]}",
-        confirmed=True,
-        page=page_described,
-    )
-    message = f"inferred BHL page {pages[0]} from part citation (add {tag})"
-    if cfg.autofix:
-        print(f"{nam}: {message}")
-        nam.add_type_tag(tag)
-    else:
-        yield message
+            message = f"inferred BHL page {page_id} from {message} (add {tag})"
+            if cfg.autofix:
+                print(f"{nam}: {message}")
+                nam.add_type_tag(tag)
+            else:
+                yield message
 
 
-def _infer_bhl_page_from_item(
-    nam: Name, cfg: LintConfig, item_id: int, page_described: str
-) -> Iterable[str]:
-    pages = bhl.get_possible_pages(item_id, page_described)
-    if len(pages) != 1:
-        if cfg.verbose:
-            print(f"{nam}: no single page for {item_id} {pages}")
-        return
-
-    tag = TypeTag.AuthorityPageLink(
-        url=f"https://www.biodiversitylibrary.org/page/{pages[0]}",
-        confirmed=True,
-        page=page_described,
-    )
-    message = f"inferred BHL page {pages[0]} from item citation (add {tag})"
-    if cfg.autofix:
-        print(f"{nam}: {message}")
-        nam.add_type_tag(tag)
-    else:
-        yield message
+def infer_bhl_page_id(
+    page: str, obj: object, art: Article, cfg: LintConfig
+) -> tuple[int, str] | None:
+    if art.url is None:
+        return None
+    match urlparse.parse_url(art.url):
+        case urlparse.BhlPage(start_page_id):
+            if art.start_page is not None and art.start_page == art.end_page == page:
+                return start_page_id, "article citation where start_page == end_page"
+            return _infer_bhl_page_from_article_page(obj, art, cfg, start_page_id, page)
+        case urlparse.BhlItem(item_id):
+            pages = bhl.get_possible_pages(item_id, page)
+            if len(pages) != 1:
+                if cfg.verbose:
+                    print(f"{obj}: no single page for {item_id} {pages}")
+                return None
+            return pages[0], "item citation"
+        case urlparse.BhlPart(part_id):
+            pages = bhl.get_possible_pages_from_part(part_id, page)
+            if len(pages) != 1:
+                if cfg.verbose:
+                    print(f"{obj}: no single page for {part_id} {pages} (using {page})")
+                return None
+            return pages[0], "part citation"
+    return None
 
 
 def _infer_bhl_page_from_article_page(
-    nam: Name, cfg: LintConfig, start_page_id: int, page_described: str
-) -> Iterable[str]:
-    if nam.original_citation is None or nam.original_citation.end_page is None:
+    obj: object, art: Article, cfg: LintConfig, start_page_id: int, page_described: str
+) -> tuple[int, str] | None:
+    if art.end_page is None:
         if cfg.verbose:
-            print(f"{nam}: no citation")
-        return
+            print(f"{obj}: no citation")
+        return None
     start_page_metadata = bhl.get_page_metadata(start_page_id)
     if not start_page_metadata:
         if cfg.verbose:
-            print(f"{nam}: no metadata for start page")
-        return
+            print(f"{obj}: no metadata for start page")
+        return None
     item_id = int(start_page_metadata["ItemID"])
-    possible_end_pages = bhl.get_possible_pages(item_id, nam.original_citation.end_page)
+    possible_end_pages = bhl.get_possible_pages(item_id, art.end_page)
     page_mapping = bhl.get_page_id_to_index(item_id)
     possible_end_pages = [
         page
@@ -3504,14 +3461,14 @@ def _infer_bhl_page_from_article_page(
     if len(possible_pages) != len(possible_end_pages):
         if cfg.verbose:
             print(
-                f"{nam}: different number of possible description and end pages"
+                f"{obj}: different number of possible description and end pages"
                 f" {possible_pages} {possible_end_pages}"
             )
-        return
+        return None
     if not possible_pages:
         if cfg.verbose:
-            print(f"{nam}: no possible pages in item {item_id}")
-        return
+            print(f"{obj}: no possible pages in item {item_id}")
+        return None
     for possible_page, possible_end_page in zip(
         possible_pages, possible_end_pages, strict=True
     ):
@@ -3520,7 +3477,7 @@ def _infer_bhl_page_from_article_page(
         ):
             if cfg.verbose:
                 print(
-                    f"{nam}: page {possible_page} is not contiguous with start page {start_page_id}"
+                    f"{obj}: page {possible_page} is not contiguous with start page {start_page_id}"
                 )
             continue
         if not bhl.is_contiguous_range(
@@ -3528,21 +3485,12 @@ def _infer_bhl_page_from_article_page(
         ):
             if cfg.verbose:
                 print(
-                    f"{nam}: end page {possible_end_page} is not contiguous with {possible_page}"
+                    f"{obj}: end page {possible_end_page} is not contiguous with {possible_page}"
                 )
             continue
 
-        tag = TypeTag.AuthorityPageLink(
-            url=f"https://www.biodiversitylibrary.org/page/{possible_page}",
-            confirmed=True,
-            page=page_described,
-        )
-        message = f"inferred BHL page {possible_page} from page citation (add {tag})"
-        if cfg.autofix:
-            print(f"{nam}: {message}")
-            nam.add_type_tag(tag)
-        else:
-            yield message
+        return possible_page, "page citation"
+    return None
 
 
 @LINT.add("move_to_lowest_rank")

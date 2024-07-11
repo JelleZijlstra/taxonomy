@@ -1,16 +1,25 @@
 """Lint steps for classification entries."""
 
+import itertools
+import subprocess
 from collections import Counter, defaultdict
 from collections.abc import Container, Iterable
 from dataclasses import dataclass, field
 from itertools import takewhile
 
-from taxonomy import getinput
+from taxonomy import getinput, urlparse
+from taxonomy.apis import bhl
 from taxonomy.db import helpers
 from taxonomy.db.constants import Group, NomenclatureStatus, Rank
+from taxonomy.db.models.article.article import ArticleTag
 from taxonomy.db.models.base import LintConfig
 from taxonomy.db.models.lint import IgnoreLint, Lint
 from taxonomy.db.models.name import Name, NameTag
+from taxonomy.db.models.name.lint import (
+    extract_pages,
+    infer_bhl_page_id,
+    maybe_infer_page_from_other_name,
+)
 from taxonomy.db.models.taxon import Taxon
 
 from .ce import ClassificationEntry, ClassificationEntryTag
@@ -328,3 +337,276 @@ def check_corrected_name(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[s
     corrected_name = ce.get_corrected_name()
     if corrected_name is None and ce.rank not in (Rank.synonym, Rank.informal):
         yield "cannot infer corrected name; add CorrectedName tag"
+
+
+@LINT.add("authority_page_link")
+def check_must_have_authority_page_link(
+    ce: ClassificationEntry, cfg: LintConfig
+) -> Iterable[str]:
+    if ce.has_tag(ClassificationEntryTag.PageLink):
+        return
+    if not ce.article.has_bhl_link_with_pages():
+        return
+    yield "must have page link"
+
+
+@LINT.add("check_bhl_page")
+def check_bhl_page(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
+    wrong_bhl_pages = ce.article.has_tag(ArticleTag.BHLWrongPageNumbers)
+    for tag in ce.get_tags(ce.tags, ClassificationEntryTag.PageLink):
+        parsed = urlparse.parse_url(tag.url)
+        if not isinstance(parsed, urlparse.BhlPage):
+            continue
+        if wrong_bhl_pages:
+            page_metadata = bhl.get_page_metadata(parsed.page_id)
+            try:
+                page_number = page_metadata["PageNumbers"][0]["Number"]
+            except LookupError:
+                pass
+            else:
+                if page_number == tag.page:
+                    yield f"page number {tag.page} matches BHL data for {tag.url}, but {ce.article} is marked as having wrong page numbers"
+        if ce.article.url is None:
+            yield f"name has BHL page, but original citation has no URL: {ce.article}"
+            continue
+        parsed_url = urlparse.parse_url(ce.article.url)
+        if not isinstance(parsed_url, urlparse.BhlUrl):
+            yield f"name has BHL page, but citation has non-BHL URL {ce.article.url}"
+            continue
+        yield from _check_bhl_item_matches(ce, tag)
+        yield from _check_bhl_bibliography_matches(ce, tag)
+
+
+def _check_bhl_item_matches(
+    ce: ClassificationEntry,
+    tag: ClassificationEntryTag.PageLink,  # type:ignore[name-defined]
+) -> Iterable[str]:
+    item_id = bhl.get_bhl_item_from_url(tag.url)
+    if item_id is None:
+        yield f"cannot find BHL item for {tag.url}"
+        return
+    if ce.article.url is None:
+        return
+    citation_item_ids = list(ce.article.get_possible_bhl_item_ids())
+    if not citation_item_ids:
+        return
+    if item_id not in citation_item_ids:
+        yield f"BHL item mismatch: {item_id} (name) not in {citation_item_ids} (citation)"
+
+
+def _check_bhl_bibliography_matches(
+    ce: ClassificationEntry,
+    tag: ClassificationEntryTag.PageLink,  # type:ignore[name-defined]
+) -> Iterable[str]:
+    bibliography_id = bhl.get_bhl_bibliography_from_url(tag.url)
+    if bibliography_id is None:
+        yield f"cannot find BHL bibliography for {tag.url}"
+        return
+    if ce.article.url is None:
+        return
+    citation_biblio_ids = list(ce.article.get_possible_bhl_bibliography_ids())
+    if bibliography_id not in citation_biblio_ids:
+        yield f"BHL item mismatch: {bibliography_id} (name) not in {citation_biblio_ids} (citation)"
+
+
+def _should_look_for_page_links(ce: ClassificationEntry) -> bool:
+    if ce.page is None:
+        return False
+    pages = list(extract_pages(ce.page))
+    tags = list(ce.get_tags(ce.tags, ClassificationEntryTag.PageLink))
+    if len(tags) >= len(pages):
+        return False
+    return True
+
+
+def _maybe_add_bhl_page(
+    ce: ClassificationEntry, cfg: LintConfig, page_obj: bhl.PossiblePage
+) -> Iterable[str]:
+    message = f"inferred BHL page {page_obj}"
+    if cfg.autofix:
+        print(f"{ce}: {message}")
+        tag = ClassificationEntryTag.PageLink(
+            url=page_obj.page_url, page=str(page_obj.page_number)
+        )
+        ce.add_tag(tag)
+    else:
+        yield message
+    print(page_obj.page_url)
+
+
+@LINT.add("infer_bhl_page")
+def infer_bhl_page(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
+    if not _should_look_for_page_links(ce):
+        if cfg.verbose:
+            print(f"{ce}: Skip because no page or enough tags")
+        return
+    confident_candidates = [
+        page
+        for page in get_candidate_bhl_pages(ce, verbose=cfg.verbose)
+        if page.is_confident
+    ]
+    for _, group_iter in itertools.groupby(
+        confident_candidates, lambda page: page.page_number
+    ):
+        group = list(group_iter)
+        if len(group) == 1:
+            yield from _maybe_add_bhl_page(ce, cfg, group[0])
+        else:
+            if cfg.verbose or cfg.manual_mode:
+                print(f"Reject for {ce} because multiple pages with name:")
+                for page_obj in group:
+                    print(page_obj.page_url)
+            if cfg.manual_mode:
+                ce.display()
+                ce.article.display()
+                for page_obj in group:
+                    if not _should_look_for_page_links(ce):
+                        break
+                    print(page_obj.page_url)
+                    subprocess.check_call(["open", page_obj.page_url])
+                    if getinput.yes_no("confirm? ", callbacks=ce.get_adt_callbacks()):
+                        yield from _maybe_add_bhl_page(ce, cfg, page_obj)
+                        break
+
+
+def get_candidate_bhl_pages(
+    ce: ClassificationEntry, *, verbose: bool = False
+) -> Iterable[bhl.PossiblePage]:
+    tags = list(ce.get_tags(ce.tags, ClassificationEntryTag.PageLink))
+    known_pages = [
+        parsed_url.page_id
+        for tag in tags
+        if isinstance((parsed_url := urlparse.parse_url(tag.url)), urlparse.BhlPage)
+    ]
+    year = ce.article.numeric_year()
+    contains_text: list[str] = [ce.name]
+    known_item_id = ce.article.get_bhl_item_id()
+    if known_item_id is None:
+        if verbose:
+            print(f"{ce}: Skip because no BHL item on article")
+        return
+
+    pages = list(extract_pages(ce.page))
+    for page in pages:
+        possible_pages = list(
+            bhl.find_possible_pages(
+                [],
+                year=year,
+                start_page=page,
+                contains_text=contains_text,
+                known_item_id=known_item_id,
+            )
+        )
+        possible_pages = [
+            page for page in possible_pages if page.page_id not in known_pages
+        ]
+        confident_pages = [page for page in possible_pages if page.is_confident]
+        if not confident_pages:
+            if verbose:
+                print(f"Reject for {ce} because no confident pages")
+                for page_obj in possible_pages:
+                    print(page_obj.page_url)
+            yield from possible_pages
+        else:
+            yield from confident_pages
+
+
+@LINT.add("infer_bhl_page_from_other_names")
+def infer_bhl_page_from_other_names(
+    ce: ClassificationEntry, cfg: LintConfig
+) -> Iterable[str]:
+    if not _should_look_for_page_links(ce):
+        if cfg.verbose:
+            print(f"{ce}: not looking for BHL URL")
+        return
+    if ce.page is None:
+        if cfg.verbose:
+            print(f"{ce}: no page")
+        return
+    # Just so we don't waste effort adding incorrect pages before the link has been
+    # confirmed on the article.
+    if not ce.article.has_bhl_link():
+        if cfg.verbose:
+            print(f"{ce}: original citation has no BHL link")
+        return
+    pages = list(extract_pages(ce.page))
+    if len(pages) != 1:
+        if cfg.verbose:
+            print(f"{ce}: no single page from {ce.page}")
+        return
+    (page,) = pages
+    other_names = [
+        ce
+        for ce in ce.article.get_classification_entries()
+        if ce.has_tag(ClassificationEntryTag.PageLink)
+    ]
+    if not other_names:
+        if cfg.verbose:
+            print(f"{ce}: no other new names")
+        return
+    inferred_pages: set[int] = set()
+    for other_nam in other_names:
+        for tag in other_nam.get_tags(other_nam.tags, ClassificationEntryTag.PageLink):
+            inferred_page_id = maybe_infer_page_from_other_name(
+                cfg=cfg,
+                other_nam=other_nam,
+                url=tag.url,
+                my_page=page,
+                their_page=tag.page,
+                is_same_page=ce.page == other_nam.page,
+            )
+            if inferred_page_id is not None:
+                inferred_pages.add(inferred_page_id)
+    if len(inferred_pages) != 1:
+        if cfg.verbose:
+            print(f"{ce}: no single inferred page from other names ({inferred_pages})")
+        return
+    (inferred_page_id,) = inferred_pages
+    tag = ClassificationEntryTag.PageLink(
+        url=f"https://www.biodiversitylibrary.org/page/{inferred_page_id}", page=page
+    )
+    message = f"inferred BHL page {inferred_page_id} from other names (add {tag})"
+    if cfg.autofix:
+        print(f"{ce}: {message}")
+        ce.add_tag(tag)
+    else:
+        yield message
+
+
+@LINT.add("bhl_page_from_article")
+def infer_bhl_page_from_article(
+    ce: ClassificationEntry, cfg: LintConfig
+) -> Iterable[str]:
+    if not _should_look_for_page_links(ce):
+        if cfg.verbose:
+            print(f"{ce}: not looking for BHL URL")
+        return
+    if ce.page is None:
+        if cfg.verbose:
+            print(f"{ce}: no page described")
+        return
+    art = ce.article
+    if art is None or art.url is None:
+        if cfg.verbose:
+            print(f"{ce}: no original citation or URL")
+        return
+    for page_described in extract_pages(ce.page):
+        if any(
+            isinstance(tag, ClassificationEntryTag.PageLink)
+            and tag.page == page_described
+            for tag in ce.tags
+        ):
+            continue
+        maybe_pair = infer_bhl_page_id(page_described, ce, art, cfg)
+        if maybe_pair is not None:
+            page_id, message = maybe_pair
+            tag = ClassificationEntryTag.PageLink(
+                url=f"https://www.biodiversitylibrary.org/page/{page_id}",
+                page=page_described,
+            )
+            message = f"inferred BHL page {page_id} from {message} (add {tag})"
+            if cfg.autofix:
+                print(f"{ce}: {message}")
+                ce.add_tag(tag)
+            else:
+                yield message
