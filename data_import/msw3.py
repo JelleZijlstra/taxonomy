@@ -9,6 +9,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from typing import Any, Generic, TypeVar
 
+from taxonomy.db import helpers
 from taxonomy.db.constants import Rank
 from taxonomy.db.models.classification_entry import (
     ClassificationEntry,
@@ -534,14 +535,18 @@ def parse_synonyms(text: str, parent: dict[str, Any]) -> Iterable[dict[str, Any]
             continue
         if current_subspecies is not None:
             parent_name = f"{parent['name']} {current_subspecies}"
-            parent_rank = Rank.species
+            parent_rank = Rank.subspecies
         else:
             parent_name = parent["name"]
             parent_rank = parent["rank"]
         yield {
             "rank": Rank.synonym,
             "name": data_dict["name"],
-            "authority": data_dict["author"],
+            "authority": (
+                helpers.clean_string(data_dict["author"])
+                if data_dict["author"]
+                else None
+            ),
             "year": data_dict["year"],
             "comment": data_dict.get("comment"),
             "raw_data": json.dumps(data_dict),
@@ -610,12 +615,19 @@ def translate_row(row: dict[str, str]) -> Iterable[dict[str, Any]]:
         final_citation = None
     else:
         final_citation = citation
+    name = helpers.clean_string(
+        name.replace("variegates", "variegatus")
+        .replace("maculats", "maculatus")
+        .replace(" princes", " princeps")
+        .replace(" gentiles", " gentilis")
+        .strip()
+    )
     new_row = {
         "name": name,
         "rank": rank,
-        "parent": parent,
+        "parent": parent.strip() if parent is not None else None,
         "parent_rank": parent_rank,
-        "authority": row["Author"],
+        "authority": helpers.clean_string(row["Author"]),
         "year": row["ActualDate"] or row["Date"],
         "citation": final_citation,
         "type_locality": row["TypeLocality"],
@@ -626,10 +638,7 @@ def translate_row(row: dict[str, str]) -> Iterable[dict[str, Any]]:
         syns = row["Status"]
     else:
         syns = row["Synonyms"]
-    for syn in parse_synonyms(syns, new_row):
-        syn["parent"] = name
-        syn["parent_rank"] = rank
-        yield syn
+    yield from parse_synonyms(syns, new_row)
 
 
 def main(argv: list[str]) -> None:
@@ -637,56 +646,110 @@ def main(argv: list[str]) -> None:
     reader = csv.DictReader(lines)
     rows = [row for line in reader for row in translate_row(line)]
     rank_to_name_to_row: dict[Rank, dict[str, dict[str, Any]]] = defaultdict(dict)
+    final_rows = []
     for row in rows:
         if row["rank"] is Rank.synonym:
+            final_rows.append(row)
             continue
         if row["name"] in rank_to_name_to_row[row["rank"]]:
             print("duplicate", row, rank_to_name_to_row[row["rank"]][row["name"]])
+        else:
+            final_rows.append(row)
         rank_to_name_to_row[row["rank"]][row["name"]] = row
+    rows = final_rows
 
     for row in rows:
         if row["rank"] is Rank.order:
             continue
-        parent = rank_to_name_to_row.get(row["parent_rank"], {}).get(row["parent"])
-        if parent is None:
+        parent_row = rank_to_name_to_row.get(row["parent_rank"], {}).get(row["parent"])
+        if parent_row is None:
             print(row)
 
     art = SOURCE.get_source()
-    for row in rows:
-        try:
-            ClassificationEntry.get(
-                article=art,
-                name=row["name"],
-                rank=row["rank"],
-                raw_data=row["raw_data"],
-            )
-        except ClassificationEntry.DoesNotExist:
-            pass
-        else:
+    ces = art.get_classification_entries()
+    valid_name_to_ce: dict[tuple[str, Rank], ClassificationEntry] = {}
+    for ce in ces:
+        if ce.rank is Rank.synonym:
             continue
-        if row.get("comment"):
-            tags = [ClassificationEntryTag.CommentClassificationEntry(row["comment"])]
-        else:
-            tags = []
+        if (ce.name, ce.rank) in valid_name_to_ce:
+            print("Duplicate", ce, valid_name_to_ce[(ce.name, ce.rank)])
+        valid_name_to_ce[(ce.name, ce.rank)] = ce
+    name_to_ces: dict[str, list[ClassificationEntry]] = defaultdict(list)
+    for ce in ces:
+        assert ce.raw_data is not None
+        name_to_ces[ce.name].append(ce)
+
+    remaining_ces = set(ces)
+    for row in rows:
         if row.get("parent") is None:
             parent = None
         else:
-            parent = ClassificationEntry.get(
-                article=art, name=row["parent"], rank=row["parent_rank"]
+            parent = valid_name_to_ce[(row["parent"], row["parent_rank"])]
+        possible_names = name_to_ces[row["name"]]
+        if row.get("comment"):
+            comment = helpers.clean_string(row["comment"])
+            tags = [ClassificationEntryTag.CommentClassificationEntry(comment)]
+        else:
+            tags = []
+        possible_names = [
+            name
+            for name in possible_names
+            if name.rank is row["rank"]
+            and name.authority == row["authority"]
+            and name.year == row["year"]
+            and all(tag in name.tags for tag in tags)
+        ]
+        if parent is not None:
+            possible_names = [
+                name
+                for name in possible_names
+                if name.parent == parent
+                or (
+                    name.parent is not None
+                    and name.parent.rank is Rank.species
+                    and name.parent == parent.parent
+                )
+            ]
+        if not possible_names:
+            print(
+                "Create CE",
+                row["rank"].name,
+                row["name"],
+                row["authority"],
+                row["year"],
+                row["parent"],
+                row["parent_rank"],
             )
-        ce = ClassificationEntry.create(
-            article=art,
-            name=row["name"],
-            rank=row["rank"],
-            parent=parent,
-            authority=row["authority"],
-            year=row["year"],
-            citation=row.get("citation"),
-            type_locality=row.get("type_locality"),
-            raw_data=row["raw_data"],
-            tags=tags,
-        )
-        print(ce)
+            new_ce = ClassificationEntry.create(
+                article=art,
+                name=row["name"],
+                rank=row["rank"],
+                parent=parent,
+                authority=row["authority"],
+                year=row["year"],
+                citation=row.get("citation"),
+                type_locality=row.get("type_locality"),
+                raw_data=row["raw_data"],
+                tags=tags,
+            )
+            print(new_ce)
+        else:
+            if len(possible_names) > 1:
+                possible_names = [
+                    name for name in possible_names if name.tags == tuple(tags)
+                ]
+            if len(possible_names) > 1:
+                print("Multiple names", possible_names, row)
+            ce = possible_names[0]
+            remaining_ces.discard(ce)
+            if row["raw_data"] != ce.raw_data:
+                print("Set raw data for", ce)
+                ce.raw_data = row["raw_data"]
+            if parent != ce.parent:
+                print(f"Change parent for {ce} from {ce.parent} to {parent}", row)
+                ce.parent = parent
+    for ce in remaining_ces:
+        print("Delete", ce)
 
 
 if __name__ == "__main__":
