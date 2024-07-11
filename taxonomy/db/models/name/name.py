@@ -2079,6 +2079,11 @@ class Name(BaseModel):
         assert self.status == Status.valid
         self.original_name = self.taxon.valid_name
 
+    def get_root_name_forms(self) -> Iterable[str]:
+        if self.species_name_complex is None:
+            return [self.root_name]
+        return self.species_name_complex.get_forms(self.root_name)
+
     def get_normalized_root_name(self) -> str:
         if self.species_name_complex is None:
             return self.root_name

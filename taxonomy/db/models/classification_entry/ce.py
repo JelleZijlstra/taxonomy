@@ -12,18 +12,19 @@ from taxonomy.adt import ADT
 from taxonomy.db import models
 from taxonomy.db.constants import NomenclatureStatus, Rank
 from taxonomy.db.models.article import Article
-from taxonomy.db.models.base import ADTField, BaseModel, LintConfig
+from taxonomy.db.models.base import ADTField, BaseModel, LintConfig, TextOrNullField
 
 
 class ClassificationEntryTag(ADT):
     CommentClassificationEntry(text=str, tag=1)  # type: ignore[name-defined]
+    TextualRank(text=str, tag=2)  # type: ignore[name-defined]
 
 
 class ClassificationEntry(BaseModel):
     creation_event = events.Event["ClassificationEntry"]()
     save_event = events.Event["ClassificationEntry"]()
     call_sign = "CE"
-    label_field = "id"
+    label_field = "name"
     clirm_table_name = "classification_entry"
 
     article = Field[Article]("article_id", related_name="classification_entries")
@@ -38,6 +39,7 @@ class ClassificationEntry(BaseModel):
     year = Field[str | None]()
     citation = Field[str | None]()
     type_locality = Field[str | None]()
+    raw_data = TextOrNullField()
     tags = ADTField[ClassificationEntryTag](is_ordered=False)
 
     def edit(self) -> None:
@@ -94,17 +96,23 @@ class ClassificationEntry(BaseModel):
         parts.append(f" (#{self.id})")
         return "".join(parts)
 
-    def display(self, *, full: bool = False, depth: int = 0) -> None:
+    def display(
+        self, *, full: bool = False, depth: int = 0, max_depth: int = 2
+    ) -> None:
         print("  " * depth + str(self))
+        if not full:
+            max_depth -= 1
+        if max_depth <= 0:
+            return
         for child in self.children:
-            child.display(full=full, depth=depth + 4)
+            child.display(full=full, depth=depth + 4, max_depth=max_depth)
 
-    def add_incorrect_subsequent_spelling_for_genus(self) -> None:
+    def add_incorrect_subsequent_spelling_for_genus(self) -> models.Name | None:
         genus_name, *_ = self.name.split()
         print(f"Adding incorrect subsequent spelling for genus {genus_name!r}...")
         target = models.Name.getter(None).get_one("genus> ")
         if target is None:
-            return
+            return None
         nam = target.add_variant(
             genus_name,
             status=NomenclatureStatus.incorrect_subsequent_spelling,
@@ -114,16 +122,20 @@ class ClassificationEntry(BaseModel):
             interactive=False,
         )
         if nam is None:
-            return
+            return None
         nam.original_rank = Rank.genus
         nam.format()
         nam.edit_until_clean()
+        return nam
 
-    def add_incorrect_subsequent_spelling(self) -> None:
+    def add_incorrect_subsequent_spelling(
+        self, target: models.Name | None = None
+    ) -> models.Name | None:
         print(f"Adding incorrect subsequent spelling for {self.name!r}...")
-        target = models.Name.getter(None).get_one("name> ")
         if target is None:
-            return
+            target = models.Name.getter(None).get_one("name> ")
+        if target is None:
+            return None
         nam = target.add_variant(
             self.name.split()[-1],
             status=NomenclatureStatus.incorrect_subsequent_spelling,
@@ -133,15 +145,47 @@ class ClassificationEntry(BaseModel):
             interactive=False,
         )
         if nam is None:
-            return
+            return None
         nam.format()
         nam.edit_until_clean()
+        return nam
+
+    def add_family_group_synonym(
+        self, type: models.Name | None = None
+    ) -> models.Name | None:
+        print(f"Adding family-group synonym for {self.name!r}...")
+        if type is None:
+            type = models.Name.getter(None).get_one("type> ")
+        if type is None:
+            return None
+        stem = type.get_stem()
+        if stem is None:
+            stem = getinput.get_line("stem> ")
+        taxon = type.taxon.parent_of_rank(Rank.genus).parent
+        if taxon is None:
+            print("No taxon found.")
+            return None
+        nam = taxon.add_syn(
+            root_name=stem,
+            year=self.article.year,
+            original_name=self.name,
+            original_citation=self.article,
+            page_described=self.page,
+            interactive=False,
+        )
+        if nam is None:
+            return None
+        nam.author_tags = self.article.author_tags
+        nam.format()
+        nam.edit_until_clean()
+        return nam
 
     def get_adt_callbacks(self) -> getinput.CallbackMap:
         return {
             **super().get_adt_callbacks(),
             "add_incorrect_subsequent_spelling": self.add_incorrect_subsequent_spelling,
             "add_incorrect_subsequent_spelling_for_genus": self.add_incorrect_subsequent_spelling_for_genus,
+            "add_family_group_synonym": self.add_family_group_synonym,
         }
 
     @classmethod
@@ -156,3 +200,6 @@ class ClassificationEntry(BaseModel):
             print_choices=False,
             history_key=("parent", art.id),
         )
+
+    def should_exempt_from_string_cleaning(self, field: str) -> bool:
+        return field == "raw_data"

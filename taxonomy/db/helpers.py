@@ -123,11 +123,18 @@ def group_of_rank(rank: Rank) -> Group:
         raise ValueError("Unrecognized rank: " + str(rank))
 
 
+def strip_standard_suffixes(name: str) -> str:
+    for suffix in VALID_SUFFIXES:
+        if name.endswith(suffix):
+            return name.removesuffix(suffix)
+    return name
+
+
 def name_with_suffixes_removed(name: str) -> Iterable[str]:
     suffixes = [*SUFFIXES.values(), "ida", "oidae", "ides", "i", "a", "ae", "ia"]
     for suffix in suffixes:
         if name.endswith(suffix):
-            yield re.sub(rf"{suffix}$", "", name)
+            yield name.removesuffix(suffix)
 
 
 def suffix_of_rank(rank: Rank) -> str:
@@ -1201,7 +1208,7 @@ def normalize_root_name_for_homonymy(root_name: str) -> str:
     # "fasciiventris"/"fasciventris" omitted for now
     # 58.15. presence or absence of -i before a suffix or termination (e.g. timorensis, timoriensis; comstockana, comstockiana)
     root_name = re.sub(r"iensis$", "ensis", root_name)
-    root_name = re.sub(r"ianus$", "anus", root_name)
+    root_name = re.sub(r"ian(us|a)$", "anus", root_name)
     # Adding one: "monticola" vs. "monticolus", where one is interpreted as an
     # adjective and the other as a noun in apposition.
     root_name = re.sub(r"(a|um)$", "us", root_name)
