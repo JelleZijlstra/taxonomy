@@ -644,6 +644,13 @@ class MDDSpecies:
             )
 
 
+def syn_status_is_any(syn: Syn, statuses: Iterable[str]) -> bool:
+    syn_statuses = {
+        status.strip() for status in syn["MDD_nomenclature_status"].split("|")
+    }
+    return any(status in syn_statuses for status in statuses)
+
+
 @dataclass
 class SpeciesWithSyns:
     species: MDDSpecies
@@ -654,8 +661,7 @@ class SpeciesWithSyns:
         names = [
             syn
             for syn in self.syns
-            if syn["MDD_nomenclature_status"]
-            not in ("name_combination", "subsequent_usage")
+            if syn_status_is_any(syn, ("name_combination", "subsequent_usage"))
         ]
         names = sorted(
             names,

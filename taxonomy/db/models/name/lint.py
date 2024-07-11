@@ -3688,6 +3688,33 @@ def duplicate_genus(name: Name) -> str:
     return f"{name.root_name} {name.taxonomic_authority()}, {name.year}, {citation}"
 
 
+def remove_duplicates(key: object, names: list[Name], cfg: LintConfig) -> None:
+    if len(names) < 2:
+        return
+    names = sorted(names, key=lambda nam: nam.id)
+    print(f"Removing duplicates for {key}")
+    for name in names[1:]:
+        print(f"Remove name: {name}")
+        if cfg.autofix:
+            if cfg.interactive and getinput.yes_no("Remove? "):
+                name.merge(names[0])
+
+
+@LINT.add_duplicate_finder(
+    "duplicate_name",
+    query=Name.select_valid().filter(Name.original_citation != None),
+    fixer=remove_duplicates,
+)
+def duplicate_name(name: Name) -> tuple[object, ...]:
+    assert name.original_citation is not None
+    return (
+        name.original_citation.id,
+        name.original_name,
+        name.corrected_original_name,
+        name.page_described,
+    )
+
+
 @LINT.add("guess_repository")
 def guess_repository(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.collection is not None:
@@ -3748,9 +3775,12 @@ def _maybe_add_name_combination(
 ) -> Iterable[str]:
     message = f"adding name combination based on {ce}"
     if cfg.autofix:
+        corrected_name = ce.get_corrected_name()
+        if corrected_name is None:
+            return
         print(f"{nam}: {message}")
         new_name = nam.add_variant(
-            ce.name.split()[-1],
+            corrected_name.split()[-1],
             status=NomenclatureStatus.name_combination,
             paper=ce.article,
             page_described=ce.page,
@@ -3758,10 +3788,12 @@ def _maybe_add_name_combination(
             interactive=False,
         )
         if new_name is not None:
+            new_name.corrected_original_name = corrected_name
             new_name.add_tag(NameTag.MappedClassificationEntry(ce))
             new_name.format()
             if cfg.interactive:
                 new_name.edit_until_clean()
+        ce.mapped_name = new_name
     else:
         yield message
 
@@ -3774,7 +3806,9 @@ def infer_name_combinations(nam: Name, cfg: LintConfig) -> Iterable[str]:
     by_name: dict[str, list[ClassificationEntry]] = defaultdict(list)
     for ce in ces:
         # skip MSW3 for now
-        if ce.article.id == 9291:
+        if ce.article.id == 9291 or (
+            ce.article.parent is not None and ce.article.parent.id == 9291
+        ):
             continue
         by_name[ce.name].append(ce)
     expected_name_combinations = [
@@ -3782,14 +3816,17 @@ def infer_name_combinations(nam: Name, cfg: LintConfig) -> Iterable[str]:
         for ces in by_name.values()
     ]
     for ce in expected_name_combinations:
-        if ce.name == nam.corrected_original_name:
+        corrected_name = ce.get_corrected_name()
+        if corrected_name is None:
             continue
-        ce_root_name = ce.name.split()[-1]
+        if corrected_name == nam.corrected_original_name:
+            continue
+        ce_root_name = corrected_name.split()[-1]
         if ce_root_name not in nam.get_root_name_forms():
             continue
         existing = list(
             Name.select_valid().filter(
-                Name.corrected_original_name == ce.name,
+                Name.corrected_original_name == corrected_name,
                 Name.group == Group.species,
                 Name.taxon == nam.taxon,
                 Name.nomenclature_status == NomenclatureStatus.name_combination,

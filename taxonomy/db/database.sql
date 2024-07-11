@@ -368,3 +368,5 @@ CREATE TABLE `classification_entry` (
     `type_locality` varchar(255) default null,
     `tags` text default null
 );
+
+CREATE INDEX "mapped_name" on "classification_entry" (`mapped_name_id`);

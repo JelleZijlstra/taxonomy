@@ -498,7 +498,11 @@ class BaseModel(Model):
         return json.loads(data)
 
     def map_tags_field(
-        self, field: ADTField[Any], fn: Callable[[adt.ADT], adt.ADT | None]
+        self,
+        field: ADTField[Any],
+        fn: Callable[[adt.ADT], adt.ADT | None],
+        *,
+        dry_run: bool = False,
     ) -> None:
         existing_tags = getattr(self, field.name)
         if existing_tags is None:
@@ -509,10 +513,19 @@ class BaseModel(Model):
             if new_tag is not None:
                 new_tags.append(new_tag)
         if existing_tags != tuple(new_tags):
-            setattr(self, field.name, tuple(new_tags))
+            if dry_run:
+                print(f"Changing tags on {self}")
+                getinput.print_diff(existing_tags, tuple(new_tags))
+            else:
+                setattr(self, field.name, tuple(new_tags))
 
     def map_tags_by_type(
-        self, field: ADTField[Any], typ: builtins.type[Any], fn: Callable[[Any], Any]
+        self,
+        field: ADTField[Any],
+        typ: builtins.type[Any],
+        fn: Callable[[Any], Any],
+        *,
+        dry_run: bool = False,
     ) -> None:
         def map_fn(tag: adt.ADT) -> adt.ADT:
             new_args = []
@@ -527,7 +540,7 @@ class BaseModel(Model):
                     new_args.append(val)
             return tag_type(*new_args)
 
-        self.map_tags_field(field, map_fn)
+        self.map_tags_field(field, map_fn, dry_run=dry_run)
 
     @classmethod
     def compute_all_derived_fields(cls) -> None:

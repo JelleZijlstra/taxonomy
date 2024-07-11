@@ -912,13 +912,19 @@ class Name(BaseModel):
         tag_id = tag_cls._tag
         return any(tag[0] == tag_id for tag in self.get_raw_tags_field("tags"))
 
-    def map_type_tags(self, fn: Callable[[Any], Any | None]) -> None:
-        self.map_tags_field(Name.type_tags, fn)
+    def map_type_tags(
+        self, fn: Callable[[Any], Any | None], *, dry_run: bool = False
+    ) -> None:
+        self.map_tags_field(Name.type_tags, fn, dry_run=dry_run)
 
     def map_type_tags_by_type(
-        self, typ: builtins.type[Any], fn: Callable[[Any], Any]
+        self,
+        typ: builtins.type[Any],
+        fn: Callable[[Any], Any],
+        *,
+        dry_run: bool = False,
     ) -> None:
-        self.map_tags_by_type(Name.type_tags, typ, fn)
+        self.map_tags_by_type(Name.type_tags, typ, fn, dry_run=dry_run)
 
     def replace_original_citation(self, new_citation: Article | None = None) -> None:
         if new_citation is None:

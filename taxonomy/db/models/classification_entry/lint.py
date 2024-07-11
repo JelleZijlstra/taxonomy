@@ -94,7 +94,7 @@ def check_move_to_child(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[st
 def check_missing_mapped_name(
     ce: ClassificationEntry, cfg: LintConfig
 ) -> Iterable[str]:
-    if ce.rank is Rank.synonym:
+    if ce.rank in (Rank.synonym, Rank.informal):
         return
     if ce.mapped_name is None:
         candidates = list(get_filtered_possible_mapped_names(ce))
@@ -113,17 +113,28 @@ def check_missing_mapped_name(
 @LINT.add("mapped_name")
 def check_mapped_name(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
     if ce.mapped_name is not None:
-        if ce.mapped_name.nomenclature_status is NomenclatureStatus.name_combination:
-            target = ce.mapped_name.get_tag_target(NameTag.NameCombinationOf)
-            message = f"mapped_name is name_combination; change target to {target}"
-            if cfg.autofix and target is not None:
-                print(f"{ce}: {message}")
-                ce.mapped_name = target
-            else:
-                yield message
+        if ce.article.get_date_object() < ce.mapped_name.get_date_object():
+            yield f"classification entry predates mapped name {ce.mapped_name}"
         corrected_name = ce.get_corrected_name()
         if corrected_name is None:
             return
+        combinations = ce.mapped_name.get_derived_field("name_combinations")
+        if combinations:
+            combinations = [
+                nam
+                for nam in combinations
+                if nam.corrected_original_name == corrected_name
+            ]
+            if combinations:
+                combinations = sorted(combinations, key=lambda n: n.get_date_object())
+                target = combinations[0]
+                assert isinstance(target, Name)
+                message = f"mapped_name is original; change target to name combination {target}"
+                if cfg.autofix and target is not None:
+                    print(f"{ce}: {message}")
+                    ce.mapped_name = target
+                else:
+                    yield message
         match ce.mapped_name.group:
             case Group.high | Group.genus:
                 if corrected_name != ce.mapped_name.root_name:
@@ -150,6 +161,13 @@ def check_mapped_name(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]
                             ce.mapped_name = ce.add_incorrect_subsequent_spelling(
                                 ce.mapped_name
                             )
+                if (
+                    ce.mapped_name is not None
+                    and ce.mapped_name.nomenclature_status
+                    is NomenclatureStatus.name_combination
+                    and ce.mapped_name.corrected_original_name != corrected_name
+                ):
+                    yield f"mapped_name corrected_original_name does not match: {corrected_name} vs {ce.mapped_name.corrected_original_name}"
     elif ce.rank not in (Rank.synonym, Rank.informal):
         yield "missing mapped_name"
 
