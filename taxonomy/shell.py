@@ -80,6 +80,7 @@ COMMAND_SETS = [
     models.article.check.CS,
     export.CS,
     models.article.add_data.CS,
+    models.classification_entry.ce.CS,
     _CS,
 ]
 

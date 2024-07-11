@@ -7,7 +7,7 @@ from typing import Any, Self
 
 from clirm import Field
 
-from taxonomy import events, getinput
+from taxonomy import command_set, events, getinput
 from taxonomy.adt import ADT
 from taxonomy.db import helpers, models
 from taxonomy.db.constants import Group, NomenclatureStatus, Rank
@@ -79,12 +79,17 @@ class ClassificationEntry(BaseModel):
         self.tags = (*self.tags, tag)  # type: ignore[assignment]
 
     @classmethod
-    def create_for_article(cls, art: Article, fields: Sequence[Field[Any]]) -> None:
+    def create_for_article(
+        cls, art: Article, fields: Sequence[Field[Any]]
+    ) -> list[ClassificationEntry]:
+        entries: list[ClassificationEntry] = []
         while True:
             entry = cls.create_one(art, fields)
             if entry is None:
                 break
             entry.edit()
+            entries.append(entry)
+        return entries
 
     @classmethod
     def create_one(
@@ -235,3 +240,26 @@ class ClassificationEntry(BaseModel):
 
     def should_exempt_from_string_cleaning(self, field: str) -> bool:
         return field == "raw_data"
+
+
+CS = command_set.CommandSet("ce", "Commands related to classification entries.")
+
+
+@CS.register
+def classification_entries_for_article() -> None:
+    art = Article.getter(None).get_one("article> ")
+    if art is None:
+        return
+    extra_fields: list[Field[Any]] = []
+    for field in (
+        ClassificationEntry.authority,
+        ClassificationEntry.year,
+        ClassificationEntry.citation,
+        ClassificationEntry.type_locality,
+    ):
+        if getinput.yes_no(f"Add {field.name}?"):
+            extra_fields.append(field)
+    entries = ClassificationEntry.create_for_article(art, extra_fields)
+    for entry in entries:
+        entry.format()
+        entry.edit_until_clean()
