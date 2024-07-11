@@ -3912,3 +3912,50 @@ def check_duplicate_name_combinations(nam: Name, cfg: LintConfig) -> Iterable[st
             nam.merge(earlier[0], copy_fields=False)
         else:
             yield message
+
+
+@LINT.add("mark_incorrect_subsequent_spelling_as_name_combination")
+def mark_incorrect_subsequent_spelling_as_name_combination(
+    nam: Name, cfg: LintConfig
+) -> Iterable[str]:
+    if nam.nomenclature_status != NomenclatureStatus.incorrect_subsequent_spelling:
+        return
+    target = nam.get_tag_target(NameTag.IncorrectSubsequentSpellingOf)
+    existing = [
+        nam
+        for nam in Name.select_valid().filter(
+            Name.root_name == nam.root_name,
+            Name.group == nam.group,
+            Name.taxon == nam.taxon,
+        )
+        if nam.get_tag_target(NameTag.IncorrectSubsequentSpellingOf) == target
+    ]
+    existing = sorted(existing, key=lambda nam: (nam.get_date_object(), nam.id))
+    earliest, *rest = existing
+    if not rest:
+        return
+    if nam == earliest:
+        if nam.has_name_tag(NameTag.NameCombinationOf):
+            yield f"is the earliest occurrence of misspelling {nam.root_name} and should not be marked as name combination"
+        if nam.has_name_tag(NameTag.SubsequentUsageOf):
+            yield f"is the earliest occurrence of misspelling {nam.root_name} and should not be marked as name combination"
+    else:
+        if earliest.corrected_original_name == nam.corrected_original_name:
+            expected_tag = NameTag.SubsequentUsageOf(earliest, "")
+        else:
+            expected_tag = NameTag.NameCombinationOf(earliest, "")
+        if expected_tag not in nam.tags:
+            message = f"changing to name combination of {earliest}"
+            new_tags = [
+                tag
+                for tag in nam.tags
+                if not isinstance(
+                    tag, (NameTag.SubsequentUsageOf, NameTag.NameCombinationOf)
+                )
+            ] + [expected_tag]
+            getinput.print_diff(nam.tags, new_tags)
+            if cfg.autofix:
+                print(f"{nam}: {message}")
+                nam.tags = new_tags  # type: ignore[assignment]
+            else:
+                yield message
