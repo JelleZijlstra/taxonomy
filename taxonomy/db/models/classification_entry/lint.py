@@ -11,7 +11,7 @@ from taxonomy import getinput, urlparse
 from taxonomy.apis import bhl
 from taxonomy.db import helpers
 from taxonomy.db.constants import Group, NomenclatureStatus, Rank
-from taxonomy.db.models.article.article import ArticleTag
+from taxonomy.db.models.article.article import Article, ArticleTag
 from taxonomy.db.models.base import LintConfig
 from taxonomy.db.models.lint import IgnoreLint, Lint
 from taxonomy.db.models.name import Name, NameTag
@@ -62,8 +62,32 @@ def check_tags(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
 
 @LINT.add("parent")
 def check_parent(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
-    if ce.parent is not None and ce.parent.article != ce.article:
+    if ce.parent is not None and not articles_match(ce.article, ce.parent.article):
         yield "parent from different article"
+
+
+def articles_match(child_art: Article, parent_art: Article) -> bool:
+    if child_art == parent_art:
+        return True
+    if child_art.parent is not None:
+        if child_art.parent == parent_art:
+            return True
+        if child_art.parent == parent_art.parent:
+            return True
+    return False
+
+
+@LINT.add("move_to_child")
+def check_move_to_child(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
+    if ce.parent is None:
+        return
+    if ce.article == ce.parent.article.parent:
+        message = f"move to child citation {ce.parent.article}"
+        if cfg.autofix:
+            print(f"{ce}: {message}")
+            ce.article = ce.parent.article
+        else:
+            yield message
 
 
 @LINT.add("missing_mapped_name")

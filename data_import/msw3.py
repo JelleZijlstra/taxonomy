@@ -666,7 +666,9 @@ def main(argv: list[str]) -> None:
             print(row)
 
     art = SOURCE.get_source()
-    ces = art.get_classification_entries()
+    ces = list(art.get_classification_entries())
+    for child in art.article_set:
+        ces += child.get_classification_entries()
     valid_name_to_ce: dict[tuple[str, Rank], ClassificationEntry] = {}
     for ce in ces:
         if ce.rank is Rank.synonym:

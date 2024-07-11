@@ -3837,7 +3837,7 @@ def infer_name_combinations(nam: Name, cfg: LintConfig) -> Iterable[str]:
                     message = f"removing duplicate name combination {duplicate}"
                     if cfg.autofix:
                         print(f"{duplicate}: {message}")
-                        duplicate.status = Status.removed
+                        duplicate.merge(existing[0], copy_fields=False)
                     else:
                         yield message
 
@@ -3851,7 +3851,10 @@ def check_duplicate_name_combinations(nam: Name, cfg: LintConfig) -> Iterable[st
         Name.taxon == nam.taxon,
         Name.corrected_original_name == nam.corrected_original_name,
     )
-    earlier = [dupe for dupe in dupes if dupe.get_date_object() < nam.get_date_object()]
+    earlier = sorted(
+        [dupe for dupe in dupes if dupe.get_date_object() < nam.get_date_object()],
+        key=lambda dupe: dupe.get_date_object(),
+    )
     if earlier:
         if any(
             isinstance(
@@ -3866,4 +3869,9 @@ def check_duplicate_name_combinations(nam: Name, cfg: LintConfig) -> Iterable[st
             for tag in nam.type_tags
         ):
             return
-        yield f"earlier name combinations: {', '.join(str(dupe) for dupe in earlier)}"
+        message = f"remove because of earlier name combinations: {', '.join(str(dupe) for dupe in earlier)}"
+        if cfg.autofix and nam.has_name_tag(NameTag.MappedClassificationEntry):
+            print(f"{nam}: {message}")
+            nam.merge(earlier[0], copy_fields=False)
+        else:
+            yield message

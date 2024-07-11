@@ -1999,15 +1999,18 @@ class Name(BaseModel):
         new_taxon.recompute_name()
         return new_taxon
 
-    def merge(self, into: Name, *, allow_valid: bool = False) -> None:
+    def merge(
+        self, into: Name, *, allow_valid: bool = False, copy_fields: bool = True
+    ) -> None:
         if not allow_valid:
             assert self.status in (
                 Status.synonym,
                 Status.dubious,
             ), f"Can only merge synonymous names (not {self})"
-        if self.type_tags and into.type_tags:
-            into.type_tags += self.type_tags
-        self._merge_fields(into, exclude={"id"})
+        if copy_fields:
+            if self.type_tags and into.type_tags:
+                into.type_tags += self.type_tags
+            self._merge_fields(into, exclude={"id"})
         self.status = Status.redirect
         self.target = into
 
