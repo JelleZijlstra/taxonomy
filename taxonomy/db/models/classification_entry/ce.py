@@ -9,8 +9,8 @@ from clirm import Field
 
 from taxonomy import events, getinput
 from taxonomy.adt import ADT
-from taxonomy.db import models
-from taxonomy.db.constants import NomenclatureStatus, Rank
+from taxonomy.db import helpers, models
+from taxonomy.db.constants import Group, NomenclatureStatus, Rank
 from taxonomy.db.models.article import Article
 from taxonomy.db.models.base import ADTField, BaseModel, LintConfig, TextOrNullField
 
@@ -18,6 +18,8 @@ from taxonomy.db.models.base import ADTField, BaseModel, LintConfig, TextOrNullF
 class ClassificationEntryTag(ADT):
     CommentClassificationEntry(text=str, tag=1)  # type: ignore[name-defined]
     TextualRank(text=str, tag=2)  # type: ignore[name-defined]
+    CorrectedName(text=str, tag=3)  # type: ignore[name-defined]
+    PageLink(link=str, page=str, tag=4)  # type: ignore[name-defined]
 
 
 class ClassificationEntry(BaseModel):
@@ -44,6 +46,27 @@ class ClassificationEntry(BaseModel):
 
     def edit(self) -> None:
         self.fill_field("tags")
+
+    def get_corrected_name(self) -> str | None:
+        if corrected_name := self.get_corrected_name_without_tags():
+            return corrected_name
+        for tag in self.get_tags(self.tags, ClassificationEntryTag.CorrectedName):
+            return tag.text
+        return None
+
+    def get_corrected_name_without_tags(self) -> str | None:
+        group = self.get_group()
+        if group is Group.family:
+            return self.name
+        corrected_name = models.name.name.infer_corrected_original_name(
+            self.name, group
+        )
+        if corrected_name is not None:
+            return corrected_name
+        return None
+
+    def get_group(self) -> Group:
+        return helpers.group_of_rank(self.rank)
 
     def lint(self, cfg: LintConfig) -> Iterable[str]:
         yield from models.classification_entry.lint.LINT.run(self, cfg)

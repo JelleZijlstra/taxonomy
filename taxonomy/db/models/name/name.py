@@ -483,17 +483,10 @@ class Name(BaseModel):
     def infer_corrected_original_name(self, *, aggressive: bool = False) -> str | None:
         if not self.original_name:
             return None
-        original_name = clean_original_name(self.original_name)
         if self.nomenclature_status.permissive_corrected_original_name():
             return None
-        if self.group in (Group.genus, Group.high):
-            if re.match(r"^[A-Z][a-z]+$", original_name):
-                return original_name
-            if self.group is Group.genus:
-                match = re.match(r"^[A-Z][a-z]+ \(([A-Z][a-z]+)\)$", original_name)
-                if match:
-                    return match.group(1)
-        elif self.group is Group.family:
+        if self.group is Group.family:
+            original_name = clean_original_name(self.original_name)
             if (
                 self.nomenclature_status
                 is NomenclatureStatus.not_based_on_a_generic_name
@@ -521,27 +514,8 @@ class Name(BaseModel):
                         for suffix in helpers.VALID_SUFFIXES
                     ):
                         return f"{stem}idae"
-        elif self.group is Group.species:
-            if re.match(r"^[A-Z][a-z]+( [a-z]+){1,2}$", original_name):
-                if self.root_name == original_name.split(" ")[-1]:
-                    return original_name
-            if re.match(r"^[A-Z][a-z]+ [A-Z][a-z]+$", original_name):
-                genus, species = original_name.split()
-                return f"{genus} {species.lower()}"
-            match = re.match(
-                (
-                    r"^(?P<genus>[A-Z][a-z]+)( \([A-Z][a-z]+\))?"
-                    r" (?P<species>[A-Z]?[a-z]+)((,? var\.)?"
-                    r" (?P<subspecies>[A-Z]?[a-z]+))?$"
-                ),
-                original_name,
-            )
-            if match:
-                name = f'{match.group("genus")} {match.group("species").lower()}'
-                if match.group("subspecies"):
-                    name += " " + match.group("subspecies").lower()
-                if self.root_name == name.split(" ")[-1]:
-                    return name
+        else:
+            return infer_corrected_original_name(self.original_name, self.group)
         return None
 
     def get_value_for_field(self, field: str, default: str | None = None) -> Any:
@@ -2460,6 +2434,35 @@ def clean_original_name(original_name: str) -> str:
     )
     original_name = re.sub(r"\s+", " ", original_name).strip()
     return re.sub(r"([a-z]{2})-([a-z]{2})", r"\1\2", original_name)
+
+
+def infer_corrected_original_name(original_name: str, group: Group) -> str | None:
+    original_name = clean_original_name(original_name)
+    if group in (Group.genus, Group.high):
+        if re.match(r"^[A-Z][a-z]+$", original_name):
+            return original_name
+    elif group is Group.family:
+        return None
+    elif group is Group.species:
+        if re.match(r"^[A-Z][a-z]+( [a-z]+){1,2}$", original_name):
+            return original_name
+        if re.match(r"^[A-Z][a-z]+ [A-Z][a-z]+$", original_name):
+            genus, species = original_name.split()
+            return f"{genus} {species.lower()}"
+        match = re.match(
+            (
+                r"^(?P<genus>[A-Z][a-z]+)( \([A-Z][a-z]+\))?"
+                r" (?P<species>[A-Z]?[a-z]+)((,? var\.)?"
+                r" (?P<subspecies>[A-Z]?[a-z]+))?$"
+            ),
+            original_name,
+        )
+        if match:
+            name = f'{match.group("genus")} {match.group("species").lower()}'
+            if match.group("subspecies"):
+                name += " " + match.group("subspecies").lower()
+            return name
+    return None
 
 
 def _stringify_tag(tag: adt.ADT) -> str:
