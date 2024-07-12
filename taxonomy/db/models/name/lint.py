@@ -50,7 +50,10 @@ from taxonomy.db.constants import (
 )
 from taxonomy.db.models.article import Article, ArticleTag, PresenceStatus
 from taxonomy.db.models.base import LintConfig
-from taxonomy.db.models.classification_entry.ce import ClassificationEntry
+from taxonomy.db.models.classification_entry.ce import (
+    ClassificationEntry,
+    ClassificationEntryTag,
+)
 from taxonomy.db.models.collection import (
     BMNH_COLLECTION,
     MULTIPLE_COLLECTION,
@@ -1482,7 +1485,11 @@ def check_corrected_original_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.nomenclature_status.permissive_corrected_original_name():
         return
     inferred = nam.infer_corrected_original_name()
-    if inferred is not None and inferred != nam.corrected_original_name:
+    if (
+        inferred is not None
+        and inferred != nam.corrected_original_name
+        and inferred.replace(" ", "") != nam.corrected_original_name.replace(" ", "")
+    ):
         yield _make_con_messsage(
             nam,
             f"inferred name {inferred!r} does not match current name"
@@ -3368,6 +3375,32 @@ def infer_bhl_page_from_other_names(nam: Name, cfg: LintConfig) -> Iterable[str]
         yield message
 
 
+@LINT.add("bhl_page_from_classification_entries")
+def infer_bhl_page_from_classification_entries(
+    nam: Name, cfg: LintConfig
+) -> Iterable[str]:
+    if not _should_look_for_page_links(nam):
+        return
+    for tag in nam.get_tags(nam.tags, NameTag.MappedClassificationEntry):
+        ce = tag.ce
+        if ce.article != nam.original_citation:
+            continue
+        new_tags = [
+            TypeTag.AuthorityPageLink(url=tag.url, confirmed=True, page=tag.page)
+            for tag in ce.tags
+            if isinstance(tag, ClassificationEntryTag.PageLink)
+        ]
+        if not new_tags:
+            continue
+        message = f"inferred BHL page from classification entry {ce}: {new_tags}"
+        if cfg.autofix:
+            print(f"{nam}: {message}")
+            for tag in new_tags:
+                nam.add_type_tag(tag)
+        else:
+            yield message
+
+
 @LINT.add("bhl_page_from_article")
 def infer_bhl_page_from_article(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if not _should_look_for_page_links(nam):
@@ -3945,6 +3978,8 @@ def mark_incorrect_subsequent_spelling_as_name_combination(
         )
         if nam.get_tag_target(NameTag.IncorrectSubsequentSpellingOf) == target
     ]
+    if not existing:
+        return
     existing = sorted(existing, key=lambda nam: (nam.get_date_object(), nam.id))
     earliest, *rest = existing
     if not rest:

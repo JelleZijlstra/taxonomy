@@ -14,7 +14,7 @@ from taxonomy.db.constants import Group, NomenclatureStatus, Rank
 from taxonomy.db.models.article.article import Article, ArticleTag
 from taxonomy.db.models.base import LintConfig
 from taxonomy.db.models.lint import IgnoreLint, Lint
-from taxonomy.db.models.name import Name, NameTag
+from taxonomy.db.models.name import Name, NameTag, TypeTag
 from taxonomy.db.models.name.lint import (
     extract_pages,
     infer_bhl_page_id,
@@ -55,7 +55,7 @@ def check_tags(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
         yield "multiple CorrectedName tags"
     elif (
         counts[ClassificationEntryTag.CorrectedName] == 1
-        and ce.get_corrected_name_without_tags() is not None
+        and ce.get_corrected_name_without_tags() == ce.get_corrected_name()
     ):
         yield "unnecessary CorrectedName tag"
 
@@ -240,8 +240,6 @@ class CandidateName:
         if corrected_name is None:
             corrected_name = self.name
         if self.name.corrected_original_name != corrected_name:
-            score += 10
-        if self.name.original_name != corrected_name:
             score += 10
         associated_taxa = Taxon.select_valid().filter(Taxon.base_name == self.name)
         if not any(t.valid_name == corrected_name for t in associated_taxa):
@@ -552,6 +550,32 @@ def get_candidate_bhl_pages(
             yield from possible_pages
         else:
             yield from confident_pages
+
+
+@LINT.add("infer_bhl_page_from_mapped_name")
+def infer_bhl_page_from_mapped_name(
+    ce: ClassificationEntry, cfg: LintConfig
+) -> Iterable[str]:
+    if ce.mapped_name is None:
+        return
+    if ce.article != ce.mapped_name.original_citation:
+        return
+    if not _should_look_for_page_links(ce):
+        return
+    new_tags = [
+        ClassificationEntryTag.PageLink(url=tag.url, page=tag.page)
+        for tag in ce.mapped_name.type_tags
+        if isinstance(tag, TypeTag.AuthorityPageLink)
+    ]
+    if not new_tags:
+        return
+    message = f"inferred BHL page from mapped name {ce.mapped_name}: {new_tags}"
+    if cfg.autofix:
+        print(f"{ce}: {message}")
+        for tag in new_tags:
+            ce.add_tag(tag)
+    else:
+        yield message
 
 
 @LINT.add("infer_bhl_page_from_other_names")

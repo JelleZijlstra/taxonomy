@@ -542,19 +542,19 @@ class Name(BaseModel):
             else:
                 return super().get_value_for_field(field, default=default)
         elif field == "corrected_original_name":
-            inferred = self.infer_corrected_original_name()
-            if inferred is not None:
-                print(
-                    f"inferred corrected_original_name to be {inferred!r} from"
-                    f" {self.original_name!r}"
-                )
-                return inferred
+            if self.corrected_original_name is None:
+                inferred = self.infer_corrected_original_name()
+                if inferred is not None:
+                    print(
+                        f"inferred corrected_original_name to be {inferred!r} from"
+                        f" {self.original_name!r}"
+                    )
+                    return inferred
+            if self.corrected_original_name is not None:
+                default = self.corrected_original_name
             else:
-                if self.corrected_original_name is not None:
-                    default = self.corrected_original_name
-                else:
-                    default = self.original_name
-                return super().get_value_for_field(field, default=default)
+                default = self.original_name
+            return super().get_value_for_field(field, default=default)
         elif field == "original_rank":
             if self.original_rank is None:
                 inferred_rank = self.infer_original_rank()

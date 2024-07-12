@@ -323,7 +323,6 @@ class NomenclatureStatus(enum.IntEnum):
                 cls.based_on_homonym,
                 cls.based_on_a_suppressed_name,
                 cls.type_not_treated_as_valid,
-                cls.subsequent_usage,
                 cls.name_combination,
                 cls.not_intended_as_a_scientific_name,
                 cls.not_nominative_singular,
@@ -331,6 +330,7 @@ class NomenclatureStatus(enum.IntEnum):
             ],
             # Spelling issues that produce unavailable names.
             [cls.incorrect_subsequent_spelling, cls.incorrect_original_spelling],
+            [cls.subsequent_usage],
             [cls.nomen_nudum],
             # Potentially available under some circumstances
             [cls.variety_or_form],

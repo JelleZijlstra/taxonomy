@@ -48,10 +48,10 @@ class ClassificationEntry(BaseModel):
         self.fill_field("tags")
 
     def get_corrected_name(self) -> str | None:
-        if corrected_name := self.get_corrected_name_without_tags():
-            return corrected_name
         for tag in self.get_tags(self.tags, ClassificationEntryTag.CorrectedName):
             return tag.text
+        if corrected_name := self.get_corrected_name_without_tags():
+            return corrected_name
         return None
 
     def get_corrected_name_without_tags(self) -> str | None:
@@ -143,7 +143,10 @@ class ClassificationEntry(BaseModel):
             child.display(full=full, depth=depth + 4, max_depth=max_depth)
 
     def add_incorrect_subsequent_spelling_for_genus(self) -> models.Name | None:
-        genus_name, *_ = self.name.split()
+        name = self.get_corrected_name()
+        if name is None:
+            return None
+        genus_name, *_ = name.split()
         print(f"Adding incorrect subsequent spelling for genus {genus_name!r}...")
         target = models.Name.getter(None).get_one("genus> ")
         if target is None:
@@ -167,12 +170,15 @@ class ClassificationEntry(BaseModel):
         self, target: models.Name | None = None
     ) -> models.Name | None:
         print(f"Adding incorrect subsequent spelling for {self.name!r}...")
+        name = self.get_corrected_name()
+        if name is None:
+            return None
         if target is None:
             target = models.Name.getter(None).get_one("name> ")
         if target is None:
             return None
         nam = target.add_variant(
-            self.name.split()[-1],
+            name.split()[-1],
             status=NomenclatureStatus.incorrect_subsequent_spelling,
             paper=self.article,
             page_described=self.page,
@@ -181,6 +187,7 @@ class ClassificationEntry(BaseModel):
         )
         if nam is None:
             return None
+        nam.corrected_original_name = name
         nam.add_tag(models.name.NameTag.MappedClassificationEntry(ce=self))
         nam.format()
         nam.edit_until_clean()
