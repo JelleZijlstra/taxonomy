@@ -3863,6 +3863,10 @@ def maybe_take_over_name(
         yield f"replace name combination {nam} with {ce}"
 
 
+def _is_msw3(art: Article) -> bool:
+    return art.id == 9291 or (art.parent is not None and art.parent.id == 9291)
+
+
 @LINT.add("infer_name_combinations")
 def infer_name_combinations(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.group is not Group.species:
@@ -3871,9 +3875,7 @@ def infer_name_combinations(nam: Name, cfg: LintConfig) -> Iterable[str]:
     by_name: dict[str, list[ClassificationEntry]] = defaultdict(list)
     for ce in ces:
         # skip MSW3 for now
-        if ce.article.id == 9291 or (
-            ce.article.parent is not None and ce.article.parent.id == 9291
-        ):
+        if _is_msw3(ce.article):
             continue
         by_name[ce.name].append(ce)
     expected_name_combinations = [
@@ -4132,3 +4134,62 @@ def _prefer_commented(
         if len(uncommented) > 1:
             message = f"remove one of duplicate tags {uncommented}"
     return to_remove, message
+
+
+@LINT.add("infer_tags_from_mapped_entries")
+def infer_tags_from_mapped_entries(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    if nam.group is not Group.species:
+        return
+    ces = list(nam.classification_entries)
+    if not ces:
+        return
+    tag_name = nam.get_variant_base_name()
+    if tag_name is None:
+        tag_name = nam
+    for ce in ces:
+        if _is_msw3(ce.article):
+            continue
+        location = ce.type_locality
+        if location and not any(
+            tag.source == ce.article
+            for tag in tag_name.get_tags(tag_name.type_tags, TypeTag.LocationDetail)
+        ):
+            tag = TypeTag.LocationDetail(location, ce.article)
+            message = f"adding location detail from {ce} to {tag_name}: {tag}"
+            if cfg.autofix:
+                print(f"{tag_name}: {message}")
+                tag_name.add_type_tag(tag)
+            else:
+                yield message
+        type_specimen = None
+        for tag in ce.tags:
+            if isinstance(tag, ClassificationEntryTag.TypeSpecimenData):
+                type_specimen = tag.text
+                break
+        if type_specimen is not None and not any(
+            tag.source == ce.article
+            for tag in tag_name.get_tags(tag_name.type_tags, TypeTag.SpecimenDetail)
+        ):
+            tag = TypeTag.SpecimenDetail(type_specimen, ce.article)
+            message = f"adding specimen detail from {ce} to {tag_name}: {tag}"
+            if cfg.autofix:
+                print(f"{tag_name}: {message}")
+                tag_name.add_type_tag(tag)
+            else:
+                yield message
+
+
+@LINT.add("matches_mapped")
+def check_matches_mapped_classification_entry(
+    nam: Name, cfg: LintConfig
+) -> Iterable[str]:
+    ces = list(nam.get_mapped_classification_entries())
+    if not ces:
+        return
+    for ce in ces:
+        if ce.name != nam.original_name:
+            yield f"mapped to {ce}, but {ce.name=} != {nam.original_name=}"
+        if ce.get_corrected_name() != nam.corrected_original_name:
+            yield f"mapped to {ce}, but {ce.get_corrected_name()} != {nam.corrected_original_name}"
+        if ce.page != nam.page_described:
+            yield f"mapped to {ce}, but {ce.page=} != {nam.page_described=}"

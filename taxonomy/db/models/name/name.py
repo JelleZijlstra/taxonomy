@@ -904,6 +904,10 @@ class Name(BaseModel):
         self.type_tags = tuple(t for t in type_tags if t != tag)  # type: ignore[assignment]
 
     @classmethod
+    def with_tag(cls, tag_cls: NameTagCons) -> Query[Name]:
+        return cls.select_valid().filter(Name.tags.contains(f"[{tag_cls._tag},"))
+
+    @classmethod
     def with_type_tag(cls, tag_cls: TypeTagCons) -> Query[Name]:
         return cls.select_valid().filter(Name.type_tags.contains(f"[{tag_cls._tag},"))
 
@@ -1122,9 +1126,9 @@ class Name(BaseModel):
                     NameTag.JustifiedEmendationOf,
                     NameTag.IncorrectOriginalSpellingOf,
                     NameTag.SubsequentUsageOf,
-                    NameTag.MisidentificationOf,
                     NameTag.MandatoryChangeOf,
                     NameTag.IncorrectSubsequentSpellingOf,
+                    NameTag.NameCombinationOf,
                 ),
             ):
                 return tag.name

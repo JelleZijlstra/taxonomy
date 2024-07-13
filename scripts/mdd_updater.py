@@ -160,6 +160,7 @@ VARIANT_OF_TAGS = (
     NameTag.SubsequentUsageOf,
     NameTag.JustifiedEmendationOf,
     NameTag.NameCombinationOf,
+    NameTag.MisidentificationOf,
 )
 HOMONYM_TAGS = (
     NameTag.PreoccupiedBy,
@@ -829,7 +830,7 @@ def run(*, dry_run: bool = True, taxon: Taxon, max_names: int | None = None) -> 
                 writer.writerow(
                     [
                         match_status,
-                        *[row.get(column, "") for column in missing_in_hesp_headings],
+                        *[row.get(column, "") for column in missing_in_hesp[0][1]],
                     ]
                 )
 
