@@ -81,13 +81,15 @@ class ClassificationEntry(BaseModel):
 
     @classmethod
     def create_for_article(
-        cls, art: Article, fields: Sequence[Field[Any]]
+        cls, art: Article, fields: Sequence[Field[Any]], *, format_each: bool = False
     ) -> list[ClassificationEntry]:
         entries: list[ClassificationEntry] = []
         while True:
             entry = cls.create_one(art, fields)
             if entry is None:
                 break
+            if format_each:
+                entry.format()
             entry.edit()
             entries.append(entry)
         return entries
@@ -278,7 +280,10 @@ def classification_entries_for_article() -> None:
     ):
         if getinput.yes_no(f"Add {field.name}?"):
             extra_fields.append(field)
-    entries = ClassificationEntry.create_for_article(art, extra_fields)
+    format_each = getinput.yes_no("Format each entry?")
+    entries = ClassificationEntry.create_for_article(
+        art, extra_fields, format_each=format_each
+    )
     for entry in entries:
         entry.format()
         entry.edit_until_clean()
