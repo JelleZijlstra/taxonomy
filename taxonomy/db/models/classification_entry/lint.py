@@ -677,3 +677,21 @@ def infer_bhl_page_from_article(
                 ce.add_tag(tag)
             else:
                 yield message
+
+
+@LINT.add("infer_page_from_name")
+def infer_page_from_name(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
+    if ce.page is not None:
+        return
+    if ce.mapped_name is None:
+        return
+    if ce.mapped_name.original_citation != ce.article:
+        return
+    if ce.mapped_name.page_described is None:
+        return
+    message = f"inferred page from mapped name: {ce.mapped_name.page_described}"
+    if cfg.autofix:
+        print(f"{ce}: {message}")
+        ce.page = ce.mapped_name.page_described
+    else:
+        yield message

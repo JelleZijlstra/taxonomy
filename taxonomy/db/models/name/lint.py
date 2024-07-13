@@ -4189,7 +4189,10 @@ def check_matches_mapped_classification_entry(
     for ce in ces:
         if ce.name != nam.original_name:
             yield f"mapped to {ce}, but {ce.name=} != {nam.original_name=}"
-        if ce.get_corrected_name() != nam.corrected_original_name:
+        if (
+            nam.group is not Group.family
+            and ce.get_corrected_name() != nam.corrected_original_name
+        ):
             yield f"mapped to {ce}, but {ce.get_corrected_name()} != {nam.corrected_original_name}"
         if ce.page != nam.page_described:
             yield f"mapped to {ce}, but {ce.page=} != {nam.page_described=}"
