@@ -1057,15 +1057,14 @@ def _check_preoccupation_tag(
     if nam.group != senior_name.group:
         yield f"is of a different group than supposed senior name {senior_name}"
     if senior_name.nomenclature_status is NomenclatureStatus.subsequent_usage:
-        for senior_name_tag in senior_name.get_tags(
-            senior_name.tags, NameTag.SubsequentUsageOf
-        ):
-            senior_name = senior_name_tag.name
+        senior_name = senior_name.get_tag_target(NameTag.SubsequentUsageOf)
+        assert senior_name is not None
     if senior_name.nomenclature_status is NomenclatureStatus.name_combination:
-        for senior_name_tag in senior_name.get_tags(
-            senior_name.tags, NameTag.NameCombinationOf
-        ):
-            senior_name = senior_name_tag.name
+        senior_name = senior_name.get_tag_target(NameTag.NameCombinationOf)
+        assert senior_name is not None
+    if senior_name.nomenclature_status is NomenclatureStatus.misidentification:
+        senior_name = senior_name.get_tag_target(NameTag.MisidentificationOf)
+        assert senior_name is not None
     if nam.has_priority_over(senior_name):
         yield f"has priority over supposed senior name {senior_name}"
     if nam.group is Group.species:
@@ -1145,6 +1144,7 @@ def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 NameTag.NomenNovumFor,
                 NameTag.JustifiedEmendationOf,
                 NameTag.SubsequentUsageOf,
+                NameTag.MisidentificationOf,
                 NameTag.NameCombinationOf,
             ),
         ):
@@ -1164,7 +1164,12 @@ def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                         f" target {tag.name}"
                     )
                     new_tag = NameTag.NameCombinationOf(tag.name, tag.comment)
-            elif nam.taxon != tag.name.taxon:
+                if nam.taxon != tag.name.taxon:
+                    yield f"{nam} is not assigned to the same name as {tag.name} and should be marked as a misidentification"
+                    new_tag = NameTag.MisidentificationOf(tag.name, tag.comment)
+            if nam.taxon != tag.name.taxon and not isinstance(
+                tag, NameTag.MisidentificationOf
+            ):
                 yield f"{nam} is not assigned to the same name as {tag.name}"
             if isinstance(tag, NameTag.VariantOf) and nam.original_citation is not None:
                 # should be specified to unjustified emendation or incorrect subsequent spelling
@@ -1173,6 +1178,7 @@ def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 tag,
                 (
                     NameTag.SubsequentUsageOf,
+                    NameTag.MisidentificationOf,
                     NameTag.NameCombinationOf,
                     NameTag.JustifiedEmendationOf,
                 ),
@@ -2642,6 +2648,7 @@ def _check_homonym_list(
         NameTag.VariantOf,
         NameTag.IncorrectSubsequentSpellingOf,
         NameTag.SubsequentUsageOf,
+        NameTag.MisidentificationOf,
         NameTag.NameCombinationOf,
         NameTag.AsEmendedBy,
     )
@@ -3988,7 +3995,7 @@ def mark_incorrect_subsequent_spelling_as_name_combination(
         if nam.has_name_tag(NameTag.NameCombinationOf):
             yield f"is the earliest occurrence of misspelling {nam.root_name} and should not be marked as name combination"
         if nam.has_name_tag(NameTag.SubsequentUsageOf):
-            yield f"is the earliest occurrence of misspelling {nam.root_name} and should not be marked as name combination"
+            yield f"is the earliest occurrence of misspelling {nam.root_name} and should not be marked as subsequent usage"
     else:
         if earliest.corrected_original_name == nam.corrected_original_name:
             expected_tag = NameTag.SubsequentUsageOf(earliest, "")

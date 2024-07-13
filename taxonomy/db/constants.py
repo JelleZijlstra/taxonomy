@@ -206,6 +206,7 @@ class NomenclatureStatus(enum.IntEnum):
     # unpublished because named in electronic supplementary material only
     unpublished_supplement = 54
     name_combination = 55
+    misidentification = 56
 
     def requires_type(self) -> bool:
         """Whether a name of this status should have a type designated."""
@@ -220,6 +221,7 @@ class NomenclatureStatus(enum.IntEnum):
             NomenclatureStatus.incorrect_subsequent_spelling,
             NomenclatureStatus.subsequent_usage,
             NomenclatureStatus.name_combination,
+            NomenclatureStatus.misidentification,
         }
 
     def can_preoccupy(self) -> bool:
@@ -248,6 +250,7 @@ class NomenclatureStatus(enum.IntEnum):
             NomenclatureStatus.zoological_formula,
             NomenclatureStatus.informal,
             NomenclatureStatus.subsequent_usage,
+            NomenclatureStatus.misidentification,
             NomenclatureStatus.name_combination,
             NomenclatureStatus.not_nominative_singular,
             NomenclatureStatus.before_1758,
@@ -330,7 +333,7 @@ class NomenclatureStatus(enum.IntEnum):
             ],
             # Spelling issues that produce unavailable names.
             [cls.incorrect_subsequent_spelling, cls.incorrect_original_spelling],
-            [cls.subsequent_usage],
+            [cls.subsequent_usage, cls.misidentification],
             [cls.nomen_nudum],
             # Potentially available under some circumstances
             [cls.variety_or_form],

@@ -20,6 +20,7 @@ class ClassificationEntryTag(ADT):
     TextualRank(text=str, tag=2)  # type: ignore[name-defined]
     CorrectedName(text=str, tag=3)  # type: ignore[name-defined]
     PageLink(url=str, page=str, tag=4)  # type: ignore[name-defined]
+    TypeSpecimenData(text=str, tag=5)  # type: ignore[name-defined]
 
 
 class ClassificationEntry(BaseModel):

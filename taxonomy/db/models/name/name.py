@@ -222,6 +222,13 @@ class Name(BaseModel):
             1,
         ),
         get_tag_based_derived_field(
+            "misidentifications",
+            lambda: Name,
+            "tags",
+            lambda: NameTag.MisidentificationOf,
+            1,
+        ),
+        get_tag_based_derived_field(
             "name_combinations",
             lambda: Name,
             "tags",
@@ -1115,6 +1122,7 @@ class Name(BaseModel):
                     NameTag.JustifiedEmendationOf,
                     NameTag.IncorrectOriginalSpellingOf,
                     NameTag.SubsequentUsageOf,
+                    NameTag.MisidentificationOf,
                     NameTag.MandatoryChangeOf,
                     NameTag.IncorrectSubsequentSpellingOf,
                 ),
@@ -1426,6 +1434,7 @@ class Name(BaseModel):
                     NameTag.JustifiedEmendationOf,
                     NameTag.IncorrectOriginalSpellingOf,
                     NameTag.SubsequentUsageOf,
+                    NameTag.MisidentificationOf,
                     NameTag.MandatoryChangeOf,
                     NameTag.IncorrectSubsequentSpellingOf,
                 ),
@@ -2571,6 +2580,8 @@ class NameTag(adt.ADT):
     # name can get replaced with a name combination from an earlier work.
     MappedClassificationEntry(ce=ClassificationEntry, tag=33)  # type: ignore[name-defined]
 
+    MisidentificationOf(name=Name, comment=NotRequired[str], tag=34)  # type: ignore[name-defined]
+
 
 CONSTRUCTABLE_STATUS_TO_TAG = {
     NomenclatureStatus.unjustified_emendation: NameTag.UnjustifiedEmendationOf,
@@ -2582,6 +2593,7 @@ CONSTRUCTABLE_STATUS_TO_TAG = {
     NomenclatureStatus.nomen_novum: NameTag.NomenNovumFor,
     NomenclatureStatus.incorrect_original_spelling: NameTag.IncorrectOriginalSpellingOf,
     NomenclatureStatus.subsequent_usage: NameTag.SubsequentUsageOf,
+    NomenclatureStatus.misidentification: NameTag.MisidentificationOf,
     NomenclatureStatus.name_combination: NameTag.NameCombinationOf,
     NomenclatureStatus.preoccupied: NameTag.PreoccupiedBy,
 }
