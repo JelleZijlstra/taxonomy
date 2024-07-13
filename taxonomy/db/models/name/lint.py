@@ -4009,3 +4009,122 @@ def mark_incorrect_subsequent_spelling_as_name_combination(
                 nam.tags = new_tags  # type: ignore[assignment]
             else:
                 yield message
+
+
+@LINT.add("infer_included_species")
+def infer_included_species(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    if nam.group is not Group.genus:
+        return
+    if nam.original_citation is None:
+        return
+    ces = list(nam.get_mapped_classification_entries())
+    if not ces:
+        return
+    if len(ces) > 1:
+        # Maybe if there's a subgenus? Let's see what we want to do in practical
+        # occurrences first.
+        yield f"maps to multiple classification entries: {ces}"
+        return
+    current_included_species = {
+        tag.name for tag in nam.type_tags if isinstance(tag, TypeTag.IncludedSpecies)
+    }
+    current_included_species_with_comments = {
+        tag.name
+        for tag in nam.type_tags
+        if isinstance(tag, TypeTag.IncludedSpecies) and tag.comment
+    }
+    for ce in ces:
+        included = ce.get_children_of_rank(Rank.species)
+        for child_ce in included:
+            if child_ce.mapped_name is None:
+                continue
+            if child_ce.mapped_name in current_included_species_with_comments:
+                continue
+            if child_ce.parent is None:
+                continue
+            if child_ce.parent != ce:
+                comment = (
+                    f"in {child_ce.parent.get_rank_string()} {child_ce.parent.name}"
+                )
+                if child_ce.page is not None:
+                    comment += f"; p. {child_ce.page}"
+            elif child_ce.page is not None:
+                comment = f"p. {child_ce.page}"
+            else:
+                comment = ""
+            if not comment and child_ce.mapped_name in current_included_species:
+                continue
+            tag = TypeTag.IncludedSpecies(child_ce.mapped_name, comment)
+            message = f"adding included species {child_ce.mapped_name} from {ce}: {tag}"
+            if cfg.autofix:
+                print(f"{nam}: {message}")
+                nam.add_type_tag(tag)
+            else:
+                yield message
+
+
+@LINT.add("duplicate_included_species")
+def check_duplicate_included_species(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    if nam.group is not Group.genus:
+        return
+    all_included: dict[  # type: ignore[name-defined]
+        Name, tuple[list[TypeTag.IncludedSpecies], list[TypeTag.IncludedSpecies]]
+    ] = defaultdict(lambda: ([], []))
+    for tag in nam.type_tags:
+        if isinstance(tag, TypeTag.IncludedSpecies):
+            key_name = tag.name
+            tag_target = key_name.get_tag_target(NameTag.NameCombinationOf)
+            if tag_target is not None:
+                key_name = tag_target
+            tag_target = key_name.get_tag_target(NameTag.SubsequentUsageOf)
+            if tag_target is not None:
+                key_name = tag_target
+            if key_name == tag.name:
+                all_included[key_name][1].append(tag)
+            else:
+                all_included[key_name][0].append(tag)
+    if not all_included:
+        return
+    tags_to_remove: set[TypeTag.IncludedSpecies] = set()  # type: ignore[name-defined]
+    for combinations, originals in all_included.values():
+        if len(combinations) + len(originals) == 1:
+            continue
+        if combinations:
+            tags_to_remove.update(originals)
+            if len({tag.name for tag in combinations}) > 1:
+                yield f"remove one of duplicate tags {combinations}"
+            else:
+                to_remove, message = _prefer_commented(combinations)
+                tags_to_remove.update(to_remove)
+                if message is not None:
+                    yield message
+        else:
+            to_remove, message = _prefer_commented(originals)
+            tags_to_remove.update(to_remove)
+            if message is not None:
+                yield message
+    if tags_to_remove:
+        message = f"remove duplicate IncludedSpecies tags {tags_to_remove}"
+        if cfg.autofix:
+            print(f"{nam}: {message}")
+            nam.type_tags = [tag for tag in nam.type_tags if tag not in tags_to_remove]  # type: ignore[assignment]
+        else:
+            yield message
+
+
+def _prefer_commented(
+    tags: list[TypeTag.IncludedSpecies],  # type: ignore[name-defined]
+) -> tuple[list[TypeTag.IncludedSpecies], str | None]:  # type: ignore[name-defined]
+    assert len({tag.name for tag in tags}) == 1
+    commented = [tag for tag in tags if tag.comment]
+    uncommented = [tag for tag in tags if not tag.comment]
+    message = None
+    if commented:
+        to_remove = uncommented
+        if len(commented) > 1:
+            message = f"remove one of duplicate tags {commented}"
+    else:
+        to_remove = []
+        if len(uncommented) > 1:
+            message = f"remove one of duplicate tags {uncommented}"
+    return to_remove, message

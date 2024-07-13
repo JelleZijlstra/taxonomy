@@ -2226,6 +2226,14 @@ class Name(BaseModel):
                     nams.add(nam)
         return arts, nams
 
+    def get_mapped_classification_entries(self) -> Iterable[models.ClassificationEntry]:
+        if self.original_citation is None:
+            return []
+        return models.ClassificationEntry.select_valid().filter(
+            models.ClassificationEntry.mapped_name == self,
+            models.ClassificationEntry.article == self.original_citation,
+        )
+
     @classmethod
     def add_hmw_tags(cls, family: str) -> None:
         while True:

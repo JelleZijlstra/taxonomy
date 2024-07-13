@@ -248,6 +248,19 @@ class ClassificationEntry(BaseModel):
     def should_exempt_from_string_cleaning(self, field: str) -> bool:
         return field == "raw_data"
 
+    def get_rank_string(self) -> str:
+        if self.rank is Rank.other:
+            for tag in self.tags:
+                if isinstance(tag, ClassificationEntryTag.TextualRank):
+                    return tag.text
+        return self.rank.name
+
+    def get_children_of_rank(self, rank: Rank) -> Iterable[ClassificationEntry]:
+        for child in self.children:
+            if child.rank is rank:
+                yield child
+            yield from child.get_children_of_rank(rank)
+
 
 CS = command_set.CommandSet("ce", "Commands related to classification entries.")
 
