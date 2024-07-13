@@ -661,7 +661,9 @@ class SpeciesWithSyns:
         names = [
             syn
             for syn in self.syns
-            if syn_status_is_any(syn, ("name_combination", "subsequent_usage"))
+            if not syn_status_is_any(
+                syn, ("name_combination", "subsequent_usage", "misidentification")
+            )
         ]
         names = sorted(
             names,

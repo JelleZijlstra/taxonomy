@@ -2018,7 +2018,11 @@ def check_data_level(nam: Name, cfg: LintConfig) -> Iterable[str]:
         case OriginalCitationDataLevel.no_citation:
             pass
         case OriginalCitationDataLevel.no_data:
-            if ndl < NameDataLevel.missing_details_tags:
+            if ndl < NameDataLevel.missing_details_tags and not (
+                nam.nomenclature_status is NomenclatureStatus.name_combination
+                and nam.original_citation is not None
+                and _is_msw3(nam.original_citation)
+            ):
                 yield f"has no data from original ({ocdl_reason}), but missing important fields: {ndl_reason}"
         case OriginalCitationDataLevel.some_data:
             if ndl is NameDataLevel.missing_crucial_fields:
@@ -2355,6 +2359,10 @@ def check_required_fields(nam: Name, cfg: LintConfig) -> Iterable[str]:
         and not nam.page_described
         and nam.original_citation.kind is not ArticleKind.no_copy
         and not nam.original_citation.has_tag(ArticleTag.NonOriginal)
+        and not (
+            nam.nomenclature_status is NomenclatureStatus.name_combination
+            and _is_msw3(nam.original_citation)
+        )
     ):
         yield "has original citation but no page_described"
     if (
@@ -3874,9 +3882,6 @@ def infer_name_combinations(nam: Name, cfg: LintConfig) -> Iterable[str]:
     ces = nam.classification_entries
     by_name: dict[str, list[ClassificationEntry]] = defaultdict(list)
     for ce in ces:
-        # skip MSW3 for now
-        if _is_msw3(ce.article):
-            continue
         by_name[ce.name].append(ce)
     expected_name_combinations = [
         min(ces, key=lambda ce: (ce.article.get_date_object(), ce.article.id))
@@ -4136,6 +4141,15 @@ def _prefer_commented(
     return to_remove, message
 
 
+def _resolve_variant(nam: Name, max_depth: int) -> Name:
+    if max_depth == 0:
+        raise ValueError(f"too deep for {nam}")
+    base_name = nam.get_variant_base_name()
+    if base_name is None:
+        return nam
+    return _resolve_variant(base_name, max_depth - 1)
+
+
 @LINT.add("infer_tags_from_mapped_entries")
 def infer_tags_from_mapped_entries(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.group is not Group.species:
@@ -4143,12 +4157,8 @@ def infer_tags_from_mapped_entries(nam: Name, cfg: LintConfig) -> Iterable[str]:
     ces = list(nam.classification_entries)
     if not ces:
         return
-    tag_name = nam.get_variant_base_name()
-    if tag_name is None:
-        tag_name = nam
+    tag_name = _resolve_variant(nam, 10)
     for ce in ces:
-        if _is_msw3(ce.article):
-            continue
         location = ce.type_locality
         if location and not any(
             tag.source == ce.article
