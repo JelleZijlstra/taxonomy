@@ -293,7 +293,11 @@ def check_year(art: Article, cfg: LintConfig) -> Iterable[str]:
 
     if inferred is not None and inferred != art.year:
         # Ignore obviously wrong ones (though eventually we should retire this)
-        if inferred.startswith("20") and art.numeric_year() < 1990:
+        if (
+            inferred.startswith("20")
+            and art.year is not None
+            and art.numeric_year() < 1990
+        ):
             return
         is_more_specific = helpers.is_more_specific_date(inferred, art.year)
         if is_more_specific:
@@ -565,18 +569,18 @@ def check_url(art: Article, cfg: LintConfig) -> Iterable[str]:
                 art.url = None
             else:
                 yield message
+        case _:
+            stringified = str(parsed_url)
+            if stringified != art.url:
+                message = f"reformatted url to {parsed_url} from {art.url}"
+                if cfg.autofix:
+                    print(f"{art}: {message}")
+                    art.url = stringified
+                else:
+                    yield message
 
-    stringified = str(parsed_url)
-    if stringified != art.url:
-        message = f"reformatted url to {parsed_url} from {art.url}"
-        if cfg.autofix:
-            print(f"{art}: {message}")
-            art.url = stringified
-        else:
-            yield message
-
-    for message in parsed_url.lint():
-        yield f"URL {art.url}: {message}"
+            for message in parsed_url.lint():
+                yield f"URL {art.url}: {message}"
 
 
 @LINT.add("doi")
