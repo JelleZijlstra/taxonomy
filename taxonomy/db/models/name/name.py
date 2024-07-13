@@ -2576,8 +2576,7 @@ class NameTag(adt.ADT):
     )
     IgnorePreoccupationBy(name=Name, comment=str, tag=32)  # type: ignore[name-defined]
 
-    # ClassificationEntry that a name combination is based on. If this is present, then the
-    # name can get replaced with a name combination from an earlier work.
+    # Deprecated (not necessary).
     MappedClassificationEntry(ce=ClassificationEntry, tag=33)  # type: ignore[name-defined]
 
     MisidentificationOf(name=Name, comment=NotRequired[str], tag=34)  # type: ignore[name-defined]

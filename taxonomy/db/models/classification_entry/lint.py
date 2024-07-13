@@ -14,7 +14,7 @@ from taxonomy.db.constants import Group, NomenclatureStatus, Rank
 from taxonomy.db.models.article.article import Article, ArticleTag
 from taxonomy.db.models.base import LintConfig
 from taxonomy.db.models.lint import IgnoreLint, Lint
-from taxonomy.db.models.name import Name, NameTag, TypeTag
+from taxonomy.db.models.name import Name, TypeTag
 from taxonomy.db.models.name.lint import (
     extract_pages,
     infer_bhl_page_id,
@@ -677,23 +677,3 @@ def infer_bhl_page_from_article(
                 ce.add_tag(tag)
             else:
                 yield message
-
-
-@LINT.add("link_mapped_name")
-def link_mapped_name(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
-    if ce.mapped_name is None:
-        return
-    if ce.mapped_name.original_citation != ce.article:
-        return
-    for tag in ce.mapped_name.get_tags(
-        ce.mapped_name.tags, NameTag.MappedClassificationEntry
-    ):
-        if tag.ce == ce:
-            return
-    new_tag = NameTag.MappedClassificationEntry(ce=ce)
-    message = f"add {new_tag} to {ce.mapped_name}"
-    if cfg.autofix:
-        print(f"{ce}: {message}")
-        ce.mapped_name.add_tag(new_tag)
-    else:
-        yield message

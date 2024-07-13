@@ -3388,8 +3388,7 @@ def infer_bhl_page_from_classification_entries(
 ) -> Iterable[str]:
     if not _should_look_for_page_links(nam):
         return
-    for tag in nam.get_tags(nam.tags, NameTag.MappedClassificationEntry):
-        ce = tag.ce
+    for ce in nam.get_mapped_classification_entries():
         if ce.article != nam.original_citation:
             continue
         new_tags = [
@@ -3829,11 +3828,10 @@ def _maybe_add_name_combination(
         )
         if new_name is not None:
             new_name.corrected_original_name = corrected_name
-            new_name.add_tag(NameTag.MappedClassificationEntry(ce))
             new_name.format()
             if cfg.interactive:
                 new_name.edit_until_clean()
-        ce.mapped_name = new_name
+            ce.mapped_name = new_name
     else:
         yield message
 
@@ -3843,6 +3841,9 @@ def take_over_name(nam: Name, ce: ClassificationEntry, cfg: LintConfig) -> None:
     nam.page_described = ce.page
     nam.copy_authors()
     nam.copy_year()
+    nam.type_tags = [  # type: ignore[assignment]
+        tag for tag in nam.type_tags if not isinstance(tag, TypeTag.AuthorityPageLink)
+    ]
     nam.format()
     if cfg.interactive:
         nam.edit_until_clean()
@@ -3851,7 +3852,7 @@ def take_over_name(nam: Name, ce: ClassificationEntry, cfg: LintConfig) -> None:
 def maybe_take_over_name(
     nam: Name, ce: ClassificationEntry, cfg: LintConfig
 ) -> Iterable[str]:
-    if any(nam.get_tags(nam.tags, NameTag.MappedClassificationEntry)):
+    if any(nam.get_mapped_classification_entries()):
         message = f"changing original citation of {nam} to {ce.article}"
         if cfg.autofix:
             print(f"{nam}: {message}")
@@ -3911,11 +3912,7 @@ def infer_name_combinations(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 # multiple; remove the newest
                 existing.sort(key=lambda nam: (nam.year, nam.id))
                 for duplicate in existing[1:]:
-                    if not any(
-                        duplicate.get_tags(
-                            duplicate.tags, NameTag.MappedClassificationEntry
-                        )
-                    ):
+                    if not any(duplicate.get_mapped_classification_entries()):
                         continue
                     message = f"removing duplicate name combination {duplicate}"
                     if cfg.autofix:
@@ -3957,7 +3954,7 @@ def check_duplicate_variants(nam: Name, cfg: LintConfig) -> Iterable[str]:
         ):
             return
         message = f"remove because of earlier names with status {nomenclature_status}: {', '.join(str(dupe) for dupe in earlier)}"
-        has_mce = nam.has_name_tag(NameTag.MappedClassificationEntry)
+        has_mce = any(nam.get_mapped_classification_entries())
         if cfg.autofix and has_mce:
             print(f"{nam}: {message}")
             nam.merge(earlier[0], copy_fields=False)
