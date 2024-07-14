@@ -20,6 +20,7 @@ from taxonomy.db.models.name.lint import (
     infer_bhl_page_id,
     maybe_infer_page_from_other_name,
 )
+from taxonomy.db.models.name.name import NameTag
 from taxonomy.db.models.taxon import Taxon
 
 from .ce import ClassificationEntry, ClassificationEntryTag
@@ -123,8 +124,9 @@ def check_mapped_name(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]
         if combinations:
             combinations = [
                 nam
-                for nam in combinations
+                for nam in {nam.resolve_redirect() for nam in combinations}
                 if nam.corrected_original_name == corrected_name
+                and nam.get_tag_target(NameTag.NameCombinationOf) == ce.mapped_name
             ]
             if combinations:
                 combinations = sorted(combinations, key=lambda n: n.get_date_object())

@@ -1386,6 +1386,11 @@ def check_for_lsid(nam: Name, cfg: LintConfig) -> Iterable[str]:
         nam.numeric_year() < 2012
         or nam.corrected_original_name is None
         or nam.original_citation is None
+        or nam.nomenclature_status
+        in (
+            NomenclatureStatus.incorrect_subsequent_spelling,
+            NomenclatureStatus.name_combination,
+        )
     ):
         return
     try:

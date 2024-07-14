@@ -374,16 +374,15 @@ class BaseModel(Model):
                                 f" {field}"
                             )
             elif field_obj.type_object is str:
-                allow_newlines = isinstance(field_obj, (TextField, TextOrNullField))
                 if self.should_exempt_from_string_cleaning(field):
-                    cleaned = value
-                else:
-                    cleaned = helpers.interactive_clean_string(
-                        value,
-                        clean_whitespace=not allow_newlines,
-                        verbose=True,
-                        interactive=cfg.interactive,
-                    )
+                    continue
+                allow_newlines = isinstance(field_obj, (TextField, TextOrNullField))
+                cleaned = helpers.interactive_clean_string(
+                    value,
+                    clean_whitespace=not allow_newlines,
+                    verbose=True,
+                    interactive=cfg.interactive,
+                )
                 if cleaned != value:
                     message = (
                         f"{self} (#{self.id}): field {field}: clean {value!r} ->"

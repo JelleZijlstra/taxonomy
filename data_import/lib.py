@@ -7,7 +7,7 @@ import unicodedata
 from collections import Counter, defaultdict
 from collections.abc import Callable, Collection, Container, Iterable, Mapping, Sequence
 from pathlib import Path
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, NotRequired, TypedDict
 
 import Levenshtein
 import unidecode
@@ -15,6 +15,11 @@ import unidecode
 from taxonomy import getinput, shell
 from taxonomy.db import constants, helpers, models
 from taxonomy.db.models import TypeTag
+from taxonomy.db.models.article.article import Article
+from taxonomy.db.models.classification_entry.ce import (
+    ClassificationEntry,
+    ClassificationEntryTag,
+)
 
 DATA_DIR = Path(__file__).parent / "data"
 NAME_SYNONYMS = {
@@ -1595,3 +1600,103 @@ def get_type_specimens(*colls: models.Collection) -> dict[str, list[models.Name]
             ):
                 output[spec.base.stringify()].append(nam)
     return output
+
+
+class CEDict(TypedDict):
+    page: str
+    name: str
+    rank: constants.Rank
+    type_locality: NotRequired[str]
+    authority: NotRequired[str]
+    year: NotRequired[str]
+    citation: NotRequired[str]
+    article: Article
+    type_specimen: NotRequired[str]
+    comment: NotRequired[str]
+    parent: NotRequired[str | None]
+    parent_rank: NotRequired[constants.Rank | None]
+
+
+def validate_ce_parents(
+    names: Iterable[CEDict], *, skip_missing_parents: Container[str] = frozenset()
+) -> Iterable[CEDict]:
+    name_to_row: dict[tuple[str, constants.Rank], CEDict] = {}
+    for name in names:
+        key = (name["name"], name["rank"])
+        if key in name_to_row:
+            raise ValueError(f"duplicate name {name['name']} {name['rank']!r}")
+        name_to_row[(name["name"], name["rank"])] = name
+        if (parent := name.get("parent")) and (parent_rank := name.get("parent_rank")):
+            if (
+                parent,
+                parent_rank,
+            ) not in name_to_row and parent not in skip_missing_parents:
+                raise ValueError(
+                    f"parent {parent} {parent_rank!r} not found for {name['name']} {name['rank']!r}"
+                )
+        yield name
+
+
+def add_classification_entries(
+    names: Iterable[CEDict], *, dry_run: bool = True, max_count: int | None = None
+) -> Iterable[CEDict]:
+    for i, name in enumerate(names):
+        if max_count is not None and i >= max_count:
+            break
+
+        page = name["page"]
+        taxon_name = name["name"]
+        rank = name["rank"]
+        type_locality = name.get("type_locality")
+        authority = name.get("authority")
+        year = name.get("year")
+        citation = name.get("citation")
+        art = name["article"]
+        raw_data = json.dumps(
+            {key: value for key, value in name.items() if key != "article"},
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+        tags = []
+        if name.get("type_specimen"):
+            tags.append(ClassificationEntryTag.TypeSpecimenData(name["type_specimen"]))
+        if name.get("comment"):
+            tags.append(
+                ClassificationEntryTag.CommentClassificationEntry(name["comment"])
+            )
+        try:
+            existing = ClassificationEntry.get(name=taxon_name, rank=rank, article=art)
+        except ClassificationEntry.DoesNotExist:
+            pass
+        else:
+            print(f"already exists: {existing}")
+            continue
+        if not dry_run:
+            if not name.get("parent"):
+                parent = None
+            else:
+                parent_rank = name["parent_rank"]
+                parent_name = name["parent"]
+                try:
+                    parent = ClassificationEntry.get(
+                        name=parent_name, rank=parent_rank, article=art
+                    )
+                except ClassificationEntry.DoesNotExist:
+                    print(f"parent {parent_name} {parent_rank!r} not found")
+                    parent = None
+            new_ce = ClassificationEntry.create(
+                article=art,
+                name=taxon_name,
+                rank=rank,
+                parent=parent,
+                authority=authority,
+                year=year,
+                citation=citation,
+                type_locality=type_locality,
+                raw_data=raw_data,
+                page=page,
+            )
+            if tags:
+                new_ce.tags = tags  # type: ignore[assignment]
+            print(f"name {i}:", new_ce)
+        yield name

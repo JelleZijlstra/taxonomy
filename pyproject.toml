@@ -161,6 +161,8 @@ ignore = [
   "SIM103",  # I like to end a sequence of ifs with one "return True"
   "RET504",  # Sometimes the extra assignment is worthwhile
   "E501",    # Line too long
+  "N815",    # mixed case for TypedDict field
+  "TRY301",  # pedantic
 ]
 
 [tool.ruff.lint.per-file-ignores]
