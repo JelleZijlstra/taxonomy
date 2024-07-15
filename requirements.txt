@@ -168,7 +168,7 @@ rx==1.6.3
     # via graphql-core
 s3transfer==0.10.1
     # via boto3
-setuptools==69.5.1
+setuptools==70.0.0
     # via nodeenv
 six==1.16.0
     # via
