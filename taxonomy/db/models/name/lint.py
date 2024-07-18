@@ -3852,6 +3852,7 @@ def _maybe_add_name_combination(
 def take_over_name(nam: Name, ce: ClassificationEntry, cfg: LintConfig) -> None:
     nam.original_citation = ce.article
     nam.page_described = ce.page
+    nam.original_name = ce.name
     nam.copy_authors()
     nam.copy_year()
     nam.type_tags = [  # type: ignore[assignment]

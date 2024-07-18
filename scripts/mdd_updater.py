@@ -791,26 +791,29 @@ def run(*, dry_run: bool = True, taxon: Taxon, max_names: int | None = None) -> 
         for row in missing_in_mdd:
             pprint.pp(row)
         add_all = getinput.yes_no("Add all?")
-        if not add_all:
-            ask_individually = getinput.yes_no("Ask individually?")
+        if add_all:
+            for batch in batched(missing_in_mdd, 500):
+                rows_to_add = [
+                    [
+                        process_value_for_sheets(row.get(column, ""))
+                        for column in headings
+                    ]
+                    for row in batch
+                ]
+                if not dry_run:
+                    worksheet.append_rows(rows_to_add)
         else:
-            ask_individually = False
-
-        for row in missing_in_mdd:
-            if add_all:
-                should_add = True
-            elif ask_individually:
-                pprint.pp(row)
-                should_add = getinput.yes_no("Add?")
-            else:
-                should_add = False
-            if not should_add:
-                continue
-            row_list = [
-                process_value_for_sheets(row.get(column, "")) for column in headings
-            ]
-            if not dry_run:
-                worksheet.append_row(row_list)
+            ask_individually = getinput.yes_no("Ask individually?")
+            if ask_individually:
+                for row in missing_in_mdd:
+                    if not getinput.yes_no("Add?"):
+                        continue
+                    row_list = [
+                        process_value_for_sheets(row.get(column, ""))
+                        for column in headings
+                    ]
+                    if not dry_run:
+                        worksheet.append_row(row_list)
 
         with (backup_path / "missing-in-mdd.csv").open("w") as file:
             writer = csv.writer(file)

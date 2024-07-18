@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+import re
+from collections.abc import Iterable, Mapping, Sequence
+from types import MappingProxyType
 from typing import Any, Self
 
 from clirm import Field
@@ -21,6 +23,7 @@ class ClassificationEntryTag(ADT):
     CorrectedName(text=str, tag=3)  # type: ignore[name-defined]
     PageLink(url=str, page=str, tag=4)  # type: ignore[name-defined]
     TypeSpecimenData(text=str, tag=5)  # type: ignore[name-defined]
+    OriginalCombination(text=str, tag=6)  # type: ignore[name-defined]
 
 
 class ClassificationEntry(BaseModel):
@@ -84,19 +87,32 @@ class ClassificationEntry(BaseModel):
         cls, art: Article, fields: Sequence[Field[Any]], *, format_each: bool = False
     ) -> list[ClassificationEntry]:
         entries: list[ClassificationEntry] = []
+        next_page = ""
+        next_name = ""
         while True:
-            entry = cls.create_one(art, fields)
+            entry = cls.create_one(
+                art, fields, defaults={"page": next_page, "name": next_name}
+            )
             if entry is None:
                 break
             if format_each:
                 entry.format()
             entry.edit()
+            if entry.page is not None:
+                next_page = entry.page
+            if entry.rank is Rank.genus:
+                next_name = entry.name
+            elif entry.rank > Rank.genus:
+                next_name = ""
             entries.append(entry)
         return entries
 
     @classmethod
     def create_one(
-        cls, art: Article, fields: Sequence[Field[Any]]
+        cls,
+        art: Article,
+        fields: Sequence[Field[Any]],
+        defaults: Mapping[str, str] = MappingProxyType({}),
     ) -> ClassificationEntry | None:
         fields = [
             ClassificationEntry.name,
@@ -106,17 +122,40 @@ class ClassificationEntry(BaseModel):
             *fields,
         ]
         values: dict[str, Any] = {"article": art}
+        ce_name: str | None = None
         for field in fields:
             name = field.name.removesuffix("_id")
+            if name == "rank" and ce_name is not None:
+                if (rank := _infer_rank_from_name(ce_name)) is not None:
+                    print(f"Inferred rank as {rank.name}.")
+                    values[name] = rank
+                    continue
             if name == "parent":
+                if ce_name is not None:
+                    if values["rank"] == Rank.species:
+                        genus_name = ce_name.split()[0]
+                        if parent_ce := _get_genus_ce(genus_name, art):
+                            print(f"Inferred parent as genus {parent_ce}.")
+                            values["parent"] = parent_ce
+                            continue
+                    elif values["rank"] == Rank.subspecies:
+                        species_name = " ".join(ce_name.split()[:2])
+                        if parent_ce := _get_species_ce(species_name, art):
+                            print(f"Inferred parent as species {parent_ce}.")
+                            values["parent"] = parent_ce
+                            continue
                 parent = cls.get_parent_completion(art)
                 values["parent"] = parent
             else:
                 try:
-                    value = cls.get_value_for_field_on_class(name)
+                    value = cls.get_value_for_field_on_class(
+                        name, default=defaults.get(name, "")
+                    )
                     if value is None and not field.allow_none:
                         return None
                     values[name] = value
+                    if field.name == "name":
+                        ce_name = value
                 except getinput.StopException:
                     return None
         return cls.create(**values)
@@ -261,6 +300,51 @@ class ClassificationEntry(BaseModel):
             if child.rank is rank:
                 yield child
             yield from child.get_children_of_rank(rank)
+
+
+def _infer_rank_from_name(ce_name: str) -> Rank | None:
+    if re.fullmatch(r"[A-Z][a-z]+ [a-z]+", ce_name):
+        return Rank.species
+    elif re.fullmatch(r"[A-Z][a-z]+ [a-z]+ [a-z]+", ce_name):
+        return Rank.subspecies
+    if " " not in ce_name:
+        if ce_name.endswith("idae"):
+            return Rank.family
+        elif ce_name.endswith("inae"):
+            return Rank.subfamily
+        elif ce_name.endswith("ini"):
+            return Rank.tribe
+    return None
+
+
+def _get_genus_ce(genus: str, art: Article) -> ClassificationEntry | None:
+    ces = list(
+        ClassificationEntry.select_valid().filter(
+            ClassificationEntry.article == art,
+            ClassificationEntry.rank == Rank.genus,
+            ClassificationEntry.name == genus,
+        )
+    )
+    if len(ces) != 1:
+        return None
+    ce = ces[0]
+    # If there are subgenera, they should probably be the parent instead
+    if any(child.rank is Rank.subgenus for child in ce.children):
+        return None
+    return ce
+
+
+def _get_species_ce(species: str, art: Article) -> ClassificationEntry | None:
+    ces = list(
+        ClassificationEntry.select_valid().filter(
+            ClassificationEntry.article == art,
+            ClassificationEntry.rank == Rank.species,
+            ClassificationEntry.name == species,
+        )
+    )
+    if len(ces) != 1:
+        return None
+    return ces[0]
 
 
 CS = command_set.CommandSet("ce", "Commands related to classification entries.")

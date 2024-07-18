@@ -273,14 +273,16 @@ def get_text(source: Source, encoding: str = "utf-8") -> Iterable[str]:
         yield from f
 
 
-def extract_pages(lines: Iterable[str], *, permissive: bool = False) -> PagesT:
+def extract_pages(
+    lines: Iterable[str], *, permissive: bool = False, ignore_page_numbers: bool = False
+) -> PagesT:
     """Split the text into pages."""
-    current_page = None
-    current_lines = []
+    current_page = 0 if ignore_page_numbers else None
+    current_lines: list[str] = []
     for line in lines:
         line = line.replace(" ", " ")
         if line.startswith("\x0c"):
-            if current_page is not None:
+            if current_page is not None and current_lines:
                 yield current_page, current_lines
                 current_lines = []
             line = line[1:].strip()
@@ -336,8 +338,10 @@ def split_lines(
     *,
     single_column_pages: Container[int] = frozenset(),
     use_first: bool = False,
+    ignore_close_to_end: bool = False,
     min_column: int = 0,
     dedent_right: bool = True,
+    dedent_left: bool = False,
 ) -> list[str]:
     if not any(line.rstrip() for line in lines):
         return []
@@ -357,6 +361,10 @@ def split_lines(
         else:
             raise NoSplitFound(f"failed to find split for {page}")
     else:
+        if ignore_close_to_end:
+            possible_splits = [
+                split for split in possible_splits if split < max_len - 20
+            ]
         if use_first:
             best_blank = min(possible_splits)
         else:
@@ -369,9 +377,9 @@ def split_lines(
                 len([line for line in second_column if line.startswith(" ")])
                 > num_lines / 2
             ):
-                second_column = [
-                    line[1:] if line.startswith(" ") else line for line in second_column
-                ]
+                second_column = [line.removeprefix(" ") for line in second_column]
+        if dedent_left:
+            first_column = dedent_lines(first_column)
         return first_column + second_column
 
 
@@ -381,7 +389,9 @@ def align_columns(
     single_column_pages: Container[int] = frozenset(),
     use_first: bool = False,
     min_column: int = 0,
+    ignore_close_to_end: bool = False,
     dedent_right: bool = True,
+    dedent_left: bool = False,
 ) -> PagesT:
     """Rearrange the text to separate the two columns on each page."""
     for page, lines in pages:
@@ -389,9 +399,11 @@ def align_columns(
             lines,
             page,
             single_column_pages=single_column_pages,
+            ignore_close_to_end=ignore_close_to_end,
             use_first=use_first,
             min_column=min_column,
             dedent_right=dedent_right,
+            dedent_left=dedent_left,
         )
         if not lines:
             continue
@@ -1612,18 +1624,24 @@ class CEDict(TypedDict):
     citation: NotRequired[str]
     article: Article
     type_specimen: NotRequired[str]
+    original_combination: NotRequired[str]
     comment: NotRequired[str]
     parent: NotRequired[str | None]
     parent_rank: NotRequired[constants.Rank | None]
 
 
 def validate_ce_parents(
-    names: Iterable[CEDict], *, skip_missing_parents: Container[str] = frozenset()
+    names: Iterable[CEDict],
+    *,
+    skip_missing_parents: Container[str] = frozenset(),
+    drop_duplicates: bool = False,
 ) -> Iterable[CEDict]:
     name_to_row: dict[tuple[str, constants.Rank], CEDict] = {}
     for name in names:
         key = (name["name"], name["rank"])
         if key in name_to_row:
+            if drop_duplicates:
+                continue
             raise ValueError(f"duplicate name {name['name']} {name['rank']!r}")
         name_to_row[(name["name"], name["rank"])] = name
         if (parent := name.get("parent")) and (parent_rank := name.get("parent_rank")):
@@ -1635,6 +1653,13 @@ def validate_ce_parents(
                     f"parent {parent} {parent_rank!r} not found for {name['name']} {name['rank']!r}"
                 )
         yield name
+
+
+def format_ces(source: Source) -> None:
+    art = source.get_source()
+    for ce in art.get_classification_entries():
+        ce.format()
+        ce.edit_until_clean()
 
 
 def add_classification_entries(
@@ -1664,12 +1689,42 @@ def add_classification_entries(
             tags.append(
                 ClassificationEntryTag.CommentClassificationEntry(name["comment"])
             )
+        if name.get("original_combination"):
+            tags.append(
+                ClassificationEntryTag.OriginalCombination(name["original_combination"])
+            )
         try:
             existing = ClassificationEntry.get(name=taxon_name, rank=rank, article=art)
         except ClassificationEntry.DoesNotExist:
             pass
         else:
             print(f"already exists: {existing}")
+            if page and not existing.page:
+                print(f"{existing}: adding page {page}")
+                if not dry_run:
+                    existing.page = page
+            if type_locality and not existing.type_locality:
+                print(f"{existing}: adding type locality {type_locality}")
+                if not dry_run:
+                    existing.type_locality = type_locality
+            if authority and not existing.authority:
+                print(f"{existing}: adding authority {authority}")
+                if not dry_run:
+                    existing.authority = authority
+            if year and not existing.year:
+                print(f"{existing}: adding year {year}")
+                if not dry_run:
+                    existing.year = year
+            if citation and not existing.citation:
+                print(f"{existing}: adding citation {citation}")
+                if not dry_run:
+                    existing.citation = citation
+            for tag in tags:
+                tag_type = type(tag)
+                if not any(isinstance(t, tag_type) for t in existing.tags):
+                    print(f"{existing}: adding tag {tag}")
+                    if not dry_run:
+                        existing.tags = [*existing.tags, tag]
             continue
         if not dry_run:
             if not name.get("parent"):

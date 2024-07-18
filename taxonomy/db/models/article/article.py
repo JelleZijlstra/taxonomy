@@ -646,6 +646,30 @@ class Article(BaseModel):
         # make redirect
         self.create_redirect_static(oldname, self)
 
+    def dump_pdf_text(self) -> None:
+        if not self.ispdf():
+            print("Not a PDF file")
+            return
+        output_file = (
+            re.sub(r"[^a-z]+", "-", self.name.lower().removesuffix(".pdf")) + ".txt"
+        )
+        output_path = Path(
+            config.get_options().taxonomy_repo / "data_import" / "data" / output_file
+        )
+        if output_path.exists():
+            print(f"File {output_file} already exists")
+            return
+        subprocess.check_call(["pdftotext", "-layout", self.get_path(), output_path])
+        print(f"Text dumped to {output_path}")
+
+    def get_mac_ocr_text(self) -> str | None:
+        if not self.ispdf():
+            print("Not a PDF file")
+            return None
+        # https://blog.greg.technology/2024/01/02/how-do-you-ocr-on-a-mac.html
+        subprocess.check_call(["shortcuts", "run", "ocr-text", "-i", self.get_path()])
+        return subprocess.check_output(["pbpaste"], text=True)
+
     def removefirstpage(self) -> bool:
         temp_path = self.get_path().parent / "tmp.pdf"
         path = self.get_path()
