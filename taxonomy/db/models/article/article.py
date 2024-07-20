@@ -1418,7 +1418,8 @@ class Article(BaseModel):
         if cls.has(name):
             print(f"{name} already exists")
             return None
-        if Path(name).suffix:
+        suffix = Path(name).suffix
+        if suffix and suffix.isalnum() and not suffix.isnumeric():
             print(f"{name}: NOFILE path may not have a suffix")
             return None
         kwargs.setdefault("kind", ArticleKind.no_copy)
