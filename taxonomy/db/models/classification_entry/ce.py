@@ -24,6 +24,7 @@ class ClassificationEntryTag(ADT):
     PageLink(url=str, page=str, tag=4)  # type: ignore[name-defined]
     TypeSpecimenData(text=str, tag=5)  # type: ignore[name-defined]
     OriginalCombination(text=str, tag=6)  # type: ignore[name-defined]
+    OriginalPageDescribed(text=str, tag=7)  # type: ignore[name-defined]
 
 
 class ClassificationEntry(BaseModel):
@@ -61,7 +62,7 @@ class ClassificationEntry(BaseModel):
     def get_corrected_name_without_tags(self) -> str | None:
         group = self.get_group()
         if group is Group.family:
-            return self.name
+            return self.name.replace("æ", "ae")
         corrected_name = models.name.name.infer_corrected_original_name(
             self.name, group
         )
@@ -300,6 +301,46 @@ class ClassificationEntry(BaseModel):
             if child.rank is rank:
                 yield child
             yield from child.get_children_of_rank(rank)
+
+    def parent_of_rank(self, rank: Rank) -> ClassificationEntry | None:
+        if self.rank is rank:
+            return self
+        if self.parent is None:
+            return None
+        return self.parent.parent_of_rank(rank)
+
+    def format(
+        self,
+        *,
+        quiet: bool = False,
+        autofix: bool = True,
+        interactive: bool = True,
+        verbose: bool = False,
+        manual_mode: bool = False,
+    ) -> bool:
+        result = super().format(
+            quiet=quiet,
+            autofix=autofix,
+            interactive=interactive,
+            verbose=verbose,
+            manual_mode=manual_mode,
+        )
+        if self.mapped_name is not None:
+            self.mapped_name.format(
+                quiet=quiet,
+                autofix=autofix,
+                interactive=interactive,
+                verbose=verbose,
+                manual_mode=manual_mode,
+            )
+            return super().format(
+                quiet=quiet,
+                autofix=autofix,
+                interactive=interactive,
+                verbose=verbose,
+                manual_mode=manual_mode,
+            )
+        return result
 
 
 def _infer_rank_from_name(ce_name: str) -> Rank | None:

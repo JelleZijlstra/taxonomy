@@ -3917,8 +3917,7 @@ def infer_name_combinations(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 (existing_name,) = existing
                 if (
                     existing_name.original_citation != ce.article
-                    and ce.article.get_date_object()
-                    < existing_name.original_citation.get_date_object()
+                    and ce.article.get_date_object() < existing_name.get_date_object()
                 ):
                     yield from maybe_take_over_name(existing_name, ce, cfg)
             case _:
@@ -4212,3 +4211,11 @@ def check_matches_mapped_classification_entry(
             yield f"mapped to {ce}, but {ce.get_corrected_name()} != {nam.corrected_original_name}"
         if ce.page != nam.page_described:
             yield f"mapped to {ce}, but {ce.page=} != {nam.page_described=}"
+        if nam.original_parent is not None:
+            ce_parent = ce.parent_of_rank(Rank.genus)
+            if (
+                ce_parent is not None
+                and ce_parent.mapped_name is not None
+                and ce_parent.mapped_name != nam.original_parent
+            ):
+                yield f"mapped to {ce}, but {ce_parent.mapped_name=} (mapped from {ce_parent}) != {nam.original_parent=}"

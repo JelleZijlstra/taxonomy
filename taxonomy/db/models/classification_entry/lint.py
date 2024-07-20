@@ -143,10 +143,11 @@ def check_mapped_name(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]
                 if corrected_name != ce.mapped_name.root_name:
                     yield f"mapped_name root_name does not match: {corrected_name} vs {ce.mapped_name.root_name}"
             case Group.family:
-                if corrected_name not in (
+                allowed = (
                     ce.mapped_name.original_name,
                     ce.mapped_name.corrected_original_name,
-                ):
+                )
+                if corrected_name not in allowed and ce.name not in allowed:
                     yield f"mapped_name original_name does not match: {corrected_name} vs {ce.mapped_name.corrected_original_name}"
                     if cfg.interactive:
                         if getinput.yes_no(f"Add new synonym for {ce}?"):

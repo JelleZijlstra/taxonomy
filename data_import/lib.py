@@ -14,6 +14,7 @@ import unidecode
 
 from taxonomy import getinput, shell
 from taxonomy.db import constants, helpers, models
+from taxonomy.db.constants import Rank
 from taxonomy.db.models import TypeTag
 from taxonomy.db.models.article.article import Article
 from taxonomy.db.models.classification_entry.ce import (
@@ -408,6 +409,17 @@ def align_columns(
         if not lines:
             continue
         yield page, lines
+
+
+def merge_lines(lines: Iterable[str]) -> list[str]:
+    new_lines: list[list[str]] = []
+    for line in lines:
+        line = line.rstrip()
+        if new_lines and line and not line[0].isspace() and new_lines[-1][0]:
+            new_lines[-1].append(line)
+        else:
+            new_lines.append([line])
+    return [" ".join(lines) for lines in new_lines]
 
 
 def clean_text(names: DataT, *, clean_labels: bool = True) -> DataT:
@@ -1628,6 +1640,8 @@ class CEDict(TypedDict):
     comment: NotRequired[str]
     parent: NotRequired[str | None]
     parent_rank: NotRequired[constants.Rank | None]
+    raw_data: NotRequired[str]
+    page_described: NotRequired[str]
 
 
 def validate_ce_parents(
@@ -1640,6 +1654,9 @@ def validate_ce_parents(
     for name in names:
         key = (name["name"], name["rank"])
         if key in name_to_row:
+            if name["rank"] is Rank.synonym:
+                yield name
+                continue
             if drop_duplicates:
                 continue
             raise ValueError(f"duplicate name {name['name']} {name['rank']!r}")
@@ -1652,6 +1669,74 @@ def validate_ce_parents(
                 raise ValueError(
                     f"parent {parent} {parent_rank!r} not found for {name['name']} {name['rank']!r}"
                 )
+        yield name
+
+
+def rank_key(rank: Rank) -> int:
+    if rank is Rank.synonym:
+        return -1
+    else:
+        return rank.value
+
+
+def insert_genera_and_species(names: Iterable[CEDict]) -> Iterable[CEDict]:
+    seen_names: set[str] = set()
+    for name in names:
+        seen_names.add(name["name"])
+        pieces = name["name"].replace("?", "").strip().split()
+        assert all(len(piece) > 2 for piece in pieces), f"unexpected name: {name}"
+        if name["rank"] in (Rank["species"], Rank["subspecies"]):
+            genus_name = pieces[0]
+            if genus_name not in seen_names:
+                genus_dict: CEDict = {
+                    "page": name["page"],
+                    "name": genus_name,
+                    "rank": Rank.genus,
+                    "article": name["article"],
+                }
+                seen_names.add(genus_name)
+                yield genus_dict
+        if name["rank"] is Rank.subspecies:
+            gen, sp, ssp = name["name"].split()
+            species_name = f"{gen} {sp}"
+            if species_name not in seen_names:
+                species_dict: CEDict = {
+                    "page": name["page"],
+                    "name": species_name,
+                    "rank": Rank.species,
+                    "article": name["article"],
+                }
+                if "authority" in name:
+                    species_dict["authority"] = name["authority"]
+                if "year" in name:
+                    species_dict["year"] = name["year"]
+                seen_names.add(species_name)
+                yield species_dict
+        yield name
+
+
+def add_parents(names: Iterable[CEDict]) -> Iterable[CEDict]:
+    parent_stack: list[tuple[Rank, str]] = []
+    for name in names:
+        rank = rank_key(name["rank"])
+        while parent_stack and rank_key(parent_stack[-1][0]) <= rank:
+            parent_stack.pop()
+
+        if parent_stack:
+            expected_parent_rank, expected_parent = parent_stack[-1]
+            if "parent" in name:
+                if name["parent"] != expected_parent:
+                    print(f"Expected parent: {expected_parent}, got: {name['parent']}")
+            else:
+                name["parent"] = expected_parent
+            if "parent_rank" in name:
+                if name["parent_rank"] != expected_parent_rank:
+                    print(
+                        f"Expected parent rank: {expected_parent_rank!r}, got: {name['parent_rank']!r}"
+                    )
+            else:
+                name["parent_rank"] = expected_parent_rank
+        parent_stack.append((name["rank"], name["name"]))
         yield name
 
 
@@ -1677,11 +1762,14 @@ def add_classification_entries(
         year = name.get("year")
         citation = name.get("citation")
         art = name["article"]
-        raw_data = json.dumps(
-            {key: value for key, value in name.items() if key != "article"},
-            ensure_ascii=False,
-            separators=(",", ":"),
-        )
+        if name.get("raw_data"):
+            raw_data = name["raw_data"]
+        else:
+            raw_data = json.dumps(
+                {key: value for key, value in name.items() if key != "article"},
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
         tags = []
         if name.get("type_specimen"):
             tags.append(ClassificationEntryTag.TypeSpecimenData(name["type_specimen"]))
@@ -1692,6 +1780,10 @@ def add_classification_entries(
         if name.get("original_combination"):
             tags.append(
                 ClassificationEntryTag.OriginalCombination(name["original_combination"])
+            )
+        if name.get("page_described"):
+            tags.append(
+                ClassificationEntryTag.OriginalPageDescribed(name["page_described"])
             )
         try:
             existing = ClassificationEntry.get(name=taxon_name, rank=rank, article=art)
