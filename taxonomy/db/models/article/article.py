@@ -840,6 +840,18 @@ class Article(BaseModel):
             return self.parent.get_date_object()
         return get_date_object(self.year)
 
+    def is_unpublished(self) -> bool:
+        year = self.valid_numeric_year()
+        if year is not None and year < 1758:
+            return True
+        if self.has_tag(ArticleTag.UnavailableElectronic):
+            return True
+        if self.has_tag(ArticleTag.InPress):
+            return True
+        if self.type is ArticleType.THESIS:
+            return True
+        return False
+
     def valid_numeric_year(self) -> int | None:
         if self.year is not None and is_valid_date(self.year):
             return self.numeric_year()

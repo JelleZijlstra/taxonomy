@@ -9,7 +9,7 @@ from itertools import takewhile
 
 from taxonomy import getinput, urlparse
 from taxonomy.apis import bhl
-from taxonomy.db import helpers, models
+from taxonomy.db import helpers
 from taxonomy.db.constants import Group, NomenclatureStatus, Rank
 from taxonomy.db.models.article.article import Article, ArticleTag
 from taxonomy.db.models.base import LintConfig
@@ -114,9 +114,6 @@ def check_missing_mapped_name(
 @LINT.add("mapped_name")
 def check_mapped_name(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
     if ce.mapped_name is not None:
-        if ce.article.get_date_object() < ce.mapped_name.get_date_object():
-            yield f"classification entry predates mapped name {ce.mapped_name}"
-            yield from models.name.lint.maybe_take_over_name(ce.mapped_name, ce, cfg)
         corrected_name = ce.get_corrected_name()
         if corrected_name is None:
             return

@@ -17,7 +17,7 @@ import subprocess
 from collections import defaultdict
 from collections.abc import Callable, Container, Generator, Iterable, Iterator, Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from functools import cache
 from typing import Generic, TypeVar, assert_never
 
@@ -3883,6 +3883,16 @@ def _is_msw3(art: Article) -> bool:
     return art.id == 9291 or (art.parent is not None and art.parent.id == 9291)
 
 
+def _name_combination_article_sort_key(art: Article) -> tuple[bool, date, int, int]:
+    return (art.is_unpublished(), art.get_date_object(), art.id, 0)
+
+
+def _name_combination_name_sort_key(nam: Name) -> tuple[bool, date, int, int]:
+    if nam.original_citation is not None:
+        return _name_combination_article_sort_key(nam.original_citation)
+    return (False, nam.get_date_object(), 0, nam.id)
+
+
 @LINT.add("infer_name_combinations")
 def infer_name_combinations(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.group is not Group.species:
@@ -3890,16 +3900,22 @@ def infer_name_combinations(nam: Name, cfg: LintConfig) -> Iterable[str]:
     ces = nam.classification_entries
     by_name: dict[str, list[ClassificationEntry]] = defaultdict(list)
     for ce in ces:
-        by_name[ce.name].append(ce)
+        corrected_name = ce.get_corrected_name()
+        if corrected_name is not None:
+            by_name[corrected_name].append(ce)
     expected_name_combinations = [
-        min(ces, key=lambda ce: (ce.article.get_date_object(), ce.article.id))
+        # Prefer name combinations that are published by the ICZN's rules
+        min(ces, key=lambda ce: _name_combination_article_sort_key(ce.article))
         for ces in by_name.values()
     ]
     for ce in expected_name_combinations:
         corrected_name = ce.get_corrected_name()
         if corrected_name is None:
             continue
-        if corrected_name == nam.corrected_original_name:
+        if (
+            corrected_name == nam.corrected_original_name
+            and nam.nomenclature_status is not NomenclatureStatus.name_combination
+        ):
             continue
         ce_root_name = corrected_name.split()[-1]
         if ce_root_name not in nam.get_root_name_forms():
@@ -3919,12 +3935,13 @@ def infer_name_combinations(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 (existing_name,) = existing
                 if (
                     existing_name.original_citation != ce.article
-                    and ce.article.get_date_object() < existing_name.get_date_object()
+                    and _name_combination_article_sort_key(ce.article)
+                    < _name_combination_name_sort_key(existing_name)
                 ):
                     yield from maybe_take_over_name(existing_name, ce, cfg)
             case _:
                 # multiple; remove the newest
-                existing.sort(key=lambda nam: (nam.year, nam.id))
+                existing.sort(key=_name_combination_name_sort_key)
                 for duplicate in existing[1:]:
                     if not any(duplicate.get_mapped_classification_entries()):
                         continue
