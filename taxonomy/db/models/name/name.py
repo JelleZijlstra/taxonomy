@@ -1134,6 +1134,17 @@ class Name(BaseModel):
                 return tag.name
         return None
 
+    def resolve_variant(self) -> Name:
+        return self._resolve_variant(10)
+
+    def _resolve_variant(self, max_depth: int) -> Name:
+        if max_depth == 0:
+            raise ValueError(f"too deep for {self}")
+        base_name = self.get_variant_base_name()
+        if base_name is None:
+            return self
+        return base_name._resolve_variant(max_depth - 1)
+
     def is_high_mammal(self) -> bool:
         return (
             self.group is not Group.species

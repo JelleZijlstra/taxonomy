@@ -3887,7 +3887,7 @@ def _name_combination_article_sort_key(art: Article) -> tuple[bool, date, int, i
     return (art.is_unpublished(), art.get_date_object(), art.id, 0)
 
 
-def _name_combination_name_sort_key(nam: Name) -> tuple[bool, date, int, int]:
+def name_combination_name_sort_key(nam: Name) -> tuple[bool, date, int, int]:
     if nam.original_citation is not None:
         return _name_combination_article_sort_key(nam.original_citation)
     return (False, nam.get_date_object(), 0, nam.id)
@@ -3936,12 +3936,12 @@ def infer_name_combinations(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 if (
                     existing_name.original_citation != ce.article
                     and _name_combination_article_sort_key(ce.article)
-                    < _name_combination_name_sort_key(existing_name)
+                    < name_combination_name_sort_key(existing_name)
                 ):
                     yield from maybe_take_over_name(existing_name, ce, cfg)
             case _:
                 # multiple; remove the newest
-                existing.sort(key=_name_combination_name_sort_key)
+                existing.sort(key=name_combination_name_sort_key)
                 for duplicate in existing[1:]:
                     if not any(duplicate.get_mapped_classification_entries()):
                         continue
@@ -4165,15 +4165,6 @@ def _prefer_commented(
     return to_remove, message
 
 
-def _resolve_variant(nam: Name, max_depth: int) -> Name:
-    if max_depth == 0:
-        raise ValueError(f"too deep for {nam}")
-    base_name = nam.get_variant_base_name()
-    if base_name is None:
-        return nam
-    return _resolve_variant(base_name, max_depth - 1)
-
-
 @LINT.add("infer_tags_from_mapped_entries")
 def infer_tags_from_mapped_entries(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.group is not Group.species:
@@ -4181,7 +4172,7 @@ def infer_tags_from_mapped_entries(nam: Name, cfg: LintConfig) -> Iterable[str]:
     ces = list(nam.classification_entries)
     if not ces:
         return
-    tag_name = _resolve_variant(nam, 10)
+    tag_name = nam.resolve_variant()
     for ce in ces:
         location = ce.type_locality
         if location and not any(

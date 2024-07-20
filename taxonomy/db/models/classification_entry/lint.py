@@ -19,8 +19,8 @@ from taxonomy.db.models.name.lint import (
     extract_pages,
     infer_bhl_page_id,
     maybe_infer_page_from_other_name,
+    name_combination_name_sort_key,
 )
-from taxonomy.db.models.name.name import NameTag
 from taxonomy.db.models.taxon import Taxon
 
 from .ce import ClassificationEntry, ClassificationEntryTag
@@ -117,24 +117,6 @@ def check_mapped_name(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]
         corrected_name = ce.get_corrected_name()
         if corrected_name is None:
             return
-        combinations = ce.mapped_name.get_derived_field("name_combinations")
-        if combinations:
-            combinations = [
-                nam
-                for nam in {nam.resolve_redirect() for nam in combinations}
-                if nam.corrected_original_name == corrected_name
-                and nam.get_tag_target(NameTag.NameCombinationOf) == ce.mapped_name
-            ]
-            if combinations:
-                combinations = sorted(combinations, key=lambda n: n.get_date_object())
-                target = combinations[0]
-                assert isinstance(target, Name)
-                message = f"mapped_name is original; change target to name combination {target}"
-                if cfg.autofix and target is not None:
-                    print(f"{ce}: {message}")
-                    ce.mapped_name = target
-                else:
-                    yield message
         match ce.mapped_name.group:
             case Group.high | Group.genus:
                 if corrected_name != ce.mapped_name.root_name:
@@ -146,29 +128,44 @@ def check_mapped_name(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]
                 )
                 if corrected_name not in allowed and ce.name not in allowed:
                     yield f"mapped_name original_name does not match: {corrected_name} vs {ce.mapped_name.corrected_original_name}"
-                    if cfg.interactive:
-                        if getinput.yes_no(f"Add new synonym for {ce}?"):
-                            ce.mapped_name = ce.add_family_group_synonym(
-                                ce.mapped_name.type
-                            )
+                    if cfg.interactive and getinput.yes_no(
+                        f"Add new synonym for {ce}?"
+                    ):
+                        new_name = ce.add_family_group_synonym(ce.mapped_name.type)
+                        if new_name is not None:
+                            ce.mapped_name = new_name
             case Group.species:
                 root_name = corrected_name.split()[-1]
                 if root_name not in ce.mapped_name.get_root_name_forms():
                     yield f"mapped_name root_name does not match: {root_name} vs {ce.mapped_name.root_name}"
-                    if cfg.interactive:
-                        if getinput.yes_no(
-                            f"Add incorrect subsequent spelling for {ce}?"
-                        ):
-                            ce.mapped_name = ce.add_incorrect_subsequent_spelling(
-                                ce.mapped_name
-                            )
-                if (
-                    ce.mapped_name is not None
-                    and ce.mapped_name.nomenclature_status
-                    is NomenclatureStatus.name_combination
-                    and ce.mapped_name.corrected_original_name != corrected_name
-                ):
+                    if cfg.interactive and getinput.yes_no(
+                        f"Add incorrect subsequent spelling for {ce}?"
+                    ):
+                        new_name = ce.add_incorrect_subsequent_spelling(ce.mapped_name)
+                        if new_name is not None:
+                            ce.mapped_name = new_name
+                if ce.mapped_name.corrected_original_name != corrected_name:
                     yield f"mapped_name corrected_original_name does not match: {corrected_name} vs {ce.mapped_name.corrected_original_name}"
+                    mapped_root = ce.mapped_name.resolve_variant()
+                    alternatives = [
+                        nam
+                        for nam in Name.select_valid().filter(
+                            Name.taxon == ce.mapped_name.taxon,
+                            Name.corrected_original_name == corrected_name,
+                        )
+                        if nam.resolve_variant() == mapped_root
+                    ]
+                    if alternatives:
+                        alternatives = sorted(
+                            alternatives, key=name_combination_name_sort_key
+                        )
+                        new_name = alternatives[0]
+                        message = f"mapped_name corrected_original_name does not match; change to {new_name}"
+                        if cfg.autofix:
+                            print(f"{ce}: {message}")
+                            ce.mapped_name = new_name
+                        else:
+                            yield message
     elif ce.rank not in (Rank.synonym, Rank.informal):
         yield "missing mapped_name"
 
@@ -556,11 +553,11 @@ def get_candidate_bhl_pages(
 def infer_bhl_page_from_mapped_name(
     ce: ClassificationEntry, cfg: LintConfig
 ) -> Iterable[str]:
+    if not _should_look_for_page_links(ce):
+        return
     if ce.mapped_name is None:
         return
     if ce.article != ce.mapped_name.original_citation:
-        return
-    if not _should_look_for_page_links(ce):
         return
     new_tags = [
         ClassificationEntryTag.PageLink(url=tag.url, page=tag.page)
@@ -685,9 +682,9 @@ def infer_page_from_name(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[s
         return
     if ce.mapped_name is None:
         return
-    if ce.mapped_name.original_citation != ce.article:
-        return
     if ce.mapped_name.page_described is None:
+        return
+    if ce.mapped_name.original_citation != ce.article:
         return
     message = f"inferred page from mapped name: {ce.mapped_name.page_described}"
     if cfg.autofix:
