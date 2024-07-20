@@ -7,16 +7,17 @@ from taxonomy.db.constants import Rank
 from taxonomy.db.models.name.name import Name
 from taxonomy.db.models.taxon.taxon import Taxon
 
-SOURCES = {"1.0": lib.Source("MDD_v1_6495species_JMamm.csv", "Mammalia-MDD 1.0")}
+SOURCES = {
+    "1.0": lib.Source("MDD_v1_6495species_JMamm.csv", "Mammalia-MDD 1.0"),
+    "1.1": lib.Source("MDD_v1.1_6526species.csv", "Mammalia-MDD 1.1"),
+}
 
 
-HIGHER_RANKS = "\ufeffMajorType,MajorSubtype,Order,Family,Subfamily,Tribe,Genus".split(
-    ","
-)
+HIGHER_RANKS = "MajorType,MajorSubtype,Order,Family,Subfamily,Tribe,Genus".split(",")
 
 
 def _get_rank(rank: str) -> tuple[Rank, str | None]:
-    if rank == "\ufeffMajorType":
+    if rank in ("MajorType", "\ufeffMajorType"):
         return Rank.other, "MajorType"
     elif rank == "MajorSubtype":
         return Rank.other, "MajorSubtype"
@@ -25,19 +26,34 @@ def _get_rank(rank: str) -> tuple[Rank, str | None]:
 
 
 def extract_names(source: lib.Source) -> Iterable[lib.CEDict]:
+    if source.source == "Mammalia-MDD 1.0":
+        id_column = "ID_number"
+        author_column = "Authority_author"
+        year_column = "Authority_year"
+        higher_ranks = [
+            "\ufeff" + rank if i == 0 else rank for i, rank in enumerate(HIGHER_RANKS)
+        ]
+    else:
+        id_column = "id"
+        author_column = "Authority_sp_author"
+        year_column = "Authority_sp_year"
+        higher_ranks = HIGHER_RANKS
     seen_names: set[tuple[Rank, str]] = set()
     with (lib.DATA_DIR / source.inputfile).open(encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
-            page_no = f"ID #{row['ID_number']}"
+            page_no = f"ID #{row[id_column]}"
             name = row["SciName"].replace("_", " ")
+            if not name:
+                continue
             previous_parent = None
             previous_parent_rank = None
-            for rank in HIGHER_RANKS:
+            for rank in higher_ranks:
                 value = row[rank].title()
-                if value == "Na":
+                if value in ("Na", "Incertae", "Sedis") or value.isdigit():
                     value = None
                 if value is not None:
+                    assert value.isalpha(), row
                     rank_enum, textual_rank = _get_rank(rank)
                     if (rank_enum, value) not in seen_names:
                         yield {
@@ -60,8 +76,8 @@ def extract_names(source: lib.Source) -> Iterable[lib.CEDict]:
                 "article": source.get_source(),
                 "parent": previous_parent,
                 "parent_rank": previous_parent_rank,
-                "authority": row["Authority_author"],
-                "year": row["Authority_year"],
+                "authority": row[author_column],
+                "year": row[year_column],
             }
 
 

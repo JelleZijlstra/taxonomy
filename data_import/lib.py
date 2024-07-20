@@ -1744,7 +1744,7 @@ def add_parents(names: Iterable[CEDict]) -> Iterable[CEDict]:
 def format_ces(source: Source) -> None:
     art = source.get_source()
     for ce in art.get_classification_entries():
-        ce.format()
+        ce.format(quiet=True)
         ce.edit_until_clean()
 
 
@@ -1854,7 +1854,7 @@ def add_classification_entries(
 
 def print_ce_summary(names: Iterable[CEDict]) -> None:
     names = list(names)
-    print(f"{len(names)} names")
+    print(f"Count: {len(names)} names")
     print_field_counts(dict(n) for n in names)
     for rank, count in Counter(n["rank"] for n in names).items():
-        print(f"{count} {rank}")
+        print(f"{count} {rank.name}")
