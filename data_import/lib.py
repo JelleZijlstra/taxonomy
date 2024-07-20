@@ -1642,6 +1642,7 @@ class CEDict(TypedDict):
     parent_rank: NotRequired[constants.Rank | None]
     raw_data: NotRequired[str]
     page_described: NotRequired[str]
+    textual_rank: NotRequired[str | None]
 
 
 def validate_ce_parents(
@@ -1785,6 +1786,8 @@ def add_classification_entries(
             tags.append(
                 ClassificationEntryTag.OriginalPageDescribed(name["page_described"])
             )
+        if name.get("textual_rank"):
+            tags.append(ClassificationEntryTag.TextualRank(name["textual_rank"]))
         try:
             existing = ClassificationEntry.get(name=taxon_name, rank=rank, article=art)
         except ClassificationEntry.DoesNotExist:
@@ -1847,3 +1850,11 @@ def add_classification_entries(
                 new_ce.tags = tags  # type: ignore[assignment]
             print(f"name {i}:", new_ce)
         yield name
+
+
+def print_ce_summary(names: Iterable[CEDict]) -> None:
+    names = list(names)
+    print(f"{len(names)} names")
+    print_field_counts(dict(n) for n in names)
+    for rank, count in Counter(n["rank"] for n in names).items():
+        print(f"{count} {rank}")

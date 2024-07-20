@@ -2157,6 +2157,8 @@ def check_page_described(nam: Name, cfg: LintConfig) -> Iterable[str]:
         # Pretty common to see "S40" or "40A"
         if re.fullmatch(r"[A-Z]?[0-9]+[A-Z]?", part):
             continue
+        if re.fullmatch(r"ID #\d+", part):
+            continue
         if part in (
             "unnumbered",
             "cover",
