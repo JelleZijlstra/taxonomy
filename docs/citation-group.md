@@ -202,3 +202,4 @@ Short notes on several tricky areas of bibliography:
 - [Schinz's _Naturgeschichte und Abbildungen der Säugethiere_](/docs/biblio/schinz-naturgeschichte)
 - [University of California geological publications](/docs/biblio/uc-geology)
 - [Gervais's _Zoologie et Paléontologie_](/docs/biblio/zoologie-et-paleontologie)
+- [Billberg's _Synopsis Faunae Scandinaviae_](/docs/biblio/billberg)
