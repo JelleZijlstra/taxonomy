@@ -1166,7 +1166,6 @@ def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                     new_tag = NameTag.NameCombinationOf(tag.name, tag.comment)
                 if nam.taxon != tag.name.taxon:
                     yield f"{nam} is not assigned to the same name as {tag.name} and should be marked as a misidentification"
-                    new_tag = NameTag.MisidentificationOf(tag.name, tag.comment)
             if nam.taxon != tag.name.taxon and not isinstance(
                 tag, NameTag.MisidentificationOf
             ):
