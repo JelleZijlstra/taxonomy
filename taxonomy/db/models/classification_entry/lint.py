@@ -450,6 +450,8 @@ def _check_bhl_bibliography_matches(
 def _should_look_for_page_links(ce: ClassificationEntry) -> bool:
     if ce.page is None:
         return False
+    if not ce.article.has_bhl_link():
+        return False
     pages = list(extract_pages(ce.page))
     tags = list(ce.get_tags(ce.tags, ClassificationEntryTag.PageLink))
     if len(tags) >= len(pages):
