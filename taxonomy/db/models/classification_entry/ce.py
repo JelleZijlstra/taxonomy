@@ -63,15 +63,32 @@ class ClassificationEntry(BaseModel):
         group = self.get_group()
         if group is Group.family:
             return self.name.replace("æ", "ae")
-        corrected_name = models.name.name.infer_corrected_original_name(
-            self.name, group
-        )
+        name = self.name
+        if self.rank is Rank.synonym:
+            if self.name.isascii() and re.fullmatch(r"[A-Za-z\-]+", self.name):
+                return self.name.replace("-", "")
+            if "[" in name:
+                name = re.sub(r"\[(?!sic)([^\]]+)\]", r"\1", name)
+        corrected_name = models.name.name.infer_corrected_original_name(name, group)
         if corrected_name is not None:
             return corrected_name
         return None
 
     def get_group(self) -> Group:
+        if self.rank is Rank.synonym:
+            if self.parent is not None:
+                return self.parent.get_group()
         return helpers.group_of_rank(self.rank)
+
+    def is_synonym_without_full_name(self) -> bool:
+        if self.rank is not Rank.synonym:
+            return False
+        if self.get_group() is not Group.species:
+            return False
+        name = self.get_corrected_name()
+        if name is None:
+            return True
+        return " " not in name
 
     def lint(self, cfg: LintConfig) -> Iterable[str]:
         yield from models.classification_entry.lint.LINT.run(self, cfg)
@@ -231,6 +248,7 @@ class ClassificationEntry(BaseModel):
         if nam is None:
             return None
         nam.corrected_original_name = name
+        self.mapped_name = nam
         nam.format()
         nam.edit_until_clean()
         return nam
@@ -261,6 +279,7 @@ class ClassificationEntry(BaseModel):
         if nam is None:
             return None
         nam.author_tags = self.article.author_tags
+        self.mapped_name = nam
         nam.format()
         nam.edit_until_clean()
         return nam

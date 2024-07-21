@@ -1,6 +1,7 @@
 """Lint steps for classification entries."""
 
 import itertools
+import re
 import subprocess
 from collections import Counter, defaultdict
 from collections.abc import Container, Iterable
@@ -21,6 +22,7 @@ from taxonomy.db.models.name.lint import (
     maybe_infer_page_from_other_name,
     name_combination_name_sort_key,
 )
+from taxonomy.db.models.name.name import clean_original_name
 from taxonomy.db.models.taxon import Taxon
 
 from .ce import ClassificationEntry, ClassificationEntryTag
@@ -95,20 +97,23 @@ def check_move_to_child(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[st
 def check_missing_mapped_name(
     ce: ClassificationEntry, cfg: LintConfig
 ) -> Iterable[str]:
-    if ce.rank in (Rank.synonym, Rank.informal):
+    if ce.rank is Rank.informal:
         return
-    if ce.mapped_name is None:
-        candidates = list(get_filtered_possible_mapped_names(ce))
-        if len(candidates) == 1:
-            inferred = candidates[0]
-            message = f"inferred mapped_name: {inferred}"
-            if cfg.autofix:
-                print(f"{ce}: {message}")
-                ce.mapped_name = inferred
-            else:
-                yield message
-        elif cfg.verbose and candidates:
-            print(f"{ce}: missing mapped_name (candidates: {candidates})")
+    if ce.mapped_name is not None:
+        return
+    if ce.is_synonym_without_full_name():
+        return
+    candidates = list(get_filtered_possible_mapped_names(ce))
+    if len(candidates) == 1:
+        inferred = candidates[0]
+        message = f"inferred mapped_name: {inferred}"
+        if cfg.autofix:
+            print(f"{ce}: {message}")
+            ce.mapped_name = inferred
+        else:
+            yield message
+    elif cfg.verbose and candidates:
+        print(f"{ce}: missing mapped_name (candidates: {candidates})")
 
 
 @LINT.add("mapped_name")
@@ -119,13 +124,19 @@ def check_mapped_name(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]
             return
         match ce.mapped_name.group:
             case Group.high | Group.genus:
-                if corrected_name != ce.mapped_name.root_name:
+                # root name and corrected original name are different in the case of justified emendations
+                if corrected_name not in (
+                    ce.mapped_name.root_name,
+                    ce.mapped_name.corrected_original_name,
+                ):
                     yield f"mapped_name root_name does not match: {corrected_name} vs {ce.mapped_name.root_name}"
             case Group.family:
-                allowed = (
+                allowed = [
                     ce.mapped_name.original_name,
                     ce.mapped_name.corrected_original_name,
-                )
+                ]
+                if ce.mapped_name.original_name is not None:
+                    allowed.append(clean_original_name(ce.mapped_name.original_name))
                 if corrected_name not in allowed and ce.name not in allowed:
                     yield f"mapped_name original_name does not match: {corrected_name} vs {ce.mapped_name.corrected_original_name}"
                     if cfg.interactive and getinput.yes_no(
@@ -144,7 +155,10 @@ def check_mapped_name(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]
                         new_name = ce.add_incorrect_subsequent_spelling(ce.mapped_name)
                         if new_name is not None:
                             ce.mapped_name = new_name
-                if ce.mapped_name.corrected_original_name != corrected_name:
+                if (
+                    ce.mapped_name.corrected_original_name != corrected_name
+                    and ce.rank is not Rank.synonym
+                ):
                     yield f"mapped_name corrected_original_name does not match: {corrected_name} vs {ce.mapped_name.corrected_original_name}"
                     mapped_root = ce.mapped_name.resolve_variant()
                     alternatives = [
@@ -166,7 +180,7 @@ def check_mapped_name(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]
                             ce.mapped_name = new_name
                         else:
                             yield message
-    elif ce.rank not in (Rank.synonym, Rank.informal):
+    elif ce.rank is not Rank.informal and not ce.is_synonym_without_full_name():
         yield "missing mapped_name"
 
 
@@ -373,8 +387,19 @@ def get_possible_mapped_names(
 @LINT.add("corrected_name")
 def check_corrected_name(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
     corrected_name = ce.get_corrected_name()
-    if corrected_name is None and ce.rank not in (Rank.synonym, Rank.informal):
+    if corrected_name is None and ce.rank is not Rank.informal:
         yield "cannot infer corrected name; add CorrectedName tag"
+    if corrected_name is not None:
+        group = ce.get_group()
+        match group:
+            case Group.species:
+                if ce.rank is Rank.synonym and re.fullmatch(r"[a-z]+", corrected_name):
+                    return
+                if not re.fullmatch(r"[A-Z][a-z]+( [a-z]+){1,3}", corrected_name):
+                    yield f"incorrect species name format: {corrected_name}"
+            case _:
+                if not re.fullmatch(r"[A-Z][a-z]+", corrected_name):
+                    yield f"incorrect name format: {corrected_name}"
 
 
 @LINT.add("authority_page_link")

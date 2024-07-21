@@ -3896,7 +3896,7 @@ def name_combination_name_sort_key(nam: Name) -> tuple[bool, date, int, int]:
 def infer_name_combinations(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.group is not Group.species:
         return
-    ces = nam.classification_entries
+    ces = nam.classification_entries.filter(ClassificationEntry.rank != Rank.synonym)
     by_name: dict[str, list[ClassificationEntry]] = defaultdict(list)
     for ce in ces:
         corrected_name = ce.get_corrected_name()
@@ -4228,3 +4228,12 @@ def check_matches_mapped_classification_entry(
                 and ce_parent.mapped_name != nam.original_parent
             ):
                 yield f"mapped to {ce}, but {ce_parent.mapped_name=} (mapped from {ce_parent}) != {nam.original_parent=}"
+        if nam.original_rank is not ce.rank:
+            yield f"mapped to {ce}, but {ce.rank=!r} != {nam.original_rank=!r}"
+            if nam.original_rank is None:
+                message = f"inferred rank {ce.rank!r} from {ce}"
+                if cfg.autofix:
+                    print(f"{nam}: {message}")
+                    nam.original_rank = ce.rank
+                else:
+                    yield message

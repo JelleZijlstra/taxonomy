@@ -17,7 +17,14 @@ from taxonomy import getinput
 from . import constants
 from .constants import Group, Rank
 
-SPECIES_RANKS = [Rank.subspecies, Rank.species, Rank.species_group]
+SPECIES_RANKS = [
+    Rank.subspecies,
+    Rank.species,
+    Rank.species_group,
+    Rank.variety,
+    Rank.form,
+    Rank.infrasubspecific,
+]
 GENUS_RANKS = [Rank.subgenus, Rank.genus]
 FAMILY_RANKS = [
     Rank.infratribe,
