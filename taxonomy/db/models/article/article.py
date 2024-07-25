@@ -1032,13 +1032,16 @@ class Article(BaseModel):
         else:
             return None
 
-    def concise_markdown_link(self) -> str:
+    def concise_citation(self) -> str:
         authors_list = self.get_authors()
         if len(authors_list) > 2:
             authors = f"{authors_list[0].taxonomic_authority()} et al."
         else:
             authors, _ = self.taxonomic_authority()
-        return f"[{authors} ({self.valid_numeric_year() or self.year})](/a/{self.id})"
+        return f"{authors} ({self.valid_numeric_year() or self.year})"
+
+    def concise_markdown_link(self) -> str:
+        return f"[{self.concise_citation()}](/a/{self.id})"
 
     def markdown_link(self) -> str:
         cite = self.cite()

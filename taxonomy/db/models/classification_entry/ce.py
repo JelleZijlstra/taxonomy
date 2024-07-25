@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable, Mapping, Sequence
 from types import MappingProxyType
-from typing import Any, Self
+from typing import Any, NotRequired, Self
 
 from clirm import Field
 
@@ -25,6 +25,7 @@ class ClassificationEntryTag(ADT):
     TypeSpecimenData(text=str, tag=5)  # type: ignore[name-defined]
     OriginalCombination(text=str, tag=6)  # type: ignore[name-defined]
     OriginalPageDescribed(text=str, tag=7)  # type: ignore[name-defined]
+    IgnoreLintClassificationEntry(label=str, comment=NotRequired[str], tag=8)  # type: ignore[name-defined]
 
 
 class ClassificationEntry(BaseModel):
@@ -247,6 +248,7 @@ class ClassificationEntry(BaseModel):
         )
         if nam is None:
             return None
+        nam.original_rank = self.rank
         nam.corrected_original_name = name
         self.mapped_name = nam
         nam.format()

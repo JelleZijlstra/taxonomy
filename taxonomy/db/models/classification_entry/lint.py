@@ -29,11 +29,20 @@ from .ce import ClassificationEntry, ClassificationEntryTag
 
 
 def remove_unused_ignores(ce: ClassificationEntry, unused: Container[str]) -> None:
-    pass  # no lint ignores to remove
+    new_tags = []
+    for tag in ce.tags:
+        if (
+            isinstance(tag, ClassificationEntryTag.IgnoreLintClassificationEntry)
+            and tag.label in unused
+        ):
+            print(f"{ce}: removing unused IgnoreLint tag: {tag}")
+        else:
+            new_tags.append(tag)
+    ce.tags = new_tags  # type: ignore[assignment]
 
 
 def get_ignores(ce: ClassificationEntry) -> Iterable[IgnoreLint]:
-    return []
+    return ce.get_tags(ce.tags, ClassificationEntryTag.IgnoreLintClassificationEntry)
 
 
 LINT = Lint(ClassificationEntry, get_ignores, remove_unused_ignores)
@@ -147,7 +156,11 @@ def check_mapped_name(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]
                             ce.mapped_name = new_name
             case Group.species:
                 root_name = corrected_name.split()[-1]
-                if root_name not in ce.mapped_name.get_root_name_forms():
+                if root_name not in ce.mapped_name.get_root_name_forms() and not (
+                    ce.mapped_name.nomenclature_status is NomenclatureStatus.as_emended
+                    and ce.mapped_name.corrected_original_name is not None
+                    and root_name == ce.mapped_name.corrected_original_name.split()[-1]
+                ):
                     yield f"mapped_name root_name does not match: {root_name} vs {ce.mapped_name.root_name}"
                     if cfg.interactive and getinput.yes_no(
                         f"Add incorrect subsequent spelling for {ce}?"

@@ -1,12 +1,14 @@
 """Exporting data."""
 
 import csv
+from collections import Counter
 from collections.abc import Container
 from pathlib import Path
 from typing import Protocol, TypedDict
 
 from taxonomy import getinput
 from taxonomy.command_set import CommandSet
+from taxonomy.db.models.classification_entry.ce import ClassificationEntry
 
 from .constants import AgeClass, Group, Rank, RegionKind, Status
 from .models import Article, Collection, Name, Occurrence, Taxon
@@ -425,3 +427,90 @@ def export_type_catalog(filename: str, *collections: Collection) -> None:
             for nam, label in nams:
                 data = data_for_name(nam)
                 writer.writerow({"label": label, **data})
+
+
+@CS.register
+def export_ces(
+    filename: str,
+    taxon: Taxon,
+    rank: Rank = Rank.species,
+    ages: Container[AgeClass] = (AgeClass.extant, AgeClass.recently_extinct),
+) -> None:
+    taxa = [child for child in taxon.children_of_rank(rank) if child.age in ages]
+    name_to_taxon = {}
+    ce_articles: Counter[Article] = Counter()
+    taxon_to_article_to_valid_ces: dict[
+        Taxon, dict[Article, list[ClassificationEntry]]
+    ] = {}
+    taxon_to_article_to_synonym_ces: dict[
+        Taxon, dict[Article, list[ClassificationEntry]]
+    ] = {}
+    for child_taxon in taxa:
+        for nam in child_taxon.all_names():
+            name_to_taxon[nam] = child_taxon
+            for ce in nam.classification_entries:
+                ce_articles[ce.article] += 1
+                if ce.rank is rank:
+                    taxon_to_article_to_valid_ces.setdefault(
+                        child_taxon, {}
+                    ).setdefault(ce.article, []).append(ce)
+                else:
+                    taxon_to_article_to_synonym_ces.setdefault(
+                        child_taxon, {}
+                    ).setdefault(ce.article, []).append(ce)
+    columns = [
+        "class",
+        "order",
+        "family",
+        "genus",
+        "status",
+        "species",
+        "authority",
+        "date",
+        "synonyms",
+    ]
+    for article, _ in ce_articles.most_common():
+        citation = article.concise_citation()
+        columns.append(f"{citation} {rank.name}")
+        columns.append(f"{citation} synonyms")
+    with Path(filename).open("w") as f:
+        writer = csv.DictWriter(f, columns)
+        writer.writeheader()
+        for child_taxon in taxa:
+            try:
+                genus = child_taxon.parent_of_rank(Rank.genus).valid_name
+            except ValueError:
+                genus = ""
+            class_ = child_taxon.get_derived_field("class_")
+            order = child_taxon.get_derived_field("order")
+            family = child_taxon.get_derived_field("family")
+            row = {
+                "class": class_.valid_name if class_ is not None else "",
+                "order": order.valid_name if order is not None else "",
+                "family": family.valid_name if family is not None else "",
+                "genus": genus,
+                "status": child_taxon.base_name.status.name,
+                "species": child_taxon.valid_name,
+                "authority": child_taxon.base_name.taxonomic_authority(),
+                "date": child_taxon.base_name.year,
+                "synonyms": ", ".join(
+                    sorted(
+                        {
+                            nam.corrected_original_name
+                            for nam in child_taxon.all_names()
+                            if nam.corrected_original_name is not None
+                        }
+                    )
+                ),
+            }
+            for article, _ in ce_articles.most_common():
+                valid_ces = taxon_to_article_to_valid_ces.get(child_taxon, {}).get(
+                    article, []
+                )
+                synonym_ces = taxon_to_article_to_synonym_ces.get(child_taxon, {}).get(
+                    article, []
+                )
+                citation = article.concise_citation()
+                row[f"{citation} {rank.name}"] = ", ".join(ce.name for ce in valid_ces)
+                row[f"{citation} synonyms"] = ", ".join(ce.name for ce in synonym_ces)
+            writer.writerow(row)

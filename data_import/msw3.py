@@ -4,10 +4,10 @@ import html
 import json
 import re
 import sys
-from collections import defaultdict, deque
-from collections.abc import Callable, Iterable
+from collections import defaultdict
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Any, Generic, TypeVar
+from typing import Any, TypeVar
 
 from taxonomy.db import helpers
 from taxonomy.db.constants import Rank
@@ -17,6 +17,7 @@ from taxonomy.db.models.classification_entry import (
 )
 
 from . import lib
+from .lib import PeekingIterator
 
 SOURCE = lib.Source("old/msw3-all.csv", "Mammalia-review (MSW3)")
 
@@ -56,59 +57,6 @@ class Token:
 
 
 T = TypeVar("T")
-
-
-class PeekingIterator(Generic[T]):
-    def __init__(self, it: Iterable[T]) -> None:
-        self.it = iter(it)
-        self.lookahead: deque[T] = deque()
-
-    def __next__(self) -> T:
-        if self.lookahead:
-            return self.lookahead.popleft()
-        return next(self.it)
-
-    def assert_done(self) -> None:
-        try:
-            next(self)
-            raise RuntimeError("Expected end of sequence")
-        except StopIteration:
-            pass
-
-    def advance(self) -> T:
-        try:
-            return next(self)
-        except StopIteration:
-            raise RuntimeError("No more elements") from None
-
-    def advance_until(self, value: T) -> Iterable[T]:
-        while True:
-            try:
-                char = next(self)
-            except StopIteration:
-                raise RuntimeError("Unterminated sequence") from None
-            yield char
-            if char == value:
-                break
-
-    def expect(self, condition: Callable[[T], bool]) -> T:
-        token = self.advance()
-        if not condition(token):
-            raise RuntimeError(f"Unexpected token: {token}")
-        return token
-
-    def peek(self) -> T | None:
-        if not self.lookahead:
-            try:
-                value = next(self.it)
-            except StopIteration:
-                return None
-            self.lookahead.append(value)
-        return self.lookahead[0]
-
-    def next_is(self, condition: Callable[[T], bool]) -> bool:
-        next_token = self.peek()
-        return next_token is not None and condition(next_token)
 
 
 REPLACEMENTS = {

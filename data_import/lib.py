@@ -4,23 +4,83 @@ import itertools
 import json
 import re
 import unicodedata
-from collections import Counter, defaultdict
+from collections import Counter, defaultdict, deque
 from collections.abc import Callable, Collection, Container, Iterable, Mapping, Sequence
 from pathlib import Path
-from typing import Any, NamedTuple, NotRequired, TypedDict
+from typing import Any, Generic, NamedTuple, NotRequired, Self, TypedDict, TypeVar
 
 import Levenshtein
 import unidecode
 
 from taxonomy import getinput, shell
 from taxonomy.db import constants, helpers, models
-from taxonomy.db.constants import Rank
+from taxonomy.db.constants import Group, Rank
 from taxonomy.db.models import TypeTag
 from taxonomy.db.models.article.article import Article
 from taxonomy.db.models.classification_entry.ce import (
     ClassificationEntry,
     ClassificationEntryTag,
 )
+from taxonomy.db.models.name.name import Name
+
+T = TypeVar("T")
+
+
+class PeekingIterator(Generic[T]):
+    def __init__(self, it: Iterable[T]) -> None:
+        self.it = iter(it)
+        self.lookahead: deque[T] = deque()
+
+    def __iter__(self) -> Self:
+        return self
+
+    def __next__(self) -> T:
+        if self.lookahead:
+            return self.lookahead.popleft()
+        return next(self.it)
+
+    def assert_done(self) -> None:
+        try:
+            next(self)
+            raise RuntimeError("Expected end of sequence")
+        except StopIteration:
+            pass
+
+    def advance(self) -> T:
+        try:
+            return next(self)
+        except StopIteration:
+            raise RuntimeError("No more elements") from None
+
+    def advance_until(self, value: T) -> Iterable[T]:
+        while True:
+            try:
+                char = next(self)
+            except StopIteration:
+                raise RuntimeError("Unterminated sequence") from None
+            yield char
+            if char == value:
+                break
+
+    def expect(self, condition: Callable[[T], bool]) -> T:
+        token = self.advance()
+        if not condition(token):
+            raise RuntimeError(f"Unexpected token: {token}")
+        return token
+
+    def peek(self) -> T | None:
+        if not self.lookahead:
+            try:
+                value = next(self.it)
+            except StopIteration:
+                return None
+            self.lookahead.append(value)
+        return self.lookahead[0]
+
+    def next_is(self, condition: Callable[[T], bool]) -> bool:
+        next_token = self.peek()
+        return next_token is not None and condition(next_token)
+
 
 DATA_DIR = Path(__file__).parent / "data"
 NAME_SYNONYMS = {
@@ -1716,6 +1776,20 @@ def insert_genera_and_species(names: Iterable[CEDict]) -> Iterable[CEDict]:
         yield name
 
 
+def no_childless_ces(
+    names: Iterable[CEDict], min_rank: Rank = Rank.species
+) -> Iterable[CEDict]:
+    last_name = None
+    min_key = rank_key(min_rank)
+    for name in names:
+        if last_name is not None:
+            last_rank = rank_key(last_name["rank"])
+            if last_rank > min_key and rank_key(name["rank"]) >= last_rank:
+                raise ValueError(f"childless name: {last_name}")
+        yield name
+        last_name = name
+
+
 def add_parents(names: Iterable[CEDict]) -> Iterable[CEDict]:
     parent_stack: list[tuple[Rank, str]] = []
     for name in names:
@@ -1744,8 +1818,36 @@ def add_parents(names: Iterable[CEDict]) -> Iterable[CEDict]:
 def format_ces(source: Source) -> None:
     art = source.get_source()
     for ce in art.get_classification_entries():
+        ce.load()
         ce.format(quiet=True)
         ce.edit_until_clean()
+
+
+def print_unrecognized_genera(names: Iterable[CEDict]) -> Iterable[CEDict]:
+    for name in names:
+        if name["rank"] is Rank.genus:
+            try:
+                Name.select_valid().filter(
+                    Name.root_name == name["name"], Name.group == Group.genus
+                ).get()
+            except Name.DoesNotExist:
+                print(name)
+        yield name
+
+
+def count_by_rank(names: Iterable[CEDict], rank: Rank) -> Iterable[CEDict]:
+    current_order = None
+    count = 0
+    for name in names:
+        if name["rank"] is rank:
+            if current_order is not None:
+                print(rank.name, current_order, count)
+            current_order = name["name"]
+            count = 0
+        if name["rank"] is Rank.species:
+            count += 1
+        yield name
+    print(rank.name, current_order, count)
 
 
 def add_classification_entries(

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import traceback
 from collections.abc import Callable, Collection, Generator, Hashable, Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from functools import cache
 from typing import Generic, Protocol, TypeVar
 
@@ -127,8 +127,13 @@ class Lint(Generic[ModelT]):
             linters = self.linters
 
         used_ignores: set[str] = set()
+        actual_ignores = self.get_ignored_lints(obj)
         for linter in linters:
-            used_ignores |= yield from linter(obj, cfg)
+            if linter.label in actual_ignores:
+                lint_cfg = replace(cfg, interactive=False)
+            else:
+                lint_cfg = cfg
+            used_ignores |= yield from linter(obj, lint_cfg)
         actual_ignores = self.get_ignored_lints(obj)
         unused = actual_ignores - used_ignores
         if unused:

@@ -4054,6 +4054,7 @@ def infer_included_species(nam: Name, cfg: LintConfig) -> Iterable[str]:
     ces = list(nam.get_mapped_classification_entries())
     if not ces:
         return
+    ces = [ce for ce in ces if ce.rank is not Rank.synonym]
     if len(ces) > 1:
         # Maybe if there's a subgenus? Let's see what we want to do in practical
         # occurrences first.
@@ -4220,7 +4221,7 @@ def check_matches_mapped_classification_entry(
             yield f"mapped to {ce}, but {ce.get_corrected_name()} != {nam.corrected_original_name}"
         if ce.page != nam.page_described:
             yield f"mapped to {ce}, but {ce.page=} != {nam.page_described=}"
-        if nam.original_parent is not None:
+        if nam.original_parent is not None and ce.rank is not Rank.synonym:
             ce_parent = ce.parent_of_rank(Rank.genus)
             if (
                 ce_parent is not None
