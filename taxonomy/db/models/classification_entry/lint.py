@@ -125,6 +125,16 @@ def check_missing_mapped_name(
         print(f"{ce}: missing mapped_name (candidates: {candidates})")
 
 
+def get_allowed_family_group_names(nam: Name) -> Container[str]:
+    allowed = []
+    if nam.original_name is not None:
+        allowed.append(nam.original_name)
+        allowed.append(clean_original_name(nam.original_name))
+    if nam.corrected_original_name is not None:
+        allowed.append(nam.corrected_original_name)
+    return allowed
+
+
 @LINT.add("mapped_name")
 def check_mapped_name(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
     if ce.mapped_name is not None:
@@ -140,12 +150,7 @@ def check_mapped_name(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]
                 ):
                     yield f"mapped_name root_name does not match: {corrected_name} vs {ce.mapped_name.root_name}"
             case Group.family:
-                allowed = [
-                    ce.mapped_name.original_name,
-                    ce.mapped_name.corrected_original_name,
-                ]
-                if ce.mapped_name.original_name is not None:
-                    allowed.append(clean_original_name(ce.mapped_name.original_name))
+                allowed = get_allowed_family_group_names(ce.mapped_name)
                 if corrected_name not in allowed and ce.name not in allowed:
                     yield f"mapped_name original_name does not match: {corrected_name} vs {ce.mapped_name.corrected_original_name}"
                     if cfg.interactive and getinput.yes_no(
@@ -262,7 +267,7 @@ class CandidateName:
         score = 0
         corrected_name = self.ce.get_corrected_name()
         if corrected_name is None:
-            corrected_name = self.name
+            corrected_name = self.ce.name
         if self.name.corrected_original_name != corrected_name:
             score += 10
         associated_taxa = Taxon.select_valid().filter(Taxon.base_name == self.name)
@@ -271,7 +276,17 @@ class CandidateName:
         if self.ce.year is not None and str(self.name.numeric_year()) != self.ce.year:
             score += 5
         if (
+            self.name.group is Group.family
+            and self.ce.name not in get_allowed_family_group_names(self.name)
+        ):
+            score += 20
+        if (
             self.name.group is not Group.family
+            and self.name.nomenclature_status
+            not in (
+                NomenclatureStatus.name_combination,
+                NomenclatureStatus.incorrect_subsequent_spelling,
+            )
             and self.name.get_date_object() > self.ce.article.get_date_object()
         ):
             score += 5
@@ -280,11 +295,6 @@ class CandidateName:
             and self.name.taxonomic_authority() != self.ce.authority
         ):
             score += 5
-        if self.name.nomenclature_status in (
-            NomenclatureStatus.subsequent_usage,
-            NomenclatureStatus.name_combination,
-        ):
-            score += 1
         if self.name.nomenclature_status in (
             NomenclatureStatus.incorrect_subsequent_spelling,
             NomenclatureStatus.variant,
@@ -296,17 +306,17 @@ class CandidateName:
         if self.name.group is Group.species:
             genus_name, *_, root_name = corrected_name.split()
             if root_name != self.name.root_name:
-                score += 1
+                score += 2
             if (
                 self.name.original_parent is None
                 or self.name.original_parent.corrected_original_name != genus_name
             ):
-                score += 1
+                score += 2
             if not self.metadata.is_direct_match and not self.metadata.is_shared_genus:
-                score += 1
+                score += 2
             name_genus_name, *_ = self.name.taxon.valid_name.split()
             if genus_name != name_genus_name:
-                score += 1
+                score += 2
 
         self._score = score
         return score

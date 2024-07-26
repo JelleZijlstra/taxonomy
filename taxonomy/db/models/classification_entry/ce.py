@@ -365,9 +365,9 @@ class ClassificationEntry(BaseModel):
 
 
 def _infer_rank_from_name(ce_name: str) -> Rank | None:
-    if re.fullmatch(r"[A-Z][a-z]+ [a-z]+", ce_name):
+    if re.fullmatch(r"[A-ZÆ][a-zæüö]+ [a-zæüö]+", ce_name):
         return Rank.species
-    elif re.fullmatch(r"[A-Z][a-z]+ [a-z]+ [a-z]+", ce_name):
+    elif re.fullmatch(r"[A-ZÆ][a-zæüö]+ [a-zæüö]+ [a-zæüö]+", ce_name):
         return Rank.subspecies
     if " " not in ce_name:
         if ce_name.endswith("idae"):
