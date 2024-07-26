@@ -2165,6 +2165,7 @@ def check_page_described(nam: Name, cfg: LintConfig) -> Iterable[str]:
             "erratum",
             "addenda",
             "table of contents",
+            "supplement",
         ):
             continue
         yield f"invalid part {part!r} in {nam.page_described!r}"

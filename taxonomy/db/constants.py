@@ -409,6 +409,7 @@ class Rank(enum.IntEnum):
     suborder = 60
     order = 65
     superorder = 70
+    magnorder = 72
     subcohort = 75
     cohort = 80
     supercohort = 85

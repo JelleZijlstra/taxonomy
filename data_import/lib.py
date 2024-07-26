@@ -6,6 +6,7 @@ import re
 import unicodedata
 from collections import Counter, defaultdict, deque
 from collections.abc import Callable, Collection, Container, Iterable, Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Generic, NamedTuple, NotRequired, Self, TypedDict, TypeVar
 
@@ -303,6 +304,20 @@ class Source(NamedTuple):
 
     def get_source(self) -> models.Article:
         return models.Article.get(name=self.source)
+
+    def get_data_path(self) -> Path:
+        return DATA_DIR / self.inputfile
+
+
+@dataclass(frozen=True)
+class ArticleSource:
+    source: str
+
+    def get_source(self) -> models.Article:
+        return models.Article.get(name=self.source)
+
+    def get_data_path(self) -> Path:
+        return self.get_source().get_path()
 
 
 class NameConfig(NamedTuple):
@@ -1815,7 +1830,7 @@ def add_parents(names: Iterable[CEDict]) -> Iterable[CEDict]:
         yield name
 
 
-def format_ces(source: Source) -> None:
+def format_ces(source: Source | ArticleSource) -> None:
     art = source.get_source()
     for ce in art.get_classification_entries():
         ce.load()

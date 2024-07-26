@@ -9,6 +9,7 @@ from typing import Protocol, TypedDict
 from taxonomy import getinput
 from taxonomy.command_set import CommandSet
 from taxonomy.db.models.classification_entry.ce import ClassificationEntry
+from taxonomy.db.models.tags import TaxonTag
 
 from .constants import AgeClass, Group, Rank, RegionKind, Status
 from .models import Article, Collection, Name, Occurrence, Taxon
@@ -468,6 +469,8 @@ def export_ces(
         "authority",
         "date",
         "synonyms",
+        "mdd_link",
+        "iucn_link",
     ]
     for article, _ in ce_articles.most_common():
         citation = article.concise_citation()
@@ -484,6 +487,11 @@ def export_ces(
             class_ = child_taxon.get_derived_field("class_")
             order = child_taxon.get_derived_field("order")
             family = child_taxon.get_derived_field("family")
+            mdd_link = ""
+            for tag in child_taxon.tags:
+                if isinstance(tag, TaxonTag.MDD):
+                    mdd_link = f"https://www.mammaldiversity.org/taxon/{tag.id}"
+                    break
             row = {
                 "class": class_.valid_name if class_ is not None else "",
                 "order": order.valid_name if order is not None else "",
@@ -502,6 +510,7 @@ def export_ces(
                         }
                     )
                 ),
+                "mdd_link": mdd_link,
             }
             for article, _ in ce_articles.most_common():
                 valid_ces = taxon_to_article_to_valid_ces.get(child_taxon, {}).get(
@@ -513,4 +522,10 @@ def export_ces(
                 citation = article.concise_citation()
                 row[f"{citation} {rank.name}"] = ", ".join(ce.name for ce in valid_ces)
                 row[f"{citation} synonyms"] = ", ".join(ce.name for ce in synonym_ces)
+
+                for ce in valid_ces:
+                    if ce.page is not None and ce.page.startswith(
+                        "https://www.iucnredlist.org/"
+                    ):
+                        row["iucn_link"] = ce.page
             writer.writerow(row)
