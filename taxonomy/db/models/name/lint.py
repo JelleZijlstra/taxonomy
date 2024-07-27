@@ -1166,6 +1166,25 @@ def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                     new_tag = NameTag.NameCombinationOf(tag.name, tag.comment)
                 if nam.taxon != tag.name.taxon:
                     yield f"{nam} is not assigned to the same name as {tag.name} and should be marked as a misidentification"
+            elif isinstance(tag, NameTag.NameCombinationOf):
+                if tag.name.nomenclature_status is NomenclatureStatus.name_combination:
+                    yield f"{nam} is marked as a name combination of {tag.name}, but that name is already a name combination"
+                    new_target = tag.name.get_tag_target(NameTag.NameCombinationOf)
+                    if new_target is not None:
+                        new_tag = NameTag.NameCombinationOf(new_target, tag.comment)
+                elif (
+                    tag.name.nomenclature_status
+                    is NomenclatureStatus.incorrect_subsequent_spelling
+                    and tag.name.get_date_object() > nam.get_date_object()
+                ):
+                    yield f"{nam} is marked as a name combination of {tag.name}, but predates that name"
+                    new_target = tag.name.get_tag_target(
+                        NameTag.IncorrectSubsequentSpellingOf
+                    )
+                    if new_target is not None:
+                        new_tag = NameTag.IncorrectSubsequentSpellingOf(
+                            new_target, tag.comment
+                        )
             if nam.taxon != tag.name.taxon and not isinstance(
                 tag, NameTag.MisidentificationOf
             ):
@@ -2089,7 +2108,7 @@ def no_page_ranges(nam: Name, cfg: LintConfig) -> Iterable[str]:
             # Ranges should only be used in very rare cases (e.g., where the
             # name itself literally extends across multiple pages). Enforce
             # an explicit IgnoreLintName in such cases.
-            yield f"page_describes contains range: {part}"
+            yield f"page_described contains range: {part}"
 
 
 @LINT.add("infer_page_described")
@@ -2157,6 +2176,8 @@ def check_page_described(nam: Name, cfg: LintConfig) -> Iterable[str]:
         if re.fullmatch(r"[A-Z]?[0-9]+[A-Z]?", part):
             continue
         if re.fullmatch(r"ID #\d+", part):
+            continue
+        if urlparse.is_valid_url(part):
             continue
         if part in (
             "unnumbered",
@@ -3824,10 +3845,13 @@ def guess_repository(nam: Name, cfg: LintConfig) -> Iterable[str]:
         yield message
 
 
-def _maybe_add_name_combination(
-    nam: Name, ce: ClassificationEntry, cfg: LintConfig
+def _maybe_add_name_variant(
+    nam: Name,
+    nomenclature_status: NomenclatureStatus,
+    ce: ClassificationEntry,
+    cfg: LintConfig,
 ) -> Iterable[str]:
-    message = f"adding name combination based on {ce}"
+    message = f"adding {nomenclature_status.name} based on {ce}"
     if cfg.autofix:
         corrected_name = ce.get_corrected_name()
         if corrected_name is None:
@@ -3835,7 +3859,7 @@ def _maybe_add_name_combination(
         print(f"{nam}: {message}")
         new_name = nam.add_variant(
             corrected_name.split()[-1],
-            status=NomenclatureStatus.name_combination,
+            status=nomenclature_status,
             paper=ce.article,
             page_described=ce.page,
             original_name=ce.name,
@@ -3876,25 +3900,25 @@ def maybe_take_over_name(
         else:
             yield message
     else:
-        yield f"replace name combination {nam} with {ce}"
+        yield f"replace name {nam} with {ce}"
 
 
 def _is_msw3(art: Article) -> bool:
     return art.id == 9291 or (art.parent is not None and art.parent.id == 9291)
 
 
-def _name_combination_article_sort_key(art: Article) -> tuple[bool, date, int, int]:
+def _name_variant_article_sort_key(art: Article) -> tuple[bool, date, int, int]:
     return (art.is_unpublished(), art.get_date_object(), art.id, 0)
 
 
 def name_combination_name_sort_key(nam: Name) -> tuple[bool, date, int, int]:
     if nam.original_citation is not None:
-        return _name_combination_article_sort_key(nam.original_citation)
+        return _name_variant_article_sort_key(nam.original_citation)
     return (False, nam.get_date_object(), 0, nam.id)
 
 
-@LINT.add("infer_name_combinations")
-def infer_name_combinations(nam: Name, cfg: LintConfig) -> Iterable[str]:
+@LINT.add("infer_name_variants")
+def infer_name_variants(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.group is not Group.species:
         return
     ces = nam.classification_entries.filter(ClassificationEntry.rank != Rank.synonym)
@@ -3903,39 +3927,67 @@ def infer_name_combinations(nam: Name, cfg: LintConfig) -> Iterable[str]:
         corrected_name = ce.get_corrected_name()
         if corrected_name is not None:
             by_name[corrected_name].append(ce)
-    expected_name_combinations = [
-        # Prefer name combinations that are published by the ICZN's rules
-        min(ces, key=lambda ce: _name_combination_article_sort_key(ce.article))
+    expected_name_variants = [
+        # Prefer variant that are published by the ICZN's rules
+        min(ces, key=lambda ce: _name_variant_article_sort_key(ce.article))
         for ces in by_name.values()
     ]
-    for ce in expected_name_combinations:
+    yield from _infer_name_variants_of_status(
+        nam, cfg, expected_name_variants, NomenclatureStatus.name_combination
+    )
+    yield from _infer_name_variants_of_status(
+        nam,
+        cfg,
+        expected_name_variants,
+        NomenclatureStatus.incorrect_subsequent_spelling,
+    )
+
+
+def _infer_name_variants_of_status(
+    nam: Name,
+    cfg: LintConfig,
+    expected_name_variants: list[ClassificationEntry],
+    nomenclature_status: NomenclatureStatus,
+) -> Iterable[str]:
+    for ce in expected_name_variants:
         corrected_name = ce.get_corrected_name()
         if corrected_name is None:
             continue
         if (
             corrected_name == nam.corrected_original_name
-            and nam.nomenclature_status is not NomenclatureStatus.name_combination
+            and nam.nomenclature_status is not nomenclature_status
         ):
             continue
         ce_root_name = corrected_name.split()[-1]
-        if ce_root_name not in nam.get_root_name_forms():
+        is_root_name_form = ce_root_name in nam.get_root_name_forms()
+        if (
+            nomenclature_status is NomenclatureStatus.name_combination
+            and not is_root_name_form
+        ):
+            continue
+        if (
+            nomenclature_status is NomenclatureStatus.incorrect_subsequent_spelling
+            and nam.nomenclature_status
+            is not NomenclatureStatus.incorrect_subsequent_spelling
+            and is_root_name_form
+        ):
             continue
         existing = list(
             Name.select_valid().filter(
                 Name.corrected_original_name == corrected_name,
                 Name.group == Group.species,
                 Name.taxon == nam.taxon,
-                Name.nomenclature_status == NomenclatureStatus.name_combination,
+                Name.nomenclature_status == nomenclature_status,
             )
         )
         match len(existing):
             case 0:
-                yield from _maybe_add_name_combination(nam, ce, cfg)
+                yield from _maybe_add_name_variant(nam, nomenclature_status, ce, cfg)
             case 1:
                 (existing_name,) = existing
                 if (
                     existing_name.original_citation != ce.article
-                    and _name_combination_article_sort_key(ce.article)
+                    and _name_variant_article_sort_key(ce.article)
                     < name_combination_name_sort_key(existing_name)
                 ):
                     yield from maybe_take_over_name(existing_name, ce, cfg)
@@ -3945,7 +3997,9 @@ def infer_name_combinations(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 for duplicate in existing[1:]:
                     if not any(duplicate.get_mapped_classification_entries()):
                         continue
-                    message = f"removing duplicate name combination {duplicate}"
+                    message = (
+                        f"removing duplicate {nomenclature_status.name} {duplicate}"
+                    )
                     if cfg.autofix:
                         print(f"{duplicate}: {message}")
                         duplicate.merge(existing[0], copy_fields=False)

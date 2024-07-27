@@ -219,5 +219,10 @@ def parse_url(url: str) -> ParsedUrl:
     return OtherUrl(split)
 
 
+def is_valid_url(url: str) -> bool:
+    parsed = parse_url(url)
+    return not any(parsed.lint())
+
+
 def is_google_domain(domain: str) -> bool:
     return re.fullmatch(r"(?:books\.|www\.)?google\.[a-z]+", domain) is not None

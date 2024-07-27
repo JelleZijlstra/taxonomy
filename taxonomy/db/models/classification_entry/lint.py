@@ -296,6 +296,11 @@ class CandidateName:
         ):
             score += 5
         if self.name.nomenclature_status in (
+            NomenclatureStatus.subsequent_usage,
+            NomenclatureStatus.name_combination,
+        ):
+            score += 1
+        if self.name.nomenclature_status in (
             NomenclatureStatus.incorrect_subsequent_spelling,
             NomenclatureStatus.variant,
             NomenclatureStatus.unjustified_emendation,
