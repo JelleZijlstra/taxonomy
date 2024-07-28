@@ -192,6 +192,12 @@ class ClassificationEntry(BaseModel):
         parts.append(f" (#{self.id})")
         return "".join(parts)
 
+    def __repr__(self) -> str:
+        base = str(self)
+        if self.mapped_name is not None:
+            return f"{base} -> {self.mapped_name}"
+        return base
+
     def display(
         self, *, full: bool = False, depth: int = 0, max_depth: int = 2
     ) -> None:

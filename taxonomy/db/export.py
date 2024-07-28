@@ -1,8 +1,8 @@
 """Exporting data."""
 
 import csv
-from collections import Counter
-from collections.abc import Container
+from collections import Counter, defaultdict
+from collections.abc import Container, Iterable
 from pathlib import Path
 from typing import Protocol, TypedDict
 
@@ -529,3 +529,292 @@ def export_ces(
                     ):
                         row["iucn_link"] = ce.page
             writer.writerow(row)
+
+
+class ComparisonRow(TypedDict):
+    order: str
+    family: str
+    genus: str
+    old_name: str
+    old_page: str
+    new_name: str
+    new_page: str
+    comment: str
+
+
+CEPair = tuple[ClassificationEntry | None, ClassificationEntry | None, list[str]]
+
+
+def _get_all_ces(art: Article) -> Iterable[ClassificationEntry]:
+    yield from art.get_classification_entries()
+    for child in Article.select_valid().filter(Article.parent == art):
+        yield from _get_all_ces(child)
+
+
+@CS.register
+def generate_classification_diff(
+    filename: str,
+    old: Article | None = None,
+    new: Article | None = None,
+    old_taxon: str | None = None,
+    new_taxon: str | None = None,
+    rank: Rank = Rank.species,
+) -> None:
+    if old is None:
+        old = Article.getter(None).get_one("Old article to compare> ")
+    if old is None:
+        return
+    if new is None:
+        new = Article.getter(None).get_one("New article to compare> ")
+    if new is None:
+        return
+    old_ces = list(_get_all_ces(old))
+    if not old_ces:
+        print(f"No classification entries found in {old}")
+        return
+    new_ces = list(_get_all_ces(new))
+    if not new_ces:
+        print(f"No classification entries found in {new}")
+        return
+    print(f"Found {len(old_ces)} in {old} and {len(new_ces)} in {new}")
+    if old_taxon is not None:
+        old_ce = next(
+            (
+                ce
+                for ce in old_ces
+                if ce.name == old_taxon and ce.rank is not Rank.synonym
+            ),
+            None,
+        )
+        if old_ce is None:
+            print(f"Could not find {old_taxon} in {old}")
+            return
+    else:
+        old_ce = getinput.choose_one_by_name(
+            old_ces,
+            message="Old taxon to compare (leave blank to compare entire classification)> ",
+            display_fn=lambda ce: ce.name,
+            print_choices=False,
+        )
+    if new_taxon is not None:
+        new_ce = next(
+            (
+                ce
+                for ce in new_ces
+                if ce.name == new_taxon and ce.rank is not Rank.synonym
+            ),
+            None,
+        )
+        if new_ce is None:
+            print(f"Could not find {new_taxon} in {new}")
+            return
+    else:
+        new_ce = getinput.choose_one_by_name(
+            new_ces,
+            message="New taxon to compare (leave blank to use same taxon as for old)> ",
+            display_fn=lambda ce: ce.name,
+            print_choices=False,
+        )
+    if new_ce is None and old_ce is not None:
+        new_ce = next(
+            (
+                ce
+                for ce in new_ces
+                if ce.name == old_ce.name and ce.rank is not Rank.synonym
+            ),
+            None,
+        )
+        if new_ce is None:
+            print(f"Could not find {old_ce.name} in {new}")
+            return
+
+    if old_ce is None:
+        old_ces_to_compare = [ce for ce in old_ces if ce.rank is rank]
+    else:
+        old_ces_to_compare = list(old_ce.get_children_of_rank(rank))
+    if new_ce is None:
+        new_ces_to_compare = [ce for ce in new_ces if ce.rank is rank]
+    else:
+        new_ces_to_compare = list(new_ce.get_children_of_rank(rank))
+
+    variant_base_to_ces: dict[
+        Name, tuple[list[ClassificationEntry], list[ClassificationEntry]]
+    ] = defaultdict(lambda: ([], []))
+    for ce in old_ces_to_compare:
+        if ce.mapped_name is None:
+            continue
+        variant_base = ce.mapped_name.resolve_variant()
+        variant_base_to_ces[variant_base][0].append(ce)
+    for ce in new_ces_to_compare:
+        if ce.mapped_name is None:
+            continue
+        variant_base = ce.mapped_name.resolve_variant()
+        variant_base_to_ces[variant_base][1].append(ce)
+
+    pairs: list[CEPair] = []
+    done_old: set[ClassificationEntry] = set()
+    done_new: set[ClassificationEntry] = set()
+    for old_ce_list, new_ce_list in variant_base_to_ces.values():
+        match (len(old_ce_list), len(new_ce_list)):
+            case (0, _) | (_, 0):
+                continue
+            case 1, 1:
+                pairs.append(_create_pair(old_ce_list[0], new_ce_list[0]))
+            case 1, _:
+                for new_ce in new_ce_list:
+                    _, _, description = _create_pair(old_ce_list[0], new_ce)
+                    extra = f"; also matched {', '.join(ce.name for ce in new_ce_list if ce != new_ce)} in new"
+                    pairs.append((old_ce_list[0], new_ce, [*description, extra]))
+            case _, 1:
+                for old_ce in old_ce_list:
+                    _, _, description = _create_pair(old_ce, new_ce_list[0])
+                    extra = f"; also matched {', '.join(ce.name for ce in old_ce_list if ce != old_ce)} in old"
+                    pairs.append((old_ce, new_ce_list[0], [*description, extra]))
+            case _:
+                # Multiple matches on both sides. Just give up and list them all unpaired.
+                description = [
+                    f"could not match ({', '.join(ce.name for ce in old_ce_list)} in old, {', '.join(ce.name for ce in new_ce_list)} in new)"
+                ]
+                for old_ce in old_ce_list:
+                    pairs.append((old_ce, None, description))
+                for new_ce in new_ce_list:
+                    pairs.append((None, new_ce, description))
+        done_old.update(old_ce_list)
+        done_new.update(new_ce_list)
+
+    taxon_to_ces: dict[
+        Taxon, tuple[list[ClassificationEntry], list[ClassificationEntry]]
+    ] = defaultdict(lambda: ([], []))
+    for ce in old_ces_to_compare:
+        if ce.mapped_name is None:
+            continue
+        taxon_to_ces[ce.mapped_name.taxon][0].append(ce)
+    for ce in new_ces_to_compare:
+        if ce.mapped_name is None:
+            continue
+        taxon_to_ces[ce.mapped_name.taxon][1].append(ce)
+    for taxon, (old_ce_list, new_ce_list) in taxon_to_ces.items():
+        match (len(old_ce_list), len(new_ce_list)):
+            case 1, 1:
+                old_ce = old_ce_list[0]
+                new_ce = new_ce_list[0]
+                if old_ce in done_old or new_ce in done_new:
+                    continue
+                _, _, description = _create_pair(old_ce, new_ce, is_same_name=False)
+                description = [
+                    *description,
+                    f"both currently allocated to {taxon.valid_name}",
+                ]
+                pairs.append((old_ce, new_ce, description))
+                done_old.add(old_ce)
+                done_new.add(new_ce)
+
+    for ce in old_ces_to_compare:
+        if ce in done_old:
+            continue
+        pairs.append((ce, None, ["missing in new (possible lump)"]))
+    for ce in new_ces_to_compare:
+        if ce in done_new:
+            continue
+        pairs.append((None, ce, ["missing in old (possible split or new species)"]))
+
+    rows = [create_comparison_row(pair) for pair in pairs]
+    rows = sorted(
+        rows,
+        key=lambda row: (
+            row["order"],
+            row["family"],
+            row["genus"],
+            row["old_name"] or row["new_name"],
+            row["new_name"],
+        ),
+    )
+    with Path(filename).open("w") as f:
+        writer = csv.DictWriter(f, list(ComparisonRow.__annotations__))
+        header_row = {key: key for key in writer.fieldnames}
+        header_row["old_name"] = old.concise_citation()
+        header_row["new_name"] = new.concise_citation()
+        writer.writerow(header_row)
+        for row in rows:
+            writer.writerow(row)  # static analysis: ignore[incompatible_argument]
+
+
+def create_comparison_row(pair: CEPair) -> ComparisonRow:
+    old_ce, new_ce, description = pair
+
+    order_ce = None
+    if new_ce is not None:
+        order_ce = new_ce.parent_of_rank(Rank.order)
+    if order_ce is None and old_ce is not None:
+        order_ce = old_ce.parent_of_rank(Rank.order)
+    order = order_ce.name if order_ce is not None else ""
+
+    family_ce = None
+    if new_ce is not None:
+        family_ce = new_ce.parent_of_rank(Rank.family)
+    if family_ce is None and old_ce is not None:
+        family_ce = old_ce.parent_of_rank(Rank.family)
+    family = family_ce.name if family_ce is not None else ""
+
+    genus_ce = None
+    genus_name = ""
+    if new_ce is not None:
+        genus_ce = new_ce.parent_of_rank(Rank.genus)
+        if genus_ce is None and new_ce.rank in (Rank.species, Rank.subspecies):
+            corrected_name = new_ce.get_corrected_name()
+            if corrected_name is not None:
+                genus_name = corrected_name.split()[0]
+    if genus_ce is None and not genus_name and old_ce is not None:
+        genus_ce = old_ce.parent_of_rank(Rank.genus)
+        if genus_ce is None and old_ce.rank in (Rank.species, Rank.subspecies):
+            corrected_name = old_ce.get_corrected_name()
+            if corrected_name is not None:
+                genus_name = corrected_name.split()[0]
+
+    genus = genus_ce.name if genus_ce is not None else genus_name
+    return {
+        "order": order,
+        "family": family,
+        "genus": genus,
+        "old_name": old_ce.name if old_ce else "",
+        "old_page": old_ce.page or "" if old_ce else "",
+        "new_name": new_ce.name if new_ce else "",
+        "new_page": new_ce.page or "" if new_ce else "",
+        "comment": "; ".join(description),
+    }
+
+
+def _create_pair(
+    old_ce: ClassificationEntry,
+    new_ce: ClassificationEntry,
+    *,
+    is_same_name: bool = True,
+) -> CEPair:
+    if old_ce.name == new_ce.name:
+        return old_ce, new_ce, []
+    if old_ce.rank is not new_ce.rank:
+        return old_ce, new_ce, ["change in rank"]
+    old_name = old_ce.get_corrected_name()
+    new_name = new_ce.get_corrected_name()
+    if old_name is None or new_name is None:
+        return old_ce, new_ce, ["name change"]
+    if old_name == new_name:
+        return old_ce, new_ce, ["name normalization"]
+    match old_ce.rank:
+        case Rank.species | Rank.subspecies:
+            if old_name is None or new_name is None:
+                return old_ce, new_ce, ["name change"]
+            old_parts = old_name.split()
+            new_parts = new_name.split()
+            if old_parts[0] != new_parts[0]:
+                return old_ce, new_ce, ["genus change"]
+            if old_ce.rank is Rank.subspecies and old_parts[1] != new_parts[1]:
+                return old_ce, new_ce, ["species change"]
+            if old_parts[-1] != new_parts[-1]:
+                return (
+                    old_ce,
+                    new_ce,
+                    ["spelling change" if is_same_name else "name change"],
+                )
+            raise ValueError("unexpected name change")
+    return old_ce, new_ce, ["name change"]
