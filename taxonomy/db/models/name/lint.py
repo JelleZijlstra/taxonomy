@@ -1192,18 +1192,14 @@ def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
             if isinstance(tag, NameTag.VariantOf) and nam.original_citation is not None:
                 # should be specified to unjustified emendation or incorrect subsequent spelling
                 yield f"{nam} is marked as a variant, but has an original citation"
-            if (
-                not isinstance(
-                    tag,
-                    (
-                        NameTag.SubsequentUsageOf,
-                        NameTag.MisidentificationOf,
-                        NameTag.JustifiedEmendationOf,
-                    ),
-                )
-                and (nam.corrected_original_name == tag.name.corrected_original_name)
-                and nam.group is not Group.family
-            ):
+            if not isinstance(
+                tag,
+                (
+                    NameTag.SubsequentUsageOf,
+                    NameTag.MisidentificationOf,
+                    NameTag.JustifiedEmendationOf,
+                ),
+            ) and (nam.corrected_original_name == tag.name.corrected_original_name):
                 yield f"{nam} has the same corrected original name as {tag.name}, but is marked as {type(tag).__name__}"
             if not isinstance(
                 tag,
@@ -1214,7 +1210,7 @@ def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                     NameTag.JustifiedEmendationOf,
                 ),
             ) and (
-                (nam.original_name == tag.name.original_name)
+                (nam.corrected_original_name == tag.name.corrected_original_name)
                 if nam.group is Group.family
                 else (nam.root_name == tag.name.root_name)
             ):
@@ -1517,6 +1513,7 @@ def _make_con_messsage(nam: Name, text: str) -> str:
 
 
 CON_REGEX = re.compile(r"^[A-Z][a-z]+( [a-z]+){0,3}$")
+CON_HIGH_REGEX = re.compile(r"^[A-Z][a-z]+$")
 
 
 @LINT.add("corrected_original_name")
@@ -1537,15 +1534,18 @@ def check_corrected_original_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
             f"inferred name {inferred!r} does not match current name"
             f" {nam.corrected_original_name!r}",
         )
-    if not CON_REGEX.fullmatch(nam.corrected_original_name):
+    if nam.group is Group.species:
+        con_regex = CON_REGEX
+    else:
+        con_regex = CON_HIGH_REGEX
+    if not con_regex.fullmatch(nam.corrected_original_name):
         yield _make_con_messsage(nam, "contains unexpected characters")
         return
     if (
         nam.original_name is not None
-        and nam.group is not Group.family
         and nam.original_name != nam.corrected_original_name
         and nam.original_name.count(" ") == nam.corrected_original_name.count(" ")
-        and CON_REGEX.fullmatch(nam.original_name)
+        and con_regex.fullmatch(nam.original_name)
     ):
         yield _make_con_messsage(
             nam, f"is different from original name {nam.original_name!r}"
@@ -1558,19 +1558,6 @@ def check_corrected_original_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
             if emended is not None and emended.root_name == nam.root_name:
                 return
             yield _make_con_messsage(nam, f"does not match root_name {nam.root_name!r}")
-    elif nam.group is Group.family:
-        if nam.nomenclature_status is NomenclatureStatus.not_based_on_a_generic_name:
-            possibilities = {
-                f"{nam.root_name}{suffix}" for suffix in helpers.VALID_SUFFIXES
-            }
-            if nam.corrected_original_name not in {nam.root_name} | possibilities:
-                yield _make_con_messsage(
-                    nam, f"does not match root_name {nam.root_name!r}"
-                )
-        elif not nam.corrected_original_name.endswith(tuple(helpers.VALID_SUFFIXES)):
-            yield _make_con_messsage(
-                nam, "does not end with a valid family-group suffix"
-            )
     elif nam.group is Group.species:
         parts = nam.corrected_original_name.split(" ")
         if len(parts) not in (2, 3, 4):
@@ -1602,7 +1589,7 @@ def check_root_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.group in (Group.high, Group.genus, Group.family):
         if not re.match(r"^[A-Z][a-z]+$", nam.root_name):
             yield _make_rn_message(nam, "contains unexpected characters")
-    elif nam.group is Group.species:
+    if nam.group is Group.species:
         if not re.match(r"^[a-z]+$", nam.root_name):
             yield _make_rn_message(nam, "contains unexpected characters")
             return
@@ -1699,32 +1686,59 @@ def _check_species_name_gender(nam: Name, cfg: LintConfig) -> Iterable[str]:
 
 @LINT.add("family_root_name")
 def check_family_root_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
-    if nam.group is not Group.family or nam.type is None:
+    if nam.group is not Group.family:
         return
-    if nam.is_unavailable():
+    if nam.nomenclature_status in (
+        NomenclatureStatus.not_based_on_a_generic_name,
+        NomenclatureStatus.not_intended_as_a_scientific_name,
+    ):
+        if nam.root_name != nam.corrected_original_name:
+            yield _make_rn_message(nam, "does not match corrected original name")
         return
+    if nam.original_rank is None:
+        return
+    expected_suffix = helpers.SUFFIXES.get(nam.original_rank)
+    if expected_suffix is not None and not nam.root_name.endswith(expected_suffix):
+        yield _make_rn_message(
+            nam, f"does not match original rank ending -{expected_suffix}"
+        )
+    if nam.type is None:
+        return
+    resolved_type = nam.type.resolve_variant()
     try:
-        stem_name = nam.type.get_stem()
+        stem_name = resolved_type.get_stem()
     except ValueError:
-        yield f"{nam.type} has bad name complex: {nam.type.name_complex}"
+        yield f"{resolved_type} has bad name complex: {resolved_type.name_complex}"
         return
     if stem_name is None:
+        yield f"type {resolved_type} has no stem"
         return
-    if nam.root_name == stem_name:
+    if expected_suffix is None:
+        expected_suffix = ""
+    expected_root_name = stem_name + expected_suffix
+    if nam.root_name == expected_root_name:
         return
-    if nam.root_name + "id" == stem_name:
+    if stem_name.endswith("id"):
         # The Code allows eliding -id- from the stem.
-        return
-    for stripped in helpers.name_with_suffixes_removed(nam.root_name):
-        if stem_name in (stripped, stripped + "i"):
-            print(f"{nam}: Autocorrecting root name: {nam.root_name} -> {stem_name}")
-            if cfg.autofix:
-                nam.root_name = stem_name
-            break
-    if nam.root_name != stem_name:
-        if nam.has_type_tag(TypeTag.IncorrectGrammar):
+        if nam.root_name == stem_name.removesuffix("id") + expected_suffix:
             return
-        yield f"Stem mismatch: {nam.root_name} vs. {stem_name}"
+    if nam.has_type_tag(TypeTag.IncorrectGrammar):
+        return
+    yield _make_rn_message(nam, f"does not match expected stem {expected_root_name!r}")
+    if nam.root_name == stem_name:
+        message = f"Autofixing root name: {nam.root_name} -> {expected_root_name}"
+        if cfg.autofix:
+            print(f"{nam}: {message}")
+            nam.root_name = expected_root_name
+        else:
+            yield message
+    elif stem_name.endswith("id") and nam.root_name == stem_name.removesuffix("id"):
+        message = f"Autofixing root name: {nam.root_name} -> {expected_root_name}"
+        if cfg.autofix:
+            print(f"{nam}: {message}")
+            nam.root_name = stem_name.removesuffix("id") + expected_suffix
+        else:
+            yield message
 
 
 @LINT.add("type_taxon")
@@ -1764,6 +1778,20 @@ def check_type_is_child(nam: Name, cfg: LintConfig) -> Iterable[str]:
     yield f"type {nam.type} is not a child of {nam.taxon}"
 
 
+@LINT.add("type_group")
+def check_type_group(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    """Checks that the type taxon is in the correct group."""
+    if nam.type is None:
+        return
+    match nam.group:
+        case Group.family:
+            if nam.type.group is not Group.genus:
+                yield f"type {nam.type} is in group {nam.type.group}, not {nam.group}"
+        case Group.genus:
+            if nam.type.group is not Group.species:
+                yield f"type {nam.type} is in group {nam.type.group}, not {nam.group}"
+
+
 @LINT.add("infer_family_group_type")
 def infer_family_group_type(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if (
@@ -1772,12 +1800,13 @@ def infer_family_group_type(nam: Name, cfg: LintConfig) -> Iterable[str]:
         or "type" not in nam.get_required_fields()
     ):
         return
+    stem = nam.get_family_group_stem()
     possible_types = [
         child_nam
         for child_nam in nam.taxon.all_names()
         if child_nam.group is Group.genus
         and child_nam.name_complex is not None
-        and child_nam.safe_get_stem() == nam.root_name
+        and child_nam.safe_get_stem() == stem
     ]
     if len(possible_types) != 1:
         if cfg.verbose:
@@ -4282,10 +4311,7 @@ def check_matches_mapped_classification_entry(
     for ce in ces:
         if ce.name != nam.original_name:
             yield f"mapped to {ce}, but {ce.name=} != {nam.original_name=}"
-        if (
-            nam.group is not Group.family
-            and ce.get_corrected_name() != nam.corrected_original_name
-        ):
+        if ce.get_corrected_name() != nam.corrected_original_name:
             yield f"mapped to {ce}, but {ce.get_corrected_name()} != {nam.corrected_original_name}"
         if ce.page != nam.page_described:
             yield f"mapped to {ce}, but {ce.page=} != {nam.page_described=}"

@@ -980,7 +980,7 @@ class Taxon(BaseModel):
         elif group is Group.high:
             return name.root_name
         elif group is Group.family:
-            return name.root_name + helpers.suffix_of_rank(self.rank)
+            return name.get_family_group_stem() + helpers.suffix_of_rank(self.rank)
         elif group is Group.species:
             if name.status is not Status.valid:
                 if name.corrected_original_name is not None:

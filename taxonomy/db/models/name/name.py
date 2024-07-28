@@ -374,6 +374,17 @@ class Name(BaseModel):
     def should_skip(self) -> bool:
         return self.status in (Status.removed, Status.redirect)
 
+    def get_family_group_stem(self) -> str:
+        if self.group is not Group.family:
+            raise ValueError(f"not a family name: {self}")
+        if self.original_rank is None:
+            return self.root_name
+        expected_suffix = helpers.SUFFIXES.get(self.original_rank)
+        if expected_suffix is None:
+            return self.root_name
+        else:
+            return self.root_name.removesuffix(expected_suffix)
+
     def get_stem(self) -> str | None:
         if self.group != Group.genus or self.name_complex is None:
             return None
@@ -2493,11 +2504,9 @@ def clean_original_name(original_name: str) -> str:
 
 def infer_corrected_original_name(original_name: str, group: Group) -> str | None:
     original_name = clean_original_name(original_name)
-    if group in (Group.genus, Group.high):
+    if group in (Group.genus, Group.high, Group.family):
         if re.match(r"^[A-Z][a-z]+$", original_name):
             return original_name
-    elif group is Group.family:
-        return None
     elif group is Group.species:
         if re.match(r"^[A-Z][a-z]+( [a-z]+){1,2}$", original_name):
             return original_name
