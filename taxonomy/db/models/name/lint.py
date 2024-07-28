@@ -1192,6 +1192,19 @@ def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
             if isinstance(tag, NameTag.VariantOf) and nam.original_citation is not None:
                 # should be specified to unjustified emendation or incorrect subsequent spelling
                 yield f"{nam} is marked as a variant, but has an original citation"
+            if (
+                not isinstance(
+                    tag,
+                    (
+                        NameTag.SubsequentUsageOf,
+                        NameTag.MisidentificationOf,
+                        NameTag.JustifiedEmendationOf,
+                    ),
+                )
+                and (nam.corrected_original_name == tag.name.corrected_original_name)
+                and nam.group is not Group.family
+            ):
+                yield f"{nam} has the same corrected original name as {tag.name}, but is marked as {type(tag).__name__}"
             if not isinstance(
                 tag,
                 (

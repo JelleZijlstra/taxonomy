@@ -747,3 +747,27 @@ def infer_page_from_name(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[s
         ce.page = ce.mapped_name.page_described
     else:
         yield message
+
+
+@LINT.add("mapped_name_matches_other_ces")
+def check_mapped_name_matches_other_ces(
+    ce: ClassificationEntry, cfg: LintConfig
+) -> Iterable[str]:
+    if ce.mapped_name is None or ce.rank in (Rank.informal, Rank.synonym):
+        return
+    others = [
+        other_ce
+        # static analysis: ignore[incompatible_argument]
+        for other_ce in ClassificationEntry.select_valid().filter(
+            ClassificationEntry.name == ce.name,
+            ClassificationEntry.id != ce.id,
+            ClassificationEntry.mapped_name != ce.mapped_name,
+            ClassificationEntry.rank != Rank.informal,
+            ClassificationEntry.rank != Rank.synonym,
+        )
+        if not LINT.is_ignoring_lint(other_ce, "mapped_name_matches_other_ces")
+        and other_ce.mapped_name is not None
+        and other_ce.mapped_name.resolve_redirect() != ce.mapped_name.resolve_redirect()
+    ]
+    if others:
+        yield f"mapped to {ce.mapped_name}, but other names are mapped differently:\n{'\n'.join(f' - {other}' for other in others)}"
