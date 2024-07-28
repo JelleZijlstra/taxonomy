@@ -645,6 +645,7 @@ class Name(BaseModel):
             "validate_as_child": self.validate_as_child,
             "add_nominate": lambda: self.taxon.add_nominate(),
             "merge": self._merge,
+            "redirect": self._redirect,
             "remove_duplicate": self._remove_duplicate,
             "edit_comments": self.edit_comments,
             "replace_original_citation": self.replace_original_citation,
@@ -730,6 +731,12 @@ class Name(BaseModel):
         if other is None:
             return
         self.merge(other)
+
+    def _redirect(self) -> None:
+        other = Name.getter(None).get_one("name to redirect to> ")
+        if other is None:
+            return
+        self.redirect(other)
 
     def _remove_duplicate(self) -> None:
         other = Name.getter(None).get_one("name to remove> ")
@@ -2039,8 +2046,15 @@ class Name(BaseModel):
             ), f"Can only merge synonymous names (not {self})"
         if copy_fields:
             if self.type_tags and into.type_tags:
-                into.type_tags += self.type_tags
+                into.type_tags += [
+                    tag
+                    for tag in self.type_tags
+                    if not isinstance(tag, TypeTag.AuthorityPageLink)
+                ]
             self._merge_fields(into, exclude={"id"})
+        self.redirect(into)
+
+    def redirect(self, into: Name) -> None:
         self.status = Status.redirect
         self.target = into
 
