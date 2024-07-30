@@ -2057,15 +2057,19 @@ class Name(BaseModel):
             ), f"Can only merge synonymous names (not {self})"
         if copy_fields:
             if self.type_tags and into.type_tags:
-                into.type_tags += [
-                    tag
-                    for tag in self.type_tags
-                    if not isinstance(tag, TypeTag.AuthorityPageLink)
+                into.type_tags = [  # type: ignore[assignment]
+                    *into.type_tags,
+                    *[
+                        tag
+                        for tag in self.type_tags
+                        if not isinstance(tag, TypeTag.AuthorityPageLink)
+                    ],
                 ]
             self._merge_fields(into, exclude={"id"})
         self.redirect(into)
 
     def redirect(self, into: Name) -> None:
+        assert self != into, "cannot redirect to self"
         self.status = Status.redirect
         self.target = into
 
@@ -2127,10 +2131,20 @@ class Name(BaseModel):
             return self.root_name
 
     def get_normalized_root_name_for_homonymy(self) -> str:
-        if self.group is not Group.species:
-            return self.root_name
-        root_name = self.get_normalized_root_name()
-        return helpers.normalize_root_name_for_homonymy(root_name)
+        match self.group:
+            case Group.species:
+                root_name = self.get_normalized_root_name()
+                return helpers.normalize_root_name_for_homonymy(root_name)
+            case Group.family:
+                if self.type is not None:
+                    try:
+                        stem = self.type.get_stem()
+                    except ValueError:
+                        pass
+                    else:
+                        if stem is not None:
+                            return stem
+        return self.root_name
 
     def short_description(self) -> str:
         return self.root_name

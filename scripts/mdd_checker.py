@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, TypedDict, TypeVar, cast
 
 import gspread
+import Levenshtein
 
 from taxonomy import getinput
 from taxonomy.config import get_options
@@ -956,11 +957,34 @@ def get_mdd_species(input_csv: str | None = None) -> dict[str, MDDSpecies]:
     return {sp.row["sciName"]: sp for sp in species}
 
 
+def check_common_names(species: Sequence[MDDSpecies], backup_path: Path) -> None:
+    common_names = defaultdict(list)
+    for sp in species:
+        for word in sp.row["mainCommonName"].split():
+            common_names[word].append(sp)
+    for word in sorted(common_names):
+        similar_names = [
+            other_word
+            for other_word in common_names
+            if word < other_word
+            and Levenshtein.distance(word, other_word, weights=(1, 5, 5)) <= 2
+        ]
+        for other_word in similar_names:
+            print(
+                f"{word} ({len(common_names[word])} names) is similar to {other_word} ({len(common_names[other_word])} names)"
+            )
+            for sp in common_names[word][:5]:
+                print(f"  {sp.row['sciName']} {sp.row['mainCommonName']}")
+            for sp in common_names[other_word][:5]:
+                print(f"  {sp.row['sciName']} {sp.row['mainCommonName']}")
+
+
 def run(
     *,
     dry_run: bool = True,
     input_csv: str | None = None,
     syn_sheet_csv: str | None = None,
+    common_names_only: bool = False,
 ) -> None:
     options = get_options()
     backup_path = (
@@ -986,41 +1010,45 @@ def run(
     ]
     print(f"done, {len(species)} found")
 
-    print("backing up MDD names... ")
-    with (backup_path / "mdd_species.csv").open("w") as file:
-        writer = csv.writer(file)
-        for row in raw_rows:
-            writer.writerow(row)
-    print(f"done, backup at {backup_path}")
+    if not common_names_only:
+        print("backing up MDD names... ")
+        with (backup_path / "mdd_species.csv").open("w") as file:
+            writer = csv.writer(file)
+            for row in raw_rows:
+                writer.writerow(row)
+        print(f"done, backup at {backup_path}")
 
-    issues = list(lint_species(species))
+        issues = list(lint_species(species))
 
-    if syn_sheet_csv is not None:
-        with Path(syn_sheet_csv).open() as f:
-            syn_sheet_rows = list(csv.reader(f))
-    else:
-        sheet = get_sheet()
-        worksheet = sheet.get_worksheet_by_id(options.mdd_worksheet_gid)
-        syn_sheet_rows = worksheet.get()
-    syn_sheet_headings = syn_sheet_rows[0]
-    syns = [
-        dict(zip(syn_sheet_headings, row, strict=False)) for row in syn_sheet_rows[1:]
-    ]
-    issues += check_with_syns_match(species, syns)
+        if syn_sheet_csv is not None:
+            with Path(syn_sheet_csv).open() as f:
+                syn_sheet_rows = list(csv.reader(f))
+        else:
+            sheet = get_sheet()
+            worksheet = sheet.get_worksheet_by_id(options.mdd_worksheet_gid)
+            syn_sheet_rows = worksheet.get()
+        syn_sheet_headings = syn_sheet_rows[0]
+        syns = [
+            dict(zip(syn_sheet_headings, row, strict=False))
+            for row in syn_sheet_rows[1:]
+        ]
+        issues += check_with_syns_match(species, syns)
 
-    for issue in issues:
-        print(issue.describe())
-
-    with (backup_path / "differences.csv").open("w") as f:
-        headings = [field.name for field in fields(Issue)]
-        diff_writer = csv.DictWriter(f, headings)
-        diff_writer.writeheader()
         for issue in issues:
-            diff_writer.writerow(
-                {heading: getattr(issue, heading) or "" for heading in headings}
-            )
+            print(issue.describe())
 
-    maybe_fix_issues(issues, column_to_idx, dry_run=dry_run)
+        with (backup_path / "differences.csv").open("w") as f:
+            headings = [field.name for field in fields(Issue)]
+            diff_writer = csv.DictWriter(f, headings)
+            diff_writer.writeheader()
+            for issue in issues:
+                diff_writer.writerow(
+                    {heading: getattr(issue, heading) or "" for heading in headings}
+                )
+
+        maybe_fix_issues(issues, column_to_idx, dry_run=dry_run)
+
+    check_common_names(species, backup_path)
 
 
 if __name__ == "__main__":
@@ -1028,7 +1056,11 @@ if __name__ == "__main__":
     parser.add_argument("--input-csv", type=str, default=None)
     parser.add_argument("--syn-sheet-csv", type=str, default=None)
     parser.add_argument("--dry-run", action="store_true", default=False)
+    parser.add_argument("--common-names-only", action="store_true", default=False)
     args = parser.parse_args()
     run(
-        input_csv=args.input_csv, dry_run=args.dry_run, syn_sheet_csv=args.syn_sheet_csv
+        input_csv=args.input_csv,
+        dry_run=args.dry_run,
+        syn_sheet_csv=args.syn_sheet_csv,
+        common_names_only=args.common_names_only,
     )

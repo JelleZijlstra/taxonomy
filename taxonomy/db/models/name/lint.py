@@ -1175,16 +1175,19 @@ def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 elif (
                     tag.name.nomenclature_status
                     is NomenclatureStatus.incorrect_subsequent_spelling
-                    and tag.name.get_date_object() > nam.get_date_object()
                 ):
-                    yield f"{nam} is marked as a name combination of {tag.name}, but predates that name"
                     new_target = tag.name.get_tag_target(
                         NameTag.IncorrectSubsequentSpellingOf
                     )
-                    if new_target is not None:
-                        new_tag = NameTag.IncorrectSubsequentSpellingOf(
-                            new_target, tag.comment
-                        )
+                    self_iss_target = nam.get_tag_target(
+                        NameTag.IncorrectSubsequentSpellingOf
+                    )
+                    if not (new_target is not None and new_target == self_iss_target):
+                        yield f"{nam} is marked as a name combination of {tag.name}, but that is an incorrect subsequent spelling"
+                        if new_target is not None:
+                            new_tag = NameTag.IncorrectSubsequentSpellingOf(
+                                new_target, tag.comment
+                            )
             if nam.taxon != tag.name.taxon and not isinstance(
                 tag, NameTag.MisidentificationOf
             ):
@@ -1786,10 +1789,10 @@ def check_type_group(nam: Name, cfg: LintConfig) -> Iterable[str]:
     match nam.group:
         case Group.family:
             if nam.type.group is not Group.genus:
-                yield f"type {nam.type} is in group {nam.type.group}, not {nam.group}"
+                yield f"type {nam.type} is in group {nam.type.group!r}, not genus"
         case Group.genus:
             if nam.type.group is not Group.species:
-                yield f"type {nam.type} is in group {nam.type.group}, not {nam.group}"
+                yield f"type {nam.type} is in group {nam.type.group!r}, not species"
 
 
 @LINT.add("infer_family_group_type")
@@ -3829,6 +3832,7 @@ def duplicate_name(name: Name) -> tuple[object, ...]:
         name.original_name,
         name.corrected_original_name,
         name.page_described,
+        name.original_rank,
     )
 
 

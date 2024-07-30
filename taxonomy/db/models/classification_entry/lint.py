@@ -150,8 +150,7 @@ def check_mapped_name(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]
                 ):
                     yield f"mapped_name root_name does not match: {corrected_name} vs {ce.mapped_name.root_name}"
             case Group.family:
-                allowed = get_allowed_family_group_names(ce.mapped_name)
-                if corrected_name not in allowed and ce.name not in allowed:
+                if corrected_name != ce.mapped_name.corrected_original_name:
                     yield f"mapped_name original_name does not match: {corrected_name} vs {ce.mapped_name.corrected_original_name}"
                     if cfg.interactive and getinput.yes_no(
                         f"Add new synonym for {ce}?"
@@ -275,11 +274,6 @@ class CandidateName:
             score += 2
         if self.ce.year is not None and str(self.name.numeric_year()) != self.ce.year:
             score += 5
-        if (
-            self.name.group is Group.family
-            and self.ce.name not in get_allowed_family_group_names(self.name)
-        ):
-            score += 20
         if (
             self.name.group is not Group.family
             and self.name.nomenclature_status
@@ -770,4 +764,4 @@ def check_mapped_name_matches_other_ces(
         and other_ce.mapped_name.resolve_redirect() != ce.mapped_name.resolve_redirect()
     ]
     if others:
-        yield f"mapped to {ce.mapped_name}, but other names are mapped differently:\n{'\n'.join(f' - {other}' for other in others)}"
+        yield f"mapped to {ce.mapped_name}, but other names are mapped differently:\n{'\n'.join(f' - {other!r}' for other in others)}"
