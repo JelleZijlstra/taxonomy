@@ -1421,7 +1421,7 @@ def check_redundant_fields(nam: Name, cfg: LintConfig) -> Iterable[str]:
             yield message
 
 
-@LINT.add("lsid")
+@LINT.add("lsid", requires_network=True)
 def check_for_lsid(nam: Name, cfg: LintConfig) -> Iterable[str]:
     # ICZN Art. 8.5.1: ZooBank is relevant to availability only starting in 2012
     if (
@@ -3081,7 +3081,7 @@ def check_must_have_authority_page_link(nam: Name, cfg: LintConfig) -> Iterable[
     yield "must have authority page link"
 
 
-@LINT.add("check_bhl_page")
+@LINT.add("check_bhl_page", requires_network=True)
 def check_bhl_page(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.original_citation is None:
         return
@@ -3241,7 +3241,7 @@ def _maybe_add_bhl_page(
     print(page_obj.page_url)
 
 
-@LINT.add("infer_bhl_page")
+@LINT.add("infer_bhl_page", requires_network=True)
 def infer_bhl_page(
     nam: Name, cfg: LintConfig = LintConfig(autofix=False, interactive=False)
 ) -> Iterable[str]:
@@ -3500,7 +3500,7 @@ def infer_bhl_page_from_classification_entries(
             yield message
 
 
-@LINT.add("bhl_page_from_article")
+@LINT.add("bhl_page_from_article", requires_network=True)
 def infer_bhl_page_from_article(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if not _should_look_for_page_links(nam):
         if cfg.verbose:

@@ -605,7 +605,7 @@ def check_doi(art: Article, cfg: LintConfig) -> Iterable[str]:
             yield message
 
 
-@LINT.add("bhl_item_from_bibliography")
+@LINT.add("bhl_item_from_bibliography", requires_network=True)
 def bhl_item_from_bibliography(art: Article, cfg: LintConfig) -> Iterable[str]:
     if art.url is None:
         return
@@ -623,7 +623,7 @@ def bhl_item_from_bibliography(art: Article, cfg: LintConfig) -> Iterable[str]:
                     yield message
 
 
-@LINT.add("bhl_part_from_page")
+@LINT.add("bhl_part_from_page", requires_network=True)
 def bhl_part_from_page(art: Article, cfg: LintConfig) -> Iterable[str]:
     if art.url is None or art.title is None:
         return
@@ -683,7 +683,7 @@ def must_have_bhl_url_from_names(art: Article, cfg: LintConfig) -> Iterable[str]
     yield f"has new names with BHL page IDs {bhl_page_ids} but no BHL URL"
 
 
-@LINT.add("bhl_page_from_names")
+@LINT.add("bhl_page_from_names", requires_network=True)
 def infer_bhl_page_from_names(art: Article, cfg: LintConfig) -> Iterable[str]:
     if not should_look_for_bhl_url(art):
         if cfg.verbose:
@@ -860,7 +860,7 @@ def must_have_bhl_link(art: Article, cfg: LintConfig) -> Iterable[str]:
     yield "should have BHL link"
 
 
-@LINT.add("bhl_page")
+@LINT.add("bhl_page", requires_network=True)
 def infer_bhl_page(art: Article, cfg: LintConfig = LintConfig()) -> Iterable[str]:
     if not should_look_for_bhl_url(art):
         return
@@ -974,7 +974,7 @@ def get_inferred_bhl_page(art: Article, cfg: LintConfig) -> bhl.PossiblePage | N
     return None
 
 
-@LINT.add("bhl_page_from_other_articles")
+@LINT.add("bhl_page_from_other_articles", requires_network=True)
 def infer_bhl_page_from_other_articles(
     art: Article, cfg: LintConfig = LintConfig()
 ) -> Iterable[str]:
@@ -1748,7 +1748,7 @@ def specify_authors(art: Article, cfg: LintConfig) -> Iterable[str]:
     yield "has initials-only authors"
 
 
-@LINT.add("find_doi", disabled=True)  # false positives
+@LINT.add("find_doi", disabled=True, requires_network=True)  # false positives
 def find_doi(art: Article, cfg: LintConfig) -> Iterable[str]:
     if art.doi is not None or art.has_tag(ArticleTag.JSTOR):
         return
@@ -1898,7 +1898,7 @@ def dupe_journal_with_title(art: Article) -> tuple[object, ...] | None:
     )
 
 
-@LINT.add("data_from_doi")
+@LINT.add("data_from_doi", requires_network=True)
 def data_from_doi(art: Article, cfg: LintConfig) -> Iterable[str]:
     if (
         art.doi is None

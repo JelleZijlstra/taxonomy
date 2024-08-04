@@ -73,6 +73,11 @@ def parse_path(section: Mapping[str, str], key: str, base_path: Path) -> Path:
 
 
 @functools.cache
+def is_network_available() -> bool:
+    return not bool(os.environ.get("TAXONOMY_NO_NETWORK"))
+
+
+@functools.cache
 def parse_config_file(filename: Path) -> Options:
     parser = configparser.ConfigParser()
     parser.read(filename)

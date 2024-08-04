@@ -452,7 +452,7 @@ def check_must_have_authority_page_link(
     yield "must have page link"
 
 
-@LINT.add("check_bhl_page")
+@LINT.add("check_bhl_page", requires_network=True)
 def check_bhl_page(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
     wrong_bhl_pages = ce.article.has_tag(ArticleTag.BHLWrongPageNumbers)
     for tag in ce.get_tags(ce.tags, ClassificationEntryTag.PageLink):
@@ -538,7 +538,7 @@ def _maybe_add_bhl_page(
     print(page_obj.page_url)
 
 
-@LINT.add("infer_bhl_page")
+@LINT.add("infer_bhl_page", requires_network=True)
 def infer_bhl_page(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
     if not _should_look_for_page_links(ce):
         if cfg.verbose:
@@ -703,7 +703,7 @@ def infer_bhl_page_from_other_names(
         yield message
 
 
-@LINT.add("bhl_page_from_article")
+@LINT.add("bhl_page_from_article", requires_network=True)
 def infer_bhl_page_from_article(
     ce: ClassificationEntry, cfg: LintConfig
 ) -> Iterable[str]:

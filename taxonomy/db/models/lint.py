@@ -8,6 +8,8 @@ from dataclasses import dataclass, field, replace
 from functools import cache
 from typing import Generic, Protocol, TypeVar
 
+from taxonomy.config import is_network_available
+
 from .base import BaseModel, LintConfig
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
@@ -55,8 +57,11 @@ class Lint(Generic[ModelT]):
     disabled_linters: list[LintWrapper[ModelT]] = field(default_factory=list)
 
     def add(
-        self, label: str, *, disabled: bool = False
+        self, label: str, *, disabled: bool = False, requires_network: bool = False
     ) -> Callable[[Linter[ModelT]], LintWrapper[ModelT]]:
+        if requires_network and not is_network_available():
+            disabled = True
+
         def decorator(linter: Linter[ModelT]) -> LintWrapper[ModelT]:
             lint_wrapper = LintWrapper(linter, disabled, label, self)
             if disabled:
