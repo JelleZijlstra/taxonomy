@@ -2629,7 +2629,7 @@ class NameTag(adt.ADT):
     )
     IgnorePreoccupationBy(name=Name, comment=str, tag=32)  # type: ignore[name-defined]
 
-    # Deprecated (not necessary).
+    # Deprecated (not necessary) and obsolete.
     MappedClassificationEntry(ce=ClassificationEntry, tag=33)  # type: ignore[name-defined]
 
     MisidentificationOf(name=Name, comment=NotRequired[str], tag=34)  # type: ignore[name-defined]

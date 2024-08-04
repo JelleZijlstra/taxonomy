@@ -1280,6 +1280,9 @@ def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
             elif tag.over.has_priority_over(nam):
                 yield f"is marked as {tag}, but other name is known to have priority"
 
+        elif isinstance(tag, NameTag.MappedClassificationEntry):
+            new_tag = None
+
         # haven't handled TakesPriorityOf, NomenOblitum, MandatoryChangeOf
         if new_tag is not None:
             new_tags.append(new_tag)
