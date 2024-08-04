@@ -2065,7 +2065,7 @@ class Name(BaseModel):
                         if not isinstance(tag, TypeTag.AuthorityPageLink)
                     ],
                 ]
-            self._merge_fields(into, exclude={"id"})
+            self._merge_fields(into, exclude={"id", "tags"})
         self.redirect(into)
 
     def redirect(self, into: Name) -> None:

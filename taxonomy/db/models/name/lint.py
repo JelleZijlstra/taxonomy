@@ -4065,16 +4065,15 @@ def _infer_name_variants_of_status(
                 # multiple; remove the newest
                 existing.sort(key=name_combination_name_sort_key)
                 for duplicate in existing[1:]:
-                    if not any(duplicate.get_mapped_classification_entries()):
-                        continue
+                    can_replace = can_replace_name(duplicate)
                     message = (
                         f"removing duplicate {nomenclature_status.name} {duplicate}"
                     )
-                    if cfg.autofix:
+                    if cfg.autofix and can_replace is None:
                         print(f"{duplicate}: {message}")
                         duplicate.merge(existing[0], copy_fields=False)
-                    else:
-                        yield message
+                    elif should_report_unreplaceable_name(duplicate):
+                        yield f"{message} (cannot replace because of: {can_replace})"
 
 
 @LINT.add("duplicate_variants")
@@ -4095,31 +4094,33 @@ def check_duplicate_variants(nam: Name, cfg: LintConfig) -> Iterable[str]:
         key=lambda dupe: (dupe.get_date_object(), dupe.id),
     )
     if earlier:
-        if any(
-            isinstance(
-                tag,
-                (
-                    TypeTag.LocationDetail,
-                    TypeTag.SpecimenDetail,
-                    TypeTag.EtymologyDetail,
-                    TypeTag.CitationDetail,
-                    TypeTag.SourceDetail,
-                ),
-            )
-            for tag in nam.type_tags
-        ):
-            return
-        message = f"remove because of earlier names with status {nomenclature_status}: {', '.join(str(dupe) for dupe in earlier)}"
-        has_mce = any(nam.get_mapped_classification_entries())
-        if cfg.autofix and has_mce:
+        message = f"remove because of earlier names with status {nomenclature_status.name}: {', '.join(str(dupe) for dupe in earlier)}"
+        can_replace = can_replace_name(nam)
+        if cfg.autofix and can_replace is None:
             print(f"{nam}: {message}")
             nam.merge(earlier[0], copy_fields=False)
-        elif (
-            nomenclature_status is NomenclatureStatus.name_combination
-            or has_mce
-            or nam.id > 100_000
-        ):
-            yield message
+        elif should_report_unreplaceable_name(nam):
+            yield f"{message} (cannot replace because of: {can_replace})"
+
+
+def can_replace_name(nam: Name) -> str | None:
+    for tag in nam.type_tags:
+        if isinstance(tag, TypeTag.AuthorityPageLink):
+            continue
+        return f"tag {tag}"
+    has_mce = any(nam.get_mapped_classification_entries())
+    if not has_mce:
+        return "has no classification entries"
+    return None
+
+
+def should_report_unreplaceable_name(nam: Name) -> bool:
+    if nam.original_citation is None:
+        return False
+    return (
+        nam.id > 100_000
+        or nam.nomenclature_status is NomenclatureStatus.name_combination
+    )
 
 
 @LINT.add("mark_incorrect_subsequent_spelling_as_name_combination")
