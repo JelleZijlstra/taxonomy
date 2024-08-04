@@ -271,7 +271,7 @@ def citebzn(article: Article) -> str:
     # replace last ; with " &"; others with ","
     out = "<b>"
     out += format_authors(article, separator=",", last_separator=" &")
-    out += f"</b> {article.year}. "
+    out += f"</b> {article.numeric_year()}. "
     if article.type == ArticleType.JOURNAL:
         out += f"{article.title}. "
         if article.citation_group:

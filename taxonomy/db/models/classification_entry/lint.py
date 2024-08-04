@@ -106,11 +106,9 @@ def check_move_to_child(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[st
 def check_missing_mapped_name(
     ce: ClassificationEntry, cfg: LintConfig
 ) -> Iterable[str]:
-    if ce.rank is Rank.informal:
-        return
     if ce.mapped_name is not None:
         return
-    if ce.is_synonym_without_full_name():
+    if not must_have_mapped_name(ce):
         return
     candidates = list(get_filtered_possible_mapped_names(ce))
     if len(candidates) == 1:
@@ -123,6 +121,16 @@ def check_missing_mapped_name(
             yield message
     elif cfg.verbose and candidates:
         print(f"{ce}: missing mapped_name (candidates: {candidates})")
+
+
+def must_have_mapped_name(ce: ClassificationEntry) -> bool:
+    if ce.rank is Rank.informal:
+        return False
+    if ce.is_synonym_without_full_name():
+        return False
+    if ClassificationEntryTag.Informal in ce.tags:
+        return False
+    return True
 
 
 def get_allowed_family_group_names(nam: Name) -> Container[str]:
@@ -197,7 +205,7 @@ def check_mapped_name(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]
                             ce.mapped_name = new_name
                         else:
                             yield message
-    elif ce.rank is not Rank.informal and not ce.is_synonym_without_full_name():
+    elif must_have_mapped_name(ce):
         yield "missing mapped_name"
 
 
@@ -242,7 +250,9 @@ def get_filtered_possible_mapped_names(ce: ClassificationEntry) -> Iterable[Name
         return []
     candidates = sorted(candidates, key=lambda c: c.get_score())
     best_score = candidates[0].get_score()
-    matching = takewhile(lambda c: c.get_score() == best_score, candidates)
+    matching = list(takewhile(lambda c: c.get_score() == best_score, candidates))
+    if len(matching) > 1:
+        return list({c.name.resolve_variant() for c in matching})
     return [c.name for c in matching]
 
 
@@ -344,8 +354,13 @@ def get_possible_mapped_names(
             Name.group == Group.high, Name.corrected_original_name == corrected_name
         )
     elif group is Group.family:
+        options = (ce.name, corrected_name)
         possibilies = Name.select_valid().filter(
-            Name.group == Group.family, Name.original_name == ce.name
+            Name.group == Group.family,
+            (
+                Name.original_name.is_in(options)
+                | Name.corrected_original_name.is_in(options)
+            ),
         )
         names = list(yield_family_names(possibilies))
         if names:
@@ -408,10 +423,12 @@ def get_possible_mapped_names(
 
 @LINT.add("corrected_name")
 def check_corrected_name(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
+    if ce.rank is Rank.informal or ClassificationEntryTag.Informal in ce.tags:
+        return
     corrected_name = ce.get_corrected_name()
-    if corrected_name is None and ce.rank is not Rank.informal:
+    if corrected_name is None:
         yield "cannot infer corrected name; add CorrectedName tag"
-    if corrected_name is not None:
+    else:
         group = ce.get_group()
         match group:
             case Group.species:

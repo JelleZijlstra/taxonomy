@@ -15,7 +15,7 @@ import unidecode
 
 from taxonomy import getinput, shell
 from taxonomy.db import constants, helpers, models
-from taxonomy.db.constants import Group, Rank
+from taxonomy.db.constants import AgeClass, Group, Rank
 from taxonomy.db.models import TypeTag
 from taxonomy.db.models.article.article import Article
 from taxonomy.db.models.classification_entry.ce import (
@@ -349,6 +349,20 @@ def get_text(source: Source, encoding: str = "utf-8") -> Iterable[str]:
         yield from f
 
 
+def _extract_between_dashes(line: str) -> int:
+    match = re.match(r"[\-–—] (\d+) [\-–—]", line)
+    if not match:
+        raise ValueError(f"failed to match {line!r}")
+    return int(match.group(1))
+
+
+PAGE_NO_EXTRACTORS: list[Callable[[str], int]] = [
+    lambda line: int(line.split()[0]),
+    lambda line: int(line.split()[-1]),
+    _extract_between_dashes,
+]
+
+
 def extract_pages(
     lines: Iterable[str], *, permissive: bool = False, ignore_page_numbers: bool = False
 ) -> PagesT:
@@ -362,14 +376,13 @@ def extract_pages(
                 yield current_page, current_lines
                 current_lines = []
             line = line[1:].strip()
-            try:
-                if re.search(r"^\d+ ", line):
-                    # page number on the left
-                    current_page = int(line.split()[0])
-                else:
-                    # or the right
-                    current_page = int(line.split()[-1])
-            except ValueError as e:
+            for extractor in PAGE_NO_EXTRACTORS:
+                try:
+                    current_page = extractor(line)
+                    break
+                except ValueError:
+                    continue
+            else:
                 if permissive:
                     if current_page is not None:
                         current_page += 1
@@ -378,7 +391,7 @@ def extract_pages(
                 else:
                     raise ValueError(
                         f"failure extracting from {line!r} while on {current_page}"
-                    ) from e
+                    )
         elif current_page is not None:
             current_lines.append(line)
     # last page
@@ -1718,6 +1731,7 @@ class CEDict(TypedDict):
     raw_data: NotRequired[str]
     page_described: NotRequired[str]
     textual_rank: NotRequired[str | None]
+    age_class: NotRequired[AgeClass | None]
 
 
 def validate_ce_parents(
@@ -1892,9 +1906,7 @@ def add_classification_entries(
         if name.get("type_specimen"):
             tags.append(ClassificationEntryTag.TypeSpecimenData(name["type_specimen"]))
         if name.get("comment"):
-            tags.append(
-                ClassificationEntryTag.CommentClassificationEntry(name["comment"])
-            )
+            tags.append(ClassificationEntryTag.CommentFromSource(name["comment"]))
         if name.get("original_combination"):
             tags.append(
                 ClassificationEntryTag.OriginalCombination(name["original_combination"])
@@ -1905,6 +1917,8 @@ def add_classification_entries(
             )
         if name.get("textual_rank"):
             tags.append(ClassificationEntryTag.TextualRank(name["textual_rank"]))
+        if name.get("age_class"):
+            tags.append(ClassificationEntryTag.AgeClassCE(name["age_class"]))
         try:
             existing = ClassificationEntry.get(name=taxon_name, rank=rank, article=art)
         except ClassificationEntry.DoesNotExist:
@@ -1938,6 +1952,7 @@ def add_classification_entries(
                     if not dry_run:
                         existing.tags = [*existing.tags, tag]
             continue
+        print(f"Add: {rank.name} {taxon_name}")
         if not dry_run:
             if not name.get("parent"):
                 parent = None

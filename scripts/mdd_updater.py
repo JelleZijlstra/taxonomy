@@ -405,6 +405,11 @@ def get_hesp_row(
         row["Hesp_specificEpithet"] = "incertae_sedis"
     else:
         row["Hesp_specificEpithet"] = species.base_name.root_name
+    row["Hesp_species_id"] = ""
+    for tag in taxon.tags:
+        if isinstance(tag, models.tags.TaxonTag.MDD):
+            row["Hesp_species_id"] = tag.id
+            break
 
     # Other
     # TODO: MDD_subspecificEpithet
@@ -567,7 +572,7 @@ def compare_column(
     row_idx: int,
     col_idx: int,
 ) -> FixableDifference | None:
-    mdd_value = mdd_row[mdd_column]
+    mdd_value = mdd_row.get(mdd_column, "")
     hesp_column = mdd_column.replace("MDD", "Hesp")
     hesp_value = hesp_row.get(hesp_column, "")
     match (bool(hesp_value), bool(mdd_value)):

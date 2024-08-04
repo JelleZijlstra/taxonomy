@@ -12,13 +12,19 @@ from clirm import Field
 from taxonomy import command_set, events, getinput
 from taxonomy.adt import ADT
 from taxonomy.db import helpers, models
-from taxonomy.db.constants import Group, NomenclatureStatus, Rank
+from taxonomy.db.constants import (
+    AgeClass,
+    Group,
+    NomenclatureStatus,
+    Rank,
+    SourceLanguage,
+)
 from taxonomy.db.models.article import Article
 from taxonomy.db.models.base import ADTField, BaseModel, LintConfig, TextOrNullField
 
 
 class ClassificationEntryTag(ADT):
-    CommentClassificationEntry(text=str, tag=1)  # type: ignore[name-defined]
+    CommentFromSource(text=str, tag=1)  # type: ignore[name-defined]
     TextualRank(text=str, tag=2)  # type: ignore[name-defined]
     CorrectedName(text=str, tag=3)  # type: ignore[name-defined]
     PageLink(url=str, page=str, tag=4)  # type: ignore[name-defined]
@@ -26,6 +32,10 @@ class ClassificationEntryTag(ADT):
     OriginalCombination(text=str, tag=6)  # type: ignore[name-defined]
     OriginalPageDescribed(text=str, tag=7)  # type: ignore[name-defined]
     IgnoreLintClassificationEntry(label=str, comment=NotRequired[str], tag=8)  # type: ignore[name-defined]
+    AgeClassCE(age=AgeClass, tag=9)  # type: ignore[name-defined]
+    CommonName(name=str, language=SourceLanguage, tag=10)  # type: ignore[name-defined]
+    # Indicates we should not look for a mapped name
+    Informal(tag=11)  # type: ignore[name-defined]
 
 
 class ClassificationEntry(BaseModel):
@@ -63,7 +73,7 @@ class ClassificationEntry(BaseModel):
     def get_corrected_name_without_tags(self) -> str | None:
         group = self.get_group()
         if group is Group.family:
-            return self.name.replace("æ", "ae")
+            return self.name.replace("æ", "ae").replace("œ", "oe")
         name = self.name
         if self.rank is Rank.synonym:
             if self.name.isascii() and re.fullmatch(r"[A-Za-z\-]+", self.name):
@@ -261,6 +271,35 @@ class ClassificationEntry(BaseModel):
         nam.edit_until_clean()
         return nam
 
+    def syn_from_paper(self) -> models.Name | None:
+        print(f"Adding synonym for {self.name!r}...")
+        taxon = models.Taxon.getter(None).get_one("taxon> ")
+        if taxon is None:
+            return None
+        group = self.get_group()
+        corrected_name = self.get_corrected_name()
+        if corrected_name is None:
+            root_name = None
+        elif group is Group.species:
+            root_name = corrected_name.split()[-1]
+        else:
+            root_name = corrected_name
+        nam = taxon.syn_from_paper(
+            paper=self.article,
+            page_described=self.page,
+            group=group,
+            original_name=self.name,
+            corrected_original_name=corrected_name,
+            original_rank=self.rank,
+            root_name=root_name,
+        )
+        if nam is None:
+            return None
+        nam.format()
+        nam.edit_until_clean()
+        self.mapped_name = nam
+        return nam
+
     def add_family_group_synonym(
         self, type: models.Name | None = None
     ) -> models.Name | None:
@@ -298,6 +337,9 @@ class ClassificationEntry(BaseModel):
             "add_incorrect_subsequent_spelling": self.add_incorrect_subsequent_spelling,
             "add_incorrect_subsequent_spelling_for_genus": self.add_incorrect_subsequent_spelling_for_genus,
             "add_family_group_synonym": self.add_family_group_synonym,
+            "syn_from_paper": self.syn_from_paper,
+            "o": lambda: self.article.openf(),
+            "u": lambda: self.article.openurl(),
         }
 
     @classmethod

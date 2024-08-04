@@ -120,7 +120,6 @@ in the Code, which is available [on the ICZN's website](https://code.iczn.org/).
   new.
 - _not intended as a scientific name_: The name was not intended as a scientific name in
   the original description; for example, it was a vernacular name.
-- \_# Regarded as unavailable by fiat
 - _rejected by fiat_: The database has decided to treat a name as unavailable by fiat.
   See
   ["Confronting taxonomic vandalism in biology"](https://doi.org/10.1093/biolinnean/blab009).

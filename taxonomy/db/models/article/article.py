@@ -450,6 +450,7 @@ class Article(BaseModel):
             "display_names": self.display_names,
             "display_type_localities": self.display_type_localities,
             "display_children": self.display_children,
+            "display_classification_entries": self.display_classification_entries,
             "copy_year_for_names": self.copy_year_for_names,
             "modernize_in_press": self.modernize_in_press,
             "open_url": self.openurl,
@@ -1319,6 +1320,14 @@ class Article(BaseModel):
             else:
                 pairs = [(nam.get_description(), nam.taxon) for nam in new_names]
                 models.taxon.display_organized(pairs)
+
+    def display_classification_entries(self, max_depth: int = 2) -> None:
+        ces = self.get_classification_entries().filter(
+            models.classification_entry.ClassificationEntry.parent == None
+        )
+        print(repr(self))
+        for ce in ces:
+            ce.display(depth=2, max_depth=max_depth)
 
     def display_type_localities(self) -> None:
         print(repr(self))

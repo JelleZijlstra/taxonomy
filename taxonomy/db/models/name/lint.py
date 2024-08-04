@@ -1188,8 +1188,10 @@ def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                             new_tag = NameTag.IncorrectSubsequentSpellingOf(
                                 new_target, tag.comment
                             )
-            if nam.taxon != tag.name.taxon and not isinstance(
-                tag, NameTag.MisidentificationOf
+            if (
+                nam.taxon != tag.name.taxon
+                and not isinstance(tag, NameTag.MisidentificationOf)
+                and nam.get_tag_target(NameTag.MisidentificationOf) is None
             ):
                 yield f"{nam} is not assigned to the same name as {tag.name}"
             if isinstance(tag, NameTag.VariantOf) and nam.original_citation is not None:
@@ -3898,11 +3900,19 @@ def _maybe_add_name_variant(
     cfg: LintConfig,
 ) -> Iterable[str]:
     message = f"adding {nomenclature_status.name} based on {ce}"
-    if cfg.autofix:
-        corrected_name = ce.get_corrected_name()
-        if corrected_name is None:
-            return
+    corrected_name = ce.get_corrected_name()
+    if corrected_name is None or not cfg.autofix or not cfg.interactive:
+        should_autofix = False
+    elif nomenclature_status is NomenclatureStatus.name_combination:
+        should_autofix = True
+    else:
+        should_autofix = getinput.yes_no(
+            f"{nam}: add {nomenclature_status!r} based on {ce}? ",
+            callbacks=nam.get_adt_callbacks(),
+        )
+    if should_autofix:
         print(f"{nam}: {message}")
+        assert corrected_name is not None
         new_name = nam.add_variant(
             corrected_name.split()[-1],
             status=nomenclature_status,
@@ -3953,14 +3963,18 @@ def _is_msw3(art: Article) -> bool:
     return art.id == 9291 or (art.parent is not None and art.parent.id == 9291)
 
 
-def _name_variant_article_sort_key(art: Article) -> tuple[bool, date, int, int]:
-    return (art.is_unpublished(), art.get_date_object(), art.id, 0)
+def _name_variant_article_sort_key(art: Article) -> tuple[bool, date, int, int, int]:
+    return (art.is_unpublished(), art.get_date_object(), art.id, 0, 0)
 
 
-def name_combination_name_sort_key(nam: Name) -> tuple[bool, date, int, int]:
+def name_combination_name_sort_key(nam: Name) -> tuple[bool, date, int, int, int]:
     if nam.original_citation is not None:
         return _name_variant_article_sort_key(nam.original_citation)
-    return (False, nam.get_date_object(), 0, nam.id)
+    if nam.original_rank is None:
+        rank = 0
+    else:
+        rank = -nam.original_rank.value
+    return (False, nam.get_date_object(), 0, rank, nam.id)
 
 
 @LINT.add("infer_name_variants")
@@ -4319,14 +4333,7 @@ def check_matches_mapped_classification_entry(
             yield f"mapped to {ce}, but {ce.get_corrected_name()} != {nam.corrected_original_name}"
         if ce.page != nam.page_described:
             yield f"mapped to {ce}, but {ce.page=} != {nam.page_described=}"
-        if nam.original_parent is not None and ce.rank is not Rank.synonym:
-            ce_parent = ce.parent_of_rank(Rank.genus)
-            if (
-                ce_parent is not None
-                and ce_parent.mapped_name is not None
-                and ce_parent.mapped_name != nam.original_parent
-            ):
-                yield f"mapped to {ce}, but {ce_parent.mapped_name=} (mapped from {ce_parent}) != {nam.original_parent=}"
+        yield from _check_matching_original_parent(nam, ce)
         if nam.original_rank is not ce.rank:
             yield f"mapped to {ce}, but {ce.rank=!r} != {nam.original_rank=!r}"
             if nam.original_rank is None:
@@ -4336,3 +4343,21 @@ def check_matches_mapped_classification_entry(
                     nam.original_rank = ce.rank
                 else:
                     yield message
+
+
+def _check_matching_original_parent(
+    nam: Name, ce: ClassificationEntry
+) -> Iterable[str]:
+    if nam.original_parent is None or ce.rank is Rank.synonym:
+        return
+    ce_parent = ce.parent_of_rank(Rank.genus)
+    if (
+        ce_parent is None
+        or ce_parent.mapped_name is None
+        or ce_parent.mapped_name == nam.original_parent
+    ):
+        return
+    ce_subgenus = ce.parent_of_rank(Rank.subgenus)
+    if ce_subgenus is not None and ce_subgenus.mapped_name == nam.original_parent:
+        return
+    yield f"mapped to {ce}, but {ce_parent.mapped_name=} (mapped from {ce_parent}) != {nam.original_parent=}"

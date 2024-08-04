@@ -2500,6 +2500,7 @@ def clean_original_name(original_name: str) -> str:
         original_name.replace("(?)", "")
         .replace("?", "")
         .replace("æ", "ae")
+        .replace("œ", "oe")
         .replace("ë", "e")
         .replace("í", "i")
         .replace("ï", "i")
@@ -2757,6 +2758,8 @@ class TypeTag(adt.ADT):
 
     # Used for subgenera proposed without an associated genus
     NoOriginalParent(tag=56)  # type: ignore[name-defined]
+    # Sources for old names
+    SourceDetail(text=str, source=Article, tag=57)  # type: ignore[name-defined]
 
 
 SOURCE_TAGS = (
