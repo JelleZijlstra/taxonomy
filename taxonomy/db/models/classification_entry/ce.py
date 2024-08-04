@@ -308,6 +308,7 @@ class ClassificationEntry(BaseModel):
             type = models.Name.getter(None).get_one("type> ")
         if type is None:
             return None
+        corrected_name = self.get_corrected_name()
         stem = type.get_stem()
         if stem is None:
             stem = getinput.get_line("stem> ")
@@ -322,6 +323,8 @@ class ClassificationEntry(BaseModel):
             original_citation=self.article,
             page_described=self.page,
             interactive=False,
+            type=type,
+            corrected_original_name=corrected_name,
         )
         if nam is None:
             return None
