@@ -2763,6 +2763,7 @@ class TypeTag(adt.ADT):
 
 
 SOURCE_TAGS = (
+    TypeTag.SourceDetail,
     TypeTag.LocationDetail,
     TypeTag.SpecimenDetail,
     TypeTag.CitationDetail,

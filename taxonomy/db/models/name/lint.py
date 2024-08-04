@@ -502,6 +502,13 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
             tags.append(
                 TypeTag.AuthorityPageLink(str(url), tag.confirmed, str(tag.page))
             )
+        elif (
+            isinstance(tag, TypeTag.CitationDetail)
+            and tag.source is not None
+            and tag.source == nam.original_citation
+        ):
+            yield "replace CitationDetail with SourceDetail"
+            tags.append(TypeTag.SourceDetail(tag.text, tag.source))
         else:
             tags.append(tag)
         # TODO: for lectotype and subsequent designations, ensure the earliest valid one is used.
@@ -4093,6 +4100,7 @@ def check_duplicate_variants(nam: Name, cfg: LintConfig) -> Iterable[str]:
                     TypeTag.SpecimenDetail,
                     TypeTag.EtymologyDetail,
                     TypeTag.CitationDetail,
+                    TypeTag.SourceDetail,
                 ),
             )
             for tag in nam.type_tags
