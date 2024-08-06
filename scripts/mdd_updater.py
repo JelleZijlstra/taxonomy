@@ -114,9 +114,9 @@ def get_mdd_status(name: Name) -> str:
             return name.status.name
 
 
-def get_type_locality_country_and_subregion(nam: Name) -> tuple[str, str]:
+def get_type_locality_country_and_subregion(nam: Name) -> tuple[str, str, str]:
     if nam.type_locality is None:
-        return "", ""
+        return "", "", ""
     region = nam.type_locality.region
     regions = [region.name]
     while region is not None and region.kind not in (
@@ -128,9 +128,15 @@ def get_type_locality_country_and_subregion(nam: Name) -> tuple[str, str]:
         region = region.parent
         regions.append(region.name)
     regions.reverse()
-    if len(regions) == 1:
-        return regions[0], ""
-    return regions[0], regions[1]
+    match len(regions):
+        case 1:
+            return regions[0], "", ""
+        case 2:
+            return regions[0], regions[1], ""
+        case _:
+            # Use the lowest-level region for the third one, as it's
+            # usually more interesting than the third-level one.
+            return regions[0], regions[1], regions[-1]
 
 
 def get_authority_link(nam: Name) -> str:
@@ -364,9 +370,11 @@ def get_hesp_row(
         row["Hesp_original_type_locality"] = " | ".join(verbatim_tl)
     if emended_tl:
         row["Hesp_unchecked_type_locality"] = " | ".join(emended_tl)
-    row["Hesp_type_country"], row["Hesp_type_subregion"] = (
-        get_type_locality_country_and_subregion(name_for_types)
-    )
+    (
+        row["Hesp_type_country"],
+        row["Hesp_type_subregion"],
+        row["Hesp_type_subregion2"],
+    ) = get_type_locality_country_and_subregion(name_for_types)
 
     # Type specimen
     row["Hesp_holotype"] = get_type_specimen(name_for_types)
