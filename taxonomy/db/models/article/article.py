@@ -1601,6 +1601,9 @@ class ArticleTag(adt.ADT):
 
     BHLWrongPageNumbers(comment=NotRequired[str], tag=24)  # type: ignore[name-defined]
 
+    # Indicates that ClassificationEntries are present only for some of the names in this work
+    PartialClassification(comment=NotRequired[str], tag=25)  # type: ignore[name-defined]
+
 
 @lru_cache
 def _getpdfcontent(path: str) -> str:

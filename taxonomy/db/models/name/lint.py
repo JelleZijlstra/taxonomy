@@ -2867,6 +2867,16 @@ def should_require_subgenus_original_parent(nam: Name) -> bool:
     return False
 
 
+def resolve_usage(nam: Name) -> Name:
+    if target := nam.get_tag_target(NameTag.SubsequentUsageOf):
+        return resolve_usage(target)
+    if target := nam.get_tag_target(NameTag.MisidentificationOf):
+        return resolve_usage(target)
+    if target := nam.get_tag_target(NameTag.NameCombinationOf):
+        return resolve_usage(target)
+    return nam
+
+
 @LINT.add("check_original_parent")
 def check_original_parent(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.original_parent is None:
@@ -2876,18 +2886,29 @@ def check_original_parent(nam: Name, cfg: LintConfig) -> Iterable[str]:
         return
     if nam.original_parent.group is not Group.genus:
         yield f"original_parent is not a genus: {nam.original_parent}"
-    if nam.group is not Group.species or nam.corrected_original_name is None:
         return
-    original_genus, *_ = nam.corrected_original_name.split()
-    # corrected_original_name is for the case where the genus name got a justified emendation
-    if original_genus not in (
-        nam.original_parent.root_name,
-        nam.original_parent.corrected_original_name,
+    if nam.original_parent.nomenclature_status in (
+        NomenclatureStatus.subsequent_usage,
+        NomenclatureStatus.misidentification,
     ):
-        yield (
-            f"original_parent {nam.original_parent} does not match corrected"
-            f" original name {nam.corrected_original_name}"
-        )
+        target = resolve_usage(nam.original_parent)
+        message = f"original_parent is a subsequent usage or misidentification: {nam.original_parent} (change to {target})"
+        if cfg.autofix and nam.original_parent != target:
+            print(f"{nam}: {message}")
+            nam.original_parent = target
+        else:
+            yield message
+    if nam.group is Group.species and nam.corrected_original_name is not None:
+        original_genus, *_ = nam.corrected_original_name.split()
+        # corrected_original_name is for the case where the genus name got a justified emendation
+        if original_genus not in (
+            nam.original_parent.root_name,
+            nam.original_parent.corrected_original_name,
+        ):
+            yield (
+                f"original_parent {nam.original_parent} does not match corrected"
+                f" original name {nam.corrected_original_name}"
+            )
 
 
 @LINT.add("infer_original_parent")
@@ -3069,7 +3090,7 @@ def _autoset_original_citation_url(nam: Name) -> None:
     nam.original_citation.set_or_replace_url(url)
 
 
-@LINT.add("authority_page_link")
+@LINT.add("authority_page_link", requires_network=True)
 def check_must_have_authority_page_link(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.has_type_tag(TypeTag.AuthorityPageLink):
         return
@@ -3409,7 +3430,7 @@ def maybe_infer_page_from_other_name(
     return inferred_page_id
 
 
-@LINT.add("infer_bhl_page_from_other_names")
+@LINT.add("infer_bhl_page_from_other_names", requires_network=True)
 def infer_bhl_page_from_other_names(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if not _should_look_for_page_links(nam):
         if cfg.verbose:
@@ -3475,7 +3496,7 @@ def infer_bhl_page_from_other_names(nam: Name, cfg: LintConfig) -> Iterable[str]
         yield message
 
 
-@LINT.add("bhl_page_from_classification_entries")
+@LINT.add("bhl_page_from_classification_entries", requires_network=True)
 def infer_bhl_page_from_classification_entries(
     nam: Name, cfg: LintConfig
 ) -> Iterable[str]:
@@ -4363,13 +4384,16 @@ def _check_matching_original_parent(
     if nam.original_parent is None or ce.rank is Rank.synonym:
         return
     ce_parent = ce.parent_of_rank(Rank.genus)
-    if (
-        ce_parent is None
-        or ce_parent.mapped_name is None
-        or ce_parent.mapped_name == nam.original_parent
-    ):
+    if ce_parent is None or ce_parent.mapped_name is None:
+        return
+    mapped_parent = resolve_usage(ce_parent.mapped_name)
+    if mapped_parent == nam.original_parent:
         return
     ce_subgenus = ce.parent_of_rank(Rank.subgenus)
-    if ce_subgenus is not None and ce_subgenus.mapped_name == nam.original_parent:
+    if (
+        ce_subgenus is not None
+        and ce_subgenus.mapped_name is not None
+        and resolve_usage(ce_subgenus.mapped_name) == nam.original_parent
+    ):
         return
     yield f"mapped to {ce}, but {ce_parent.mapped_name=} (mapped from {ce_parent}) != {nam.original_parent=}"

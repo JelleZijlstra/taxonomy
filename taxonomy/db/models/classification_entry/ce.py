@@ -131,8 +131,14 @@ class ClassificationEntry(BaseModel):
                 next_page = entry.page
             if entry.rank is Rank.genus:
                 next_name = entry.name
+            elif entry.rank in (Rank.species, Rank.subspecies):
+                next_name = entry.name.split()[0]
             elif entry.rank > Rank.genus:
-                next_name = ""
+                genus = entry.parent_of_rank(Rank.genus)
+                if genus is not None:
+                    next_name = genus.name
+                else:
+                    next_name = ""
             entries.append(entry)
         return entries
 
@@ -415,10 +421,13 @@ class ClassificationEntry(BaseModel):
         return result
 
 
+_NAME_CHARS = r"[a-zæüöïœ]+"
+
+
 def _infer_rank_from_name(ce_name: str) -> Rank | None:
-    if re.fullmatch(r"[A-ZÆ][a-zæüö]+ [a-zæüö]+", ce_name):
+    if re.fullmatch(rf"[A-ZÆ]{_NAME_CHARS} [A-Z]?{_NAME_CHARS}", ce_name):
         return Rank.species
-    elif re.fullmatch(r"[A-ZÆ][a-zæüö]+ [a-zæüö]+ [a-zæüö]+", ce_name):
+    elif re.fullmatch(rf"[A-ZÆ]{_NAME_CHARS} {_NAME_CHARS} {_NAME_CHARS}", ce_name):
         return Rank.subspecies
     if " " not in ce_name:
         if ce_name.endswith("idae"):

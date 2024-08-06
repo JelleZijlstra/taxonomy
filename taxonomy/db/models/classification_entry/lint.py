@@ -441,7 +441,7 @@ def check_corrected_name(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[s
                     yield f"incorrect name format: {corrected_name}"
 
 
-@LINT.add("authority_page_link")
+@LINT.add("authority_page_link", requires_network=True)
 def check_must_have_authority_page_link(
     ce: ClassificationEntry, cfg: LintConfig
 ) -> Iterable[str]:
@@ -641,7 +641,7 @@ def infer_bhl_page_from_mapped_name(
         yield message
 
 
-@LINT.add("infer_bhl_page_from_other_names")
+@LINT.add("infer_bhl_page_from_other_names", requires_network=True)
 def infer_bhl_page_from_other_names(
     ce: ClassificationEntry, cfg: LintConfig
 ) -> Iterable[str]:

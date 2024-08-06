@@ -1069,13 +1069,16 @@ class BaseModel(Model):
         )
 
     def edit_until_clean(self, *, initial_edit: bool = False) -> None:
-        if initial_edit:
-            self.edit()
-        while not self.is_lint_clean():
-            self.display()
-            self.edit()
-            self = self.reload()
-            self.format()
+        try:
+            if initial_edit:
+                self.edit()
+            while not self.is_lint_clean():
+                self.display()
+                self.edit()
+                self = self.reload()
+                self.format()
+        except getinput.StopException:
+            pass
 
     @classmethod
     def get_completers_for_adt_field(cls, field: str) -> getinput.CompleterMap:
