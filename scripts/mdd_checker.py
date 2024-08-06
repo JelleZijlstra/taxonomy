@@ -1047,8 +1047,8 @@ def run(
                 )
 
         maybe_fix_issues(issues, column_to_idx, dry_run=dry_run)
-
-    check_common_names(species, backup_path)
+    else:
+        check_common_names(species, backup_path)
 
 
 if __name__ == "__main__":

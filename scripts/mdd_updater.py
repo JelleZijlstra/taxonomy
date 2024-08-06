@@ -69,8 +69,6 @@ def resolve_hesp_id(hesp_id_str: str) -> int | None:
         row = Name(hesp_id)
         if row is None:
             return None
-        while row.target is not None:
-            row = row.target
         return row.id
     return None
 
@@ -670,6 +668,10 @@ def run_gspread_test() -> None:
     worksheet.update_cell(1, 1, "MDD_syn_ID_test")
 
 
+def pprint_nonempty(row: dict[str, str]) -> None:
+    pprint.pp({key: value for key, value in row.items() if value})
+
+
 def run(*, dry_run: bool = True, taxon: Taxon, max_names: int | None = None) -> None:
     options = get_options()
     backup_path = (
@@ -709,7 +711,7 @@ def run(*, dry_run: bool = True, taxon: Taxon, max_names: int | None = None) -> 
     hesp_id_to_name = {name.id: name for name in hesp_names}
     unused_hesp_ids = set(hesp_id_to_name.keys())
     counts: dict[str, int] = Counter()
-    missing_in_hesp: list[tuple[str, dict[str, str]]] = []
+    missing_in_hesp: list[tuple[str, int, dict[str, str]]] = []
     fixable_differences: list[FixableDifference] = []
     max_mdd_id = 0
 
@@ -721,18 +723,18 @@ def run(*, dry_run: bool = True, taxon: Taxon, max_names: int | None = None) -> 
         mdd_id = int(mdd_row["MDD_syn_ID"])
         max_mdd_id = max(max_mdd_id, mdd_id)
         if "Hesp_id" not in mdd_row:
-            missing_in_hesp.append(("missing in H", mdd_row))
+            missing_in_hesp.append(("missing in H", row_idx, mdd_row))
             continue
         hesp_id = resolve_hesp_id(mdd_row["Hesp_id"])
         if hesp_id is None:
-            missing_in_hesp.append(("missing in H", mdd_row))
+            missing_in_hesp.append(("missing in H", row_idx, mdd_row))
             continue
         if hesp_id not in unused_hesp_ids:
             if hesp_id in hesp_id_to_name:
                 message = "already matched"
             else:
                 message = "invalid Hesp id"
-            missing_in_hesp.append((message, mdd_row))
+            missing_in_hesp.append((message, row_idx, mdd_row))
             continue
         unused_hesp_ids.remove(hesp_id)
         name = hesp_id_to_name[hesp_id]
@@ -801,8 +803,8 @@ def run(*, dry_run: bool = True, taxon: Taxon, max_names: int | None = None) -> 
 
     if max_names is None and missing_in_mdd:
         getinput.print_header(f"Missing in MDD {len(missing_in_mdd)}")
-        for row in missing_in_mdd:
-            pprint.pp(row)
+        for row in missing_in_mdd[:10]:
+            pprint_nonempty(row)
         add_all = getinput.yes_no("Add all?")
         if add_all:
             for batch in batched(missing_in_mdd, 500):
@@ -838,17 +840,32 @@ def run(*, dry_run: bool = True, taxon: Taxon, max_names: int | None = None) -> 
                 )
 
     if max_names is None and missing_in_hesp:
+        getinput.print_header(f"Missing in Hesp {len(missing_in_hesp)}")
+        for _, _, row in missing_in_hesp[:10]:
+            pprint_nonempty(row)
         with (backup_path / "missing-in-hesp.csv").open("w") as file:
             writer = csv.writer(file)
-            missing_in_hesp_headings = ["match_status", *missing_in_hesp[0][1]]
+            missing_in_hesp_headings = ["match_status", *missing_in_hesp[0][2]]
             writer.writerow(missing_in_hesp_headings)
-            for match_status, row in missing_in_hesp:
+            for match_status, _, row in missing_in_hesp:
                 writer.writerow(
                     [
                         match_status,
-                        *[row.get(column, "") for column in missing_in_hesp[0][1]],
+                        *[row.get(column, "") for column in missing_in_hesp[0][2]],
                     ]
                 )
+        for match_status, row_idx, row in sorted(
+            missing_in_hesp, key=lambda triple: triple[1], reverse=True
+        ):
+            getinput.print_header(
+                f'{row["MDD_original_combination"]} = {row["MDD_species"]}'
+            )
+            print(match_status)
+            pprint_nonempty(row)
+            if not getinput.yes_no("Remove?"):
+                continue
+            if not dry_run:
+                worksheet.delete_rows(row_idx)
 
     fixable_differences = sorted(
         fixable_differences,
