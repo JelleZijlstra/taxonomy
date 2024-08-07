@@ -576,7 +576,7 @@ class BaseModel(Model):
         return f"/{self.call_sign.lower()}/{self.id}"
 
     def get_absolute_url(self) -> str:
-        return f"http://hesperomys.com{self.get_url()}"
+        return f"https://hesperomys.com{self.get_url()}"
 
     @classmethod
     def select_for_field(cls, field: str | None) -> Any:

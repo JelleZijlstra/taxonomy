@@ -412,10 +412,11 @@ def get_hesp_row(
     else:
         row["Hesp_specificEpithet"] = species.base_name.root_name
     row["Hesp_species_id"] = ""
-    for tag in taxon.tags:
-        if isinstance(tag, models.tags.TaxonTag.MDD):
-            row["Hesp_species_id"] = tag.id
-            break
+    if species is not None:
+        for tag in species.tags:
+            if isinstance(tag, models.tags.TaxonTag.MDD):
+                row["Hesp_species_id"] = tag.id
+                break
 
     # Other
     # TODO: MDD_subspecificEpithet

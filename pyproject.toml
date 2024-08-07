@@ -53,11 +53,12 @@ dependencies = [
   "boto3",
   "botocore",
   "repoguess",
+  "pyzotero",
 ]
 
 [project.urls]
 Changelog = "https://github.com/JelleZijlstra/taxonomy/blob/master/docs/release-notes.md"
-Homepage = "http://hesperomys.com/"
+Homepage = "https://hesperomys.com/"
 
 [build-system]
 requires = ["hatchling"]

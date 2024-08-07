@@ -2749,6 +2749,25 @@ def add_bhl_pages_by_cg() -> None:
         cg.interactively_add_bhl_urls()
 
 
+@command
+def add_coordinates(names: Iterable[Name]) -> None:
+    nams = [
+        nam
+        for nam in names
+        if "type_locality" in nam.get_required_fields()
+        and not nam.has_type_tag(TypeTag.Coordinates)
+    ]
+    print(f"{len(nams)} names without coordinates")
+    for nam in nams:
+        getinput.print_header(nam)
+        nam.display()
+        for tag in nam.type_tags:
+            if isinstance(tag, TypeTag.LocationDetail):
+                print(tag.text)
+        nam.edit()
+        nam.edit_until_clean()
+
+
 def run_shell() -> None:
     # GC does bad things on my current setup for some reason
     gc.disable()
