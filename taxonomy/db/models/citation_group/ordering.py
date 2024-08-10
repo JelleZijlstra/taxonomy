@@ -4,6 +4,7 @@ from collections.abc import Callable, Hashable, Iterable
 from typing import TypeVar
 
 from taxonomy.db import models
+from taxonomy.db.helpers import sift
 
 from .cg import CitationGroup
 
@@ -16,16 +17,6 @@ def bucket(objs: Iterable[T], key: Callable[[T], KeyT]) -> dict[KeyT, list[T]]:
     for obj in objs:
         buckets.setdefault(key(obj), []).append(obj)
     return buckets
-
-
-def sift(objs: Iterable[T], pred: Callable[[T], bool]) -> tuple[list[T], list[T]]:
-    true, false = [], []
-    for obj in objs:
-        if pred(obj):
-            true.append(obj)
-        else:
-            false.append(obj)
-    return true, false
 
 
 def not_none(obj: T | None) -> T:

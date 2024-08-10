@@ -1232,3 +1232,13 @@ def normalize_root_name_for_homonymy(root_name: str) -> str:
     # Similarly, -ventris vs. -venter
     root_name = re.sub(r"ntris$", "nter", root_name)
     return root_name
+
+
+def sift(objs: Iterable[T], pred: Callable[[T], bool]) -> tuple[list[T], list[T]]:
+    true, false = [], []
+    for obj in objs:
+        if pred(obj):
+            true.append(obj)
+        else:
+            false.append(obj)
+    return true, false

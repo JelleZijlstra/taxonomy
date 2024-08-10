@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime
 import re
 from collections.abc import Iterable, Mapping, Sequence
 from types import MappingProxyType
@@ -36,6 +37,7 @@ class ClassificationEntryTag(ADT):
     CommonName(name=str, language=SourceLanguage, tag=10)  # type: ignore[name-defined]
     # Indicates we should not look for a mapped name
     Informal(tag=11)  # type: ignore[name-defined]
+    CommentFromDatabase(text=str, tag=12)  # type: ignore[name-defined]
 
 
 class ClassificationEntry(BaseModel):
@@ -90,6 +92,23 @@ class ClassificationEntry(BaseModel):
             if self.parent is not None:
                 return self.parent.get_group()
         return helpers.group_of_rank(self.rank)
+
+    def get_date_object(self) -> datetime.date:
+        return self.article.get_date_object()
+
+    def get_name_to_use_as_normalized_original_name(
+        self, *, enhanced: bool = False
+    ) -> str | None:
+        if self.is_synonym_without_full_name():
+            root = self.get_corrected_name()
+            parent = self.parent_of_rank(Rank.genus)
+            if parent is None:
+                return None
+            if enhanced:
+                return f"[{parent.name}] {root}"
+            return f"{parent.name} {root}"
+        else:
+            return self.get_corrected_name()
 
     def is_synonym_without_full_name(self) -> bool:
         if self.rank is not Rank.synonym:
@@ -215,15 +234,30 @@ class ClassificationEntry(BaseModel):
         return base
 
     def display(
-        self, *, full: bool = False, depth: int = 0, max_depth: int = 2
+        self,
+        *,
+        full: bool = False,
+        depth: int = 0,
+        max_depth: int = 2,
+        show_parent: bool = True,
     ) -> None:
-        print("  " * depth + str(self))
+        line = str(self)
+        if show_parent and self.parent is not None:
+            line += f" (parent: {self.parent})"
+        print("  " * depth + line)
         if not full:
             max_depth -= 1
         if max_depth <= 0:
             return
         for child in self.children:
-            child.display(full=full, depth=depth + 4, max_depth=max_depth)
+            child.display(
+                full=full, depth=depth + 4, max_depth=max_depth, show_parent=False
+            )
+
+    def ensure_page_set(self) -> None:
+        if self.page is None:
+            self.display()
+            self.page = getinput.get_line("page> ", callbacks=self.get_adt_callbacks())
 
     def add_incorrect_subsequent_spelling_for_genus(self) -> models.Name | None:
         name = self.get_corrected_name()
@@ -234,6 +268,7 @@ class ClassificationEntry(BaseModel):
         target = models.Name.getter(None).get_one("genus> ")
         if target is None:
             return None
+        self.ensure_page_set()
         nam = target.add_variant(
             genus_name,
             status=NomenclatureStatus.incorrect_subsequent_spelling,
@@ -260,6 +295,7 @@ class ClassificationEntry(BaseModel):
             target = models.Name.getter(None).get_one("name> ")
         if target is None:
             return None
+        self.ensure_page_set()
         nam = target.add_variant(
             name.split()[-1],
             status=NomenclatureStatus.incorrect_subsequent_spelling,
@@ -271,7 +307,7 @@ class ClassificationEntry(BaseModel):
         if nam is None:
             return None
         nam.original_rank = self.rank
-        nam.corrected_original_name = name
+        nam.corrected_original_name = self.get_name_to_use_as_normalized_original_name()
         self.mapped_name = nam
         nam.format()
         nam.edit_until_clean()
@@ -282,6 +318,7 @@ class ClassificationEntry(BaseModel):
         taxon = models.Taxon.getter(None).get_one("taxon> ")
         if taxon is None:
             return None
+        self.ensure_page_set()
         group = self.get_group()
         corrected_name = self.get_corrected_name()
         if corrected_name is None:
@@ -295,7 +332,7 @@ class ClassificationEntry(BaseModel):
             page_described=self.page,
             group=group,
             original_name=self.name,
-            corrected_original_name=corrected_name,
+            corrected_original_name=self.get_name_to_use_as_normalized_original_name(),
             original_rank=self.rank,
             root_name=root_name,
         )
@@ -314,6 +351,7 @@ class ClassificationEntry(BaseModel):
             type = models.Name.getter(None).get_one("type> ")
         if type is None:
             return None
+        self.ensure_page_set()
         corrected_name = self.get_corrected_name()
         stem = type.get_stem()
         if stem is None:
@@ -473,8 +511,9 @@ CS = command_set.CommandSet("ce", "Commands related to classification entries.")
 
 
 @CS.register
-def classification_entries_for_article() -> None:
-    art = Article.getter(None).get_one("article> ")
+def classification_entries_for_article(art: Article | None = None) -> None:
+    if art is None:
+        art = Article.getter(None).get_one("article> ")
     if art is None:
         return
     extra_fields: list[Field[Any]] = []

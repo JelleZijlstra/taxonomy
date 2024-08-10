@@ -1163,6 +1163,48 @@ class Name(BaseModel):
             return self
         return base_name._resolve_variant(max_depth - 1)
 
+    def get_variant_base_name_with_reason(self) -> Iterable[tuple[Name, NameTagCons]]:
+        for tag in self.tags:
+            if isinstance(
+                tag,
+                (
+                    NameTag.VariantOf,
+                    NameTag.UnjustifiedEmendationOf,
+                    NameTag.JustifiedEmendationOf,
+                    NameTag.IncorrectOriginalSpellingOf,
+                    NameTag.SubsequentUsageOf,
+                    NameTag.MandatoryChangeOf,
+                    NameTag.IncorrectSubsequentSpellingOf,
+                    NameTag.NameCombinationOf,
+                ),
+            ):
+                # static analysis: ignore[incompatible_yield]
+                yield tag.name, type(tag)
+
+    def resolve_variant_with_reason(self) -> tuple[Name, set[NameTagCons]]:
+        return self._resolve_variant_with_reason(10)
+
+    def _resolve_variant_with_reason(
+        self, max_depth: int
+    ) -> tuple[Name, set[NameTagCons]]:
+        if max_depth == 0:
+            raise ValueError(f"too deep for {self}")
+        base_name_reasons = list(self.get_variant_base_name_with_reason())
+        if not base_name_reasons:
+            return self, set()
+        new_bases = set()
+        new_reasons = set()
+        for base_name, reason in base_name_reasons:
+            new_base, extra_reasons = base_name._resolve_variant_with_reason(
+                max_depth - 1
+            )
+            new_bases.add(new_base)
+            new_reasons.add(reason)
+            new_reasons.update(extra_reasons)
+        if len(new_bases) != 1:
+            raise ValueError(f"multiple bases for {self}: {new_bases}")
+        return new_bases.pop(), new_reasons
+
     def is_high_mammal(self) -> bool:
         return (
             self.group is not Group.species

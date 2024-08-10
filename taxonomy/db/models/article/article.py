@@ -472,6 +472,9 @@ class Article(BaseModel):
             "clear_bhl_caches": self.clear_bhl_caches,
             "set_or_replace_url": self.set_or_replace_url,
             "add_bibliography_url": self.add_bibliography_url,
+            "classification_entries_for_article": lambda: models.classification_entry.ce.classification_entries_for_article(
+                self
+            ),
         }
 
     def open_cg_url(self) -> None:

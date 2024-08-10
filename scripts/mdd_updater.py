@@ -36,8 +36,10 @@ import time
 from collections import Counter
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, TypeVar
 
+import google.auth.exceptions
 import gspread
 import httpx
 import Levenshtein
@@ -683,8 +685,16 @@ def run(*, dry_run: bool = True, taxon: Taxon, max_names: int | None = None) -> 
     backup_path.mkdir(parents=True, exist_ok=True)
 
     print("downloading MDD names... ")
-    gc = gspread.oauth()
-    sheet = gc.open(options.mdd_sheet)
+    try:
+        gc = gspread.oauth()
+        sheet = gc.open(options.mdd_sheet)
+    except google.auth.exceptions.RefreshError:
+        print("need to refresh token")
+        token_path = Path("~/.config/gspread/authorized_user.json").expanduser()
+        token_path.unlink(missing_ok=True)
+        gc = gspread.oauth()
+        sheet = gc.open(options.mdd_sheet)
+
     worksheet = sheet.get_worksheet_by_id(options.mdd_worksheet_gid)
     raw_rows = worksheet.get()
     headings = raw_rows[0]
@@ -840,34 +850,6 @@ def run(*, dry_run: bool = True, taxon: Taxon, max_names: int | None = None) -> 
                     [row.get(column, "") for column in missing_in_mdd_headings]
                 )
 
-    if max_names is None and missing_in_hesp:
-        getinput.print_header(f"Missing in Hesp {len(missing_in_hesp)}")
-        for _, _, row in missing_in_hesp[:10]:
-            pprint_nonempty(row)
-        with (backup_path / "missing-in-hesp.csv").open("w") as file:
-            writer = csv.writer(file)
-            missing_in_hesp_headings = ["match_status", *missing_in_hesp[0][2]]
-            writer.writerow(missing_in_hesp_headings)
-            for match_status, _, row in missing_in_hesp:
-                writer.writerow(
-                    [
-                        match_status,
-                        *[row.get(column, "") for column in missing_in_hesp[0][2]],
-                    ]
-                )
-        for match_status, row_idx, row in sorted(
-            missing_in_hesp, key=lambda triple: triple[1], reverse=True
-        ):
-            getinput.print_header(
-                f'{row["MDD_original_combination"]} = {row["MDD_species"]}'
-            )
-            print(match_status)
-            pprint_nonempty(row)
-            if not getinput.yes_no("Remove?"):
-                continue
-            if not dry_run:
-                worksheet.delete_rows(row_idx)
-
     fixable_differences = sorted(
         fixable_differences,
         key=lambda x: (x.mdd_column, x.kind, x.hesp_value, x.mdd_value),
@@ -971,6 +953,34 @@ def run(*, dry_run: bool = True, taxon: Taxon, max_names: int | None = None) -> 
                         print(f"Done {done}/{len(updates_to_make)}")
                         if len(batch) == 500:
                             time.sleep(30)
+
+    if max_names is None and missing_in_hesp:
+        getinput.print_header(f"Missing in Hesp {len(missing_in_hesp)}")
+        for _, _, row in missing_in_hesp[:10]:
+            pprint_nonempty(row)
+        with (backup_path / "missing-in-hesp.csv").open("w") as file:
+            writer = csv.writer(file)
+            missing_in_hesp_headings = ["match_status", *missing_in_hesp[0][2]]
+            writer.writerow(missing_in_hesp_headings)
+            for match_status, _, row in missing_in_hesp:
+                writer.writerow(
+                    [
+                        match_status,
+                        *[row.get(column, "") for column in missing_in_hesp[0][2]],
+                    ]
+                )
+        for match_status, row_idx, row in sorted(
+            missing_in_hesp, key=lambda triple: triple[1], reverse=True
+        ):
+            getinput.print_header(
+                f'{row["MDD_original_combination"]} = {row["MDD_species"]}'
+            )
+            print(match_status)
+            pprint_nonempty(row)
+            if not getinput.yes_no("Remove?"):
+                continue
+            if not dry_run:
+                worksheet.delete_rows(row_idx)
 
     print("Done. Data saved at", backup_path)
 
