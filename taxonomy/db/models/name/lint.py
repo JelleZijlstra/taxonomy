@@ -4088,7 +4088,7 @@ def infer_name_variants(nam: Name, cfg: LintConfig) -> Iterable[str]:
             root_name = corrected_name.split()[-1]
             if root_name in nam.get_root_name_forms():
                 continue
-            syns_by_name[corrected_name].append(ce)
+            syns_by_name[root_name].append(ce)
         else:
             by_name[corrected_name].append(ce)
     expected_name_variants = [
@@ -4114,6 +4114,12 @@ def infer_name_variants(nam: Name, cfg: LintConfig) -> Iterable[str]:
         if any(
             existing.get_date_object() < expected_ce.get_date_object()
             for existing in existing_names
+        ):
+            continue
+        # Can happen with justified emendations
+        if (
+            nam.corrected_original_name is not None
+            and root_name == nam.corrected_original_name.split()[-1]
         ):
             continue
         replaceable = [
