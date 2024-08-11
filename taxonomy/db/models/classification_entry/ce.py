@@ -38,6 +38,8 @@ class ClassificationEntryTag(ADT):
     # Indicates we should not look for a mapped name
     Informal(tag=11)  # type: ignore[name-defined]
     CommentFromDatabase(text=str, tag=12)  # type: ignore[name-defined]
+    # Should not be included in species counts
+    TreatedAsDubious(tag=13)  # type: ignore[name-defined]
 
 
 class ClassificationEntry(BaseModel):
@@ -82,6 +84,8 @@ class ClassificationEntry(BaseModel):
                 return self.name.replace("-", "")
             if "[" in name:
                 name = re.sub(r"\[(?!sic)([^\]]+)\]", r"\1", name)
+        elif self.rank is Rank.division and re.match(r"[A-Z][a-z]+ Division", name):
+            return name
         corrected_name = models.name.name.infer_corrected_original_name(name, group)
         if corrected_name is not None:
             return corrected_name
@@ -338,9 +342,9 @@ class ClassificationEntry(BaseModel):
         )
         if nam is None:
             return None
+        self.mapped_name = nam
         nam.format()
         nam.edit_until_clean()
-        self.mapped_name = nam
         return nam
 
     def add_family_group_synonym(
@@ -385,22 +389,46 @@ class ClassificationEntry(BaseModel):
             "add_incorrect_subsequent_spelling_for_genus": self.add_incorrect_subsequent_spelling_for_genus,
             "add_family_group_synonym": self.add_family_group_synonym,
             "syn_from_paper": self.syn_from_paper,
+            "edit_parent": self.edit_parent,
+            "edit_sibling_ce": self.edit_sibling_ce,
             "o": lambda: self.article.openf(),
             "u": lambda: self.article.openurl(),
         }
 
+    def edit_sibling_ce(self) -> None:
+        sibling = self.get_parent_completion(
+            self.article, callbacks=self.get_adt_callbacks(), prompt="ce> "
+        )
+        if sibling is not None:
+            sibling.edit()
+
     @classmethod
     def get_parent_completion(
-        cls, art: Article, callbacks: getinput.CallbackMap = {}
+        cls,
+        art: Article,
+        *,
+        callbacks: getinput.CallbackMap = {},
+        default: Self | None = None,
+        prompt: str = "parent> ",
     ) -> Self | None:
         siblings = list(cls.select_valid().filter(cls.article == art))
         return getinput.choose_one_by_name(
             siblings,
             callbacks=callbacks,
-            message="parent> ",
+            message=prompt,
             print_choices=False,
             history_key=("parent", art.id),
+            default=default,
+            decode_fn=cls.get_from_key,
         )
+
+    def edit_parent(self) -> None:
+        print(f"Current parent: {self.parent}")
+        parent = self.get_parent_completion(
+            self.article, callbacks=self.get_adt_callbacks()
+        )
+        if parent is not None:
+            self.parent = parent
 
     def should_exempt_from_string_cleaning(self, field: str) -> bool:
         return field == "raw_data"
@@ -526,6 +554,12 @@ def classification_entries_for_article(art: Article | None = None) -> None:
         if getinput.yes_no(f"Add {field.name}?"):
             extra_fields.append(field)
     format_each = getinput.yes_no("Format each entry?")
+    create_for_article(art, extra_fields=extra_fields, format_each=format_each)
+
+
+def create_for_article(
+    art: Article, *, extra_fields: Sequence[Field[Any]] = [], format_each: bool = True
+) -> None:
     entries = ClassificationEntry.create_for_article(
         art, extra_fields, format_each=format_each
     )

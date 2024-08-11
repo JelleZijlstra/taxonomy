@@ -4017,9 +4017,9 @@ def _maybe_add_name_variant(
         if new_name is not None:
             new_name.corrected_original_name = corrected_name
             new_name.format()
+            ce.mapped_name = new_name
             if cfg.interactive:
                 new_name.edit_until_clean()
-            ce.mapped_name = new_name
     else:
         yield message
 
@@ -4794,6 +4794,23 @@ def infer_tags_from_mapped_entries(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 yield message
 
 
+def has_classification(art: Article) -> bool:
+    return any(art.get_classification_entries()) and not art.has_tag(
+        ArticleTag.PartialClassification
+    )
+
+
+@LINT.add("must_have_ce")
+def check_must_have_ce(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    if nam.original_citation is None:
+        return
+    if not has_classification(nam.original_citation):
+        return
+    if any(nam.get_mapped_classification_entries()):
+        return
+    yield f"must have classification entries for {nam.original_citation}"
+
+
 @LINT.add("matches_mapped")
 def check_matches_mapped_classification_entry(
     nam: Name, cfg: LintConfig
@@ -4817,9 +4834,10 @@ def check_matches_mapped_classification_entry(
         yield from _check_matching_original_parent(nam, ce)
         if nam.original_rank is not ce.rank:
             yield f"mapped to {ce}, but {ce.rank=!r} != {nam.original_rank=!r}"
-            if nam.original_rank is None or (
-                nam.status is Status.synonym and ce.rank is Rank.synonym
-            ):
+            if (
+                nam.original_rank is None
+                or (nam.status is Status.synonym and ce.rank is Rank.synonym)
+            ) and len(ces) == 1:
                 message = f"inferred rank {ce.rank!r} from {ce}"
                 if cfg.autofix:
                     print(f"{nam}: {message}")

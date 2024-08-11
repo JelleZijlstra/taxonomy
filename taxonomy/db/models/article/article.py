@@ -475,7 +475,18 @@ class Article(BaseModel):
             "classification_entries_for_article": lambda: models.classification_entry.ce.classification_entries_for_article(
                 self
             ),
+            "ce_add": lambda: models.classification_entry.ce.create_for_article(self),
+            "ce_edit": self.ce_edit,
         }
+
+    def ce_edit(self) -> None:
+        sibling = (
+            models.classification_entry.ce.ClassificationEntry.get_parent_completion(
+                self, prompt="ce> "
+            )
+        )
+        if sibling is not None:
+            sibling.edit()
 
     def open_cg_url(self) -> None:
         cg = self.get_citation_group()

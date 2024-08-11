@@ -1240,6 +1240,14 @@ class BaseModel(Model):
         return f"[{self!s}]({self.get_url()})"
 
     @classmethod
+    def get_from_key(cls: type[ModelT], key: str) -> ModelT | None:
+        getter = cls.getter(None)
+        try:
+            return getter(key)
+        except cls.DoesNotExist:
+            return None
+
+    @classmethod
     def create_interactively(cls: type[ModelT], **kwargs: Any) -> ModelT | None:
         data = {**kwargs}
         for field in cls.fields():

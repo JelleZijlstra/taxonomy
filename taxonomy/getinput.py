@@ -13,7 +13,10 @@ from dataclasses import dataclass, field
 from itertools import zip_longest
 from typing import Any, Literal, TypeVar, overload
 
-import prompt_toolkit
+import prompt_toolkit.completion
+import prompt_toolkit.document
+import prompt_toolkit.history
+import prompt_toolkit.validation
 
 from . import adt
 
@@ -156,6 +159,8 @@ def choose_one_by_name(
     history_key: object = None,
     callbacks: CallbackMap = {},
     print_choices: bool = True,
+    default: T | None = None,
+    decode_fn: Callable[[str], T | None] | None = None,
 ) -> T | None:
     choices = {display_fn(option): option for option in options}
     if print_choices:
@@ -163,17 +168,24 @@ def choose_one_by_name(
             print(display)
     if history_key is None:
         history_key = tuple(options)
-    choice = get_with_completion(
-        options=choices,
-        message=message,
-        disallow_other=True,
-        history_key=history_key,
-        allow_empty=allow_empty,
-        callbacks=callbacks,
-    )
-    if not choice:
-        return None
-    return choices[choice]
+    while True:
+        choice = get_with_completion(
+            options=choices,
+            message=message,
+            disallow_other=decode_fn is None,
+            history_key=history_key,
+            allow_empty=allow_empty,
+            callbacks=callbacks,
+            default=display_fn(default) if default is not None else "",
+        )
+        if not choice:
+            return None
+        if choice in choices:
+            return choices[choice]
+        if decode_fn is not None:
+            decoded = decode_fn(choice)
+            if decoded is not None:
+                return decoded
 
 
 class _Completer(prompt_toolkit.completion.Completer):

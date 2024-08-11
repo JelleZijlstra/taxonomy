@@ -512,6 +512,9 @@ def check_corrected_name(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[s
     corrected_name = ce.get_corrected_name()
     if corrected_name is None:
         yield "cannot infer corrected name; add CorrectedName tag"
+    elif ce.rank is Rank.division:
+        if not re.fullmatch(r"[A-Z][a-z]+ Division", corrected_name):
+            yield f"incorrect division name format: {corrected_name}"
     else:
         group = ce.get_group()
         match group:

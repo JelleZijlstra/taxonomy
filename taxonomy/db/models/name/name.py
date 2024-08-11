@@ -670,7 +670,23 @@ class Name(BaseModel):
             "try_to_find_bhl_links": self.try_to_find_bhl_links,
             "clear_bhl_caches": self.clear_bhl_caches,
             "open_coordinates": self.open_coordinates,
+            "ce_add": self._ce_add,
+            "ce_edit": self._ce_edit,
+            "edit_mapped_ce": self._edit_mapped_ce,
         }
+
+    def _ce_add(self) -> None:
+        if self.original_citation is not None:
+            models.classification_entry.ce.create_for_article(self.original_citation)
+
+    def _ce_edit(self) -> None:
+        if self.original_citation is not None:
+            self.original_citation.ce_edit()
+
+    def _edit_mapped_ce(self) -> None:
+        for ce in self.get_mapped_classification_entries():
+            ce.display()
+            ce.edit()
 
     def open_coordinates(self) -> None:
         for tag in self.get_tags(self.type_tags, TypeTag.Coordinates):
