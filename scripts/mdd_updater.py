@@ -57,6 +57,10 @@ from taxonomy.db.constants import (
     Status,
 )
 from taxonomy.db.models import Article, Name, Taxon
+from taxonomy.db.models.classification_entry.ce import (
+    ClassificationEntry,
+    ClassificationEntryTag,
+)
 from taxonomy.db.models.name import NameTag, TypeTag
 
 LIMIT_AUTH_LINKS = False
@@ -419,11 +423,29 @@ def get_hesp_row(
             if isinstance(tag, models.tags.TaxonTag.MDD):
                 row["Hesp_species_id"] = tag.id
                 break
+    row["Hesp_name_usages"] = " | ".join(
+        _stringify_ce(ce)
+        for ce in sorted(
+            name.classification_entries, key=lambda ce: ce.article.get_date_object()
+        )
+    )
 
     # Other
     # TODO: MDD_subspecificEpithet
     # TODO: MDD_comments
     return {key: value.replace("\\ ", " ") for key, value in row.items()}
+
+
+def _stringify_ce(ce: ClassificationEntry) -> str:
+    page_links = [
+        tag.url for tag in ce.get_tags(ce.tags, ClassificationEntryTag.PageLink)
+    ]
+    author, year = ce.article.taxonomic_authority()
+    if ce.page:
+        year = f"{year}:{ce.page}"
+    if page_links:
+        year = f"{year}, {', '.join(page_links)}"
+    return f"{author} ({year}) (information at {ce.article.get_absolute_url()})"
 
 
 class DifferenceKind(enum.StrEnum):
