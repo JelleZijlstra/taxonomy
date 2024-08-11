@@ -139,7 +139,7 @@ class Taxon(BaseModel):
     def group(self) -> Group:
         return helpers.group_of_rank(self.rank)
 
-    def get_names(self) -> Iterable[models.Name]:
+    def get_names(self) -> clirm.Query[models.Name]:
         return models.Name.add_validity_check(self.names)
 
     def sorted_names(self, *, exclude_valid: bool = False) -> list[models.Name]:

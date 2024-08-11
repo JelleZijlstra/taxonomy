@@ -2512,6 +2512,7 @@ def check_required_fields(nam: Name, cfg: LintConfig) -> Iterable[str]:
             nam.nomenclature_status is NomenclatureStatus.name_combination
             and _is_msw3(nam.original_citation)
         )
+        and "page_described" in nam.get_required_fields()
     ):
         yield "has original citation but no page_described"
     if (
@@ -4110,7 +4111,7 @@ def infer_name_variants(nam: Name, cfg: LintConfig) -> Iterable[str]:
         expected_ce = min(
             ces, key=lambda ce: _name_variant_article_sort_key(ce.article)
         )
-        existing_names = nam.taxon.names.filter(Name.root_name == root_name)
+        existing_names = nam.taxon.get_names().filter(Name.root_name == root_name)
         if any(
             existing.get_date_object() < expected_ce.get_date_object()
             for existing in existing_names
@@ -4792,6 +4793,19 @@ def infer_tags_from_mapped_entries(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 tag_name.add_type_tag(tag)
             else:
                 yield message
+        for tag in ce.tags:
+            if isinstance(tag, ClassificationEntryTag.PageLink):
+                expected_tag = TypeTag.AuthorityPageLink(
+                    url=tag.url, confirmed=True, page=tag.page or ""
+                )
+                if expected_tag in nam.type_tags:
+                    continue
+                message = f"adding page link from {ce} to {nam}: {tag}"
+                if cfg.autofix:
+                    print(f"{nam}: {message}")
+                    nam.add_type_tag(expected_tag)
+                else:
+                    yield message
 
 
 def has_classification(art: Article) -> bool:
