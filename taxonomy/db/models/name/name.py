@@ -21,6 +21,7 @@ from taxonomy.apis.zoobank import get_zoobank_data
 from taxonomy.db import constants, helpers, models
 from taxonomy.db.constants import (
     AgeClass,
+    ArticleType,
     EmendationJustification,
     FillDataLevel,
     Group,
@@ -621,8 +622,14 @@ class Name(BaseModel):
 
     def get_adt_callbacks(self) -> getinput.CallbackMap:
         callbacks = super().get_adt_callbacks()
+        article_callbacks = (
+            self.original_citation.get_shareable_adt_callbacks()
+            if self.original_citation is not None
+            else {}
+        )
         return {
             **callbacks,
+            **article_callbacks,
             "add_comment": self.add_comment,
             "d": self._display_plus,
             "o": self.open_description,
@@ -670,18 +677,8 @@ class Name(BaseModel):
             "try_to_find_bhl_links": self.try_to_find_bhl_links,
             "clear_bhl_caches": self.clear_bhl_caches,
             "open_coordinates": self.open_coordinates,
-            "ce_add": self._ce_add,
-            "ce_edit": self._ce_edit,
             "edit_mapped_ce": self._edit_mapped_ce,
         }
-
-    def _ce_add(self) -> None:
-        if self.original_citation is not None:
-            models.classification_entry.ce.create_for_article(self.original_citation)
-
-    def _ce_edit(self) -> None:
-        if self.original_citation is not None:
-            self.original_citation.ce_edit()
 
     def _edit_mapped_ce(self) -> None:
         for ce in self.get_mapped_classification_entries():
@@ -1967,7 +1964,11 @@ class Name(BaseModel):
 
         yield "author_tags"
         yield "year"
-        yield "page_described"
+        if not (
+            self.original_citation is not None
+            and self.original_citation.type is ArticleType.WEB
+        ):
+            yield "page_described"
         yield "original_citation"
         if self.original_citation is None:
             yield "verbatim_citation"

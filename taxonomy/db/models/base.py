@@ -872,6 +872,7 @@ class BaseModel(Model):
             **get_static_callbacks(),
             **field_editors,
             **self.get_tag_callbacks(),
+            **self.get_shareable_adt_callbacks(),
             "d": self.display,
             "f": lambda: self.display(full=True),
             "foreign": self.edit_foreign,
@@ -890,6 +891,9 @@ class BaseModel(Model):
             "lint_and_fix": self.lint_and_fix,
             "edit_derived_field": self.edit_derived_field,
         }
+
+    def get_shareable_adt_callbacks(self) -> getinput.CallbackMap:
+        return {}
 
     def get_tag_callbacks(self) -> getinput.CallbackMap:
         def make_tag_callback(field: ADTField[Any], member: str) -> Callable[[], None]:

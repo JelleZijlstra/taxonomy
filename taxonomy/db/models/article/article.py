@@ -429,12 +429,23 @@ class Article(BaseModel):
             args = (*args, cls.citation_group == CitationGroup.get(name=journal))
         return super().bfind(*args, quiet=quiet, sort_key=sort_key, **kwargs)
 
+    def get_shareable_adt_callbacks(self) -> getinput.CallbackMap:
+        return {
+            "o": self.openf,
+            "openf": self.openf,
+            "display_classification_entries": self.display_classification_entries,
+            "display_names": self.display_names,
+            "open_url": self.openurl,
+            "open_cg_url": self.open_cg_url,
+            "cite": self.cite_interactive,
+            "ce_add": lambda: models.classification_entry.ce.create_for_article(self),
+            "ce_edit": self.ce_edit,
+        }
+
     def get_adt_callbacks(self) -> getinput.CallbackMap:
         callbacks = super().get_adt_callbacks()
         return {
             **callbacks,
-            "o": self.openf,
-            "openf": self.openf,
             "reverse": self.reverse_authors,
             "specify_authors": self.specify_authors,
             "recompute_authors_from_doi": self.recompute_authors_from_doi,
@@ -447,14 +458,10 @@ class Article(BaseModel):
             "expand_bhl_part": lambda: self.expand_bhl_part(
                 verbose=True, set_fields=True
             ),
-            "display_names": self.display_names,
             "display_type_localities": self.display_type_localities,
             "display_children": self.display_children,
-            "display_classification_entries": self.display_classification_entries,
             "copy_year_for_names": self.copy_year_for_names,
             "modernize_in_press": self.modernize_in_press,
-            "open_url": self.openurl,
-            "open_cg_url": self.open_cg_url,
             "remove": self.remove,
             "merge": self.merge,
             "make_alternative_version": self.make_alternative_version,
@@ -466,7 +473,6 @@ class Article(BaseModel):
             "removefirstpage": self.removefirstpage,
             "add_comment": self.add_comment,
             "infer_year": self.infer_year,
-            "cite": self.cite_interactive,
             "try_to_find_bhl_links": self.try_to_find_bhl_links,
             "remove_all_author_page_links": self.remove_all_author_page_links,
             "clear_bhl_caches": self.clear_bhl_caches,
@@ -475,8 +481,6 @@ class Article(BaseModel):
             "classification_entries_for_article": lambda: models.classification_entry.ce.classification_entries_for_article(
                 self
             ),
-            "ce_add": lambda: models.classification_entry.ce.create_for_article(self),
-            "ce_edit": self.ce_edit,
         }
 
     def ce_edit(self) -> None:

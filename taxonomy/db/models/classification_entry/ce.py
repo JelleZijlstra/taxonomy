@@ -383,24 +383,15 @@ class ClassificationEntry(BaseModel):
         return nam
 
     def get_adt_callbacks(self) -> getinput.CallbackMap:
+        article_callbacks = self.article.get_shareable_adt_callbacks()
         return {
             **super().get_adt_callbacks(),
+            **article_callbacks,
             "add_incorrect_subsequent_spelling": self.add_incorrect_subsequent_spelling,
-            "add_incorrect_subsequent_spelling_for_genus": self.add_incorrect_subsequent_spelling_for_genus,
             "add_family_group_synonym": self.add_family_group_synonym,
             "syn_from_paper": self.syn_from_paper,
             "edit_parent": self.edit_parent,
-            "edit_sibling_ce": self.edit_sibling_ce,
-            "o": lambda: self.article.openf(),
-            "u": lambda: self.article.openurl(),
         }
-
-    def edit_sibling_ce(self) -> None:
-        sibling = self.get_parent_completion(
-            self.article, callbacks=self.get_adt_callbacks(), prompt="ce> "
-        )
-        if sibling is not None:
-            sibling.edit()
 
     @classmethod
     def get_parent_completion(
