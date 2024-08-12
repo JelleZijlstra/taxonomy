@@ -10,7 +10,7 @@ from itertools import takewhile
 
 from taxonomy import getinput, urlparse
 from taxonomy.apis import bhl
-from taxonomy.db import helpers
+from taxonomy.db import helpers, models
 from taxonomy.db.constants import Group, NomenclatureStatus, Rank
 from taxonomy.db.models.article.article import Article, ArticleTag
 from taxonomy.db.models.base import LintConfig
@@ -70,6 +70,24 @@ def check_tags(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
         and ce.get_corrected_name_without_tags() == ce.get_corrected_name()
     ):
         yield "unnecessary CorrectedName tag"
+    new_tags = []
+    for tag in ce.tags:
+        if isinstance(tag, ClassificationEntryTag.PageLink):
+            new_url = yield from models.name.lint.check_page_link(
+                tag_url=tag.url, tag_page=tag.page, page_described=ce.page
+            )
+            new_tags.append(ClassificationEntryTag.PageLink(url=new_url, page=tag.page))
+        else:
+            new_tags.append(tag)
+    new_tags_tuple = tuple(sorted(set(new_tags)))
+    if ce.tags != new_tags_tuple:
+        getinput.print_diff(ce.tags, new_tags_tuple)
+        message = "change tags"
+        if cfg.autofix:
+            print(f"{ce}: {message}")
+            ce.tags = new_tags_tuple  # type: ignore[assignment]
+        else:
+            yield message
 
 
 @LINT.add("parent")
@@ -141,10 +159,26 @@ def get_allowed_family_group_names(nam: Name) -> Container[str]:
     return allowed
 
 
+@LINT.add("predates_mapped_name", disabled=True)
+def check_predates_mapped_name(
+    ce: ClassificationEntry, cfg: LintConfig
+) -> Iterable[str]:
+    if ce.mapped_name is None:
+        return
+    if (ce.article.is_unpublished(), ce.article.get_date_object()) < (
+        (
+            ce.mapped_name.original_citation.is_unpublished()
+            if ce.mapped_name.original_citation is not None
+            else False
+        ),
+        ce.mapped_name.get_date_object(),
+    ):
+        yield f"predates mapped name {ce.mapped_name}"
+
+
 @LINT.add("mapped_name")
 def check_mapped_name(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
     if ce.mapped_name is not None:
-        corrected_name = ce.get_corrected_name()
         if (
             ce.page is None
             and ce.mapped_name.original_citation == ce.article
@@ -154,6 +188,7 @@ def check_mapped_name(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]
             if cfg.autofix:
                 print(f"{ce}: adding page {ce.mapped_name.page_described}")
                 ce.page = ce.mapped_name.page_described
+        corrected_name = ce.get_corrected_name()
         if corrected_name is None:
             return
         match ce.mapped_name.group:

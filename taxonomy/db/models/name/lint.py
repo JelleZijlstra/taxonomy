@@ -478,31 +478,13 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
             new_tags = yield from check_organ_tag(tag)
             tags += new_tags
         elif isinstance(tag, TypeTag.AuthorityPageLink):
-            url = urlparse.parse_url(tag.url)
-            if isinstance(
-                url,
-                (
-                    urlparse.BhlItem,
-                    urlparse.BhlBibliography,
-                    urlparse.BhlItem,
-                    urlparse.GoogleBooksVolume,
-                ),
-            ):
-                yield f"invalid authority page link {url!r}"
-            for message in url.lint():
-                yield f"page link {tag}: {message}"
-            if nam.page_described is not None:
-                allowed_pages = list(extract_pages(nam.page_described))
-                if tag.page not in allowed_pages and not (
-                    tag.page in nam.page_described
-                    and remove_parentheses_from_page(tag.page) in allowed_pages
-                ):
-                    yield (
-                        f"authority page link {tag.url} for page {tag.page!r}"
-                        f" does not match any pages in page_described ({allowed_pages})"
-                    )
+            url = yield from check_page_link(
+                tag_url=tag.url, tag_page=tag.page, page_described=nam.page_described
+            )
             tags.append(
-                TypeTag.AuthorityPageLink(str(url), tag.confirmed, str(tag.page))
+                TypeTag.AuthorityPageLink(
+                    url, tag.confirmed, str(tag.page) if tag.page is not None else ""
+                )
             )
         elif (
             isinstance(tag, TypeTag.CitationDetail)
@@ -548,6 +530,35 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
             getinput.print_diff(sorted(original_tags), tags)
         if cfg.autofix:
             nam.type_tags = tags  # type: ignore[assignment]
+
+
+def check_page_link(
+    tag_url: str, tag_page: str, page_described: str | None
+) -> Generator[str, None, str]:
+    url = urlparse.parse_url(tag_url)
+    if isinstance(
+        url,
+        (
+            urlparse.BhlItem,
+            urlparse.BhlBibliography,
+            urlparse.BhlItem,
+            urlparse.GoogleBooksVolume,
+        ),
+    ):
+        yield f"invalid authority page link {url!r}"
+    for message in url.lint():
+        yield f"page link {tag_url}: {message}"
+    if page_described is not None:
+        allowed_pages = list(extract_pages(page_described))
+        if tag_page not in allowed_pages and not (
+            tag_page in page_described
+            and remove_parentheses_from_page(tag_page) in allowed_pages
+        ):
+            yield (
+                f"authority page link {tag_url} for page {tag_page!r}"
+                f" does not match any pages in page_described ({allowed_pages})"
+            )
+    return str(url)
 
 
 @LINT.add("dedupe_tags")
@@ -4793,6 +4804,8 @@ def infer_tags_from_mapped_entries(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 tag_name.add_type_tag(tag)
             else:
                 yield message
+
+    for ce in nam.get_mapped_classification_entries():
         for tag in ce.tags:
             if isinstance(tag, ClassificationEntryTag.PageLink):
                 expected_tag = TypeTag.AuthorityPageLink(
