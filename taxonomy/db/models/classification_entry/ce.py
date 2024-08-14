@@ -391,7 +391,24 @@ class ClassificationEntry(BaseModel):
             "add_family_group_synonym": self.add_family_group_synonym,
             "syn_from_paper": self.syn_from_paper,
             "edit_parent": self.edit_parent,
+            "take_over_mapped_name": self.take_over_mapped_name,
         }
+
+    def take_over_mapped_name(self) -> None:
+        if self.mapped_name is None:
+            print("No mapped name.")
+            return
+        self.mapped_name.display()
+        mapped_ces = list(self.mapped_name.get_mapped_classification_entries())
+        for ce in mapped_ces:
+            ce.display()
+        if not mapped_ces:
+            print("No mapped classification entries.")
+        if not getinput.yes_no("Take over mapped name?"):
+            return
+        models.name.lint.take_over_name(
+            self.mapped_name, self, LintConfig(interactive=True)
+        )
 
     @classmethod
     def get_parent_completion(

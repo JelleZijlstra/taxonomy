@@ -548,7 +548,7 @@ def check_page_link(
         yield f"invalid authority page link {url!r}"
     for message in url.lint():
         yield f"page link {tag_url}: {message}"
-    if page_described is not None:
+    if page_described is not None and tag_page != "NA":
         allowed_pages = list(extract_pages(page_described))
         if tag_page not in allowed_pages and not (
             tag_page in page_described
@@ -4806,6 +4806,9 @@ def infer_tags_from_mapped_entries(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 yield message
 
     for ce in nam.get_mapped_classification_entries():
+        # Don't copy page links until we've aligned the page that it's on
+        if ce.page != nam.page_described:
+            continue
         for tag in ce.tags:
             if isinstance(tag, ClassificationEntryTag.PageLink):
                 expected_tag = TypeTag.AuthorityPageLink(
@@ -4848,11 +4851,16 @@ def check_matches_mapped_classification_entry(
     for ce in ces:
         if ce.name != nam.original_name:
             yield f"mapped to {ce}, but {ce.name=} != {nam.original_name=}"
-        if (
-            ce.get_name_to_use_as_normalized_original_name()
-            != nam.corrected_original_name
-        ):
-            yield f"mapped to {ce}, but {ce.get_name_to_use_as_normalized_original_name()} != {nam.corrected_original_name}"
+            if ce.name.replace("æ", "ae") == nam.original_name:
+                message = f"changing original name to {ce.name}"
+                if cfg.autofix:
+                    print(f"{nam}: {message}")
+                    nam.original_name = ce.name
+                else:
+                    yield message
+        expected_con = ce.get_name_to_use_as_normalized_original_name()
+        if expected_con != nam.corrected_original_name:
+            yield f"mapped to {ce}, but {expected_con} != {nam.corrected_original_name}"
         if ce.page != nam.page_described:
             yield f"mapped to {ce}, but {ce.page=} != {nam.page_described=}"
             if nam.page_described is None and cfg.autofix:

@@ -484,12 +484,12 @@ class Article(BaseModel):
         }
 
     def ce_edit(self) -> None:
-        sibling = (
-            models.classification_entry.ce.ClassificationEntry.get_parent_completion(
+        while True:
+            sibling = models.classification_entry.ce.ClassificationEntry.get_parent_completion(
                 self, prompt="ce> "
             )
-        )
-        if sibling is not None:
+            if sibling is None:
+                break
             sibling.edit()
 
     def open_cg_url(self) -> None:

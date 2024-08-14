@@ -2573,6 +2573,7 @@ def clean_original_name(original_name: str) -> str:
         .replace("ć", "c")
     )
     original_name = re.sub(r"\s+", " ", original_name).strip()
+    original_name = re.sub(r", ", " ", original_name)
     return re.sub(r"([a-z]{2})-([a-z]{2})", r"\1\2", original_name)
 
 
@@ -2590,8 +2591,11 @@ def infer_corrected_original_name(original_name: str, group: Group) -> str | Non
         match = re.match(
             (
                 r"^(?P<genus>[A-Z][a-z]+)( \([A-Z][a-z]+\))?"
-                r" (?P<species>[A-Z]?[a-z]+)((,? var\.)?"
-                r" (?P<subspecies>[A-Z]?[a-z]+))?$"
+                r" (?P<species>[A-Z]?[a-z]+)"
+                r"((,? var\.)? (?P<subspecies>[A-Z]?[a-z]+))?$"
+                # We can't support infrasubspecific names here
+                # because then names like "Buffelus indicus Varietas sondaica"
+                # get inferred as infrasubspecific names instead of subspecific names
             ),
             original_name,
         )

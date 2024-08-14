@@ -114,14 +114,14 @@ CONTINENTS = {
     "Domesticated",
     "Europe",
     "North America",
-    "Oceania",
+    "Oceania (Continent)",
     "South America",
     "NA",
 }
 REALMS = {
     "Afrotropic",
     "Australasia",
-    "Oceania",
+    "Oceania (Biorealm)",
     "Domesticated",
     "Indomalaya",
     "Nearctic",

@@ -76,7 +76,11 @@ def check_tags(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
             new_url = yield from models.name.lint.check_page_link(
                 tag_url=tag.url, tag_page=tag.page, page_described=ce.page
             )
-            new_tags.append(ClassificationEntryTag.PageLink(url=new_url, page=tag.page))
+            new_tags.append(
+                ClassificationEntryTag.PageLink(
+                    url=new_url, page=tag.page if tag.page is not None else "NA"
+                )
+            )
         else:
             new_tags.append(tag)
     new_tags_tuple = tuple(sorted(set(new_tags)))
@@ -159,12 +163,14 @@ def get_allowed_family_group_names(nam: Name) -> Container[str]:
     return allowed
 
 
-@LINT.add("predates_mapped_name", disabled=True)
+@LINT.add("predates_mapped_name")
 def check_predates_mapped_name(
     ce: ClassificationEntry, cfg: LintConfig
 ) -> Iterable[str]:
     if ce.mapped_name is None:
         return
+    if ce.rank is Rank.synonym:
+        return  # ignore synonyms for now
     if (ce.article.is_unpublished(), ce.article.get_date_object()) < (
         (
             ce.mapped_name.original_citation.is_unpublished()
@@ -172,7 +178,7 @@ def check_predates_mapped_name(
             else False
         ),
         ce.mapped_name.get_date_object(),
-    ):
+    ) and ce.article.get_date_object() < ce.mapped_name.get_date_object():
         yield f"predates mapped name {ce.mapped_name}"
 
 
