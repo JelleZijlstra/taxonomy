@@ -66,6 +66,7 @@ from taxonomy.db.models.name_complex import (
     NameEnding,
     SpeciesNameComplex,
     SpeciesNameEnding,
+    normalize_root_name_for_homonymy,
 )
 from taxonomy.db.models.person import AuthorTag, PersonLevel
 from taxonomy.db.models.taxon import Taxon
@@ -1129,11 +1130,10 @@ def _check_preoccupation_tag(
     elif isinstance(tag, (NameTag.PrimaryHomonymOf, NameTag.SecondaryHomonymOf)):
         yield f"{nam} is not a species-group name, but uses {type(tag).__name__} tag"
         new_tag = NameTag.PreoccupiedBy(tag.name, tag.comment)
-    if (
-        nam.get_normalized_root_name_for_homonymy()
-        != senior_name.get_normalized_root_name_for_homonymy()
-    ):
-        yield f"has a different root name than supposed senior name {senior_name}"
+    my_normalized = nam.get_normalized_root_name_for_homonymy()
+    their_normalized = senior_name.get_normalized_root_name_for_homonymy()
+    if my_normalized != their_normalized:
+        yield f"has a different root name ({my_normalized}) than supposed senior name {senior_name} ({their_normalized})"
     if not senior_name.can_preoccupy():
         yield f"senior name {senior_name} is not available"
     return new_tag
@@ -2596,10 +2596,10 @@ class PossibleHomonym:
 
 
 def get_possible_homonyms(
-    genus_name: str, root_name: str
+    genus_name: str, root_name: str, sc: SpeciesNameComplex | None = None
 ) -> tuple[Iterable[Name], Iterable[tuple[Name, PossibleHomonym]]]:
     name_dict: dict[Name, PossibleHomonym] = defaultdict(PossibleHomonym)
-    normalized_root_name = helpers.normalize_root_name_for_homonymy(root_name)
+    normalized_root_name = normalize_root_name_for_homonymy(root_name, sc)
     genera = {
         genus.resolve_name()
         for genus in Name.select_valid().filter(

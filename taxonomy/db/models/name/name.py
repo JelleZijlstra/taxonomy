@@ -2193,7 +2193,9 @@ class Name(BaseModel):
         match self.group:
             case Group.species:
                 root_name = self.get_normalized_root_name()
-                return helpers.normalize_root_name_for_homonymy(root_name)
+                return models.name_complex.normalize_root_name_for_homonymy(
+                    root_name, self.species_name_complex
+                )
             case Group.family:
                 if self.type is not None:
                     try:

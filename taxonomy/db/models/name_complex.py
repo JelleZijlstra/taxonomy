@@ -1033,3 +1033,64 @@ class SpeciesNameEnding(BaseModel):
                 comment=comment,
                 full_name_only=full_name_only,
             )
+
+
+def normalize_root_name_for_homonymy(
+    root_name: str, sc: SpeciesNameComplex | None
+) -> str:
+    # See ICZN Art. 58: Certain names are considered equivalent for purposes of homonymy
+    # 58.1. use of ae, oe or e (e.g. caeruleus, coeruleus, ceruleus)
+    root_name = root_name.replace("ae", "e").replace("oe", "e")
+    # 58.2. use of ei, i or y (e.g. cheiropus, chiropus, chyropus)
+    # 58.13. transcription of the semivowel i as y, ei, ej or ij (e.g. guianensis, guyanensis)
+    root_name = (
+        root_name.replace("ei", "i")
+        .replace("y", "i")
+        .replace("ij", "i")
+        .replace("ej", "i")
+    )
+    # 58.7. use of a single or double consonant (e.g. litoralis, littoralis)
+    # Applying this before 58.3 and 58.4 in case there are names with two j or v.
+    root_name = re.sub(r"(?![aeiouy])([a-z])\1", r"\1", root_name)
+    # 58.3. use of i or j for the same Latin letter (e.g. iavanus, javanus; maior, major)
+    root_name = root_name.replace("j", "i")
+    # 58.4. use of u or v for the same Latin letter (e.g. neura, nevra; miluina, milvina)
+    root_name = root_name.replace("v", "u")
+    # 58.5. use of c or k for the same letter (e.g. microdon, mikrodon)
+    root_name = root_name.replace("k", "c")
+    # 58.6. aspiration or non-aspiration of a consonant (e.g. oxyrhynchus, oxyrynchus)
+    # Assuming this refers only to rh, because there are separate rules for ch and th
+    root_name = root_name.replace("rh", "r")
+    # 58.8. presence or absence of c before t (e.g. auctumnalis, autumnalis)
+    root_name = root_name.replace("ct", "t")
+    # 58.9. use of f or ph (e.g. sulfureus, sulphureus)
+    root_name = root_name.replace("ph", "f")
+    # 58.10. use of ch or c (e.g. chloropterus, cloropterus)
+    root_name = root_name.replace("ch", "c")
+    # 58.11. use of th or t (e.g. thiara, tiara; clathratus, clatratus)
+    root_name = root_name.replace("th", "t")
+    # 58.12. use of different connecting vowels in compound words (e.g. nigricinctus, nigrocinctus)
+    # implemented in some cases using the SC
+    if sc is not None and sc.stem is not None:
+        rgx = rf"(?<=[a-z])[aeiou]{sc.stem}$"
+        root_name = re.sub(rgx, sc.stem, root_name)
+
+    # 58.14. use of -i or -ii, -ae or -iae, -orum or -iorum, -arum or -iarum
+    # as the ending in a genitive based on the name of a person or persons,
+    # or a place, host or other entity associated with the taxon, or between
+    # the elements of a compound species-group name (e.g. smithi, smithii;
+    # patchae, patchiae; fasciventris, fasciiventris)
+    root_name = re.sub(r"ii$", "i", root_name)
+    root_name = re.sub(r"iae$", "ae", root_name)
+    root_name = re.sub(r"iorum$", "orum", root_name)
+    root_name = re.sub(r"iarum$", "arum", root_name)
+    # "fasciiventris"/"fasciventris" omitted for now
+    # 58.15. presence or absence of -i before a suffix or termination (e.g. timorensis, timoriensis; comstockana, comstockiana)
+    root_name = re.sub(r"iensis$", "ensis", root_name)
+    root_name = re.sub(r"ian(us|a)$", "anus", root_name)
+    # Adding one: "monticola" vs. "monticolus", where one is interpreted as an
+    # adjective and the other as a noun in apposition.
+    root_name = re.sub(r"(a|um)$", "us", root_name)
+    # Similarly, -ventris vs. -venter
+    root_name = re.sub(r"ntris$", "nter", root_name)
+    return root_name

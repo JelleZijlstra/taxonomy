@@ -14,7 +14,7 @@ def wikify(s: str) -> str:
     return re.sub(r"(?<!')<nowiki>'<\/nowiki>(?!')", "'", s)
 
 
-def page_range(article: Article) -> str:
+def page_range(article: Article, dash: str = "-") -> str:
     # return a string representing the pages of the article
     if article.start_page:
         if article.end_page:
@@ -23,7 +23,7 @@ def page_range(article: Article) -> str:
                 return str(article.start_page)
             else:
                 # range
-                return f"{article.start_page}-{article.end_page}"
+                return f"{article.start_page}{dash}{article.end_page}"
         else:
             return str(article.start_page)
     else:
@@ -828,3 +828,42 @@ def getharvard(art: Article, mode: str = "normal") -> str:
             out += " et al."
     out += f" ({art.year})"
     return out
+
+
+@register_cite_function("mammspec")
+def cite_mammspec(article: Article, *, year_suffix: str = "") -> str:
+    out = ""
+    out += format_authors(
+        article,
+        separator=",",
+        last_separator=", and",
+        initials_before_name=True,
+        first_initials_before_name=False,
+        romanize=True,
+    )
+    out += f" {article.numeric_year()}{year_suffix}. "
+    if article.type == ArticleType.JOURNAL:
+        assert article.citation_group is not None, f"{article} has no citation group"
+        out += f"{article.title}. {article.citation_group.name} "
+        out += f"{article.volume}:{page_range(article, dash='–')}"
+    elif article.type == ArticleType.CHAPTER:
+        out += f"{article.title}"
+        enclosing = article.get_enclosing()
+        if enclosing is not None:
+            out += f". Pp. {page_range(article, dash='–')} in "
+            if enclosing.title is not None:
+                out += enclosing.title
+            out += format_authors(enclosing, separator=",", last_separator=", and")
+            out += f" (Eds), <i>{enclosing.title}</i>. "
+            out += f"{enclosing.publisher}, {enclosing.place_of_publication}"
+            out += f", pp. {page_range(article)}"
+    elif article.type == ArticleType.BOOK:
+        out += f"{article.title}. {article.publisher}"
+        if article.citation_group:
+            out += f", {article.citation_group.name}"
+    else:
+        out += f"{article.title}. "
+        out += "<!--Unknown citation type; fallback citation-->"
+    # final cleanup
+    out += "."
+    return re.sub(r"\s+", " ", re.sub(r"(?<!\.)\.\.(?!\.)", ".", out))

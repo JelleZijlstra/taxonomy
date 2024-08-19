@@ -351,7 +351,9 @@ def get_hesp_row(
                 elif tag.source.id == MDD_ARTICLE_ID:
                     pass  # ignore
                 else:
-                    citation = ", ".join(tag.source.taxonomic_authority())
+                    citation = helpers.romanize_russian(
+                        ", ".join(tag.source.taxonomic_authority())
+                    )
                     emended_tl.append(f'"{tag.text}" ({citation})')
             elif isinstance(tag, TypeTag.Coordinates):
                 try:
@@ -366,7 +368,9 @@ def get_hesp_row(
                 except helpers.InvalidCoordinates:
                     pass
             elif isinstance(tag, TypeTag.CitationDetail):
-                citation = ", ".join(tag.source.taxonomic_authority())
+                citation = helpers.romanize_russian(
+                    ", ".join(tag.source.taxonomic_authority())
+                )
                 citation_details.append(f'"{tag.text}" ({citation})')
     row["Hesp_sourced_unverified_citations"] = " | ".join(citation_details)
 
@@ -441,6 +445,7 @@ def _stringify_ce(ce: ClassificationEntry) -> str:
         tag.url for tag in ce.get_tags(ce.tags, ClassificationEntryTag.PageLink)
     ]
     author, year = ce.article.taxonomic_authority()
+    author = helpers.romanize_russian(author)
     if ce.page:
         year = f"{year}:{ce.page}"
     if page_links:

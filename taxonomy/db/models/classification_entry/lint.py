@@ -479,7 +479,9 @@ def get_candidates_from_names_for_bare_synonym(
             continue
         if fuzzy:
             condition = (
-                helpers.normalize_root_name_for_homonymy(corrected_name)
+                models.name_complex.normalize_root_name_for_homonymy(
+                    corrected_name, nam.species_name_complex
+                )
                 == nam.get_normalized_root_name_for_homonymy()
             )
         else:
@@ -512,7 +514,9 @@ def get_species_group_mapped_names(
         yield taxon.base_name, CandidateMetadata(is_direct_match=True)
     if count == 0:
         genus_name, *_, root_name = corrected_name.split()
-        normalized_root_name = helpers.normalize_root_name_for_homonymy(root_name)
+        normalized_root_name = models.name_complex.normalize_root_name_for_homonymy(
+            root_name, None
+        )
         genus_candidates = Name.select_valid().filter(
             Name.group == Group.genus, Name.root_name == genus_name
         )
