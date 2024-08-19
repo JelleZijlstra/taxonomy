@@ -184,7 +184,8 @@ CREATE TABLE `species_name_complex` (
     `comment` varchar(65535),
     `masculine_ending` varchar(255) default NULL,
     `feminine_ending` varchar(255) default NULL,
-    `neuter_ending` varchar(255) default NULL
+    `neuter_ending` varchar(255) default NULL,
+    `target` integer default null
 );
 
 CREATE TABLE `species_name_ending` (

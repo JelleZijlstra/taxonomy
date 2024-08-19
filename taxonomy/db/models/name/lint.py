@@ -3902,6 +3902,55 @@ class SuffixTree(Generic[T]):
                 yield from self.children[char]._lookup(key)
 
 
+@LINT.add("infer_species_name_complex")
+def infer_species_name_complex_from_other_names(
+    nam: Name, cfg: LintConfig
+) -> Iterable[str]:
+    if nam.group is not Group.species:
+        return
+    # Name combinations inherit their name complex from their parent, let's ignore them here
+    if nam.nomenclature_status is NomenclatureStatus.name_combination:
+        return
+    other_names = Name.select_valid().filter(
+        Name.root_name == nam.root_name,
+        Name.species_name_complex != None,
+        Name.nomenclature_status != NomenclatureStatus.name_combination,
+    )
+    sc_to_nams: dict[SpeciesNameComplex, list[Name]] = {}
+    for other_name in other_names:
+        if other_name.species_name_complex is None:
+            continue
+        sc_to_nams.setdefault(other_name.species_name_complex, []).append(nam)
+
+    if len(sc_to_nams) == 1:
+        if nam.species_name_complex is None:
+            sc = next(iter(sc_to_nams))
+            message = f"inferred species name complex {sc} from other names"
+            if cfg.autofix:
+                print(f"{nam}: {message}")
+                nam.species_name_complex = sc
+            else:
+                yield message
+    else:
+        if nam.corrected_original_name is None:
+            return
+        root_from_con = nam.corrected_original_name.split()[-1]
+        relevant_names = [
+            other_name
+            for other_name in other_names
+            if other_name.corrected_original_name is not None
+            and other_name.corrected_original_name.split()[-1] == root_from_con
+        ]
+        if not relevant_names:
+            return
+        relevant_names = sorted(
+            relevant_names, key=lambda nam: (nam.get_date_object(), nam.id)
+        )
+        earliest = relevant_names[0]
+        if earliest.species_name_complex != nam.species_name_complex:
+            yield f"species name complex {nam.species_name_complex} does not match that of {earliest} ({earliest.species_name_complex})"
+
+
 @LINT.add_duplicate_finder(
     "duplicate_genus", query=Name.select_valid().filter(Name.group == Group.genus)
 )

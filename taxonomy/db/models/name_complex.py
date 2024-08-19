@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 import sys
 from collections.abc import Iterable, Sequence
-from typing import IO, Any, ClassVar
+from typing import IO, Any, ClassVar, Self
 
 from clirm import DoesNotExist, Field
 
@@ -42,6 +42,8 @@ class SpeciesNameComplex(BaseModel):
     feminine_ending = Field[str]()
     neuter_ending = Field[str]()
     comment = Field[str | None]()
+    target = Field[Self | None](related_name="children")
+
     markdown_fields: ClassVar[set[str]] = {"comment"}
 
     search_fields: ClassVar[Sequence[SearchField]] = [
@@ -50,6 +52,19 @@ class SpeciesNameComplex(BaseModel):
         SearchField(SearchFieldType.text, "stem"),
         SearchField(SearchFieldType.text, "comment", highlight_enabled=True),
     ]
+
+    @classmethod
+    def add_validity_check(cls, query: Any) -> Any:
+        return query.filter(SpeciesNameComplex.target == None)
+
+    def get_redirect_target(self) -> Self | None:
+        return self.target
+
+    def is_invalid(self) -> bool:
+        return self.target is not None
+
+    def should_skip(self) -> bool:
+        return self.target is not None
 
     def get_search_dicts(self) -> list[dict[str, Any]]:
         return [
@@ -144,6 +159,7 @@ class SpeciesNameComplex(BaseModel):
             "move_names_with_suffix": self.move_names_with_suffix,
             "display_endings": self.display_endings,
             "remove_endings": self.remove_endings,
+            "merge": self.merge,
         }
 
     def display_endings(self) -> None:
@@ -161,7 +177,12 @@ class SpeciesNameComplex(BaseModel):
             target = SpeciesNameComplex.getter(None).get_one("target> ")
         if target is None:
             return
-        nams = [nam for nam in self.get_names() if nam.root_name.endswith(suffix)]
+        nams = [
+            nam
+            for nam in self.get_names()
+            if nam.corrected_original_name is not None
+            and nam.corrected_original_name.endswith(suffix)
+        ]
         print(f"{len(nams)} names found")
         if not nams:
             return
@@ -247,6 +268,21 @@ class SpeciesNameComplex(BaseModel):
         self.remove_endings()
         print("removing complex", self)
         self.delete_instance()
+
+    def merge(self) -> None:
+        target = SpeciesNameComplex.getter(None).get_one("target> ")
+        if target is None:
+            return
+        if self == target:
+            print("cannot merge with self")
+            return
+        if target.target is not None:
+            print("cannot merge into a complex that is itself a redirect")
+            return
+        for nam in self.get_names():
+            print("moving", nam, "to", target)
+            nam.species_name_complex = target
+        self.target = target
 
     @classmethod
     def make(

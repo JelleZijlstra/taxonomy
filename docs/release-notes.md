@@ -4,6 +4,12 @@ Version numbers correspond to Git tags in the
 [backend](https://github.com/JelleZijlstra/taxonomy/) repositories, and to database
 exports released on Zenodo.
 
+# Unreleased
+
+- Database
+  - Add classifications
+  - Remove some duplicate species name complexes and add more species name complexes
+
 # 24.6.0 (June 17, 2024)
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.12047416.svg)](https://doi.org/10.5281/zenodo.12047416)
