@@ -678,7 +678,12 @@ class Name(BaseModel):
             "clear_bhl_caches": self.clear_bhl_caches,
             "open_coordinates": self.open_coordinates,
             "edit_mapped_ce": self._edit_mapped_ce,
+            "display_classification_entries": self.display_classification_entries,
         }
+
+    def display_classification_entries(self) -> None:
+        for ce in self.classification_entries:
+            ce.display()
 
     def _edit_mapped_ce(self) -> None:
         for ce in self.get_mapped_classification_entries():

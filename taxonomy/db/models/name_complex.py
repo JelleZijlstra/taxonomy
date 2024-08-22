@@ -160,7 +160,14 @@ class SpeciesNameComplex(BaseModel):
             "display_endings": self.display_endings,
             "remove_endings": self.remove_endings,
             "merge": self.merge,
+            "show_similar": self.show_similar,
         }
+
+    def show_similar(self) -> None:
+        for sc in SpeciesNameComplex.select_valid().filter(
+            SpeciesNameComplex.stem.endswith(self.stem)
+        ):
+            print(sc)
 
     def display_endings(self) -> None:
         for ending in self.endings:

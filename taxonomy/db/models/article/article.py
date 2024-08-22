@@ -1045,6 +1045,12 @@ class Article(BaseModel):
                 return tag.text
         return None
 
+    def get_title(self) -> str:
+        if self.title is None:
+            return "[Untitled]"
+        else:
+            return self.title.replace(r"\ ", " ")
+
     def get_enclosing(self: T) -> T | None:
         if self.parent is not None:
             return cast(T, self.parent)
