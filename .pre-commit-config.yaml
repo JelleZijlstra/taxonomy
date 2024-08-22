@@ -39,7 +39,7 @@ repos:
         files: ^taxonomy/.*\.py$
         language_version: python3.12
         additional_dependencies:
-          - pyanalyze>=0.10.1
+          - pyanalyze>=0.13.1
           - httpx
           - clirm
           - IPython>8
