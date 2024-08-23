@@ -148,8 +148,10 @@ class ClassificationEntry(BaseModel):
             if entry is None:
                 break
             if format_each:
-                entry.format()
+                entry.format(format_mapped=False)
             entry.edit()
+            if format_each:
+                entry.format(format_mapped=True)
             if entry.page is not None:
                 next_page = entry.page
             if entry.rank is Rank.genus:
@@ -469,6 +471,7 @@ class ClassificationEntry(BaseModel):
         interactive: bool = True,
         verbose: bool = False,
         manual_mode: bool = False,
+        format_mapped: bool = True,
     ) -> bool:
         result = super().format(
             quiet=quiet,
@@ -477,7 +480,7 @@ class ClassificationEntry(BaseModel):
             verbose=verbose,
             manual_mode=manual_mode,
         )
-        if self.mapped_name is not None:
+        if format_mapped and self.mapped_name is not None:
             self.mapped_name.format(
                 quiet=quiet,
                 autofix=autofix,

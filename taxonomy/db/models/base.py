@@ -205,7 +205,7 @@ class BaseModel(Model):
         cfg: LintConfig = LintConfig(interactive=False, autofix=False),
     ) -> bool:
         messages = list(self.general_lint(cfg))
-        if extra_linter is not None:
+        if extra_linter is not None and not self.is_invalid():
             messages += extra_linter(self, cfg)
         if not messages:
             return True

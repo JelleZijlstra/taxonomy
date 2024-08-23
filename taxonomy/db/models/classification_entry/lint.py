@@ -326,6 +326,8 @@ class CandidateName:
             corrected_name = self.ce.name
         if self.name.corrected_original_name != corrected_name:
             score += 10
+        if self.name.original_citation != self.ce.article:
+            score += 50
         associated_taxa = Taxon.select_valid().filter(Taxon.base_name == self.name)
         if not any(t.valid_name == corrected_name for t in associated_taxa):
             score += 2

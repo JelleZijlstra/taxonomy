@@ -4311,6 +4311,18 @@ def can_replace_name(nam: Name) -> str | None:
     for tag in nam.type_tags:
         if isinstance(tag, TypeTag.AuthorityPageLink):
             continue
+        return f"type tag {tag}"
+    for tag in nam.tags:
+        if isinstance(
+            tag,
+            (
+                NameTag.NameCombinationOf,
+                NameTag.SubsequentUsageOf,
+                NameTag.UnjustifiedEmendationOf,
+                NameTag.IncorrectSubsequentSpellingOf,
+            ),
+        ):
+            continue
         return f"tag {tag}"
     has_mce = any(nam.get_mapped_classification_entries())
     if not has_mce:
@@ -4871,6 +4883,37 @@ def infer_tags_from_mapped_entries(nam: Name, cfg: LintConfig) -> Iterable[str]:
                     nam.add_type_tag(expected_tag)
                 else:
                     yield message
+
+
+@LINT.add("remove_redundant_name")
+def remove_redundant_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    if nam.nomenclature_status is not NomenclatureStatus.subsequent_usage:
+        return
+    target = nam.get_tag_target(NameTag.SubsequentUsageOf)
+    if target is None:
+        return  # other linters will complain
+    has_ces = any(nam.get_mapped_classification_entries())
+    cannot_replace_reason = can_replace_name(nam)
+    if cannot_replace_reason is None:
+        message = f"remove redundant name {nam} by redirecting to {target}"
+        if cfg.autofix:
+            print(f"{nam}: {message}")
+            nam.redirect(target)
+        else:
+            yield message
+    elif has_ces and not any(
+        isinstance(
+            tag,
+            (
+                NameTag.Rejected,
+                NameTag.Conserved,
+                NameTag.FullySuppressedBy,
+                NameTag.PartiallySuppressedBy,
+            ),
+        )
+        for tag in nam.tags
+    ):
+        yield f"cannot remove redundant name {nam} because {cannot_replace_reason}"
 
 
 def has_classification(art: Article) -> bool:
