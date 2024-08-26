@@ -76,8 +76,7 @@ except ImportError:
             score = get_score(train, data, params)
             if score > params.score_cutoff:
                 scores[train.collection] += score
-            if score > highest_score:
-                highest_score = score
+            highest_score = max(score, highest_score)
         scores[0] += highest_score  # inject some uncertainty
         total = sum(scores.values())
         return {c: v / total for c, v in scores.items()}
