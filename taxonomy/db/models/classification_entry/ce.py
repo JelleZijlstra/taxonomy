@@ -274,7 +274,7 @@ class ClassificationEntry(BaseModel):
             max_depth -= 1
         if max_depth <= 0:
             return
-        for child in self.children:
+        for child in sorted(self.children, key=lambda ce: ce.numeric_page()):
             child.display(
                 full=full, depth=depth + 4, max_depth=max_depth, show_parent=False
             )
