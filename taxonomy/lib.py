@@ -126,6 +126,12 @@ g = partial(
 )
 
 
+def hp(
+    author: str, year: int, page: int, *, uncited_only: bool = False
+) -> tuple[list[Article], list[Name]]:
+    return h(author, year, page, uncited_only=uncited_only)
+
+
 def h(
     author: str, year: int, page: int | None = None, *, uncited_only: bool = False
 ) -> tuple[list[Article], list[Name]]:

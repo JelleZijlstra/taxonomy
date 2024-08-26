@@ -67,6 +67,9 @@ class ClassificationEntry(BaseModel):
     def edit(self) -> None:
         self.fill_field("tags")
 
+    def numeric_page(self) -> int:
+        return helpers.to_int(self.page)
+
     def get_corrected_name(self) -> str | None:
         for tag in self.get_tags(self.tags, ClassificationEntryTag.CorrectedName):
             return tag.text
@@ -141,9 +144,13 @@ class ClassificationEntry(BaseModel):
         entries: list[ClassificationEntry] = []
         next_page = ""
         next_name = ""
+        _parent_stack: list[ClassificationEntry] = []
         while True:
             entry = cls.create_one(
-                art, fields, defaults={"page": next_page, "name": next_name}
+                art,
+                fields,
+                defaults={"page": next_page, "name": next_name},
+                _parent_stack=_parent_stack,
             )
             if entry is None:
                 break
@@ -165,6 +172,8 @@ class ClassificationEntry(BaseModel):
                 else:
                     next_name = ""
             entries.append(entry)
+            if entry.rank is not Rank.synonym:
+                _parent_stack.append(entry)
         return entries
 
     @classmethod
@@ -173,6 +182,7 @@ class ClassificationEntry(BaseModel):
         art: Article,
         fields: Sequence[Field[Any]],
         defaults: Mapping[str, str] = MappingProxyType({}),
+        _parent_stack: list[ClassificationEntry] = [],
     ) -> ClassificationEntry | None:
         fields = [
             ClassificationEntry.name,
@@ -191,6 +201,8 @@ class ClassificationEntry(BaseModel):
                     values[name] = rank
                     continue
             if name == "parent":
+                while _parent_stack and _parent_stack[-1].rank <= values["rank"]:
+                    _parent_stack.pop()
                 if ce_name is not None:
                     if values["rank"] == Rank.species:
                         genus_name = ce_name.split()[0]
@@ -204,12 +216,19 @@ class ClassificationEntry(BaseModel):
                             print(f"Inferred parent as species {parent_ce}.")
                             values["parent"] = parent_ce
                             continue
-                parent = cls.get_parent_completion(art)
+                parent: ClassificationEntry | None = None
+                if _parent_stack:
+                    print(f"Parent is {_parent_stack[-1]}")
+                    parent = _parent_stack[-1]
+                else:
+                    parent = cls.get_parent_completion(art)
                 values["parent"] = parent
             else:
                 try:
                     value = cls.get_value_for_field_on_class(
-                        name, default=defaults.get(name, "")
+                        name,
+                        default=defaults.get(name, ""),
+                        callbacks={":clear": _parent_stack.clear},
                     )
                     if value is None and not field.allow_none:
                         return None
@@ -502,6 +521,7 @@ _NAME_CHARS = r"[a-zæüöïœ]+"
 
 
 def _infer_rank_from_name(ce_name: str) -> Rank | None:
+    ce_name = models.name.name.clean_original_name(ce_name)
     if re.fullmatch(rf"[A-ZÆ]{_NAME_CHARS} [A-Z]?{_NAME_CHARS}", ce_name):
         return Rank.species
     elif re.fullmatch(rf"[A-ZÆ]{_NAME_CHARS} {_NAME_CHARS} {_NAME_CHARS}", ce_name):
@@ -571,6 +591,7 @@ def classification_entries_for_article(art: Article | None = None) -> None:
 def create_for_article(
     art: Article, *, extra_fields: Sequence[Field[Any]] = [], format_each: bool = True
 ) -> None:
+    art.display_classification_entries()
     entries = ClassificationEntry.create_for_article(
         art, extra_fields, format_each=format_each
     )

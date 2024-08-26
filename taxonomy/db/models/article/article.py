@@ -867,7 +867,7 @@ class Article(BaseModel):
             return True
         if self.has_tag(ArticleTag.InPress):
             return True
-        if self.type is ArticleType.THESIS:
+        if self.type in (ArticleType.THESIS, ArticleType.WEB):
             return True
         return False
 
@@ -1350,7 +1350,7 @@ class Article(BaseModel):
             models.classification_entry.ClassificationEntry.parent == None
         )
         print(repr(self))
-        for ce in ces:
+        for ce in sorted(ces, key=lambda ce: ce.numeric_page()):
             ce.display(depth=2, max_depth=max_depth)
 
     def display_type_localities(self) -> None:
