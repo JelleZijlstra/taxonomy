@@ -1844,11 +1844,11 @@ def add_parents(names: Iterable[CEDict]) -> Iterable[CEDict]:
         yield name
 
 
-def format_ces(source: Source | ArticleSource) -> None:
+def format_ces(source: Source | ArticleSource, *, format_name: bool = True) -> None:
     art = source.get_source()
     for ce in art.get_classification_entries():
         ce.load()
-        ce.format(quiet=True)
+        ce.format(quiet=True, format_mapped=format_name)
         ce.edit_until_clean()
 
 

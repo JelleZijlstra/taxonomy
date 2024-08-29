@@ -81,6 +81,11 @@ def check_tags(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
                     url=new_url, page=tag.page if tag.page is not None else "NA"
                 )
             )
+        elif isinstance(tag, ClassificationEntryTag.CorrectedName):
+            if ce.get_corrected_name_without_tags() == tag.text:
+                yield "removing redundant CorrectedName tag"
+            else:
+                new_tags.append(tag)
         else:
             new_tags.append(tag)
     new_tags_tuple = tuple(sorted(set(new_tags)))
@@ -351,8 +356,11 @@ class CandidateName:
         if self.name.nomenclature_status in (
             NomenclatureStatus.subsequent_usage,
             NomenclatureStatus.name_combination,
+            NomenclatureStatus.preoccupied,
         ):
             score += 1
+        if self.name.nomenclature_status is (NomenclatureStatus.misidentification):
+            score += 3
         if self.name.nomenclature_status in (
             NomenclatureStatus.incorrect_subsequent_spelling,
             NomenclatureStatus.variant,

@@ -670,7 +670,7 @@ class Article(BaseModel):
             print("Not a PDF file")
             return
         output_file = (
-            re.sub(r"[^a-z]+", "-", self.name.lower().removesuffix(".pdf")) + ".txt"
+            re.sub(r"[^a-z\d]+", "-", self.name.lower().removesuffix(".pdf")) + ".txt"
         )
         output_path = Path(
             config.get_options().taxonomy_repo / "data_import" / "data" / output_file

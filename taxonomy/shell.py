@@ -36,6 +36,7 @@ import IPython
 import unidecode
 from traitlets.config.loader import Config
 
+from taxonomy import config
 from taxonomy.apis import bhl
 from taxonomy.config import get_options
 
@@ -2766,6 +2767,12 @@ def add_coordinates(names: Iterable[Name]) -> None:
                 print(tag.text)
         nam.edit()
         nam.edit_until_clean()
+
+
+@command
+def set_network_available() -> None:
+    available = getinput.yes_no("Is the network available? ")
+    config.set_network_available(value=available)
 
 
 def run_shell() -> None:
