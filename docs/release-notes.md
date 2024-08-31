@@ -6,9 +6,46 @@ exports released on Zenodo.
 
 # Unreleased
 
+This release adds a new category of data to the Hesperomys database: classifications. A
+classification lists all the taxa included in a literature reference in an organized
+way, and each name in the classification is associated with a name in the Hesperomys
+database. As an example, [this page](https://hesperomys.com/ce/4839) shows the
+classification of the order Rodentia as it appeared in Wilson and Reeder (2005). The
+database now includes more than 140,000 entries from published classifications.
+
+Classifications enabled me to add many more name combinations to the database; the goal
+there is that eventually, all scientific names that have been used for mammals in the
+past have an entry in the database and can be mapped to a currently recognized species.
+The previous release only included 1028 name combinations; this release includes 19578.
+I added classifications for several major recent listings of mammal species, including
+Corbet & Hill (1980), Honacki et al. (1982), Corbet & Hill (1991), Wilson & Reeder
+(2005), and several release of the Mammal Diversity Databases, and from many other
+sources.
+
+There are several other use cases for classifications. They can help show how
+classifications have changed over time, for example by highlighting which authors have
+considered a taxon as valid in the past. It is possible to compare two classifications,
+showing how they differ. Adding the entire classification from a source also helps
+ensure that no names are missed. I added a number of previously missed available names
+that I encountered while entering names from various old sources.
+
 - Database
   - Add classifications
   - Remove some duplicate species name complexes and add more species name complexes
+  - Separate misidentifications from subsequent usages
+  - Separate _SourceDetail_ (detailing where the original author got a name from) from
+    _CitationDetail_ (detailing where the name was first published) tags
+- Frontend
+  - Show data for classification entries
+  - Rename "cleaned" to "normalized" original name
+  - Correctly italicize taxon names on taxon pages
+  - Hide empty sections on name pages
+  - Show classification entries
+  - Show misidentifications in a separate section
+  - Show source details
+  - Hide name identities when they are redundant
+
+Thanks to Virginia Hayssen, Rudolf Haslauer, and Connor Burgin for supplying literature.
 
 # 24.6.0 (June 17, 2024)
 
