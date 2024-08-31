@@ -2,7 +2,7 @@ import argparse
 import re
 from dataclasses import dataclass
 
-from taxonomy.db import models
+from taxonomy.db import helpers, models
 from taxonomy.db.constants import Group, NomenclatureStatus, Rank, RegionKind
 from taxonomy.db.models.article.article import Article
 from taxonomy.db.models.name.name import Name, NameTag, TypeTag
@@ -60,8 +60,10 @@ def make_entry(nam: Name, taxon: Taxon) -> SynonymyEntry | None:
     references = []
     if NomenclatureStatus.incorrect_subsequent_spelling in statuses:
         tag_target = nam.get_tag_target(NameTag.IncorrectSubsequentSpellingOf)
-        if tag_target is None or tag_target.original_citation is None:
+        if tag_target is None:
             post_text = "**WARNING: Missing IncorrectSubsequentSpellingOf tag**"
+        elif tag_target.original_citation is None:
+            post_text = "**WARNING: Missing citation for original name**"
         elif nam.corrected_original_name is None:
             post_text = "**WARNING: Missing corrected original name**"
         else:
@@ -120,6 +122,11 @@ def make_entry(nam: Name, taxon: Taxon) -> SynonymyEntry | None:
         post_text = "**WARNING: Unknown name type**"
     if nam.original_citation is None:
         post_text += " **WARNING: Missing original citation**"
+        if nam.verbatim_citation is not None:
+            post_text += " Unverified citation: " + nam.verbatim_citation
+        for tag in nam.type_tags:
+            if isinstance(tag, TypeTag.AuthorityPageLink):
+                post_text += f" {tag.url}"
         authors = nam.get_authors()
     else:
         references.append(nam.original_citation)
@@ -169,8 +176,10 @@ def get_year(year: str | None) -> str:
 
 def stringify_author_list(authors: list[Person]) -> str:
     if len(authors) <= 2:
-        return " and ".join(auth.family_name for auth in authors)
-    return f"{authors[0].family_name} et al."
+        return " and ".join(
+            helpers.romanize_russian(auth.family_name) for auth in authors
+        )
+    return f"{helpers.romanize_russian(authors[0].family_name)} et al."
 
 
 def stringify_synonymies(syns: list[tuple[Taxon, list[SynonymyEntry]]]) -> list[str]:
