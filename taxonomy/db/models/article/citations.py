@@ -848,13 +848,11 @@ def cite_mammspec(article: Article, *, year_suffix: str = "") -> str:
         if article.series is not None:
             out += f"({article.series})"
         out += f"{article.volume}:{page_range(article, dash='–')}"
-    elif article.type == ArticleType.CHAPTER:
+    elif article.type in (ArticleType.CHAPTER, ArticleType.PART):
         out += f"{article.get_title()}"
         enclosing = article.get_enclosing()
         if enclosing is not None:
-            out += f". Pp. {page_range(article, dash='–')} in "
-            if enclosing.get_title() is not None:
-                out += enclosing.get_title()
+            out += ". In: "
             out += format_authors(enclosing, separator=",", last_separator=", and")
             out += f" (Eds), <i>{enclosing.get_title()}</i>. "
             out += f"{enclosing.publisher}, {enclosing.place_of_publication}"
