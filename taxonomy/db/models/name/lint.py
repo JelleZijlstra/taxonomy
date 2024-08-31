@@ -4212,6 +4212,9 @@ def _infer_name_variants_of_status(
     expected_name_variants: list[ClassificationEntry],
     nomenclature_status: NomenclatureStatus,
 ) -> Iterable[str]:
+    if not expected_name_variants:
+        return
+    expected_base = nam.resolve_variant()
     for ce in expected_name_variants:
         corrected_name = ce.get_corrected_name()
         if corrected_name is None:
@@ -4235,14 +4238,16 @@ def _infer_name_variants_of_status(
             and is_root_name_form
         ):
             continue
-        existing = list(
-            Name.select_valid().filter(
+        existing = [
+            nam
+            for nam in Name.select_valid().filter(
                 Name.corrected_original_name == corrected_name,
                 Name.group == Group.species,
                 Name.taxon == nam.taxon,
                 Name.nomenclature_status == nomenclature_status,
             )
-        )
+            if nam.resolve_variant() == expected_base
+        ]
         match len(existing):
             case 0:
                 yield from _maybe_add_name_variant(nam, nomenclature_status, ce, cfg)
