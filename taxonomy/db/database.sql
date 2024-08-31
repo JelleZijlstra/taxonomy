@@ -373,3 +373,4 @@ CREATE TABLE `classification_entry` (
 CREATE INDEX "mapped_name" on "classification_entry" (`mapped_name_id`);
 CREATE INDEX "ce_name" on "classification_entry" (`name`, `article_id`, `rank`);
 CREATE INDEX "ce_article" on "classification_entry" (`article_id`);
+CREATE INDEX "ce_parent" on "classification_entry" (`parent_id`);
