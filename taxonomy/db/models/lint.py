@@ -29,8 +29,11 @@ class LintWrapper(Generic[ModelT]):
     disabled: bool
     label: str
     lint: Lint[ModelT]
+    requires_network: bool = False
 
     def __call__(self, obj: ModelT, cfg: LintConfig) -> Generator[str, None, set[str]]:
+        if self.requires_network and not is_network_available():
+            return set()
         try:
             issues = list(self.linter(obj, cfg))
         except Exception as e:
@@ -59,11 +62,9 @@ class Lint(Generic[ModelT]):
     def add(
         self, label: str, *, disabled: bool = False, requires_network: bool = False
     ) -> Callable[[Linter[ModelT]], LintWrapper[ModelT]]:
-        if requires_network and not is_network_available():
-            disabled = True
 
         def decorator(linter: Linter[ModelT]) -> LintWrapper[ModelT]:
-            lint_wrapper = LintWrapper(linter, disabled, label, self)
+            lint_wrapper = LintWrapper(linter, disabled, label, self, requires_network)
             if disabled:
                 self.disabled_linters.append(lint_wrapper)
             else:

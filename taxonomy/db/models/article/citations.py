@@ -152,7 +152,7 @@ def _citenormal(
     if article.type == ArticleType.JOURNAL:
         # journals (most common case)
         if article.citation_group:
-            out += f"{article.citation_group.name} "
+            out += f"{article.citation_group.get_citable_name()} "
         if article.is_in_press():
             out += "(in press)."
         else:
@@ -181,7 +181,7 @@ def _citenormal(
     elif article.type == ArticleType.BOOK:
         out += f" {article.publisher}"
         if article.citation_group is not None:
-            out += f", {article.citation_group.name}"
+            out += f", {article.citation_group.get_citable_name()}"
         if article.pages:
             out += f", {article.pages} pp"
         out += "."
@@ -189,7 +189,7 @@ def _citenormal(
         if article.series is not None:
             out += f" {article.series} thesis"
         if article.citation_group is not None:
-            out += f", {article.citation_group.name}"
+            out += f", {article.citation_group.get_citable_name()}"
         if article.pages:
             out += f", {article.pages} pp"
         out += "."
@@ -225,7 +225,7 @@ def _citenormal(
 def citelemurnews(article: Article) -> str:
     authors = format_authors(article)
     if article.type == ArticleType.JOURNAL:
-        cg = article.citation_group.name if article.citation_group else ""
+        cg = article.citation_group.get_citable_name() if article.citation_group else ""
         out = (
             f"{authors}. {article.year}. {article.get_title()}. {cg} {article.volume}:"
             f" {article.start_page}–{article.end_page}."
@@ -275,7 +275,7 @@ def citebzn(article: Article) -> str:
     if article.type == ArticleType.JOURNAL:
         out += f"{article.get_title()}. "
         if article.citation_group:
-            out += f"<i>{article.citation_group.name}</i>, "
+            out += f"<i>{article.citation_group.get_citable_name()}</i>, "
         if article.series:
             # need to catch "double series"
             series = article.series.replace(";", ") (")
@@ -311,7 +311,7 @@ def citejhe(article: Article) -> str:
     out += f", {article.year}. "
     out += f"{article.get_title()}. "
     if article.type == ArticleType.JOURNAL and article.citation_group is not None:
-        out += article.citation_group.name
+        out += article.citation_group.get_citable_name()
         if article.is_in_press():
             out += ", in press"
         else:
@@ -356,7 +356,7 @@ def citearchnathist(article: Article) -> str:
     out.append(f", {article.numeric_year()}. ")
     out.append(f"{article.get_title()}. ")
     if article.citation_group is not None:
-        out.append(f"_{article.citation_group.name}_ ")
+        out.append(f"_{article.citation_group.get_citable_name()}_ ")
     if article.series:
         out.append(f"({article.series})")
     out.append(f"**{article.volume}**")
@@ -380,7 +380,7 @@ def citepalaeontology(article: Article) -> str:
     )
     out += f". {article.year}. "
     if article.type == ArticleType.JOURNAL and article.citation_group is not None:
-        out += f"{article.get_title()}. <i>{article.citation_group.name}</i>, "
+        out += f"{article.get_title()}. <i>{article.citation_group.get_citable_name()}</i>, "
         # TODO: series
         out += f"<b>{article.volume}</b>, {page_range(article)}"
     elif article.type == ArticleType.BOOK:
@@ -435,7 +435,7 @@ def citejpal(article: Article) -> str:
     out += f" {article.year}. {article.get_title()}"
     if article.type == ArticleType.JOURNAL:
         if article.citation_group:
-            out += f". {article.citation_group.name}, "
+            out += f". {article.citation_group.get_citable_name()}, "
         if article.series:
             out += f"ser. {article.series}, "
         out += f"{article.volume}:{page_range(article)}"
@@ -484,7 +484,7 @@ def citepalevol(article: Article) -> str:
     )
     out += f", {article.year}. {article.get_title()}"
     if article.type == ArticleType.JOURNAL and article.citation_group is not None:
-        out += f". {article.citation_group.name} "
+        out += f". {article.citation_group.get_citable_name()} "
         if article.series:
             out += f"ser. {article.series}, "
         out += f"{article.volume}, {page_range(article)}"
@@ -537,7 +537,7 @@ def citejvp(article: Article) -> str:
     out += f". {article.year}. {article.get_title()}"
     if article.type == ArticleType.JOURNAL:
         if article.citation_group:
-            out += f". {article.citation_group.name} "
+            out += f". {article.citation_group.get_citable_name()} "
         if article.series:
             out += f"ser. {article.series}, "
         out += f"{article.volume}:{page_range(article)}"
@@ -631,7 +631,7 @@ def citebibtex(article: Article) -> str:
         add("school", article.institution, mandatory=True)
     elif article.type == ArticleType.JOURNAL:
         if article.citation_group:
-            add("journal", article.citation_group.name, mandatory=True)
+            add("journal", article.citation_group.get_citable_name(), mandatory=True)
         add("volume", article.volume)
         add("number", article.issue)
         add("pages", f"{article.start_page}--{article.end_page}")
@@ -652,7 +652,7 @@ def citezootaxa(article: Article) -> str:
     out += format_authors(article, separator=",", last_separator=" &")
     out += f" ({article.year}) "
     if article.type == ArticleType.JOURNAL and article.citation_group is not None:
-        out += f"{article.get_title()}. <i>{article.citation_group.name}</i>, "
+        out += f"{article.get_title()}. <i>{article.citation_group.get_citable_name()}</i>, "
         out += f"{article.volume}, {page_range(article)}"
     elif article.type == ArticleType.CHAPTER:
         out += f"{article.get_title()}."
@@ -738,7 +738,7 @@ def citewp(article: Article, *, commons: bool = False) -> str:
     if article.type == ArticleType.JOURNAL:
         paras["title"] = article.get_title()
         if article.citation_group:
-            paras["journal"] = article.citation_group.name
+            paras["journal"] = article.citation_group.get_citable_name()
         paras["volume"] = article.volume
         paras["issue"] = article.issue
     elif article.type == ArticleType.BOOK:
@@ -844,7 +844,7 @@ def cite_mammspec(article: Article, *, year_suffix: str = "") -> str:
     out += f" {article.numeric_year()}{year_suffix}. "
     if article.type == ArticleType.JOURNAL:
         assert article.citation_group is not None, f"{article} has no citation group"
-        out += f"{article.get_title()}. {article.citation_group.name} "
+        out += f"{article.get_title()}. {article.citation_group.get_citable_name()} "
         if article.series is not None:
             out += f"({article.series})"
         out += f"{article.volume}:{page_range(article, dash='–')}"
@@ -860,7 +860,7 @@ def cite_mammspec(article: Article, *, year_suffix: str = "") -> str:
     elif article.type == ArticleType.BOOK:
         out += f"{article.get_title()}. {article.publisher}"
         if article.citation_group:
-            out += f", {article.citation_group.name}"
+            out += f", {article.citation_group.get_citable_name()}"
     else:
         out += f"{article.get_title()}. "
         out += "<!--Unknown citation type; fallback citation-->"
