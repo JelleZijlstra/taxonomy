@@ -4938,6 +4938,30 @@ def check_must_have_ce(nam: Name, cfg: LintConfig) -> Iterable[str]:
     yield f"must have classification entries for {nam.original_citation}"
 
 
+def can_transform(input: T, output: T, transforms: Sequence[Callable[[T], T]]) -> bool:
+    if input == output:
+        return True
+    for i in range(1, len(transforms)):
+        for funcs in itertools.permutations(transforms, i):
+            transformed = input
+            for func in funcs:
+                transformed = func(transformed)
+            if transformed == output:
+                return True
+    return False
+
+
+_ALLOWED_TRANSFORMS: list[Callable[[str], str]] = [
+    lambda s: s.replace("æ", "ae"),
+    # Ab Cd -> Ab cd
+    lambda s: re.sub(
+        r"^([A-Z]+[a-z]+) ([A-Z]+[a-z]+)$",
+        lambda m: f"{m.group(1)!s} {m.group(2).lower()!s}",
+        s,
+    ),
+]
+
+
 @LINT.add("matches_mapped")
 def check_matches_mapped_classification_entry(
     nam: Name, cfg: LintConfig
@@ -4948,7 +4972,9 @@ def check_matches_mapped_classification_entry(
     for ce in ces:
         if ce.name != nam.original_name:
             yield f"mapped to {ce}, but {ce.name=} != {nam.original_name=}"
-            if ce.name.replace("æ", "ae") == nam.original_name:
+            if nam.original_name is None or can_transform(
+                ce.name, nam.original_name, _ALLOWED_TRANSFORMS
+            ):
                 message = f"changing original name to {ce.name}"
                 if cfg.autofix:
                     print(f"{nam}: {message}")
