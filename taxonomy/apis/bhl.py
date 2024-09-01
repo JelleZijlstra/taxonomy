@@ -47,7 +47,7 @@ def get_title_to_data() -> dict[str, list[dict[str, str]]]:
     return output
 
 
-@lru_cache(maxsize=1024)
+@lru_cache(maxsize=256)
 def get_title_metadata(title_id: int) -> dict[str, Any]:
     result = json.loads(_get_title_metadata_string(str(title_id)))
     if result["Status"] != "ok":
@@ -65,7 +65,7 @@ def _get_title_metadata_string(title_id: str) -> str:
 
 
 # profiling shows significant overhead from JSON decoding otherwise
-@lru_cache(maxsize=1024)
+@lru_cache(maxsize=256)
 def get_item_metadata(item_id: int) -> dict[str, Any] | None:
     result = json.loads(_get_item_metadata_string(str(item_id)))
     if result["Status"] != "ok":
@@ -85,7 +85,7 @@ def _get_item_metadata_string(item_id: str) -> str:
     return httpx.get(url).text
 
 
-@lru_cache(maxsize=1024)
+@lru_cache(maxsize=256)
 def get_page_metadata(page_id: int) -> dict[str, Any]:
     result = json.loads(_get_page_metadata_string(str(page_id)))
     if result["Status"] != "ok":
