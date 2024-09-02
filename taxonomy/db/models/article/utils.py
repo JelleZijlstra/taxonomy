@@ -31,6 +31,11 @@ class _FakePerson(Person):
         return obj
 
 
+class _FakeCG(SimpleNamespace):
+    def get_citable_name(self) -> str:
+        return self.name
+
+
 def make_journal_article() -> Article:
     """Make a dummy Article for testing."""
     data = {
@@ -52,7 +57,7 @@ def make_journal_article() -> Article:
         "type": ArticleType.JOURNAL,
         "volume": "91",
         "year": "2010",
-        "citation_group": SimpleNamespace(name="Journal of Mammalogy"),
+        "citation_group": _FakeCG(name="Journal of Mammalogy"),
         "author_tags": [
             AuthorTag.Author(
                 _FakePerson({"family_name": "Zijlstra", "given_names": "Jelle S."})
