@@ -76,9 +76,9 @@ discovery of the erinaceid [_Galerix wesselsae_](/t/Galerix_wesselsae) and of th
 tarsier from Pakistan, [_Hesperotarsius sindhensis_](/t/Hesperotarsius_sindhensis).
 
 In addition to specimen-based research, I have a few publications dealing with purely
-nomenclatural matters like homonyms. Most recently, I discovered during work on this
-database that a monkey species was named 25 years later than generally thought, and I
-published a paper about this. I have published the following papers:
+nomenclatural matters like homonyms. Over the past few years, I have started publishing
+some papers with work deriving from the curation of this database. I have published the
+following papers:
 
 - [Zijlstra, J.S., Hoek Ostende, L.W. van den and Due, R.A. 2008. Verhoeven's giant rat of Flores (_Papagomys theodorverhoeveni_, Muridae) extinct after all?. Contributions to Zoology 77(1):25-31. doi:10.1163/18759866-07701004](/a/4160)
 - [Zijlstra, J.S. 2010. _Neurotrichus skoczeni_, new name for _Neurotrichus minor_ Skoczen, 1993, preoccupied. Journal of Vertebrate Paleontology 30(6):1903. doi:10.1080/02724634.2010.521606](/a/3555)
@@ -92,3 +92,4 @@ published a paper about this. I have published the following papers:
 - [Zijlstra, J.S., McFarlane, D.A., Van den Hoek Ostende, L.W. and Lundberg, J. 2014. New rodents (Cricetidae) from the Neogene of Curaçao and Bonaire, Dutch Antilles. Palaeontology 57(5):895-908. doi:10.1111/pala.12091](/a/17403)
 - [Zijlstra, J. and Flynn, L.J. 2015. Hedgehogs (Erinaceidae, Lipotyphla) from the Miocene of Pakistan, with description of a new species of _Galerix_. Palaeobiodiversity and Palaeoenvironments 95(3):477-495. doi:10.1007/s12549-015-0190-3](/a/25174)
 - [Zijlstra, J.S. 2020. The nomenclature of the blond capuchin, _Cebus flavius_ (Schreber, 1799) (Mammalia, Primates, Cebidae). Zootaxa 4820(2):398-400. doi:10.11646/zootaxa.4820.2.14](/a/50209)
+- [Dissanayake, R., Zijlstra, J.S. & Darwich, M. 2024. The names of the Dusky Striped Squirrel (_Funambulus obscurus_, Sciuridae) and Kathleen Ryley in the Bombay Natural History Society's Mammal Survey. Mammalia (in press). doi:10.1515/mammalia-2024-0055.](/a/67244)

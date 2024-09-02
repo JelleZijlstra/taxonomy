@@ -1037,7 +1037,6 @@ def get_inferred_bhl_page_from_articles(art: Article, cfg: LintConfig) -> int | 
             if cfg.verbose:
                 print(f"{other_art}: no URL")
             continue
-        existing_page_id = 0  # TODO: fix pyanalyze
         match urlparse.parse_url(other_art.url):
             case urlparse.BhlPage(page_id):
                 existing_page_id = page_id
@@ -1678,6 +1677,8 @@ def check_must_use_children(art: Article, cfg: LintConfig) -> Iterable[str]:
         )
         if cfg.interactive:
             for ref in refs:
+                if not hasattr(ref, field.name):
+                    continue
                 ref.display()
                 ref.fill_field(field.name)
     for field in Article.derived_fields:
