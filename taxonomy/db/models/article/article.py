@@ -161,6 +161,11 @@ class Article(BaseModel):
             LazyType(lambda: list[models.Name]),
             lambda art: models.name.name.get_ordered_names(art.get_new_names()),
         ),
+        DerivedField(
+            "root_classification_entries",
+            LazyType(lambda: list[models.ClassificationEntry]),
+            lambda art: art.get_root_classification_entries(),
+        ),
         get_tag_based_derived_field(
             "partially_suppressed_names",
             lambda: models.Name,
@@ -511,6 +516,13 @@ class Article(BaseModel):
         return models.ClassificationEntry.add_validity_check(
             self.classification_entries
         )
+
+    def get_root_classification_entries(self) -> list[models.ClassificationEntry]:
+        return [
+            ce
+            for ce in self.get_classification_entries()
+            if ce.parent is None or ce.parent.article != self
+        ]
 
     def get_possible_bhl_item_ids(self) -> Iterable[int]:
         if self.url is not None:
