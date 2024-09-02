@@ -1097,7 +1097,7 @@ class BaseModel(Model):
             while not self.is_lint_clean():
                 self.display()
                 self.edit()
-                self = self.reload()
+                self.reload()
                 self.format()
         except getinput.StopException:
             pass
@@ -1600,7 +1600,7 @@ def get_tag_based_derived_field(
 
     return derived_data.DerivedField(
         name,
-        derived_data.LazyType(lambda: list[lazy_model_cls()]),  # type: ignore[misc]
+        derived_data.LazyType(lambda: list[lazy_model_cls()]),  # type: ignore[arg-type]
         compute_all=compute_all,
         pull_on_miss=False,
     )

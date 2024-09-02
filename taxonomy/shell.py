@@ -2591,7 +2591,7 @@ def download_bhl_parts(nams: Iterable[Name] | None = None) -> None:
                 print("Downloading:")
                 # Line by itself for easier copy-pasting
                 print(url)
-                response = httpx.get(url, timeout=None)
+                response = httpx.get(url)
                 path = options.new_path / f"{part_id}.pdf"
                 path.write_bytes(response.content)
                 print("Adding part for name", nam)
@@ -2623,7 +2623,7 @@ def download_bhl_items(nams: Iterable[Name] | None = None) -> None:
             print("Downloading:")
             # Line by itself for easier copy-pasting
             print(url)
-            response = httpx.get(url, timeout=None, follow_redirects=True)
+            response = httpx.get(url, follow_redirects=True)
             path = options.burst_path / f"{item_id}.pdf"
             path.write_bytes(response.content)
             subprocess.check_call(["open", path])
