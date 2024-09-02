@@ -4,7 +4,9 @@ Version numbers correspond to Git tags in the
 [backend](https://github.com/JelleZijlstra/taxonomy/) repositories, and to database
 exports released on Zenodo.
 
-# Unreleased
+# 24.9.0 (September 2, 2024)
+
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.13630864.svg)](https://doi.org/10.5281/zenodo.13630864)
 
 This release adds a new category of data to the Hesperomys database: classifications. A
 classification lists all the taxa included in a literature reference in an organized

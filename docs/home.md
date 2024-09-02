@@ -18,7 +18,7 @@ you are considering naming a new species).
 
 To cite this project, use:
 
-- Zijlstra, J.S. 2024. Hesperomys Project (Version 24.6.0) [Data set]. Zenodo. [doi:10.5281/zenodo.12047416](https://doi.org/10.5281/zenodo.12047416)
+- Zijlstra, J.S. 2024. Hesperomys Project (Version 24.9.0) [Data set]. Zenodo. [doi:10.5281/zenodo.13630864](https://doi.org/10.5281/zenodo.13630864)
 
 # Size
 
