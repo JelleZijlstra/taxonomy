@@ -105,7 +105,7 @@ def get_derived_field_with_aliases(
 
     return DerivedField(
         name,
-        LazyType(lambda: list[lazy_model_cls()]),  # type: ignore[arg-type]
+        LazyType(lambda: list[lazy_model_cls()]),  # type: ignore[arg-type,misc]
         compute_all=compute_all,
         pull_on_miss=False,
     )
