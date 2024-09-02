@@ -9,9 +9,10 @@ exports released on Zenodo.
 This release adds a new category of data to the Hesperomys database: classifications. A
 classification lists all the taxa included in a literature reference in an organized
 way, and each name in the classification is associated with a name in the Hesperomys
-database. As an example, [this page](https://hesperomys.com/ce/4839) shows the
-classification of the order Rodentia as it appeared in Wilson and Reeder (2005). The
-database now includes more than 140,000 entries from published classifications.
+database. As an example, [this page](https://hesperomys.com/ce/9291) shows the
+classification of mammals as it appeared in Wilson and Reeder (2005), and
+[this](/a/57429) shows the classification of Linnaeus (1758). The database now includes
+more than 140,000 entries from published classifications.
 
 Classifications enabled me to add many more name combinations to the database; the goal
 there is that eventually, all scientific names that have been used for mammals in the
@@ -30,11 +31,16 @@ ensure that no names are missed. I added a number of previously missed available
 that I encountered while entering names from various old sources.
 
 - Database
+  - Add numerous name combinations and misspelled names from the literature
+  - Apply some recent taxonomic changes
+  - Add verified citations for more names
   - Add classifications
   - Remove some duplicate species name complexes and add more species name complexes
+- Backend
   - Separate misidentifications from subsequent usages
   - Separate _SourceDetail_ (detailing where the original author got a name from) from
     _CitationDetail_ (detailing where the name was first published) tags
+  - Support marking citation groups as children of others; this is used for book series
 - Frontend
   - Show data for classification entries
   - Rename "cleaned" to "normalized" original name
@@ -44,6 +50,7 @@ that I encountered while entering names from various old sources.
   - Show misidentifications in a separate section
   - Show source details
   - Hide name identities when they are redundant
+  - Fix rendering of references for some articles
 
 Thanks to Virginia Hayssen, Rudolf Haslauer, and Connor Burgin for supplying literature.
 
