@@ -351,7 +351,9 @@ def get_hesp_row(
                 elif tag.source.id == MDD_ARTICLE_ID:
                     pass  # ignore
                 else:
-                    citation = ", ".join(tag.source.taxonomic_authority())
+                    citation = helpers.romanize_russian(
+                        ", ".join(tag.source.taxonomic_authority())
+                    )
                     emended_tl.append(f'"{tag.text}" ({citation})')
             elif isinstance(tag, TypeTag.Coordinates):
                 try:
@@ -366,7 +368,9 @@ def get_hesp_row(
                 except helpers.InvalidCoordinates:
                     pass
             elif isinstance(tag, TypeTag.CitationDetail):
-                citation = ", ".join(tag.source.taxonomic_authority())
+                citation = helpers.romanize_russian(
+                    ", ".join(tag.source.taxonomic_authority())
+                )
                 citation_details.append(f'"{tag.text}" ({citation})')
     row["Hesp_sourced_unverified_citations"] = " | ".join(citation_details)
 
@@ -441,6 +445,7 @@ def _stringify_ce(ce: ClassificationEntry) -> str:
         tag.url for tag in ce.get_tags(ce.tags, ClassificationEntryTag.PageLink)
     ]
     author, year = ce.article.taxonomic_authority()
+    author = helpers.romanize_russian(author)
     if ce.page:
         year = f"{year}:{ce.page}"
     if page_links:
@@ -465,6 +470,12 @@ class FixableDifference:
     hesp_row: dict[str, str] = field(repr=False)
     mdd_row: dict[str, str] = field(repr=False)
     hesp_name: Name
+
+    def is_disposable_name(self) -> bool:
+        return self.hesp_name.nomenclature_status in (
+            NomenclatureStatus.name_combination,
+            NomenclatureStatus.incorrect_subsequent_spelling,
+        )
 
     def summary(self) -> str:
         if self.explanation is None:
@@ -874,7 +885,13 @@ def run(*, dry_run: bool = True, taxon: Taxon, max_names: int | None = None) -> 
 
     fixable_differences = sorted(
         fixable_differences,
-        key=lambda x: (x.mdd_column, x.kind, x.hesp_value, x.mdd_value),
+        key=lambda x: (
+            x.mdd_column,
+            x.kind,
+            x.is_disposable_name(),
+            x.hesp_value,
+            x.mdd_value,
+        ),
     )
     if fixable_differences:
         with (backup_path / "fixable-differences.csv").open("w") as file:
@@ -895,11 +912,12 @@ def run(*, dry_run: bool = True, taxon: Taxon, max_names: int | None = None) -> 
                 ],
             )
             dict_writer.writeheader()
-            for (mdd_column, kind), group_iter in itertools.groupby(
-                fixable_differences, key=lambda x: (x.mdd_column, x.kind)
+            for (mdd_column, kind, is_combination), group_iter in itertools.groupby(
+                fixable_differences,
+                key=lambda x: (x.mdd_column, x.kind, x.is_disposable_name()),
             ):
                 group = list(group_iter)
-                header = f"{kind.name} for {mdd_column} ({len(group)})"
+                header = f"{kind.name} for {mdd_column} ({'name combinations; ' if is_combination else ''}{len(group)})"
                 getinput.print_header(header)
                 for diff in group:
                     diff.print()

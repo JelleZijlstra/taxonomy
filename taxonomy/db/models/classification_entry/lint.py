@@ -76,7 +76,16 @@ def check_tags(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
             new_url = yield from models.name.lint.check_page_link(
                 tag_url=tag.url, tag_page=tag.page, page_described=ce.page
             )
-            new_tags.append(ClassificationEntryTag.PageLink(url=new_url, page=tag.page))
+            new_tags.append(
+                ClassificationEntryTag.PageLink(
+                    url=new_url, page=tag.page if tag.page is not None else "NA"
+                )
+            )
+        elif isinstance(tag, ClassificationEntryTag.CorrectedName):
+            if ce.get_corrected_name_without_tags() == tag.text:
+                yield "removing redundant CorrectedName tag"
+            else:
+                new_tags.append(tag)
         else:
             new_tags.append(tag)
     new_tags_tuple = tuple(sorted(set(new_tags)))
@@ -159,12 +168,14 @@ def get_allowed_family_group_names(nam: Name) -> Container[str]:
     return allowed
 
 
-@LINT.add("predates_mapped_name", disabled=True)
+@LINT.add("predates_mapped_name")
 def check_predates_mapped_name(
     ce: ClassificationEntry, cfg: LintConfig
 ) -> Iterable[str]:
     if ce.mapped_name is None:
         return
+    if ce.rank is Rank.synonym:
+        return  # ignore synonyms for now
     if (ce.article.is_unpublished(), ce.article.get_date_object()) < (
         (
             ce.mapped_name.original_citation.is_unpublished()
@@ -172,7 +183,7 @@ def check_predates_mapped_name(
             else False
         ),
         ce.mapped_name.get_date_object(),
-    ):
+    ) and ce.article.get_date_object() < ce.mapped_name.get_date_object():
         yield f"predates mapped name {ce.mapped_name}"
 
 
@@ -320,6 +331,8 @@ class CandidateName:
             corrected_name = self.ce.name
         if self.name.corrected_original_name != corrected_name:
             score += 10
+        if self.name.original_citation != self.ce.article:
+            score += 50
         associated_taxa = Taxon.select_valid().filter(Taxon.base_name == self.name)
         if not any(t.valid_name == corrected_name for t in associated_taxa):
             score += 2
@@ -343,8 +356,11 @@ class CandidateName:
         if self.name.nomenclature_status in (
             NomenclatureStatus.subsequent_usage,
             NomenclatureStatus.name_combination,
+            NomenclatureStatus.preoccupied,
         ):
             score += 1
+        if self.name.nomenclature_status is (NomenclatureStatus.misidentification):
+            score += 3
         if self.name.nomenclature_status in (
             NomenclatureStatus.incorrect_subsequent_spelling,
             NomenclatureStatus.variant,
@@ -473,7 +489,9 @@ def get_candidates_from_names_for_bare_synonym(
             continue
         if fuzzy:
             condition = (
-                helpers.normalize_root_name_for_homonymy(corrected_name)
+                models.name_complex.normalize_root_name_for_homonymy(
+                    corrected_name, nam.species_name_complex
+                )
                 == nam.get_normalized_root_name_for_homonymy()
             )
         else:
@@ -506,7 +524,9 @@ def get_species_group_mapped_names(
         yield taxon.base_name, CandidateMetadata(is_direct_match=True)
     if count == 0:
         genus_name, *_, root_name = corrected_name.split()
-        normalized_root_name = helpers.normalize_root_name_for_homonymy(root_name)
+        normalized_root_name = models.name_complex.normalize_root_name_for_homonymy(
+            root_name, None
+        )
         genus_candidates = Name.select_valid().filter(
             Name.group == Group.genus, Name.root_name == genus_name
         )

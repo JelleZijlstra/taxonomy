@@ -73,8 +73,22 @@ def parse_path(section: Mapping[str, str], key: str, base_path: Path) -> Path:
         return path
 
 
-@functools.cache
+_network_available: bool | None = None
+
+
+def set_network_available(*, value: bool) -> None:
+    global _network_available
+    _network_available = value
+
+
 def is_network_available() -> bool:
+    if _network_available is not None:
+        return _network_available
+    return _is_network_available_from_env()
+
+
+@functools.cache
+def _is_network_available_from_env() -> bool:
     return not bool(os.environ.get("TAXONOMY_NO_NETWORK"))
 
 

@@ -205,7 +205,7 @@ class BaseModel(Model):
         cfg: LintConfig = LintConfig(interactive=False, autofix=False),
     ) -> bool:
         messages = list(self.general_lint(cfg))
-        if extra_linter is not None:
+        if extra_linter is not None and not self.is_invalid():
             messages += extra_linter(self, cfg)
         if not messages:
             return True
@@ -822,39 +822,57 @@ class BaseModel(Model):
             raise ValueError(f"don't know how to fill {field}")
 
     @classmethod
-    def get_value_for_field_on_class(cls, field: str, default: Any = "") -> Any:
+    def get_value_for_field_on_class(
+        cls, field: str, default: Any = "", *, callbacks: getinput.CallbackMap = {}
+    ) -> Any:
         field_obj = getattr(cls, field)
         prompt = f"{field}> "
         if issubclass(field_obj.type_object, Model):
-            return cls.get_value_for_foreign_key_field_on_class(field)
+            return cls.get_value_for_foreign_key_field_on_class(
+                field, callbacks=callbacks
+            )
         elif isinstance(field_obj, ADTField):
             return getinput.get_adt_list(
                 field_obj.adt_type,
                 prompt=prompt,
                 completers=cls.get_completers_for_adt_field(field),
+                callbacks=callbacks,
             )
         elif isinstance(field_obj, (TextField, TextOrNullField)):
             return (
-                getinput.get_line(prompt, default=default, mouse_support=True) or None
+                getinput.get_line(
+                    prompt, default=default, mouse_support=True, callbacks=callbacks
+                )
+                or None
             )
         elif field_obj.type_object is str:
-            return cls.getter(field).get_one_key(prompt, default=default) or None
+            return (
+                cls.getter(field).get_one_key(
+                    prompt, default=default, callbacks=callbacks
+                )
+                or None
+            )
         elif issubclass(field_obj.type_object, enum.Enum):
             if default == "":
                 default = None
             if default is None and field in cls.field_defaults:
                 default = cls.field_defaults[field]
             return getinput.get_enum_member(
-                field_obj.type_object, prompt=prompt, default=default
+                field_obj.type_object,
+                prompt=prompt,
+                default=default,
+                callbacks=callbacks,
             )
         elif field_obj.type_object is int:
-            result = getinput.get_line(prompt, default=default, mouse_support=True)
+            result = getinput.get_line(
+                prompt, default=default, mouse_support=True, callbacks=callbacks
+            )
             if result == "" or result is None:
                 return None
             else:
                 return int(result)
         elif field_obj.type_object is bool:
-            return getinput.yes_no(prompt, default=default)
+            return getinput.yes_no(prompt, default=default, callbacks=callbacks)
         else:
             raise ValueError(f"don't know how to fill {field}")
 
@@ -1618,6 +1636,7 @@ def get_static_callbacks() -> getinput.CallbackMap:
         **commands,
         **flexible_commands,
         ":h": lambda: _call_obj(taxonomy.lib.h, use_default=True),
+        ":hp": lambda: _call_obj(taxonomy.lib.hp, use_default=True),
         "RootName": lambda: models.Name.getter("root_name").get_and_edit(),
     }
 

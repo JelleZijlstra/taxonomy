@@ -678,7 +678,13 @@ class Name(BaseModel):
             "clear_bhl_caches": self.clear_bhl_caches,
             "open_coordinates": self.open_coordinates,
             "edit_mapped_ce": self._edit_mapped_ce,
+            "display_classification_entries": self.display_classification_entries,
+            "display_usage_list": lambda: print(self.make_usage_list()),
         }
+
+    def display_classification_entries(self) -> None:
+        for ce in self.classification_entries:
+            ce.display()
 
     def _edit_mapped_ce(self) -> None:
         for ce in self.get_mapped_classification_entries():
@@ -2193,7 +2199,9 @@ class Name(BaseModel):
         match self.group:
             case Group.species:
                 root_name = self.get_normalized_root_name()
-                return helpers.normalize_root_name_for_homonymy(root_name)
+                return models.name_complex.normalize_root_name_for_homonymy(
+                    root_name, self.species_name_complex
+                )
             case Group.family:
                 if self.type is not None:
                     try:
@@ -2355,6 +2363,50 @@ class Name(BaseModel):
             models.ClassificationEntry.mapped_name == self,
             models.ClassificationEntry.article == self.original_citation,
         )
+
+    def make_usage_list(self, style: str = "paper") -> str:
+        usages: dict[Article, str | None] = {}
+        for related_nam in self.taxon.get_names():
+            if related_nam.resolve_variant() == self:
+                for ce in related_nam.classification_entries:
+                    comment_pieces = []
+                    if ce.page is not None:
+                        if ce.page.isnumeric():
+                            comment_pieces.append(f"p. {ce.page}")
+                        else:
+                            comment_pieces.append(ce.page)
+                    usages[ce.article] = (
+                        "; ".join(comment_pieces) if comment_pieces else None
+                    )
+        for tag in self.tags:
+            if isinstance(tag, NameTag.ValidUse):
+                if usages.get(tag.source) is not None:
+                    continue
+                if not tag.comment:
+                    comment = None
+                elif tag.comment[0].isnumeric():
+                    comment = f"p. {tag.comment}"
+                else:
+                    comment = tag.comment
+                usages[tag.source] = comment
+        authority = self.taxonomic_authority()
+        lines = [
+            f"### Usages of _{self.original_name}_ {authority} (currently _{self.taxon.valid_name}_)\n\n"
+        ]
+        i = 1
+        for source, comment in sorted(
+            usages.items(), key=lambda pair: pair[0].get_date_object()
+        ):
+            if source.is_unpublished() or source.numeric_year() < 1980:
+                continue
+            if comment is not None:
+                comment_str = f" ({comment})"
+            else:
+                comment_str = ""
+            lines.append(f"- {i}. {source.cite(style)}{comment_str}\n")
+            i += 1
+        lines.append("\n")
+        return "".join(lines)
 
     @classmethod
     def add_hmw_tags(cls, family: str) -> None:
@@ -2571,8 +2623,12 @@ def clean_original_name(original_name: str) -> str:
         .replace("š", "s")
         .replace("á", "a")
         .replace("ć", "c")
+        .replace(" cf. ", " ")
+        .replace(" aff. ", " ")
     )
     original_name = re.sub(r"\s+", " ", original_name).strip()
+    original_name = re.sub(r", ", " ", original_name)
+    original_name = re.sub(r" [1-9α-ω]\. ", " ", original_name)
     return re.sub(r"([a-z]{2})-([a-z]{2})", r"\1\2", original_name)
 
 
@@ -2590,8 +2646,11 @@ def infer_corrected_original_name(original_name: str, group: Group) -> str | Non
         match = re.match(
             (
                 r"^(?P<genus>[A-Z][a-z]+)( \([A-Z][a-z]+\))?"
-                r" (?P<species>[A-Z]?[a-z]+)((,? var\.)?"
-                r" (?P<subspecies>[A-Z]?[a-z]+))?$"
+                r" (?P<species>[A-Z]?[a-z]+)"
+                r"((,? var\.)? (?P<subspecies>[A-Z]?[a-z]+))?$"
+                # We can't support infrasubspecific names here
+                # because then names like "Buffelus indicus Varietas sondaica"
+                # get inferred as infrasubspecific names instead of subspecific names
             ),
             original_name,
         )

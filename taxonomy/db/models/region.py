@@ -247,7 +247,7 @@ class Region(BaseModel):
             if type is None:
                 print(f"{' ' * (depth + 4)}{typ.name}")
             for group in groups:
-                if not group.deleted:
+                if not group.is_invalid():
                     group.display(full=full, include_articles=full, depth=depth + 8)
         for child in self.sorted_children():
             child.display_citation_groups(

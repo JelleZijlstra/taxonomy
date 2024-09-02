@@ -161,6 +161,11 @@ class Article(BaseModel):
             LazyType(lambda: list[models.Name]),
             lambda art: models.name.name.get_ordered_names(art.get_new_names()),
         ),
+        DerivedField(
+            "root_classification_entries",
+            LazyType(lambda: list[models.ClassificationEntry]),
+            lambda art: art.get_root_classification_entries(),
+        ),
         get_tag_based_derived_field(
             "partially_suppressed_names",
             lambda: models.Name,
@@ -484,12 +489,12 @@ class Article(BaseModel):
         }
 
     def ce_edit(self) -> None:
-        sibling = (
-            models.classification_entry.ce.ClassificationEntry.get_parent_completion(
+        while True:
+            sibling = models.classification_entry.ce.ClassificationEntry.get_parent_completion(
                 self, prompt="ce> "
             )
-        )
-        if sibling is not None:
+            if sibling is None:
+                break
             sibling.edit()
 
     def open_cg_url(self) -> None:
@@ -511,6 +516,13 @@ class Article(BaseModel):
         return models.ClassificationEntry.add_validity_check(
             self.classification_entries
         )
+
+    def get_root_classification_entries(self) -> list[models.ClassificationEntry]:
+        return [
+            ce
+            for ce in self.get_classification_entries()
+            if ce.parent is None or ce.parent.article != self
+        ]
 
     def get_possible_bhl_item_ids(self) -> Iterable[int]:
         if self.url is not None:
@@ -670,7 +682,7 @@ class Article(BaseModel):
             print("Not a PDF file")
             return
         output_file = (
-            re.sub(r"[^a-z]+", "-", self.name.lower().removesuffix(".pdf")) + ".txt"
+            re.sub(r"[^a-z\d]+", "-", self.name.lower().removesuffix(".pdf")) + ".txt"
         )
         output_path = Path(
             config.get_options().taxonomy_repo / "data_import" / "data" / output_file
@@ -867,7 +879,7 @@ class Article(BaseModel):
             return True
         if self.has_tag(ArticleTag.InPress):
             return True
-        if self.type is ArticleType.THESIS:
+        if self.type in (ArticleType.THESIS, ArticleType.WEB):
             return True
         return False
 
@@ -1044,6 +1056,12 @@ class Article(BaseModel):
             if hasattr(tag, "text"):
                 return tag.text
         return None
+
+    def get_title(self) -> str:
+        if self.title is None:
+            return "[Untitled]"
+        else:
+            return self.title.replace(r"\ ", " ")
 
     def get_enclosing(self: T) -> T | None:
         if self.parent is not None:
@@ -1344,7 +1362,7 @@ class Article(BaseModel):
             models.classification_entry.ClassificationEntry.parent == None
         )
         print(repr(self))
-        for ce in ces:
+        for ce in sorted(ces, key=lambda ce: ce.numeric_page()):
             ce.display(depth=2, max_depth=max_depth)
 
     def display_type_localities(self) -> None:

@@ -4,6 +4,56 @@ Version numbers correspond to Git tags in the
 [backend](https://github.com/JelleZijlstra/taxonomy/) repositories, and to database
 exports released on Zenodo.
 
+# Unreleased
+
+This release adds a new category of data to the Hesperomys database: classifications. A
+classification lists all the taxa included in a literature reference in an organized
+way, and each name in the classification is associated with a name in the Hesperomys
+database. As an example, [this page](https://hesperomys.com/ce/9291) shows the
+classification of mammals as it appeared in Wilson and Reeder (2005), and
+[this](/a/57429) shows the classification of Linnaeus (1758). The database now includes
+more than 140,000 entries from published classifications.
+
+Classifications enabled me to add many more name combinations to the database; the goal
+there is that eventually, all scientific names that have been used for mammals in the
+past have an entry in the database and can be mapped to a currently recognized species.
+The previous release only included 1028 name combinations; this release includes 19578.
+I added classifications for several major recent listings of mammal species, including
+Corbet & Hill (1980), Honacki et al. (1982), Corbet & Hill (1991), Wilson & Reeder
+(2005), and several release of the Mammal Diversity Databases, and from many other
+sources.
+
+There are several other use cases for classifications. They can help show how
+classifications have changed over time, for example by highlighting which authors have
+considered a taxon as valid in the past. It is possible to compare two classifications,
+showing how they differ. Adding the entire classification from a source also helps
+ensure that no names are missed. I added a number of previously missed available names
+that I encountered while entering names from various old sources.
+
+- Database
+  - Add numerous name combinations and misspelled names from the literature
+  - Apply some recent taxonomic changes
+  - Add verified citations for more names
+  - Add classifications
+  - Remove some duplicate species name complexes and add more species name complexes
+- Backend
+  - Separate misidentifications from subsequent usages
+  - Separate _SourceDetail_ (detailing where the original author got a name from) from
+    _CitationDetail_ (detailing where the name was first published) tags
+  - Support marking citation groups as children of others; this is used for book series
+- Frontend
+  - Show data for classification entries
+  - Rename "cleaned" to "normalized" original name
+  - Correctly italicize taxon names on taxon pages
+  - Hide empty sections on name pages
+  - Show classification entries
+  - Show misidentifications in a separate section
+  - Show source details
+  - Hide name identities when they are redundant
+  - Fix rendering of references for some articles
+
+Thanks to Virginia Hayssen, Rudolf Haslauer, and Connor Burgin for supplying literature.
+
 # 24.6.0 (June 17, 2024)
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.12047416.svg)](https://doi.org/10.5281/zenodo.12047416)

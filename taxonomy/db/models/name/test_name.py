@@ -73,7 +73,9 @@ def test_docs() -> None:
         ), f"Missing documentation for {tag_cls.__name__} values: {missing_tags}"
 
     missing_fields = {
-        field for field in Name.clirm_fields if _get_expected(field) not in name_docs
+        field
+        for field in Name.clirm_fields
+        if _get_expected(field) not in name_docs and field not in EXCLUDED
     }
     assert (
         not missing_fields

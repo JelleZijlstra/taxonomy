@@ -1,4 +1,5 @@
 import builtins
+import enum
 import sqlite3
 import subprocess
 from collections.abc import Iterable
@@ -17,6 +18,13 @@ from taxonomy.db.models.region import Region
 CGTagT = TypeVar("CGTagT", bound="CitationGroupTag")
 
 
+class CitationGroupStatus(enum.Enum):
+    normal = 0
+    deleted = 1
+    redirect = 2
+    child = 3
+
+
 class CitationGroup(BaseModel):
     creation_event = events.Event["CitationGroup"]()
     save_event = events.Event["CitationGroup"]()
@@ -28,7 +36,7 @@ class CitationGroup(BaseModel):
 
     name = Field[str]()
     region = Field[Region | None]("region_id", related_name="citation_groups")
-    deleted = Field[bool](default=False)
+    status = Field[CitationGroupStatus]("deleted", default=CitationGroupStatus.normal)
     type = Field[constants.ArticleType]()
     target = Field[Self | None]("target_id", related_name="redirects")
     tags = ADTField["CitationGroupTag"](is_ordered=False)
@@ -73,16 +81,25 @@ class CitationGroup(BaseModel):
 
     @classmethod
     def add_validity_check(cls, query: Any) -> Any:
-        return query.filter(CitationGroup.deleted == False)
+        return query.filter(
+            CitationGroup.status.is_in(
+                (CitationGroupStatus.normal, CitationGroupStatus.child)
+            )
+        )
 
     def should_skip(self) -> bool:
-        return self.deleted
+        return self.status is CitationGroupStatus.deleted
 
     def get_redirect_target(self) -> "CitationGroup | None":
-        return self.target
+        if self.status is CitationGroupStatus.redirect:
+            return self.target
+        return None
 
     def is_invalid(self) -> bool:
-        return self.deleted or self.target is not None
+        return self.status in (
+            CitationGroupStatus.deleted,
+            CitationGroupStatus.redirect,
+        )
 
     @classmethod
     def create_interactively(
@@ -264,6 +281,11 @@ class CitationGroup(BaseModel):
         else:
             return f"{len(objs)}"
 
+    def get_citable_name(self) -> str:
+        if self.target is not None:
+            return self.target.get_citable_name()
+        return self.name
+
     def delete(self) -> None:
         assert (
             len(self.get_names()) == 0
@@ -271,7 +293,7 @@ class CitationGroup(BaseModel):
         assert (
             self.get_articles().count() == 0
         ), f"cannot delete {self} because it contains articles"
-        self.deleted = True
+        self.status = CitationGroupStatus.deleted
 
     def edit(self) -> None:
         self.fill_field("tags")
@@ -305,6 +327,7 @@ class CitationGroup(BaseModel):
             "interactively_add_bhl_urls": self.interactively_add_bhl_urls,
             "validate_bhl_urls": self.validate_bhl_urls,
             "open_bhl_pages": self.open_bhl_pages,
+            "make_child": self.make_child,
         }
 
     def open_url(self) -> None:
@@ -341,6 +364,13 @@ class CitationGroup(BaseModel):
                     continue
                 if not getinput.yes_no("Keep URL? ", callbacks=nam.get_adt_callbacks()):
                     nam.remove_type_tag(tag)
+
+    def make_child(self) -> None:
+        target = self.getter(None).get_one("parent> ")
+        if target is None:
+            return
+        self.target = target
+        self.status = CitationGroupStatus.child
 
     def merge_interactive(self) -> None:
         other = self.getter(None).get_one("merge target> ")

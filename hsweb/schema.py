@@ -398,6 +398,12 @@ def numeric_year_resolver_name(parent: ObjectType, info: ResolveInfo) -> int | N
     return model.valid_numeric_year()
 
 
+def variant_base_id_resolver_name(parent: ObjectType, info: ResolveInfo) -> int:
+    model = get_model(Name, parent, info)
+    assert isinstance(model, Name)
+    return model.resolve_variant().id
+
+
 def numeric_year_resolver_article(parent: ObjectType, info: ResolveInfo) -> int | None:
     model = get_model(Article, parent, info)
     assert isinstance(model, Article)
@@ -466,7 +472,11 @@ CUSTOM_FIELDS = {
         ),
         "num_locations": Int(required=True, resolver=num_locations_resolver),
     },
-    Name: {"numeric_year": Int(required=False, resolver=numeric_year_resolver_name)},
+    Name: {
+        "numeric_year": Int(required=False, resolver=numeric_year_resolver_name),
+        # Ideally should be a Name field, but that would create a circular dependency
+        "variant_base_id": Int(required=True, resolver=variant_base_id_resolver_name),
+    },
     Article: {
         "numeric_year": Int(required=False, resolver=numeric_year_resolver_article)
     },
