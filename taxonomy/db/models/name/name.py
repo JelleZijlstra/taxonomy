@@ -2628,6 +2628,7 @@ def clean_original_name(original_name: str) -> str:
     )
     original_name = re.sub(r"\s+", " ", original_name).strip()
     original_name = re.sub(r", ", " ", original_name)
+    original_name = re.sub(r" [1-9α-ω]\. ", " ", original_name)
     return re.sub(r"([a-z]{2})-([a-z]{2})", r"\1\2", original_name)
 
 

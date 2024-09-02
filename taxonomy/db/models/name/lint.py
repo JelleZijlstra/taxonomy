@@ -4959,6 +4959,8 @@ _ALLOWED_TRANSFORMS: list[Callable[[str], str]] = [
         lambda m: f"{m.group(1)!s} {m.group(2).lower()!s}",
         s,
     ),
+    # Canis familiaris γ. sibiricus -> Canis familiaris sibiricus
+    lambda s: re.sub(r" [α-ω]\. ", " ", s),
 ]
 
 
