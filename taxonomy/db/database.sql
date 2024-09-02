@@ -184,7 +184,8 @@ CREATE TABLE `species_name_complex` (
     `comment` varchar(65535),
     `masculine_ending` varchar(255) default NULL,
     `feminine_ending` varchar(255) default NULL,
-    `neuter_ending` varchar(255) default NULL
+    `neuter_ending` varchar(255) default NULL,
+    `target` integer default null
 );
 
 CREATE TABLE `species_name_ending` (
@@ -371,3 +372,5 @@ CREATE TABLE `classification_entry` (
 
 CREATE INDEX "mapped_name" on "classification_entry" (`mapped_name_id`);
 CREATE INDEX "ce_name" on "classification_entry" (`name`, `article_id`, `rank`);
+CREATE INDEX "ce_article" on "classification_entry" (`article_id`);
+CREATE INDEX "ce_parent" on "classification_entry" (`parent_id`);

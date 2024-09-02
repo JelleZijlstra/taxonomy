@@ -36,6 +36,7 @@ import IPython
 import unidecode
 from traitlets.config.loader import Config
 
+from taxonomy import config
 from taxonomy.apis import bhl
 from taxonomy.config import get_options
 
@@ -2590,7 +2591,7 @@ def download_bhl_parts(nams: Iterable[Name] | None = None) -> None:
                 print("Downloading:")
                 # Line by itself for easier copy-pasting
                 print(url)
-                response = httpx.get(url, timeout=None)
+                response = httpx.get(url)
                 path = options.new_path / f"{part_id}.pdf"
                 path.write_bytes(response.content)
                 print("Adding part for name", nam)
@@ -2622,7 +2623,7 @@ def download_bhl_items(nams: Iterable[Name] | None = None) -> None:
             print("Downloading:")
             # Line by itself for easier copy-pasting
             print(url)
-            response = httpx.get(url, timeout=None, follow_redirects=True)
+            response = httpx.get(url, follow_redirects=True)
             path = options.burst_path / f"{item_id}.pdf"
             path.write_bytes(response.content)
             subprocess.check_call(["open", path])
@@ -2747,6 +2748,31 @@ def add_bhl_pages_by_cg() -> None:
             continue
         getinput.print_header(cg)
         cg.interactively_add_bhl_urls()
+
+
+@command
+def add_coordinates(names: Iterable[Name]) -> None:
+    nams = [
+        nam
+        for nam in names
+        if "type_locality" in nam.get_required_fields()
+        and not nam.has_type_tag(TypeTag.Coordinates)
+    ]
+    print(f"{len(nams)} names without coordinates")
+    for nam in nams:
+        getinput.print_header(nam)
+        nam.display()
+        for tag in nam.type_tags:
+            if isinstance(tag, TypeTag.LocationDetail):
+                print(tag.text)
+        nam.edit()
+        nam.edit_until_clean()
+
+
+@command
+def set_network_available() -> None:
+    available = getinput.yes_no("Is the network available? ")
+    config.set_network_available(value=available)
 
 
 def run_shell() -> None:

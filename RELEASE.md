@@ -8,7 +8,7 @@
 - Commit your changes. Make sure there are no untracked files, as `deploy.py` will fail
   if there are any.
 - Generate export files
-  (`export_collections("collection.csv"); export_names("name.csv"); export_taxa("taxon.csv")`)
+  (`export_collections("collection.csv"); export_names("name.csv"); export_taxa("taxon.csv"); export_all_ces("ce.csv")`)
 - Create a new Zenodo release
 - Add the new DOI to `home.md` and `release-notes.md`
 - Run `aws/deploy.py deploy <version>` (where `version` is e.g. "23.8.0", not

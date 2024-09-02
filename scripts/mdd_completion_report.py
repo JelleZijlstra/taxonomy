@@ -9,6 +9,7 @@ from pathlib import Path
 import gspread
 
 from taxonomy.config import get_options
+from taxonomy.db import models
 
 Data = list[dict[str, str]]
 
@@ -132,15 +133,62 @@ def tl_stats(names: Data) -> None:
         print(f"{count} {tl} ({count/len(names):.1%})")
 
 
+def extract_multiple_collections(text: str) -> list[str]:
+    if not text:
+        return []
+    if m := re.match(r"^([A-Za-z ]+) \(number not known\)$", text):
+        return [m.group(1)]
+    try:
+        specs = models.name.type_specimen.parse_type_specimen(text)
+    except Exception as e:
+        print(f"error parsing {text!r}: {e}")
+        return []
+    collections = [models.name.type_specimen.get_instution_code(spec) for spec in specs]
+    return [coll for coll in collections if coll is not None]
+
+
 def extract_collection(text: str) -> str:
-    return re.split(r"[ :\-]", text, maxsplit=1)[0]
+    colls = set(extract_multiple_collections(text))
+    if not colls:
+        return "none"
+    if len(colls) > 1:
+        return "multiple"
+    return colls.pop()
 
 
 def type_specimen_stats(names: Data) -> None:
-    tls = Counter(extract_collection(row["MDD_holotype"]) for row in names)
-    print("most common collections:")
-    for i, (tl, count) in enumerate(tls.most_common(41)):
+    colls_to_show = 20
+    types = [row["MDD_holotype"] for row in names]
+    tls = Counter(extract_collection(type) for type in types)
+    print(
+        f"most common collections out of {len(names)} names (counting shared as 'multiple'):"
+    )
+    for i, (tl, count) in enumerate(tls.most_common(colls_to_show)):
         print(f"{i}: {count} {tl} ({count/len(names):.1%})")
+
+    # Double-count shared types
+    counts2 = Counter[str]()
+    for type in types:
+        colls = extract_multiple_collections(type)
+        for coll in set(colls):
+            counts2[coll] += 1
+    print(
+        f"most common collections out of {len(names)} names (counting shared specimens once for each collection):"
+    )
+    for i, (tl, count) in enumerate(counts2.most_common(colls_to_show)):
+        print(f"{i}: {count} {tl} ({count/len(names):.1%})")
+
+    # Count shared types as fractional
+    counts3 = Counter[str]()
+    for type in types:
+        colls = extract_multiple_collections(type)
+        for coll in colls:
+            counts3[coll] += 1 / len(colls)  # type: ignore[assignment]
+    print(
+        f"most common collections out of {len(names)} names (counting shared specimens fractionally):"
+    )
+    for i, (tl, count) in enumerate(counts3.most_common(colls_to_show)):
+        print(f"{i}: {count:.2f} {tl} ({count/len(names):.1%})")
 
     names_with_type_kind = [row for row in names if row["MDD_type_kind"]]
     kinds = Counter(row["MDD_type_kind"] for row in names_with_type_kind)

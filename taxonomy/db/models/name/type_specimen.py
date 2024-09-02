@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
-from typing import Protocol, TypeVar
+from typing import Protocol, TypeVar, assert_never
 
 from taxonomy.parsing import extract_collection_from_type_specimen
 
@@ -297,3 +297,12 @@ def parse_type_specimen(text: str) -> list[AnySpecimen]:
         else:
             specs.append(_parse_single_specimen(chunk))
     return specs
+
+
+def get_instution_code(specimen: AnySpecimen) -> str | None:
+    if isinstance(specimen, Specimen):
+        return specimen.base.institution_code
+    elif isinstance(specimen, SpecimenRange):
+        return specimen.start.base.institution_code
+    else:
+        assert_never(specimen)

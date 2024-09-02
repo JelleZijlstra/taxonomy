@@ -120,7 +120,6 @@ in the Code, which is available [on the ICZN's website](https://code.iczn.org/).
   new.
 - _not intended as a scientific name_: The name was not intended as a scientific name in
   the original description; for example, it was a vernacular name.
-- \_# Regarded as unavailable by fiat
 - _rejected by fiat_: The database has decided to treat a name as unavailable by fiat.
   See
   ["Confronting taxonomic vandalism in biology"](https://doi.org/10.1093/biolinnean/blab009).
@@ -539,6 +538,9 @@ names should have at least one. They fall into several groups:
     many original descriptions do not specify an etymology.
   - _NomenclatureDetail_: A previous author's discussion about the nomenclature of this
     name.
+  - _SourceDetail_: Information on the source material of a name. Used for early names,
+    such as those from Linnaeus, that were often based on a series of literature
+    sources.
   - _TypeSpeciesDetail_: A previous author's discussion of the type species for a
     genus-group name.
 - Structured information about the type

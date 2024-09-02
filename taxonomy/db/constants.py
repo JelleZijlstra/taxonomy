@@ -438,6 +438,15 @@ class Rank(enum.IntEnum):
     )
 
     @property
+    def display_name(self) -> str:
+        match self:
+            case Rank.class_:
+                return "class"
+            case Rank.species_group:
+                return "species group"
+        return self.name
+
+    @property
     def comparison_value(self) -> int:
         if self in (Rank.variety, Rank.form, Rank.infrasubspecific):
             return -1

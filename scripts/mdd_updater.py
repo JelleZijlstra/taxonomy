@@ -36,8 +36,10 @@ import time
 from collections import Counter
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, TypeVar
 
+import google.auth.exceptions
 import gspread
 import httpx
 import Levenshtein
@@ -55,6 +57,10 @@ from taxonomy.db.constants import (
     Status,
 )
 from taxonomy.db.models import Article, Name, Taxon
+from taxonomy.db.models.classification_entry.ce import (
+    ClassificationEntry,
+    ClassificationEntryTag,
+)
 from taxonomy.db.models.name import NameTag, TypeTag
 
 LIMIT_AUTH_LINKS = False
@@ -69,8 +75,6 @@ def resolve_hesp_id(hesp_id_str: str) -> int | None:
         row = Name(hesp_id)
         if row is None:
             return None
-        while row.target is not None:
-            row = row.target
         return row.id
     return None
 
@@ -114,9 +118,9 @@ def get_mdd_status(name: Name) -> str:
             return name.status.name
 
 
-def get_type_locality_country_and_subregion(nam: Name) -> tuple[str, str]:
+def get_type_locality_country_and_subregion(nam: Name) -> tuple[str, str, str]:
     if nam.type_locality is None:
-        return "", ""
+        return "", "", ""
     region = nam.type_locality.region
     regions = [region.name]
     while region is not None and region.kind not in (
@@ -128,9 +132,15 @@ def get_type_locality_country_and_subregion(nam: Name) -> tuple[str, str]:
         region = region.parent
         regions.append(region.name)
     regions.reverse()
-    if len(regions) == 1:
-        return regions[0], ""
-    return regions[0], regions[1]
+    match len(regions):
+        case 1:
+            return regions[0], "", ""
+        case 2:
+            return regions[0], regions[1], ""
+        case _:
+            # Use the lowest-level region for the third one, as it's
+            # usually more interesting than the third-level one.
+            return regions[0], regions[1], regions[-1]
 
 
 def get_authority_link(nam: Name) -> str:
@@ -341,7 +351,9 @@ def get_hesp_row(
                 elif tag.source.id == MDD_ARTICLE_ID:
                     pass  # ignore
                 else:
-                    citation = ", ".join(tag.source.taxonomic_authority())
+                    citation = helpers.romanize_russian(
+                        ", ".join(tag.source.taxonomic_authority())
+                    )
                     emended_tl.append(f'"{tag.text}" ({citation})')
             elif isinstance(tag, TypeTag.Coordinates):
                 try:
@@ -356,7 +368,9 @@ def get_hesp_row(
                 except helpers.InvalidCoordinates:
                     pass
             elif isinstance(tag, TypeTag.CitationDetail):
-                citation = ", ".join(tag.source.taxonomic_authority())
+                citation = helpers.romanize_russian(
+                    ", ".join(tag.source.taxonomic_authority())
+                )
                 citation_details.append(f'"{tag.text}" ({citation})')
     row["Hesp_sourced_unverified_citations"] = " | ".join(citation_details)
 
@@ -364,9 +378,11 @@ def get_hesp_row(
         row["Hesp_original_type_locality"] = " | ".join(verbatim_tl)
     if emended_tl:
         row["Hesp_unchecked_type_locality"] = " | ".join(emended_tl)
-    row["Hesp_type_country"], row["Hesp_type_subregion"] = (
-        get_type_locality_country_and_subregion(name_for_types)
-    )
+    (
+        row["Hesp_type_country"],
+        row["Hesp_type_subregion"],
+        row["Hesp_type_subregion2"],
+    ) = get_type_locality_country_and_subregion(name_for_types)
 
     # Type specimen
     row["Hesp_holotype"] = get_type_specimen(name_for_types)
@@ -405,11 +421,36 @@ def get_hesp_row(
         row["Hesp_specificEpithet"] = "incertae_sedis"
     else:
         row["Hesp_specificEpithet"] = species.base_name.root_name
+    row["Hesp_species_id"] = ""
+    if species is not None:
+        for tag in species.tags:
+            if isinstance(tag, models.tags.TaxonTag.MDD):
+                row["Hesp_species_id"] = tag.id
+                break
+    row["Hesp_name_usages"] = " | ".join(
+        _stringify_ce(ce)
+        for ce in sorted(
+            name.classification_entries, key=lambda ce: ce.article.get_date_object()
+        )
+    )
 
     # Other
     # TODO: MDD_subspecificEpithet
     # TODO: MDD_comments
     return {key: value.replace("\\ ", " ") for key, value in row.items()}
+
+
+def _stringify_ce(ce: ClassificationEntry) -> str:
+    page_links = [
+        tag.url for tag in ce.get_tags(ce.tags, ClassificationEntryTag.PageLink)
+    ]
+    author, year = ce.article.taxonomic_authority()
+    author = helpers.romanize_russian(author)
+    if ce.page:
+        year = f"{year}:{ce.page}"
+    if page_links:
+        year = f"{year}, {', '.join(page_links)}"
+    return f"{author} ({year}) (information at {ce.article.get_absolute_url()})"
 
 
 class DifferenceKind(enum.StrEnum):
@@ -429,6 +470,12 @@ class FixableDifference:
     hesp_row: dict[str, str] = field(repr=False)
     mdd_row: dict[str, str] = field(repr=False)
     hesp_name: Name
+
+    def is_disposable_name(self) -> bool:
+        return self.hesp_name.nomenclature_status in (
+            NomenclatureStatus.name_combination,
+            NomenclatureStatus.incorrect_subsequent_spelling,
+        )
 
     def summary(self) -> str:
         if self.explanation is None:
@@ -567,7 +614,7 @@ def compare_column(
     row_idx: int,
     col_idx: int,
 ) -> FixableDifference | None:
-    mdd_value = mdd_row[mdd_column]
+    mdd_value = mdd_row.get(mdd_column, "")
     hesp_column = mdd_column.replace("MDD", "Hesp")
     hesp_value = hesp_row.get(hesp_column, "")
     match (bool(hesp_value), bool(mdd_value)):
@@ -657,6 +704,10 @@ def run_gspread_test() -> None:
     worksheet.update_cell(1, 1, "MDD_syn_ID_test")
 
 
+def pprint_nonempty(row: dict[str, str]) -> None:
+    pprint.pp({key: value for key, value in row.items() if value})
+
+
 def run(*, dry_run: bool = True, taxon: Taxon, max_names: int | None = None) -> None:
     options = get_options()
     backup_path = (
@@ -667,8 +718,16 @@ def run(*, dry_run: bool = True, taxon: Taxon, max_names: int | None = None) -> 
     backup_path.mkdir(parents=True, exist_ok=True)
 
     print("downloading MDD names... ")
-    gc = gspread.oauth()
-    sheet = gc.open(options.mdd_sheet)
+    try:
+        gc = gspread.oauth()
+        sheet = gc.open(options.mdd_sheet)
+    except google.auth.exceptions.RefreshError:
+        print("need to refresh token")
+        token_path = Path("~/.config/gspread/authorized_user.json").expanduser()
+        token_path.unlink(missing_ok=True)
+        gc = gspread.oauth()
+        sheet = gc.open(options.mdd_sheet)
+
     worksheet = sheet.get_worksheet_by_id(options.mdd_worksheet_gid)
     raw_rows = worksheet.get()
     headings = raw_rows[0]
@@ -696,7 +755,7 @@ def run(*, dry_run: bool = True, taxon: Taxon, max_names: int | None = None) -> 
     hesp_id_to_name = {name.id: name for name in hesp_names}
     unused_hesp_ids = set(hesp_id_to_name.keys())
     counts: dict[str, int] = Counter()
-    missing_in_hesp: list[tuple[str, dict[str, str]]] = []
+    missing_in_hesp: list[tuple[str, int, dict[str, str]]] = []
     fixable_differences: list[FixableDifference] = []
     max_mdd_id = 0
 
@@ -708,18 +767,18 @@ def run(*, dry_run: bool = True, taxon: Taxon, max_names: int | None = None) -> 
         mdd_id = int(mdd_row["MDD_syn_ID"])
         max_mdd_id = max(max_mdd_id, mdd_id)
         if "Hesp_id" not in mdd_row:
-            missing_in_hesp.append(("missing in H", mdd_row))
+            missing_in_hesp.append(("missing in H", row_idx, mdd_row))
             continue
         hesp_id = resolve_hesp_id(mdd_row["Hesp_id"])
         if hesp_id is None:
-            missing_in_hesp.append(("missing in H", mdd_row))
+            missing_in_hesp.append(("missing in H", row_idx, mdd_row))
             continue
         if hesp_id not in unused_hesp_ids:
             if hesp_id in hesp_id_to_name:
                 message = "already matched"
             else:
                 message = "invalid Hesp id"
-            missing_in_hesp.append((message, mdd_row))
+            missing_in_hesp.append((message, row_idx, mdd_row))
             continue
         unused_hesp_ids.remove(hesp_id)
         name = hesp_id_to_name[hesp_id]
@@ -788,8 +847,8 @@ def run(*, dry_run: bool = True, taxon: Taxon, max_names: int | None = None) -> 
 
     if max_names is None and missing_in_mdd:
         getinput.print_header(f"Missing in MDD {len(missing_in_mdd)}")
-        for row in missing_in_mdd:
-            pprint.pp(row)
+        for row in missing_in_mdd[:10]:
+            pprint_nonempty(row)
         add_all = getinput.yes_no("Add all?")
         if add_all:
             for batch in batched(missing_in_mdd, 500):
@@ -824,22 +883,15 @@ def run(*, dry_run: bool = True, taxon: Taxon, max_names: int | None = None) -> 
                     [row.get(column, "") for column in missing_in_mdd_headings]
                 )
 
-    if max_names is None and missing_in_hesp:
-        with (backup_path / "missing-in-hesp.csv").open("w") as file:
-            writer = csv.writer(file)
-            missing_in_hesp_headings = ["match_status", *missing_in_hesp[0][1]]
-            writer.writerow(missing_in_hesp_headings)
-            for match_status, row in missing_in_hesp:
-                writer.writerow(
-                    [
-                        match_status,
-                        *[row.get(column, "") for column in missing_in_hesp[0][1]],
-                    ]
-                )
-
     fixable_differences = sorted(
         fixable_differences,
-        key=lambda x: (x.mdd_column, x.kind, x.hesp_value, x.mdd_value),
+        key=lambda x: (
+            x.mdd_column,
+            x.kind,
+            x.is_disposable_name(),
+            x.hesp_value,
+            x.mdd_value,
+        ),
     )
     if fixable_differences:
         with (backup_path / "fixable-differences.csv").open("w") as file:
@@ -860,11 +912,12 @@ def run(*, dry_run: bool = True, taxon: Taxon, max_names: int | None = None) -> 
                 ],
             )
             dict_writer.writeheader()
-            for (mdd_column, kind), group_iter in itertools.groupby(
-                fixable_differences, key=lambda x: (x.mdd_column, x.kind)
+            for (mdd_column, kind, is_combination), group_iter in itertools.groupby(
+                fixable_differences,
+                key=lambda x: (x.mdd_column, x.kind, x.is_disposable_name()),
             ):
                 group = list(group_iter)
-                header = f"{kind.name} for {mdd_column} ({len(group)})"
+                header = f"{kind.name} for {mdd_column} ({'name combinations; ' if is_combination else ''}{len(group)})"
                 getinput.print_header(header)
                 for diff in group:
                     diff.print()
@@ -940,6 +993,34 @@ def run(*, dry_run: bool = True, taxon: Taxon, max_names: int | None = None) -> 
                         print(f"Done {done}/{len(updates_to_make)}")
                         if len(batch) == 500:
                             time.sleep(30)
+
+    if max_names is None and missing_in_hesp:
+        getinput.print_header(f"Missing in Hesp {len(missing_in_hesp)}")
+        for _, _, row in missing_in_hesp[:10]:
+            pprint_nonempty(row)
+        with (backup_path / "missing-in-hesp.csv").open("w") as file:
+            writer = csv.writer(file)
+            missing_in_hesp_headings = ["match_status", *missing_in_hesp[0][2]]
+            writer.writerow(missing_in_hesp_headings)
+            for match_status, _, row in missing_in_hesp:
+                writer.writerow(
+                    [
+                        match_status,
+                        *[row.get(column, "") for column in missing_in_hesp[0][2]],
+                    ]
+                )
+        for match_status, row_idx, row in sorted(
+            missing_in_hesp, key=lambda triple: triple[1], reverse=True
+        ):
+            getinput.print_header(
+                f'{row["MDD_original_combination"]} = {row["MDD_species"]}'
+            )
+            print(match_status)
+            pprint_nonempty(row)
+            if not getinput.yes_no("Remove?"):
+                continue
+            if not dry_run:
+                worksheet.delete_rows(row_idx)
 
     print("Done. Data saved at", backup_path)
 

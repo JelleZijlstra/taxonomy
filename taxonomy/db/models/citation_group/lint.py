@@ -13,7 +13,7 @@ from taxonomy.db import constants, helpers, models
 from taxonomy.db.models.base import LintConfig
 from taxonomy.db.models.lint import IgnoreLint, Lint
 
-from .cg import CitationGroup, CitationGroupTag
+from .cg import CitationGroup, CitationGroupStatus, CitationGroupTag
 
 
 def remove_unused_ignores(cg: CitationGroup, unused: Container[str]) -> None:
@@ -41,6 +41,15 @@ def get_biblio_pages() -> set[str]:
     options = config.get_options()
     biblio_dir = options.taxonomy_repo / "docs" / "biblio"
     return {path.stem for path in biblio_dir.glob("*.md")}
+
+
+@LINT.add("check_status")
+def check_status(cg: CitationGroup, cfg: LintConfig) -> Iterable[str]:
+    if cg.target is None:
+        if cg.status not in (CitationGroupStatus.normal, CitationGroupStatus.deleted):
+            yield f"CG of status {cg.status} must have target"
+    elif cg.status in (CitationGroupStatus.normal, CitationGroupStatus.deleted):
+        yield "CG of status normal may not have target"
 
 
 @LINT.add("check_tags")

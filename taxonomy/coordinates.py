@@ -84,7 +84,7 @@ def get_intersection(l1: Line | VerticalLine, l2: Line | VerticalLine) -> Point 
     assert False, "unreachable"
 
 
-@functools.lru_cache(maxsize=4096)
+@functools.lru_cache(maxsize=256)
 def get_polygon(path: str) -> list[list[LineSegment]]:
     base_path = get_options().geojson_path
     full_path = base_path / (path + ".json")
@@ -169,7 +169,7 @@ IGNORED_COUNTRIES = {
 }
 
 
-@functools.lru_cache(maxsize=4096)
+@functools.lru_cache(maxsize=256)
 def get_path(country_name: str) -> str | None:
     if country_name in IGNORED_COUNTRIES:
         return None

@@ -12,6 +12,7 @@ import enum
 import functools
 import itertools
 import json
+import pprint
 import re
 import subprocess
 from collections import defaultdict
@@ -65,6 +66,7 @@ from taxonomy.db.models.name_complex import (
     NameEnding,
     SpeciesNameComplex,
     SpeciesNameEnding,
+    normalize_root_name_for_homonymy,
 )
 from taxonomy.db.models.person import AuthorTag, PersonLevel
 from taxonomy.db.models.taxon import Taxon
@@ -76,6 +78,7 @@ from .name import (
     Name,
     NameComment,
     NameTag,
+    NameTagCons,
     SelectionReason,
     TypeTag,
 )
@@ -366,7 +369,7 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                     TypeTag.TypeSpeciesDetail,
                 ),
             )
-            and tag.text == ""
+            and not tag.text
             and tag.source is None
         ):
             message = f"{tag} has no text and no source"
@@ -476,32 +479,21 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
             new_tags = yield from check_organ_tag(tag)
             tags += new_tags
         elif isinstance(tag, TypeTag.AuthorityPageLink):
-            url = urlparse.parse_url(tag.url)
-            if isinstance(
-                url,
-                (
-                    urlparse.BhlItem,
-                    urlparse.BhlBibliography,
-                    urlparse.BhlItem,
-                    urlparse.GoogleBooksVolume,
-                ),
-            ):
-                yield f"invalid authority page link {url!r}"
-            for message in url.lint():
-                yield f"page link {tag}: {message}"
-            if nam.page_described is not None:
-                allowed_pages = list(extract_pages(nam.page_described))
-                if tag.page not in allowed_pages and not (
-                    tag.page in nam.page_described
-                    and remove_parentheses_from_page(tag.page) in allowed_pages
-                ):
-                    yield (
-                        f"authority page link {tag.url} for page {tag.page!r}"
-                        f" does not match any pages in page_described ({allowed_pages})"
-                    )
-            tags.append(
-                TypeTag.AuthorityPageLink(str(url), tag.confirmed, str(tag.page))
+            url = yield from check_page_link(
+                tag_url=tag.url, tag_page=tag.page, page_described=nam.page_described
             )
+            tags.append(
+                TypeTag.AuthorityPageLink(
+                    url, tag.confirmed, str(tag.page) if tag.page is not None else ""
+                )
+            )
+        elif (
+            isinstance(tag, TypeTag.CitationDetail)
+            and tag.source is not None
+            and tag.source == nam.original_citation
+        ):
+            yield "replace CitationDetail with SourceDetail"
+            tags.append(TypeTag.SourceDetail(tag.text, tag.source))
         else:
             tags.append(tag)
         # TODO: for lectotype and subsequent designations, ensure the earliest valid one is used.
@@ -539,6 +531,35 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
             getinput.print_diff(sorted(original_tags), tags)
         if cfg.autofix:
             nam.type_tags = tags  # type: ignore[assignment]
+
+
+def check_page_link(
+    tag_url: str, tag_page: str, page_described: str | None
+) -> Generator[str, None, str]:
+    url = urlparse.parse_url(tag_url)
+    if isinstance(
+        url,
+        (
+            urlparse.BhlItem,
+            urlparse.BhlBibliography,
+            urlparse.BhlItem,
+            urlparse.GoogleBooksVolume,
+        ),
+    ):
+        yield f"invalid authority page link {url!r}"
+    for message in url.lint():
+        yield f"page link {tag_url}: {message}"
+    if page_described is not None and tag_page != "NA":
+        allowed_pages = list(extract_pages(page_described))
+        if tag_page not in allowed_pages and not (
+            tag_page in page_described
+            and remove_parentheses_from_page(tag_page) in allowed_pages
+        ):
+            yield (
+                f"authority page link {tag_url} for page {tag_page!r}"
+                f" does not match any pages in page_described ({allowed_pages})"
+            )
+    return str(url)
 
 
 @LINT.add("dedupe_tags")
@@ -1109,11 +1130,10 @@ def _check_preoccupation_tag(
     elif isinstance(tag, (NameTag.PrimaryHomonymOf, NameTag.SecondaryHomonymOf)):
         yield f"{nam} is not a species-group name, but uses {type(tag).__name__} tag"
         new_tag = NameTag.PreoccupiedBy(tag.name, tag.comment)
-    if (
-        nam.get_normalized_root_name_for_homonymy()
-        != senior_name.get_normalized_root_name_for_homonymy()
-    ):
-        yield f"has a different root name than supposed senior name {senior_name}"
+    my_normalized = nam.get_normalized_root_name_for_homonymy()
+    their_normalized = senior_name.get_normalized_root_name_for_homonymy()
+    if my_normalized != their_normalized:
+        yield f"has a different root name ({my_normalized}) than supposed senior name {senior_name} ({their_normalized})"
     if not senior_name.can_preoccupy():
         yield f"senior name {senior_name} is not available"
     return new_tag
@@ -1167,6 +1187,24 @@ def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 if nam.taxon != tag.name.taxon:
                     yield f"{nam} is not assigned to the same name as {tag.name} and should be marked as a misidentification"
             elif isinstance(tag, NameTag.NameCombinationOf):
+                if (
+                    nam.species_name_complex != tag.name.species_name_complex
+                    and not tag.name.has_name_tag(NameTag.AsEmendedBy)
+                ):
+                    message = f"{nam} ({nam.species_name_complex}) is a name combination of {tag.name} ({tag.name.species_name_complex}), but has a different name complex"
+                    if cfg.autofix and tag.name.species_name_complex is not None:
+                        print(f"{nam}: {message}")
+                        nam.species_name_complex = tag.name.species_name_complex
+                    else:
+                        yield message
+                if nam.root_name not in _get_extended_root_name_forms(tag.name):
+                    yield f"{nam} is a name combination of {tag.name}, but has a different root name"
+                    if cfg.interactive and getinput.yes_no(
+                        "Mark as incorrect subsequent spelling instead?"
+                    ):
+                        new_tag = NameTag.IncorrectSubsequentSpellingOf(
+                            tag.name, tag.comment
+                        )
                 if tag.name.nomenclature_status is NomenclatureStatus.name_combination:
                     yield f"{nam} is marked as a name combination of {tag.name}, but that name is already a name combination"
                     new_target = tag.name.get_tag_target(NameTag.NameCombinationOf)
@@ -1188,8 +1226,10 @@ def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                             new_tag = NameTag.IncorrectSubsequentSpellingOf(
                                 new_target, tag.comment
                             )
-            if nam.taxon != tag.name.taxon and not isinstance(
-                tag, NameTag.MisidentificationOf
+            if (
+                nam.taxon != tag.name.taxon
+                and not isinstance(tag, NameTag.MisidentificationOf)
+                and nam.get_tag_target(NameTag.MisidentificationOf) is None
             ):
                 yield f"{nam} is not assigned to the same name as {tag.name}"
             if isinstance(tag, NameTag.VariantOf) and nam.original_citation is not None:
@@ -1215,9 +1255,40 @@ def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
             ) and (
                 (nam.corrected_original_name == tag.name.corrected_original_name)
                 if nam.group is Group.family
-                else (nam.root_name == tag.name.root_name)
+                else (
+                    nam.root_name == tag.name.root_name
+                    and (
+                        nam.species_name_complex is None
+                        or nam.species_name_complex == tag.name.species_name_complex
+                    )
+                )
             ):
                 yield f"{nam} has the same root name as {tag.name}, but is marked as {type(tag).__name__}"
+            if (
+                not isinstance(tag, NameTag.SubsequentUsageOf)
+                and tag.name.nomenclature_status is NomenclatureStatus.name_combination
+            ):
+                message = (
+                    f"{nam} is marked as a {type(tag).__name__} of a name combination"
+                )
+                new_target = tag.name.get_tag_target(NameTag.NameCombinationOf)
+                if new_target is not None:
+                    message += f" of {new_target}"
+                    new_tag = type(tag)(new_target, tag.comment)
+                yield message
+            if (
+                isinstance(tag, NameTag.IncorrectSubsequentSpellingOf)
+                and tag.name.nomenclature_status
+                is NomenclatureStatus.incorrect_subsequent_spelling
+            ):
+                message = f"{nam} is marked as an incorrect subsequent spelling of an incorrect subsequent spelling"
+                new_target = tag.name.get_tag_target(
+                    NameTag.IncorrectSubsequentSpellingOf
+                )
+                if new_target is not None:
+                    message += f" of {new_target}"
+                    new_tag = type(tag)(new_target, tag.comment)
+                yield message
 
         elif isinstance(tag, NameTag.Conserved):
             if nam.nomenclature_status not in (
@@ -1270,6 +1341,9 @@ def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 yield f"is marked as {tag}, but is known to have priority"
             elif tag.over.has_priority_over(nam):
                 yield f"is marked as {tag}, but other name is known to have priority"
+
+        elif isinstance(tag, NameTag.MappedClassificationEntry):
+            new_tag = None
 
         # haven't handled TakesPriorityOf, NomenOblitum, MandatoryChangeOf
         if new_tag is not None:
@@ -1409,7 +1483,7 @@ def check_redundant_fields(nam: Name, cfg: LintConfig) -> Iterable[str]:
             yield message
 
 
-@LINT.add("lsid")
+@LINT.add("lsid", requires_network=True)
 def check_for_lsid(nam: Name, cfg: LintConfig) -> Iterable[str]:
     # ICZN Art. 8.5.1: ZooBank is relevant to availability only starting in 2012
     if (
@@ -1651,35 +1725,41 @@ def _check_species_name_gender(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 nam, corrected_original_name, cfg, "invariant adjective"
             )
         return
-    # Now we have an adjective that needs to agree in gender with its genus, so we
-    # have to find the genus. But first we check whether the name even makes sense.
-    try:
-        forms = list(nam.species_name_complex.get_forms(nam.root_name))
-    except ValueError as e:
-        yield _make_con_messsage(nam, f"has invalid name complex: {e!r}")
-        return
-    if con_root is not None and con_root not in forms:
-        yield _make_con_messsage(nam, f"does not match root_name {nam.root_name!r}")
-        return
+    if not nam.nomenclature_status.can_preoccupy():
+        if nam.corrected_original_name is None:
+            return
+        expected_form = nam.corrected_original_name.split()[-1]
+        motivation = f"to match corrected original name {nam.corrected_original_name!r}"
+        rn_message = "for original name"
+    else:
+        # Now we have an adjective that needs to agree in gender with its genus, so we
+        # have to find the genus. But first we check whether the name even makes sense.
+        try:
+            forms = list(nam.species_name_complex.get_forms(nam.root_name))
+        except ValueError as e:
+            yield _make_con_messsage(nam, f"has invalid name complex: {e!r}")
+            return
+        if con_root is not None and con_root not in forms:
+            yield _make_con_messsage(nam, f"does not match root_name {nam.root_name!r}")
+            return
 
-    taxon = nam.taxon
-    genus = taxon.get_current_genus()
-    if genus is None or genus.name_complex is None:
-        return
+        taxon = nam.taxon
+        genus = taxon.get_current_genus()
+        if genus is None or genus.name_complex is None:
+            return
 
-    genus_gender = genus.name_complex.gender
-    expected_form = nam.species_name_complex.get_form(nam.root_name, genus_gender)
+        genus_gender = genus.name_complex.gender
+        expected_form = nam.species_name_complex.get_form(nam.root_name, genus_gender)
+        motivation = f"to agree in gender with {genus_gender.name} genus {genus} ({{n#{genus.id}}})"
+        rn_message = f"for {genus_gender.name} genus {genus}"
     if expected_form != nam.root_name:
         message = _make_rn_message(
-            nam,
-            f"does not match expected form {expected_form!r} for"
-            f" {genus_gender.name} genus {genus}",
+            nam, f"does not match expected form {expected_form!r} {rn_message}"
         )
         if cfg.autofix:
             print(f"{nam}: {message}")
             comment = (
-                f"Name changed from {nam.root_name!r} to {expected_form!r} to agree in"
-                f" gender with {genus_gender.name} genus {genus} ({{n#{genus.id}}})"
+                f"Name changed from {nam.root_name!r} to {expected_form!r}{motivation}"
             )
             nam.add_static_comment(CommentKind.automatic_change, comment)
             nam.root_name = expected_form
@@ -1835,7 +1915,14 @@ def check_name_complex(nam: Name, cfg: LintConfig) -> Iterable[str]:
         nam.get_stem()
     except ValueError as e:
         yield f"bad name complex {nam.name_complex}: {e}"
-        return
+    if (
+        nam.species_name_complex is not None
+        and nam.species_name_complex.kind is SpeciesNameKind.adjective
+    ):
+        try:
+            nam.species_name_complex.get_stem_from_name(nam.root_name)
+        except ValueError as e:
+            yield f"has invalid name complex {nam.species_name_complex}: {e!r}"
 
 
 @LINT.add("verbatim")
@@ -2436,6 +2523,7 @@ def check_required_fields(nam: Name, cfg: LintConfig) -> Iterable[str]:
             nam.nomenclature_status is NomenclatureStatus.name_combination
             and _is_msw3(nam.original_citation)
         )
+        and "page_described" in nam.get_required_fields()
     ):
         yield "has original citation but no page_described"
     if (
@@ -2508,10 +2596,10 @@ class PossibleHomonym:
 
 
 def get_possible_homonyms(
-    genus_name: str, root_name: str
+    genus_name: str, root_name: str, sc: SpeciesNameComplex | None = None
 ) -> tuple[Iterable[Name], Iterable[tuple[Name, PossibleHomonym]]]:
     name_dict: dict[Name, PossibleHomonym] = defaultdict(PossibleHomonym)
-    normalized_root_name = helpers.normalize_root_name_for_homonymy(root_name)
+    normalized_root_name = normalize_root_name_for_homonymy(root_name, sc)
     genera = {
         genus.resolve_name()
         for genus in Name.select_valid().filter(
@@ -2855,6 +2943,16 @@ def should_require_subgenus_original_parent(nam: Name) -> bool:
     return False
 
 
+def resolve_usage(nam: Name) -> Name:
+    if target := nam.get_tag_target(NameTag.SubsequentUsageOf):
+        return resolve_usage(target)
+    if target := nam.get_tag_target(NameTag.MisidentificationOf):
+        return resolve_usage(target)
+    if target := nam.get_tag_target(NameTag.NameCombinationOf):
+        return resolve_usage(target)
+    return nam
+
+
 @LINT.add("check_original_parent")
 def check_original_parent(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.original_parent is None:
@@ -2864,18 +2962,29 @@ def check_original_parent(nam: Name, cfg: LintConfig) -> Iterable[str]:
         return
     if nam.original_parent.group is not Group.genus:
         yield f"original_parent is not a genus: {nam.original_parent}"
-    if nam.group is not Group.species or nam.corrected_original_name is None:
         return
-    original_genus, *_ = nam.corrected_original_name.split()
-    # corrected_original_name is for the case where the genus name got a justified emendation
-    if original_genus not in (
-        nam.original_parent.root_name,
-        nam.original_parent.corrected_original_name,
+    if nam.original_parent.nomenclature_status in (
+        NomenclatureStatus.subsequent_usage,
+        NomenclatureStatus.misidentification,
     ):
-        yield (
-            f"original_parent {nam.original_parent} does not match corrected"
-            f" original name {nam.corrected_original_name}"
-        )
+        target = resolve_usage(nam.original_parent)
+        message = f"original_parent is a subsequent usage or misidentification: {nam.original_parent} (change to {target})"
+        if cfg.autofix and nam.original_parent != target:
+            print(f"{nam}: {message}")
+            nam.original_parent = target
+        else:
+            yield message
+    if nam.group is Group.species and nam.corrected_original_name is not None:
+        original_genus, *_ = nam.corrected_original_name.split()
+        # corrected_original_name is for the case where the genus name got a justified emendation
+        if original_genus not in (
+            nam.original_parent.root_name,
+            nam.original_parent.corrected_original_name,
+        ):
+            yield (
+                f"original_parent {nam.original_parent} does not match corrected"
+                f" original name {nam.corrected_original_name}"
+            )
 
 
 @LINT.add("infer_original_parent")
@@ -3057,7 +3166,7 @@ def _autoset_original_citation_url(nam: Name) -> None:
     nam.original_citation.set_or_replace_url(url)
 
 
-@LINT.add("authority_page_link")
+@LINT.add("authority_page_link", requires_network=True)
 def check_must_have_authority_page_link(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.has_type_tag(TypeTag.AuthorityPageLink):
         return
@@ -3069,7 +3178,7 @@ def check_must_have_authority_page_link(nam: Name, cfg: LintConfig) -> Iterable[
     yield "must have authority page link"
 
 
-@LINT.add("check_bhl_page")
+@LINT.add("check_bhl_page", requires_network=True)
 def check_bhl_page(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.original_citation is None:
         return
@@ -3229,7 +3338,7 @@ def _maybe_add_bhl_page(
     print(page_obj.page_url)
 
 
-@LINT.add("infer_bhl_page")
+@LINT.add("infer_bhl_page", requires_network=True)
 def infer_bhl_page(
     nam: Name, cfg: LintConfig = LintConfig(autofix=False, interactive=False)
 ) -> Iterable[str]:
@@ -3397,7 +3506,7 @@ def maybe_infer_page_from_other_name(
     return inferred_page_id
 
 
-@LINT.add("infer_bhl_page_from_other_names")
+@LINT.add("infer_bhl_page_from_other_names", requires_network=True)
 def infer_bhl_page_from_other_names(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if not _should_look_for_page_links(nam):
         if cfg.verbose:
@@ -3463,7 +3572,7 @@ def infer_bhl_page_from_other_names(nam: Name, cfg: LintConfig) -> Iterable[str]
         yield message
 
 
-@LINT.add("bhl_page_from_classification_entries")
+@LINT.add("bhl_page_from_classification_entries", requires_network=True)
 def infer_bhl_page_from_classification_entries(
     nam: Name, cfg: LintConfig
 ) -> Iterable[str]:
@@ -3488,7 +3597,7 @@ def infer_bhl_page_from_classification_entries(
             yield message
 
 
-@LINT.add("bhl_page_from_article")
+@LINT.add("bhl_page_from_article", requires_network=True)
 def infer_bhl_page_from_article(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if not _should_look_for_page_links(nam):
         if cfg.verbose:
@@ -3703,8 +3812,6 @@ def infer_species_name_complex(nam: Name, cfg: LintConfig) -> Iterable[str]:
         return
     if nam.group is not Group.species:
         return
-    if not nam.nomenclature_status.requires_name_complex():
-        return
     finder = get_species_name_complex_finder()
     result = finder(nam.root_name)
     if result is None:
@@ -3793,6 +3900,55 @@ class SuffixTree(Generic[T]):
         else:
             if char in self.children:
                 yield from self.children[char]._lookup(key)
+
+
+@LINT.add("infer_species_name_complex")
+def infer_species_name_complex_from_other_names(
+    nam: Name, cfg: LintConfig
+) -> Iterable[str]:
+    if nam.group is not Group.species:
+        return
+    # Name combinations inherit their name complex from their parent, let's ignore them here
+    if nam.nomenclature_status is NomenclatureStatus.name_combination:
+        return
+    other_names = Name.select_valid().filter(
+        Name.root_name == nam.root_name,
+        Name.species_name_complex != None,
+        Name.nomenclature_status != NomenclatureStatus.name_combination,
+    )
+    sc_to_nams: dict[SpeciesNameComplex, list[Name]] = {}
+    for other_name in other_names:
+        if other_name.species_name_complex is None:
+            continue
+        sc_to_nams.setdefault(other_name.species_name_complex, []).append(nam)
+
+    if len(sc_to_nams) == 1:
+        if nam.species_name_complex is None:
+            sc = next(iter(sc_to_nams))
+            message = f"inferred species name complex {sc} from other names"
+            if cfg.autofix:
+                print(f"{nam}: {message}")
+                nam.species_name_complex = sc
+            else:
+                yield message
+    else:
+        if nam.corrected_original_name is None:
+            return
+        root_from_con = nam.corrected_original_name.split()[-1]
+        relevant_names = [
+            other_name
+            for other_name in other_names
+            if other_name.corrected_original_name is not None
+            and other_name.corrected_original_name.split()[-1] == root_from_con
+        ]
+        if not relevant_names:
+            return
+        relevant_names = sorted(
+            relevant_names, key=lambda nam: (nam.get_date_object(), nam.id)
+        )
+        earliest = relevant_names[0]
+        if earliest.species_name_complex != nam.species_name_complex:
+            yield f"species name complex {nam.species_name_complex} does not match that of {earliest} ({earliest.species_name_complex})"
 
 
 @LINT.add_duplicate_finder(
@@ -3898,11 +4054,19 @@ def _maybe_add_name_variant(
     cfg: LintConfig,
 ) -> Iterable[str]:
     message = f"adding {nomenclature_status.name} based on {ce}"
-    if cfg.autofix:
-        corrected_name = ce.get_corrected_name()
-        if corrected_name is None:
-            return
+    corrected_name = ce.get_corrected_name()
+    if corrected_name is None or not cfg.autofix or not cfg.interactive:
+        should_autofix = False
+    elif nomenclature_status is NomenclatureStatus.name_combination:
+        should_autofix = True
+    else:
+        should_autofix = getinput.yes_no(
+            f"{nam}: add {nomenclature_status!r} based on {ce}? ",
+            callbacks=nam.get_adt_callbacks(),
+        )
+    if should_autofix:
         print(f"{nam}: {message}")
+        assert corrected_name is not None
         new_name = nam.add_variant(
             corrected_name.split()[-1],
             status=nomenclature_status,
@@ -3914,9 +4078,9 @@ def _maybe_add_name_variant(
         if new_name is not None:
             new_name.corrected_original_name = corrected_name
             new_name.format()
+            ce.mapped_name = new_name
             if cfg.interactive:
                 new_name.edit_until_clean()
-            ce.mapped_name = new_name
     else:
         yield message
 
@@ -3938,14 +4102,17 @@ def take_over_name(nam: Name, ce: ClassificationEntry, cfg: LintConfig) -> None:
 def maybe_take_over_name(
     nam: Name, ce: ClassificationEntry, cfg: LintConfig
 ) -> Iterable[str]:
-    if any(nam.get_mapped_classification_entries()):
+    if any(nam.get_mapped_classification_entries()) and nam.nomenclature_status in (
+        NomenclatureStatus.name_combination,
+        NomenclatureStatus.incorrect_subsequent_spelling,
+    ):
         message = f"changing original citation of {nam} to {ce.article}"
         if cfg.autofix:
             print(f"{nam}: {message}")
             take_over_name(nam, ce, cfg)
         else:
             yield message
-    else:
+    elif should_report_unreplaceable_name(nam):
         yield f"replace name {nam} with {ce}"
 
 
@@ -3953,25 +4120,37 @@ def _is_msw3(art: Article) -> bool:
     return art.id == 9291 or (art.parent is not None and art.parent.id == 9291)
 
 
-def _name_variant_article_sort_key(art: Article) -> tuple[bool, date, int, int]:
-    return (art.is_unpublished(), art.get_date_object(), art.id, 0)
+def _name_variant_article_sort_key(art: Article) -> tuple[bool, date, int, int, int]:
+    return (art.is_unpublished(), art.get_date_object(), art.id, 0, 0)
 
 
-def name_combination_name_sort_key(nam: Name) -> tuple[bool, date, int, int]:
+def name_combination_name_sort_key(nam: Name) -> tuple[bool, date, int, int, int]:
     if nam.original_citation is not None:
         return _name_variant_article_sort_key(nam.original_citation)
-    return (False, nam.get_date_object(), 0, nam.id)
+    if nam.original_rank is None:
+        rank = 0
+    else:
+        rank = -nam.original_rank.value
+    return (False, nam.get_date_object(), 0, rank, nam.id)
 
 
 @LINT.add("infer_name_variants")
 def infer_name_variants(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.group is not Group.species:
         return
-    ces = nam.classification_entries.filter(ClassificationEntry.rank != Rank.synonym)
+    ces: Iterable[ClassificationEntry] = nam.classification_entries
     by_name: dict[str, list[ClassificationEntry]] = defaultdict(list)
+    syns_by_name: dict[str, list[ClassificationEntry]] = defaultdict(list)
     for ce in ces:
         corrected_name = ce.get_corrected_name()
-        if corrected_name is not None:
+        if corrected_name is None:
+            continue
+        if ce.rank is Rank.synonym:
+            root_name = corrected_name.split()[-1]
+            if root_name in nam.get_root_name_forms():
+                continue
+            syns_by_name[root_name].append(ce)
+        else:
             by_name[corrected_name].append(ce)
     expected_name_variants = [
         # Prefer variant that are published by the ICZN's rules
@@ -3988,6 +4167,44 @@ def infer_name_variants(nam: Name, cfg: LintConfig) -> Iterable[str]:
         NomenclatureStatus.incorrect_subsequent_spelling,
     )
 
+    for root_name, ces in syns_by_name.items():
+        expected_ce = min(
+            ces, key=lambda ce: _name_variant_article_sort_key(ce.article)
+        )
+        existing_names = nam.taxon.get_names().filter(Name.root_name == root_name)
+        if any(
+            existing.get_date_object() < expected_ce.get_date_object()
+            for existing in existing_names
+        ):
+            continue
+        # Can happen with justified emendations
+        if (
+            nam.corrected_original_name is not None
+            and root_name == nam.corrected_original_name.split()[-1]
+        ):
+            continue
+        replaceable = [
+            existing
+            for existing in existing_names
+            if _is_iss_from_synonym_without_full_name(existing)
+        ]
+        if replaceable:
+            yield from maybe_take_over_name(replaceable[0], expected_ce, cfg)
+        else:
+            message = f"add {expected_ce} as a name variant"
+            if cfg.autofix:
+                print(f"{nam}: {message}")
+                expected_ce.add_incorrect_subsequent_spelling(nam)
+            else:
+                yield message
+
+
+def _is_iss_from_synonym_without_full_name(nam: Name) -> bool:
+    return all(
+        ce.is_synonym_without_full_name()
+        for ce in nam.get_mapped_classification_entries()
+    )
+
 
 def _infer_name_variants_of_status(
     nam: Name,
@@ -3995,6 +4212,9 @@ def _infer_name_variants_of_status(
     expected_name_variants: list[ClassificationEntry],
     nomenclature_status: NomenclatureStatus,
 ) -> Iterable[str]:
+    if not expected_name_variants:
+        return
+    expected_base = nam.resolve_variant()
     for ce in expected_name_variants:
         corrected_name = ce.get_corrected_name()
         if corrected_name is None:
@@ -4018,14 +4238,16 @@ def _infer_name_variants_of_status(
             and is_root_name_form
         ):
             continue
-        existing = list(
-            Name.select_valid().filter(
+        existing = [
+            nam
+            for nam in Name.select_valid().filter(
                 Name.corrected_original_name == corrected_name,
                 Name.group == Group.species,
                 Name.taxon == nam.taxon,
                 Name.nomenclature_status == nomenclature_status,
             )
-        )
+            if nam.resolve_variant() == expected_base
+        ]
         match len(existing):
             case 0:
                 yield from _maybe_add_name_variant(nam, nomenclature_status, ce, cfg)
@@ -4041,16 +4263,15 @@ def _infer_name_variants_of_status(
                 # multiple; remove the newest
                 existing.sort(key=name_combination_name_sort_key)
                 for duplicate in existing[1:]:
-                    if not any(duplicate.get_mapped_classification_entries()):
-                        continue
+                    can_replace = can_replace_name(duplicate)
                     message = (
                         f"removing duplicate {nomenclature_status.name} {duplicate}"
                     )
-                    if cfg.autofix:
+                    if cfg.autofix and can_replace is None:
                         print(f"{duplicate}: {message}")
                         duplicate.merge(existing[0], copy_fields=False)
-                    else:
-                        yield message
+                    elif should_report_unreplaceable_name(duplicate):
+                        yield f"{message} (cannot replace because of: {can_replace})"
 
 
 @LINT.add("duplicate_variants")
@@ -4061,40 +4282,67 @@ def check_duplicate_variants(nam: Name, cfg: LintConfig) -> Iterable[str]:
         NomenclatureStatus.incorrect_subsequent_spelling,
     ):
         return
-    dupes = Name.select_valid().filter(
-        Name.nomenclature_status == nomenclature_status,
-        Name.taxon == nam.taxon,
-        Name.corrected_original_name == nam.corrected_original_name,
-    )
+    if nam.original_rank is Rank.synonym and nam.group is Group.species:
+        dupes = Name.select_valid().filter(
+            Name.taxon == nam.taxon, Name.root_name == nam.root_name
+        )
+    else:
+        dupes = Name.select_valid().filter(
+            Name.nomenclature_status == nomenclature_status,
+            Name.taxon == nam.taxon,
+            Name.corrected_original_name == nam.corrected_original_name,
+        )
+    base = nam.resolve_variant()
     earlier = sorted(
-        [dupe for dupe in dupes if dupe.get_date_object() < nam.get_date_object()],
+        [
+            dupe
+            for dupe in dupes
+            if dupe.get_date_object() < nam.get_date_object()
+            and dupe.resolve_variant() == base
+        ],
         key=lambda dupe: (dupe.get_date_object(), dupe.id),
     )
     if earlier:
-        if any(
-            isinstance(
-                tag,
-                (
-                    TypeTag.LocationDetail,
-                    TypeTag.SpecimenDetail,
-                    TypeTag.EtymologyDetail,
-                    TypeTag.CitationDetail,
-                ),
-            )
-            for tag in nam.type_tags
-        ):
-            return
-        message = f"remove because of earlier names with status {nomenclature_status}: {', '.join(str(dupe) for dupe in earlier)}"
-        has_mce = any(nam.get_mapped_classification_entries())
-        if cfg.autofix and has_mce:
+        message = f"remove because of earlier names with status {nomenclature_status.name}: {', '.join(str(dupe) for dupe in earlier)}"
+        can_replace = can_replace_name(nam)
+        if cfg.autofix and can_replace is None:
             print(f"{nam}: {message}")
             nam.merge(earlier[0], copy_fields=False)
-        elif (
-            nomenclature_status is NomenclatureStatus.name_combination
-            or has_mce
-            or nam.id > 100_000
+        elif should_report_unreplaceable_name(nam):
+            yield f"{message} (cannot replace because of: {can_replace})"
+
+
+def can_replace_name(nam: Name) -> str | None:
+    for tag in nam.type_tags:
+        if isinstance(tag, TypeTag.AuthorityPageLink):
+            continue
+        return f"type tag {tag}"
+    for tag in nam.tags:
+        if isinstance(
+            tag,
+            (
+                NameTag.NameCombinationOf,
+                NameTag.SubsequentUsageOf,
+                NameTag.UnjustifiedEmendationOf,
+                NameTag.IncorrectSubsequentSpellingOf,
+            ),
         ):
-            yield message
+            continue
+        return f"tag {tag}"
+    has_mce = any(nam.get_mapped_classification_entries())
+    if not has_mce:
+        return "has no classification entries"
+    return None
+
+
+def should_report_unreplaceable_name(nam: Name) -> bool:
+    if nam.original_citation is None:
+        return False
+    return (
+        nam.id > 100_000
+        or nam.nomenclature_status is NomenclatureStatus.name_combination
+        or (nam.group is Group.species and nam.numeric_year() > 1950)
+    )
 
 
 @LINT.add("mark_incorrect_subsequent_spelling_as_name_combination")
@@ -4144,6 +4392,330 @@ def mark_incorrect_subsequent_spelling_as_name_combination(
                 nam.tags = new_tags  # type: ignore[assignment]
             else:
                 yield message
+
+
+@dataclass(frozen=True)
+class ExpectedName:
+    original_name: str | None
+    corrected_original_name: str | None
+    root_name: str
+    base_ce: ClassificationEntry
+    ces: list[ClassificationEntry]
+    tags: list[NameTag]
+
+
+@dataclass(frozen=True)
+class ExistingVariant:
+    name: Name
+    has_mapped_ce: bool
+    reasons: set[NameTagCons]
+    syn_ces: list[ClassificationEntry]
+
+
+REPLACEABLE_TAGS = (NameTag.NameCombinationOf, NameTag.IncorrectSubsequentSpellingOf)
+REPLACEABLE_TAGS_SET = set(REPLACEABLE_TAGS)
+
+
+def _update_replaceable_tags(
+    tags: Sequence[NameTag], expected: ExpectedName
+) -> list[NameTag] | None:
+    new_tags: list[NameTag] = []
+    made_change = False
+    tags_to_add: set[NameTag] = set(expected.tags)
+    for tag in tags:
+        if isinstance(tag, REPLACEABLE_TAGS):
+            if tag in tags_to_add:
+                tags_to_add.remove(tag)
+                new_tags.append(tag)
+            else:
+                for tag_to_add in set(tags_to_add):
+                    if (
+                        isinstance(tag_to_add, REPLACEABLE_TAGS)
+                        and type(tag_to_add) is type(tag)
+                        and tag_to_add.name == tag.name
+                    ):
+                        new_tags.append(tag)
+                        tags_to_add.remove(tag_to_add)
+                        break
+                else:
+                    # remove it
+                    made_change = True
+        else:
+            new_tags.append(tag)
+    if tags_to_add:
+        new_tags.extend(tags_to_add)
+        made_change = True
+    if made_change:
+        return new_tags
+    return None
+
+
+def _get_simplied_normalized_name(nam: Name) -> str | None:
+    if nam.original_name is None or nam.corrected_original_name is None:
+        return None
+    if nam.original_rank is Rank.synonym:
+        if nam.original_parent is None:
+            return nam.corrected_original_name
+        if (
+            nam.original_name == nam.root_name
+            and nam.corrected_original_name
+            == f"{nam.original_parent.root_name} {nam.root_name}"
+        ):
+            return nam.root_name
+    return nam.corrected_original_name
+
+
+def _get_extended_root_name_forms(nam: Name) -> set[str]:
+    root_name_forms = set(nam.get_root_name_forms())
+    if nam.corrected_original_name is not None:
+        co_root_name = nam.corrected_original_name.split()[-1]
+        root_name_forms.add(co_root_name)
+    return root_name_forms
+
+
+# This should replace a number of other linters that manipulate name combinations
+# and misspellings, but it still gets some things wrong and I'm not sure it's possible
+# to get all the edge cases right with this approach.
+@LINT.add("determine_name_variants", disabled=True)
+def determine_name_variants(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    if nam.group is not Group.species:
+        return
+    if nam.resolve_variant() != nam:
+        return
+
+    root_name_forms = _get_extended_root_name_forms(nam)
+    # First find all the names and CEs that are variants of this name
+    nams_with_reasons: list[ExistingVariant] = []
+    ces: list[ClassificationEntry] = []
+    con_to_existing_names: dict[str, list[ExistingVariant]] = defaultdict(list)
+    root_name_to_existing_names: dict[str, ExistingVariant] = {}
+    for syn in nam.taxon.get_names():
+        variant_base, reason = syn.resolve_variant_with_reason()
+        if variant_base != nam:
+            continue
+        simplified_normalized = _get_simplied_normalized_name(syn)
+        has_mapped_ces = any(syn.get_mapped_classification_entries())
+        syn_ces = list(syn.classification_entries)
+        ev = ExistingVariant(syn, has_mapped_ces, reason, syn_ces)
+        nams_with_reasons.append(ev)
+        ces += syn_ces
+        if simplified_normalized is not None:
+            con_to_existing_names[simplified_normalized].append(ev)
+        for root_name in _get_extended_root_name_forms(syn):
+            if root_name not in root_name_to_existing_names:
+                root_name_to_existing_names[root_name] = ev
+            elif name_combination_name_sort_key(
+                ev.name
+            ) < name_combination_name_sort_key(
+                root_name_to_existing_names[root_name].name
+            ):
+                root_name_to_existing_names[root_name] = ev
+
+    # Then figure out what names should exist based on the CEs
+    ces_by_name: dict[str, list[ClassificationEntry]] = defaultdict(list)
+    ces_by_root_name: dict[str, list[ClassificationEntry]] = defaultdict(list)
+    bare_synonym_ces: dict[str, list[ClassificationEntry]] = defaultdict(list)
+    for ce in ces:
+        corrected_name = ce.get_corrected_name()
+        if corrected_name is None:
+            continue
+        if ce.is_synonym_without_full_name():
+            bare_synonym_ces[corrected_name].append(ce)
+        else:
+            ces_by_name[corrected_name].append(ce)
+        root_name = corrected_name.split()[-1]
+        ces_by_root_name[root_name].append(ce)
+
+    root_name_to_oldest_ce = {
+        root_name: min(ces, key=lambda ce: _name_variant_article_sort_key(ce.article))
+        for root_name, ces in ces_by_root_name.items()
+    }
+
+    con_to_expected_name: dict[str | None, ExpectedName] = {}
+    for con, ce_list in ces_by_name.items():
+        base_ce = min(
+            ce_list, key=lambda ce: _name_variant_article_sort_key(ce.article)
+        )
+        root_name = con.split()[-1]
+        tags = []
+        if root_name not in root_name_forms:
+            tags.append(NameTag.IncorrectSubsequentSpellingOf(nam, None))
+        if root_name in root_name_to_existing_names:
+            oldest_root = root_name_to_existing_names[root_name]
+            if base_ce.get_corrected_name() != oldest_root.name.corrected_original_name:
+                tags.append(NameTag.NameCombinationOf(oldest_root.name, None))
+        con_to_expected_name[con] = ExpectedName(
+            original_name=base_ce.name,
+            corrected_original_name=con,
+            root_name=root_name,
+            base_ce=base_ce,
+            ces=list(ce_list),
+            tags=tags,
+        )
+    for root_name, ce_list in bare_synonym_ces.items():
+        base_ce = min(
+            ce_list, key=lambda ce: _name_variant_article_sort_key(ce.article)
+        )
+        if root_name in root_name_forms:
+            if nam.corrected_original_name in con_to_expected_name:
+                con_to_expected_name[nam.corrected_original_name].ces.extend(ce_list)
+            else:
+                con_to_expected_name[nam.corrected_original_name] = ExpectedName(
+                    original_name=nam.original_name,
+                    corrected_original_name=nam.corrected_original_name,
+                    root_name=root_name,
+                    base_ce=base_ce,
+                    ces=list(ce_list),
+                    tags=[],
+                )
+        elif root_name in root_name_to_existing_names and (
+            name_combination_name_sort_key(root_name_to_existing_names[root_name].name)
+            < _name_variant_article_sort_key(base_ce.article)
+            or root_name_to_existing_names[root_name].name.original_citation
+            == base_ce.article
+        ):
+            maybe_con = _get_simplied_normalized_name(
+                root_name_to_existing_names[root_name].name
+            )
+            if maybe_con is None:
+                continue
+            if maybe_con in con_to_expected_name:
+                con_to_expected_name[maybe_con].ces.extend(ce_list)
+            else:
+                con_to_expected_name[maybe_con] = ExpectedName(
+                    original_name=base_ce.name,
+                    corrected_original_name=root_name_to_existing_names[
+                        root_name
+                    ].name.corrected_original_name,
+                    root_name=root_name,
+                    base_ce=base_ce,
+                    ces=list(ce_list),
+                    tags=[NameTag.IncorrectSubsequentSpellingOf(nam, None)],
+                )
+        elif base_ce == root_name_to_oldest_ce[root_name]:
+            maybe_con = base_ce.get_name_to_use_as_normalized_original_name()
+            if maybe_con is None:
+                continue
+            con_to_expected_name[root_name] = ExpectedName(
+                original_name=base_ce.name,
+                corrected_original_name=maybe_con,
+                root_name=root_name,
+                base_ce=base_ce,
+                ces=list(ce_list),
+                tags=[NameTag.IncorrectSubsequentSpellingOf(nam, None)],
+            )
+        else:
+            base_con = root_name_to_oldest_ce[
+                root_name
+            ].get_name_to_use_as_normalized_original_name()
+            if base_con is None:
+                continue
+            con_to_expected_name[base_con].ces.extend(ce_list)
+
+    # Then line up the names
+    if cfg.verbose:
+        pprint.pp(con_to_expected_name)
+
+    for maybe_con, expected_name in con_to_expected_name.items():
+        if maybe_con is None:
+            # must be the original name
+            assert expected_name.root_name in root_name_forms, expected_name
+            for ce in expected_name.ces:
+                if ce.mapped_name != nam:
+                    message = f"{ce}: change mapped name from {ce.mapped_name} to {nam}"
+                    if cfg.autofix:
+                        print(f"{nam}: {message}")
+                        ce.mapped_name = nam
+                    else:
+                        yield message
+        elif maybe_con not in con_to_existing_names:
+            yield from _add_name_variant(expected_name, nam, cfg)
+        else:
+            existing = con_to_existing_names[maybe_con]
+            replaceable, others = helpers.sift(
+                existing, lambda en: en.reasons <= REPLACEABLE_TAGS_SET
+            )
+            if replaceable:
+                replaceable = sorted(
+                    replaceable, key=lambda en: name_combination_name_sort_key(en.name)
+                )
+                to_use, *redundant_names = replaceable
+
+                for redundant_name in redundant_names:
+                    message = f"remove redundant name {redundant_name.name}"
+                    cannot_replace_reason = can_replace_name(redundant_name.name)
+                    if cfg.autofix and cannot_replace_reason is None:
+                        print(f"{redundant_name.name}: {message}")
+                        redundant_name.name.redirect(to_use.name)
+                    else:
+                        yield message + f" (cannot replace because of: {cannot_replace_reason})"
+                if to_use.name.original_citation == expected_name.base_ce.article:
+                    new_tags = _update_replaceable_tags(to_use.name.tags, expected_name)
+                    if new_tags is not None:
+                        getinput.print_diff(to_use.name.tags, new_tags)
+                        message = f"update tags of {to_use.name}"
+                        if cfg.autofix:
+                            print(f"{to_use.name}: {message}")
+                            to_use.name.tags = new_tags  # type: ignore[assignment]
+                        else:
+                            yield message
+                elif (
+                    expected_name.base_ce.get_date_object()
+                    < to_use.name.get_date_object()
+                ):
+                    yield from maybe_take_over_name(
+                        to_use.name, expected_name.base_ce, cfg
+                    )
+            else:
+                oldest = min(
+                    others, key=lambda en: name_combination_name_sort_key(en.name)
+                )
+                if (
+                    oldest.name.get_date_object()
+                    <= expected_name.base_ce.get_date_object()
+                ):
+                    for ce in expected_name.ces:
+                        if ce.mapped_name != oldest.name:
+                            message = f"{ce}: change mapped name from {ce.mapped_name} to {oldest.name}"
+                            if cfg.autofix:
+                                print(f"{nam}: {message}")
+                                ce.mapped_name = oldest.name
+                            else:
+                                yield message
+                else:
+                    yield from _add_name_variant(expected_name, nam, cfg)
+
+    # We don't remove additional names and instead rely on
+    # logic to enforce that every name is mapped to a CE if the article
+    # has any CEs.
+
+
+def _add_name_variant(
+    expected_name: ExpectedName, nam: Name, cfg: LintConfig
+) -> Iterable[str]:
+    message = f"add name variant for {expected_name}"
+    if cfg.autofix:
+        print(f"{nam}: {message}")
+        new_name = nam.taxon.syn_from_paper(
+            root_name=expected_name.root_name,
+            paper=expected_name.base_ce.article,
+            page_described=expected_name.base_ce.page,
+            original_name=expected_name.original_name,
+            corrected_original_name=expected_name.corrected_original_name,
+            group=Group.species,
+            interactive=False,
+        )
+        if new_name is not None:
+            new_name.tags = expected_name.tags
+            new_name.original_rank = expected_name.base_ce.rank
+            for ce in expected_name.ces:
+                print(f"{ce}: change mapped name from {ce.mapped_name} to {new_name}")
+                ce.mapped_name = new_name
+            new_name.format()
+            if cfg.interactive:
+                new_name.edit_until_clean()
+    else:
+        yield message
 
 
 @LINT.add("infer_included_species")
@@ -4304,6 +4876,98 @@ def infer_tags_from_mapped_entries(nam: Name, cfg: LintConfig) -> Iterable[str]:
             else:
                 yield message
 
+    for ce in nam.get_mapped_classification_entries():
+        # Don't copy page links until we've aligned the page that it's on
+        if ce.page != nam.page_described:
+            continue
+        for tag in ce.tags:
+            if isinstance(tag, ClassificationEntryTag.PageLink):
+                expected_tag = TypeTag.AuthorityPageLink(
+                    url=tag.url, confirmed=True, page=tag.page or ""
+                )
+                if expected_tag in nam.type_tags:
+                    continue
+                message = f"adding page link from {ce} to {nam}: {tag}"
+                if cfg.autofix:
+                    print(f"{nam}: {message}")
+                    nam.add_type_tag(expected_tag)
+                else:
+                    yield message
+
+
+@LINT.add("remove_redundant_name")
+def remove_redundant_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    if nam.nomenclature_status is not NomenclatureStatus.subsequent_usage:
+        return
+    target = nam.get_tag_target(NameTag.SubsequentUsageOf)
+    if target is None:
+        return  # other linters will complain
+    has_ces = any(nam.get_mapped_classification_entries())
+    cannot_replace_reason = can_replace_name(nam)
+    if cannot_replace_reason is None:
+        message = f"remove redundant name {nam} by redirecting to {target}"
+        if cfg.autofix:
+            print(f"{nam}: {message}")
+            nam.redirect(target)
+        else:
+            yield message
+    elif has_ces and not any(
+        isinstance(
+            tag,
+            (
+                NameTag.Rejected,
+                NameTag.Conserved,
+                NameTag.FullySuppressedBy,
+                NameTag.PartiallySuppressedBy,
+            ),
+        )
+        for tag in nam.tags
+    ):
+        yield f"cannot remove redundant name {nam} because {cannot_replace_reason}"
+
+
+def has_classification(art: Article) -> bool:
+    return any(art.get_classification_entries()) and not art.has_tag(
+        ArticleTag.PartialClassification
+    )
+
+
+@LINT.add("must_have_ce")
+def check_must_have_ce(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    if nam.original_citation is None:
+        return
+    if not has_classification(nam.original_citation):
+        return
+    if any(nam.get_mapped_classification_entries()):
+        return
+    yield f"must have classification entries for {nam.original_citation}"
+
+
+def can_transform(input: T, output: T, transforms: Sequence[Callable[[T], T]]) -> bool:
+    if input == output:
+        return True
+    for i in range(1, len(transforms)):
+        for funcs in itertools.permutations(transforms, i):
+            transformed = input
+            for func in funcs:
+                transformed = func(transformed)
+            if transformed == output:
+                return True
+    return False
+
+
+_ALLOWED_TRANSFORMS: list[Callable[[str], str]] = [
+    lambda s: s.replace("æ", "ae"),
+    # Ab Cd -> Ab cd
+    lambda s: re.sub(
+        r"^([A-Z]+[a-z]+) ([A-Z]+[a-z]+)$",
+        lambda m: f"{m.group(1)!s} {m.group(2).lower()!s}",
+        s,
+    ),
+    # Canis familiaris γ. sibiricus -> Canis familiaris sibiricus
+    lambda s: re.sub(r" [α-ω]\. ", " ", s),
+]
+
 
 @LINT.add("matches_mapped")
 def check_matches_mapped_classification_entry(
@@ -4315,24 +4979,54 @@ def check_matches_mapped_classification_entry(
     for ce in ces:
         if ce.name != nam.original_name:
             yield f"mapped to {ce}, but {ce.name=} != {nam.original_name=}"
-        if ce.get_corrected_name() != nam.corrected_original_name:
-            yield f"mapped to {ce}, but {ce.get_corrected_name()} != {nam.corrected_original_name}"
+            if nam.original_name is None or can_transform(
+                ce.name, nam.original_name, _ALLOWED_TRANSFORMS
+            ):
+                message = f"changing original name to {ce.name}"
+                if cfg.autofix:
+                    print(f"{nam}: {message}")
+                    nam.original_name = ce.name
+                else:
+                    yield message
+        expected_con = ce.get_name_to_use_as_normalized_original_name()
+        if expected_con != nam.corrected_original_name:
+            yield f"mapped to {ce}, but {expected_con} != {nam.corrected_original_name}"
         if ce.page != nam.page_described:
             yield f"mapped to {ce}, but {ce.page=} != {nam.page_described=}"
-        if nam.original_parent is not None and ce.rank is not Rank.synonym:
-            ce_parent = ce.parent_of_rank(Rank.genus)
-            if (
-                ce_parent is not None
-                and ce_parent.mapped_name is not None
-                and ce_parent.mapped_name != nam.original_parent
-            ):
-                yield f"mapped to {ce}, but {ce_parent.mapped_name=} (mapped from {ce_parent}) != {nam.original_parent=}"
+            if nam.page_described is None and cfg.autofix:
+                print(f"{nam}: inferred page {ce.page}")
+                nam.page_described = ce.page
+        yield from _check_matching_original_parent(nam, ce)
         if nam.original_rank is not ce.rank:
             yield f"mapped to {ce}, but {ce.rank=!r} != {nam.original_rank=!r}"
-            if nam.original_rank is None:
+            if (
+                nam.original_rank is None
+                or (nam.status is Status.synonym and ce.rank is Rank.synonym)
+            ) and len(ces) == 1:
                 message = f"inferred rank {ce.rank!r} from {ce}"
                 if cfg.autofix:
                     print(f"{nam}: {message}")
                     nam.original_rank = ce.rank
                 else:
                     yield message
+
+
+def _check_matching_original_parent(
+    nam: Name, ce: ClassificationEntry
+) -> Iterable[str]:
+    if nam.original_parent is None or ce.rank is Rank.synonym:
+        return
+    ce_parent = ce.parent_of_rank(Rank.genus)
+    if ce_parent is None or ce_parent.mapped_name is None:
+        return
+    mapped_parent = resolve_usage(ce_parent.mapped_name)
+    if mapped_parent == nam.original_parent:
+        return
+    ce_subgenus = ce.parent_of_rank(Rank.subgenus)
+    if (
+        ce_subgenus is not None
+        and ce_subgenus.mapped_name is not None
+        and resolve_usage(ce_subgenus.mapped_name) == nam.original_parent
+    ):
+        return
+    yield f"mapped to {ce}, but {ce_parent.mapped_name=} (mapped from {ce_parent}) != {nam.original_parent=}"

@@ -3,7 +3,7 @@ database of mammals and other animals. It is focused on providing comprehensive 
 about the nomenclature of each name: type specimens, type localities, citations, type
 species, and much more.
 
-The database is publicly accessible at [hesperomys.com](http://hesperomys.com). The
+The database is publicly accessible at [hesperomys.com](https://hesperomys.com). The
 frontend is maintained in the separate
 [hesperomys](htttps://github.com/JelleZijlstra/hesperomys) project.
 

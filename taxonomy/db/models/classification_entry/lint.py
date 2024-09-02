@@ -10,7 +10,7 @@ from itertools import takewhile
 
 from taxonomy import getinput, urlparse
 from taxonomy.apis import bhl
-from taxonomy.db import helpers
+from taxonomy.db import helpers, models
 from taxonomy.db.constants import Group, NomenclatureStatus, Rank
 from taxonomy.db.models.article.article import Article, ArticleTag
 from taxonomy.db.models.base import LintConfig
@@ -70,6 +70,33 @@ def check_tags(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
         and ce.get_corrected_name_without_tags() == ce.get_corrected_name()
     ):
         yield "unnecessary CorrectedName tag"
+    new_tags = []
+    for tag in ce.tags:
+        if isinstance(tag, ClassificationEntryTag.PageLink):
+            new_url = yield from models.name.lint.check_page_link(
+                tag_url=tag.url, tag_page=tag.page, page_described=ce.page
+            )
+            new_tags.append(
+                ClassificationEntryTag.PageLink(
+                    url=new_url, page=tag.page if tag.page is not None else "NA"
+                )
+            )
+        elif isinstance(tag, ClassificationEntryTag.CorrectedName):
+            if ce.get_corrected_name_without_tags() == tag.text:
+                yield "removing redundant CorrectedName tag"
+            else:
+                new_tags.append(tag)
+        else:
+            new_tags.append(tag)
+    new_tags_tuple = tuple(sorted(set(new_tags)))
+    if ce.tags != new_tags_tuple:
+        getinput.print_diff(ce.tags, new_tags_tuple)
+        message = "change tags"
+        if cfg.autofix:
+            print(f"{ce}: {message}")
+            ce.tags = new_tags_tuple  # type: ignore[assignment]
+        else:
+            yield message
 
 
 @LINT.add("parent")
@@ -106,11 +133,9 @@ def check_move_to_child(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[st
 def check_missing_mapped_name(
     ce: ClassificationEntry, cfg: LintConfig
 ) -> Iterable[str]:
-    if ce.rank is Rank.informal:
-        return
     if ce.mapped_name is not None:
         return
-    if ce.is_synonym_without_full_name():
+    if not must_have_mapped_name(ce):
         return
     candidates = list(get_filtered_possible_mapped_names(ce))
     if len(candidates) == 1:
@@ -125,6 +150,14 @@ def check_missing_mapped_name(
         print(f"{ce}: missing mapped_name (candidates: {candidates})")
 
 
+def must_have_mapped_name(ce: ClassificationEntry) -> bool:
+    if ce.rank is Rank.informal:
+        return False
+    if ClassificationEntryTag.Informal in ce.tags:
+        return False
+    return True
+
+
 def get_allowed_family_group_names(nam: Name) -> Container[str]:
     allowed = []
     if nam.original_name is not None:
@@ -135,9 +168,37 @@ def get_allowed_family_group_names(nam: Name) -> Container[str]:
     return allowed
 
 
+@LINT.add("predates_mapped_name")
+def check_predates_mapped_name(
+    ce: ClassificationEntry, cfg: LintConfig
+) -> Iterable[str]:
+    if ce.mapped_name is None:
+        return
+    if ce.rank is Rank.synonym:
+        return  # ignore synonyms for now
+    if (ce.article.is_unpublished(), ce.article.get_date_object()) < (
+        (
+            ce.mapped_name.original_citation.is_unpublished()
+            if ce.mapped_name.original_citation is not None
+            else False
+        ),
+        ce.mapped_name.get_date_object(),
+    ) and ce.article.get_date_object() < ce.mapped_name.get_date_object():
+        yield f"predates mapped name {ce.mapped_name}"
+
+
 @LINT.add("mapped_name")
 def check_mapped_name(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
     if ce.mapped_name is not None:
+        if (
+            ce.page is None
+            and ce.mapped_name.original_citation == ce.article
+            and ce.mapped_name.page_described is not None
+        ):
+            yield "mapped_name has page, but name has no page"
+            if cfg.autofix:
+                print(f"{ce}: adding page {ce.mapped_name.page_described}")
+                ce.page = ce.mapped_name.page_described
         corrected_name = ce.get_corrected_name()
         if corrected_name is None:
             return
@@ -161,8 +222,7 @@ def check_mapped_name(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]
             case Group.species:
                 root_name = corrected_name.split()[-1]
                 if root_name not in ce.mapped_name.get_root_name_forms() and not (
-                    ce.mapped_name.nomenclature_status is NomenclatureStatus.as_emended
-                    and ce.mapped_name.corrected_original_name is not None
+                    ce.mapped_name.corrected_original_name is not None
                     and root_name == ce.mapped_name.corrected_original_name.split()[-1]
                 ):
                     yield f"mapped_name root_name does not match: {root_name} vs {ce.mapped_name.root_name}"
@@ -197,7 +257,7 @@ def check_mapped_name(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]
                             ce.mapped_name = new_name
                         else:
                             yield message
-    elif ce.rank is not Rank.informal and not ce.is_synonym_without_full_name():
+    elif must_have_mapped_name(ce):
         yield "missing mapped_name"
 
 
@@ -242,7 +302,9 @@ def get_filtered_possible_mapped_names(ce: ClassificationEntry) -> Iterable[Name
         return []
     candidates = sorted(candidates, key=lambda c: c.get_score())
     best_score = candidates[0].get_score()
-    matching = takewhile(lambda c: c.get_score() == best_score, candidates)
+    matching = list(takewhile(lambda c: c.get_score() == best_score, candidates))
+    if len(matching) > 1:
+        return list({c.name.resolve_variant() for c in matching})
     return [c.name for c in matching]
 
 
@@ -269,6 +331,8 @@ class CandidateName:
             corrected_name = self.ce.name
         if self.name.corrected_original_name != corrected_name:
             score += 10
+        if self.name.original_citation != self.ce.article:
+            score += 50
         associated_taxa = Taxon.select_valid().filter(Taxon.base_name == self.name)
         if not any(t.valid_name == corrected_name for t in associated_taxa):
             score += 2
@@ -292,8 +356,11 @@ class CandidateName:
         if self.name.nomenclature_status in (
             NomenclatureStatus.subsequent_usage,
             NomenclatureStatus.name_combination,
+            NomenclatureStatus.preoccupied,
         ):
             score += 1
+        if self.name.nomenclature_status is (NomenclatureStatus.misidentification):
+            score += 3
         if self.name.nomenclature_status in (
             NomenclatureStatus.incorrect_subsequent_spelling,
             NomenclatureStatus.variant,
@@ -303,18 +370,24 @@ class CandidateName:
         if not self.name.nomenclature_status.can_preoccupy():
             score += 1
         if self.name.group is Group.species:
-            genus_name, *_, root_name = corrected_name.split()
-            if root_name != self.name.root_name:
-                score += 2
-            if (
-                self.name.original_parent is None
-                or self.name.original_parent.corrected_original_name != genus_name
-            ):
-                score += 2
-            if not self.metadata.is_direct_match and not self.metadata.is_shared_genus:
-                score += 2
-            name_genus_name, *_ = self.name.taxon.valid_name.split()
-            if genus_name != name_genus_name:
+            if " " in corrected_name:
+                genus_name, *_, root_name = corrected_name.split()
+                if root_name != self.name.root_name:
+                    score += 2
+                if (
+                    self.name.original_parent is None
+                    or self.name.original_parent.corrected_original_name != genus_name
+                ):
+                    score += 2
+                if (
+                    not self.metadata.is_direct_match
+                    and not self.metadata.is_shared_genus
+                ):
+                    score += 2
+                name_genus_name, *_ = self.name.taxon.valid_name.split()
+                if genus_name != name_genus_name:
+                    score += 2
+            elif self.name.root_name != corrected_name:
                 score += 2
 
         self._score = score
@@ -344,8 +417,13 @@ def get_possible_mapped_names(
             Name.group == Group.high, Name.corrected_original_name == corrected_name
         )
     elif group is Group.family:
+        options = (ce.name, corrected_name)
         possibilies = Name.select_valid().filter(
-            Name.group == Group.family, Name.original_name == ce.name
+            Name.group == Group.family,
+            (
+                Name.original_name.is_in(options)
+                | Name.corrected_original_name.is_in(options)
+            ),
         )
         names = list(yield_family_names(possibilies))
         if names:
@@ -361,23 +439,117 @@ def get_possible_mapped_names(
             Name.group == Group.genus, Name.corrected_original_name == corrected_name
         )
     elif group is Group.species:
-        count = 0
-        for nam in Name.select_valid().filter(
-            Name.group == Group.species, Name.corrected_original_name == corrected_name
-        ):
-            count += 1
-            yield nam, CandidateMetadata(is_direct_match=True)
-        for taxon in Taxon.select_valid().filter(Taxon.valid_name == corrected_name):
-            count += 1
-            yield taxon.base_name, CandidateMetadata(is_direct_match=True)
-        if count == 0:
-            genus_name, *_, root_name = corrected_name.split()
-            normalized_root_name = helpers.normalize_root_name_for_homonymy(root_name)
-            genus_candidates = Name.select_valid().filter(
-                Name.group == Group.genus, Name.corrected_original_name == genus_name
+        if " " in corrected_name:
+            yield from get_species_group_mapped_names(ce, corrected_name)
+        else:
+            yield from bare_synonym_mapped_names(ce, corrected_name)
+
+
+def bare_synonym_mapped_names(
+    ce: ClassificationEntry, corrected_name: str
+) -> Iterable[Name]:
+    if ce.parent is None or ce.parent.mapped_name is None:
+        return
+    try:
+        taxon = ce.parent.mapped_name.taxon.parent_of_rank(Rank.species)
+    except ValueError:
+        return
+    nams = taxon.all_names()
+    candidates = list(
+        get_candidates_from_names_for_bare_synonym(
+            nams, ce, corrected_name, check_year=False
+        )
+    )
+    if candidates:
+        yield from candidates
+        return
+    if taxon.parent is not None and taxon.parent.parent is not None:
+        parent_nams = taxon.parent.parent.all_names()
+        candidates = list(
+            get_candidates_from_names_for_bare_synonym(parent_nams, ce, corrected_name)
+        )
+        if candidates:
+            yield from candidates
+            return
+    yield from get_candidates_from_names_for_bare_synonym(
+        nams, ce, corrected_name, fuzzy=True
+    )
+
+
+def get_candidates_from_names_for_bare_synonym(
+    nams: Iterable[Name],
+    ce: ClassificationEntry,
+    corrected_name: str,
+    *,
+    fuzzy: bool = False,
+    check_year: bool = True,
+) -> Iterable[Name]:
+    for nam in nams:
+        if ce.year is None:
+            continue
+        if fuzzy:
+            condition = (
+                models.name_complex.normalize_root_name_for_homonymy(
+                    corrected_name, nam.species_name_complex
+                )
+                == nam.get_normalized_root_name_for_homonymy()
             )
-            shared_genera = list(get_genera_with_shared_species(genus_candidates))
-            for genus in shared_genera:
+        else:
+            condition = corrected_name in nam.get_root_name_forms()
+        if not condition:
+            continue
+        if check_year:
+            try:
+                ce_year = int(ce.year)
+            except ValueError:
+                continue
+            nam_year = nam.numeric_year()
+            nam_origin_year = nam.resolve_variant().numeric_year()
+            if abs(ce_year - nam_year) > 10 or abs(ce_year - nam_origin_year) > 10:
+                continue
+        yield nam
+
+
+def get_species_group_mapped_names(
+    ce: ClassificationEntry, corrected_name: str
+) -> Iterable[tuple[Name, CandidateMetadata]]:
+    count = 0
+    for nam in Name.select_valid().filter(
+        Name.group == Group.species, Name.corrected_original_name == corrected_name
+    ):
+        count += 1
+        yield nam, CandidateMetadata(is_direct_match=True)
+    for taxon in Taxon.select_valid().filter(Taxon.valid_name == corrected_name):
+        count += 1
+        yield taxon.base_name, CandidateMetadata(is_direct_match=True)
+    if count == 0:
+        genus_name, *_, root_name = corrected_name.split()
+        normalized_root_name = models.name_complex.normalize_root_name_for_homonymy(
+            root_name, None
+        )
+        genus_candidates = Name.select_valid().filter(
+            Name.group == Group.genus, Name.root_name == genus_name
+        )
+        shared_genera = list(get_genera_with_shared_species(genus_candidates))
+        for genus in shared_genera:
+            for nam in genus.all_names():
+                if (
+                    nam.group == Group.species
+                    and nam.get_normalized_root_name_for_homonymy()
+                    == normalized_root_name
+                ):
+                    count += 1
+                    yield nam, CandidateMetadata(is_shared_genus=True)
+        if count == 0:
+            sister_genera = {
+                genus
+                for sister in shared_genera
+                if sister.parent is not None
+                for genus in sister.parent.children_of_rank(Rank.genus)
+            }
+            for genus in sister_genera:
+                if genus in shared_genera:
+                    continue
                 for nam in genus.all_names():
                     if (
                         nam.group == Group.species
@@ -385,33 +557,20 @@ def get_possible_mapped_names(
                         == normalized_root_name
                     ):
                         count += 1
-                        yield nam, CandidateMetadata(is_shared_genus=True)
-            if count == 0:
-                sister_genera = {
-                    genus
-                    for sister in shared_genera
-                    if sister.parent is not None
-                    for genus in sister.parent.children_of_rank(Rank.genus)
-                }
-                for genus in sister_genera:
-                    if genus in shared_genera:
-                        continue
-                    for nam in genus.all_names():
-                        if (
-                            nam.group == Group.species
-                            and nam.get_normalized_root_name_for_homonymy()
-                            == normalized_root_name
-                        ):
-                            count += 1
-                            yield nam, CandidateMetadata(is_sister_genus=True)
+                        yield nam, CandidateMetadata(is_sister_genus=True)
 
 
 @LINT.add("corrected_name")
 def check_corrected_name(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
+    if ce.rank is Rank.informal or ClassificationEntryTag.Informal in ce.tags:
+        return
     corrected_name = ce.get_corrected_name()
-    if corrected_name is None and ce.rank is not Rank.informal:
+    if corrected_name is None:
         yield "cannot infer corrected name; add CorrectedName tag"
-    if corrected_name is not None:
+    elif ce.rank is Rank.division:
+        if not re.fullmatch(r"[A-Z][a-z]+ Division", corrected_name):
+            yield f"incorrect division name format: {corrected_name}"
+    else:
         group = ce.get_group()
         match group:
             case Group.species:
@@ -424,7 +583,7 @@ def check_corrected_name(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[s
                     yield f"incorrect name format: {corrected_name}"
 
 
-@LINT.add("authority_page_link")
+@LINT.add("authority_page_link", requires_network=True)
 def check_must_have_authority_page_link(
     ce: ClassificationEntry, cfg: LintConfig
 ) -> Iterable[str]:
@@ -435,7 +594,7 @@ def check_must_have_authority_page_link(
     yield "must have page link"
 
 
-@LINT.add("check_bhl_page")
+@LINT.add("check_bhl_page", requires_network=True)
 def check_bhl_page(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
     wrong_bhl_pages = ce.article.has_tag(ArticleTag.BHLWrongPageNumbers)
     for tag in ce.get_tags(ce.tags, ClassificationEntryTag.PageLink):
@@ -521,7 +680,7 @@ def _maybe_add_bhl_page(
     print(page_obj.page_url)
 
 
-@LINT.add("infer_bhl_page")
+@LINT.add("infer_bhl_page", requires_network=True)
 def infer_bhl_page(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
     if not _should_look_for_page_links(ce):
         if cfg.verbose:
@@ -624,7 +783,7 @@ def infer_bhl_page_from_mapped_name(
         yield message
 
 
-@LINT.add("infer_bhl_page_from_other_names")
+@LINT.add("infer_bhl_page_from_other_names", requires_network=True)
 def infer_bhl_page_from_other_names(
     ce: ClassificationEntry, cfg: LintConfig
 ) -> Iterable[str]:
@@ -686,7 +845,7 @@ def infer_bhl_page_from_other_names(
         yield message
 
 
-@LINT.add("bhl_page_from_article")
+@LINT.add("bhl_page_from_article", requires_network=True)
 def infer_bhl_page_from_article(
     ce: ClassificationEntry, cfg: LintConfig
 ) -> Iterable[str]:
