@@ -12,7 +12,8 @@ way, and each name in the classification is associated with a name in the Hesper
 database. As an example, [this page](https://hesperomys.com/ce/9291) shows the
 classification of mammals as it appeared in Wilson and Reeder (2005), and
 [this](/a/57429) shows the classification of Linnaeus (1758). The database now includes
-more than 140,000 entries from published classifications.
+more than 140,000 entries from published classifications. The `ce.csv` file (available
+on Zenodo) exports all of them.
 
 Classifications enabled me to add many more name combinations to the database; the goal
 there is that eventually, all scientific names that have been used for mammals in the
