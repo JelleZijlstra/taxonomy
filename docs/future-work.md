@@ -19,7 +19,7 @@ please [let me know](mailto:jelle.zijlstra@gmail.com).
   always filled in). These are even more bare minimum, and there are very few names that
   are missing them.
 - Compare with other databases to find missing data and taxa:
-  - Mammal Diversity Database
+  - Mammal Diversity Database (done)
   - PaleoBioDB
   - Wikipedia new species lists
 - Add more outbound links to articles (e.g., figure out more DOIs and article URLs)

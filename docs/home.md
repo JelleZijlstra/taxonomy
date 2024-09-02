@@ -41,6 +41,7 @@ Information about the objects in the database:
 
 - [Article](/docs/article)
 - [Citation group](/docs/citation-group)
+- [Classification entry](/docs/classification-entry)
 - [Collection](/docs/collection)
 - [Location](/docs/location)
 - [Name](/docs/name)
@@ -63,6 +64,7 @@ Other aspects of the database:
 - [Scores](/docs/scores)
 - [Text conventions](/docs/text)
 - [Finding citations](/docs/finding-citations)
+- [Collection databases](/docs/collection-databases)
 
 Source code:
 
