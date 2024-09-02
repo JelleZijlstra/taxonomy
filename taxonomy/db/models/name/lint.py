@@ -4412,7 +4412,8 @@ class ExistingVariant:
     syn_ces: list[ClassificationEntry]
 
 
-REPLACEABLE_TAGS = {NameTag.NameCombinationOf, NameTag.IncorrectSubsequentSpellingOf}
+REPLACEABLE_TAGS = (NameTag.NameCombinationOf, NameTag.IncorrectSubsequentSpellingOf)
+REPLACEABLE_TAGS_SET = set(REPLACEABLE_TAGS)
 
 
 def _update_replaceable_tags(
@@ -4422,13 +4423,17 @@ def _update_replaceable_tags(
     made_change = False
     tags_to_add: set[NameTag] = set(expected.tags)
     for tag in tags:
-        if type(tag) in REPLACEABLE_TAGS:
+        if isinstance(tag, REPLACEABLE_TAGS):
             if tag in tags_to_add:
                 tags_to_add.remove(tag)
                 new_tags.append(tag)
             else:
                 for tag_to_add in set(tags_to_add):
-                    if type(tag_to_add) is type(tag) and tag_to_add.name == tag.name:
+                    if (
+                        isinstance(tag_to_add, REPLACEABLE_TAGS)
+                        and type(tag_to_add) is type(tag)
+                        and tag_to_add.name == tag.name
+                    ):
                         new_tags.append(tag)
                         tags_to_add.remove(tag_to_add)
                         break
@@ -4628,7 +4633,7 @@ def determine_name_variants(nam: Name, cfg: LintConfig) -> Iterable[str]:
         else:
             existing = con_to_existing_names[maybe_con]
             replaceable, others = helpers.sift(
-                existing, lambda en: en.reasons <= REPLACEABLE_TAGS
+                existing, lambda en: en.reasons <= REPLACEABLE_TAGS_SET
             )
             if replaceable:
                 replaceable = sorted(
