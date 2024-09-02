@@ -24,39 +24,181 @@ their limits are subjective in nature.
   is the stem without any rank ending (e.g., "Sigmodont" for
   [Sigmodontinae](/n/Sigmodontinae)). For species-group names, it is the specific name
   (e.g., "palustris" for [_Oryzomys palustris_](/n/59371)).
-- _status_: The taxonomic status of the name. The status may be _valid_ (the name is the
-  base name for a valid taxon), _synonym_ (the name denotes a synonym of a valid taxon),
-  _dubious_ (the name is treated as a synonym, but the status is unclear), _nomen
-  dubium_ (the name is treated as the base name of a taxon, but that taxon is not known
-  to represent a biological reality), or _species inquirenda_ (there is insufficient
-  information to determine whether the name's taxon is biologically real). The "dubious"
-  status is being deprecated, mostly in favor of "nomen dubium". The use of the terms
-  "nomen dubium" and "species inquirenda" may not match that in other work. For the
-  purposes of this database, a nomen dubium is a name that cannot be unambiguously
-  allocated to a biologically real taxon, for example because its type specimen is lost
-  or uninformative. A species inquirenda is a name (not necessarily a species name) that
-  has not been shown to be valid, a synonym, or a nomen dubium, but for which I believe
-  there is insufficient evidence that it represents a real taxon. Usually, this
-  situation arises with names published long ago that have been ignored in subsequent
-  studies. For example, Kretzoi (1941) named a species
-  [_Gazelloportax andreei_](/n/75172). The name is available, but as far as I know no
-  subsequent author has commented on it, even though several authors have treated the
-  taxonomy of the group of which it is part. The name cannot be treated as a synonym of
-  another name, it is probably not valid (if so, some author would have used the name),
-  and it cannot be treated as a nomen dubium (taxonomic revision may well show that it
-  is a synonym of some other species). The database does not currently have a way to
-  distinguish objective from subjective synonyms; this should be changed.
+- _status_: The taxonomic status of the name. Usually this is _valid_ or _synonym_, but
+  there are a few other options; see below for more details.
 - _taxon_: The [taxon](/docs/taxon) to which the name is allocated.
 - _original name_: The form of the name used by the original description. This may be an
   incorrect original spelling. If there are multiple original spellings, they should all
   be listed as separate names.
 - _corrected original name_: Like the original name, but without adornments like
-  diacritics, subgenus names, and obsolete family-group suffixes.
+  diacritics and subgenus names.
 - _nomenclature status_: The status of the name under the Code, either available or
   unavailable for some specific reason (e.g., the name is a nomen nudum; the name was
-  not properly published). This field has not been consistently applied to all names,
-  and it may require more detailed treatment (for example, not all statuses are mutually
-  exclusive).
+  not properly published). There are many options; see below for a list.
+- _original parent_: For species-group names and subgenera, the genus to which the name
+  was originally assigned. This is important for homonymy.
+- _original rank_: The rank assigned to the name in the original publication.
+
+### _status_
+
+The _status_ column indicates whether or not a taxon represents a valid species. The
+options are:
+
+- _valid_: The name represents a valid taxon of any rank.
+- _synonym_: The name is a synonym of some other taxon (which may itself be a nomen
+  dubium or otherwise invalid).
+- _nomen dubium_: The name is known to be unidentifiable.
+- _species inquirenda_: There is insufficient information to determine whether the
+  name's taxon is biologically real.
+- _composite_: The name was based on a composite of multiple taxa. For example, in some
+  cases it was later discovered that a type specimen consisted of the skull of one
+  animal and the skin of another. Ideally, in such cases the type should be restricted
+  to one of the two, but this has not always happened.
+- _hybrid_: The name was based on a hybrid individual. Under the Code such names are
+  available but do not compete in priority.
+
+The following statuses are internal-only or obsolete, and users should not encounter
+them:
+
+- _redirect_: The name was merged into another name because it was judged to be
+  identical.
+- _removed_: The name was removed for any reason (usually because it was added by
+  mistake).
+- _spurious_: The name was removed because a literature search failed to find any
+  corroboration for it.
+- _dubious_: The name is treated as a synonym, but the status is unclear.
+
+The use of the terms "nomen dubium" and "species inquirenda" may not match that in other
+work. For the purposes of this database, a nomen dubium is a name that cannot be
+unambiguously allocated to a biologically real taxon, for example because its type
+specimen is lost or uninformative. A species inquirenda is a name (not necessarily a
+species name) that has not been shown to be valid, a synonym, or a nomen dubium, but for
+which I believe there is insufficient evidence that it represents a real taxon. Usually,
+this situation arises with names published long ago that have been ignored in subsequent
+studies. For example, Kretzoi (1941) named a species
+[_Gazelloportax andreei_](/n/75172). The name is available, but as far as I know no
+subsequent author has commented on it, even though several authors have treated the
+taxonomy of the group of which it is part. The name cannot be treated as a synonym of
+another name, it is probably not valid (if so, some author would have used the name),
+and it cannot be treated as a nomen dubium (taxonomic revision may well show that it is
+a synonym of some other species). The database does not currently have a way to
+distinguish objective from subjective synonyms; this should be changed.
+
+### _nomenclature_status_
+
+The _nomenclature_status_ column represents the status of the name in nomenclature, as
+opposed to _status_, which is about taxonomy. A name that fulfills all of the
+requirements in the International Code of Zoological Nomenclature (the Code) and does
+not fall into some other special category is marked as _available_. A name can fall
+under multiple categories (for example, it can be both a nomen novum and preoccupied).
+If so, a single status is chosen by a list of criteria that prioritizes the status that
+is most important. All of the conditions that lead to a name having a status other than
+_available_ are reflected in _tags_ (see below).
+
+The full list of statuses follows. Many of the descriptions reference specific articles
+in the Code, which is available [on the ICZN's website](https://code.iczn.org/).
+
+- _available_: The name is available under the Code.
+- _nomen nudum_: The name lacks any sort of description; see Art. 12.1 (before 1931) and
+  13.1 (after 1930). The term "nomen nudum" is commonly used for many other kinds of
+  unavailable names, and even for available names based on insufficient evidence, but
+  the Glossary of the Code uses a more restrictive definition, which is followed here.
+- _fully suppressed_: The name was suppressed by the Commission for the purposes of both
+  priority and homonymy.
+- _partially suppressed_: The name was suppressed for purposes of priority but not
+  homonymy.
+- _preoccupied_: The name is a junior homonym of another name.
+- _nomen novum_: Nomen novum or substitution for another name. Such names are available,
+  but using a different status makes it easier to keep track of their types.
+- _not used as valid_: The name was not used as valid when proposed; see Art. 11.5,
+  11.6. Such names are available under some circumstances.
+- _no type specified_: The Code requires explicit designation of a type for recently
+  proposed names. Art. 13.3: genus-group name after 1930 (but not ichnotaxa); Art. 16.2
+  for family-group names after 1999; Art. 16.4 for species-group names after 1999
+- _conditional_: The name was proposed conditionally; see Art. 15.
+- _not explicitly new_: Art. 16: names published after 1999 must be explicitly marked as
+  new.
+- _not intended as a scientific name_: The name was not intended as a scientific name in
+  the original description; for example, it was a vernacular name.
+- _rejected by fiat_: The database has decided to treat a name as unavailable by fiat.
+  See
+  ["Confronting taxonomic vandalism in biology"](https://doi.org/10.1093/biolinnean/blab009).
+- Applicable to family-group names only
+  - _not based on a generic name_: Art. 11.7.
+  - _not used as genus plural_: Art. 11.7.1.2.
+  - _based on a suppressed name_: Art. 11.7.1.5, Art. 39.
+  - _based on homonym_: Art. 39: family-group names based on junior homonyms must be
+    replaced
+  - _type not treated as valid_: Art. 11.7.1.1: genus name must be treated as valid
+  - _reranking_: A family-group name that was changed to a new rank.
+- Applicable to genus-group names only
+  - _not nominative singular_: Art. 11.8: a genus-group name must be a nominative
+    singular noun.
+- Applicable to species-group names only
+  - _infrasubspecific_: Names published below the subspecies level are generally
+    unavailable (Art. 1.3.4; but see Art. 45.6.4.1)
+  - _not published with a generic name_: Art. 11.9.3.
+  - _multiple words_: Art. 11.9.4.
+  - _variety or form_: Art. 15.2: after 1960, using the term "variety" or "form" makes a
+    name unavailable (cf. infrasubspecific)
+- Related to the work in which the name was included:
+  - _unpublished_: See Art. 8. Some common categories of unpublished names are
+    separated.
+  - _unpublished thesis_: unpublished because named in an unpublished thesis
+  - _unpublished electronic_: unpublished because named in an electronic-only work
+    without an LSID
+  - _unpublished pending_: like _unpublished electronic_, but expected to be published
+    in print form. We mostly treat these as available.
+  - _unpublished supplement_: unpublished because named in electronic supplementary
+    material only
+  - _before 1758_: Art. 3.2: names published before 1758 are unavailable.
+  - _inconsistently binominal_: Art. 11.4: author must consistently use binominal
+    nomenclature.
+- Related to spelling
+  - _incorrect subsequent spelling_: An accidental misspelling of a name
+  - _unjustified emendation_: An intentional change to a name that is not allowed by the
+    Code. Such names are available (Art. 19.1, 33) and can preoccupy other names.
+  - _variant_: A variant spelling for which the original citation has not been examined,
+    so it is not clear whether it is an unjustified emendation or incorrect subsequent
+    spelling.
+  - _justified emendation_: Art. 32.5: correction of incorrect original spellings. See
+    below for more on how justified emendations are treated.
+  - _as emended_: Justified emendation, available with its original author and date.
+  - _incorrect original spelling_: Used if there are multiple spelling variants in the
+    original description.
+  - _mandatory change_: A spelling change required by the Code (generally for gender
+    agreement). See Art. 34.
+- Miscellaneous rare conditions
+  - _hypothetical concept_: See Art 1.3.1.
+  - _teratological_: See Art 1.3.2: "teratological specimens as such".
+  - _hybrid as such_: Art. 1.3.3: "hybrid specimens as such" (cf. Art. 17.2). This
+    refers to names that were explicitly proposed for a hybrid in the original
+    description, not to names that were later found to have been based on a hybrid.
+  - _informal_: Art. 1.3.5: "as means of temporary reference"
+  - _work of extant_: Art. 1.3.6: "after 1930, for the work of extant animals"; 13.6.2.
+  - _zoological formula_: Art. 1.3.7: names like Herrera's "MamXus".
+  - _unlisted_: Art. 10.7: name not in a Part of the "List of Available Names in
+    Zoology"
+  - _not latin alphabet_: Art. 11.2: names must be in the Latin alphabet.
+  - _anonymous authorship_: Art. 14: anonymously published names are unavailable after
+    1950
+  - _ites name_: Art. 20: names in -ites, -ytes, -ithes for fossils may not be available
+  - _hybrid name_: Names based on hybrids are available, but do not compete in priority
+    (Art. 23.8). This is deprecated as it is redundant with setting the _status_ field
+    to "hybrid".
+  - _art 13 nomen oblitum_: Art. 23.12: name rejected under Art. 23b in the 1961-1973
+    Code
+  - _collective group_: See Art. 42.2.1.
+- Usages that do not create new names or spellings
+  - _subsequent usage_: A later usage of the same name. This is used primarily in cases
+    where there has been confusion about the publication that introduced the name.
+  - _name combination_: A usage of a species-group name that does not use the same
+    scientific name as in the original, for example because it is combined with a new
+    genus name, changed from a subspecies to a species or vice versa, or allocated to a
+    different species.
+  - _misidentification_: An application of a name to a different taxon than its current
+    identification. Misidentfications are included in the database primarily if they
+    were listed in previous synonymies.
 
 ## Citation and authority
 
@@ -159,15 +301,17 @@ with original citations follow this format):
 
 ## Gender and stem
 
-- _name complex_ and _species name complex_: A group of names of the same derivation.
-  Used to help determine gender and stem for genus-group names and gender endings for
-  species-group names. There are separate name complexes for the genus and species
-  groups. Family-group and high-group names do not have name complexes. A name complex
-  may encompass names based on a specific Latin or Greek root word, or names whose
-  treatment is stipulated by a specific article in the Code (for example, "names whose
-  gender is explicitly specified as masculine"). See the
-  [name complex](/docs/name-complex) and
-  [species name complex](/docs/species-name-complex) documentation for more.
+Genus-group and species-group names are assigned to _name complexes_, groups of names
+with the same derivation. These are used to help determine gender and stem for
+genus-group names and gender endings for species-group names. There are separate name
+complexes for the genus and species groups. Family-group and high-group names do not
+have name complexes. A name complex may encompass names based on a specific Latin or
+Greek root word, or names whose treatment is stipulated by a specific article in the
+Code (for example, "names whose gender is explicitly specified as masculine").
+
+- _name complex_: For genera. See the [name complex](/docs/name-complex) documentation.
+- _species name complex_: For especies. See
+  [species name complex](/docs/species-name-complex) documentation.
 
 ## Types
 
@@ -291,63 +435,84 @@ of the name.
 
 Tags include the following:
 
-- _PreoccupiedBy_: The name is preoccupied by another name. For species-group names,
-  generally _PrimaryHomonymOf_ or _SecondaryHomonymOf_ should be used instead.
-- _PrimaryHomonymOf_: The name is a species-group name that has previously been used for
-  a different name that was originally placed in the same genus.
-- _SecondaryHomonymOf_: The name is a species-group name that has previously been used
-  for a different name that is currently placed in the same genus.
-- _PermanentlyReplacedSecondaryHomonym_: The name is not currently a secondary homonym
-  of another name, but was replaced before 1961 and is therefore now permanently
-  invalid. This condition only applies if the junior homonym is not in use, so the tag
-  has a field _is_in_use_ that should be set to True if the junior homonym is currently
-  in use.
-- _NotPreoccupiedBy_: Indicates that a name is _not_ preoccupied by another similar
-  name, though it is similar enough that confusion is possible.
-- _IgnorePreoccupationBy_: Mark that a name should not be considered as preoccupied by
-  another name. This is used to deal with false positives in fuzzy homonym matching.
-- _UnjustifiedEmendationOf_: The name is an unjustified emendation of another name.
-- _IncorrectSubsequentSpellingOf_: The name is an incorrect subsequent spelling of
-  another name.
-- _NomenNovumFor_: The name is a nomen novum (replacement name) for another name. In
-  modern-day nomenclature a nomen novum is usually created only if the earlier name is
-  preoccupied, but in the past some authors replaced names for flimsier reasons.
-- _VariantOf_: The name is either an unjustified emendation or an incorrect subsequent
-  spelling of another name, but it is not clear which. The difference between the two
-  hinges on whether the change in spelling was intentional or accidental, and without
-  seeing the original description it is often not possible to figure this out. Marking
-  such names as "variants" helps me because it signals that the name does not require
-  its own type locality and similar data, regardless of what its precise status turns
-  out to be.
-- _PartiallySuppressedBy_: The name was suppressed by the Commission for purposes of
-  priority but not homonymy.
-- _FullySuppressedBy_: The name was suppressed by the Commission for purposes of both
-  priority and homonymy.
-- _TakesPriorityOf_: This name takes the priority of another name, a situation that the
-  Code sometimes calls for in family-group names.
-- _NomenOblitum_: The name has been formally identified as a _nomen oblitum_ (forgotten
-  name), relative to another name.
-- _MandatoryChangeOf_: The name is a mandatory change (e.g., a gender correction) of
-  another name. Mandatory changes are usually not covered in the database.
-- _Conserved_: The name was placed on an Official List of names in zoology.
-- _IncorrectOriginalSpellingOf_: The name is an incorrect original spelling of another
-  name. See the "Justified emendations" section below for related discussion.
-- _SelectionOfSpelling_: For names with multiple original spellings, a reference to the
-  author who formally selected the correct original spelling.
-- _SubsequentUsageOf_: The name is a subsequent usage of another name, without its own
-  availability. Such names are included in the database if they are listed as synonyms
-  in previous compilations, usually if it represents a misidentification.
-- _NameCombinationOf_: The name is a new name combination (e.g., reassignment to a
-  different genus) of a previous name. Name combinations are currently only rarely
-  listed.
-- _SelectionOfPriority_: The name was selected to have priority over another,
-  simultaneously published name.
-- _ReversalOfPriority_: The Commission reversed the priority of this name relative to
-  another.
-- _Rejected_: The name was placed on one of the Official Indices by the Commission,
-  without being explicitly suppressed.
-- _JustifiedEmendationOf_: The name is a justified emendation of another name. See below
-  for more detail on how justified emendations are treated.
+- Related to homonyms
+  - _PreoccupiedBy_: The name is preoccupied by another name. For species-group names,
+    generally _PrimaryHomonymOf_ or _SecondaryHomonymOf_ should be used instead.
+  - _PrimaryHomonymOf_: The name is a species-group name that has previously been used
+    for a different name that was originally placed in the same genus.
+  - _SecondaryHomonymOf_: The name is a species-group name that has previously been used
+    for a different name that is currently placed in the same genus.
+  - _PermanentlyReplacedSecondaryHomonymOf_: The name is not currently a secondary
+    homonym of another name, but was replaced before 1961 and is therefore now
+    permanently invalid. This condition only applies if the junior homonym is not in
+    use, so the tag has a field _is_in_use_ that should be set to True if the junior
+    homonym is currently in use.
+  - _NotPreoccupiedBy_: Indicates that a name is _not_ preoccupied by another similar
+    name, though it is similar enough that confusion is possible.
+  - _IgnorePreoccupationBy_: Mark that a name should not be considered as preoccupied by
+    another name. This is used to deal with false positives in fuzzy homonym matching.
+  - _NomenNovumFor_: The name is a nomen novum (replacement name) for another name. In
+    modern-day nomenclature a nomen novum is usually created only if the earlier name is
+    preoccupied, but in the past some authors replaced names for flimsier reasons.
+- Related to spelling
+  - _UnjustifiedEmendationOf_: The name is an unjustified emendation of another name.
+  - _IncorrectSubsequentSpellingOf_: The name is an incorrect subsequent spelling of
+    another name.
+  - _VariantOf_: The name is either an unjustified emendation or an incorrect subsequent
+    spelling of another name, but it is not clear which. The difference between the two
+    hinges on whether the change in spelling was intentional or accidental, and without
+    seeing the original description it is often not possible to figure this out. Marking
+    such names as "variants" helps me because it signals that the name does not require
+    its own type locality and similar data, regardless of what its precise status turns
+    out to be.
+  - _MandatoryChangeOf_: The name is a mandatory change (e.g., a gender correction) of
+    another name. Mandatory changes are usually not covered in the database.
+  - _IncorrectOriginalSpellingOf_: The name is an incorrect original spelling of another
+    name. See the "Justified emendations" section below for related discussion.
+  - _SelectionOfSpelling_: For names with multiple original spellings, a reference to
+    the author who formally selected the correct original spelling.
+  - _JustifiedEmendationOf_: The name is a justified emendation of another name. See
+    below for more detail on how justified emendations are treated.
+  - _AsEmendedBy_: If the original spelling was changed by a justified emendation, this
+    tag points to the emended spelling.
+- Related to actions by the Commission
+  - _PartiallySuppressedBy_: The name was suppressed by the Commission for purposes of
+    priority but not homonymy.
+  - _FullySuppressedBy_: The name was suppressed by the Commission for purposes of both
+    priority and homonymy.
+  - _Conserved_: The name was placed on an Official List of names in zoology.
+  - _Rejected_: The name was placed on one of the Official Indices by the Commission,
+    without being explicitly suppressed.
+- Related to determination of priority among names
+  - _TakesPriorityOf_: This name takes the priority of another name, a situation that
+    the Code sometimes calls for in family-group names.
+  - _NomenOblitum_: The name has been formally identified as a _nomen oblitum_
+    (forgotten name), relative to another name.
+  - _SelectionOfPriority_: The name was selected to have priority over another,
+    simultaneously published name.
+  - _ReversalOfPriority_: The Commission reversed the priority of this name relative to
+    another.
+  - _ValidUse_: A reference to a publication that treated the name as valid. Used for
+    collecting evidence for conserving a name.
+  - _NeedsPrioritySelection_: The priority between two simultaneously published names
+    needs to be determined.
+- Related to availability
+  - _Condition_: A nomenclatural condition that applies to a name, such as being a nomen
+    nudum.
+  - _NotUsedAsValid_: The name was not used as valid in the original description. This
+    is separate from _Condition_ because such names are available under some
+    circumstances.
+  - _VarietyOrForm_: The name was marked as a "variety" or "form" in the original
+    description. As with _NotUsedAsValid_, such names are sometimes available.
+- Related to later usage of names
+  - _SubsequentUsageOf_: The name is a subsequent usage of another name, without its own
+    availability. Such names are included in the database if they are listed as synonyms
+    in previous compilations, usually if it represents a misidentification.
+  - _NameCombinationOf_: The name is a new name combination (e.g., reassignment to a
+    different genus) of a previous name. Name combinations are currently only rarely
+    listed.
+  - _MisidentificationOf_: The author incorrectly applied the name of a different
+    species.
 
 Type tags are more commonly used; ideally every species-group name and many genus-group
 names should have at least one. They fall into several groups:
@@ -371,6 +536,13 @@ names should have at least one. They fall into several groups:
     [species name complex](/docs/species-name-complex) that the name is assigned to, but
     an _EtymologyDetail_ tag is not essential for assigning a name to a complex, because
     many original descriptions do not specify an etymology.
+  - _NomenclatureDetail_: A previous author's discussion about the nomenclature of this
+    name.
+  - _SourceDetail_: Information on the source material of a name. Used for early names,
+    such as those from Linnaeus, that were often based on a series of literature
+    sources.
+  - _TypeSpeciesDetail_: A previous author's discussion of the type species for a
+    genus-group name.
 - Structured information about the type
   - _CollectedBy_: The [person](/docs/person) who collected the type specimen.
   - _Involved_: A [person](/docs/person) who was involved in the history of the type
@@ -405,8 +577,15 @@ names should have at least one. They fall into several groups:
     collection. The intended use of this tag is that it can help give clues to
     researchers looking for the type material and help generate lists of possible type
     material for those compiling catalogues of particular collections.
-  - _FormerRepository_, _ExtraRepository_, and _FutureRepository_: Used for several
-    cases where type material is associated with multiple collections; see above.
+  - _GuessedRepository_: Added by a heuristic that guesses where the type material of a
+    species might be if there is no explicit information. The heuristic looks at similar
+    names (e.g., those named by the same author, in the same year, or in the same
+    journal).
+  - _FormerRepository_: A repository where the type material was previously stored.
+  - _ExtraRepository_: A repository that contains some minor part of the type material
+    (e.g., a tissue sample).
+  - _FutureRepository_: A repository that is expected to store the type material in the
+    future.
 - Nomenclatural actions
   - _TypeDesignation_: The designation of the type species of a genus-group name.
     Includes references to the source and to the designated type species.
@@ -426,9 +605,19 @@ names should have at least one. They fall into several groups:
     are the species eligible for designation as the type.
   - _GenusCoelebs_: Indicates that a genus-group name was originally proposed without
     any included species.
-  - _TypeLocality_, _StratigraphyDetail_, _Habitat_: Deprecated tags with detail about
-    the type locality; _LocationDetail_ should be used instead.
   - _Host_: Name of the type host of a symbiont.
+  - _LSIDName_: Life Science Identifier (LSID) for the name.
+  - _AuthorityPageLink_: Link to an online resource (usually the Biodiversity Heritage
+    Library) that provides access to the page where the name was originally introduced.
+  - _PhyloCodeNumber_: The number assigned to the name under the PhyloCode. The database
+    does not aim for compliance with the PhyloCode, but does aim to include information
+    relevant to that code.
+  - _TextualOriginalRank_: For names that were originally published at an unusual rank,
+    the name of that rank as it appeared in the original publication.
+  - _PartialTaxon_: For composite names, a reference to one of the taxa that the name is
+    identified as.
+  - _TypeSpecimenLinkFor_: Link to an online collection database listing the type
+    specimen.
 
 ## Miscellaneous data
 
@@ -587,14 +776,3 @@ Emendations under Arts. 32.5.2 (removal of diacritics and other marks) and 32.5.
 database will usually make these corrections silently. If desired, a name with status
 `justified_emendation` can be entered with as its authority the first author to use the
 corrected name.
-
-## Mandatory changes
-
-There are two categories of mandatory changes (Art. 34):
-
-- For family-group names, the ending must be changed if the rank changes.
-- For species-group names, the specific name must be changed to agree in gender with the
-  generic name.
-
-These can both be expressed with the _MandatoryChangeOf_ tag in the database, but this
-is rarely necessary.

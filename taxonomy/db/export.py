@@ -1,12 +1,18 @@
 """Exporting data."""
 
 import csv
-from collections.abc import Container
+from collections import Counter, defaultdict
+from collections.abc import Container, Iterable
 from pathlib import Path
 from typing import Protocol, TypedDict
 
 from taxonomy import getinput
 from taxonomy.command_set import CommandSet
+from taxonomy.db.models.classification_entry.ce import (
+    ClassificationEntry,
+    ClassificationEntryTag,
+)
+from taxonomy.db.models.tags import TaxonTag
 
 from .constants import AgeClass, Group, Rank, RegionKind, Status
 from .models import Article, Collection, Name, Occurrence, Taxon
@@ -175,7 +181,7 @@ def data_for_name(name: Name) -> NameData:
         if isinstance(tag, TypeTag.TypeSpecimenLinkFor)
     )
     if name.status is Status.valid:
-        status = f"valid {name.taxon.rank.name}"
+        status = f"valid {name.taxon.rank.display_name}"
     else:
         status = name.status.name
     return {
@@ -195,7 +201,7 @@ def data_for_name(name: Name) -> NameData:
         "corrected_original_name": name.corrected_original_name or "",
         "root_name": name.root_name,
         "original_rank": (
-            name.original_rank.name if name.original_rank is not None else ""
+            name.original_rank.display_name if name.original_rank is not None else ""
         ),
         "group": name.group.name,
         "authority": name.taxonomic_authority(),
@@ -283,7 +289,7 @@ def data_for_taxon(taxon: Taxon) -> TaxonData:
         "order": order.valid_name if order else "",
         "family": family.valid_name if family else "",
         "genus": genus.valid_name if genus else "",
-        "rank": taxon.rank.name,
+        "rank": taxon.rank.display_name,
         "taxon_name": taxon.valid_name,
         "base_name_link": name.get_absolute_url(),
         "authority": name.taxonomic_authority(),
@@ -349,6 +355,59 @@ def export_collections(filename: str) -> None:
             Collection.select_valid(), label="collections", n=100
         ):
             writer.writerow(data_for_collection(occ))
+
+
+class CEData(TypedDict):
+    id: str
+    link: str
+    name: str
+    rank: str
+    source: str
+    source_link: str
+    parent: str
+    parent_link: str
+    page: str
+    mapped_name_link: str
+    authority: str
+    year: str
+    citation: str
+    type_locality: str
+    page_link: str
+
+
+def data_for_ce(ce: ClassificationEntry) -> CEData:
+    return {
+        "id": str(ce.id),
+        "link": ce.get_absolute_url(),
+        "name": ce.name,
+        "rank": ce.get_rank_string(),
+        "source": ce.article.cite(),
+        "source_link": ce.article.get_absolute_url(),
+        "parent": ce.parent.name if ce.parent else "",
+        "parent_link": ce.parent.get_absolute_url() if ce.parent else "",
+        "page": ce.page or "",
+        "mapped_name_link": ce.mapped_name.get_absolute_url() if ce.mapped_name else "",
+        "authority": ce.authority or "",
+        "year": ce.year or "",
+        "citation": ce.citation or "",
+        "type_locality": ce.type_locality or "",
+        "page_link": " | ".join(
+            tag.url
+            for tag in ce.tags
+            if isinstance(tag, ClassificationEntryTag.PageLink)
+        ),
+    }
+
+
+@CS.register
+def export_all_ces(filename: str) -> None:
+    with Path(filename).open("w") as f:
+        writer: "csv.DictWriter[str]" = csv.DictWriter(f, list(CEData.__annotations__))
+        writer.writeheader()
+        for ce in getinput.print_every_n(
+            ClassificationEntry.select_valid(), label="classification entries", n=1000
+        ):
+            writer.writerow(data_for_ce(ce))
 
 
 class OccurrenceData(TypedDict):
@@ -425,3 +484,395 @@ def export_type_catalog(filename: str, *collections: Collection) -> None:
             for nam, label in nams:
                 data = data_for_name(nam)
                 writer.writerow({"label": label, **data})
+
+
+@CS.register
+def export_ces(
+    filename: str,
+    taxon: Taxon,
+    rank: Rank = Rank.species,
+    ages: Container[AgeClass] = (AgeClass.extant, AgeClass.recently_extinct),
+) -> None:
+    taxa = [child for child in taxon.children_of_rank(rank) if child.age in ages]
+    name_to_taxon = {}
+    ce_articles: Counter[Article] = Counter()
+    taxon_to_article_to_valid_ces: dict[
+        Taxon, dict[Article, list[ClassificationEntry]]
+    ] = {}
+    taxon_to_article_to_synonym_ces: dict[
+        Taxon, dict[Article, list[ClassificationEntry]]
+    ] = {}
+    for child_taxon in taxa:
+        for nam in child_taxon.all_names():
+            name_to_taxon[nam] = child_taxon
+            for ce in nam.classification_entries:
+                ce_articles[ce.article] += 1
+                if ce.rank is rank:
+                    taxon_to_article_to_valid_ces.setdefault(
+                        child_taxon, {}
+                    ).setdefault(ce.article, []).append(ce)
+                else:
+                    taxon_to_article_to_synonym_ces.setdefault(
+                        child_taxon, {}
+                    ).setdefault(ce.article, []).append(ce)
+    columns = [
+        "class",
+        "order",
+        "family",
+        "genus",
+        "status",
+        "species",
+        "authority",
+        "date",
+        "synonyms",
+        "mdd_link",
+        "iucn_link",
+    ]
+    for article, _ in ce_articles.most_common():
+        citation = article.concise_citation()
+        columns.append(f"{citation} {rank.display_name}")
+        columns.append(f"{citation} synonyms")
+    with Path(filename).open("w") as f:
+        writer = csv.DictWriter(f, columns)
+        writer.writeheader()
+        for child_taxon in taxa:
+            try:
+                genus = child_taxon.parent_of_rank(Rank.genus).valid_name
+            except ValueError:
+                genus = ""
+            class_ = child_taxon.get_derived_field("class_")
+            order = child_taxon.get_derived_field("order")
+            family = child_taxon.get_derived_field("family")
+            mdd_link = ""
+            for tag in child_taxon.tags:
+                if isinstance(tag, TaxonTag.MDD):
+                    mdd_link = f"https://www.mammaldiversity.org/taxon/{tag.id}"
+                    break
+            row = {
+                "class": class_.valid_name if class_ is not None else "",
+                "order": order.valid_name if order is not None else "",
+                "family": family.valid_name if family is not None else "",
+                "genus": genus,
+                "status": child_taxon.base_name.status.name,
+                "species": child_taxon.valid_name,
+                "authority": child_taxon.base_name.taxonomic_authority(),
+                "date": child_taxon.base_name.year,
+                "synonyms": ", ".join(
+                    sorted(
+                        {
+                            nam.corrected_original_name
+                            for nam in child_taxon.all_names()
+                            if nam.corrected_original_name is not None
+                        }
+                    )
+                ),
+                "mdd_link": mdd_link,
+            }
+            for article, _ in ce_articles.most_common():
+                valid_ces = taxon_to_article_to_valid_ces.get(child_taxon, {}).get(
+                    article, []
+                )
+                synonym_ces = taxon_to_article_to_synonym_ces.get(child_taxon, {}).get(
+                    article, []
+                )
+                citation = article.concise_citation()
+                row[f"{citation} {rank.display_name}"] = ", ".join(
+                    ce.name for ce in valid_ces
+                )
+                row[f"{citation} synonyms"] = ", ".join(ce.name for ce in synonym_ces)
+
+                for ce in valid_ces:
+                    if ce.page is not None and ce.page.startswith(
+                        "https://www.iucnredlist.org/"
+                    ):
+                        row["iucn_link"] = ce.page
+            writer.writerow(row)
+
+
+class ComparisonRow(TypedDict):
+    order: str
+    family: str
+    genus: str
+    old_name: str
+    old_page: str
+    new_name: str
+    new_page: str
+    comment: str
+
+
+CEPair = tuple[ClassificationEntry | None, ClassificationEntry | None, list[str]]
+
+
+def _get_all_ces(art: Article) -> Iterable[ClassificationEntry]:
+    yield from art.get_classification_entries()
+    for child in Article.select_valid().filter(Article.parent == art):
+        yield from _get_all_ces(child)
+
+
+@CS.register
+def generate_classification_diff(
+    filename: str,
+    old: Article | None = None,
+    new: Article | None = None,
+    old_taxon: str | None = None,
+    new_taxon: str | None = None,
+    rank: Rank = Rank.species,
+) -> None:
+    if old is None:
+        old = Article.getter(None).get_one("Old article to compare> ")
+    if old is None:
+        return
+    if new is None:
+        new = Article.getter(None).get_one("New article to compare> ")
+    if new is None:
+        return
+    old_ces = list(_get_all_ces(old))
+    if not old_ces:
+        print(f"No classification entries found in {old}")
+        return
+    new_ces = list(_get_all_ces(new))
+    if not new_ces:
+        print(f"No classification entries found in {new}")
+        return
+    print(f"Found {len(old_ces)} in {old} and {len(new_ces)} in {new}")
+    if old_taxon is not None:
+        old_ce = next(
+            (
+                ce
+                for ce in old_ces
+                if ce.name == old_taxon and ce.rank is not Rank.synonym
+            ),
+            None,
+        )
+        if old_ce is None:
+            print(f"Could not find {old_taxon} in {old}")
+            return
+    else:
+        old_ce = getinput.choose_one_by_name(
+            old_ces,
+            message="Old taxon to compare (leave blank to compare entire classification)> ",
+            display_fn=lambda ce: ce.name,
+            print_choices=False,
+        )
+    if new_taxon is not None:
+        new_ce = next(
+            (
+                ce
+                for ce in new_ces
+                if ce.name == new_taxon and ce.rank is not Rank.synonym
+            ),
+            None,
+        )
+        if new_ce is None:
+            print(f"Could not find {new_taxon} in {new}")
+            return
+    else:
+        new_ce = getinput.choose_one_by_name(
+            new_ces,
+            message="New taxon to compare (leave blank to use same taxon as for old)> ",
+            display_fn=lambda ce: ce.name,
+            print_choices=False,
+        )
+    if new_ce is None and old_ce is not None:
+        new_ce = next(
+            (
+                ce
+                for ce in new_ces
+                if ce.name == old_ce.name and ce.rank is not Rank.synonym
+            ),
+            None,
+        )
+        if new_ce is None:
+            print(f"Could not find {old_ce.name} in {new}")
+            return
+
+    if old_ce is None:
+        old_ces_to_compare = [ce for ce in old_ces if ce.rank is rank]
+    else:
+        old_ces_to_compare = list(old_ce.get_children_of_rank(rank))
+    if new_ce is None:
+        new_ces_to_compare = [ce for ce in new_ces if ce.rank is rank]
+    else:
+        new_ces_to_compare = list(new_ce.get_children_of_rank(rank))
+
+    variant_base_to_ces: dict[
+        Name, tuple[list[ClassificationEntry], list[ClassificationEntry]]
+    ] = defaultdict(lambda: ([], []))
+    for ce in old_ces_to_compare:
+        if ce.mapped_name is None:
+            continue
+        variant_base = ce.mapped_name.resolve_variant()
+        variant_base_to_ces[variant_base][0].append(ce)
+    for ce in new_ces_to_compare:
+        if ce.mapped_name is None:
+            continue
+        variant_base = ce.mapped_name.resolve_variant()
+        variant_base_to_ces[variant_base][1].append(ce)
+
+    pairs: list[CEPair] = []
+    done_old: set[ClassificationEntry] = set()
+    done_new: set[ClassificationEntry] = set()
+    for old_ce_list, new_ce_list in variant_base_to_ces.values():
+        match (len(old_ce_list), len(new_ce_list)):
+            case (0, _) | (_, 0):
+                continue
+            case 1, 1:
+                pairs.append(_create_pair(old_ce_list[0], new_ce_list[0]))
+            case 1, _:
+                for new_ce in new_ce_list:
+                    _, _, description = _create_pair(old_ce_list[0], new_ce)
+                    extra = f"; also matched {', '.join(ce.name for ce in new_ce_list if ce != new_ce)} in new"
+                    pairs.append((old_ce_list[0], new_ce, [*description, extra]))
+            case _, 1:
+                for old_ce in old_ce_list:
+                    _, _, description = _create_pair(old_ce, new_ce_list[0])
+                    extra = f"; also matched {', '.join(ce.name for ce in old_ce_list if ce != old_ce)} in old"
+                    pairs.append((old_ce, new_ce_list[0], [*description, extra]))
+            case _:
+                # Multiple matches on both sides. Just give up and list them all unpaired.
+                description = [
+                    f"could not match ({', '.join(ce.name for ce in old_ce_list)} in old, {', '.join(ce.name for ce in new_ce_list)} in new)"
+                ]
+                for old_ce in old_ce_list:
+                    pairs.append((old_ce, None, description))
+                for new_ce in new_ce_list:
+                    pairs.append((None, new_ce, description))
+        done_old.update(old_ce_list)
+        done_new.update(new_ce_list)
+
+    taxon_to_ces: dict[
+        Taxon, tuple[list[ClassificationEntry], list[ClassificationEntry]]
+    ] = defaultdict(lambda: ([], []))
+    for ce in old_ces_to_compare:
+        if ce.mapped_name is None:
+            continue
+        taxon_to_ces[ce.mapped_name.taxon][0].append(ce)
+    for ce in new_ces_to_compare:
+        if ce.mapped_name is None:
+            continue
+        taxon_to_ces[ce.mapped_name.taxon][1].append(ce)
+    for taxon, (old_ce_list, new_ce_list) in taxon_to_ces.items():
+        match (len(old_ce_list), len(new_ce_list)):
+            case 1, 1:
+                old_ce = old_ce_list[0]
+                new_ce = new_ce_list[0]
+                if old_ce in done_old or new_ce in done_new:
+                    continue
+                _, _, description = _create_pair(old_ce, new_ce, is_same_name=False)
+                description = [
+                    *description,
+                    f"both currently allocated to {taxon.valid_name}",
+                ]
+                pairs.append((old_ce, new_ce, description))
+                done_old.add(old_ce)
+                done_new.add(new_ce)
+
+    for ce in old_ces_to_compare:
+        if ce in done_old:
+            continue
+        pairs.append((ce, None, ["missing in new (possible lump)"]))
+    for ce in new_ces_to_compare:
+        if ce in done_new:
+            continue
+        pairs.append((None, ce, ["missing in old (possible split or new species)"]))
+
+    rows = [create_comparison_row(pair) for pair in pairs]
+    rows = sorted(
+        rows,
+        key=lambda row: (
+            row["order"],
+            row["family"],
+            row["genus"],
+            row["old_name"] or row["new_name"],
+            row["new_name"],
+        ),
+    )
+    with Path(filename).open("w") as f:
+        writer = csv.DictWriter(f, list(ComparisonRow.__annotations__))
+        header_row = {key: key for key in writer.fieldnames}
+        header_row["old_name"] = old.concise_citation()
+        header_row["new_name"] = new.concise_citation()
+        writer.writerow(header_row)
+        for row in rows:
+            writer.writerow(row)  # static analysis: ignore[incompatible_argument]
+
+
+def create_comparison_row(pair: CEPair) -> ComparisonRow:
+    old_ce, new_ce, description = pair
+
+    order_ce = None
+    if new_ce is not None:
+        order_ce = new_ce.parent_of_rank(Rank.order)
+    if order_ce is None and old_ce is not None:
+        order_ce = old_ce.parent_of_rank(Rank.order)
+    order = order_ce.name if order_ce is not None else ""
+
+    family_ce = None
+    if new_ce is not None:
+        family_ce = new_ce.parent_of_rank(Rank.family)
+    if family_ce is None and old_ce is not None:
+        family_ce = old_ce.parent_of_rank(Rank.family)
+    family = family_ce.name if family_ce is not None else ""
+
+    genus_ce = None
+    genus_name = ""
+    if new_ce is not None:
+        genus_ce = new_ce.parent_of_rank(Rank.genus)
+        if genus_ce is None and new_ce.rank in (Rank.species, Rank.subspecies):
+            corrected_name = new_ce.get_corrected_name()
+            if corrected_name is not None:
+                genus_name = corrected_name.split()[0]
+    if genus_ce is None and not genus_name and old_ce is not None:
+        genus_ce = old_ce.parent_of_rank(Rank.genus)
+        if genus_ce is None and old_ce.rank in (Rank.species, Rank.subspecies):
+            corrected_name = old_ce.get_corrected_name()
+            if corrected_name is not None:
+                genus_name = corrected_name.split()[0]
+
+    genus = genus_ce.name if genus_ce is not None else genus_name
+    return {
+        "order": order,
+        "family": family,
+        "genus": genus,
+        "old_name": old_ce.name if old_ce else "",
+        "old_page": old_ce.page or "" if old_ce else "",
+        "new_name": new_ce.name if new_ce else "",
+        "new_page": new_ce.page or "" if new_ce else "",
+        "comment": "; ".join(description),
+    }
+
+
+def _create_pair(
+    old_ce: ClassificationEntry,
+    new_ce: ClassificationEntry,
+    *,
+    is_same_name: bool = True,
+) -> CEPair:
+    if old_ce.name == new_ce.name:
+        return old_ce, new_ce, []
+    if old_ce.rank is not new_ce.rank:
+        return old_ce, new_ce, ["change in rank"]
+    old_name = old_ce.get_corrected_name()
+    new_name = new_ce.get_corrected_name()
+    if old_name is None or new_name is None:
+        return old_ce, new_ce, ["name change"]
+    if old_name == new_name:
+        return old_ce, new_ce, ["name normalization"]
+    match old_ce.rank:
+        case Rank.species | Rank.subspecies:
+            if old_name is None or new_name is None:
+                return old_ce, new_ce, ["name change"]
+            old_parts = old_name.split()
+            new_parts = new_name.split()
+            if old_parts[0] != new_parts[0]:
+                return old_ce, new_ce, ["genus change"]
+            if old_ce.rank is Rank.subspecies and old_parts[1] != new_parts[1]:
+                return old_ce, new_ce, ["species change"]
+            if old_parts[-1] != new_parts[-1]:
+                return (
+                    old_ce,
+                    new_ce,
+                    ["spelling change" if is_same_name else "name change"],
+                )
+            raise ValueError("unexpected name change")
+    return old_ce, new_ce, ["name change"]

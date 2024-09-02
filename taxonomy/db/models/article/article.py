@@ -161,6 +161,11 @@ class Article(BaseModel):
             LazyType(lambda: list[models.Name]),
             lambda art: models.name.name.get_ordered_names(art.get_new_names()),
         ),
+        DerivedField(
+            "root_classification_entries",
+            LazyType(lambda: list[models.ClassificationEntry]),
+            lambda art: art.get_root_classification_entries(),
+        ),
         get_tag_based_derived_field(
             "partially_suppressed_names",
             lambda: models.Name,
@@ -429,12 +434,23 @@ class Article(BaseModel):
             args = (*args, cls.citation_group == CitationGroup.get(name=journal))
         return super().bfind(*args, quiet=quiet, sort_key=sort_key, **kwargs)
 
+    def get_shareable_adt_callbacks(self) -> getinput.CallbackMap:
+        return {
+            "o": self.openf,
+            "openf": self.openf,
+            "display_classification_entries": self.display_classification_entries,
+            "display_names": self.display_names,
+            "open_url": self.openurl,
+            "open_cg_url": self.open_cg_url,
+            "cite": self.cite_interactive,
+            "ce_add": lambda: models.classification_entry.ce.create_for_article(self),
+            "ce_edit": self.ce_edit,
+        }
+
     def get_adt_callbacks(self) -> getinput.CallbackMap:
         callbacks = super().get_adt_callbacks()
         return {
             **callbacks,
-            "o": self.openf,
-            "openf": self.openf,
             "reverse": self.reverse_authors,
             "specify_authors": self.specify_authors,
             "recompute_authors_from_doi": self.recompute_authors_from_doi,
@@ -447,13 +463,10 @@ class Article(BaseModel):
             "expand_bhl_part": lambda: self.expand_bhl_part(
                 verbose=True, set_fields=True
             ),
-            "display_names": self.display_names,
             "display_type_localities": self.display_type_localities,
             "display_children": self.display_children,
             "copy_year_for_names": self.copy_year_for_names,
             "modernize_in_press": self.modernize_in_press,
-            "open_url": self.openurl,
-            "open_cg_url": self.open_cg_url,
             "remove": self.remove,
             "merge": self.merge,
             "make_alternative_version": self.make_alternative_version,
@@ -465,13 +478,24 @@ class Article(BaseModel):
             "removefirstpage": self.removefirstpage,
             "add_comment": self.add_comment,
             "infer_year": self.infer_year,
-            "cite": self.cite_interactive,
             "try_to_find_bhl_links": self.try_to_find_bhl_links,
             "remove_all_author_page_links": self.remove_all_author_page_links,
             "clear_bhl_caches": self.clear_bhl_caches,
             "set_or_replace_url": self.set_or_replace_url,
             "add_bibliography_url": self.add_bibliography_url,
+            "classification_entries_for_article": lambda: models.classification_entry.ce.classification_entries_for_article(
+                self
+            ),
         }
+
+    def ce_edit(self) -> None:
+        while True:
+            sibling = models.classification_entry.ce.ClassificationEntry.get_parent_completion(
+                self, prompt="ce> "
+            )
+            if sibling is None:
+                break
+            sibling.edit()
 
     def open_cg_url(self) -> None:
         cg = self.get_citation_group()
@@ -492,6 +516,13 @@ class Article(BaseModel):
         return models.ClassificationEntry.add_validity_check(
             self.classification_entries
         )
+
+    def get_root_classification_entries(self) -> list[models.ClassificationEntry]:
+        return [
+            ce
+            for ce in self.get_classification_entries()
+            if ce.parent is None or ce.parent.article != self
+        ]
 
     def get_possible_bhl_item_ids(self) -> Iterable[int]:
         if self.url is not None:
@@ -645,6 +676,30 @@ class Article(BaseModel):
             self.name = newname
         # make redirect
         self.create_redirect_static(oldname, self)
+
+    def dump_pdf_text(self) -> None:
+        if not self.ispdf():
+            print("Not a PDF file")
+            return
+        output_file = (
+            re.sub(r"[^a-z\d]+", "-", self.name.lower().removesuffix(".pdf")) + ".txt"
+        )
+        output_path = Path(
+            config.get_options().taxonomy_repo / "data_import" / "data" / output_file
+        )
+        if output_path.exists():
+            print(f"File {output_file} already exists")
+            return
+        subprocess.check_call(["pdftotext", "-layout", self.get_path(), output_path])
+        print(f"Text dumped to {output_path}")
+
+    def get_mac_ocr_text(self) -> str | None:
+        if not self.ispdf():
+            print("Not a PDF file")
+            return None
+        # https://blog.greg.technology/2024/01/02/how-do-you-ocr-on-a-mac.html
+        subprocess.check_call(["shortcuts", "run", "ocr-text", "-i", self.get_path()])
+        return subprocess.check_output(["pbpaste"], text=True)
 
     def removefirstpage(self) -> bool:
         temp_path = self.get_path().parent / "tmp.pdf"
@@ -815,6 +870,18 @@ class Article(BaseModel):
         if self.type is ArticleType.SUPPLEMENT and self.parent is not None:
             return self.parent.get_date_object()
         return get_date_object(self.year)
+
+    def is_unpublished(self) -> bool:
+        year = self.valid_numeric_year()
+        if year is not None and year < 1758:
+            return True
+        if self.has_tag(ArticleTag.UnavailableElectronic):
+            return True
+        if self.has_tag(ArticleTag.InPress):
+            return True
+        if self.type in (ArticleType.THESIS, ArticleType.WEB):
+            return True
+        return False
 
     def valid_numeric_year(self) -> int | None:
         if self.year is not None and is_valid_date(self.year):
@@ -990,19 +1057,28 @@ class Article(BaseModel):
                 return tag.text
         return None
 
+    def get_title(self) -> str:
+        if self.title is None:
+            return "[Untitled]"
+        else:
+            return self.title.replace(r"\ ", " ")
+
     def get_enclosing(self: T) -> T | None:
         if self.parent is not None:
             return cast(T, self.parent)
         else:
             return None
 
-    def concise_markdown_link(self) -> str:
+    def concise_citation(self) -> str:
         authors_list = self.get_authors()
         if len(authors_list) > 2:
             authors = f"{authors_list[0].taxonomic_authority()} et al."
         else:
             authors, _ = self.taxonomic_authority()
-        return f"[{authors} ({self.valid_numeric_year() or self.year})](/a/{self.id})"
+        return f"{authors} ({self.valid_numeric_year() or self.year})"
+
+    def concise_markdown_link(self) -> str:
+        return f"[{self.concise_citation()}](/a/{self.id})"
 
     def markdown_link(self) -> str:
         cite = self.cite()
@@ -1281,6 +1357,14 @@ class Article(BaseModel):
                 pairs = [(nam.get_description(), nam.taxon) for nam in new_names]
                 models.taxon.display_organized(pairs)
 
+    def display_classification_entries(self, max_depth: int = 2) -> None:
+        ces = self.get_classification_entries().filter(
+            models.classification_entry.ClassificationEntry.parent == None
+        )
+        print(repr(self))
+        for ce in sorted(ces, key=lambda ce: ce.numeric_page()):
+            ce.display(depth=2, max_depth=max_depth)
+
     def display_type_localities(self) -> None:
         print(repr(self))
         new_names = sorted(
@@ -1394,7 +1478,8 @@ class Article(BaseModel):
         if cls.has(name):
             print(f"{name} already exists")
             return None
-        if Path(name).suffix:
+        suffix = Path(name).suffix
+        if suffix and suffix.isalnum() and not suffix.isnumeric():
             print(f"{name}: NOFILE path may not have a suffix")
             return None
         kwargs.setdefault("kind", ArticleKind.no_copy)
@@ -1551,6 +1636,9 @@ class ArticleTag(adt.ADT):
     GeneralDOI(comment=NotRequired[str], tag=23)  # type: ignore[name-defined]
 
     BHLWrongPageNumbers(comment=NotRequired[str], tag=24)  # type: ignore[name-defined]
+
+    # Indicates that ClassificationEntries are present only for some of the names in this work
+    PartialClassification(comment=NotRequired[str], tag=25)  # type: ignore[name-defined]
 
 
 @lru_cache

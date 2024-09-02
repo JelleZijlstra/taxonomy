@@ -21,6 +21,7 @@ from taxonomy.apis.zoobank import get_zoobank_data
 from taxonomy.db import constants, helpers, models
 from taxonomy.db.constants import (
     AgeClass,
+    ArticleType,
     EmendationJustification,
     FillDataLevel,
     Group,
@@ -222,6 +223,13 @@ class Name(BaseModel):
             1,
         ),
         get_tag_based_derived_field(
+            "misidentifications",
+            lambda: Name,
+            "tags",
+            lambda: NameTag.MisidentificationOf,
+            1,
+        ),
+        get_tag_based_derived_field(
             "name_combinations",
             lambda: Name,
             "tags",
@@ -366,6 +374,17 @@ class Name(BaseModel):
 
     def should_skip(self) -> bool:
         return self.status in (Status.removed, Status.redirect)
+
+    def get_family_group_stem(self) -> str:
+        if self.group is not Group.family:
+            raise ValueError(f"not a family name: {self}")
+        if self.original_rank is None:
+            return self.root_name
+        expected_suffix = helpers.SUFFIXES.get(self.original_rank)
+        if expected_suffix is None:
+            return self.root_name
+        else:
+            return self.root_name.removesuffix(expected_suffix)
 
     def get_stem(self) -> str | None:
         if self.group != Group.genus or self.name_complex is None:
@@ -603,8 +622,14 @@ class Name(BaseModel):
 
     def get_adt_callbacks(self) -> getinput.CallbackMap:
         callbacks = super().get_adt_callbacks()
+        article_callbacks = (
+            self.original_citation.get_shareable_adt_callbacks()
+            if self.original_citation is not None
+            else {}
+        )
         return {
             **callbacks,
+            **article_callbacks,
             "add_comment": self.add_comment,
             "d": self._display_plus,
             "o": self.open_description,
@@ -638,6 +663,7 @@ class Name(BaseModel):
             "validate_as_child": self.validate_as_child,
             "add_nominate": lambda: self.taxon.add_nominate(),
             "merge": self._merge,
+            "redirect": self._redirect,
             "remove_duplicate": self._remove_duplicate,
             "edit_comments": self.edit_comments,
             "replace_original_citation": self.replace_original_citation,
@@ -651,7 +677,19 @@ class Name(BaseModel):
             "try_to_find_bhl_links": self.try_to_find_bhl_links,
             "clear_bhl_caches": self.clear_bhl_caches,
             "open_coordinates": self.open_coordinates,
+            "edit_mapped_ce": self._edit_mapped_ce,
+            "display_classification_entries": self.display_classification_entries,
+            "display_usage_list": lambda: print(self.make_usage_list()),
         }
+
+    def display_classification_entries(self) -> None:
+        for ce in self.classification_entries:
+            ce.display()
+
+    def _edit_mapped_ce(self) -> None:
+        for ce in self.get_mapped_classification_entries():
+            ce.display()
+            ce.edit()
 
     def open_coordinates(self) -> None:
         for tag in self.get_tags(self.type_tags, TypeTag.Coordinates):
@@ -723,6 +761,12 @@ class Name(BaseModel):
         if other is None:
             return
         self.merge(other)
+
+    def _redirect(self) -> None:
+        other = Name.getter(None).get_one("name to redirect to> ")
+        if other is None:
+            return
+        self.redirect(other)
 
     def _remove_duplicate(self) -> None:
         other = Name.getter(None).get_one("name to remove> ")
@@ -895,6 +939,10 @@ class Name(BaseModel):
         if type_tags is None:
             return
         self.type_tags = tuple(t for t in type_tags if t != tag)  # type: ignore[assignment]
+
+    @classmethod
+    def with_tag(cls, tag_cls: NameTagCons) -> Query[Name]:
+        return cls.select_valid().filter(Name.tags.contains(f"[{tag_cls._tag},"))
 
     @classmethod
     def with_type_tag(cls, tag_cls: TypeTagCons) -> Query[Name]:
@@ -1117,10 +1165,64 @@ class Name(BaseModel):
                     NameTag.SubsequentUsageOf,
                     NameTag.MandatoryChangeOf,
                     NameTag.IncorrectSubsequentSpellingOf,
+                    NameTag.NameCombinationOf,
                 ),
             ):
                 return tag.name
         return None
+
+    def resolve_variant(self) -> Name:
+        return self._resolve_variant(10)
+
+    def _resolve_variant(self, max_depth: int) -> Name:
+        if max_depth == 0:
+            raise ValueError(f"too deep for {self}")
+        base_name = self.get_variant_base_name()
+        if base_name is None:
+            return self
+        return base_name._resolve_variant(max_depth - 1)
+
+    def get_variant_base_name_with_reason(self) -> Iterable[tuple[Name, NameTagCons]]:
+        for tag in self.tags:
+            if isinstance(
+                tag,
+                (
+                    NameTag.VariantOf,
+                    NameTag.UnjustifiedEmendationOf,
+                    NameTag.JustifiedEmendationOf,
+                    NameTag.IncorrectOriginalSpellingOf,
+                    NameTag.SubsequentUsageOf,
+                    NameTag.MandatoryChangeOf,
+                    NameTag.IncorrectSubsequentSpellingOf,
+                    NameTag.NameCombinationOf,
+                ),
+            ):
+                # static analysis: ignore[incompatible_yield]
+                yield tag.name, type(tag)
+
+    def resolve_variant_with_reason(self) -> tuple[Name, set[NameTagCons]]:
+        return self._resolve_variant_with_reason(10)
+
+    def _resolve_variant_with_reason(
+        self, max_depth: int
+    ) -> tuple[Name, set[NameTagCons]]:
+        if max_depth == 0:
+            raise ValueError(f"too deep for {self}")
+        base_name_reasons = list(self.get_variant_base_name_with_reason())
+        if not base_name_reasons:
+            return self, set()
+        new_bases = set()
+        new_reasons = set()
+        for base_name, reason in base_name_reasons:
+            new_base, extra_reasons = base_name._resolve_variant_with_reason(
+                max_depth - 1
+            )
+            new_bases.add(new_base)
+            new_reasons.add(reason)
+            new_reasons.update(extra_reasons)
+        if len(new_bases) != 1:
+            raise ValueError(f"multiple bases for {self}: {new_bases}")
+        return new_bases.pop(), new_reasons
 
     def is_high_mammal(self) -> bool:
         return (
@@ -1426,6 +1528,7 @@ class Name(BaseModel):
                     NameTag.JustifiedEmendationOf,
                     NameTag.IncorrectOriginalSpellingOf,
                     NameTag.SubsequentUsageOf,
+                    NameTag.MisidentificationOf,
                     NameTag.MandatoryChangeOf,
                     NameTag.IncorrectSubsequentSpellingOf,
                 ),
@@ -1867,7 +1970,11 @@ class Name(BaseModel):
 
         yield "author_tags"
         yield "year"
-        yield "page_described"
+        if not (
+            self.original_citation is not None
+            and self.original_citation.type is ArticleType.WEB
+        ):
+            yield "page_described"
         yield "original_citation"
         if self.original_citation is None:
             yield "verbatim_citation"
@@ -2015,8 +2122,19 @@ class Name(BaseModel):
             ), f"Can only merge synonymous names (not {self})"
         if copy_fields:
             if self.type_tags and into.type_tags:
-                into.type_tags += self.type_tags
-            self._merge_fields(into, exclude={"id"})
+                into.type_tags = [  # type: ignore[assignment]
+                    *into.type_tags,
+                    *[
+                        tag
+                        for tag in self.type_tags
+                        if not isinstance(tag, TypeTag.AuthorityPageLink)
+                    ],
+                ]
+            self._merge_fields(into, exclude={"id", "tags"})
+        self.redirect(into)
+
+    def redirect(self, into: Name) -> None:
+        assert self != into, "cannot redirect to self"
         self.status = Status.redirect
         self.target = into
 
@@ -2078,10 +2196,22 @@ class Name(BaseModel):
             return self.root_name
 
     def get_normalized_root_name_for_homonymy(self) -> str:
-        if self.group is not Group.species:
-            return self.root_name
-        root_name = self.get_normalized_root_name()
-        return helpers.normalize_root_name_for_homonymy(root_name)
+        match self.group:
+            case Group.species:
+                root_name = self.get_normalized_root_name()
+                return models.name_complex.normalize_root_name_for_homonymy(
+                    root_name, self.species_name_complex
+                )
+            case Group.family:
+                if self.type is not None:
+                    try:
+                        stem = self.type.get_stem()
+                    except ValueError:
+                        pass
+                    else:
+                        if stem is not None:
+                            return stem
+        return self.root_name
 
     def short_description(self) -> str:
         return self.root_name
@@ -2225,6 +2355,58 @@ class Name(BaseModel):
                 ):
                     nams.add(nam)
         return arts, nams
+
+    def get_mapped_classification_entries(self) -> Iterable[models.ClassificationEntry]:
+        if self.original_citation is None:
+            return []
+        return models.ClassificationEntry.select_valid().filter(
+            models.ClassificationEntry.mapped_name == self,
+            models.ClassificationEntry.article == self.original_citation,
+        )
+
+    def make_usage_list(self, style: str = "paper") -> str:
+        usages: dict[Article, str | None] = {}
+        for related_nam in self.taxon.get_names():
+            if related_nam.resolve_variant() == self:
+                for ce in related_nam.classification_entries:
+                    comment_pieces = []
+                    if ce.page is not None:
+                        if ce.page.isnumeric():
+                            comment_pieces.append(f"p. {ce.page}")
+                        else:
+                            comment_pieces.append(ce.page)
+                    usages[ce.article] = (
+                        "; ".join(comment_pieces) if comment_pieces else None
+                    )
+        for tag in self.tags:
+            if isinstance(tag, NameTag.ValidUse):
+                if usages.get(tag.source) is not None:
+                    continue
+                if not tag.comment:
+                    comment = None
+                elif tag.comment[0].isnumeric():
+                    comment = f"p. {tag.comment}"
+                else:
+                    comment = tag.comment
+                usages[tag.source] = comment
+        authority = self.taxonomic_authority()
+        lines = [
+            f"### Usages of _{self.original_name}_ {authority} (currently _{self.taxon.valid_name}_)\n\n"
+        ]
+        i = 1
+        for source, comment in sorted(
+            usages.items(), key=lambda pair: pair[0].get_date_object()
+        ):
+            if source.is_unpublished() or source.numeric_year() < 1980:
+                continue
+            if comment is not None:
+                comment_str = f" ({comment})"
+            else:
+                comment_str = ""
+            lines.append(f"- {i}. {source.cite(style)}{comment_str}\n")
+            i += 1
+        lines.append("\n")
+        return "".join(lines)
 
     @classmethod
     def add_hmw_tags(cls, family: str) -> None:
@@ -2429,6 +2611,7 @@ def clean_original_name(original_name: str) -> str:
         original_name.replace("(?)", "")
         .replace("?", "")
         .replace("æ", "ae")
+        .replace("œ", "oe")
         .replace("ë", "e")
         .replace("í", "i")
         .replace("ï", "i")
@@ -2440,18 +2623,20 @@ def clean_original_name(original_name: str) -> str:
         .replace("š", "s")
         .replace("á", "a")
         .replace("ć", "c")
+        .replace(" cf. ", " ")
+        .replace(" aff. ", " ")
     )
     original_name = re.sub(r"\s+", " ", original_name).strip()
+    original_name = re.sub(r", ", " ", original_name)
+    original_name = re.sub(r" [1-9α-ω]\. ", " ", original_name)
     return re.sub(r"([a-z]{2})-([a-z]{2})", r"\1\2", original_name)
 
 
 def infer_corrected_original_name(original_name: str, group: Group) -> str | None:
     original_name = clean_original_name(original_name)
-    if group in (Group.genus, Group.high):
+    if group in (Group.genus, Group.high, Group.family):
         if re.match(r"^[A-Z][a-z]+$", original_name):
             return original_name
-    elif group is Group.family:
-        return None
     elif group is Group.species:
         if re.match(r"^[A-Z][a-z]+( [a-z]+){1,2}$", original_name):
             return original_name
@@ -2461,8 +2646,11 @@ def infer_corrected_original_name(original_name: str, group: Group) -> str | Non
         match = re.match(
             (
                 r"^(?P<genus>[A-Z][a-z]+)( \([A-Z][a-z]+\))?"
-                r" (?P<species>[A-Z]?[a-z]+)((,? var\.)?"
-                r" (?P<subspecies>[A-Z]?[a-z]+))?$"
+                r" (?P<species>[A-Z]?[a-z]+)"
+                r"((,? var\.)? (?P<subspecies>[A-Z]?[a-z]+))?$"
+                # We can't support infrasubspecific names here
+                # because then names like "Buffelus indicus Varietas sondaica"
+                # get inferred as infrasubspecific names instead of subspecific names
             ),
             original_name,
         )
@@ -2559,9 +2747,10 @@ class NameTag(adt.ADT):
     )
     IgnorePreoccupationBy(name=Name, comment=str, tag=32)  # type: ignore[name-defined]
 
-    # ClassificationEntry that a name combination is based on. If this is present, then the
-    # name can get replaced with a name combination from an earlier work.
+    # Deprecated (not necessary) and obsolete.
     MappedClassificationEntry(ce=ClassificationEntry, tag=33)  # type: ignore[name-defined]
+
+    MisidentificationOf(name=Name, comment=NotRequired[str], tag=34)  # type: ignore[name-defined]
 
 
 CONSTRUCTABLE_STATUS_TO_TAG = {
@@ -2574,6 +2763,7 @@ CONSTRUCTABLE_STATUS_TO_TAG = {
     NomenclatureStatus.nomen_novum: NameTag.NomenNovumFor,
     NomenclatureStatus.incorrect_original_spelling: NameTag.IncorrectOriginalSpellingOf,
     NomenclatureStatus.subsequent_usage: NameTag.SubsequentUsageOf,
+    NomenclatureStatus.misidentification: NameTag.MisidentificationOf,
     NomenclatureStatus.name_combination: NameTag.NameCombinationOf,
     NomenclatureStatus.preoccupied: NameTag.PreoccupiedBy,
 }
@@ -2686,9 +2876,12 @@ class TypeTag(adt.ADT):
 
     # Used for subgenera proposed without an associated genus
     NoOriginalParent(tag=56)  # type: ignore[name-defined]
+    # Sources for old names
+    SourceDetail(text=str, source=Article, tag=57)  # type: ignore[name-defined]
 
 
 SOURCE_TAGS = (
+    TypeTag.SourceDetail,
     TypeTag.LocationDetail,
     TypeTag.SpecimenDetail,
     TypeTag.CitationDetail,

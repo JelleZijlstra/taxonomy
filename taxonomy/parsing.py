@@ -205,7 +205,7 @@ lower = C(
         }
     )
 )
-cyrillic_lower = C(sorted(unicode_range("а", "я")))
+cyrillic_lower = C([*sorted(unicode_range("а", "я")), "ѣ"])
 latin_lower = C(sorted(unicode_range("a", "z")))
 special_initials = {
     "Ch",

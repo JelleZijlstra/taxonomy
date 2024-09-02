@@ -139,7 +139,7 @@ class Taxon(BaseModel):
     def group(self) -> Group:
         return helpers.group_of_rank(self.rank)
 
-    def get_names(self) -> Iterable[models.Name]:
+    def get_names(self) -> clirm.Query[models.Name]:
         return models.Name.add_validity_check(self.names)
 
     def sorted_names(self, *, exclude_valid: bool = False) -> list[models.Name]:
@@ -229,14 +229,14 @@ class Taxon(BaseModel):
         if self.rank > rank and self.rank != Rank.unranked:
             raise ValueError(
                 f"{original_taxon} (id = {original_taxon.id}) has no ancestor of rank"
-                f" {rank.name}"
+                f" {rank.display_name}"
             )
         elif self.rank == rank:
             return self
         elif self.parent is None:
             raise ValueError(
                 f"{original_taxon} (id = {original_taxon.id}) has no ancestor of rank"
-                f" {rank.name}"
+                f" {rank.display_name}"
             )
         else:
             return self.parent.parent_of_rank(rank, original_taxon=original_taxon)
@@ -378,7 +378,9 @@ class Taxon(BaseModel):
         if exclude_fn is not None and exclude_fn(self):
             return
         file.write(" " * (4 * depth))
-        file.write(f"{self.rank.name} {self.age.get_symbol()}{self.full_name()}\n")
+        file.write(
+            f"{self.rank.display_name} {self.age.get_symbol()}{self.full_name()}\n"
+        )
         if full:
             data = {"data": self.data, "is_page_root": self.is_page_root}
             for key, value in data.items():
@@ -517,7 +519,7 @@ class Taxon(BaseModel):
         if self.parent is not None:
             self.parent.display_parents(max_depth=max_depth, file=file)
 
-        file.write(f"{self.rank.name} {self.full_name()} ({self.age.name})\n")
+        file.write(f"{self.rank.display_name} {self.full_name()} ({self.age.name})\n")
         file.write(self.base_name.get_description(depth=1))
 
     def get_citation_groups(self) -> dict[models.CitationGroup, list[models.Name]]:
@@ -925,7 +927,7 @@ class Taxon(BaseModel):
         else:
             assert (
                 False
-            ), f"Cannot add nominate subtaxon of {self} of rank {self.rank.name}"
+            ), f"Cannot add nominate subtaxon of {self} of rank {self.rank.display_name}"
 
         base_name = self.base_name
         taxon = Taxon.make_or_revalidate(rank, base_name, self.age, self)
@@ -980,7 +982,7 @@ class Taxon(BaseModel):
         elif group is Group.high:
             return name.root_name
         elif group is Group.family:
-            return name.root_name + helpers.suffix_of_rank(self.rank)
+            return name.get_family_group_stem() + helpers.suffix_of_rank(self.rank)
         elif group is Group.species:
             if name.status is not Status.valid:
                 if name.corrected_original_name is not None:
@@ -1023,7 +1025,9 @@ class Taxon(BaseModel):
         elif self.rank == Rank.species:
             return f"{genus} {name.root_name}"
         else:
-            assert self.rank == Rank.subspecies, f"Unexpected rank {self.rank.name}"
+            assert (
+                self.rank == Rank.subspecies
+            ), f"Unexpected rank {self.rank.display_name}"
             species = self.parent_of_rank(Rank.species)
             return f"{genus} {species.base_name.root_name} {name.root_name}"
 

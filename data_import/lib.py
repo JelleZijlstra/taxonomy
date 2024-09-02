@@ -4,17 +4,84 @@ import itertools
 import json
 import re
 import unicodedata
-from collections import Counter, defaultdict
+from collections import Counter, defaultdict, deque
 from collections.abc import Callable, Collection, Container, Iterable, Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, NamedTuple
+from typing import Any, Generic, NamedTuple, NotRequired, Self, TypedDict, TypeVar
 
 import Levenshtein
 import unidecode
 
 from taxonomy import getinput, shell
 from taxonomy.db import constants, helpers, models
+from taxonomy.db.constants import AgeClass, Group, Rank
 from taxonomy.db.models import TypeTag
+from taxonomy.db.models.article.article import Article
+from taxonomy.db.models.classification_entry.ce import (
+    ClassificationEntry,
+    ClassificationEntryTag,
+)
+from taxonomy.db.models.name.name import Name
+
+T = TypeVar("T")
+
+
+class PeekingIterator(Generic[T]):
+    def __init__(self, it: Iterable[T]) -> None:
+        self.it = iter(it)
+        self.lookahead: deque[T] = deque()
+
+    def __iter__(self) -> Self:
+        return self
+
+    def __next__(self) -> T:
+        if self.lookahead:
+            return self.lookahead.popleft()
+        return next(self.it)
+
+    def assert_done(self) -> None:
+        try:
+            next(self)
+            raise RuntimeError("Expected end of sequence")
+        except StopIteration:
+            pass
+
+    def advance(self) -> T:
+        try:
+            return next(self)
+        except StopIteration:
+            raise RuntimeError("No more elements") from None
+
+    def advance_until(self, value: T) -> Iterable[T]:
+        while True:
+            try:
+                char = next(self)
+            except StopIteration:
+                raise RuntimeError("Unterminated sequence") from None
+            yield char
+            if char == value:
+                break
+
+    def expect(self, condition: Callable[[T], bool]) -> T:
+        token = self.advance()
+        if not condition(token):
+            raise RuntimeError(f"Unexpected token: {token}")
+        return token
+
+    def peek(self) -> T | None:
+        if not self.lookahead:
+            try:
+                value = next(self.it)
+            except StopIteration:
+                return None
+            self.lookahead.append(value)
+        return self.lookahead[0]
+
+    def next_is(self, condition: Callable[[T], bool]) -> bool:
+        next_token = self.peek()
+        return next_token is not None and condition(next_token)
+
 
 DATA_DIR = Path(__file__).parent / "data"
 NAME_SYNONYMS = {
@@ -238,6 +305,20 @@ class Source(NamedTuple):
     def get_source(self) -> models.Article:
         return models.Article.get(name=self.source)
 
+    def get_data_path(self) -> Path:
+        return DATA_DIR / self.inputfile
+
+
+@dataclass(frozen=True)
+class ArticleSource:
+    source: str
+
+    def get_source(self) -> models.Article:
+        return models.Article.get(name=self.source)
+
+    def get_data_path(self) -> Path:
+        return self.get_source().get_path()
+
 
 class NameConfig(NamedTuple):
     original_name_fixes: Mapping[str, str] = {}
@@ -268,25 +349,40 @@ def get_text(source: Source, encoding: str = "utf-8") -> Iterable[str]:
         yield from f
 
 
-def extract_pages(lines: Iterable[str], *, permissive: bool = False) -> PagesT:
+def _extract_between_dashes(line: str) -> int:
+    match = re.match(r"[\-–—] (\d+) [\-–—]", line)
+    if not match:
+        raise ValueError(f"failed to match {line!r}")
+    return int(match.group(1))
+
+
+PAGE_NO_EXTRACTORS: list[Callable[[str], int]] = [
+    lambda line: int(line.split()[0]),
+    lambda line: int(line.split()[-1]),
+    _extract_between_dashes,
+]
+
+
+def extract_pages(
+    lines: Iterable[str], *, permissive: bool = False, ignore_page_numbers: bool = False
+) -> PagesT:
     """Split the text into pages."""
-    current_page = None
-    current_lines = []
+    current_page = 0 if ignore_page_numbers else None
+    current_lines: list[str] = []
     for line in lines:
         line = line.replace(" ", " ")
         if line.startswith("\x0c"):
-            if current_page is not None:
+            if current_page is not None and current_lines:
                 yield current_page, current_lines
                 current_lines = []
             line = line[1:].strip()
-            try:
-                if re.search(r"^\d+ ", line):
-                    # page number on the left
-                    current_page = int(line.split()[0])
-                else:
-                    # or the right
-                    current_page = int(line.split()[-1])
-            except ValueError as e:
+            for extractor in PAGE_NO_EXTRACTORS:
+                try:
+                    current_page = extractor(line)
+                    break
+                except ValueError:
+                    continue
+            else:
                 if permissive:
                     if current_page is not None:
                         current_page += 1
@@ -295,7 +391,7 @@ def extract_pages(lines: Iterable[str], *, permissive: bool = False) -> PagesT:
                 else:
                     raise ValueError(
                         f"failure extracting from {line!r} while on {current_page}"
-                    ) from e
+                    )
         elif current_page is not None:
             current_lines.append(line)
     # last page
@@ -331,8 +427,10 @@ def split_lines(
     *,
     single_column_pages: Container[int] = frozenset(),
     use_first: bool = False,
+    ignore_close_to_end: bool = False,
     min_column: int = 0,
     dedent_right: bool = True,
+    dedent_left: bool = False,
 ) -> list[str]:
     if not any(line.rstrip() for line in lines):
         return []
@@ -352,6 +450,10 @@ def split_lines(
         else:
             raise NoSplitFound(f"failed to find split for {page}")
     else:
+        if ignore_close_to_end:
+            possible_splits = [
+                split for split in possible_splits if split < max_len - 20
+            ]
         if use_first:
             best_blank = min(possible_splits)
         else:
@@ -364,9 +466,9 @@ def split_lines(
                 len([line for line in second_column if line.startswith(" ")])
                 > num_lines / 2
             ):
-                second_column = [
-                    line[1:] if line.startswith(" ") else line for line in second_column
-                ]
+                second_column = [line.removeprefix(" ") for line in second_column]
+        if dedent_left:
+            first_column = dedent_lines(first_column)
         return first_column + second_column
 
 
@@ -376,7 +478,9 @@ def align_columns(
     single_column_pages: Container[int] = frozenset(),
     use_first: bool = False,
     min_column: int = 0,
+    ignore_close_to_end: bool = False,
     dedent_right: bool = True,
+    dedent_left: bool = False,
 ) -> PagesT:
     """Rearrange the text to separate the two columns on each page."""
     for page, lines in pages:
@@ -384,13 +488,26 @@ def align_columns(
             lines,
             page,
             single_column_pages=single_column_pages,
+            ignore_close_to_end=ignore_close_to_end,
             use_first=use_first,
             min_column=min_column,
             dedent_right=dedent_right,
+            dedent_left=dedent_left,
         )
         if not lines:
             continue
         yield page, lines
+
+
+def merge_lines(lines: Iterable[str]) -> list[str]:
+    new_lines: list[list[str]] = []
+    for line in lines:
+        line = line.rstrip()
+        if new_lines and line and not line[0].isspace() and new_lines[-1][0]:
+            new_lines[-1].append(line)
+        else:
+            new_lines.append([line])
+    return [" ".join(lines) for lines in new_lines]
 
 
 def clean_text(names: DataT, *, clean_labels: bool = True) -> DataT:
@@ -1595,3 +1712,281 @@ def get_type_specimens(*colls: models.Collection) -> dict[str, list[models.Name]
             ):
                 output[spec.base.stringify()].append(nam)
     return output
+
+
+class CEDict(TypedDict):
+    page: str
+    name: str
+    rank: constants.Rank
+    type_locality: NotRequired[str]
+    authority: NotRequired[str]
+    year: NotRequired[str]
+    citation: NotRequired[str]
+    article: Article
+    type_specimen: NotRequired[str]
+    original_combination: NotRequired[str]
+    comment: NotRequired[str]
+    parent: NotRequired[str | None]
+    parent_rank: NotRequired[constants.Rank | None]
+    raw_data: NotRequired[str]
+    page_described: NotRequired[str]
+    textual_rank: NotRequired[str | None]
+    age_class: NotRequired[AgeClass | None]
+
+
+def validate_ce_parents(
+    names: Iterable[CEDict],
+    *,
+    skip_missing_parents: Container[str] = frozenset(),
+    drop_duplicates: bool = False,
+) -> Iterable[CEDict]:
+    name_to_row: dict[tuple[str, constants.Rank], CEDict] = {}
+    for name in names:
+        key = (name["name"], name["rank"])
+        if key in name_to_row:
+            if name["rank"] is Rank.synonym:
+                yield name
+                continue
+            if drop_duplicates:
+                continue
+            raise ValueError(f"duplicate name {name['name']} {name['rank']!r}")
+        name_to_row[(name["name"], name["rank"])] = name
+        if (parent := name.get("parent")) and (parent_rank := name.get("parent_rank")):
+            if (
+                parent,
+                parent_rank,
+            ) not in name_to_row and parent not in skip_missing_parents:
+                raise ValueError(
+                    f"parent {parent} {parent_rank!r} not found for {name['name']} {name['rank']!r}"
+                )
+        yield name
+
+
+def rank_key(rank: Rank) -> int:
+    if rank is Rank.synonym:
+        return -1
+    else:
+        return rank.value
+
+
+def insert_genera_and_species(names: Iterable[CEDict]) -> Iterable[CEDict]:
+    seen_names: set[str] = set()
+    for name in names:
+        seen_names.add(name["name"])
+        pieces = name["name"].replace("?", "").strip().split()
+        assert all(len(piece) > 2 for piece in pieces), f"unexpected name: {name}"
+        if name["rank"] in (Rank["species"], Rank["subspecies"]):
+            genus_name = pieces[0]
+            if genus_name not in seen_names:
+                genus_dict: CEDict = {
+                    "page": name["page"],
+                    "name": genus_name,
+                    "rank": Rank.genus,
+                    "article": name["article"],
+                }
+                seen_names.add(genus_name)
+                yield genus_dict
+        if name["rank"] is Rank.subspecies:
+            gen, sp, ssp = name["name"].split()
+            species_name = f"{gen} {sp}"
+            if species_name not in seen_names:
+                species_dict: CEDict = {
+                    "page": name["page"],
+                    "name": species_name,
+                    "rank": Rank.species,
+                    "article": name["article"],
+                }
+                if "authority" in name:
+                    species_dict["authority"] = name["authority"]
+                if "year" in name:
+                    species_dict["year"] = name["year"]
+                seen_names.add(species_name)
+                yield species_dict
+        yield name
+
+
+def no_childless_ces(
+    names: Iterable[CEDict], min_rank: Rank = Rank.species
+) -> Iterable[CEDict]:
+    last_name = None
+    min_key = rank_key(min_rank)
+    for name in names:
+        if last_name is not None:
+            last_rank = rank_key(last_name["rank"])
+            if last_rank > min_key and rank_key(name["rank"]) >= last_rank:
+                raise ValueError(f"childless name: {last_name}")
+        yield name
+        last_name = name
+
+
+def add_parents(names: Iterable[CEDict]) -> Iterable[CEDict]:
+    parent_stack: list[tuple[Rank, str]] = []
+    for name in names:
+        rank = rank_key(name["rank"])
+        while parent_stack and rank_key(parent_stack[-1][0]) <= rank:
+            parent_stack.pop()
+
+        if parent_stack:
+            expected_parent_rank, expected_parent = parent_stack[-1]
+            if "parent" in name:
+                if name["parent"] != expected_parent:
+                    print(f"Expected parent: {expected_parent}, got: {name['parent']}")
+            else:
+                name["parent"] = expected_parent
+            if "parent_rank" in name:
+                if name["parent_rank"] != expected_parent_rank:
+                    print(
+                        f"Expected parent rank: {expected_parent_rank!r}, got: {name['parent_rank']!r}"
+                    )
+            else:
+                name["parent_rank"] = expected_parent_rank
+        parent_stack.append((name["rank"], name["name"]))
+        yield name
+
+
+def format_ces(source: Source | ArticleSource, *, format_name: bool = True) -> None:
+    art = source.get_source()
+    for ce in art.get_classification_entries():
+        ce.load()
+        ce.format(quiet=True, format_mapped=format_name)
+        ce.edit_until_clean()
+
+
+def print_unrecognized_genera(names: Iterable[CEDict]) -> Iterable[CEDict]:
+    for name in names:
+        if name["rank"] is Rank.genus:
+            try:
+                Name.select_valid().filter(
+                    Name.root_name == name["name"], Name.group == Group.genus
+                ).get()
+            except Name.DoesNotExist:
+                print(name)
+        yield name
+
+
+def count_by_rank(names: Iterable[CEDict], rank: Rank) -> Iterable[CEDict]:
+    current_order = None
+    count = 0
+    for name in names:
+        if name["rank"] is rank:
+            if current_order is not None:
+                print(rank.name, current_order, count)
+            current_order = name["name"]
+            count = 0
+        if name["rank"] is Rank.species:
+            count += 1
+        yield name
+    print(rank.name, current_order, count)
+
+
+def add_classification_entries(
+    names: Iterable[CEDict], *, dry_run: bool = True, max_count: int | None = None
+) -> Iterable[CEDict]:
+    for i, name in enumerate(names):
+        if max_count is not None and i >= max_count:
+            break
+
+        page = name["page"]
+        taxon_name = name["name"]
+        rank = name["rank"]
+        type_locality = name.get("type_locality")
+        authority = name.get("authority")
+        year = name.get("year")
+        citation = name.get("citation")
+        art = name["article"]
+        if name.get("raw_data"):
+            raw_data = name["raw_data"]
+        else:
+            raw_data = json.dumps(
+                {key: value for key, value in name.items() if key != "article"},
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
+        tags = []
+        if name.get("type_specimen"):
+            tags.append(ClassificationEntryTag.TypeSpecimenData(name["type_specimen"]))
+        if name.get("comment"):
+            tags.append(ClassificationEntryTag.CommentFromSource(name["comment"]))
+        if name.get("original_combination"):
+            tags.append(
+                ClassificationEntryTag.OriginalCombination(name["original_combination"])
+            )
+        if name.get("page_described"):
+            tags.append(
+                ClassificationEntryTag.OriginalPageDescribed(name["page_described"])
+            )
+        if name.get("textual_rank"):
+            tags.append(ClassificationEntryTag.TextualRank(name["textual_rank"]))
+        if name.get("age_class"):
+            tags.append(ClassificationEntryTag.AgeClassCE(name["age_class"]))
+        try:
+            existing = ClassificationEntry.get(name=taxon_name, rank=rank, article=art)
+        except ClassificationEntry.DoesNotExist:
+            pass
+        else:
+            print(f"already exists: {existing}")
+            if page and not existing.page:
+                print(f"{existing}: adding page {page}")
+                if not dry_run:
+                    existing.page = page
+            if type_locality and not existing.type_locality:
+                print(f"{existing}: adding type locality {type_locality}")
+                if not dry_run:
+                    existing.type_locality = type_locality
+            if authority and not existing.authority:
+                print(f"{existing}: adding authority {authority}")
+                if not dry_run:
+                    existing.authority = authority
+            if year and not existing.year:
+                print(f"{existing}: adding year {year}")
+                if not dry_run:
+                    existing.year = year
+            if citation and not existing.citation:
+                print(f"{existing}: adding citation {citation}")
+                if not dry_run:
+                    existing.citation = citation
+            for tag in tags:
+                tag_type = type(tag)
+                if not any(isinstance(t, tag_type) for t in existing.tags):
+                    print(f"{existing}: adding tag {tag}")
+                    if not dry_run:
+                        existing.tags = [*existing.tags, tag]
+            continue
+        print(f"Add: {rank.name} {taxon_name}")
+        if not dry_run:
+            if not name.get("parent"):
+                parent = None
+            else:
+                parent_rank = name["parent_rank"]
+                parent_name = name["parent"]
+                try:
+                    parent = ClassificationEntry.get(
+                        name=parent_name, rank=parent_rank, article=art
+                    )
+                except ClassificationEntry.DoesNotExist:
+                    print(f"parent {parent_name} {parent_rank!r} not found")
+                    parent = None
+            new_ce = ClassificationEntry.create(
+                article=art,
+                name=taxon_name,
+                rank=rank,
+                parent=parent,
+                authority=authority,
+                year=year,
+                citation=citation,
+                type_locality=type_locality,
+                raw_data=raw_data,
+                page=page,
+            )
+            if tags:
+                new_ce.tags = tags  # type: ignore[assignment]
+            print(f"name {i}:", new_ce)
+        yield name
+
+
+def print_ce_summary(names: Iterable[CEDict]) -> None:
+    names = list(names)
+    print(f"Count: {len(names)} names")
+    print_field_counts(dict(n) for n in names)
+    for rank, count in Counter(n["rank"] for n in names).items():
+        print(f"{count} {rank.name}")

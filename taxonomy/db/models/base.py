@@ -205,7 +205,7 @@ class BaseModel(Model):
         cfg: LintConfig = LintConfig(interactive=False, autofix=False),
     ) -> bool:
         messages = list(self.general_lint(cfg))
-        if extra_linter is not None:
+        if extra_linter is not None and not self.is_invalid():
             messages += extra_linter(self, cfg)
         if not messages:
             return True
@@ -374,16 +374,15 @@ class BaseModel(Model):
                                 f" {field}"
                             )
             elif field_obj.type_object is str:
-                allow_newlines = isinstance(field_obj, (TextField, TextOrNullField))
                 if self.should_exempt_from_string_cleaning(field):
-                    cleaned = value
-                else:
-                    cleaned = helpers.interactive_clean_string(
-                        value,
-                        clean_whitespace=not allow_newlines,
-                        verbose=True,
-                        interactive=cfg.interactive,
-                    )
+                    continue
+                allow_newlines = isinstance(field_obj, (TextField, TextOrNullField))
+                cleaned = helpers.interactive_clean_string(
+                    value,
+                    clean_whitespace=not allow_newlines,
+                    verbose=True,
+                    interactive=cfg.interactive,
+                )
                 if cleaned != value:
                     message = (
                         f"{self} (#{self.id}): field {field}: clean {value!r} ->"
@@ -577,7 +576,7 @@ class BaseModel(Model):
         return f"/{self.call_sign.lower()}/{self.id}"
 
     def get_absolute_url(self) -> str:
-        return f"http://hesperomys.com{self.get_url()}"
+        return f"https://hesperomys.com{self.get_url()}"
 
     @classmethod
     def select_for_field(cls, field: str | None) -> Any:
@@ -823,39 +822,57 @@ class BaseModel(Model):
             raise ValueError(f"don't know how to fill {field}")
 
     @classmethod
-    def get_value_for_field_on_class(cls, field: str, default: Any = "") -> Any:
+    def get_value_for_field_on_class(
+        cls, field: str, default: Any = "", *, callbacks: getinput.CallbackMap = {}
+    ) -> Any:
         field_obj = getattr(cls, field)
         prompt = f"{field}> "
         if issubclass(field_obj.type_object, Model):
-            return cls.get_value_for_foreign_key_field_on_class(field)
+            return cls.get_value_for_foreign_key_field_on_class(
+                field, callbacks=callbacks
+            )
         elif isinstance(field_obj, ADTField):
             return getinput.get_adt_list(
                 field_obj.adt_type,
                 prompt=prompt,
                 completers=cls.get_completers_for_adt_field(field),
+                callbacks=callbacks,
             )
         elif isinstance(field_obj, (TextField, TextOrNullField)):
             return (
-                getinput.get_line(prompt, default=default, mouse_support=True) or None
+                getinput.get_line(
+                    prompt, default=default, mouse_support=True, callbacks=callbacks
+                )
+                or None
             )
         elif field_obj.type_object is str:
-            return cls.getter(field).get_one_key(prompt, default=default) or None
+            return (
+                cls.getter(field).get_one_key(
+                    prompt, default=default, callbacks=callbacks
+                )
+                or None
+            )
         elif issubclass(field_obj.type_object, enum.Enum):
             if default == "":
                 default = None
             if default is None and field in cls.field_defaults:
                 default = cls.field_defaults[field]
             return getinput.get_enum_member(
-                field_obj.type_object, prompt=prompt, default=default
+                field_obj.type_object,
+                prompt=prompt,
+                default=default,
+                callbacks=callbacks,
             )
         elif field_obj.type_object is int:
-            result = getinput.get_line(prompt, default=default, mouse_support=True)
+            result = getinput.get_line(
+                prompt, default=default, mouse_support=True, callbacks=callbacks
+            )
             if result == "" or result is None:
                 return None
             else:
                 return int(result)
         elif field_obj.type_object is bool:
-            return getinput.yes_no(prompt, default=default)
+            return getinput.yes_no(prompt, default=default, callbacks=callbacks)
         else:
             raise ValueError(f"don't know how to fill {field}")
 
@@ -873,6 +890,7 @@ class BaseModel(Model):
             **get_static_callbacks(),
             **field_editors,
             **self.get_tag_callbacks(),
+            **self.get_shareable_adt_callbacks(),
             "d": self.display,
             "f": lambda: self.display(full=True),
             "foreign": self.edit_foreign,
@@ -891,6 +909,9 @@ class BaseModel(Model):
             "lint_and_fix": self.lint_and_fix,
             "edit_derived_field": self.edit_derived_field,
         }
+
+    def get_shareable_adt_callbacks(self) -> getinput.CallbackMap:
+        return {}
 
     def get_tag_callbacks(self) -> getinput.CallbackMap:
         def make_tag_callback(field: ADTField[Any], member: str) -> Callable[[], None]:
@@ -1070,13 +1091,16 @@ class BaseModel(Model):
         )
 
     def edit_until_clean(self, *, initial_edit: bool = False) -> None:
-        if initial_edit:
-            self.edit()
-        while not self.is_lint_clean():
-            self.display()
-            self.edit()
-            self = self.reload()
-            self.format()
+        try:
+            if initial_edit:
+                self.edit()
+            while not self.is_lint_clean():
+                self.display()
+                self.edit()
+                self.reload()
+                self.format()
+        except getinput.StopException:
+            pass
 
     @classmethod
     def get_completers_for_adt_field(cls, field: str) -> getinput.CompleterMap:
@@ -1236,6 +1260,14 @@ class BaseModel(Model):
 
     def markdown_link(self) -> str:
         return f"[{self!s}]({self.get_url()})"
+
+    @classmethod
+    def get_from_key(cls: type[ModelT], key: str) -> ModelT | None:
+        getter = cls.getter(None)
+        try:
+            return getter(key)
+        except cls.DoesNotExist:
+            return None
 
     @classmethod
     def create_interactively(cls: type[ModelT], **kwargs: Any) -> ModelT | None:
@@ -1604,6 +1636,7 @@ def get_static_callbacks() -> getinput.CallbackMap:
         **commands,
         **flexible_commands,
         ":h": lambda: _call_obj(taxonomy.lib.h, use_default=True),
+        ":hp": lambda: _call_obj(taxonomy.lib.hp, use_default=True),
         "RootName": lambda: models.Name.getter("root_name").get_and_edit(),
     }
 

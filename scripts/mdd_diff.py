@@ -59,8 +59,8 @@ class MddRow(TypedDict):
     originalNameCombination: str
     authoritySpeciesCitation: str
     authoritySpeciesLink: str
-    holotypeVoucher: str
-    holotypeVoucherURIs: str
+    typeVoucher: str
+    typeVoucherURIs: str
     typeLocality: str
     typeLocalityLatitude: str
     typeLocalityLongitude: str
@@ -574,7 +574,7 @@ def compare_single(
             taxon=taxon,
         )
 
-    mdd_type = process_mdd_type(mdd_row["holotypeVoucher"])
+    mdd_type = process_mdd_type(mdd_row["typeVoucher"])
     hesp_type_nam = _get_hesp_type_specimen_name(nam)
     hesp_type = clean_hesp_type(hesp_type_nam)
     if hesp_type is not None and mdd_type is None:
@@ -588,16 +588,16 @@ def compare_single(
     elif hesp_type is None and mdd_type is not None:
         yield Difference(
             DifferenceKind.type_specimen_missing_hesp,
-            mdd=mdd_row["holotypeVoucher"],
+            mdd=mdd_row["typeVoucher"],
             hesp=None,
             mdd_id=mdd_id,
             taxon=taxon,
         )
     elif hesp_type != mdd_type:
-        print(f"{hesp_type!r} vs. {mdd_type!r} (from {mdd_row['holotypeVoucher']!r})")
+        print(f"{hesp_type!r} vs. {mdd_type!r} (from {mdd_row['typeVoucher']!r})")
         yield Difference(
             DifferenceKind.type_specimen,
-            mdd=mdd_row["holotypeVoucher"],
+            mdd=mdd_row["typeVoucher"],
             hesp=hesp_type_nam.type_specimen,
             mdd_id=mdd_id,
             taxon=taxon,

@@ -293,7 +293,11 @@ def check_year(art: Article, cfg: LintConfig) -> Iterable[str]:
 
     if inferred is not None and inferred != art.year:
         # Ignore obviously wrong ones (though eventually we should retire this)
-        if inferred.startswith("20") and art.numeric_year() < 1990:
+        if (
+            inferred.startswith("20")
+            and art.year is not None
+            and art.numeric_year() < 1990
+        ):
             return
         is_more_specific = helpers.is_more_specific_date(inferred, art.year)
         if is_more_specific:
@@ -565,18 +569,18 @@ def check_url(art: Article, cfg: LintConfig) -> Iterable[str]:
                 art.url = None
             else:
                 yield message
+        case _:
+            stringified = str(parsed_url)
+            if stringified != art.url:
+                message = f"reformatted url to {parsed_url} from {art.url}"
+                if cfg.autofix:
+                    print(f"{art}: {message}")
+                    art.url = stringified
+                else:
+                    yield message
 
-    stringified = str(parsed_url)
-    if stringified != art.url:
-        message = f"reformatted url to {parsed_url} from {art.url}"
-        if cfg.autofix:
-            print(f"{art}: {message}")
-            art.url = stringified
-        else:
-            yield message
-
-    for message in parsed_url.lint():
-        yield f"URL {art.url}: {message}"
+            for message in parsed_url.lint():
+                yield f"URL {art.url}: {message}"
 
 
 @LINT.add("doi")
@@ -601,7 +605,7 @@ def check_doi(art: Article, cfg: LintConfig) -> Iterable[str]:
             yield message
 
 
-@LINT.add("bhl_item_from_bibliography")
+@LINT.add("bhl_item_from_bibliography", requires_network=True)
 def bhl_item_from_bibliography(art: Article, cfg: LintConfig) -> Iterable[str]:
     if art.url is None:
         return
@@ -619,7 +623,7 @@ def bhl_item_from_bibliography(art: Article, cfg: LintConfig) -> Iterable[str]:
                     yield message
 
 
-@LINT.add("bhl_part_from_page")
+@LINT.add("bhl_part_from_page", requires_network=True)
 def bhl_part_from_page(art: Article, cfg: LintConfig) -> Iterable[str]:
     if art.url is None or art.title is None:
         return
@@ -679,7 +683,7 @@ def must_have_bhl_url_from_names(art: Article, cfg: LintConfig) -> Iterable[str]
     yield f"has new names with BHL page IDs {bhl_page_ids} but no BHL URL"
 
 
-@LINT.add("bhl_page_from_names")
+@LINT.add("bhl_page_from_names", requires_network=True)
 def infer_bhl_page_from_names(art: Article, cfg: LintConfig) -> Iterable[str]:
     if not should_look_for_bhl_url(art):
         if cfg.verbose:
@@ -856,7 +860,7 @@ def must_have_bhl_link(art: Article, cfg: LintConfig) -> Iterable[str]:
     yield "should have BHL link"
 
 
-@LINT.add("bhl_page")
+@LINT.add("bhl_page", requires_network=True)
 def infer_bhl_page(art: Article, cfg: LintConfig = LintConfig()) -> Iterable[str]:
     if not should_look_for_bhl_url(art):
         return
@@ -970,7 +974,7 @@ def get_inferred_bhl_page(art: Article, cfg: LintConfig) -> bhl.PossiblePage | N
     return None
 
 
-@LINT.add("bhl_page_from_other_articles")
+@LINT.add("bhl_page_from_other_articles", requires_network=True)
 def infer_bhl_page_from_other_articles(
     art: Article, cfg: LintConfig = LintConfig()
 ) -> Iterable[str]:
@@ -1033,7 +1037,6 @@ def get_inferred_bhl_page_from_articles(art: Article, cfg: LintConfig) -> int | 
             if cfg.verbose:
                 print(f"{other_art}: no URL")
             continue
-        existing_page_id = 0  # TODO: fix pyanalyze
         match urlparse.parse_url(other_art.url):
             case urlparse.BhlPage(page_id):
                 existing_page_id = page_id
@@ -1674,6 +1677,8 @@ def check_must_use_children(art: Article, cfg: LintConfig) -> Iterable[str]:
         )
         if cfg.interactive:
             for ref in refs:
+                if not hasattr(ref, field.name):
+                    continue
                 ref.display()
                 ref.fill_field(field.name)
     for field in Article.derived_fields:
@@ -1744,7 +1749,7 @@ def specify_authors(art: Article, cfg: LintConfig) -> Iterable[str]:
     yield "has initials-only authors"
 
 
-@LINT.add("find_doi", disabled=True)  # false positives
+@LINT.add("find_doi", disabled=True, requires_network=True)  # false positives
 def find_doi(art: Article, cfg: LintConfig) -> Iterable[str]:
     if art.doi is not None or art.has_tag(ArticleTag.JSTOR):
         return
@@ -1894,7 +1899,7 @@ def dupe_journal_with_title(art: Article) -> tuple[object, ...] | None:
     )
 
 
-@LINT.add("data_from_doi")
+@LINT.add("data_from_doi", requires_network=True)
 def data_from_doi(art: Article, cfg: LintConfig) -> Iterable[str]:
     if (
         art.doi is None

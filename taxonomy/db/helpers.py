@@ -17,7 +17,14 @@ from taxonomy import getinput
 from . import constants
 from .constants import Group, Rank
 
-SPECIES_RANKS = [Rank.subspecies, Rank.species, Rank.species_group]
+SPECIES_RANKS = [
+    Rank.subspecies,
+    Rank.species,
+    Rank.species_group,
+    Rank.variety,
+    Rank.form,
+    Rank.infrasubspecific,
+]
 GENUS_RANKS = [Rank.subgenus, Rank.genus]
 FAMILY_RANKS = [
     Rank.infratribe,
@@ -115,7 +122,7 @@ def group_of_rank(rank: Rank) -> Group:
         return Group.species
     elif rank in GENUS_RANKS:
         return Group.genus
-    elif rank in FAMILY_RANKS or rank == 34 or rank == 24:
+    elif rank in FAMILY_RANKS or rank in (34, 24):
         return Group.family
     elif rank in HIGH_RANKS or rank > Rank.hyperfamily:
         return Group.high
@@ -519,8 +526,9 @@ TABLE = {
     "э": "e",
     "ю": "yu",
     "я": "ya",
+    "ѣ": "e",
 }
-NEED_Y = {"а", "и", "й", "о", "ы", "э", "ю", "я", "ъ", "ь", "е", "ё"}
+NEED_Y = {"а", "и", "й", "о", "ы", "э", "ю", "я", "ъ", "ь", "е", "ё", "ѣ"}
 
 
 def romanize_russian(cyrillic: str) -> str:
@@ -863,97 +871,106 @@ def clean_string(text: str, *, clean_whitespace: bool = True) -> str:
     text (e.g., for cleaning up user input).
 
     """
-    text = unicodedata.normalize("NFC", text)
-    text = text.replace(" \xad ", "")
-    text = text.replace("\xad", "")
-    text = text.replace("’", "'")
-    text = text.replace("′", "'")
-    text = text.replace("ʹ", "'")
-    text = text.replace("‐", "-")  # use ASCII hyphen
-    text = text.replace("◦", "°")
-    text = re.sub(r"[“”]", '"', text)
-    text = re.sub(r"(\d)\x01(\d)", r"\1-\2", text)
-    text = re.sub(r"(\d)\x02(?!\d)", r"\1'", text)
-    text = re.sub(r"(\N{DEGREE SIGN}\s*\d+)\x01", r"\1'", text)
-    text = re.sub(r"('\s*\d+)\x01\x01", r'\1"', text)
-    text = re.sub(r"(\d)\x96(\d)", r"\1-\2", text)
-    text = text.replace("u€", "ü")
-    text = text.replace("o€", "ö")
-    text = text.replace("€a", "ä")
-    text = text.replace("\x18a", "à")
-    text = text.replace("\x18e", "è")
-    text = text.replace("\x19a", "á")
-    text = text.replace("\x19e", "é")
-    text = text.replace("\x19ı", "í")
-    text = text.replace("\x19o", "ó")
-    text = text.replace("\x19u", "ú")
-    text = text.replace("a\x18", "à")
-    text = text.replace("a\x19", "á")
-    text = text.replace("e\x19", "é")
-    text = text.replace("ı\x19", "í")
-    text = text.replace("o\x19", "ó")
-    text = text.replace("u\x19", "ú")
-    text = text.replace("e\x18", "è")
-    text = re.sub(r"([aeiouAEIOU]) ̈", r"\1" + "\N{COMBINING DIAERESIS}", text)
-    text = re.sub(r"([aeiouAEIOUnN]) ̃", r"\1" + "\N{COMBINING TILDE}", text)
-    text = re.sub(r"([aeiouAEIOUnN]) ́", r"\1" + "\N{COMBINING ACUTE ACCENT}", text)
-    text = re.sub(r"([aeiouAEIOU]) ̀", r"\1" + "\N{COMBINING GRAVE ACCENT}", text)
-    text = re.sub(r"([aeiouAEIOU]) ̂", r"\1" + "\N{COMBINING CIRCUMFLEX ACCENT}", text)
-    text = re.sub(r"([aeiouAEIOUcC]) ̌", r"\1" + "\N{COMBINING CARON}", text)
-    text = re.sub(r"([aeiouAEIOU]) ̆", r"\1" + "\N{COMBINING BREVE}", text)
-    text = re.sub(r"([aeiouAEIOU]) ̄", r"\1" + "\N{COMBINING MACRON}", text)
-    text = re.sub(r"([aeiouAEIOU]) ̊", r"\1" + "\N{COMBINING RING ABOVE}", text)
-    text = re.sub(r"([aeiouAEIOU]) ̋", r"\1" + "\N{COMBINING DOUBLE ACUTE ACCENT}", text)
-    text = re.sub(r"([cCsStT]) ̧", r"\1" + "\N{COMBINING CEDILLA}", text)
-    text = text.replace(" ́ı", "í")
-    text = text.replace("ı́", "í")
-    text = text.replace("ı̈", "ï")
-    text = text.replace(" d ́", " d'")
-    text = text.replace(" l ́", " l'")
-    text = text.replace(" ́s ", "'s ")
-    text = text.replace("ü̈", "ü")
-    text = text.replace("ö̈", "ö")
-    text = re.sub(r"(?<=\d) ́", "'", text)
-    text = re.sub(r"(?<=\d) ̋", '"', text)
-    text = re.sub(r"(?<=\d) ̊", "\N{DEGREE SIGN}", text)
-    text = text.replace("' ́", "''")
-    # fallbacks: sometimes it's before the letter instead
-    text = re.sub(r" ̧([cCsStT])", r"\1" + "\N{COMBINING CEDILLA}", text)
-    text = re.sub(r" ́([aeiouAEIOUnN])", r"\1" + "\N{COMBINING ACUTE ACCENT}", text)
-    text = text.replace("\N{LEFT SINGLE QUOTATION MARK}", "'")
-    text = text.replace("\U0010ff4e", "'")
-    text = text.replace("*\U0010fc0d", "°")
-    text = text.replace("'\U0010fc01", "'")
-    text = text.replace('"\U0010fc08', '"')
-    text = text.replace("\U0010fc03[M]", "\N{MALE SIGN}")
-    text = text.replace("\U0010fe1f[M]", "\N{MALE SIGN}")
-    text = text.replace("\U0010fc00[M]", "\N{MALE SIGN}")
-    text = text.replace("\U0010fe20[F]", "\N{FEMALE SIGN}")
-    text = text.replace("\U0010fc04", "\N{MULTIPLICATION SIGN}")
-    text = text.replace("\U0010fc03+", "+")
-    text = text.replace("\x92", "'")
-    text = text.replace("\x94", '"')
-    text = text.replace("\x97", "–")
-    text = text.replace("\U0010fd79 ", "")
-    text = text.replace("\U0010fc25 ", "")
-    text = text.replace("\U0010fc44", "=")
-    text = text.replace("\U0010fc00", "=")
-    text = text.replace("\uf8e7", "\N{EM DASH}")
-    text = text.replace("\U0010fc94", "≈")
-    text = re.sub(r" -+(?= )", " \N{EN DASH}", text)
+    # As an optimization, skip various expensive transformations if we know we
+    # don't need them.
+    if not text.isascii():
+        text = unicodedata.normalize("NFC", text)
+        text = text.replace("’", "'")
+        text = text.replace("′", "'")
+        text = text.replace("ʹ", "'")
+        text = text.replace("‐", "-")  # use ASCII hyphen
+        text = text.replace("◦", "°")
+        text = re.sub(r"[“”]", '"', text)
+        text = re.sub(r"(\N{DEGREE SIGN}\s*\d+)\x01", r"\1'", text)
+        text = text.replace("u€", "ü")
+        text = text.replace("o€", "ö")
+        text = text.replace("€a", "ä")
+        text = re.sub(r"([aeiouAEIOU]) ̈", r"\1" + "\N{COMBINING DIAERESIS}", text)
+        text = re.sub(r"([aeiouAEIOUnN]) ̃", r"\1" + "\N{COMBINING TILDE}", text)
+        text = re.sub(r"([aeiouAEIOUnN]) ́", r"\1" + "\N{COMBINING ACUTE ACCENT}", text)
+        text = re.sub(r"([aeiouAEIOU]) ̀", r"\1" + "\N{COMBINING GRAVE ACCENT}", text)
+        text = re.sub(
+            r"([aeiouAEIOU]) ̂", r"\1" + "\N{COMBINING CIRCUMFLEX ACCENT}", text
+        )
+        text = re.sub(r"([aeiouAEIOUcC]) ̌", r"\1" + "\N{COMBINING CARON}", text)
+        text = re.sub(r"([aeiouAEIOU]) ̆", r"\1" + "\N{COMBINING BREVE}", text)
+        text = re.sub(r"([aeiouAEIOU]) ̄", r"\1" + "\N{COMBINING MACRON}", text)
+        text = re.sub(r"([aeiouAEIOU]) ̊", r"\1" + "\N{COMBINING RING ABOVE}", text)
+        text = re.sub(
+            r"([aeiouAEIOU]) ̋", r"\1" + "\N{COMBINING DOUBLE ACUTE ACCENT}", text
+        )
+        text = re.sub(r"([cCsStT]) ̧", r"\1" + "\N{COMBINING CEDILLA}", text)
+        text = text.replace(" ́ı", "í")
+        text = text.replace("ı́", "í")
+        text = text.replace("ı̈", "ï")
+        text = text.replace(" d ́", " d'")
+        text = text.replace(" l ́", " l'")
+        text = text.replace(" ́s ", "'s ")
+        text = text.replace("ü̈", "ü")
+        text = text.replace("ö̈", "ö")
+        text = re.sub(r"(?<=\d) ́", "'", text)
+        text = re.sub(r"(?<=\d) ̋", '"', text)
+        text = re.sub(r"(?<=\d) ̊", "\N{DEGREE SIGN}", text)
+        text = text.replace("' ́", "''")
+        # fallbacks: sometimes it's before the letter instead
+        text = re.sub(r" ̧([cCsStT])", r"\1" + "\N{COMBINING CEDILLA}", text)
+        text = re.sub(r" ́([aeiouAEIOUnN])", r"\1" + "\N{COMBINING ACUTE ACCENT}", text)
+        text = text.replace("\N{LEFT SINGLE QUOTATION MARK}", "'")
+        text = text.replace("\U0010ff4e", "'")
+        text = text.replace("*\U0010fc0d", "°")
+        text = text.replace("'\U0010fc01", "'")
+        text = text.replace('"\U0010fc08', '"')
+        text = text.replace("\U0010fc03[M]", "\N{MALE SIGN}")
+        text = text.replace("\U0010fe1f[M]", "\N{MALE SIGN}")
+        text = text.replace("\U0010fc00[M]", "\N{MALE SIGN}")
+        text = text.replace("\U0010fe20[F]", "\N{FEMALE SIGN}")
+        text = text.replace("\U0010fc04", "\N{MULTIPLICATION SIGN}")
+        text = text.replace("\U0010fc03+", "+")
+        text = text.replace("\U0010fd79 ", "")
+        text = text.replace("\U0010fc25 ", "")
+        text = text.replace("\U0010fc44", "=")
+        text = text.replace("\U0010fc00", "=")
+        text = text.replace("\uf8e7", "\N{EM DASH}")
+        text = text.replace("\U0010fc94", "≈")
+        text = re.sub(r"(\d)\x96(\d)", r"\1-\2", text)
+        text = text.replace("\x92", "'")
+        text = text.replace("\x94", '"')
+        text = text.replace("\x97", "–")
+        text = text.replace(" \xad ", "")
+        text = text.replace("\xad", "")
+        text = text.replace("\x91%", "\N{DEGREE SIGN}")
+    if not text.isprintable():
+        text = re.sub(r"(\d)\x01(\d)", r"\1-\2", text)
+        text = re.sub(r"(\d)\x02(?!\d)", r"\1'", text)
+        text = re.sub(r"('\s*\d+)\x01\x01", r'\1"', text)
+        text = text.replace("\x18a", "à")
+        text = text.replace("\x18e", "è")
+        text = text.replace("\x19a", "á")
+        text = text.replace("\x19e", "é")
+        text = text.replace("\x19ı", "í")
+        text = text.replace("\x19o", "ó")
+        text = text.replace("\x19u", "ú")
+        text = text.replace("a\x18", "à")
+        text = text.replace("a\x19", "á")
+        text = text.replace("e\x19", "é")
+        text = text.replace("ı\x19", "í")
+        text = text.replace("o\x19", "ó")
+        text = text.replace("u\x19", "ú")
+        text = text.replace("e\x18", "è")
     text = text.replace("+/-", "±")
     text = text.replace("''", '"')
-    text = text.replace(" :- ", ": \N{EN DASH} ")
-    text = text.replace("\x91%", "\N{DEGREE SIGN}")
-    text = re.sub(r"([A-Z])- (\d)", r"\1-\2", text)
-    text = re.sub(r"(\d)- ([A-Za-z\d])", r"\1-\2", text)
-    text = re.sub(r"([A-Z])\.- ([A-Z])\.", r"\1.-\2.", text)
-    text = re.sub(r"([a-zа-я])- ([A-ZА-Я])", r"\1-\2", text)
-    text = re.sub(r"(\d\)|[a-z])\.- ([A-Z])", r"\1.—\2", text)
-    text = re.sub(r"\.- —", r". —", text)
+    if "- " in text:
+        text = text.replace(" :- ", ": \N{EN DASH} ")
+        text = re.sub(r" -+(?= )", " \N{EN DASH}", text)
+        text = re.sub(r"([A-Z])- (\d)", r"\1-\2", text)
+        text = re.sub(r"(\d)- ([A-Za-z\d])", r"\1-\2", text)
+        text = re.sub(r"([A-Z])\.- ([A-Z])\.", r"\1.-\2.", text)
+        text = re.sub(r"([a-zа-я])- ([A-ZА-Я])", r"\1-\2", text)
+        text = re.sub(r"(\d\)|[a-z])\.- ([A-Z])", r"\1.—\2", text)
+        text = re.sub(r"\.- —", r". —", text)
+        text = re.sub(r"(\d)- (\d)", r"\1-\2", text)
     if clean_whitespace:
         text = re.sub(r"\s+", " ", text)
-    text = re.sub(r"(\d)- (\d)", r"\1-\2", text)
     text = unicodedata.normalize("NFC", text)
     return text.strip()
 
@@ -1162,56 +1179,11 @@ def split_iterable(
     return true_list, false_list
 
 
-def normalize_root_name_for_homonymy(root_name: str) -> str:
-    # See ICZN Art. 58: Certain names are considered equivalent for purposes of homonymy
-    # 58.1. use of ae, oe or e (e.g. caeruleus, coeruleus, ceruleus)
-    root_name = root_name.replace("ae", "e").replace("oe", "e")
-    # 58.2. use of ei, i or y (e.g. cheiropus, chiropus, chyropus)
-    # 58.13. transcription of the semivowel i as y, ei, ej or ij (e.g. guianensis, guyanensis)
-    root_name = (
-        root_name.replace("ei", "i")
-        .replace("y", "i")
-        .replace("ij", "i")
-        .replace("ej", "i")
-    )
-    # 58.7. use of a single or double consonant (e.g. litoralis, littoralis)
-    # Applying this before 58.3 and 58.4 in case there are names with two j or v.
-    root_name = re.sub(r"(?![aeiouy])([a-z])\1", r"\1", root_name)
-    # 58.3. use of i or j for the same Latin letter (e.g. iavanus, javanus; maior, major)
-    root_name = root_name.replace("j", "i")
-    # 58.4. use of u or v for the same Latin letter (e.g. neura, nevra; miluina, milvina)
-    root_name = root_name.replace("v", "u")
-    # 58.5. use of c or k for the same letter (e.g. microdon, mikrodon)
-    root_name = root_name.replace("k", "c")
-    # 58.6. aspiration or non-aspiration of a consonant (e.g. oxyrhynchus, oxyrynchus)
-    # Assuming this refers only to rh, because there are separate rules for ch and th
-    root_name = root_name.replace("rh", "r")
-    # 58.8. presence or absence of c before t (e.g. auctumnalis, autumnalis)
-    root_name = root_name.replace("ct", "t")
-    # 58.9. use of f or ph (e.g. sulfureus, sulphureus)
-    root_name = root_name.replace("ph", "f")
-    # 58.10. use of ch or c (e.g. chloropterus, cloropterus)
-    root_name = root_name.replace("ch", "c")
-    # 58.11. use of th or t (e.g. thiara, tiara; clathratus, clatratus)
-    root_name = root_name.replace("th", "t")
-    # 58.12. use of different connecting vowels in compound words (e.g. nigricinctus, nigrocinctus)
-    # omitted for now
-    # 58.14. use of -i or -ii, -ae or -iae, -orum or -iorum, -arum or -iarum
-    # as the ending in a genitive based on the name of a person or persons,
-    # or a place, host or other entity associated with the taxon, or between
-    # the elements of a compound species-group name (e.g. smithi, smithii;
-    # patchae, patchiae; fasciventris, fasciiventris)
-    root_name = re.sub(r"ii$", "i", root_name)
-    root_name = re.sub(r"iae$", "ae", root_name)
-    root_name = re.sub(r"iorum$", "orum", root_name)
-    root_name = re.sub(r"iarum$", "arum", root_name)
-    # "fasciiventris"/"fasciventris" omitted for now
-    # 58.15. presence or absence of -i before a suffix or termination (e.g. timorensis, timoriensis; comstockana, comstockiana)
-    root_name = re.sub(r"iensis$", "ensis", root_name)
-    root_name = re.sub(r"ian(us|a)$", "anus", root_name)
-    # Adding one: "monticola" vs. "monticolus", where one is interpreted as an
-    # adjective and the other as a noun in apposition.
-    root_name = re.sub(r"(a|um)$", "us", root_name)
-    # Similarly, -ventris vs. -venter
-    root_name = re.sub(r"ntris$", "nter", root_name)
-    return root_name
+def sift(objs: Iterable[T], pred: Callable[[T], bool]) -> tuple[list[T], list[T]]:
+    true, false = [], []
+    for obj in objs:
+        if pred(obj):
+            true.append(obj)
+        else:
+            false.append(obj)
+    return true, false

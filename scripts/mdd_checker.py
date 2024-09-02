@@ -14,9 +14,13 @@ from pathlib import Path
 from typing import Any, TypedDict, TypeVar, cast
 
 import gspread
+import Levenshtein
 
 from taxonomy import getinput
 from taxonomy.config import get_options
+from taxonomy.db.constants import Rank, Status
+from taxonomy.db.models import Taxon
+from taxonomy.db.models.tags import TaxonTag
 
 Syn = dict[str, str]
 
@@ -24,6 +28,7 @@ RANK_REGEX = r"[A-Z][a-z]+|incertae sedis|NA"
 SIMPLE_LATITUDE = r"([-−]?[\d\.]+)?"
 LATITUDE = rf"\({SIMPLE_LATITUDE} (to|or) {SIMPLE_LATITUDE}\)|{SIMPLE_LATITUDE}|"
 PERMISSIVE_RANGES = True
+CHECK_GEOGRAPHY = False
 
 
 RANKS = [
@@ -92,7 +97,7 @@ COLUMN_TO_REGEX = {
     # "countryDistribution": r"",
     # "continentDistribution": r"",
     # "biogeographicRealm": r"",
-    "iucnStatus": r"NT|LC|CR|VU|DD|NA|EN|EX|EW",
+    "iucnStatus": r"(NE|NT|LC|CR|VU|DD|NA|EN|EX|EW)( \(as [A-Z][a-z]+ [a-z]+\))?",
     "extinct": r"[01]",
     "domestic": r"[01]",
     "flagged": r"[01]",
@@ -109,20 +114,21 @@ CONTINENTS = {
     "Domesticated",
     "Europe",
     "North America",
-    "Oceania",
+    "Oceania (Continent)",
     "South America",
     "NA",
 }
 REALMS = {
     "Afrotropic",
     "Australasia",
-    "Oceania",
+    "Oceania (Biorealm)",
     "Domesticated",
     "Indomalaya",
     "Nearctic",
     "Neotropic",
     "Palearctic",
     "Marine",
+    "NA",
 }
 
 
@@ -138,14 +144,15 @@ COUNTRIES: dict[str, CountryInfo] = {
     "Albania": {"continents": {"Europe"}, "realms": {"Palearctic"}},
     "Algeria": {"continents": {"Africa"}, "realms": {"Palearctic"}},
     "American Samoa": {"continents": {"Oceania"}, "realms": {"Oceania"}},
-    "Andaman Islands": {"continents": {"Asia"}, "realms": {"Indomalaya"}},
+    "Andaman and Nicobar Islands": {"continents": {"Asia"}, "realms": {"Indomalaya"}},
     "Angola": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
     "Anguilla": {"continents": {"North America"}, "realms": {"Neotropic"}},
     "Antarctica": {"continents": {"Antarctica"}, "realms": set()},
-    "Antigua & Barbuda": {"continents": {"North America"}, "realms": {"Neotropic"}},
+    "Antigua and Barbuda": {"continents": {"North America"}, "realms": {"Neotropic"}},
     "Argentina": {"continents": {"South America"}, "realms": {"Neotropic"}},
     "Armenia": {"continents": {"Asia"}, "realms": {"Palearctic"}},
     "Aruba": {"continents": {"South America"}, "realms": {"Neotropic"}},
+    "Ascension": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
     "Australia": {"continents": {"Oceania"}, "realms": {"Australasia"}},
     "Austria": {"continents": {"Europe"}, "realms": {"Palearctic"}},
     "Azerbaijan": {"continents": {"Asia"}, "realms": {"Palearctic"}},
@@ -162,7 +169,7 @@ COUNTRIES: dict[str, CountryInfo] = {
     "Bhutan": {"continents": {"Asia"}, "realms": {"Indomalaya"}},
     "Bolivia": {"continents": {"South America"}, "realms": {"Neotropic"}},
     "Bonaire": {"continents": {"South America"}, "realms": {"Neotropic"}},
-    "Bosnia & Herzegovina": {"continents": {"Europe"}, "realms": {"Palearctic"}},
+    "Bosnia and Herzegovina": {"continents": {"Europe"}, "realms": {"Palearctic"}},
     "Botswana": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
     "Bouvet Island": {"continents": set(), "realms": set()},
     "Brazil": {"continents": {"South America"}, "realms": {"Neotropic"}},
@@ -174,7 +181,7 @@ COUNTRIES: dict[str, CountryInfo] = {
     "Bulgaria": {"continents": {"Europe"}, "realms": {"Palearctic"}},
     "Burkina Faso": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
     "Burundi": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
-    "Cabo Verde": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
+    "Cape Verde": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
     "Cambodia": {"continents": {"Asia"}, "realms": {"Indomalaya"}},
     "Cameroon": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
     "Canada": {"continents": {"North America"}, "realms": {"Nearctic"}},
@@ -195,7 +202,7 @@ COUNTRIES: dict[str, CountryInfo] = {
     "Curaçao": {"continents": {"South America"}, "realms": {"Neotropic"}},
     "Cyprus": {"continents": {"Asia"}, "realms": {"Palearctic"}},
     "Czech Republic": {"continents": {"Europe"}, "realms": {"Palearctic"}},
-    "Côte d'Ivoire": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
+    "Cote d'Ivoire": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
     "Democratic Republic of the Congo": {
         "continents": {"Africa"},
         "realms": {"Afrotropic"},
@@ -214,18 +221,15 @@ COUNTRIES: dict[str, CountryInfo] = {
     "Estonia": {"continents": {"Europe"}, "realms": {"Palearctic"}},
     "Eswatini": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
     "Ethiopia": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
-    "Falkland Islands (Malvinas)": {
-        "continents": {"South America"},
-        "realms": {"Neotropic"},
-    },
-    "Faroe Islands": {"continents": {"Europe"}, "realms": {"Palearctic"}},
+    "Falkland Islands": {"continents": {"South America"}, "realms": {"Neotropic"}},
+    "Faroe": {"continents": {"Europe"}, "realms": {"Palearctic"}},
     "Fiji": {"continents": {"Oceania"}, "realms": {"Oceania"}},
     "Finland": {"continents": {"Europe"}, "realms": {"Palearctic"}},
     "France": {"continents": {"Europe"}, "realms": {"Palearctic"}},
     "French Guiana": {"continents": {"South America"}, "realms": {"Neotropic"}},
     "French Polynesia": {"continents": {"Oceania"}, "realms": {"Oceania"}},
     "Gabon": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
-    "Galapagos": {"continents": {"South America"}, "realms": {"Neotropic"}},
+    "Galápagos Islands": {"continents": {"South America"}, "realms": {"Neotropic"}},
     "Gambia": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
     "Georgia": {"continents": {"Asia"}, "realms": {"Palearctic"}},
     "Germany": {"continents": {"Europe"}, "realms": {"Palearctic"}},
@@ -259,7 +263,10 @@ COUNTRIES: dict[str, CountryInfo] = {
     "Jordan": {"continents": {"Asia"}, "realms": {"Palearctic"}},
     "Kazakhstan": {"continents": {"Asia"}, "realms": {"Palearctic"}},
     "Kenya": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
-    "Kerguelen Islands": {"continents": {"Antarctica"}, "realms": set()},
+    "French Southern and Antarctic Lands": {
+        "continents": {"Antarctica"},
+        "realms": set(),
+    },
     "Kiribati": {"continents": {"Oceania"}, "realms": {"Oceania"}},
     "Kosovo": {"continents": {"Europe"}, "realms": {"Palearctic"}},
     "Kuwait": {"continents": {"Asia"}, "realms": {"Palearctic"}},
@@ -308,7 +315,7 @@ COUNTRIES: dict[str, CountryInfo] = {
     "Norfolk Island": {"continents": {"Oceania"}, "realms": {"Australasia"}},
     "North Korea": {"continents": {"Asia"}, "realms": {"Palearctic"}},
     "North Macedonia": {"continents": {"Europe"}, "realms": {"Palearctic"}},
-    "Northern Mariana Islands": {"continents": {"Oceania"}, "realms": {"Oceania"}},
+    "Northern Marianas": {"continents": {"Oceania"}, "realms": {"Oceania"}},
     "Norway": {"continents": {"Europe"}, "realms": {"Palearctic"}},
     "Oman": {"continents": {"Asia"}, "realms": {"Afrotropic"}},
     "Pakistan": {"continents": {"Asia"}, "realms": {"Indomalaya", "Palearctic"}},
@@ -326,17 +333,17 @@ COUNTRIES: dict[str, CountryInfo] = {
     "Puerto Rico": {"continents": {"North America"}, "realms": {"Neotropic"}},
     "Qatar": {"continents": {"Asia"}, "realms": {"Afrotropic"}},
     "Republic of the Congo": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
-    "Reunion": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
+    "Réunion": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
     "Romania": {"continents": {"Europe"}, "realms": {"Palearctic"}},
     "Russia": {"continents": {"Asia", "Europe"}, "realms": {"Palearctic"}},
     "Rwanda": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
     "Saba": {"continents": {"North America"}, "realms": {"Neotropic"}},
     "Saint Barthélemy": {"continents": {"North America"}, "realms": {"Neotropic"}},
     "Saint Helena": {"continents": set(), "realms": set()},
-    "Saint Kitts & Nevis": {"continents": {"North America"}, "realms": {"Neotropic"}},
+    "Saint Kitts and Nevis": {"continents": {"North America"}, "realms": {"Neotropic"}},
     "Saint Lucia": {"continents": {"North America"}, "realms": {"Neotropic"}},
     "Saint Martin": {"continents": {"North America"}, "realms": {"Neotropic"}},
-    "Saint Vincent & the Grenadines": {
+    "Saint Vincent and the Grenadines": {
         "continents": {"North America"},
         "realms": {"Neotropic"},
     },
@@ -348,12 +355,13 @@ COUNTRIES: dict[str, CountryInfo] = {
     "Sierra Leone": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
     "Singapore": {"continents": {"Asia"}, "realms": {"Indomalaya"}},
     "Sint Eustatius": {"continents": {"North America"}, "realms": {"Neotropic"}},
+    "Sint Maarten": {"continents": {"North America"}, "realms": {"Neotropic"}},
     "Slovakia": {"continents": {"Europe"}, "realms": {"Palearctic"}},
     "Slovenia": {"continents": {"Europe"}, "realms": {"Palearctic"}},
     "Solomon Islands": {"continents": {"Oceania"}, "realms": {"Australasia"}},
     "Somalia": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
     "South Africa": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
-    "South Georgia & the South Sandwich Islands": {
+    "South Georgia and the South Sandwich Islands": {
         "continents": {"Antarctica"},
         "realms": set(),
     },
@@ -366,7 +374,7 @@ COUNTRIES: dict[str, CountryInfo] = {
     "Sweden": {"continents": {"Europe"}, "realms": {"Palearctic"}},
     "Switzerland": {"continents": {"Europe"}, "realms": {"Palearctic"}},
     "Syria": {"continents": {"Asia"}, "realms": {"Palearctic"}},
-    "São Tomé & Príncipe": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
+    "São Tomé and Príncipe": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
     "Taiwan": {"continents": {"Asia"}, "realms": {"Indomalaya"}},
     "Tajikistan": {"continents": {"Asia"}, "realms": {"Palearctic"}},
     "Tanzania": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
@@ -374,11 +382,11 @@ COUNTRIES: dict[str, CountryInfo] = {
     "Togo": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
     "Tokelau": {"continents": {"Oceania"}, "realms": {"Oceania"}},
     "Tonga": {"continents": {"Oceania"}, "realms": {"Oceania"}},
-    "Trinidad & Tobago": {"continents": {"South America"}, "realms": {"Neotropic"}},
+    "Trinidad and Tobago": {"continents": {"South America"}, "realms": {"Neotropic"}},
     "Tunisia": {"continents": {"Africa"}, "realms": {"Palearctic"}},
     "Turkey": {"continents": {"Asia", "Europe"}, "realms": {"Palearctic"}},
     "Turkmenistan": {"continents": {"Asia"}, "realms": {"Palearctic"}},
-    "Turks & Caicos Islands": {
+    "Turks and Caicos Islands": {
         "continents": {"North America"},
         "realms": {"Neotropic"},
     },
@@ -397,7 +405,7 @@ COUNTRIES: dict[str, CountryInfo] = {
     "Vanuatu": {"continents": {"Oceania"}, "realms": {"Australasia"}},
     "Venezuela": {"continents": {"South America"}, "realms": {"Neotropic"}},
     "Vietnam": {"continents": {"Asia"}, "realms": {"Indomalaya"}},
-    "Wallis & Futuna": {"continents": {"Oceania"}, "realms": {"Oceania"}},
+    "Wallis and Futuna": {"continents": {"Oceania"}, "realms": {"Oceania"}},
     "Yemen": {"continents": {"Asia", "Africa"}, "realms": {"Afrotropic"}},
     "Zambia": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
     "Zimbabwe": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
@@ -612,6 +620,9 @@ class MDDSpecies:
                     expected_realm_to_countries[realm].add(country)
             allowed_realms.update(country_data["realms"])
 
+        if not CHECK_GEOGRAPHY:
+            return
+
         if continents - allowed_continents:
             yield self.make_issue(
                 "continentDistribution",
@@ -661,7 +672,9 @@ class SpeciesWithSyns:
         names = [
             syn
             for syn in self.syns
-            if syn_status_is_any(syn, ("name_combination", "subsequent_usage"))
+            if not syn_status_is_any(
+                syn, ("name_combination", "subsequent_usage", "misidentification")
+            )
         ]
         names = sorted(
             names,
@@ -719,6 +732,8 @@ class SpeciesWithSyns:
                     description += f" (original combination: {self.species.row['originalNameCombination']})"
                 yield self.species.make_issue(mdd_col, description, expected_val)
 
+        if not CHECK_GEOGRAPHY:
+            return
         actual_countries = self.species.get_countries()
         if "Domesticated" not in actual_countries:
             for syn in self.syns:
@@ -954,11 +969,58 @@ def get_mdd_species(input_csv: str | None = None) -> dict[str, MDDSpecies]:
     return {sp.row["sciName"]: sp for sp in species}
 
 
+def check_common_names(species: Sequence[MDDSpecies], backup_path: Path) -> None:
+    common_names = defaultdict(list)
+    for sp in species:
+        for word in sp.row["mainCommonName"].split():
+            common_names[word].append(sp)
+    for word in sorted(common_names):
+        similar_names = [
+            other_word
+            for other_word in common_names
+            if word < other_word
+            and Levenshtein.distance(word, other_word, weights=(1, 5, 5)) <= 2
+        ]
+        for other_word in similar_names:
+            print(
+                f"{word} ({len(common_names[word])} names) is similar to {other_word} ({len(common_names[other_word])} names)"
+            )
+            for sp in common_names[word][:5]:
+                print(f"  {sp.row['sciName']} {sp.row['mainCommonName']}")
+            for sp in common_names[other_word][:5]:
+                print(f"  {sp.row['sciName']} {sp.row['mainCommonName']}")
+
+
+def check_species_tags(species: Sequence[MDDSpecies]) -> None:
+    for sp in species:
+        name = sp.row["sciName"].replace("_", " ")
+        taxa = [
+            taxon
+            for taxon in Taxon.select_valid().filter(
+                Taxon.rank == Rank.species, Taxon.valid_name == name
+            )
+            if taxon.base_name.status is Status.valid
+        ]
+        if len(taxa) == 1:
+            taxon = taxa[0]
+            existing_tags = [tag for tag in taxon.tags if isinstance(tag, TaxonTag.MDD)]
+            expected_tags = [TaxonTag.MDD(sp.row["id"])]
+            if existing_tags != expected_tags:
+                print(f"{name} ({sp.row['id']}): {existing_tags} -> {expected_tags}")
+                taxon.tags = [
+                    *[tag for tag in taxon.tags if not isinstance(tag, TaxonTag.MDD)],
+                    *expected_tags,
+                ]
+        else:
+            print(f"No single taxon found for {name}: {taxa}")
+
+
 def run(
     *,
     dry_run: bool = True,
     input_csv: str | None = None,
     syn_sheet_csv: str | None = None,
+    common_names_only: bool = False,
 ) -> None:
     options = get_options()
     backup_path = (
@@ -984,41 +1046,46 @@ def run(
     ]
     print(f"done, {len(species)} found")
 
-    print("backing up MDD names... ")
-    with (backup_path / "mdd_species.csv").open("w") as file:
-        writer = csv.writer(file)
-        for row in raw_rows:
-            writer.writerow(row)
-    print(f"done, backup at {backup_path}")
+    if not common_names_only:
+        print("backing up MDD names... ")
+        with (backup_path / "mdd_species.csv").open("w") as file:
+            writer = csv.writer(file)
+            for row in raw_rows:
+                writer.writerow(row)
+        print(f"done, backup at {backup_path}")
 
-    issues = list(lint_species(species))
+        issues = list(lint_species(species))
 
-    if syn_sheet_csv is not None:
-        with Path(syn_sheet_csv).open() as f:
-            syn_sheet_rows = list(csv.reader(f))
-    else:
-        sheet = get_sheet()
-        worksheet = sheet.get_worksheet_by_id(options.mdd_worksheet_gid)
-        syn_sheet_rows = worksheet.get()
-    syn_sheet_headings = syn_sheet_rows[0]
-    syns = [
-        dict(zip(syn_sheet_headings, row, strict=False)) for row in syn_sheet_rows[1:]
-    ]
-    issues += check_with_syns_match(species, syns)
+        if syn_sheet_csv is not None:
+            with Path(syn_sheet_csv).open() as f:
+                syn_sheet_rows = list(csv.reader(f))
+        else:
+            sheet = get_sheet()
+            worksheet = sheet.get_worksheet_by_id(options.mdd_worksheet_gid)
+            syn_sheet_rows = worksheet.get()
+        syn_sheet_headings = syn_sheet_rows[0]
+        syns = [
+            dict(zip(syn_sheet_headings, row, strict=False))
+            for row in syn_sheet_rows[1:]
+        ]
+        issues += check_with_syns_match(species, syns)
+        check_species_tags(species)
 
-    for issue in issues:
-        print(issue.describe())
-
-    with (backup_path / "differences.csv").open("w") as f:
-        headings = [field.name for field in fields(Issue)]
-        diff_writer = csv.DictWriter(f, headings)
-        diff_writer.writeheader()
         for issue in issues:
-            diff_writer.writerow(
-                {heading: getattr(issue, heading) or "" for heading in headings}
-            )
+            print(issue.describe())
 
-    maybe_fix_issues(issues, column_to_idx, dry_run=dry_run)
+        with (backup_path / "differences.csv").open("w") as f:
+            headings = [field.name for field in fields(Issue)]
+            diff_writer = csv.DictWriter(f, headings)
+            diff_writer.writeheader()
+            for issue in issues:
+                diff_writer.writerow(
+                    {heading: getattr(issue, heading) or "" for heading in headings}
+                )
+
+        maybe_fix_issues(issues, column_to_idx, dry_run=dry_run)
+    else:
+        check_common_names(species, backup_path)
 
 
 if __name__ == "__main__":
@@ -1026,7 +1093,11 @@ if __name__ == "__main__":
     parser.add_argument("--input-csv", type=str, default=None)
     parser.add_argument("--syn-sheet-csv", type=str, default=None)
     parser.add_argument("--dry-run", action="store_true", default=False)
+    parser.add_argument("--common-names-only", action="store_true", default=False)
     args = parser.parse_args()
     run(
-        input_csv=args.input_csv, dry_run=args.dry_run, syn_sheet_csv=args.syn_sheet_csv
+        input_csv=args.input_csv,
+        dry_run=args.dry_run,
+        syn_sheet_csv=args.syn_sheet_csv,
+        common_names_only=args.common_names_only,
     )

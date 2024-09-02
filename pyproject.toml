@@ -53,11 +53,12 @@ dependencies = [
   "boto3",
   "botocore",
   "repoguess",
+  "pyzotero",
 ]
 
 [project.urls]
 Changelog = "https://github.com/JelleZijlstra/taxonomy/blob/master/docs/release-notes.md"
-Homepage = "http://hesperomys.com/"
+Homepage = "https://hesperomys.com/"
 
 [build-system]
 requires = ["hatchling"]
@@ -161,6 +162,8 @@ ignore = [
   "SIM103",  # I like to end a sequence of ifs with one "return True"
   "RET504",  # Sometimes the extra assignment is worthwhile
   "E501",    # Line too long
+  "N815",    # mixed case for TypedDict field
+  "TRY301",  # pedantic
 ]
 
 [tool.ruff.lint.per-file-ignores]

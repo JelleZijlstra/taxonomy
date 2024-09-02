@@ -49,6 +49,7 @@ class Options(NamedTuple):
     mdd_journals_worksheet_gid: int = 0
 
     bhl_api_key: str = ""
+    zotero_key: str = ""
 
     geojson_path: Path = Path()
 
@@ -70,6 +71,25 @@ def parse_path(section: Mapping[str, str], key: str, base_path: Path) -> Path:
         if not path.is_absolute():
             path = base_path / path
         return path
+
+
+_network_available: bool | None = None
+
+
+def set_network_available(*, value: bool) -> None:
+    global _network_available
+    _network_available = value
+
+
+def is_network_available() -> bool:
+    if _network_available is not None:
+        return _network_available
+    return _is_network_available_from_env()
+
+
+@functools.cache
+def _is_network_available_from_env() -> bool:
+    return not bool(os.environ.get("TAXONOMY_NO_NETWORK"))
 
 
 @functools.cache
@@ -134,6 +154,7 @@ def parse_config_file(filename: Path) -> Options:
                 section.get("mdd_species_worksheet_gid", "0")
             ),
             bhl_api_key=section.get("bhl_api_key", ""),
+            zotero_key=section.get("zotero_key", ""),
             geojson_path=parse_path(section, "geojson_path", base_path),
         )
 

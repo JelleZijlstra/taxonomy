@@ -4,7 +4,7 @@ import enum
 import pickle
 from collections.abc import Callable
 from dataclasses import dataclass
-from functools import lru_cache
+from functools import cache
 from typing import Any, Generic, Protocol, TypeVar
 
 import typing_inspect
@@ -155,7 +155,7 @@ class DerivedField(Generic[T]):
             object_data[self.name] = self.serialize(value)
 
 
-@lru_cache
+@cache
 def load_derived_data() -> DerivedData:
     try:
         with settings.derived_data_filename.open("rb") as f:
@@ -169,7 +169,7 @@ def write_derived_data(data: DerivedData) -> None:
         pickle.dump(data, f)
 
 
-@lru_cache
+@cache
 def load_cached_data() -> CachedData:
     try:
         with settings.cached_data_filename.open("rb") as f:

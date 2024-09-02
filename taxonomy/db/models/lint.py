@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import traceback
 from collections.abc import Callable, Collection, Generator, Hashable, Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from functools import cache
 from typing import Generic, Protocol, TypeVar
+
+from taxonomy.config import is_network_available
 
 from .base import BaseModel, LintConfig
 
@@ -27,8 +29,11 @@ class LintWrapper(Generic[ModelT]):
     disabled: bool
     label: str
     lint: Lint[ModelT]
+    requires_network: bool = False
 
     def __call__(self, obj: ModelT, cfg: LintConfig) -> Generator[str, None, set[str]]:
+        if self.requires_network and not is_network_available():
+            return set()
         try:
             issues = list(self.linter(obj, cfg))
         except Exception as e:
@@ -55,10 +60,11 @@ class Lint(Generic[ModelT]):
     disabled_linters: list[LintWrapper[ModelT]] = field(default_factory=list)
 
     def add(
-        self, label: str, *, disabled: bool = False
+        self, label: str, *, disabled: bool = False, requires_network: bool = False
     ) -> Callable[[Linter[ModelT]], LintWrapper[ModelT]]:
+
         def decorator(linter: Linter[ModelT]) -> LintWrapper[ModelT]:
-            lint_wrapper = LintWrapper(linter, disabled, label, self)
+            lint_wrapper = LintWrapper(linter, disabled, label, self, requires_network)
             if disabled:
                 self.disabled_linters.append(lint_wrapper)
             else:
@@ -127,8 +133,13 @@ class Lint(Generic[ModelT]):
             linters = self.linters
 
         used_ignores: set[str] = set()
+        actual_ignores = self.get_ignored_lints(obj)
         for linter in linters:
-            used_ignores |= yield from linter(obj, cfg)
+            if linter.label in actual_ignores:
+                lint_cfg = replace(cfg, interactive=False)
+            else:
+                lint_cfg = cfg
+            used_ignores |= yield from linter(obj, lint_cfg)
         actual_ignores = self.get_ignored_lints(obj)
         unused = actual_ignores - used_ignores
         if unused:

@@ -206,6 +206,7 @@ class NomenclatureStatus(enum.IntEnum):
     # unpublished because named in electronic supplementary material only
     unpublished_supplement = 54
     name_combination = 55
+    misidentification = 56
 
     def requires_type(self) -> bool:
         """Whether a name of this status should have a type designated."""
@@ -220,6 +221,7 @@ class NomenclatureStatus(enum.IntEnum):
             NomenclatureStatus.incorrect_subsequent_spelling,
             NomenclatureStatus.subsequent_usage,
             NomenclatureStatus.name_combination,
+            NomenclatureStatus.misidentification,
         }
 
     def can_preoccupy(self) -> bool:
@@ -248,6 +250,7 @@ class NomenclatureStatus(enum.IntEnum):
             NomenclatureStatus.zoological_formula,
             NomenclatureStatus.informal,
             NomenclatureStatus.subsequent_usage,
+            NomenclatureStatus.misidentification,
             NomenclatureStatus.name_combination,
             NomenclatureStatus.not_nominative_singular,
             NomenclatureStatus.before_1758,
@@ -294,14 +297,7 @@ class NomenclatureStatus(enum.IntEnum):
             # The Commission's implicit word.
             [cls.unlisted],
             # If the work is invalid, we don't need to worry about the exact status of names.
-            [
-                cls.before_1758,
-                cls.inconsistently_binominal,
-                cls.unpublished_thesis,
-                cls.unpublished_electronic,
-                cls.unpublished_supplement,
-                cls.unpublished,
-            ],
+            [cls.before_1758, cls.inconsistently_binominal],
             # Clear problems with the name itself.
             [
                 cls.not_based_on_a_generic_name,
@@ -330,7 +326,13 @@ class NomenclatureStatus(enum.IntEnum):
             ],
             # Spelling issues that produce unavailable names.
             [cls.incorrect_subsequent_spelling, cls.incorrect_original_spelling],
-            [cls.subsequent_usage],
+            [cls.subsequent_usage, cls.misidentification],
+            [
+                cls.unpublished_thesis,
+                cls.unpublished_electronic,
+                cls.unpublished_supplement,
+                cls.unpublished,
+            ],
             [cls.nomen_nudum],
             # Potentially available under some circumstances
             [cls.variety_or_form],
@@ -407,6 +409,7 @@ class Rank(enum.IntEnum):
     suborder = 60
     order = 65
     superorder = 70
+    magnorder = 72
     subcohort = 75
     cohort = 80
     supercohort = 85
@@ -433,6 +436,15 @@ class Rank(enum.IntEnum):
     synonym = (
         219  # for original rank; if the name was not treated as valid when created
     )
+
+    @property
+    def display_name(self) -> str:
+        match self:
+            case Rank.class_:
+                return "class"
+            case Rank.species_group:
+                return "species group"
+        return self.name
 
     @property
     def comparison_value(self) -> int:
