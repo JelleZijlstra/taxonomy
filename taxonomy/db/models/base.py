@@ -1097,7 +1097,7 @@ class BaseModel(Model):
             while not self.is_lint_clean():
                 self.display()
                 self.edit()
-                self = self.reload()
+                self.reload()
                 self.format()
         except getinput.StopException:
             pass

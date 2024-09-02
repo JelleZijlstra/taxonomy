@@ -133,10 +133,8 @@ def extract_names(pages: Iterable[tuple[int, list[str]]]) -> DataT:
                 else:
                     # probably continuation of the author
                     current_lines.append(line)
-            elif (
-                current_label == "verbatim_citation"
-                or current_label == "homonymy"
-                or line.startswith("= ")
+            elif current_label in ("verbatim_citation", "homonymy") or line.startswith(
+                "= "
             ):
                 start_label("synonymy", line)
             else:

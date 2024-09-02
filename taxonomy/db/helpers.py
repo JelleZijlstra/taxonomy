@@ -122,7 +122,7 @@ def group_of_rank(rank: Rank) -> Group:
         return Group.species
     elif rank in GENUS_RANKS:
         return Group.genus
-    elif rank in FAMILY_RANKS or rank == 34 or rank == 24:
+    elif rank in FAMILY_RANKS or rank in (34, 24):
         return Group.family
     elif rank in HIGH_RANKS or rank > Rank.hyperfamily:
         return Group.high
