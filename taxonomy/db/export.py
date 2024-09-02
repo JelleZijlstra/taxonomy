@@ -8,7 +8,10 @@ from typing import Protocol, TypedDict
 
 from taxonomy import getinput
 from taxonomy.command_set import CommandSet
-from taxonomy.db.models.classification_entry.ce import ClassificationEntry
+from taxonomy.db.models.classification_entry.ce import (
+    ClassificationEntry,
+    ClassificationEntryTag,
+)
 from taxonomy.db.models.tags import TaxonTag
 
 from .constants import AgeClass, Group, Rank, RegionKind, Status
@@ -178,7 +181,7 @@ def data_for_name(name: Name) -> NameData:
         if isinstance(tag, TypeTag.TypeSpecimenLinkFor)
     )
     if name.status is Status.valid:
-        status = f"valid {name.taxon.rank.name}"
+        status = f"valid {name.taxon.rank.display_name}"
     else:
         status = name.status.name
     return {
@@ -198,7 +201,7 @@ def data_for_name(name: Name) -> NameData:
         "corrected_original_name": name.corrected_original_name or "",
         "root_name": name.root_name,
         "original_rank": (
-            name.original_rank.name if name.original_rank is not None else ""
+            name.original_rank.display_name if name.original_rank is not None else ""
         ),
         "group": name.group.name,
         "authority": name.taxonomic_authority(),
@@ -286,7 +289,7 @@ def data_for_taxon(taxon: Taxon) -> TaxonData:
         "order": order.valid_name if order else "",
         "family": family.valid_name if family else "",
         "genus": genus.valid_name if genus else "",
-        "rank": taxon.rank.name,
+        "rank": taxon.rank.display_name,
         "taxon_name": taxon.valid_name,
         "base_name_link": name.get_absolute_url(),
         "authority": name.taxonomic_authority(),
@@ -352,6 +355,59 @@ def export_collections(filename: str) -> None:
             Collection.select_valid(), label="collections", n=100
         ):
             writer.writerow(data_for_collection(occ))
+
+
+class CEData(TypedDict):
+    id: str
+    link: str
+    name: str
+    rank: str
+    source: str
+    source_link: str
+    parent: str
+    parent_link: str
+    page: str
+    mapped_name_link: str
+    authority: str
+    year: str
+    citation: str
+    type_locality: str
+    page_link: str
+
+
+def data_for_ce(ce: ClassificationEntry) -> CEData:
+    return {
+        "id": str(ce.id),
+        "link": ce.get_absolute_url(),
+        "name": ce.name,
+        "rank": ce.get_rank_string(),
+        "source": ce.article.cite(),
+        "source_link": ce.article.get_absolute_url(),
+        "parent": ce.parent.name if ce.parent else "",
+        "parent_link": ce.parent.get_absolute_url() if ce.parent else "",
+        "page": ce.page or "",
+        "mapped_name_link": ce.mapped_name.get_absolute_url() if ce.mapped_name else "",
+        "authority": ce.authority or "",
+        "year": ce.year or "",
+        "citation": ce.citation or "",
+        "type_locality": ce.type_locality or "",
+        "page_link": " | ".join(
+            tag.url
+            for tag in ce.tags
+            if isinstance(tag, ClassificationEntryTag.PageLink)
+        ),
+    }
+
+
+@CS.register
+def export_all_ces(filename: str) -> None:
+    with Path(filename).open("w") as f:
+        writer: "csv.DictWriter[str]" = csv.DictWriter(f, list(CEData.__annotations__))
+        writer.writeheader()
+        for ce in getinput.print_every_n(
+            ClassificationEntry.select_valid(), label="classification entries", n=1000
+        ):
+            writer.writerow(data_for_ce(ce))
 
 
 class OccurrenceData(TypedDict):
@@ -474,7 +530,7 @@ def export_ces(
     ]
     for article, _ in ce_articles.most_common():
         citation = article.concise_citation()
-        columns.append(f"{citation} {rank.name}")
+        columns.append(f"{citation} {rank.display_name}")
         columns.append(f"{citation} synonyms")
     with Path(filename).open("w") as f:
         writer = csv.DictWriter(f, columns)
@@ -520,7 +576,9 @@ def export_ces(
                     article, []
                 )
                 citation = article.concise_citation()
-                row[f"{citation} {rank.name}"] = ", ".join(ce.name for ce in valid_ces)
+                row[f"{citation} {rank.display_name}"] = ", ".join(
+                    ce.name for ce in valid_ces
+                )
                 row[f"{citation} synonyms"] = ", ".join(ce.name for ce in synonym_ces)
 
                 for ce in valid_ces:

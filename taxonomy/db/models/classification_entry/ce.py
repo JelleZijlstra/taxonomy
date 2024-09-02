@@ -467,7 +467,7 @@ class ClassificationEntry(BaseModel):
             for tag in self.tags:
                 if isinstance(tag, ClassificationEntryTag.TextualRank):
                     return tag.text
-        return self.rank.name
+        return self.rank.display_name
 
     def get_children_of_rank(self, rank: Rank) -> Iterable[ClassificationEntry]:
         for child in self.children:
