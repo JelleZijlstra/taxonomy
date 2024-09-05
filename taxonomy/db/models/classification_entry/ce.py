@@ -183,6 +183,7 @@ class ClassificationEntry(BaseModel):
         fields: Sequence[Field[Any]],
         defaults: Mapping[str, str] = MappingProxyType({}),
         _parent_stack: list[ClassificationEntry] = [],
+        prefilled_values: Mapping[str, Any] = MappingProxyType({}),
     ) -> ClassificationEntry | None:
         fields = [
             ClassificationEntry.name,
@@ -195,6 +196,9 @@ class ClassificationEntry(BaseModel):
         ce_name: str | None = None
         for field in fields:
             name = field.name.removesuffix("_id")
+            if name in prefilled_values:
+                values[name] = prefilled_values[name]
+                continue
             if name == "rank" and ce_name is not None:
                 if (rank := _infer_rank_from_name(ce_name)) is not None:
                     print(f"Inferred rank as {rank.name}.")
@@ -403,6 +407,33 @@ class ClassificationEntry(BaseModel):
         nam.edit_until_clean()
         return nam
 
+    def add_syns(self) -> None:
+        defaults = {"page": self.page or ""}
+        prefilled_values = {"rank": Rank.synonym, "parent": self}
+        while True:
+            entry = self.create_one(
+                self.article, [], defaults=defaults, prefilled_values=prefilled_values
+            )
+            if entry is None:
+                break
+            defaults["page"] = entry.page or ""
+            entry.format(format_mapped=False)
+            entry.edit()
+            entry.format()
+
+    def add_taxon(self) -> None:
+        taxon = models.Taxon.getter(None).get_one("taxon> ")
+        if taxon is None:
+            return
+        self.ensure_page_set()
+        taxon.from_paper(
+            self.rank,
+            name=self.name,
+            paper=self.article,
+            page_described=self.page,
+            original_rank=self.rank,
+        )
+
     def get_adt_callbacks(self) -> getinput.CallbackMap:
         article_callbacks = self.article.get_shareable_adt_callbacks()
         return {
@@ -413,6 +444,8 @@ class ClassificationEntry(BaseModel):
             "syn_from_paper": self.syn_from_paper,
             "edit_parent": self.edit_parent,
             "take_over_mapped_name": self.take_over_mapped_name,
+            "add_syns": self.add_syns,
+            "add_taxon": self.add_taxon,
         }
 
     def take_over_mapped_name(self) -> None:

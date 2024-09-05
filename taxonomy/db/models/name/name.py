@@ -682,8 +682,13 @@ class Name(BaseModel):
             "display_usage_list": lambda: print(self.make_usage_list()),
         }
 
+    def get_classification_entries(self) -> Query[ClassificationEntry]:
+        return ClassificationEntry.select_valid().filter(
+            ClassificationEntry.mapped_name == self
+        )
+
     def display_classification_entries(self) -> None:
-        for ce in self.classification_entries:
+        for ce in self.get_classification_entries():
             ce.display()
 
     def _edit_mapped_ce(self) -> None:
@@ -2368,7 +2373,7 @@ class Name(BaseModel):
         usages: dict[Article, str | None] = {}
         for related_nam in self.taxon.get_names():
             if related_nam.resolve_variant() == self:
-                for ce in related_nam.classification_entries:
+                for ce in related_nam.get_classification_entries():
                     comment_pieces = []
                     if ce.page is not None:
                         if ce.page.isnumeric():

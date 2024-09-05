@@ -533,10 +533,8 @@ def get_species_group_mapped_names(
         shared_genera = list(get_genera_with_shared_species(genus_candidates))
         for genus in shared_genera:
             for nam in genus.all_names():
-                if (
-                    nam.group == Group.species
-                    and nam.get_normalized_root_name_for_homonymy()
-                    == normalized_root_name
+                if nam.group == Group.species and _root_name_matches(
+                    nam, normalized_root_name
                 ):
                     count += 1
                     yield nam, CandidateMetadata(is_shared_genus=True)
@@ -551,13 +549,22 @@ def get_species_group_mapped_names(
                 if genus in shared_genera:
                     continue
                 for nam in genus.all_names():
-                    if (
-                        nam.group == Group.species
-                        and nam.get_normalized_root_name_for_homonymy()
-                        == normalized_root_name
+                    if nam.group == Group.species and _root_name_matches(
+                        nam, normalized_root_name
                     ):
                         count += 1
                         yield nam, CandidateMetadata(is_sister_genus=True)
+
+
+def _root_name_matches(nam: Name, root_name: str) -> bool:
+    if nam.root_name == root_name:
+        return True
+    if nam.get_normalized_root_name_for_homonymy() == root_name:
+        return True
+    normalized_without_sc = models.name_complex.normalize_root_name_for_homonymy(
+        nam.root_name, None
+    )
+    return normalized_without_sc == root_name
 
 
 @LINT.add("corrected_name")

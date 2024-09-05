@@ -328,6 +328,8 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
     by_type: dict[type[TypeTag], list[TypeTag]] = {}
     for tag in original_tags:
         by_type.setdefault(type(tag), []).append(tag)
+
+    for tag in original_tags:
         for arg_name, art in get_tag_fields_of_type(tag, Article):
             if art.kind is ArticleKind.removed:
                 print(f"{nam} references a removed Article in {tag}")
@@ -494,6 +496,16 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
         ):
             yield "replace CitationDetail with SourceDetail"
             tags.append(TypeTag.SourceDetail(tag.text, tag.source))
+        elif tag is TypeTag.NoDate and TypeTag.Date in by_type:
+            yield "has NoDate tag but also has Date tag"
+        elif tag is TypeTag.NoCollector and TypeTag.CollectedBy in by_type:
+            yield "has NoCollector tag but also has Collector tag"
+        elif tag is TypeTag.NoAge and TypeTag.Age in by_type:
+            yield "has NoAge tag but also has Age tag"
+        elif tag is TypeTag.NoGender and TypeTag.Gender in by_type:
+            yield "has NoGender tag but also has Gender tag"
+        elif tag is TypeTag.NoOrgan and TypeTag.Organ in by_type:
+            yield "has NoOrgan tag but also has Organ tag"
         else:
             tags.append(tag)
         # TODO: for lectotype and subsequent designations, ensure the earliest valid one is used.
@@ -1331,6 +1343,12 @@ def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                         yield "is marked as infrasubspecific, but should not be"
 
             # TODO: lint against other statuses that have their own tag
+        elif isinstance(tag, NameTag.NotUsedAsValid):
+            if nam.original_rank is Rank.synonym:
+                yield "redundant NotUsedAsValid tag for a synonym"
+                if not tag.comment:
+                    new_tag = None
+
         elif isinstance(tag, NameTag.VarietyOrForm):
             possibility = should_be_infrasubspecific(nam)
             if possibility is Possibility.no:
@@ -1380,25 +1398,48 @@ def get_applicable_nomenclature_statuses_from_tags(
                 continue
             yield NomenclatureStatus.preoccupied
         elif isinstance(tag, NameTag.VarietyOrForm):
-            # ICZN Art. 45.6.4.1: a name originally published as a variety or form before 1961
-            # is available from its original date if it was used as valid before 1985
-            if nam.numeric_year() < 1961 and any(
-                isinstance(tag, NameTag.ValidUse) and tag.source.numeric_year() < 1985
-                for tag in nam.tags
-            ):
+            if has_valid_use_for_variety_or_form(nam):
                 continue
             yield NomenclatureStatus.variety_or_form
         elif isinstance(tag, NameTag.NotUsedAsValid):
-            # ICZN Art. 11.6.1: a name originally published as a synonym before 1961
-            # is available from its original date if it was used as valid before 1961
-            if nam.numeric_year() < 1961 and any(
-                isinstance(tag, NameTag.ValidUse) and tag.source.numeric_year() < 1961
-                for tag in nam.tags
-            ):
-                continue
             yield NomenclatureStatus.not_used_as_valid
         elif type(tag) in TAG_TO_STATUS:
             yield TAG_TO_STATUS[type(tag)]
+
+
+def has_valid_use_for_variety_or_form(nam: Name) -> bool:
+    # ICZN Art. 45.6.4.1: a name originally published as a variety or form before 1961
+    # is available from its original date if it was used as valid before 1985
+    if nam.numeric_year() < 1961:
+        if any(
+            isinstance(tag, NameTag.ValidUse) and tag.source.numeric_year() < 1985
+            for tag in nam.tags
+        ):
+            return True
+        if any(
+            ce.rank is not Rank.synonym and ce.article.numeric_year() < 1985
+            for ce in nam.get_classification_entries()
+        ):
+            return True
+
+    return False
+
+
+def has_valid_use(nam: Name) -> bool:
+    # ICZN Art. 11.6.1: a name originally published as a synonym before 1961
+    # is available from its original date if it was used as valid before 1961
+    if nam.numeric_year() < 1961:
+        if any(
+            isinstance(tag, NameTag.ValidUse) and tag.source.numeric_year() < 1961
+            for tag in nam.tags
+        ):
+            return True
+        if any(
+            ce.rank is not Rank.synonym and ce.article.numeric_year() < 1961
+            for ce in nam.get_classification_entries()
+        ):
+            return True
+    return False
 
 
 def get_inherent_nomenclature_statuses(nam: Name) -> Iterable[NomenclatureStatus]:
@@ -1412,6 +1453,10 @@ def get_inherent_nomenclature_statuses(nam: Name) -> Iterable[NomenclatureStatus
             yield NomenclatureStatus.unpublished_pending
         if nam.original_citation.type is ArticleType.THESIS:
             yield NomenclatureStatus.unpublished_thesis
+    if nam.original_rank is Rank.synonym:
+        yield NomenclatureStatus.not_used_as_valid
+    if nam.numeric_year() > 1960 and nam.original_rank in (Rank.variety, Rank.form):
+        yield NomenclatureStatus.variety_or_form
 
 
 @functools.cache
@@ -1447,6 +1492,9 @@ def check_expected_nomenclature_status(nam: Name, cfg: LintConfig) -> Iterable[s
 
     inherent = set(get_inherent_nomenclature_statuses(nam))
     applicable = applicable_from_tags | inherent
+    if NomenclatureStatus.not_used_as_valid in applicable:
+        if has_valid_use(nam):
+            applicable.remove(NomenclatureStatus.not_used_as_valid)
     expected_status = min(
         applicable,
         key=lambda status: _priority_map[status],
@@ -4875,6 +4923,15 @@ def infer_tags_from_mapped_entries(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 tag_name.add_type_tag(tag)
             else:
                 yield message
+        if tag_name.original_citation is None and ce.citation is not None:
+            tag = TypeTag.CitationDetail(ce.citation, ce.article)
+            if tag not in tag_name.type_tags:
+                message = f"adding verbatim citation from {ce} to {nam}: {tag}"
+                if cfg.autofix:
+                    print(f"{nam}: {message}")
+                    tag_name.add_type_tag(tag)
+                else:
+                    yield message
 
     for ce in nam.get_mapped_classification_entries():
         # Don't copy page links until we've aligned the page that it's on
