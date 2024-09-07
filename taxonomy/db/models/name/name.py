@@ -2884,6 +2884,10 @@ class TypeTag(adt.ADT):
     # Sources for old names
     SourceDetail(text=str, source=Article, tag=57)  # type: ignore[name-defined]
 
+    # Can be used optionally to hold the fully verbatim original name, including abbreviations.
+    # Not mandatory.
+    VerbatimName(text=str, tag=58)  # type: ignore[name-defined]
+
 
 SOURCE_TAGS = (
     TypeTag.SourceDetail,

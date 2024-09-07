@@ -460,6 +460,17 @@ def find_possible_pages(
             )
 
 
+ITEM_IDS = {210586}
+
+
+def is_item_missing_bibliography(url: str) -> bool:
+    """Return whether this page is part of one of the BHL items known to be missing metadata."""
+    item_id = get_bhl_item_from_url(url)
+    if item_id is None:
+        return False
+    return item_id in ITEM_IDS
+
+
 def get_bhl_item_from_url(url: str) -> int | None:
     parsed = urlparse.parse_url(url)
     match parsed:

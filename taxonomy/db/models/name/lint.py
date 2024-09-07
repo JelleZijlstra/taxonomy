@@ -3324,12 +3324,13 @@ def _replace_page_link(
 
 def _check_bhl_bibliography_matches(
     nam: Name,
-    tag: TypeTag.AuthorityPageLink,  # type:ignore[name-defined]
+    tag: TypeTag.AuthorityPageLink,  # type: ignore[name-defined]
     cfg: LintConfig,
 ) -> Iterable[str]:
     bibliography_id = bhl.get_bhl_bibliography_from_url(tag.url)
     if bibliography_id is None:
-        yield f"cannot find BHL bibliography for {tag.url}"
+        if not bhl.is_item_missing_bibliography(tag.url):
+            yield f"cannot find BHL bibliography for {tag.url}"
         return
     if nam.original_citation is None or nam.original_citation.url is None:
         return

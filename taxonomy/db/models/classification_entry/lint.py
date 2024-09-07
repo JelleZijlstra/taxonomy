@@ -651,7 +651,8 @@ def _check_bhl_bibliography_matches(
 ) -> Iterable[str]:
     bibliography_id = bhl.get_bhl_bibliography_from_url(tag.url)
     if bibliography_id is None:
-        yield f"cannot find BHL bibliography for {tag.url}"
+        if not bhl.is_item_missing_bibliography(tag.url):
+            yield f"cannot find BHL bibliography for {tag.url}"
         return
     if ce.article.url is None:
         return
