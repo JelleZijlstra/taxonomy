@@ -4443,6 +4443,36 @@ def mark_incorrect_subsequent_spelling_as_name_combination(
                 yield message
 
 
+@LINT.add("family_group_subsequent_usage")
+def mark_family_group_subsequent_usage(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    if nam.group is not Group.family:
+        return
+    if nam.corrected_original_name is None or nam.original_rank is None:
+        return
+    if nam.has_name_tag(NameTag.SubsequentUsageOf):
+        return
+    same_name = [
+        other_name
+        for other_name in nam.taxon.get_names().filter(
+            Name.corrected_original_name == nam.corrected_original_name,
+            Name.nomenclature_status == NomenclatureStatus.available,
+            Name.original_rank == nam.original_rank,
+            Name.id != nam.id,
+        )
+        if other_name.numeric_year() < nam.numeric_year()
+    ]
+    if not same_name:
+        return
+    earliest_name = min(same_name, key=lambda name: name.numeric_year())
+    tag = NameTag.SubsequentUsageOf(earliest_name, "")
+    message = f"marking as subsequent usage of {earliest_name}"
+    if cfg.autofix:
+        print(f"{nam}: {message}")
+        nam.add_tag(tag)
+    else:
+        yield message
+
+
 @dataclass(frozen=True)
 class ExpectedName:
     original_name: str | None
