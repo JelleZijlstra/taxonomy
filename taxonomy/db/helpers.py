@@ -31,6 +31,8 @@ SPECIES_RANKS = [
     Rank.subvariety,
     Rank.other_species,
     Rank.informal_species,
+    Rank.mutation,
+    Rank.race,
 ]
 GENUS_RANKS = [Rank.subgenus, Rank.genus, Rank.synonym_genus, Rank.other_subgeneric]
 FAMILY_RANKS = [Rank.synonym_family, Rank.other_family, Rank.unranked_family]

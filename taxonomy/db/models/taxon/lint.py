@@ -43,17 +43,33 @@ def check_parent(taxon: Taxon, cfg: LintConfig) -> Iterable[str]:
             f"{taxon}: is {taxon.age!r}, but its parent {taxon.parent} is"
             f" {taxon.parent.age!r}"
         )
-    parent = taxon.parent
+    parent = _first_ranked_parent(taxon.parent)
     if (
         parent is not None
-        and parent.rank is not Rank.unranked
         and taxon.rank is not Rank.unranked
+        and taxon.rank >= parent.rank
     ):
-        if taxon.rank >= parent.rank:
-            yield (
-                f"{taxon}: is of rank {taxon.rank.name}, but parent is of rank"
-                f" {parent.rank.name}"
-            )
+        yield (
+            f"{taxon}: is of rank {taxon.rank.name}, but parent {parent} is of rank"
+            f" {parent.rank.name}"
+        )
+
+
+def _first_ranked_parent(taxon: Taxon | None, *, depth: int = 20) -> Taxon | None:
+    if depth == 0 or taxon is None:
+        return None
+    if taxon.rank is not Rank.unranked:
+        return taxon
+    return _first_ranked_parent(taxon.parent, depth=depth - 1)
+
+
+@LINT.add("rank")
+def check_rank(taxon: Taxon, cfg: LintConfig) -> Iterable[str]:
+    if not taxon.rank.is_allowed_for_taxon:
+        yield f"{taxon}: has disallowed rank {taxon.rank!r}"
+    group = helpers.group_of_rank(taxon.rank)
+    if group != taxon.base_name.group:
+        yield f"{taxon}: rank {taxon.rank.name} does not match group {taxon.base_name.group.name}"
 
 
 @LINT.add("base_name")
@@ -154,7 +170,14 @@ def check_expected_base_name(taxon: Taxon, cfg: LintConfig) -> Iterable[str]:
     if taxon.base_name == expected_base:
         return
     message = f"expected base name to be {expected_base}, but is {taxon.base_name}"
-    yield message
+    if cfg.autofix:
+        print(f"{taxon}: {message}")
+        if taxon.base_name.taxon == taxon:
+            taxon.switch_basename(expected_base)
+        else:
+            taxon.base_name = expected_base
+    else:
+        yield message
 
 
 def get_conservative_expected_base_name(taxon: Taxon) -> models.Name | None:

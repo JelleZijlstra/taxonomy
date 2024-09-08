@@ -446,6 +446,8 @@ class Rank(enum.IntEnum):
     subvariety = 223
     other_species = 224
     informal_species = 225
+    mutation = 26
+    race = 27
 
     synonym_species = 230
     synonym_genus = 231
@@ -500,6 +502,20 @@ class Rank(enum.IntEnum):
             or self.needs_textual_rank
             or self in {Rank.informal, Rank.unranked}
         )
+
+    @property
+    def is_allowed_for_taxon(self) -> bool:
+        if self is Rank.unranked:
+            return True
+        if self > Rank.root:
+            return False
+        return self not in {
+            Rank.other_family,
+            Rank.other_subgeneric,
+            Rank.unranked_family,
+            Rank.infrafamily,
+            Rank.hyperfamily,
+        }
 
 
 SYNONYM_RANKS = {

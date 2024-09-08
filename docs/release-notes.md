@@ -19,6 +19,7 @@ exports released on Zenodo.
     are now used at a higher rank. For example, Marsupialia is now attributed to Lesson
     (1827), with Marsupialia Illiger, 1811, an unavailable family-group name, treated as
     a synonym.
+  - Re-attribute a number of family-group taxa to an older authority
 - Backend
 - Frontend
 
