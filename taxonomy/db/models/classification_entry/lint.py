@@ -932,3 +932,70 @@ def check_mapped_name_matches_other_ces(
     ]
     if others:
         yield f"mapped to {ce.mapped_name}, but other names are mapped differently:\n{'\n'.join(f' - {other!r}' for other in others)}"
+
+
+def get_applicable_nomenclature_statuses(
+    ce: ClassificationEntry,
+) -> Iterable[NomenclatureStatus]:
+    for tag in ce.tags:
+        if isinstance(tag, ClassificationEntryTag.CECondition):
+            yield tag.status
+    if ce.rank is Rank.infrasubspecific:
+        yield NomenclatureStatus.infrasubspecific
+    yield from models.name.lint.get_inherent_nomenclature_statuses_from_article(
+        ce.article
+    )
+
+
+@LINT.add("maps_to_unavailable")
+def check_maps_to_unavailable(
+    ce: ClassificationEntry, cfg: LintConfig
+) -> Iterable[str]:
+    if ce.mapped_name is None or ce.rank is Rank.synonym:
+        return
+    mapped = ce.mapped_name.resolve_variant()
+    if mapped.group is Group.high:
+        return
+    if not mapped.is_unavailable():
+        return
+    status = mapped.nomenclature_status
+    if status in (
+        NomenclatureStatus.fully_suppressed,
+        NomenclatureStatus.misidentification,
+        NomenclatureStatus.not_based_on_a_generic_name,
+        NomenclatureStatus.based_on_homonym,
+    ):
+        return
+    applicable_statuses = set(get_applicable_nomenclature_statuses(ce))
+    if not applicable_statuses:
+        yield f"mapped to unavailable name {mapped} (via {ce.mapped_name}), but lacks CECondition tag"
+        return
+    most_serious = min(
+        applicable_statuses, key=models.name.lint.nomenclature_status_priority
+    )
+    if models.name.lint.nomenclature_status_priority(
+        most_serious
+    ) > models.name.lint.nomenclature_status_priority(status):
+        yield f"mapped to unavailable name {mapped} (via {ce.mapped_name}) of status {status}, but has less serious CECondition tag for status {most_serious}"
+
+
+@LINT.add("condition_from_mapped")
+def infer_condition_from_mapped(
+    ce: ClassificationEntry, cfg: LintConfig
+) -> Iterable[str]:
+    if ce.mapped_name is None or ce.mapped_name.original_citation != ce.article:
+        return
+    applicable_statuses = set(get_applicable_nomenclature_statuses(ce))
+    name_tags = list(
+        ce.mapped_name.get_tags(ce.mapped_name.tags, models.name.NameTag.Condition)
+    )
+    for tag in name_tags:
+        if tag.status in applicable_statuses:
+            continue
+        new_tag = ClassificationEntryTag.CECondition(tag.status, tag.comment)
+        message = f"inferred CECondition tag from mapped name: {new_tag}"
+        if cfg.autofix:
+            print(f"{ce}: {message}")
+            ce.add_tag(new_tag)
+        else:
+            yield message

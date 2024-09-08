@@ -1,4 +1,6 @@
-"""Lint steps for Articles."""
+"""Lint steps for Taxon."""
+
+from __future__ import annotations
 
 from collections.abc import Container, Iterable
 
@@ -142,3 +144,47 @@ def check_basal_tags(taxon: Taxon, cfg: LintConfig) -> Iterable[str]:
             yield f"{taxon}: has unnecessary IncertaeSedis tag"
         if has_basal:
             yield f"{taxon}: has unnecessary Basal tag"
+
+
+@LINT.add("expected_base_name")
+def check_expected_base_name(taxon: Taxon, cfg: LintConfig) -> Iterable[str]:
+    expected_base = get_conservative_expected_base_name(taxon)
+    if expected_base is None:
+        return
+    if taxon.base_name == expected_base:
+        return
+    message = f"expected base name to be {expected_base}, but is {taxon.base_name}"
+    yield message
+
+
+def get_conservative_expected_base_name(taxon: Taxon) -> models.Name | None:
+    # For now, only include family-group taxa.
+    if taxon.group() != Group.family:
+        return None
+    if taxon.base_name.type is None:
+        return None
+    names = set(taxon.get_names())
+    if taxon.base_name.taxon != taxon:
+        names |= set(taxon.base_name.taxon.get_names())
+    group = taxon.group()
+    # Don't worry about the case where there is an older name based on a different type
+    available_names = {
+        nam
+        for nam in names
+        if nam.group == group
+        and nam.can_be_valid_base_name()
+        and nam.type == taxon.base_name.type
+    }
+    if not available_names:
+        return None
+    names_and_dates = sorted(
+        [(nam, nam.get_date_object()) for nam in available_names],
+        key=lambda pair: pair[1],
+    )
+    selected_pair = names_and_dates[0]
+    if selected_pair[0] != taxon.base_name:
+        possible = {nam for nam, date in names_and_dates if date == selected_pair[1]}
+        if taxon.base_name in possible:
+            # If there are multiple names from the same year, assume we got the priority right
+            return taxon.base_name
+    return selected_pair[0]

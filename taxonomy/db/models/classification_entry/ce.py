@@ -40,6 +40,7 @@ class ClassificationEntryTag(ADT):
     CommentFromDatabase(text=str, tag=12)  # type: ignore[name-defined]
     # Should not be included in species counts
     TreatedAsDubious(tag=13)  # type: ignore[name-defined]
+    CECondition(tag=14, status=NomenclatureStatus, comment=NotRequired[str])  # type: ignore[name-defined]
 
 
 class ClassificationEntry(BaseModel):

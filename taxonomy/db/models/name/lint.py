@@ -1442,17 +1442,28 @@ def has_valid_use(nam: Name) -> bool:
     return False
 
 
-def get_inherent_nomenclature_statuses(nam: Name) -> Iterable[NomenclatureStatus]:
-    # Allow 1757 because of spiders
-    if nam.year is not None and nam.numeric_year() < 1757:
+def get_inherent_nomenclature_statuses_from_article(
+    art: Article,
+) -> Iterable[NomenclatureStatus]:
+    if art.has_tag(ArticleTag.UnavailableElectronic):
+        yield NomenclatureStatus.unpublished_electronic
+    if art.has_tag(ArticleTag.InPress):
+        yield NomenclatureStatus.unpublished_pending
+    if art.type is ArticleType.THESIS:
+        yield NomenclatureStatus.unpublished_thesis
+    year = art.valid_numeric_year()
+    if year is not None and year < 1757:
         yield NomenclatureStatus.before_1758
+
+
+def get_inherent_nomenclature_statuses(nam: Name) -> Iterable[NomenclatureStatus]:
     if nam.original_citation is not None:
-        if nam.original_citation.has_tag(ArticleTag.UnavailableElectronic):
-            yield NomenclatureStatus.unpublished_electronic
-        if nam.original_citation.has_tag(ArticleTag.InPress):
-            yield NomenclatureStatus.unpublished_pending
-        if nam.original_citation.type is ArticleType.THESIS:
-            yield NomenclatureStatus.unpublished_thesis
+        yield from get_inherent_nomenclature_statuses_from_article(
+            nam.original_citation
+        )
+    # Allow 1757 because of spiders
+    elif nam.year is not None and nam.numeric_year() < 1757:
+        yield NomenclatureStatus.before_1758
     if nam.original_rank is Rank.synonym:
         yield NomenclatureStatus.not_used_as_valid
     if nam.numeric_year() > 1960 and nam.original_rank in (Rank.variety, Rank.form):
@@ -1473,11 +1484,24 @@ def get_status_priorities() -> dict[NomenclatureStatus, int]:
 _priority_map = get_status_priorities()
 
 
-def get_sorted_applicable_statuses(nam: Name) -> list[NomenclatureStatus]:
+def nomenclature_status_priority(status: NomenclatureStatus) -> int:
+    return _priority_map[status]
+
+
+def sort_nomenclature_statuses(
+    statuses: Iterable[NomenclatureStatus],
+) -> list[NomenclatureStatus]:
+    return sorted(statuses, key=lambda status: _priority_map[status])
+
+
+def get_applicable_statuses(nam: Name) -> set[NomenclatureStatus]:
     applicable_from_tags = set(get_applicable_nomenclature_statuses_from_tags(nam))
     inherent = set(get_inherent_nomenclature_statuses(nam))
-    applicable = applicable_from_tags | inherent
-    return sorted(applicable, key=lambda status: _priority_map[status])
+    return applicable_from_tags | inherent
+
+
+def get_sorted_applicable_statuses(nam: Name) -> list[NomenclatureStatus]:
+    return sort_nomenclature_statuses(get_applicable_statuses(nam))
 
 
 @LINT.add("expected_nomenclature_status")
@@ -5097,6 +5121,19 @@ def check_matches_mapped_classification_entry(
                     nam.original_rank = ce.rank
                 else:
                     yield message
+        conditions = list(ce.get_tags(ce.tags, ClassificationEntryTag.CECondition))
+        applicable_statues = get_applicable_statuses(nam)
+        new_conditions = [
+            tag for tag in conditions if tag.status not in applicable_statues
+        ]
+        if new_conditions:
+            message = f"mapped {ce} has conditions {new_conditions}; add to name"
+            if cfg.autofix:
+                print(f"{nam}: {message}")
+                for tag in new_conditions:
+                    nam.add_tag(NameTag.Condition(tag.status, tag.comment))
+            else:
+                yield message
 
 
 def _check_matching_original_parent(
