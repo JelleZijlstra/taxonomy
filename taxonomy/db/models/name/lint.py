@@ -5175,6 +5175,22 @@ def check_matches_mapped_classification_entry(
                     nam.original_rank = ce.rank
                 else:
                     yield message
+        elif ce.rank.needs_textual_rank:
+            ce_tags = list(ce.get_tags(ce.tags, ClassificationEntryTag.TextualRank))
+            if ce_tags:
+                nam_tags = list(
+                    nam.get_tags(nam.type_tags, TypeTag.TextualOriginalRank)
+                )
+                if not nam_tags:
+                    tag = TypeTag.TextualOriginalRank(ce_tags[0].text)
+                    message = f"inferred textual rank from {ce}: {tag}"
+                    if cfg.autofix:
+                        print(f"{nam}: {message}")
+                        nam.add_type_tag(tag)
+                    else:
+                        yield message
+                elif ce_tags[0].text != nam_tags[0].text:
+                    yield f"mapped to {ce}, but textual ranks do not match: {ce_tags[0].text=} != {nam_tags[0].text=}"
         conditions = list(ce.get_tags(ce.tags, ClassificationEntryTag.CECondition))
         applicable_statues = get_applicable_statuses(nam)
         new_conditions = [
