@@ -537,6 +537,11 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
     elif TypeTag.Repository in by_type:
         yield f"name may not have Repository tags: {by_type[TypeTag.Repository]}"
 
+    if TypeTag.TextualOriginalRank in by_type and (
+        nam.original_rank is None or not nam.original_rank.needs_textual_rank
+    ):
+        yield f"has TextualOriginalRank tag but is of rank that does not need it ({nam.original_rank!r})"
+
     if tags != original_tags:
         if set(tags) != set(original_tags):
             print(f"changing tags for {nam}")

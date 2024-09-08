@@ -485,7 +485,7 @@ class Rank(enum.IntEnum):
 
     @property
     def needs_textual_rank(self) -> bool:
-        return self in _NEED_TEXTUAL_RANK
+        return self in NEED_TEXTUAL_RANK
 
     @property
     def comparison_value(self) -> int:
@@ -509,7 +509,7 @@ SYNONYM_RANKS = {
     Rank.synonym_high,
     Rank.synonym,
 }
-_NEED_TEXTUAL_RANK = {
+NEED_TEXTUAL_RANK = {
     Rank.other,
     Rank.other_family,
     Rank.other_subgeneric,

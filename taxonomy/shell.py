@@ -39,11 +39,16 @@ from traitlets.config.loader import Config
 from taxonomy import config
 from taxonomy.apis import bhl
 from taxonomy.config import get_options
+from taxonomy.db.models.classification_entry.ce import (
+    ClassificationEntry,
+    ClassificationEntryTag,
+)
 
 from . import getinput, urlparse
 from .command_set import CommandSet
 from .db import constants, definition, derived_data, export, helpers, models
 from .db.constants import (
+    NEED_TEXTUAL_RANK,
     AgeClass,
     ArticleKind,
     ArticleType,
@@ -2773,6 +2778,32 @@ def add_coordinates(names: Iterable[Name]) -> None:
 def set_network_available() -> None:
     available = getinput.yes_no("Is the network available? ")
     config.set_network_available(value=available)
+
+
+@command
+def textual_rank_report() -> None:
+    for rank in sorted(NEED_TEXTUAL_RANK):
+        getinput.print_header(f"{rank!r} (CE)")
+        ces = list(
+            ClassificationEntry.select_valid().filter(ClassificationEntry.rank == rank)
+        )
+        print(f"Total entries: {len(ces)}")
+        by_text: Counter[str] = Counter()
+        for ce in ces:
+            for tag in ce.get_tags(ce.tags, ClassificationEntryTag.TextualRank):
+                by_text[tag.text.casefold()] += 1
+        for text, count in by_text.most_common():
+            print(f"{count} {text}")
+
+        getinput.print_header(f"{rank!r} (name)")
+        nams = list(Name.select_valid().filter(Name.original_rank == rank))
+        print(f"Total names: {len(nams)}")
+        by_text = Counter()
+        for nam in nams:
+            for tag in nam.get_tags(nam.type_tags, TypeTag.TextualOriginalRank):
+                by_text[tag.text.casefold()] += 1
+        for text, count in by_text.most_common():
+            print(f"{count} {text}")
 
 
 def run_shell() -> None:
