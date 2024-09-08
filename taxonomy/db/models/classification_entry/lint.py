@@ -211,6 +211,10 @@ def check_mapped_name(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]
             if cfg.autofix:
                 print(f"{ce}: adding page {ce.mapped_name.page_described}")
                 ce.page = ce.mapped_name.page_described
+        # Don't worry about synonyms; if the source puts them in the "high" bucket but we decide
+        # it's actually a family-group name, it's still correctly marked "synonym_high" in the source.
+        if (not ce.rank.is_synonym) and ce.get_group() is not ce.mapped_name.group:
+            yield f"mapped_name group does not match: {ce.get_group()!r} vs {ce.mapped_name.group!r}"
         corrected_name = ce.get_corrected_name()
         if corrected_name is None:
             return

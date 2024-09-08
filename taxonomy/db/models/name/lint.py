@@ -1151,6 +1151,12 @@ def _check_preoccupation_tag(
     return new_tag
 
 
+def _normalize_ii(name: str) -> str:
+    # ICZN Art. 33.4: change between ii/i, iae/ae, iorum/orum, arum/arum
+    # are always ISS, not unjustified emendations
+    return re.sub(r"i(i|ae|orum|arum)", r"\1", name)
+
+
 @LINT.add("tags")
 def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
     """Looks at all tags set on names and applies related changes."""
@@ -1301,6 +1307,14 @@ def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                     message += f" of {new_target}"
                     new_tag = type(tag)(new_target, tag.comment)
                 yield message
+            if (
+                nam.group is Group.species
+                and isinstance(tag, NameTag.UnjustifiedEmendationOf)
+                and nam.root_name != tag.name.root_name
+                and _normalize_ii(nam.root_name) == _normalize_ii(tag.name.root_name)
+            ):
+                yield f"{nam} is marked as an unjustified emendation of {tag.name}, but has a root name that only differs in ii/i or similar"
+                new_tag = NameTag.IncorrectSubsequentSpellingOf(tag.name, tag.comment)
 
         elif isinstance(tag, NameTag.Conserved):
             if nam.nomenclature_status not in (

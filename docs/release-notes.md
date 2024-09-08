@@ -4,6 +4,24 @@ Version numbers correspond to Git tags in the
 [backend](https://github.com/JelleZijlstra/taxonomy/) repositories, and to database
 exports released on Zenodo.
 
+# Unreleased
+
+- Database
+  - Always treat emendations from _-ii_ to _-i_ and similar as incorrect subsequent
+    spellings rather than unjustified emendations (ICZN Art. 33.4)
+  - Mark more family-group names as subsequent usages of earlier identical names
+  - Enforce that classification entries mapping to unavailable names are also marked as
+    unavailable
+  - Add a more precise set of ranks, mostly for infrasubspecific names
+  - Enforce that classification entries always map to a name of the same group (i.e.,
+    family-group names are not mapped to names ranked above the family group)
+  - Adjust attribution of names that were originally proposed as family-group names but
+    are now used at a higher rank. For example, Marsupialia is now attributed to Lesson
+    (1827), with Marsupialia Illiger, 1811, an unavailable family-group name, treated as
+    a synonym.
+- Backend
+- Frontend
+
 # 24.9.0 (September 2, 2024)
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.13630864.svg)](https://doi.org/10.5281/zenodo.13630864)
