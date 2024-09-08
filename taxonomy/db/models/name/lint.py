@@ -3051,6 +3051,30 @@ def check_original_parent(nam: Name, cfg: LintConfig) -> Iterable[str]:
             nam.original_parent = target
         else:
             yield message
+    if (
+        not nam.original_parent.nomenclature_status.can_preoccupy()
+        and nam.original_citation != nam.original_parent.original_citation
+    ):
+        resolved = nam.original_parent.resolve_variant()
+        alternatives = [
+            parent
+            for parent in sorted(
+                nam.original_parent.taxon.get_names().filter(
+                    Name.root_name == nam.original_parent.root_name
+                ),
+                key=lambda n: n.numeric_year(),
+            )
+            if parent.numeric_year() < nam.numeric_year()
+            and parent.nomenclature_status.can_preoccupy()
+            and parent.resolve_variant() != resolved
+        ]
+        if alternatives:
+            message = f"original_parent is not an available name: {nam.original_parent} (alternatives: {alternatives})"
+            if cfg.autofix:
+                print(f"{nam}: {message}")
+                nam.original_parent = alternatives[0]
+            else:
+                yield message
     if nam.group is Group.species and nam.corrected_original_name is not None:
         original_genus, *_ = nam.corrected_original_name.split()
         # corrected_original_name is for the case where the genus name got a justified emendation

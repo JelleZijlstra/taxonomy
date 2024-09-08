@@ -948,6 +948,21 @@ def check_mapped_name_matches_other_ces(
     ]
     if others:
         yield f"mapped to {ce.mapped_name}, but other names are mapped differently:\n{'\n'.join(f' - {other!r}' for other in others)}"
+    if group != ce.mapped_name.group:
+        corrected_name = ce.get_corrected_name()
+        if corrected_name is not None:
+            possibilities = [
+                nam
+                for nam in ce.mapped_name.taxon.get_names()
+                if nam.group == group and nam.corrected_original_name == corrected_name
+            ]
+            if len(possibilities) == 1:
+                message = f"change to map to {possibilities[0]}"
+                if cfg.autofix:
+                    print(f"{ce}: {message}")
+                    ce.mapped_name = possibilities[0]
+                else:
+                    yield message
 
 
 def get_applicable_nomenclature_statuses(
