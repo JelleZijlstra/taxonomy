@@ -688,7 +688,9 @@ class Name(BaseModel):
         )
 
     def display_classification_entries(self) -> None:
-        for ce in self.get_classification_entries():
+        for ce in sorted(
+            self.get_classification_entries(), key=lambda ce: ce.article.numeric_year()
+        ):
             ce.display()
 
     def _edit_mapped_ce(self) -> None:
@@ -1121,8 +1123,8 @@ class Name(BaseModel):
         if (
             self.original_rank is not None
             and nam.original_rank is not None
-            and self.original_rank not in (Rank.other, Rank.unranked, Rank.synonym)
-            and nam.original_rank not in (Rank.other, Rank.unranked, Rank.synonym)
+            and not self.original_rank.is_uncomparable
+            and not nam.original_rank.is_uncomparable
         ):
             if self.original_rank.comparison_value > nam.original_rank.comparison_value:
                 return True
@@ -1951,7 +1953,7 @@ class Name(BaseModel):
             if self.nomenclature_status.requires_type():
                 if self.genus_type_kind is None or self.genus_type_kind.requires_tag():
                     yield (TypeTag.IncludedSpecies, TypeTag.GenusCoelebs)
-        if self.original_rank is Rank.other:
+        if self.original_rank is not None and self.original_rank.needs_textual_rank:
             yield (TypeTag.TextualOriginalRank,)
 
     def get_missing_tags(

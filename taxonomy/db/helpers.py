@@ -24,44 +24,23 @@ SPECIES_RANKS = [
     Rank.variety,
     Rank.form,
     Rank.infrasubspecific,
+    Rank.synonym_species,
+    Rank.aberratio,
+    Rank.morph,
+    Rank.natio,
+    Rank.subvariety,
+    Rank.other_species,
+    Rank.informal_species,
 ]
-GENUS_RANKS = [Rank.subgenus, Rank.genus]
-FAMILY_RANKS = [
-    Rank.infratribe,
-    Rank.subtribe,
-    Rank.tribe,
-    Rank.subfamily,
-    Rank.family,
-    Rank.superfamily,
-    Rank.hyperfamily,
-]
-HIGH_RANKS = [
-    Rank.root,
-    43,
+GENUS_RANKS = [Rank.subgenus, Rank.genus, Rank.synonym_genus, Rank.other_subgeneric]
+FAMILY_RANKS = [Rank.synonym_family, Rank.other_family, Rank.unranked_family]
+HIGH_RANKS = {
     Rank.division,
-    Rank.parvorder,
-    Rank.infraorder,
-    Rank.suborder,
-    Rank.order,
-    Rank.superorder,
-    Rank.subcohort,
-    Rank.cohort,
-    Rank.supercohort,
-    Rank.infraclass,
-    Rank.subclass,
-    Rank.class_,
-    Rank.superclass,
-    Rank.infraphylum,
-    Rank.subphylum,
-    Rank.phylum,
-    Rank.superphylum,
-    Rank.infrakingdom,
-    Rank.subkingdom,
-    Rank.kingdom,
-    Rank.superkingdom,
-    Rank.domain,
     Rank.unranked,
-]
+    Rank.informal,
+    Rank.other,
+    Rank.synonym_high,
+}
 SUFFIXES = {
     Rank.infratribe: "ita",
     Rank.subtribe: "ina",
@@ -72,6 +51,13 @@ SUFFIXES = {
     Rank.hyperfamily: "oides",
 }
 VALID_SUFFIXES = set(SUFFIXES.values())
+
+GROUP_TO_SYNONYM_RANK = {
+    Group.species: Rank.synonym_species,
+    Group.genus: Rank.synonym_genus,
+    Group.family: Rank.synonym_family,
+    Group.high: Rank.synonym_high,
+}
 
 _RANKS = {
     "root": Rank.root,
@@ -122,12 +108,12 @@ def group_of_rank(rank: Rank) -> Group:
         return Group.species
     elif rank in GENUS_RANKS:
         return Group.genus
-    elif rank in FAMILY_RANKS or rank in (34, 24):
+    elif Rank.infratribe <= rank <= Rank.hyperfamily or rank in FAMILY_RANKS:
         return Group.family
-    elif rank in HIGH_RANKS or rank > Rank.hyperfamily:
+    elif Rank.parvorder <= rank <= Rank.root or rank in HIGH_RANKS:
         return Group.high
     else:
-        raise ValueError("Unrecognized rank: " + str(rank))
+        raise ValueError(f"Unrecognized rank: {rank!r}")
 
 
 def strip_standard_suffixes(name: str) -> str:

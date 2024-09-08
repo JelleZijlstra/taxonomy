@@ -1344,7 +1344,7 @@ def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
 
             # TODO: lint against other statuses that have their own tag
         elif isinstance(tag, NameTag.NotUsedAsValid):
-            if nam.original_rank is Rank.synonym:
+            if nam.original_rank is not None and nam.original_rank.is_synonym:
                 yield "redundant NotUsedAsValid tag for a synonym"
                 if not tag.comment:
                     new_tag = None
@@ -1417,7 +1417,7 @@ def has_valid_use_for_variety_or_form(nam: Name) -> bool:
         ):
             return True
         if any(
-            ce.rank is not Rank.synonym and ce.article.numeric_year() < 1985
+            not ce.rank.is_synonym and ce.article.numeric_year() < 1985
             for ce in nam.get_classification_entries()
         ):
             return True
@@ -1435,7 +1435,7 @@ def has_valid_use(nam: Name) -> bool:
         ):
             return True
         if any(
-            ce.rank is not Rank.synonym and ce.article.numeric_year() < 1961
+            not ce.rank.is_synonym and ce.article.numeric_year() < 1961
             for ce in nam.get_classification_entries()
         ):
             return True
@@ -1464,10 +1464,12 @@ def get_inherent_nomenclature_statuses(nam: Name) -> Iterable[NomenclatureStatus
     # Allow 1757 because of spiders
     elif nam.year is not None and nam.numeric_year() < 1757:
         yield NomenclatureStatus.before_1758
-    if nam.original_rank is Rank.synonym:
+    if nam.original_rank is not None and nam.original_rank.is_synonym:
         yield NomenclatureStatus.not_used_as_valid
     if nam.numeric_year() > 1960 and nam.original_rank in (Rank.variety, Rank.form):
         yield NomenclatureStatus.variety_or_form
+    if nam.original_rank in (Rank.aberratio, Rank.morph):
+        yield NomenclatureStatus.infrasubspecific
 
 
 @functools.cache
@@ -3005,7 +3007,7 @@ def _get_secondary_names_of_genus(
 
 
 def should_require_subgenus_original_parent(nam: Name) -> bool:
-    if nam.original_rank is not Rank.subgenus:
+    if nam.original_rank not in (Rank.subgenus, Rank.other_subgeneric):
         return True
     # Should ideally be set for all names, but let's lock in the progress already made
     if nam.numeric_year() > 1909:
@@ -3029,7 +3031,10 @@ def resolve_usage(nam: Name) -> Name:
 def check_original_parent(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.original_parent is None:
         return
-    if nam.group is not Group.species and nam.original_rank is not Rank.subgenus:
+    if nam.group is not Group.species and nam.original_rank not in (
+        Rank.subgenus,
+        Rank.other_subgeneric,
+    ):
         yield "original_parent should only be set for species-group names and subgenera"
         return
     if nam.original_parent.group is not Group.genus:
@@ -3067,7 +3072,7 @@ def infer_original_parent(nam: Name, cfg: LintConfig) -> Iterable[str]:
     ):
         return
     if (
-        nam.original_rank is Rank.subgenus
+        nam.original_rank in (Rank.subgenus, Rank.other_subgeneric)
         and nam.type is not None
         and nam.type.original_citation == nam.original_citation
         and nam.type.original_parent is not None
@@ -3192,6 +3197,15 @@ def should_be_infrasubspecific(nam: Name) -> Possibility:
 @LINT.add("infrasubspecific")
 def check_infrasubspecific(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.group is not Group.species:
+        return
+    if nam.original_rank in (
+        Rank.variety,
+        Rank.form,
+        Rank.aberratio,
+        Rank.morph,
+        Rank.subvariety,
+        Rank.natio,
+    ):
         return
     status = should_be_infrasubspecific(nam)
     if status is not Possibility.yes:
@@ -4218,7 +4232,7 @@ def infer_name_variants(nam: Name, cfg: LintConfig) -> Iterable[str]:
         corrected_name = ce.get_corrected_name()
         if corrected_name is None:
             continue
-        if ce.rank is Rank.synonym:
+        if ce.rank.is_synonym:
             root_name = corrected_name.split()[-1]
             if root_name in nam.get_root_name_forms():
                 continue
@@ -4355,7 +4369,9 @@ def check_duplicate_variants(nam: Name, cfg: LintConfig) -> Iterable[str]:
         NomenclatureStatus.incorrect_subsequent_spelling,
     ):
         return
-    if nam.original_rank is Rank.synonym and nam.group is Group.species:
+    if nam.original_rank is Rank.synonym:
+        return
+    if nam.original_rank is Rank.synonym_species:
         dupes = Name.select_valid().filter(
             Name.taxon == nam.taxon, Name.root_name == nam.root_name
         )
@@ -4556,7 +4572,7 @@ def _update_replaceable_tags(
 def _get_simplied_normalized_name(nam: Name) -> str | None:
     if nam.original_name is None or nam.corrected_original_name is None:
         return None
-    if nam.original_rank is Rank.synonym:
+    if nam.original_rank is not None and nam.original_rank.is_synonym:
         if nam.original_parent is None:
             return nam.corrected_original_name
         if (
@@ -4830,7 +4846,7 @@ def infer_included_species(nam: Name, cfg: LintConfig) -> Iterable[str]:
     ces = list(nam.get_mapped_classification_entries())
     if not ces:
         return
-    ces = [ce for ce in ces if ce.rank is not Rank.synonym]
+    ces = [ce for ce in ces if not ce.rank.is_synonym]
     if len(ces) > 1:
         # Maybe if there's a subgenus? Let's see what we want to do in practical
         # occurrences first.
@@ -5113,7 +5129,7 @@ def check_matches_mapped_classification_entry(
             yield f"mapped to {ce}, but {ce.rank=!r} != {nam.original_rank=!r}"
             if (
                 nam.original_rank is None
-                or (nam.status is Status.synonym and ce.rank is Rank.synonym)
+                or (nam.status is Status.synonym and ce.rank.is_synonym)
             ) and len(ces) == 1:
                 message = f"inferred rank {ce.rank!r} from {ce}"
                 if cfg.autofix:
@@ -5139,7 +5155,7 @@ def check_matches_mapped_classification_entry(
 def _check_matching_original_parent(
     nam: Name, ce: ClassificationEntry
 ) -> Iterable[str]:
-    if nam.original_parent is None or ce.rank is Rank.synonym:
+    if nam.original_parent is None or ce.rank.is_synonym:
         return
     ce_parent = ce.parent_of_rank(Rank.genus)
     if ce_parent is None or ce_parent.mapped_name is None:
@@ -5155,3 +5171,50 @@ def _check_matching_original_parent(
     ):
         return
     yield f"mapped to {ce}, but {ce_parent.mapped_name=} (mapped from {ce_parent}) != {nam.original_parent=}"
+
+
+@LINT.add("original_rank")
+def check_original_rank(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    if nam.original_rank is None:
+        return
+    if nam.original_rank is Rank.synonym:
+        new_rank = helpers.GROUP_TO_SYNONYM_RANK[nam.group]
+        message = f"changing original rank to {new_rank!r}"
+        if cfg.autofix:
+            print(f"{nam}: {message}")
+            nam.original_rank = new_rank
+        else:
+            yield message
+        return
+    if nam.original_rank is Rank.other:
+        if nam.group is Group.family:
+            message = f"changing original rank to {Rank.other_family!r}"
+            if cfg.autofix:
+                print(f"{nam}: {message}")
+                nam.original_rank = Rank.other_family
+            else:
+                yield message
+            return
+        elif nam.group is Group.genus:
+            message = f"changing original rank to {Rank.other_subgeneric!r}"
+            if cfg.autofix:
+                print(f"{nam}: {message}")
+                nam.original_rank = Rank.other_subgeneric
+            else:
+                yield message
+            return
+    if (
+        nam.original_rank is Rank.informal
+        and nam.group is Group.high
+        and nam.taxon.group() is Group.species
+    ):
+        message = f"changing original rank to {Rank.informal_species!r} and group to {Group.species!r}"
+        if cfg.autofix:
+            print(f"{nam}: {message}")
+            nam.original_rank = Rank.informal_species
+            nam.group = Group.species
+        else:
+            yield message
+    group = helpers.group_of_rank(nam.original_rank)
+    if group is not nam.group:
+        yield f"original rank {nam.original_rank!r} is not in group {nam.group!r}"

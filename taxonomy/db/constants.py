@@ -394,6 +394,7 @@ class Rank(enum.IntEnum):
     species = 5
     species_group = 10
     subgenus = 15
+    other_subgeneric = 19
     genus = 20
     division = 22
     infratribe = 24
@@ -404,9 +405,12 @@ class Rank(enum.IntEnum):
     family = 40
     superfamily = 45
     hyperfamily = 47
+    other_family = 48
+    unranked_family = 49
     parvorder = 50
     infraorder = 55
     suborder = 60
+    semiorder = 64
     order = 65
     superorder = 70
     magnorder = 72
@@ -436,6 +440,21 @@ class Rank(enum.IntEnum):
     synonym = (
         219  # for original rank; if the name was not treated as valid when created
     )
+    aberratio = 220  # always infrasubspecific, Art. 45.6.2
+    morph = 221  # always infrasubspecific, Art. 45.6.2
+    natio = 222
+    subvariety = 223
+    other_species = 224
+    informal_species = 225
+
+    synonym_species = 230
+    synonym_genus = 231
+    synonym_family = 232
+    synonym_high = 233
+
+    @property
+    def is_synonym(self) -> bool:
+        return self in SYNONYM_RANKS
 
     @property
     def display_name(self) -> str:
@@ -444,13 +463,58 @@ class Rank(enum.IntEnum):
                 return "class"
             case Rank.species_group:
                 return "species group"
+            case Rank.synonym_species:
+                return "synonym (species group)"
+            case Rank.synonym_genus:
+                return "synonym (genus group)"
+            case Rank.synonym_family:
+                return "synonym (family group)"
+            case Rank.synonym_high:
+                return "synonym (higher group)"
+            case Rank.other_family:
+                return "other family-group rank"
+            case Rank.other_subgeneric:
+                return "other subgeneric rank"
+            case Rank.unranked_family:
+                return "family-group name without explicit rank"
+            case Rank.other_species:
+                return "other species-group rank"
+            case Rank.informal_species:
+                return "informal species-group name"
         return self.name
 
     @property
+    def needs_textual_rank(self) -> bool:
+        return self in _NEED_TEXTUAL_RANK
+
+    @property
     def comparison_value(self) -> int:
-        if self in (Rank.variety, Rank.form, Rank.infrasubspecific):
+        if self.value > Rank.root:
             return -1
         return self.value
+
+    @property
+    def is_uncomparable(self) -> bool:
+        return (
+            self.is_synonym
+            or self.needs_textual_rank
+            or self in {Rank.informal, Rank.unranked}
+        )
+
+
+SYNONYM_RANKS = {
+    Rank.synonym_species,
+    Rank.synonym_genus,
+    Rank.synonym_family,
+    Rank.synonym_high,
+    Rank.synonym,
+}
+_NEED_TEXTUAL_RANK = {
+    Rank.other,
+    Rank.other_family,
+    Rank.other_subgeneric,
+    Rank.other_species,
+}
 
 
 class RegionKind(enum.IntEnum):

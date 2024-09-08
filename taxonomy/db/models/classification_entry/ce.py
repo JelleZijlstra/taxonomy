@@ -83,7 +83,7 @@ class ClassificationEntry(BaseModel):
         if group is Group.family:
             return self.name.replace("æ", "ae").replace("œ", "oe")
         name = self.name
-        if self.rank is Rank.synonym:
+        if self.rank.is_synonym:
             if self.name.isascii() and re.fullmatch(r"[A-Za-z\-]+", self.name):
                 return self.name.replace("-", "")
             if "[" in name:
@@ -119,9 +119,7 @@ class ClassificationEntry(BaseModel):
             return self.get_corrected_name()
 
     def is_synonym_without_full_name(self) -> bool:
-        if self.rank is not Rank.synonym:
-            return False
-        if self.get_group() is not Group.species:
+        if self.rank is not Rank.synonym_species:
             return False
         name = self.get_corrected_name()
         if name is None:
@@ -173,7 +171,7 @@ class ClassificationEntry(BaseModel):
                 else:
                     next_name = ""
             entries.append(entry)
-            if entry.rank is not Rank.synonym:
+            if not entry.rank.is_synonym:
                 _parent_stack.append(entry)
         return entries
 
@@ -410,7 +408,10 @@ class ClassificationEntry(BaseModel):
 
     def add_syns(self) -> None:
         defaults = {"page": self.page or ""}
-        prefilled_values = {"rank": Rank.synonym, "parent": self}
+        prefilled_values = {
+            "rank": helpers.GROUP_TO_SYNONYM_RANK[self.get_group()],
+            "parent": self,
+        }
         while True:
             entry = self.create_one(
                 self.article, [], defaults=defaults, prefilled_values=prefilled_values
@@ -497,7 +498,7 @@ class ClassificationEntry(BaseModel):
         return field == "raw_data"
 
     def get_rank_string(self) -> str:
-        if self.rank is Rank.other:
+        if self.rank.needs_textual_rank:
             for tag in self.tags:
                 if isinstance(tag, ClassificationEntryTag.TextualRank):
                     return tag.text

@@ -11,7 +11,7 @@ from itertools import takewhile
 from taxonomy import getinput, urlparse
 from taxonomy.apis import bhl
 from taxonomy.db import helpers, models
-from taxonomy.db.constants import Group, NomenclatureStatus, Rank
+from taxonomy.db.constants import SYNONYM_RANKS, Group, NomenclatureStatus, Rank
 from taxonomy.db.models.article.article import Article, ArticleTag
 from taxonomy.db.models.base import LintConfig
 from taxonomy.db.models.lint import IgnoreLint, Lint
@@ -50,10 +50,19 @@ LINT = Lint(ClassificationEntry, get_ignores, remove_unused_ignores)
 
 @LINT.add("rank")
 def check_rank(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
-    if ce.rank is Rank.other and not any(
+    if ce.rank.needs_textual_rank and not any(
         ce.get_tags(ce.tags, ClassificationEntryTag.TextualRank)
     ):
         yield "missing TextualRank tag"
+    if ce.rank is Rank.synonym:
+        group = ce.get_group()
+        new_rank = helpers.GROUP_TO_SYNONYM_RANK[group]
+        message = f"change rank to {new_rank!r}"
+        if cfg.autofix:
+            print(f"{ce}: {message}")
+            ce.rank = new_rank
+        else:
+            yield message
 
 
 @LINT.add("tags")
@@ -61,7 +70,10 @@ def check_tags(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
     counts = Counter(type(tag) for tag in ce.tags)
     if counts[ClassificationEntryTag.TextualRank] > 1:
         yield "multiple TextualRank tags"
-    elif counts[ClassificationEntryTag.TextualRank] == 1 and ce.rank is not Rank.other:
+    elif (
+        counts[ClassificationEntryTag.TextualRank] == 1
+        and not ce.rank.needs_textual_rank
+    ):
         yield "unexpected TextualRank tag"
     if counts[ClassificationEntryTag.CorrectedName] > 1:
         yield "multiple CorrectedName tags"
@@ -174,7 +186,7 @@ def check_predates_mapped_name(
 ) -> Iterable[str]:
     if ce.mapped_name is None:
         return
-    if ce.rank is Rank.synonym:
+    if ce.rank.is_synonym:
         return  # ignore synonyms for now
     if (ce.article.is_unpublished(), ce.article.get_date_object()) < (
         (
@@ -234,7 +246,7 @@ def check_mapped_name(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]
                             ce.mapped_name = new_name
                 if (
                     ce.mapped_name.corrected_original_name != corrected_name
-                    and ce.rank is not Rank.synonym
+                    and not ce.rank.is_synonym
                 ):
                     yield f"mapped_name corrected_original_name does not match: {corrected_name} vs {ce.mapped_name.corrected_original_name}"
                     mapped_root = ce.mapped_name.resolve_variant()
@@ -581,7 +593,7 @@ def check_corrected_name(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[s
         group = ce.get_group()
         match group:
             case Group.species:
-                if ce.rank is Rank.synonym and re.fullmatch(r"[a-z]+", corrected_name):
+                if ce.rank.is_synonym and re.fullmatch(r"[a-z]+", corrected_name):
                     return
                 if not re.fullmatch(r"[A-Z][a-z]+( [a-z]+){1,3}", corrected_name):
                     yield f"incorrect species name format: {corrected_name}"
@@ -910,12 +922,16 @@ def infer_page_from_name(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[s
         yield message
 
 
+_EXCLUDED_RANKS = [Rank.informal, Rank.informal_species, *SYNONYM_RANKS]
+
+
 @LINT.add("mapped_name_matches_other_ces")
 def check_mapped_name_matches_other_ces(
     ce: ClassificationEntry, cfg: LintConfig
 ) -> Iterable[str]:
-    if ce.mapped_name is None or ce.rank in (Rank.informal, Rank.synonym):
+    if ce.mapped_name is None or ce.rank is Rank.informal or ce.rank.is_synonym:
         return
+    group = ce.get_group()
     others = [
         other_ce
         # static analysis: ignore[incompatible_argument]
@@ -923,12 +939,12 @@ def check_mapped_name_matches_other_ces(
             ClassificationEntry.name == ce.name,
             ClassificationEntry.id != ce.id,
             ClassificationEntry.mapped_name != ce.mapped_name,
-            ClassificationEntry.rank != Rank.informal,
-            ClassificationEntry.rank != Rank.synonym,
+            ~ClassificationEntry.rank.is_in(_EXCLUDED_RANKS),
         )
         if not LINT.is_ignoring_lint(other_ce, "mapped_name_matches_other_ces")
         and other_ce.mapped_name is not None
         and other_ce.mapped_name.resolve_redirect() != ce.mapped_name.resolve_redirect()
+        and other_ce.get_group() == group
     ]
     if others:
         yield f"mapped to {ce.mapped_name}, but other names are mapped differently:\n{'\n'.join(f' - {other!r}' for other in others)}"
@@ -951,7 +967,7 @@ def get_applicable_nomenclature_statuses(
 def check_maps_to_unavailable(
     ce: ClassificationEntry, cfg: LintConfig
 ) -> Iterable[str]:
-    if ce.mapped_name is None or ce.rank is Rank.synonym:
+    if ce.mapped_name is None or ce.rank.is_synonym:
         return
     mapped = ce.mapped_name.resolve_variant()
     if mapped.group is Group.high:

@@ -1,7 +1,10 @@
 from datetime import date
 
+from taxonomy.db.constants import Group, Rank
+
 from .helpers import (
     get_date_object,
+    group_of_rank,
     make_roman_numeral,
     parse_roman_numeral,
     romanize_russian,
@@ -126,3 +129,11 @@ def test_parse_roman_numeral() -> None:
     assert parse_roman_numeral("III") == 3
     for i in range(1, 100):
         assert parse_roman_numeral(make_roman_numeral(i)) == i
+
+
+def test_group_of_rank() -> None:
+    for rank in Rank:
+        if rank is Rank.synonym:
+            continue
+        group = group_of_rank(rank)
+        assert isinstance(group, Group)
