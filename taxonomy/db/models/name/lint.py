@@ -3050,15 +3050,38 @@ def resolve_usage(nam: Name) -> Name:
 def check_original_parent(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.original_parent is None:
         return
+
     if nam.group is not Group.species and nam.original_rank not in (
         Rank.subgenus,
         Rank.other_subgeneric,
     ):
         yield "original_parent should only be set for species-group names and subgenera"
         return
+
     if nam.original_parent.group is not Group.genus:
         yield f"original_parent is not a genus: {nam.original_parent}"
         return
+
+    if (
+        nam.year is not None
+        and nam.nomenclature_status is not NomenclatureStatus.before_1758
+        and nam.numeric_year() < nam.original_parent.numeric_year()
+    ):
+        yield f"original_parent {nam.original_parent} is younger than {nam}"
+        candidates = list(
+            nam.original_parent.taxon.get_names().filter(
+                Name.root_name == nam.original_parent.root_name, Name.year == nam.year
+            )
+        )
+        if len(candidates) == 1:
+            alternative = candidates[0]
+            message = f"original_parent {nam.original_parent} is younger than {nam} (change to {alternative})"
+            if cfg.autofix:
+                print(f"{nam}: {message}")
+                nam.original_parent = alternative
+            else:
+                yield message
+
     if nam.original_parent.nomenclature_status in (
         NomenclatureStatus.subsequent_usage,
         NomenclatureStatus.misidentification,
@@ -3070,6 +3093,7 @@ def check_original_parent(nam: Name, cfg: LintConfig) -> Iterable[str]:
             nam.original_parent = target
         else:
             yield message
+
     if (
         not nam.original_parent.nomenclature_status.can_preoccupy()
         and nam.original_citation != nam.original_parent.original_citation
@@ -3094,6 +3118,7 @@ def check_original_parent(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 nam.original_parent = alternatives[0]
             else:
                 yield message
+
     if nam.group is Group.species and nam.corrected_original_name is not None:
         original_genus, *_ = nam.corrected_original_name.split()
         # corrected_original_name is for the case where the genus name got a justified emendation
