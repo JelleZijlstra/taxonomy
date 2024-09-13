@@ -171,7 +171,10 @@ class ClassificationEntry(BaseModel):
                 else:
                     next_name = ""
             entries.append(entry)
-            if not entry.rank.is_synonym:
+            if (
+                not entry.rank.is_synonym
+                and helpers.group_of_rank(entry.rank) is not Group.species
+            ):
                 _parent_stack.append(entry)
         return entries
 
