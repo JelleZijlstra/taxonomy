@@ -1640,6 +1640,13 @@ class ArticleTag(adt.ADT):
     # Indicates that ClassificationEntries are present only for some of the names in this work
     PartialClassification(comment=NotRequired[str], tag=25)  # type: ignore[name-defined]
 
+    # Placed on the Official Index by the Commission
+    PlacedOnIndex(source=Article, comment=str, tag=26)  # type: ignore[name-defined]
+
+    # ICZN Art. 11.4: Names published in a work that is not consistently binominal are
+    # unavailable.
+    InconsistentlyBinominal(comment=NotRequired[str], tag=27)  # type: ignore[name-defined]
+
 
 @lru_cache
 def _getpdfcontent(path: str) -> str:

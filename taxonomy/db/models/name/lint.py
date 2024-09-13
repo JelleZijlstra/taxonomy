@@ -1331,7 +1331,11 @@ def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 yield f"{nam} is on the Official List, but is not marked as available."
 
         elif isinstance(tag, NameTag.Condition):
-            if tag.status in get_inherent_nomenclature_statuses(nam):
+            inherent = set(get_inherent_nomenclature_statuses(nam))
+            if tag.status in inherent or (
+                tag.status is NomenclatureStatus.inconsistently_binominal
+                and NomenclatureStatus.placed_on_index in inherent
+            ):
                 yield f"has redundant Condition tag for {tag.status.name}"
                 if not tag.comment:
                     new_tag = None
@@ -1462,7 +1466,7 @@ def has_valid_use(nam: Name) -> bool:
 
 
 def get_inherent_nomenclature_statuses_from_article(
-    art: Article,
+    art: Article, *, nam: Name | None = None
 ) -> Iterable[NomenclatureStatus]:
     if art.has_tag(ArticleTag.UnavailableElectronic):
         yield NomenclatureStatus.unpublished_electronic
@@ -1470,6 +1474,14 @@ def get_inherent_nomenclature_statuses_from_article(
         yield NomenclatureStatus.unpublished_pending
     if art.type is ArticleType.THESIS:
         yield NomenclatureStatus.unpublished_thesis
+    if art.has_tag(ArticleTag.PlacedOnIndex) and not (
+        nam is not None and nam.has_name_tag(NameTag.Conserved)
+    ):
+        yield NomenclatureStatus.placed_on_index
+    if art.has_tag(ArticleTag.InconsistentlyBinominal) and not (
+        nam is not None and nam.has_name_tag(NameTag.Conserved)
+    ):
+        yield NomenclatureStatus.inconsistently_binominal
     year = art.valid_numeric_year()
     if year is not None and year < 1757:
         yield NomenclatureStatus.before_1758
@@ -1478,7 +1490,7 @@ def get_inherent_nomenclature_statuses_from_article(
 def get_inherent_nomenclature_statuses(nam: Name) -> Iterable[NomenclatureStatus]:
     if nam.original_citation is not None:
         yield from get_inherent_nomenclature_statuses_from_article(
-            nam.original_citation
+            nam.original_citation, nam=nam
         )
     # Allow 1757 because of spiders
     elif nam.year is not None and nam.numeric_year() < 1757:
@@ -1864,10 +1876,10 @@ def _check_species_name_gender(nam: Name, cfg: LintConfig) -> Iterable[str]:
 def check_family_root_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.group is not Group.family:
         return
-    if nam.nomenclature_status in (
+    if set(get_applicable_nomenclature_statuses_from_tags(nam)) & {
         NomenclatureStatus.not_based_on_a_generic_name,
         NomenclatureStatus.not_intended_as_a_scientific_name,
-    ):
+    }:
         if nam.root_name != nam.corrected_original_name:
             yield _make_rn_message(nam, "does not match corrected original name")
         return
@@ -4915,11 +4927,6 @@ def infer_included_species(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if not ces:
         return
     ces = [ce for ce in ces if not ce.rank.is_synonym]
-    if len(ces) > 1:
-        # Maybe if there's a subgenus? Let's see what we want to do in practical
-        # occurrences first.
-        yield f"maps to multiple classification entries: {ces}"
-        return
     current_included_species = {
         tag.name for tag in nam.type_tags if isinstance(tag, TypeTag.IncludedSpecies)
     }

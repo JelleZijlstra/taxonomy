@@ -207,6 +207,8 @@ class NomenclatureStatus(enum.IntEnum):
     unpublished_supplement = 54
     name_combination = 55
     misidentification = 56
+    # Art. 80.7: Names published in a work on the Official Index are treated as unavailable
+    placed_on_index = 57
 
     def requires_type(self) -> bool:
         """Whether a name of this status should have a type designated."""
@@ -245,6 +247,7 @@ class NomenclatureStatus(enum.IntEnum):
             NomenclatureStatus.incorrect_subsequent_spelling,
             NomenclatureStatus.incorrect_original_spelling,
             NomenclatureStatus.inconsistently_binominal,
+            NomenclatureStatus.placed_on_index,
             NomenclatureStatus.not_latin_alphabet,
             NomenclatureStatus.not_intended_as_a_scientific_name,
             NomenclatureStatus.zoological_formula,
@@ -267,6 +270,7 @@ class NomenclatureStatus(enum.IntEnum):
         return self not in {
             NomenclatureStatus.not_intended_as_a_scientific_name,
             NomenclatureStatus.inconsistently_binominal,
+            NomenclatureStatus.placed_on_index,
             NomenclatureStatus.not_published_with_a_generic_name,
             NomenclatureStatus.before_1758,
             NomenclatureStatus.informal,
@@ -297,7 +301,8 @@ class NomenclatureStatus(enum.IntEnum):
             # The Commission's implicit word.
             [cls.unlisted],
             # If the work is invalid, we don't need to worry about the exact status of names.
-            [cls.before_1758, cls.inconsistently_binominal],
+            [cls.placed_on_index, cls.before_1758, cls.inconsistently_binominal],
+            [cls.subsequent_usage],
             # Clear problems with the name itself.
             [
                 cls.not_based_on_a_generic_name,
@@ -326,7 +331,7 @@ class NomenclatureStatus(enum.IntEnum):
             ],
             # Spelling issues that produce unavailable names.
             [cls.incorrect_subsequent_spelling, cls.incorrect_original_spelling],
-            [cls.subsequent_usage, cls.misidentification],
+            [cls.misidentification],
             [
                 cls.unpublished_thesis,
                 cls.unpublished_electronic,
