@@ -154,6 +154,8 @@ in the Code, which is available [on the ICZN's website](https://code.iczn.org/).
   - _before 1758_: Art. 3.2: names published before 1758 are unavailable.
   - _inconsistently binominal_: Art. 11.4: author must consistently use binominal
     nomenclature.
+  - _placed on index_: The work in which this name was published has been placed on the
+    Official Index of works rejected for use in zoological nomenclature.
 - Related to spelling
   - _incorrect subsequent spelling_: An accidental misspelling of a name
   - _unjustified emendation_: An intentional change to a name that is not allowed by the
