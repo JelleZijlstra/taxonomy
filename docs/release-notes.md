@@ -6,6 +6,8 @@ exports released on Zenodo.
 
 # 24.9.1 (September 21, 2024)
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.13824506.svg)](https://doi.org/10.5281/zenodo.13824506)
+
 - Database
   - Always treat emendations from _-ii_ to _-i_ and similar as incorrect subsequent
     spellings rather than unjustified emendations (ICZN Art. 33.4)
