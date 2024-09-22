@@ -4,7 +4,7 @@ Version numbers correspond to Git tags in the
 [backend](https://github.com/JelleZijlstra/taxonomy/) repositories, and to database
 exports released on Zenodo.
 
-# Unreleased
+# 24.9.1 (September 21, 2024)
 
 - Database
   - Always treat emendations from _-ii_ to _-i_ and similar as incorrect subsequent
@@ -20,8 +20,10 @@ exports released on Zenodo.
     (1827), with Marsupialia Illiger, 1811, an unavailable family-group name, treated as
     a synonym.
   - Re-attribute a number of family-group taxa to an older authority
-- Backend
+  - Remove some "subsequent usage" names as redundant
+  - Add some new taxa and verify more citations
 - Frontend
+  - Add toggle to control how name lists are sorted
 
 # 24.9.0 (September 2, 2024)
 
