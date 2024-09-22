@@ -620,6 +620,8 @@ names should have at least one. They fall into several groups:
     identified as.
   - _TypeSpecimenLinkFor_: Link to an online collection database listing the type
     specimen.
+  - _VerbatimName_: Occasionally used to hold the verbatim version of the original name
+    (i.e., with references not expanded).
 
 ## Miscellaneous data
 
