@@ -493,6 +493,14 @@ def export_ces(
     rank: Rank = Rank.species,
     ages: Container[AgeClass] = (AgeClass.extant, AgeClass.recently_extinct),
 ) -> None:
+    """Export all known classification entries for a taxon.
+
+    This produces a CSV file containing a column with data from the currently
+    accepted classification in the Hesperomys database, and additional columns
+    representing the classifications in sources that have been entered into the
+    database.
+
+    """
     taxa = [child for child in taxon.children_of_rank(rank) if child.age in ages]
     name_to_taxon = {}
     ce_articles: Counter[Article] = Counter()
@@ -618,6 +626,19 @@ def generate_classification_diff(
     new_taxon: str | None = None,
     rank: Rank = Rank.species,
 ) -> None:
+    """Generate a CSV file comparing classification entries in two articles.
+
+    This CSV contains the classifications of two articles ("old" and "new")
+    side by side, with differences noted. Differences are annotated with the
+    kind of change applied (e.g., "name change", "genus change", "spelling").
+
+    The CSV is written to the *filename*. *old* and *new* point to the articles
+    to be compared. *old_taxon* and *new_taxon* are the names of the taxa in the
+    two articles. If this is blank, the entire classification is compared. By
+    default, species are compared, but this can be changed with the *rank*
+    parameter.
+
+    """
     if old is None:
         old = Article.getter(None).get_one("Old article to compare> ")
     if old is None:
