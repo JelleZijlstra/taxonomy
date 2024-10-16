@@ -460,7 +460,7 @@ def find_possible_pages(
             )
 
 
-ITEM_IDS = {210586}
+ITEM_IDS = {210586, 39623}
 
 
 def is_item_missing_bibliography(url: str) -> bool:

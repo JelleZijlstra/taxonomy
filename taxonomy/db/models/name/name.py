@@ -2614,11 +2614,15 @@ def tag_list(tags: Iterable[tuple[TypeTagCons, ...]]) -> str:
 
 
 def clean_original_name(original_name: str) -> str:
+    if " " in original_name and original_name[0].islower():
+        original_name = original_name[0].upper() + original_name[1:]
     original_name = (
         original_name.replace("(?)", "")
         .replace("?", "")
         .replace("æ", "ae")
         .replace("œ", "oe")
+        .replace("Œ", "Oe")
+        .replace("Æ", "Ae")
         .replace("ë", "e")
         .replace("í", "i")
         .replace("ï", "i")

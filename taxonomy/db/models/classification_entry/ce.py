@@ -559,6 +559,8 @@ _NAME_CHARS = r"[a-zæüöïœ]+"
 
 
 def _infer_rank_from_name(ce_name: str) -> Rank | None:
+    if " " in ce_name and ce_name[0].islower():
+        ce_name = ce_name[0].upper() + ce_name[1:]
     ce_name = models.name.name.clean_original_name(ce_name)
     if re.fullmatch(rf"[A-ZÆ]{_NAME_CHARS} [A-Z]?{_NAME_CHARS}", ce_name):
         return Rank.species
