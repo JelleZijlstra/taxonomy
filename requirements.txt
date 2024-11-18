@@ -2,7 +2,7 @@
 #    uv pip compile pyproject.toml -o requirements.txt --python-version=3.11
 aiohappyeyeballs==2.4.0
     # via aiohttp
-aiohttp==3.10.5
+aiohttp==3.10.11
     # via
     #   taxonomy (pyproject.toml)
     #   aiohttp-graphql
