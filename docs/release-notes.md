@@ -312,7 +312,8 @@ This is the first tagged release. It comes with a number of major improvements:
 
 This version may be cited as:
 
-- Zijlstra, J.S. 2023. Hesperomys Project (Version 23.2.0) [Data set]. Zenodo. [doi:10.5281/zenodo.7654755](https://doi.org/10.5281/zenodo.7654755)
+- Zijlstra, J.S. 2023. Hesperomys Project (Version 23.2.0) [Data set]. Zenodo.
+  [doi:10.5281/zenodo.7654755](https://doi.org/10.5281/zenodo.7654755)
 
 More detailed list of changes:
 
