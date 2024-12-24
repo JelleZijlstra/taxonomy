@@ -75,7 +75,7 @@ the full work and the dates 1848–1852:
     _Dioplodon_, _Hyperoodon_, _Rorqualus_, _Phoca_, _Ziphius_, _Mesoplodon_,
     _Choneziphius_, _Dioplodon_, discussion of ziphiids. Pp. 1-12.
   - Pl. XLI, XLII. Marine mammals from Gironde. _Phoca_, _Trachytherium_, _Halitherium_,
-    _Smilocamptus, \_Squalodon_, _Delphinus_, _Phoca_. 2 unnumbered pp.
+    _Smilocamptus_, _Squalodon_, _Delphinus_, _Phoca_. 2 unnumbered pp.
   - Pl. XLIII. _Macrotherium_. 2 unnumbered pp.
   - Pl. XLIV. _Vespertilio_, _Erinaceus_, _Castor_, _Myoxus_, _Cricetodon_,
     _Theridomys_. 2 unnumbered pp.
@@ -113,8 +113,15 @@ first edition to be cited to the second.
 
 ## Bibliographic sources
 
-The work itself contains little evidence to constrain its dates. I found the following
-evidence:
+The work itself contains some evidence to constrain its dates. On p. 244, there is a
+reference to "Test. Larteti, Pictet, Paléont., t. I, p. 444." This refers to {Animalia
+fossil (Pictet 1853.pdf)}, a work that bears a cover date of 1853 and has a preface
+dated 20 December 1852 (p. ix). Pictet's book may have been published in parts, but
+there is no concrete evidence for this, and it totals 580 pages, so most of it must have
+been available by the time Gervais wrote his work. The first reference to the second
+edition of Pictet's work (the first appeared in 1844) is on p. 200 of Gervais's book.
+
+I found the following external evidence:
 
 - _Archives des sciences physiques et naturelles_ (Geneva journal that frequently
   published summaries of recent French literature)
@@ -189,7 +196,9 @@ the work in full. Only the following is known securely:
 - Plates 1, 6, 7, and 9 were published in 1849.
 - Livr. 3–8 were published by 23 November 1850. They contained Tome I, pp. 1–136, and
   probably 24 additional plates.
-- Livr. 9–20 were published by 1852.
+- Livr. 9–20 were published by 1852 according to the _Bibliotheca historico-naturalis_,
+  but the internal evidence from citations to Pictet indicates that much of this part of
+  the book did not appear until 1853.
 - Plate 39 was published by April 1851.
 
 If a copy with original wrappers could be found, it could provide a more precise

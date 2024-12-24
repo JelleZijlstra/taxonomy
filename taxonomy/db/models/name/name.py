@@ -1538,6 +1538,7 @@ class Name(BaseModel):
                     NameTag.MisidentificationOf,
                     NameTag.MandatoryChangeOf,
                     NameTag.IncorrectSubsequentSpellingOf,
+                    NameTag.UnavailableVersionOf,
                 ),
             ):
                 return tag.name.resolve_name(depth=depth + 1)
@@ -2654,6 +2655,10 @@ def infer_corrected_original_name(original_name: str, group: Group) -> str | Non
         if re.match(r"^[A-Z][a-z]+ [A-Z][a-z]+$", original_name):
             genus, species = original_name.split()
             return f"{genus} {species.lower()}"
+        if match := re.fullmatch(
+            r"^\[(?P<genus>[A-Z][a-z]+)\] (?P<species>[a-z]+)$", original_name
+        ):
+            return f"{match.group('genus')} {match.group('species')}"
         match = re.match(
             (
                 r"^(?P<genus>[A-Z][a-z]+)( \([A-Z][a-z]+\))?"
@@ -2762,6 +2767,8 @@ class NameTag(adt.ADT):
     MappedClassificationEntry(ce=ClassificationEntry, tag=33)  # type: ignore[name-defined]
 
     MisidentificationOf(name=Name, comment=NotRequired[str], tag=34)  # type: ignore[name-defined]
+
+    UnavailableVersionOf(name=Name, comment=NotRequired[str], tag=35)  # type: ignore[name-defined]
 
 
 CONSTRUCTABLE_STATUS_TO_TAG = {

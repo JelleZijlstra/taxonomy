@@ -44,6 +44,7 @@ def format_authors(
     first_initials_before_name: bool = False,  # Whether to place the first author's initials before their surname
     include_initials: bool = True,  # Whether to include initials
     romanize: bool = False,  # Whether to romanize names
+    include_dots: bool = True,  # Whether to include dots after initials
 ) -> str:
     if last_separator is None:
         last_separator = separator
@@ -74,6 +75,8 @@ def format_authors(
         else:
             initials = None
         if initials:
+            if not include_dots:
+                initials = initials.replace(".", "")
             if romanize:
                 initials = helpers.romanize_russian(initials)
             if space_initials:
@@ -136,7 +139,7 @@ def _citenormal(
     if child_article is not None and child_article.year == article.year:
         out += ". "
     else:
-        out += f". {article.year}. "
+        out += f". {article.numeric_year()}. "
     if mw:
         url = article.geturl()
         if url:
@@ -269,34 +272,31 @@ def citelemurnews(article: Article) -> str:
 def citebzn(article: Article) -> str:
     # cites according to BZN citation style
     # replace last ; with " &"; others with ","
-    out = "<b>"
-    out += format_authors(article, separator=",", last_separator=" &")
-    out += f"</b> {article.numeric_year()}. "
+    out = format_authors(article, separator=",", include_dots=False)
+    out += f" ({article.numeric_year()}) "
     if article.type == ArticleType.JOURNAL:
         out += f"{article.get_title()}. "
         if article.citation_group:
-            out += f"<i>{article.citation_group.get_citable_name()}</i>, "
+            out += f"{article.citation_group.get_citable_name()} "
         if article.series:
             # need to catch "double series"
             series = article.series.replace(";", ") (")
             out += f"({series})"
-        out += f"<b>{article.volume}</b>: "
+        out += f"{article.volume}: "
         out += f"{page_range(article)}."
     elif article.type == ArticleType.CHAPTER:
-        out += f"{article.get_title()}."
+        out += f"{article.get_title()} [pp. {article.start_page}–{article.end_page}]."
         enclosing = article.get_enclosing()
         if enclosing is not None:
-            out += " <i>in</i> "
-            out += format_authors(enclosing).replace("(Ed", "(ed")
-            out += f", <i>{enclosing.get_title()}</i>. "
-            out += f"{enclosing.pages} pp. {enclosing.publisher}"
+            out += " In: "
+            out += format_authors(enclosing, include_dots=False).replace("(Ed", "(ed")
+            out += f", {enclosing.get_title()}. "
+            out += f"{enclosing.publisher}"
             if enclosing.place_of_publication:
                 out += f", {enclosing.place_of_publication}"
             out += "."
     elif article.type == ArticleType.BOOK:
-        out += f"<i>{article.get_title()}.</i>"
-        if article.pages:
-            out += f" {article.pages} pp."
+        out += f"{article.get_title()}."
         out += f" {article.publisher}"
         if article.place_of_publication:
             out += f", {article.place_of_publication}"
@@ -675,6 +675,81 @@ def citezootaxa(article: Article) -> str:
     # final cleanup
     out += "."
     return re.sub(r"\s+", " ", re.sub(r"(?<!\.)\.\.(?!\.)", ".", out))
+
+
+@register_cite_function("mammalia")
+def citemammalia(article: Article) -> str:
+    parts: list[str] = []
+    parts.append(
+        format_authors(
+            article,
+            separator=",",
+            last_separator=", and",
+            separator_with_two_authors=" and",
+            romanize=True,
+        )
+    )
+    parts.append(f" ({article.numeric_year()}) ")
+    match article.type:
+        case ArticleType.JOURNAL:
+            parts.append(article.get_title())
+            parts.append(". ")
+            if article.citation_group is not None:
+                parts.append(f"_{article.citation_group.get_citable_name()}_")
+            if article.series:
+                if article.series.isnumeric():
+                    parts.append(f", ser. {article.series}, ")
+                else:
+                    parts.append(f", {article.series}, ")
+            else:
+                parts.append(" ")
+            parts.append(f"{article.volume}: {page_range(article, dash="-")}.")
+        case ArticleType.BOOK:
+            parts.append(f"_{article.get_title()}_. ")
+            if not article.publisher:
+                raise ValueError(f"Book citation missing publisher: {article}")
+            parts.append(article.publisher)
+            if article.place_of_publication:
+                parts.append(f", {article.place_of_publication}")
+            parts.append(".")
+        case ArticleType.CHAPTER | ArticleType.PART:
+            parts.append(f"{article.get_title()}. ")
+            enclosing = article.get_enclosing()
+            if enclosing is not None:
+                parent_enclosing = enclosing.get_enclosing()
+                if parent_enclosing is not None:
+                    enclosing = parent_enclosing
+                parts.append("In: ")
+                parts.append(
+                    format_authors(
+                        enclosing,
+                        separator=",",
+                        last_separator=", and",
+                        separator_with_two_authors=" and",
+                        romanize=True,
+                    )
+                )
+                parts.append(" (Eds.). ")
+                parts.append(f"_{enclosing.get_title()}_")
+                parts.append(". ")
+                parts.append(enclosing.publisher)
+                if not enclosing.publisher:
+                    raise ValueError(f"Book citation missing publisher: {article}")
+                if enclosing.place_of_publication:
+                    parts.append(f", {enclosing.place_of_publication}")
+                parts.append(f", pp. {page_range(article, dash='-')}.")
+        case ArticleType.WEB:
+            parts.append(f"{article.get_title()}. ")
+            if article.publisher:
+                parts.append(article.publisher)
+                parts.append(". ")
+            if article.url:
+                parts.append(f"URL: {article.url}")
+            else:
+                parts.append("No URL.")
+        case _:
+            raise NotImplementedError(repr(article.type))
+    return "".join(parts)
 
 
 @register_cite_function("commons")

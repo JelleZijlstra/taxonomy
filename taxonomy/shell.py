@@ -2806,6 +2806,74 @@ def textual_rank_report() -> None:
             print(f"{count} {text}")
 
 
+@command
+def add_ces_for_new_genera(up_to: int) -> None:
+    for nam in (
+        Name.select_valid()
+        .filter(
+            Name.original_rank == Rank.genus,
+            Name.nomenclature_status == NomenclatureStatus.available,
+            Name.year < up_to,
+            Name.original_citation != None,
+        )
+        .order_by(Name.year.desc())
+    ):
+        art = nam.original_citation
+        if art is None:
+            continue
+        if nam.taxon.age is not AgeClass.extant:
+            continue
+        nams = list(art.get_new_names())
+        if any(other_nam.original_parent == nam for other_nam in nams):
+            continue
+        getinput.print_header(nam)
+        art.display_names()
+        print(f"{art} is the original citation of {nam}")
+        art.edit()
+
+
+@command
+def add_ces_for_parent_species(up_to: int) -> None:
+    for nam in (
+        Name.select_valid()
+        .filter(
+            Name.original_rank.is_in((Rank.subspecies, Rank.variety)),
+            Name.nomenclature_status == NomenclatureStatus.available,
+            Name.year < up_to,
+            Name.original_citation != None,
+        )
+        .order_by(Name.year.desc())
+    ):
+        art = nam.original_citation
+        if art is None:
+            continue
+        if nam.taxon.age is not AgeClass.extant:
+            continue
+        if (
+            nam.corrected_original_name is None
+            or nam.corrected_original_name.count(" ") != 2
+        ):
+            continue
+        gen, sp, ssp = nam.corrected_original_name.split(" ")
+        species_name = f"{gen} {sp}"
+        existing = (
+            Name.select_valid()
+            .filter(
+                Name.corrected_original_name == species_name,
+                Name.original_rank == Rank.species,
+            )
+            .count()
+        )
+        if existing > 0:
+            continue
+        getinput.print_header(nam)
+        art.display_names()
+        print(f"{art} is the original citation of {nam}")
+        art.edit()
+        art.lint_object_list(art.new_names)
+        art.lint_object_list(art.classification_entries)
+
+
 def run_shell() -> None:
     # GC does bad things on my current setup for some reason
     gc.disable()
