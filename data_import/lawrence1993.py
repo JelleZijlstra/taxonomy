@@ -529,6 +529,7 @@ def write_to_db(*, dry_run: bool = True) -> None:
         nam = name["name_obj"]
         print(f"--- processing {nam} ---")
         pages = "-".join(map(str, name["pages"]))
+        attr: str
         for attr in (
             "type_locality",
         ):  # ('type_tags', 'collection', 'type_specimen', 'species_type_kind', 'holotype', 'verbatim_citation', 'original_name', 'type_specimen_source'):

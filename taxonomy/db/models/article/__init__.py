@@ -1,14 +1,14 @@
 """Package for Article and related code."""
 
 __all__ = [
-    "add_data",
     "Article",
     "ArticleComment",
     "ArticleTag",
+    "PresenceStatus",
+    "add_data",
     "check",
     "citations",
     "lint",
-    "PresenceStatus",
     "set_path",
 ]
 

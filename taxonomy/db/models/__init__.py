@@ -10,8 +10,6 @@ __all__ = [
     "CitationGroupTag",
     "ClassificationEntry",
     "Collection",
-    "fill_data",
-    "has_data_from_original",
     "IssueDate",
     "Location",
     "Name",
@@ -27,9 +25,11 @@ __all__ = [
     "SpeciesNameEnding",
     "Specimen",
     "StratigraphicUnit",
-    "tags",
     "Taxon",
     "TypeTag",
+    "fill_data",
+    "has_data_from_original",
+    "tags",
 ]
 from .base import BaseModel as BaseModel
 from .article import Article as Article, ArticleComment as ArticleComment
