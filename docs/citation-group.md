@@ -193,6 +193,7 @@ Short notes on several tricky areas of bibliography:
 - [Zoology of the _Erebus_ and _Terror_](/docs/biblio/erebus-terror)
 - [Gaudry's _Animaux fossiles et géologie de l'Attique_](/docs/biblio/gaudry-attique)
 - [Gould's _Mammals of Australia_](/docs/biblio/gould-mammals)
+- [Griffith's _General and Particular Descriptions_](/docs/biblio/gen-part-desc)
 - [_Histoire naturelle des mammifères_](/docs/biblio/histnatmammiferes)
 - [Publications of the Muséum national d'Histoire naturelle](/docs/biblio/mnhn)
 - [_Neues Jahrbuch_](/docs/biblio/neues-jahrbuch)
