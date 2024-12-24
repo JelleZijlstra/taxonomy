@@ -506,6 +506,9 @@ Tags include the following:
     circumstances.
   - _VarietyOrForm_: The name was marked as a "variety" or "form" in the original
     description. As with _NotUsedAsValid_, such names are sometimes available.
+  - _UnavailableVersionOf_: Tags an unavailable name to point to a later similar name
+    that is available. This helps treat the names together for purposes of e.g.
+    species-group homonymy.
 - Related to later usage of names
   - _SubsequentUsageOf_: The name is a subsequent usage of another name, without its own
     availability. Such names are included in the database if they are listed as synonyms

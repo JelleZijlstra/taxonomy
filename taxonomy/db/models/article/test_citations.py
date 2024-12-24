@@ -38,10 +38,10 @@ def test_citebzn() -> None:
     article = utils.make_journal_article()
     assert (
         citations.citebzn(article)
-        == "<b>Zijlstra, J.S., Madern, P.A. & Hoek Ostende, L.W. van den</b> 2010. New"
+        == "Zijlstra, J.S., Madern, P.A. & Hoek Ostende, L.W. van den (2010) New"
         " genus and two new species of Pleistocene oryzomyines (Cricetidae:"
-        " Sigmodontinae) from Bonaire, Netherlands Antilles. <i>Journal of"
-        " Mammalogy</i>, <b>91</b>: 860-873."
+        " Sigmodontinae) from Bonaire, Netherlands Antilles. Journal of"
+        " Mammalogy 91: 860-873."
     )
 
 
