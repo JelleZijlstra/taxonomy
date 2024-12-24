@@ -75,7 +75,7 @@ the full work and the dates 1848–1852:
     _Dioplodon_, _Hyperoodon_, _Rorqualus_, _Phoca_, _Ziphius_, _Mesoplodon_,
     _Choneziphius_, _Dioplodon_, discussion of ziphiids. Pp. 1-12.
   - Pl. XLI, XLII. Marine mammals from Gironde. _Phoca_, _Trachytherium_, _Halitherium_,
-    _Smilocamptus, \_Squalodon_, _Delphinus_, _Phoca_. 2 unnumbered pp.
+    _Smilocamptus_, _Squalodon_, _Delphinus_, _Phoca_. 2 unnumbered pp.
   - Pl. XLIII. _Macrotherium_. 2 unnumbered pp.
   - Pl. XLIV. _Vespertilio_, _Erinaceus_, _Castor_, _Myoxus_, _Cricetodon_,
     _Theridomys_. 2 unnumbered pp.

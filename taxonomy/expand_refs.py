@@ -39,13 +39,13 @@ def make_usage_list(match: re.Match[str], *, style: str) -> str:
 
 
 def expand(input_text: str) -> str:
-    refs = []
+    refs = set()
     output_text = input_text
     for article_name in helpers.extract_sources(input_text):
         article = get_article(article_name)
         if article is None:
             raise ValueError(f"Article {article_name!r} not found")
-        refs.append(article)
+        refs.add(article)
         output_text = output_text.replace(f"{{{article_name}}}", "")
 
     match = re.search(r"<reflist ([a-z_]+)>", output_text)

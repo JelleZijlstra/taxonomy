@@ -1321,6 +1321,55 @@ def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 yield f"{nam} is marked as an unjustified emendation of {tag.name}, but has a root name that only differs in ii/i or similar"
                 new_tag = NameTag.IncorrectSubsequentSpellingOf(tag.name, tag.comment)
 
+        elif isinstance(tag, NameTag.UnavailableVersionOf):
+            if nam == tag.name:
+                yield f"has a tag that points to itself: {tag}"
+            if nam.get_date_object() > tag.name.get_date_object():
+                yield f"postdates supposed available version {tag.name}"
+                if (
+                    nam.species_name_complex != tag.name.species_name_complex
+                    and not tag.name.has_name_tag(NameTag.AsEmendedBy)
+                ):
+                    message = f"{nam} ({nam.species_name_complex}) is a name combination of {tag.name} ({tag.name.species_name_complex}), but has a different name complex"
+                    if cfg.autofix and tag.name.species_name_complex is not None:
+                        print(f"{nam}: {message}")
+                        nam.species_name_complex = tag.name.species_name_complex
+                    else:
+                        yield message
+                if nam.root_name not in _get_extended_root_name_forms(tag.name):
+                    yield f"{nam} is a name combination of {tag.name}, but has a different root name"
+                    if cfg.interactive and getinput.yes_no(
+                        "Mark as incorrect subsequent spelling instead?"
+                    ):
+                        new_tag = NameTag.IncorrectSubsequentSpellingOf(
+                            tag.name, tag.comment
+                        )
+                if tag.name.nomenclature_status is NomenclatureStatus.name_combination:
+                    yield f"{nam} is marked as a name combination of {tag.name}, but that name is already a name combination"
+                    new_target = tag.name.get_tag_target(NameTag.NameCombinationOf)
+                    if new_target is not None:
+                        new_tag = NameTag.NameCombinationOf(new_target, tag.comment)
+                elif (
+                    tag.name.nomenclature_status
+                    is NomenclatureStatus.incorrect_subsequent_spelling
+                ):
+                    new_target = tag.name.get_tag_target(
+                        NameTag.IncorrectSubsequentSpellingOf
+                    )
+                    self_iss_target = nam.get_tag_target(
+                        NameTag.IncorrectSubsequentSpellingOf
+                    )
+                    if not (new_target is not None and new_target == self_iss_target):
+                        yield f"{nam} is marked as a name combination of {tag.name}, but that is an incorrect subsequent spelling"
+                        if new_target is not None:
+                            new_tag = NameTag.IncorrectSubsequentSpellingOf(
+                                new_target, tag.comment
+                            )
+            if nam.taxon != tag.name.taxon:
+                yield f"{nam} is not assigned to the same name as {tag.name}"
+            if not tag.name.nomenclature_status.can_preoccupy():
+                yield f"senior name {tag.name} is not available"
+
         elif isinstance(tag, NameTag.Conserved):
             if nam.nomenclature_status not in (
                 NomenclatureStatus.available,
@@ -1600,6 +1649,10 @@ def check_for_lsid(nam: Name, cfg: LintConfig) -> Iterable[str]:
             NomenclatureStatus.incorrect_subsequent_spelling,
             NomenclatureStatus.name_combination,
         )
+        # Searching for this name consistently times out. The type
+        # species (Lyra sherkana) is not in ZooBank, so probably the genus
+        # isn't either.
+        or nam.corrected_original_name == "Lyra"
     ):
         return
     try:
@@ -3048,13 +3101,24 @@ def should_require_subgenus_original_parent(nam: Name) -> bool:
     return False
 
 
-def resolve_usage(nam: Name) -> Name:
+def resolve_usage(nam: Name, *, resolve_unavailable_version_of: bool) -> Name:
     if target := nam.get_tag_target(NameTag.SubsequentUsageOf):
-        return resolve_usage(target)
+        return resolve_usage(
+            target, resolve_unavailable_version_of=resolve_unavailable_version_of
+        )
     if target := nam.get_tag_target(NameTag.MisidentificationOf):
-        return resolve_usage(target)
+        return resolve_usage(
+            target, resolve_unavailable_version_of=resolve_unavailable_version_of
+        )
     if target := nam.get_tag_target(NameTag.NameCombinationOf):
-        return resolve_usage(target)
+        return resolve_usage(
+            target, resolve_unavailable_version_of=resolve_unavailable_version_of
+        )
+    if resolve_unavailable_version_of:
+        if target := nam.get_tag_target(NameTag.UnavailableVersionOf):
+            return resolve_usage(
+                target, resolve_unavailable_version_of=resolve_unavailable_version_of
+            )
     return nam
 
 
@@ -3098,7 +3162,9 @@ def check_original_parent(nam: Name, cfg: LintConfig) -> Iterable[str]:
         NomenclatureStatus.subsequent_usage,
         NomenclatureStatus.misidentification,
     ):
-        target = resolve_usage(nam.original_parent)
+        target = resolve_usage(
+            nam.original_parent, resolve_unavailable_version_of=False
+        )
         message = f"original_parent is a subsequent usage or misidentification: {nam.original_parent} (change to {target})"
         if cfg.autofix and nam.original_parent != target:
             print(f"{nam}: {message}")
@@ -5169,6 +5235,8 @@ _ALLOWED_TRANSFORMS: list[Callable[[str], str]] = [
     ),
     # Canis familiaris γ. sibiricus -> Canis familiaris sibiricus
     lambda s: re.sub(r" [α-ω]\. ", " ", s),
+    # uppercase genus name
+    lambda s: s[:1].upper() + s[1:],
 ]
 
 
@@ -5251,14 +5319,19 @@ def _check_matching_original_parent(
     ce_parent = ce.parent_of_rank(Rank.genus)
     if ce_parent is None or ce_parent.mapped_name is None:
         return
-    mapped_parent = resolve_usage(ce_parent.mapped_name)
+    if ce_parent.mapped_name == nam.original_parent:
+        return
+    mapped_parent = resolve_usage(
+        ce_parent.mapped_name, resolve_unavailable_version_of=True
+    )
     if mapped_parent == nam.original_parent:
         return
     ce_subgenus = ce.parent_of_rank(Rank.subgenus)
     if (
         ce_subgenus is not None
         and ce_subgenus.mapped_name is not None
-        and resolve_usage(ce_subgenus.mapped_name) == nam.original_parent
+        and resolve_usage(ce_subgenus.mapped_name, resolve_unavailable_version_of=True)
+        == nam.original_parent
     ):
         return
     yield f"mapped to {ce}, but {ce_parent.mapped_name=} (mapped from {ce_parent}) != {nam.original_parent=}"
@@ -5309,3 +5382,69 @@ def check_original_rank(nam: Name, cfg: LintConfig) -> Iterable[str]:
     group = helpers.group_of_rank(nam.original_rank)
     if group is not nam.group:
         yield f"original rank {nam.original_rank!r} is not in group {nam.group!r}"
+
+
+@LINT.add("infer_unavalailable_version")
+def infer_unavailable_version(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    if nam.nomenclature_status not in {
+        NomenclatureStatus.nomen_nudum,
+        NomenclatureStatus.not_based_on_a_generic_name,
+        NomenclatureStatus.infrasubspecific,
+        NomenclatureStatus.unpublished,
+        NomenclatureStatus.before_1758,
+        NomenclatureStatus.informal,
+        NomenclatureStatus.not_latin_alphabet,
+        NomenclatureStatus.inconsistently_binominal,
+        NomenclatureStatus.not_used_as_valid,
+        NomenclatureStatus.not_used_as_genus_plural,
+        NomenclatureStatus.multiple_words,
+        NomenclatureStatus.no_type_specified,
+        NomenclatureStatus.anonymous_authorship,
+        NomenclatureStatus.conditional,
+        NomenclatureStatus.variety_or_form,
+        NomenclatureStatus.not_explicitly_new,
+        NomenclatureStatus.type_not_treated_as_valid,
+        NomenclatureStatus.not_intended_as_a_scientific_name,
+        NomenclatureStatus.not_nominative_singular,
+        NomenclatureStatus.rejected_by_fiat,
+        NomenclatureStatus.unpublished_thesis,
+        NomenclatureStatus.unpublished_electronic,
+        NomenclatureStatus.unpublished_pending,
+        NomenclatureStatus.unpublished_supplement,
+        NomenclatureStatus.placed_on_index,
+        NomenclatureStatus.fully_suppressed,
+        NomenclatureStatus.not_published_with_a_generic_name,
+    }:
+        return
+    if nam.year is None:
+        return
+    if nam.has_name_tag(NameTag.UnavailableVersionOf):
+        return
+    candidates = [
+        sibling
+        for sibling in nam.taxon.get_names().filter(
+            Name.year >= nam.year,
+            Name.nomenclature_status.is_in(
+                (
+                    NomenclatureStatus.available,
+                    NomenclatureStatus.preoccupied,
+                    NomenclatureStatus.nomen_novum,
+                )
+            ),
+            Name.group == nam.group,
+            Name.corrected_original_name == nam.corrected_original_name,
+        )
+        if nam.root_name in sibling.get_root_name_forms()
+    ]
+    if not candidates:
+        return
+    if len(candidates) > 1:
+        yield f"multiple candidates for available version: {candidates}"
+        return
+    tag = NameTag.UnavailableVersionOf(candidates[0], "")
+    message = f"add UnavailableVersionOf tag: {tag}"
+    if cfg.autofix:
+        print(f"{nam}: {message}")
+        nam.add_tag(tag)
+    else:
+        yield message

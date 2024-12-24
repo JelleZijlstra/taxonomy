@@ -544,7 +544,7 @@ def check_url(art: Article, cfg: LintConfig) -> Iterable[str]:
         return
     parsed_url = urlparse.parse_url(art.url)
     match parsed_url:
-        case urlparse.HDLUrl(hdl):
+        case urlparse.HDLUrl(hdl, query=None):
             message = f"inferred HDL {hdl} from url {art.url}"
             if cfg.autofix:
                 print(f"{art}: {message}")
@@ -1668,7 +1668,7 @@ def check_must_use_children(art: Article, cfg: LintConfig) -> Iterable[str]:
             or field is models.name.NameComment.source
         ):
             continue
-        refs = list(getattr(art, field.related_name))
+        refs = [obj for obj in getattr(art, field.related_name) if not obj.is_invalid()]
         if not refs:
             continue
         yield (

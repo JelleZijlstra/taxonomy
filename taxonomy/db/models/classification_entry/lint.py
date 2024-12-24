@@ -213,8 +213,25 @@ def check_mapped_name(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]
                 ce.page = ce.mapped_name.page_described
         # Don't worry about synonyms; if the source puts them in the "high" bucket but we decide
         # it's actually a family-group name, it's still correctly marked "synonym_high" in the source.
-        if (not ce.rank.is_synonym) and ce.get_group() is not ce.mapped_name.group:
-            yield f"mapped_name group does not match: {ce.get_group()!r} vs {ce.mapped_name.group!r}"
+        if not ce.rank.is_synonym:
+            if ce.get_group() is not ce.mapped_name.group:
+                yield f"mapped_name group does not match: {ce.get_group()!r} vs {ce.mapped_name.group!r}"
+            if target := ce.mapped_name.get_tag_target(
+                models.name.NameTag.UnavailableVersionOf
+            ):
+                if (
+                    ce.article.year >= target.year
+                    and ce.article != ce.mapped_name.original_citation
+                ):
+                    message = (
+                        f"mapped to unavailable version of {target}, but postdates it"
+                    )
+                    if cfg.autofix:
+                        print(f"{ce}: {message}")
+                        ce.mapped_name = target
+                    else:
+                        yield message
+
         corrected_name = ce.get_corrected_name()
         if corrected_name is None:
             return
@@ -929,6 +946,13 @@ def infer_page_from_name(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[s
 _EXCLUDED_RANKS = [Rank.informal, Rank.informal_species, *SYNONYM_RANKS]
 
 
+def _resolve_name(nam: Name) -> Name:
+    nam = nam.resolve_redirect()
+    if target := nam.get_tag_target(models.name.NameTag.UnavailableVersionOf):
+        return _resolve_name(target)
+    return nam
+
+
 @LINT.add("mapped_name_matches_other_ces")
 def check_mapped_name_matches_other_ces(
     ce: ClassificationEntry, cfg: LintConfig
@@ -947,7 +971,7 @@ def check_mapped_name_matches_other_ces(
         )
         if not LINT.is_ignoring_lint(other_ce, "mapped_name_matches_other_ces")
         and other_ce.mapped_name is not None
-        and other_ce.mapped_name.resolve_redirect() != ce.mapped_name.resolve_redirect()
+        and _resolve_name(other_ce.mapped_name) != _resolve_name(ce.mapped_name)
         and other_ce.get_group() == group
     ]
     if others:
