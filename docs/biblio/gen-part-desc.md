@@ -1,23 +1,24 @@
-# Griffith's _General and Particular Description_
+# Griffith's _General and Particular Descriptions_
 
 Edward Griffith published his _General and Particular Descriptions of the Vertebrated
-Animals_ around 1821. The preface to the first lays out an extensive plan covering all
-vertebrates as well as a general introduction to zoology, but only two volumes were ever
-published: Quadrumana (i.e., primates) and Carnivora. These are often referred to as
-parts 1 and 2, though these numbers do not appear in the works themselves.
+Animals_ around 1821. The preface to the first volume lays out an extensive plan
+covering all vertebrates as well as a general introduction to zoology, but only two
+volumes were ever published: Quadrumana (i.e., primates) and Carnivora. These are often
+referred to as parts 1 and 2, though these numbers do not appear in the works
+themselves.
 
 ## Internal evidence
 
 The primate volume bears the cover date of 1821. I have not found other clues within the
 work that constrain its date.
 
-The carnivore volume bears the cover date of 1821. On p. 292, the account of _Tupaia
-Javanica_ mentions that "Dr. Horsfield has lately given a more detailed description of
-them, accompanied with excellent engravings, in his work now publishing on the animals
-of Java and the neighbouring islands". Horsfield's plate of _Tupaia javanica_ was
-published in April 1822 in Part III of this _Zoological Researches_ (see {Aves, Mammalia
-Java-Horsfield dates (Reitmeyer & Dickinson 2019).pdf}). It also refers to {Sumatra
-(Raffles 1821).pdf}, which was published sometime in 1821.
+The carnivore volume also bears the cover date of 1821. On p. 292, the account of
+_Tupaia Javanica_ mentions that "Dr. Horsfield has lately given a more detailed
+description of them, accompanied with excellent engravings, in his work now publishing
+on the animals of Java and the neighbouring islands". Horsfield's plate of _Tupaia
+javanica_ was published in April 1822 in Part III of this _Zoological Researches_ (see
+{Aves, Mammalia Java-Horsfield dates (Reitmeyer & Dickinson 2019).pdf}). It also refers
+to {Sumatra (Raffles 1821).pdf}, which was published sometime in 1821.
 
 ## External evidence
 
