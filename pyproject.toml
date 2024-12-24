@@ -77,8 +77,6 @@ select = ["ALL"]
 ignore = [
   "B008",    # do not perform function calls in argument defaults
   "B011",    # assert False is fine
-  "ANN101",  # missing type annotation for self in method
-  "ANN102",  # missing type annotation for cls in classmethod
   "F821",    # ADT definitions make lots of "undefined" names
   "SIM108",  # I don't like ternaries that much
   "E711",    # need "== None" in queries
@@ -132,9 +130,9 @@ ignore = [
   "SLF001",  # nothing is private
   "RUF001",  # yes, I am using an en dash
   "RUF003",  # yes, I am using an en dash
-  "TCH003",  # no "if TYPE_CHECKING"
-  "TCH001",  # same
-  "TCH002",  # same
+  "TC003",   # no "if TYPE_CHECKING"
+  "TC001",   # same
+  "TC002",   # same
   "EM101",   # really weak justification
   "TD002",   # leave my TODOs
   "TD003",   # leave my TODOs

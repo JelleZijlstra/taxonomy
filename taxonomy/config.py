@@ -123,7 +123,7 @@ def parse_config_file(filename: Path) -> Options:
             db_username=section.get("db_username", ""),
             db_password=section.get("db_password", ""),
             db_name=section.get("db_name", ""),
-            use_sqlite=section.getboolean("use_sqlite"),
+            use_sqlite=section.getboolean("use_sqlite") or False,
             googlekey=section.get("googlekey", ""),
             googlecus=section.get("googlecus", ""),
             crossrefid=section.get("crossrefid", ""),

@@ -735,7 +735,7 @@ _decode_re = re.compile(r"  (\d+) ")
 
 
 def encode_name(name: str) -> str:
-    return _encode_re.sub(lambda m: "__%d_" % ord(m.group()), name).replace(" ", "_")
+    return _encode_re.sub(lambda m: f"__{ord(m.group())}__", name).replace(" ", "_")
 
 
 def decode_name(name: str) -> str:

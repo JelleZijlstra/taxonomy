@@ -969,7 +969,7 @@ class Taxon(BaseModel):
     def compute_valid_name(self) -> str:
         name = self.base_name
         if name is None:
-            raise DoesNotExist("Taxon with id %d has an invalid base_name" % self.id)
+            raise DoesNotExist(f"Taxon with id {self.id} has an invalid base_name")
         if self.rank == Rank.division:
             return f"{name.root_name} Division"
         elif self.is_nominate_subgenus():

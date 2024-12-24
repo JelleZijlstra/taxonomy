@@ -28,7 +28,7 @@ class SetLater:
 
 
 class SingleComputeFunc(Protocol[T_co]):
-    def __call__(self, __model: "taxonomy.db.models.base.BaseModel") -> T_co:
+    def __call__(self, model: "taxonomy.db.models.base.BaseModel", /) -> T_co:
         raise NotImplementedError
 
 
