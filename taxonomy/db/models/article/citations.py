@@ -745,6 +745,8 @@ def citemammalia(article: Article) -> str:
                 parts.append(". ")
             if article.url:
                 parts.append(f"URL: {article.url}")
+            elif article.doi:
+                parts.append(f"URL: https://doi.org/{article.doi}")
             else:
                 parts.append("No URL.")
         case _:

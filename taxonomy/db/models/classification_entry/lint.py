@@ -17,7 +17,6 @@ from taxonomy.db.models.base import LintConfig
 from taxonomy.db.models.lint import IgnoreLint, Lint
 from taxonomy.db.models.name import Name, TypeTag
 from taxonomy.db.models.name.lint import (
-    extract_pages,
     infer_bhl_page_id,
     maybe_infer_page_from_other_name,
     name_combination_name_sort_key,
@@ -623,15 +622,16 @@ def check_corrected_name(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[s
                     yield f"incorrect name format: {corrected_name}"
 
 
-@LINT.add("authority_page_link", requires_network=True)
-def check_must_have_authority_page_link(
+@LINT.add("page_link", requires_network=True)
+def check_must_have_page_link(
     ce: ClassificationEntry, cfg: LintConfig
 ) -> Iterable[str]:
-    if ce.has_tag(ClassificationEntryTag.PageLink):
-        return
     if not ce.article.has_bhl_link_with_pages():
         return
-    yield "must have page link"
+    pages_with_links = _get_existing_page_links(ce)
+    for page in models.name.page.get_unique_page_text(ce.page):
+        if page not in pages_with_links:
+            yield f"must have authority page link for {page}"
 
 
 @LINT.add("check_bhl_page", requires_network=True)
@@ -695,15 +695,11 @@ def _check_bhl_bibliography_matches(
 
 
 def _should_look_for_page_links(ce: ClassificationEntry) -> bool:
-    if ce.page is None:
+    if not ce.page:
         return False
-    if not ce.article.has_bhl_link():
-        return False
-    pages = list(extract_pages(ce.page))
-    tags = list(ce.get_tags(ce.tags, ClassificationEntryTag.PageLink))
-    if len(tags) >= len(pages):
-        return False
-    return True
+    pages = models.name.page.get_unique_page_text(ce.page)
+    pages_with_links = _get_existing_page_links(ce)
+    return not all(page in pages_with_links for page in pages)
 
 
 def _maybe_add_bhl_page(
@@ -773,8 +769,7 @@ def get_candidate_bhl_pages(
             print(f"{ce}: Skip because no BHL item on article")
         return
 
-    pages = list(extract_pages(ce.page))
-    for page in pages:
+    for page in models.name.page.get_unique_page_text(ce.page):
         possible_pages = list(
             bhl.find_possible_pages(
                 [],
@@ -813,6 +808,7 @@ def infer_bhl_page_from_mapped_name(
         for tag in ce.mapped_name.type_tags
         if isinstance(tag, TypeTag.AuthorityPageLink)
     ]
+    new_tags = [tag for tag in new_tags if tag not in ce.tags]
     if not new_tags:
         return
     message = f"inferred BHL page from mapped name {ce.mapped_name}: {new_tags}"
@@ -842,48 +838,59 @@ def infer_bhl_page_from_other_names(
         if cfg.verbose:
             print(f"{ce}: original citation has no BHL link")
         return
-    pages = list(extract_pages(ce.page))
-    if len(pages) != 1:
-        if cfg.verbose:
-            print(f"{ce}: no single page from {ce.page}")
-        return
-    (page,) = pages
-    other_names = [
-        ce
-        for ce in ce.article.get_classification_entries()
-        if ce.has_tag(ClassificationEntryTag.PageLink)
-    ]
-    if not other_names:
-        if cfg.verbose:
-            print(f"{ce}: no other new names")
-        return
-    inferred_pages: set[int] = set()
-    for other_nam in other_names:
-        for tag in other_nam.get_tags(other_nam.tags, ClassificationEntryTag.PageLink):
-            inferred_page_id = maybe_infer_page_from_other_name(
-                cfg=cfg,
-                other_nam=other_nam,
-                url=tag.url,
-                my_page=page,
-                their_page=tag.page,
-                is_same_page=ce.page == other_nam.page,
+    pages = models.name.page.get_unique_page_text(ce.page)
+    for page in pages:
+        other_names = [
+            ce
+            for ce in ce.article.get_classification_entries().filter(
+                ClassificationEntry.page.contains(page)
             )
-            if inferred_page_id is not None:
-                inferred_pages.add(inferred_page_id)
-    if len(inferred_pages) != 1:
-        if cfg.verbose:
-            print(f"{ce}: no single inferred page from other names ({inferred_pages})")
-        return
-    (inferred_page_id,) = inferred_pages
-    tag = ClassificationEntryTag.PageLink(
-        url=f"https://www.biodiversitylibrary.org/page/{inferred_page_id}", page=page
-    )
-    message = f"inferred BHL page {inferred_page_id} from other names (add {tag})"
-    if cfg.autofix:
-        print(f"{ce}: {message}")
-        ce.add_tag(tag)
-    else:
-        yield message
+            if ce.has_tag(ClassificationEntryTag.PageLink)
+        ]
+        if not other_names:
+            if cfg.verbose:
+                print(f"{ce}: no other new names")
+            return
+        inferred_pages: set[int] = set()
+        for other_nam in other_names:
+            for tag in other_nam.get_tags(
+                other_nam.tags, ClassificationEntryTag.PageLink
+            ):
+                inferred_page_id = maybe_infer_page_from_other_name(
+                    cfg=cfg,
+                    other_nam=other_nam,
+                    url=tag.url,
+                    my_page=page,
+                    their_page=tag.page,
+                    is_same_page=tag.page == page,
+                )
+                if inferred_page_id is not None:
+                    inferred_pages.add(inferred_page_id)
+        if len(inferred_pages) != 1:
+            if cfg.verbose:
+                print(
+                    f"{ce}: no single inferred page from other names ({inferred_pages})"
+                )
+            continue
+        (inferred_page_id,) = inferred_pages
+        tag = ClassificationEntryTag.PageLink(
+            url=f"https://www.biodiversitylibrary.org/page/{inferred_page_id}",
+            page=page,
+        )
+        if tag in ce.tags:
+            if cfg.verbose:
+                print(f"{ce}: already has inferred tag {tag}")
+            continue
+        message = f"inferred BHL page {inferred_page_id} from other names (add {tag})"
+        if cfg.autofix:
+            print(f"{ce}: {message}")
+            ce.add_tag(tag)
+        else:
+            yield message
+
+
+def _get_existing_page_links(ce: ClassificationEntry) -> set[str]:
+    return {tag.page for tag in ce.get_tags(ce.tags, ClassificationEntryTag.PageLink)}
 
 
 @LINT.add("bhl_page_from_article", requires_network=True)
@@ -903,12 +910,9 @@ def infer_bhl_page_from_article(
         if cfg.verbose:
             print(f"{ce}: no original citation or URL")
         return
-    for page_described in extract_pages(ce.page):
-        if any(
-            isinstance(tag, ClassificationEntryTag.PageLink)
-            and tag.page == page_described
-            for tag in ce.tags
-        ):
+    page_links = _get_existing_page_links(ce)
+    for page_described in models.name.page.get_unique_page_text(ce.page):
+        if page_described in page_links:
             continue
         maybe_pair = infer_bhl_page_id(page_described, ce, art, cfg)
         if maybe_pair is not None:
@@ -1058,3 +1062,70 @@ def infer_condition_from_mapped(
             ce.add_tag(new_tag)
         else:
             yield message
+
+
+@LINT.add("infer_duplicate")
+def infer_duplicate(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
+    possible_dupes = list(
+        # Wrong type inference for <
+        ClassificationEntry.select_valid().filter(  # static analysis: ignore[incompatible_argument]
+            ClassificationEntry.id < ce.id,
+            ClassificationEntry.article == ce.article,
+            ClassificationEntry.name == ce.name,
+            ClassificationEntry.parent == ce.parent,
+            ClassificationEntry.mapped_name == ce.mapped_name,
+            ClassificationEntry.rank == ce.rank,
+        )
+    )
+    if not possible_dupes:
+        return
+    is_synonym = ce.rank.is_synonym
+    possible_dupes = [
+        other for other in possible_dupes if other.rank.is_synonym == is_synonym
+    ]
+    if ce.authority is not None:
+        possible_dupes = [
+            other for other in possible_dupes if other.authority == ce.authority
+        ]
+    if ce.year is not None:
+        possible_dupes = [other for other in possible_dupes if other.year == ce.year]
+    if len(possible_dupes) != 1:
+        return
+    dupe = possible_dupes[0]
+    message = f"merge into {dupe}"
+    if cfg.autofix:
+        print(f"{ce}: {message}")
+        parts = []
+        if dupe.page is not None:
+            parts.append(dupe.page)
+        if ce.page is not None:
+            parts.append(ce.page)
+        dupe.page = ", ".join(parts)
+        dupe.tags += ce.tags
+        ce.merge(dupe)
+    else:
+        yield message
+
+
+@LINT.add("check_page")
+def check_page(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
+    if ce.page is not None:
+
+        def set_page(page: str) -> None:
+            print(f"set page to {page} on {ce}")
+            ce.set_page(page)
+
+        yield from models.name.page.check_page(
+            ce.page,
+            set_page=set_page,
+            obj=ce,
+            cfg=cfg,
+            get_raw_page_regex=ce.article.get_raw_page_regex,
+        )
+
+
+@LINT.add("matches_citation")
+def check_matches_citation(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
+    if ce.page is None:
+        return
+    yield from models.name.lint.check_page_matches_citation(ce.article, ce.page)

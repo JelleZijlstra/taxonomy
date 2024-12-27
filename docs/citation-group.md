@@ -1,6 +1,6 @@
 # Citation group
 
-"Citation group" are an organizing tool used in the database to group similar
+"Citation groups" are an organizing tool used in the database to group similar
 [articles](/docs/article). There are three kinds of citation groups:
 
 - Journal articles are grouped in journals

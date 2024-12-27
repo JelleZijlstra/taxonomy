@@ -83,6 +83,7 @@ from .name import (
     TypeTag,
 )
 from .organ import CHECKED_ORGANS, ParsedOrgan, ParseException, parse_organ_detail
+from .page import check_page, get_unique_page_text, parse_page_text
 from .type_specimen import (
     BaseSpecimen,
     InformalSpecimen,
@@ -484,11 +485,15 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
             url = yield from check_page_link(
                 tag_url=tag.url, tag_page=tag.page, page_described=nam.page_described
             )
-            tags.append(
-                TypeTag.AuthorityPageLink(
-                    url, tag.confirmed, str(tag.page) if tag.page is not None else ""
-                )
-            )
+            if match := re.fullmatch(
+                r"(pl\. \d+) \(((?:unnumbered )?p\. \d+)\)", tag.page
+            ):
+                page = f"@{match.group(1)} {match.group(2)}"
+            elif tag.page is not None:
+                page = str(tag.page)
+            else:
+                page = ""
+            tags.append(TypeTag.AuthorityPageLink(url, tag.confirmed, page))
         elif (
             isinstance(tag, TypeTag.CitationDetail)
             and tag.source is not None
@@ -567,11 +572,8 @@ def check_page_link(
     for message in url.lint():
         yield f"page link {tag_url}: {message}"
     if page_described is not None and tag_page != "NA":
-        allowed_pages = list(extract_pages(page_described))
-        if tag_page not in allowed_pages and not (
-            tag_page in page_described
-            and remove_parentheses_from_page(tag_page) in allowed_pages
-        ):
+        allowed_pages = get_unique_page_text(page_described)
+        if tag_page not in allowed_pages:
             yield (
                 f"authority page link {tag_url} for page {tag_page!r}"
                 f" does not match any pages in page_described ({allowed_pages})"
@@ -1195,6 +1197,12 @@ def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 yield f"has a tag that points to itself: {tag}"
             if nam.get_date_object() < tag.name.get_date_object():
                 yield f"predates supposed original name {tag.name}"
+            if not tag.name.nomenclature_status.can_preoccupy():
+                if (
+                    target := tag.name.get_tag_target(NameTag.UnavailableVersionOf)
+                ) and nam.year > target.year:
+                    yield f"tag {tag} should instead point to available name {target}"
+                    new_tag = type(tag)(target, tag.comment)
             if isinstance(tag, NameTag.SubsequentUsageOf):
                 if (
                     nam.group is Group.species
@@ -1322,49 +1330,12 @@ def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 new_tag = NameTag.IncorrectSubsequentSpellingOf(tag.name, tag.comment)
 
         elif isinstance(tag, NameTag.UnavailableVersionOf):
+            if nam.nomenclature_status.can_preoccupy():
+                yield "has an UnavailableVersionOf tag, but is available"
             if nam == tag.name:
                 yield f"has a tag that points to itself: {tag}"
             if nam.get_date_object() > tag.name.get_date_object():
                 yield f"postdates supposed available version {tag.name}"
-                if (
-                    nam.species_name_complex != tag.name.species_name_complex
-                    and not tag.name.has_name_tag(NameTag.AsEmendedBy)
-                ):
-                    message = f"{nam} ({nam.species_name_complex}) is a name combination of {tag.name} ({tag.name.species_name_complex}), but has a different name complex"
-                    if cfg.autofix and tag.name.species_name_complex is not None:
-                        print(f"{nam}: {message}")
-                        nam.species_name_complex = tag.name.species_name_complex
-                    else:
-                        yield message
-                if nam.root_name not in _get_extended_root_name_forms(tag.name):
-                    yield f"{nam} is a name combination of {tag.name}, but has a different root name"
-                    if cfg.interactive and getinput.yes_no(
-                        "Mark as incorrect subsequent spelling instead?"
-                    ):
-                        new_tag = NameTag.IncorrectSubsequentSpellingOf(
-                            tag.name, tag.comment
-                        )
-                if tag.name.nomenclature_status is NomenclatureStatus.name_combination:
-                    yield f"{nam} is marked as a name combination of {tag.name}, but that name is already a name combination"
-                    new_target = tag.name.get_tag_target(NameTag.NameCombinationOf)
-                    if new_target is not None:
-                        new_tag = NameTag.NameCombinationOf(new_target, tag.comment)
-                elif (
-                    tag.name.nomenclature_status
-                    is NomenclatureStatus.incorrect_subsequent_spelling
-                ):
-                    new_target = tag.name.get_tag_target(
-                        NameTag.IncorrectSubsequentSpellingOf
-                    )
-                    self_iss_target = nam.get_tag_target(
-                        NameTag.IncorrectSubsequentSpellingOf
-                    )
-                    if not (new_target is not None and new_target == self_iss_target):
-                        yield f"{nam} is marked as a name combination of {tag.name}, but that is an incorrect subsequent spelling"
-                        if new_target is not None:
-                            new_tag = NameTag.IncorrectSubsequentSpellingOf(
-                                new_target, tag.comment
-                            )
             if nam.taxon != tag.name.taxon:
                 yield f"{nam} is not assigned to the same name as {tag.name}"
             if not tag.name.nomenclature_status.can_preoccupy():
@@ -1461,6 +1432,9 @@ def get_applicable_nomenclature_statuses_from_tags(
 ) -> Iterable[NomenclatureStatus]:
     for tag in nam.tags:
         if not exclude_condition and isinstance(tag, NameTag.Condition):
+            # Art. 15.1: Conditional proposals are fine before 1961
+            if tag.status is NomenclatureStatus.conditional and nam.year < "1961":
+                continue
             yield tag.status
         elif isinstance(tag, PREOCCUPIED_TAGS):
             if (
@@ -1507,7 +1481,13 @@ def has_valid_use(nam: Name) -> bool:
         ):
             return True
         if any(
-            not ce.rank.is_synonym and ce.article.numeric_year() < 1961
+            not ce.rank.is_synonym
+            and ce.article.numeric_year() < 1961
+            and not any(
+                isinstance(tag, ClassificationEntryTag.CECondition)
+                and tag.status is NomenclatureStatus.not_used_as_valid
+                for tag in ce.tags
+            )
             for ce in nam.get_classification_entries()
         ):
             return True
@@ -2358,6 +2338,10 @@ def check_matches_citation(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.original_citation is None or nam.page_described is None:
         return
     art = nam.original_citation
+    yield from check_page_matches_citation(art, nam.page_described)
+
+
+def check_page_matches_citation(art: Article, page_text: str) -> Iterable[str]:
     if art.type not in (ArticleType.JOURNAL, ArticleType.CHAPTER, ArticleType.PART):
         return
     start_page = art.numeric_start_page()
@@ -2365,24 +2349,15 @@ def check_matches_citation(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if not start_page or not end_page:
         return
     page_range = range(start_page, end_page + 1)
-    for page in extract_pages(nam.page_described):
+    for page in parse_page_text(page_text):
+        if page.is_raw:
+            continue
         try:
-            numeric_page = int(page)
+            numeric_page = int(page.text)
         except ValueError:
             continue
         if numeric_page not in page_range:
-            yield (f"{nam.page_described} is not in {start_page}–{end_page} for {art}")
-
-
-def remove_parentheses_from_page(page_described: str) -> str:
-    return re.sub(r" \([^\)]+\)(?=, |$)", "", page_described)
-
-
-def extract_pages(page_described: str) -> Iterable[str]:
-    page_described = remove_parentheses_from_page(page_described)
-    parts = page_described.split(", ")
-    for part in parts:
-        yield re.sub(r" \[as [0-9]+\]$", "", part)
+            yield (f"{page_text} is not in {start_page}–{end_page} for {art}")
 
 
 @LINT.add("no_page_ranges")
@@ -2393,8 +2368,8 @@ def no_page_ranges(nam: Name, cfg: LintConfig) -> Iterable[str]:
     # if the range is appropriate when adding a citation.
     if nam.original_citation is None:
         return
-    for part in extract_pages(nam.page_described):
-        if re.fullmatch(r"[0-9]+-[0-9]+", part):
+    for part in parse_page_text(nam.page_described):
+        if not part.is_raw and re.fullmatch(r"[0-9]+-[0-9]+", part.text):
             # Ranges should only be used in very rare cases (e.g., where the
             # name itself literally extends across multiple pages). Enforce
             # an explicit IgnoreLintName in such cases.
@@ -2449,37 +2424,17 @@ def check_page_described(nam: Name, cfg: LintConfig) -> Iterable[str]:
     # For now ignore names without a citation
     if nam.original_citation is None:
         return
-    for part in extract_pages(nam.page_described):
-        if part.isdecimal() and part.isascii():
-            continue
-        if re.fullmatch(r"[0-9]+-[0-9]+", part):
-            continue
-        if part.startswith("pl. "):
-            number = part.removeprefix("pl. ")
-            if helpers.is_valid_roman_numeral(number):
-                continue
-            if re.fullmatch(r"([A-Z]+-?)?[0-9]+[A-Za-z]*", number):
-                continue
-        if helpers.is_valid_roman_numeral(part):
-            continue
-        # Pretty common to see "S40" or "40A"
-        if re.fullmatch(r"[A-Z]?[0-9]+[A-Z]?", part):
-            continue
-        if re.fullmatch(r"ID #\d+", part):
-            continue
-        if urlparse.is_valid_url(part):
-            continue
-        if part in (
-            "unnumbered",
-            "cover",
-            "foldout",
-            "erratum",
-            "addenda",
-            "table of contents",
-            "supplement",
-        ):
-            continue
-        yield f"invalid part {part!r} in {nam.page_described!r}"
+
+    def set_page(page_described: str) -> None:
+        nam.page_described = page_described
+
+    yield from check_page(
+        nam.page_described,
+        set_page=set_page,
+        obj=nam,
+        cfg=cfg,
+        get_raw_page_regex=nam.original_citation.get_raw_page_regex,
+    )
 
 
 _JG2015 = "{Australia (Jackson & Groves 2015).pdf}"
@@ -3400,14 +3355,15 @@ def _autoset_original_citation_url(nam: Name) -> None:
 
 @LINT.add("authority_page_link", requires_network=True)
 def check_must_have_authority_page_link(nam: Name, cfg: LintConfig) -> Iterable[str]:
-    if nam.has_type_tag(TypeTag.AuthorityPageLink):
-        return
     if (
         nam.original_citation is None
         or not nam.original_citation.has_bhl_link_with_pages()
     ):
         return
-    yield "must have authority page link"
+    pages_with_links = _get_pages_with_links(nam)
+    for page in get_unique_page_text(nam.page_described):
+        if page not in pages_with_links:
+            yield f"must have authority page link for {page}"
 
 
 @LINT.add("check_bhl_page", requires_network=True)
@@ -3447,7 +3403,7 @@ def check_bhl_page(nam: Name, cfg: LintConfig) -> Iterable[str]:
 
 def _check_bhl_item_matches(
     nam: Name,
-    tag: TypeTag.AuthorityPageLink,  # type:ignore[name-defined]
+    tag: TypeTag.AuthorityPageLink,  # type: ignore[name-defined]
     cfg: LintConfig,
 ) -> Iterable[str]:
     item_id = bhl.get_bhl_item_from_url(tag.url)
@@ -3546,14 +3502,16 @@ def _check_bhl_bibliography_matches(
                 yield message
 
 
+def _get_pages_with_links(nam: Name) -> set[str]:
+    return {tag.page for tag in nam.get_tags(nam.type_tags, TypeTag.AuthorityPageLink)}
+
+
 def _should_look_for_page_links(nam: Name) -> bool:
     if not nam.page_described:
         return False
-    pages = list(extract_pages(nam.page_described))
-    tags = list(nam.get_tags(nam.type_tags, TypeTag.AuthorityPageLink))
-    if len(tags) >= len(pages):
-        return False
-    return True
+    pages = get_unique_page_text(nam.page_described)
+    pages_with_links = _get_pages_with_links(nam)
+    return not all(page in pages_with_links for page in pages)
 
 
 def _maybe_add_bhl_page(
@@ -3648,7 +3606,7 @@ def get_candidate_bhl_pages(
     else:
         title_ids = []
 
-    pages = list(extract_pages(nam.page_described))
+    pages = get_unique_page_text(nam.page_described)
     for page in pages:
         possible_pages = list(
             bhl.find_possible_pages(
@@ -3759,50 +3717,56 @@ def infer_bhl_page_from_other_names(nam: Name, cfg: LintConfig) -> Iterable[str]
         if cfg.verbose:
             print(f"{nam}: original citation has no BHL link")
         return
-    pages = list(extract_pages(nam.page_described))
-    if len(pages) != 1:
-        if cfg.verbose:
-            print(f"{nam}: no single page from {nam.page_described}")
-        return
-    (page,) = pages
-    other_new_names = [
-        nam
-        for nam in nam.original_citation.get_new_names()
-        if nam.has_type_tag(TypeTag.AuthorityPageLink)
-    ]
-    if not other_new_names:
-        if cfg.verbose:
-            print(f"{nam}: no other new names")
-        return
-    inferred_pages: set[int] = set()
-    for other_nam in other_new_names:
-        for tag in other_nam.get_tags(other_nam.type_tags, TypeTag.AuthorityPageLink):
-            inferred_page = maybe_infer_page_from_other_name(
-                cfg=cfg,
-                other_nam=other_nam,
-                my_page=page,
-                their_page=tag.page,
-                is_same_page=other_nam.page_described == nam.page_described,
-                url=tag.url,
+    pages = get_unique_page_text(nam.page_described)
+    for page in pages:
+        other_new_names = [
+            nam
+            for nam in nam.original_citation.get_new_names().filter(
+                Name.page_described.contains(page)
             )
-            if inferred_page is not None:
-                inferred_pages.add(inferred_page)
-    if len(inferred_pages) != 1:
-        if cfg.verbose:
-            print(f"{nam}: no single inferred page from other names ({inferred_pages})")
-        return
-    (inferred_page_id,) = inferred_pages
-    tag = TypeTag.AuthorityPageLink(
-        url=f"https://www.biodiversitylibrary.org/page/{inferred_page_id}",
-        confirmed=True,
-        page=page,
-    )
-    message = f"inferred BHL page {inferred_page_id} from other names (add {tag})"
-    if cfg.autofix:
-        print(f"{nam}: {message}")
-        nam.add_type_tag(tag)
-    else:
-        yield message
+            if nam.has_type_tag(TypeTag.AuthorityPageLink)
+        ]
+        if not other_new_names:
+            if cfg.verbose:
+                print(f"{nam}: no other new names")
+            return
+        inferred_pages: set[int] = set()
+        for other_nam in other_new_names:
+            for tag in other_nam.get_tags(
+                other_nam.type_tags, TypeTag.AuthorityPageLink
+            ):
+                inferred_page = maybe_infer_page_from_other_name(
+                    cfg=cfg,
+                    other_nam=other_nam,
+                    my_page=page,
+                    their_page=tag.page,
+                    is_same_page=tag.page == page,
+                    url=tag.url,
+                )
+                if inferred_page is not None:
+                    inferred_pages.add(inferred_page)
+        if len(inferred_pages) != 1:
+            if cfg.verbose:
+                print(
+                    f"{nam}: no single inferred page from other names ({inferred_pages})"
+                )
+            continue
+        (inferred_page_id,) = inferred_pages
+        tag = TypeTag.AuthorityPageLink(
+            url=f"https://www.biodiversitylibrary.org/page/{inferred_page_id}",
+            confirmed=True,
+            page=page,
+        )
+        if tag in nam.type_tags:
+            if cfg.verbose:
+                print(f"{nam}: already has {tag}")
+            continue
+        message = f"inferred BHL page {inferred_page_id} from other names (add {tag})"
+        if cfg.autofix:
+            print(f"{nam}: {message}")
+            nam.add_type_tag(tag)
+        else:
+            yield message
 
 
 @LINT.add("bhl_page_from_classification_entries", requires_network=True)
@@ -3845,11 +3809,9 @@ def infer_bhl_page_from_article(nam: Name, cfg: LintConfig) -> Iterable[str]:
         if cfg.verbose:
             print(f"{nam}: no original citation or URL")
         return
-    for page_described in extract_pages(nam.page_described):
-        if any(
-            isinstance(tag, TypeTag.AuthorityPageLink) and tag.page == page_described
-            for tag in nam.type_tags
-        ):
+    pages_with_links = _get_pages_with_links(nam)
+    for page_described in get_unique_page_text(nam.page_described):
+        if page_described in pages_with_links:
             continue
         maybe_pair = infer_bhl_page_id(page_described, nam, art, cfg)
         if maybe_pair is not None:

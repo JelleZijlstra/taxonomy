@@ -486,6 +486,7 @@ class Article(BaseModel):
             "classification_entries_for_article": lambda: models.classification_entry.ce.classification_entries_for_article(
                 self
             ),
+            "display_raw_pages": self.display_raw_pages,
         }
 
     def ce_edit(self) -> None:
@@ -512,10 +513,31 @@ class Article(BaseModel):
     def get_new_names(self) -> Query[models.Name]:
         return models.Name.add_validity_check(self.new_names)
 
+    def get_new_names_with_children(self) -> Iterable[models.Name]:
+        yield from self.get_new_names()
+        for art in self.article_set:
+            yield from art.get_new_names()
+
+    def display_raw_pages(self) -> None:
+        for nam in self.get_new_names_with_children():
+            for page in models.name.page.parse_page_text(nam.page_described):
+                print(f"{nam}: {page}")
+        for ce in self.get_classification_entries_with_children():
+            for page in models.name.page.parse_page_text(ce.page):
+                if page.is_raw:
+                    print(f"{ce}: {page}")
+
     def get_classification_entries(self) -> Query[models.ClassificationEntry]:
         return models.ClassificationEntry.add_validity_check(
             self.classification_entries
         )
+
+    def get_classification_entries_with_children(
+        self,
+    ) -> Iterable[models.ClassificationEntry]:
+        yield from self.get_classification_entries()
+        for art in self.article_set:
+            yield from art.get_classification_entries()
 
     def get_root_classification_entries(self) -> list[models.ClassificationEntry]:
         return [
@@ -676,6 +698,13 @@ class Article(BaseModel):
             self.name = newname
         # make redirect
         self.create_redirect_static(oldname, self)
+
+    def get_raw_page_regex(self) -> str | None:
+        for tag in self.get_tags(self.tags, ArticleTag.RawPageRegex):
+            return tag.regex
+        if self.parent is not None:
+            return self.parent.get_raw_page_regex()
+        return None
 
     def dump_pdf_text(self) -> None:
         if not self.ispdf():
@@ -1646,6 +1675,8 @@ class ArticleTag(adt.ADT):
     # ICZN Art. 11.4: Names published in a work that is not consistently binominal are
     # unavailable.
     InconsistentlyBinominal(comment=NotRequired[str], tag=27)  # type: ignore[name-defined]
+
+    RawPageRegex(regex=str, comment=NotRequired[str], tag=28)  # type: ignore[name-defined]
 
 
 @lru_cache

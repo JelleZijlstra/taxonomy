@@ -1,6 +1,7 @@
 """Lint steps for Articles."""
 
 import bisect
+import pprint
 import re
 import subprocess
 import unicodedata
@@ -2052,3 +2053,70 @@ def _check_doi_authors(
         art.author_tags = new_authors  # type: ignore[assignment]
     else:
         yield message
+
+
+@LINT.add("raw_page_regex")
+def must_have_raw_page_regex(art: Article, cfg: LintConfig) -> Iterable[str]:
+    if art.has_tag(ArticleTag.RawPageRegex) or art.parent is not None:
+        return
+    has_raw_pages: list[object] = []
+    for nam in art.get_new_names_with_children():
+        if any(
+            page.is_raw for page in models.name.page.parse_page_text(nam.page_described)
+        ):
+            has_raw_pages.append(nam)
+    for ce in art.get_classification_entries_with_children():
+        if any(page.is_raw for page in models.name.page.parse_page_text(ce.page)):
+            has_raw_pages.append(ce)
+    if len(has_raw_pages) < 3:
+        return
+    yield f"missing RawPageRegex tag, but has {len(has_raw_pages)} raw pages (examples: {has_raw_pages[:3]})"
+
+
+@LINT.add("consistent_bhl_pages")
+def check_consistent_bhl_pages(art: Article, cfg: LintConfig) -> Iterable[str]:
+    if not art.has_bhl_link():
+        return
+    bhl_page_to_page_to_objects: dict[
+        str,
+        dict[
+            str,
+            list[models.classification_entry.ClassificationEntry | models.name.Name],
+        ],
+    ] = {}
+    page_to_bhl_page_to_objects: dict[
+        str,
+        dict[
+            str,
+            list[models.classification_entry.ClassificationEntry | models.name.Name],
+        ],
+    ] = {}
+    for nam in art.get_new_names():
+        for tag in nam.type_tags:
+            if isinstance(tag, models.name.TypeTag.AuthorityPageLink):
+                bhl_page_to_page_to_objects.setdefault(tag.url, {}).setdefault(
+                    tag.page, []
+                ).append(nam)
+                page_to_bhl_page_to_objects.setdefault(tag.page, {}).setdefault(
+                    tag.url, []
+                ).append(nam)
+    for ce in art.get_classification_entries():
+        for tag in ce.tags:
+            if isinstance(
+                tag, models.classification_entry.ClassificationEntryTag.PageLink
+            ):
+                bhl_page_to_page_to_objects.setdefault(tag.url, {}).setdefault(
+                    tag.page, []
+                ).append(ce)
+                page_to_bhl_page_to_objects.setdefault(tag.page, {}).setdefault(
+                    tag.url, []
+                ).append(ce)
+
+    for bhl_page, page_to_objects in bhl_page_to_page_to_objects.items():
+        if len(page_to_objects) == 1:
+            continue
+        yield f"multiple pages link to BHL page {bhl_page}: {pprint.pformat(page_to_objects)}"
+    for page, bhl_page_to_objects in page_to_bhl_page_to_objects.items():
+        if len(bhl_page_to_objects) == 1:
+            continue
+        yield f"multiple BHL pages link to page {page}: {pprint.pformat(bhl_page_to_objects)}"

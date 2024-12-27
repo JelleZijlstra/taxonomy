@@ -680,6 +680,7 @@ class Name(BaseModel):
             "edit_mapped_ce": self._edit_mapped_ce,
             "display_classification_entries": self.display_classification_entries,
             "display_usage_list": lambda: print(self.make_usage_list()),
+            "set_page_described": self.set_page_described,
         }
 
     def get_classification_entries(self) -> Query[ClassificationEntry]:
@@ -1252,6 +1253,31 @@ class Name(BaseModel):
             if match:
                 return int(match.group(1))
         return None
+
+    def set_page_described(self, page: str | None = None) -> None:
+        existing = self.page_described
+        if page is None:
+            page = self.getter("page_described").get_one_key(
+                "page_described> ", default=existing or ""
+            )
+            if page is None:
+                return
+        if existing is not None:
+
+            def adjust_tag(tag: TypeTag) -> TypeTag:
+                if isinstance(tag, TypeTag.AuthorityPageLink) and tag.page == existing:
+                    print(f"Update page on {tag}")
+                    return TypeTag.AuthorityPageLink(
+                        url=tag.url, confirmed=tag.confirmed, page=page
+                    )
+                else:
+                    return tag
+
+            self.map_type_tags(adjust_tag)
+        self.page_described = page
+        print(f"{self}: change page {existing} -> {page}")
+        for ce in self.get_mapped_classification_entries():
+            ce.set_page(page)
 
     def get_repositories(self) -> list[Collection]:
         if self.collection is None:
@@ -2372,6 +2398,16 @@ class Name(BaseModel):
             models.ClassificationEntry.article == self.original_citation,
         )
 
+    def highest_taxon(self) -> Taxon:
+        taxa = list(
+            Taxon.select_valid().filter(
+                Taxon.base_name == self, Taxon.rank != Rank.species_group
+            )
+        )
+        if not taxa:
+            return self.taxon
+        return max(taxa, key=lambda taxon: taxon.rank)
+
     def make_usage_list(self, style: str = "paper") -> str:
         usages: dict[Article, str | None] = {}
         for related_nam in self.taxon.get_names():
@@ -2399,7 +2435,7 @@ class Name(BaseModel):
                 usages[tag.source] = comment
         authority = self.taxonomic_authority()
         lines = [
-            f"### Usages of _{self.original_name}_ {authority} (currently _{self.taxon.valid_name}_)\n\n"
+            f"### Usages of _{self.original_name}_ {authority} (currently _{self.highest_taxon().valid_name}_)\n\n"
         ]
         i = 1
         for source, comment in sorted(
@@ -2411,7 +2447,7 @@ class Name(BaseModel):
                 comment_str = f" ({comment})"
             else:
                 comment_str = ""
-            lines.append(f"- {i}. {source.cite(style)}{comment_str}\n")
+            lines.append(f"{i}. {source.cite(style)}{comment_str}\n")
             i += 1
         lines.append("\n")
         return "".join(lines)

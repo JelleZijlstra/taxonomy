@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime
+import enum
 import re
 from collections.abc import Iterable, Mapping, Sequence
 from types import MappingProxyType
@@ -43,6 +44,12 @@ class ClassificationEntryTag(ADT):
     CECondition(tag=14, status=NomenclatureStatus, comment=NotRequired[str])  # type: ignore[name-defined]
 
 
+class ClassificationEntryStatus(enum.Enum):
+    valid = 0
+    removed = 6
+    redirect = 7
+
+
 class ClassificationEntry(BaseModel):
     creation_event = events.Event["ClassificationEntry"]()
     save_event = events.Event["ClassificationEntry"]()
@@ -53,6 +60,7 @@ class ClassificationEntry(BaseModel):
     article = Field[Article]("article_id", related_name="classification_entries")
     name = Field[str]()
     rank = Field[Rank]()
+    status = Field[ClassificationEntryStatus](default=ClassificationEntryStatus.valid)
     parent = Field[Self | None]("parent_id", related_name="children")
     page = Field[str | None]()
     mapped_name = Field["models.Name | None"](
@@ -65,11 +73,67 @@ class ClassificationEntry(BaseModel):
     raw_data = TextOrNullField()
     tags = ADTField[ClassificationEntryTag](is_ordered=False)
 
+    @classmethod
+    def add_validity_check(cls, query: Any) -> Any:
+        return query.filter(
+            ClassificationEntry.status != ClassificationEntryStatus.removed,
+            ClassificationEntry.status != ClassificationEntryStatus.redirect,
+        )
+
+    def get_redirect_target(self) -> ClassificationEntry | None:
+        if self.status is not ClassificationEntryStatus.redirect:
+            return None
+        return self.parent
+
+    def is_invalid(self) -> bool:
+        return self.status in (
+            ClassificationEntryStatus.removed,
+            ClassificationEntryStatus.redirect,
+        )
+
+    def should_skip(self) -> bool:
+        return self.status in (
+            ClassificationEntryStatus.removed,
+            ClassificationEntryStatus.redirect,
+        )
+
     def edit(self) -> None:
         self.fill_field("tags")
 
+    def merge(self, other: ClassificationEntry | None = None) -> None:
+        if other is None:
+            other = ClassificationEntry.getter(None).get_one("target> ")
+            if other is None:
+                return
+        if self == other:
+            print("Cannot merge with self.")
+            return
+        self.parent = other
+        self.status = ClassificationEntryStatus.redirect
+
     def numeric_page(self) -> int:
         return helpers.to_int(self.page)
+
+    def set_page(self, page: str | None = None) -> None:
+        existing = self.page
+        if page is None:
+            page = self.getter("page").get_one_key("page> ", default=existing or "")
+            if page is None:
+                return
+        if existing is not None:
+
+            def adjust_tag(tag: ADT) -> ADT:
+                if (
+                    isinstance(tag, ClassificationEntryTag.PageLink)
+                    and tag.page == existing
+                ):
+                    print(f"adjust page in {tag}")
+                    return ClassificationEntryTag.PageLink(url=tag.url, page=page)
+                return tag
+
+            self.map_tags_field(ClassificationEntry.tags, adjust_tag)
+        self.page = page
+        print(f"{self}: set page {existing} -> {page}")
 
     def get_corrected_name(self) -> str | None:
         for tag in self.get_tags(self.tags, ClassificationEntryTag.CorrectedName):
@@ -451,6 +515,8 @@ class ClassificationEntry(BaseModel):
             "take_over_mapped_name": self.take_over_mapped_name,
             "add_syns": self.add_syns,
             "add_taxon": self.add_taxon,
+            "set_page": self.set_page,
+            "merge": self.merge,
         }
 
     def take_over_mapped_name(self) -> None:

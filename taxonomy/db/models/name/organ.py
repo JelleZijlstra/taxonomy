@@ -566,6 +566,8 @@ class Phalanx:
     def maybe_parse(cls, text: str) -> Phalanx | None:
         if "-" in text:
             digit_text, position_text = text.split("-", maxsplit=1)
+            if not digit_text.isupper():
+                return None
             try:
                 digit = helpers.parse_roman_numeral(digit_text)
             except ValueError:
@@ -579,7 +581,7 @@ class Phalanx:
             except ValueError:
                 return None
             return Phalanx(digit, position)
-        else:
+        elif text.isupper():
             try:
                 digit = helpers.parse_roman_numeral(text)
             except ValueError:

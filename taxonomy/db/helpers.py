@@ -1144,6 +1144,7 @@ def make_roman_numeral(i: int) -> str:
 
 
 def parse_roman_numeral(s: str) -> int:
+    s = s.upper()
     for letter, value in _SORTED_VALUES:
         if letter in s:
             before, after = s.split(letter, maxsplit=1)

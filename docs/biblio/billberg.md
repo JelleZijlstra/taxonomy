@@ -1,9 +1,9 @@
 # Billberg's _Synopsis Faunae Scandinaviae_
 
 [Gustaf Johan Billberg](/h/73658) (1772–1844) was primarily a botanist, but also
-produced a _Synopsis Faunæ Scandinaviæ_ in the 1820, which introduced a number of new
+produced a _Synopsis Faunæ Scandinaviæ_ in the 1820s, which introduced a number of new
 names for mammals. There are some problems with this work but I do not have enough
-available information to sort them out, so this document only sets out the parts that I
+available information to sort them out completely, so this document only sets out what I
 do know.
 
 Names published in this work are variously cited as either 1827 or 1828. I have found

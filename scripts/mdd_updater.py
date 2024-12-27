@@ -297,7 +297,9 @@ def get_hesp_row(
         row["Hesp_unchecked_authority_citation"] = ""
     cg = name.get_citation_group()
     row["Hesp_citation_group"] = cg.name if cg else ""
-    row["Hesp_authority_page"] = name.page_described or ""
+    row["Hesp_authority_page"] = (
+        name.page_described.replace("@", "") if name.page_described is not None else ""
+    )
     authority_link = get_authority_link(name)
     row["Hesp_authority_page_link"] = authority_link
     if name.original_citation is not None:
@@ -517,7 +519,7 @@ class FixableDifference:
                         )
                     else:
                         pages = list(
-                            models.name.lint.extract_pages(
+                            models.name.page.get_unique_page_text(
                                 self.hesp_name.page_described
                             )
                         )
