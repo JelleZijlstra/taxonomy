@@ -126,13 +126,16 @@ Other reviews:
       _leucogaster_; pl. M27-28) and bird plates B33-36.
     - No. 26 has reptiles (R4-6) and the last mammals (M29-30).
     - No. 27 has fish (F31-35).
-- _Isis von Oken_ (in BHL) -
-  [Vol. 20, issue 3, col. 267-273](https://www.biodiversitylibrary.org/page/26453442)
-  (1826, according to footer on col. 201) - Reviews Heft 1 only (four mammal plates and
-  two bird plates are discussed) - Vol. 1828, col. 155-157 - Discusses Heft 2 (1826) and
-  3 (1827). The contents listed for the plates are consistent with those in the 1829
-  review. - Vol. 1831, col. 424-427 - Piece by Leuckart, dated February 1831, discussing
-  Heft 17, about invertebrates. \_ _Das Morgenblatt für gebildete Stände_ -
+- _Isis von Oken_ (in BHL)
+  - [Vol. 20, issue 3, col. 267-273](https://www.biodiversitylibrary.org/page/26453442)
+    (1826, according to footer on col. 201)
+    - Reviews Heft 1 only (four mammal plates and two bird plates are discussed)
+  - Vol. 1828, col. 155-157
+    - Discusses Heft 2 (1826) and 3 (1827). The contents listed for the plates are
+      consistent with those in the 1829 review.
+  - Vol. 1831, col. 424-427 - Piece by Leuckart, dated February 1831, discussing Heft
+    17, about invertebrates.
+- _Das Morgenblatt für gebildete Stände_
   [Nr. 141, p. 563](https://books.google.nl/books?id=QfrnXTG_0q0C&newbks=1&newbks_redir=0&dq=atlas%20reise%20afrika&pg=PA563#v=onepage&q=atlas%20reise%20afrika&f=false)
   (13 June 1827) - Only Heft 1 discussed
 - _Leipziger Literatur-Zeitung_

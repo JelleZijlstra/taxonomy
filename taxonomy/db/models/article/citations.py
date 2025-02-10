@@ -45,6 +45,7 @@ def format_authors(
     include_initials: bool = True,  # Whether to include initials
     romanize: bool = False,  # Whether to romanize names
     include_dots: bool = True,  # Whether to include dots after initials
+    before_initials: str = ",",  # set to "" to have no comma before initials
 ) -> str:
     if last_separator is None:
         last_separator = separator
@@ -87,7 +88,7 @@ def format_authors(
             if first_initials_before_name if i == 0 else initials_before_name:
                 author_str = f"{initials} {family_name}"
             else:
-                author_str = f"{family_name}, {initials}"
+                author_str = f"{family_name}{before_initials} {initials}"
             if author.suffix and author.naming_convention in (
                 NamingConvention.english,
                 NamingConvention.english_peer,
@@ -102,11 +103,19 @@ def format_authors(
 
 @register_cite_function("paper")
 def citepaper(
-    article: Article, *, include_url: bool = True, romanize_authors: bool = False
+    article: Article,
+    *,
+    include_url: bool = True,
+    romanize_authors: bool = False,
+    full_date: bool = False,
 ) -> str:
     # like citenormal(), but without WP style links and things
     return _citenormal(
-        article, mw=False, include_url=include_url, romanize_authors=romanize_authors
+        article,
+        mw=False,
+        include_url=include_url,
+        romanize_authors=romanize_authors,
+        full_date=full_date,
     )
 
 
@@ -122,6 +131,7 @@ def _citenormal(
     child_article: Article | None = None,
     include_url: bool = True,
     romanize_authors: bool = False,
+    full_date: bool = False,
 ) -> str:
     # cites according to normal WP citation style
     # if mw = False, no MediaWiki markup is used
@@ -138,6 +148,8 @@ def _citenormal(
         out += ". (eds.)"
     if child_article is not None and child_article.year == article.year:
         out += ". "
+    elif full_date:
+        out += f". {article.year}. "
     else:
         out += f". {article.numeric_year()}. "
     if mw:
@@ -180,7 +192,9 @@ def _citenormal(
             out += " in Unknown."
         else:
             out += " in "
-            out += _citenormal(enclosing, mw=mw, child_article=article)
+            out += _citenormal(
+                enclosing, mw=mw, child_article=article, full_date=full_date
+            )
     elif article.type == ArticleType.BOOK:
         out += f" {article.publisher}"
         if article.citation_group is not None:
@@ -303,6 +317,42 @@ def citebzn(article: Article) -> str:
         out += "."
     # final cleanup
     return out.replace("  ", " ").replace("..", ".")
+
+
+@register_cite_function("mammbiol")
+def cite_mamm_biol(article: Article) -> str:
+    out = format_authors(article, separator=",", include_dots=False, before_initials="")
+    out += f" ({article.numeric_year()}) "
+    out += f"{article.get_title()}. "
+    match article.type:
+        case ArticleType.JOURNAL:
+            if article.citation_group:
+                out += article.citation_group.get_citable_name()
+                if article.is_in_press():
+                    out += ", in press"
+                else:
+                    out += f" {article.volume}:{page_range(article)}"
+                out += "."
+        case ArticleType.BOOK:
+            out += f"{article.publisher}"
+            if article.citation_group:
+                out += f", {article.citation_group.get_citable_name()}"
+        case ArticleType.CHAPTER | ArticleType.PART:
+            out += "In: "
+            enclosing = article.get_enclosing()
+            if enclosing is not None:
+                out += format_authors(
+                    enclosing, separator=",", include_dots=False, before_initials=""
+                )
+                out += " (ed) "
+                out += f"{enclosing.get_title()}. {enclosing.publisher}"
+                if enclosing.citation_group:
+                    out += f", {enclosing.citation_group.get_citable_name()}"
+                out += f", pp. {page_range(article)}"
+    url = article.geturl()
+    if url:
+        out += f" {url}"
+    return out
 
 
 @register_cite_function("jhe")

@@ -3,7 +3,7 @@
 import re
 import urllib.parse
 from abc import abstractmethod
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
 BHL_DOMAINS = {"biodiversitylibrary.org", "www.biodiversitylibrary.org"}
@@ -12,6 +12,7 @@ DEPRECATED_DOMAINS = {"biostor.org"}
 # Also consider: www.mapress.com, www.springerlink.com, linkinghub.elsevier.com, link.springer.com,
 # mbe.oxfordjournals.org, www.pnas.org, www.ingentaconnect.com
 SHOULD_HAVE_DOI_DOMAINS = {"www.sciencedirect.com"}
+GALLICA_DOMAIN = "gallica.bnf.fr"
 
 
 @dataclass
@@ -104,6 +105,60 @@ class GoogleBooksPage(GoogleBooksUrl):
 
 
 @dataclass
+class GallicaUrl(ParsedUrl):
+    volume_id: str
+
+    def lint(self) -> Iterable[str]:
+        if not re.fullmatch(r"bpt6k\d+[a-z]?", self.volume_id):
+            yield f"invalid volume ID {self.volume_id!r}"
+
+
+@dataclass
+class GallicaVolume(GallicaUrl):
+    suffixes: Sequence[str] = ()
+
+    def lint(self) -> Iterable[str]:
+        yield from super().lint()
+        if self.suffixes:
+            yield f"unexpected suffixes {self.suffixes!r}"
+
+    def __str__(self) -> str:
+        suf = "".join(f".{suffix}" for suffix in self.suffixes)
+        return f"https://{GALLICA_DOMAIN}/ark:/12148/{self.volume_id}{suf}"
+
+
+@dataclass
+class GallicaPage(GallicaUrl):
+    page_number: str
+    suffixes: Sequence[str] = ()
+
+    def lint(self) -> Iterable[str]:
+        yield from super().lint()
+        if len(self.suffixes) > 1:
+            yield f"too many suffixes {self.suffixes!r}"
+        elif self.suffixes:
+            suf = self.suffixes[0]
+            if suf not in {"image", "item"}:
+                yield f"invalid item type {suf!r}"
+
+    def __str__(self) -> str:
+        suf = "".join(
+            f".{suffix}"
+            for suffix in self.suffixes
+            if not _can_skip_gallica_suffix(suffix)
+        )
+        return f"https://{GALLICA_DOMAIN}/ark:/12148/{self.volume_id}/{self.page_number}{suf}"
+
+
+def _can_skip_gallica_suffix(suffix: str) -> bool:
+    if suffix == "langEN":
+        return True
+    if suffix.startswith("r="):
+        return True
+    return False
+
+
+@dataclass
 class HDLUrl(ParsedUrl):
     hdl: str
     query: str | None = None
@@ -155,6 +210,8 @@ class OtherUrl(ParsedUrl):
             yield "invalid JSTOR URL"
         if is_google_domain(self.split_url.netloc):
             yield "unrecognized Google URL"
+        if self.split_url.netloc == GALLICA_DOMAIN:
+            yield "invalid Gallica URL"
 
 
 def parse_url(url: str) -> ParsedUrl:
@@ -211,11 +268,19 @@ def parse_url(url: str) -> ParsedUrl:
         match = re.fullmatch(r"/doi/(.+?)/(abs|full|pdf|abstract)", split.path)
         if match is not None:
             return DOIURL(match.group(1))
+    elif split.netloc == GALLICA_DOMAIN and split.path.startswith("/ark:/12148/"):
+        text = split.path.removeprefix("/ark:/12148/")
+        if "/" in text:
+            volume_id, tail = text.split("/", 1)
+            page_number, *suffixes = tail.split(".")
+            return GallicaPage(volume_id, page_number, suffixes)
+        else:
+            volume_id, *suffixes = text.split(".")
+            return GallicaVolume(volume_id, suffixes)
 
     # TODO: other domains for which to consider parsing more specifically:
     # - archive.org
     # - hathitrust.org
-    # - gallica.bnf.fr
     return OtherUrl(split)
 
 

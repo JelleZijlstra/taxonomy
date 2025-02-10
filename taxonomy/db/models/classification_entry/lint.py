@@ -793,8 +793,8 @@ def get_candidate_bhl_pages(
             yield from confident_pages
 
 
-@LINT.add("infer_bhl_page_from_mapped_name")
-def infer_bhl_page_from_mapped_name(
+@LINT.add("infer_page_from_mapped_name")
+def infer_page_from_mapped_name(
     ce: ClassificationEntry, cfg: LintConfig
 ) -> Iterable[str]:
     if not _should_look_for_page_links(ce):
@@ -811,13 +811,65 @@ def infer_bhl_page_from_mapped_name(
     new_tags = [tag for tag in new_tags if tag not in ce.tags]
     if not new_tags:
         return
-    message = f"inferred BHL page from mapped name {ce.mapped_name}: {new_tags}"
+    message = f"inferred page from mapped name {ce.mapped_name}: {new_tags}"
     if cfg.autofix:
         print(f"{ce}: {message}")
         for tag in new_tags:
             ce.add_tag(tag)
     else:
         yield message
+
+
+@LINT.add("infer_page_from_other_names")
+def infer_page_from_other_names(
+    ce: ClassificationEntry, cfg: LintConfig
+) -> Iterable[str]:
+    if not _should_look_for_page_links(ce):
+        if cfg.verbose:
+            print(f"{ce}: not looking for BHL URL")
+        return
+    if ce.page is None:
+        if cfg.verbose:
+            print(f"{ce}: no page")
+        return
+    pages = models.name.page.get_unique_page_text(ce.page)
+    for page in pages:
+        other_ces = [
+            ce
+            for ce in ce.article.get_classification_entries().filter(
+                ClassificationEntry.page.contains(page)
+            )
+            if ce.has_tag(ClassificationEntryTag.PageLink)
+        ]
+        if not other_ces:
+            if cfg.verbose:
+                print(f"{ce}: {page}: no other classification entries")
+            return
+        inferred_pages: set[str] = set()
+        for other_ce in other_ces:
+            for tag in other_ce.get_tags(
+                other_ce.tags, ClassificationEntryTag.PageLink
+            ):
+                if tag.page == page:
+                    inferred_pages.add(tag.url)
+        if len(inferred_pages) != 1:
+            if cfg.verbose:
+                print(
+                    f"{ce}: no single inferred page from other names ({inferred_pages})"
+                )
+            continue
+        (url,) = inferred_pages
+        tag = ClassificationEntryTag.PageLink(url=url, page=page)
+        if tag in ce.tags:
+            if cfg.verbose:
+                print(f"{ce}: already has {tag}")
+            continue
+        message = f"inferred URL {url} from other names (add {tag})"
+        if cfg.autofix:
+            print(f"{ce}: {message}")
+            ce.add_tag(tag)
+        else:
+            yield message
 
 
 @LINT.add("infer_bhl_page_from_other_names", requires_network=True)
@@ -964,6 +1016,7 @@ def check_mapped_name_matches_other_ces(
     if ce.mapped_name is None or ce.rank is Rank.informal or ce.rank.is_synonym:
         return
     group = ce.get_group()
+    corrected_name = ce.get_corrected_name()
     others = [
         other_ce
         # static analysis: ignore[incompatible_argument]
@@ -977,6 +1030,7 @@ def check_mapped_name_matches_other_ces(
         and other_ce.mapped_name is not None
         and _resolve_name(other_ce.mapped_name) != _resolve_name(ce.mapped_name)
         and other_ce.get_group() == group
+        and other_ce.get_corrected_name() == corrected_name
     ]
     if others:
         yield f"mapped to {ce.mapped_name}, but other names are mapped differently:\n{'\n'.join(f' - {other!r}' for other in others)}"

@@ -18,8 +18,8 @@ import Levenshtein
 
 from taxonomy import getinput
 from taxonomy.config import get_options
-from taxonomy.db.constants import Rank, Status
-from taxonomy.db.models import Taxon
+from taxonomy.db.constants import AgeClass, Rank, Status
+from taxonomy.db.models import Name, Taxon
 from taxonomy.db.models.tags import TaxonTag
 
 Syn = dict[str, str]
@@ -65,6 +65,23 @@ SIMPLE_COLUMNS = [
 ]
 # Species sheet is in ALL CAPS, syn sheet is not
 UPPERCASED_COLUMNS: list[tuple[str, str]] = []
+
+# If A is missing, and all the other species with the same value for B
+# have the same value, use that value.
+COLUMN_TO_UNIQUE_COLUMN = {
+    "phylosort": "order",
+    "subclass": "order",
+    "infraclass": "order",
+    "magnorder": "order",
+    "superorder": "order",
+    "suborder": "family",
+    "infraorder": "family",
+    "parvorder": "family",
+    "superfamily": "family",
+    "subfamily": "genus",
+    "tribe": "genus",
+    "subgenus": "genus",
+}
 
 
 COLUMN_TO_REGEX = {
@@ -440,6 +457,40 @@ def batched(iterable: Iterable[T], n: int) -> Iterable[list[T]]:
         yield chunk
 
 
+def format_single_synonym(nam: Name) -> str:
+    return f"_{nam.root_name}_ {nam.get_full_authority()}"
+
+
+def get_text_for_single_subspecies(subspecies: Taxon) -> str:
+    assert subspecies.rank is Rank.subspecies, subspecies
+    gen, sp, ssp = subspecies.valid_name.split(" ")
+    name = f"_{gen[0]}. {sp[0]}. {ssp}_ {subspecies.base_name.get_full_authority()}"
+    parens = []
+    if subspecies.age is not AgeClass.extant:
+        parens.append(subspecies.age.name.replace("_", " "))
+    nams = {nam.resolve_name() for nam in subspecies.get_names()}
+    nams = {nam for nam in nams if nam != subspecies.base_name}
+    if nams:
+        nams_str = ", ".join(sorted(format_single_synonym(nam) for nam in nams))
+        parens.append(f"synonyms: {nams_str}")
+    if parens:
+        return f"{name} ({'; '.join(parens)})"
+    else:
+        return name
+
+
+def get_subspecies_text(taxon: Taxon) -> str:
+    subspecies = [
+        t
+        for t in taxon.get_children()
+        if t.rank is Rank.subspecies and t.base_name.status is Status.valid
+    ]
+    if not subspecies:
+        return "NA"
+    subspecies = sorted(subspecies, key=lambda t: t.valid_name)
+    return "; ".join(get_text_for_single_subspecies(t) for t in subspecies)
+
+
 class MDDSpeciesRow(TypedDict):
     sciName: str
     id: str
@@ -715,21 +766,40 @@ class SpeciesWithSyns:
             citation = self.base_name["MDD_unchecked_authority_citation"]
         else:
             citation = ""
+        sci_name = self.species.row["sciName"].replace("_", " ")
+        taxa = [
+            t
+            for t in Taxon.select_valid().filter(Taxon.valid_name == sci_name)
+            if any(
+                isinstance(tag, TaxonTag.MDD) and tag.id == self.species.row["id"]
+                for tag in t.tags
+            )
+        ]
+        if not taxa:
+            subspecies = "NA"
+        elif len(taxa) > 1:
+            raise ValueError(f"Multiple taxa found for species: {taxa}")
+        else:
+            subspecies = get_subspecies_text(taxa[0])
         return {
             **simple,
             **caps,
             "authoritySpeciesLink": link,
             "authoritySpeciesCitation": citation,
             "nominalNames": self.get_expected_nominal_names(),
+            "subspecies": subspecies,
         }
 
     def compare_against_expected(self) -> Iterable[Issue]:
         for mdd_col, expected_val in self.get_expected_row().items():
-            actual_val = self.species.row[mdd_col]  # type: ignore[literal-required]
+            try:
+                actual_val = self.species.row[mdd_col]  # type: ignore[literal-required]
+            except KeyError:
+                actual_val = ""
             if expected_val != actual_val:
                 description = f"Expected {expected_val!r}, found {actual_val!r}"
                 if mdd_col == "authorityParentheses":
-                    description += f" (original combination: {self.species.row['originalNameCombination']})"
+                    description += f" (original combination: {self.species.row.get('originalNameCombination', 'unknown')})"
                 yield self.species.make_issue(mdd_col, description, expected_val)
 
         if not CHECK_GEOGRAPHY:
@@ -854,10 +924,29 @@ def check_unique_col_mapping(
                     yield sp.make_issue(to_col, description)
 
 
+def lint_missing_fields(species: list[MDDSpecies]) -> Iterable[Issue]:
+    for spec in species:
+        for source_col, target_col in COLUMN_TO_UNIQUE_COLUMN.items():
+            if (not spec.row.get(source_col)) and spec.row.get(target_col):
+                target_values = {
+                    sp.row[source_col]  # type: ignore[literal-required]
+                    for sp in species
+                    if sp.row.get(target_col) == spec.row[target_col]  # type: ignore[literal-required]
+                    if sp.row[source_col]  # type: ignore[literal-required]
+                }
+                if len(target_values) == 1:
+                    yield spec.make_issue(
+                        source_col,
+                        f"missing data from {source_col!r}",
+                        suggested_value=next(iter(target_values)),
+                    )
+
+
 def lint_species(species: list[MDDSpecies]) -> Iterable[Issue]:
     for sp in species:
         yield from sp.lint_standalone()
     yield from check_id_field(species)
+    yield from lint_missing_fields(species)
 
     # Should be a 1:1 mapping
     yield from check_unique_col_mapping(species, "order", "phylosort")

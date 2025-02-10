@@ -2170,6 +2170,15 @@ def check_correct_status(nam: Name, cfg: LintConfig) -> Iterable[str]:
             f"is valid, but parent {nam.taxon.parent} is of status"
             f" {nam.taxon.parent.base_name.status.name}"
         )
+    if nam.status is Status.unavailable and nam.nomenclature_status in (
+        NomenclatureStatus.available,
+        NomenclatureStatus.nomen_novum,
+        NomenclatureStatus.as_emended,
+    ):
+        yield (
+            f"is marked as unavailable, but nomenclature_status is"
+            f" {nam.nomenclature_status.name}"
+        )
 
 
 def _check_names_match(nam: Name, other: Name) -> Iterable[str]:
@@ -3697,6 +3706,60 @@ def maybe_infer_page_from_other_name(
     return inferred_page_id
 
 
+@LINT.add("infer_page_from_other_names")
+def infer_page_from_other_names(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    if not _should_look_for_page_links(nam):
+        if cfg.verbose:
+            print(f"{nam}: not looking for BHL URL")
+        return
+    if nam.page_described is None:
+        if cfg.verbose:
+            print(f"{nam}: no page described")
+        return
+    if nam.original_citation is None:
+        if cfg.verbose:
+            print(f"{nam}: no original citation")
+        return
+    pages = get_unique_page_text(nam.page_described)
+    for page in pages:
+        other_new_names = [
+            nam
+            for nam in nam.original_citation.get_new_names().filter(
+                Name.page_described.contains(page)
+            )
+            if nam.has_type_tag(TypeTag.AuthorityPageLink)
+        ]
+        if not other_new_names:
+            if cfg.verbose:
+                print(f"{nam}: {page}: no other new names")
+            return
+        inferred_pages: set[str] = set()
+        for other_nam in other_new_names:
+            for tag in other_nam.get_tags(
+                other_nam.type_tags, TypeTag.AuthorityPageLink
+            ):
+                if tag.page == page:
+                    inferred_pages.add(tag.url)
+        if len(inferred_pages) != 1:
+            if cfg.verbose:
+                print(
+                    f"{nam}: no single inferred page from other names ({inferred_pages})"
+                )
+            continue
+        (url,) = inferred_pages
+        tag = TypeTag.AuthorityPageLink(url=url, confirmed=True, page=page)
+        if tag in nam.type_tags:
+            if cfg.verbose:
+                print(f"{nam}: already has {tag}")
+            continue
+        message = f"inferred URL {url} from other names (add {tag})"
+        if cfg.autofix:
+            print(f"{nam}: {message}")
+            nam.add_type_tag(tag)
+        else:
+            yield message
+
+
 @LINT.add("infer_bhl_page_from_other_names", requires_network=True)
 def infer_bhl_page_from_other_names(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if not _should_look_for_page_links(nam):
@@ -4272,8 +4335,9 @@ def _maybe_add_name_variant(
         )
         if new_name is not None:
             new_name.corrected_original_name = corrected_name
-            new_name.format()
+            new_name.original_rank = ce.rank
             ce.mapped_name = new_name
+            new_name.format()
             if cfg.interactive:
                 new_name.edit_until_clean()
     else:
@@ -5226,9 +5290,17 @@ def check_matches_mapped_classification_entry(
             yield f"mapped to {ce}, but {expected_con} != {nam.corrected_original_name}"
         if ce.page != nam.page_described:
             yield f"mapped to {ce}, but {ce.page=} != {nam.page_described=}"
-            if nam.page_described is None and cfg.autofix:
-                print(f"{nam}: inferred page {ce.page}")
-                nam.page_described = ce.page
+            if cfg.autofix:
+                if nam.page_described is None:
+                    print(f"{nam}: inferred page {ce.page}")
+                    nam.page_described = ce.page
+                elif set(parse_page_text(nam.page_described)) < set(
+                    parse_page_text(ce.page)
+                ):
+                    print(
+                        f"{nam}: extended page from {nam.page_described} to {ce.page}"
+                    )
+                    nam.page_described = ce.page
         yield from _check_matching_original_parent(nam, ce)
         if nam.original_rank is not ce.rank:
             yield f"mapped to {ce}, but {ce.rank=!r} != {nam.original_rank=!r}"
@@ -5410,3 +5482,25 @@ def infer_unavailable_version(nam: Name, cfg: LintConfig) -> Iterable[str]:
         nam.add_tag(tag)
     else:
         yield message
+
+
+@LINT.add("should_be_variant")
+def should_be_variant(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    if (
+        nam.group is not Group.genus
+        or nam.nomenclature_status is not NomenclatureStatus.available
+    ):
+        return
+    candidates = [
+        sibling
+        for sibling in nam.taxon.get_names().filter(
+            Name.group == Group.genus,
+            Name.nomenclature_status == NomenclatureStatus.available,
+        )
+        if Levenshtein.distance(nam.root_name, sibling.root_name) <= 2
+        and sibling.numeric_year() < nam.numeric_year()
+    ]
+    if nam.type is not None:
+        candidates = [sibling for sibling in candidates if nam.type == sibling.type]
+    if candidates:
+        yield f"should be marked as a variant of one of {candidates}"

@@ -477,6 +477,10 @@ class BaseModel(Model):
         """
         self.full_data()
 
+    def display_concise(self) -> None:
+        """Print data about this object, optionally in a more concise manner."""
+        self.display()
+
     def get_derived_field(self, name: str, *, force_recompute: bool = False) -> Any:
         return self._name_to_derived_field[name].get_value(
             self, force_recompute=force_recompute
@@ -1526,7 +1530,7 @@ class _NameGetter(Generic[ModelT]):
             obj = self.get_one(prompt)
             if obj is None:
                 return
-            obj.display()
+            obj.display_concise()
             obj.edit()
 
     def get_all(self) -> list[str]:

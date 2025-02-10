@@ -7,7 +7,7 @@ import subprocess
 import time
 from collections.abc import Sequence
 from pathlib import Path
-from typing import NamedTuple, NoReturn
+from typing import NamedTuple
 
 from taxonomy import config, getinput, uitools
 from taxonomy.command_set import CommandSet
@@ -479,92 +479,71 @@ def burst(lsfile: LsFile) -> bool:
     # bursts a PDF file into several files
     print(f"Bursting file {lsfile.name!r}. Opening file.")
     full_path = _options.burst_path / lsfile.name
+    subprocess.check_call(["open", str(full_path)])
 
-    def opener(*args: object) -> bool:
-        subprocess.check_call(["open", str(full_path)])
-        return False
+    while True:
+        line = Article.getter("name").get_one_key("File name: ", allow_empty=False)
+        match line:
+            case "q" | "quit":
+                raise uitools.EndOfInput("burst")
+            case "c" | "continue":
+                if full_path.exists():
+                    subprocess.check_call(
+                        [
+                            "mv",
+                            "-n",
+                            str(full_path),
+                            str(_options.burst_path / "Old" / lsfile.name),
+                        ]
+                    )
+                    if full_path.exists():
+                        print(f"File still exists: {full_path}")
+                        target = (
+                            _options.burst_path / "Old" / f"{time.time()}{lsfile.name}"
+                        )
+                        subprocess.check_call(["mv", "-n", str(full_path), str(target)])
+                break
+            case "s" | "skip":
+                break
+            case "o" | "open":
+                subprocess.check_call(["open", str(full_path)])
+            case "" | None:
+                continue
+            case _ if line.endswith(".pdf"):
+                if Article.has(line):
+                    if not getinput.yes_no(
+                        "A file with this name already exists. Do you want to continue"
+                        " anyway?"
+                    ):
+                        continue
+                page_range = getinput.get_line(
+                    prompt="Page range: ",
+                    validate=lambda page_range: bool(
+                        re.match(r"^\d+-\d+$", page_range)
+                    ),
+                    history_key=str(full_path),
+                )
+                if not page_range:
+                    continue
+                start, end = page_range.split("-")
+                output_path = _options.new_path / line
+                subprocess.check_call(
+                    [
+                        # brew install qpdf
+                        "qpdf",
+                        "--empty",
+                        "--pages",
+                        str(full_path),
+                        f"{start}-{end}",
+                        "--",
+                        str(output_path),
+                    ]
+                )
+                print(f"Split off file {line}")
+                add_new_file(LsFile(line))
+            case _:
+                print(f"Invalid input: {line}")
 
-    opener()
-
-    def processcommand(cmd: str) -> tuple[str | None, object]:
-        if cmd in ("c", "s", "q"):
-            return cmd, None
-        else:
-            if Article.has(cmd):
-                if not getinput.yes_no(
-                    "A file with this name already exists. Do you want to continue"
-                    " anyway?"
-                ):
-                    return "i", cmd
-            return "a", cmd
-
-    def quitter(cmd: str, data: object) -> NoReturn:
-        raise uitools.EndOfInput("burst")
-
-    def continuer(cmd: str, data: object) -> bool:
-        subprocess.check_call(
-            ["mv", "-n", str(full_path), str(_options.burst_path / "Old" / lsfile.name)]
-        )
-        if full_path.exists():
-            print("File still exists: oldPath")
-            target = _options.burst_path / "Old" / f"{time.time()}{lsfile.name}"
-            subprocess.check_call(["mv", "-n", str(full_path), str(target)])
-        return False
-
-    def adder(cmd: str, filename: str) -> bool:
-        if not filename:
-            return False
-        if not filename.endswith(".pdf"):
-            print("invalid filename")
-            return False
-        page_range, _ = uitools.menu(
-            prompt="Page range: ",
-            validfunction=lambda page_range, _: bool(
-                re.match(r"^\d+-\d+$", page_range)
-            ),
-        )
-        start, end = page_range.split("-")
-        output_path = _options.new_path / filename
-        subprocess.check_call(
-            [
-                "gs",
-                "-dBATCH",
-                "-dNOPAUSE",
-                "-q",
-                "-sDEVICE=pdfwrite",
-                f"-dFirstPage={start}",
-                f"-dLastPage={end}",
-                f"-sOUTPUTFILE={output_path}",
-                str(full_path),
-            ]
-        )
-        print(f"Split off file {filename}")
-        add_new_file(LsFile(filename))
-        return True
-
-    uitools.menu(
-        head="Enter file names and page ranges",
-        prompt="File name: ",
-        options={
-            "c": "continue with the next file",
-            "q": "quit",
-            "s": "skip this file",
-            "o": "open this file",
-            # fake commands, used internally by processcommand/process
-            # a => add this file
-            # i => ignore
-        },
-        processcommand=processcommand,
-        validfunction=lambda *args: True,
-        process={
-            "q": quitter,
-            "i": lambda *args: True,
-            "c": continuer,
-            "s": lambda *args: False,
-            "a": adder,
-            "o": opener,
-        },
-    )
     return True
 
 

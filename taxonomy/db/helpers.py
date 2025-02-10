@@ -849,6 +849,8 @@ def is_string_clean(text: str) -> str | None:
         return "combining caron ( ̌)"
     if " \N{COMBINING CEDILLA}" in text:
         return "combining cedilla ( ̧)"
+    if "�" in text:
+        return "replacement character (�)"
     return None
 
 

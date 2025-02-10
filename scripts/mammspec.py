@@ -52,7 +52,9 @@ def get_original_type_locality(nam: Name) -> str | None:
     return None
 
 
-def make_entry(nam: Name, taxon: Taxon) -> SynonymyEntry | None:
+def make_entry(
+    nam: Name, taxon: Taxon, authority_nam: Name | None = None
+) -> SynonymyEntry | None:
     statuses = list(
         models.name.lint.get_applicable_nomenclature_statuses_from_tags(nam)
     )
@@ -94,21 +96,31 @@ def make_entry(nam: Name, taxon: Taxon) -> SynonymyEntry | None:
         else:
             post_text = "Name combination."
     elif nam.group is Group.genus and nam.type is not None:
-        if nam.taxon != taxon:
-            prefix = "Part. "
+        if authority_nam is not None and authority_nam is not nam:
+            if (
+                nam.original_citation is not None
+                and nam.original_citation == authority_nam.original_citation
+            ):
+                post_text = "Part. "
+            else:
+                post_text = f"Part, not {{/a/{nam.original_citation.id}}}. "
+                references.append(nam.original_citation)
         else:
-            prefix = ""
-        type_kind = (
-            nam.genus_type_kind.name.replace("_", " ")
-            if nam.genus_type_kind is not None
-            else "**WARNING: Type kind not known.**"
-        )
-        if nam.type.original_citation is None:
-            aut = "**WARNING: Original citation unknown**"
-        else:
-            aut = f"{{/a/{nam.type.original_citation.id}}}"
-            references.append(nam.type.original_citation)
-        post_text = f"{prefix}Type species _{nam.type.corrected_original_name}_ {aut}, by {type_kind}."
+            if nam.taxon != taxon:
+                prefix = "Part. "
+            else:
+                prefix = ""
+            type_kind = (
+                nam.genus_type_kind.name.replace("_", " ")
+                if nam.genus_type_kind is not None
+                else "**WARNING: Type kind not known.**"
+            )
+            if nam.type.original_citation is None:
+                aut = "**WARNING: Original citation unknown**"
+            else:
+                aut = f"{{/a/{nam.type.original_citation.id}}}"
+                references.append(nam.type.original_citation)
+            post_text = f"{prefix}Type species _{nam.type.corrected_original_name}_ {aut}, by {type_kind}."
     elif (tl_text := get_original_type_locality(nam)) and nam.type_locality is not None:
         country = nam.type_locality.region.parent_of_kind(RegionKind.country)
         post_text = f'Type locality "{tl_text}'
@@ -116,52 +128,68 @@ def make_entry(nam: Name, taxon: Taxon) -> SynonymyEntry | None:
             post_text += f'," {country.name}.'
         else:
             post_text += '."'
+    elif nam.has_type_tag(TypeTag.NoLocation):
+        post_text = "No type locality given."
     elif nam.nomenclature_status is NomenclatureStatus.available:
         post_text = "**WARNING: Type data missing.**"
     else:
         post_text = "**WARNING: Unknown name type**"
-    if nam.original_citation is None:
+    if authority_nam is None:
+        authority_nam = nam
+    if authority_nam.original_citation is None:
         post_text += " **WARNING: Missing original citation**"
-        if nam.verbatim_citation is not None:
-            post_text += " Unverified citation: " + nam.verbatim_citation
-        for tag in nam.type_tags:
+        if authority_nam.verbatim_citation is not None:
+            post_text += " Unverified citation: " + authority_nam.verbatim_citation
+        for tag in authority_nam.type_tags:
             if isinstance(tag, TypeTag.AuthorityPageLink):
                 post_text += f" {tag.url}"
-        authors = nam.get_authors()
+        authors = authority_nam.get_authors()
     else:
-        references.append(nam.original_citation)
-        if nam.get_authors() == nam.original_citation.get_authors():
+        references.append(authority_nam.original_citation)
+        if authority_nam.get_authors() == authority_nam.original_citation.get_authors():
             authors = None
         else:
-            authors = nam.get_authors()
+            authors = authority_nam.get_authors()
     return SynonymyEntry(
         name=nam.original_name or "**WARNING: Missing original name**",
         authors=authors,
-        citation=nam.original_citation,
-        page=nam.page_described or "**WARNING: Missing page described**",
+        citation=authority_nam.original_citation,
+        page=authority_nam.page_described or "**WARNING: Missing page described**",
         post_text=post_text,
         references=references,
         colon=colon,
     )
 
 
+def _sort_key(pair: tuple[Name, Name]) -> tuple[object, ...]:
+    actual_nam, authority_nam = pair
+    return (
+        authority_nam.numeric_year(),
+        authority_nam.taxonomic_authority(),
+        authority_nam.numeric_page_described(),
+        authority_nam.original_rank or Rank.subspecies,
+        authority_nam.root_name,
+    )
+
+
 def synonymy_for_taxon(taxon: Taxon) -> list[SynonymyEntry]:
-    nams_set = {nam for nam in taxon.all_names() if nam.group is taxon.base_name.group}
+    # key is the name, value is the name to be used for authority
+    nams_set: dict[Name, Name] = {}
     if taxon.rank in (Rank.genus, Rank.subgenus):
         for species_nam in taxon.all_names():
-            if species_nam.original_parent is not None:
-                nams_set.add(species_nam.original_parent)
-    nams = sorted(
-        nams_set,
-        key=lambda nam: (
-            nam.numeric_year(),
-            nam.taxonomic_authority(),
-            nam.numeric_page_described(),
-            nam.original_rank or Rank.subspecies,
-            nam.root_name,
-        ),
+            if species_nam.original_parent is not None and (
+                species_nam.original_parent not in nams_set
+                or species_nam.year < nams_set[species_nam.original_parent].year
+            ):
+                nams_set[species_nam.original_parent] = species_nam
+    nams_set.update(
+        {nam: nam for nam in taxon.all_names() if nam.group is taxon.base_name.group}
     )
-    entries = [make_entry(nam, taxon) for nam in nams]
+    nams = sorted(nams_set.items(), key=_sort_key)
+    entries = [
+        make_entry(actual_nam, taxon, authority_nam=authority_nam)
+        for (actual_nam, authority_nam) in nams
+    ]
     return [entry for entry in entries if entry is not None]
 
 

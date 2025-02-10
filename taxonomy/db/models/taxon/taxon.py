@@ -148,11 +148,7 @@ class Taxon(BaseModel):
             names = filter(lambda name: name.status != Status.valid, names)
 
         def sort_key(nam: models.Name) -> tuple[bool, str, str]:
-            return (
-                nam.status not in (Status.valid, Status.nomen_dubium),
-                nam.root_name,
-                (nam.year or ""),
-            )
+            return (not nam.status.is_base_name(), nam.root_name, (nam.year or ""))
 
         return sorted(names, key=sort_key)
 
@@ -360,6 +356,9 @@ class Taxon(BaseModel):
             name_exclude_fn=lambda n: n.status == Status.synonym,
             max_depth=max_depth,
         )
+
+    def display_concise(self) -> None:
+        self.display(max_depth=0)
 
     def display(
         self,

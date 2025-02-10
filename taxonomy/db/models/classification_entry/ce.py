@@ -9,7 +9,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from types import MappingProxyType
 from typing import Any, NotRequired, Self
 
-from clirm import Field
+from clirm import Field, Query
 
 from taxonomy import command_set, events, getinput
 from taxonomy.adt import ADT
@@ -42,6 +42,9 @@ class ClassificationEntryTag(ADT):
     # Should not be included in species counts
     TreatedAsDubious(tag=13)  # type: ignore[name-defined]
     CECondition(tag=14, status=NomenclatureStatus, comment=NotRequired[str])  # type: ignore[name-defined]
+
+    # Structured data from the source
+    StructuredData(label=str, text=str, tag=15)  # type: ignore[name-defined]
 
 
 class ClassificationEntryStatus(enum.Enum):
@@ -344,10 +347,13 @@ class ClassificationEntry(BaseModel):
             max_depth -= 1
         if max_depth <= 0:
             return
-        for child in sorted(self.children, key=lambda ce: ce.numeric_page()):
+        for child in sorted(self.get_children(), key=lambda ce: ce.numeric_page()):
             child.display(
                 full=full, depth=depth + 4, max_depth=max_depth, show_parent=False
             )
+
+    def get_children(self) -> Query[Self]:
+        return self.add_validity_check(self.children)
 
     def ensure_page_set(self) -> None:
         if self.page is None:
@@ -574,7 +580,7 @@ class ClassificationEntry(BaseModel):
         return self.rank.display_name
 
     def get_children_of_rank(self, rank: Rank) -> Iterable[ClassificationEntry]:
-        for child in self.children:
+        for child in self.get_children():
             if child.rank is rank:
                 yield child
             yield from child.get_children_of_rank(rank)
@@ -654,7 +660,7 @@ def _get_genus_ce(genus: str, art: Article) -> ClassificationEntry | None:
         return None
     ce = ces[0]
     # If there are subgenera, they should probably be the parent instead
-    if any(child.rank is Rank.subgenus for child in ce.children):
+    if any(child.rank is Rank.subgenus for child in ce.get_children()):
         return None
     return ce
 

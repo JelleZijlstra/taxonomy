@@ -25,7 +25,6 @@ class Page:
         return (
             not self.is_raw
             and self.as_page is None
-            and self.within_page_detail is None
             and bool(re.fullmatch(r"[0-9]+-[0-9]+", self.text))
         )
 

@@ -189,6 +189,7 @@ correct publication date. See [_Annals of Natural History_](/cg/106) for an exam
 Short notes on several tricky areas of bibliography:
 
 - [_Beiträge zur Paläontologie_](/docs/biblio/beitraege)
+- [Billberg's _Synopsis Faunae Scandinaviae_](/docs/biblio/billberg)
 - [_Comptes Rendus_](/docs/biblio/comptes-rendus)
 - [Zoology of the _Erebus_ and _Terror_](/docs/biblio/erebus-terror)
 - [Gaudry's _Animaux fossiles et géologie de l'Attique_](/docs/biblio/gaudry-attique)
@@ -197,10 +198,11 @@ Short notes on several tricky areas of bibliography:
 - [_Histoire naturelle des mammifères_](/docs/biblio/histnatmammiferes)
 - [Publications of the Muséum national d'Histoire naturelle](/docs/biblio/mnhn)
 - [_Neues Jahrbuch_](/docs/biblio/neues-jahrbuch)
+- [Blainville's _Ostéographie_](/docs/biblio/osteographie)
 - [_Proceedings of the Zoological Society of London_](/docs/biblio/pzsl)
 - [_Recherches pour servir à l'histoire naturelle des mammifères_](/docs/biblio/rech-hist-nat)
 - [Rüppell's _Atlas zu der Reise im nördlichen Afrika_](/docs/biblio/rueppell)
 - [Schinz's _Naturgeschichte und Abbildungen der Säugethiere_](/docs/biblio/schinz-naturgeschichte)
+- [Ehrenberg's _Symbolae Physicae_](/docs/biblio/symbolae-physicae)
 - [University of California geological publications](/docs/biblio/uc-geology)
 - [Gervais's _Zoologie et Paléontologie_](/docs/biblio/zoologie-et-paleontologie)
-- [Billberg's _Synopsis Faunae Scandinaviae_](/docs/biblio/billberg)

@@ -100,14 +100,12 @@ def get_mdd_status(name: Name) -> str:
     match name.status:
         case Status.valid:
             match name.taxon.rank:
-                case Rank.species:
-                    return "species"
                 case Rank.subspecies:
                     if name.taxon.parent.base_name == name:
                         return "species"
                     return "synonym"
-                case _:
-                    return f"unexpected ({name.taxon.rank})"
+                case rank:
+                    return rank.name
         case Status.synonym:
             match name.taxon.base_name.status:
                 case Status.valid:
@@ -268,6 +266,8 @@ def get_hesp_row(
 ) -> dict[str, Any]:
     row = {}
     row["Hesp_species"] = get_mdd_like_species_name(name)
+    row["Hesp_group"] = name.group.name
+    row["Hesp_taxon"] = name.taxon.valid_name
     row["Hesp_root_name"] = name.root_name
     mdd_style_author = mdd_diff.get_mdd_style_authority(name, need_initials)
     row["Hesp_author"] = mdd_style_author
@@ -305,7 +305,10 @@ def get_hesp_row(
     if name.original_citation is not None:
         url = name.original_citation.geturl()
         row["Hesp_authority_citation"] = models.article.citations.citepaper(
-            name.original_citation, include_url=False, romanize_authors=True
+            name.original_citation,
+            include_url=False,
+            romanize_authors=True,
+            full_date=True,
         )
         row["Hesp_authority_link"] = url or ""
     else:
@@ -400,21 +403,27 @@ def get_hesp_row(
     order = taxon.get_derived_field("order")
     if order is not None and order.rank is Rank.order:
         row["Hesp_order"] = order.valid_name
-    else:
+    elif taxon.rank < Rank.order:
         row["Hesp_order"] = "incertae_sedis"
+    else:
+        row["Hesp_order"] = "NA"
     family = taxon.get_derived_field("family")
     if family is not None and family.rank is Rank.family:
         row["Hesp_family"] = family.valid_name
-    else:
+    elif taxon.rank < Rank.family:
         row["Hesp_family"] = "incertae_sedis"
+    else:
+        row["Hesp_family"] = "NA"
     try:
         genus = taxon.parent_of_rank(Rank.genus)
     except ValueError:
         genus = None
-    if genus is None or genus.base_name.status is not Status.valid:
+    if genus is not None and genus.base_name.status is Status.valid:
+        row["Hesp_genus"] = genus.valid_name
+    elif taxon.rank <= Rank.genus:
         row["Hesp_genus"] = "incertae_sedis"
     else:
-        row["Hesp_genus"] = genus.valid_name
+        row["Hesp_genus"] = "NA"
     try:
         species = taxon.parent_of_rank(Rank.species)
     except ValueError:
@@ -710,7 +719,13 @@ def pprint_nonempty(row: dict[str, str]) -> None:
     pprint.pp({key: value for key, value in row.items() if value})
 
 
-def run(*, dry_run: bool = True, taxon: Taxon, max_names: int | None = None) -> None:
+def run(
+    *,
+    dry_run: bool = True,
+    taxon: Taxon,
+    max_names: int | None = None,
+    higher: bool = False,
+) -> None:
     options = get_options()
     backup_path = (
         options.data_path
@@ -730,7 +745,9 @@ def run(*, dry_run: bool = True, taxon: Taxon, max_names: int | None = None) -> 
         gc = gspread.oauth()
         sheet = gc.open(options.mdd_sheet)
 
-    worksheet = sheet.get_worksheet_by_id(options.mdd_worksheet_gid)
+    worksheet = sheet.get_worksheet_by_id(
+        options.mdd_higher_worksheet_gid if higher else options.mdd_worksheet_gid
+    )
     raw_rows = worksheet.get()
     headings = raw_rows[0]
     column_to_idx = {heading: i for i, heading in enumerate(headings, start=1)}
@@ -747,12 +764,24 @@ def run(*, dry_run: bool = True, taxon: Taxon, max_names: int | None = None) -> 
             writer.writerow(row)
     print(f"done, backup at {backup_path}")
 
-    hesp_names = export.get_names_for_export(
-        taxon,
-        ages={AgeClass.extant, AgeClass.recently_extinct},
-        group=Group.species,
-        min_rank_for_age_filtering=Rank.species,
-    )
+    if higher:
+        hesp_names = [
+            name
+            for group in [Group.high, Group.family, Group.genus]
+            for name in export.get_names_for_export(
+                taxon,
+                ages={AgeClass.extant, AgeClass.recently_extinct},
+                group=group,
+                min_rank_for_age_filtering=Rank.species,
+            )
+        ]
+    else:
+        hesp_names = export.get_names_for_export(
+            taxon,
+            ages={AgeClass.extant, AgeClass.recently_extinct},
+            group=Group.species,
+            min_rank_for_age_filtering=Rank.species,
+        )
     need_initials = mdd_diff.get_need_initials_authors(hesp_names)
     hesp_id_to_name = {name.id: name for name in hesp_names}
     unused_hesp_ids = set(hesp_id_to_name.keys())
@@ -976,7 +1005,9 @@ def run(*, dry_run: bool = True, taxon: Taxon, max_names: int | None = None) -> 
                             "mdd_value": diff.mdd_value,
                             "hesp_id": diff.hesp_name.id,
                             "mdd_id": diff.mdd_row["MDD_syn_ID"],
-                            "MDD_species": diff.mdd_row["MDD_species"],
+                            "MDD_species": diff.mdd_row.get(
+                                "MDD_species", diff.mdd_row.get("MDD_taxon", "")
+                            ),
                             "MDD_original_combination": diff.mdd_row[
                                 "MDD_original_combination"
                             ],
@@ -994,7 +1025,7 @@ def run(*, dry_run: bool = True, taxon: Taxon, max_names: int | None = None) -> 
                         done += len(batch)
                         print(f"Done {done}/{len(updates_to_make)}")
                         if len(batch) == 500:
-                            time.sleep(30)
+                            time.sleep(5)
 
     if max_names is None and missing_in_hesp:
         getinput.print_header(f"Missing in Hesp {len(missing_in_hesp)}")
@@ -1015,7 +1046,7 @@ def run(*, dry_run: bool = True, taxon: Taxon, max_names: int | None = None) -> 
             missing_in_hesp, key=lambda triple: triple[1], reverse=True
         ):
             getinput.print_header(
-                f'{row["MDD_original_combination"]} = {row["MDD_species"]}'
+                f'{row["MDD_original_combination"]} = {row.get("MDD_species", row.get("MDD_taxon", ""))}'
             )
             print(match_status)
             pprint_nonempty(row)
@@ -1033,6 +1064,12 @@ def main() -> None:
     parser.add_argument("--dry-run", action="store_true", default=False)
     parser.add_argument("--gspread-test", action="store_true", default=False)
     parser.add_argument("--max-names", type=int, default=None)
+    parser.add_argument(
+        "--higher",
+        action="store_true",
+        default=False,
+        help="Run on names above the species group",
+    )
     args = parser.parse_args()
     if args.gspread_test:
         run_gspread_test()
@@ -1041,7 +1078,7 @@ def main() -> None:
     if root is None:
         print("Invalid taxon", args.taxon)
         sys.exit(1)
-    run(taxon=root, dry_run=args.dry_run, max_names=args.max_names)
+    run(taxon=root, dry_run=args.dry_run, max_names=args.max_names, higher=args.higher)
 
 
 if __name__ == "__main__":

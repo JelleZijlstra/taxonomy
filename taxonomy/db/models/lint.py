@@ -33,7 +33,7 @@ class LintWrapper(Generic[ModelT]):
 
     def __call__(self, obj: ModelT, cfg: LintConfig) -> Generator[str, None, set[str]]:
         if self.requires_network and not is_network_available():
-            return set()
+            return {self.label}
         try:
             issues = list(self.linter(obj, cfg))
         except Exception as e:

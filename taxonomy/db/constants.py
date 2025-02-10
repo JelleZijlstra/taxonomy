@@ -117,6 +117,8 @@ class Status(enum.IntEnum):
     composite = 8
     # Based on a hybrid
     hybrid = 9
+    # May represent a valid taxon, but name is not available
+    unavailable = 10
 
     def is_base_name(self) -> bool:
         return self in (
@@ -126,6 +128,7 @@ class Status(enum.IntEnum):
             Status.spurious,
             Status.composite,
             Status.hybrid,
+            Status.unavailable,
         )
 
 

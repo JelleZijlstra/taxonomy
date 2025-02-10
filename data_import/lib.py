@@ -1,3 +1,4 @@
+import csv
 import enum
 import functools
 import itertools
@@ -1732,6 +1733,37 @@ class CEDict(TypedDict):
     page_described: NotRequired[str]
     textual_rank: NotRequired[str | None]
     age_class: NotRequired[AgeClass | None]
+    corrected_name: NotRequired[str]
+    extra_fields: NotRequired[dict[str, str]]
+
+
+def create_csv(filename: str, ces: Iterable[CEDict]) -> None:
+    ce_list = list(ces)
+    fields = ["#", "page", "rank", "name"]
+    for field in CEDict.__annotations__:
+        if field in ("name", "page", "rank", "article", "extra_fields"):
+            continue
+        if any(field in ce for ce in ce_list):
+            fields.append(field)
+    extra_fields: set[str] = set()
+    for ce in ces:
+        if "extra_fields" in ce:
+            extra_fields.update(ce["extra_fields"])
+    fields += sorted(extra_fields)
+
+    with Path(filename).open("w") as f:
+        writer = csv.DictWriter(f, fields)
+        writer.writeheader()
+        for i, ce in enumerate(ces, start=1):
+            d = {"#": str(i)}
+            for field in fields:
+                if field in ("rank", "parent_rank") and field in ce:
+                    d[field] = ce[field].name  # type: ignore[literal-required]
+                elif field in ce:
+                    d[field] = ce[field]  # type: ignore[literal-required]
+                elif "extra_fields" in ce and field in ce["extra_fields"]:
+                    d[field] = ce["extra_fields"][field]
+            writer.writerow(d)
 
 
 def validate_ce_parents(
@@ -1742,22 +1774,23 @@ def validate_ce_parents(
 ) -> Iterable[CEDict]:
     name_to_row: dict[tuple[str, constants.Rank], CEDict] = {}
     for name in names:
-        key = (name["name"], name["rank"])
+        full_name = name.get("corrected_name", name["name"])
+        key = (full_name, name["rank"])
         if key in name_to_row:
             if name["rank"] is Rank.synonym:
                 yield name
                 continue
             if drop_duplicates:
                 continue
-            raise ValueError(f"duplicate name {name['name']} {name['rank']!r}")
-        name_to_row[(name["name"], name["rank"])] = name
+            raise ValueError(f"duplicate name {full_name} {name['rank']!r}")
+        name_to_row[(full_name, name["rank"])] = name
         if (parent := name.get("parent")) and (parent_rank := name.get("parent_rank")):
             if (
                 parent,
                 parent_rank,
             ) not in name_to_row and parent not in skip_missing_parents:
                 raise ValueError(
-                    f"parent {parent} {parent_rank!r} not found for {name['name']} {name['rank']!r}"
+                    f"parent {parent} {parent_rank!r} not found for {full_name} {name['rank']!r}"
                 )
         yield name
 
@@ -1840,7 +1873,52 @@ def add_parents(names: Iterable[CEDict]) -> Iterable[CEDict]:
                     )
             else:
                 name["parent_rank"] = expected_parent_rank
+
         parent_stack.append((name["rank"], name["name"]))
+        yield name
+
+
+def expand_abbreviations(
+    names: Iterable[CEDict], overrides: Mapping[str, str] = {}
+) -> Iterable[CEDict]:
+    for name in names:
+        if "corrected_name" not in name:
+            if name["name"] in overrides:
+                name["corrected_name"] = overrides[name["name"]]
+            elif (
+                name["rank"] is Rank.species
+                and "parent_rank" in name
+                and "parent" in name
+                and name["parent_rank"] is Rank.genus
+                and name["parent"] is not None
+            ):
+                match = re.fullmatch(r"([A-Z])\. ([a-z]+)", name["name"])
+                if match:
+                    genus, species = match.groups()
+                    if name["parent"].startswith(genus):
+                        name["corrected_name"] = f"{genus} {species}"
+                    else:
+                        print(f"Genus doesn't match: {name}")
+            elif (
+                name["rank"] is Rank.subspecies
+                and "parent_rank" in name
+                and "parent" in name
+                and name["parent_rank"] is Rank.species
+                and name["parent"] is not None
+            ):
+                match = re.fullmatch(r"([A-Z])\. ([a-z])\. ([a-z]+)", name["name"])
+                if match:
+                    genus, species, subspecies = match.groups()
+                    parent = re.sub(r" \([A-Z][a-z]+\)", "", name["parent"])
+                    full_genus, full_species = parent.split(maxsplit=1)
+                    if full_genus.startswith(genus) and full_species.startswith(
+                        species
+                    ):
+                        name["corrected_name"] = (
+                            f"{full_genus} {full_species} {subspecies}"
+                        )
+                    else:
+                        print(f"Parent doesn't match: {parent} vs. {name['name']}")
         yield name
 
 
@@ -1877,6 +1955,52 @@ def count_by_rank(names: Iterable[CEDict], rank: Rank) -> Iterable[CEDict]:
             count += 1
         yield name
     print(rank.name, current_order, count)
+
+
+def get_existing(ce_dict: CEDict) -> ClassificationEntry | None:
+    taxon_name = ce_dict["name"]
+    existing = list(
+        ClassificationEntry.select_valid().filter(
+            name=taxon_name, rank=ce_dict["rank"], article=ce_dict["article"]
+        )
+    )
+    if "corrected_name" in ce_dict:
+        corrected_name = ce_dict["corrected_name"]
+        existing = [ce for ce in existing if ce.get_corrected_name() == corrected_name]
+    if not existing:
+        return None
+    if len(existing) > 1:
+        raise ValueError(
+            f"multiple existing entries for {taxon_name} {ce_dict['rank']!r}"
+        )
+    return existing[0]
+
+
+def get_parent(ce_dict: CEDict, *, dry_run: bool) -> ClassificationEntry | None:
+    parent_rank = ce_dict.get("parent_rank")
+    parent_name = ce_dict.get("parent")
+    if parent_rank is None or parent_name is None:
+        return None
+    art = ce_dict["article"]
+    try:
+        return ClassificationEntry.get(name=parent_name, rank=parent_rank, article=art)
+    except ClassificationEntry.DoesNotExist:
+        pass
+
+    if parent_rank is Rank.species and re.fullmatch(r"[A-Z][a-z]+ [a-z]+", parent_name):
+        abbreviated_name = re.sub(r"([A-Z])[a-z]+ ([a-z]+)", r"\1. \2", parent_name)
+        options = [
+            ce
+            for ce in ClassificationEntry.select_valid().filter(
+                name=abbreviated_name, rank=parent_rank, article=art
+            )
+            if ce.get_corrected_name() == parent_name
+        ]
+        if len(options) == 1:
+            return options[0]
+    if not dry_run:
+        print(f"parent {parent_name} {parent_rank!r} not found")
+    return None
 
 
 def add_classification_entries(
@@ -1919,11 +2043,14 @@ def add_classification_entries(
             tags.append(ClassificationEntryTag.TextualRank(name["textual_rank"]))
         if name.get("age_class"):
             tags.append(ClassificationEntryTag.AgeClassCE(name["age_class"]))
-        try:
-            existing = ClassificationEntry.get(name=taxon_name, rank=rank, article=art)
-        except ClassificationEntry.DoesNotExist:
-            pass
-        else:
+        if name.get("corrected_name"):
+            tags.append(ClassificationEntryTag.CorrectedName(name["corrected_name"]))
+        for key, value in name.get("extra_fields", {}).items():
+            value = helpers.interactive_clean_string(value, clean_whitespace=True)
+            tags.append(ClassificationEntryTag.StructuredData(key, value))
+        existing = get_existing(name)
+        parent = get_parent(name, dry_run=dry_run)
+        if existing is not None:
             print(f"already exists: {existing}")
             if page and not existing.page:
                 print(f"{existing}: adding page {page}")
@@ -1945,27 +2072,35 @@ def add_classification_entries(
                 print(f"{existing}: adding citation {citation}")
                 if not dry_run:
                     existing.citation = citation
+            if parent != existing.parent:
+                print(f"{existing}: changing parent to {parent}")
+                if not dry_run:
+                    existing.parent = parent
             for tag in tags:
-                tag_type = type(tag)
-                if not any(isinstance(t, tag_type) for t in existing.tags):
+                if tag not in existing.tags:
                     print(f"{existing}: adding tag {tag}")
                     if not dry_run:
-                        existing.tags = [*existing.tags, tag]
+                        existing.tags = [*existing.tags, tag]  # type: ignore[assignment]
+            extra_existing_structured = [
+                tag
+                for tag in existing.tags
+                if isinstance(tag, ClassificationEntryTag.StructuredData)
+                and tag not in tags
+            ]
+            if extra_existing_structured:
+                print(
+                    f"{existing}: removing extra structured data: {extra_existing_structured}"
+                )
+                if not dry_run:
+                    existing.tags = [  # type: ignore[assignment]
+                        tag
+                        for tag in existing.tags
+                        if tag not in extra_existing_structured
+                    ]
             continue
-        print(f"Add: {rank.name} {taxon_name}")
+        postfix = f" = {name['corrected_name']}" if "corrected_name" in name else ""
+        print(f"Add: {rank.name} {taxon_name}{postfix}")
         if not dry_run:
-            if not name.get("parent"):
-                parent = None
-            else:
-                parent_rank = name["parent_rank"]
-                parent_name = name["parent"]
-                try:
-                    parent = ClassificationEntry.get(
-                        name=parent_name, rank=parent_rank, article=art
-                    )
-                except ClassificationEntry.DoesNotExist:
-                    print(f"parent {parent_name} {parent_rank!r} not found")
-                    parent = None
             new_ce = ClassificationEntry.create(
                 article=art,
                 name=taxon_name,
@@ -1982,6 +2117,19 @@ def add_classification_entries(
                 new_ce.tags = tags  # type: ignore[assignment]
             print(f"name {i}:", new_ce)
         yield name
+
+
+def flag_unrecognized_names(names: Iterable[CEDict]) -> Iterable[CEDict]:
+    for ce_dict in names:
+        name = ce_dict.get("corrected_name", ce_dict["name"])
+        rank = ce_dict["rank"]
+        group = helpers.group_of_rank(rank)
+        nams = models.Name.select_valid().filter(
+            models.Name.corrected_original_name == name, models.Name.group == group
+        )
+        if nams.count() == 0:
+            print(f"!! [unrecognized name] {rank.name} {name}")
+        yield ce_dict
 
 
 def print_ce_summary(names: Iterable[CEDict]) -> None:

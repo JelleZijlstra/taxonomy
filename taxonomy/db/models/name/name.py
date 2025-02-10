@@ -1060,37 +1060,50 @@ class Name(BaseModel):
             nomenclature_status=NomenclatureStatus.nomen_nudum,
         )
 
-    def description(self) -> str:
+    def description(self, *, include_parentheses: bool = True) -> str:
         if self.original_name:
             out = self.original_name
         elif self.root_name:
             out = self.root_name
         else:
             out = "<no name>"
+        if (
+            not self.nomenclature_status.can_preoccupy()
+            and not self.nomenclature_status.is_variant()
+        ):
+            out = f'"{out}"'
         if self.author_tags:
+            if self.nomenclature_status in (
+                NomenclatureStatus.name_combination,
+                NomenclatureStatus.subsequent_usage,
+                NomenclatureStatus.reranking,
+                NomenclatureStatus.misidentification,
+            ):
+                out += ":"
             out += f" {self.taxonomic_authority()}"
         if self.year:
             out += f", {self.year}"
         if self.page_described:
             out += f":{self.page_described}"
-        parenthesized_bits = []
-        try:
-            taxon = self.taxon
-        except DoesNotExist:
-            parenthesized_bits.append("= <invalid taxon>")
-        else:
-            if taxon.valid_name != self.original_name:
-                parenthesized_bits.append(f"= {taxon.valid_name}")
-        if self.nomenclature_status is None:
-            parenthesized_bits.append("<no nomenclature status>")
-        elif self.nomenclature_status != NomenclatureStatus.available:
-            parenthesized_bits.append(self.nomenclature_status.name)
-        if self.status is None:
-            parenthesized_bits.append("<no status>")
-        elif self.status != Status.valid:
-            parenthesized_bits.append(self.status.name)
-        if parenthesized_bits:
-            out += f" ({', '.join(parenthesized_bits)})"
+        if include_parentheses:
+            parenthesized_bits = []
+            try:
+                taxon = self.taxon
+            except DoesNotExist:
+                parenthesized_bits.append("= <invalid taxon>")
+            else:
+                if taxon.valid_name != self.original_name:
+                    parenthesized_bits.append(f"= {taxon.valid_name}")
+            if self.nomenclature_status is None:
+                parenthesized_bits.append("<no nomenclature status>")
+            elif self.nomenclature_status != NomenclatureStatus.available:
+                parenthesized_bits.append(self.nomenclature_status.name)
+            if self.status is None:
+                parenthesized_bits.append("<no status>")
+            elif self.status != Status.valid:
+                parenthesized_bits.append(self.status.name)
+            if parenthesized_bits:
+                out += f" ({', '.join(parenthesized_bits)})"
         return out
 
     def get_default_valid_name(self) -> str:
@@ -1143,14 +1156,21 @@ class Name(BaseModel):
             nam = self.get_tag_target(NameTag.NomenNovumFor)
             if nam is None:
                 return False
+            allow_preoccupied = True
         else:
             nam = self
+            allow_preoccupied = False
         if nam.nomenclature_status in (
             NomenclatureStatus.available,
             NomenclatureStatus.as_emended,
             NomenclatureStatus.collective_group,
             NomenclatureStatus.informal,
             NomenclatureStatus.unpublished_pending,
+        ):
+            return True
+        if (
+            allow_preoccupied
+            and nam.nomenclature_status is NomenclatureStatus.preoccupied
         ):
             return True
         if (
@@ -1549,6 +1569,14 @@ class Name(BaseModel):
             return False  # not in any genus, so don't parenthesize
         return genus.resolve_name() != self.original_parent.resolve_name()
 
+    def get_full_authority(self) -> str:
+        authority = self.taxonomic_authority()
+        if self.year is not None:
+            authority += f", {self.numeric_year()}"
+        if self.should_parenthesize_authority():
+            authority = f"({authority})"
+        return authority
+
     def resolve_name(self, *, depth: int = 0) -> Name:
         if depth > 10:
             raise ValueError(f"too deep: {self}")
@@ -1565,6 +1593,7 @@ class Name(BaseModel):
                     NameTag.MandatoryChangeOf,
                     NameTag.IncorrectSubsequentSpellingOf,
                     NameTag.UnavailableVersionOf,
+                    NameTag.NameCombinationOf,
                 ),
             ):
                 return tag.name.resolve_name(depth=depth + 1)
@@ -2112,11 +2141,7 @@ class Name(BaseModel):
         parent: Taxon | None = None,
         rank: Rank | None = None,
     ) -> Taxon:
-        assert self.status not in (
-            Status.valid,
-            Status.nomen_dubium,
-            Status.species_inquirenda,
-        )
+        assert not self.status.is_base_name()
         old_taxon = self.taxon
         parent_group = helpers.group_of_rank(old_taxon.rank)
         if self.group == Group.species and parent_group != Group.species:
@@ -2936,6 +2961,8 @@ class TypeTag(adt.ADT):
     # Can be used optionally to hold the fully verbatim original name, including abbreviations.
     # Not mandatory.
     VerbatimName(text=str, tag=58)  # type: ignore[name-defined]
+
+    IgnorePotentialCitationFrom(article=Article, comment=NotRequired[str], tag=59)  # type: ignore[name-defined]
 
 
 SOURCE_TAGS = (

@@ -1981,9 +1981,18 @@ def find_potential_citations_for_group(
         if not art.is_page_in_range(page):
             return False
         if aggressive:
-            return _author_names(nam) <= _author_names(art)
+            condition = _author_names(nam) <= _author_names(art)
         else:
-            return nam.author_set() <= art.author_set()
+            condition = nam.author_set() <= art.author_set()
+        if not condition:
+            return False
+        for tag in nam.type_tags:
+            if (
+                isinstance(tag, TypeTag.IgnorePotentialCitationFrom)
+                and tag.article == art
+            ):
+                return False
+        return True
 
     count = 0
     for nam in cg.get_names():
@@ -2008,9 +2017,16 @@ def find_potential_citations_for_group(
                 for candidate in candidates:
                     candidate.openf()
                     candidate.add_to_history()
-                nam.fill_required_fields()
+                nam.edit()
                 if nam.original_citation is not None:
                     nam.edit_until_clean()
+                elif getinput.yes_no("Add IgnorePotentialCitationFrom?"):
+                    for candidate in candidates:
+                        nam.add_type_tag(
+                            TypeTag.IgnorePotentialCitationFrom(
+                                article=candidate, comment=""
+                            )
+                        )
     if count:
         print(f"{cg} had {count} potential citations", flush=True)
     return count
@@ -2573,7 +2589,9 @@ def find_valid_names_with_invalid_bases() -> None:
 
 
 @command
-def download_bhl_parts(nams: Iterable[Name] | None = None) -> None:
+def download_bhl_parts(
+    nams: Iterable[Name] | None = None, *, dry_run: bool = False
+) -> None:
     options = get_options()
     if nams is None:
         nams = Name.with_type_tag(TypeTag.AuthorityPageLink).filter(
@@ -2591,7 +2609,11 @@ def download_bhl_parts(nams: Iterable[Name] | None = None) -> None:
                 continue
             for part_id in bhl.get_possible_parts_from_page(int(parsed.page_id)):
                 url = f"https://www.biodiversitylibrary.org/partpdf/{part_id}"
-                if not getinput.yes_no(f"download {part_id} for {nam}?"):
+                message = f"download {part_id} for {nam}"
+                if dry_run:
+                    print(message)
+                    continue
+                if not getinput.yes_no(f"{message}?"):
                     return
                 print("Downloading:")
                 # Line by itself for easier copy-pasting
@@ -2604,7 +2626,9 @@ def download_bhl_parts(nams: Iterable[Name] | None = None) -> None:
 
 
 @command
-def download_bhl_items(nams: Iterable[Name] | None = None) -> None:
+def download_bhl_items(
+    nams: Iterable[Name] | None = None, *, dry_run: bool = False
+) -> None:
     options = get_options()
     if nams is None:
         nams = Name.with_type_tag(TypeTag.AuthorityPageLink).filter(
@@ -2621,9 +2645,11 @@ def download_bhl_items(nams: Iterable[Name] | None = None) -> None:
             if item_id is None:
                 continue
             url = f"https://www.biodiversitylibrary.org/itempdf/{item_id}"
-            if not getinput.yes_no(
-                f"download {item_id} for {nam} ({nam.verbatim_citation})?"
-            ):
+            message = f"download {item_id} for {nam} ({nam.verbatim_citation})"
+            if dry_run:
+                print(message)
+                continue
+            if not getinput.yes_no(f"{message}?"):
                 return
             print("Downloading:")
             # Line by itself for easier copy-pasting
@@ -2872,6 +2898,27 @@ def add_ces_for_parent_species(up_to: int) -> None:
         art.edit()
         art.lint_object_list(art.new_names)
         art.lint_object_list(art.classification_entries)
+
+
+@command
+def missing_valid_species(
+    rank: Rank = Rank.species, taxon: Taxon | None = None
+) -> list[Name]:
+    if taxon is None:
+        taxon = Taxon.getter(None).get_one()
+        if taxon is None:
+            return []
+    relevant_nams = [
+        t.base_name
+        for t in taxon.children_of_rank(rank)
+        if t.age is AgeClass.extant and t.base_name.status is constants.Status.valid
+    ]
+    missing_nams = [nam for nam in relevant_nams if nam.original_citation is None]
+    if relevant_nams:
+        print(
+            f"Missing {len(missing_nams)}/{len(relevant_nams)} ({len(missing_nams) / len(relevant_nams):%}) valid {rank.name}"
+        )
+    return sorted(missing_nams, key=lambda nam: nam.numeric_year())
 
 
 def run_shell() -> None:
