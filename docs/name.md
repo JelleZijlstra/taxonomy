@@ -47,6 +47,8 @@ options are:
 - _valid_: The name represents a valid taxon of any rank.
 - _synonym_: The name is a synonym of some other taxon (which may itself be a nomen
   dubium or otherwise invalid).
+- _unavailable_: The name is likely to represent a valid taxon, but is not based on an
+  available name.
 - _nomen dubium_: The name is known to be unidentifiable.
 - _species inquirenda_: There is insufficient information to determine whether the
   name's taxon is biologically real.
