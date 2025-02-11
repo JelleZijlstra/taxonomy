@@ -162,5 +162,5 @@ def _get_cgs_with_issue_dates() -> set[int]:
 
 
 IssueDate.creation_event.on(
-    lambda id: _get_cgs_with_issue_dates().add(id.citation_group.id)
+    lambda issue_date: _get_cgs_with_issue_dates().add(issue_date.citation_group.id)
 )
