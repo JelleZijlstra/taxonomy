@@ -65,7 +65,9 @@ REPLACEMENTS = {
     "<u>Insular</u>:": "",
     "<u>Mainland</u>:": "",
     "<i>. </i><u>Not": "; <u>Not",
-    ". <u>Remaining names (most from small islands), not allocated to subspecies</u>:": "; <u>Unallocated:</u>",
+    ". <u>Remaining names (most from small islands), not allocated to subspecies</u>:": (
+        "; <u>Unallocated:</u>"
+    ),
     "<b><i>; ": "; <b><i>",
     "<b><i>.</i></b>": ".",
     "<b> (</b>": " (",
@@ -74,10 +76,14 @@ REPLACEMENTS = {
     "<b> </b>": " ",
     ";.": ";",
     ". <u>Not": "; <u>Not",
-    "<i>Chlamydophorus</i> Wagler, 1830, is an unjustified emendation of <i>Chlamyphorus</i> Harlan; the names <i>Chlamiphorus</i> Contreras, 1973; <i>Chlamydephorus</i> Lenz, 1831, and <i>Chlamydiphorus</i> Bonaparte, 1831, are incorrect subsequent spellings of <i>Chlamyphorus</i> Harlan.": "<i>Chlamydophorus</i> Wagler, 1830; <i>Chlamiphorus</i> Contreras, 1973; <i>Chlamydephorus</i> Lenz, 1831; <i>Chlamydiphorus</i> Bonaparte, 1831.",
+    "<i>Chlamydophorus</i> Wagler, 1830, is an unjustified emendation of <i>Chlamyphorus</i> Harlan; the names <i>Chlamiphorus</i> Contreras, 1973; <i>Chlamydephorus</i> Lenz, 1831, and <i>Chlamydiphorus</i> Bonaparte, 1831, are incorrect subsequent spellings of <i>Chlamyphorus</i> Harlan.": (
+        "<i>Chlamydophorus</i> Wagler, 1830; <i>Chlamiphorus</i> Contreras, 1973; <i>Chlamydephorus</i> Lenz, 1831; <i>Chlamydiphorus</i> Bonaparte, 1831."
+    ),
     "</i></b><i>s</i>": "s</i></b>",
     "persicus auctorum ignotus": "persicus",
-    ">of sundry authors but not <i>Kangurus veterum </i>Lesson and Garnot (see below)": "> [of sundry authors but not <i>Kangurus veterum </i>Lesson and Garnot (see below)]",
+    ">of sundry authors but not <i>Kangurus veterum </i>Lesson and Garnot (see below)": (
+        "> [of sundry authors but not <i>Kangurus veterum </i>Lesson and Garnot (see below)]"
+    ),
     "<i>,</i>": ",",
     "subspecies</u>:": "subspecies:</u>",
     "Lamotte and Petter (1981);": "Lamotte and Petter, 1981;",
@@ -86,7 +92,9 @@ REPLACEMENTS = {
     "; see Daams and de Bruijn (1995); Rossolimo et al. (2001).": ".",
     "1876),<i> ": "1876); <i>",
     "<i>golzmajeri</i> 1960": "<i>golzmajeri</i> Anonymous, 1960",
-    ". The following names belong to this species or another species of the same species group, but seem impossible to allocate to a subspecies, according to Groves (2001<i>c</i>):": "; <b>unallocated:</b> ",
+    ". The following names belong to this species or another species of the same species group, but seem impossible to allocate to a subspecies, according to Groves (2001<i>c</i>):": (
+        "; <b>unallocated:</b> "
+    ),
     "1812: plate only, not text)": "1812) [plate only, not text]",
     " , various authors": " [various authors]",
     "(Wroughton, 1908;": "(Wroughton, 1908);",
@@ -99,10 +107,14 @@ REPLACEMENTS = {
     "Baiomyini new tribe (see <i>Baiomys </i> account); ": "",
     "Ochrotomyini new tribe (see <i>Ochrotomys </i>account); ": "",
     "Neotominae Merriam 1894": "Neotominae Merriam, 1894",
-    "Hershkovitz, 1966<i>b</i>; Reithrodontomyini": "Hershkovitz, 1966; Reithrodontomyini",
+    "Hershkovitz, 1966<i>b</i>; Reithrodontomyini": (
+        "Hershkovitz, 1966; Reithrodontomyini"
+    ),
     "Hesperomyini, Simpson, 1945": "Hesperomyini Simpson, 1945",
     "Reithrodontina, Steppan, 1995": "Reithrodontina Steppan, 1995",
-    " (Rhombomyini Pavlinov and Rossolimo, 1987; Rhombomyina Pavlinov, Dubrovskii, Rossollimo, and Potapova, 1990)": "; Rhombomyini Pavlinov and Rossolimo, 1987; Rhombomyina Pavlinov, Dubrovskii, Rossollimo, and Potapova, 1990",
+    " (Rhombomyini Pavlinov and Rossolimo, 1987; Rhombomyina Pavlinov, Dubrovskii, Rossollimo, and Potapova, 1990)": (
+        "; Rhombomyini Pavlinov and Rossolimo, 1987; Rhombomyina Pavlinov, Dubrovskii, Rossollimo, and Potapova, 1990"
+    ),
     "1872, not Ellobiinae Adams, 1858": "1872",
     ", justified emendation by Pavlinov et al., 1995<i>a</i>": "",
     "<i>longior</i>, <i>media</i>": "<i>longior</i> (Pallas, 1779); <i>media</i>",
@@ -114,7 +126,9 @@ REPLACEMENTS = {
     "1953<i> nigrescens": "1953; <i>nigrescens",
     "Martin; 1984;": "Martin, 1984;",
     "1941:<i>": "1941; <i>",
-    " (See Zagordnyuk, 1992<i>b</i>, for comments regarding scientific names applied to Ukranian samples).": "",
+    " (See Zagordnyuk, 1992<i>b</i>, for comments regarding scientific names applied to Ukranian samples).": (
+        ""
+    ),
     "1941], <i>pecchioli": "1941]; <i>pecchioli",
     "Gould, 1853 <i>fulvoventer": "Gould, 1853; <i>fulvoventer",
     "Miller, 1902s": "Miller, 1902",
@@ -122,8 +136,12 @@ REPLACEMENTS = {
     "1867) <i>wroughtoni": "1867); <i>wroughtoni",
     "Allen1915": "Allen, 1915",
     "] [": "; ",
-    "Allozyme studies revealed 4-5 main groups of populations in this species (Hafner and Sullivan, 1995). Synonyms listed here follow these groupings: ": "",
-    "Leporidae Gray, 1821, Leporinorum Fischer, 1817, Oryctolaginae Gureev, 1948, Pentalaginae Gureev, 1948": "Leporidae Gray, 1821; Leporinorum Fischer, 1817; Oryctolaginae Gureev, 1948; Pentalaginae Gureev, 1948",
+    "Allozyme studies revealed 4-5 main groups of populations in this species (Hafner and Sullivan, 1995). Synonyms listed here follow these groupings: ": (
+        ""
+    ),
+    "Leporidae Gray, 1821, Leporinorum Fischer, 1817, Oryctolaginae Gureev, 1948, Pentalaginae Gureev, 1948": (
+        "Leporidae Gray, 1821; Leporinorum Fischer, 1817; Oryctolaginae Gureev, 1948; Pentalaginae Gureev, 1948"
+    ),
     ".<u> East Africa</u>:<u> </u>": "; ",
     ". <u>Arabia and Near East</u>:": "; ",
     ". <u>Northwest Africa (Mahgreb)</u>:": "; ",
@@ -168,7 +186,9 @@ REPLACEMENTS = {
     "<i>edmondi, </i>": "<i>edmondi</i> Anonymous, ",
     "1896),<i> ": "1896); <i>",
     "<b>(</b>": "(",
-    "<u>names based on hybrids between <i>lelwel </i>and <i>cokii, swaynei </i>or <i>tora</i></u>:": "<u>unallocated:</u>",
+    "<u>names based on hybrids between <i>lelwel </i>and <i>cokii, swaynei </i>or <i>tora</i></u>:": (
+        "<u>unallocated:</u>"
+    ),
     "(</b>": "</b>(",
     '"Œegosceridae" (Aegocerotidae)': "Aegocerotidae",
     "1910,<i> canescens": "1910; <i>canescens",
@@ -178,11 +198,15 @@ REGEX_REPLACEMENTS = {
     r"<u>The following taxa are from [A-Za-z, \-]+</u>:": "",
     r". (<u>)?The following (taxa )?(are|is) from [A-Za-z ,]+(</u>)?:": "; ",
     r"(\d{4}\)?), (?=<b>|\*?<i>)": r"\1; ",
-    r" \(([A-Z][a-z]+) Chaline, Mein, and F\. Petter, 1977\)": r"; \1 Chaline, Mein, and F. Petter, 1977",
+    r" \(([A-Z][a-z]+) Chaline, Mein, and F\. Petter, 1977\)": (
+        r"; \1 Chaline, Mein, and F. Petter, 1977"
+    ),
     r"; see [^;\]]+\.$": ".",
     r"\. See [^;]+\.$": ".",
     r"\. Some synonyms listed and much of the southern.*": ".",
-    r"\. Ellerman and Morrison-Scott \(1951:608\) and J\. T\. Marshall, Jr\. \(1998\) listed .*": ".",
+    r"\. Ellerman and Morrison-Scott \(1951:608\) and J\. T\. Marshall, Jr\. \(1998\) listed .*": (
+        "."
+    ),
     r"\d{4} ?\[(\d{4})\]": r"\1",
     r"<u>\(\d\) [^<]+</u>:": "",
     r"^<u>(South Africa|South of Isthmus of Panama|North of Mexico)</u>:": "",
