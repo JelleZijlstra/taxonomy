@@ -253,7 +253,6 @@ def get_type_specimen(nam: Name) -> str:
 OMITTED_COLUMNS = {
     "MDD_old_type_locality",
     "MDD_emended_type_locality",
-    "MDD_subspecificEpithet",
     "MDD_comments",
     # Identifiers
     "MDD_syn_ID",
@@ -432,6 +431,10 @@ def get_hesp_row(
         row["Hesp_specificEpithet"] = "incertae_sedis"
     else:
         row["Hesp_specificEpithet"] = species.base_name.root_name
+    if nam.taxon.rank is Rank.subspecies:
+        row["Hesp_subspecificEpithet"] = nam.taxon.valid_name.split()[-1]
+    else:
+        row["Hesp_subspecificEpithet"] = "NA"
     row["Hesp_species_id"] = ""
     if species is not None:
         for tag in species.tags:
