@@ -530,11 +530,11 @@ class ClassificationEntry(BaseModel):
             print("No mapped name.")
             return
         self.mapped_name.display()
-        mapped_ces = list(self.mapped_name.get_mapped_classification_entries())
-        for ce in mapped_ces:
-            ce.display()
-        if not mapped_ces:
-            print("No mapped classification entries.")
+        mapped_ce = self.mapped_name.get_mapped_classification_entry()
+        if mapped_ce is not None:
+            mapped_ce.display()
+        else:
+            print("No mapped classification entry.")
         if not getinput.yes_no("Take over mapped name?"):
             return
         models.name.lint.take_over_name(

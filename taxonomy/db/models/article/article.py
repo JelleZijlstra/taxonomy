@@ -515,7 +515,7 @@ class Article(BaseModel):
 
     def get_new_names_with_children(self) -> Iterable[models.Name]:
         yield from self.get_new_names()
-        for art in self.article_set:
+        for art in self.get_children():
             yield from art.get_new_names()
 
     def display_raw_pages(self) -> None:
@@ -536,7 +536,7 @@ class Article(BaseModel):
         self,
     ) -> Iterable[models.ClassificationEntry]:
         yield from self.get_classification_entries()
-        for art in self.article_set:
+        for art in self.get_children():
             yield from art.get_classification_entries()
 
     def get_root_classification_entries(self) -> list[models.ClassificationEntry]:
@@ -1409,15 +1409,15 @@ class Article(BaseModel):
                     current_tl = nam.type_locality
                 print(f"{' ' * 8}{nam.get_description()}", end="")
 
-    def display_children(self, indent: int = 4) -> None:
-        children = list(
-            Article.select_valid().filter(
-                Article.parent == self,
-                Article.kind != ArticleKind.redirect,
-                Article.kind != ArticleKind.alternative_version,
-            )
+    def get_children(self) -> Query[Self]:
+        return Article.select_valid().filter(
+            Article.parent == self,
+            Article.kind != ArticleKind.redirect,
+            Article.kind != ArticleKind.alternative_version,
         )
-        children = sorted(children, key=lambda art: art.numeric_start_page())
+
+    def display_children(self, indent: int = 4) -> None:
+        children = sorted(self.get_children(), key=lambda art: art.numeric_start_page())
         for child in children:
             print(
                 f"{' ' * indent}{child.start_page}–{child.end_page}"

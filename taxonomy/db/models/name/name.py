@@ -695,7 +695,8 @@ class Name(BaseModel):
             ce.display()
 
     def _edit_mapped_ce(self) -> None:
-        for ce in self.get_mapped_classification_entries():
+        ce = self.get_mapped_classification_entry()
+        if ce is not None:
             ce.display()
             ce.edit()
 
@@ -1296,7 +1297,8 @@ class Name(BaseModel):
             self.map_type_tags(adjust_tag)
         self.page_described = page
         print(f"{self}: change page {existing} -> {page}")
-        for ce in self.get_mapped_classification_entries():
+        ce = self.get_mapped_classification_entry()
+        if ce is not None:
             ce.set_page(page)
 
     def get_repositories(self) -> list[Collection]:
@@ -2415,13 +2417,28 @@ class Name(BaseModel):
                     nams.add(nam)
         return arts, nams
 
-    def get_mapped_classification_entries(self) -> Iterable[models.ClassificationEntry]:
+    def get_possible_mapped_classification_entries(
+        self,
+    ) -> Iterable[models.ClassificationEntry]:
         if self.original_citation is None:
             return []
         return models.ClassificationEntry.select_valid().filter(
             models.ClassificationEntry.mapped_name == self,
             models.ClassificationEntry.article == self.original_citation,
         )
+
+    def get_mapped_classification_entry(self) -> models.ClassificationEntry | None:
+        if self.original_citation is None:
+            return None
+        candidates = list(self.get_possible_mapped_classification_entries())
+        if not candidates:
+            return None
+        if len(candidates) == 1:
+            return candidates[0]
+        candidates = [ce for ce in candidates if ce.name == self.original_name]
+        if len(candidates) == 1:
+            return candidates[0]
+        return None
 
     def highest_taxon(self) -> Taxon:
         taxa = list(

@@ -3277,8 +3277,8 @@ def _is_variety_or_form(nam: Name) -> bool:
     if nam.original_name is None:
         return False
     return _contains_one_of_words(
-        nam.original_name, ("variety", "form", "var", "forma", "v", "f")
-    )
+        nam.original_name, ("variety", "form", "var", "forma")
+    ) or bool(re.search(r"(?<!\. )\b[vf]\. ", nam.original_name))
 
 
 def should_be_infrasubspecific(nam: Name) -> Possibility:
@@ -3838,23 +3838,23 @@ def infer_bhl_page_from_classification_entries(
 ) -> Iterable[str]:
     if not _should_look_for_page_links(nam):
         return
-    for ce in nam.get_mapped_classification_entries():
-        if ce.article != nam.original_citation:
-            continue
-        new_tags = [
-            TypeTag.AuthorityPageLink(url=tag.url, confirmed=True, page=tag.page)
-            for tag in ce.tags
-            if isinstance(tag, ClassificationEntryTag.PageLink)
-        ]
-        if not new_tags:
-            continue
-        message = f"inferred BHL page from classification entry {ce}: {new_tags}"
-        if cfg.autofix:
-            print(f"{nam}: {message}")
-            for tag in new_tags:
-                nam.add_type_tag(tag)
-        else:
-            yield message
+    ce = nam.get_mapped_classification_entry()
+    if ce is None or ce.article != nam.original_citation:
+        return
+    new_tags = [
+        TypeTag.AuthorityPageLink(url=tag.url, confirmed=True, page=tag.page)
+        for tag in ce.tags
+        if isinstance(tag, ClassificationEntryTag.PageLink)
+    ]
+    if not new_tags:
+        return
+    message = f"inferred BHL page from classification entry {ce}: {new_tags}"
+    if cfg.autofix:
+        print(f"{nam}: {message}")
+        for tag in new_tags:
+            nam.add_type_tag(tag)
+    else:
+        yield message
 
 
 @LINT.add("bhl_page_from_article", requires_network=True)
@@ -4361,9 +4361,13 @@ def take_over_name(nam: Name, ce: ClassificationEntry, cfg: LintConfig) -> None:
 def maybe_take_over_name(
     nam: Name, ce: ClassificationEntry, cfg: LintConfig
 ) -> Iterable[str]:
-    if any(nam.get_mapped_classification_entries()) and nam.nomenclature_status in (
-        NomenclatureStatus.name_combination,
-        NomenclatureStatus.incorrect_subsequent_spelling,
+    if (
+        nam.get_mapped_classification_entry() is not None
+        and nam.nomenclature_status
+        in (
+            NomenclatureStatus.name_combination,
+            NomenclatureStatus.incorrect_subsequent_spelling,
+        )
     ):
         message = f"changing original citation of {nam} to {ce.article}"
         if cfg.autofix:
@@ -4459,10 +4463,8 @@ def infer_name_variants(nam: Name, cfg: LintConfig) -> Iterable[str]:
 
 
 def _is_iss_from_synonym_without_full_name(nam: Name) -> bool:
-    return all(
-        ce.is_synonym_without_full_name()
-        for ce in nam.get_mapped_classification_entries()
-    )
+    ce = nam.get_mapped_classification_entry()
+    return ce is not None and ce.is_synonym_without_full_name()
 
 
 def _infer_name_variants_of_status(
@@ -4590,8 +4592,7 @@ def can_replace_name(nam: Name) -> str | None:
         ):
             continue
         return f"tag {tag}"
-    has_mce = any(nam.get_mapped_classification_entries())
-    if not has_mce:
+    if nam.get_mapped_classification_entry() is None:
         return "has no classification entries"
     return None
 
@@ -4785,7 +4786,7 @@ def determine_name_variants(nam: Name, cfg: LintConfig) -> Iterable[str]:
         if variant_base != nam:
             continue
         simplified_normalized = _get_simplied_normalized_name(syn)
-        has_mapped_ces = any(syn.get_mapped_classification_entries())
+        has_mapped_ces = syn.get_mapped_classification_entry() is not None
         syn_ces = list(syn.classification_entries)
         ev = ExistingVariant(syn, has_mapped_ces, reason, syn_ces)
         nams_with_reasons.append(ev)
@@ -5015,10 +5016,9 @@ def infer_included_species(nam: Name, cfg: LintConfig) -> Iterable[str]:
         return
     if nam.original_citation is None:
         return
-    ces = list(nam.get_mapped_classification_entries())
-    if not ces:
+    ce = nam.get_mapped_classification_entry()
+    if ce is None or ce.rank.is_synonym:
         return
-    ces = [ce for ce in ces if not ce.rank.is_synonym]
     current_included_species = {
         tag.name for tag in nam.type_tags if isinstance(tag, TypeTag.IncludedSpecies)
     }
@@ -5027,34 +5027,31 @@ def infer_included_species(nam: Name, cfg: LintConfig) -> Iterable[str]:
         for tag in nam.type_tags
         if isinstance(tag, TypeTag.IncludedSpecies) and tag.comment
     }
-    for ce in ces:
-        included = ce.get_children_of_rank(Rank.species)
-        for child_ce in included:
-            if child_ce.mapped_name is None:
-                continue
-            if child_ce.mapped_name in current_included_species_with_comments:
-                continue
-            if child_ce.parent is None:
-                continue
-            if child_ce.parent != ce:
-                comment = (
-                    f"in {child_ce.parent.get_rank_string()} {child_ce.parent.name}"
-                )
-                if child_ce.page is not None:
-                    comment += f"; p. {child_ce.page}"
-            elif child_ce.page is not None:
-                comment = f"p. {child_ce.page}"
-            else:
-                comment = ""
-            if not comment and child_ce.mapped_name in current_included_species:
-                continue
-            tag = TypeTag.IncludedSpecies(child_ce.mapped_name, comment)
-            message = f"adding included species {child_ce.mapped_name} from {ce}: {tag}"
-            if cfg.autofix:
-                print(f"{nam}: {message}")
-                nam.add_type_tag(tag)
-            else:
-                yield message
+    included = ce.get_children_of_rank(Rank.species)
+    for child_ce in included:
+        if child_ce.mapped_name is None:
+            continue
+        if child_ce.mapped_name in current_included_species_with_comments:
+            continue
+        if child_ce.parent is None:
+            continue
+        if child_ce.parent != ce:
+            comment = f"in {child_ce.parent.get_rank_string()} {child_ce.parent.name}"
+            if child_ce.page is not None:
+                comment += f"; p. {child_ce.page}"
+        elif child_ce.page is not None:
+            comment = f"p. {child_ce.page}"
+        else:
+            comment = ""
+        if not comment and child_ce.mapped_name in current_included_species:
+            continue
+        tag = TypeTag.IncludedSpecies(child_ce.mapped_name, comment)
+        message = f"adding included species {child_ce.mapped_name} from {ce}: {tag}"
+        if cfg.autofix:
+            print(f"{nam}: {message}")
+            nam.add_type_tag(tag)
+        else:
+            yield message
 
 
 @LINT.add("duplicate_included_species")
@@ -5171,10 +5168,9 @@ def infer_tags_from_mapped_entries(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 else:
                     yield message
 
-    for ce in nam.get_mapped_classification_entries():
-        # Don't copy page links until we've aligned the page that it's on
-        if ce.page != nam.page_described:
-            continue
+    ce = nam.get_mapped_classification_entry()
+    # Don't copy page links until we've aligned the page that it's on
+    if ce is not None and ce.page == nam.page_described:
         for tag in ce.tags:
             if isinstance(tag, ClassificationEntryTag.PageLink):
                 expected_tag = TypeTag.AuthorityPageLink(
@@ -5197,7 +5193,7 @@ def remove_redundant_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
     target = nam.get_tag_target(NameTag.SubsequentUsageOf)
     if target is None:
         return  # other linters will complain
-    has_ces = any(nam.get_mapped_classification_entries())
+    has_ces = nam.get_mapped_classification_entry() is not None
     cannot_replace_reason = can_replace_name(nam)
     if cannot_replace_reason is None:
         message = f"remove redundant name {nam} by redirecting to {target}"
@@ -5233,9 +5229,13 @@ def check_must_have_ce(nam: Name, cfg: LintConfig) -> Iterable[str]:
         return
     if not has_classification(nam.original_citation):
         return
-    if any(nam.get_mapped_classification_entries()):
+    if nam.get_mapped_classification_entry() is not None:
         return
-    yield f"must have classification entries for {nam.original_citation}"
+    possible_ces = list(nam.get_possible_mapped_classification_entries())
+    if possible_ces:
+        yield f"has multiple possible mapped classification entries: {possible_ces}"
+    else:
+        yield f"must have classification entries for {nam.original_citation}"
 
 
 def can_transform(input: T, output: T, transforms: Sequence[Callable[[T], T]]) -> bool:
@@ -5270,79 +5270,71 @@ _ALLOWED_TRANSFORMS: list[Callable[[str], str]] = [
 def check_matches_mapped_classification_entry(
     nam: Name, cfg: LintConfig
 ) -> Iterable[str]:
-    ces = list(nam.get_mapped_classification_entries())
-    if not ces:
+    ce = nam.get_mapped_classification_entry()
+    if ce is None:
         return
-    for ce in ces:
-        if ce.name != nam.original_name:
-            yield f"mapped to {ce}, but {ce.name=} != {nam.original_name=}"
-            if nam.original_name is None or can_transform(
-                ce.name, nam.original_name, _ALLOWED_TRANSFORMS
-            ):
-                message = f"changing original name to {ce.name}"
-                if cfg.autofix:
-                    print(f"{nam}: {message}")
-                    nam.original_name = ce.name
-                else:
-                    yield message
-        expected_con = ce.get_name_to_use_as_normalized_original_name()
-        if expected_con != nam.corrected_original_name:
-            yield f"mapped to {ce}, but {expected_con} != {nam.corrected_original_name}"
-        if ce.page != nam.page_described:
-            yield f"mapped to {ce}, but {ce.page=} != {nam.page_described=}"
-            if cfg.autofix:
-                if nam.page_described is None:
-                    print(f"{nam}: inferred page {ce.page}")
-                    nam.page_described = ce.page
-                elif set(parse_page_text(nam.page_described)) < set(
-                    parse_page_text(ce.page)
-                ):
-                    print(
-                        f"{nam}: extended page from {nam.page_described} to {ce.page}"
-                    )
-                    nam.page_described = ce.page
-        yield from _check_matching_original_parent(nam, ce)
-        if nam.original_rank is not ce.rank:
-            yield f"mapped to {ce}, but {ce.rank=!r} != {nam.original_rank=!r}"
-            if (
-                nam.original_rank is None
-                or (nam.status is Status.synonym and ce.rank.is_synonym)
-            ) and len(ces) == 1:
-                message = f"inferred rank {ce.rank!r} from {ce}"
-                if cfg.autofix:
-                    print(f"{nam}: {message}")
-                    nam.original_rank = ce.rank
-                else:
-                    yield message
-        elif ce.rank.needs_textual_rank:
-            ce_tags = list(ce.get_tags(ce.tags, ClassificationEntryTag.TextualRank))
-            if ce_tags:
-                nam_tags = list(
-                    nam.get_tags(nam.type_tags, TypeTag.TextualOriginalRank)
-                )
-                if not nam_tags:
-                    tag = TypeTag.TextualOriginalRank(ce_tags[0].text)
-                    message = f"inferred textual rank from {ce}: {tag}"
-                    if cfg.autofix:
-                        print(f"{nam}: {message}")
-                        nam.add_type_tag(tag)
-                    else:
-                        yield message
-                elif ce_tags[0].text != nam_tags[0].text:
-                    yield f"mapped to {ce}, but textual ranks do not match: {ce_tags[0].text=} != {nam_tags[0].text=}"
-        conditions = list(ce.get_tags(ce.tags, ClassificationEntryTag.CECondition))
-        applicable_statues = get_applicable_statuses(nam)
-        new_conditions = [
-            tag for tag in conditions if tag.status not in applicable_statues
-        ]
-        if new_conditions:
-            message = f"mapped {ce} has conditions {new_conditions}; add to name"
+    if ce.name != nam.original_name:
+        yield f"mapped to {ce}, but {ce.name=} != {nam.original_name=}"
+        if nam.original_name is None or can_transform(
+            ce.name, nam.original_name, _ALLOWED_TRANSFORMS
+        ):
+            message = f"changing original name to {ce.name}"
             if cfg.autofix:
                 print(f"{nam}: {message}")
-                for tag in new_conditions:
-                    nam.add_tag(NameTag.Condition(tag.status, tag.comment))
+                nam.original_name = ce.name
             else:
                 yield message
+    expected_con = ce.get_name_to_use_as_normalized_original_name()
+    if expected_con != nam.corrected_original_name:
+        yield f"mapped to {ce}, but {expected_con} != {nam.corrected_original_name}"
+    if ce.page != nam.page_described:
+        yield f"mapped to {ce}, but {ce.page=} != {nam.page_described=}"
+        if cfg.autofix:
+            if nam.page_described is None:
+                print(f"{nam}: inferred page {ce.page}")
+                nam.page_described = ce.page
+            elif set(parse_page_text(nam.page_described)) < set(
+                parse_page_text(ce.page)
+            ):
+                print(f"{nam}: extended page from {nam.page_described} to {ce.page}")
+                nam.page_described = ce.page
+    yield from _check_matching_original_parent(nam, ce)
+    if nam.original_rank is not ce.rank:
+        yield f"mapped to {ce}, but {ce.rank=!r} != {nam.original_rank=!r}"
+        if nam.original_rank is None or (
+            nam.status is Status.synonym and ce.rank.is_synonym
+        ):
+            message = f"inferred rank {ce.rank!r} from {ce}"
+            if cfg.autofix:
+                print(f"{nam}: {message}")
+                nam.original_rank = ce.rank
+            else:
+                yield message
+    elif ce.rank.needs_textual_rank:
+        ce_tags = list(ce.get_tags(ce.tags, ClassificationEntryTag.TextualRank))
+        if ce_tags:
+            nam_tags = list(nam.get_tags(nam.type_tags, TypeTag.TextualOriginalRank))
+            if not nam_tags:
+                tag = TypeTag.TextualOriginalRank(ce_tags[0].text)
+                message = f"inferred textual rank from {ce}: {tag}"
+                if cfg.autofix:
+                    print(f"{nam}: {message}")
+                    nam.add_type_tag(tag)
+                else:
+                    yield message
+            elif ce_tags[0].text != nam_tags[0].text:
+                yield f"mapped to {ce}, but textual ranks do not match: {ce_tags[0].text=} != {nam_tags[0].text=}"
+    conditions = list(ce.get_tags(ce.tags, ClassificationEntryTag.CECondition))
+    applicable_statues = get_applicable_statuses(nam)
+    new_conditions = [tag for tag in conditions if tag.status not in applicable_statues]
+    if new_conditions:
+        message = f"mapped {ce} has conditions {new_conditions}; add to name"
+        if cfg.autofix:
+            print(f"{nam}: {message}")
+            for tag in new_conditions:
+                nam.add_tag(NameTag.Condition(tag.status, tag.comment))
+        else:
+            yield message
 
 
 def _check_matching_original_parent(
