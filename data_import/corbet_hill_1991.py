@@ -35,6 +35,7 @@ def extract_names(pages: lib.PagesT) -> Iterable[lib.CEDict]:
     for page_no, lines in pages:
         it = lib.PeekingIterator(lines)
         for line in it:
+            line = line.rstrip()
             if match := re.search(r"^ {5,}(ORDER|SUBORDER) ([A-Z]+)", line):
                 rank = Rank[match.group(1).lower()]
                 name = match.group(2).title()
@@ -59,21 +60,56 @@ def extract_names(pages: lib.PagesT) -> Iterable[lib.CEDict]:
                 if last_genus[0] != initial:
                     print(last_genus, line)
                     continue
+                rest = line[match.end() :].strip()
+                extra_data = {}
+                if "  " in rest:
+                    common_name, distribution = rest.split("  ", maxsplit=1)
+                    extra_data["common_name"] = common_name
+                    extra_data["distribution"] = distribution
+                else:
+                    extra_data["distribution"] = rest
+                name = f"{last_genus} {epithet}"
                 yield {
-                    "name": f"{last_genus} {epithet}",
+                    "name": name,
                     "rank": rank,
                     "page": str(page_no),
                     "article": art,
+                    "extra_fields": extra_data,
                 }
-            elif rank is Rank.species:
-                if (
-                    (not line.strip())
-                    or line.startswith("   ")
-                    or line.strip().startswith("(")
-                ):
+            elif rank is Rank.species and line:
+                assert line.startswith("   ") or line.strip().startswith("("), repr(
+                    line
+                )
+                assert extra_data is not None
+                line = line.strip()
+                if line.startswith("("):
+                    if ")" in line:
+                        syn, line = line.lstrip("(").split(")", maxsplit=1)
+                        line = line.strip()
+                        if syn[0].islower():
+                            if "synonyms" in extra_data:
+                                extra_data["synonyms"] += f" ({syn})"
+                            else:
+                                extra_data["synonyms"] = f"({syn})"
+                        elif "common_name" in extra_data:
+                            extra_data["common_name"] += f" ({syn})"
+                        else:
+                            extra_data["common_name"] = f"({syn})"
+                    else:
+                        extra_data["common_name"] += f" {line}"
+                elif ")" in line and "(" not in line:
+                    if "common_name" in extra_data:
+                        extra_data["common_name"] += f" {line}"
+                    else:
+                        print(name, line)
                     continue
+                if "  " in line:
+                    common_name, distribution = line.split("  ", maxsplit=1)
+                    assert "common_name" in extra_data, (extra_data, common_name)
+                    extra_data["common_name"] += " " + common_name
+                    extra_data["distribution"] += " " + distribution
                 else:
-                    print(repr(line))
+                    extra_data["distribution"] += " " + line
 
 
 def main() -> None:
@@ -81,7 +117,7 @@ def main() -> None:
     pages = lib.extract_pages(lines)
     pages = lib.validate_pages(pages, verbose=False)
     pages = clear_images(pages)
-    names = extract_names(pages)
+    names: Iterable[lib.CEDict] = list(extract_names(pages))
     names = lib.add_parents(names)
     names = lib.no_childless_ces(names)
     # names = lib.count_by_rank(names, Rank.order)
@@ -91,7 +127,7 @@ def main() -> None:
     names = lib.add_classification_entries(names, dry_run=False)
 
     lib.print_ce_summary(names)
-    lib.format_ces(SOURCE, format_name=False)
+    # lib.format_ces(SOURCE, format_name=False)
 
 
 if __name__ == "__main__":

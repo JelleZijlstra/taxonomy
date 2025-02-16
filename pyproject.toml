@@ -118,6 +118,7 @@ ignore = [
   "ARG005",  # same for lambdas
   "ARG003",  # same for classmethods
   "PT015",   # shouldn't use pytest.fail outside tests
+  "PT018",   # assertion should be broken up
   "RET505",  # I like to keep the if and else symmetrical
   "RET506",  # same
   "RET507",  # same

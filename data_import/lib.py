@@ -381,7 +381,7 @@ def extract_pages(
                 try:
                     current_page = extractor(line)
                     break
-                except ValueError:
+                except (IndexError, ValueError):
                     continue
             else:
                 if permissive:
@@ -1792,6 +1792,21 @@ def validate_ce_parents(
                 raise ValueError(
                     f"parent {parent} {parent_rank!r} not found for {full_name} {name['rank']!r}"
                 )
+        if name["rank"] is Rank.species:
+            genus_name = name["name"].split()[0]
+            parent_name = name
+            while parent_name["rank"] is not Rank.genus:
+                assert (
+                    parent_name["parent"] is not None
+                    and parent_name["parent_rank"] is not None
+                ), (name, parent_name)
+                parent_name = name_to_row[
+                    (parent_name["parent"], parent_name["parent_rank"])
+                ]
+            if parent_name["name"] != genus_name:
+                raise ValueError(
+                    f"genus mismatch: {genus_name} vs. {parent_name['name']}"
+                )
         yield name
 
 
@@ -1922,8 +1937,20 @@ def expand_abbreviations(
         yield name
 
 
-def format_ces(source: Source | ArticleSource, *, format_name: bool = True) -> None:
+def format_ces(
+    source: Source | ArticleSource,
+    *,
+    format_name: bool = True,
+    include_children: bool = False,
+) -> None:
     art = source.get_source()
+    format_ces_in_article(art, format_name=format_name)
+    if include_children:
+        for child in art.get_children():
+            format_ces_in_article(child, format_name=format_name)
+
+
+def format_ces_in_article(art: Article, *, format_name: bool = True) -> None:
     for ce in art.get_classification_entries():
         ce.load()
         ce.format(quiet=True, format_mapped=format_name)
@@ -1946,15 +1973,19 @@ def count_by_rank(names: Iterable[CEDict], rank: Rank) -> Iterable[CEDict]:
     current_order = None
     count = 0
     for name in names:
-        if name["rank"] is rank:
+        if name["rank"] >= rank:
             if current_order is not None:
                 print(rank.name, current_order, count)
-            current_order = name["name"]
+            if name["rank"] is rank:
+                current_order = name["name"]
+            else:
+                current_order = None
             count = 0
         if name["rank"] is Rank.species:
             count += 1
         yield name
-    print(rank.name, current_order, count)
+    if current_order is not None:
+        print(rank.name, current_order, count)
 
 
 def get_existing(ce_dict: CEDict) -> ClassificationEntry | None:
@@ -2004,7 +2035,11 @@ def get_parent(ce_dict: CEDict, *, dry_run: bool) -> ClassificationEntry | None:
 
 
 def add_classification_entries(
-    names: Iterable[CEDict], *, dry_run: bool = True, max_count: int | None = None
+    names: Iterable[CEDict],
+    *,
+    dry_run: bool = True,
+    max_count: int | None = None,
+    verbose: bool = False,
 ) -> Iterable[CEDict]:
     for i, name in enumerate(names):
         if max_count is not None and i >= max_count:
@@ -2051,7 +2086,8 @@ def add_classification_entries(
         existing = get_existing(name)
         parent = get_parent(name, dry_run=dry_run)
         if existing is not None:
-            print(f"already exists: {existing}")
+            if verbose:
+                print(f"already exists: {existing}")
             if page and not existing.page:
                 print(f"{existing}: adding page {page}")
                 if not dry_run:
@@ -2098,9 +2134,15 @@ def add_classification_entries(
                         if tag not in extra_existing_structured
                     ]
             continue
-        postfix = f" = {name['corrected_name']}" if "corrected_name" in name else ""
-        print(f"Add: {rank.name} {taxon_name}{postfix}")
-        if not dry_run:
+        if dry_run:
+            existing = ClassificationEntry.select_valid().filter(
+                ClassificationEntry.name == taxon_name
+            )
+            if existing.count() == 0:
+                print("Add:", rank.name, taxon_name)
+        else:
+            postfix = f" = {name['corrected_name']}" if "corrected_name" in name else ""
+            print(f"Add: {rank.name} {taxon_name}{postfix}")
             new_ce = ClassificationEntry.create(
                 article=art,
                 name=taxon_name,
