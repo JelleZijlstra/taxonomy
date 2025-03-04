@@ -69,18 +69,20 @@ def check_tags(art: Article, cfg: LintConfig) -> Iterable[str]:
             jstor_id = tag.text
             if len(jstor_id) < 4 or not jstor_id.isnumeric():
                 yield f"invalid JSTOR id {jstor_id!r}"
-        elif (
-            art.doi is None
-            and isinstance(tag, ArticleTag.PublicationDate)
-            and tag.source
-            in (
+        elif isinstance(tag, ArticleTag.PublicationDate):
+            if art.doi is None and tag.source in (
                 DateSource.doi_published,
                 DateSource.doi_published_online,
                 DateSource.doi_published_other,
                 DateSource.doi_published_print,
-            )
-        ):
-            continue
+            ):
+                continue
+            # Remove empty tags
+            if not tag.date:
+                if not tag.comment:
+                    continue
+                else:
+                    yield f"tag has comment but no date: {tag}"
         tags.append(tag)
     tags = sorted(set(tags))
     if tags != original_tags:
