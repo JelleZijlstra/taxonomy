@@ -2911,14 +2911,51 @@ def missing_valid_species(
     relevant_nams = [
         t.base_name
         for t in taxon.children_of_rank(rank)
-        if t.age is AgeClass.extant and t.base_name.status is constants.Status.valid
+        if t.age in (AgeClass.extant, AgeClass.recently_extinct)
+        and t.base_name.status is constants.Status.valid
     ]
-    missing_nams = [nam for nam in relevant_nams if nam.original_citation is None]
-    if relevant_nams:
+    return _get_missing_names(relevant_nams, rank)
+
+
+def _get_missing_names(nams: list[Name], rank: Rank) -> list[Name]:
+    missing_nams = [
+        nam
+        for nam in nams
+        if nam.original_citation is None
+        or nam.original_citation.kind is ArticleKind.no_copy
+    ]
+    if nams:
         print(
-            f"Missing {len(missing_nams)}/{len(relevant_nams)} ({len(missing_nams) / len(relevant_nams):%}) valid {rank.name}"
+            f"Missing {len(missing_nams)}/{len(nams)} ({len(missing_nams) / len(nams):%}) valid {rank.name}"
         )
     return sorted(missing_nams, key=lambda nam: nam.numeric_year())
+
+
+@command
+def missing_valid_species_of_article(
+    art: Article | None = None, rank: Rank = Rank.species
+) -> list[Name]:
+    if art is None:
+        art = Article.getter(None).get_one("article> ")
+    if art is None:
+        return []
+    nams = species_of_article(art, rank)
+    return _get_missing_names(nams, rank)
+
+
+def species_of_article(art: Article, rank: Rank = Rank.species) -> list[Name]:
+    ces = _species_ces_of_article(art, rank)
+    return [
+        ce.mapped_name.resolve_variant() for ce in ces if ce.mapped_name is not None
+    ]
+
+
+def _species_ces_of_article(art: Article, rank: Rank) -> Iterable[ClassificationEntry]:
+    yield from ClassificationEntry.select_valid().filter(
+        ClassificationEntry.article == art, ClassificationEntry.rank == rank
+    )
+    for child in art.get_children():
+        yield from _species_ces_of_article(child, rank)
 
 
 def run_shell() -> None:
