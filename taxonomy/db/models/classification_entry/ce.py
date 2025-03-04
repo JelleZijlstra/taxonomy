@@ -523,7 +523,17 @@ class ClassificationEntry(BaseModel):
             "add_taxon": self.add_taxon,
             "set_page": self.set_page,
             "merge": self.merge,
+            "kerr_subgeneric": self._kerr_subgeneric,
         }
+
+    def _kerr_subgeneric(self) -> None:
+        words = self.name.split()
+        if len(words) == 3:
+            self.add_tag(
+                ClassificationEntryTag.CorrectedName(f"{words[0]} {words[2].lower()}")
+            )
+        else:
+            print("Cannot add Kerr subgeneric tag to this name.")
 
     def take_over_mapped_name(self) -> None:
         if self.mapped_name is None:

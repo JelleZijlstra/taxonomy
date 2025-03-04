@@ -1183,3 +1183,32 @@ def check_matches_citation(ce: ClassificationEntry, cfg: LintConfig) -> Iterable
     if ce.page is None:
         return
     yield from models.name.lint.check_page_matches_citation(ce.article, ce.page)
+
+
+@LINT.add("parent_rank")
+def check_parent_rank(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
+    if ce.parent is None:
+        return
+    match ce.rank:
+        case Rank.subspecies | Rank.variety:
+            if ce.parent.rank is not Rank.species and not (
+                ce.rank is Rank.variety and ce.parent.rank is Rank.subspecies
+            ):
+                message = f"parent rank {ce.parent.rank.name} does not match child rank {ce.rank.name}"
+                corrected_name = ce.get_corrected_name()
+                new_parent = None
+                if corrected_name is not None:
+                    gen, sp, *_ = corrected_name.split()
+                    expected_species = f"{gen} {sp}"
+                    possible_parents = [
+                        ce
+                        for ce in ce.parent.get_children()
+                        if ce.rank is Rank.species
+                        and ce.get_corrected_name() == expected_species
+                    ]
+                    if len(possible_parents) == 1:
+                        new_parent = possible_parents[0]
+                        message += f"; change parent to {new_parent}"
+                yield message
+                if cfg.autofix and new_parent is not None:
+                    ce.parent = new_parent

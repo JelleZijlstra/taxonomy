@@ -2438,6 +2438,14 @@ class Name(BaseModel):
         candidates = [ce for ce in candidates if ce.name == self.original_name]
         if len(candidates) == 1:
             return candidates[0]
+        candidates = [ce for ce in candidates if not ce.rank.is_synonym]
+        if len(candidates) == 1:
+            return candidates[0]
+        if len(candidates) == 2 and {ce.rank for ce in candidates} == {
+            Rank.genus,
+            Rank.subgenus,
+        }:
+            return next(ce for ce in candidates if ce.rank is Rank.genus)
         return None
 
     def highest_taxon(self) -> Taxon:

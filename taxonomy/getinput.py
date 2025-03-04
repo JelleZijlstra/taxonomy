@@ -60,6 +60,10 @@ def blue(text: str) -> str:
     return _colored_text(text, BLUE)
 
 
+def italicize(text: str) -> str:
+    return f"{chr(27)}[3m{text}{chr(27)}[0m"
+
+
 def get_line(
     prompt: str,
     *,
