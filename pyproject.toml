@@ -162,6 +162,7 @@ ignore = [
   "E501",    # Line too long
   "N815",    # mixed case for TypedDict field
   "TRY301",  # pedantic
+  "PD901",   # not using pandas
 ]
 
 [tool.ruff.lint.per-file-ignores]

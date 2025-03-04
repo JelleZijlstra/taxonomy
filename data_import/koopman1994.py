@@ -1,7 +1,8 @@
+import json
 import re
 from collections import Counter
 from collections.abc import Container, Iterable, Iterator, Mapping
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import Literal, Self, assert_never, cast
 
 from data_import import lib
@@ -554,6 +555,134 @@ def validate_species_counts(names: Iterable[lib.CEDict]) -> Iterable[lib.CEDict]
     flush_up_to(Rank.order)
 
 
+IntOrRange = int | tuple[int, int]  # e.g. 1 or (1, 2) for 1-2
+
+
+def sum_int_or_ranges(numbers: Iterable[IntOrRange]) -> tuple[int, int]:
+    lower = 0
+    upper = 0
+    for number in numbers:
+        if isinstance(number, int):
+            lower += number
+            upper += number
+        else:
+            lower += number[0]
+            upper += number[1]
+    return (lower * 2, upper * 2)
+
+
+@dataclass
+class DentalFormula:
+    prefix: str | None
+    upper_i: IntOrRange
+    lower_i: IntOrRange
+    upper_c: IntOrRange
+    lower_c: IntOrRange
+    upper_p: IntOrRange
+    lower_p: IntOrRange
+    upper_m: IntOrRange
+    lower_m: IntOrRange
+    total: IntOrRange
+
+    def validate(self) -> str | None:
+        lower, upper = sum_int_or_ranges(
+            [
+                self.upper_i,
+                self.lower_i,
+                self.upper_c,
+                self.lower_c,
+                self.upper_p,
+                self.lower_p,
+                self.upper_m,
+                self.lower_m,
+            ]
+        )
+        if lower == upper:
+            if lower != self.total:
+                return f"!! [invalid dental formula] {lower} != {self.total}"
+        elif (lower, upper) != self.total:
+            return f"!! [invalid dental formula] {lower}-{upper} != {self.total}"
+        return None
+
+    def __str__(self) -> str:
+        def s(value: IntOrRange) -> str:
+            if isinstance(value, int):
+                return str(value)
+            return f"{value[0]}-{value[1]}"
+
+        prefix = f"{self.prefix} " if self.prefix is not None else ""
+        return (
+            f"{prefix}"
+            f"i {s(self.lower_i)}/{s(self.upper_i)}, "
+            f"c {s(self.lower_c)}/{s(self.upper_c)}, "
+            f"p {s(self.lower_p)}/{s(self.upper_p)}, "
+            f"m {s(self.lower_m)}/{s(self.upper_m)} "
+            f"x 2 = {s(self.total)}"
+        )
+
+    def to_json_string(self) -> str:
+        data = asdict(self)
+        if error := self.validate():
+            data["error"] = error
+        return json.dumps(data)
+
+    @classmethod
+    def parse(cls, text: str) -> Self:
+        text = (
+            text.replace("¡", "i")
+            .replace("—", "-")
+            .replace("–", "-")
+            .lstrip(",")
+            .strip()
+        )
+        g = r"[\diIl\-]+"
+        rgx = re.compile(
+            rf"""
+            (?P<prefix>[a-z ]*)
+            i\s*(?P<i>{g})\s*/\s*(?P<I>{g}),\s*
+            c\s*(?P<c>{g})\s*/\s*(?P<C>{g}),\s*
+            p\s*(?P<p>{g})\s*/\s*(?P<P>{g}),\s*
+            m\s*(?P<m>{g})\s*/\s*(?P<M>{g})\s*
+            x\s*2\s*=\s*(?P<total>{g})
+            """,
+            re.VERBOSE,
+        )
+        match = rgx.fullmatch(text)
+        assert match is not None, f"Failed to parse dental formula {text}"
+
+        def p(text: str) -> IntOrRange:
+            text = text.replace("l", "1").replace("i", "1").replace("I", "1")
+            if "-" in text:
+                lower, upper = text.split("-")
+                return (int(lower), int(upper))
+            return int(text)
+
+        prefix = match.group("prefix").strip()
+        return cls(
+            prefix=prefix if prefix else None,
+            upper_i=p(match.group("I")),
+            lower_i=p(match.group("i")),
+            upper_c=p(match.group("C")),
+            lower_c=p(match.group("c")),
+            upper_p=p(match.group("P")),
+            lower_p=p(match.group("p")),
+            upper_m=p(match.group("M")),
+            lower_m=p(match.group("m")),
+            total=p(match.group("total")),
+        )
+
+
+def validate_dental_formula(formula: str) -> tuple[str, DentalFormula | None]:
+    try:
+        df = DentalFormula.parse(formula)
+        if error := df.validate():
+            print(formula, error)
+        return str(df), df
+    except Exception:
+        print(formula)
+        return formula, None
+
+
 def extract_dental_formula(names: Iterable[lib.CEDict]) -> Iterable[lib.CEDict]:
     for name in names:
         if "extra_fields" in name and "description" in name["extra_fields"]:
@@ -562,10 +691,24 @@ def extract_dental_formula(names: Iterable[lib.CEDict]) -> Iterable[lib.CEDict]:
                 r"Den ?tal for ?mula(?: normally)?:?(.*=[ \d\-\\)]+)", description
             )
             if match is not None:
-                dental_formula = match.group(1)
-                name["extra_fields"]["dental_formula"] = dental_formula
-            elif "dental" in description.lower() or "formula" in description.lower():
-                print("!! [no dental formula]", description)
+                dental_formula = match.group(1).strip()
+                validated_df, df = validate_dental_formula(dental_formula)
+                name["extra_fields"]["dental_formula"] = validated_df
+                if df is not None:
+                    name["extra_fields"]["dental_formula_json"] = df.to_json_string()
+                    for key, value in asdict(df).items():
+                        if value is None:
+                            continue
+                        value_str = (
+                            "-".join(map(str, value))
+                            if isinstance(value, tuple)
+                            else str(value)
+                        )
+                        name["extra_fields"][f"dental_formula_{key}"] = value_str
+                    if error := df.validate():
+                        name["extra_fields"]["dental_formula_error"] = error
+            # elif "dental" in description.lower() or "formula" in description.lower():
+            #     print("!! [no dental formula]", description)
         yield name
 
 
@@ -594,7 +737,7 @@ def main() -> None:
             "N. i. insularis": "Lasiurus intermedius insularis",
         },
     )
-    names = lib.validate_ce_parents(names)
+    # names = lib.validate_ce_parents(names)
     names = validate_species_indexes(
         names, ignore={"M. lyra"}  # both Megaderma spp. are numbered 1
     )
@@ -603,9 +746,9 @@ def main() -> None:
     names = lib.flag_unrecognized_names(names)
     names = list(names)
     lib.create_csv("koopman1994.csv", names)
-    names = lib.add_classification_entries(names, dry_run=False)
+    # names = lib.add_classification_entries(names, dry_run=False)
     lib.print_ce_summary(names)
-    lib.format_ces(SOURCE)
+    # lib.format_ces(SOURCE)
 
 
 if __name__ == "__main__":
