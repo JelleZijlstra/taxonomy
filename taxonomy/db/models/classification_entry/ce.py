@@ -9,7 +9,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from types import MappingProxyType
 from typing import Any, NotRequired, Self
 
-from clirm import Field, Query
+from clirm import DoesNotExist, Field, Query
 
 from taxonomy import command_set, events, getinput
 from taxonomy.adt import ADT
@@ -313,17 +313,20 @@ class ClassificationEntry(BaseModel):
         return cls.create(**values)
 
     def __str__(self) -> str:
-        parts = [f"{self.name} ({self.rank.name})"]
-        if self.authority is not None:
-            parts.append(f" {self.authority}")
-            if self.year is not None:
-                parts.append(f", {self.year}")
-        parts.append(f" ({self.article}")
-        if self.page is not None:
-            parts.append(f": {self.page}")
-        parts.append(")")
-        parts.append(f" (#{self.id})")
-        return "".join(parts)
+        try:
+            parts = [f"{self.name} ({self.rank.name})"]
+            if self.authority is not None:
+                parts.append(f" {self.authority}")
+                if self.year is not None:
+                    parts.append(f", {self.year}")
+            parts.append(f" ({self.article}")
+            if self.page is not None:
+                parts.append(f": {self.page}")
+            parts.append(")")
+            parts.append(f" (#{self.id})")
+            return "".join(parts)
+        except DoesNotExist:
+            return f"<invalid CE #{self.id}>"
 
     def __repr__(self) -> str:
         base = str(self)

@@ -256,7 +256,11 @@ class BaseModel(Model):
                 continue
             field_obj = getattr(type(self), field)
             if issubclass(field_obj.type_object, Model):
-                target = value.get_redirect_target()
+                try:
+                    target = value.get_redirect_target()
+                except field_obj.type_object.DoesNotExist:
+                    yield f"{self}: references non-existent object {value} in field {field}"
+                    continue
                 if target is not None:
                     message = (
                         f"{self}: references redirected object {value} -> {target} in"
@@ -424,9 +428,13 @@ class BaseModel(Model):
         if is_invalid:
             target = self.get_redirect_target()
             if target is not None:
-                secondary_target = target.get_redirect_target()
-                if secondary_target is not None:
-                    yield f"{self}: double redirect to {target} -> {secondary_target}"
+                try:
+                    secondary_target = target.get_redirect_target()
+                except target.DoesNotExist:
+                    yield f"{self}: redirect target {target} is invalid"
+                else:
+                    if secondary_target is not None:
+                        yield f"{self}: double redirect to {target} -> {secondary_target}"
 
     def should_exempt_from_string_cleaning(self, field: str) -> bool:
         """If this returns True, we won't call clean_string() on the field in lint."""
