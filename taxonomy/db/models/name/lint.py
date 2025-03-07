@@ -3122,6 +3122,16 @@ def check_original_parent(nam: Name, cfg: LintConfig) -> Iterable[str]:
             else:
                 yield message
 
+    if (
+        target := nam.original_parent.get_tag_target(NameTag.UnavailableVersionOf)
+    ) is not None and nam.numeric_year() >= target.numeric_year():
+        message = f"original_parent is an unavailable version of {target}"
+        if cfg.autofix:
+            print(f"{nam}: {message}")
+            nam.original_parent = target
+        else:
+            yield message
+
     if nam.original_parent.nomenclature_status in (
         NomenclatureStatus.subsequent_usage,
         NomenclatureStatus.misidentification,
@@ -3150,7 +3160,7 @@ def check_original_parent(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 key=lambda n: n.numeric_year(),
             )
             if parent.numeric_year() < nam.numeric_year()
-            and parent.nomenclature_status.can_preoccupy()
+            and parent.resolve_variant().nomenclature_status.can_preoccupy()
             and parent.resolve_variant() != resolved
         ]
         if alternatives:
@@ -5123,42 +5133,47 @@ def _prefer_commented(
 
 @LINT.add("infer_tags_from_mapped_entries")
 def infer_tags_from_mapped_entries(nam: Name, cfg: LintConfig) -> Iterable[str]:
-    if nam.group is not Group.species:
-        return
+    # if nam.group is not Group.species:
+    #     return
     ces = list(nam.classification_entries)
     if not ces:
         return
     tag_name = nam.resolve_variant()
     for ce in ces:
-        location = ce.type_locality
-        if location and not any(
-            tag.source == ce.article
-            for tag in tag_name.get_tags(tag_name.type_tags, TypeTag.LocationDetail)
+        if nam.group is Group.species:
+            location = ce.type_locality
+            if location and not any(
+                tag.source == ce.article
+                for tag in tag_name.get_tags(tag_name.type_tags, TypeTag.LocationDetail)
+            ):
+                tag = TypeTag.LocationDetail(location, ce.article)
+                message = f"adding location detail from {ce} to {tag_name}: {tag}"
+                if cfg.autofix:
+                    print(f"{tag_name}: {message}")
+                    tag_name.add_type_tag(tag)
+                else:
+                    yield message
+            type_specimen = None
+            for tag in ce.tags:
+                if isinstance(tag, ClassificationEntryTag.TypeSpecimenData):
+                    type_specimen = tag.text
+                    break
+            if type_specimen is not None and not any(
+                tag.source == ce.article
+                for tag in tag_name.get_tags(tag_name.type_tags, TypeTag.SpecimenDetail)
+            ):
+                tag = TypeTag.SpecimenDetail(type_specimen, ce.article)
+                message = f"adding specimen detail from {ce} to {tag_name}: {tag}"
+                if cfg.autofix:
+                    print(f"{tag_name}: {message}")
+                    tag_name.add_type_tag(tag)
+                else:
+                    yield message
+        if (
+            tag_name.original_citation is None
+            and ce.citation is not None
+            and (nam.group is not Group.family or nam.year == ce.year)
         ):
-            tag = TypeTag.LocationDetail(location, ce.article)
-            message = f"adding location detail from {ce} to {tag_name}: {tag}"
-            if cfg.autofix:
-                print(f"{tag_name}: {message}")
-                tag_name.add_type_tag(tag)
-            else:
-                yield message
-        type_specimen = None
-        for tag in ce.tags:
-            if isinstance(tag, ClassificationEntryTag.TypeSpecimenData):
-                type_specimen = tag.text
-                break
-        if type_specimen is not None and not any(
-            tag.source == ce.article
-            for tag in tag_name.get_tags(tag_name.type_tags, TypeTag.SpecimenDetail)
-        ):
-            tag = TypeTag.SpecimenDetail(type_specimen, ce.article)
-            message = f"adding specimen detail from {ce} to {tag_name}: {tag}"
-            if cfg.autofix:
-                print(f"{tag_name}: {message}")
-                tag_name.add_type_tag(tag)
-            else:
-                yield message
-        if tag_name.original_citation is None and ce.citation is not None:
             tag = TypeTag.CitationDetail(ce.citation, ce.article)
             if tag not in tag_name.type_tags:
                 message = f"adding verbatim citation from {ce} to {nam}: {tag}"
@@ -5496,3 +5511,41 @@ def should_be_variant(nam: Name, cfg: LintConfig) -> Iterable[str]:
         candidates = [sibling for sibling in candidates if nam.type == sibling.type]
     if candidates:
         yield f"should be marked as a variant of one of {candidates}"
+
+
+@LINT.add("has_parent_species", disabled=True)
+def check_has_parent_species(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    # TODO: check other subspecific ranks
+    if nam.original_rank not in (Rank.subspecies, Rank.variety):
+        return
+    if nam.nomenclature_status is not NomenclatureStatus.available:
+        return
+    art = nam.original_citation
+    if art is None:
+        return
+    if (
+        nam.corrected_original_name is None
+        or nam.corrected_original_name.count(" ") != 2
+    ):
+        return
+    gen, sp, ssp = nam.corrected_original_name.split(" ")
+    species_name = f"{gen} {sp}"
+    # TODO: also check that parent species is older than this subspecies
+    existing = (
+        Name.select_valid()
+        .filter(
+            Name.corrected_original_name == species_name,
+            Name.original_rank == Rank.species,
+        )
+        .count()
+    )
+    if existing > 0:
+        return
+    yield f"missing parent species {species_name} for {nam}"
+    if cfg.manual_mode:
+        getinput.print_header(nam)
+        art.display_names()
+        print(f"{art} is the original citation of {nam}")
+        art.edit()
+        art.lint_object_list(art.new_names)
+        art.lint_object_list(art.classification_entries)

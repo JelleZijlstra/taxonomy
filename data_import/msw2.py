@@ -27,7 +27,7 @@ counts for the suborders sum to 2022, not 2021.)
 import enum
 import re
 from collections import Counter
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
 from taxonomy.db.constants import Rank
@@ -118,27 +118,6 @@ def classify_lines(pages: lib.PagesT) -> Iterable[Line]:
             yield line_obj
 
 
-def merge_adjacent[
-    T
-](
-    iterable: Iterable[T],
-    should_merge: Callable[[T, T], bool],
-    merge: Callable[[T, T], T],
-) -> Iterable[T]:
-    iterator = iter(iterable)
-    try:
-        previous = next(iterator)
-    except StopIteration:
-        return
-    for item in iterator:
-        if should_merge(previous, item):
-            previous = merge(previous, item)
-        else:
-            yield previous
-            previous = item
-    yield previous
-
-
 def merge_continuations(lines: Iterable[Line]) -> Iterable[Line]:
     def should_merge(previous: Line, item: Line) -> bool:
         return item.kind is LineKind.continuation
@@ -151,7 +130,7 @@ def merge_continuations(lines: Iterable[Line]) -> Iterable[Line]:
             previous.indentation,
         )
 
-    return merge_adjacent(lines, should_merge, merge)
+    return lib.merge_adjacent(lines, should_merge, merge)
 
 
 @dataclass

@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
-from collections.abc import Container, Iterable
+from collections import defaultdict
+from collections.abc import Callable, Container, Iterable, Sequence
+from dataclasses import dataclass
+from datetime import date
+from typing import Self
 
 from taxonomy.db import helpers, models
-from taxonomy.db.constants import Group, Rank, Status
+from taxonomy.db.constants import Group, NomenclatureStatus, Rank, Status
 from taxonomy.db.models.base import LintConfig
 from taxonomy.db.models.lint import IgnoreLint, Lint
 
@@ -163,7 +167,9 @@ def check_basal_tags(taxon: Taxon, cfg: LintConfig) -> Iterable[str]:
 
 
 @LINT.add("expected_base_name")
-def check_expected_base_name(taxon: Taxon, cfg: LintConfig) -> Iterable[str]:
+def check_conservative_expected_base_name(
+    taxon: Taxon, cfg: LintConfig
+) -> Iterable[str]:
     expected_base = get_conservative_expected_base_name(taxon)
     if expected_base is None:
         return
@@ -211,3 +217,213 @@ def get_conservative_expected_base_name(taxon: Taxon) -> models.Name | None:
             # If there are multiple names from the same year, assume we got the priority right
             return taxon.base_name
     return selected_pair[0]
+
+
+@dataclass
+class NameWithPriority:
+    name: models.Name
+    priority_date: date
+    takes_priority_of: list[models.Name]
+    nomen_oblitum: list[models.Name]
+    reversal_of_priority: list[models.Name]
+    selection_of_priority: list[models.Name]
+    selection_of_spelling: list[models.Name]
+
+    @classmethod
+    def from_name(cls, name: models.Name) -> Self:
+        takes_prio = list(name.get_tag_targets(models.name.NameTag.TakesPriorityOf))
+        nomen_oblitum = list(name.get_tag_targets(models.name.NameTag.NomenOblitum))
+        reversal_of_prio = list(
+            name.get_tag_targets(models.name.NameTag.ReversalOfPriority)
+        )
+        selection_of_prio = list(
+            name.get_tag_targets(models.name.NameTag.SelectionOfPriority)
+        )
+        selection_of_spelling = list(
+            name.get_tag_targets(models.name.NameTag.SelectionOfSpelling)
+        )
+        dates = [
+            name.get_date_object(),
+            *[takes_prio.get_date_object() for takes_prio in takes_prio],
+        ]
+        return cls(
+            name=name,
+            priority_date=min(dates),
+            takes_priority_of=takes_prio,
+            nomen_oblitum=nomen_oblitum,
+            reversal_of_priority=reversal_of_prio,
+            selection_of_priority=selection_of_prio,
+            selection_of_spelling=selection_of_spelling,
+        )
+
+    def dominates(self, other: NameWithPriority) -> bool:
+        if other is self:
+            return True
+
+        # Reversals where we win
+        if other.name in self.selection_of_priority:
+            return True
+        if other.name in self.selection_of_spelling:
+            return True
+        if self.name in other.nomen_oblitum:
+            return True
+        if other.name in self.reversal_of_priority:
+            return True
+        if other.name in self.takes_priority_of:
+            return True
+
+        # Reversals where we lose
+        if self.name in other.selection_of_priority:
+            return False
+        if self.name in other.selection_of_spelling:
+            return False
+        if other.name in self.nomen_oblitum:
+            return False
+        if self.name in other.reversal_of_priority:
+            return False
+        if self.name in other.takes_priority_of:
+            return False
+
+        # Normal priority
+        if self.priority_date < other.priority_date:
+            return True
+        if self.priority_date > other.priority_date:
+            return False
+        if self.name.original_rank is not None and other.name.original_rank is not None:
+            if (
+                self.name.original_rank.comparison_value
+                > other.name.original_rank.comparison_value
+            ):
+                return True
+        return False
+
+
+@dataclass
+class BaseNameReport:
+    possibilities: list[models.Name]
+    comments: Sequence[str] = ()
+
+
+def get_expected_base_name(txn: Taxon) -> models.Name:
+    report = get_expected_base_name_report(txn)
+    return report.possibilities[0]
+
+
+@LINT.add("full_expected_base_name")
+def check_full_expected_base_name(taxon: Taxon, cfg: LintConfig) -> Iterable[str]:
+    if taxon.base_name.group is Group.high:
+        return  # Ignore priority for unregulated names
+    report = get_expected_base_name_report(taxon)
+    if len(report.possibilities) == 1:
+        (expected_base_name,) = report.possibilities
+        if taxon.base_name != expected_base_name:
+            message = f"expected base name to be {expected_base_name}, but is {taxon.base_name}"
+            if report.comments:
+                message += f" ({', '.join(report.comments)})"
+            yield message
+        return
+    if taxon.base_name in report.possibilities:
+        if cfg.verbose:
+            message = f"base name {taxon.base_name} is correct, but ambiguous (possibilities: {', '.join(map(str, report.possibilities))})"
+            if report.comments:
+                message += f" ({', '.join(report.comments)})"
+            print(f"{taxon}: {message}")
+    else:
+        message = f"base name {taxon.base_name} is incorrect (expected one of: {', '.join(map(str, report.possibilities))})"
+        if report.comments:
+            message += f" ({', '.join(report.comments)})"
+        yield message
+
+
+def get_expected_base_name_report(txn: Taxon) -> BaseNameReport:
+    nams = list(get_possible_base_names(txn))
+    if len(nams) == 1:
+        return BaseNameReport(nams, ["Only one possible name"])
+    names_plus = [
+        NameWithPriority.from_name(nam) for nam in get_possible_base_names(txn)
+    ]
+    dates = sorted({name.priority_date for name in names_plus})
+    by_date = defaultdict(list)
+    for name in names_plus:
+        by_date[name.priority_date].append(name)
+
+    comments = []
+    possible_base_names: list[NameWithPriority] = []
+    for date_obj in dates:
+        names = by_date[date_obj]
+        if len(names) > 1:
+            dominant_names = [
+                name for name in names if all(name.dominates(other) for other in names)
+            ]
+            if dominant_names:
+                comments.append(
+                    f"Dominant name for {date_obj} (among {len(names)} total): {dominant_names}"
+                )
+        else:
+            dominant_names = names
+        possible_base_names.extend(dominant_names)
+        has_later_dominators = any(
+            later_name.dominates(our_name)
+            for later_name in names_plus
+            if later_name.priority_date > date_obj
+            for our_name in dominant_names
+        )
+        if not has_later_dominators:
+            break
+
+    if len(possible_base_names) == 1:
+        return BaseNameReport([name.name for name in possible_base_names], comments)
+    dominant_names = [
+        name
+        for name in possible_base_names
+        if all(name.dominates(other) for other in possible_base_names)
+    ]
+    comments.append(
+        f"Dominant name (among {len(possible_base_names)} total final names): {dominant_names}"
+    )
+    if len(dominant_names) == 1:
+        return BaseNameReport([dominant_names[0].name], comments)
+    elif dominant_names:
+        return BaseNameReport([name.name for name in dominant_names], comments)
+    else:
+        return BaseNameReport([name.name for name in possible_base_names], comments)
+
+
+LIMITATIONS: list[Callable[[models.Name], bool]] = [
+    lambda nam: nam.can_be_valid_base_name() and nam.year is not None,  # type: ignore[has-type]
+    lambda nam: (
+        nam.can_be_valid_base_name()
+        or nam.nomenclature_status is NomenclatureStatus.preoccupied  # type: ignore[has-type]
+    )
+    and nam.year is not None,  # type: ignore[has-type]
+    lambda nam: nam.year is not None,  # type: ignore[has-type]
+]
+
+
+def get_possible_base_names(txn: Taxon) -> set[models.Name]:
+    group = txn.base_name.group
+    names = set(_get_possible_base_names(txn, group=group))
+    for predicate in LIMITATIONS:
+        filtered_names = {nam for nam in names if predicate(nam)}
+        if filtered_names:
+            return filtered_names
+    return names
+
+
+def _get_possible_base_names(txn: Taxon, *, group: Group) -> Iterable[models.Name]:
+    my_group = txn.base_name.group
+    match group:
+        case Group.family:
+            if my_group in {Group.genus, Group.species}:
+                return
+        case Group.genus:
+            if my_group is Group.species:
+                return
+
+    for nam in txn.get_names():
+        if nam.group is group:
+            yield nam
+    if group is Group.high:
+        return
+    for child in txn.get_children():
+        yield from _get_possible_base_names(child, group=group)

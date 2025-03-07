@@ -929,6 +929,13 @@ class Name(BaseModel):
                     return tag.name
         return None
 
+    def get_tag_targets(self, tag_cls: Tag._Constructor) -> Iterable[Name]:  # type: ignore[name-defined]
+        tags = self.tags
+        if tags:
+            for tag in tags:
+                if isinstance(tag, tag_cls) and hasattr(tag, "name"):
+                    yield tag.name
+
     def add_tag(self, tag: NameTag) -> None:
         tags = self.tags
         if tags is None:
@@ -2988,6 +2995,9 @@ class TypeTag(adt.ADT):
     VerbatimName(text=str, tag=58)  # type: ignore[name-defined]
 
     IgnorePotentialCitationFrom(article=Article, comment=NotRequired[str], tag=59)  # type: ignore[name-defined]
+
+    # Description of the taxon
+    DescriptionDetail(text=str, source=Article, tag=60)  # type: ignore[name-defined]
 
 
 SOURCE_TAGS = (

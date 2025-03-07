@@ -616,7 +616,7 @@ def split_name_authority(
         if match:
             return match.groupdict()
     if not quiet:
-        print(name_authority)
+        print("!! [split_name_authority]", name_authority)
     return {}
 
 
@@ -1735,6 +1735,8 @@ class CEDict(TypedDict):
     age_class: NotRequired[AgeClass | None]
     corrected_name: NotRequired[str]
     extra_fields: NotRequired[dict[str, str]]
+    scratch_space: NotRequired[dict[str, str]]
+    tags: NotRequired[list[ClassificationEntryTag]]
 
 
 def create_csv(filename: str, ces: Iterable[CEDict]) -> None:
@@ -1777,7 +1779,7 @@ def validate_ce_parents(
         full_name = name.get("corrected_name", name["name"])
         key = (full_name, name["rank"])
         if key in name_to_row:
-            if name["rank"] is Rank.synonym:
+            if name["rank"].is_synonym:
                 yield name
                 continue
             if drop_duplicates:
@@ -1988,13 +1990,43 @@ def count_by_rank(names: Iterable[CEDict], rank: Rank) -> Iterable[CEDict]:
         print(rank.name, current_order, count)
 
 
-def get_existing(ce_dict: CEDict) -> ClassificationEntry | None:
+def get_existing(
+    ce_dict: CEDict, *, strict: bool = False
+) -> ClassificationEntry | None:
     taxon_name = ce_dict["name"]
-    existing = list(
-        ClassificationEntry.select_valid().filter(
-            name=taxon_name, rank=ce_dict["rank"], article=ce_dict["article"]
+    if ce_dict["rank"].is_synonym:
+        existing = [
+            ce
+            for ce in ClassificationEntry.select_valid().filter(
+                name=taxon_name, article=ce_dict["article"]
+            )
+            if ce.rank.is_synonym
+        ]
+
+    else:
+        existing = list(
+            ClassificationEntry.select_valid().filter(
+                name=taxon_name, rank=ce_dict["rank"], article=ce_dict["article"]
+            )
         )
-    )
+    if strict:
+        if "authority" in ce_dict:
+            authority = helpers.clean_string(ce_dict["authority"])
+            existing = [ce for ce in existing if ce.authority == authority]
+        if "year" in ce_dict:
+            year = ce_dict["year"]
+            existing = [ce for ce in existing if ce.year == year]
+        if "page" in ce_dict:
+            page = ce_dict["page"]
+            existing = [ce for ce in existing if ce.page == page]
+        if "parent" in ce_dict:
+            parent_name = ce_dict["parent"]
+            if parent_name:
+                existing = [
+                    ce
+                    for ce in existing
+                    if ce.parent is not None and ce.parent.name == parent_name
+                ]
     if "corrected_name" in ce_dict:
         corrected_name = ce_dict["corrected_name"]
         existing = [ce for ce in existing if ce.get_corrected_name() == corrected_name]
@@ -2040,7 +2072,10 @@ def add_classification_entries(
     dry_run: bool = True,
     max_count: int | None = None,
     verbose: bool = False,
+    strict: bool = False,
+    delete_uncovered: bool = False,
 ) -> Iterable[CEDict]:
+    covered_ces = set()
     for i, name in enumerate(names):
         if max_count is not None and i >= max_count:
             break
@@ -2061,7 +2096,7 @@ def add_classification_entries(
                 ensure_ascii=False,
                 separators=(",", ":"),
             )
-        tags = []
+        tags = list(name.get("tags", []))
         if name.get("type_specimen"):
             tags.append(ClassificationEntryTag.TypeSpecimenData(name["type_specimen"]))
         if name.get("comment"):
@@ -2083,9 +2118,10 @@ def add_classification_entries(
         for key, value in name.get("extra_fields", {}).items():
             value = helpers.interactive_clean_string(value, clean_whitespace=True)
             tags.append(ClassificationEntryTag.StructuredData(key, value))
-        existing = get_existing(name)
+        existing = get_existing(name, strict=strict)
         parent = get_parent(name, dry_run=dry_run)
         if existing is not None:
+            covered_ces.add(existing.id)
             if verbose:
                 print(f"already exists: {existing}")
             if page and not existing.page:
@@ -2109,7 +2145,7 @@ def add_classification_entries(
                 if not dry_run:
                     existing.citation = citation
             if parent != existing.parent:
-                print(f"{existing}: changing parent to {parent}")
+                print(f"{existing}: changing parent to {parent} from {existing.parent}")
                 if not dry_run:
                     existing.parent = parent
             for tag in tags:
@@ -2120,7 +2156,13 @@ def add_classification_entries(
             extra_existing_structured = [
                 tag
                 for tag in existing.tags
-                if isinstance(tag, ClassificationEntryTag.StructuredData)
+                if isinstance(
+                    tag,
+                    (
+                        ClassificationEntryTag.StructuredData,
+                        ClassificationEntryTag.OriginalPageDescribed,
+                    ),
+                )
                 and tag not in tags
             ]
             if extra_existing_structured:
@@ -2158,7 +2200,17 @@ def add_classification_entries(
             if tags:
                 new_ce.tags = tags  # type: ignore[assignment]
             print(f"name {i}:", new_ce)
+            covered_ces.add(new_ce.id)
         yield name
+
+    all_ces = ClassificationEntry.select_valid().filter(article=art)
+    for ce in all_ces:
+        if ce.id not in covered_ces:
+            print(f"Uncovered: {ce}")
+            if dry_run or not delete_uncovered:
+                print("Delete:", ce)
+            else:
+                ce.delete_instance()
 
 
 def flag_unrecognized_names(names: Iterable[CEDict]) -> Iterable[CEDict]:
@@ -2180,3 +2232,24 @@ def print_ce_summary(names: Iterable[CEDict]) -> None:
     print_field_counts(dict(n) for n in names)
     for rank, count in Counter(n["rank"] for n in names).items():
         print(f"{count} {rank.name}")
+
+
+def merge_adjacent[
+    T
+](
+    iterable: Iterable[T],
+    should_merge: Callable[[T, T], bool],
+    merge: Callable[[T, T], T],
+) -> Iterable[T]:
+    iterator = iter(iterable)
+    try:
+        previous = next(iterator)
+    except StopIteration:
+        return
+    for item in iterator:
+        if should_merge(previous, item):
+            previous = merge(previous, item)
+        else:
+            yield previous
+            previous = item
+    yield previous
