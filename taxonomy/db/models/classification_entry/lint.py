@@ -81,9 +81,24 @@ def check_tags(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
         and ce.get_corrected_name_without_tags() == ce.get_corrected_name()
     ):
         yield "unnecessary CorrectedName tag"
+    if counts[ClassificationEntryTag.ReferencedUsage] > 1:
+        yield "multiple ReferencedUsage tags"
     new_tags = []
     for tag in ce.tags:
-        if isinstance(tag, ClassificationEntryTag.PageLink):
+        if isinstance(tag, ClassificationEntryTag.ReferencedUsage):
+            if (
+                ce.mapped_name is not None
+                and tag.ce == ce.mapped_name.get_mapped_classification_entry()
+            ):
+                yield "removing redundant ReferencedUsage tag"
+            else:
+                if ce.mapped_name is not None:
+                    referenced = tag.ce.mapped_name.resolve_name()
+                    mapped = ce.mapped_name.resolve_name()
+                    if referenced != mapped:
+                        yield f"ReferencedUsage tag {tag} (resolving to {referenced}) does not match mapped_name {mapped}"
+                new_tags.append(tag)
+        elif isinstance(tag, ClassificationEntryTag.PageLink):
             new_url = yield from models.name.lint.check_page_link(
                 tag_url=tag.url, tag_page=tag.page, page_described=ce.page
             )
@@ -1212,3 +1227,63 @@ def check_parent_rank(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]
                 yield message
                 if cfg.autofix and new_parent is not None:
                     ce.parent = new_parent
+
+
+def find_referenced_usage(ce: ClassificationEntry) -> ClassificationEntry | None:
+    if ce.mapped_name is None:
+        return None
+    possibilities = []
+    resolved_mapped = ce.mapped_name.resolve_name()
+    for nam in ce.mapped_name.taxon.get_names():
+        if nam.resolve_name() != resolved_mapped:
+            continue
+        for mapped_ce in nam.get_classification_entries():
+            author, year = mapped_ce.article.taxonomic_authority()
+            if ce.year == year and ce.authority == author:
+                possibilities.append(mapped_ce)
+    if len(possibilities) == 1:
+        return possibilities[0]
+    return None
+
+
+@LINT.add("needs_referenced_usage")
+def check_needs_referenced_usage(
+    ce: ClassificationEntry, cfg: LintConfig
+) -> Iterable[str]:
+    for tag in ce.get_tags(ce.tags, ClassificationEntryTag.ReferencedUsage):
+        if ce.year is not None and ce.year.isnumeric():
+            my_year = int(ce.year)
+            if abs(my_year - tag.ce.article.numeric_year()) > 1:
+                yield f"year {ce.year} does not match {tag.ce.article.year} for referenced usage {tag.ce}"
+        break
+    else:
+        if ce.mapped_name is None:
+            return
+        if _should_ignore_referenced_usage_check(ce):
+            return
+        possible_names = {ce.mapped_name, ce.mapped_name.resolve_variant()}
+        if ce.year is not None and ce.year.isnumeric():
+            my_year = int(ce.year)
+            if not any(
+                abs(my_year - nam.numeric_year()) <= 2 for nam in possible_names
+            ):
+                referenced_usage = find_referenced_usage(ce)
+                message = f"year {ce.year} does not match mapped names {possible_names}"
+                if referenced_usage is not None:
+                    message += f" (maybe {referenced_usage}?)"
+                yield message
+                if referenced_usage is not None and cfg.autofix:
+                    ce.add_tag(
+                        ClassificationEntryTag.ReferencedUsage(referenced_usage, "")
+                    )
+
+
+def _should_ignore_referenced_usage_check(ce: ClassificationEntry) -> bool:
+    # TODO: make this return False more often
+    if LINT.is_ignoring_lint(ce, "needs_referenced_usage"):
+        return False
+    if ce.get_group() is Group.family:
+        return True
+    if ce.id < 200_000:
+        return True
+    return False

@@ -309,7 +309,7 @@ def get_expected_base_name(txn: Taxon) -> models.Name:
     return report.possibilities[0]
 
 
-@LINT.add("full_expected_base_name")
+@LINT.add("full_expected_base_name", disabled=True)
 def check_full_expected_base_name(taxon: Taxon, cfg: LintConfig) -> Iterable[str]:
     if taxon.base_name.group is Group.high:
         return  # Ignore priority for unregulated names
@@ -359,14 +359,13 @@ def get_expected_base_name_report(txn: Taxon) -> BaseNameReport:
                 comments.append(
                     f"Dominant name for {date_obj} (among {len(names)} total): {dominant_names}"
                 )
-        else:
-            dominant_names = names
-        possible_base_names.extend(dominant_names)
+                names = dominant_names
+        possible_base_names.extend(names)
         has_later_dominators = any(
             later_name.dominates(our_name)
             for later_name in names_plus
             if later_name.priority_date > date_obj
-            for our_name in dominant_names
+            for our_name in names
         )
         if not has_later_dominators:
             break

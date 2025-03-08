@@ -25,28 +25,6 @@ from taxonomy.db.models.article import Article
 from taxonomy.db.models.base import ADTField, BaseModel, LintConfig, TextOrNullField
 
 
-class ClassificationEntryTag(ADT):
-    CommentFromSource(text=str, tag=1)  # type: ignore[name-defined]
-    TextualRank(text=str, tag=2)  # type: ignore[name-defined]
-    CorrectedName(text=str, tag=3)  # type: ignore[name-defined]
-    PageLink(url=str, page=str, tag=4)  # type: ignore[name-defined]
-    TypeSpecimenData(text=str, tag=5)  # type: ignore[name-defined]
-    OriginalCombination(text=str, tag=6)  # type: ignore[name-defined]
-    OriginalPageDescribed(text=str, tag=7)  # type: ignore[name-defined]
-    IgnoreLintClassificationEntry(label=str, comment=NotRequired[str], tag=8)  # type: ignore[name-defined]
-    AgeClassCE(age=AgeClass, tag=9)  # type: ignore[name-defined]
-    CommonName(name=str, language=SourceLanguage, tag=10)  # type: ignore[name-defined]
-    # Indicates we should not look for a mapped name
-    Informal(tag=11)  # type: ignore[name-defined]
-    CommentFromDatabase(text=str, tag=12)  # type: ignore[name-defined]
-    # Should not be included in species counts
-    TreatedAsDubious(tag=13)  # type: ignore[name-defined]
-    CECondition(tag=14, status=NomenclatureStatus, comment=NotRequired[str])  # type: ignore[name-defined]
-
-    # Structured data from the source
-    StructuredData(label=str, text=str, tag=15)  # type: ignore[name-defined]
-
-
 class ClassificationEntryStatus(enum.Enum):
     valid = 0
     removed = 6
@@ -74,7 +52,7 @@ class ClassificationEntry(BaseModel):
     citation = Field[str | None]()
     type_locality = Field[str | None]()
     raw_data = TextOrNullField()
-    tags = ADTField[ClassificationEntryTag](is_ordered=False)
+    tags = ADTField["ClassificationEntryTag"](is_ordered=False)
 
     @classmethod
     def add_validity_check(cls, query: Any) -> Any:
@@ -638,6 +616,30 @@ class ClassificationEntry(BaseModel):
                 manual_mode=manual_mode,
             )
         return result
+
+
+class ClassificationEntryTag(ADT):
+    CommentFromSource(text=str, tag=1)  # type: ignore[name-defined]
+    TextualRank(text=str, tag=2)  # type: ignore[name-defined]
+    CorrectedName(text=str, tag=3)  # type: ignore[name-defined]
+    PageLink(url=str, page=str, tag=4)  # type: ignore[name-defined]
+    TypeSpecimenData(text=str, tag=5)  # type: ignore[name-defined]
+    OriginalCombination(text=str, tag=6)  # type: ignore[name-defined]
+    OriginalPageDescribed(text=str, tag=7)  # type: ignore[name-defined]
+    IgnoreLintClassificationEntry(label=str, comment=NotRequired[str], tag=8)  # type: ignore[name-defined]
+    AgeClassCE(age=AgeClass, tag=9)  # type: ignore[name-defined]
+    CommonName(name=str, language=SourceLanguage, tag=10)  # type: ignore[name-defined]
+    # Indicates we should not look for a mapped name
+    Informal(tag=11)  # type: ignore[name-defined]
+    CommentFromDatabase(text=str, tag=12)  # type: ignore[name-defined]
+    # Should not be included in species counts
+    TreatedAsDubious(tag=13)  # type: ignore[name-defined]
+    CECondition(tag=14, status=NomenclatureStatus, comment=NotRequired[str])  # type: ignore[name-defined]
+
+    # Structured data from the source
+    StructuredData(label=str, text=str, tag=15)  # type: ignore[name-defined]
+
+    ReferencedUsage(ce=ClassificationEntry, comment=NotRequired[str], tag=16)  # type: ignore[name-defined]
 
 
 _NAME_CHARS = r"[a-zæüöïœ]+"
