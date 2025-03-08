@@ -124,10 +124,8 @@ class Lint(Generic[ModelT]):
 
         return decorator
 
-    def run(
-        self, obj: ModelT, cfg: LintConfig, *, include_disabled: bool = False
-    ) -> Iterable[str]:
-        if include_disabled:
+    def run(self, obj: ModelT, cfg: LintConfig) -> Iterable[str]:
+        if cfg.enable_all:
             linters = [*self.linters, *self.disabled_linters]
         else:
             linters = self.linters

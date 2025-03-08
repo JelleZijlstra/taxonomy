@@ -1259,7 +1259,7 @@ def check_needs_referenced_usage(
     else:
         if ce.mapped_name is None:
             return
-        if _should_ignore_referenced_usage_check(ce):
+        if _should_ignore_referenced_usage_check(ce, cfg):
             return
         possible_names = {ce.mapped_name, ce.mapped_name.resolve_variant()}
         if ce.year is not None and ce.year.isnumeric():
@@ -1278,7 +1278,11 @@ def check_needs_referenced_usage(
                     )
 
 
-def _should_ignore_referenced_usage_check(ce: ClassificationEntry) -> bool:
+def _should_ignore_referenced_usage_check(
+    ce: ClassificationEntry, cfg: LintConfig
+) -> bool:
+    if cfg.enable_all:
+        return False
     # TODO: make this return False more often
     if LINT.is_ignoring_lint(ce, "needs_referenced_usage"):
         return False

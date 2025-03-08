@@ -81,6 +81,7 @@ class LintConfig:
     interactive: bool = True
     verbose: bool = False
     manual_mode: bool = False
+    enable_all: bool = False
 
 
 ADTT = TypeVar("ADTT", bound=adt.ADT)
@@ -136,6 +137,7 @@ class BaseModel(Model):
         interactive: bool = False,
         verbose: bool = False,
         manual_mode: bool = False,
+        enable_all: bool = False,
         query: Iterable[ModelT] | None = None,
     ) -> list[tuple[ModelT, list[str]]]:
         cfg = LintConfig(
@@ -143,6 +145,7 @@ class BaseModel(Model):
             interactive=interactive,
             verbose=verbose,
             manual_mode=manual_mode,
+            enable_all=enable_all,
         )
         if query is None:
             if linter is None:
