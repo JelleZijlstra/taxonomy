@@ -139,6 +139,10 @@ class CitationGroup(BaseModel):
     def lint(self, cfg: LintConfig) -> Iterable[str]:
         yield from models.citation_group.lint.LINT.run(self, cfg)
 
+    @classmethod
+    def clear_lint_caches(cls) -> None:
+        models.citation_group.lint.LINT.clear_caches()
+
     def has_tag(self, tag: adt.ADT) -> bool:
         if self.tags is None:
             return False
@@ -402,6 +406,7 @@ class CitationGroup(BaseModel):
             other.region = self.region
         self.target = other
         self.type = constants.ArticleType.REDIRECT
+        self.status = CitationGroupStatus.redirect
 
     def add_alias(self) -> "CitationGroup | None":
         alias_name = self.getter("name").get_one_key("alias> ")

@@ -908,6 +908,8 @@ class Article(BaseModel):
             return True
         if self.has_tag(ArticleTag.InPress):
             return True
+        if self.has_tag(ArticleTag.PlacedOnIndex):
+            return True
         if self.type in (ArticleType.THESIS, ArticleType.WEB):
             return True
         return False
@@ -1133,6 +1135,10 @@ class Article(BaseModel):
 
     def lint(self, cfg: LintConfig) -> Iterable[str]:
         yield from models.article.lint.LINT.run(self, cfg)
+
+    @classmethod
+    def clear_lint_caches(cls) -> None:
+        models.article.lint.LINT.clear_caches()
 
     def cite_interactive(self) -> None:
         citetype = getinput.get_with_completion(
@@ -1677,6 +1683,9 @@ class ArticleTag(adt.ADT):
     InconsistentlyBinominal(comment=NotRequired[str], tag=27)  # type: ignore[name-defined]
 
     RawPageRegex(regex=str, comment=NotRequired[str], tag=28)  # type: ignore[name-defined]
+
+    # Set this if a work has a known alternative date. Interacts with CE linting.
+    KnownAlternativeYear(year=str, comment=NotRequired[str], tag=29)  # type: ignore[name-defined]
 
 
 @lru_cache

@@ -676,14 +676,21 @@ def get_adt_member(
         elif typ is bool:
             args[arg_name] = yes_no(f"{arg_name}> ", default=existing_value)
         elif typ in adt.BASIC_TYPES:
-            args[arg_name] = typ(
-                get_line(
+            while True:
+                value = get_line(
                     f"{arg_name}> ",
                     history_key=(member_cls, arg_name),
                     default="" if existing_value is None else str(existing_value),
                     allow_none=not is_required,
                 )
-            )
+                try:
+                    converted_value = typ(value)
+                except Exception:
+                    print(f"Invalid value for {arg_name}: {value!r}")
+                    continue
+                else:
+                    args[arg_name] = converted_value
+                    break
         else:
             assert False, f"do not know how to fill {arg_name} of type {typ}"
     return member_cls(**args)

@@ -58,9 +58,19 @@ class Lint(Generic[ModelT]):
 
     linters: list[LintWrapper[ModelT]] = field(default_factory=list)
     disabled_linters: list[LintWrapper[ModelT]] = field(default_factory=list)
+    cache_clearers: list[Callable[[], None]] = field(default_factory=list)
+
+    def clear_caches(self) -> None:
+        for clear_cache in self.cache_clearers:
+            clear_cache()
 
     def add(
-        self, label: str, *, disabled: bool = False, requires_network: bool = False
+        self,
+        label: str,
+        *,
+        disabled: bool = False,
+        requires_network: bool = False,
+        clear_caches: Callable[[], None] | None = None,
     ) -> Callable[[Linter[ModelT]], LintWrapper[ModelT]]:
 
         def decorator(linter: Linter[ModelT]) -> LintWrapper[ModelT]:
@@ -69,6 +79,8 @@ class Lint(Generic[ModelT]):
                 self.disabled_linters.append(lint_wrapper)
             else:
                 self.linters.append(lint_wrapper)
+            if clear_caches is not None:
+                self.cache_clearers.append(clear_caches)
             return lint_wrapper
 
         return decorator
@@ -117,10 +129,14 @@ class Lint(Generic[ModelT]):
                         ]
                         if matching_others:
                             yield message
-                            if fixer is not None:
+                            if fixer is not None and not self.is_ignoring_lint(
+                                obj, label
+                            ):
                                 fixer(my_key, [obj, *matching_others], cfg)
 
-            return self.add(label, disabled=disabled)(linter)
+            return self.add(
+                label, disabled=disabled, clear_caches=get_object_to_issues.cache_clear
+            )(linter)
 
         return decorator
 

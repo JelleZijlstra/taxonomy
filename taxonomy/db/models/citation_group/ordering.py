@@ -42,6 +42,10 @@ def clear_cache_for_cg(cg: CitationGroup) -> None:
     _order_cache.pop(cg, None)
 
 
+def clear_all_caches() -> None:
+    _order_cache.clear()
+
+
 def get_ordered_articles(cg: CitationGroup) -> list[list[models.Article]]:
     """Order articles by assumed publication date.
 

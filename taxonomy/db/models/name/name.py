@@ -2126,6 +2126,10 @@ class Name(BaseModel):
         if not self.check_authors():
             yield f"{self}: discrepancy in authors"
 
+    @classmethod
+    def clear_lint_caches(cls) -> None:
+        models.name.lint.LINT.clear_caches()
+
     def should_exempt_from_string_cleaning(self, field: str) -> bool:
         return field == "data"
 

@@ -174,6 +174,10 @@ class ClassificationEntry(BaseModel):
     def lint(self, cfg: LintConfig) -> Iterable[str]:
         yield from models.classification_entry.lint.LINT.run(self, cfg)
 
+    @classmethod
+    def clear_lint_caches(cls) -> None:
+        models.classification_entry.lint.LINT.clear_caches()
+
     def has_tag(self, tag_cls: ClassificationEntry._Constructors) -> bool:  # type: ignore[name-defined]
         tag_id = tag_cls._tag
         return any(tag[0] == tag_id for tag in self.get_raw_tags_field("tags"))

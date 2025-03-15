@@ -129,6 +129,10 @@ class BaseModel(Model):
         return result
 
     @classmethod
+    def clear_lint_caches(cls) -> None:
+        pass
+
+    @classmethod
     def lint_all(
         cls: type[ModelT],
         linter: Linter[ModelT] | None = None,
@@ -140,6 +144,7 @@ class BaseModel(Model):
         enable_all: bool = False,
         query: Iterable[ModelT] | None = None,
     ) -> list[tuple[ModelT, list[str]]]:
+        cls.clear_lint_caches()
         cfg = LintConfig(
             autofix=autofix,
             interactive=interactive,
@@ -162,6 +167,7 @@ class BaseModel(Model):
                 for message in messages:
                     print(message)
                 bad.append((obj, messages))
+        cls.clear_lint_caches()
         return bad
 
     def format(
@@ -320,20 +326,21 @@ class BaseModel(Model):
                                         f" {cleaned!r}"
                                     )
                                     overrides[attr_name] = cleaned
-                                if message := helpers.is_string_clean(cleaned):
-                                    yield f"{self}: in tags: {message} in {cleaned!r}"
-                                if not is_invalid and not cleaned.isprintable():
-                                    message = (
-                                        f"{self}: contains unprintable characters:"
-                                        f" {cleaned!r}"
-                                    )
-                                    if cfg.interactive:
-                                        self.display()
-                                        print(message)
-                                        overrides[attr_name] = self._edit_by_word(
-                                            cleaned
+                                if not is_invalid:
+                                    if message := helpers.is_string_clean(cleaned):
+                                        yield f"{self}: in tags: {message} in {cleaned!r}"
+                                    if not cleaned.isprintable():
+                                        message = (
+                                            f"{self}: contains unprintable characters:"
+                                            f" {cleaned!r}"
                                         )
-                                    yield message
+                                        if cfg.interactive:
+                                            self.display()
+                                            print(message)
+                                            overrides[attr_name] = self._edit_by_word(
+                                                cleaned
+                                            )
+                                        yield message
                         if overrides:
                             made_change = True
                             new_tags.append(adt.replace(tag, **overrides))
@@ -367,13 +374,14 @@ class BaseModel(Model):
                                         f"{self}: in tags: clean {attr_value!r} ->"
                                         f" {cleaned!r}"
                                     )
-                                if message := helpers.is_string_clean(cleaned):
-                                    yield f"{self}: in tags: {message} in {cleaned!r}"
-                                if not is_invalid and not cleaned.isprintable():
-                                    yield (
-                                        f"{self}: contains unprintable characters:"
-                                        f" {cleaned!r}"
-                                    )
+                                if not is_invalid:
+                                    if message := helpers.is_string_clean(cleaned):
+                                        yield f"{self}: in tags: {message} in {cleaned!r}"
+                                    if not cleaned.isprintable():
+                                        yield (
+                                            f"{self}: contains unprintable characters:"
+                                            f" {cleaned!r}"
+                                        )
                     if not field_obj.is_ordered:
                         if list(value) != sorted(set(value)):
                             yield (
@@ -410,24 +418,25 @@ class BaseModel(Model):
                                 raise
                     else:
                         yield message
-                if message := helpers.is_string_clean(cleaned):
-                    yield f"{self}: field {field}: {message} in {cleaned!r}"
-                if not is_invalid and not cleaned.isprintable():
-                    if allow_newlines and cleaned.replace("\n", "").isprintable():
-                        continue
-                    message = (
-                        f"{self}: field {field}: contains unprintable characters:"
-                        f" {cleaned!r}"
-                    )
-                    if cfg.interactive:
-                        self.display()
-                        print(message)
-                        if allow_newlines:
-                            self.fill_field(field)
-                        else:
-                            new_value = self._edit_by_word(cleaned)
-                            setattr(self, field, new_value)
-                    yield message
+                if not is_invalid:
+                    if message := helpers.is_string_clean(cleaned):
+                        yield f"{self}: field {field}: {message} in {cleaned!r}"
+                    if not cleaned.isprintable():
+                        if allow_newlines and cleaned.replace("\n", "").isprintable():
+                            continue
+                        message = (
+                            f"{self}: field {field}: contains unprintable characters:"
+                            f" {cleaned!r}"
+                        )
+                        if cfg.interactive:
+                            self.display()
+                            print(message)
+                            if allow_newlines:
+                                self.fill_field(field)
+                            else:
+                                new_value = self._edit_by_word(cleaned)
+                                setattr(self, field, new_value)
+                        yield message
         if is_invalid:
             target = self.get_redirect_target()
             if target is not None:
@@ -569,7 +578,7 @@ class BaseModel(Model):
                 flush=True,
             )
             for i, obj in enumerate(cls.select_valid()):
-                if i > 0 and i % 100 == 0:
+                if i > 0 and i % 1000 == 0:
                     print(f"{i} done", flush=True)
                 for field in cls.derived_fields:
                     if field.compute is not None:
@@ -1310,7 +1319,6 @@ class BaseModel(Model):
 class ADTField(Field[Sequence[ADTT]]):
     _adt_type: type[adt.ADT]
     is_ordered: bool
-    _adt_cache: dict[str, Any]
 
     def __init__(self, name: str | None = None, *, is_ordered: bool = True) -> None:
         super().__init__(name)
@@ -1323,10 +1331,6 @@ class ADTField(Field[Sequence[ADTT]]):
 
     def deserialize(self, raw_value: Any) -> Sequence[ADTT]:
         if isinstance(raw_value, str) and raw_value:
-            if not hasattr(self, "_adt_cache"):
-                self._adt_cache = {}
-            if raw_value in self._adt_cache:
-                return self._adt_cache[raw_value]
             tags_list = []
             for val in json.loads(raw_value):
                 try:
@@ -1334,7 +1338,6 @@ class ADTField(Field[Sequence[ADTT]]):
                 except Exception:
                     print("Drop value", val)
             tags = tuple(tags_list)
-            self._adt_cache[raw_value] = tags
             return tags
         else:
             return ()

@@ -1217,6 +1217,8 @@ def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                     new_tag = NameTag.NameCombinationOf(tag.name, tag.comment)
                 if nam.taxon != tag.name.taxon:
                     yield f"{nam} is not assigned to the same name as {tag.name} and should be marked as a misidentification"
+                if nam.root_name != tag.name.root_name:
+                    yield f"{nam} is a subsequent usage of {tag.name} but has a different root name"
             elif isinstance(tag, NameTag.NameCombinationOf):
                 if (
                     nam.species_name_complex != tag.name.species_name_complex
@@ -1863,7 +1865,10 @@ def _check_species_name_gender(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 nam, corrected_original_name, cfg, "invariant adjective"
             )
         return
-    if not nam.nomenclature_status.can_preoccupy():
+    if not nam.nomenclature_status.can_preoccupy() and nam.nomenclature_status not in (
+        NomenclatureStatus.subsequent_usage,
+        NomenclatureStatus.name_combination,
+    ):
         if nam.corrected_original_name is None:
             return
         expected_form = nam.corrected_original_name.split()[-1]
@@ -2778,7 +2783,12 @@ def get_possible_homonyms(
     return genera, name_dict.items()
 
 
-@LINT.add("species_secondary_homonym")
+def _clear_homonym_caches() -> None:
+    _get_primary_names_of_genus.cache_clear()
+    _get_secondary_names_of_genus.cache_clear()
+
+
+@LINT.add("species_secondary_homonym", clear_caches=_clear_homonym_caches)
 def check_species_group_secondary_homonyms(nam: Name, cfg: LintConfig) -> Iterable[str]:
     yield from _check_species_group_homonyms(
         nam, reason=SelectionReason.secondary_homonymy, fuzzy=False, cfg=cfg
@@ -4031,7 +4041,23 @@ def infer_original_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
         yield message
 
 
-@LINT.add("infer_name_complex")
+@cache
+def get_name_complex_finder() -> Callable[[str], tuple[NameComplex, str] | None]:
+    endings_tree: SuffixTree[NameEnding] = SuffixTree()
+    for ending in NameEnding.select_valid():
+        endings_tree.add(ending.ending, ending)
+
+    def finder(root_name: str) -> tuple[NameComplex, str] | None:
+        endings = list(endings_tree.lookup(root_name))
+        if not endings:
+            return None
+        inferred = max(endings, key=lambda e: -len(e.ending)).name_complex
+        return inferred, f"matches endings {endings}"
+
+    return finder
+
+
+@LINT.add("infer_name_complex", clear_caches=get_name_complex_finder.cache_clear)
 def infer_name_complex(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.name_complex is not None:
         return
@@ -4052,47 +4078,10 @@ def infer_name_complex(nam: Name, cfg: LintConfig) -> Iterable[str]:
         yield message
 
 
-@cache
-def get_name_complex_finder() -> Callable[[str], tuple[NameComplex, str] | None]:
-    endings_tree: SuffixTree[NameEnding] = SuffixTree()
-    for ending in NameEnding.select_valid():
-        endings_tree.add(ending.ending, ending)
-
-    def finder(root_name: str) -> tuple[NameComplex, str] | None:
-        endings = list(endings_tree.lookup(root_name))
-        if not endings:
-            return None
-        inferred = max(endings, key=lambda e: -len(e.ending)).name_complex
-        return inferred, f"matches endings {endings}"
-
-    return finder
-
-
 NameComplex.creation_event.on(lambda _: get_name_complex_finder.cache_clear())
 NameEnding.creation_event.on(lambda _: get_name_complex_finder.cache_clear())
 NameComplex.save_event.on(lambda _: get_name_complex_finder.cache_clear())
 NameEnding.save_event.on(lambda _: get_name_complex_finder.cache_clear())
-
-
-@LINT.add("infer_species_name_complex")
-def infer_species_name_complex(nam: Name, cfg: LintConfig) -> Iterable[str]:
-    if nam.species_name_complex is not None:
-        return
-    if nam.group is not Group.species:
-        return
-    finder = get_species_name_complex_finder()
-    result = finder(nam.root_name)
-    if result is None:
-        return
-    snc, reason = result
-    message = (
-        f"inferred species name complex {snc} from root name {nam.root_name} ({reason})"
-    )
-    if cfg.autofix:
-        print(f"{nam}: {message}")
-        nam.species_name_complex = snc
-    else:
-        yield message
 
 
 @cache
@@ -4137,6 +4126,30 @@ SpeciesNameComplex.save_event.on(
 SpeciesNameEnding.save_event.on(lambda _: get_species_name_complex_finder.cache_clear())
 
 
+@LINT.add(
+    "infer_species_name_complex",
+    clear_caches=get_species_name_complex_finder.cache_clear,
+)
+def infer_species_name_complex(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    if nam.species_name_complex is not None:
+        return
+    if nam.group is not Group.species:
+        return
+    finder = get_species_name_complex_finder()
+    result = finder(nam.root_name)
+    if result is None:
+        return
+    snc, reason = result
+    message = (
+        f"inferred species name complex {snc} from root name {nam.root_name} ({reason})"
+    )
+    if cfg.autofix:
+        print(f"{nam}: {message}")
+        nam.species_name_complex = snc
+    else:
+        yield message
+
+
 class SuffixTree(Generic[T]):
     def __init__(self) -> None:
         self.children: dict[str, SuffixTree[T]] = defaultdict(SuffixTree)
@@ -4170,7 +4183,10 @@ class SuffixTree(Generic[T]):
                 yield from self.children[char]._lookup(key)
 
 
-@LINT.add("infer_species_name_complex")
+_checked_root_names: set[str] = set()
+
+
+@LINT.add("infer_species_name_complex", clear_caches=_checked_root_names.clear)
 def infer_species_name_complex_from_other_names(
     nam: Name, cfg: LintConfig
 ) -> Iterable[str]:
@@ -4178,6 +4194,9 @@ def infer_species_name_complex_from_other_names(
         return
     # Name combinations inherit their name complex from their parent, let's ignore them here
     if nam.nomenclature_status is NomenclatureStatus.name_combination:
+        return
+    # Fast path
+    if nam.species_name_complex is not None and nam.root_name in _checked_root_names:
         return
     other_names = Name.select_valid().filter(
         Name.root_name == nam.root_name,
@@ -4191,6 +4210,7 @@ def infer_species_name_complex_from_other_names(
         sc_to_nams.setdefault(other_name.species_name_complex, []).append(nam)
 
     if len(sc_to_nams) == 1:
+        _checked_root_names.add(nam.root_name)
         if nam.species_name_complex is None:
             sc = next(iter(sc_to_nams))
             message = f"inferred species name complex {sc} from other names"
@@ -5340,7 +5360,9 @@ def check_matches_mapped_classification_entry(
             elif ce_tags[0].text != nam_tags[0].text:
                 yield f"mapped to {ce}, but textual ranks do not match: {ce_tags[0].text=} != {nam_tags[0].text=}"
     conditions = list(ce.get_tags(ce.tags, ClassificationEntryTag.CECondition))
-    applicable_statues = get_applicable_statuses(nam)
+    applicable_statues = get_applicable_statuses(nam) | {
+        tag.status for tag in nam.get_tags(nam.tags, NameTag.Condition)
+    }
     new_conditions = [tag for tag in conditions if tag.status not in applicable_statues]
     if new_conditions:
         message = f"mapped {ce} has conditions {new_conditions}; add to name"

@@ -4,7 +4,7 @@ import itertools
 import re
 import subprocess
 from collections import Counter, defaultdict
-from collections.abc import Container, Iterable
+from collections.abc import Collection, Container, Iterable
 from dataclasses import dataclass, field
 from itertools import takewhile
 
@@ -1246,29 +1246,49 @@ def find_referenced_usage(ce: ClassificationEntry) -> ClassificationEntry | None
     return None
 
 
+def get_possible_years(*objs: Article | Name) -> Iterable[int]:
+    for obj in objs:
+        match obj:
+            case Article() as art:
+                yield art.numeric_year()
+                for tag in art.get_tags(art.tags, ArticleTag.KnownAlternativeYear):
+                    yield int(tag.year)
+            case Name() as nam:
+                yield nam.numeric_year()
+                if nam.original_citation is not None:
+                    yield from get_possible_years(nam.original_citation)
+
+
+def is_acceptable_year(
+    my_year: int, alternatives: Collection[Article | Name]
+) -> str | None:
+    possible_years = set(get_possible_years(*alternatives))
+    if not any(abs(my_year - possible_year) <= 2 for possible_year in possible_years):
+        return f"year {my_year} does not match {possible_years} (from {alternatives})"
+    return None
+
+
 @LINT.add("needs_referenced_usage")
 def check_needs_referenced_usage(
     ce: ClassificationEntry, cfg: LintConfig
 ) -> Iterable[str]:
     for tag in ce.get_tags(ce.tags, ClassificationEntryTag.ReferencedUsage):
         if ce.year is not None and ce.year.isnumeric():
-            my_year = int(ce.year)
-            if abs(my_year - tag.ce.article.numeric_year()) > 1:
-                yield f"year {ce.year} does not match {tag.ce.article.year} for referenced usage {tag.ce}"
+            message = is_acceptable_year(int(ce.year), [tag.ce.article])
+            if message is not None:
+                yield f"{message} for referenced usage {tag.ce}"
         break
     else:
         if ce.mapped_name is None:
             return
         if _should_ignore_referenced_usage_check(ce, cfg):
             return
-        possible_names = {ce.mapped_name, ce.mapped_name.resolve_variant()}
         if ce.year is not None and ce.year.isnumeric():
             my_year = int(ce.year)
-            if not any(
-                abs(my_year - nam.numeric_year()) <= 2 for nam in possible_names
-            ):
+            possible_names = {ce.mapped_name, ce.mapped_name.resolve_variant()}
+            message = is_acceptable_year(my_year, possible_names)
+            if message is not None:
                 referenced_usage = find_referenced_usage(ce)
-                message = f"year {ce.year} does not match mapped names {possible_names}"
                 if referenced_usage is not None:
                     message += f" (maybe {referenced_usage}?)"
                 yield message
@@ -1287,7 +1307,5 @@ def _should_ignore_referenced_usage_check(
     if LINT.is_ignoring_lint(ce, "needs_referenced_usage"):
         return False
     if ce.get_group() is Group.family:
-        return True
-    if ce.id < 200_000:
         return True
     return False

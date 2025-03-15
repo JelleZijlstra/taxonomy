@@ -124,6 +124,10 @@ class Taxon(BaseModel):
     def lint(self, cfg: LintConfig) -> Iterable[str]:
         yield from models.taxon.lint.LINT.run(self, cfg)
 
+    @classmethod
+    def clear_lint_caches(cls) -> None:
+        models.taxon.lint.LINT.clear_caches()
+
     def needs_basal_tag(self) -> bool:
         if self.base_name.status != Status.valid:
             return False

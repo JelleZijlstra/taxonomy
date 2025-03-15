@@ -83,6 +83,9 @@ def check_tags(art: Article, cfg: LintConfig) -> Iterable[str]:
                     continue
                 else:
                     yield f"tag has comment but no date: {tag}"
+        elif isinstance(tag, ArticleTag.KnownAlternativeYear):
+            if not tag.year.isnumeric():
+                yield f"invalid alternative date {tag.year!r}"
         tags.append(tag)
     tags = sorted(set(tags))
     if tags != original_tags:
@@ -352,7 +355,9 @@ def get_next_article_with_earlier_date(art: Article) -> Article | None:
     return next
 
 
-@LINT.add("date_order")
+@LINT.add(
+    "date_order", clear_caches=lambda: models.citation_group.ordering.clear_all_caches()
+)
 def check_date_ordering(art: Article, cfg: LintConfig) -> Iterable[str]:
     if art.citation_group is None:
         return
@@ -1752,7 +1757,20 @@ def specify_authors(art: Article, cfg: LintConfig) -> Iterable[str]:
     yield "has initials-only authors"
 
 
-@LINT.add("find_doi", disabled=True, requires_network=True)  # false positives
+@cache
+def get_cgs_with_dois() -> set[int]:
+    arts = Article.select_valid().filter(
+        Article.type == ArticleType.JOURNAL, Article.doi != None
+    )
+    return {art.citation_group.id for art in arts if art.citation_group is not None}
+
+
+@LINT.add(
+    "find_doi",
+    disabled=True,
+    requires_network=True,
+    clear_caches=get_cgs_with_dois.cache_clear,
+)  # false positives
 def find_doi(art: Article, cfg: LintConfig) -> Iterable[str]:
     if art.doi is not None or art.has_tag(ArticleTag.JSTOR):
         return
@@ -1769,14 +1787,6 @@ def find_doi(art: Article, cfg: LintConfig) -> Iterable[str]:
         print(f"{art}: {message}")
     else:
         yield message
-
-
-@cache
-def get_cgs_with_dois() -> set[int]:
-    arts = Article.select_valid().filter(
-        Article.type == ArticleType.JOURNAL, Article.doi != None
-    )
-    return {art.citation_group.id for art in arts if art.citation_group is not None}
 
 
 def has_valid_children(art: Article) -> bool:
