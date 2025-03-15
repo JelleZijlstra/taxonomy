@@ -6,6 +6,7 @@ import functools
 import importlib
 import inspect
 import json
+import pickle
 import re
 import sqlite3
 import traceback
@@ -22,7 +23,7 @@ from clirm import Clirm, Field, Model, Query
 
 from taxonomy import adt, config, events, getinput
 from taxonomy.apis.cloud_search import SearchField
-from taxonomy.db import derived_data, helpers, models
+from taxonomy.db import cached_data, derived_data, helpers, models
 
 settings = config.get_options()
 
@@ -1430,13 +1431,18 @@ class _NameGetter(Generic[ModelT]):
     def clear_cache(self) -> None:
         self._data = None
         self._encoded_data = None
-        cache = derived_data.load_cached_data()
         key = self._cache_key()
-        cache.pop(key, None)
+        cached_data.clear(key)
 
     def rewarm_cache(self) -> None:
         self.clear_cache()
         self._warm_cache()
+
+    def save_cache(self) -> None:
+        if self._data is None:
+            return
+        key = self._cache_key()
+        cached_data.set(key, pickle.dumps((self._data, self._encoded_data)))
 
     def add_name(self, nam: ModelT) -> None:
         if self._data is not None:
@@ -1553,19 +1559,20 @@ class _NameGetter(Generic[ModelT]):
         return sorted(self._data)
 
     def _warm_cache(self) -> None:
-        if self._data is None:
-            cache = derived_data.load_cached_data()
-            key = self._cache_key()
-            if key in cache:
-                self._data, self._encoded_data = cache[key]
-            else:
-                self._data = set()
-                self._encoded_data = set()
-                for i, obj in enumerate(self.cls.select_for_field(self.field)):
-                    if i % 1000 == 0:
-                        print(f"{self}: {i} done")
-                    self._add_obj(obj)
-                cache[key] = (self._data, self._encoded_data)
+        if self._data is not None:
+            return
+        key = self._cache_key()
+        data = cached_data.get(key)
+        if data is not None:
+            self._data, self._encoded_data = pickle.loads(data)
+        else:
+            self._data = set()
+            self._encoded_data = set()
+            for i, obj in enumerate(self.cls.select_for_field(self.field)):
+                if i % 1000 == 0:
+                    print(f"{self}: {i} done")
+                self._add_obj(obj)
+            self.save_cache()
 
 
 def get_completer(

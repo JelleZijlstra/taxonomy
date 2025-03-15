@@ -47,7 +47,6 @@ def deploy_data(options: Options) -> None:
     run_ssh(options, f"mkdir -p {STAGING_DIR}")
     run_scp(options, options.db_filename, STAGING_DIR, is_directory=False)
     run_scp(options, options.derived_data_filename, STAGING_DIR, is_directory=False)
-    run_scp(options, options.cached_data_filename, STAGING_DIR, is_directory=False)
 
 
 def validate_version(version: str) -> None:

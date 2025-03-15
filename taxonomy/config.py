@@ -16,7 +16,6 @@ class Options(NamedTuple):
     db_filename: Path = Path()
     urlcache_filename: Path = Path()
     derived_data_filename: Path = Path()
-    cached_data_filename: Path = Path()
     photos_path: Path = Path()
     pdf_text_path: Path = Path()
 
@@ -116,7 +115,6 @@ def parse_config_file(filename: Path) -> Options:
             derived_data_filename=parse_path(
                 section, "derived_data_filename", base_path
             ),
-            cached_data_filename=parse_path(section, "cached_data_filename", base_path),
             photos_path=parse_path(section, "photos_path", base_path),
             pdf_text_path=parse_path(section, "pdf_text_path", base_path),
             db_filename=db_filename,

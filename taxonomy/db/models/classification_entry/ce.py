@@ -7,7 +7,7 @@ import enum
 import re
 from collections.abc import Iterable, Mapping, Sequence
 from types import MappingProxyType
-from typing import Any, NotRequired, Self
+from typing import Any, ClassVar, NotRequired, Self
 
 from clirm import DoesNotExist, Field, Query
 
@@ -37,6 +37,7 @@ class ClassificationEntry(BaseModel):
     call_sign = "CE"
     label_field = "name"
     clirm_table_name = "classification_entry"
+    fields_without_completers: ClassVar[set[str]] = {"raw_data"}
 
     article = Field[Article]("article_id", related_name="classification_entries")
     name = Field[str]()

@@ -2159,24 +2159,31 @@ def compute_derived_fields() -> None:
 @command
 def write_derived_data() -> None:
     derived_data.write_derived_data(derived_data.load_derived_data())
-    derived_data.write_cached_data(derived_data.load_cached_data())
+    _save_all_caches(warm=False)
 
 
 @command
 def warm_all_caches() -> None:
-    keys = set(derived_data.load_derived_data())
+    _save_all_caches(warm=True)
+
+
+def _save_all_caches(*, warm: bool = True) -> None:
     for model in models.BaseModel.__subclasses__():
         if hasattr(model, "label_field"):
-            print(f"{model}: warming None getter")
-            model.getter(None).rewarm_cache()
+            getter = model.getter(None)
+            if warm:
+                print(f"{model}: warming None getter")
+                getter.rewarm_cache()
+            getter.save_cache()
         for name, field in model.clirm_fields.items():
             getter = model.getter(name)
             if field.name in model.fields_without_completers:
                 continue
-            if field.type_object is str or getter._cache_key() in keys:
-                print(f"{model}: warming {name} ({field})")
-                getter.rewarm_cache()
-    write_derived_data()
+            if field.type_object is str:
+                if warm:
+                    print(f"{model}: warming {name} ({field})")
+                    getter.rewarm_cache()
+                getter.save_cache()
 
 
 @command
