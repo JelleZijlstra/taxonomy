@@ -550,6 +550,7 @@ names should have at least one. They fall into several groups:
     sources.
   - _TypeSpeciesDetail_: A previous author's discussion of the type species for a
     genus-group name.
+  - _DescriptionDetail_: A description of the animal.
 - Structured information about the type
   - _CollectedBy_: The [person](/docs/person) who collected the type specimen.
   - _Involved_: A [person](/docs/person) who was involved in the history of the type

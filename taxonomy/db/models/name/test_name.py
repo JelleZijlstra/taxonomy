@@ -34,6 +34,7 @@ EXCLUDED = {
     "NoEtymology",
     "NoSpecimen",
     "NoDate",
+    "IgnorePotentialCitationFrom",
     # Fields
     "type_tags",
     "tags",

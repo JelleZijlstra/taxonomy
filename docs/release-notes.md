@@ -4,6 +4,41 @@ Version numbers correspond to Git tags in the
 [backend](https://github.com/JelleZijlstra/taxonomy/) repositories, and to database
 exports released on Zenodo.
 
+# Unreleased
+
+- Database
+  - Add classifications from [Koopman (1994)](/a/58061),
+    [Wilson & Reeder (1993)](/a/68307), [Jackson & Groves (2015)](/a/34474), and many
+    other sources.
+  - Add verified citations for a large number of additional names, including over 99% of
+    currently recognized valid mammal species.
+- Backend
+  - Add new status "unavailable" for a taxon that is likely valid but lacks an available
+    name.
+  - Various optimizations to reduce memory usage.
+  - Check that the same page number in an article is consistently linked to the same BHL
+    page.
+  - Automatically merge equivalent classification entries.
+  - Add support for associating classification entries with a specific earlier entry,
+    for the case where a previous synonymy refers to a usage that this database does not
+    list as an independent name.
+  - Infer page links for non-BHL pages.
+  - Check that classification entries have valid page numbers.
+  - Check that subspecies classification entries are listed under species.
+  - Add a way for unavailable names to point to an equivalent available name.
+  - Make the root name of name combinations agree in gender with the genus name.
+  - Add code to find when a valid taxon has a senior synonym.
+  - Redo convention for how to represent page numbers.
+  - Parse and standardize Gallica URLs.
+- Frontend
+  - Add bibliographical notes describing
+    [Griffith's _General and Particular Description_](/docs/biblio/gen-part-desc),
+    [Blainville's _Ostéographie_](/docs/biblio/osteographie), and
+    [Ehrenberg's _Symbolae physicae_](/docs/biblio/symbolae-physicae).
+
+Thanks to Connor J. Burgin, Virginia Hayssen, and Rudolf Haslauer for supplying
+literature.
+
 # 24.9.1 (September 21, 2024)
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.13824506.svg)](https://doi.org/10.5281/zenodo.13824506)
