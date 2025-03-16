@@ -93,11 +93,6 @@ def deploy_hesperomys(options: Options) -> None:
 
 def deploy_taxonomy(options: Options) -> None:
     run_ssh(options, "cd taxonomy/ && git pull")
-    run_ssh(
-        options,
-        f"cd taxonomy/ && sudo {PYTHON} -m pip install -U pip setuptools wheel &&"
-        f" sudo {PYTHON} -m pip install -e .",
-    )
     run_scp(
         options,
         options.taxonomy_repo / "taxonomy-public.ini",
@@ -118,7 +113,7 @@ def restart(options: Options, *, kill: bool = True, port: int = 80) -> None:
     )
     run_ssh(
         options,
-        f"/home/ec2-user/run_hsweb.sh {PYTHON} {port} >/home/ec2-user/hesperomys_runner.log 2>&1 &",
+        f"cd taxonomy && /home/ec2-user/run_hsweb.sh {PYTHON} {port} >/home/ec2-user/hesperomys_runner.log 2>&1 &",
     )
 
 
