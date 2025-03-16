@@ -739,7 +739,7 @@ def citemammalia(article: Article) -> str:
             romanize=True,
         )
     )
-    parts.append(f" ({article.numeric_year()}) ")
+    parts.append(f" ({article.numeric_year()}). ")
     match article.type:
         case ArticleType.JOURNAL:
             parts.append(article.get_title())
@@ -753,7 +753,7 @@ def citemammalia(article: Article) -> str:
                     parts.append(f", {article.series}, ")
             else:
                 parts.append(" ")
-            parts.append(f"{article.volume}: {page_range(article, dash="-")}.")
+            parts.append(f"{article.volume}: {page_range(article, dash="–")}.")
         case ArticleType.BOOK:
             parts.append(f"_{article.get_title()}_. ")
             if not article.publisher:
@@ -787,7 +787,7 @@ def citemammalia(article: Article) -> str:
                     raise ValueError(f"Book citation missing publisher: {article}")
                 if enclosing.place_of_publication:
                     parts.append(f", {enclosing.place_of_publication}")
-                parts.append(f", pp. {page_range(article, dash='-')}.")
+                parts.append(f", pp. {page_range(article, dash='–')}.")
         case ArticleType.WEB:
             parts.append(f"{article.get_title()}. ")
             if article.publisher:
