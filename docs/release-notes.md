@@ -4,7 +4,9 @@ Version numbers correspond to Git tags in the
 [backend](https://github.com/JelleZijlstra/taxonomy/) repositories, and to database
 exports released on Zenodo.
 
-# Unreleased
+# 25.3.0 (March 15, 2025)
+
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.15033739.svg)](https://doi.org/10.5281/zenodo.15033739)
 
 - Database
   - Add classifications from [Koopman (1994)](/a/58061),
@@ -12,6 +14,7 @@ exports released on Zenodo.
     other sources.
   - Add verified citations for a large number of additional names, including over 99% of
     currently recognized valid mammal species.
+  - Update classification with some recent taxonomic revisions.
 - Backend
   - Add new status "unavailable" for a taxon that is likely valid but lacks an available
     name.
