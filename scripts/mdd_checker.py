@@ -1052,7 +1052,9 @@ def get_mdd_species(input_csv: str | None = None) -> dict[str, MDDSpecies]:
             raw_rows = list(csv.reader(f))
     headings = raw_rows[0]
     species = [
-        MDDSpecies(row_idx, cast(MDDSpeciesRow, dict(zip(headings, row, strict=False))))
+        MDDSpecies(
+            row_idx, cast("MDDSpeciesRow", dict(zip(headings, row, strict=False)))
+        )
         for row_idx, row in enumerate(raw_rows[1:], start=2)
     ]
     return {sp.row["sciName"]: sp for sp in species}
@@ -1130,7 +1132,9 @@ def run(
     headings = raw_rows[0]
     column_to_idx = {heading: i for i, heading in enumerate(headings, start=1)}
     species = [
-        MDDSpecies(row_idx, cast(MDDSpeciesRow, dict(zip(headings, row, strict=False))))
+        MDDSpecies(
+            row_idx, cast("MDDSpeciesRow", dict(zip(headings, row, strict=False)))
+        )
         for row_idx, row in enumerate(raw_rows[1:], start=2)
     ]
     print(f"done, {len(species)} found")

@@ -2234,9 +2234,7 @@ def print_ce_summary(names: Iterable[CEDict]) -> None:
         print(f"{count} {rank.name}")
 
 
-def merge_adjacent[
-    T
-](
+def merge_adjacent[T](
     iterable: Iterable[T],
     should_merge: Callable[[T, T], bool],
     merge: Callable[[T, T], T],

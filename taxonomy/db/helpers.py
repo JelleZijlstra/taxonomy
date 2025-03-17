@@ -970,17 +970,17 @@ T = TypeVar("T")
 
 def clean_strings_recursively(obj: T) -> T:
     if isinstance(obj, str):
-        return cast(T, clean_string(obj))
+        return cast("T", clean_string(obj))
     elif isinstance(obj, dict):
         return cast(
-            T,
+            "T",
             {
                 clean_strings_recursively(key): clean_strings_recursively(value)
                 for key, value in obj.items()
             },
         )
     elif isinstance(obj, (list, set, tuple)):
-        return cast(T, type(obj)(clean_strings_recursively(elt) for elt in obj))
+        return cast("T", type(obj)(clean_strings_recursively(elt) for elt in obj))
     else:
         return obj
 

@@ -714,7 +714,7 @@ class Taxon(BaseModel):
         name = self.getter("valid_name").get_one_key("name> ")
         if name is None:
             return None
-        default = cast(AgeClass, self.age)
+        default = cast("AgeClass", self.age)
         age = getinput.get_enum_member(AgeClass, default=default)
         if age is None:
             return None
@@ -893,7 +893,7 @@ class Taxon(BaseModel):
         if paper is None:
             return None
 
-        default = cast(AgeClass, self.age)
+        default = cast("AgeClass", self.age)
         age = getinput.get_enum_member(AgeClass, default=default)
         if age is None:
             return None

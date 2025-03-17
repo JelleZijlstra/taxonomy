@@ -150,7 +150,9 @@ COUNTRY_RENAMES = {
     "bouvet": "bouvet_island",
     "faroe": "faroe_islands",
     "clipperton": "clipperton_island",
-    "south_georgia_and_the_south_sandwich_islands": "south_georgia_and_south_sandwich_islands",
+    "south_georgia_and_the_south_sandwich_islands": (
+        "south_georgia_and_south_sandwich_islands"
+    ),
     # Dataset does not separate these
     "kosovo": "serbia",
     "taiwan": "china",

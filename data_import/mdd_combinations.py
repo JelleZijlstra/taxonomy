@@ -14,7 +14,15 @@ SOURCES: dict[str, lib.Source | lib.ArticleSource] = {
 }
 
 
-HIGHER_RANKS = "MajorType,MajorSubtype,Order,Family,Subfamily,Tribe,Genus".split(",")
+HIGHER_RANKS = [
+    "MajorType",
+    "MajorSubtype",
+    "Order",
+    "Family",
+    "Subfamily",
+    "Tribe",
+    "Genus",
+]
 
 
 def _get_rank(rank: str) -> tuple[Rank, str | None]:
@@ -41,9 +49,22 @@ def extract_names(source: lib.Source | lib.ArticleSource) -> Iterable[lib.CEDict
             "\ufeff" + rank if i == 0 else rank for i, rank in enumerate(HIGHER_RANKS)
         ]
     elif source.source == "Mammalia-MDD 1_13.csv":
-        higher_ranks = "subclass,infraclass,magnorder,superorder,order,suborder,infraorder,parvorder,superfamily,family,subfamily,tribe,genus,subgenus".split(
-            ","
-        )
+        higher_ranks = [
+            "subclass",
+            "infraclass",
+            "magnorder",
+            "superorder",
+            "order",
+            "suborder",
+            "infraorder",
+            "parvorder",
+            "superfamily",
+            "family",
+            "subfamily",
+            "tribe",
+            "genus",
+            "subgenus",
+        ]
     else:
         higher_ranks = HIGHER_RANKS
     seen_names: set[tuple[Rank, str]] = set()
