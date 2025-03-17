@@ -424,7 +424,7 @@ def _clean_dict(d: Mapping[str, object]) -> dict[str, object]:
 
 def clean_text(names: Iterable[lib.CEDict]) -> Iterable[lib.CEDict]:
     for ce in names:
-        yield cast(lib.CEDict, _clean_dict(dict(ce)))
+        yield cast("lib.CEDict", _clean_dict(dict(ce)))
 
 
 def get_text() -> Iterable[str]:

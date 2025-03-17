@@ -487,14 +487,14 @@ class Vertebra:
         elif text == "axis":
             return cls("C", 2, after_text)
         if text in ALLOWED_GROUPS:
-            return cls(cast(VertebraGroup, text), after_text=after_text)
+            return cls(cast("VertebraGroup", text), after_text=after_text)
         if group := VERTEBRA_ABBREVIATIONS.get(text.rstrip("s")):
-            return cls(cast(VertebraGroup, group), after_text=after_text)
+            return cls(cast("VertebraGroup", group), after_text=after_text)
         if match := re.fullmatch(r"([A-Z]a?)(\d+)", text):
             group = match.group(1)
             if group in ALLOWED_GROUPS:
                 return cls(
-                    cast(VertebraGroup, group),
+                    cast("VertebraGroup", group),
                     int(match.group(2)),
                     after_text=after_text,
                 )
@@ -616,7 +616,7 @@ class AlternativeOrgan:
             isinstance(possibility, Tooth) for possibility in self.possibilities
         ):
             first, *rest = sorted(
-                cast(Sequence[Tooth], self.possibilities), key=_organ_base_sort_key
+                cast("Sequence[Tooth]", self.possibilities), key=_organ_base_sort_key
             )
             skip_side = True
             skip_category = not first.uncertain_category
@@ -799,9 +799,9 @@ def _parse_single_tooth(
         if position == 1 and category in ("c", "dc"):
             position = None
         return Tooth(
-            side=cast(Literal["L", "R"], side),
+            side=cast("Literal['L', 'R']", side),
             uncertain_category=bool(match.group("category_doubt")),
-            category=cast(ToothCategory, category),
+            category=cast("ToothCategory", category),
             is_upper=is_upper,
             uncertain_position=bool(match.group("position_doubt")),
             position=position,
@@ -846,7 +846,7 @@ def _parse_tooth(text: str) -> Tooth | ToothRange | AlternativeOrgan | None:
 
 def _parse_organ_base(text: str, organ: SpecimenOrgan) -> OrganBase:
     if text in _LITERAL_ORGAN_BASES:
-        return cast(OrganBase, text)
+        return cast("OrganBase", text)
     if organ in TOOTHED_ORGANS:
         tooth = _parse_tooth(text)
         if tooth is not None:

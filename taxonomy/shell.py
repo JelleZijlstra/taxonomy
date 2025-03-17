@@ -136,7 +136,7 @@ def _register_command(fn: CallableT) -> CallableT:
             return None
 
     ns[fn.__name__] = wrapper
-    return cast(CallableT, wrapper)
+    return cast("CallableT", wrapper)
 
 
 def generator_command(fn: Callable[..., Iterable[T]]) -> Callable[..., list[T]]:

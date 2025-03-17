@@ -238,9 +238,9 @@ def run(*, dry_run: bool = True, taxon: Taxon) -> None:
         enumerate(rows[1:], start=2), label="MDD names"
     ):
         mdd_row = cast(
-            Row,
+            "Row",
             {
-                headings[i]: (mdd_row_as_list[i] if i < len(mdd_row_as_list) else "")
+                headings[i]: mdd_row_as_list[i] if i < len(mdd_row_as_list) else ""
                 for i in range(len(headings))
             },
         )
