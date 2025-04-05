@@ -9,7 +9,7 @@ from datetime import date
 from typing import Self
 
 from taxonomy.db import helpers, models
-from taxonomy.db.constants import Group, NomenclatureStatus, Rank, Status
+from taxonomy.db.constants import AgeClass, Group, NomenclatureStatus, Rank, Status
 from taxonomy.db.models.base import LintConfig
 from taxonomy.db.models.lint import IgnoreLint, Lint
 
@@ -152,18 +152,26 @@ def check_basal_tags(taxon: Taxon, cfg: LintConfig) -> Iterable[str]:
     has_is = taxon.has_tag(models.tags.TaxonTag.IncertaeSedis)
     has_basal = taxon.has_tag(models.tags.TaxonTag.Basal)
     if has_is and has_basal:
-        yield f"{taxon}: has both IncertaeSedis and Basal tags"
+        yield "has both IncertaeSedis and Basal tags"
     if taxon.needs_basal_tag():
         if not has_is and not has_basal:
             yield (
-                f"{taxon}: parent taxon {taxon.parent} has higher-ranked children,"
+                f"parent taxon {taxon.parent} has higher-ranked children,"
                 " but child lacks 'incertae sedis' or 'basal' tag"
             )
     else:
         if has_is:
-            yield f"{taxon}: has unnecessary IncertaeSedis tag"
+            yield "has unnecessary IncertaeSedis tag"
         if has_basal:
-            yield f"{taxon}: has unnecessary Basal tag"
+            yield "has unnecessary Basal tag"
+
+
+@LINT.add("age")
+def check_age(taxon: Taxon, cfg: LintConfig) -> Iterable[str]:
+    if taxon.age is AgeClass.extant:
+        children = list(taxon.get_children())
+        if children and not any(child.age is AgeClass.extant for child in children):
+            yield "extant taxon has no extant children"
 
 
 @LINT.add("expected_base_name")
@@ -317,7 +325,7 @@ def check_full_expected_base_name(taxon: Taxon, cfg: LintConfig) -> Iterable[str
     if len(report.possibilities) == 1:
         (expected_base_name,) = report.possibilities
         if taxon.base_name != expected_base_name:
-            message = f"expected base name to be {expected_base_name}, but is {taxon.base_name}"
+            message = f"senior synonym is {expected_base_name} (current base name: {taxon.base_name})"
             if report.comments:
                 message += f" ({', '.join(report.comments)})"
             yield message
@@ -329,7 +337,7 @@ def check_full_expected_base_name(taxon: Taxon, cfg: LintConfig) -> Iterable[str
                 message += f" ({', '.join(report.comments)})"
             print(f"{taxon}: {message}")
     else:
-        message = f"base name {taxon.base_name} is incorrect (expected one of: {', '.join(map(str, report.possibilities))})"
+        message = f"senior synonym is one of {', '.join(map(str, report.possibilities))} (current base name: {taxon.base_name})"
         if report.comments:
             message += f" ({', '.join(report.comments)})"
         yield message

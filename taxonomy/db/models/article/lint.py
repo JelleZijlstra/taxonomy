@@ -317,7 +317,7 @@ def check_year(art: Article, cfg: LintConfig) -> Iterable[str]:
             return
         if art.year is None or (
             inferred_year is not None
-            and not art.get_new_names().count()
+            and not has_new_names(art)
             and abs(art.numeric_year() - inferred_year) <= 1
         ):
             can_autofix = True
@@ -334,7 +334,7 @@ def check_precise_date(art: Article, cfg: LintConfig) -> Iterable[str]:
         return
     if not art.citation_group.has_tag(CitationGroupTag.MustHavePreciseDate):
         return
-    if art.get_new_names().count() == 0:
+    if not has_new_names(art):
         return
     if art.year is not None and "-" not in art.year:
         yield f"is in {art.citation_group} but has imprecise date {art.year}"
@@ -454,7 +454,7 @@ def get_inferred_date_from_position(art: Article) -> tuple[Article, Article] | N
 @LINT.add("unsupported_year", disabled=True)
 def check_unsupported_year(art: Article, cfg: LintConfig) -> Iterable[str]:
     if art.id < 67_000 and (
-        art.get_new_names().count() == 0
+        not has_new_names(art)
         or art.type in (ArticleType.CHAPTER, ArticleType.PART, ArticleType.SUPPLEMENT)
     ):
         return
@@ -544,6 +544,20 @@ def check_must_have_url(art: Article, cfg: LintConfig) -> Iterable[str]:
                 yield f"url {url} does not match pattern {tag.text!r}"
         return
     yield f"has no URL, but is in {art.citation_group}"
+
+
+@LINT.add("must_have_publisher")
+def check_must_have_publisher(art: Article, cfg: LintConfig) -> Iterable[str]:
+    if art.type is not ArticleType.BOOK:
+        return
+    if art.citation_group is not None and art.publisher is not None:
+        return
+    if not has_new_names(art):
+        return
+    if art.citation_group is None:
+        yield "book is missing citation group"
+    if art.publisher is None:
+        yield "book is missing publisher"
 
 
 @LINT.add("url")
@@ -839,7 +853,7 @@ def should_require_bhl_link(art: Article) -> bool:
             year = art.numeric_year()
             if not cg.should_have_bhl_link_in_year(year):
                 return False
-            if art.addyear < "2024" and not art.get_new_names().count():
+            if art.addyear < "2024" and not has_new_names(art):
                 return False
             return True
         case ArticleType.CHAPTER | ArticleType.PART:
@@ -855,7 +869,16 @@ def should_require_bhl_link(art: Article) -> bool:
                 return False
             if art.addyear >= "2024":
                 return True
-            return bool(art.get_new_names().count())
+            return has_new_names(art)
+    return False
+
+
+def has_new_names(art: Article) -> bool:
+    if art.get_new_names().count() > 0 or art.get_classification_entries().count() > 0:
+        return True
+    for child in art.get_children():
+        if has_new_names(child):
+            return True
     return False
 
 
@@ -1746,11 +1769,11 @@ def _maybe_clean(
 
 @LINT.add("specify_authors")
 def specify_authors(art: Article, cfg: LintConfig) -> Iterable[str]:
+    if art.type is ArticleType.SUPPLEMENT:
+        return
     if art.has_tag(ArticleTag.InitialsOnly):
         return
     if not art.has_initials_only_authors():
-        return
-    if art.addyear < "2021" and not art.get_new_names().count():
         return
     if cfg.autofix:
         art.specify_authors()

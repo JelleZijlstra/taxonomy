@@ -20,6 +20,7 @@ import gc
 import operator
 import os
 import os.path
+import pprint
 import re
 import shutil
 import sqlite3
@@ -111,6 +112,8 @@ ns = {
     "getinput": getinput,
     "models": models,
     "os": os,
+    "gc": gc,
+    "pp": pprint.pp,
 }
 ns.update(constants.__dict__)
 
