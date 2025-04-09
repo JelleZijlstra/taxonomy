@@ -2970,6 +2970,36 @@ def _species_ces_of_article(art: Article, rank: Rank) -> Iterable[Classification
         yield from _species_ces_of_article(child, rank)
 
 
+@command
+def fill_in_type_localities() -> None:
+    for species in Taxon.select_valid().filter(
+        Taxon.age.is_in((AgeClass.extant, AgeClass.recently_extinct)),
+        Taxon.rank == Rank.species,
+    ):
+        if species.get_derived_field("class_").valid_name != "Mammalia":
+            continue
+        nam = species.base_name
+        if nam.original_citation is None:
+            continue
+        if any(
+            (
+                isinstance(tag, TypeTag.LocationDetail)
+                and tag.source == nam.original_citation
+            )
+            or tag is TypeTag.NoLocation
+            for tag in nam.type_tags
+        ):
+            continue
+        if "type_locality" not in nam.get_required_fields():
+            continue
+        getinput.print_header(species)
+        art = nam.original_citation
+        art.display_classification_entries()
+        art.display_names()
+        print("Missing TL for", nam)
+        art.edit()
+
+
 def run_shell() -> None:
     # GC does bad things on my current setup for some reason
     gc.disable()

@@ -921,6 +921,12 @@ class Name(BaseModel):
         else:
             return json.loads(self.data)
 
+    def get_type_tag(self, tag_cls: TypeTag._Constructor) -> Any | None:  # type: ignore[name-defined]
+        for tag in self.type_tags:
+            if isinstance(tag, tag_cls):
+                return tag
+        return None
+
     def get_tag_target(self, tag_cls: Tag._Constructor) -> Name | None:  # type: ignore[name-defined]
         tags = self.tags
         if tags:
@@ -1571,6 +1577,8 @@ class Name(BaseModel):
         return Person.join_authors(self.get_authors())
 
     def should_parenthesize_authority(self) -> bool | None:
+        if self.group is not Group.species:
+            return False
         if self.original_parent is None:
             return None  # unknown
         genus = self.taxon.get_current_genus()
@@ -3003,6 +3011,11 @@ class TypeTag(adt.ADT):
     # Description of the taxon
     DescriptionDetail(text=str, source=Article, tag=60)  # type: ignore[name-defined]
 
+    InterpretedTypeLocality(text=str, tag=61)  # type: ignore[name-defined]
+    InterpretedTypeSpecimen(text=str, tag=62)  # type: ignore[name-defined]
+    InterpretedTypeTaxon(text=str, tag=63)  # type: ignore[name-defined]
+    NomenclatureComments(text=str, record=str, tag=64)  # type: ignore[name-defined]
+
 
 SOURCE_TAGS = (
     TypeTag.SourceDetail,
@@ -3014,6 +3027,7 @@ SOURCE_TAGS = (
     TypeTag.DefinitionDetail,
     TypeTag.TypeSpeciesDetail,
     TypeTag.NomenclatureDetail,
+    TypeTag.DescriptionDetail,
 )
 NO_DATA_FROM_SOURCE_TAGS = (TypeTag.NoEtymology, TypeTag.NoLocation, TypeTag.NoSpecimen)
 
