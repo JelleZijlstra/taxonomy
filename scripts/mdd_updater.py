@@ -254,6 +254,7 @@ OMITTED_COLUMNS = {
     "MDD_old_type_locality",
     "MDD_emended_type_locality",
     "MDD_comments",
+    "MDD_subspecificEpithet",
     # Identifiers
     "MDD_syn_ID",
     "Hesp_id",
@@ -274,6 +275,7 @@ def get_hesp_row(
     row["Hesp_authority_parentheses"] = get_authority_parens(name)
     row["Hesp_validity"] = get_mdd_status(name)
     row["Hesp_original_combination"] = name.original_name or ""
+    row["Hesp_normalized_original_combination"] = name.corrected_original_name or ""
     row["Hesp_original_rank"] = (
         name.original_rank.name if name.original_rank is not None else ""
     )
@@ -431,10 +433,11 @@ def get_hesp_row(
         row["Hesp_specificEpithet"] = "incertae_sedis"
     else:
         row["Hesp_specificEpithet"] = species.base_name.root_name
-    if nam.taxon.rank is Rank.subspecies:
-        row["Hesp_subspecificEpithet"] = nam.taxon.valid_name.split()[-1]
-    else:
-        row["Hesp_subspecificEpithet"] = "NA"
+    # TODO
+    # if nam.taxon.rank is Rank.subspecies:
+    #     row["Hesp_subspecificEpithet"] = nam.taxon.valid_name.split()[-1]
+    # else:
+    #     row["Hesp_subspecificEpithet"] = "NA"
     row["Hesp_species_id"] = ""
     if species is not None:
         for tag in species.tags:

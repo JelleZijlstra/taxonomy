@@ -1133,6 +1133,51 @@ def infer_condition_from_mapped(
             yield message
 
 
+@LINT.add("from_mapped")
+def infer_data_from_mapped(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
+    if ce.mapped_name is None or ce.mapped_name.original_citation != ce.article:
+        return
+    if ce.type_locality is None:
+        tags = [
+            tag
+            for tag in ce.mapped_name.get_tags(
+                ce.mapped_name.type_tags, models.name.TypeTag.LocationDetail
+            )
+            if tag.source == ce.article
+        ]
+        if len(tags) == 1:
+            tag = tags[0]
+            message = f"inferred type locality from mapped name: {tag}"
+            if cfg.autofix:
+                print(f"{ce}: {message}")
+                ce.type_locality = tag.text
+            else:
+                yield message
+        elif tags:
+            message = f"multiple possible type localities from mapped name: {', '.join(f'"{tag.text}"' for tag in tags)}"
+            yield message
+    existing_specimen_details = {
+        tag.text
+        for tag in ce.tags
+        if isinstance(tag, ClassificationEntryTag.TypeSpecimenData)
+    }
+    specimen_details = [
+        tag
+        for tag in ce.mapped_name.get_tags(
+            ce.mapped_name.type_tags, models.name.TypeTag.SpecimenDetail
+        )
+        if tag.source == ce.article and tag.text not in existing_specimen_details
+    ]
+    if specimen_details:
+        for tag in specimen_details:
+            message = f"inferred type specimen detail from mapped name: {tag}"
+            if cfg.autofix:
+                print(f"{ce}: {message}")
+                ce.add_tag(ClassificationEntryTag.TypeSpecimenData(tag.text))
+            else:
+                yield message
+
+
 @LINT.add("infer_duplicate")
 def infer_duplicate(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
     possible_dupes = list(

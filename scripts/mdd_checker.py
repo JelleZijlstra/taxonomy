@@ -44,8 +44,11 @@ RANKS = [
     "family",
     "subfamily",
     "tribe",
+    "subtribe",
     "genus",
+    "subgenus",
 ]
+RANK_ENUMS = [Rank[rank] for rank in RANKS]
 
 # Columns that map directly to a column in the synonyms sheet
 SIMPLE_COLUMNS = [
@@ -91,7 +94,7 @@ COLUMN_TO_REGEX = {
     "subclass": r"NA|[A-Z][a-z]+",
     "infraclass": r"NA|[A-Z][a-z]+",
     "magnorder": r"NA|[A-Z][a-z]+",
-    "superorder": r"NA|[A-Z][a-z]+",
+    "superorder": RANK_REGEX,
     "order": RANK_REGEX,
     "suborder": RANK_REGEX,
     "infraorder": RANK_REGEX,
@@ -101,7 +104,7 @@ COLUMN_TO_REGEX = {
     "subfamily": RANK_REGEX,
     "tribe": RANK_REGEX,
     "genus": r"[A-Z][a-z]+",
-    "subgenus": r"NA|[A-Z][a-z]+|incertae sedis",
+    "subgenus": RANK_REGEX,
     "specificEpithet": r"[a-z]+",
     "authoritySpeciesYear": r"\d{4}",
     "authorityParentheses": r"[0-1]",
@@ -713,6 +716,35 @@ def syn_status_is_any(syn: Syn, statuses: Iterable[str]) -> bool:
     return any(status in syn_statuses for status in statuses)
 
 
+def get_ranks(taxon: Taxon) -> dict[str, str]:
+    ranks: dict[str, str] = {}
+    parents: list[Taxon | None] = []
+    for rank in RANK_ENUMS:
+        try:
+            parent = taxon.parent_of_rank(rank)
+        except ValueError:
+            if (
+                parents
+                and parents[-1] is not None
+                and any(
+                    taxon.age in (AgeClass.extant, AgeClass.recently_extinct)
+                    for taxon in parents[-1].children_of_rank(rank)
+                )
+            ):
+                parent_name = "incertae sedis"
+                parents.append(None)
+            else:
+                parent_name = "NA"
+        else:
+            if parent.is_nominate_subgenus():
+                parent_name = parent.base_name.root_name
+            else:
+                parent_name = parent.valid_name
+            parents.append(parent)
+        ranks[rank.name] = parent_name
+    return ranks
+
+
 @dataclass
 class SpeciesWithSyns:
     species: MDDSpecies
@@ -767,6 +799,7 @@ class SpeciesWithSyns:
         else:
             citation = ""
         sci_name = self.species.row["sciName"].replace("_", " ")
+        ranks: dict[str, str] = {}
         taxa = [
             t
             for t in Taxon.select_valid().filter(Taxon.valid_name == sci_name)
@@ -780,10 +813,13 @@ class SpeciesWithSyns:
         elif len(taxa) > 1:
             raise ValueError(f"Multiple taxa found for species: {taxa}")
         else:
-            subspecies = get_subspecies_text(taxa[0])
+            taxon = taxa[0]
+            subspecies = get_subspecies_text(taxon)
+            ranks = get_ranks(taxon)
         return {
             **simple,
             **caps,
+            **ranks,
             "authoritySpeciesLink": link,
             "authoritySpeciesCitation": citation,
             "nominalNames": self.get_expected_nominal_names(),
@@ -957,7 +993,10 @@ def lint_species(species: list[MDDSpecies]) -> Iterable[Issue]:
         if i == 0:
             continue
         to_col = RANKS[i - 1]
-        fallback_cols = RANKS[i + 1 :]
+        if from_col == "subgenus":
+            fallback_cols = ["sciName"]
+        else:
+            fallback_cols = RANKS[i + 1 :]
         yield from check_unique_col_mapping(
             species,
             from_col,
@@ -977,19 +1016,23 @@ def maybe_fix_issues(
             bool(issue.suggested_change),
         )
 
-    fixable_issues = [issue for issue in issues if issue.suggested_change is not None]
-    fixable_issues = sorted(fixable_issues, key=_issue_sort_key)
+    issues = sorted(issues, key=_issue_sort_key)
     sheet = get_sheet()
     worksheet = sheet.get_worksheet_by_id(get_options().mdd_species_worksheet_gid)
 
-    for _, group_iter in itertools.groupby(fixable_issues, _issue_sort_key):
+    for (_, _, fixable), group_iter in itertools.groupby(issues, _issue_sort_key):
         group = list(group_iter)
         sample = group[0]
         header = f"{sample.group_description()} ({len(group)})"
+        if not fixable:
+            header = f"[unfixable] {header}"
         getinput.print_header(header)
         for issue in group:
             print(issue.describe())
         print(header)
+        if not fixable:
+            getinput.yes_no("Acknowledge and continue: ", default=True)
+            continue
         choice = getinput.choose_one_by_name(
             ["edit", "ask_individually", "skip"],
             allow_empty=False,
@@ -1104,6 +1147,32 @@ def check_species_tags(species: Sequence[MDDSpecies]) -> None:
             print(f"No single taxon found for {name}: {taxa}")
 
 
+def write_grouped_differences(backup_path: Path, issues: list[Issue]) -> None:
+    ranks = set(RANKS)
+    grouped: dict[tuple[str, str, str | None], list[str]] = {}
+    for issue in issues:
+        if issue.mdd_column not in ranks:
+            continue
+        key = (issue.mdd_column, issue.mdd_value, issue.suggested_change)
+        grouped.setdefault(key, []).append(issue.sci_name)
+    with (backup_path / "grouped_differences.csv").open("w") as f:
+        writer = csv.writer(f)
+        writer.writerow(
+            [
+                "column",
+                "MDD_value",
+                "Hesp_value",
+                "species",
+                "comment_Jelle",
+                "comment_Connor",
+            ]
+        )
+        for (column, value, suggested_change), species_list in grouped.items():
+            writer.writerow(
+                [column, value or "", suggested_change or "", ", ".join(species_list)]
+            )
+
+
 def run(
     *,
     dry_run: bool = True,
@@ -1171,6 +1240,7 @@ def run(
                 diff_writer.writerow(
                     {heading: getattr(issue, heading) or "" for heading in headings}
                 )
+        write_grouped_differences(backup_path, issues)
 
         maybe_fix_issues(issues, column_to_idx, dry_run=dry_run)
     else:

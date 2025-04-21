@@ -67,6 +67,20 @@ def _first_ranked_parent(taxon: Taxon | None, *, depth: int = 20) -> Taxon | Non
     return _first_ranked_parent(taxon.parent, depth=depth - 1)
 
 
+@LINT.add("parent_cycle")
+def check_parent_cycle(taxon: Taxon, cfg: LintConfig) -> Iterable[str]:
+    if taxon.parent is None:
+        return
+    current = taxon
+    seen = set()
+    while current is not None:
+        seen.add(current)
+        current = current.parent
+        if current == taxon or current in seen:
+            yield f"{taxon}: parent cycle detected: {current} -> {taxon}"
+            return
+
+
 @LINT.add("rank")
 def check_rank(taxon: Taxon, cfg: LintConfig) -> Iterable[str]:
     if not taxon.rank.is_allowed_for_taxon:

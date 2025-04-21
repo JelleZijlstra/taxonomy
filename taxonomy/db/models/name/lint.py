@@ -1107,6 +1107,9 @@ def _check_preoccupation_tag(
         assert senior_name is not None
     if nam.has_priority_over(senior_name):
         yield f"has priority over supposed senior name {senior_name}"
+    for other_tag in senior_name.tags:
+        if isinstance(other_tag, NameTag.NomenOblitum) and other_tag.name == nam:
+            yield f"senior name {senior_name} is marked as NomenOblitum for {nam}"
     if nam.group is Group.species:
         if nam.original_parent is None:
             my_original = None
@@ -2966,6 +2969,13 @@ def _check_homonym_list(
             reason is SelectionReason.secondary_homonymy
             and nam.original_parent is not None
             and senior_homonym.original_parent == nam.original_parent
+        ):
+            continue
+
+        # Ignore nomina oblita
+        if any(
+            isinstance(tag, NameTag.NomenOblitum) and tag.name == nam
+            for tag in senior_homonym.tags
         ):
             continue
 
