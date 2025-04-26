@@ -60,3 +60,4 @@ repos:
           - botocore
           - repoguess
           - pyzotero
+          - gspread

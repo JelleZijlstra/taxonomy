@@ -47,6 +47,8 @@ class Options(NamedTuple):
     mdd_higher_worksheet_gid: int = 0
     mdd_species_worksheet_gid: int = 0
     mdd_journals_worksheet_gid: int = 0
+    book_sheet: str = ""
+    book_sheet_gid: int = 0
 
     bhl_api_key: str = ""
     zotero_key: str = ""
@@ -158,6 +160,8 @@ def parse_config_file(filename: Path) -> Options:
             zotero_key=section.get("zotero_key", ""),
             geojson_path=parse_path(section, "geojson_path", base_path),
             openai_key=section.get("openai_key", ""),
+            book_sheet=section.get("book_sheet", ""),
+            book_sheet_gid=int(section.get("book_sheet_gid", "0")),
         )
 
 

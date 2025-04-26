@@ -12,11 +12,17 @@ Todo:
 """
 
 import csv
+import pprint
 import sys
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
+import google.auth.exceptions
+import gspread
+
+from taxonomy import getinput
+from taxonomy.config import get_options
 from taxonomy.db import helpers
 from taxonomy.db.constants import (
     AgeClass,
@@ -535,6 +541,113 @@ def write_csv(path: Path) -> None:
             writer.writerow(row)
 
 
+@dataclass
+class SheetRow:
+    row_idx: int
+    column_to_idx: dict[str, int]
+    data: dict[str, str]
+
+
+def process_value_for_sheets(value: str) -> str | int:
+    if value.isdigit():
+        return int(value)
+    return value
+
+
+def sync_sheet() -> None:
+
+    print("Downloading sheet...")
+    options = get_options()
+    try:
+        gc = gspread.oauth()
+        sheet = gc.open(options.book_sheet)
+    except google.auth.exceptions.RefreshError:
+        print("need to refresh token")
+        token_path = Path("~/.config/gspread/authorized_user.json").expanduser()
+        token_path.unlink(missing_ok=True)
+        gc = gspread.oauth()
+        sheet = gc.open(options.book_sheet)
+
+    worksheet = sheet.get_worksheet_by_id(options.book_sheet_gid)
+    raw_rows = worksheet.get()
+    headings = raw_rows[0]
+    column_to_idx = {heading: i for i, heading in enumerate(headings, start=1)}
+    sheet_rows = [
+        SheetRow(i, column_to_idx, dict(zip(headings, row, strict=False)))
+        for i, row in enumerate(raw_rows[1:], start=2)
+    ]
+    sheet_row_dict = {row.data["info_hesp_name_link"]: row for row in sheet_rows}
+    print("Done")
+
+    print("Generating CSV...")
+    rows = list(get_rows())
+    row_dict = {row.for_info.hesp_name_link: row for row in rows}
+    print("Done")
+
+    column_to_differences: dict[str, list[tuple[int, Row, str, str]]] = {}
+    for sheet_row in sheet_rows:
+        computed_row = row_dict.get(sheet_row.data["info_hesp_name_link"])
+        if not computed_row:
+            continue
+        csv_row = computed_row.to_csv()
+        for column, value in sheet_row.data.items():
+            if column not in csv_row:
+                continue
+            if value != csv_row[column]:
+                column_to_differences.setdefault(column, []).append(
+                    (sheet_row.row_idx, computed_row, value, csv_row[column])
+                )
+    for column, differences in column_to_differences.items():
+        getinput.print_header(f"Column: {column} ({len(differences)} differences)")
+        differences = sorted(differences, key=lambda x: (x[2], x[3]))
+        updates_to_make = []
+        for i, (row_idx, row, sheet_value, computed_value) in enumerate(differences):
+            if i < 5:
+                print(
+                    f"{row.for_book.name} ({row.for_book.rank.name}): {sheet_value} -> {computed_value}"
+                )
+            updates_to_make.append(
+                gspread.cell.Cell(
+                    row=row_idx,
+                    col=column_to_idx[column],
+                    value=process_value_for_sheets(  # static analysis: ignore[incompatible_argument]
+                        computed_value
+                    ),
+                )
+            )
+        if getinput.yes_no("Update these rows?"):
+            print(f"Apply {len(updates_to_make)} updates...")
+            worksheet.update_cells(updates_to_make)
+            print("Done")
+
+    rows_to_add = [
+        row for row in rows if row.for_info.hesp_name_link not in sheet_row_dict
+    ]
+    if rows_to_add:
+        getinput.print_header(f"Adding {len(rows_to_add)} rows")
+        for row in rows_to_add[:5]:
+            pprint.pp(row.to_csv())
+        if len(rows_to_add) > 5:
+            print(f"and {len(rows_to_add) - 5} more")
+        if getinput.yes_no("Add these rows?"):
+            worksheet.append_rows(
+                [
+                    [process_value_for_sheets(value) for value in row.to_csv().values()]
+                    for row in rows_to_add
+                ]
+            )
+
+    rows_to_remove = [
+        row for row in sheet_rows if row.data["info_hesp_name_link"] not in row_dict
+    ]
+    if rows_to_remove:
+        getinput.print_header(f"Removing {len(rows_to_remove)} rows")
+        for sheet_row in rows_to_remove[:5]:
+            pprint.pp(sheet_row.data)
+            if getinput.yes_no("Remove this row?"):
+                worksheet.delete_rows(sheet_row.row_idx)
+
+
 if __name__ == "__main__":
     if len(sys.argv) == 0:
         command = "md"
@@ -546,5 +659,7 @@ if __name__ == "__main__":
             Path("book.md").write_text(text)
         case "csv":
             write_csv(Path("book.csv"))
+        case "sync":
+            sync_sheet()
         case _:
             raise ValueError(f"Unknown command: {command}")
