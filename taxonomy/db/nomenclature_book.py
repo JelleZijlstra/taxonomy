@@ -13,6 +13,7 @@ Todo:
 
 import csv
 import pprint
+import re
 import sys
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -179,6 +180,7 @@ class Row:
     for_info: ForInfo
     for_book: ForBook
     for_edit: ForEdit
+    name: Name
 
     def to_csv(self) -> dict[str, str]:
         return {
@@ -186,6 +188,9 @@ class Row:
             **self.for_edit.to_csv(),
             **self.for_info.to_csv(),
         }
+
+    def get_key(self) -> tuple[str, str]:
+        return (self.for_info.hesp_taxon_link, self.for_info.hesp_name_link)
 
 
 def get_taxa(root_taxon: Taxon) -> Iterable[Taxon]:
@@ -317,6 +322,56 @@ def get_past_treatments(taxon: Taxon, ces: set[tuple[str, ClassificationEntry]])
     return " ".join(texts)
 
 
+def get_type_specimen_text(name: Name) -> tuple[str, list[str]]:
+    todos: list[str] = []
+    interpreted_ts = name.get_type_tag(TypeTag.InterpretedTypeSpecimen)
+    if interpreted_ts is not None:
+        type_specimen = interpreted_ts.text
+    elif name.type_specimen and name.species_type_kind is not None:
+        type_specimen = f"{name.type_specimen} ({name.species_type_kind.name})"
+        if name.species_type_kind is SpeciesGroupType.neotype:
+            tags = list(name.get_tags(name.type_tags, TypeTag.NeotypeDesignation))
+            if len(tags) == 1:
+                tag = tags[0]
+                if (
+                    tag.valid
+                    and tag.optional_source is not None
+                    and tag.comment is not None
+                ):
+                    match = re.search(r"^p\. \d+", tag.comment)
+                    if match is not None:
+                        type_specimen += f", as designated by {{{tag.optional_source.name}}} {match.group(0)}"
+                        return type_specimen, todos
+        if name.species_type_kind is SpeciesGroupType.lectotype:
+            tags = list(name.get_tags(name.type_tags, TypeTag.LectotypeDesignation))
+            if len(tags) == 1:
+                tag = tags[0]
+                if (
+                    tag.valid
+                    and tag.optional_source is not None
+                    and tag.comment is not None
+                ):
+                    match = re.search(r"^p\. \d+", tag.comment)
+                    if match is not None:
+                        type_specimen += f", as designated by {{{tag.optional_source.name}}} {match.group(0)}"
+                        return type_specimen, todos
+        if name.species_type_kind not in (
+            SpeciesGroupType.holotype,
+            SpeciesGroupType.syntypes,
+        ):
+            todos.append(
+                f"Check type specimen designation: {name.species_type_kind.name.replace('_', ' ')}"
+            )
+    else:
+        if (
+            name.group is Group.species
+            and "type_specimen" in name.get_required_fields()
+        ):
+            todos.append("Type specimen missing")
+        type_specimen = ""
+    return type_specimen, todos
+
+
 def get_row(taxon: Taxon, name: Name, taxon_to_ces: TaxonToCEs) -> Row:
     todos = []
     order = taxon.get_derived_field("order")
@@ -359,7 +414,14 @@ def get_row(taxon: Taxon, name: Name, taxon_to_ces: TaxonToCEs) -> Row:
         type_taxon = interpreted_tt.text
     elif name.type:
         type_taxon = display_name(name.type)
-        if name.genus_type_kind is not None:
+        if name.genus_type_kind is TypeSpeciesDesignation.designated_by_the_commission:
+            type_taxon += ", as designated by the Commission"
+            tag = name.get_type_tag(TypeTag.CommissionTypeDesignation)
+            if tag is not None:
+                type_taxon += f" {{{tag.opinion.name}}}"
+            else:
+                todos.append("Missing source for type designation by the Commission")
+        elif name.genus_type_kind is not None:
             type_taxon += f", by {name.genus_type_kind.name.replace('_', ' ')}"
             if name.genus_type_kind not in (
                 TypeSpeciesDesignation.absolute_tautonymy,
@@ -401,27 +463,13 @@ def get_row(taxon: Taxon, name: Name, taxon_to_ces: TaxonToCEs) -> Row:
                 type_locality = tl_prefix + "TODO"
                 todos.append("Verbatim type locality missing")
                 verbatim_type_locality = ""
+            if name.species_type_kind is SpeciesGroupType.neotype:
+                todos.append("Add neotype type locality")
     else:
         type_locality = verbatim_type_locality = ""
 
-    if interpreted_ts is not None:
-        type_specimen = interpreted_ts.text
-    elif name.type_specimen and name.species_type_kind is not None:
-        type_specimen = f"{name.type_specimen} ({name.species_type_kind.name})"
-        if name.species_type_kind not in (
-            SpeciesGroupType.holotype,
-            SpeciesGroupType.syntypes,
-        ):
-            todos.append(
-                f"Check type specimen designation: {name.species_type_kind.name.replace('_', ' ')}"
-            )
-    else:
-        if (
-            name.group is Group.species
-            and "type_specimen" in name.get_required_fields()
-        ):
-            todos.append("Missing type specimen")
-        type_specimen = ""
+    type_specimen, new_todos = get_type_specimen_text(name)
+    todos += new_todos
 
     authority_page_link = None
     for tag in name.type_tags:
@@ -430,6 +478,7 @@ def get_row(taxon: Taxon, name: Name, taxon_to_ces: TaxonToCEs) -> Row:
             break
 
     return Row(
+        name=name,
         for_info=ForInfo(
             hesp_taxon_link=taxon.get_absolute_url(),
             hesp_name_link=name.get_absolute_url(),
@@ -547,6 +596,9 @@ class SheetRow:
     column_to_idx: dict[str, int]
     data: dict[str, str]
 
+    def get_key(self) -> tuple[str, str]:
+        return (self.data["info_hesp_taxon_link"], self.data["info_hesp_name_link"])
+
 
 def process_value_for_sheets(value: str) -> str | int:
     if value.isdigit():
@@ -575,18 +627,32 @@ def sync_sheet() -> None:
     sheet_rows = [
         SheetRow(i, column_to_idx, dict(zip(headings, row, strict=False)))
         for i, row in enumerate(raw_rows[1:], start=2)
+        if any(row)
     ]
-    sheet_row_dict = {row.data["info_hesp_name_link"]: row for row in sheet_rows}
-    print("Done")
+    sheet_row_dict = {}
+    rows_to_remove = []
+    for row in sheet_rows:
+        try:
+            key = row.get_key()
+        except KeyError:
+            print(f"Invalid row {row}")
+            rows_to_remove.append(row)
+            continue
+        if key in sheet_row_dict:
+            print(f"Duplicate row: {key}")
+            rows_to_remove.append(row)
+        else:
+            sheet_row_dict[key] = row
+    print(f"Done, {len(sheet_rows)} rows")
 
     print("Generating CSV...")
     rows = list(get_rows())
-    row_dict = {row.for_info.hesp_name_link: row for row in rows}
-    print("Done")
+    row_dict = {row.get_key(): row for row in rows}
+    print(f"Done, {len(rows)} rows")
 
     column_to_differences: dict[str, list[tuple[int, Row, str, str]]] = {}
-    for sheet_row in sheet_rows:
-        computed_row = row_dict.get(sheet_row.data["info_hesp_name_link"])
+    for sheet_row in sheet_row_dict.values():
+        computed_row = row_dict.get(sheet_row.get_key())
         if not computed_row:
             continue
         csv_row = computed_row.to_csv()
@@ -601,10 +667,12 @@ def sync_sheet() -> None:
         getinput.print_header(f"Column: {column} ({len(differences)} differences)")
         differences = sorted(differences, key=lambda x: (x[2], x[3]))
         updates_to_make = []
-        for i, (row_idx, row, sheet_value, computed_value) in enumerate(differences):
+        for i, (row_idx, computed_row, sheet_value, computed_value) in enumerate(
+            differences
+        ):
             if i < 5:
                 print(
-                    f"{row.for_book.name} ({row.for_book.rank.name}): {sheet_value} -> {computed_value}"
+                    f"{computed_row.for_book.name} ({computed_row.for_book.rank.name}): {sheet_value} -> {computed_value}"
                 )
             updates_to_make.append(
                 gspread.cell.Cell(
@@ -620,32 +688,39 @@ def sync_sheet() -> None:
             worksheet.update_cells(updates_to_make)
             print("Done")
 
-    rows_to_add = [
-        row for row in rows if row.for_info.hesp_name_link not in sheet_row_dict
-    ]
+    rows_to_add = [row for row in rows if row.get_key() not in sheet_row_dict]
     if rows_to_add:
         getinput.print_header(f"Adding {len(rows_to_add)} rows")
-        for row in rows_to_add[:5]:
-            pprint.pp(row.to_csv())
+        for computed_row in rows_to_add[:5]:
+            pprint.pp(computed_row.to_csv())
         if len(rows_to_add) > 5:
             print(f"and {len(rows_to_add) - 5} more")
         if getinput.yes_no("Add these rows?"):
             worksheet.append_rows(
                 [
-                    [process_value_for_sheets(value) for value in row.to_csv().values()]
+                    [
+                        process_value_for_sheets(csv_row.get(column, ""))
+                        for column in headings
+                    ]
                     for row in rows_to_add
+                    for csv_row in [row.to_csv()]
                 ]
             )
 
-    rows_to_remove = [
-        row for row in sheet_rows if row.data["info_hesp_name_link"] not in row_dict
+    rows_to_remove += [
+        row for row in sheet_row_dict.values() if row.get_key() not in row_dict
     ]
     if rows_to_remove:
+        rows_to_remove = sorted(rows_to_remove, key=lambda x: -x.row_idx)
         getinput.print_header(f"Removing {len(rows_to_remove)} rows")
         for sheet_row in rows_to_remove[:5]:
             pprint.pp(sheet_row.data)
-            if getinput.yes_no("Remove this row?"):
+        if getinput.yes_no("Remove these rows?"):
+            print(f"Removing {len(rows_to_remove)} rows...")
+            for sheet_row in rows_to_remove:
+                pprint.pp(sheet_row.data)
                 worksheet.delete_rows(sheet_row.row_idx)
+            print("Done")
 
 
 if __name__ == "__main__":

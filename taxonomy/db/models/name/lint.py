@@ -31,6 +31,7 @@ from taxonomy.apis import bhl, nominatim
 from taxonomy.apis.zoobank import clean_lsid, get_zoobank_data, is_valid_lsid
 from taxonomy.db import helpers
 from taxonomy.db.constants import (
+    AgeClass,
     ArticleKind,
     ArticleType,
     CommentKind,
@@ -1509,11 +1510,13 @@ def get_inherent_nomenclature_statuses_from_article(
     if art.type is ArticleType.THESIS:
         yield NomenclatureStatus.unpublished_thesis
     if art.has_tag(ArticleTag.PlacedOnIndex) and not (
-        nam is not None and nam.has_name_tag(NameTag.Conserved)
+        nam is not None
+        and (nam.group is Group.high or nam.has_name_tag(NameTag.Conserved))
     ):
         yield NomenclatureStatus.placed_on_index
     if art.has_tag(ArticleTag.InconsistentlyBinominal) and not (
-        nam is not None and nam.has_name_tag(NameTag.Conserved)
+        nam is not None
+        and (nam.group is Group.high or nam.has_name_tag(NameTag.Conserved))
     ):
         yield NomenclatureStatus.inconsistently_binominal
     year = art.valid_numeric_year()
@@ -5581,3 +5584,36 @@ def check_has_parent_species(nam: Name, cfg: LintConfig) -> Iterable[str]:
         art.edit()
         art.lint_object_list(art.new_names)
         art.lint_object_list(art.classification_entries)
+
+
+@LINT.add("unique_type_locality")
+def check_unique_type_locality(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    if nam.type_locality is None or nam.original_citation is None:
+        return
+    if nam.status is not Status.valid:
+        return
+    if nam.has_type_tag(TypeTag.InterpretedTypeLocality):
+        return
+    if nam.taxon.age not in (AgeClass.extant, AgeClass.recently_extinct):
+        return
+    original_localities = [
+        tag
+        for tag in nam.type_tags
+        if isinstance(tag, TypeTag.LocationDetail)
+        and tag.source == nam.original_citation
+    ]
+    if len(original_localities) > 1:
+        message = f"multiple original localities for {nam}:\n"
+        for tag in original_localities:
+            message += f"  {tag.text}\n"
+        yield message
+
+
+@LINT.add("type_designation")
+def check_type_designation(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    match nam.genus_type_kind:
+        case TypeSpeciesDesignation.designated_by_the_commission:
+            tag = nam.get_type_tag(TypeTag.CommissionTypeDesignation)
+            if tag is None:
+                yield "type species is set to designated_by_the_commission, but missing CommissionTypeDesignation tag"
+    # TODO: also check other kinds

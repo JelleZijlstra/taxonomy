@@ -1174,6 +1174,8 @@ class Name(BaseModel):
         else:
             nam = self
             allow_preoccupied = False
+        if self.has_name_tag(NameTag.PendingRejection):
+            return False
         if nam.nomenclature_status in (
             NomenclatureStatus.available,
             NomenclatureStatus.as_emended,
@@ -2874,6 +2876,10 @@ class NameTag(adt.ADT):
     MisidentificationOf(name=Name, comment=NotRequired[str], tag=34)  # type: ignore[name-defined]
 
     UnavailableVersionOf(name=Name, comment=NotRequired[str], tag=35)  # type: ignore[name-defined]
+
+    # The name should be rejected (e.g., suppressed by the Commission or marked as a nomen oblitum)
+    # but this has not happened yet.
+    PendingRejection(comment=NotRequired[str], tag=36)  # type: ignore[name-defined]
 
 
 CONSTRUCTABLE_STATUS_TO_TAG = {

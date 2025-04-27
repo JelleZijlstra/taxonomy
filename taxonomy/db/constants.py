@@ -501,6 +501,8 @@ class Rank(enum.IntEnum):
     def comparison_value(self) -> int:
         if self.value > Rank.root:
             return -1
+        if self.value in (Rank.unranked_family, Rank.other_family):
+            return Rank.infratribe.value - 1
         return self.value
 
     @property
