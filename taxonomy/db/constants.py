@@ -227,6 +227,7 @@ class NomenclatureStatus(enum.IntEnum):
             NomenclatureStatus.subsequent_usage,
             NomenclatureStatus.name_combination,
             NomenclatureStatus.misidentification,
+            NomenclatureStatus.reranking,
         }
 
     def can_preoccupy(self) -> bool:

@@ -645,6 +645,7 @@ class ClassificationEntryTag(ADT):
     StructuredData(label=str, text=str, tag=15)  # type: ignore[name-defined]
 
     ReferencedUsage(ce=ClassificationEntry, comment=NotRequired[str], tag=16)  # type: ignore[name-defined]
+    LSIDCE(text=str, tag=17)  # type: ignore[name-defined]
 
 
 _NAME_CHARS = r"[a-zæüöïœ]+"

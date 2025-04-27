@@ -210,6 +210,11 @@ class _ADTMeta(type):
 
                 cls_obj.__init__ = make_init(member_cls)
             constructors.append(Literal[member_cls])
+            if member.tag in new_cls._tag_to_member:  # type: ignore[attr-defined]
+                raise TypeError(
+                    f"duplicate tag {member.tag}: "
+                    f"{new_cls._tag_to_member[member.tag]} and {member_cls}"  # type: ignore[attr-defined]
+                )
             new_cls._tag_to_member[member.tag] = member_cls  # type: ignore[attr-defined]
             setattr(new_cls, member.name, member_cls)
         if constructors:

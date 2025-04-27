@@ -237,6 +237,9 @@ class Name(BaseModel):
             1,
         ),
         get_tag_based_derived_field(
+            "rerankings", lambda: Name, "tags", lambda: NameTag.RerankingOf, 1
+        ),
+        get_tag_based_derived_field(
             "selections_of_priority",
             lambda: Name,
             "tags",
@@ -1210,6 +1213,7 @@ class Name(BaseModel):
                     NameTag.MandatoryChangeOf,
                     NameTag.IncorrectSubsequentSpellingOf,
                     NameTag.NameCombinationOf,
+                    NameTag.RerankingOf,
                 ),
             ):
                 return tag.name
@@ -1239,6 +1243,7 @@ class Name(BaseModel):
                     NameTag.MandatoryChangeOf,
                     NameTag.IncorrectSubsequentSpellingOf,
                     NameTag.NameCombinationOf,
+                    NameTag.RerankingOf,
                 ),
             ):
                 # static analysis: ignore[incompatible_yield]
@@ -1613,6 +1618,7 @@ class Name(BaseModel):
                     NameTag.IncorrectSubsequentSpellingOf,
                     NameTag.UnavailableVersionOf,
                     NameTag.NameCombinationOf,
+                    NameTag.RerankingOf,
                 ),
             ):
                 return tag.name.resolve_name(depth=depth + 1)
@@ -2881,6 +2887,8 @@ class NameTag(adt.ADT):
     # but this has not happened yet.
     PendingRejection(comment=NotRequired[str], tag=36)  # type: ignore[name-defined]
 
+    RerankingOf(name=Name, comment=NotRequired[str], tag=37)  # type: ignore[name-defined]
+
 
 CONSTRUCTABLE_STATUS_TO_TAG = {
     NomenclatureStatus.unjustified_emendation: NameTag.UnjustifiedEmendationOf,
@@ -2895,6 +2903,7 @@ CONSTRUCTABLE_STATUS_TO_TAG = {
     NomenclatureStatus.misidentification: NameTag.MisidentificationOf,
     NomenclatureStatus.name_combination: NameTag.NameCombinationOf,
     NomenclatureStatus.preoccupied: NameTag.PreoccupiedBy,
+    NomenclatureStatus.reranking: NameTag.RerankingOf,
 }
 STATUS_TO_TAG = {
     **CONSTRUCTABLE_STATUS_TO_TAG,

@@ -1133,6 +1133,26 @@ def infer_condition_from_mapped(
             yield message
 
 
+# disabled for now because the ZooBank website is down and some of the entries
+# seem dubious (e.g. Sorex minutus minutus); we may want to do this only manually,
+# in cases where the ZooBank entry was manually verified to match the CE
+@LINT.add("lsid_from_mapped", disabled=True)
+def infer_lsid_from_mapped(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
+    if ce.mapped_name is None or ce.mapped_name.original_citation != ce.article:
+        return
+    for tag in ce.mapped_name.type_tags:
+        if isinstance(tag, models.name.TypeTag.LSIDName):
+            new_tag = ClassificationEntryTag.LSIDCE(tag.text)
+            if new_tag in ce.tags:
+                continue
+            message = f"inferred LSID from mapped name: {new_tag}"
+            if cfg.autofix:
+                print(f"{ce}: {message}")
+                ce.add_tag(new_tag)
+            else:
+                yield message
+
+
 @LINT.add("from_mapped")
 def infer_data_from_mapped(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
     if ce.mapped_name is None or ce.mapped_name.original_citation != ce.article:

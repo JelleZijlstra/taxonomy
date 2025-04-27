@@ -1103,6 +1103,9 @@ def _check_preoccupation_tag(
     if senior_name.nomenclature_status is NomenclatureStatus.name_combination:
         senior_name = senior_name.get_tag_target(NameTag.NameCombinationOf)
         assert senior_name is not None
+    if senior_name.nomenclature_status is NomenclatureStatus.reranking:
+        senior_name = senior_name.get_tag_target(NameTag.RerankingOf)
+        assert senior_name is not None
     if senior_name.nomenclature_status is NomenclatureStatus.misidentification:
         senior_name = senior_name.get_tag_target(NameTag.MisidentificationOf)
         assert senior_name is not None
@@ -1195,6 +1198,7 @@ def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 NameTag.SubsequentUsageOf,
                 NameTag.MisidentificationOf,
                 NameTag.NameCombinationOf,
+                NameTag.RerankingOf,
             ),
         ):
             if nam == tag.name:
@@ -1263,6 +1267,24 @@ def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                             new_tag = NameTag.IncorrectSubsequentSpellingOf(
                                 new_target, tag.comment
                             )
+            elif isinstance(tag, NameTag.RerankingOf):
+                if nam.group is not Group.family:
+                    yield f"{nam} is not a family-group name, but uses RerankingOf tag"
+                elif nam.type is None:
+                    yield f"{nam} is marked as a reranking of {tag.name}, but has no type"
+                elif tag.name.type is None:
+                    yield f"{tag.name} is marked as the target of a reranking, but has no type"
+                else:
+                    my_type = nam.type.resolve_variant()
+                    their_type = tag.name.type.resolve_variant()
+                    if my_type != their_type:
+                        yield f"{nam} is marked as a reranking of {tag.name}, but has a different type"
+                    elif (
+                        nam.corrected_original_name == tag.name.corrected_original_name
+                        and nam.original_rank is not None
+                        and nam.original_rank == tag.name.original_rank
+                    ):
+                        yield f"{nam} is marked as a reranking of {tag.name}, but has the same corrected original name"
             if (
                 nam.taxon != tag.name.taxon
                 and not isinstance(tag, NameTag.MisidentificationOf)
@@ -1272,14 +1294,18 @@ def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
             if isinstance(tag, NameTag.VariantOf) and nam.original_citation is not None:
                 # should be specified to unjustified emendation or incorrect subsequent spelling
                 yield f"{nam} is marked as a variant, but has an original citation"
-            if not isinstance(
-                tag,
-                (
-                    NameTag.SubsequentUsageOf,
-                    NameTag.MisidentificationOf,
-                    NameTag.JustifiedEmendationOf,
-                ),
-            ) and (nam.corrected_original_name == tag.name.corrected_original_name):
+            if (
+                not isinstance(
+                    tag,
+                    (
+                        NameTag.SubsequentUsageOf,
+                        NameTag.MisidentificationOf,
+                        NameTag.JustifiedEmendationOf,
+                        NameTag.RerankingOf,
+                    ),
+                )
+                and nam.corrected_original_name == tag.name.corrected_original_name
+            ):
                 yield f"{nam} has the same corrected original name as {tag.name}, but is marked as {type(tag).__name__}"
             if not isinstance(
                 tag,
@@ -1288,6 +1314,7 @@ def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                     NameTag.MisidentificationOf,
                     NameTag.NameCombinationOf,
                     NameTag.JustifiedEmendationOf,
+                    NameTag.RerankingOf,
                 ),
             ) and (
                 (nam.corrected_original_name == tag.name.corrected_original_name)
@@ -1353,6 +1380,7 @@ def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 NomenclatureStatus.as_emended,
                 NomenclatureStatus.nomen_novum,
                 NomenclatureStatus.preoccupied,
+                NomenclatureStatus.reranking,
             ):
                 yield f"{nam} is on the Official List, but is not marked as available."
 
@@ -1625,7 +1653,8 @@ def check_redundant_fields(nam: Name, cfg: LintConfig) -> Iterable[str]:
             yield message
 
 
-@LINT.add("lsid", requires_network=True)
+# disabled because it keeps timing out
+@LINT.add("lsid", requires_network=True, disabled=True)
 def check_for_lsid(nam: Name, cfg: LintConfig) -> Iterable[str]:
     # ICZN Art. 8.5.1: ZooBank is relevant to availability only starting in 2012
     if (
@@ -2000,21 +2029,26 @@ def correct_type_taxon(nam: Name, cfg: LintConfig) -> Iterable[str]:
             yield message
 
 
-@LINT.add("type_is_child")
-def check_type_is_child(nam: Name, cfg: LintConfig) -> Iterable[str]:
-    """Checks that the type taxon is a child of the name's taxon."""
+@LINT.add("type")
+def check_type(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    """Checks for the type taxon."""
     if nam.type is None:
         return
-    if nam.type.taxon.is_child_of(nam.taxon):
-        return
-    yield f"type {nam.type} is not a child of {nam.taxon}"
+    if not nam.type.taxon.is_child_of(nam.taxon):
+        yield f"type {nam.type} is not a child of {nam.taxon}"
 
+    if (
+        (target := nam.type.get_tag_target(NameTag.UnavailableVersionOf)) is not None
+        and nam.get_date_object() >= target.get_date_object()
+        and not nam.has_name_tag(NameTag.UnavailableVersionOf)
+    ):
+        message = f"type is an unavailable version of {target}"
+        if cfg.autofix:
+            print(f"{nam}: {message}")
+            nam.type = target
+        else:
+            yield message
 
-@LINT.add("type_group")
-def check_type_group(nam: Name, cfg: LintConfig) -> Iterable[str]:
-    """Checks that the type taxon is in the correct group."""
-    if nam.type is None:
-        return
     match nam.group:
         case Group.family:
             if nam.type.group is not Group.genus:
@@ -2958,6 +2992,7 @@ def _check_homonym_list(
         NameTag.MisidentificationOf,
         NameTag.NameCombinationOf,
         NameTag.AsEmendedBy,
+        NameTag.RerankingOf,
     )
     if fuzzy:
         # Allow ignoring preoccupation only for fuzzy matches
@@ -3101,6 +3136,10 @@ def resolve_usage(nam: Name, *, resolve_unavailable_version_of: bool) -> Name:
         return resolve_usage(
             target, resolve_unavailable_version_of=resolve_unavailable_version_of
         )
+    if target := nam.get_tag_target(NameTag.RerankingOf):
+        return resolve_usage(
+            target, resolve_unavailable_version_of=resolve_unavailable_version_of
+        )
     if resolve_unavailable_version_of:
         if target := nam.get_tag_target(NameTag.UnavailableVersionOf):
             return resolve_usage(
@@ -3147,7 +3186,7 @@ def check_original_parent(nam: Name, cfg: LintConfig) -> Iterable[str]:
 
     if (
         target := nam.original_parent.get_tag_target(NameTag.UnavailableVersionOf)
-    ) is not None and nam.numeric_year() >= target.numeric_year():
+    ) is not None and nam.get_date_object() >= target.get_date_object():
         message = f"original_parent is an unavailable version of {target}"
         if cfg.autofix:
             print(f"{nam}: {message}")
@@ -4631,6 +4670,7 @@ def can_replace_name(nam: Name) -> str | None:
                 NameTag.SubsequentUsageOf,
                 NameTag.UnjustifiedEmendationOf,
                 NameTag.IncorrectSubsequentSpellingOf,
+                NameTag.RerankingOf,
             ),
         ):
             continue
@@ -4747,7 +4787,11 @@ class ExistingVariant:
     syn_ces: list[ClassificationEntry]
 
 
-REPLACEABLE_TAGS = (NameTag.NameCombinationOf, NameTag.IncorrectSubsequentSpellingOf)
+REPLACEABLE_TAGS = (
+    NameTag.NameCombinationOf,
+    NameTag.IncorrectSubsequentSpellingOf,
+    NameTag.RerankingOf,
+)
 REPLACEABLE_TAGS_SET = set(REPLACEABLE_TAGS)
 
 
@@ -5373,10 +5417,18 @@ def check_matches_mapped_classification_entry(
             elif ce_tags[0].text != nam_tags[0].text:
                 yield f"mapped to {ce}, but textual ranks do not match: {ce_tags[0].text=} != {nam_tags[0].text=}"
     conditions = list(ce.get_tags(ce.tags, ClassificationEntryTag.CECondition))
-    applicable_statues = get_applicable_statuses(nam) | {
+    applicable_statuses = get_applicable_statuses(nam) | {
         tag.status for tag in nam.get_tags(nam.tags, NameTag.Condition)
     }
-    new_conditions = [tag for tag in conditions if tag.status not in applicable_statues]
+    # Ignore if the CE is a nomen nudum in these cases
+    if nam.nomenclature_status in (
+        NomenclatureStatus.reranking,
+        NomenclatureStatus.name_combination,
+    ):
+        applicable_statuses.add(NomenclatureStatus.nomen_nudum)
+    new_conditions = [
+        tag for tag in conditions if tag.status not in applicable_statuses
+    ]
     if new_conditions:
         message = f"mapped {ce} has conditions {new_conditions}; add to name"
         if cfg.autofix:
@@ -5385,6 +5437,17 @@ def check_matches_mapped_classification_entry(
                 nam.add_tag(NameTag.Condition(tag.status, tag.comment))
         else:
             yield message
+
+    for tag in ce.tags:
+        if isinstance(tag, ClassificationEntryTag.LSIDCE):
+            new_tag = TypeTag.LSIDName(tag.text)
+            if new_tag not in nam.type_tags:
+                message = f"adding LSID from {ce} to {nam}: {new_tag}"
+                if cfg.autofix:
+                    print(f"{nam}: {message}")
+                    nam.add_type_tag(new_tag)
+                else:
+                    yield message
 
 
 def _check_matching_original_parent(
@@ -5617,3 +5680,47 @@ def check_type_designation(nam: Name, cfg: LintConfig) -> Iterable[str]:
             if tag is None:
                 yield "type species is set to designated_by_the_commission, but missing CommissionTypeDesignation tag"
     # TODO: also check other kinds
+
+
+@LINT.add("infer_reranking")
+def infer_reranking(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    if nam.group is not Group.family:
+        return
+    if nam.type is None or nam.year is None or nam.original_name is None:
+        return
+    if nam.has_name_tag(NameTag.RerankingOf):
+        return
+    if not nam.can_be_valid_base_name():
+        return
+    my_type = nam.type.resolve_name()
+    candidates = [
+        other_nam
+        for other_nam in nam.taxon.get_names().filter(Name.group == Group.family)
+        if other_nam.type is not None
+        and other_nam.type.resolve_name() == my_type
+        and other_nam.can_be_valid_base_name()
+        and other_nam != nam
+        and other_nam.year is not None
+    ]
+    if not candidates:
+        return
+    best_candidate = min(
+        candidates,
+        key=lambda other_nam: (
+            other_nam.valid_numeric_year(),
+            (
+                -other_nam.original_rank.comparison_value
+                if other_nam.original_rank is not None
+                else 0
+            ),
+        ),
+    )
+    if best_candidate.valid_numeric_year() >= nam.valid_numeric_year():
+        return
+    tag = NameTag.RerankingOf(best_candidate, "")
+    message = f"add RerankingOf tag: {tag}"
+    if cfg.autofix:
+        print(f"{nam}: {message}")
+        nam.add_tag(tag)
+    else:
+        yield message

@@ -1633,9 +1633,6 @@ class ArticleTag(adt.ADT):
     # other
     Edition(text=str, tag=8)  # type: ignore[name-defined]
     FullIssue(comment=NotRequired[str], tag=9)  # type: ignore[name-defined]
-    PartLocation(  # type: ignore[name-defined]
-        parent=Article, start_page=int, end_page=int, comment=NotRequired[str], tag=22
-    )
     NonOriginal(comment=NotRequired[str], tag=10)  # type: ignore[name-defined]
     # The article doesn't give full names for the authors
     InitialsOnly(tag=11)  # type: ignore[name-defined]
@@ -1686,6 +1683,10 @@ class ArticleTag(adt.ADT):
 
     # Set this if a work has a known alternative date. Interacts with CE linting.
     KnownAlternativeYear(year=str, comment=NotRequired[str], tag=29)  # type: ignore[name-defined]
+
+    PartLocation(  # type: ignore[name-defined]
+        parent=Article, start_page=int, end_page=int, comment=NotRequired[str], tag=30
+    )
 
 
 @lru_cache
