@@ -603,6 +603,8 @@ names should have at least one. They fall into several groups:
     species-group name.
   - _NeotypeDesignation_: Designation of a specimen as the neotype of a species-group
     name.
+  - _PendingRejection_: The name should likely be rejected in the future (e.g., as a
+    nomen oblitum, or through action by the Commission), but this has not been done.
 - Miscellaneous fields
   - _NamedAfter_: Reference to the [person](/docs/person) this name was named after.
     This field was added recently, so it is not yet used in all cases where it should be
