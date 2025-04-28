@@ -1168,18 +1168,15 @@ class Name(BaseModel):
                 return True
         return False
 
-    def can_be_valid_base_name(self) -> bool:
+    def can_be_valid_base_name(self, *, allow_preoccupied: bool = False) -> bool:
         if self.nomenclature_status is NomenclatureStatus.nomen_novum:
             nam = self.get_tag_target(NameTag.NomenNovumFor)
             if nam is None:
                 return False
-            allow_preoccupied = True
-        else:
-            nam = self
-            allow_preoccupied = False
+            return nam.can_be_valid_base_name(allow_preoccupied=True)
         if self.has_name_tag(NameTag.PendingRejection):
             return False
-        if nam.nomenclature_status in (
+        if self.nomenclature_status in (
             NomenclatureStatus.available,
             NomenclatureStatus.as_emended,
             NomenclatureStatus.collective_group,
@@ -1187,15 +1184,15 @@ class Name(BaseModel):
             NomenclatureStatus.unpublished_pending,
         ):
             return True
-        if (
-            allow_preoccupied
-            and nam.nomenclature_status is NomenclatureStatus.preoccupied
+        if allow_preoccupied and self.nomenclature_status in (
+            NomenclatureStatus.preoccupied,
+            NomenclatureStatus.partially_suppressed,
         ):
             return True
         if (
-            nam.nomenclature_status
+            self.nomenclature_status
             is NomenclatureStatus.not_intended_as_a_scientific_name
-            and nam.taxon.rank == Rank.division
+            and self.taxon.rank == Rank.division
         ):
             return True
         return False

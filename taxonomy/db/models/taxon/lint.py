@@ -93,12 +93,20 @@ def check_rank(taxon: Taxon, cfg: LintConfig) -> Iterable[str]:
 @LINT.add("base_name")
 def check_base_name(taxon: Taxon, cfg: LintConfig) -> Iterable[str]:
     if not taxon.base_name.status.is_base_name():
-        yield f"{taxon}: base name has invalid status {taxon.base_name.status}"
+        yield f"base name has invalid status {taxon.base_name.status}"
     expected_group = helpers.group_of_rank(taxon.rank)
     if expected_group != taxon.base_name.group:
         rank = taxon.rank.name
         group = taxon.base_name.group.name
-        yield f"{taxon}: group mismatch: rank {rank} but group {group}"
+        yield f"group mismatch: rank {rank} but group {group}"
+    resolved = taxon.base_name.resolve_variant()
+    if resolved != taxon.base_name:
+        message = f"base name is a variant: {taxon.base_name} -> {resolved}"
+        if cfg.autofix:
+            print(f"{taxon}: {message}")
+            _switch_basename(taxon, resolved)
+        else:
+            yield message
 
 
 @LINT.add("nominal_genus")
@@ -107,11 +115,11 @@ def check_nominal_genus(taxon: Taxon, cfg: LintConfig) -> Iterable[str]:
         taxon.get_tags(taxon.tags, models.tags.TaxonTag.NominalGenus)
     )
     if len(nominal_genus_tags) > 1:
-        yield f"{taxon}: has multiple nominal genus tags: {nominal_genus_tags}"
+        yield f"has multiple nominal genus tags: {nominal_genus_tags}"
     elif len(nominal_genus_tags) == 1:
         nominal_genus = nominal_genus_tags[0].genus
         if nominal_genus.group is not Group.genus:
-            yield f"{taxon}: nominal genus {nominal_genus} is not a genus"
+            yield f"nominal genus {nominal_genus} is not a genus"
     if (
         taxon.base_name.group is Group.species
         and taxon.base_name.status is Status.valid
@@ -129,12 +137,12 @@ def check_nominal_genus(taxon: Taxon, cfg: LintConfig) -> Iterable[str]:
                     )
                 )
                 if len(candidates) == 1:
-                    print(f"{taxon}: adding NominalGenus tag: {candidates[0]}")
+                    print(f"adding NominalGenus tag: {candidates[0]}")
                     taxon.add_tag(
                         models.tags.TaxonTag.NominalGenus(genus=candidates[0])
                     )
                     return
-        yield f"{taxon}: should have NominalGenus tag"
+        yield "should have NominalGenus tag"
 
 
 @LINT.add("valid_name")
@@ -188,6 +196,15 @@ def check_age(taxon: Taxon, cfg: LintConfig) -> Iterable[str]:
             yield "extant taxon has no extant children"
 
 
+@LINT.add("valid_base_name")
+def check_valid_base_name(taxon: Taxon, cfg: LintConfig) -> Iterable[str]:
+    if (
+        taxon.base_name.status is Status.valid
+        and not taxon.base_name.can_be_valid_base_name()
+    ):
+        yield f"{taxon}: base name {taxon.base_name} is not valid (status {taxon.base_name.nomenclature_status.name})"
+
+
 @LINT.add("expected_base_name")
 def check_conservative_expected_base_name(
     taxon: Taxon, cfg: LintConfig
@@ -200,12 +217,16 @@ def check_conservative_expected_base_name(
     message = f"expected base name to be {expected_base}, but is {taxon.base_name}"
     if cfg.autofix:
         print(f"{taxon}: {message}")
-        if taxon.base_name.taxon == taxon:
-            taxon.switch_basename(expected_base)
-        else:
-            taxon.base_name = expected_base
+        _switch_basename(taxon, expected_base)
     else:
         yield message
+
+
+def _switch_basename(taxon: Taxon, new_base_name: models.Name) -> None:
+    if taxon.base_name.taxon == taxon:
+        taxon.switch_basename(new_base_name)
+    else:
+        taxon.base_name = new_base_name
 
 
 def get_conservative_expected_base_name(taxon: Taxon) -> models.Name | None:
