@@ -520,6 +520,8 @@ Tags include the following:
     listed.
   - _MisidentificationOf_: The author incorrectly applied the name of a different
     species.
+  - _RerankingOf_: Used for family-group names. The name is a reranking of a
+    family-group names previously proposed at a different rank.
 
 Type tags are more commonly used; ideally every species-group name and many genus-group
 names should have at least one. They fall into several groups:
