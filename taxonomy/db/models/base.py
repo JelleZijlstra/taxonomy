@@ -123,7 +123,7 @@ class BaseModel(Model):
                 field.typ = cls
 
     @classmethod
-    def create(cls: type[ModelT], **kwargs: Any) -> ModelT:
+    def create(cls, **kwargs: Any) -> Self:
         result = super().create(**kwargs)
         if hasattr(cls, "creation_event"):
             cls.creation_event.trigger(result)
@@ -135,16 +135,16 @@ class BaseModel(Model):
 
     @classmethod
     def lint_all(
-        cls: type[ModelT],
-        linter: Linter[ModelT] | None = None,
+        cls,
+        linter: Linter[Self] | None = None,
         *,
         autofix: bool = True,
         interactive: bool = False,
         verbose: bool = False,
         manual_mode: bool = False,
         enable_all: bool = False,
-        query: Iterable[ModelT] | None = None,
-    ) -> list[tuple[ModelT, list[str]]]:
+        query: Iterable[Self] | None = None,
+    ) -> list[tuple[Self, list[str]]]:
         cls.clear_lint_caches()
         cfg = LintConfig(
             autofix=autofix,
@@ -210,8 +210,8 @@ class BaseModel(Model):
         return False
 
     def is_lint_clean(
-        self: ModelT,
-        extra_linter: Linter[ModelT] | None = None,
+        self,
+        extra_linter: Linter[Self] | None = None,
         cfg: LintConfig = LintConfig(interactive=False, autofix=False),
     ) -> bool:
         messages = list(self.general_lint(cfg))
@@ -667,9 +667,7 @@ class BaseModel(Model):
             ),
         )
 
-    def _merge_fields(
-        self: ModelT, into: ModelT, exclude: Container[str] = set()
-    ) -> None:
+    def _merge_fields(self, into: Self, exclude: Container[str] = set()) -> None:
         for field in self.fields():
             if field in exclude:
                 continue
@@ -685,13 +683,13 @@ class BaseModel(Model):
 
     @classmethod
     def bfind(
-        cls: type[ModelT],
+        cls,
         *args: Any,
         quiet: bool = False,
-        sort_key: Callable[[ModelT], Any] | None = None,
+        sort_key: Callable[[Self], Any] | None = None,
         sort: bool = True,
         **kwargs: Any,
-    ) -> list[ModelT]:
+    ) -> list[Self]:
         filters = [*args]
         fields = cls.clirm_fields
         for key, value in kwargs.items():
@@ -719,7 +717,7 @@ class BaseModel(Model):
         return objs
 
     @classmethod
-    def select_one(cls: type[ModelT], *args: Any, **kwargs: Any) -> ModelT | None:
+    def select_one(cls, *args: Any, **kwargs: Any) -> Self | None:
         rows = cls.bfind(
             *args,
             *[getattr(cls, key) == value for key, value in kwargs.items()],
@@ -731,14 +729,14 @@ class BaseModel(Model):
             return None
         return rows[0]
 
-    def reload(self: ModelT) -> ModelT:
+    def reload(self) -> Self:
         return type(self).get(id=self.id)
 
     def serialize(self) -> int:
         return self.id
 
     @classmethod
-    def unserialize(cls: type[ModelT], data: int) -> ModelT:
+    def unserialize(cls, data: int) -> Self:
         return cls(data)
 
     @classmethod
@@ -751,11 +749,11 @@ class BaseModel(Model):
         """Add a filter to the query that removes invalid objects."""
         return query
 
-    def get_redirect_target(self: ModelT) -> ModelT | None:
+    def get_redirect_target(self) -> Self | None:
         """Return the object this object redirects to, if any."""
         return None
 
-    def resolve_redirect(self: ModelT) -> ModelT:
+    def resolve_redirect(self) -> Self:
         if target := self.get_redirect_target():
             return target
         return self
@@ -768,7 +766,7 @@ class BaseModel(Model):
         return False
 
     @classmethod
-    def getter(cls: type[ModelT], attr: str | None) -> _NameGetter[ModelT]:
+    def getter(cls, attr: str | None) -> _NameGetter[Self]:
         key = (cls, attr)
         if key in _getters:
             return _getters[key]
@@ -779,12 +777,8 @@ class BaseModel(Model):
 
     @classmethod
     def get_one_by(
-        cls: type[ModelT],
-        field: str | None,
-        *,
-        prompt: str = "> ",
-        allow_empty: bool = True,
-    ) -> ModelT | None:
+        cls, field: str | None, *, prompt: str = "> ", allow_empty: bool = True
+    ) -> Self | None:
         return cls.getter(field).get_one(prompt, allow_empty=allow_empty)
 
     def get_value_for_field(self, field: str, default: Any | None = None) -> Any:
@@ -1287,7 +1281,7 @@ class BaseModel(Model):
         return f"[{self!s}]({self.get_url()})"
 
     @classmethod
-    def get_from_key(cls: type[ModelT], key: str) -> ModelT | None:
+    def get_from_key(cls, key: str) -> Self | None:
         getter = cls.getter(None)
         try:
             return getter(key)
@@ -1295,7 +1289,7 @@ class BaseModel(Model):
             return None
 
     @classmethod
-    def create_interactively(cls: type[ModelT], **kwargs: Any) -> ModelT | None:
+    def create_interactively(cls, **kwargs: Any) -> Self | None:
         data = {**kwargs}
         for field in cls.fields():
             if field not in data and field != "id":
