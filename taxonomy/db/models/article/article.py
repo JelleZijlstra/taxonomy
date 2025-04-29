@@ -1094,9 +1094,9 @@ class Article(BaseModel):
         else:
             return self.title.replace(r"\ ", " ")
 
-    def get_enclosing(self: T) -> T | None:
+    def get_enclosing(self) -> Self | None:
         if self.parent is not None:
-            return cast(T, self.parent)
+            return cast(Self, self.parent)
         else:
             return None
 

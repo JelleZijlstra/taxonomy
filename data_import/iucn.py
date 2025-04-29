@@ -22,9 +22,14 @@ SOURCES = {
 }
 
 
-HIGHER_RANKS = "kingdomName,phylumName,className,orderName,familyName,genusName".split(
-    ","
-)
+HIGHER_RANKS = [
+    "kingdomName",
+    "phylumName",
+    "className",
+    "orderName",
+    "familyName",
+    "genusName",
+]
 
 
 def _get_rank(rank: str) -> Rank:

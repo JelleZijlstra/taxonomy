@@ -35,6 +35,10 @@ EXCLUDED = {
     "NoSpecimen",
     "NoDate",
     "IgnorePotentialCitationFrom",
+    "InterpretedTypeLocality",
+    "InterpretedTypeSpecimen",
+    "InterpretedTypeTaxon",
+    "NomenclatureComments",
     # Fields
     "type_tags",
     "tags",
