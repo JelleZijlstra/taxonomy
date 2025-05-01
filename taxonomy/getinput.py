@@ -647,6 +647,51 @@ def display_tags(
                 yield f"{spacing}  {attr}: {value!s}\n"
 
 
+def _get_adt_member_field(
+    *,
+    member_cls: type[adt.ADT],
+    existing: ADTOrInstance | None = None,
+    completers: CompleterMap = {},
+    arg_name: str,
+) -> Any:
+    typ = member_cls._attributes[arg_name]
+    is_required = arg_name in member_cls.__required_attrs__
+    existing_value = getattr(existing, arg_name, None)
+    if (member_cls, arg_name) in completers:
+        while True:
+            value = completers[(member_cls, arg_name)](f"{arg_name}> ", existing_value)
+            if value is not None or not is_required:
+                break
+        return value
+    elif isinstance(typ, type) and issubclass(typ, enum.IntEnum):
+        return get_enum_member(
+            typ,
+            prompt=f"{arg_name}> ",
+            default=existing_value,
+            allow_empty=not is_required,
+        )
+    elif typ is bool:
+        return yes_no(f"{arg_name}> ", default=existing_value)
+    elif typ in adt.BASIC_TYPES:
+        while True:
+            value = get_line(
+                f"{arg_name}> ",
+                history_key=(member_cls, arg_name),
+                default="" if existing_value is None else str(existing_value),
+                allow_none=not is_required,
+            )
+            try:
+                converted_value = typ(value)
+            except Exception:
+                print(f"Invalid value for {arg_name}: {value!r}")
+                continue
+            else:
+                return converted_value
+        assert False, "unreachable"
+    else:
+        assert False, f"do not know how to fill {arg_name} of type {typ}"
+
+
 def get_adt_member(
     member_cls: type[adt.ADT],
     existing: ADTOrInstance | None = None,
@@ -655,44 +700,37 @@ def get_adt_member(
     if not member_cls._has_args:
         return member_cls
     args: dict[str, Any] = {}
-    for arg_name, typ in member_cls._attributes.items():
+    for arg_name in member_cls._attributes:
         is_required = arg_name in member_cls.__required_attrs__
-        existing_value = getattr(existing, arg_name, None)
-        if (member_cls, arg_name) in completers:
-            while True:
-                value = completers[(member_cls, arg_name)](
-                    f"{arg_name}> ", existing_value
-                )
-                if value is not None or not is_required:
-                    break
-            args[arg_name] = value
-        elif isinstance(typ, type) and issubclass(typ, enum.IntEnum):
-            args[arg_name] = get_enum_member(
-                typ,
-                prompt=f"{arg_name}> ",
-                default=existing_value,
-                allow_empty=not is_required,
+        if not is_required:
+            continue
+        args[arg_name] = _get_adt_member_field(
+            member_cls=member_cls,
+            existing=existing,
+            completers=completers,
+            arg_name=arg_name,
+        )
+    if member_cls.__optional_attrs__:
+        attrs = sorted(member_cls.__optional_attrs__)
+        while True:
+            print(f"Optional attributes: {', '.join(attrs)}")
+            choice = get_with_completion(
+                attrs,
+                "add optional attributes> ",
+                history_key=member_cls,
+                allow_empty=True,
             )
-        elif typ is bool:
-            args[arg_name] = yes_no(f"{arg_name}> ", default=existing_value)
-        elif typ in adt.BASIC_TYPES:
-            while True:
-                value = get_line(
-                    f"{arg_name}> ",
-                    history_key=(member_cls, arg_name),
-                    default="" if existing_value is None else str(existing_value),
-                    allow_none=not is_required,
+            if not choice:
+                break
+            if choice in member_cls.__optional_attrs__:
+                args[choice] = _get_adt_member_field(
+                    member_cls=member_cls,
+                    existing=existing,
+                    completers=completers,
+                    arg_name=choice,
                 )
-                try:
-                    converted_value = typ(value)
-                except Exception:
-                    print(f"Invalid value for {arg_name}: {value!r}")
-                    continue
-                else:
-                    args[arg_name] = converted_value
-                    break
-        else:
-            assert False, f"do not know how to fill {arg_name} of type {typ}"
+            else:
+                print(f"invalid choice: {choice!r}")
     return member_cls(**args)
 
 

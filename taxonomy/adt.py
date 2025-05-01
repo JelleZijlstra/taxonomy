@@ -188,7 +188,17 @@ class _ADTMeta(type):
                     else:
                         annotations[key] = typ | None
                 lines = "".join(f"    self.{attr} = {attr}\n" for attr in member.kwargs)
-                code = f'def __init__(self, {", ".join(member.kwargs)}):\n{lines}'
+                init_params = []
+                added_star = False
+                for key in member.kwargs:
+                    if key in required_attrs:
+                        init_params.append(f"{key}")
+                    else:
+                        if not added_star:
+                            init_params.append("*")
+                            added_star = True
+                        init_params.append(f"{key}=None")
+                code = f'def __init__(self, {", ".join(init_params)}):\n{lines}'
                 new_ns: dict[str, Any] = {}
                 exec(code, {}, new_ns)
                 init = new_ns["__init__"]
@@ -264,24 +274,24 @@ class ADT(_ADTBase, metaclass=_ADTMeta):
         tag = value[0]
         member_cls = cls._tag_to_member[tag]
         if member_cls._has_args:
-            args: list[Any] = []
-            for arg_type, serialized in zip(
-                member_cls._attributes.values(), value[1:], strict=False
+            kwargs: dict[str, Any] = {}
+            for (name, arg_type), serialized in zip(
+                member_cls._attributes.items(), value[1:], strict=False
             ):
                 if hasattr(arg_type, "unserialize"):
                     if serialized is None:
-                        args.append(None)
+                        kwargs[name] = None
                     else:
-                        args.append(arg_type.unserialize(serialized))
+                        kwargs[name] = arg_type.unserialize(serialized)
                 elif (
                     serialized is not None
                     and isinstance(arg_type, type)
                     and issubclass(arg_type, enum.IntEnum)
                 ):
-                    args.append(arg_type(serialized))
+                    kwargs[name] = arg_type(serialized)
                 else:
-                    args.append(serialized)
-            return member_cls(*args)
+                    kwargs[name] = serialized
+            return member_cls(**kwargs)
         else:
             return member_cls  # type: ignore[return-value]
 
@@ -290,8 +300,17 @@ class ADT(_ADTBase, metaclass=_ADTMeta):
         if not self._has_args:
             return member_name
         else:
-            args = ", ".join(map(repr, self._get_attributes()))
-            return f"{member_name}({args})"
+            args = []
+            for attr in self._attributes:
+                value = getattr(self, attr)
+                is_optional = attr in self.__optional_attrs__
+                if is_optional and value is None:
+                    continue
+                arg = repr(value)
+                if is_optional:
+                    arg = f"{attr}={arg}"
+                args.append(arg)
+            return f"{member_name}({", ".join(args)})"
 
 
 def replace(adt: _ADTT, **overrides: Any) -> _ADTT:

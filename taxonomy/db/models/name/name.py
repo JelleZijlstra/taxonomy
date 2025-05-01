@@ -1023,7 +1023,7 @@ class Name(BaseModel):
 
     def add_included(self, species: Name, comment: str = "") -> None:
         assert isinstance(species, Name)
-        self.add_type_tag(TypeTag.IncludedSpecies(species, comment))
+        self.add_type_tag(TypeTag.IncludedSpecies(species, comment=comment))
 
     def edit_comments(self) -> None:
         for comment in self.comments:
@@ -1059,7 +1059,7 @@ class Name(BaseModel):
 
     def add_nomen_nudum(self, *, interactive: bool = True) -> Name | None:
         """Adds a nomen nudum similar to this name."""
-        tags = [NameTag.Condition(NomenclatureStatus.nomen_nudum, "")]
+        tags = [NameTag.Condition(NomenclatureStatus.nomen_nudum, comment="")]
         if interactive:
             paper = self.get_value_for_foreign_class("paper", Article)
             if paper is not None:
@@ -1474,7 +1474,7 @@ class Name(BaseModel):
         tag_cls = CONSTRUCTABLE_STATUS_TO_TAG[status]
         if page_described is not None:
             nam.page_described = page_described
-        nam.add_tag(tag_cls(self, ""))
+        nam.add_tag(tag_cls(self, comment=""))
         if interactive:
             nam.fill_required_fields()
         return nam
@@ -1492,7 +1492,7 @@ class Name(BaseModel):
             return
         if tag is None:
             tag = NameTag.PreoccupiedBy
-        self.add_tag(tag(name, comment or ""))
+        self.add_tag(tag(name, comment=comment or ""))
         if self.nomenclature_status == NomenclatureStatus.available:
             self.nomenclature_status = NomenclatureStatus.preoccupied
         else:
@@ -1518,7 +1518,7 @@ class Name(BaseModel):
             for tag in tags
             if not (isinstance(tag, PREOCCUPIED_TAGS) and tag.name == name)
         ]
-        tags.append(NameTag.NotPreoccupiedBy(name, comment or ""))
+        tags.append(NameTag.NotPreoccupiedBy(name, comment=comment or ""))
         getinput.print_diff(self.tags, tags)
         self.tags = tags  # type: ignore[assignment]
 
@@ -1529,10 +1529,10 @@ class Name(BaseModel):
             )
         if status is None:
             return
-        self.add_tag(NameTag.Condition(status, ""))
+        self.add_tag(NameTag.Condition(status, comment=""))
 
     def conserve(self, opinion: Article, comment: str | None = None) -> None:
-        self.add_tag(NameTag.Conserved(opinion, comment or ""))
+        self.add_tag(NameTag.Conserved(opinion, comment=comment or ""))
 
     @classmethod
     def infer_author_tags(cls, authority: str) -> list[AuthorTag] | None:
@@ -2945,6 +2945,10 @@ class TypeTag(adt.ADT):
         lectotype=str,
         valid=bool,
         comment=NotRequired[str],
+        page=NotRequired[str],
+        verbatim_citation=NotRequired[str],
+        citation_group=NotRequired[CitationGroup],
+        page_link=NotRequired[str],
         tag=15,
     )
     NeotypeDesignation(  # type: ignore[name-defined]
@@ -2952,6 +2956,10 @@ class TypeTag(adt.ADT):
         neotype=str,
         valid=bool,
         comment=NotRequired[str],
+        page=NotRequired[str],
+        verbatim_citation=NotRequired[str],
+        citation_group=NotRequired[CitationGroup],
+        page_link=NotRequired[str],
         tag=16,
     )
     # more information on the specimen

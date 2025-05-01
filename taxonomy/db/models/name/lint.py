@@ -228,7 +228,9 @@ def maybe_replace_tags(
                 if re.fullmatch(rgx, after):
                     pieces = after.split(", ")
                     new_detail = ", ".join(side + piece for piece in pieces)
-                    return [TypeTag.Organ(new_organ, new_detail, condition)], []
+                    return [
+                        TypeTag.Organ(new_organ, detail=new_detail, condition=condition)
+                    ], []
     if organ in (SpecimenOrgan.maxilla, SpecimenOrgan.skull):
         if " with " in detail:
             before, after = detail.split(" with ", maxsplit=1)
@@ -248,13 +250,19 @@ def maybe_replace_tags(
                 if re.fullmatch(r"[A-Z][\dA-Z\-\?]*(, [A-Z][\dA-Z\-\?]*)*", after):
                     pieces = after.split(", ")
                     new_detail = ", ".join(side + piece for piece in pieces)
-                    return [TypeTag.Organ(new_organ, new_detail, condition)], []
+                    return [
+                        TypeTag.Organ(new_organ, detail=new_detail, condition=condition)
+                    ], []
     if organ is SpecimenOrgan.skull:
         if " with " in detail:
             before, after = detail.split(" with ", maxsplit=1)
             if re.fullmatch(r"(partial |broken )?(skull|cranium)", before):
                 if re.fullmatch(r"[A-Z][\dA-Z\-\?]*(, [A-Z][\dA-Z\-\?]*)*", after):
-                    return [TypeTag.Organ(SpecimenOrgan.skull, after, condition)], []
+                    return [
+                        TypeTag.Organ(
+                            SpecimenOrgan.skull, detail=after, condition=condition
+                        )
+                    ], []
     parts = detail.split(", ")
     remaining_parts = []
     new_tags = []
@@ -267,7 +275,9 @@ def maybe_replace_tags(
                 remaining_parts.append(part)
             else:
                 new_organ, new_detail = new_pair
-                new_tags.append(TypeTag.Organ(new_organ, new_detail, condition))
+                new_tags.append(
+                    TypeTag.Organ(new_organ, detail=new_detail, condition=condition)
+                )
     else:
         remaining_parts = parts
     return new_tags, remaining_parts
@@ -317,7 +327,7 @@ def check_organ_tag(tag: TypeTag.Organ) -> Generator[str, None, list[TypeTag.Org
         condition = detail
         detail = ""
     detail = yield from check_organ_tag_with_parser(organ, detail)
-    new_tags.append(TypeTag.Organ(organ, detail, condition))
+    new_tags.append(TypeTag.Organ(organ, detail=detail, condition=condition))
     return new_tags
 
 
@@ -414,6 +424,70 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                     nam.genus_type_kind = (
                         TypeSpeciesDesignation.designated_by_the_commission
                     )
+            tags.append(tag)
+        elif isinstance(
+            tag, (TypeTag.LectotypeDesignation, TypeTag.NeotypeDesignation)
+        ):
+            if tag.optional_source is not None and (
+                tag.verbatim_citation is not None or tag.citation_group is not None
+            ):
+                message = f"{tag} has redundant citation information"
+                if cfg.autofix:
+                    tag = tag.replace(verbatim_citation=None, citation_group=None)
+                    print(f"{nam}: {message}")
+                else:
+                    yield message
+            if tag.page is not None:
+
+                def set_page(page: str) -> None:
+                    nonlocal tag
+                    tag = tag.replace(page=page)
+
+                yield from check_page(
+                    tag.page,
+                    set_page=set_page,
+                    obj=nam,
+                    cfg=cfg,
+                    get_raw_page_regex=(
+                        tag.optional_source.get_raw_page_regex
+                        if tag.optional_source
+                        else None
+                    ),
+                )
+                if tag.optional_source is not None:
+                    yield from check_page_matches_citation(
+                        tag.optional_source, tag.page
+                    )
+            if (
+                tag.optional_source is not None
+                and tag.page is not None
+                and tag.optional_source.url is not None
+                and tag.page_link is None
+            ):
+                page_described = get_unique_page_text(nam.page_described)[0]
+                maybe_pair = infer_bhl_page_id(
+                    page_described, tag, tag.optional_source, cfg
+                )
+                if maybe_pair is not None:
+                    page_id, context = maybe_pair
+                    url = f"https://www.biodiversitylibrary.org/page/{page_id}"
+                    message = f"inferred BHL page {page_id} from {context} for {tag} (add {url})"
+                    if cfg.autofix:
+                        tag = tag.replace(page_link=url)
+                        print(f"{nam}: {message}")
+                    else:
+                        yield message
+            if tag.page is None and tag.comment is not None:
+                if match := re.fullmatch(r"p\. (\d+(?:, \d+)*)", tag.comment):
+                    page = match.group(1)
+                    message = f"extracted page {page} from comment in {tag}"
+                    if cfg.autofix:
+                        tag = tag.replace(page=page, comment=None)
+                        print(f"{nam}: {message}")
+                    else:
+                        yield message
+            if tag.verbatim_citation is not None and tag.citation_group is None:
+                yield f"{tag} has verbatim_citation but no citation_group"
             tags.append(tag)
         elif isinstance(tag, TypeTag.Date):
             date = tag.date
@@ -601,7 +675,7 @@ def dedupe_and_sort_tags(nam: Name, cfg: LintConfig) -> Iterable[str]:
         for tag in group:
             if tag.detail:
                 detail.append(tag.detail)
-        all_tags.add(TypeTag.Organ(organ, ", ".join(detail), ""))
+        all_tags.add(TypeTag.Organ(organ, detail=", ".join(detail), condition=""))
     tags = sorted(all_tags)
     if tags != original_tags:
         if set(tags) != set(original_tags):
@@ -1139,7 +1213,7 @@ def _check_preoccupation_tag(
                     f"{nam} is marked as a secondary homonym of {senior_name}, but has"
                     " the same original genus, so it should be marked as a primary homonym instead"
                 )
-                new_tag = NameTag.PrimaryHomonymOf(tag.name, tag.comment)
+                new_tag = NameTag.PrimaryHomonymOf(tag.name, comment=tag.comment)
             my_genus = _get_parent(nam)
             senior_genus = _get_parent(senior_name)
             if my_genus != senior_genus:
@@ -1148,14 +1222,14 @@ def _check_preoccupation_tag(
                 )
         elif isinstance(tag, NameTag.PreoccupiedBy):
             if my_original is not None and my_original == senior_original:
-                new_tag = NameTag.PrimaryHomonymOf(tag.name, tag.comment)
+                new_tag = NameTag.PrimaryHomonymOf(tag.name, comment=tag.comment)
             elif _get_parent(nam) == _get_parent(senior_name):
-                new_tag = NameTag.SecondaryHomonymOf(tag.name, tag.comment)
+                new_tag = NameTag.SecondaryHomonymOf(tag.name, comment=tag.comment)
             else:
                 yield f"{nam} is marked as preoccupied by {senior_name}, but is not a primary or secondary homonym"
     elif isinstance(tag, (NameTag.PrimaryHomonymOf, NameTag.SecondaryHomonymOf)):
         yield f"{nam} is not a species-group name, but uses {type(tag).__name__} tag"
-        new_tag = NameTag.PreoccupiedBy(tag.name, tag.comment)
+        new_tag = NameTag.PreoccupiedBy(tag.name, comment=tag.comment)
     my_normalized = nam.get_normalized_root_name_for_homonymy()
     their_normalized = senior_name.get_normalized_root_name_for_homonymy()
     if my_normalized != their_normalized:
@@ -1210,7 +1284,7 @@ def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                     target := tag.name.get_tag_target(NameTag.UnavailableVersionOf)
                 ) and nam.year > target.year:
                     yield f"tag {tag} should instead point to available name {target}"
-                    new_tag = type(tag)(target, tag.comment)
+                    new_tag = type(tag)(target, comment=tag.comment)
             if isinstance(tag, NameTag.SubsequentUsageOf):
                 if (
                     nam.group is Group.species
@@ -1222,7 +1296,7 @@ def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                         " usage, because it is assigned to the same taxon as its"
                         f" target {tag.name}"
                     )
-                    new_tag = NameTag.NameCombinationOf(tag.name, tag.comment)
+                    new_tag = NameTag.NameCombinationOf(tag.name, comment=tag.comment)
                 if nam.taxon != tag.name.taxon:
                     yield f"{nam} is not assigned to the same name as {tag.name} and should be marked as a misidentification"
                 if nam.root_name != tag.name.root_name:
@@ -1244,13 +1318,15 @@ def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                         "Mark as incorrect subsequent spelling instead?"
                     ):
                         new_tag = NameTag.IncorrectSubsequentSpellingOf(
-                            tag.name, tag.comment
+                            tag.name, comment=tag.comment
                         )
                 if tag.name.nomenclature_status is NomenclatureStatus.name_combination:
                     yield f"{nam} is marked as a name combination of {tag.name}, but that name is already a name combination"
                     new_target = tag.name.get_tag_target(NameTag.NameCombinationOf)
                     if new_target is not None:
-                        new_tag = NameTag.NameCombinationOf(new_target, tag.comment)
+                        new_tag = NameTag.NameCombinationOf(
+                            new_target, comment=tag.comment
+                        )
                 elif (
                     tag.name.nomenclature_status
                     is NomenclatureStatus.incorrect_subsequent_spelling
@@ -1265,7 +1341,7 @@ def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                         yield f"{nam} is marked as a name combination of {tag.name}, but that is an incorrect subsequent spelling"
                         if new_target is not None:
                             new_tag = NameTag.IncorrectSubsequentSpellingOf(
-                                new_target, tag.comment
+                                new_target, comment=tag.comment
                             )
             elif isinstance(tag, NameTag.RerankingOf):
                 if nam.group is not Group.family:
@@ -1338,7 +1414,7 @@ def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 new_target = tag.name.get_tag_target(NameTag.NameCombinationOf)
                 if new_target is not None:
                     message += f" of {new_target}"
-                    new_tag = type(tag)(new_target, tag.comment)
+                    new_tag = type(tag)(new_target, comment=tag.comment)
                 yield message
             if (
                 isinstance(tag, NameTag.IncorrectSubsequentSpellingOf)
@@ -1351,7 +1427,7 @@ def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 )
                 if new_target is not None:
                     message += f" of {new_target}"
-                    new_tag = type(tag)(new_target, tag.comment)
+                    new_tag = type(tag)(new_target, comment=tag.comment)
                 yield message
             if (
                 nam.group is Group.species
@@ -1360,7 +1436,9 @@ def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 and _normalize_ii(nam.root_name) == _normalize_ii(tag.name.root_name)
             ):
                 yield f"{nam} is marked as an unjustified emendation of {tag.name}, but has a root name that only differs in ii/i or similar"
-                new_tag = NameTag.IncorrectSubsequentSpellingOf(tag.name, tag.comment)
+                new_tag = NameTag.IncorrectSubsequentSpellingOf(
+                    tag.name, comment=tag.comment
+                )
 
         elif isinstance(tag, NameTag.UnavailableVersionOf):
             if nam.nomenclature_status.can_preoccupy():
@@ -1410,9 +1488,9 @@ def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                         new_tag = None
 
                 if tag.status is NomenclatureStatus.variety_or_form:
-                    new_tag = NameTag.VarietyOrForm(tag.comment)
+                    new_tag = NameTag.VarietyOrForm(comment=tag.comment)
                 elif tag.status is NomenclatureStatus.not_used_as_valid:
-                    new_tag = NameTag.NotUsedAsValid(tag.comment)
+                    new_tag = NameTag.NotUsedAsValid(comment=tag.comment)
 
                 if tag.status is NomenclatureStatus.infrasubspecific:
                     possibility = should_be_infrasubspecific(nam)
@@ -2411,7 +2489,7 @@ def check_page_matches_citation(art: Article, page_text: str) -> Iterable[str]:
         except ValueError:
             continue
         if numeric_page not in page_range:
-            yield (f"{page_text} is not in {start_page}–{end_page} for {art}")
+            yield f"{page_text} is not in {start_page}–{end_page} for {art}"
 
 
 @LINT.add("no_page_ranges")
@@ -2531,7 +2609,7 @@ def _maybe_add_publication_date(
     if article is None:
         return
     tag = ArticleTag.PublicationDate(
-        DateSource.external, parsed, f'"{raw_date}" {source}'
+        source=DateSource.external, date=parsed, comment=f'"{raw_date}" {source}'
     )
     if tag in (article.tags or ()):
         return
@@ -3050,7 +3128,7 @@ def _check_homonym_list(
                     NameTag.NeedsPrioritySelection(over=senior_homonym, reason=reason)
                 )
             elif getinput.yes_no("Mark as subsequent usage instead? "):
-                nam.add_tag(NameTag.SubsequentUsageOf(senior_homonym, ""))
+                nam.add_tag(NameTag.SubsequentUsageOf(senior_homonym))
         yield f"preoccupied by {senior_homonym}"
 
 
@@ -3398,7 +3476,7 @@ def check_infrasubspecific(nam: Name, cfg: LintConfig) -> Iterable[str]:
         message = "should be marked as variety or form"
         if cfg.autofix:
             print(f"{nam}: {message}")
-            nam.add_tag(NameTag.VarietyOrForm(""))
+            nam.add_tag(NameTag.VarietyOrForm())
         else:
             yield message
     else:
@@ -3415,7 +3493,7 @@ def check_infrasubspecific(nam: Name, cfg: LintConfig) -> Iterable[str]:
         message = "should be infrasubspecific but is not"
         if cfg.autofix:
             print(f"{nam}: {message}")
-            nam.add_tag(NameTag.Condition(NomenclatureStatus.infrasubspecific, ""))
+            nam.add_tag(NameTag.Condition(NomenclatureStatus.infrasubspecific))
         else:
             yield message
 
@@ -4719,9 +4797,9 @@ def mark_incorrect_subsequent_spelling_as_name_combination(
             yield f"is the earliest occurrence of misspelling {nam.root_name} and should not be marked as subsequent usage"
     else:
         if earliest.corrected_original_name == nam.corrected_original_name:
-            expected_tag = NameTag.SubsequentUsageOf(earliest, "")
+            expected_tag = NameTag.SubsequentUsageOf(earliest)
         else:
-            expected_tag = NameTag.NameCombinationOf(earliest, "")
+            expected_tag = NameTag.NameCombinationOf(earliest)
         if expected_tag not in nam.tags:
             message = f"changing to name combination of {earliest}"
             new_tags = [
@@ -4760,7 +4838,7 @@ def mark_family_group_subsequent_usage(nam: Name, cfg: LintConfig) -> Iterable[s
     if not same_name:
         return
     earliest_name = min(same_name, key=lambda name: name.numeric_year())
-    tag = NameTag.SubsequentUsageOf(earliest_name, "")
+    tag = NameTag.SubsequentUsageOf(earliest_name)
     message = f"marking as subsequent usage of {earliest_name}"
     if cfg.autofix:
         print(f"{nam}: {message}")
@@ -4918,11 +4996,11 @@ def determine_name_variants(nam: Name, cfg: LintConfig) -> Iterable[str]:
         root_name = con.split()[-1]
         tags = []
         if root_name not in root_name_forms:
-            tags.append(NameTag.IncorrectSubsequentSpellingOf(nam, None))
+            tags.append(NameTag.IncorrectSubsequentSpellingOf(nam))
         if root_name in root_name_to_existing_names:
             oldest_root = root_name_to_existing_names[root_name]
             if base_ce.get_corrected_name() != oldest_root.name.corrected_original_name:
-                tags.append(NameTag.NameCombinationOf(oldest_root.name, None))
+                tags.append(NameTag.NameCombinationOf(oldest_root.name))
         con_to_expected_name[con] = ExpectedName(
             original_name=base_ce.name,
             corrected_original_name=con,
@@ -4969,7 +5047,7 @@ def determine_name_variants(nam: Name, cfg: LintConfig) -> Iterable[str]:
                     root_name=root_name,
                     base_ce=base_ce,
                     ces=list(ce_list),
-                    tags=[NameTag.IncorrectSubsequentSpellingOf(nam, None)],
+                    tags=[NameTag.IncorrectSubsequentSpellingOf(nam)],
                 )
         elif base_ce == root_name_to_oldest_ce[root_name]:
             maybe_con = base_ce.get_name_to_use_as_normalized_original_name()
@@ -4981,7 +5059,7 @@ def determine_name_variants(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 root_name=root_name,
                 base_ce=base_ce,
                 ces=list(ce_list),
-                tags=[NameTag.IncorrectSubsequentSpellingOf(nam, None)],
+                tags=[NameTag.IncorrectSubsequentSpellingOf(nam)],
             )
         else:
             base_con = root_name_to_oldest_ce[
@@ -5132,7 +5210,7 @@ def infer_included_species(nam: Name, cfg: LintConfig) -> Iterable[str]:
             comment = ""
         if not comment and child_ce.mapped_name in current_included_species:
             continue
-        tag = TypeTag.IncludedSpecies(child_ce.mapped_name, comment)
+        tag = TypeTag.IncludedSpecies(child_ce.mapped_name, comment=comment)
         message = f"adding included species {child_ce.mapped_name} from {ce}: {tag}"
         if cfg.autofix:
             print(f"{nam}: {message}")
@@ -5434,7 +5512,7 @@ def check_matches_mapped_classification_entry(
         if cfg.autofix:
             print(f"{nam}: {message}")
             for tag in new_conditions:
-                nam.add_tag(NameTag.Condition(tag.status, tag.comment))
+                nam.add_tag(NameTag.Condition(tag.status, comment=tag.comment))
         else:
             yield message
 
@@ -5580,7 +5658,7 @@ def infer_unavailable_version(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if len(candidates) > 1:
         yield f"multiple candidates for available version: {candidates}"
         return
-    tag = NameTag.UnavailableVersionOf(candidates[0], "")
+    tag = NameTag.UnavailableVersionOf(candidates[0])
     message = f"add UnavailableVersionOf tag: {tag}"
     if cfg.autofix:
         print(f"{nam}: {message}")
@@ -5717,7 +5795,7 @@ def infer_reranking(nam: Name, cfg: LintConfig) -> Iterable[str]:
     )
     if best_candidate.valid_numeric_year() >= nam.valid_numeric_year():
         return
-    tag = NameTag.RerankingOf(best_candidate, "")
+    tag = NameTag.RerankingOf(best_candidate)
     message = f"add RerankingOf tag: {tag}"
     if cfg.autofix:
         print(f"{nam}: {message}")

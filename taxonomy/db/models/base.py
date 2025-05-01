@@ -1331,6 +1331,7 @@ class ADTField(Field[Sequence[ADTT]]):
                 try:
                     tags_list.append(self.adt_type.unserialize(val))
                 except Exception:
+                    traceback.print_exc()
                     print("Drop value", val)
             tags = tuple(tags_list)
             return tags
