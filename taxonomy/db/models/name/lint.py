@@ -504,6 +504,12 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                         yield message
             if tag.verbatim_citation is not None and tag.citation_group is None:
                 yield f"{tag} has verbatim_citation but no citation_group"
+            if (
+                tag.optional_source is not None
+                and tag.comment is not None
+                and tag.page is None
+            ):
+                yield f"{tag} has source but no page"
             tags.append(tag)
         elif isinstance(tag, TypeTag.Date):
             date = tag.date

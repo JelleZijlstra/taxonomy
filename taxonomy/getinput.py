@@ -619,7 +619,7 @@ def display_tags(
     spacing: str,
     tags: Iterable[adt.ADT | type[adt.ADT]] | None,
     *,
-    show_indexes: bool = False,
+    show_indexes: bool = True,
 ) -> Iterable[str]:
     if tags is None:
         return
@@ -628,14 +628,14 @@ def display_tags(
         tags = sorted(tags)
     for i, tag in enumerate(tags):
         if show_indexes:
-            index = f"{i}: "
+            index = f" ({i})"
         else:
             index = ""
         if isinstance(tag, type):
             # tag without arguments
-            yield f"{spacing}{index}{tag.__name__}\n"
+            yield f"{spacing}{tag.__name__}{index}\n"
         else:
-            yield f"{spacing}{index}{type(tag).__name__}\n"
+            yield f"{spacing}{type(tag).__name__}{index}\n"
             for attr in tag._attributes:
                 value = getattr(tag, attr)
                 if value is None or value == "":
