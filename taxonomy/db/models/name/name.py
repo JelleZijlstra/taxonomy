@@ -2937,9 +2937,27 @@ class TypeTag(adt.ADT):
     Host(name=str, tag=11)  # type: ignore[name-defined]
     # 12 is unused
     # subsequent designation of the type (for a genus)
-    TypeDesignation(optional_source=NotRequired[Article], type=Name, comment=NotRequired[str], tag=13)  # type: ignore[name-defined]
+    TypeDesignation(  # type: ignore[name-defined]
+        optional_source=NotRequired[Article],
+        type=Name,
+        comment=NotRequired[str],
+        page=NotRequired[str],
+        verbatim_citation=NotRequired[str],
+        citation_group=NotRequired[CitationGroup],
+        page_link=NotRequired[str],
+        tag=13,
+    )
     # like the above, but by the Commission (and therefore trumping everything else)
-    CommissionTypeDesignation(opinion=Article, type=Name, tag=14)  # type: ignore[name-defined]
+    CommissionTypeDesignation(  # type: ignore[name-defined]
+        opinion=Article,
+        type=Name,
+        comment=NotRequired[str],
+        page=NotRequired[str],
+        verbatim_citation=NotRequired[str],
+        citation_group=NotRequired[CitationGroup],
+        page_link=NotRequired[str],
+        tag=14,
+    )
     LectotypeDesignation(  # type: ignore[name-defined]
         optional_source=NotRequired[Article],
         lectotype=str,

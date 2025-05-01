@@ -426,7 +426,13 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                     )
             tags.append(tag)
         elif isinstance(
-            tag, (TypeTag.LectotypeDesignation, TypeTag.NeotypeDesignation)
+            tag,
+            (
+                TypeTag.LectotypeDesignation,
+                TypeTag.NeotypeDesignation,
+                TypeTag.TypeDesignation,
+                TypeTag.CommissionTypeDesignation,
+            ),
         ):
             if tag.optional_source is not None and (
                 tag.verbatim_citation is not None or tag.citation_group is not None
@@ -483,6 +489,16 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                     message = f"extracted page {page} from comment in {tag}"
                     if cfg.autofix:
                         tag = tag.replace(page=page, comment=None)
+                        print(f"{nam}: {message}")
+                    else:
+                        yield message
+                elif match := re.search(r"^p\. (\d+(?:, \d+)*)\. ", tag.comment):
+                    page = match.group(1)
+                    _, end_span = match.span()
+                    new_comment = tag.comment[end_span:]
+                    message = f"extracted page {page} from comment in {tag} (change comment to {new_comment!r})"
+                    if cfg.autofix:
+                        tag = tag.replace(page=page, comment=new_comment)
                         print(f"{nam}: {message}")
                     else:
                         yield message

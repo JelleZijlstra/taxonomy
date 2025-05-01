@@ -700,6 +700,9 @@ def get_adt_member(
     if not member_cls._has_args:
         return member_cls
     args: dict[str, Any] = {}
+    if existing is not None:
+        for arg_name in member_cls._attributes:
+            args[arg_name] = getattr(existing, arg_name)
     for arg_name in member_cls._attributes:
         is_required = arg_name in member_cls.__required_attrs__
         if not is_required:
@@ -715,7 +718,7 @@ def get_adt_member(
         while True:
             print(f"Optional attributes: {', '.join(attrs)}")
             choice = get_with_completion(
-                attrs,
+                [*attrs, "empty", "p"],
                 "add optional attributes> ",
                 history_key=member_cls,
                 allow_empty=True,
@@ -729,6 +732,25 @@ def get_adt_member(
                     completers=completers,
                     arg_name=choice,
                 )
+            elif choice == "empty":
+                field_to_empty = get_with_completion(
+                    attrs,
+                    "attribute to empty> ",
+                    history_key=member_cls,
+                    allow_empty=True,
+                )
+                if (
+                    field_to_empty is not None
+                    and field_to_empty in member_cls.__optional_attrs__
+                ):
+                    args[field_to_empty] = None
+            elif choice == "p":
+                print("Current values:")
+                for attr in member_cls._attributes:
+                    value = args[attr]
+                    if value is None or value == "":
+                        continue
+                    print(f"  {attr}: {value!r}")
             else:
                 print(f"invalid choice: {choice!r}")
     return member_cls(**args)
