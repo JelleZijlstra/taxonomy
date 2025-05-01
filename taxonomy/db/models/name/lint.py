@@ -464,7 +464,7 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 and tag.optional_source.url is not None
                 and tag.page_link is None
             ):
-                page_described = get_unique_page_text(nam.page_described)[0]
+                page_described = get_unique_page_text(tag.page)[0]
                 maybe_pair = infer_bhl_page_id(
                     page_described, tag, tag.optional_source, cfg
                 )
