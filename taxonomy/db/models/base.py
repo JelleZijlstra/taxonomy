@@ -12,7 +12,7 @@ import sqlite3
 import traceback
 import typing
 from collections import defaultdict
-from collections.abc import Callable, Collection, Container, Iterable, Sequence
+from collections.abc import Callable, Collection, Container, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from functools import partial
 from types import NoneType
@@ -803,6 +803,7 @@ class BaseModel(Model):
                 prompt=self.short_description(),
                 get_existing=get_existing,
                 set_existing=set_existing,
+                member_callbacks=self.get_member_callbacks_for_adt_field(field),
             )
         elif field_obj.type_object is str:
             if default is None:
@@ -856,6 +857,7 @@ class BaseModel(Model):
                 prompt=prompt,
                 completers=cls.get_completers_for_adt_field(field),
                 callbacks=callbacks,
+                member_callbacks=cls.get_member_callbacks_for_adt_field(field),
             )
         elif isinstance(field_obj, (TextField, TextOrNullField)):
             return (
@@ -1133,6 +1135,62 @@ class BaseModel(Model):
                     completer = get_completer(typ, None)
                     completers[(tag, attribute)] = completer
         return completers
+
+    @classmethod
+    def get_member_callbacks_for_adt_field(
+        cls, field: str
+    ) -> getinput.PerMemberCallbackMap:
+        member_callbacks: dict[
+            type[adt.ADT], dict[str, Callable[[Mapping[str, Any]], object]]
+        ] = {}
+        field_obj = getattr(cls, field)
+        assert isinstance(field_obj, ADTField)
+        tag_cls = field_obj.adt_type
+        for tag in tag_cls._tag_to_member.values():
+            if not tag._has_args:
+                continue
+            member_callbacks[tag] = {}
+            if any(typ is models.Article for typ in tag._attributes.values()):
+
+                def opener(args: Mapping[str, Any]) -> None:
+                    for obj in args.values():
+                        if isinstance(obj, models.Article):
+                            obj.openf()
+
+                member_callbacks[tag]["o"] = opener
+            if any(
+                isinstance(typ, type) and issubclass(typ, BaseModel)
+                for typ in tag._attributes.values()
+            ):
+                options = [
+                    attr
+                    for attr, typ in tag._attributes.items()
+                    if isinstance(typ, type) and issubclass(typ, BaseModel)
+                ]
+
+                def foreign(
+                    args: Mapping[str, Any], *, options: Sequence[str] = options
+                ) -> None:
+                    field: str | None
+                    if len(options) == 1:
+                        print(f"Editing {options[0]}")
+                        field = options[0]
+                    else:
+                        field = getinput.get_with_completion(
+                            options,
+                            message="field> ",
+                            history_key=(tag_cls, "edit_foreign"),
+                            disallow_other=True,
+                        )
+                    if not field:
+                        return
+                    if field not in args or args[field] is None:
+                        print(f"{field} does not exist")
+                        return
+                    args[field].edit()
+
+                member_callbacks[tag]["foreign"] = foreign
+        return member_callbacks
 
     def get_value_for_foreign_key_field(
         self,

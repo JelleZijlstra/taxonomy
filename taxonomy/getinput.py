@@ -25,6 +25,9 @@ Completer = Callable[[str, Any], T]
 CompleterMap = Mapping[tuple[type[adt.ADT], str], Completer[Any]]
 CallbackMap = Mapping[str, Callable[[], object]]
 ADTOrInstance = adt.ADT | type[adt.ADT]
+MemberCallbackMap = Mapping[str, Callable[[Mapping[str, Any]], object]]
+PerMemberCallbackMap = Mapping[type[adt.ADT], MemberCallbackMap]
+
 
 RED = 31
 GREEN = 32
@@ -533,6 +536,7 @@ def get_adt_list(
     prompt: str | None = None,
     get_existing: Callable[[], Iterable[ADTOrInstance]] | None = None,
     set_existing: Callable[[Sequence[ADTOrInstance]], None] | None = None,
+    member_callbacks: PerMemberCallbackMap = {},
 ) -> tuple[ADTOrInstance, ...]:
     if prompt is None:
         prompt = adt_cls.__name__
@@ -595,6 +599,7 @@ def get_adt_list(
                         type(existing_member),  # type: ignore[arg-type]
                         existing=existing_member,
                         completers=completers,
+                        callbacks=member_callbacks.get(type(existing_member), {}),  # type: ignore[arg-type]
                     )
         elif member in ("r", "remove_all"):
             if yes_no("Are you sure you want to remove all tags? "):
@@ -607,7 +612,14 @@ def get_adt_list(
                 print("removing member:", out[index])
                 del out[index]
         elif member in name_to_cls:
-            out.append(get_adt_member(name_to_cls[member], completers=completers))
+            member_cls = name_to_cls[member]
+            out.append(
+                get_adt_member(
+                    member_cls,
+                    completers=completers,
+                    callbacks=member_callbacks.get(member_cls, {}),
+                )
+            )
         else:
             print(f"unrecognized command: {member}")
         if set_existing is not None:
@@ -692,10 +704,22 @@ def _get_adt_member_field(
         assert False, f"do not know how to fill {arg_name} of type {typ}"
 
 
+def _wrap_member_callback_map(
+    map: MemberCallbackMap, args: dict[str, Any]
+) -> CallbackMap:
+    if not map:
+        return {}
+    return {
+        key: lambda callback=callback: callback(args)  # type: ignore[misc]
+        for key, callback in map.items()
+    }
+
+
 def get_adt_member(
     member_cls: type[adt.ADT],
     existing: ADTOrInstance | None = None,
     completers: CompleterMap = {},
+    callbacks: MemberCallbackMap = {},
 ) -> ADTOrInstance:
     if not member_cls._has_args:
         return member_cls
@@ -714,7 +738,7 @@ def get_adt_member(
             arg_name=arg_name,
         )
     if member_cls.__optional_attrs__:
-        attrs = sorted(member_cls.__optional_attrs__)
+        attrs = sorted(member_cls._attributes)
         while True:
             print(f"Optional attributes: {', '.join(attrs)}")
             choice = get_with_completion(
@@ -722,10 +746,11 @@ def get_adt_member(
                 "add optional attributes> ",
                 history_key=member_cls,
                 allow_empty=True,
+                callbacks=_wrap_member_callback_map(callbacks, args),
             )
             if not choice:
                 break
-            if choice in member_cls.__optional_attrs__:
+            if choice in member_cls._attributes:
                 args[choice] = _get_adt_member_field(
                     member_cls=member_cls,
                     existing=existing,
@@ -743,7 +768,10 @@ def get_adt_member(
                     field_to_empty is not None
                     and field_to_empty in member_cls.__optional_attrs__
                 ):
+                    print(f"Emptying {field_to_empty}: {args[field_to_empty]!r}")
                     args[field_to_empty] = None
+                else:
+                    print(f"Invalid choice: {field_to_empty!r}")
             elif choice == "p":
                 print("Current values:")
                 for attr in member_cls._attributes:
