@@ -548,7 +548,7 @@ def romanize_russian(cyrillic: str) -> str:
 
 
 def extract_sources(text: str) -> Iterable[str]:
-    for source in re.findall(r"{[^}]+}", text):
+    for source in re.findall(r"{[^{}]+}", text):
         yield source[1:-1]
 
 

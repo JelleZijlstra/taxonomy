@@ -1812,7 +1812,7 @@ def run_maintenance(*, skip_slow: bool = True) -> dict[Any, Any]:
     ]
     # these each take >60 s
     slow: list[Callable[[], Any]] = [
-        *[cls.lint_all for cls in models.BaseModel.__subclasses__()]
+        cls.lint_all for cls in models.BaseModel.__subclasses__()
     ]
     if not skip_slow:
         fns += slow

@@ -156,7 +156,7 @@ ORGAN_REPLACEMENTS = [
 
 def specify_organ(
     organ: SpecimenOrgan, detail: str
-) -> tuple[SpecimenOrgan, str] | None:
+) -> tuple[SpecimenOrgan, str | None] | None:
     if organ is SpecimenOrgan.pes:
         if detail == "phalanges":
             return SpecimenOrgan.phalanx_pes, ">1"
@@ -183,7 +183,7 @@ def specify_organ(
         if detail.startswith(("L ", "R ")):
             new_detail, text = detail.split(" ", maxsplit=1)
         else:
-            new_detail = ""
+            new_detail = None
             text = detail
         try:
             new_organ = SpecimenOrgan[text]
@@ -207,6 +207,7 @@ def specify_organ(
 def maybe_replace_tags(
     organ: SpecimenOrgan, detail: str, condition: str | None
 ) -> tuple[list[TypeTag.Organ], list[str]]:  # type: ignore[name-defined]
+    new_detail: str | None
     if organ in (SpecimenOrgan.mandible, SpecimenOrgan.dentary):
         if " with " in detail:
             before, after = detail.split(" with ", maxsplit=1)
@@ -284,9 +285,9 @@ def maybe_replace_tags(
 
 
 def check_organ_tag_with_parser(
-    organ: SpecimenOrgan, detail: str
-) -> Generator[str, None, str]:
-    if organ not in CHECKED_ORGANS:
+    organ: SpecimenOrgan, detail: str | None
+) -> Generator[str, None, str | None]:
+    if detail is None or detail == "" or organ not in CHECKED_ORGANS:
         return detail
     try:
         parsed_list = parse_organ_detail(detail, organ)
@@ -325,7 +326,7 @@ def check_organ_tag(tag: TypeTag.Organ) -> Generator[str, None, list[TypeTag.Org
         and not condition
     ):
         condition = detail
-        detail = ""
+        detail = None
     detail = yield from check_organ_tag_with_parser(organ, detail)
     new_tags.append(TypeTag.Organ(organ, detail=detail, condition=condition))
     return new_tags
@@ -693,7 +694,7 @@ def dedupe_and_sort_tags(nam: Name, cfg: LintConfig) -> Iterable[str]:
         for tag in group:
             if tag.detail:
                 detail.append(tag.detail)
-        all_tags.add(TypeTag.Organ(organ, detail=", ".join(detail), condition=""))
+        all_tags.add(TypeTag.Organ(organ, detail=", ".join(detail) if detail else None))
     tags = sorted(all_tags)
     if tags != original_tags:
         if set(tags) != set(original_tags):
@@ -2587,7 +2588,7 @@ def check_page_described(nam: Name, cfg: LintConfig) -> Iterable[str]:
     )
 
 
-_JG2015 = "{Australia (Jackson & Groves 2015).pdf}"
+_JG2015 = "{Mammalia Australia (Jackson & Groves 2015).pdf}"
 _JG2015_RE = re.compile(rf"\[From {re.escape(_JG2015)}: [^\[\]]+ \[([A-Za-z\s\d]+)\]\]")
 _JG2015_RE2 = re.compile(rf" \[([A-Za-z\s\d]+)\]\ \[from {re.escape(_JG2015)}\]")
 
@@ -5362,7 +5363,7 @@ def infer_tags_from_mapped_entries(nam: Name, cfg: LintConfig) -> Iterable[str]:
         for tag in ce.tags:
             if isinstance(tag, ClassificationEntryTag.PageLink):
                 expected_tag = TypeTag.AuthorityPageLink(
-                    url=tag.url, confirmed=True, page=tag.page or ""
+                    url=tag.url, confirmed=True, page=tag.page
                 )
                 if expected_tag in nam.type_tags:
                     continue

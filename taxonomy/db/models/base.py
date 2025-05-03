@@ -327,6 +327,15 @@ class BaseModel(Model):
                                         f" {cleaned!r}"
                                     )
                                     overrides[attr_name] = cleaned
+                                if (
+                                    attr_value == ""
+                                    and attr_name in tag_type.__optional_attrs__
+                                ):
+                                    print(
+                                        f"{self}: in tags: empty attribute {attr_name}"
+                                        f" on {field} tag {tag}"
+                                    )
+                                    overrides[attr_name] = None
                                 if not is_invalid:
                                     if message := helpers.is_string_clean(cleaned):
                                         yield f"{self}: in tags: {message} in {cleaned!r}"
@@ -342,6 +351,20 @@ class BaseModel(Model):
                                                 cleaned
                                             )
                                         yield message
+
+                                    if (
+                                        "regex" not in tag_type.__name__.lower()
+                                        and "regex" not in attr_name
+                                    ):
+                                        cleaned_value = yield from models.article.lint.lint_referenced_text(
+                                            attr_value, prefix=f"{self}: "
+                                        )
+                                        if cleaned_value != attr_value:
+                                            print(
+                                                f"{self} (#{self.id}): field {field}: clean"
+                                                f" {attr_value!r} -> {cleaned_value!r}"
+                                            )
+                                            overrides[attr_name] = cleaned_value
                         if overrides:
                             made_change = True
                             new_tags.append(adt.replace(tag, **overrides))
@@ -375,6 +398,14 @@ class BaseModel(Model):
                                         f"{self}: in tags: clean {attr_value!r} ->"
                                         f" {cleaned!r}"
                                     )
+                                if (
+                                    attr_value == ""
+                                    and attr_name in tag_type.__optional_attrs__
+                                ):
+                                    yield (
+                                        f"{self}: in tags: empty attribute {attr_name}"
+                                        f" on {field} tag {tag}"
+                                    )
                                 if not is_invalid:
                                     if message := helpers.is_string_clean(cleaned):
                                         yield f"{self}: in tags: {message} in {cleaned!r}"
@@ -383,6 +414,18 @@ class BaseModel(Model):
                                             f"{self}: contains unprintable characters:"
                                             f" {cleaned!r}"
                                         )
+                                    if (
+                                        "regex" not in tag_type.__name__.lower()
+                                        and "regex" not in attr_name
+                                    ):
+                                        cleaned_value = yield from models.article.lint.lint_referenced_text(
+                                            attr_value, prefix=f"{self}: "
+                                        )
+                                        if cleaned_value != attr_value:
+                                            yield (
+                                                f"{self} (#{self.id}): field {field}: clean"
+                                                f" {attr_value!r} -> {cleaned_value!r}"
+                                            )
                     if not field_obj.is_ordered:
                         if list(value) != sorted(set(value)):
                             yield (

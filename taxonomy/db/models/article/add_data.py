@@ -237,9 +237,7 @@ def expand_doi_json(doi: str) -> RawData:
             if len(parts) > 2:
                 pieces.append(f"{parts[2]:02}")
             data["tags"].append(
-                ArticleTag.PublicationDate(
-                    source=date_source, date="-".join(pieces), comment=""
-                )
+                ArticleTag.PublicationDate(source=date_source, date="-".join(pieces))
             )
     year, _ = infer_publication_date_from_tags(data["tags"])
     if year:

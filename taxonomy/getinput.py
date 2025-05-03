@@ -775,7 +775,7 @@ def get_adt_member(
             elif choice == "p":
                 print("Current values:")
                 for attr in member_cls._attributes:
-                    value = args[attr]
+                    value = args.get(attr)
                     if value is None or value == "":
                         continue
                     print(f"  {attr}: {value!r}")

@@ -2159,7 +2159,7 @@ def check_consistent_bhl_pages(art: Article, cfg: LintConfig) -> Iterable[str]:
 
 def lint_referenced_text(text: str, prefix: str = "") -> Generator[str, None, str]:
     for ref in helpers.extract_sources(text):
-        if ("/" in ref or "#" in ref) and re.fullmatch(r"[a-z]+[/#]\d+", ref):
+        if ("/" in ref or "#" in ref) and re.search(r"^[a-z]+[/#]", ref):
             continue  # "n/123" style
         if ":" in ref:
             continue  # Status automatically changed from available to partially_suppressed because of PartiallySuppressedBy({Diademodon-conserved.pdf: International Commission on Zoological Nomenclature. 1985. Opinion 1324. _Diademodon_ Seeley, 1894 and _Diademodon tetragonus_ Seeley, 1894 conserved by the suppression of Cynochampsa _Owen_, 1859 and _Cynochampsa laniaria_ Owen, 1859 (Reptilia, Therapsida). Bulletin of Zoological Nomenclature 42(2):185-187.}, 'Official Index No. 1151')
