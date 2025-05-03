@@ -409,7 +409,7 @@ def check_tag_with_page[Tag: TagWithPage](
             else:
                 yield message
     if tag.page is None and tag.comment is not None:
-        if match := re.fullmatch(r"p\. (\d+(?:, \d+)*)", tag.comment):
+        if match := re.fullmatch(r"pp?\. (\d+(-\d+)?(?:, \d+(-\d+)?)*)", tag.comment):
             page = match.group(1)
             message = f"extracted page {page} from comment in {tag}"
             if cfg.autofix:
@@ -1599,6 +1599,15 @@ def _check_all_tags(
                 yield f"is marked as {tag}, but is known to have priority"
             elif tag.over.has_priority_over(nam):
                 yield f"is marked as {tag}, but other name is known to have priority"
+
+        case NameTag.SelectionOfPriority():
+            # TODO maybe too strict in cases where there's disagreement over dates
+            # if nam.get_date_object() != tag.over.get_date_object():
+            #    yield f"has a SelectionOfPriority tag, but the date of {nam} ({nam.year}) does not match the date of {tag.over} ({tag.over.year})"
+            tag = yield from check_selection_tag(tag, tag.optional_source, cfg, nam)
+
+        case NameTag.SelectionOfSpelling():
+            tag = yield from check_selection_tag(tag, tag.optional_source, cfg, nam)
 
         case NameTag.MappedClassificationEntry():
             return None  # deprecated
