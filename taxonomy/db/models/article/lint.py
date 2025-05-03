@@ -7,7 +7,7 @@ import subprocess
 import unicodedata
 import urllib.parse
 from collections import defaultdict
-from collections.abc import Collection, Hashable, Iterable, Sequence
+from collections.abc import Collection, Generator, Hashable, Iterable, Sequence
 from functools import cache
 from typing import Any
 
@@ -509,7 +509,7 @@ def add_internal_publication_date(art: Article, cfg: LintConfig) -> Iterable[str
     if art.year is None or not has_unsupported_publication_date(art):
         return
     if text_contains_date(art):
-        tag = ArticleTag.PublicationDate(DateSource.internal, art.year, "")
+        tag = ArticleTag.PublicationDate(DateSource.internal, art.year)
         message = f"adding PublicationDate tag for {art.year}: {tag}"
         if cfg.autofix:
             print(f"{art}: adding PublicationDate tag for {art.year}")
@@ -2155,3 +2155,19 @@ def check_consistent_bhl_pages(art: Article, cfg: LintConfig) -> Iterable[str]:
         if len(bhl_page_to_objects) == 1:
             continue
         yield f"multiple BHL pages link to page {page}: {pprint.pformat(bhl_page_to_objects)}"
+
+
+def lint_referenced_text(text: str, prefix: str = "") -> Generator[str, None, str]:
+    for ref in helpers.extract_sources(text):
+        if ("/" in ref or "#" in ref) and re.fullmatch(r"[a-z]+[/#]\d+", ref):
+            continue  # "n/123" style
+        if ":" in ref:
+            continue  # Status automatically changed from available to partially_suppressed because of PartiallySuppressedBy({Diademodon-conserved.pdf: International Commission on Zoological Nomenclature. 1985. Opinion 1324. _Diademodon_ Seeley, 1894 and _Diademodon tetragonus_ Seeley, 1894 conserved by the suppression of Cynochampsa _Owen_, 1859 and _Cynochampsa laniaria_ Owen, 1859 (Reptilia, Therapsida). Bulletin of Zoological Nomenclature 42(2):185-187.}, 'Official Index No. 1151')
+        try:
+            art = Article.select().filter(Article.name == ref).get()
+        except Article.DoesNotExist:
+            yield f"{prefix}referenced article {ref} does not exist"
+        else:
+            if target := art.get_redirect_target():
+                text = text.replace(f"{{{ref}}}", f"{{{target.name}}}")
+    return text

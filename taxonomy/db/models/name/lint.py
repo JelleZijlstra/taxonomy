@@ -434,7 +434,11 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 TypeTag.CommissionTypeDesignation,
             ),
         ):
-            if tag.optional_source is not None and (
+            if isinstance(tag, TypeTag.CommissionTypeDesignation):
+                source = tag.source
+            else:
+                source = tag.optional_source
+            if source is not None and (
                 tag.verbatim_citation is not None or tag.citation_group is not None
             ):
                 message = f"{tag} has redundant citation information"
@@ -455,25 +459,19 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                     obj=nam,
                     cfg=cfg,
                     get_raw_page_regex=(
-                        tag.optional_source.get_raw_page_regex
-                        if tag.optional_source
-                        else None
+                        source.get_raw_page_regex if source is not None else None
                     ),
                 )
-                if tag.optional_source is not None:
-                    yield from check_page_matches_citation(
-                        tag.optional_source, tag.page
-                    )
+                if source is not None:
+                    yield from check_page_matches_citation(source, tag.page)
             if (
-                tag.optional_source is not None
+                source is not None
                 and tag.page is not None
-                and tag.optional_source.url is not None
+                and source.url is not None
                 and tag.page_link is None
             ):
                 page_described = get_unique_page_text(tag.page)[0]
-                maybe_pair = infer_bhl_page_id(
-                    page_described, tag, tag.optional_source, cfg
-                )
+                maybe_pair = infer_bhl_page_id(page_described, tag, source, cfg)
                 if maybe_pair is not None:
                     page_id, context = maybe_pair
                     url = f"https://www.biodiversitylibrary.org/page/{page_id}"
@@ -504,12 +502,10 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                         yield message
             if tag.verbatim_citation is not None and tag.citation_group is None:
                 yield f"{tag} has verbatim_citation but no citation_group"
-            if (
-                tag.optional_source is not None
-                and tag.comment is not None
-                and tag.page is None
-            ):
+            if source is not None and tag.comment is not None and tag.page is None:
                 yield f"{tag} has source but no page"
+            if source is None and tag.verbatim_citation is None:
+                yield f"{tag} has no source or verbatim_citation"
             tags.append(tag)
         elif isinstance(tag, TypeTag.Date):
             date = tag.date

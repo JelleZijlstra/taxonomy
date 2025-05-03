@@ -1124,7 +1124,7 @@ def infer_condition_from_mapped(
     for tag in name_tags:
         if tag.status in applicable_statuses:
             continue
-        new_tag = ClassificationEntryTag.CECondition(tag.status, tag.comment)
+        new_tag = ClassificationEntryTag.CECondition(tag.status, comment=tag.comment)
         message = f"inferred CECondition tag from mapped name: {new_tag}"
         if cfg.autofix:
             print(f"{ce}: {message}")
@@ -1358,9 +1358,7 @@ def check_needs_referenced_usage(
                     message += f" (maybe {referenced_usage}?)"
                 yield message
                 if referenced_usage is not None and cfg.autofix:
-                    ce.add_tag(
-                        ClassificationEntryTag.ReferencedUsage(referenced_usage, "")
-                    )
+                    ce.add_tag(ClassificationEntryTag.ReferencedUsage(referenced_usage))
 
 
 def _should_ignore_referenced_usage_check(

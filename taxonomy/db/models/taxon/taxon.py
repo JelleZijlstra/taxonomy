@@ -1201,11 +1201,11 @@ class Taxon(BaseModel):
             if choice == "incertae_sedis":
                 for child in self.get_children():
                     if list(child.check_basal_tags(LintConfig())):
-                        child.add_tag(models.tags.TaxonTag.IncertaeSedis(""))
+                        child.add_tag(models.tags.TaxonTag.IncertaeSedis())
             elif choice == "basal":
                 for child in self.get_children():
                     if list(child.check_basal_tags(LintConfig())):
-                        child.add_tag(models.tags.TaxonTag.Basal(""))
+                        child.add_tag(models.tags.TaxonTag.Basal())
         for child in self.get_children():
             child.lint_basal_tags()
 

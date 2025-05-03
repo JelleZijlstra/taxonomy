@@ -438,6 +438,19 @@ class BaseModel(Model):
                                 new_value = self._edit_by_word(cleaned)
                                 setattr(self, field, new_value)
                         yield message
+                    unredirected = yield from models.article.lint.lint_referenced_text(
+                        value, prefix=f"{self}: "
+                    )
+                    if unredirected != value:
+                        message = (
+                            f"{self} (#{self.id}): field {field}: clean {value!r} ->"
+                            f" {unredirected!r}"
+                        )
+                        if cfg.autofix:
+                            print(message)
+                            setattr(self, field, unredirected)
+                        else:
+                            yield message
         if is_invalid:
             target = self.get_redirect_target()
             if target is not None:
@@ -552,17 +565,17 @@ class BaseModel(Model):
         dry_run: bool = False,
     ) -> None:
         def map_fn(tag: adt.ADT) -> adt.ADT:
-            new_args = []
+            new_args = {}
             tag_type = type(tag)
             if not tag_type._attributes:
                 return tag
             for arg_name, arg_type in tag_type._attributes.items():
                 val = getattr(tag, arg_name)
                 if arg_type is typ:
-                    new_args.append(fn(val))
+                    new_args[arg_name] = fn(val)
                 else:
-                    new_args.append(val)
-            return tag_type(*new_args)
+                    new_args[arg_name] = val
+            return tag_type(**new_args)
 
         self.map_tags_field(field, map_fn, dry_run=dry_run)
 

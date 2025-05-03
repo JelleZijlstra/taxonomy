@@ -274,7 +274,9 @@ def infer_bhl_year_range(cg: CitationGroup, cfg: LintConfig) -> Iterable[str]:
     if not years:
         return
     # Add one year on either end in case the stated years are off a little
-    tag = CitationGroupTag.BHLYearRange(str(min(years) - 1), str(max(years) + 1))
+    tag = CitationGroupTag.BHLYearRange(
+        start=str(min(years) - 1), end=str(max(years) + 1)
+    )
     message = f"add tag {tag}"
     if cfg.autofix:
         print(f"{cg}: {message}")
