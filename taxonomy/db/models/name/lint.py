@@ -1634,6 +1634,16 @@ def _check_all_tags(
                     tag = tag.replace(comment=None, page=page, optional_source=art)
             tag = yield from check_selection_tag(tag, tag.optional_source, cfg, nam)
 
+        case NameTag.TakesPriorityOf():
+            if tag.optional_source is not None:
+                if tag.optional_source.numeric_year() >= 1961:
+                    yield f"{nam} is marked as a TakesPriorityOf, but the source is from after 1961"
+            if nam.get_date_object() < tag.name.get_date_object():
+                yield f"predates name taking priority {tag.name}"
+            if tag.is_in_prevailing_usage is None:
+                yield f"{tag} must set is_in_prevailing_usage"
+            tag = yield from check_selection_tag(tag, tag.optional_source, cfg, nam)
+
         case NameTag.MappedClassificationEntry():
             return None  # deprecated
         case _:

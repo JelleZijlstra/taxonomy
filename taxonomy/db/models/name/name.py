@@ -947,6 +947,16 @@ class Name(BaseModel):
                 if isinstance(tag, tag_cls) and hasattr(tag, "name"):
                     yield tag.name
 
+    def get_names_taking_priority(self) -> Iterable[models.Name]:
+        tags = self.tags
+        if tags:
+            for tag in tags:
+                if (
+                    isinstance(tag, models.name.NameTag.TakesPriorityOf)
+                    and tag.is_in_prevailing_usage
+                ):
+                    yield tag.name
+
     def add_tag(self, tag: NameTag) -> None:
         tags = self.tags
         if tags is None:
@@ -1731,6 +1741,10 @@ class Name(BaseModel):
             out += f" {self.taxonomic_authority()}"
         if self.year is not None:
             out += f", {self.year}"
+        takes_prio = list(self.get_names_taking_priority())
+        if takes_prio:
+            oldest = min(takes_prio, key=lambda n: n.get_date_object())
+            out += f" ({oldest.year})"
         if self.page_described is not None:
             out += f":{self.page_described}"
         if self.original_citation is not None:
@@ -2818,7 +2832,18 @@ class NameTag(adt.ADT):
     # "opinion" is a reference to an Article containing an ICZN Opinion
     PartiallySuppressedBy(opinion=Article, comment=NotRequired[str], tag=7)  # type: ignore[name-defined]
     FullySuppressedBy(opinion=Article, comment=NotRequired[str], tag=8)  # type: ignore[name-defined]
-    TakesPriorityOf(name=Name, comment=NotRequired[str], tag=9)  # type: ignore[name-defined]
+    # ICZN Art. 40.2. Family-group name replaced another name before 1961 because of synonymy of the type genus.
+    TakesPriorityOf(  # type: ignore[name-defined]
+        name=Name,
+        comment=NotRequired[str],
+        optional_source=NotRequired[Article],
+        page=NotRequired[str],
+        verbatim_citation=NotRequired[str],
+        citation_group=NotRequired[CitationGroup],
+        page_link=NotRequired[str],
+        is_in_prevailing_usage=NotRequired[bool],
+        tag=9,
+    )
     # ICZN Art. 23.9. The reference is to the nomen protectum relative to which precedence is reversed.
     NomenOblitum(  # type: ignore[name-defined]
         name=Name,

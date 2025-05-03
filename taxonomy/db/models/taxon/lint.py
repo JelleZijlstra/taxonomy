@@ -274,7 +274,7 @@ class NameWithPriority:
 
     @classmethod
     def from_name(cls, name: models.Name) -> Self:
-        takes_prio = list(name.get_tag_targets(models.name.NameTag.TakesPriorityOf))
+        takes_prio = list(name.get_names_taking_priority())
         nomen_oblitum = list(name.get_tag_targets(models.name.NameTag.NomenOblitum))
         reversal_of_prio = list(
             name.get_tag_targets(models.name.NameTag.ReversalOfPriority)
