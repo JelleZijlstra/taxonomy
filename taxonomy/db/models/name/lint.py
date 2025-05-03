@@ -405,28 +405,7 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
             else:
                 yield message
 
-        if isinstance(tag, TypeTag.CommissionTypeDesignation):
-            if nam.type != tag.type:
-                print(
-                    f"{nam} has {nam.type} as its type, but the Commission has"
-                    f" designated {tag.type}"
-                )
-                if cfg.autofix:
-                    nam.type = tag.type
-            if (
-                nam.genus_type_kind
-                != TypeSpeciesDesignation.designated_by_the_commission
-            ):
-                print(
-                    f"{nam} has {nam.genus_type_kind}, but its type was set by the"
-                    " Commission"
-                )
-                if cfg.autofix:
-                    nam.genus_type_kind = (
-                        TypeSpeciesDesignation.designated_by_the_commission
-                    )
-            tags.append(tag)
-        elif isinstance(
+        if isinstance(
             tag,
             (
                 TypeTag.LectotypeDesignation,
@@ -436,7 +415,27 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
             ),
         ):
             if isinstance(tag, TypeTag.CommissionTypeDesignation):
-                source = tag.source
+                if nam.type != tag.type:
+                    print(
+                        f"{nam} has {nam.type} as its type, but the Commission has"
+                        f" designated {tag.type}"
+                    )
+                    if cfg.autofix:
+                        nam.type = tag.type
+                if (
+                    nam.genus_type_kind
+                    != TypeSpeciesDesignation.designated_by_the_commission
+                ):
+                    print(
+                        f"{nam} has {nam.genus_type_kind}, but its type was set by the"
+                        " Commission"
+                    )
+                    if cfg.autofix:
+                        nam.genus_type_kind = (
+                            TypeSpeciesDesignation.designated_by_the_commission
+                        )
+                tags.append(tag)
+                source = tag.opinion
             else:
                 source = tag.optional_source
             if source is not None and (
@@ -507,6 +506,92 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 yield f"{tag} has source but no page"
             if source is None and tag.verbatim_citation is None:
                 yield f"{tag} has no source or verbatim_citation"
+            tags.append(tag)
+        elif isinstance(tag, TypeTag.IncludedSpecies):
+            if tag.comment is not None and re.match(r"^p\. \d+", tag.comment):
+                new_tag = tag.replace(
+                    comment=None, page=tag.comment.removeprefix("p. ")
+                )
+                message = f"{tag} has page in comment; replace with {new_tag}"
+                if cfg.autofix:
+                    tag = new_tag
+                    print(f"{nam}: {message}")
+                else:
+                    yield message
+            if tag.page is not None:
+
+                def set_page(page: str) -> None:
+                    nonlocal tag
+                    tag = tag.replace(page=page)
+
+                yield from check_page(
+                    tag.page,
+                    set_page=set_page,
+                    obj=nam,
+                    cfg=cfg,
+                    get_raw_page_regex=(
+                        nam.original_citation.get_raw_page_regex
+                        if nam.original_citation is not None
+                        else None
+                    ),
+                )
+                if nam.original_citation is not None:
+                    yield from check_page_matches_citation(
+                        nam.original_citation, tag.page
+                    )
+            if (
+                nam.original_citation is not None
+                and tag.page is not None
+                and nam.original_citation.url is not None
+                and tag.page_link is None
+            ):
+                page_described = get_unique_page_text(tag.page)[0]
+                maybe_pair = infer_bhl_page_id(
+                    page_described, tag, nam.original_citation, cfg
+                )
+                if maybe_pair is not None:
+                    page_id, context = maybe_pair
+                    url = f"https://www.biodiversitylibrary.org/page/{page_id}"
+                    message = f"inferred BHL page {page_id} from {context} for {tag} (add {url})"
+                    if cfg.autofix:
+                        tag = tag.replace(page_link=url)
+                        print(f"{nam}: {message}")
+                    else:
+                        yield message
+            if tag.page is None and tag.comment is not None:
+                if match := re.fullmatch(r"p\. (\d+(?:, \d+)*)", tag.comment):
+                    page = match.group(1)
+                    message = f"extracted page {page} from comment in {tag}"
+                    if cfg.autofix:
+                        tag = tag.replace(page=page, comment=None)
+                        print(f"{nam}: {message}")
+                    else:
+                        yield message
+                elif match := re.search(r"^p\. (\d+(?:, \d+)*)\. ", tag.comment):
+                    page = match.group(1)
+                    _, end_span = match.span()
+                    new_comment = tag.comment[end_span:]
+                    message = f"extracted page {page} from comment in {tag} (change comment to {new_comment!r})"
+                    if cfg.autofix:
+                        tag = tag.replace(page=page, comment=new_comment)
+                        print(f"{nam}: {message}")
+                    else:
+                        yield message
+            if tag.classification_entry is not None:
+                if tag.classification_entry.article != nam.original_citation:
+                    yield f"{tag} has classification entry {tag.classification_entry} that does not match original citation {nam.original_citation}"
+                if tag.classification_entry.mapped_name != tag.name:
+                    yield f"{tag} has classification entry {tag.classification_entry} that does not match name {tag.name}"
+            elif any(
+                other_tag.classification_entry is not None
+                for other_tag in by_type[TypeTag.IncludedSpecies]
+            ):
+                yield f"{tag} has no classification entry, but other IncludedSpecies tags do"
+            if (
+                tag.name.get_date_object() > nam.get_date_object()
+                and not nam.has_type_tag(TypeTag.GenusCoelebs)
+            ):
+                yield f"{tag} has date {tag.name.get_date_object()} that is later than name date {nam.get_date_object()}"
             tags.append(tag)
         elif isinstance(tag, TypeTag.Date):
             date = tag.date
@@ -1183,9 +1268,10 @@ TAG_TO_STATUS = {
 
 
 def _check_preoccupation_tag(
-    tag: NameTag.PreoccupiedBy | NameTag.PrimaryHomonymOf | NameTag.SecondaryHomonymOf | NameTag.PermanentlyReplacedSecondaryHomonymOf,  # type: ignore[name-defined]
-    nam: Name,
+    tag: NameTag, nam: Name, cfg: LintConfig
 ) -> Generator[str, None, NameTag]:
+    if not isinstance(tag, PREOCCUPIED_TAGS):
+        return tag
     senior_name = tag.name
     new_tag = tag
     if nam.group != senior_name.group:
@@ -1264,6 +1350,290 @@ def _normalize_ii(name: str) -> str:
     return re.sub(r"i(i|ae|orum|arum)", r"\1", name)
 
 
+def _check_variant_tag(
+    tag: NameTag, nam: Name, cfg: LintConfig
+) -> Generator[str, None, NameTag | None]:
+    if not isinstance(
+        tag,
+        (
+            NameTag.UnjustifiedEmendationOf,
+            NameTag.IncorrectSubsequentSpellingOf,
+            NameTag.VariantOf,
+            NameTag.NomenNovumFor,
+            NameTag.JustifiedEmendationOf,
+            NameTag.SubsequentUsageOf,
+            NameTag.MisidentificationOf,
+            NameTag.NameCombinationOf,
+            NameTag.RerankingOf,
+        ),
+    ):
+        return tag
+    new_tag: NameTag | None = tag
+    if nam == tag.name:
+        yield f"has a tag that points to itself: {tag}"
+    if nam.get_date_object() < tag.name.get_date_object():
+        yield f"predates supposed original name {tag.name}"
+    if not tag.name.nomenclature_status.can_preoccupy():
+        if (
+            target := tag.name.get_tag_target(NameTag.UnavailableVersionOf)
+        ) and nam.year > target.year:
+            yield f"tag {tag} should instead point to available name {target}"
+            new_tag = type(tag)(target, comment=tag.comment)
+    if (
+        nam.taxon != tag.name.taxon
+        and not isinstance(tag, NameTag.MisidentificationOf)
+        and nam.get_tag_target(NameTag.MisidentificationOf) is None
+    ):
+        yield f"{nam} is not assigned to the same name as {tag.name}"
+    if (
+        not isinstance(
+            tag,
+            (
+                NameTag.SubsequentUsageOf,
+                NameTag.MisidentificationOf,
+                NameTag.JustifiedEmendationOf,
+                NameTag.RerankingOf,
+            ),
+        )
+        and nam.corrected_original_name == tag.name.corrected_original_name
+    ):
+        yield f"{nam} has the same corrected original name as {tag.name}, but is marked as {type(tag).__name__}"
+    if not isinstance(
+        tag,
+        (
+            NameTag.SubsequentUsageOf,
+            NameTag.MisidentificationOf,
+            NameTag.NameCombinationOf,
+            NameTag.JustifiedEmendationOf,
+            NameTag.RerankingOf,
+        ),
+    ) and (
+        (nam.corrected_original_name == tag.name.corrected_original_name)
+        if nam.group is Group.family
+        else (
+            nam.root_name == tag.name.root_name
+            and (
+                nam.species_name_complex is None
+                or nam.species_name_complex == tag.name.species_name_complex
+            )
+        )
+    ):
+        yield f"{nam} has the same root name as {tag.name}, but is marked as {type(tag).__name__}"
+    if (
+        not isinstance(tag, NameTag.SubsequentUsageOf)
+        and tag.name.nomenclature_status is NomenclatureStatus.name_combination
+    ):
+        message = f"{nam} is marked as a {type(tag).__name__} of a name combination"
+        new_target = tag.name.get_tag_target(NameTag.NameCombinationOf)
+        if new_target is not None:
+            message += f" of {new_target}"
+            new_tag = type(tag)(new_target, comment=tag.comment)
+        yield message
+    return new_tag
+
+
+def _check_all_tags(
+    tag: NameTag, nam: Name, cfg: LintConfig
+) -> Generator[str, None, NameTag | None]:
+    match tag:
+        case NameTag.RerankingOf():
+            if nam.group is not Group.family:
+                yield f"{nam} is not a family-group name, but uses RerankingOf tag"
+            elif nam.type is None:
+                yield f"{nam} is marked as a reranking of {tag.name}, but has no type"
+            elif tag.name.type is None:
+                yield f"{tag.name} is marked as the target of a reranking, but has no type"
+            else:
+                my_type = nam.type.resolve_variant()
+                their_type = tag.name.type.resolve_variant()
+                if my_type != their_type:
+                    yield f"{nam} is marked as a reranking of {tag.name}, but has a different type"
+                elif (
+                    nam.corrected_original_name == tag.name.corrected_original_name
+                    and nam.original_rank is not None
+                    and nam.original_rank == tag.name.original_rank
+                ):
+                    yield f"{nam} is marked as a reranking of {tag.name}, but has the same corrected original name"
+            return tag
+        case NameTag.NameCombinationOf():
+            if (
+                nam.species_name_complex != tag.name.species_name_complex
+                and not tag.name.has_name_tag(NameTag.AsEmendedBy)
+            ):
+                message = f"{nam} ({nam.species_name_complex}) is a name combination of {tag.name} ({tag.name.species_name_complex}), but has a different name complex"
+                if cfg.autofix and tag.name.species_name_complex is not None:
+                    print(f"{nam}: {message}")
+                    nam.species_name_complex = tag.name.species_name_complex
+                else:
+                    yield message
+            if nam.root_name not in _get_extended_root_name_forms(tag.name):
+                yield f"{nam} is a name combination of {tag.name}, but has a different root name"
+                if cfg.interactive and getinput.yes_no(
+                    "Mark as incorrect subsequent spelling instead?"
+                ):
+                    return NameTag.IncorrectSubsequentSpellingOf(
+                        tag.name, comment=tag.comment
+                    )
+            if tag.name.nomenclature_status is NomenclatureStatus.name_combination:
+                yield f"{nam} is marked as a name combination of {tag.name}, but that name is already a name combination"
+                new_target = tag.name.get_tag_target(NameTag.NameCombinationOf)
+                if new_target is not None:
+                    return NameTag.NameCombinationOf(new_target, comment=tag.comment)
+            elif (
+                tag.name.nomenclature_status
+                is NomenclatureStatus.incorrect_subsequent_spelling
+            ):
+                new_target = tag.name.get_tag_target(
+                    NameTag.IncorrectSubsequentSpellingOf
+                )
+                self_iss_target = nam.get_tag_target(
+                    NameTag.IncorrectSubsequentSpellingOf
+                )
+                if not (new_target is not None and new_target == self_iss_target):
+                    yield f"{nam} is marked as a name combination of {tag.name}, but that is an incorrect subsequent spelling"
+                    if new_target is not None:
+                        return NameTag.IncorrectSubsequentSpellingOf(
+                            new_target, comment=tag.comment
+                        )
+            return tag
+        case NameTag.SubsequentUsageOf():
+            if (
+                nam.group is Group.species
+                and nam.taxon == tag.name.taxon
+                and nam.corrected_original_name != tag.name.corrected_original_name
+            ):
+                yield (
+                    f"{nam} should be a name combination instead of a subsequent"
+                    " usage, because it is assigned to the same taxon as its"
+                    f" target {tag.name}"
+                )
+                return NameTag.NameCombinationOf(tag.name, comment=tag.comment)
+            if nam.taxon != tag.name.taxon:
+                yield f"{nam} is not assigned to the same name as {tag.name} and should be marked as a misidentification"
+            if nam.root_name != tag.name.root_name:
+                yield f"{nam} is a subsequent usage of {tag.name} but has a different root name"
+        case NameTag.VariantOf():
+            if nam.original_citation is not None:
+                # should be specified to unjustified emendation or incorrect subsequent spelling
+                yield f"{nam} is marked as a variant, but has an original citation"
+        case NameTag.IncorrectSubsequentSpellingOf():
+            if (
+                tag.name.nomenclature_status
+                is NomenclatureStatus.incorrect_subsequent_spelling
+            ):
+                message = f"{nam} is marked as an incorrect subsequent spelling of an incorrect subsequent spelling"
+                new_target = tag.name.get_tag_target(
+                    NameTag.IncorrectSubsequentSpellingOf
+                )
+                if new_target is not None:
+                    message += f" of {new_target}"
+                    tag = NameTag.IncorrectSubsequentSpellingOf(
+                        new_target, comment=tag.comment
+                    )
+                yield message
+        case NameTag.UnjustifiedEmendationOf():
+            if (
+                nam.group is Group.species
+                and nam.root_name != tag.name.root_name
+                and _normalize_ii(nam.root_name) == _normalize_ii(tag.name.root_name)
+            ):
+                yield f"{nam} is marked as an unjustified emendation of {tag.name}, but has a root name that only differs in ii/i or similar"
+                return NameTag.IncorrectSubsequentSpellingOf(
+                    tag.name, comment=tag.comment
+                )
+        case NameTag.UnavailableVersionOf():
+            if nam.nomenclature_status.can_preoccupy():
+                yield "has an UnavailableVersionOf tag, but is available"
+            if nam == tag.name:
+                yield f"has a tag that points to itself: {tag}"
+            if nam.get_date_object() > tag.name.get_date_object():
+                yield f"postdates supposed available version {tag.name}"
+            if nam.taxon != tag.name.taxon:
+                yield f"{nam} is not assigned to the same name as {tag.name}"
+            if not tag.name.nomenclature_status.can_preoccupy():
+                yield f"senior name {tag.name} is not available"
+
+        case NameTag.Conserved():
+            if nam.nomenclature_status not in (
+                NomenclatureStatus.available,
+                NomenclatureStatus.as_emended,
+                NomenclatureStatus.nomen_novum,
+                NomenclatureStatus.preoccupied,
+                NomenclatureStatus.reranking,
+            ):
+                yield f"{nam} is on the Official List, but is not marked as available."
+
+        case NameTag.Condition():
+            inherent = set(get_inherent_nomenclature_statuses(nam))
+            if tag.status in inherent or (
+                tag.status is NomenclatureStatus.inconsistently_binominal
+                and NomenclatureStatus.placed_on_index in inherent
+            ):
+                yield f"has redundant Condition tag for {tag.status.name}"
+                if not tag.comment:
+                    return None
+            else:
+                statuses_from_tags = get_applicable_nomenclature_statuses_from_tags(
+                    nam, exclude_condition=True
+                )
+                if tag.status in statuses_from_tags:
+                    yield f"has Condition tag for {tag.status.name}, but already has a more specific tag"
+                    if not tag.comment:
+                        return None
+                if (
+                    tag.status is NomenclatureStatus.infrasubspecific
+                    and NomenclatureStatus.variety_or_form in statuses_from_tags
+                ):
+                    yield "is marked as infrasubspecific, but also as variety or form"
+                    if not tag.comment:
+                        return None
+
+                if tag.status is NomenclatureStatus.variety_or_form:
+                    return NameTag.VarietyOrForm(comment=tag.comment)
+                elif tag.status is NomenclatureStatus.not_used_as_valid:
+                    return NameTag.NotUsedAsValid(comment=tag.comment)
+
+                if tag.status is NomenclatureStatus.infrasubspecific:
+                    possibility = should_be_infrasubspecific(nam)
+                    if possibility is Possibility.no:
+                        yield "is marked as infrasubspecific, but should not be"
+
+            # TODO: lint against other statuses that have their own tag
+        case NameTag.NotUsedAsValid():
+            if nam.original_rank is not None and nam.original_rank.is_synonym:
+                yield "redundant NotUsedAsValid tag for a synonym"
+                if not tag.comment:
+                    return None
+
+        case NameTag.VarietyOrForm():
+            possibility = should_be_infrasubspecific(nam)
+            if possibility is Possibility.no:
+                yield "is marked as a variety or form, but should not be"
+
+        case NameTag.NeedsPrioritySelection():
+            if nam.has_priority_over(tag.over):
+                yield f"is marked as {tag}, but is known to have priority"
+            elif tag.over.has_priority_over(nam):
+                yield f"is marked as {tag}, but other name is known to have priority"
+
+        case NameTag.MappedClassificationEntry():
+            return None  # deprecated
+        case _:
+            return tag
+    return tag
+
+
+type TagChecker = Callable[
+    [NameTag, Name, LintConfig], Generator[str, None, NameTag | None]
+]
+
+TAG_CHECKERS: list[TagChecker] = [
+    _check_preoccupation_tag,
+    _check_variant_tag,
+    _check_all_tags,
+]
+
+
 @LINT.add("tags")
 def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
     """Looks at all tags set on names and applies related changes."""
@@ -1278,266 +1648,12 @@ def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
     new_tags = []
     for tag in tags:
         new_tag: NameTag | None = tag
-        if isinstance(tag, PREOCCUPIED_TAGS):
-            new_tag = yield from _check_preoccupation_tag(tag, nam)
-        elif isinstance(
-            tag,
-            (
-                NameTag.UnjustifiedEmendationOf,
-                NameTag.IncorrectSubsequentSpellingOf,
-                NameTag.VariantOf,
-                NameTag.NomenNovumFor,
-                NameTag.JustifiedEmendationOf,
-                NameTag.SubsequentUsageOf,
-                NameTag.MisidentificationOf,
-                NameTag.NameCombinationOf,
-                NameTag.RerankingOf,
-            ),
-        ):
-            if nam == tag.name:
-                yield f"has a tag that points to itself: {tag}"
-            if nam.get_date_object() < tag.name.get_date_object():
-                yield f"predates supposed original name {tag.name}"
-            if not tag.name.nomenclature_status.can_preoccupy():
-                if (
-                    target := tag.name.get_tag_target(NameTag.UnavailableVersionOf)
-                ) and nam.year > target.year:
-                    yield f"tag {tag} should instead point to available name {target}"
-                    new_tag = type(tag)(target, comment=tag.comment)
-            if isinstance(tag, NameTag.SubsequentUsageOf):
-                if (
-                    nam.group is Group.species
-                    and nam.taxon == tag.name.taxon
-                    and nam.corrected_original_name != tag.name.corrected_original_name
-                ):
-                    yield (
-                        f"{nam} should be a name combination instead of a subsequent"
-                        " usage, because it is assigned to the same taxon as its"
-                        f" target {tag.name}"
-                    )
-                    new_tag = NameTag.NameCombinationOf(tag.name, comment=tag.comment)
-                if nam.taxon != tag.name.taxon:
-                    yield f"{nam} is not assigned to the same name as {tag.name} and should be marked as a misidentification"
-                if nam.root_name != tag.name.root_name:
-                    yield f"{nam} is a subsequent usage of {tag.name} but has a different root name"
-            elif isinstance(tag, NameTag.NameCombinationOf):
-                if (
-                    nam.species_name_complex != tag.name.species_name_complex
-                    and not tag.name.has_name_tag(NameTag.AsEmendedBy)
-                ):
-                    message = f"{nam} ({nam.species_name_complex}) is a name combination of {tag.name} ({tag.name.species_name_complex}), but has a different name complex"
-                    if cfg.autofix and tag.name.species_name_complex is not None:
-                        print(f"{nam}: {message}")
-                        nam.species_name_complex = tag.name.species_name_complex
-                    else:
-                        yield message
-                if nam.root_name not in _get_extended_root_name_forms(tag.name):
-                    yield f"{nam} is a name combination of {tag.name}, but has a different root name"
-                    if cfg.interactive and getinput.yes_no(
-                        "Mark as incorrect subsequent spelling instead?"
-                    ):
-                        new_tag = NameTag.IncorrectSubsequentSpellingOf(
-                            tag.name, comment=tag.comment
-                        )
-                if tag.name.nomenclature_status is NomenclatureStatus.name_combination:
-                    yield f"{nam} is marked as a name combination of {tag.name}, but that name is already a name combination"
-                    new_target = tag.name.get_tag_target(NameTag.NameCombinationOf)
-                    if new_target is not None:
-                        new_tag = NameTag.NameCombinationOf(
-                            new_target, comment=tag.comment
-                        )
-                elif (
-                    tag.name.nomenclature_status
-                    is NomenclatureStatus.incorrect_subsequent_spelling
-                ):
-                    new_target = tag.name.get_tag_target(
-                        NameTag.IncorrectSubsequentSpellingOf
-                    )
-                    self_iss_target = nam.get_tag_target(
-                        NameTag.IncorrectSubsequentSpellingOf
-                    )
-                    if not (new_target is not None and new_target == self_iss_target):
-                        yield f"{nam} is marked as a name combination of {tag.name}, but that is an incorrect subsequent spelling"
-                        if new_target is not None:
-                            new_tag = NameTag.IncorrectSubsequentSpellingOf(
-                                new_target, comment=tag.comment
-                            )
-            elif isinstance(tag, NameTag.RerankingOf):
-                if nam.group is not Group.family:
-                    yield f"{nam} is not a family-group name, but uses RerankingOf tag"
-                elif nam.type is None:
-                    yield f"{nam} is marked as a reranking of {tag.name}, but has no type"
-                elif tag.name.type is None:
-                    yield f"{tag.name} is marked as the target of a reranking, but has no type"
-                else:
-                    my_type = nam.type.resolve_variant()
-                    their_type = tag.name.type.resolve_variant()
-                    if my_type != their_type:
-                        yield f"{nam} is marked as a reranking of {tag.name}, but has a different type"
-                    elif (
-                        nam.corrected_original_name == tag.name.corrected_original_name
-                        and nam.original_rank is not None
-                        and nam.original_rank == tag.name.original_rank
-                    ):
-                        yield f"{nam} is marked as a reranking of {tag.name}, but has the same corrected original name"
-            if (
-                nam.taxon != tag.name.taxon
-                and not isinstance(tag, NameTag.MisidentificationOf)
-                and nam.get_tag_target(NameTag.MisidentificationOf) is None
-            ):
-                yield f"{nam} is not assigned to the same name as {tag.name}"
-            if isinstance(tag, NameTag.VariantOf) and nam.original_citation is not None:
-                # should be specified to unjustified emendation or incorrect subsequent spelling
-                yield f"{nam} is marked as a variant, but has an original citation"
-            if (
-                not isinstance(
-                    tag,
-                    (
-                        NameTag.SubsequentUsageOf,
-                        NameTag.MisidentificationOf,
-                        NameTag.JustifiedEmendationOf,
-                        NameTag.RerankingOf,
-                    ),
-                )
-                and nam.corrected_original_name == tag.name.corrected_original_name
-            ):
-                yield f"{nam} has the same corrected original name as {tag.name}, but is marked as {type(tag).__name__}"
-            if not isinstance(
-                tag,
-                (
-                    NameTag.SubsequentUsageOf,
-                    NameTag.MisidentificationOf,
-                    NameTag.NameCombinationOf,
-                    NameTag.JustifiedEmendationOf,
-                    NameTag.RerankingOf,
-                ),
-            ) and (
-                (nam.corrected_original_name == tag.name.corrected_original_name)
-                if nam.group is Group.family
-                else (
-                    nam.root_name == tag.name.root_name
-                    and (
-                        nam.species_name_complex is None
-                        or nam.species_name_complex == tag.name.species_name_complex
-                    )
-                )
-            ):
-                yield f"{nam} has the same root name as {tag.name}, but is marked as {type(tag).__name__}"
-            if (
-                not isinstance(tag, NameTag.SubsequentUsageOf)
-                and tag.name.nomenclature_status is NomenclatureStatus.name_combination
-            ):
-                message = (
-                    f"{nam} is marked as a {type(tag).__name__} of a name combination"
-                )
-                new_target = tag.name.get_tag_target(NameTag.NameCombinationOf)
-                if new_target is not None:
-                    message += f" of {new_target}"
-                    new_tag = type(tag)(new_target, comment=tag.comment)
-                yield message
-            if (
-                isinstance(tag, NameTag.IncorrectSubsequentSpellingOf)
-                and tag.name.nomenclature_status
-                is NomenclatureStatus.incorrect_subsequent_spelling
-            ):
-                message = f"{nam} is marked as an incorrect subsequent spelling of an incorrect subsequent spelling"
-                new_target = tag.name.get_tag_target(
-                    NameTag.IncorrectSubsequentSpellingOf
-                )
-                if new_target is not None:
-                    message += f" of {new_target}"
-                    new_tag = type(tag)(new_target, comment=tag.comment)
-                yield message
-            if (
-                nam.group is Group.species
-                and isinstance(tag, NameTag.UnjustifiedEmendationOf)
-                and nam.root_name != tag.name.root_name
-                and _normalize_ii(nam.root_name) == _normalize_ii(tag.name.root_name)
-            ):
-                yield f"{nam} is marked as an unjustified emendation of {tag.name}, but has a root name that only differs in ii/i or similar"
-                new_tag = NameTag.IncorrectSubsequentSpellingOf(
-                    tag.name, comment=tag.comment
-                )
-
-        elif isinstance(tag, NameTag.UnavailableVersionOf):
-            if nam.nomenclature_status.can_preoccupy():
-                yield "has an UnavailableVersionOf tag, but is available"
-            if nam == tag.name:
-                yield f"has a tag that points to itself: {tag}"
-            if nam.get_date_object() > tag.name.get_date_object():
-                yield f"postdates supposed available version {tag.name}"
-            if nam.taxon != tag.name.taxon:
-                yield f"{nam} is not assigned to the same name as {tag.name}"
-            if not tag.name.nomenclature_status.can_preoccupy():
-                yield f"senior name {tag.name} is not available"
-
-        elif isinstance(tag, NameTag.Conserved):
-            if nam.nomenclature_status not in (
-                NomenclatureStatus.available,
-                NomenclatureStatus.as_emended,
-                NomenclatureStatus.nomen_novum,
-                NomenclatureStatus.preoccupied,
-                NomenclatureStatus.reranking,
-            ):
-                yield f"{nam} is on the Official List, but is not marked as available."
-
-        elif isinstance(tag, NameTag.Condition):
-            inherent = set(get_inherent_nomenclature_statuses(nam))
-            if tag.status in inherent or (
-                tag.status is NomenclatureStatus.inconsistently_binominal
-                and NomenclatureStatus.placed_on_index in inherent
-            ):
-                yield f"has redundant Condition tag for {tag.status.name}"
-                if not tag.comment:
-                    new_tag = None
-            else:
-                statuses_from_tags = get_applicable_nomenclature_statuses_from_tags(
-                    nam, exclude_condition=True
-                )
-                if tag.status in statuses_from_tags:
-                    yield f"has Condition tag for {tag.status.name}, but already has a more specific tag"
-                    if not tag.comment:
-                        new_tag = None
-                if (
-                    tag.status is NomenclatureStatus.infrasubspecific
-                    and NomenclatureStatus.variety_or_form in statuses_from_tags
-                ):
-                    yield "is marked as infrasubspecific, but also as variety or form"
-                    if not tag.comment:
-                        new_tag = None
-
-                if tag.status is NomenclatureStatus.variety_or_form:
-                    new_tag = NameTag.VarietyOrForm(comment=tag.comment)
-                elif tag.status is NomenclatureStatus.not_used_as_valid:
-                    new_tag = NameTag.NotUsedAsValid(comment=tag.comment)
-
-                if tag.status is NomenclatureStatus.infrasubspecific:
-                    possibility = should_be_infrasubspecific(nam)
-                    if possibility is Possibility.no:
-                        yield "is marked as infrasubspecific, but should not be"
-
-            # TODO: lint against other statuses that have their own tag
-        elif isinstance(tag, NameTag.NotUsedAsValid):
-            if nam.original_rank is not None and nam.original_rank.is_synonym:
-                yield "redundant NotUsedAsValid tag for a synonym"
-                if not tag.comment:
-                    new_tag = None
-
-        elif isinstance(tag, NameTag.VarietyOrForm):
-            possibility = should_be_infrasubspecific(nam)
-            if possibility is Possibility.no:
-                yield "is marked as a variety or form, but should not be"
-
-        elif isinstance(tag, NameTag.NeedsPrioritySelection):
-            if nam.has_priority_over(tag.over):
-                yield f"is marked as {tag}, but is known to have priority"
-            elif tag.over.has_priority_over(nam):
-                yield f"is marked as {tag}, but other name is known to have priority"
-
-        elif isinstance(tag, NameTag.MappedClassificationEntry):
-            new_tag = None
-
-        # haven't handled TakesPriorityOf, NomenOblitum, MandatoryChangeOf
+        for checker in TAG_CHECKERS:
+            if new_tag is None:
+                break
+            new_tag = yield from checker(  # static analysis: ignore[not_callable]
+                new_tag, nam, cfg
+            )
         if new_tag is not None:
             new_tags.append(new_tag)
 
@@ -5203,33 +5319,36 @@ def infer_included_species(nam: Name, cfg: LintConfig) -> Iterable[str]:
     ce = nam.get_mapped_classification_entry()
     if ce is None or ce.rank.is_synonym:
         return
-    current_included_species = {
-        tag.name for tag in nam.type_tags if isinstance(tag, TypeTag.IncludedSpecies)
-    }
-    current_included_species_with_comments = {
-        tag.name
+    current_included_species_with_ces = {
+        tag.name: tag.classification_entry
         for tag in nam.type_tags
-        if isinstance(tag, TypeTag.IncludedSpecies) and tag.comment
+        if isinstance(tag, TypeTag.IncludedSpecies) and tag.classification_entry
     }
     included = ce.get_children_of_rank(Rank.species)
     for child_ce in included:
         if child_ce.mapped_name is None:
             continue
-        if child_ce.mapped_name in current_included_species_with_comments:
+        if (
+            child_ce.mapped_name in current_included_species_with_ces
+            and current_included_species_with_ces[child_ce.mapped_name] == child_ce
+        ):
             continue
         if child_ce.parent is None:
             continue
         if child_ce.parent != ce:
             comment = f"in {child_ce.parent.get_rank_string()} {child_ce.parent.name}"
-            if child_ce.page is not None:
-                comment += f"; p. {child_ce.page}"
-        elif child_ce.page is not None:
-            comment = f"p. {child_ce.page}"
         else:
-            comment = ""
-        if not comment and child_ce.mapped_name in current_included_species:
-            continue
-        tag = TypeTag.IncludedSpecies(child_ce.mapped_name, comment=comment)
+            comment = None
+        if child_ce.page is not None:
+            page = child_ce.page
+        else:
+            page = None
+        tag = TypeTag.IncludedSpecies(
+            child_ce.mapped_name,
+            comment=comment,
+            page=page,
+            classification_entry=child_ce,
+        )
         message = f"adding included species {child_ce.mapped_name} from {ce}: {tag}"
         if cfg.autofix:
             print(f"{nam}: {message}")
@@ -5291,9 +5410,34 @@ def _prefer_commented(
     tags: list[TypeTag.IncludedSpecies],  # type: ignore[name-defined]
 ) -> tuple[list[TypeTag.IncludedSpecies], str | None]:  # type: ignore[name-defined]
     assert len({tag.name for tag in tags}) == 1
-    commented = [tag for tag in tags if tag.comment]
-    uncommented = [tag for tag in tags if not tag.comment]
-    message = None
+    with_ce = [tag for tag in tags if tag.classification_entry is not None]
+    message: str | None = None
+    if len(with_ce) > 1:
+        message = f"remove one of duplicate tags {with_ce}"
+        return [], message
+    elif len(with_ce) == 1:
+        preferred = with_ce[0]
+        removable = {
+            tag
+            for tag in tags
+            if tag != preferred
+            and (tag.page is None or tag.page == preferred.page)
+            and (tag.comment is None or tag.comment == preferred.comment)
+        }
+        non_removable = [
+            tag for tag in tags if tag != preferred and tag not in removable
+        ]
+        if non_removable:
+            message = f"remove one of duplicate tags {non_removable}"
+        return sorted(removable), message
+    commented = [
+        tag for tag in tags if tag.comment or tag.page or tag.classification_entry
+    ]
+    uncommented = [
+        tag
+        for tag in tags
+        if not tag.comment and not tag.page and not tag.classification_entry
+    ]
     if commented:
         to_remove = uncommented
         if len(commented) > 1:

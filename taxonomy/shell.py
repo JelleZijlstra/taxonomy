@@ -27,6 +27,7 @@ import sqlite3
 import subprocess
 from collections import Counter, defaultdict
 from collections.abc import Callable, Hashable, Iterable, Iterator, Mapping, Sequence
+from dataclasses import dataclass, field
 from itertools import groupby, pairwise
 from pathlib import Path
 from typing import Any, NamedTuple, TypeVar, cast
@@ -38,6 +39,7 @@ import unidecode
 from traitlets.config.loader import Config
 
 from taxonomy import config
+from taxonomy.adt import ADT
 from taxonomy.apis import bhl
 from taxonomy.config import get_options
 from taxonomy.db.models.classification_entry.ce import (
@@ -663,12 +665,12 @@ class ScoreHolder:
         }
         counts: dict[str, int] = defaultdict(int)
         for data in self.data.values():
-            for field in fields:
-                if field not in data or data[field][0] == 100:
-                    counts[field] += 1
+            for field_name in fields:
+                if field_name not in data or data[field_name][0] == 100:
+                    counts[field_name] += 1
         total = len(self.data)
-        for field, count in sorted(counts.items(), key=lambda p: p[1]):
-            print(f"{field}: {count * 100 / total:.2f} ({count}/{total})")
+        for field_name, count in sorted(counts.items(), key=lambda p: p[1]):
+            print(f"{field_name}: {count * 100 / total:.2f} ({count}/{total})")
 
     @classmethod
     def from_taxa(
@@ -922,9 +924,9 @@ def article_stats(*, includefoldertree: bool = False) -> None:
         f" {nnonfiles} are not actual files."
     )
     total -= nredirects
-    for field, number in results.most_common():
+    for field_name, number in results.most_common():
         pct = number / total * 100
-        print(f"{field}: {number} of {total} ({pct:.02f}%)")
+        print(f"{field_name}: {number} of {total} ({pct:.02f}%)")
 
     if includefoldertree:
         Article.get_foldertree().count_tree.display()
@@ -985,8 +987,11 @@ def sorted_field_values(
 
 @command
 def field_counts() -> None:
-    for field in ("verbatim_citation",):
-        print(field, Name.select_valid().filter(getattr(Name, field) != None).count())
+    for field_name in ("verbatim_citation",):
+        print(
+            field_name,
+            Name.select_valid().filter(getattr(Name, field_name) != None).count(),
+        )
     print("Total", Name.select_valid().count())
 
 
@@ -2178,13 +2183,13 @@ def _save_all_caches(*, warm: bool = True) -> None:
                 print(f"{model}: warming None getter")
                 getter.rewarm_cache()
             getter.save_cache()
-        for name, field in model.clirm_fields.items():
+        for name, field_obj in model.clirm_fields.items():
             getter = model.getter(name)
-            if field.name in model.fields_without_completers:
+            if field_obj.name in model.fields_without_completers:
                 continue
-            if field.type_object is str:
+            if field_obj.type_object is str:
                 if warm:
-                    print(f"{model}: warming {name} ({field})")
+                    print(f"{model}: warming {name} ({field_obj})")
                     getter.rewarm_cache()
                 getter.save_cache()
 
@@ -2998,6 +3003,84 @@ def fill_in_type_localities() -> None:
         art.display_names()
         print("Missing TL for", nam)
         art.edit()
+
+
+@dataclass
+class _TagCount:
+    total: int = 0
+    unique_objs: int = 0
+    field_to_presence: Counter[str] = field(default_factory=Counter)
+    field_to_counts: dict[str, Counter[object]] = field(
+        default_factory=lambda: defaultdict(Counter)
+    )
+
+
+def model_selector() -> type[models.BaseModel] | None:
+    classes = {cls.__name__: cls for cls in models.BaseModel.__subclasses__()}
+    choice = getinput.get_with_completion(classes, "Model> ", disallow_other=True)
+    if choice is None:
+        return None
+    return classes[choice]
+
+
+@command
+def tag_counter() -> None:
+    model = model_selector()
+    if model is None:
+        return
+    possible_fields = {
+        name: field
+        for name, field in model.clirm_fields.items()
+        if isinstance(field, models.base.ADTField)
+    }
+    if len(possible_fields) == 0:
+        print(f"{model} has no ADT fields")
+        return
+    elif len(possible_fields) == 1:
+        field_name = next(iter(possible_fields))
+    else:
+        field_name = getinput.get_with_completion(
+            possible_fields, "Field> ", disallow_other=True
+        )
+    if field_name is None:
+        return
+
+    counts: dict[type[ADT], _TagCount] = defaultdict(_TagCount)
+    for obj in model.select_valid():
+        seen_for_nam = set()
+        for tag in getattr(obj, field_name):
+            if tag._has_args:
+                tag_type = type(tag)
+            else:
+                tag_type = tag
+            cnt = counts[tag_type]
+            cnt.total += 1
+            if tag_type not in seen_for_nam:
+                cnt.unique_objs += 1
+                seen_for_nam.add(tag_type)
+            if tag._has_args:
+                for field in tag_type.__annotations__:
+                    value = getattr(tag, field)
+                    if value is not None:
+                        cnt.field_to_presence[field] += 1
+                        cnt.field_to_counts[field][value] += 1
+
+    for tag_type, cnt in sorted(
+        counts.items(), key=lambda item: item[1].total, reverse=True
+    ):
+        print(f"{tag_type}: {cnt.total} total, {cnt.unique_objs} unique")
+        for field, presence in sorted(
+            cnt.field_to_presence.items(), key=lambda item: item[1], reverse=True
+        ):
+            percent = f"{presence / cnt.total:.2%}"
+            print(f"  {field}: {presence} ({percent})")
+            for value, count in sorted(
+                cnt.field_to_counts[field].items(),
+                key=lambda item: item[1],
+                reverse=True,
+            )[:5]:
+                percent = f"{count / presence:.2%}"
+                print(f"    {value}: {count} ({percent})")
 
 
 def run_shell() -> None:

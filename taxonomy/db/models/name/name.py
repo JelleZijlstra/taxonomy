@@ -1021,7 +1021,7 @@ class Name(BaseModel):
         self.map_type_tags(map_fn)
         self.original_citation = new_citation
 
-    def add_included(self, species: Name, comment: str = "") -> None:
+    def add_included(self, species: Name, comment: str | None = None) -> None:
         assert isinstance(species, Name)
         self.add_type_tag(TypeTag.IncludedSpecies(species, comment=comment))
 
@@ -2985,7 +2985,14 @@ class TypeTag(adt.ADT):
     # phrasing of the type locality in a particular source
     LocationDetail(text=str, source=Article, tag=18)  # type: ignore[name-defined]
     # an originally included species in a genus without an original type designation
-    IncludedSpecies(name=Name, comment=NotRequired[str], tag=19)  # type: ignore[name-defined]
+    IncludedSpecies(  # type: ignore[name-defined]
+        name=Name,
+        comment=NotRequired[str],
+        page=NotRequired[str],
+        page_link=NotRequired[str],
+        classification_entry=NotRequired[ClassificationEntry],
+        tag=19,
+    )
     # repository that holds some of the type specimens
     Repository(repository=Collection, tag=20)  # type: ignore[name-defined]
     # indicates that it was originally a genus coelebs
