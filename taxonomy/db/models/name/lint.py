@@ -20,7 +20,7 @@ from collections.abc import Callable, Container, Generator, Iterable, Iterator, 
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from functools import cache
-from typing import Generic, TypeVar, assert_never
+from typing import Generic, Protocol, Self, TypeVar, assert_never
 
 import clirm
 import Levenshtein
@@ -29,7 +29,7 @@ import requests
 from taxonomy import adt, coordinates, getinput, urlparse
 from taxonomy.apis import bhl, nominatim
 from taxonomy.apis.zoobank import clean_lsid, get_zoobank_data, is_valid_lsid
-from taxonomy.db import helpers
+from taxonomy.db import helpers, models
 from taxonomy.db.constants import (
     AgeClass,
     ArticleKind,
@@ -332,6 +332,125 @@ def check_organ_tag(tag: TypeTag.Organ) -> Generator[str, None, list[TypeTag.Org
     return new_tags
 
 
+class SelectionTag(Protocol):
+    page: str | None
+    page_link: str | None
+    verbatim_citation: str | None
+    citation_group: models.CitationGroup | None
+    comment: str | None
+
+    def replace(
+        self,
+        *,
+        page: str | None = None,
+        page_link: str | None = None,
+        verbatim_citation: str | None = None,
+        citation_group: models.CitationGroup | None = None,
+        comment: str | None = None,
+    ) -> Self:
+        raise NotImplementedError
+
+
+class TagWithPage(Protocol):
+    page: str | None
+    page_link: str | None
+    comment: str | None
+
+    def replace(
+        self,
+        *,
+        page: str | None = None,
+        page_link: str | None = None,
+        comment: str | None = None,
+    ) -> Self:
+        raise NotImplementedError
+
+
+def check_selection_tag[Tag: SelectionTag](
+    tag: Tag, source: Article | None, cfg: LintConfig, owner: object
+) -> Generator[str, None, Tag]:
+    tag = yield from check_tag_with_page(tag, source, cfg, owner)
+    if source is not None and (
+        tag.verbatim_citation is not None or tag.citation_group is not None
+    ):
+        message = f"{tag} has redundant citation information"
+        if cfg.autofix:
+            tag = tag.replace(verbatim_citation=None, citation_group=None)
+            print(f"{owner}: {message}")
+        else:
+            yield message
+    if tag.verbatim_citation is not None and tag.citation_group is None:
+        yield f"{tag} has verbatim_citation but no citation_group"
+    if source is None and tag.verbatim_citation is None:
+        yield f"{tag} has no source or verbatim_citation"
+    return tag
+
+
+def check_tag_with_page[Tag: TagWithPage](
+    tag: Tag, source: Article | None, cfg: LintConfig, owner: object
+) -> Generator[str, None, Tag]:
+    if (
+        source is not None
+        and tag.page is not None
+        and source.url is not None
+        and tag.page_link is None
+    ):
+        page_described = get_unique_page_text(tag.page)[0]
+        maybe_pair = infer_bhl_page_id(page_described, tag, source, cfg)
+        if maybe_pair is not None:
+            page_id, context = maybe_pair
+            url = f"https://www.biodiversitylibrary.org/page/{page_id}"
+            message = (
+                f"inferred BHL page {page_id} from {context} for {tag} (add {url})"
+            )
+            if cfg.autofix:
+                tag = tag.replace(page_link=url)
+                print(f"{owner}: {message}")
+            else:
+                yield message
+    if tag.page is None and tag.comment is not None:
+        if match := re.fullmatch(r"p\. (\d+(?:, \d+)*)", tag.comment):
+            page = match.group(1)
+            message = f"extracted page {page} from comment in {tag}"
+            if cfg.autofix:
+                tag = tag.replace(page=page, comment=None)
+                print(f"{owner}: {message}")
+            else:
+                yield message
+        # mypy bug?
+        elif match := re.search(r"^p\. (\d+(?:, \d+)*)\. ", tag.comment):  # type: ignore[arg-type]
+            page = match.group(1)
+            _, end_span = match.span()
+            new_comment = tag.comment[end_span:]  # type: ignore[index]
+            message = f"extracted page {page} from comment in {tag} (change comment to {new_comment!r})"
+            if cfg.autofix:
+                tag = tag.replace(page=page, comment=new_comment)
+                print(f"{owner}: {message}")
+            else:
+                yield message
+    if tag.page is not None:
+
+        def set_page(page: str) -> None:
+            nonlocal tag
+            tag = tag.replace(page=page)
+
+        yield from check_page(
+            tag.page,
+            set_page=set_page,
+            obj=owner,
+            cfg=cfg,
+            get_raw_page_regex=(
+                source.get_raw_page_regex if source is not None else None
+            ),
+        )
+        if source is not None and tag.page is not None:
+            yield from check_page_matches_citation(source, tag.page)
+
+    if source is not None and tag.comment is not None and tag.page is None:
+        yield f"{tag} has source but no page"
+    return tag
+
+
 @LINT.add("type_tags")
 def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if not nam.type_tags:
@@ -438,145 +557,10 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 source = tag.opinion
             else:
                 source = tag.optional_source
-            if source is not None and (
-                tag.verbatim_citation is not None or tag.citation_group is not None
-            ):
-                message = f"{tag} has redundant citation information"
-                if cfg.autofix:
-                    tag = tag.replace(verbatim_citation=None, citation_group=None)
-                    print(f"{nam}: {message}")
-                else:
-                    yield message
-            if tag.page is not None:
-
-                def set_page(page: str) -> None:
-                    nonlocal tag
-                    tag = tag.replace(page=page)
-
-                yield from check_page(
-                    tag.page,
-                    set_page=set_page,
-                    obj=nam,
-                    cfg=cfg,
-                    get_raw_page_regex=(
-                        source.get_raw_page_regex if source is not None else None
-                    ),
-                )
-                if source is not None:
-                    yield from check_page_matches_citation(source, tag.page)
-            if (
-                source is not None
-                and tag.page is not None
-                and source.url is not None
-                and tag.page_link is None
-            ):
-                page_described = get_unique_page_text(tag.page)[0]
-                maybe_pair = infer_bhl_page_id(page_described, tag, source, cfg)
-                if maybe_pair is not None:
-                    page_id, context = maybe_pair
-                    url = f"https://www.biodiversitylibrary.org/page/{page_id}"
-                    message = f"inferred BHL page {page_id} from {context} for {tag} (add {url})"
-                    if cfg.autofix:
-                        tag = tag.replace(page_link=url)
-                        print(f"{nam}: {message}")
-                    else:
-                        yield message
-            if tag.page is None and tag.comment is not None:
-                if match := re.fullmatch(r"p\. (\d+(?:, \d+)*)", tag.comment):
-                    page = match.group(1)
-                    message = f"extracted page {page} from comment in {tag}"
-                    if cfg.autofix:
-                        tag = tag.replace(page=page, comment=None)
-                        print(f"{nam}: {message}")
-                    else:
-                        yield message
-                elif match := re.search(r"^p\. (\d+(?:, \d+)*)\. ", tag.comment):
-                    page = match.group(1)
-                    _, end_span = match.span()
-                    new_comment = tag.comment[end_span:]
-                    message = f"extracted page {page} from comment in {tag} (change comment to {new_comment!r})"
-                    if cfg.autofix:
-                        tag = tag.replace(page=page, comment=new_comment)
-                        print(f"{nam}: {message}")
-                    else:
-                        yield message
-            if tag.verbatim_citation is not None and tag.citation_group is None:
-                yield f"{tag} has verbatim_citation but no citation_group"
-            if source is not None and tag.comment is not None and tag.page is None:
-                yield f"{tag} has source but no page"
-            if source is None and tag.verbatim_citation is None:
-                yield f"{tag} has no source or verbatim_citation"
+            tag = yield from check_selection_tag(tag, source, cfg, nam)
             tags.append(tag)
         elif isinstance(tag, TypeTag.IncludedSpecies):
-            if tag.comment is not None and re.match(r"^p\. \d+", tag.comment):
-                new_tag = tag.replace(
-                    comment=None, page=tag.comment.removeprefix("p. ")
-                )
-                message = f"{tag} has page in comment; replace with {new_tag}"
-                if cfg.autofix:
-                    tag = new_tag
-                    print(f"{nam}: {message}")
-                else:
-                    yield message
-            if tag.page is not None:
-
-                def set_page(page: str) -> None:
-                    nonlocal tag
-                    tag = tag.replace(page=page)
-
-                yield from check_page(
-                    tag.page,
-                    set_page=set_page,
-                    obj=nam,
-                    cfg=cfg,
-                    get_raw_page_regex=(
-                        nam.original_citation.get_raw_page_regex
-                        if nam.original_citation is not None
-                        else None
-                    ),
-                )
-                if nam.original_citation is not None:
-                    yield from check_page_matches_citation(
-                        nam.original_citation, tag.page
-                    )
-            if (
-                nam.original_citation is not None
-                and tag.page is not None
-                and nam.original_citation.url is not None
-                and tag.page_link is None
-            ):
-                page_described = get_unique_page_text(tag.page)[0]
-                maybe_pair = infer_bhl_page_id(
-                    page_described, tag, nam.original_citation, cfg
-                )
-                if maybe_pair is not None:
-                    page_id, context = maybe_pair
-                    url = f"https://www.biodiversitylibrary.org/page/{page_id}"
-                    message = f"inferred BHL page {page_id} from {context} for {tag} (add {url})"
-                    if cfg.autofix:
-                        tag = tag.replace(page_link=url)
-                        print(f"{nam}: {message}")
-                    else:
-                        yield message
-            if tag.page is None and tag.comment is not None:
-                if match := re.fullmatch(r"p\. (\d+(?:, \d+)*)", tag.comment):
-                    page = match.group(1)
-                    message = f"extracted page {page} from comment in {tag}"
-                    if cfg.autofix:
-                        tag = tag.replace(page=page, comment=None)
-                        print(f"{nam}: {message}")
-                    else:
-                        yield message
-                elif match := re.search(r"^p\. (\d+(?:, \d+)*)\. ", tag.comment):
-                    page = match.group(1)
-                    _, end_span = match.span()
-                    new_comment = tag.comment[end_span:]
-                    message = f"extracted page {page} from comment in {tag} (change comment to {new_comment!r})"
-                    if cfg.autofix:
-                        tag = tag.replace(page=page, comment=new_comment)
-                        print(f"{nam}: {message}")
-                    else:
-                        yield message
+            tag = yield from check_tag_with_page(tag, nam.original_citation, cfg, nam)
             if tag.classification_entry is not None:
                 if tag.classification_entry.article != nam.original_citation:
                     yield f"{tag} has classification entry {tag.classification_entry} that does not match original citation {nam.original_citation}"

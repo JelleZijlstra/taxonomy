@@ -2826,9 +2826,26 @@ class NameTag(adt.ADT):
     Conserved(opinion=Article, comment=NotRequired[str], tag=12)  # type: ignore[name-defined]
     IncorrectOriginalSpellingOf(name=Name, comment=NotRequired[str], tag=13)  # type: ignore[name-defined]
     # selection as the correct original spelling
-    SelectionOfSpelling(optional_source=NotRequired[Article], comment=NotRequired[str], tag=14)  # type: ignore[name-defined]
+    SelectionOfSpelling(  # type: ignore[name-defined]
+        optional_source=NotRequired[Article],
+        comment=NotRequired[str],
+        page=NotRequired[str],
+        verbatim_citation=NotRequired[str],
+        citation_group=NotRequired[CitationGroup],
+        page_link=NotRequired[str],
+        tag=14,
+    )
     SubsequentUsageOf(name=Name, comment=NotRequired[str], tag=15)  # type: ignore[name-defined]
-    SelectionOfPriority(over=Name, optional_source=NotRequired[Article], comment=NotRequired[str], tag=16)  # type: ignore[name-defined]
+    SelectionOfPriority(  # type: ignore[name-defined]
+        over=Name,
+        optional_source=NotRequired[Article],
+        comment=NotRequired[str],
+        page=NotRequired[str],
+        verbatim_citation=NotRequired[str],
+        citation_group=NotRequired[CitationGroup],
+        page_link=NotRequired[str],
+        tag=16,
+    )
     # Priority reversed by ICZN opinion
     ReversalOfPriority(over=Name, opinion=Article, comment=NotRequired[str], tag=17)  # type: ignore[name-defined]
     # Placed on the Official Index, but without being suppressed.
