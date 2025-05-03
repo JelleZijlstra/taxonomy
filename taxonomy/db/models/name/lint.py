@@ -1609,6 +1609,31 @@ def _check_all_tags(
         case NameTag.SelectionOfSpelling():
             tag = yield from check_selection_tag(tag, tag.optional_source, cfg, nam)
 
+        case NameTag.PermanentlyReplacedSecondaryHomonymOf():
+            if tag.replacement_name is None:
+                yield f"{nam} is marked as a permanently replaced secondary homonym, but has no replacement name"
+            # Skip for now
+            # if tag.optional_source is not None and tag.optional_source.numeric_year() >= 1961:
+            #     yield f"{nam} is marked as a permanently replaced secondary homonym, but the source is from after 1961"
+            tag = yield from check_selection_tag(tag, tag.optional_source, cfg, nam)
+
+        case NameTag.NomenOblitum():
+            if tag.comment is not None and (
+                match := re.fullmatch(
+                    r"(See )?{(?P<source>[^{}]+)} pp?\. (?P<page>\d+(-\d+)?)\.?",
+                    tag.comment,
+                )
+            ):
+                source = match.group("source")
+                page = match.group("page")
+                try:
+                    art = Article.select_valid().filter(name=source).get()
+                except Article.DoesNotExist:
+                    pass
+                else:
+                    tag = tag.replace(comment=None, page=page, optional_source=art)
+            tag = yield from check_selection_tag(tag, tag.optional_source, cfg, nam)
+
         case NameTag.MappedClassificationEntry():
             return None  # deprecated
         case _:

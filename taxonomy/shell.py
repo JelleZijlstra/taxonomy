@@ -17,9 +17,9 @@ import csv
 import datetime
 import functools
 import gc
+import importlib
 import operator
 import os
-import os.path
 import pprint
 import re
 import shutil
@@ -115,6 +115,7 @@ ns = {
     "models": models,
     "os": os,
     "gc": gc,
+    "importlib": importlib,
     "pp": pprint.pp,
 }
 ns.update(constants.__dict__)

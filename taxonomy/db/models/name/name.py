@@ -2820,7 +2820,16 @@ class NameTag(adt.ADT):
     FullySuppressedBy(opinion=Article, comment=NotRequired[str], tag=8)  # type: ignore[name-defined]
     TakesPriorityOf(name=Name, comment=NotRequired[str], tag=9)  # type: ignore[name-defined]
     # ICZN Art. 23.9. The reference is to the nomen protectum relative to which precedence is reversed.
-    NomenOblitum(name=Name, comment=NotRequired[str], tag=10)  # type: ignore[name-defined]
+    NomenOblitum(  # type: ignore[name-defined]
+        name=Name,
+        comment=NotRequired[str],
+        optional_source=NotRequired[Article],
+        page=NotRequired[str],
+        verbatim_citation=NotRequired[str],
+        citation_group=NotRequired[CitationGroup],
+        page_link=NotRequired[str],
+        tag=10,
+    )
     MandatoryChangeOf(name=Name, comment=NotRequired[str], tag=11)  # type: ignore[name-defined]
     # Conserved by placement on the Official List.
     Conserved(opinion=Article, comment=NotRequired[str], tag=12)  # type: ignore[name-defined]
@@ -2883,11 +2892,17 @@ class NameTag(adt.ADT):
 
     NeedsPrioritySelection(over=Name, reason=SelectionReason, tag=30)  # type: ignore[name-defined]
 
+    # ICZN Art. 59.3
     PermanentlyReplacedSecondaryHomonymOf(  # type: ignore[name-defined]
         name=Name,
         optional_source=NotRequired[Article],
         is_in_use=bool,
-        comment=str,
+        comment=NotRequired[str],
+        replacement_name=NotRequired[Name],  # The name replacing the homonym
+        page=NotRequired[str],
+        verbatim_citation=NotRequired[str],
+        citation_group=NotRequired[CitationGroup],
+        page_link=NotRequired[str],
         tag=31,
     )
     IgnorePreoccupationBy(name=Name, comment=str, tag=32)  # type: ignore[name-defined]
