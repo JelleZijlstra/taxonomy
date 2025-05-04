@@ -15,8 +15,11 @@ from taxonomy import command_set, events, getinput
 from taxonomy.adt import ADT
 from taxonomy.db import helpers, models
 from taxonomy.db.constants import (
+    URL,
     AgeClass,
     Group,
+    Managed,
+    Markdown,
     NomenclatureStatus,
     Rank,
     SourceLanguage,
@@ -624,28 +627,28 @@ class ClassificationEntry(BaseModel):
 
 
 class ClassificationEntryTag(ADT):
-    CommentFromSource(text=str, tag=1)  # type: ignore[name-defined]
-    TextualRank(text=str, tag=2)  # type: ignore[name-defined]
-    CorrectedName(text=str, tag=3)  # type: ignore[name-defined]
-    PageLink(url=str, page=str, tag=4)  # type: ignore[name-defined]
-    TypeSpecimenData(text=str, tag=5)  # type: ignore[name-defined]
-    OriginalCombination(text=str, tag=6)  # type: ignore[name-defined]
-    OriginalPageDescribed(text=str, tag=7)  # type: ignore[name-defined]
-    IgnoreLintClassificationEntry(label=str, comment=NotRequired[str], tag=8)  # type: ignore[name-defined]
+    CommentFromSource(text=Markdown, tag=1)  # type: ignore[name-defined]
+    TextualRank(text=Managed, tag=2)  # type: ignore[name-defined]
+    CorrectedName(text=Managed, tag=3)  # type: ignore[name-defined]
+    PageLink(url=URL, page=Managed, tag=4)  # type: ignore[name-defined]
+    TypeSpecimenData(text=Markdown, tag=5)  # type: ignore[name-defined]
+    OriginalCombination(text=Managed, tag=6)  # type: ignore[name-defined]
+    OriginalPageDescribed(text=Managed, tag=7)  # type: ignore[name-defined]
+    IgnoreLintClassificationEntry(label=Managed, comment=NotRequired[Markdown], tag=8)  # type: ignore[name-defined]
     AgeClassCE(age=AgeClass, tag=9)  # type: ignore[name-defined]
-    CommonName(name=str, language=SourceLanguage, tag=10)  # type: ignore[name-defined]
+    CommonName(name=Managed, language=SourceLanguage, tag=10)  # type: ignore[name-defined]
     # Indicates we should not look for a mapped name
     Informal(tag=11)  # type: ignore[name-defined]
-    CommentFromDatabase(text=str, tag=12)  # type: ignore[name-defined]
+    CommentFromDatabase(text=Markdown, tag=12)  # type: ignore[name-defined]
     # Should not be included in species counts
     TreatedAsDubious(tag=13)  # type: ignore[name-defined]
-    CECondition(tag=14, status=NomenclatureStatus, comment=NotRequired[str])  # type: ignore[name-defined]
+    CECondition(tag=14, status=NomenclatureStatus, comment=NotRequired[Markdown])  # type: ignore[name-defined]
 
     # Structured data from the source
-    StructuredData(label=str, text=str, tag=15)  # type: ignore[name-defined]
+    StructuredData(label=Managed, text=Markdown, tag=15)  # type: ignore[name-defined]
 
-    ReferencedUsage(ce=ClassificationEntry, comment=NotRequired[str], tag=16)  # type: ignore[name-defined]
-    LSIDCE(text=str, tag=17)  # type: ignore[name-defined]
+    ReferencedUsage(ce=ClassificationEntry, comment=NotRequired[Markdown], tag=16)  # type: ignore[name-defined]
+    LSIDCE(text=Managed, tag=17)  # type: ignore[name-defined]
 
 
 _NAME_CHARS = r"[a-zæüöïœ]+"

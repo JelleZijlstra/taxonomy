@@ -20,11 +20,14 @@ from taxonomy.apis.cloud_search import SearchField, SearchFieldType
 from taxonomy.apis.zoobank import get_zoobank_data
 from taxonomy.db import constants, helpers, models
 from taxonomy.db.constants import (
+    URL,
     AgeClass,
     ArticleType,
     EmendationJustification,
     FillDataLevel,
     Group,
+    Managed,
+    Markdown,
     NameDataLevel,
     NomenclatureStatus,
     OriginalCitationDataLevel,
@@ -2823,97 +2826,97 @@ class SelectionReason(enum.IntEnum):
 
 
 class NameTag(adt.ADT):
-    PreoccupiedBy(name=Name, comment=NotRequired[str], tag=1)  # type: ignore[name-defined]
-    UnjustifiedEmendationOf(name=Name, comment=NotRequired[str], tag=2)  # type: ignore[name-defined]
-    IncorrectSubsequentSpellingOf(name=Name, comment=NotRequired[str], tag=4)  # type: ignore[name-defined]
-    NomenNovumFor(name=Name, comment=NotRequired[str], tag=5)  # type: ignore[name-defined]
+    PreoccupiedBy(name=Name, comment=NotRequired[Markdown], tag=1)  # type: ignore[name-defined]
+    UnjustifiedEmendationOf(name=Name, comment=NotRequired[Markdown], tag=2)  # type: ignore[name-defined]
+    IncorrectSubsequentSpellingOf(name=Name, comment=NotRequired[Markdown], tag=4)  # type: ignore[name-defined]
+    NomenNovumFor(name=Name, comment=NotRequired[Markdown], tag=5)  # type: ignore[name-defined]
     # If we don't know which of 2-4 to use
-    VariantOf(name=Name, comment=NotRequired[str], tag=6)  # type: ignore[name-defined]
+    VariantOf(name=Name, comment=NotRequired[Markdown], tag=6)  # type: ignore[name-defined]
     # "opinion" is a reference to an Article containing an ICZN Opinion
-    PartiallySuppressedBy(opinion=Article, comment=NotRequired[str], tag=7)  # type: ignore[name-defined]
-    FullySuppressedBy(opinion=Article, comment=NotRequired[str], tag=8)  # type: ignore[name-defined]
+    PartiallySuppressedBy(opinion=Article, comment=NotRequired[Markdown], tag=7)  # type: ignore[name-defined]
+    FullySuppressedBy(opinion=Article, comment=NotRequired[Markdown], tag=8)  # type: ignore[name-defined]
     # ICZN Art. 40.2. Family-group name replaced another name before 1961 because of synonymy of the type genus.
     TakesPriorityOf(  # type: ignore[name-defined]
         name=Name,
-        comment=NotRequired[str],
+        comment=NotRequired[Markdown],
         optional_source=NotRequired[Article],
-        page=NotRequired[str],
-        verbatim_citation=NotRequired[str],
+        page=NotRequired[Managed],
+        verbatim_citation=NotRequired[Markdown],
         citation_group=NotRequired[CitationGroup],
-        page_link=NotRequired[str],
+        page_link=NotRequired[URL],
         is_in_prevailing_usage=NotRequired[bool],
         tag=9,
     )
     # ICZN Art. 23.9. The reference is to the nomen protectum relative to which precedence is reversed.
     NomenOblitum(  # type: ignore[name-defined]
         name=Name,
-        comment=NotRequired[str],
+        comment=NotRequired[Markdown],
         optional_source=NotRequired[Article],
-        page=NotRequired[str],
-        verbatim_citation=NotRequired[str],
+        page=NotRequired[Managed],
+        verbatim_citation=NotRequired[Markdown],
         citation_group=NotRequired[CitationGroup],
-        page_link=NotRequired[str],
+        page_link=NotRequired[URL],
         tag=10,
     )
-    MandatoryChangeOf(name=Name, comment=NotRequired[str], tag=11)  # type: ignore[name-defined]
+    MandatoryChangeOf(name=Name, comment=NotRequired[Markdown], tag=11)  # type: ignore[name-defined]
     # Conserved by placement on the Official List.
-    Conserved(opinion=Article, comment=NotRequired[str], tag=12)  # type: ignore[name-defined]
-    IncorrectOriginalSpellingOf(name=Name, comment=NotRequired[str], tag=13)  # type: ignore[name-defined]
+    Conserved(opinion=Article, comment=NotRequired[Markdown], tag=12)  # type: ignore[name-defined]
+    IncorrectOriginalSpellingOf(name=Name, comment=NotRequired[Markdown], tag=13)  # type: ignore[name-defined]
     # selection as the correct original spelling
     SelectionOfSpelling(  # type: ignore[name-defined]
         optional_source=NotRequired[Article],
-        comment=NotRequired[str],
-        page=NotRequired[str],
-        verbatim_citation=NotRequired[str],
+        comment=NotRequired[Markdown],
+        page=NotRequired[Managed],
+        verbatim_citation=NotRequired[Markdown],
         citation_group=NotRequired[CitationGroup],
-        page_link=NotRequired[str],
+        page_link=NotRequired[URL],
         tag=14,
     )
-    SubsequentUsageOf(name=Name, comment=NotRequired[str], tag=15)  # type: ignore[name-defined]
+    SubsequentUsageOf(name=Name, comment=NotRequired[Markdown], tag=15)  # type: ignore[name-defined]
     SelectionOfPriority(  # type: ignore[name-defined]
         over=Name,
         optional_source=NotRequired[Article],
-        comment=NotRequired[str],
-        page=NotRequired[str],
-        verbatim_citation=NotRequired[str],
+        comment=NotRequired[Markdown],
+        page=NotRequired[Managed],
+        verbatim_citation=NotRequired[Markdown],
         citation_group=NotRequired[CitationGroup],
-        page_link=NotRequired[str],
+        page_link=NotRequired[URL],
         tag=16,
     )
     # Priority reversed by ICZN opinion
-    ReversalOfPriority(over=Name, opinion=Article, comment=NotRequired[str], tag=17)  # type: ignore[name-defined]
+    ReversalOfPriority(over=Name, opinion=Article, comment=NotRequired[Markdown], tag=17)  # type: ignore[name-defined]
     # Placed on the Official Index, but without being suppressed.
-    Rejected(opinion=Article, comment=NotRequired[str], tag=18)  # type: ignore[name-defined]
+    Rejected(opinion=Article, comment=NotRequired[Markdown], tag=18)  # type: ignore[name-defined]
     # See discussion in docs/name.md
     JustifiedEmendationOf(  # type: ignore[name-defined]
         name=Name,
         justification=EmendationJustification,
-        comment=NotRequired[str],
+        comment=NotRequired[Markdown],
         tag=19,
     )
-    HMW(number=str, name=str, tag=20)  # type: ignore[name-defined]
+    HMW(number=Managed, name=Managed, tag=20)  # type: ignore[name-defined]
     # Not required, used when the name can't have the "as_emended" nomenclature status
-    AsEmendedBy(name=Name, comment=NotRequired[str], tag=21)  # type: ignore[name-defined]
-    NameCombinationOf(name=Name, comment=NotRequired[str], tag=22)  # type: ignore[name-defined]
+    AsEmendedBy(name=Name, comment=NotRequired[Markdown], tag=21)  # type: ignore[name-defined]
+    NameCombinationOf(name=Name, comment=NotRequired[Markdown], tag=22)  # type: ignore[name-defined]
 
     # These replace PreoccupiedBy for species-group names
-    PrimaryHomonymOf(name=Name, comment=NotRequired[str], tag=23)  # type: ignore[name-defined]
-    SecondaryHomonymOf(name=Name, comment=NotRequired[str], tag=24)  # type: ignore[name-defined]
+    PrimaryHomonymOf(name=Name, comment=NotRequired[Markdown], tag=23)  # type: ignore[name-defined]
+    SecondaryHomonymOf(name=Name, comment=NotRequired[Markdown], tag=24)  # type: ignore[name-defined]
 
     # Used if another name does not preoccupy a name (e.g., because it is unavailable
     # or spelled differently), but there are suggestions in the literature that it is.
-    NotPreoccupiedBy(name=Name, comment=NotRequired[str], tag=25)  # type: ignore[name-defined]
+    NotPreoccupiedBy(name=Name, comment=NotRequired[Markdown], tag=25)  # type: ignore[name-defined]
 
     # An arbitrary nomenclature status that is applicable to this name.
-    Condition(status=NomenclatureStatus, comment=NotRequired[str], tag=26)  # type: ignore[name-defined]
+    Condition(status=NomenclatureStatus, comment=NotRequired[Markdown], tag=26)  # type: ignore[name-defined]
 
     # A use of this name as valid, for the purposes of ICZN Art. 23.9 (reversal of precedence).
-    ValidUse(source=Article, comment=NotRequired[str], tag=27)  # type: ignore[name-defined]
+    ValidUse(source=Article, comment=NotRequired[Markdown], tag=27)  # type: ignore[name-defined]
 
     # Like Condition(variety_or_form), but separate because of special conditions in the Code.
-    VarietyOrForm(comment=NotRequired[str], tag=28)  # type: ignore[name-defined]
+    VarietyOrForm(comment=NotRequired[Markdown], tag=28)  # type: ignore[name-defined]
     # Same for not_used_as_valid
-    NotUsedAsValid(comment=NotRequired[str], tag=29)  # type: ignore[name-defined]
+    NotUsedAsValid(comment=NotRequired[Markdown], tag=29)  # type: ignore[name-defined]
 
     NeedsPrioritySelection(over=Name, reason=SelectionReason, tag=30)  # type: ignore[name-defined]
 
@@ -2922,28 +2925,28 @@ class NameTag(adt.ADT):
         name=Name,
         optional_source=NotRequired[Article],
         is_in_use=bool,
-        comment=NotRequired[str],
+        comment=NotRequired[Markdown],
         replacement_name=NotRequired[Name],  # The name replacing the homonym
-        page=NotRequired[str],
-        verbatim_citation=NotRequired[str],
+        page=NotRequired[Managed],
+        verbatim_citation=NotRequired[Markdown],
         citation_group=NotRequired[CitationGroup],
-        page_link=NotRequired[str],
+        page_link=NotRequired[URL],
         tag=31,
     )
-    IgnorePreoccupationBy(name=Name, comment=str, tag=32)  # type: ignore[name-defined]
+    IgnorePreoccupationBy(name=Name, comment=Markdown, tag=32)  # type: ignore[name-defined]
 
     # Deprecated (not necessary) and obsolete.
     MappedClassificationEntry(ce=ClassificationEntry, tag=33)  # type: ignore[name-defined]
 
-    MisidentificationOf(name=Name, comment=NotRequired[str], tag=34)  # type: ignore[name-defined]
+    MisidentificationOf(name=Name, comment=NotRequired[Markdown], tag=34)  # type: ignore[name-defined]
 
-    UnavailableVersionOf(name=Name, comment=NotRequired[str], tag=35)  # type: ignore[name-defined]
+    UnavailableVersionOf(name=Name, comment=NotRequired[Markdown], tag=35)  # type: ignore[name-defined]
 
     # The name should be rejected (e.g., suppressed by the Commission or marked as a nomen oblitum)
     # but this has not happened yet.
-    PendingRejection(comment=NotRequired[str], tag=36)  # type: ignore[name-defined]
+    PendingRejection(comment=NotRequired[Markdown], tag=36)  # type: ignore[name-defined]
 
-    RerankingOf(name=Name, comment=NotRequired[str], tag=37)  # type: ignore[name-defined]
+    RerankingOf(name=Name, comment=NotRequired[Markdown], tag=37)  # type: ignore[name-defined]
 
 
 CONSTRUCTABLE_STATUS_TO_TAG = {
@@ -2975,99 +2978,99 @@ PREOCCUPIED_TAGS = (
 
 class TypeTag(adt.ADT):
     # 1 used to be Collector, kept for compatibility with some deleted names
-    _RawCollector(text=str, tag=1)  # type: ignore[name-defined]
-    Date(date=str, tag=2)  # type: ignore[name-defined]
+    _RawCollector(text=Managed, tag=1)  # type: ignore[name-defined]
+    Date(date=Managed, tag=2)  # type: ignore[name-defined]
     Gender(gender=constants.SpecimenGender, tag=3)  # type: ignore[name-defined]
     Age(age=constants.SpecimenAge, tag=4)  # type: ignore[name-defined]
     Organ(  # type: ignore[name-defined]
         organ=constants.SpecimenOrgan,
-        detail=NotRequired[str],
-        condition=NotRequired[str],
+        detail=NotRequired[Managed],
+        condition=NotRequired[Markdown],
         tag=5,
     )
-    Altitude(altitude=str, unit=constants.AltitudeUnit, tag=6)  # type: ignore[name-defined]
-    Coordinates(latitude=str, longitude=str, tag=7)  # type: ignore[name-defined]
+    Altitude(altitude=Managed, unit=constants.AltitudeUnit, tag=6)  # type: ignore[name-defined]
+    Coordinates(latitude=Managed, longitude=Managed, tag=7)  # type: ignore[name-defined]
     # Authoritative description for a disputed type locality. Should be rarely used.
-    TypeLocality(text=str, tag=8)  # type: ignore[name-defined]
-    StratigraphyDetail(text=str, tag=9)  # type: ignore[name-defined]
-    Habitat(text=str, tag=10)  # type: ignore[name-defined]
-    Host(name=str, tag=11)  # type: ignore[name-defined]
+    TypeLocality(text=Markdown, tag=8)  # type: ignore[name-defined]
+    StratigraphyDetail(text=Markdown, tag=9)  # type: ignore[name-defined]
+    Habitat(text=Markdown, tag=10)  # type: ignore[name-defined]
+    Host(name=Markdown, tag=11)  # type: ignore[name-defined]
     # 12 is unused
     # subsequent designation of the type (for a genus)
     TypeDesignation(  # type: ignore[name-defined]
         optional_source=NotRequired[Article],
         type=Name,
-        comment=NotRequired[str],
-        page=NotRequired[str],
-        verbatim_citation=NotRequired[str],
+        comment=NotRequired[Markdown],
+        page=NotRequired[Managed],
+        verbatim_citation=NotRequired[Markdown],
         citation_group=NotRequired[CitationGroup],
-        page_link=NotRequired[str],
+        page_link=NotRequired[URL],
         tag=13,
     )
     # like the above, but by the Commission (and therefore trumping everything else)
     CommissionTypeDesignation(  # type: ignore[name-defined]
         opinion=Article,
         type=Name,
-        comment=NotRequired[str],
-        page=NotRequired[str],
-        verbatim_citation=NotRequired[str],
+        comment=NotRequired[Markdown],
+        page=NotRequired[Managed],
+        verbatim_citation=NotRequired[Markdown],
         citation_group=NotRequired[CitationGroup],
-        page_link=NotRequired[str],
+        page_link=NotRequired[URL],
         tag=14,
     )
     LectotypeDesignation(  # type: ignore[name-defined]
         optional_source=NotRequired[Article],
-        lectotype=str,
+        lectotype=Managed,
         valid=bool,
-        comment=NotRequired[str],
-        page=NotRequired[str],
-        verbatim_citation=NotRequired[str],
+        comment=NotRequired[Markdown],
+        page=NotRequired[Managed],
+        verbatim_citation=NotRequired[Markdown],
         citation_group=NotRequired[CitationGroup],
-        page_link=NotRequired[str],
+        page_link=NotRequired[URL],
         tag=15,
     )
     NeotypeDesignation(  # type: ignore[name-defined]
         optional_source=NotRequired[Article],
-        neotype=str,
+        neotype=Managed,
         valid=bool,
-        comment=NotRequired[str],
-        page=NotRequired[str],
-        verbatim_citation=NotRequired[str],
+        comment=NotRequired[Markdown],
+        page=NotRequired[Managed],
+        verbatim_citation=NotRequired[Markdown],
         citation_group=NotRequired[CitationGroup],
-        page_link=NotRequired[str],
+        page_link=NotRequired[URL],
         tag=16,
     )
     # more information on the specimen
-    SpecimenDetail(text=str, source=Article, tag=17)  # type: ignore[name-defined]
+    SpecimenDetail(text=Markdown, source=Article, tag=17)  # type: ignore[name-defined]
     # phrasing of the type locality in a particular source
-    LocationDetail(text=str, source=Article, tag=18)  # type: ignore[name-defined]
+    LocationDetail(text=Markdown, source=Article, tag=18)  # type: ignore[name-defined]
     # an originally included species in a genus without an original type designation
     IncludedSpecies(  # type: ignore[name-defined]
         name=Name,
-        comment=NotRequired[str],
-        page=NotRequired[str],
-        page_link=NotRequired[str],
+        comment=NotRequired[Markdown],
+        page=NotRequired[Managed],
+        page_link=NotRequired[URL],
         classification_entry=NotRequired[ClassificationEntry],
         tag=19,
     )
     # repository that holds some of the type specimens
     Repository(repository=Collection, tag=20)  # type: ignore[name-defined]
     # indicates that it was originally a genus coelebs
-    GenusCoelebs(comments=NotRequired[str], tag=21)  # type: ignore[name-defined]
+    GenusCoelebs(comments=NotRequired[Markdown], tag=21)  # type: ignore[name-defined]
     # quotation with information about a type species
-    TypeSpeciesDetail(text=str, source=Article, tag=22)  # type: ignore[name-defined]
+    TypeSpeciesDetail(text=Markdown, source=Article, tag=22)  # type: ignore[name-defined]
     # Likely location of the type specimen.
-    ProbableRepository(repository=Collection, reasoning=NotRequired[str], tag=23)  # type: ignore[name-defined]
+    ProbableRepository(repository=Collection, reasoning=NotRequired[Markdown], tag=23)  # type: ignore[name-defined]
     # Data on the repository of the type material.
-    CollectionDetail(text=str, source=Article, tag=24)  # type: ignore[name-defined]
+    CollectionDetail(text=Markdown, source=Article, tag=24)  # type: ignore[name-defined]
     # Quotes about the original citation.
-    CitationDetail(text=str, source=Article, tag=25)  # type: ignore[name-defined]
-    DefinitionDetail(text=str, source=Article, tag=26)  # type: ignore[name-defined]
-    EtymologyDetail(text=str, source=Article, tag=27)  # type: ignore[name-defined]
+    CitationDetail(text=Markdown, source=Article, tag=25)  # type: ignore[name-defined]
+    DefinitionDetail(text=Markdown, source=Article, tag=26)  # type: ignore[name-defined]
+    EtymologyDetail(text=Markdown, source=Article, tag=27)  # type: ignore[name-defined]
     NamedAfter(person=Person, tag=28)  # type: ignore[name-defined]
     CollectedBy(person=Person, tag=29)  # type: ignore[name-defined]
 
-    DifferentAuthority(comment=NotRequired[str], tag=30)  # type: ignore[name-defined]
+    DifferentAuthority(comment=NotRequired[Markdown], tag=30)  # type: ignore[name-defined]
     NoEtymology(tag=31)  # type: ignore[name-defined]
     NoLocation(tag=32)  # type: ignore[name-defined]
     NoSpecimen(tag=33)  # type: ignore[name-defined]
@@ -3077,48 +3080,48 @@ class TypeTag(adt.ADT):
     NoGender(tag=37)  # type: ignore[name-defined]
     NoAge(tag=38)  # type: ignore[name-defined]
     # Person who is involved in the type specimen's history
-    Involved(person=Person, comment=NotRequired[str], tag=39)  # type: ignore[name-defined]
+    Involved(person=Person, comment=NotRequired[Markdown], tag=39)  # type: ignore[name-defined]
     # Indicates that a General type locality cannot be fixed
-    ImpreciseLocality(comment=NotRequired[str], tag=40)  # type: ignore[name-defined]
+    ImpreciseLocality(comment=NotRequired[Markdown], tag=40)  # type: ignore[name-defined]
     # Arbitrary text about nomenclature
-    NomenclatureDetail(text=str, source=Article, tag=41)  # type: ignore[name-defined]
-    TextualOriginalRank(text=str, tag=42)  # type: ignore[name-defined]
+    NomenclatureDetail(text=Markdown, source=Article, tag=41)  # type: ignore[name-defined]
+    TextualOriginalRank(text=Managed, tag=42)  # type: ignore[name-defined]
     # Denotes that this name does something grammatically incorrect. A published
     # paper should correct it.
-    IncorrectGrammar(text=str, tag=43)  # type: ignore[name-defined]
-    LSIDName(text=str, tag=44)  # type: ignore[name-defined]
-    TypeSpecimenLink(url=str, tag=45)  # type: ignore[name-defined]
+    IncorrectGrammar(text=Markdown, tag=43)  # type: ignore[name-defined]
+    LSIDName(text=Managed, tag=44)  # type: ignore[name-defined]
+    TypeSpecimenLink(url=URL, tag=45)  # type: ignore[name-defined]
     # Ignore lints with a specific label
-    IgnoreLintName(label=str, comment=NotRequired[str], tag=46)  # type: ignore[name-defined]
-    RejectedLSIDName(text=str, tag=47)  # type: ignore[name-defined]
+    IgnoreLintName(label=Managed, comment=NotRequired[Markdown], tag=46)  # type: ignore[name-defined]
+    RejectedLSIDName(text=Managed, tag=47)  # type: ignore[name-defined]
     # For hybrids and composites
     PartialTaxon(taxon=Taxon, tag=48)  # type: ignore[name-defined]
     FormerRepository(repository=Collection, tag=49)  # type: ignore[name-defined]
     ExtraRepository(repository=Collection, tag=50)  # type: ignore[name-defined]
     FutureRepository(repository=Collection, tag=51)  # type: ignore[name-defined]
-    TypeSpecimenLinkFor(url=str, specimen=str, tag=52)  # type: ignore[name-defined]
+    TypeSpecimenLinkFor(url=URL, specimen=Managed, tag=52)  # type: ignore[name-defined]
     PhyloCodeNumber(number=int, tag=53)  # type: ignore[name-defined]
-    AuthorityPageLink(url=str, confirmed=bool, page=str, tag=54)  # type: ignore[name-defined]
+    AuthorityPageLink(url=URL, confirmed=bool, page=Managed, tag=54)  # type: ignore[name-defined]
     GuessedRepository(repository=Collection, score=float, tag=55)  # type: ignore[name-defined]
 
     # Used for subgenera proposed without an associated genus
     NoOriginalParent(tag=56)  # type: ignore[name-defined]
     # Sources for old names
-    SourceDetail(text=str, source=Article, tag=57)  # type: ignore[name-defined]
+    SourceDetail(text=Markdown, source=Article, tag=57)  # type: ignore[name-defined]
 
     # Can be used optionally to hold the fully verbatim original name, including abbreviations.
     # Not mandatory.
-    VerbatimName(text=str, tag=58)  # type: ignore[name-defined]
+    VerbatimName(text=Markdown, tag=58)  # type: ignore[name-defined]
 
-    IgnorePotentialCitationFrom(article=Article, comment=NotRequired[str], tag=59)  # type: ignore[name-defined]
+    IgnorePotentialCitationFrom(article=Article, comment=NotRequired[Markdown], tag=59)  # type: ignore[name-defined]
 
     # Description of the taxon
-    DescriptionDetail(text=str, source=Article, tag=60)  # type: ignore[name-defined]
+    DescriptionDetail(text=Markdown, source=Article, tag=60)  # type: ignore[name-defined]
 
-    InterpretedTypeLocality(text=str, tag=61)  # type: ignore[name-defined]
-    InterpretedTypeSpecimen(text=str, tag=62)  # type: ignore[name-defined]
-    InterpretedTypeTaxon(text=str, tag=63)  # type: ignore[name-defined]
-    NomenclatureComments(text=str, record=str, tag=64)  # type: ignore[name-defined]
+    InterpretedTypeLocality(text=Markdown, tag=61)  # type: ignore[name-defined]
+    InterpretedTypeSpecimen(text=Markdown, tag=62)  # type: ignore[name-defined]
+    InterpretedTypeTaxon(text=Markdown, tag=63)  # type: ignore[name-defined]
+    NomenclatureComments(text=Markdown, record=Managed, tag=64)  # type: ignore[name-defined]
 
 
 SOURCE_TAGS = (

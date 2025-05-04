@@ -11,6 +11,7 @@ import re
 import sqlite3
 import traceback
 import typing
+import urllib.parse
 from collections import defaultdict
 from collections.abc import Callable, Collection, Container, Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -24,6 +25,7 @@ from clirm import Clirm, Field, Model, Query
 from taxonomy import adt, config, events, getinput
 from taxonomy.apis.cloud_search import SearchField
 from taxonomy.db import cached_data, derived_data, helpers, models
+from taxonomy.db.constants import StringKind
 
 settings = config.get_options()
 
@@ -352,19 +354,37 @@ class BaseModel(Model):
                                             )
                                         yield message
 
-                                    if (
-                                        "regex" not in tag_type.__name__.lower()
-                                        and "regex" not in attr_name
+                                    match helpers.get_string_kind(
+                                        tag_type.__annotations__[attr_name]
                                     ):
-                                        cleaned_value = yield from models.article.lint.lint_referenced_text(
-                                            attr_value, prefix=f"{self}: "
-                                        )
-                                        if cleaned_value != attr_value:
-                                            print(
-                                                f"{self} (#{self.id}): field {field}: clean"
-                                                f" {attr_value!r} -> {cleaned_value!r}"
+                                        case StringKind.markdown:
+                                            cleaned_value = yield from models.article.lint.lint_referenced_text(
+                                                attr_value, prefix=f"{self}: "
                                             )
-                                            overrides[attr_name] = cleaned_value
+                                            if cleaned_value != attr_value:
+                                                print(
+                                                    f"{self} (#{self.id}): field {field}: clean"
+                                                    f" {attr_value!r} -> {cleaned_value!r}"
+                                                )
+                                                overrides[attr_name] = cleaned_value
+                                        case StringKind.url:
+                                            parsed = urllib.parse.urlparse(attr_value)
+                                            if (
+                                                parsed.scheme not in ("http", "https")
+                                                or not parsed.netloc
+                                            ):
+                                                yield (
+                                                    f"{self}: field {field}: invalid URL: {attr_value!r}"
+                                                )
+                                        case StringKind.regex:
+                                            try:
+                                                re.compile(attr_value)
+                                            except re.error:
+                                                yield (
+                                                    f"{self}: field {field}: invalid regex: {attr_value!r}"
+                                                )
+                                        case StringKind.managed:
+                                            pass
                         if overrides:
                             made_change = True
                             new_tags.append(adt.replace(tag, **overrides))
@@ -414,18 +434,36 @@ class BaseModel(Model):
                                             f"{self}: contains unprintable characters:"
                                             f" {cleaned!r}"
                                         )
-                                    if (
-                                        "regex" not in tag_type.__name__.lower()
-                                        and "regex" not in attr_name
+                                    match helpers.get_string_kind(
+                                        tag_type.__annotations__[attr_name]
                                     ):
-                                        cleaned_value = yield from models.article.lint.lint_referenced_text(
-                                            attr_value, prefix=f"{self}: "
-                                        )
-                                        if cleaned_value != attr_value:
-                                            yield (
-                                                f"{self} (#{self.id}): field {field}: clean"
-                                                f" {attr_value!r} -> {cleaned_value!r}"
+                                        case StringKind.markdown:
+                                            cleaned_value = yield from models.article.lint.lint_referenced_text(
+                                                attr_value, prefix=f"{self}: "
                                             )
+                                            if cleaned_value != attr_value:
+                                                yield (
+                                                    f"{self} (#{self.id}): field {field}: clean"
+                                                    f" {attr_value!r} -> {cleaned_value!r}"
+                                                )
+                                        case StringKind.url:
+                                            parsed = urllib.parse.urlparse(attr_value)
+                                            if (
+                                                parsed.scheme not in ("http", "https")
+                                                or not parsed.netloc
+                                            ):
+                                                yield (
+                                                    f"{self}: field {field}: invalid URL: {attr_value!r}"
+                                                )
+                                        case StringKind.regex:
+                                            try:
+                                                re.compile(attr_value)
+                                            except re.error:
+                                                yield (
+                                                    f"{self}: field {field}: invalid regex: {attr_value!r}"
+                                                )
+                                        case StringKind.managed:
+                                            pass
                     if not field_obj.is_ordered:
                         if list(value) != sorted(set(value)):
                             yield (

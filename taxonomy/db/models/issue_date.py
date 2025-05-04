@@ -11,6 +11,7 @@ from clirm import Field
 from taxonomy import events, getinput
 from taxonomy.adt import ADT
 from taxonomy.db import helpers
+from taxonomy.db.constants import Markdown
 
 from .article import Article
 from .base import ADTField, BaseModel, LintConfig
@@ -150,7 +151,7 @@ class IssueDate(BaseModel):
 
 
 class IssueDateTag(ADT):
-    CommentIssueDate(text=str, optional_source=NotRequired[Article], tag=1)  # type: ignore[name-defined]
+    CommentIssueDate(text=Markdown, optional_source=NotRequired[Article], tag=1)  # type: ignore[name-defined]
 
 
 @cache

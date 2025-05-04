@@ -11,6 +11,7 @@ from taxonomy import adt, events, getinput
 from taxonomy.apis import bhl
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
 from taxonomy.db import constants, helpers, models
+from taxonomy.db.constants import URL, Managed, Markdown, Regex
 from taxonomy.db.derived_data import DerivedField, LazyType
 from taxonomy.db.models.base import ADTField, BaseModel, LintConfig
 from taxonomy.db.models.region import Region
@@ -555,42 +556,42 @@ class CitationGroupTag(adt.ADT):
     # Ignore this CG in find_potential_citations()
     IgnorePotentialCitations(tag=2)  # type: ignore[name-defined]
     # Like MustHave, but only for articles published after this year
-    MustHaveAfter(tag=3, year=str)  # type: ignore[name-defined]
+    MustHaveAfter(tag=3, year=Managed)  # type: ignore[name-defined]
     # Articles in this citation group must have a series set.
-    MustHaveSeries(comment=NotRequired[str], tag=11)  # type: ignore[name-defined]
+    MustHaveSeries(comment=NotRequired[Markdown], tag=11)  # type: ignore[name-defined]
     # Information on where to find it.
-    OnlineRepository(url=str, comment=NotRequired[str], tag=12)  # type: ignore[name-defined]
-    ISSN(text=str, tag=13)  # type: ignore[name-defined]
-    BHLBibliography(text=str, tag=14)  # type: ignore[name-defined]
+    OnlineRepository(url=URL, comment=NotRequired[Markdown], tag=12)  # type: ignore[name-defined]
+    ISSN(text=Managed, tag=13)  # type: ignore[name-defined]
+    BHLBibliography(text=Managed, tag=14)  # type: ignore[name-defined]
     # ISSN for online edition
-    ISSNOnline(text=str, tag=15)  # type: ignore[name-defined]
-    CitationGroupURL(text=str, tag=16)  # type: ignore[name-defined]
+    ISSNOnline(text=Managed, tag=15)  # type: ignore[name-defined]
+    CitationGroupURL(text=URL, tag=16)  # type: ignore[name-defined]
     # The journal existed during this period
-    YearRange(start=str, end=NotRequired[str], tag=17)  # type: ignore[name-defined]
+    YearRange(start=Managed, end=NotRequired[Managed], tag=17)  # type: ignore[name-defined]
     # If a journal got renamed, a reference to the previous name
     Predecessor(cg=CitationGroup, tag=18)  # type: ignore[name-defined]
     # Series may be present and must conform to the regex in the tag
-    SeriesRegex(text=str, tag=19)  # type: ignore[name-defined]
+    SeriesRegex(text=Regex, tag=19)  # type: ignore[name-defined]
     # Volumes must conform to this regex
-    VolumeRegex(text=str, tag=20)  # type: ignore[name-defined]
+    VolumeRegex(text=Regex, tag=20)  # type: ignore[name-defined]
     # Issues must conform to this regex
-    IssueRegex(text=str, tag=21)  # type: ignore[name-defined]
+    IssueRegex(text=Regex, tag=21)  # type: ignore[name-defined]
     # Control start and end page (see citation-group.md)
-    PageRegex(start_page_regex=NotRequired[str], pages_regex=NotRequired[str], allow_standard=bool, tag=22)  # type: ignore[name-defined]
+    PageRegex(start_page_regex=NotRequired[Regex], pages_regex=NotRequired[Regex], allow_standard=bool, tag=22)  # type: ignore[name-defined]
     # Comments on how to date publications in this journal
-    DatingTools(text=str, tag=23)  # type: ignore[name-defined]
+    DatingTools(text=Markdown, tag=23)  # type: ignore[name-defined]
     # Link to a relevant page in docs/biblio/
-    BiblioNote(text=str, tag=24)  # type: ignore[name-defined]
+    BiblioNote(text=Managed, tag=24)  # type: ignore[name-defined]
     # Articles must have a month or day in publication date
     # (only enforced for articles containing new names)
     MustHavePreciseDate(tag=25)  # type: ignore[name-defined]
     # Articles must have a URL (or DOI, HDL, etc.)
     MustHaveURL(tag=26)  # type: ignore[name-defined]
-    URLPattern(text=str, tag=27)  # type: ignore[name-defined]
+    URLPattern(text=URL, tag=27)  # type: ignore[name-defined]
     # Do not add more BHL bibliographies based on children
     SkipExtraBHLBibliographies(tag=28)  # type: ignore[name-defined]
-    CitationGroupComment(text=str, tag=29)  # type: ignore[name-defined]
+    CitationGroupComment(text=Markdown, tag=29)  # type: ignore[name-defined]
     # This exists mostly so we can avoid complaining about missing BHL links. Should
     # not be exposed on the website.
-    BHLYearRange(start=NotRequired[str], end=NotRequired[str], tag=30)  # type: ignore[name-defined]
-    IgnoreLintCitationGroup(label=str, comment=NotRequired[str], tag=31)  # type: ignore[name-defined]
+    BHLYearRange(start=NotRequired[Managed], end=NotRequired[Markdown], tag=30)  # type: ignore[name-defined]
+    IgnoreLintCitationGroup(label=Managed, comment=NotRequired[Markdown], tag=31)  # type: ignore[name-defined]
