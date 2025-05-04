@@ -265,6 +265,8 @@ class ADT(_ADTBase, metaclass=_ADTMeta):
                     args.append(value.value)
                 else:
                     args.append(value)
+            while args and args[-1] is None:
+                args.pop()
             return [self._tag, *args]
         else:
             return [self._tag]
