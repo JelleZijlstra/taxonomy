@@ -30,34 +30,35 @@ repos:
     hooks:
       - id: prettier
 
-  - repo: local
-    hooks:
-      - id: pycroscope
-        name: pycroscope
-        entry: python3.12 -m pycroscope --config-file pyproject.toml
-        language: python
-        files: ^taxonomy/.*\.py$
-        language_version: python3.12
-        additional_dependencies:
-          - git+https://github.com/JelleZijlstra/pycroscope.git@main#egg=pycroscope
-          - httpx
-          - clirm
-          - IPython>8
-          - prompt_toolkit
-          - requests
-          - unidecode
-          - python-levenshtein
-          - bs4
-          - mypy
-          - flake8
-          - pytest
-          - aiohttp
-          - aiohttp_graphql
-          - graphene
-          - typing_inspect
-          - types-requests
-          - boto3
-          - botocore
-          - repoguess
-          - pyzotero
-          - gspread
+  # Doesn't successfully install from git for some reason
+  # - repo: local
+  #   hooks:
+  #     - id: pycroscope
+  #       name: pycroscope
+  #       entry: python3.12 -m pycroscope --config-file pyproject.toml
+  #       language: python
+  #       files: ^taxonomy/.*\.py$
+  #       language_version: python3.12
+  #       additional_dependencies:
+  #         - pycroscope
+  #         - httpx
+  #         - clirm
+  #         - IPython>8
+  #         - prompt_toolkit
+  #         - requests
+  #         - unidecode
+  #         - python-levenshtein
+  #         - bs4
+  #         - mypy
+  #         - flake8
+  #         - pytest
+  #         - aiohttp
+  #         - aiohttp_graphql
+  #         - graphene
+  #         - typing_inspect
+  #         - types-requests
+  #         - boto3
+  #         - botocore
+  #         - repoguess
+  #         - pyzotero
+  #         - gspread
