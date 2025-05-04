@@ -685,6 +685,7 @@ def _get_adt_member_field(
     elif typ is bool:
         return yes_no(f"{arg_name}> ", default=existing_value)
     elif typ in adt.BASIC_TYPES:
+        assert isinstance(typ, type)
         while True:
             value = get_line(
                 f"{arg_name}> ",

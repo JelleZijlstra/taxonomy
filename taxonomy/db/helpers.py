@@ -1185,10 +1185,13 @@ def get_string_kind(obj: object) -> StringKind | None:
     if isinstance(obj, TypeAliasType):
         return get_string_kind(obj.__value__)
     origin = get_origin(obj)
-    if origin is Annotated and obj.__origin__ is str:
-        for meta in obj.__metadata__:
-            if isinstance(meta, StringKind):
-                return meta
+    if origin is Annotated:
+        assert hasattr(obj, "__origin__")
+        assert hasattr(obj, "__metadata__")
+        if obj.__origin__ is str:
+            for meta in obj.__metadata__:
+                if isinstance(meta, StringKind):
+                    return meta
     elif origin is types.UnionType:
         kinds = set()
         for elt in get_args(obj):

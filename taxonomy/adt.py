@@ -117,6 +117,7 @@ def unwrap_type(value: object) -> object:
     if isinstance(value, TypeAliasType):
         return unwrap_type(value.__value__)
     elif get_origin(value) is Annotated:
+        assert hasattr(value, "__origin__")
         return unwrap_type(value.__origin__)
     else:
         return value
