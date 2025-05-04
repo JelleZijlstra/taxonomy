@@ -5,7 +5,16 @@ import operator
 import sys
 import typing
 from collections.abc import Callable, Iterable, Iterator, MutableMapping
-from typing import TYPE_CHECKING, Any, Literal, Self, TypeVar
+from typing import (
+    TYPE_CHECKING,
+    Annotated,
+    Any,
+    Literal,
+    Self,
+    TypeAliasType,
+    TypeVar,
+    get_origin,
+)
 
 BASIC_TYPES: tuple[type[Any], ...] = (int, str, float, bool)
 
@@ -104,6 +113,16 @@ def _adt_member_replace(self: Any, **kwargs: Any) -> Any:
     return type(self)(**new_dict)
 
 
+def unwrap_type(value: object) -> object:
+    if isinstance(value, TypeAliasType):
+        return unwrap_type(value.__value__)
+    elif get_origin(value) is Annotated:
+        assert hasattr(value, "__origin__")
+        return unwrap_type(value.__origin__)
+    else:
+        return value
+
+
 class _ADTMeta(type):
     @classmethod
     def __prepare__(cls, name: str, bases: Any) -> _ADTNamespace:  # type: ignore[override]
@@ -164,24 +183,27 @@ class _ADTMeta(type):
                         required_attrs.add(key)
                     else:
                         optional_attrs.add(key)
-                    if value in BASIC_TYPES:
+                    unwrapped = unwrap_type(value)
+                    if unwrapped in BASIC_TYPES:
                         typ = value
-                    elif isinstance(value, type) and issubclass(value, enum.IntEnum):
+                    elif isinstance(unwrapped, type) and issubclass(
+                        unwrapped, enum.IntEnum
+                    ):
                         typ = value
                     elif (
-                        isinstance(value, type)
-                        and hasattr(value, "serialize")
-                        and hasattr(value, "unserialize")
+                        isinstance(unwrapped, type)
+                        and hasattr(unwrapped, "serialize")
+                        and hasattr(unwrapped, "unserialize")
                     ):
                         typ = value
                     elif (
                         has_self_cls
-                        and isinstance(value, _ADTMember)
-                        and value.name == name
+                        and isinstance(unwrapped, _ADTMember)
+                        and unwrapped.name == name
                     ):
                         typ = new_cls
                     else:
-                        raise TypeError(f"unsupported type {value}")
+                        raise TypeError(f"unsupported type {value!r}")
                     attrs[key] = typ
                     if required:
                         annotations[key] = typ

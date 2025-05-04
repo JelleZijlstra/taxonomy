@@ -5,17 +5,18 @@ import datetime
 import json
 import re
 import time
+import types
 import unicodedata
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
-from typing import TypeVar, cast
+from typing import Annotated, TypeAliasType, TypeVar, cast, get_args, get_origin
 
 import unidecode
 
 from taxonomy import getinput
 
 from . import constants
-from .constants import Group, Rank
+from .constants import Group, Rank, StringKind
 
 SPECIES_RANKS = [
     Rank.subspecies,
@@ -1178,3 +1179,25 @@ def sift(objs: Iterable[T], pred: Callable[[T], bool]) -> tuple[list[T], list[T]
         else:
             false.append(obj)
     return true, false
+
+
+def get_string_kind(obj: object) -> StringKind | None:
+    if isinstance(obj, TypeAliasType):
+        return get_string_kind(obj.__value__)
+    origin = get_origin(obj)
+    if origin is Annotated:
+        assert hasattr(obj, "__origin__")
+        assert hasattr(obj, "__metadata__")
+        if obj.__origin__ is str:
+            for meta in obj.__metadata__:
+                if isinstance(meta, StringKind):
+                    return meta
+    elif origin is types.UnionType:
+        kinds = set()
+        for elt in get_args(obj):
+            if elt is types.NoneType:
+                continue
+            kinds.add(get_string_kind(elt))
+        if len(kinds) == 1:
+            return kinds.pop()
+    return None

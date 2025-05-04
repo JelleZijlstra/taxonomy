@@ -9,6 +9,7 @@ from collections.abc import Iterable
 from clirm import Field
 
 from taxonomy import adt, events, getinput
+from taxonomy.db.constants import Managed, Markdown
 
 from .base import ADTField, BaseModel, LintConfig, TextField
 from .location import Location
@@ -215,6 +216,6 @@ class BoxType(enum.IntEnum):
 
 
 class SpecimenTag(adt.ADT):
-    TaxonCount(count=int, taxon=str, tag=1)  # type: ignore[name-defined]
+    TaxonCount(count=int, taxon=Managed, tag=1)  # type: ignore[name-defined]
     FindKind(kind=KindOfFind, tag=2)  # type: ignore[name-defined]
-    Box(type=BoxType, taxon=str, description=str, tag=3)  # type: ignore[name-defined]
+    Box(type=BoxType, taxon=Managed, description=Markdown, tag=3)  # type: ignore[name-defined]

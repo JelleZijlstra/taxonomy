@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import enum
 from functools import cache
+from typing import Annotated
 
 
 class RequirednessLevel(enum.IntEnum):
@@ -1013,3 +1014,16 @@ class DateSource(enum.IntEnum):
     doi_published_other = 5
     doi_published = 6
     decision = 7  # decision when there are conflicting tags
+
+
+class StringKind(enum.IntEnum):
+    markdown = 1  # parsed as Markdown, supports {} references
+    managed = 2  # short string in a fixed format
+    regex = 3  # regular expression
+    url = 4  # URL
+
+
+type Markdown = Annotated[str, StringKind.markdown]
+type Managed = Annotated[str, StringKind.managed]
+type Regex = Annotated[str, StringKind.regex]
+type URL = Annotated[str, StringKind.url]

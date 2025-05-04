@@ -7,7 +7,7 @@ from typing import Any, ClassVar, TypeVar
 from clirm import Field
 
 from taxonomy import adt, events, getinput
-from taxonomy.db.constants import SOURCE_LANGUAGE_SYNONYMS, SourceLanguage
+from taxonomy.db.constants import SOURCE_LANGUAGE_SYNONYMS, Managed, SourceLanguage
 from taxonomy.db.helpers import to_int
 from taxonomy.db.openlibrary import get_from_isbn
 
@@ -184,7 +184,7 @@ class Book(BaseModel):
 class BookTag(adt.ADT):
     Language(language=SourceLanguage, tag=1)  # type: ignore[name-defined]
     OriginalLanguage(language=SourceLanguage, tag=2)  # type: ignore[name-defined]
-    BookEdition(text=str, tag=3)  # type: ignore[name-defined]
+    BookEdition(text=Managed, tag=3)  # type: ignore[name-defined]
 
 
 def sort_key(book: Book) -> tuple[str, ...]:

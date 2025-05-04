@@ -666,7 +666,7 @@ def _get_adt_member_field(
     completers: CompleterMap = {},
     arg_name: str,
 ) -> Any:
-    typ = member_cls._attributes[arg_name]
+    typ = adt.unwrap_type(member_cls._attributes[arg_name])
     is_required = arg_name in member_cls.__required_attrs__
     existing_value = getattr(existing, arg_name, None)
     if (member_cls, arg_name) in completers:
@@ -685,6 +685,7 @@ def _get_adt_member_field(
     elif typ is bool:
         return yes_no(f"{arg_name}> ", default=existing_value)
     elif typ in adt.BASIC_TYPES:
+        assert isinstance(typ, type)
         while True:
             value = get_line(
                 f"{arg_name}> ",

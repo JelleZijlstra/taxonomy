@@ -12,6 +12,7 @@ from clirm import Field
 from taxonomy import adt, events, getinput
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
 from taxonomy.db import models
+from taxonomy.db.constants import Managed
 
 from .article import Article
 from .base import ADTField, BaseModel, LintConfig, TextField
@@ -374,14 +375,14 @@ class LocationTag(adt.ADT):
     # Locality identifiers in other databases
 
     # Paleobiology Database
-    PBDB(id=str, tag=2)  # type: ignore[name-defined]
+    PBDB(id=Managed, tag=2)  # type: ignore[name-defined]
 
     # {North America Tertiary-localities.pdf}, appendix to
     # Evolution of Tertiary Mammals of North America
-    ETMNA(id=str, tag=3)  # type: ignore[name-defined]
+    ETMNA(id=Managed, tag=3)  # type: ignore[name-defined]
 
     # Neogene of the Old World database
-    NOW(id=str, tag=4)  # type: ignore[name-defined]
+    NOW(id=Managed, tag=4)  # type: ignore[name-defined]
 
 
 def get_expected_general_name(region: Region, period: Period) -> str:

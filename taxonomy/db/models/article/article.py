@@ -20,10 +20,14 @@ from taxonomy.apis import bhl
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
 from taxonomy.db import models
 from taxonomy.db.constants import (
+    URL,
     ArticleCommentKind,
     ArticleKind,
     ArticleType,
     DateSource,
+    Managed,
+    Markdown,
+    Regex,
     SourceLanguage,
 )
 from taxonomy.db.derived_data import DerivedField, LazyType
@@ -1621,71 +1625,75 @@ class PresenceStatus(enum.IntEnum):
 
 class ArticleTag(adt.ADT):
     # identifiers
-    ISBN(text=str, tag=1)  # type: ignore[name-defined]
-    Eurobats(text=str, tag=2)  # type: ignore[name-defined]
-    HDL(text=str, tag=3)  # type: ignore[name-defined]
-    JSTOR(text=str, tag=4)  # type: ignore[name-defined]
-    PMID(text=str, tag=5)  # type: ignore[name-defined]
+    ISBN(text=Managed, tag=1)  # type: ignore[name-defined]
+    Eurobats(text=Managed, tag=2)  # type: ignore[name-defined]
+    HDL(text=Managed, tag=3)  # type: ignore[name-defined]
+    JSTOR(text=Managed, tag=4)  # type: ignore[name-defined]
+    PMID(text=Managed, tag=5)  # type: ignore[name-defined]
     # TODO: Why does this exist? Should be on the CitationGroup
-    ArticleISSN(text=str, tag=6)  # type: ignore[name-defined]
-    PMC(text=str, tag=7)  # type: ignore[name-defined]
+    ArticleISSN(text=Managed, tag=6)  # type: ignore[name-defined]
+    PMC(text=Managed, tag=7)  # type: ignore[name-defined]
 
     # other
-    Edition(text=str, tag=8)  # type: ignore[name-defined]
-    FullIssue(comment=NotRequired[str], tag=9)  # type: ignore[name-defined]
-    NonOriginal(comment=NotRequired[str], tag=10)  # type: ignore[name-defined]
+    Edition(text=Managed, tag=8)  # type: ignore[name-defined]
+    FullIssue(comment=NotRequired[Markdown], tag=9)  # type: ignore[name-defined]
+    NonOriginal(comment=NotRequired[Markdown], tag=10)  # type: ignore[name-defined]
     # The article doesn't give full names for the authors
     InitialsOnly(tag=11)  # type: ignore[name-defined]
     # We can't fill_data_from_paper() because the article is in a language
     # I don't understand.
     NeedsTranslation(language=SourceLanguage, tag=12)  # type: ignore[name-defined]
     # Ignore lints with a specific label
-    IgnoreLint(label=str, comment=NotRequired[str], tag=13)  # type: ignore[name-defined]
+    IgnoreLint(label=Managed, comment=NotRequired[Markdown], tag=13)  # type: ignore[name-defined]
 
-    PublicationDate(source=DateSource, date=str, comment=NotRequired[str], tag=14)  # type: ignore[name-defined]
-    LSIDArticle(text=str, present_in_article=PresenceStatus, tag=15)  # type: ignore[name-defined]
+    PublicationDate(source=DateSource, date=Managed, comment=NotRequired[Markdown], tag=14)  # type: ignore[name-defined]
+    LSIDArticle(text=Managed, present_in_article=PresenceStatus, tag=15)  # type: ignore[name-defined]
 
     # All references must be moved to children
     MustUseChildren(tag=16)  # type: ignore[name-defined]
 
     # Electronic-only publication that is not available according to the ICZN
     # (e.g., it doesn't have an LSID present in the article)
-    UnavailableElectronic(comment=NotRequired[str], tag=17)  # type: ignore[name-defined]
+    UnavailableElectronic(comment=NotRequired[Markdown], tag=17)  # type: ignore[name-defined]
     # Like UnavailableElectronic, but expected to be available in the future
-    InPress(comment=NotRequired[str], tag=18)  # type: ignore[name-defined]
+    InPress(comment=NotRequired[Markdown], tag=18)  # type: ignore[name-defined]
 
     # Link to a relevant page in docs/biblio/
-    BiblioNoteArticle(text=str, tag=19)  # type: ignore[name-defined]
+    BiblioNoteArticle(text=Managed, tag=19)  # type: ignore[name-defined]
 
-    AlternativeURL(url=str, tag=20)  # type: ignore[name-defined]
+    AlternativeURL(url=URL, tag=20)  # type: ignore[name-defined]
 
-    Incomplete(comment=NotRequired[str], tag=21)  # type: ignore[name-defined]
+    Incomplete(comment=NotRequired[Markdown], tag=21)  # type: ignore[name-defined]
 
     # Indicates there are multiple articles on a single page
     PartialPage(tag=22)  # type: ignore[name-defined]
 
     # DOI is for a more general work (e.g., the entire "Notes" section)
-    GeneralDOI(comment=NotRequired[str], tag=23)  # type: ignore[name-defined]
+    GeneralDOI(comment=NotRequired[Markdown], tag=23)  # type: ignore[name-defined]
 
-    BHLWrongPageNumbers(comment=NotRequired[str], tag=24)  # type: ignore[name-defined]
+    BHLWrongPageNumbers(comment=NotRequired[Markdown], tag=24)  # type: ignore[name-defined]
 
     # Indicates that ClassificationEntries are present only for some of the names in this work
-    PartialClassification(comment=NotRequired[str], tag=25)  # type: ignore[name-defined]
+    PartialClassification(comment=NotRequired[Markdown], tag=25)  # type: ignore[name-defined]
 
     # Placed on the Official Index by the Commission
-    PlacedOnIndex(source=Article, comment=str, tag=26)  # type: ignore[name-defined]
+    PlacedOnIndex(source=Article, comment=Markdown, tag=26)  # type: ignore[name-defined]
 
     # ICZN Art. 11.4: Names published in a work that is not consistently binominal are
     # unavailable.
-    InconsistentlyBinominal(comment=NotRequired[str], tag=27)  # type: ignore[name-defined]
+    InconsistentlyBinominal(comment=NotRequired[Markdown], tag=27)  # type: ignore[name-defined]
 
-    RawPageRegex(regex=str, comment=NotRequired[str], tag=28)  # type: ignore[name-defined]
+    RawPageRegex(regex=Regex, comment=NotRequired[Markdown], tag=28)  # type: ignore[name-defined]
 
     # Set this if a work has a known alternative date. Interacts with CE linting.
-    KnownAlternativeYear(year=str, comment=NotRequired[str], tag=29)  # type: ignore[name-defined]
+    KnownAlternativeYear(year=Managed, comment=NotRequired[Markdown], tag=29)  # type: ignore[name-defined]
 
     PartLocation(  # type: ignore[name-defined]
-        parent=Article, start_page=int, end_page=int, comment=NotRequired[str], tag=30
+        parent=Article,
+        start_page=int,
+        end_page=int,
+        comment=NotRequired[Markdown],
+        tag=30,
     )
 
 
