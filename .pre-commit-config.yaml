@@ -32,14 +32,14 @@ repos:
 
   - repo: local
     hooks:
-      - id: pyanalyze
-        name: pyanalyze
-        entry: python3.12 -m pyanalyze --config-file pyproject.toml
+      - id: pycroscope
+        name: pycroscope
+        entry: python3.12 -m pycroscope --config-file pyproject.toml
         language: python
         files: ^taxonomy/.*\.py$
         language_version: python3.12
         additional_dependencies:
-          - pyanalyze>=0.13.1
+          - git+https://github.com/JelleZijlstra/pycroscope.git@main#egg=pycroscope
           - httpx
           - clirm
           - IPython>8

@@ -4,9 +4,9 @@ include = '\.pyi?$'
 skip-magic-trailing-comma = true
 preview = true
 
-[tool.pyanalyze]
+[tool.pycroscope]
 class_attribute_transformers = [
-  "taxonomy.pyanalyze_config.class_attribute_transformer",
+  "taxonomy.pycroscope_config.class_attribute_transformer",
 ]
 undefined_name = false
 paths = ["."]
