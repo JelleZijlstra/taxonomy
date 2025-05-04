@@ -1,6 +1,6 @@
 import clirm
-from pyanalyze.annotations import type_from_runtime
-from pyanalyze.value import Value
+from pycroscope.annotations import type_from_runtime
+from pycroscope.value import Value
 
 
 def class_attribute_transformer(field_cls: clirm.Field) -> tuple[Value, Value] | None:

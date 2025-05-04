@@ -567,7 +567,8 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 if tag.classification_entry.mapped_name != tag.name:
                     yield f"{tag} has classification entry {tag.classification_entry} that does not match name {tag.name}"
             elif any(
-                other_tag.classification_entry is not None
+                isinstance(other_tag, TypeTag.IncludedSpecies)
+                and other_tag.classification_entry is not None
                 for other_tag in by_type[TypeTag.IncludedSpecies]
             ):
                 yield f"{tag} has no classification entry, but other IncludedSpecies tags do"
