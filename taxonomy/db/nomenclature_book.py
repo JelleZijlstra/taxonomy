@@ -612,8 +612,8 @@ def process_value_for_sheets(value: str) -> str | int:
     return value
 
 
-type ChangeKind = Literal["add", "remove", "update"]
-type Difference = tuple[int, Row, str, str]
+ChangeKind = Literal["add", "remove", "update"]
+Difference = tuple[int, Row, str, str]
 
 
 def edit_in_database(column: str, computed_row: Row, sheet_value: str) -> None:
@@ -630,7 +630,9 @@ def edit_in_database(column: str, computed_row: Row, sheet_value: str) -> None:
                 nam, TypeTag.InterpretedTypeSpecimen(text=sheet_value)
             )
         case "edit_comments":
-            add_or_replace_type_tag(nam, TypeTag.NomenclatureComments(text=sheet_value))
+            add_or_replace_type_tag(
+                nam, TypeTag.NomenclatureComments(text=sheet_value, record="x")
+            )
         case "edit_common_name":
             taxon = nam.taxon
             tag = TaxonTag.EnglishCommonName(sheet_value)
