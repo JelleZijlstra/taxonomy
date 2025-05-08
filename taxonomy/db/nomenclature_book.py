@@ -18,6 +18,7 @@ import sys
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 import google.auth.exceptions
 import gspread
@@ -40,6 +41,7 @@ from taxonomy.db.models.base import LintConfig
 from taxonomy.db.models.classification_entry.ce import ClassificationEntry
 from taxonomy.db.models.location import Location
 from taxonomy.db.models.name.name import Name, NameTag, TypeTag
+from taxonomy.db.models.tags import TaxonTag
 from taxonomy.db.models.taxon.lint import check_full_expected_base_name
 from taxonomy.db.models.taxon.taxon import Taxon
 
@@ -322,6 +324,14 @@ def get_past_treatments(taxon: Taxon, ces: set[tuple[str, ClassificationEntry]])
     return " ".join(texts)
 
 
+def _display_page(page: str) -> str:
+    if page.startswith("@"):
+        return page[1:]
+    if re.fullmatch(r"^[\d, ]+$", page):
+        return f"p. {page}"
+    return page
+
+
 def get_type_specimen_text(name: Name) -> tuple[str, list[str]]:
     todos: list[str] = []
     interpreted_ts = name.get_type_tag(TypeTag.InterpretedTypeSpecimen)
@@ -336,12 +346,10 @@ def get_type_specimen_text(name: Name) -> tuple[str, list[str]]:
                 if (
                     tag.valid
                     and tag.optional_source is not None
-                    and tag.comment is not None
+                    and tag.page is not None
                 ):
-                    match = re.search(r"^p\. \d+", tag.comment)
-                    if match is not None:
-                        type_specimen += f", as designated by {{{tag.optional_source.name}}} {match.group(0)}"
-                        return type_specimen, todos
+                    type_specimen += f", as designated by {{{tag.optional_source.name}}} {_display_page(tag.page)}"
+                    return type_specimen, todos
         if name.species_type_kind is SpeciesGroupType.lectotype:
             tags = list(name.get_tags(name.type_tags, TypeTag.LectotypeDesignation))
             if len(tags) == 1:
@@ -349,12 +357,10 @@ def get_type_specimen_text(name: Name) -> tuple[str, list[str]]:
                 if (
                     tag.valid
                     and tag.optional_source is not None
-                    and tag.comment is not None
+                    and tag.page is not None
                 ):
-                    match = re.search(r"^p\. \d+", tag.comment)
-                    if match is not None:
-                        type_specimen += f", as designated by {{{tag.optional_source.name}}} {match.group(0)}"
-                        return type_specimen, todos
+                    type_specimen += f", as designated by {{{tag.optional_source.name}}} {_display_page(tag.page)}"
+                    return type_specimen, todos
         if name.species_type_kind not in (
             SpeciesGroupType.holotype,
             SpeciesGroupType.syntypes,
@@ -606,6 +612,129 @@ def process_value_for_sheets(value: str) -> str | int:
     return value
 
 
+type ChangeKind = Literal["add", "remove", "update"]
+type Difference = tuple[int, Row, str, str]
+
+
+def edit_in_database(column: str, computed_row: Row, sheet_value: str) -> None:
+    nam = computed_row.name
+    match column:
+        case "edit_type_taxon":
+            add_or_replace_type_tag(nam, TypeTag.InterpretedTypeTaxon(text=sheet_value))
+        case "edit_type_locality":
+            add_or_replace_type_tag(
+                nam, TypeTag.InterpretedTypeLocality(text=sheet_value)
+            )
+        case "edit_type_specimen":
+            add_or_replace_type_tag(
+                nam, TypeTag.InterpretedTypeSpecimen(text=sheet_value)
+            )
+        case "edit_comments":
+            add_or_replace_type_tag(nam, TypeTag.NomenclatureComments(text=sheet_value))
+        case "edit_common_name":
+            taxon = nam.taxon
+            tag = TaxonTag.EnglishCommonName(sheet_value)
+            new_tags = [tag]
+            for existing in taxon.tags:
+                if isinstance(existing, TaxonTag.EnglishCommonName):
+                    print(f"{nam}: dropping {existing}")
+                else:
+                    new_tags.append(existing)
+            print(f"{nam}: adding {tag}")
+            taxon.tags = new_tags
+        case "edit_verbatim_type_locality":
+            if nam.original_citation is None:
+                print("Cannot set verbatim type locality without original citation")
+                return
+            tag = TypeTag.LocationDetail(sheet_value, nam.original_citation)
+            new_tags = [tag]
+            for existing in nam.type_tags:
+                if (
+                    isinstance(existing, TypeTag.LocationDetail)
+                    and existing.source == nam.original_citation
+                ):
+                    print(f"{nam}: dropping {existing}")
+                else:
+                    new_tags.append(existing)
+            print(f"{nam}: adding {tag}")
+            nam.type_tags = new_tags  # type: ignore[assignment]
+
+
+def add_or_replace_type_tag(nam: Name, tag: TypeTag) -> None:
+    tag_type = type(tag)
+    new_tags = [tag]
+    for existing in nam.type_tags:
+        if isinstance(existing, tag_type):
+            print(f"{nam}: dropping {existing}")
+        else:
+            new_tags.append(existing)
+    print(f"{nam}: adding {tag}")
+    nam.type_tags = new_tags  # type: ignore[assignment]
+
+
+def edit_differences(
+    column: str,
+    kind: ChangeKind,
+    differences: list[Difference],
+    worksheet: gspread.worksheet.Worksheet,
+    column_to_idx: dict[str, int],
+) -> None:
+    for _, computed_row, sheet_value, computed_value in differences[:5]:
+        print(
+            f"{computed_row.for_book.name} ({computed_row.for_book.rank.name}): {sheet_value} -> {computed_value}"
+        )
+    choices = ["sheet", "database", "ask", "skip"]
+    choice = getinput.choose_one(
+        choices,
+        message=f"Edit {len(differences)} rows in the {column} column?",
+        allow_empty=False,
+    )
+    match choice:
+        case "sheet":
+            updates_to_make = [
+                gspread.cell.Cell(
+                    row=row_idx,
+                    col=column_to_idx[column],
+                    value=process_value_for_sheets(  # static analysis: ignore[incompatible_argument]
+                        computed_value
+                    ),
+                )
+                for row_idx, _, _, computed_value in differences
+            ]
+            print(f"Apply {len(updates_to_make)} updates...")
+            worksheet.update_cells(updates_to_make)
+            print("Done")
+
+        case "database":
+            for _, computed_row, sheet_value, _ in differences:
+                edit_in_database(column, computed_row, sheet_value)
+
+        case "ask":
+            for row_idx, computed_row, sheet_value, computed_value in differences:
+                print(
+                    f"{computed_row.for_book.name} ({computed_row.for_book.rank.name}): {sheet_value} -> {computed_value}"
+                )
+                choice = getinput.choose_one(
+                    ["sheet", "database", "skip"],
+                    message="Edit in sheet or database?",
+                    allow_empty=False,
+                )
+                match choice:
+                    case "sheet":
+                        worksheet.update_cell(
+                            row_idx,
+                            column_to_idx[column],
+                            process_value_for_sheets(computed_value),
+                        )
+                    case "database":
+                        edit_in_database(column, computed_row, sheet_value)
+                    case "skip":
+                        pass
+
+        case _:
+            pass
+
+
 def sync_sheet() -> None:
 
     print("Downloading sheet...")
@@ -650,7 +779,7 @@ def sync_sheet() -> None:
     row_dict = {row.get_key(): row for row in rows}
     print(f"Done, {len(rows)} rows")
 
-    column_to_differences: dict[str, list[tuple[int, Row, str, str]]] = {}
+    column_to_differences: dict[str, dict[ChangeKind, list[Difference]]] = {}
     for sheet_row in sheet_row_dict.values():
         computed_row = row_dict.get(sheet_row.get_key())
         if not computed_row:
@@ -660,33 +789,46 @@ def sync_sheet() -> None:
             if column not in csv_row:
                 continue
             if value != csv_row[column]:
-                column_to_differences.setdefault(column, []).append(
-                    (sheet_row.row_idx, computed_row, value, csv_row[column])
-                )
-    for column, differences in column_to_differences.items():
-        getinput.print_header(f"Column: {column} ({len(differences)} differences)")
-        differences = sorted(differences, key=lambda x: (x[2], x[3]))
-        updates_to_make = []
-        for i, (row_idx, computed_row, sheet_value, computed_value) in enumerate(
-            differences
-        ):
-            if i < 5:
-                print(
-                    f"{computed_row.for_book.name} ({computed_row.for_book.rank.name}): {sheet_value} -> {computed_value}"
-                )
-            updates_to_make.append(
-                gspread.cell.Cell(
-                    row=row_idx,
-                    col=column_to_idx[column],
-                    value=process_value_for_sheets(  # static analysis: ignore[incompatible_argument]
-                        computed_value
-                    ),
-                )
+                change_kind: ChangeKind
+                if value and csv_row[column]:
+                    change_kind = "update"
+                elif value:
+                    change_kind = "add"
+                else:
+                    change_kind = "remove"
+                column_to_differences.setdefault(column, {}).setdefault(
+                    change_kind, []
+                ).append((sheet_row.row_idx, computed_row, value, csv_row[column]))
+    for column, differences_by_kind in column_to_differences.items():
+        for kind, differences in differences_by_kind.items():
+            getinput.print_header(
+                f"Column: {column} {kind} ({len(differences)} differences)"
             )
-        if getinput.yes_no("Update these rows?"):
-            print(f"Apply {len(updates_to_make)} updates...")
-            worksheet.update_cells(updates_to_make)
-            print("Done")
+            differences = sorted(differences, key=lambda x: (x[2], x[3]))
+            if column.startswith("edit_"):
+                edit_differences(column, kind, differences, worksheet, column_to_idx)
+                continue
+            updates_to_make = []
+            for i, (row_idx, computed_row, sheet_value, computed_value) in enumerate(
+                differences
+            ):
+                if i < 5:
+                    print(
+                        f"{computed_row.for_book.name} ({computed_row.for_book.rank.name}): {sheet_value} -> {computed_value}"
+                    )
+                updates_to_make.append(
+                    gspread.cell.Cell(
+                        row=row_idx,
+                        col=column_to_idx[column],
+                        value=process_value_for_sheets(  # static analysis: ignore[incompatible_argument]
+                            computed_value
+                        ),
+                    )
+                )
+            if getinput.yes_no("Update these rows?"):
+                print(f"Apply {len(updates_to_make)} updates...")
+                worksheet.update_cells(updates_to_make)
+                print("Done")
 
     rows_to_add = [row for row in rows if row.get_key() not in sheet_row_dict]
     if rows_to_add:
