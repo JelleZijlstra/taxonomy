@@ -772,34 +772,10 @@ def _check_all_type_tags(
     return [*tags, tag]
 
 
-def _check_no_tags(
-    tag: TypeTag, nam: Name, cfg: LintConfig, by_type: TagsByType
-) -> Generator[str, None, list[TypeTag]]:
-    if (
-        isinstance(
-            tag,
-            (
-                TypeTag.NoEtymology,
-                TypeTag.NoLocation,
-                TypeTag.NoSpecimen,
-                TypeTag.NoDate,
-                TypeTag.NoCollector,
-                TypeTag.NoOrgan,
-                TypeTag.NoGender,
-                TypeTag.NoAge,
-            ),
-        )
-        and tag.optional_source is None
-    ):
-        yield f"{tag} has no source"
-    return [tag]
-
-
 TYPE_TAG_CHECKERS: list[TypeTagChecker] = [
     _check_links_in_type_tag,
     _check_detail_type_tag,
     _check_designation_type_tag,
-    _check_no_tags,
     _check_all_type_tags,
 ]
 

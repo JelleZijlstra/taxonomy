@@ -3099,14 +3099,14 @@ class TypeTag(adt.ADT):
     CollectedBy(person=Person, tag=29)  # type: ignore[name-defined]
 
     DifferentAuthority(comment=NotRequired[Markdown], tag=30)  # type: ignore[name-defined]
-    NoEtymology(optional_source=NotRequired[Article], tag=31)  # type: ignore[name-defined]
-    NoLocation(optional_source=NotRequired[Article], tag=32)  # type: ignore[name-defined]
-    NoSpecimen(optional_source=NotRequired[Article], tag=33)  # type: ignore[name-defined]
-    NoDate(optional_source=NotRequired[Article], tag=34)  # type: ignore[name-defined]
-    NoCollector(optional_source=NotRequired[Article], tag=35)  # type: ignore[name-defined]
-    NoOrgan(optional_source=NotRequired[Article], tag=36)  # type: ignore[name-defined]
-    NoGender(optional_source=NotRequired[Article], tag=37)  # type: ignore[name-defined]
-    NoAge(optional_source=NotRequired[Article], tag=38)  # type: ignore[name-defined]
+    NoEtymology(source=Article, tag=31)  # type: ignore[name-defined]
+    NoLocation(source=Article, tag=32)  # type: ignore[name-defined]
+    NoSpecimen(source=Article, tag=33)  # type: ignore[name-defined]
+    NoDate(source=Article, tag=34)  # type: ignore[name-defined]
+    NoCollector(source=Article, tag=35)  # type: ignore[name-defined]
+    NoOrgan(source=Article, tag=36)  # type: ignore[name-defined]
+    NoGender(source=Article, tag=37)  # type: ignore[name-defined]
+    NoAge(source=Article, tag=38)  # type: ignore[name-defined]
     # Person who is involved in the type specimen's history
     Involved(person=Person, comment=NotRequired[Markdown], tag=39)  # type: ignore[name-defined]
     # Indicates that a General type locality cannot be fixed
