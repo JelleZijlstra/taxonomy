@@ -672,6 +672,17 @@ def _check_all_type_tags(
                 print(
                     f"{nam}: adding coordinates {tags[-1]} extracted from {tag.text!r}"
                 )
+            tag = yield from check_tag_with_page(
+                tag, tag.source, cfg, nam, allow_missing_page=True
+            )
+            if tag.text.replace(".", "") in ("[No locality given]", "[Plate only]"):
+                new_tag = TypeTag.NoLocation(source=tag.source)
+                message = f"replace {tag} with {new_tag}"
+                if cfg.autofix:
+                    print(f"{nam}: {message}")
+                    return [new_tag]
+                else:
+                    yield message
 
         case TypeTag.Coordinates():
             try:
@@ -760,6 +771,42 @@ def _check_all_type_tags(
             if TypeTag.Organ in by_type:
                 yield "has NoOrgan tag but also has Organ tag"
                 return []
+
+        case TypeTag.NoLocation():
+            if TypeTag.LocationDetail in by_type:
+                witnesses = [
+                    other_tag
+                    for other_tag in by_type[TypeTag.LocationDetail]
+                    if isinstance(other_tag, TypeTag.LocationDetail)
+                    and other_tag.source == tag.source
+                ]
+                if witnesses:
+                    yield f"has NoLocation tag but also has LocationDetail tag: {witnesses}"
+                    return []
+
+        case TypeTag.NoEtymology():
+            if TypeTag.EtymologyDetail in by_type:
+                witnesses = [
+                    other_tag
+                    for other_tag in by_type[TypeTag.EtymologyDetail]
+                    if isinstance(other_tag, TypeTag.EtymologyDetail)
+                    and other_tag.source == tag.source
+                ]
+                if witnesses:
+                    yield f"has NoEtymology tag but also has EtymologyDetail tag: {witnesses}"
+                    return []
+
+        case TypeTag.NoSpecimen():
+            if TypeTag.SpecimenDetail in by_type:
+                witnesses = [
+                    other_tag
+                    for other_tag in by_type[TypeTag.SpecimenDetail]
+                    if isinstance(other_tag, TypeTag.SpecimenDetail)
+                    and other_tag.source == tag.source
+                ]
+                if witnesses:
+                    yield f"has NoSpecimen tag but also has SpecimenDetail tag: {witnesses}"
+                    return []
 
         case TypeTag.Altitude():
             if TypeTag.LocationDetail not in by_type:
