@@ -387,7 +387,12 @@ def check_selection_tag[Tag: SelectionTag](
 
 
 def check_tag_with_page[Tag: TagWithPage](
-    tag: Tag, source: Article | None, cfg: LintConfig, owner: object
+    tag: Tag,
+    source: Article | None,
+    cfg: LintConfig,
+    owner: object,
+    *,
+    allow_missing_page: bool = False,
 ) -> Generator[str, None, Tag]:
     if (
         source is not None
@@ -446,9 +451,26 @@ def check_tag_with_page[Tag: TagWithPage](
         if source is not None and tag.page is not None:
             yield from check_page_matches_citation(source, tag.page)
 
-    if source is not None and tag.comment is not None and tag.page is None:
+    if (
+        not allow_missing_page
+        and source is not None
+        and tag.comment is not None
+        and tag.page is None
+    ):
         yield f"{tag} has source but no page"
     return tag
+
+
+def _only_digits(text: str) -> str:
+    return re.sub(r"[^0-9a-z]", "", text)
+
+
+def _is_comparable_to_type(specimen_text: str, nam: Name) -> bool:
+    if nam.type_specimen is None or nam.collection is None:
+        return False
+    if nam.collection.label not in specimen_text:
+        return False
+    return _only_digits(specimen_text) == _only_digits(nam.type_specimen)
 
 
 @LINT.add("type_tags")
@@ -558,9 +580,33 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
             else:
                 source = tag.optional_source
             tag = yield from check_selection_tag(tag, source, cfg, nam)
+            if (
+                isinstance(tag, TypeTag.LectotypeDesignation)
+                and tag.lectotype != nam.type_specimen
+                and _is_comparable_to_type(tag.lectotype, nam)
+            ):
+                message = f"in lectotype designation, change {tag.lectotype!r} to {nam.type_specimen!r}"
+                if cfg.autofix:
+                    tag = tag.replace(lectotype=nam.type_specimen)
+                    print(f"{nam}: {message}")
+                else:
+                    yield message
+            if (
+                isinstance(tag, TypeTag.NeotypeDesignation)
+                and tag.neotype != nam.type_specimen
+                and _is_comparable_to_type(tag.neotype, nam)
+            ):
+                message = f"in neotype designation, change {tag.neotype!r} to {nam.type_specimen!r}"
+                if cfg.autofix:
+                    tag = tag.replace(neotype=nam.type_specimen)
+                    print(f"{nam}: {message}")
+                else:
+                    yield message
             tags.append(tag)
         elif isinstance(tag, TypeTag.IncludedSpecies):
-            tag = yield from check_tag_with_page(tag, nam.original_citation, cfg, nam)
+            tag = yield from check_tag_with_page(
+                tag, nam.original_citation, cfg, nam, allow_missing_page=True
+            )
             if tag.classification_entry is not None:
                 if tag.classification_entry.article != nam.original_citation:
                     yield f"{tag} has classification entry {tag.classification_entry} that does not match original citation {nam.original_citation}"
@@ -827,32 +873,47 @@ def check_coordinates(nam: Name, cfg: LintConfig) -> Iterable[str]:
         yield f"coordinates {point} are in {osm_country}, not {tl_country.name}"
 
 
-@LINT.add("type_designations", disabled=True)
-def check_type_designations_present(nam: Name, cfg: LintConfig) -> Iterable[str]:
-    if nam.genus_type_kind is TypeSpeciesDesignation.subsequent_designation:
-        if not any(
-            tag.type == nam.type
-            for tag in nam.get_tags(nam.type_tags, TypeTag.TypeDesignation)
-        ):
-            yield "missing a reference for type species designation"
-    if (
-        nam.species_type_kind is SpeciesGroupType.lectotype
-        and nam.type_specimen is not None
-    ):
-        if not any(
-            tag.lectotype == nam.type_specimen
-            for tag in nam.get_tags(nam.type_tags, TypeTag.LectotypeDesignation)
-        ):
-            yield "missing a reference for lectotype designation"
-    if (
-        nam.species_type_kind is SpeciesGroupType.neotype
-        and nam.type_specimen is not None
-    ):
-        if not any(
-            tag.neotype == nam.type_specimen
-            for tag in nam.get_tags(nam.type_tags, TypeTag.NeotypeDesignation)
-        ):
-            yield "missing a reference for neotype designation"
+@LINT.add("type_designation_optional")
+def check_type_designation_optional(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    # Move to check_type_designation below if this is fixed for all names
+    if not is_valid_mammal(nam):
+        return
+    match nam.genus_type_kind:
+        case TypeSpeciesDesignation.subsequent_designation:
+            if not any(
+                tag.type == nam.type
+                for tag in nam.get_tags(nam.type_tags, TypeTag.TypeDesignation)
+            ):
+                yield "missing a reference for type species designation"
+        case TypeSpeciesDesignation.subsequent_monotypy:
+            if not any(
+                tag.type == nam.type
+                for tag in nam.get_tags(nam.type_tags, TypeTag.TypeDesignation)
+            ):
+                yield "missing a reference for type species designation"
+
+    match nam.species_type_kind:
+        case SpeciesGroupType.lectotype:
+            if not any(
+                tag.lectotype == nam.type_specimen
+                for tag in nam.get_tags(nam.type_tags, TypeTag.LectotypeDesignation)
+            ):
+                yield "missing a reference for lectotype designation"
+        case SpeciesGroupType.neotype:
+            if not any(
+                tag.neotype == nam.type_specimen
+                for tag in nam.get_tags(nam.type_tags, TypeTag.NeotypeDesignation)
+            ):
+                yield "missing a reference for neotype designation"
+
+
+@LINT.add("type_designation")
+def check_type_designation(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    match nam.genus_type_kind:
+        case TypeSpeciesDesignation.designated_by_the_commission:
+            tag = nam.get_type_tag(TypeTag.CommissionTypeDesignation)
+            if tag is None:
+                yield "type species is set to designated_by_the_commission, but missing CommissionTypeDesignation tag"
 
 
 class RepositoryKind(enum.Enum):
@@ -5942,14 +6003,15 @@ def check_unique_type_locality(nam: Name, cfg: LintConfig) -> Iterable[str]:
         yield message
 
 
-@LINT.add("type_designation")
-def check_type_designation(nam: Name, cfg: LintConfig) -> Iterable[str]:
-    match nam.genus_type_kind:
-        case TypeSpeciesDesignation.designated_by_the_commission:
-            tag = nam.get_type_tag(TypeTag.CommissionTypeDesignation)
-            if tag is None:
-                yield "type species is set to designated_by_the_commission, but missing CommissionTypeDesignation tag"
-    # TODO: also check other kinds
+def is_valid_mammal(nam: Name) -> bool:
+    if nam.status is not Status.valid:
+        return False
+    taxon = nam.taxon
+    if taxon.age not in (AgeClass.extant, AgeClass.recently_extinct):
+        return False
+    if taxon.rank is Rank.subspecies and not taxon.is_nominate_subspecies():
+        return False
+    return taxon.get_derived_field("class_").valid_name == "Mammalia"
 
 
 @LINT.add("infer_reranking")

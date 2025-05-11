@@ -963,6 +963,12 @@ class Taxon(BaseModel):
     def open_description(self) -> bool:
         return self.base_name.open_description()
 
+    def is_nominate_subspecies(self) -> bool:
+        if self.rank is not Rank.subspecies:
+            return False
+        species = self.parent_of_rank(Rank.species)
+        return species.base_name == self.base_name
+
     def is_nominate_subgenus(self) -> bool:
         if self.rank is not Rank.subgenus:
             return False

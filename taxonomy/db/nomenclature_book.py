@@ -686,9 +686,9 @@ def edit_differences(
             f"{computed_row.for_book.name} ({computed_row.for_book.rank.name}): {sheet_value} -> {computed_value}"
         )
     choices = ["sheet", "database", "ask", "skip"]
-    choice = getinput.choose_one(
+    choice = getinput.choose_one_by_name(
         choices,
-        message=f"Edit {len(differences)} rows in the {column} column?",
+        message=f"Edit {len(differences)} rows in the {column} column? ",
         allow_empty=False,
     )
     match choice:

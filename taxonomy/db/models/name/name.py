@@ -689,6 +689,7 @@ class Name(BaseModel):
             "display_classification_entries": self.display_classification_entries,
             "display_usage_list": lambda: print(self.make_usage_list()),
             "set_page_described": self.set_page_described,
+            "update_type_designations": self.update_type_designations,
         }
 
     def get_classification_entries(self) -> Query[ClassificationEntry]:
@@ -1332,6 +1333,31 @@ class Name(BaseModel):
         ce = self.get_mapped_classification_entry()
         if ce is not None:
             ce.set_page(page)
+
+    def update_type_designations(self) -> None:
+        if self.type_specimen is None:
+            print(f"{self} has no type specimen")
+            return
+        new_tags: list[TypeTag] = []
+        for tag in self.type_tags:
+            if isinstance(tag, TypeTag.LectotypeDesignation):
+                if tag.lectotype != self.type_specimen:
+                    print(tag)
+                    if getinput.yes_no(
+                        f"Change type specimen from {tag.lectotype!r} to {self.type_specimen!r}? "
+                    ):
+                        tag = tag.replace(lectotype=self.type_specimen)
+                        print(f"Updated {tag}")
+            elif isinstance(tag, TypeTag.NeotypeDesignation):
+                if tag.neotype != self.type_specimen:
+                    print(tag)
+                    if getinput.yes_no(
+                        f"Change neotype from {tag.neotype!r} to {self.type_specimen!r}? "
+                    ):
+                        tag = tag.replace(neotype=self.type_specimen)
+                        print(f"Changed {tag}")
+            new_tags.append(tag)
+        self.type_tags = new_tags  # type: ignore[assignment]
 
     def get_repositories(self) -> list[Collection]:
         if self.collection is None:
