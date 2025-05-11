@@ -139,6 +139,14 @@ def choose_one(
     history_key: object = None,
     callbacks: CallbackMap = {},
 ) -> T | None:
+    """Choose one option by picking its index.
+
+    This is usually less pleasant than using `choose_one_by_name`, but it
+    makes sense to use it when there are many options that look visually
+    similar, or when the string representation of the option is annoying
+    to type.
+
+    """
     for i, option in enumerate(options):
         print(f"{i}: {display_fn(option)}")
     choices = [str(i) for i in range(len(options))]
@@ -179,7 +187,7 @@ def choose_one_by_name(
         choice = get_with_completion(
             options=choices,
             message=message,
-            disallow_other=decode_fn is None,
+            disallow_other=False,
             history_key=history_key,
             allow_empty=allow_empty,
             callbacks=callbacks,

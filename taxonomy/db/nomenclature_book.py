@@ -716,7 +716,7 @@ def edit_differences(
                 print(
                     f"{computed_row.for_book.name} ({computed_row.for_book.rank.name}): {sheet_value} -> {computed_value}"
                 )
-                choice = getinput.choose_one(
+                choice = getinput.choose_one_by_name(
                     ["sheet", "database", "skip"],
                     message="Edit in sheet or database?",
                     allow_empty=False,
@@ -795,9 +795,9 @@ def sync_sheet() -> None:
                 if value and csv_row[column]:
                     change_kind = "update"
                 elif value:
-                    change_kind = "add"
-                else:
                     change_kind = "remove"
+                else:
+                    change_kind = "add"
                 column_to_differences.setdefault(column, {}).setdefault(
                     change_kind, []
                 ).append((sheet_row.row_idx, computed_row, value, csv_row[column]))
