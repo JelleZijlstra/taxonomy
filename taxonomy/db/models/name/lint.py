@@ -473,117 +473,126 @@ def _is_comparable_to_type(specimen_text: str, nam: Name) -> bool:
     return _only_digits(specimen_text) == _only_digits(nam.type_specimen)
 
 
-@LINT.add("type_tags")
-def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
-    if not nam.type_tags:
-        return
-    tags: list[TypeTag] = []
-    original_tags = list(nam.type_tags)
-    by_type: dict[type[TypeTag], list[TypeTag]] = {}
-    for tag in original_tags:
-        by_type.setdefault(type(tag), []).append(tag)
+type TagsByType = dict[type[TypeTag], list[TypeTag]]
+type TypeTagChecker = Callable[
+    [TypeTag, Name, LintConfig, TagsByType], Generator[str, None, list[TypeTag]]
+]
 
-    for tag in original_tags:
-        for arg_name, art in get_tag_fields_of_type(tag, Article):
-            if art.kind is ArticleKind.removed:
-                print(f"{nam} references a removed Article in {tag}")
-                yield f"bad article in tag {tag}"
-            elif art.kind is ArticleKind.redirect:
+
+def _check_links_in_type_tag(
+    tag: TypeTag, nam: Name, cfg: LintConfig, tags_by_type: TagsByType
+) -> Generator[str, None, list[TypeTag]]:
+    for arg_name, art in get_tag_fields_of_type(tag, Article):
+        if art.kind is ArticleKind.removed:
+            yield f"bad article in tag {tag}"
+        elif art.kind is ArticleKind.redirect:
+            if art.parent is None or art.parent.should_skip():
+                yield f"bad redirected article in tag {tag}"
+            elif cfg.autofix:
                 print(f"{nam} references a redirected Article in {tag} -> {art.parent}")
-                if art.parent is None or art.parent.should_skip():
-                    yield f"bad redirected article in tag {tag}"
-                elif cfg.autofix:
-                    tag = replace_arg(tag, arg_name, art.parent)
-        for arg_name, tag_nam in get_tag_fields_of_type(tag, Name):
-            if tag_nam.is_invalid():
-                print(
-                    f"{nam} references a removed Name in argument {arg_name} to {tag}"
-                )
-                yield f"bad name in tag {tag}"
+                tag = replace_arg(tag, arg_name, art.parent)
+    for arg_name, tag_nam in get_tag_fields_of_type(tag, Name):
+        if tag_nam.is_invalid():
+            yield f"bad name in {arg_name} for tag {tag}"
 
-        if isinstance(
+    return [tag]
+
+
+def _check_detail_type_tag(
+    tag: TypeTag, nam: Name, cfg: LintConfig, tags_by_type: TagsByType
+) -> Generator[str, None, list[TypeTag]]:
+    if (
+        isinstance(
             tag,
             (
-                TypeTag.FormerRepository,
-                TypeTag.FutureRepository,
-                TypeTag.ExtraRepository,
+                TypeTag.LocationDetail,
+                TypeTag.SpecimenDetail,
+                TypeTag.EtymologyDetail,
+                TypeTag.TypeSpeciesDetail,
+                TypeTag.CitationDetail,
             ),
+        )
+        and not tag.text
+        and tag.source is None
+    ):
+        message = f"{tag} has no text and no source"
+        if cfg.autofix:
+            print(f"{nam}: {message}")
+            return []
+        else:
+            yield message
+    return [tag]
+
+
+def _check_designation_type_tag(
+    tag: TypeTag, nam: Name, cfg: LintConfig, tags_by_type: TagsByType
+) -> Generator[str, None, list[TypeTag]]:
+    if isinstance(
+        tag,
+        (
+            TypeTag.LectotypeDesignation,
+            TypeTag.NeotypeDesignation,
+            TypeTag.TypeDesignation,
+            TypeTag.CommissionTypeDesignation,
+        ),
+    ):
+        if isinstance(tag, TypeTag.CommissionTypeDesignation):
+            source = tag.opinion
+        else:
+            source = tag.optional_source
+        tag = yield from check_selection_tag(tag, source, cfg, nam)
+    return [tag]
+
+
+def _check_all_type_tags(
+    tag: TypeTag, nam: Name, cfg: LintConfig, by_type: TagsByType
+) -> Generator[str, None, list[TypeTag]]:
+    tags = []
+    match tag:
+        case (
+            TypeTag.FormerRepository()
+            | TypeTag.FutureRepository()
+            | TypeTag.ExtraRepository()
         ):
             if tag.repository in nam.get_repositories():
                 yield (
                     f"{tag.repository} is marked as a {type(tag).__name__}, but it is"
-                    " the current repository"
+                    " a current repository"
                 )
 
-        if (
-            isinstance(
-                tag,
-                (
-                    TypeTag.LocationDetail,
-                    TypeTag.SpecimenDetail,
-                    TypeTag.EtymologyDetail,
-                    TypeTag.TypeSpeciesDetail,
-                ),
-            )
-            and not tag.text
-            and tag.source is None
-        ):
-            message = f"{tag} has no text and no source"
-            if cfg.autofix:
-                print(f"{nam}: {message}")
-                continue
-            else:
-                yield message
+        case TypeTag.ProbableRepository() | TypeTag.GuessedRepository():
+            if nam.collection is not None:
+                message = f"has {tag} but collection is set to {nam.collection}"
+                if cfg.autofix:
+                    print(f"{nam}: {message}")
+                    return []
+                else:
+                    yield message
 
-        if (
-            isinstance(tag, (TypeTag.ProbableRepository, TypeTag.GuessedRepository))
-            and nam.collection is not None
-        ):
-            message = f"has {tag} but collection is set to {nam.collection}"
-            if cfg.autofix:
-                print(f"{nam}: {message}")
-                continue
-            else:
-                yield message
-
-        if isinstance(
-            tag,
-            (
-                TypeTag.LectotypeDesignation,
-                TypeTag.NeotypeDesignation,
-                TypeTag.TypeDesignation,
-                TypeTag.CommissionTypeDesignation,
-            ),
-        ):
-            if isinstance(tag, TypeTag.CommissionTypeDesignation):
-                if nam.type != tag.type:
-                    print(
-                        f"{nam} has {nam.type} as its type, but the Commission has"
-                        f" designated {tag.type}"
-                    )
-                    if cfg.autofix:
-                        nam.type = tag.type
-                if (
-                    nam.genus_type_kind
-                    != TypeSpeciesDesignation.designated_by_the_commission
-                ):
-                    print(
-                        f"{nam} has {nam.genus_type_kind}, but its type was set by the"
-                        " Commission"
-                    )
-                    if cfg.autofix:
-                        nam.genus_type_kind = (
-                            TypeSpeciesDesignation.designated_by_the_commission
-                        )
-                tags.append(tag)
-                source = tag.opinion
-            else:
-                source = tag.optional_source
-            tag = yield from check_selection_tag(tag, source, cfg, nam)
+        case TypeTag.CommissionTypeDesignation():
+            if nam.type != tag.type:
+                print(
+                    f"{nam} has {nam.type} as its type, but the Commission has"
+                    f" designated {tag.type}"
+                )
+                if cfg.autofix:
+                    nam.type = tag.type
             if (
-                isinstance(tag, TypeTag.LectotypeDesignation)
-                and tag.lectotype != nam.type_specimen
-                and _is_comparable_to_type(tag.lectotype, nam)
+                nam.genus_type_kind
+                != TypeSpeciesDesignation.designated_by_the_commission
+            ):
+                print(
+                    f"{nam} has {nam.genus_type_kind}, but its type was set by the"
+                    " Commission"
+                )
+                if cfg.autofix:
+                    nam.genus_type_kind = (
+                        TypeSpeciesDesignation.designated_by_the_commission
+                    )
+
+        case TypeTag.LectotypeDesignation():
+            if tag.lectotype != nam.type_specimen and _is_comparable_to_type(
+                tag.lectotype, nam
             ):
                 message = f"in lectotype designation, change {tag.lectotype!r} to {nam.type_specimen!r}"
                 if cfg.autofix:
@@ -591,10 +600,10 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                     print(f"{nam}: {message}")
                 else:
                     yield message
-            if (
-                isinstance(tag, TypeTag.NeotypeDesignation)
-                and tag.neotype != nam.type_specimen
-                and _is_comparable_to_type(tag.neotype, nam)
+
+        case TypeTag.NeotypeDesignation():
+            if tag.neotype != nam.type_specimen and _is_comparable_to_type(
+                tag.neotype, nam
             ):
                 message = f"in neotype designation, change {tag.neotype!r} to {nam.type_specimen!r}"
                 if cfg.autofix:
@@ -602,8 +611,8 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                     print(f"{nam}: {message}")
                 else:
                     yield message
-            tags.append(tag)
-        elif isinstance(tag, TypeTag.IncludedSpecies):
+
+        case TypeTag.IncludedSpecies():
             tag = yield from check_tag_with_page(
                 tag, nam.original_citation, cfg, nam, allow_missing_page=True
             )
@@ -623,8 +632,8 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 and not nam.has_type_tag(TypeTag.GenusCoelebs)
             ):
                 yield f"{tag} has date {tag.name.get_date_object()} that is later than name date {nam.get_date_object()}"
-            tags.append(tag)
-        elif isinstance(tag, TypeTag.Date):
+
+        case TypeTag.Date():
             date = tag.date
             try:
                 date = helpers.standardize_date(date)
@@ -632,27 +641,39 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 print(f"{nam} has date {tag.date}, which cannot be parsed")
                 yield "unparseable date"
             if date is None:
-                continue
-            tags.append(TypeTag.Date(date))
-        elif isinstance(tag, TypeTag.Altitude):
+                return []
+            # TODO: add more tags here. Also consider requiring that the specimen details directly
+            # support the derived tags; e.g., the SpecimenDetail tag should contain the year of the Date
+            # tag.
+            if TypeTag.SpecimenDetail not in by_type:
+                yield "has Date tag but no SpecimenDetail tag"
+
+        case TypeTag.Age():
+            if TypeTag.SpecimenDetail not in by_type:
+                yield "has Age tag but no SpecimenDetail tag"
+
+        case TypeTag.Gender():
+            if TypeTag.SpecimenDetail not in by_type:
+                yield "has Gender tag but no SpecimenDetail tag"
+
+        case TypeTag.Altitude():
             if (
                 not re.match(r"^-?\d+([\-\.]\d+)?$", tag.altitude)
                 or tag.altitude == "000"
             ):
-                print(f"{nam} has altitude {tag}, which cannot be parsed")
                 yield f"bad altitude tag {tag}"
-            tags.append(tag)
-        elif isinstance(tag, TypeTag.LocationDetail):
+
+        case TypeTag.LocationDetail():
             coords = helpers.extract_coordinates(tag.text)
             if coords and not any(
-                isinstance(t, TypeTag.Coordinates) for t in original_tags
+                isinstance(t, TypeTag.Coordinates) for t in nam.type_tags
             ):
                 tags.append(TypeTag.Coordinates(coords[0], coords[1]))
                 print(
                     f"{nam}: adding coordinates {tags[-1]} extracted from {tag.text!r}"
                 )
-            tags.append(tag)
-        elif isinstance(tag, TypeTag.Coordinates):
+
+        case TypeTag.Coordinates():
             try:
                 lat, _ = helpers.standardize_coordinates(tag.latitude, is_latitude=True)
             except helpers.InvalidCoordinates as e:
@@ -665,17 +686,22 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
             except helpers.InvalidCoordinates as e:
                 yield f"invalid longitude {tag.longitude}: {e}"
                 longitude = tag.longitude
-            tags.append(TypeTag.Coordinates(lat, longitude))
-        elif isinstance(tag, TypeTag.LSIDName):
+            tag = TypeTag.Coordinates(lat, longitude)
+            if TypeTag.LocationDetail not in by_type:
+                yield "has Coordinates tag but no LocationDetail tag"
+
+        case TypeTag.LSIDName():
             lsid = clean_lsid(tag.text)
-            tags.append(TypeTag.LSIDName(lsid))
+            tag = TypeTag.LSIDName(lsid)
             if not is_valid_lsid(lsid):
                 yield f"invalid LSID {lsid}"
-        elif isinstance(tag, TypeTag.TypeSpecimenLink):
+
+        case TypeTag.TypeSpecimenLink():
             if not tag.url.startswith(("http://", "https://")):
                 yield f"invalid type specimen URL {tag.url!r}"
-            tags.append(TypeTag.TypeSpecimenLink(fix_type_specimen_link(tag.url)))
-        elif isinstance(tag, TypeTag.TypeSpecimenLinkFor):
+            tag = TypeTag.TypeSpecimenLink(fix_type_specimen_link(tag.url))
+
+        case TypeTag.TypeSpecimenLinkFor():
             if not tag.url.startswith(("http://", "https://")):
                 yield f"invalid type specimen URL {tag.url!r}"
             try:
@@ -685,13 +711,13 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 new_spec = tag.specimen
             else:
                 new_spec = stringify_specimen_list(specs)
-            tags.append(
-                TypeTag.TypeSpecimenLinkFor(fix_type_specimen_link(tag.url), new_spec)
-            )
-        elif isinstance(tag, TypeTag.Organ) and tag.detail:
-            new_tags = yield from check_organ_tag(tag)
-            tags += new_tags
-        elif isinstance(tag, TypeTag.AuthorityPageLink):
+            tag = TypeTag.TypeSpecimenLinkFor(fix_type_specimen_link(tag.url), new_spec)
+
+        case TypeTag.Organ():
+            if tag.detail:
+                return (yield from check_organ_tag(tag))
+
+        case TypeTag.AuthorityPageLink():
             url = yield from check_page_link(
                 tag_url=tag.url, tag_page=tag.page, page_described=nam.page_described
             )
@@ -703,44 +729,99 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 page = str(tag.page)
             else:
                 page = ""
-            tags.append(TypeTag.AuthorityPageLink(url, tag.confirmed, page))
-        elif (
-            isinstance(tag, TypeTag.CitationDetail)
-            and tag.source is not None
-            and tag.source == nam.original_citation
-        ):
-            yield "replace CitationDetail with SourceDetail"
-            tags.append(TypeTag.SourceDetail(tag.text, tag.source))
-        elif tag is TypeTag.NoDate and TypeTag.Date in by_type:
-            yield "has NoDate tag but also has Date tag"
-        elif tag is TypeTag.NoCollector and TypeTag.CollectedBy in by_type:
-            yield "has NoCollector tag but also has Collector tag"
-        elif tag is TypeTag.NoAge and TypeTag.Age in by_type:
-            yield "has NoAge tag but also has Age tag"
-        elif tag is TypeTag.NoGender and TypeTag.Gender in by_type:
-            yield "has NoGender tag but also has Gender tag"
-        elif tag is TypeTag.NoOrgan and TypeTag.Organ in by_type:
-            yield "has NoOrgan tag but also has Organ tag"
-        else:
-            tags.append(tag)
-        # TODO: for lectotype and subsequent designations, ensure the earliest valid one is used.
+            tag = TypeTag.AuthorityPageLink(url, tag.confirmed, page)
 
+        case TypeTag.CitationDetail():
+            if tag.source is not None and tag.source == nam.original_citation:
+                yield "replace CitationDetail with SourceDetail"
+                tag = TypeTag.SourceDetail(tag.text, tag.source)
+
+        case TypeTag.NoDate():
+            if TypeTag.Date in by_type:
+                yield "has NoDate tag but also has Date tag"
+                return []
+
+        case TypeTag.NoCollector():
+            if TypeTag.CollectedBy in by_type:
+                yield "has NoCollector tag but also has Collector tag"
+                return []
+
+        case TypeTag.NoAge():
+            if TypeTag.Age in by_type:
+                yield "has NoAge tag but also has Age tag"
+                return []
+
+        case TypeTag.NoGender():
+            if TypeTag.Gender in by_type:
+                yield "has NoGender tag but also has Gender tag"
+                return []
+
+        case TypeTag.NoOrgan():
+            if TypeTag.Organ in by_type:
+                yield "has NoOrgan tag but also has Organ tag"
+                return []
+
+        case TypeTag.Altitude():
+            if TypeTag.LocationDetail not in by_type:
+                yield "has Altitude tag but no LocationDetail tag"
+
+        case TypeTag.TextualOriginalRank():
+            if nam.original_rank is None or not nam.original_rank.needs_textual_rank:
+                yield f"has TextualOriginalRank tag but is of rank that does not need it ({nam.original_rank!r})"
+
+    return [*tags, tag]
+
+
+def _check_no_tags(
+    tag: TypeTag, nam: Name, cfg: LintConfig, by_type: TagsByType
+) -> Generator[str, None, list[TypeTag]]:
+    if (
+        isinstance(
+            tag,
+            (
+                TypeTag.NoEtymology,
+                TypeTag.NoLocation,
+                TypeTag.NoSpecimen,
+                TypeTag.NoDate,
+                TypeTag.NoCollector,
+                TypeTag.NoOrgan,
+                TypeTag.NoGender,
+                TypeTag.NoAge,
+            ),
+        )
+        and tag.optional_source is None
+    ):
+        yield f"{tag} has no source"
+    return [tag]
+
+
+TYPE_TAG_CHECKERS: list[TypeTagChecker] = [
+    _check_links_in_type_tag,
+    _check_detail_type_tag,
+    _check_designation_type_tag,
+    _check_no_tags,
+    _check_all_type_tags,
+]
+
+
+@LINT.add("type_tags")
+def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    if not nam.type_tags:
+        return
+    original_tags = list(nam.type_tags)
+    tags = list(original_tags)
+    by_type: dict[type[TypeTag], list[TypeTag]] = {}
+    for tag in original_tags:
+        by_type.setdefault(type(tag), []).append(tag)
     for tag_type, tags_of_type in by_type.items():
         if tag_type in UNIQUE_TAGS and len(tags_of_type) > 1:
             yield f"has multiple tags of type {tag_type}: {tags_of_type}"
-    if TypeTag.Altitude in by_type and TypeTag.LocationDetail not in by_type:
-        yield "has Altitude tag but no LocationDetail tag"
-    if TypeTag.Coordinates in by_type and TypeTag.LocationDetail not in by_type:
-        yield "has Coordinates tag but no LocationDetail tag"
-    # TODO: add more tags here. Also consider requiring that the specimen details directly
-    # support the derived tags; e.g., the SpecimenDetail tag should contain the year of the Date
-    # tag.
-    if TypeTag.Age in by_type and TypeTag.SpecimenDetail not in by_type:
-        yield "has Age tag but no SpecimenDetail tag"
-    if TypeTag.Gender in by_type and TypeTag.SpecimenDetail not in by_type:
-        yield "has Gender tag but no SpecimenDetail tag"
-    if TypeTag.Date in by_type and TypeTag.SpecimenDetail not in by_type:
-        yield "has Date tag but no SpecimenDetail tag"
+
+    for checker in TYPE_TAG_CHECKERS:
+        new_tags = []
+        for tag in tags:
+            new_tags += yield from checker(tag, nam, cfg, by_type)
+        tags = new_tags
 
     if nam.collection is not None and nam.collection.id == MULTIPLE_COLLECTION:
         repos = by_type.get(TypeTag.Repository, [])
@@ -751,11 +832,6 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
             )
     elif TypeTag.Repository in by_type:
         yield f"name may not have Repository tags: {by_type[TypeTag.Repository]}"
-
-    if TypeTag.TextualOriginalRank in by_type and (
-        nam.original_rank is None or not nam.original_rank.needs_textual_rank
-    ):
-        yield f"has TextualOriginalRank tag but is of rank that does not need it ({nam.original_rank!r})"
 
     if tags != original_tags:
         if set(tags) != set(original_tags):

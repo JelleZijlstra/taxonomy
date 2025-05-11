@@ -1912,10 +1912,14 @@ class Name(BaseModel):
         return self.taxon.age.is_ichno()
 
     def set_nos(self) -> None:
+        if self.original_citation is None:
+            print("No original citation; cannot set nos")
+            return
         required_derived_tags = list(self.get_required_derived_tags())
         for group in self.get_missing_tags(required_derived_tags):
             if len(group) >= 2:
-                new_tag = group[1]
+                tag_cls = group[1]
+                new_tag = tag_cls(optional_source=self.original_citation)
                 print(f"Adding tag: {new_tag!r}")
                 assert isinstance(new_tag, TypeTag)
                 self.add_type_tag(new_tag)
@@ -2724,16 +2728,11 @@ def has_data_from_original(nam: Name) -> bool:
     for tag in nam.type_tags:
         if isinstance(tag, SOURCE_TAGS) and tag.source == nam.original_citation:
             return True
+        if isinstance(tag, SOURCE_DATA_TAGS):
+            return True
         if (
-            isinstance(
-                tag,
-                (
-                    TypeTag.IncludedSpecies,
-                    TypeTag.GenusCoelebs,
-                    TypeTag.TextualOriginalRank,
-                ),
-            )
-            or tag in NO_DATA_FROM_SOURCE_TAGS
+            isinstance(tag, NO_DATA_FROM_SOURCE_TAGS)
+            and tag.optional_source == nam.original_citation
         ):
             return True
     return False
@@ -2756,8 +2755,11 @@ def get_tags_from_original_citation(nam: Name) -> Iterable[TypeTagCons]:
             ),
         ):
             yield type(tag)  # static analysis: ignore[incompatible_yield]
-        elif tag in NO_DATA_FROM_SOURCE_TAGS:
-            yield tag
+        elif (
+            isinstance(tag, NO_DATA_FROM_SOURCE_TAGS)
+            and tag.optional_source == nam.original_citation
+        ):
+            yield type(tag)  # static analysis: ignore[incompatible_yield]
 
 
 def tag_list(tags: Iterable[tuple[TypeTagCons, ...]]) -> str:
@@ -3097,14 +3099,14 @@ class TypeTag(adt.ADT):
     CollectedBy(person=Person, tag=29)  # type: ignore[name-defined]
 
     DifferentAuthority(comment=NotRequired[Markdown], tag=30)  # type: ignore[name-defined]
-    NoEtymology(tag=31)  # type: ignore[name-defined]
-    NoLocation(tag=32)  # type: ignore[name-defined]
-    NoSpecimen(tag=33)  # type: ignore[name-defined]
-    NoDate(tag=34)  # type: ignore[name-defined]
-    NoCollector(tag=35)  # type: ignore[name-defined]
-    NoOrgan(tag=36)  # type: ignore[name-defined]
-    NoGender(tag=37)  # type: ignore[name-defined]
-    NoAge(tag=38)  # type: ignore[name-defined]
+    NoEtymology(optional_source=NotRequired[Article], tag=31)  # type: ignore[name-defined]
+    NoLocation(optional_source=NotRequired[Article], tag=32)  # type: ignore[name-defined]
+    NoSpecimen(optional_source=NotRequired[Article], tag=33)  # type: ignore[name-defined]
+    NoDate(optional_source=NotRequired[Article], tag=34)  # type: ignore[name-defined]
+    NoCollector(optional_source=NotRequired[Article], tag=35)  # type: ignore[name-defined]
+    NoOrgan(optional_source=NotRequired[Article], tag=36)  # type: ignore[name-defined]
+    NoGender(optional_source=NotRequired[Article], tag=37)  # type: ignore[name-defined]
+    NoAge(optional_source=NotRequired[Article], tag=38)  # type: ignore[name-defined]
     # Person who is involved in the type specimen's history
     Involved(person=Person, comment=NotRequired[Markdown], tag=39)  # type: ignore[name-defined]
     # Indicates that a General type locality cannot be fixed
@@ -3163,6 +3165,11 @@ SOURCE_TAGS = (
     TypeTag.DescriptionDetail,
 )
 NO_DATA_FROM_SOURCE_TAGS = (TypeTag.NoEtymology, TypeTag.NoLocation, TypeTag.NoSpecimen)
+SOURCE_DATA_TAGS = (
+    TypeTag.IncludedSpecies,
+    TypeTag.GenusCoelebs,
+    TypeTag.TextualOriginalRank,
+)
 
 if TYPE_CHECKING:
     TypeTagCons: TypeAlias = Any
