@@ -1919,6 +1919,7 @@ class Name(BaseModel):
         for group in self.get_missing_tags(required_derived_tags):
             if len(group) >= 2:
                 tag_cls = group[1]
+                # static analysis: ignore
                 new_tag = tag_cls(source=self.original_citation)
                 print(f"Adding tag: {new_tag!r}")
                 assert isinstance(new_tag, TypeTag)
@@ -2732,7 +2733,7 @@ def has_data_from_original(nam: Name) -> bool:
             return True
         if (
             isinstance(tag, NO_DATA_FROM_SOURCE_TAGS)
-            and tag.optional_source == nam.original_citation
+            and tag.source == nam.original_citation
         ):
             return True
     return False
