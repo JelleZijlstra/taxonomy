@@ -28,7 +28,7 @@ from graphene import (
 from graphene.relay import Connection, ConnectionField, Node
 from graphene.utils.str_converters import to_snake_case
 
-from taxonomy.adt import ADT
+from taxonomy.adt import ADT, unwrap_type
 from taxonomy.config import get_options
 from taxonomy.db import models
 from taxonomy.db.constants import CommentKind
@@ -74,7 +74,9 @@ def make_enum(python_enum: type[enum.Enum]) -> type[Enum]:
     return Enum.from_enum(python_enum)
 
 
-def build_graphene_field_from_adt_arg(typ: type[Any], *, is_required: bool) -> Field:
+def build_graphene_field_from_adt_arg(typ: object, *, is_required: bool) -> Field:
+    typ = unwrap_type(typ)
+    assert isinstance(typ, type), f"expected a type, got {typ}"
     if typ is str:
         graphene_type = String
     elif typ is int:

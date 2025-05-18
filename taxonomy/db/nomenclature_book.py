@@ -463,11 +463,22 @@ def get_row(taxon: Taxon, name: Name, taxon_to_ces: TaxonToCEs) -> Row:
                     f"Multiple original type localities found: {', '.join(repr(tag.text) for tag in original_tls)}"
                 )
             if original_tls:
-                verbatim_type_locality = original_tls[0].text
-                type_locality = tl_prefix + f'"{original_tls[0].text}"'
+                tag = original_tls[0]
+                verbatim_type_locality = tag.text
+                type_locality = tl_prefix + f'"{tag.text}"'
+                if tag.translation is not None:
+                    type_locality += f" ({tag.translation})"
             else:
                 type_locality = tl_prefix + "TODO"
-                todos.append("Verbatim type locality missing")
+                nolocation = any(
+                    isinstance(tag, TypeTag.NoLocation)
+                    and tag.source == name.original_citation
+                    for tag in name.type_tags
+                )
+                if nolocation:
+                    todos.append("No location in original description")
+                else:
+                    todos.append("Verbatim type locality missing")
                 verbatim_type_locality = ""
             if name.species_type_kind is SpeciesGroupType.neotype:
                 todos.append("Add neotype type locality")

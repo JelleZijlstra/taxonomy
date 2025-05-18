@@ -468,9 +468,21 @@ def _only_digits(text: str) -> str:
 def _is_comparable_to_type(specimen_text: str, nam: Name) -> bool:
     if nam.type_specimen is None or nam.collection is None:
         return False
+    if specimen_text.replace("ZISP", "ZIN") == nam.type_specimen:
+        return True
     if nam.collection.label not in specimen_text:
         return False
-    return _only_digits(specimen_text) == _only_digits(nam.type_specimen)
+    text = _only_digits(specimen_text)
+    current_type = _only_digits(nam.type_specimen)
+    if text == current_type:
+        return True
+    if nam.collection.label == "BMNH":
+        current_type = current_type.replace("amm", "")
+        if text == current_type:
+            return True
+        if current_type in ("18" + text, "19" + text):
+            return True
+    return False
 
 
 type TagsByType = dict[type[TypeTag], list[TypeTag]]
@@ -675,7 +687,11 @@ def _check_all_type_tags(
             tag = yield from check_tag_with_page(
                 tag, tag.source, cfg, nam, allow_missing_page=True
             )
-            if tag.text.replace(".", "") in ("[No locality given]", "[Plate only]"):
+            if tag.text.replace(".", "") in (
+                "[No locality given]",
+                "[Plate only]",
+                "[None given]",
+            ):
                 new_tag = TypeTag.NoLocation(source=tag.source)
                 message = f"replace {tag} with {new_tag}"
                 if cfg.autofix:
@@ -1013,6 +1029,28 @@ def check_type_designation(nam: Name, cfg: LintConfig) -> Iterable[str]:
             tag = nam.get_type_tag(TypeTag.CommissionTypeDesignation)
             if tag is None:
                 yield "type species is set to designated_by_the_commission, but missing CommissionTypeDesignation tag"
+
+    match nam.species_type_kind:
+        case SpeciesGroupType.lectotype:
+            if (
+                nam.type_specimen is not None
+                and nam.has_type_tag(TypeTag.LectotypeDesignation)
+                and not any(
+                    tag.lectotype == nam.type_specimen
+                    for tag in nam.get_tags(nam.type_tags, TypeTag.LectotypeDesignation)
+                )
+            ):
+                yield "missing a reference for lectotype designation"
+        case SpeciesGroupType.neotype:
+            if (
+                nam.type_specimen is not None
+                and nam.has_type_tag(TypeTag.NeotypeDesignation)
+                and not any(
+                    tag.neotype == nam.type_specimen
+                    for tag in nam.get_tags(nam.type_tags, TypeTag.NeotypeDesignation)
+                )
+            ):
+                yield "missing a reference for neotype designation"
 
 
 class RepositoryKind(enum.Enum):

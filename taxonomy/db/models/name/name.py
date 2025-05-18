@@ -1919,7 +1919,7 @@ class Name(BaseModel):
         for group in self.get_missing_tags(required_derived_tags):
             if len(group) >= 2:
                 tag_cls = group[1]
-                new_tag = tag_cls(optional_source=self.original_citation)
+                new_tag = tag_cls(source=self.original_citation)
                 print(f"Adding tag: {new_tag!r}")
                 assert isinstance(new_tag, TypeTag)
                 self.add_type_tag(new_tag)
@@ -2757,7 +2757,7 @@ def get_tags_from_original_citation(nam: Name) -> Iterable[TypeTagCons]:
             yield type(tag)  # static analysis: ignore[incompatible_yield]
         elif (
             isinstance(tag, NO_DATA_FROM_SOURCE_TAGS)
-            and tag.optional_source == nam.original_citation
+            and tag.source == nam.original_citation
         ):
             yield type(tag)  # static analysis: ignore[incompatible_yield]
 
