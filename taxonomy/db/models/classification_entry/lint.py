@@ -1198,6 +1198,21 @@ def infer_data_from_mapped(ce: ClassificationEntry, cfg: LintConfig) -> Iterable
                 yield message
 
 
+@LINT.add("vacuous_type_locality")
+def check_vacuous_type_locality(
+    ce: ClassificationEntry, cfg: LintConfig
+) -> Iterable[str]:
+    if ce.type_locality is None:
+        return
+    if models.name.lint.is_empty_location_detail(ce.type_locality):
+        message = f"type locality is vacuous: {ce.type_locality!r}"
+        if cfg.autofix:
+            print(f"{ce}: {message}")
+            ce.type_locality = None
+        else:
+            yield message
+
+
 @LINT.add("infer_duplicate")
 def infer_duplicate(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
     possible_dupes = list(

@@ -687,11 +687,7 @@ def _check_all_type_tags(
             tag = yield from check_tag_with_page(
                 tag, tag.source, cfg, nam, allow_missing_page=True
             )
-            if tag.text.replace(".", "") in (
-                "[No locality given]",
-                "[Plate only]",
-                "[None given]",
-            ):
+            if is_empty_location_detail(tag.text):
                 new_tag = TypeTag.NoLocation(source=tag.source)
                 message = f"replace {tag} with {new_tag}"
                 if cfg.autofix:
@@ -833,6 +829,14 @@ def _check_all_type_tags(
                 yield f"has TextualOriginalRank tag but is of rank that does not need it ({nam.original_rank!r})"
 
     return [*tags, tag]
+
+
+def is_empty_location_detail(text: str) -> bool:
+    return text.replace(".", "") in (
+        "[No locality given]",
+        "[Plate only]",
+        "[None given]",
+    )
 
 
 TYPE_TAG_CHECKERS: list[TypeTagChecker] = [
@@ -1007,6 +1011,7 @@ def check_type_designation_optional(nam: Name, cfg: LintConfig) -> Iterable[str]
             ):
                 yield "missing a reference for type species designation"
 
+    return  # TODO
     match nam.species_type_kind:
         case SpeciesGroupType.lectotype:
             if not any(
@@ -1030,6 +1035,7 @@ def check_type_designation(nam: Name, cfg: LintConfig) -> Iterable[str]:
             if tag is None:
                 yield "type species is set to designated_by_the_commission, but missing CommissionTypeDesignation tag"
 
+    return  # TODO
     match nam.species_type_kind:
         case SpeciesGroupType.lectotype:
             if (

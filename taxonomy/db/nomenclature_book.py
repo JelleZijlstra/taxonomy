@@ -12,6 +12,7 @@ Todo:
 """
 
 import csv
+import datetime
 import pprint
 import re
 import sys
@@ -764,6 +765,18 @@ def sync_sheet() -> None:
 
     worksheet = sheet.get_worksheet_by_id(options.book_sheet_gid)
     raw_rows = worksheet.get()
+
+    # Back up the sheet
+    backup_path = (
+        options.data_path
+        / "nomenclature_book"
+        / datetime.datetime.now(tz=datetime.UTC).isoformat()
+    )
+    backup_path.mkdir(parents=True, exist_ok=True)
+    with (backup_path / "book.csv").open("w", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerows(raw_rows)
+
     headings = raw_rows[0]
     column_to_idx = {heading: i for i, heading in enumerate(headings, start=1)}
     sheet_rows = [

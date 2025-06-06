@@ -1,4 +1,4 @@
-name: Pyanalyze
+name: pycroscope
 
 on: [push, pull_request]
 
