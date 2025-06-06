@@ -556,6 +556,7 @@ class Issue:
     mdd_value: str
     description: str
     suggested_change: str | None = None
+    extra_key: str | None = None
 
     def describe(self) -> str:
         text = f"{self.sci_name} ({self.mdd_id or 'no id'}): {self.mdd_column}: {self.mdd_value!r}: {self.description}"
@@ -581,6 +582,7 @@ class MDDSpecies:
     def make_issue(
         self, col_name: str, description: str, suggested_value: str | None = None
     ) -> Issue:
+        extra_key = self.row["genus"] if col_name == "subgenus" else None
         return Issue(
             self.row_idx,
             self.row["id"],
@@ -589,6 +591,7 @@ class MDDSpecies:
             str(self.row.get(col_name, "")),
             description,
             suggested_value,
+            extra_key=extra_key,
         )
 
     def lint_standalone(self) -> Iterable[Issue]:
@@ -1149,11 +1152,16 @@ def check_species_tags(species: Sequence[MDDSpecies]) -> None:
 
 def write_grouped_differences(backup_path: Path, issues: list[Issue]) -> None:
     ranks = set(RANKS)
-    grouped: dict[tuple[str, str, str | None], list[str]] = {}
+    grouped: dict[tuple[str, str, str | None, str | None], list[str]] = {}
     for issue in issues:
         if issue.mdd_column not in ranks:
             continue
-        key = (issue.mdd_column, issue.mdd_value, issue.suggested_change)
+        key = (
+            issue.mdd_column,
+            issue.mdd_value,
+            issue.suggested_change,
+            issue.extra_key,
+        )
         grouped.setdefault(key, []).append(issue.sci_name)
     with (backup_path / "grouped_differences.csv").open("w") as f:
         writer = csv.writer(f)
@@ -1167,7 +1175,7 @@ def write_grouped_differences(backup_path: Path, issues: list[Issue]) -> None:
                 "comment_Connor",
             ]
         )
-        for (column, value, suggested_change), species_list in grouped.items():
+        for (column, value, suggested_change, _), species_list in grouped.items():
             writer.writerow(
                 [column, value or "", suggested_change or "", ", ".join(species_list)]
             )
