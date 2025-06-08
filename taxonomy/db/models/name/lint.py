@@ -1227,7 +1227,7 @@ def _get_all_type_specimen_texts_from_specimen(spec: Specimen) -> Iterable[str]:
 
 @LINT.add("type_specimen_link")
 def check_must_have_type_specimen_link(nam: Name, cfg: LintConfig) -> Iterable[str]:
-    # TODO: cover multiple, ExtraRepository etc. here
+    # TODO: cover ExtraRepository, FormerRepository here
     # After replacing all TypeSpecimenLink tags. Then we should be able to associate every TypeSpecimenLinkFor tag with some part of the type_specimen text.
     if nam.collection is None or not nam.collection.must_have_specimen_links(nam):
         return
@@ -1237,24 +1237,32 @@ def check_must_have_type_specimen_link(nam: Name, cfg: LintConfig) -> Iterable[s
         specs = parse_type_specimen(nam.type_specimen)
     except ValueError:
         return  # other check will complain
-    num_expected = sum(
-        not (
-            isinstance(spec, Specimen)
-            and isinstance(spec.base, (SpecialSpecimen, InformalSpecimen))
-        )
-        for spec in specs
-    )
-    num_actual = sum(
-        isinstance(tag, (TypeTag.TypeSpecimenLink, TypeTag.TypeSpecimenLinkFor))
-        and nam.collection is not None
-        and nam.collection.is_valid_specimen_link(tag.url)
-        for tag in nam.type_tags
-    )
-    if num_actual < num_expected:
-        yield (
-            f"has {num_actual} type specimen links, but expected at least"
-            f" {num_expected}"
-        )
+
+    if nam.collection.id == MULTIPLE_COLLECTION:
+        collections = [
+            tag.repository for tag in nam.get_tags(nam.type_tags, TypeTag.Repository)
+        ]
+    else:
+        collections = [nam.collection]
+
+    actual_specimens = {
+        tag.specimen
+        for tag in nam.get_tags(nam.type_tags, TypeTag.TypeSpecimenLinkFor)
+        if any(coll.is_valid_specimen_link(tag.url) for coll in collections)
+    }
+
+    for spec in specs:
+        if isinstance(spec, SpecimenRange):
+            yield f"type specimen range is not supported for links: {spec}"
+            continue
+        if isinstance(spec.base, (SpecialSpecimen, InformalSpecimen)):
+            continue
+        text = spec.base.stringify()
+        if text not in actual_specimens:
+            yield (
+                f"missing type specimen link for {text!r} in {nam.type_specimen!r}. "
+                "Add a TypeSpecimenLinkFor tag with the correct URL."
+            )
 
 
 @LINT.add("duplicate_type_specimen_links")
