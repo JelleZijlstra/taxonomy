@@ -1011,7 +1011,6 @@ def check_type_designation_optional(nam: Name, cfg: LintConfig) -> Iterable[str]
             ):
                 yield "missing a reference for type species designation"
 
-    return  # TODO
     match nam.species_type_kind:
         case SpeciesGroupType.lectotype:
             if not any(
@@ -1035,7 +1034,6 @@ def check_type_designation(nam: Name, cfg: LintConfig) -> Iterable[str]:
             if tag is None:
                 yield "type species is set to designated_by_the_commission, but missing CommissionTypeDesignation tag"
 
-    return  # TODO
     match nam.species_type_kind:
         case SpeciesGroupType.lectotype:
             if (

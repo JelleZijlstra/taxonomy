@@ -735,7 +735,7 @@ def run(
     options = get_options()
     backup_path = (
         options.data_path
-        / "mdd_updater"
+        / "mdd_names"
         / datetime.datetime.now(tz=datetime.UTC).isoformat()
     )
     backup_path.mkdir(parents=True, exist_ok=True)
