@@ -14,7 +14,7 @@ from typing import Protocol, TypeVar, assert_never
 from taxonomy.parsing import extract_collection_from_type_specimen
 
 
-@dataclass
+@dataclass(frozen=True)
 class SimpleSpecimen:
     text: str
 
@@ -29,7 +29,7 @@ class SimpleSpecimen:
         return extract_collection_from_type_specimen(self.text)
 
 
-@dataclass
+@dataclass(frozen=True)
 class TripletSpecimen:
     institution_code: str
     collection_code: str
@@ -59,7 +59,7 @@ def _possibly_numeric_sort_key(text: str) -> tuple[object, ...]:
     )
 
 
-@dataclass
+@dataclass(frozen=True)
 class InformalSpecimen:
     """Represents 'BMNH "informal number"."""
 
@@ -73,7 +73,7 @@ class InformalSpecimen:
         return (2, self.institution_code, self.number)
 
 
-@dataclass
+@dataclass(frozen=True)
 class SpecialSpecimen:
     """Represents 'BMNH (lost)'."""
 
@@ -90,7 +90,7 @@ class SpecialSpecimen:
 BaseSpecimen = SimpleSpecimen | TripletSpecimen | InformalSpecimen | SpecialSpecimen
 
 
-@dataclass
+@dataclass(frozen=True)
 class InformalWithoutInstitution:
     """Represents an informal number without an institution code.
 
@@ -107,7 +107,7 @@ class InformalWithoutInstitution:
         return (4, self.number)
 
 
-@dataclass
+@dataclass(frozen=True)
 class Specimen:
     base: BaseSpecimen
     comment: str | None = None
@@ -143,8 +143,19 @@ class Specimen:
             tuple(sort_specimens(self.former_texts)),
         )
 
+    def __hash__(self) -> int:
+        return hash(
+            (
+                self.base,
+                self.comment,
+                tuple(self.future_texts),
+                tuple(self.extra_texts),
+                tuple(self.former_texts),
+            )
+        )
 
-@dataclass
+
+@dataclass(frozen=True)
 class SpecimenRange:
     start: Specimen
     end: Specimen
@@ -275,7 +286,7 @@ def sort_specimens(specimens: Iterable[_SortableT]) -> list[_SortableT]:
 
 
 def stringify_specimen_list(specimens: Iterable[AnySpecimen]) -> str:
-    return ", ".join(spec.stringify() for spec in sort_specimens(specimens))
+    return ", ".join(spec.stringify() for spec in sort_specimens(set(specimens)))
 
 
 def parse_type_specimen(text: str) -> list[AnySpecimen]:

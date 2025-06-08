@@ -734,7 +734,9 @@ def _check_all_type_tags(
                 new_spec = tag.specimen
             else:
                 new_spec = stringify_specimen_list(specs)
-            tag = TypeTag.TypeSpecimenLinkFor(fix_type_specimen_link(tag.url), new_spec)
+            tag = TypeTag.TypeSpecimenLinkFor(
+                fix_type_specimen_link(tag.url), new_spec, suffix=tag.suffix
+            )
 
         case TypeTag.Organ():
             if tag.detail:

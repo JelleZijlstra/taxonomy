@@ -3135,7 +3135,7 @@ class TypeTag(adt.ADT):
     FormerRepository(repository=Collection, tag=49)  # type: ignore[name-defined]
     ExtraRepository(repository=Collection, tag=50)  # type: ignore[name-defined]
     FutureRepository(repository=Collection, tag=51)  # type: ignore[name-defined]
-    TypeSpecimenLinkFor(url=URL, specimen=Managed, tag=52)  # type: ignore[name-defined]
+    TypeSpecimenLinkFor(url=URL, specimen=Managed, suffix=NotRequired[Managed], tag=52)  # type: ignore[name-defined]
     PhyloCodeNumber(number=int, tag=53)  # type: ignore[name-defined]
     AuthorityPageLink(url=URL, confirmed=bool, page=Managed, tag=54)  # type: ignore[name-defined]
     GuessedRepository(repository=Collection, score=float, tag=55)  # type: ignore[name-defined]
