@@ -997,7 +997,7 @@ def check_coordinates(nam: Name, cfg: LintConfig) -> Iterable[str]:
 @LINT.add("type_designation_optional")
 def check_type_designation_optional(nam: Name, cfg: LintConfig) -> Iterable[str]:
     # Move to check_type_designation below if this is fixed for all names
-    if not is_valid_mammal(nam):
+    if not is_valid_mammal(nam) or nam.has_type_tag(TypeTag.InterpretedTypeSpecimen):
         return
     match nam.genus_type_kind:
         case TypeSpeciesDesignation.subsequent_designation:
@@ -4427,6 +4427,8 @@ def infer_bhl_page_id(
         case urlparse.BhlPage(start_page_id):
             if art.start_page is not None and art.start_page == art.end_page == page:
                 return start_page_id, "article citation where start_page == end_page"
+            # TODO: where the link is a BhlPage but the article is a book and so there's no
+            # end_page, we can try harder.
             return _infer_bhl_page_from_article_page(obj, art, cfg, start_page_id, page)
         case urlparse.BhlItem(item_id):
             pages = bhl.get_possible_pages(item_id, page)

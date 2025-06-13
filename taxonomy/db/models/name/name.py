@@ -3078,6 +3078,7 @@ class TypeTag(adt.ADT):
         comment=NotRequired[Markdown],
         page=NotRequired[Managed],
         translation=NotRequired[Markdown],
+        page_link=NotRequired[URL],
         tag=18,
     )
     # an originally included species in a genus without an original type designation
