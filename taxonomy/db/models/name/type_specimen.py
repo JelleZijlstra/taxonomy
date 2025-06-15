@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Protocol, TypeVar, assert_never
 
 from taxonomy.parsing import extract_collection_from_type_specimen
@@ -317,3 +317,21 @@ def get_instution_code(specimen: AnySpecimen) -> str | None:
         return specimen.start.base.institution_code
     else:
         assert_never(specimen)
+
+
+def type_specimens_equal(left: str, right: str) -> bool:
+    try:
+        left_specs = [_simplify(spec) for spec in parse_type_specimen(left)]
+        right_specs = [_simplify(spec) for spec in parse_type_specimen(right)]
+    except ValueError:
+        return False
+    return set(left_specs) == set(right_specs)
+
+
+def _simplify(spec: AnySpecimen) -> AnySpecimen:
+    if isinstance(spec, Specimen):
+        return replace(spec, future_texts=[], extra_texts=[], former_texts=[])
+    elif isinstance(spec, SpecimenRange):
+        return spec
+    else:
+        assert_never(spec)

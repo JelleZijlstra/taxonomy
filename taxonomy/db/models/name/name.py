@@ -3005,6 +3005,17 @@ PREOCCUPIED_TAGS = (
 )
 
 
+class TypeSpecimenKind(enum.IntEnum):
+    holotype = 1
+    lectotype = 2
+    neotype = 3
+    syntype = 4
+    paratype = 5
+    paralectotype = 7
+    nontype = 8
+    uncertain = 9
+
+
 class TypeTag(adt.ADT):
     # 1 used to be Collector, kept for compatibility with some deleted names
     _RawCollector(text=Managed, tag=1)  # type: ignore[name-defined]
@@ -3159,6 +3170,10 @@ class TypeTag(adt.ADT):
     InterpretedTypeSpecimen(text=Markdown, tag=62)  # type: ignore[name-defined]
     InterpretedTypeTaxon(text=Markdown, tag=63)  # type: ignore[name-defined]
     NomenclatureComments(text=Markdown, record=Managed, tag=64)  # type: ignore[name-defined]
+
+    AdditionalTypeSpecimen(  # type: ignore[name-defined]
+        text=Managed, kind=TypeSpecimenKind, comment=NotRequired[Markdown], tag=65
+    )
 
 
 SOURCE_TAGS = (

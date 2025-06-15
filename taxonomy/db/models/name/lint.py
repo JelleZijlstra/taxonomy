@@ -29,6 +29,7 @@ import requests
 from taxonomy import adt, coordinates, getinput, urlparse
 from taxonomy.apis import bhl, nominatim
 from taxonomy.apis.zoobank import clean_lsid, get_zoobank_data, is_valid_lsid
+from taxonomy.config import is_network_available
 from taxonomy.db import helpers, models
 from taxonomy.db.constants import (
     AgeClass,
@@ -96,6 +97,7 @@ from .type_specimen import (
     TripletSpecimen,
     parse_type_specimen,
     stringify_specimen_list,
+    type_specimens_equal,
 )
 
 T = TypeVar("T")
@@ -1015,14 +1017,20 @@ def check_type_designation_optional(nam: Name, cfg: LintConfig) -> Iterable[str]
 
     match nam.species_type_kind:
         case SpeciesGroupType.lectotype:
+            if nam.type_specimen is None:
+                yield "type specimen is not set"
+                return
             if not any(
-                tag.lectotype == nam.type_specimen
+                type_specimens_equal(tag.lectotype, nam.type_specimen)
                 for tag in nam.get_tags(nam.type_tags, TypeTag.LectotypeDesignation)
             ):
                 yield "missing a reference for lectotype designation"
         case SpeciesGroupType.neotype:
+            if nam.type_specimen is None:
+                yield "type specimen is not set"
+                return
             if not any(
-                tag.neotype == nam.type_specimen
+                type_specimens_equal(tag.neotype, nam.type_specimen)
                 for tag in nam.get_tags(nam.type_tags, TypeTag.NeotypeDesignation)
             ):
                 yield "missing a reference for neotype designation"
@@ -1042,7 +1050,7 @@ def check_type_designation(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 nam.type_specimen is not None
                 and nam.has_type_tag(TypeTag.LectotypeDesignation)
                 and not any(
-                    tag.lectotype == nam.type_specimen
+                    type_specimens_equal(tag.lectotype, nam.type_specimen)
                     for tag in nam.get_tags(nam.type_tags, TypeTag.LectotypeDesignation)
                 )
             ):
@@ -1052,7 +1060,7 @@ def check_type_designation(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 nam.type_specimen is not None
                 and nam.has_type_tag(TypeTag.NeotypeDesignation)
                 and not any(
-                    tag.neotype == nam.type_specimen
+                    type_specimens_equal(tag.neotype, nam.type_specimen)
                     for tag in nam.get_tags(nam.type_tags, TypeTag.NeotypeDesignation)
                 )
             ):
@@ -4421,6 +4429,8 @@ def infer_bhl_page_from_article(nam: Name, cfg: LintConfig) -> Iterable[str]:
 def infer_bhl_page_id(
     page: str, obj: object, art: Article, cfg: LintConfig
 ) -> tuple[int, str] | None:
+    if not is_network_available():
+        return None
     if art.url is None:
         return None
     match urlparse.parse_url(art.url):
