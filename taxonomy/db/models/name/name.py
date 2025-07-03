@@ -33,7 +33,9 @@ from taxonomy.db.constants import (
     OriginalCitationDataLevel,
     Rank,
     RegionKind,
+    SpeciesBasis,
     Status,
+    TypeSpecimenKind,
 )
 from taxonomy.db.definition import Definition
 from taxonomy.db.derived_data import DerivedField
@@ -3005,15 +3007,11 @@ PREOCCUPIED_TAGS = (
 )
 
 
-class TypeSpecimenKind(enum.IntEnum):
-    holotype = 1
-    lectotype = 2
-    neotype = 3
-    syntype = 4
-    paratype = 5
-    paralectotype = 7
-    nontype = 8
-    uncertain = 9
+class LectotypeDesignationTerm(enum.IntEnum):
+    lectotype = 1
+    holotype = 2
+    the_type = 3
+    other = 4
 
 
 class TypeTag(adt.ADT):
@@ -3067,6 +3065,14 @@ class TypeTag(adt.ADT):
         verbatim_citation=NotRequired[Markdown],
         citation_group=NotRequired[CitationGroup],
         page_link=NotRequired[URL],
+        year=NotRequired[Managed],
+        term=NotRequired[LectotypeDesignationTerm],
+        # Whether the author explicitly chose a type from the type series
+        # Relevant in Art. 74.5
+        is_explicit_choice=NotRequired[bool],
+        # Whether the author assumed there was a single type specimen
+        # Relevant in Art. 74.6
+        is_assumption_of_monotypy=NotRequired[bool],
         tag=15,
     )
     NeotypeDesignation(  # type: ignore[name-defined]
@@ -3173,6 +3179,9 @@ class TypeTag(adt.ADT):
 
     AdditionalTypeSpecimen(  # type: ignore[name-defined]
         text=Managed, kind=TypeSpecimenKind, comment=NotRequired[Markdown], tag=65
+    )
+    OriginalTypification(  # type: ignore[name-defined]
+        basis=SpeciesBasis, source=Article, comment=NotRequired[Markdown], tag=66
     )
 
 

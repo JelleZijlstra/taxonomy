@@ -45,6 +45,7 @@ from taxonomy.db.constants import (
     OriginalCitationDataLevel,
     Rank,
     RegionKind,
+    SpeciesBasis,
     SpeciesGroupType,
     SpeciesNameKind,
     SpecimenOrgan,
@@ -77,6 +78,7 @@ from .guess_repository import get_most_likely_repository
 from .name import (
     PREOCCUPIED_TAGS,
     STATUS_TO_TAG,
+    LectotypeDesignationTerm,
     Name,
     NameComment,
     NameTag,
@@ -614,6 +616,16 @@ def _check_all_type_tags(
                     print(f"{nam}: {message}")
                 else:
                     yield message
+            if tag.optional_source is None and tag.year is None:
+                yield f"lectotype designation has no source or year: {tag}"
+            validity = _is_lectotype_designation_valid(nam, tag)
+            if validity is not None and tag.valid is not validity:
+                message = f"lectotype designation validity should be {validity}, not {tag.valid}"
+                if cfg.autofix:
+                    tag = tag.replace(valid=validity)
+                    print(f"{nam}: {message}")
+                else:
+                    yield message
 
         case TypeTag.NeotypeDesignation():
             if tag.neotype != nam.type_specimen and _is_comparable_to_type(
@@ -832,7 +844,90 @@ def _check_all_type_tags(
             if nam.original_rank is None or not nam.original_rank.needs_textual_rank:
                 yield f"has TextualOriginalRank tag but is of rank that does not need it ({nam.original_rank!r})"
 
+        case TypeTag.OriginalTypification():
+            if nam.group is not Group.species:
+                yield "has OriginalTypification tag but is not a species-group name"
+            witnesses = [
+                other_tag
+                for other_tag in by_type[TypeTag.OriginalTypification]
+                if isinstance(other_tag, TypeTag.OriginalTypification)
+                and other_tag != tag
+                and other_tag.source == tag.source
+            ]
+            if witnesses:
+                yield f"has multiple OriginalTypification tags from the same source: {witnesses}"
+            if tag.source == nam.original_citation:
+                match tag.basis:
+                    case (
+                        SpeciesBasis.implicit_holotype | SpeciesBasis.explicit_holotype
+                    ):
+                        if nam.species_type_kind not in (
+                            SpeciesGroupType.holotype,
+                            SpeciesGroupType.neotype,
+                        ):
+                            yield f"has {tag.basis!r} OriginalTypification, but species_type_kind is {nam.species_type_kind!r}"
+                    case (
+                        SpeciesBasis.explicit_syntypes | SpeciesBasis.implicit_syntypes
+                    ):
+                        if nam.species_type_kind not in (
+                            SpeciesGroupType.syntypes,
+                            SpeciesGroupType.neotype,
+                            SpeciesGroupType.lectotype,
+                        ):
+                            yield f"has {tag.basis!r} OriginalTypification, but species_type_kind is {nam.species_type_kind!r}"
+
     return [*tags, tag]
+
+
+def _get_original_typification(nam: Name) -> SpeciesBasis | None:
+    for tag in nam.type_tags:
+        if (
+            isinstance(tag, TypeTag.OriginalTypification)
+            and tag.source == nam.original_citation
+        ):
+            return tag.basis
+    return None
+
+
+def _get_lectotype_designation_year(tag: TypeTag.LectotypeDesignation) -> int | None:  # type: ignore[name-defined]
+    if tag.optional_source is not None:
+        return tag.optional_source.numeric_year()
+    if tag.year is not None:
+        return helpers.get_date_object(tag.year).year
+    return None
+
+
+def _is_lectotype_designation_valid(
+    nam: Name, tag: TypeTag.LectotypeDesignation  # type: ignore[name-defined]
+) -> bool | None:
+    year = _get_lectotype_designation_year(tag)
+    is_before_2000 = year is None or year < 2000
+    # Art. 74.7
+    if not is_before_2000:
+        if tag.is_explicit_choice is None:
+            return None
+        if tag.is_explicit_choice is False:
+            return False
+        if tag.term is None:
+            return None
+        if tag.term is not LectotypeDesignationTerm.lectotype:
+            return False
+        return True
+    typification = _get_original_typification(nam)
+    # Art. 74.6
+    if typification is SpeciesBasis.unclear and tag.is_assumption_of_monotypy is True:
+        return True
+    # Art. 74.5
+    if tag.is_explicit_choice is True:
+        return True
+    if tag.term in (
+        LectotypeDesignationTerm.lectotype,
+        LectotypeDesignationTerm.the_type,
+    ):
+        return True
+    if tag.term is LectotypeDesignationTerm.holotype:
+        return False
+    return None
 
 
 def is_empty_location_detail(text: str) -> bool:

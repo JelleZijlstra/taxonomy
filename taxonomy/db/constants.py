@@ -794,6 +794,25 @@ class SpeciesGroupType(enum.IntEnum):
     nonexistent = 105
 
 
+class TypeSpecimenKind(enum.IntEnum):
+    holotype = 1
+    lectotype = 2
+    neotype = 3
+    syntype = 4
+    paratype = 5
+    paralectotype = 7
+    nontype = 8
+    uncertain = 9
+
+
+class SpeciesBasis(enum.IntEnum):
+    explicit_holotype = 1  # explicitly said to be the holotype
+    implicit_holotype = 2  # based on a single specimen
+    explicit_syntypes = 3  # explicitly said to be syntypes
+    implicit_syntypes = 4  # based on multiple specimens
+    unclear = 5  # not clear from the original description
+
+
 class SpecimenGender(enum.IntEnum):
     male = 1
     female = 2
