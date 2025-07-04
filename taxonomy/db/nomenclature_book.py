@@ -40,6 +40,7 @@ from taxonomy.db.constants import (
 from taxonomy.db.models.article.article import Article
 from taxonomy.db.models.base import LintConfig
 from taxonomy.db.models.classification_entry.ce import ClassificationEntry
+from taxonomy.db.models.collection import LOST_COLLECTION, UNTRACED_COLLECTION
 from taxonomy.db.models.location import Location
 from taxonomy.db.models.name.name import Name, NameTag, TypeTag
 from taxonomy.db.models.tags import TaxonTag
@@ -369,6 +370,19 @@ def get_type_specimen_text(name: Name) -> tuple[str, list[str]]:
             todos.append(
                 f"Check type specimen designation: {name.species_type_kind.name.replace('_', ' ')}"
             )
+    elif (
+        name.species_type_kind is SpeciesGroupType.nonexistent
+        and name.collection is not None
+        and name.collection.id in (UNTRACED_COLLECTION, LOST_COLLECTION)
+    ):
+        type_specimen = "None known to exist"
+    elif name.species_type_kind in (
+        SpeciesGroupType.holotype,
+        SpeciesGroupType.syntypes,
+    ) and name.get_type_tag(TypeTag.ProbableRepository):
+        tag = name.get_type_tag(TypeTag.ProbableRepository)
+        assert tag is not None, name
+        type_specimen = f"In {tag.repository.label}? ({name.species_type_kind.name})"
     else:
         if (
             name.group is Group.species

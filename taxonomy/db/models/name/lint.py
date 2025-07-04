@@ -1129,6 +1129,13 @@ def check_type_designation_optional(nam: Name, cfg: LintConfig) -> Iterable[str]
                 for tag in nam.get_tags(nam.type_tags, TypeTag.NeotypeDesignation)
             ):
                 yield "missing a reference for neotype designation"
+        case None:
+            if (
+                nam.original_citation is not None
+                and nam.group is Group.species
+                and "type_specimen" in nam.get_required_fields()
+            ):
+                yield "missing type specimen"
 
 
 @LINT.add("type_designation")
