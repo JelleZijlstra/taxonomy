@@ -43,6 +43,7 @@ def get_doi_json(doi: str) -> dict[str, Any] | None:
 
 
 def clear_doi_cache(doi: str) -> None:
+    get_doi_json.cache_clear()
     dirty_cache(CacheDomain.doi, doi)
 
 

@@ -1468,7 +1468,12 @@ def _more_precise_by_subdivision(region: models.Region) -> None:
         getinput.print_header(loc.name)
         for child in children:
             getinput.print_header(child)
-            more_precise_type_localities(loc, substring=re.sub(r" \(.*\)$", "", child))
+            more_precise_type_localities(
+                loc,
+                substring=re.sub(
+                    r" \(.*\)$", "", child.removesuffix("Department").strip()
+                ),
+            )
     for child in children:
         getinput.print_header(child)
         _more_precise(
