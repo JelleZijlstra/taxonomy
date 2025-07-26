@@ -1763,6 +1763,7 @@ def run_linter_and_fix(
     verbose: bool = False,
     manual_mode: bool = False,
     enable_all: bool = False,
+    experimental: bool = False,
 ) -> None:
     """Helper for running a lint on a subset of objects and fixing the issues."""
     bad = model_cls.lint_all(
@@ -1772,6 +1773,7 @@ def run_linter_and_fix(
         verbose=verbose,
         manual_mode=manual_mode,
         enable_all=enable_all,
+        experimental=experimental,
     )
     print(f"Found {len(bad)} issues")
     if not bad:

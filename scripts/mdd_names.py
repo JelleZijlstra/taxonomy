@@ -71,11 +71,7 @@ MDD_ARTICLE_ID = 67057
 @functools.cache
 def resolve_hesp_id(hesp_id_str: str) -> int | None:
     if hesp_id_str:
-        hesp_id = int(hesp_id_str)
-        row = Name(hesp_id)
-        if row is None:
-            return None
-        return row.id
+        return int(hesp_id_str)
     return None
 
 
@@ -96,9 +92,11 @@ def get_mdd_like_species_name(name: Name) -> str:
         return ""
 
 
-def get_mdd_status(name: Name) -> str:
+def get_mdd_status(name: Name, maybe_taxon: Taxon | None) -> str:
     match name.status:
         case Status.valid:
+            if maybe_taxon is not None:
+                return maybe_taxon.rank.name
             match name.taxon.rank:
                 case Rank.subspecies:
                     if name.taxon.parent.base_name == name:
@@ -198,8 +196,11 @@ def stringify_name_for_mdd(
     if nam.year:
         parts.append(", ")
         parts.append(nam.year[:4])
+    combined_id = combine_rank_and_id(nam.taxon.rank, nam.id)
     if nam.id in hesp_id_to_mdd_id:
         parts.append(f" [{hesp_id_to_mdd_id[nam.id]}]")
+    elif combined_id in hesp_id_to_mdd_id:
+        parts.append(f" [{hesp_id_to_mdd_id[combined_id]}]")
     else:
         parts.append(" [fossil]")
     return "".join(parts)
@@ -262,18 +263,23 @@ OMITTED_COLUMNS = {
 
 
 def get_hesp_row(
-    name: Name, need_initials: set[str], hesp_id_to_mdd_id: dict[int, str]
+    name: Name,
+    need_initials: set[str],
+    hesp_id_to_mdd_id: dict[int, str],
+    maybe_taxon: Taxon | None,
 ) -> dict[str, Any]:
     row = {}
     row["Hesp_species"] = get_mdd_like_species_name(name)
     row["Hesp_group"] = name.group.name
-    row["Hesp_taxon"] = name.taxon.valid_name
+    row["Hesp_taxon"] = (
+        maybe_taxon.valid_name if maybe_taxon is not None else name.taxon.valid_name
+    )
     row["Hesp_root_name"] = name.root_name
     mdd_style_author = mdd_diff.get_mdd_style_authority(name, need_initials)
     row["Hesp_author"] = mdd_style_author
     row["Hesp_year"] = name.year[:4] if name.year else ""
     row["Hesp_authority_parentheses"] = get_authority_parens(name)
-    row["Hesp_validity"] = get_mdd_status(name)
+    row["Hesp_validity"] = get_mdd_status(name, maybe_taxon)
     row["Hesp_original_combination"] = name.original_name or ""
     row["Hesp_normalized_original_combination"] = name.corrected_original_name or ""
     row["Hesp_original_rank"] = (
@@ -400,7 +406,7 @@ def get_hesp_row(
     row["Hesp_type_specimen_link"] = get_type_specimen_link(name_for_types)
 
     # Higher classification
-    taxon = name.taxon
+    taxon = maybe_taxon if maybe_taxon is not None else name.taxon
     order = taxon.get_derived_field("order")
     if order is not None and order.rank is Rank.order:
         row["Hesp_order"] = order.valid_name
@@ -725,6 +731,11 @@ def pprint_nonempty(row: dict[str, str]) -> None:
     pprint.pp({key: value for key, value in row.items() if value})
 
 
+def combine_rank_and_id(rank: Rank, id: int) -> int:
+    value = f"{rank.value + 100}{id}"
+    return int(value)
+
+
 def run(
     *,
     dry_run: bool = True,
@@ -781,6 +792,20 @@ def run(
                 min_rank_for_age_filtering=Rank.species,
             )
         ]
+        hesp_id_to_name: dict[int, tuple[Name, Taxon | None]] = {}
+        for name in hesp_names:
+            if name.status.is_base_name():
+                for corresponding_taxon in Taxon.select_valid().filter(
+                    Taxon.base_name == name
+                ):
+                    hesp_id_to_name[
+                        combine_rank_and_id(corresponding_taxon.rank, name.id)
+                    ] = (name, corresponding_taxon)
+            else:
+                hesp_id_to_name[combine_rank_and_id(name.taxon.rank, name.id)] = (
+                    name,
+                    name.taxon,
+                )
     else:
         hesp_names = export.get_names_for_export(
             taxon,
@@ -788,8 +813,8 @@ def run(
             group=Group.species,
             min_rank_for_age_filtering=Rank.species,
         )
+        hesp_id_to_name = {name.id: (name, None) for name in hesp_names}
     need_initials = mdd_diff.get_need_initials_authors(hesp_names)
-    hesp_id_to_name = {name.id: name for name in hesp_names}
     unused_hesp_ids = set(hesp_id_to_name.keys())
     counts: dict[str, int] = Counter()
     missing_in_hesp: list[tuple[str, int, dict[str, str]]] = []
@@ -810,6 +835,23 @@ def run(
         if hesp_id is None:
             missing_in_hesp.append(("missing in H", row_idx, mdd_row))
             continue
+        if hesp_id not in unused_hesp_ids and higher:
+            validity = mdd_row.get("MDD_validity", "").lower()
+            if validity == "synonym":
+                name = Name(hesp_id)
+                try:
+                    rank = name.taxon.rank
+                except Name.DoesNotExist:
+                    rank = None
+            else:
+                try:
+                    rank = Rank[mdd_row.get("MDD_validity", "").lower()]
+                except KeyError:
+                    rank = None
+            if rank is not None:
+                combined_id = combine_rank_and_id(rank, hesp_id)
+                if combined_id in unused_hesp_ids:
+                    hesp_id = combined_id
         if hesp_id not in unused_hesp_ids:
             if hesp_id in hesp_id_to_name:
                 message = "already matched"
@@ -818,8 +860,8 @@ def run(
             missing_in_hesp.append((message, row_idx, mdd_row))
             continue
         unused_hesp_ids.remove(hesp_id)
-        name = hesp_id_to_name[hesp_id]
-        hesp_row = get_hesp_row(name, need_initials, hesp_id_to_mdd_id)
+        name, maybe_taxon = hesp_id_to_name[hesp_id]
+        hesp_row = get_hesp_row(name, need_initials, hesp_id_to_mdd_id, maybe_taxon)
 
         for column in headings:
             if column in OMITTED_COLUMNS:
@@ -841,9 +883,23 @@ def run(
                 hesp_name=name,
             ):
                 fixable_differences.append(diff)
+        if mdd_row["Hesp_id"] != str(hesp_id):
+            fixable_differences.append(
+                FixableDifference(
+                    row_idx=row_idx,
+                    col_idx=column_to_idx["Hesp_id"],
+                    explanation="Hesp id format differs",
+                    mdd_column="Hesp_id",
+                    hesp_value=str(hesp_id),
+                    mdd_value=mdd_row["Hesp_id"],
+                    hesp_row=hesp_row,
+                    mdd_row=mdd_row,
+                    hesp_name=name,
+                )
+            )
 
         # Can happen if Hesp name got redirected
-        if name.id != hesp_id:
+        if name.id != hesp_id and not higher:
             fixable_differences.append(
                 FixableDifference(
                     row_idx=row_idx,
@@ -861,8 +917,8 @@ def run(
     missing_in_mdd = []
     if max_names is None:
         for hesp_id in unused_hesp_ids:
-            name = hesp_id_to_name[hesp_id]
-            hesp_row = get_hesp_row(name, need_initials, hesp_id_to_mdd_id)
+            name, maybe_taxon = hesp_id_to_name[hesp_id]
+            hesp_row = get_hesp_row(name, need_initials, hesp_id_to_mdd_id, maybe_taxon)
             new_mdd_row = {"MDD_syn_ID": str(max_mdd_id + 1), "Hesp_id": str(hesp_id)}
             max_mdd_id += 1
             for mdd_column in headings:

@@ -85,6 +85,8 @@ class LintConfig:
     verbose: bool = False
     manual_mode: bool = False
     enable_all: bool = False
+    # Enables lints that I am aiming to enable but that are not clean yet.
+    experimental: bool = False
 
 
 ADTT = TypeVar("ADTT", bound=adt.ADT)
@@ -145,6 +147,7 @@ class BaseModel(Model):
         verbose: bool = False,
         manual_mode: bool = False,
         enable_all: bool = False,
+        experimental: bool = False,
         query: Iterable[Self] | None = None,
     ) -> list[tuple[Self, list[str]]]:
         cls.clear_lint_caches()
@@ -154,6 +157,7 @@ class BaseModel(Model):
             verbose=verbose,
             manual_mode=manual_mode,
             enable_all=enable_all,
+            experimental=experimental,
         )
         if query is None:
             if linter is None:

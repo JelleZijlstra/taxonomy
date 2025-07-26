@@ -1131,7 +1131,8 @@ def check_type_designation_optional(nam: Name, cfg: LintConfig) -> Iterable[str]
                 yield "missing a reference for neotype designation"
         case None:
             if (
-                nam.original_citation is not None
+                cfg.experimental
+                and nam.original_citation is not None
                 and nam.group is Group.species
                 and "type_specimen" in nam.get_required_fields()
             ):
