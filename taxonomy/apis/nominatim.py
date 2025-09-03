@@ -5,6 +5,8 @@ import httpx
 from taxonomy import coordinates
 from taxonomy.db.url_cache import CacheDomain, cached
 
+UA = "taxonomy (https://github.com/JelleZijlstra/taxonomy)"
+
 
 def get_openstreetmap_country(point: coordinates.Point) -> str | None:
     url = f"https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat={point.latitude}&lon={point.longitude}&accept-language=en"
@@ -20,7 +22,7 @@ def get_openstreetmap_country(point: coordinates.Point) -> str | None:
 
 @cached(CacheDomain.nominatim)
 def get_nominatim_data(url: str) -> str:
-    response = httpx.get(url)
+    response = httpx.get(url, headers={"User-Agent": UA})
     response.raise_for_status()
     return response.text
 

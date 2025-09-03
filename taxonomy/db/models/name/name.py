@@ -1127,8 +1127,12 @@ class Name(BaseModel):
             except DoesNotExist:
                 parenthesized_bits.append("= <invalid taxon>")
             else:
-                if taxon.valid_name != self.original_name:
-                    parenthesized_bits.append(f"= {taxon.valid_name}")
+                if taxon.is_nominate_subgenus():
+                    valid_name = taxon.base_name.root_name
+                else:
+                    valid_name = taxon.valid_name
+                if valid_name != self.original_name:
+                    parenthesized_bits.append(f"= {valid_name}")
             if self.nomenclature_status is None:
                 parenthesized_bits.append("<no nomenclature status>")
             elif self.nomenclature_status != NomenclatureStatus.available:

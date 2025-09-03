@@ -96,14 +96,14 @@ def get_mdd_status(name: Name, maybe_taxon: Taxon | None) -> str:
     match name.status:
         case Status.valid:
             if maybe_taxon is not None:
-                return maybe_taxon.rank.name
+                return maybe_taxon.rank.name.strip("_")
             match name.taxon.rank:
                 case Rank.subspecies:
                     if name.taxon.parent.base_name == name:
                         return "species"
                     return "synonym"
                 case rank:
-                    return rank.name
+                    return rank.name.strip("_")
         case Status.synonym:
             match name.taxon.base_name.status:
                 case Status.valid:
@@ -782,15 +782,11 @@ def run(
     print(f"done, backup at {backup_path}")
 
     if higher:
+        ages = {AgeClass.extant, AgeClass.recently_extinct}
         hesp_names = [
             name
             for group in [Group.high, Group.family, Group.genus]
-            for name in export.get_names_for_export(
-                taxon,
-                ages={AgeClass.extant, AgeClass.recently_extinct},
-                group=group,
-                min_rank_for_age_filtering=Rank.species,
-            )
+            for name in export.get_names_for_export(taxon, ages=ages, group=group)
         ]
         hesp_id_to_name: dict[int, tuple[Name, Taxon | None]] = {}
         for name in hesp_names:
@@ -798,9 +794,10 @@ def run(
                 for corresponding_taxon in Taxon.select_valid().filter(
                     Taxon.base_name == name
                 ):
-                    hesp_id_to_name[
-                        combine_rank_and_id(corresponding_taxon.rank, name.id)
-                    ] = (name, corresponding_taxon)
+                    if corresponding_taxon.age in ages:
+                        hesp_id_to_name[
+                            combine_rank_and_id(corresponding_taxon.rank, name.id)
+                        ] = (name, corresponding_taxon)
             else:
                 hesp_id_to_name[combine_rank_and_id(name.taxon.rank, name.id)] = (
                     name,

@@ -46,6 +46,7 @@ class Options(NamedTuple):
     mdd_worksheet_gid: int = 0
     mdd_higher_worksheet_gid: int = 0
     mdd_species_worksheet_gid: int = 0
+    mdd_higher_taxa_worksheet_gid: int = 0
     mdd_journals_worksheet_gid: int = 0
     book_sheet: str = ""
     book_sheet_gid: int = 0
@@ -156,6 +157,9 @@ def parse_config_file(filename: Path) -> Options:
                 section.get("mdd_species_worksheet_gid", "0")
             ),
             mdd_higher_worksheet_gid=int(section.get("mdd_higher_worksheet_gid", "0")),
+            mdd_higher_taxa_worksheet_gid=int(
+                section.get("mdd_higher_taxa_worksheet_gid", "0")
+            ),
             bhl_api_key=section.get("bhl_api_key", ""),
             zotero_key=section.get("zotero_key", ""),
             geojson_path=parse_path(section, "geojson_path", base_path),

@@ -935,6 +935,8 @@ def is_empty_location_detail(text: str) -> bool:
         "[No locality given]",
         "[Plate only]",
         "[None given]",
+        "[No locality]",
+        "[No explicit locality]",
     )
 
 
@@ -1091,8 +1093,33 @@ def check_coordinates(nam: Name, cfg: LintConfig) -> Iterable[str]:
         yield f"coordinates {point} are in {osm_country}, not {tl_country.name}"
 
 
-@LINT.add("type_designation_optional")
-def check_type_designation_optional(nam: Name, cfg: LintConfig) -> Iterable[str]:
+@LINT.add("type_locality_strict")
+def check_type_locality_strict(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    if nam.group is not Group.species or not is_valid_mammal(nam):
+        return
+    if nam.has_type_tag(TypeTag.InterpretedTypeLocality):
+        return
+    if "type_locality" not in nam.get_required_fields():
+        return
+    # will have to deal with this separately
+    if nam.original_citation is None:
+        return
+    if nam.type_locality is None:
+        yield "missing type locality"
+    if not cfg.experimental:
+        return
+    original_localities = [
+        tag
+        for tag in nam.type_tags
+        if isinstance(tag, TypeTag.LocationDetail)
+        and tag.source == nam.original_citation
+    ]
+    if not original_localities:
+        yield "missing original locality detail"
+
+
+@LINT.add("type_designation_strict")
+def check_type_designation_strict(nam: Name, cfg: LintConfig) -> Iterable[str]:
     # Move to check_type_designation below if this is fixed for all names
     if not is_valid_mammal(nam) or nam.has_type_tag(TypeTag.InterpretedTypeSpecimen):
         return
@@ -6271,6 +6298,13 @@ def check_unique_type_locality(nam: Name, cfg: LintConfig) -> Iterable[str]:
 
 def is_valid_mammal(nam: Name) -> bool:
     if nam.status is not Status.valid:
+        if nam.nomenclature_status is NomenclatureStatus.preoccupied:
+            valid_name = nam.taxon.base_name
+            if (
+                valid_name.nomenclature_status is NomenclatureStatus.nomen_novum
+                and valid_name.get_tag_target(NameTag.NomenNovumFor) == nam
+            ):
+                return is_valid_mammal(valid_name)
         return False
     taxon = nam.taxon
     if taxon.age not in (AgeClass.extant, AgeClass.recently_extinct):

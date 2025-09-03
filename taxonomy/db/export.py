@@ -98,22 +98,35 @@ def get_names_for_export(
     if group is not None:
         names = [name for name in names if name.group is group]
     if ages is not None:
-        new_names = []
-        for name in names:
-            if name.taxon.age in ages:
-                new_names.append(name)
-                continue
-            if min_rank_for_age_filtering is None:
-                continue
-            try:
-                parent = name.taxon.parent_of_rank(min_rank_for_age_filtering)
-            except ValueError:
-                continue
-            if parent.age in ages:
-                new_names.append(name)
-        names = new_names
+        names = [
+            name
+            for name in names
+            if is_of_right_age(name, ages, min_rank_for_age_filtering)
+        ]
     print(f"done, {len(names)} remaining")
     return names
+
+
+def is_of_right_age(
+    name: Name,
+    ages: Container[AgeClass],
+    min_rank_for_age_filtering: Rank | None = None,
+) -> bool:
+    if name.taxon.age in ages:
+        return True
+    if min_rank_for_age_filtering is not None:
+        try:
+            parent = name.taxon.parent_of_rank(min_rank_for_age_filtering)
+        except ValueError:
+            pass
+        else:
+            if parent.age in ages:
+                return True
+    if name.group is Group.family or name.taxon.rank is Rank.subgenus:
+        all_taxa = Taxon.select_valid().filter(Taxon.base_name == name)
+        if any(taxon.age in ages for taxon in all_taxa):
+            return True
+    return False
 
 
 @CS.register
