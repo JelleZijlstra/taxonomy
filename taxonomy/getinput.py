@@ -80,6 +80,7 @@ def get_line(
     validator: prompt_toolkit.validation.Validator | None = None,
     completer: prompt_toolkit.completion.Completer | None = None,
     allow_clear: bool = True,
+    help: dict[str, str] | None = None,
 ) -> str | None:
     if history_key is None:
         history_key = prompt
@@ -104,13 +105,18 @@ def get_line(
             continue
         if should_stop(line):
             return None
+        if allow_clear and line == "clear":
+            # TODO: Does this work? Do we need a replacement?
+            history.strings = [""]
+        if help is not None and line == "help":
+            print("Options:")
+            for key, description in help.items():
+                print(f"  {key}: {description}")
+            continue
         if validate is not None and not validate(line):
             continue
         if not allow_none and line == "":
             continue
-        if allow_clear and line == "clear":
-            # TODO: Does this work? Do we need a replacement?
-            history.strings = [""]
         return line
     assert False, "should never get here"
 

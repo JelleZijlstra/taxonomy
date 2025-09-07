@@ -668,7 +668,7 @@ class Name(BaseModel):
             "level": self.print_fill_data_level,
             "set_nos": self.set_nos,
             "validate": self.validate,
-            "validate_as_child": self.validate_as_child,
+            "validate_as_child": self.validate_as_child_command,
             "add_nominate": lambda: self.taxon.add_nominate(),
             "merge": self._merge,
             "redirect": self._redirect,
@@ -2202,6 +2202,12 @@ class Name(BaseModel):
     def should_exempt_from_string_cleaning(self, field: str) -> bool:
         return field == "data"
 
+    def validate_as_child_command(self) -> None:
+        try:
+            self.validate_as_child()
+        except ValueError:
+            print(f"Validation failed for {self}")
+
     def validate_as_child(self, status: Status = Status.valid) -> Taxon:
         if self.taxon.rank is Rank.species:
             new_rank = Rank.subspecies
@@ -2213,6 +2219,8 @@ class Name(BaseModel):
             new_rank = Rank.tribe
         elif self.taxon.rank is Rank.family:
             new_rank = Rank.subfamily
+        elif self.taxon.rank is Rank.unranked:
+            new_rank = Rank.unranked
         else:
             raise ValueError(f"cannot validate child with rank {self.taxon.rank}")
         return self.validate(parent=self.taxon, rank=new_rank, status=status)

@@ -12,6 +12,7 @@ from typing import NamedTuple
 from taxonomy import config, getinput, uitools
 from taxonomy.command_set import CommandSet
 from taxonomy.db.constants import ArticleKind
+from taxonomy.db.models.base import get_static_callbacks
 
 from .add_data import add_data_for_new_file
 from .article import Article
@@ -304,38 +305,22 @@ def newcheck(*, dry_run: bool = False) -> bool:
 
 
 def add_new_file(file: LsFile) -> bool:
-    def rename_function(*args: object) -> bool:
+    def rename_function() -> None:
         nonlocal file
         oldname = file.name
         newname = Article.getter("name").get_one_key(
             prompt="New name: ", default=oldname
         )
         if newname is None:
-            return True
+            return
         # allow renaming to existing name, for example to replace in-press files, but warn
         if Article.has(newname):
             print("Warning: file already exists")
         file = LsFile(newname)
         shutil.move(str(_options.new_path / oldname), str(_options.new_path / newname))
-        return True
 
-    def opener(cmd: str, data: object) -> bool:
-        open_new(file)
-        return True
-
-    def archiver(cmd: str, data: object) -> bool:
-        new_path = _options.new_path
-        shutil.move(
-            str(new_path / file.name), str(new_path / "Not to be cataloged" / file.name)
-        )
-        return False
-
-    def quitter(cmd: str, data: object) -> bool:
+    def quitter() -> bool:
         raise uitools.EndOfInput("newadd")
-
-    def open_dir_cb(cmd: str, data: object) -> bool:
-        open_dir()
-        return True
 
     parser = get_name_parser(file.name)
     if parser.error_occurred():
@@ -349,9 +334,11 @@ def add_new_file(file: LsFile) -> bool:
 
     getinput.add_to_clipboard(file.name)
 
-    selection, _ = uitools.menu(
-        head="Adding file " + file.name,
-        options={
+    print(f"Adding file {file.name!r}")
+    selection = getinput.get_line(
+        "> ",
+        validate=lambda x: x in ("", "n", "s"),
+        help={
             "o": "open this file",
             "q": "quit",
             "s": "skip this file",
@@ -360,16 +347,28 @@ def add_new_file(file: LsFile) -> bool:
             "open_dir": "open a directory",
             "": "add this file to the catalog",
         },
-        process={
-            "o": opener,
-            "r": rename_function,
-            "n": archiver,
+        callbacks={
+            **get_static_callbacks(),
+            "o": lambda: open_new(file),
             "q": quitter,
-            "open_dir": open_dir_cb,
+            "r": rename_function,
+            "open_dir": open_dir,
         },
     )
-    if selection in ("n", "s"):
-        return False
+    match selection:
+        case "n":
+            new_path = _options.new_path
+            shutil.move(
+                str(new_path / file.name),
+                str(new_path / "Not to be cataloged" / file.name),
+            )
+            return False
+        case "s":
+            return False
+        case "":
+            pass
+        case _:
+            raise NotImplementedError(f"Unknown selection: {selection!r}")
 
     new_name = check_for_existing_file(file)
     if new_name is None:

@@ -28,7 +28,6 @@ import datetime
 import enum
 import functools
 import itertools
-import pprint
 import re
 import subprocess
 import sys
@@ -37,7 +36,7 @@ from collections import Counter
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import Any
 
 import google.auth.exceptions
 import gspread
@@ -62,6 +61,7 @@ from taxonomy.db.models.classification_entry.ce import (
     ClassificationEntryTag,
 )
 from taxonomy.db.models.name import NameTag, TypeTag
+from taxonomy.upsheeter import batched, pprint_nonempty
 
 LIMIT_AUTH_LINKS = False
 
@@ -704,14 +704,6 @@ def compare_year(hesp_year: str, mdd_year: str) -> int:
 COLUMN_RENAMES = {"MDD original combination": "MDD_original_combination"}
 REMOVED_COLUMNS = {"citation_status", "author_status", "type_locality_status"}
 
-T = TypeVar("T")
-
-
-def batched(iterable: Iterable[T], n: int) -> Iterable[list[T]]:
-    it = iter(iterable)
-    while chunk := list(itertools.islice(it, n)):
-        yield chunk
-
 
 def process_value_for_sheets(value: str) -> str | int:
     if value.isdigit():
@@ -725,10 +717,6 @@ def run_gspread_test() -> None:
     sheet = gc.open(options.mdd_sheet)
     worksheet = sheet.get_worksheet_by_id(options.mdd_worksheet_gid)
     worksheet.update_cell(1, 1, "MDD_syn_ID_test")
-
-
-def pprint_nonempty(row: dict[str, str]) -> None:
-    pprint.pp({key: value for key, value in row.items() if value})
 
 
 def combine_rank_and_id(rank: Rank, id: int) -> int:
