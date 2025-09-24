@@ -855,10 +855,10 @@ def extract_gender_age(text: str) -> list[TypeTag]:
     return out
 
 
-SKIN = TypeTag.Organ(constants.SpecimenOrgan.skin, "", "")
-SKULL = TypeTag.Organ(constants.SpecimenOrgan.skull, "", "")
-IN_ALCOHOL = TypeTag.Organ(constants.SpecimenOrgan.in_alcohol, "", "")
-SKELETON = TypeTag.Organ(constants.SpecimenOrgan.postcranial_skeleton, "", "")
+SKIN = TypeTag.Organ(constants.SpecimenOrgan.skin)
+SKULL = TypeTag.Organ(constants.SpecimenOrgan.skull)
+IN_ALCOHOL = TypeTag.Organ(constants.SpecimenOrgan.in_alcohol)
+SKELETON = TypeTag.Organ(constants.SpecimenOrgan.postcranial_skeleton)
 
 
 def extract_body_parts(organs: str) -> list[TypeTag]:
@@ -1748,7 +1748,7 @@ def create_csv(filename: str, ces: Iterable[CEDict]) -> None:
         if any(field in ce for ce in ce_list):
             fields.append(field)
     extra_fields: set[str] = set()
-    for ce in ces:
+    for ce in ce_list:
         if "extra_fields" in ce:
             extra_fields.update(ce["extra_fields"])
     fields += sorted(extra_fields)
@@ -1756,7 +1756,7 @@ def create_csv(filename: str, ces: Iterable[CEDict]) -> None:
     with Path(filename).open("w") as f:
         writer = csv.DictWriter(f, fields)
         writer.writeheader()
-        for i, ce in enumerate(ces, start=1):
+        for i, ce in enumerate(ce_list, start=1):
             d = {"#": str(i)}
             for field in fields:
                 if field in ("rank", "parent_rank") and field in ce:

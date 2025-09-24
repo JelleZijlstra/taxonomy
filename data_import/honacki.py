@@ -333,6 +333,32 @@ def add_classification_entries(names: DataT, *, dry_run: bool = True) -> DataT:
         yield name
 
 
+def convert_to_ce_dicts(names: DataT) -> Iterable[lib.CEDict]:
+    for name in names:
+        ce: lib.CEDict = {
+            "name": name["taxon_name"],
+            "rank": name["rank"],
+            "page": ", ".join(str(p) for p in name["pages"]),
+            "article": SOURCE.get_source(),
+        }
+        if name.get("parent") is not None:
+            parent_rank, parent_name = name["parent"]
+            ce["parent"] = parent_name
+            ce["parent_rank"] = parent_rank
+        if "authority" in name:
+            ce["authority"] = name["authority"]
+        if "year" in name:
+            ce["year"] = name["year"]
+        if "verbatim_citation" in name:
+            ce["citation"] = name["verbatim_citation"]
+        if "type locality" in name:
+            ce["type_locality"] = name["type locality"]
+        extra_fields = {k: v for k, v in name.items() if k not in ce and k != "pages"}
+        if extra_fields:
+            ce["extra_fields"] = extra_fields
+        yield ce
+
+
 def main() -> None:
     lines = lib.get_text(SOURCE)
     pages = lib.extract_pages(lines, permissive=True)
@@ -341,7 +367,9 @@ def main() -> None:
     names = lib.clean_text(names)
     names = process_names(names)
     names = check_parents(names)
-    names = add_classification_entries(names, dry_run=False)
+    ce_dicts = convert_to_ce_dicts(names)
+    lib.create_csv("msw1.csv", list(ce_dicts))
+    # names = add_classification_entries(names, dry_run=False)
     # names = list(lib.translate_to_db(names, None, SOURCE, verbose=False))
     # print(
     #     f"Associated {len([n for n in names if 'taxon' in n])}/{len(names)} names with"
@@ -352,7 +380,7 @@ def main() -> None:
     # for name in names:
     #     if "name_obj" not in name:
     #         print("not found:", name["name_line"])
-    lib.print_field_counts(names)
+    # lib.print_field_counts(names)
 
 
 if __name__ == "__main__":

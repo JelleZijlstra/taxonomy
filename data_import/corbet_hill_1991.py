@@ -120,13 +120,14 @@ def main() -> None:
     names: Iterable[lib.CEDict] = list(extract_names(pages))
     names = lib.add_parents(names)
     names = lib.no_childless_ces(names)
+    lib.create_csv("ch3.csv", names)
     # names = lib.count_by_rank(names, Rank.order)
     # names = lib.count_by_rank(names, Rank.family)
-    names = lib.print_unrecognized_genera(names)
-    names = lib.validate_ce_parents(names)
-    names = lib.add_classification_entries(names, dry_run=False)
+    # names = lib.print_unrecognized_genera(names)
+    # names = lib.validate_ce_parents(names)
+    # names = lib.add_classification_entries(names, dry_run=False)
 
-    lib.print_ce_summary(names)
+    # lib.print_ce_summary(names)
     # lib.format_ces(SOURCE, format_name=False)
 
 
