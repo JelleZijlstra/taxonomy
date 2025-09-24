@@ -607,6 +607,8 @@ class Person(BaseModel):
                     grammar = parsing.ukrainian_given_names_pattern
                 elif self.naming_convention is NamingConvention.chinese:
                     grammar = parsing.chinese_given_names_pattern
+                elif self.naming_convention is NamingConvention.vietnamese:
+                    grammar = parsing.vietnamese_given_names_pattern
                 else:
                     grammar = parsing.given_names_pattern
                 if not parsing.matches_grammar(self.given_names, grammar):
@@ -623,6 +625,8 @@ class Person(BaseModel):
                 grammar = parsing.spanish_family_name_pattern
             elif self.naming_convention is NamingConvention.portuguese:
                 grammar = parsing.portuguese_family_name_pattern
+            elif self.naming_convention is NamingConvention.vietnamese:
+                grammar = parsing.vietnamese_family_name_pattern
             else:
                 grammar = parsing.family_name_pattern
             if not parsing.matches_grammar(self.family_name, grammar):

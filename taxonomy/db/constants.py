@@ -18,6 +18,16 @@ class GrammaticalGender(enum.IntEnum):
     feminine = 1
     neuter = 2
 
+    @property
+    def short_name(self) -> str:
+        match self:
+            case GrammaticalGender.masculine:
+                return "M"
+            case GrammaticalGender.feminine:
+                return "F"
+            case GrammaticalGender.neuter:
+                return "N"
+
 
 class AgeClass(enum.IntEnum):
     extant = 0

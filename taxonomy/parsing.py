@@ -115,6 +115,7 @@ upper = C(
             "Ș",
             "Ś",
             "Ț",
+            "Ţ",
             "Ř",
             "Ş",
             "Ż",
@@ -135,6 +136,7 @@ lower = C(
             "ß",
             "à",
             "á",
+            "ă",
             "â",
             "ã",
             "ä",
@@ -164,7 +166,6 @@ lower = C(
             "ü",
             "ý",
             "ÿ",
-            "ă",
             "ą",
             "ć",
             "č",
@@ -339,6 +340,41 @@ spanish_family_name = (
     + spanish_names
     + Optional(L(" ") + spanish_second_name)
 )
+vietnamese_name = (latin_upper | C(["Đ"])) + OneOrMore(
+    OneOf.from_strs(
+        unicode_range("a", "z")
+        | {
+            "ý",
+            "ỗ",
+            "ễ",
+            "ớ",
+            "ê",
+            "đ",
+            "ọ",
+            "ũ",
+            "ă",
+            "ơ",
+            "ư",
+            "ạ",
+            "ả",
+            "ấ",
+            "ầ",
+            "ẩ",
+            "ẫ",
+            "ậ",
+            "ắ",
+            "ằ",
+            "ẳ",
+            "ặ",
+            "á",
+            "à",
+            "ế",
+        }
+    )
+)
+vietnamese_given_names = (
+    vietnamese_name + ZeroOrMore(L(" ") + vietnamese_name) + Optional(L(" ") + initials)
+)
 
 nickname = L('"') + name + L('"')
 given_names = (
@@ -458,6 +494,8 @@ chinese_given_names_pattern = chinese_given_names.compile()
 pinyin_family_name_lowercased_pattern = pinyin_family_name.compile()
 pinyin_given_names_pattern = pinyin_given_names_cased.compile()
 pinyin_given_names_lowercased_pattern = pinyin_given_names.compile()
+vietnamese_family_name_pattern = vietnamese_name.compile()
+vietnamese_given_names_pattern = vietnamese_given_names.compile()
 
 special_collection = OneOf.from_strs(["in situ", "lost", "untraced", "multiple"])
 personal_collection = family_name + L(" collection")

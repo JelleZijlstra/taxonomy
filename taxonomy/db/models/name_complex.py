@@ -276,8 +276,9 @@ class SpeciesNameComplex(BaseModel):
         print("removing complex", self)
         self.delete_instance()
 
-    def merge(self) -> None:
-        target = SpeciesNameComplex.getter(None).get_one("target> ")
+    def merge(self, target: SpeciesNameComplex | None = None) -> None:
+        if target is None:
+            target = SpeciesNameComplex.getter(None).get_one("target> ")
         if target is None:
             return
         if self == target:

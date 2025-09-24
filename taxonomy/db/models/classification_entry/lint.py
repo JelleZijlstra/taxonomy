@@ -10,6 +10,7 @@ from itertools import takewhile
 
 from taxonomy import getinput, urlparse
 from taxonomy.apis import bhl
+from taxonomy.apis.zoobank import clean_lsid, is_valid_lsid
 from taxonomy.db import helpers, models
 from taxonomy.db.constants import SYNONYM_RANKS, Group, NomenclatureStatus, Rank
 from taxonomy.db.models.article.article import Article, ArticleTag
@@ -112,6 +113,14 @@ def check_tags(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
                 yield "removing redundant CorrectedName tag"
             else:
                 new_tags.append(tag)
+
+        elif isinstance(tag, ClassificationEntryTag.LSIDCE):
+            lsid = clean_lsid(tag.text)
+            tag = ClassificationEntryTag.LSIDCE(lsid)
+            if not is_valid_lsid(lsid):
+                yield f"invalid LSID {lsid}"
+            new_tags.append(tag)
+
         else:
             new_tags.append(tag)
     new_tags_tuple = tuple(sorted(set(new_tags)))
