@@ -10,6 +10,7 @@ from typing import NamedTuple
 
 class Options(NamedTuple):
     new_path: Path = Path()
+    downloads_path: Path = Path()
     library_path: Path = Path()
     data_path: Path = Path()
     parserdata_path: Path = Path()
@@ -112,6 +113,7 @@ def parse_config_file(filename: Path) -> Options:
             db_filename = db_filename.parent / os.environ["TAXONOMY_DB_FILENAME"]
         return Options(
             new_path=parse_path(section, "new_path", base_path),
+            downloads_path=parse_path(section, "downloads_path", base_path),
             library_path=parse_path(section, "library_path", base_path),
             data_path=parse_path(section, "data_path", base_path),
             parserdata_path=parse_path(section, "parserdata_path", base_path),

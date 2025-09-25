@@ -26,6 +26,7 @@ _options = config.get_options()
 
 
 class LsFile(NamedTuple):
+    base_path: Path
     name: str
     raw_path: Sequence[str] = ()
 
@@ -53,7 +54,7 @@ def build_lslist() -> LsFileList:
             if not ext or not ext[1:].isalpha():
                 continue
             parts = [part for part in path.parts if part]
-            file = LsFile(filename, parts)
+            file = LsFile(path, filename, parts)
             if filename in lslist:
                 print(f"---duplicate {filename}---")
                 print(file.path)
@@ -63,14 +64,23 @@ def build_lslist() -> LsFileList:
     return lslist
 
 
-def build_newlist(path: Path | None = None) -> LsFileList:
+def build_newlist(
+    path: Path | None = None, extensions: Sequence[str] | None = None
+) -> LsFileList:
     out: LsFileList = {}
     if path is None:
         path = _options.new_path
     print("acquiring list of new files... ", end="", flush=True)
     for entry in os.scandir(path):
-        if entry.is_file() and entry.name and not Path(entry.name).name.startswith("."):
-            out[entry.name] = LsFile(entry.name)
+        if (
+            entry.is_file()
+            and entry.name
+            and not Path(entry.name).name.startswith(".")
+            and (
+                extensions is None or Path(entry.name).suffix[1:].lower() in extensions
+            )
+        ):
+            out[entry.name] = LsFile(path, entry.name)
     out = dict(sorted(out.items(), key=lambda kv: kv[0]))
 
     if not out:
@@ -110,6 +120,7 @@ def check_new() -> None:
         return
     try:
         newcheck()
+        newcheck(downloads_folder=True)
         burstcheck()
         oversized_folders()
     except uitools.EndOfInput as e:
@@ -139,6 +150,7 @@ def check(*, dry_run: bool = False) -> None:
         csvcheck(lslist, csvlist, dry_run=dry_run)
         # check whether there are any new files to be added
         newcheck(dry_run=dry_run)
+        newcheck(downloads_folder=True, dry_run=dry_run)
         # check whether there are any files to be burst
         burstcheck(dry_run=dry_run)
         # check if folders are too large
@@ -291,36 +303,43 @@ def burstcheck(*, dry_run: bool = False) -> bool:
     return True
 
 
-def newcheck(*, dry_run: bool = False) -> bool:
+def newcheck(*, dry_run: bool = False, downloads_folder: bool = False) -> bool:
     # look for new files
     print("checking for newly added articles... ", end="")
-    newlist = build_newlist()
+    if downloads_folder:
+        newlist = build_newlist(_options.downloads_path, extensions=["pdf"])
+    else:
+        newlist = build_newlist()
     for file in newlist.values():
         if dry_run:
             print(file.name)
         else:
-            add_new_file(file)
+            add_new_file(file, always_rename=downloads_folder)
     print("done")
     return True
 
 
-def add_new_file(file: LsFile) -> bool:
+def add_new_file(file: LsFile, *, always_rename: bool = False) -> bool:
     def rename_function() -> None:
         nonlocal file
         oldname = file.name
         newname = Article.getter("name").get_one_key(
-            prompt="New name: ", default=oldname
+            prompt="New name: ", default=oldname, history_key=f"rename_{oldname}"
         )
         if newname is None:
             return
         # allow renaming to existing name, for example to replace in-press files, but warn
         if Article.has(newname):
             print("Warning: file already exists")
-        file = LsFile(newname)
-        shutil.move(str(_options.new_path / oldname), str(_options.new_path / newname))
+        file = LsFile(file.base_path, newname)
+        shutil.move(str(file.base_path / oldname), str(file.base_path / newname))
 
     def quitter() -> bool:
         raise uitools.EndOfInput("newadd")
+
+    if always_rename:
+        open_new(file)
+        rename_function()
 
     parser = get_name_parser(file.name)
     if parser.error_occurred():
@@ -357,10 +376,9 @@ def add_new_file(file: LsFile) -> bool:
     )
     match selection:
         case "n":
-            new_path = _options.new_path
             shutil.move(
-                str(new_path / file.name),
-                str(new_path / "Not to be cataloged" / file.name),
+                str(file.base_path / file.name),
+                str(_options.new_path / "Not to be cataloged" / file.name),
             )
             return False
         case "s":
@@ -380,14 +398,14 @@ def add_new_file(file: LsFile) -> bool:
         print("Unable to determine folder")
         return False
     subprocess.check_call(
-        ["mv", "-n", str(_options.new_path / file.name), str(article.get_path())]
+        ["mv", "-n", str(file.base_path / file.name), str(article.get_path())]
     )
     add_data_for_new_file(article)
     return True
 
 
 def open_new(lsfile: LsFile) -> None:
-    path = _options.new_path / lsfile.name
+    path = lsfile.base_path / lsfile.name
     subprocess.check_call(["open", str(path)])
 
 
@@ -426,13 +444,13 @@ def check_for_existing_file(lsfile: LsFile) -> str | None:
     def replacer(cmd: str, data: object) -> bool:
         assert existing is not None
         file = existing.resolve_redirect()
-        shutil.move(str(_options.new_path / lsfile.name), str(file.get_path()))
+        shutil.move(str(lsfile.base_path / lsfile.name), str(file.get_path()))
         file.store_pdf_content(force=True)
         file.edit()
         return False
 
     def deleter(cmd: str, data: object) -> bool:
-        (_options.new_path / lsfile.name).unlink()
+        (lsfile.base_path / lsfile.name).unlink()
         return False
 
     def renamer(cmd: str, data: str) -> bool:
@@ -539,7 +557,7 @@ def burst(lsfile: LsFile) -> bool:
                     ]
                 )
                 print(f"Split off file {line}")
-                add_new_file(LsFile(line))
+                add_new_file(LsFile(_options.new_path, line))
             case _:
                 print(f"Invalid input: {line}")
 

@@ -1621,6 +1621,7 @@ class _NameGetter(Generic[ModelT]):
         default: str = "",
         callbacks: getinput.CallbackMap = {},
         allow_empty: bool = True,
+        history_key: object = None,
     ) -> str | None:
         self._warm_cache()
         callbacks = {**callbacks, "clear_cache": self.rewarm_cache}
@@ -1629,7 +1630,7 @@ class _NameGetter(Generic[ModelT]):
             options_provider=self._get_data,
             is_valid=self.__contains__,
             default=default,
-            history_key=self,
+            history_key=self if history_key is None else history_key,
             callbacks=callbacks,
             allow_empty=allow_empty,
         )

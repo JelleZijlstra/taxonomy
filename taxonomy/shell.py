@@ -3095,6 +3095,42 @@ def tag_counter() -> None:
                 print(f"    {value}: {count} ({percent})")
 
 
+@command
+def download_dois() -> None:
+    """Download all DOI-cited articles in a paper."""
+    art = Article.getter(None).get_one("article> ")
+    if art is None:
+        return
+    pages = art.get_all_pdf_pages()
+    doi_set = set()
+    for page in pages:
+        doi_set.update(
+            re.findall(r"\b10\.\d{4,9}/[-._;()/:A-Z0-9]+\b", page, re.IGNORECASE)
+        )
+    dois = sorted({doi.casefold() for doi in doi_set})
+    print(f"Found {len(dois)} DOIs")
+
+    existing_arts = Article.select_valid().filter(Article.doi != None)
+    existing_dois = {
+        article.doi.casefold() for article in existing_arts if article.doi is not None
+    }
+    print(f"{len(existing_dois)} DOIs already in database")
+    new_dois = [doi for doi in dois if doi not in existing_dois]
+    print(f"{len(new_dois)} new DOIs")
+
+    for doi in dois:
+        print(doi)
+        url = f"https://doi.org/{doi}"
+        subprocess.check_call(["open", url])
+        if not getinput.yes_no("Continue? "):
+            break
+
+    # TODO:
+    # - Add a table of "uninteresting DOIs" that we don't need to ask about again
+    # - Add command shell support in the "continue" above so we can process new papers in there
+    # - Make "check_new" also check the Downloads folder (but rename everything)
+
+
 def run_shell() -> None:
     # GC does bad things on my current setup for some reason
     gc.disable()
