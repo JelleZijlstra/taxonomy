@@ -919,7 +919,7 @@ def get_inferred_bhl_page(art: Article, cfg: LintConfig) -> bhl.PossiblePage | N
         return None
     year = art.numeric_year()
     cg = art.get_citation_group()
-    if art.type in (ArticleType.CHAPTER, ArticleType.PART):
+    if art.type in (ArticleType.CHAPTER, ArticleType.PART) and art.parent is not None:
         url = art.parent.url
         if url is None:
             return None
@@ -2040,15 +2040,15 @@ def _check_doi_isbn(
     if "isbn" not in data:
         return
     existing = art.get_identifier(ArticleTag.ISBN)
-    if existing is not None and existing != data["isbn"]:
-        yield f"ISBN mismatch: {data['isbn']} (DOI) vs. {existing} (article)"
-    else:
+    if existing is None:
         message = f"adding ISBN {data['isbn']} from DOI"
         if cfg.autofix:
             print(f"{art}: {message}")
             art.add_tag(ArticleTag.ISBN(data["isbn"]))
         else:
             yield message
+    elif existing != data["isbn"]:
+        yield f"ISBN mismatch: {data['isbn']} (DOI) vs. {existing} (article)"
 
 
 def _check_doi_tags(

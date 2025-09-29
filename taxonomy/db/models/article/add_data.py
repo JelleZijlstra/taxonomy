@@ -121,6 +121,7 @@ doi_type_to_article_type = {
     "journal_article": ArticleType.JOURNAL,
     "conference_paper": ArticleType.CHAPTER,
     "component": ArticleType.CHAPTER,
+    "book_chapter": ArticleType.CHAPTER,
     "book_content": ArticleType.CHAPTER,
     "dissertation": ArticleType.THESIS,
     "conference_title": ArticleType.BOOK,
@@ -133,6 +134,7 @@ doi_type_to_article_type = {
     "standard_title": ArticleType.MISCELLANEOUS,
     "standard_series": ArticleType.MISCELLANEOUS,
     "standard_content": ArticleType.MISCELLANEOUS,
+    "book": ArticleType.BOOK,
 }
 for _key, _value in list(doi_type_to_article_type.items()):
     # usage seems to be inconsistent, let's just use both
@@ -166,41 +168,57 @@ def expand_doi_json(doi: str) -> RawData:
             title = title[0] + title[1:].lower()
         data["title"] = clean_string(title)
 
-    if author_raw := work.get("author"):
-        authors = []
-        for author in author_raw:
-            # doi:10.24272/j.issn.2095-8137.2020.132 has some stray authors that look like
-            # they should be affiliations.
-            if "family" not in author:
-                continue
-            family_name = clean_string(author["family"])
-            if family_name.isupper():
-                family_name = family_name.title()
-            initials = given_names = None
-            if given := author.get("given"):
-                given = clean_string(given.title())
-                if given:
-                    if given[-1].isupper():
-                        given = given + "."
-                    given = re.sub(r"\b([A-Z]) ", r"\1.", given)
-                    if parsing.matches_grammar(
-                        given.replace(" ", ""), parsing.initials_pattern
-                    ):
-                        initials = given.replace(" ", "")
-                    else:
-                        given_names = re.sub(r"\. ([A-Z]\.)", r".\1", given)
-            authors.append(
-                VirtualPerson(
-                    family_name=family_name, initials=initials, given_names=given_names
+    for key in ("author", "editor"):
+        if author_raw := work.get(key):
+            authors = []
+            for author in author_raw:
+                # doi:10.24272/j.issn.2095-8137.2020.132 has some stray authors that look like
+                # they should be affiliations.
+                if "family" not in author:
+                    continue
+                family_name = clean_string(author["family"])
+                if family_name.isupper():
+                    family_name = family_name.title()
+                initials = given_names = None
+                if given := author.get("given"):
+                    given = clean_string(given.title())
+                    if given:
+                        if given[-1].isupper():
+                            given = given + "."
+                        given = re.sub(r"\b([A-Z]) ", r"\1.", given)
+                        if parsing.matches_grammar(
+                            given.replace(" ", ""), parsing.initials_pattern
+                        ):
+                            initials = given.replace(" ", "")
+                        else:
+                            given_names = re.sub(r"\. ([A-Z]\.)", r".\1", given)
+                authors.append(
+                    VirtualPerson(
+                        family_name=family_name,
+                        initials=initials,
+                        given_names=given_names,
+                    )
                 )
-            )
-        if authors:
-            data["author_tags"] = authors
+            if authors:
+                data["author_tags"] = authors
+            break
 
     if volume := work.get("volume"):
         data["volume"] = volume.removeprefix("0")
     if issue := work.get("issue"):
         data["issue"] = issue.removeprefix("0")
+    if publisher := work.get("publisher"):
+        data["publisher"] = clean_string(publisher)
+    if location := work.get("publisher-location"):
+        try:
+            cg = (
+                CitationGroup.select_valid()
+                .filter(CitationGroup.name == location)
+                .get()
+            )
+            data["citation_group"] = cg
+        except clirm.DoesNotExist:
+            pass
 
     if page := work.get("page"):
         if typ in (ArticleType.JOURNAL, ArticleType.CHAPTER):

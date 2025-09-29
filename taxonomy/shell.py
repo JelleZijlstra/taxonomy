@@ -69,6 +69,7 @@ from .db.models import (
     CitationGroupPattern,
     CitationGroupTag,
     Collection,
+    IgnoredDoi,
     Name,
     Period,
     Person,
@@ -76,6 +77,7 @@ from .db.models import (
     TypeTag,
 )
 from .db.models.base import LintConfig, Linter, ModelT
+from .db.models.ignored_doi import IgnoreReason
 from .db.models.person import PersonLevel
 
 T = TypeVar("T")
@@ -3105,7 +3107,7 @@ def download_dois() -> None:
     doi_set = set()
     for page in pages:
         doi_set.update(
-            re.findall(r"\b10\.\d{4,9}/[-._;()/:A-Z0-9]+\b", page, re.IGNORECASE)
+            re.findall(r"\b10\.\d{4,9}/[-._;()/:A-Z0-9<>]+\b", page, re.IGNORECASE)
         )
     dois = sorted({doi.casefold() for doi in doi_set})
     print(f"Found {len(dois)} DOIs")
@@ -3115,20 +3117,41 @@ def download_dois() -> None:
         article.doi.casefold() for article in existing_arts if article.doi is not None
     }
     print(f"{len(existing_dois)} DOIs already in database")
-    new_dois = [doi for doi in dois if doi not in existing_dois]
+    ignored_dois = {
+        ignored.doi.casefold()
+        for ignored in IgnoredDoi.select_valid()
+        if ignored.doi is not None
+    }
+    print(f"{len(ignored_dois)} DOIs ignored")
+    new_dois = [
+        doi for doi in dois if doi not in existing_dois and doi not in ignored_dois
+    ]
     print(f"{len(new_dois)} new DOIs")
 
-    for doi in dois:
-        print(doi)
-        url = f"https://doi.org/{doi}"
-        subprocess.check_call(["open", url])
-        if not getinput.yes_no("Continue? "):
-            break
+    ignored_prefixes = set()
 
-    # TODO:
-    # - Add a table of "uninteresting DOIs" that we don't need to ask about again
-    # - Add command shell support in the "continue" above so we can process new papers in there
-    # - Make "check_new" also check the Downloads folder (but rename everything)
+    def add_ignored_prefix() -> None:
+        prefix = getinput.get_line("Prefix to ignore> ")
+        if prefix:
+            ignored_prefixes.add(prefix.casefold())
+
+    cb_map = {
+        **models.base.get_static_callbacks(),
+        "add_ignored_prefix": add_ignored_prefix,
+    }
+
+    for doi in new_dois:
+        if any(doi.casefold().startswith(prefix) for prefix in ignored_prefixes):
+            print(f"Ignoring {doi} due to prefix")
+            continue
+        url = f"https://doi.org/{doi}"
+        print("DOI:", doi)
+        subprocess.check_call(["open", url])
+        if getinput.yes_no("Ignore? ", callbacks=cb_map):
+            reason = getinput.get_enum_member(IgnoreReason, "Reason> ")
+            if not reason:
+                continue
+            IgnoredDoi.create(doi=doi, reason=reason)
 
 
 def run_shell() -> None:

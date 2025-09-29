@@ -10,6 +10,7 @@ __all__ = [
     "CitationGroupTag",
     "ClassificationEntry",
     "Collection",
+    "IgnoredDoi",
     "IssueDate",
     "Location",
     "Name",
@@ -41,6 +42,7 @@ from .citation_group import (
     CitationGroupTag as CitationGroupTag,
 )
 from .classification_entry import ClassificationEntry as ClassificationEntry
+from .ignored_doi import IgnoredDoi as IgnoredDoi
 from .issue_date import IssueDate as IssueDate
 from .name.name import (
     Name as Name,

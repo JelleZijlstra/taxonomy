@@ -381,3 +381,10 @@ CREATE TABLE `cached_data` (
     `data` blob
 );
 CREATE UNIQUE INDEX "cached_name" on "cached_data" (`name`);
+
+CREATE TABLE `ignored_doi` (
+    `id` integer primary key,
+    `doi` varchar(255) not null,
+    `reason` integer default null
+);
+CREATE UNIQUE INDEX "idx_doi" on "ignored_doi" (`doi`);
