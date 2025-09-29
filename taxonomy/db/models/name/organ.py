@@ -234,7 +234,7 @@ ToothCategory = Literal["i", "c", "p", "m", "di", "dc", "dp", "a", "if", "mf", "
 
 @dataclass(kw_only=True, frozen=True)
 class Tooth:
-    side: Literal["L", "R", None] = None
+    side: Literal["L", "R"] | None = None
     uncertain_category: bool = False
     category: ToothCategory
     is_upper: bool
@@ -882,12 +882,12 @@ def _parse_organ_base(text: str, organ: SpecimenOrgan) -> OrganBase:
 class ParsedOrgan:
     is_uncertain: bool = False
     count: OrganCount | None = None
-    side: Literal["L", "R", None] = None
-    anatomical_direction: Literal[
-        "proximal", "distal", "anterior", "posterior", None
-    ] = None
+    side: Literal["L", "R"] | None = None
+    anatomical_direction: (
+        Literal["proximal", "distal", "anterior", "posterior"] | None
+    ) = None
     base: OrganBase | None = None
-    part_text: Literal["part", "parts", None] = None
+    part_text: Literal["part", "parts"] | None = None
 
     def validate(self, organ: SpecimenOrgan) -> Iterable[str]:
         if self.count is not None:
