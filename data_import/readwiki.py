@@ -11,6 +11,7 @@ import wikitextparser
 from taxonomy import getinput
 from taxonomy.db import helpers
 from taxonomy.db.models import Article, CitationGroup
+from taxonomy.db.models.base import get_static_callbacks
 from taxonomy.shell import cg_recent_report
 
 CACHE_DIR = Path(__file__).parent / "wikicache"
@@ -173,6 +174,7 @@ def is_already_present(template: Template) -> bool:
 
 
 def process_article(*names: str, clear_caches: bool = False) -> None:
+    """Entry point."""
     if clear_caches:
         get_dois.cache_clear()
         get_titles.cache_clear()
@@ -231,7 +233,11 @@ def handle_template(template: Template) -> None:
     ]
     while True:
         command = getinput.get_with_completion(
-            options, message="> ", history_key="readwiki", disallow_other=True
+            options,
+            message="> ",
+            history_key="readwiki",
+            disallow_other=True,
+            callbacks=get_static_callbacks(),
         )
         if command in ("", "q", "quit"):
             return

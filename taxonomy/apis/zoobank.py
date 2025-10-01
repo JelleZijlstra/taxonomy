@@ -12,7 +12,13 @@ def clean_lsid(lsid: str) -> str:
     lsid = re.sub(r"\s+", "", lsid.lower())
     if lsid.startswith("urn:"):
         *_, lsid = lsid.split(":")
-    return lsid.upper().replace("Ø", "0").replace("\N{EN DASH}", "-")
+    return (
+        lsid.upper()
+        .replace("Ø", "0")
+        .replace("\N{EN DASH}", "-")
+        .replace("\N{MINUS SIGN}", "-")
+        .replace("\N{EM DASH}", "-")
+    )
 
 
 def is_valid_lsid(lsid: str) -> bool:

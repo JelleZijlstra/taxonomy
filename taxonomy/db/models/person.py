@@ -5,7 +5,7 @@ import enum
 import re
 import sys
 from collections import defaultdict
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Hashable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import IO, Any, ClassVar, Self
 
@@ -657,7 +657,9 @@ class Person(BaseModel):
         return cls.display_duplicates(by_key, autofix=autofix)
 
     @classmethod
-    def find_near_duplicates(cls, min_count: int = 20) -> list[list[Person]]:
+    def find_near_duplicates(
+        cls, *, min_count: int = 15, interactive: bool = False
+    ) -> list[list[Person]]:
         by_key: dict[str, list[Person]] = defaultdict(list)
         for person in cls.select_valid():
             key = helpers.simplify_string(
@@ -667,9 +669,15 @@ class Person(BaseModel):
         by_key = {
             key: persons
             for key, persons in by_key.items()
-            if sum(person.total_references() > 0 for person in persons) > 1
+            if sum(
+                person.total_references() > 0 and person.get_redirect_target() is None
+                for person in persons
+            )
+            > 1
         }
-        return cls.display_duplicates(by_key, min_count=min_count)
+        return cls.display_duplicates(
+            by_key, min_count=min_count, interactive=interactive
+        )
 
     @classmethod
     def display_duplicates(
@@ -678,6 +686,7 @@ class Person(BaseModel):
         *,
         autofix: bool = False,
         min_count: int = 0,
+        interactive: bool = False,
     ) -> list[list[Person]]:
         out = []
         for key, group in sorted(
@@ -690,9 +699,13 @@ class Person(BaseModel):
                 and sum(person.total_references() for person in group) < min_count
             ):
                 continue
+            if all(person.type is PersonType.checked for person in group):
+                continue
             getinput.print_header(key)
             for person in group:
                 print(person.total_references(), repr(person))
+            if interactive:
+                _dupe_fixer(key, group)
             if autofix:
                 cls.maybe_merge_group(group)
             out.append(group)
@@ -1278,3 +1291,34 @@ def get_initials(person: Person | VirtualPerson) -> str | None:
 
         return "".join(name_to_initial(name) for name in names)
     return None
+
+
+def _dupe_fixer(key_val: Hashable, persons: list[Person]) -> None:
+    for person in persons:
+        print(repr(person), person.num_references())
+        person.add_to_history(None)  # for merge()
+    name_to_person = {
+        person.get_description(url=True, family_first=True): person
+        for person in persons
+    }
+
+    def full_data() -> None:
+        for person in persons:
+            getinput.print_header(person)
+            person.full_data()
+
+    def display() -> None:
+        for person in persons:
+            person.display(full=True)
+
+    while True:
+        choice = getinput.get_with_completion(
+            [person.get_description(url=True, family_first=True) for person in persons],
+            history_key=key_val,
+            disallow_other=True,
+            callbacks={"full_data": full_data, "display": display},
+        )
+        if not choice:
+            break
+        if choice in name_to_person:
+            name_to_person[choice].edit()
