@@ -610,6 +610,8 @@ def check_doi(art: Article, cfg: LintConfig) -> Iterable[str]:
     if art.doi is None:
         return
     cleaned = urllib.parse.unquote(art.doi)
+    for prefix in ("https://doi.org/", "http://doi.org/", "doi:"):
+        cleaned = cleaned.removeprefix(prefix)
     yield from _maybe_clean(art, "doi", cleaned, cfg)
     if not is_valid_doi(art.doi):
         yield f"invalid doi {art.doi!r}"

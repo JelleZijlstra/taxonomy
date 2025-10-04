@@ -950,6 +950,9 @@ def clean_string(text: str, *, clean_whitespace: bool = True) -> str:
         text = text.replace("e\x18", "è")
     text = text.replace("+/-", "±")
     text = text.replace("''", '"')
+    if "<" in text:
+        text = text.replace("<scp>", "")
+        text = text.replace("</scp>", "")
     if "- " in text:
         text = text.replace(" :- ", ": \N{EN DASH} ")
         text = re.sub(r" -+(?= )", " \N{EN DASH}", text)

@@ -1045,6 +1045,17 @@ class DateSource(enum.IntEnum):
     decision = 7  # decision when there are conflicting tags
 
 
+class PhylogeneticDefinitionType(enum.IntEnum):
+    minimum_clade = 1  # ICPN Art. 9.5
+    maximum_clade = 2  # ICPN Art. 9.6
+    apomorphy = 3  # ICPN Art. 9.7
+    minimum_crown_clade = 4  # ICPN Art. 9.9
+    maximum_crown_clade = 5  # ICPN Art. 9.9
+    maximum_total_clade = 6  # ICPN Art. 9.10
+    pan_clade = 7  # ICPN Art. 10.3
+    other = 100  # ICPN Art. 9.4 says the list of possible definition types is not exhaustive
+
+
 class StringKind(enum.IntEnum):
     markdown = 1  # parsed as Markdown, supports {} references
     managed = 2  # short string in a fixed format

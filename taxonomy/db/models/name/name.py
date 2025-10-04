@@ -31,6 +31,7 @@ from taxonomy.db.constants import (
     NameDataLevel,
     NomenclatureStatus,
     OriginalCitationDataLevel,
+    PhylogeneticDefinitionType,
     Rank,
     RegionKind,
     SpeciesBasis,
@@ -3195,6 +3196,10 @@ class TypeTag(adt.ADT):
     OriginalTypification(  # type: ignore[name-defined]
         basis=SpeciesBasis, source=Article, comment=NotRequired[Markdown], tag=66
     )
+
+    PhylogeneticDefinition(type=PhylogeneticDefinitionType, source=Article, comment=NotRequired[Markdown], tag=67)  # type: ignore[name-defined]
+    InternalSpecifier(name=Name, comment=NotRequired[Markdown], tag=68)  # type: ignore[name-defined]
+    ExternalSpecifier(name=Name, comment=NotRequired[Markdown], tag=69)  # type: ignore[name-defined]
 
 
 SOURCE_TAGS = (

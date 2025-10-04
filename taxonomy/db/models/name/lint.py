@@ -43,6 +43,7 @@ from taxonomy.db.constants import (
     NamingConvention,
     NomenclatureStatus,
     OriginalCitationDataLevel,
+    PhylogeneticDefinitionType,
     Rank,
     RegionKind,
     SpeciesBasis,
@@ -710,6 +711,12 @@ def _check_all_type_tags(
                 else:
                     yield message
 
+        case TypeTag.DefinitionDetail():
+            # Phylonyms book PDF has "Tis" and "Te" for "This" and "The"
+            text = re.sub(r"\bT(?=e\b|is\b)", "Th", tag.text)
+            text = text.replace("defnition", "definition")
+            tag = TypeTag.DefinitionDetail(text, tag.source)
+
         case TypeTag.Coordinates():
             try:
                 lat, _ = helpers.standardize_coordinates(tag.latitude, is_latitude=True)
@@ -876,7 +883,306 @@ def _check_all_type_tags(
                         ):
                             yield f"has {tag.basis!r} OriginalTypification, but species_type_kind is {nam.species_type_kind!r}"
 
+        case TypeTag.PhyloCodeNumber():
+            if nam.group is Group.species:
+                yield "has PhyloCodeNumber tag but is a species-group name"
+            if TypeTag.DefinitionDetail not in by_type:
+                yield "has PhyloCodeNumber tag but no DefinitionDetail tag"
+            # TODO: check for PhylogeneticDefinitionType presence
+
+        case TypeTag.PhylogeneticDefinition():
+            # Note aspects of the PhyloCode we currently ignore:
+            # - subtleties about the definition of "crown" clades in the presence of extinction. We
+            #   just look at what's currently extant.
+            # - subtleties about the use of species names versus specimens as specifiers. We only
+            #   support species names.
+            if TypeTag.DefinitionDetail not in by_type:
+                yield "has PhylogeneticDefinition tag but no DefinitionDetail tag"
+            else:
+                matching_defns = [
+                    defn_tag
+                    for defn_tag in by_type[TypeTag.DefinitionDetail]
+                    if defn_tag.source == tag.source
+                ]
+                if len(matching_defns) == 0:
+                    yield f"has PhylogeneticDefinitionType tag but no DefinitionDetail tag with the same source ({tag.source})"
+                elif len(matching_defns) > 1:
+                    yield f"has PhylogeneticDefinitionType tag but multiple DefinitionDetail tags with the same source ({tag.source}): {matching_defns}"
+
+            internal_specifiers = [
+                tag.name for tag in by_type.get(TypeTag.InternalSpecifier, [])
+            ]
+            external_specifiers = [
+                tag.name for tag in by_type.get(TypeTag.ExternalSpecifier, [])
+            ]
+
+            if tag.type is not PhylogeneticDefinitionType.other:
+                if not internal_specifiers:
+                    yield f"has {tag.type.name} PhylogeneticDefinitionType tag but no InternalSpecifier tag"
+            if tag.type is PhylogeneticDefinitionType.maximum_clade:
+                if not external_specifiers:
+                    yield f"has {tag.type.name} PhylogeneticDefinitionType tag but no ExternalSpecifier tag"
+            if tag.type is PhylogeneticDefinitionType.pan_clade:
+                if len(internal_specifiers) != 1:
+                    yield f"has {tag.type.name} PhylogeneticDefinitionType tag but not exactly one InternalSpecifier tag"
+                elif external_specifiers:
+                    yield f"has {tag.type.name} PhylogeneticDefinitionType tag but also has ExternalSpecifier tag(s)"
+                else:
+                    referent = internal_specifiers[0]
+                    defn_type = referent.get_type_tag(PhylogeneticDefinitionType)
+                    if defn_type is None:
+                        yield f"has {tag.type.name} PhylogeneticDefinitionType tag but the internal specifier {referent} has no PhylogeneticDefinitionType tag"
+                    elif defn_type.type not in (
+                        PhylogeneticDefinitionType.minimum_crown_clade,
+                        PhylogeneticDefinitionType.maximum_crown_clade,
+                    ):
+                        yield f"has {tag.type.name} PhylogeneticDefinitionType tag but the internal specifier {referent} is not defined as a crown clade"
+
+            application = _check_phylogenetic_definition(
+                nam, tag.type, internal_specifiers, external_specifiers
+            )
+            effective_taxon = _get_effective_taxon(nam)
+            if application.is_applicable is False:
+                if nam.status is not Status.synonym:
+                    yield "has phylogenetic definition that does not apply, but is not a synonym"
+            if (
+                application.minimum_taxon is not None
+                and application.maximum_taxon is not None
+                and application.minimum_taxon == application.maximum_taxon
+            ):
+                if effective_taxon != application.minimum_taxon:
+                    yield f"should be applied to {application.minimum_taxon}, but is applied to {effective_taxon}"
+            elif application.minimum_taxon is not None:
+                if not application.minimum_taxon.is_child_of(effective_taxon):
+                    yield f"should be applied to a parent taxon of {application.minimum_taxon}, but is applied to {effective_taxon}"
+            elif application.maximum_taxon is not None:
+                if not effective_taxon.is_child_of(application.maximum_taxon):
+                    yield f"should be applied to a child taxon of {application.maximum_taxon}, but is applied to {effective_taxon}"
+
     return [*tags, tag]
+
+
+def _all_parents(nam: Name) -> Iterable[Taxon]:
+    yield from _iter_parents(nam.taxon)
+
+
+def _iter_parents(taxon: Taxon) -> Iterable[Taxon]:
+    seen: set[Taxon] = set()
+    while True:
+        yield taxon
+        seen.add(taxon)
+        if taxon.parent is None:
+            break
+        taxon = taxon.parent
+        if taxon in seen:
+            raise ValueError(f"cycle in taxon hierarchy involving {taxon}")
+
+
+def _get_effective_taxon(nam: Name) -> Taxon:
+    if nam.group is not Group.family or nam.original_rank is None:
+        return nam.taxon
+    try:
+        candidate = (
+            Taxon.select_valid()
+            .filter(Taxon.base_name == nam, Taxon.rank == nam.original_rank)
+            .get()
+        )
+    except Taxon.DoesNotExist:
+        return nam.taxon
+    else:
+        return candidate
+
+
+def _smallest_common_ancestor(nams: Sequence[Name]) -> Taxon:
+    if len(nams) < 1:
+        raise ValueError("need at least one name")
+    elif len(nams) == 1:
+        return nams[0].taxon
+    parent_lists = [list(_all_parents(nam)) for nam in nams]
+    if any(not parents for parents in parent_lists):
+        raise ValueError("one of the names has no taxon")
+    first, *rest = parent_lists
+    for common_ancestor in first:
+        if all(common_ancestor in parents for parents in rest):
+            return common_ancestor
+    raise ValueError("no common ancestor found")
+
+
+def _largest_excluding(taxon: Taxon, exclude: Sequence[Name]) -> Taxon | None:
+    if not exclude:
+        return taxon
+    parent_lists = [list(_all_parents(nam)) for nam in exclude]
+    prev: Taxon | None = None
+    for parent in _iter_parents(taxon):
+        if any(parent in parents for parents in parent_lists):
+            return prev
+        prev = parent
+    return prev
+
+
+@dataclass(frozen=True, kw_only=True)
+class DefinitionApplication:
+    is_applicable: bool | None
+    """If True, this name applies to a clade accepted in our classification. If False,
+    it does not (and should not be a valid taxon). If None, we cannot determine."""
+    minimum_taxon: Taxon | None
+    maximum_taxon: Taxon | None
+    """The name should be applied to a taxon that is at least minimum_taxon and at most
+    maximum_taxon. Either may be None if we cannot determine it."""
+
+
+def _get_maximum_clade(
+    internal_specifiers: Sequence[Name], external_specifiers: Sequence[Name]
+) -> tuple[bool, Taxon | None]:
+    ancestor = _smallest_common_ancestor(internal_specifiers)
+    parent_lists = [list(_all_parents(ext)) for ext in external_specifiers]
+    applicable = []
+    inapplicable = []
+    for ext, parent_list in zip(external_specifiers, parent_lists, strict=True):
+        if ancestor in parent_list:
+            inapplicable.append(ext)
+        else:
+            applicable.append(ext)
+    expected_taxon = _largest_excluding(ancestor, applicable)
+    return not inapplicable and expected_taxon is not None, expected_taxon
+
+
+def _check_phylogenetic_definition(
+    nam: Name,
+    defn_type: PhylogeneticDefinitionType,
+    internal_specifiers: list[Name],
+    external_specifiers: list[Name],
+) -> DefinitionApplication:
+    match defn_type:
+        case PhylogeneticDefinitionType.other:
+            return DefinitionApplication(
+                is_applicable=None, minimum_taxon=None, maximum_taxon=None
+            )  # cannot check
+        case PhylogeneticDefinitionType.apomorphy:
+            ancestor = _smallest_common_ancestor(internal_specifiers)
+            if any(ancestor in _all_parents(ext) for ext in external_specifiers):
+                return DefinitionApplication(
+                    is_applicable=False, minimum_taxon=ancestor, maximum_taxon=None
+                )
+            else:
+                # We only know it's definitely applicable if there is only one internal specifier and
+                # no external specifiers. Otherwise, the apomorphy might not be homologous in the internal
+                # specifiers, or might predate the external specifier.
+                is_applicable = (
+                    len(internal_specifiers) == 1 and not external_specifiers
+                )
+                if external_specifiers:
+                    maximum_taxon = _largest_excluding(ancestor, external_specifiers)
+                else:
+                    maximum_taxon = None
+                return DefinitionApplication(
+                    is_applicable=is_applicable,
+                    minimum_taxon=ancestor,
+                    maximum_taxon=maximum_taxon,
+                )
+        case PhylogeneticDefinitionType.minimum_clade:
+            ancestor = _smallest_common_ancestor(internal_specifiers)
+            if any(ancestor in _all_parents(ext) for ext in external_specifiers):
+                return DefinitionApplication(
+                    is_applicable=False, minimum_taxon=ancestor, maximum_taxon=ancestor
+                )
+            else:
+                return DefinitionApplication(
+                    is_applicable=True, minimum_taxon=ancestor, maximum_taxon=ancestor
+                )
+        case PhylogeneticDefinitionType.maximum_clade:
+            is_applicable, expected_taxon = _get_maximum_clade(
+                internal_specifiers, external_specifiers
+            )
+            return DefinitionApplication(
+                is_applicable=is_applicable,
+                minimum_taxon=expected_taxon,
+                maximum_taxon=expected_taxon,
+            )
+        case PhylogeneticDefinitionType.minimum_crown_clade:
+            # Not clear how these are different from standard minimum-clade definitions.
+            # Note that Ungulata has two extinct specifiers (Bos primigenius and Equus ferus).
+            return _check_phylogenetic_definition(
+                nam,
+                PhylogeneticDefinitionType.minimum_clade,
+                internal_specifiers,
+                external_specifiers,
+            )
+        case PhylogeneticDefinitionType.maximum_crown_clade:
+            is_applicable, expected_taxon = _get_maximum_clade(
+                internal_specifiers, external_specifiers
+            )
+            # We want the largest crown clade, i.e., the largest one that contains multiple extant children.
+            if expected_taxon is None or expected_taxon.age is not AgeClass.extant:
+                return DefinitionApplication(
+                    is_applicable=False,
+                    minimum_taxon=expected_taxon,
+                    maximum_taxon=expected_taxon,
+                )
+            while expected_taxon is not None:
+                children = [
+                    child
+                    for child in expected_taxon.get_children()
+                    if child.age is AgeClass.extant
+                ]
+                if len(children) >= 2:
+                    break
+                if len(children) == 0:
+                    # Shouldn't happen.
+                    return DefinitionApplication(
+                        is_applicable=None, minimum_taxon=None, maximum_taxon=None
+                    )
+                expected_taxon = children[0]
+            return DefinitionApplication(
+                is_applicable=is_applicable,
+                minimum_taxon=expected_taxon,
+                maximum_taxon=expected_taxon,
+            )
+        case PhylogeneticDefinitionType.maximum_total_clade:
+            # This type is used for Amphibia in Phylonyms, and it's not clear to me how the
+            # definition is different from a normal maximum-clade definition.
+            return _check_phylogenetic_definition(
+                nam,
+                PhylogeneticDefinitionType.maximum_clade,
+                internal_specifiers,
+                external_specifiers,
+            )
+        case PhylogeneticDefinitionType.pan_clade:
+            # We start with the internal specifier, and then go up until we reach a taxon with
+            # more than one extant child.
+            if not internal_specifiers:
+                return DefinitionApplication(
+                    is_applicable=None, minimum_taxon=None, maximum_taxon=None
+                )
+            taxon = internal_specifiers[0].taxon
+            while True:
+                if taxon.age is not AgeClass.extant:
+                    return DefinitionApplication(
+                        is_applicable=False, minimum_taxon=None, maximum_taxon=None
+                    )
+                parent = taxon.parent
+                if parent is None:
+                    return DefinitionApplication(
+                        is_applicable=None, minimum_taxon=None, maximum_taxon=None
+                    )
+                children = [
+                    child
+                    for child in parent.get_children()
+                    if child.age is AgeClass.extant
+                ]
+                if len(children) >= 2:
+                    break
+                if len(children) == 0:
+                    return DefinitionApplication(
+                        is_applicable=False, minimum_taxon=None, maximum_taxon=None
+                    )
+                taxon = parent
+            return DefinitionApplication(
+                is_applicable=True, minimum_taxon=taxon, maximum_taxon=taxon
+            )
+        case _:
+            assert_never(defn_type)
+    raise NotImplementedError(f"checking for {defn_type} not implemented")
 
 
 def _get_original_typification(nam: Name) -> SpeciesBasis | None:
@@ -2357,7 +2663,8 @@ def _make_con_messsage(nam: Name, text: str) -> str:
 
 
 CON_REGEX = re.compile(r"^[A-Z][a-z]+( [a-z]+){0,3}$")
-CON_HIGH_REGEX = re.compile(r"^[A-Z][a-z]+$")
+CON_GENUS_FAMILY_REGEX = re.compile(r"^[A-Z][a-z]+$")
+CON_HIGH_REGEX = re.compile(r"^(Pan-|Apo-|Zoo-)?[A-Z][a-z]+$")
 
 
 @LINT.add("corrected_original_name")
@@ -2380,8 +2687,10 @@ def check_corrected_original_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
         )
     if nam.group is Group.species:
         con_regex = CON_REGEX
-    else:
+    elif nam.group is Group.high:
         con_regex = CON_HIGH_REGEX
+    else:
+        con_regex = CON_GENUS_FAMILY_REGEX
     if not con_regex.fullmatch(nam.corrected_original_name):
         yield _make_con_messsage(nam, "contains unexpected characters")
         return
@@ -2430,14 +2739,20 @@ def check_root_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
     """Check that root_names are correct."""
     if nam.nomenclature_status.permissive_corrected_original_name():
         return
-    if nam.group in (Group.high, Group.genus, Group.family):
-        if not re.match(r"^[A-Z][a-z]+$", nam.root_name):
-            yield _make_rn_message(nam, "contains unexpected characters")
-    if nam.group is Group.species:
-        if not re.match(r"^[a-z]+$", nam.root_name):
-            yield _make_rn_message(nam, "contains unexpected characters")
-            return
-        yield from _check_species_name_gender(nam, cfg)
+    match nam.group:
+        case Group.high:
+            if not re.match(CON_HIGH_REGEX, nam.root_name):
+                yield _make_rn_message(nam, "contains unexpected characters")
+        case Group.genus | Group.family:
+            if not re.match(CON_GENUS_FAMILY_REGEX, nam.root_name):
+                yield _make_rn_message(nam, "contains unexpected characters")
+        case Group.species:
+            if not re.match(r"^[a-z]+$", nam.root_name):
+                yield _make_rn_message(nam, "contains unexpected characters")
+                return
+            yield from _check_species_name_gender(nam, cfg)
+        case _:
+            assert_never(nam.group)
 
 
 def _check_rn_matches_original(

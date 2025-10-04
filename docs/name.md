@@ -596,6 +596,11 @@ names should have at least one. They fall into several groups:
     (e.g., a tissue sample).
   - _FutureRepository_: A repository that is expected to store the type material in the
     future.
+  - _OriginalTypification_: Whether a type specimen was designated in the original
+    publication, explicitly or implicitly.
+  - _AdditionalTypeSpecimen_: Information about additional specimens that have type
+    status but not name-bearing type status (e.g., paralectotypes and paratypes), or
+    about specimens that have incorrectly been identified as types in the literature.
 - Nomenclatural actions
   - _TypeDesignation_: The designation of the type species of a genus-group name.
     Includes references to the source and to the designated type species.
@@ -607,6 +612,16 @@ names should have at least one. They fall into several groups:
     name.
   - _PendingRejection_: The name should likely be rejected in the future (e.g., as a
     nomen oblitum, or through action by the Commission), but this has not been done.
+- Related to phylogenetic definitions
+  - _PhyloCodeNumber_: The number assigned to the name under the PhyloCode. The database
+    does not currently aim for full compliance with the PhyloCode, but does include
+    information relevant to that code.
+  - _PhylogeneticDefinitionType_: The kind of phylogenetic definition given to this name
+    under the PhyloCode.
+  - _InternalSpecifier_: Reference to a name that must be part of the taxon according to
+    its definition.
+  - _ExternalSpecifier_: Reference to a name that must not be part of the taxon
+    according to its definition.
 - Miscellaneous fields
   - _NamedAfter_: Reference to the [person](/docs/person) this name was named after.
     This field was added recently, so it is not yet used in all cases where it should be
@@ -621,9 +636,6 @@ names should have at least one. They fall into several groups:
   - _LSIDName_: Life Science Identifier (LSID) for the name.
   - _AuthorityPageLink_: Link to an online resource (usually the Biodiversity Heritage
     Library) that provides access to the page where the name was originally introduced.
-  - _PhyloCodeNumber_: The number assigned to the name under the PhyloCode. The database
-    does not aim for compliance with the PhyloCode, but does aim to include information
-    relevant to that code.
   - _TextualOriginalRank_: For names that were originally published at an unusual rank,
     the name of that rank as it appeared in the original publication.
   - _PartialTaxon_: For composite names, a reference to one of the taxa that the name is

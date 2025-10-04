@@ -72,6 +72,12 @@ class Template:
             in_table,
         )
 
+    def get_journal(self) -> str | None:
+        journal = self.args.get("journal")
+        if not journal:
+            return None
+        return journal.strip("[]")  # sometimes it's hyperlinked
+
 
 def get_text(name: str, language: str = "en") -> str:
     name = name.replace(" ", "_")
@@ -182,7 +188,7 @@ def process_article(*names: str, clear_caches: bool = False) -> None:
     for template in sorted(
         templates,
         key=lambda template: (
-            template.args.get("journal", ""),
+            template.get_journal() or "",
             template.args.get("author1", ""),
             template.args.get("title", ""),
         ),
@@ -198,12 +204,10 @@ def process_article(*names: str, clear_caches: bool = False) -> None:
 
 def run_cg_recent_report(template: Template) -> None:
     cg = None
-    if "journal" in template.args:
+    if journal := template.get_journal():
         try:
             cg = (
-                CitationGroup.select_valid()
-                .filter(CitationGroup.name == template.args["journal"])
-                .get()
+                CitationGroup.select_valid().filter(CitationGroup.name == journal).get()
             )
         except CitationGroup.DoesNotExist:
             pass
@@ -212,8 +216,8 @@ def run_cg_recent_report(template: Template) -> None:
 
 def handle_template(template: Template) -> None:
     print(template, flush=True)
-    if "journal" in template.args:
-        print("Journal:", template.args["journal"])
+    if journal := template.get_journal():
+        print("Journal:", journal)
     options = [
         "",
         "q",
