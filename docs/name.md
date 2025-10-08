@@ -644,6 +644,9 @@ names should have at least one. They fall into several groups:
     specimen.
   - _VerbatimName_: Occasionally used to hold the verbatim version of the original name
     (i.e., with references not expanded).
+  - _TreatAsEquivalentTo_: For obsolete high-ranked names, indicate that they should be
+    treated as objective synonyms of another name. This is used, for example, to ensure
+    that we put names like "Sphenodontia" and "Sphenodonti" as synonyms.
 
 ## Miscellaneous data
 
@@ -802,3 +805,36 @@ Emendations under Arts. 32.5.2 (removal of diacritics and other marks) and 32.5.
 database will usually make these corrections silently. If desired, a name with status
 `justified_emendation` can be entered with as its authority the first author to use the
 corrected name.
+
+## Allocation of non-regulated names
+
+Through the Principle of Typification, the Code provides an objective way to decide on
+the allocation of family-group, genus-group, and species-group names to taxa. However,
+the Code does not regulate names above the family group (the "high group" in this
+database's terminology). Most names that are currently treated as valid, especially for
+extant taxa, have an uncontroversial allocation, but it is not always obvious how to
+allocate long-forgotten synonyms, and the exact contents of fossil taxa are more often
+controversial.
+
+To allocate such names to taxa, we use the following approaches:
+
+- Formal definitions, as regulated by the [PhyloCode](http://phylonames.org/code/). Such
+  definitions specify exactly where on a phylogenetic tree each name should be placed,
+  providing a fixed allocation of the name. Some names are formally defined according to
+  the PhyloCode (which only became active in 2020); in many other cases, authors over
+  the last few decades have proposed informal definitions. The database attempts to
+  allocate names according to their PhyloCode-compliant definitions if any exist, and
+  also attempts to follow pre-PhyloCode definitions where available. In some cases,
+  however, different authors have proposed conflicting definitions, and I use my
+  judgment to pick the most appropriate definition.
+- Tradition. Especially for names currently or recently treated as valid, the contents
+  of the taxon are uncontroversial and I follow the traditional conception of the taxon.
+- Smallest enclosing taxon. For the allocation of obsolete synonyms, the general
+  principle is to find the smallest currently valid taxon that encompasses the modern
+  equivalent of all direct child taxa of the original definition of the name.
+- Anchoring to a similar name. If a name is essentially a spelling variation of another,
+  better known name, it makes sense to treat it as a synonym of that name, even if the
+  principle of the smallest enclosing taxon would suggest a different allocation. For
+  example, we place names like "Chiropteria" as synonyms of Chiroptera, even if the
+  original conception may have included some taxa (such as colugos) that are currently
+  excluded from Chiroptera.

@@ -147,6 +147,9 @@ UNIQUE_TAGS = (
     TypeTag.DifferentAuthority,
     TypeTag.TextualOriginalRank,
     TypeTag.GenusCoelebs,
+    TypeTag.TreatAsEquivalentTo,
+    TypeTag.PhyloCodeNumber,
+    TypeTag.PhylogeneticDefinition,
 )
 ORGAN_REPLACEMENTS = [
     (r"^both$", r"L, R"),
@@ -888,7 +891,8 @@ def _check_all_type_tags(
                 yield "has PhyloCodeNumber tag but is a species-group name"
             if TypeTag.DefinitionDetail not in by_type:
                 yield "has PhyloCodeNumber tag but no DefinitionDetail tag"
-            # TODO: check for PhylogeneticDefinitionType presence
+            if TypeTag.PhylogeneticDefinition not in by_type:
+                yield "has PhyloCodeNumber tag but no PhylogeneticDefinition tag"
 
         case TypeTag.PhylogeneticDefinition():
             # Note aspects of the PhyloCode we currently ignore:
@@ -959,7 +963,30 @@ def _check_all_type_tags(
                 if not effective_taxon.is_child_of(application.maximum_taxon):
                     yield f"should be applied to a child taxon of {application.maximum_taxon}, but is applied to {effective_taxon}"
 
+        case TypeTag.InternalSpecifier() | TypeTag.ExternalSpecifier():
+            if TypeTag.PhylogeneticDefinition not in by_type:
+                yield f"has {type(tag).__name__} tag but no PhylogeneticDefinition tag"
+
+        case TypeTag.TreatAsEquivalentTo():
+            if not _is_high_or_invalid_family(nam):
+                yield "has TreatAsEquivalentTo tag but is not a high-level or invalid family-group name"
+
     return [*tags, tag]
+
+
+def _is_high_or_invalid_family(nam: Name) -> bool:
+    match nam.group:
+        case Group.high:
+            return True
+        case Group.family:
+            return (
+                nam.nomenclature_status
+                is NomenclatureStatus.not_based_on_a_generic_name
+            )
+        case Group.genus | Group.species:
+            return False
+        case _:
+            assert_never(nam.group)
 
 
 def _all_parents(nam: Name) -> Iterable[Taxon]:
@@ -981,10 +1008,11 @@ def _iter_parents(taxon: Taxon) -> Iterable[Taxon]:
 def _get_effective_taxon(nam: Name) -> Taxon:
     if nam.group is not Group.family or nam.original_rank is None:
         return nam.taxon
+    resolved_nam = nam.resolve_variant()
     try:
         candidate = (
             Taxon.select_valid()
-            .filter(Taxon.base_name == nam, Taxon.rank == nam.original_rank)
+            .filter(Taxon.base_name == resolved_nam, Taxon.rank == nam.original_rank)
             .get()
         )
     except Taxon.DoesNotExist:
@@ -997,7 +1025,7 @@ def _smallest_common_ancestor(nams: Sequence[Name]) -> Taxon:
     if len(nams) < 1:
         raise ValueError("need at least one name")
     elif len(nams) == 1:
-        return nams[0].taxon
+        return _get_effective_taxon(nams[0])
     parent_lists = [list(_all_parents(nam)) for nam in nams]
     if any(not parents for parents in parent_lists):
         raise ValueError("one of the names has no taxon")
@@ -1289,6 +1317,54 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
             getinput.print_diff(sorted(original_tags), tags)
         if cfg.autofix:
             nam.type_tags = tags  # type: ignore[assignment]
+
+
+def _smallest_high_group_ancestors(taxon: Taxon) -> Iterable[Taxon]:
+    for ancestor in _iter_parents(taxon):
+        if taxon != ancestor:
+            yield ancestor
+        if ancestor.base_name.group is Group.high:
+            return
+    raise ValueError(f"{taxon} has no high-group ancestor")
+
+
+@LINT.add("allocation")
+def check_allocation(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    tag = nam.get_type_tag(TypeTag.TreatAsEquivalentTo)
+    if tag is not None:
+        if nam.taxon != tag.name.taxon:
+            yield f"should be applied to {tag.name.taxon}, not {nam.taxon} (TreatAsEquivalentTo tag)"
+        return
+    if not _is_high_or_invalid_family(nam):
+        return
+    if (
+        nam.nomenclature_status is NomenclatureStatus.incorrect_subsequent_spelling
+        or nam.nomenclature_status is NomenclatureStatus.nomen_novum
+    ):
+        return
+    ce = nam.get_mapped_classification_entry()
+    if ce is None:
+        return
+    if nam.has_type_tag(TypeTag.PhylogeneticDefinition):
+        return
+    children = list(ce.get_children())
+    if not children:
+        return
+    child_names = [
+        child.mapped_name for child in children if child.mapped_name is not None
+    ]
+    if not child_names:
+        return
+    ancestor = _smallest_common_ancestor(child_names)
+    allowed_taxa = [ancestor]
+    if ancestor.base_name.group is not Group.high:
+        allowed_taxa.extend(_smallest_high_group_ancestors(ancestor))
+    if nam.taxon not in allowed_taxa:
+        if len(allowed_taxa) == 1:
+            allowed = str(allowed_taxa[0])
+        else:
+            allowed = " or ".join(str(taxon) for taxon in allowed_taxa)
+        yield f"should be applied to {allowed}, not {nam.taxon} (based on allocation of child names {child_names})"
 
 
 def check_page_link(

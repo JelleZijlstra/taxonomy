@@ -616,6 +616,9 @@ def get_adt_list(
                         callbacks=member_callbacks.get(type(existing_member), {}),  # type: ignore[arg-type]
                     )
         elif member in ("r", "remove_all"):
+            if get_existing is not None:
+                for tag in get_existing():
+                    print(tag)
             if yes_no("Are you sure you want to remove all tags? "):
                 out[:] = []
         elif member.startswith("r") and member[1:].isnumeric():

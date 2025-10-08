@@ -3154,6 +3154,25 @@ def download_dois() -> None:
             IgnoredDoi.create(doi=doi, reason=reason)
 
 
+def _get_names_ignoring_lint(label: str) -> Iterable[Name]:
+    for nam in Name.select_valid().filter(Name.type_tags != None):
+        if nam.has_lint_ignore(label):
+            yield nam
+
+
+@command
+def edit_ignore_lint_names() -> None:
+    label = getinput.get_line("label> ")
+    if label is None:
+        return
+    for nam in getinput.print_every_n(
+        _get_names_ignoring_lint(label), label="names", n=10
+    ):
+        nam.display()
+        nam.edit()
+        nam.edit_until_clean()
+
+
 def run_shell() -> None:
     # GC does bad things on my current setup for some reason
     gc.disable()

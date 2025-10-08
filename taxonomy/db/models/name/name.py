@@ -3200,6 +3200,7 @@ class TypeTag(adt.ADT):
     PhylogeneticDefinition(type=PhylogeneticDefinitionType, source=Article, comment=NotRequired[Markdown], tag=67)  # type: ignore[name-defined]
     InternalSpecifier(name=Name, comment=NotRequired[Markdown], tag=68)  # type: ignore[name-defined]
     ExternalSpecifier(name=Name, comment=NotRequired[Markdown], tag=69)  # type: ignore[name-defined]
+    TreatAsEquivalentTo(name=Name, tag=70)  # type: ignore[name-defined]
 
 
 SOURCE_TAGS = (
