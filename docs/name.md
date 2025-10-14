@@ -622,6 +622,13 @@ names should have at least one. They fall into several groups:
     its definition.
   - _ExternalSpecifier_: Reference to a name that must not be part of the taxon
     according to its definition.
+  - _MustNotInclude_: Used for definitions with conditions. The name is invalid if this
+    specifier falls within its definition.
+  - _MustBePartOf_: A conditional definition is valid only if the name falls within this
+    other clade (or one of several other clades, if there are multiple of this tag).
+  - _MustNotBePartOf_: A conditional definition is valid only if the name does not fall
+    within this clade.
+  - _MustBeExtinct_: A conditional definition is valid only if the clade is extinct.
 - Miscellaneous fields
   - _NamedAfter_: Reference to the [person](/docs/person) this name was named after.
     This field was added recently, so it is not yet used in all cases where it should be

@@ -909,9 +909,9 @@ def _check_all_type_tags(
                     if defn_tag.source == tag.source
                 ]
                 if len(matching_defns) == 0:
-                    yield f"has PhylogeneticDefinitionType tag but no DefinitionDetail tag with the same source ({tag.source})"
+                    yield f"has PhylogeneticDefinition tag but no DefinitionDetail tag with the same source ({tag.source})"
                 elif len(matching_defns) > 1:
-                    yield f"has PhylogeneticDefinitionType tag but multiple DefinitionDetail tags with the same source ({tag.source}): {matching_defns}"
+                    yield f"has PhylogeneticDefinition tag but multiple DefinitionDetail tags with the same source ({tag.source}): {matching_defns}"
 
             internal_specifiers = [
                 tag.name for tag in by_type.get(TypeTag.InternalSpecifier, [])
@@ -922,28 +922,41 @@ def _check_all_type_tags(
 
             if tag.type is not PhylogeneticDefinitionType.other:
                 if not internal_specifiers:
-                    yield f"has {tag.type.name} PhylogeneticDefinitionType tag but no InternalSpecifier tag"
+                    yield f"has {tag.type.name} PhylogeneticDefinition tag but no InternalSpecifier tag"
             if tag.type is PhylogeneticDefinitionType.maximum_clade:
-                if not external_specifiers:
-                    yield f"has {tag.type.name} PhylogeneticDefinitionType tag but no ExternalSpecifier tag"
+                if not external_specifiers and TypeTag.MustBeExtinct not in by_type:
+                    yield f"has {tag.type.name} PhylogeneticDefinition tag but no ExternalSpecifier tag"
             if tag.type is PhylogeneticDefinitionType.pan_clade:
                 if len(internal_specifiers) != 1:
-                    yield f"has {tag.type.name} PhylogeneticDefinitionType tag but not exactly one InternalSpecifier tag"
+                    yield f"has {tag.type.name} PhylogeneticDefinition tag but not exactly one InternalSpecifier tag"
                 elif external_specifiers:
-                    yield f"has {tag.type.name} PhylogeneticDefinitionType tag but also has ExternalSpecifier tag(s)"
+                    yield f"has {tag.type.name} PhylogeneticDefinition tag but also has ExternalSpecifier tag(s)"
                 else:
                     referent = internal_specifiers[0]
-                    defn_type = referent.get_type_tag(PhylogeneticDefinitionType)
+                    defn_type = referent.get_type_tag(TypeTag.PhylogeneticDefinition)
                     if defn_type is None:
-                        yield f"has {tag.type.name} PhylogeneticDefinitionType tag but the internal specifier {referent} has no PhylogeneticDefinitionType tag"
+                        yield f"has {tag.type.name} PhylogeneticDefinition tag but the internal specifier {referent} has no PhylogeneticDefinition tag"
                     elif defn_type.type not in (
                         PhylogeneticDefinitionType.minimum_crown_clade,
                         PhylogeneticDefinitionType.maximum_crown_clade,
                     ):
-                        yield f"has {tag.type.name} PhylogeneticDefinitionType tag but the internal specifier {referent} is not defined as a crown clade"
+                        yield f"has {tag.type.name} PhylogeneticDefinition tag but the internal specifier {referent} is not defined as a crown clade"
 
             application = _check_phylogenetic_definition(
-                nam, tag.type, internal_specifiers, external_specifiers
+                nam,
+                tag.type,
+                internal_specifiers,
+                external_specifiers,
+                must_not_include=[
+                    tag.name for tag in by_type.get(TypeTag.MustNotInclude, [])
+                ],
+                must_be_part_of=[
+                    tag.name for tag in by_type.get(TypeTag.MustBePartOf, [])
+                ],
+                must_not_be_part_of=[
+                    tag.name for tag in by_type.get(TypeTag.MustNotBePartOf, [])
+                ],
+                must_be_extinct=bool(by_type.get(TypeTag.MustBeExtinct, [])),
             )
             effective_taxon = _get_effective_taxon(nam)
             if application.is_applicable is False:
@@ -1021,6 +1034,9 @@ def _get_effective_taxon(nam: Name) -> Taxon:
         return candidate
 
 
+EXCLUDED_TAXA = [6, 12]  # Nonorganic  # Legendary
+
+
 def _smallest_common_ancestor(nams: Sequence[Name]) -> Taxon:
     if len(nams) < 1:
         raise ValueError("need at least one name")
@@ -1029,6 +1045,17 @@ def _smallest_common_ancestor(nams: Sequence[Name]) -> Taxon:
     parent_lists = [list(_all_parents(nam)) for nam in nams]
     if any(not parents for parents in parent_lists):
         raise ValueError("one of the names has no taxon")
+
+    # If any of the taxa are not real, use the real ones
+    non_excluded_lists = [
+        parent_list
+        for parent_list in parent_lists
+        if not any(t.id in EXCLUDED_TAXA for t in parent_list)
+    ]
+    if non_excluded_lists:
+        parent_lists = non_excluded_lists
+    if len(parent_lists) == 1:
+        return parent_lists[0][0]
     first, *rest = parent_lists
     for common_ancestor in first:
         if all(common_ancestor in parents for parents in rest):
@@ -1076,6 +1103,103 @@ def _get_maximum_clade(
 
 
 def _check_phylogenetic_definition(
+    nam: Name,
+    defn_type: PhylogeneticDefinitionType,
+    internal_specifiers: list[Name],
+    external_specifiers: list[Name],
+    *,
+    must_not_include: list[Name],
+    must_be_part_of: list[Name],
+    must_not_be_part_of: list[Name],
+    must_be_extinct: bool,
+) -> DefinitionApplication:
+    result = _check_phylogenetic_definition_inner(
+        nam, defn_type, internal_specifiers, external_specifiers
+    )
+    if (
+        not must_not_include
+        and not must_be_part_of
+        and not must_not_be_part_of
+        and not must_be_extinct
+    ):
+        # Simple case: no conditions
+        return result
+    if result.minimum_taxon is None and result.maximum_taxon is None:
+        # Can't narrow it down if we have no idea where to put the name
+        return result
+    if result.minimum_taxon is None:
+        # This shouldn't happen but also makes it impossible to narrow
+        return result
+
+    if _is_applicable(
+        result.minimum_taxon,
+        must_not_include=must_not_include,
+        must_be_part_of=must_be_part_of,
+        must_not_be_part_of=must_not_be_part_of,
+        must_be_extinct=must_be_extinct,
+    ):
+        new_minimum_taxon = result.minimum_taxon
+    else:
+        for parent in _iter_parents(result.minimum_taxon):
+            if _is_applicable(
+                parent,
+                must_not_include=must_not_include,
+                must_be_part_of=must_be_part_of,
+                must_not_be_part_of=must_not_be_part_of,
+                must_be_extinct=must_be_extinct,
+            ):
+                new_minimum_taxon = parent
+                break
+        else:
+            return DefinitionApplication(
+                is_applicable=False,
+                minimum_taxon=result.minimum_taxon,
+                maximum_taxon=result.maximum_taxon,
+            )
+    new_maximum_taxon = result.maximum_taxon
+    last_seen = new_minimum_taxon
+    for parent in _iter_parents(new_minimum_taxon):
+        if not _is_applicable(
+            parent,
+            must_not_include=must_not_include,
+            must_be_part_of=must_be_part_of,
+            must_not_be_part_of=must_not_be_part_of,
+            must_be_extinct=must_be_extinct,
+        ):
+            new_maximum_taxon = last_seen
+            break
+        last_seen = parent
+    return DefinitionApplication(
+        is_applicable=result.is_applicable,
+        minimum_taxon=new_minimum_taxon,
+        maximum_taxon=new_maximum_taxon,
+    )
+
+
+def _is_applicable(
+    taxon: Taxon,
+    *,
+    must_not_include: list[Name],
+    must_be_part_of: list[Name],
+    must_not_be_part_of: list[Name],
+    must_be_extinct: bool,
+) -> bool:
+    for mni in must_not_include:
+        if taxon in _iter_parents(_get_effective_taxon(mni)):
+            return False
+    parents = list(_iter_parents(taxon))
+    for mbp in must_be_part_of:
+        if _get_effective_taxon(mbp) not in parents:
+            return False
+    for mnbp in must_not_be_part_of:
+        if _get_effective_taxon(mnbp) in parents:
+            return False
+    if must_be_extinct and taxon.age is AgeClass.extant:
+        return False
+    return True
+
+
+def _check_phylogenetic_definition_inner(
     nam: Name,
     defn_type: PhylogeneticDefinitionType,
     internal_specifiers: list[Name],
@@ -1130,7 +1254,7 @@ def _check_phylogenetic_definition(
         case PhylogeneticDefinitionType.minimum_crown_clade:
             # Not clear how these are different from standard minimum-clade definitions.
             # Note that Ungulata has two extinct specifiers (Bos primigenius and Equus ferus).
-            return _check_phylogenetic_definition(
+            return _check_phylogenetic_definition_inner(
                 nam,
                 PhylogeneticDefinitionType.minimum_clade,
                 internal_specifiers,
@@ -1148,12 +1272,13 @@ def _check_phylogenetic_definition(
                     maximum_taxon=expected_taxon,
                 )
             while expected_taxon is not None:
+                all_children = list(expected_taxon.get_children())
                 children = [
-                    child
-                    for child in expected_taxon.get_children()
-                    if child.age is AgeClass.extant
+                    child for child in all_children if child.age is AgeClass.extant
                 ]
-                if len(children) >= 2:
+                if len(children) >= 2 or (
+                    len(children) == 1 and len(all_children) == 1
+                ):
                     break
                 if len(children) == 0:
                     # Shouldn't happen.
@@ -1169,7 +1294,7 @@ def _check_phylogenetic_definition(
         case PhylogeneticDefinitionType.maximum_total_clade:
             # This type is used for Amphibia in Phylonyms, and it's not clear to me how the
             # definition is different from a normal maximum-clade definition.
-            return _check_phylogenetic_definition(
+            return _check_phylogenetic_definition_inner(
                 nam,
                 PhylogeneticDefinitionType.maximum_clade,
                 internal_specifiers,
@@ -1182,7 +1307,7 @@ def _check_phylogenetic_definition(
                 return DefinitionApplication(
                     is_applicable=None, minimum_taxon=None, maximum_taxon=None
                 )
-            taxon = internal_specifiers[0].taxon
+            taxon = _get_effective_taxon(internal_specifiers[0])
             while True:
                 if taxon.age is not AgeClass.extant:
                     return DefinitionApplication(
@@ -6322,6 +6447,12 @@ def remove_redundant_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
         for tag in nam.tags
     ):
         yield f"cannot remove redundant name {nam} because {cannot_replace_reason}"
+    elif (
+        not has_ces
+        and nam.original_citation is not None
+        and any(nam.original_citation.get_classification_entries())
+    ):
+        yield "subsequent usage has no classification entries, but article has some"
 
 
 def has_classification(art: Article) -> bool:
@@ -6360,6 +6491,9 @@ def can_transform(input: T, output: T, transforms: Sequence[Callable[[T], T]]) -
 
 _ALLOWED_TRANSFORMS: list[Callable[[str], str]] = [
     lambda s: s.replace("æ", "ae"),
+    lambda s: s.replace("œ", "oe"),
+    lambda s: s.replace("Æ", "Ae"),
+    lambda s: s.replace("Œ", "Oe"),
     # Ab Cd -> Ab cd
     lambda s: re.sub(
         r"^([A-Z]+[a-z]+) ([A-Z]+[a-z]+)$",
@@ -6488,6 +6622,14 @@ def _check_matching_original_parent(
         == nam.original_parent
     ):
         return
+
+    # Ignore cases where the CE doesn't use the right name combination for the genus
+    if ce_parent is not None:
+        genus_name = ce_parent.get_corrected_name()
+        species_name = ce.get_corrected_name()
+        if genus_name is not None and species_name is not None:
+            if genus_name != species_name.split()[0]:
+                return
     yield f"mapped to {ce}, but {ce_parent.mapped_name=} (mapped from {ce_parent}) != {nam.original_parent=}"
 
 

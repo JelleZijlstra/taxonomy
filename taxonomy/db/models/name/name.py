@@ -3201,6 +3201,10 @@ class TypeTag(adt.ADT):
     InternalSpecifier(name=Name, comment=NotRequired[Markdown], tag=68)  # type: ignore[name-defined]
     ExternalSpecifier(name=Name, comment=NotRequired[Markdown], tag=69)  # type: ignore[name-defined]
     TreatAsEquivalentTo(name=Name, tag=70)  # type: ignore[name-defined]
+    MustNotInclude(name=Name, comment=NotRequired[Markdown], tag=71)  # type: ignore[name-defined]
+    MustBePartOf(name=Name, comment=NotRequired[Markdown], tag=72)  # type: ignore[name-defined]
+    MustNotBePartOf(name=Name, comment=NotRequired[Markdown], tag=73)  # type: ignore[name-defined]
+    MustBeExtinct(comment=NotRequired[Markdown], tag=74)  # type: ignore[name-defined]
 
 
 SOURCE_TAGS = (
