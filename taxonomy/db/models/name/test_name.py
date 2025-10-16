@@ -43,7 +43,6 @@ EXCLUDED = {
     "type_tags",
     "tags",
     "target",
-    "_definition",
 }
 
 

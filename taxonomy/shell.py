@@ -49,7 +49,7 @@ from taxonomy.db.models.classification_entry.ce import (
 
 from . import getinput, urlparse
 from .command_set import CommandSet
-from .db import constants, definition, derived_data, export, helpers, models
+from .db import constants, derived_data, export, helpers, models
 from .db.constants import (
     NEED_TEXTUAL_RANK,
     AgeClass,
@@ -101,11 +101,6 @@ command = _CS.register
 ns = {
     "constants": constants,
     "helpers": helpers,
-    "definition": definition,
-    "Branch": definition.Branch,
-    "Node": definition.Node,
-    "Apomorphy": definition.Apomorphy,
-    "Other": definition.Other,
     "N": Name.getter("root_name"),
     "O": Name.getter("corrected_original_name"),
     "NameTag": models.NameTag,

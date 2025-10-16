@@ -2852,7 +2852,6 @@ ATTRIBUTES_BY_GROUP = {
     "collection": (Group.species,),
     "genus_type_kind": (Group.genus,),
     "species_type_kind": (Group.species,),
-    "definition": (),  # deprecated
 }
 
 

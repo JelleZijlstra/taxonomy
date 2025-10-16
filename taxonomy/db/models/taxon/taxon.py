@@ -14,7 +14,7 @@ from clirm import DoesNotExist, Field
 
 from taxonomy import events, getinput
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
-from taxonomy.db import definition, helpers, models
+from taxonomy.db import helpers, models
 from taxonomy.db.constants import (
     AgeClass,
     Group,
@@ -1543,9 +1543,6 @@ class Taxon(BaseModel):
         result = {name.original_name for name in names}
         result |= {name.root_name for name in names}
         return [name for name in result if name is not None and " " not in name]
-
-
-definition.taxon_cls = Taxon
 
 
 @lru_cache(maxsize=2048)

@@ -38,7 +38,6 @@ from taxonomy.db.constants import (
     Status,
     TypeSpecimenKind,
 )
-from taxonomy.db.definition import Definition
 from taxonomy.db.derived_data import DerivedField
 from taxonomy.db.models.article import Article
 from taxonomy.db.models.base import (
@@ -157,7 +156,6 @@ class Name(BaseModel):
         related_name="original_children"
     )
     data = TextOrNullField()
-    _definition = Field[str | None]("definition")
     tags = ADTField["NameTag"](is_ordered=False)
 
     derived_fields: ClassVar[list[DerivedField[Any]]] = [
@@ -405,21 +403,6 @@ class Name(BaseModel):
             return self.get_stem()
         except ValueError:
             return None
-
-    @property
-    def definition(self) -> Definition | None:
-        data = self._definition
-        if data is None:
-            return None
-        else:
-            return Definition.unserialize(data)
-
-    @definition.setter
-    def definition(self, defn: Definition) -> None:
-        if defn is None:
-            self._definition = None
-        else:
-            self._definition = defn.serialize()
 
     def infer_original_rank(self) -> constants.Rank | None:
         if self.corrected_original_name is None or self.original_name is None:
@@ -1808,8 +1791,6 @@ class Name(BaseModel):
                 parts.append(f"name complex: {self.name_complex}")
             elif self.species_name_complex is not None:
                 parts.append(f"name complex: {self.species_name_complex}")
-            if self.definition is not None:
-                parts.append(str(self.definition))
             parts.append(f"#{self.id}")
             out += " ({})".format("; ".join(parts))
         if include_taxon:
