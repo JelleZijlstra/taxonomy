@@ -1188,9 +1188,10 @@ def _is_applicable(
         if taxon in _iter_parents(_get_effective_taxon(mni)):
             return False
     parents = list(_iter_parents(taxon))
-    for mbp in must_be_part_of:
-        if _get_effective_taxon(mbp) not in parents:
-            return False
+    if must_be_part_of and not any(
+        _get_effective_taxon(mbp) in parents for mbp in must_be_part_of
+    ):
+        return False
     for mnbp in must_not_be_part_of:
         if _get_effective_taxon(mnbp) in parents:
             return False
@@ -1276,9 +1277,13 @@ def _check_phylogenetic_definition_inner(
                 children = [
                     child for child in all_children if child.age is AgeClass.extant
                 ]
-                if len(children) >= 2 or (
-                    len(children) == 1 and len(all_children) == 1
-                ):
+                # TODO: This is wrong in some cases. Consider a monotypic (among extant taxa)
+                # taxon (e.g., Chelodininae). If Chelodininae contains only extant Chelodina
+                # and is defined as a maximum crown clade, we'll say that its name should be applied
+                # to Chelodina. I tried to fix this with a special case for taxa with only one
+                # child, but that instead caused trouble when it wanted Caniformia to be applied to
+                # Pan-Caniformia (which has no other fossil members).
+                if len(children) >= 2:
                     break
                 if len(children) == 0:
                     # Shouldn't happen.
@@ -2847,6 +2852,7 @@ ATTRIBUTES_BY_GROUP = {
     "collection": (Group.species,),
     "genus_type_kind": (Group.genus,),
     "species_type_kind": (Group.species,),
+    "definition": (),  # deprecated
 }
 
 
