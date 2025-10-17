@@ -7,6 +7,7 @@ from collections import Counter, defaultdict
 from collections.abc import Collection, Container, Iterable
 from dataclasses import dataclass, field
 from itertools import takewhile
+from typing import assert_never
 
 from taxonomy import getinput, urlparse
 from taxonomy.apis import bhl
@@ -641,9 +642,14 @@ def check_corrected_name(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[s
                     return
                 if not re.fullmatch(r"[A-Z][a-z]+( [a-z]+){1,3}", corrected_name):
                     yield f"incorrect species name format: {corrected_name}"
-            case _:
-                if not re.fullmatch(r"[A-Z][a-z]+", corrected_name):
+            case Group.high:
+                if not re.fullmatch(models.name.lint.CON_HIGH_REGEX, corrected_name):
                     yield f"incorrect name format: {corrected_name}"
+            case Group.family | Group.genus:
+                if not re.fullmatch(models.name.lint.CON_REGEX, corrected_name):
+                    yield f"incorrect name format: {corrected_name}"
+            case _:
+                assert_never(group)
 
 
 @LINT.add("page_link", requires_network=True)
@@ -896,6 +902,42 @@ def infer_page_from_other_names(
             yield message
 
 
+@LINT.add("bhl_page_from_article", requires_network=True)
+def infer_bhl_page_from_article(
+    ce: ClassificationEntry, cfg: LintConfig
+) -> Iterable[str]:
+    if not _should_look_for_page_links(ce):
+        if cfg.verbose:
+            print(f"{ce}: not looking for BHL URL")
+        return
+    if ce.page is None:
+        if cfg.verbose:
+            print(f"{ce}: no page described")
+        return
+    art = ce.article
+    if art is None or art.url is None:
+        if cfg.verbose:
+            print(f"{ce}: no original citation or URL")
+        return
+    page_links = _get_existing_page_links(ce)
+    for page_described in models.name.page.get_unique_page_text(ce.page):
+        if page_described in page_links:
+            continue
+        maybe_pair = infer_bhl_page_id(page_described, ce, art, cfg)
+        if maybe_pair is not None:
+            page_id, message = maybe_pair
+            tag = ClassificationEntryTag.PageLink(
+                url=f"https://www.biodiversitylibrary.org/page/{page_id}",
+                page=page_described,
+            )
+            message = f"inferred BHL page {page_id} from {message} (add {tag})"
+            if cfg.autofix:
+                print(f"{ce}: {message}")
+                ce.add_tag(tag)
+            else:
+                yield message
+
+
 @LINT.add("infer_bhl_page_from_other_names", requires_network=True)
 def infer_bhl_page_from_other_names(
     ce: ClassificationEntry, cfg: LintConfig
@@ -967,42 +1009,6 @@ def infer_bhl_page_from_other_names(
 
 def _get_existing_page_links(ce: ClassificationEntry) -> set[str]:
     return {tag.page for tag in ce.get_tags(ce.tags, ClassificationEntryTag.PageLink)}
-
-
-@LINT.add("bhl_page_from_article", requires_network=True)
-def infer_bhl_page_from_article(
-    ce: ClassificationEntry, cfg: LintConfig
-) -> Iterable[str]:
-    if not _should_look_for_page_links(ce):
-        if cfg.verbose:
-            print(f"{ce}: not looking for BHL URL")
-        return
-    if ce.page is None:
-        if cfg.verbose:
-            print(f"{ce}: no page described")
-        return
-    art = ce.article
-    if art is None or art.url is None:
-        if cfg.verbose:
-            print(f"{ce}: no original citation or URL")
-        return
-    page_links = _get_existing_page_links(ce)
-    for page_described in models.name.page.get_unique_page_text(ce.page):
-        if page_described in page_links:
-            continue
-        maybe_pair = infer_bhl_page_id(page_described, ce, art, cfg)
-        if maybe_pair is not None:
-            page_id, message = maybe_pair
-            tag = ClassificationEntryTag.PageLink(
-                url=f"https://www.biodiversitylibrary.org/page/{page_id}",
-                page=page_described,
-            )
-            message = f"inferred BHL page {page_id} from {message} (add {tag})"
-            if cfg.autofix:
-                print(f"{ce}: {message}")
-                ce.add_tag(tag)
-            else:
-                yield message
 
 
 @LINT.add("infer_page_from_name")

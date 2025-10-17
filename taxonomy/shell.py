@@ -2859,21 +2859,24 @@ def textual_rank_report() -> None:
 
 
 @command
-def add_ces_for_new_genera(up_to: int) -> None:
-    for nam in (
-        Name.select_valid()
-        .filter(
-            Name.original_rank == Rank.genus,
-            Name.nomenclature_status == NomenclatureStatus.available,
-            Name.year < up_to,
-            Name.original_citation != None,
-        )
-        .order_by(Name.year.desc())
-    ):
+def add_ces_for_new_genera(
+    up_to: int, *, extant_only: bool = True, valid_only: bool = False
+) -> None:
+    query = Name.select_valid().filter(
+        Name.original_rank == Rank.genus,
+        Name.nomenclature_status == NomenclatureStatus.available,
+        Name.year < up_to,
+        Name.original_citation != None,
+    )
+    if valid_only:
+        query = query.filter(Name.status == constants.Status.valid)
+    for nam in query.order_by(Name.year.desc()):
         art = nam.original_citation
         if art is None:
             continue
-        if nam.taxon.age is not AgeClass.extant:
+        if nam.get_mapped_classification_entry() is not None:
+            continue
+        if extant_only and nam.taxon.age is not AgeClass.extant:
             continue
         nams = list(art.get_new_names())
         if any(other_nam.original_parent == nam for other_nam in nams):

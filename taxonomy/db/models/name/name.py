@@ -2800,7 +2800,10 @@ def clean_original_name(original_name: str) -> str:
 
 def infer_corrected_original_name(original_name: str, group: Group) -> str | None:
     original_name = clean_original_name(original_name)
-    if group in (Group.genus, Group.high, Group.family):
+    if group is Group.high:
+        if re.match(r"^(Pan-)?[A-Z][a-z]+?$", original_name):
+            return original_name
+    elif group in (Group.genus, Group.family):
         if re.match(r"^[A-Z][a-z]+$", original_name):
             return original_name
     elif group is Group.species:

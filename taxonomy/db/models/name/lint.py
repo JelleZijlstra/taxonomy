@@ -5080,6 +5080,46 @@ def infer_bhl_page_from_article(nam: Name, cfg: LintConfig) -> Iterable[str]:
 def infer_bhl_page_id(
     page: str, obj: object, art: Article, cfg: LintConfig
 ) -> tuple[int, str] | None:
+    if art.id == 9306 and page.isnumeric():
+        # {Marsupialia, Monotremata-British Museum.pdf}. BHL version doesn't have
+        # page numbers but we can interpolate them.
+        numeric_page = int(page)
+        # page 1 through 20 = 37986429 - 37986410 (in decreasing order)
+        if 1 <= numeric_page <= 20:
+            page_id = 37986429 - (numeric_page - 1)
+            return page_id, "interpolated from known range"
+        # page 21 through 53 = 37986377 - 37986409
+        if 21 <= numeric_page <= 53:
+            page_id = 37986377 + (numeric_page - 21)
+            return page_id, "interpolated from known range"
+        # page 54 through 401 (end) = 37986448 - 37986795
+        if 54 <= numeric_page <= 401:
+            page_id = 37986448 + (numeric_page - 54)
+            return page_id, "interpolated from known range"
+    elif art.id == 35530 and page.isnumeric():
+        # {Mammalia-in BMNH (Gray 1843).pdf}. BHL has wrong page numbers.
+        # The copy in BHL always has a pair of odd, even pages (e.g. 1 and 2),
+        # then two blank pages. In addition, there's an extra pair of pages
+        # after page 6.
+        numeric_page = int(page)
+        # page 1 = 53729558
+        # page 6 = 53729567
+        # page 7 = 53729572
+        # page 214 = 53729985
+        if 1 <= numeric_page <= 6:
+            is_odd = (numeric_page % 2) == 1
+            if is_odd:
+                page_id = 53729558 + ((numeric_page - 1) // 2) * 4
+            else:
+                page_id = 53729558 + ((numeric_page - 2) // 2) * 4 + 1
+            return page_id, "corrected from known BHL page numbering error"
+        if 7 <= numeric_page <= 214:
+            is_odd = (numeric_page % 2) == 1
+            if is_odd:
+                page_id = 53729560 + ((numeric_page - 1) // 2) * 4
+            else:
+                page_id = 53729560 + ((numeric_page - 2) // 2) * 4 + 1
+            return page_id, "corrected from known BHL page numbering error"
     if not is_network_available():
         return None
     if art.url is None:
@@ -6439,7 +6479,7 @@ def remove_redundant_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
             nam.redirect(target)
         else:
             yield message
-    elif has_ces and not any(
+    elif any(
         isinstance(
             tag,
             (
@@ -6451,13 +6491,20 @@ def remove_redundant_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
         )
         for tag in nam.tags
     ):
+        return  # ignore for now
+    elif has_ces:
         yield f"cannot remove redundant name {nam} because {cannot_replace_reason}"
-    elif (
-        not has_ces
-        and nam.original_citation is not None
-        and any(nam.original_citation.get_classification_entries())
-    ):
-        yield "subsequent usage has no classification entries, but article has some"
+    elif nam.original_citation is not None:
+        # Various groups of subsequent usages that should be eradicated. Let's
+        # gradually add more here.
+        if not has_ces and any(nam.original_citation.get_classification_entries()):
+            yield "subsequent usage has no classification entries, but article has some"
+        if (
+            nam.numeric_year() > 2000
+            or nam.numeric_year() < 1800
+            or nam.group is Group.high
+        ):
+            yield "subsequent usage should be replaced"
 
 
 def has_classification(art: Article) -> bool:
@@ -6470,7 +6517,7 @@ def has_classification(art: Article) -> bool:
 def check_must_have_ce(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.original_citation is None:
         return
-    if not has_classification(nam.original_citation):
+    if not any(nam.original_citation.get_classification_entries()):
         return
     if nam.get_mapped_classification_entry() is not None:
         return
@@ -6478,6 +6525,27 @@ def check_must_have_ce(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if possible_ces:
         yield f"has multiple possible mapped classification entries: {possible_ces}"
     else:
+        if not nam.is_invalid():
+            movable_ces = [
+                ce
+                for ce in ClassificationEntry.select_valid().filter(
+                    ClassificationEntry.article == nam.original_citation,
+                    ClassificationEntry.name == nam.original_name,
+                )
+                if ce.get_corrected_name() == nam.corrected_original_name
+                and ce.mapped_name is not None
+                and ce.mapped_name.resolve_variant() == nam.resolve_variant()
+            ]
+            if len(movable_ces) == 1:
+                ce = movable_ces[0]
+                message = f"changing mapped name of {ce} from {ce.mapped_name} to {nam}"
+                if cfg.autofix:
+                    print(f"{nam}: {message}")
+                    ce.mapped_name = nam
+                else:
+                    yield message
+        if not has_classification(nam.original_citation):
+            return
         yield f"must have classification entries for {nam.original_citation}"
 
 
