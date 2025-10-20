@@ -522,7 +522,7 @@ class Rank(enum.IntEnum):
         return (
             self.is_synonym
             or self.needs_textual_rank
-            or self in {Rank.informal, Rank.unranked}
+            or self in {Rank.informal, Rank.unranked, Rank.unranked_family}
         )
 
     @property

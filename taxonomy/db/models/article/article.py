@@ -1696,6 +1696,9 @@ class ArticleTag(adt.ADT):
         tag=30,
     )
 
+    # Internal: Indicates that the classification in the article doesn't include species.
+    GenusOnlyClassification(tag=31)  # type: ignore[name-defined]
+
 
 @lru_cache
 def _getpdfcontent(path: str) -> str:

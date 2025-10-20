@@ -177,6 +177,23 @@ def strip_rank(name: str, rank: Rank, *, quiet: bool = False) -> str:
         return res
 
 
+def get_grouped_family_group_rank(rank: Rank | None, root_name: str | None) -> Rank:
+    """Grouped version of family-group ranks.
+
+    We place family-group names in some buckets for the purpose of
+    grouping usages. Names with the right modern ending for their rank go together;
+    all others are grouped into a miscellaneous bucket.
+    """
+    if (
+        rank is not None
+        and root_name is not None
+        and rank in SUFFIXES
+        and root_name.endswith(SUFFIXES[rank])
+    ):
+        return rank
+    return Rank.other_family
+
+
 def spg_of_species(species: str) -> str:
     """Returns a species group name from a species name"""
     return re.sub(r" ([a-z]+)$", r" (\1)", species)

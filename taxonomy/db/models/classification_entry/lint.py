@@ -1039,6 +1039,27 @@ def _resolve_name(nam: Name) -> Name:
     return nam
 
 
+def _get_ce_key(ce: ClassificationEntry) -> tuple[Rank, str] | None:
+    corrected_name = ce.get_corrected_name()
+    if corrected_name is None:
+        return None
+    group = ce.get_group()
+    match group:
+        case Group.family:
+            grouped_rank = helpers.get_grouped_family_group_rank(
+                ce.rank, corrected_name
+            )
+            return grouped_rank, corrected_name
+        case Group.high:
+            return Rank.unranked, corrected_name
+        case Group.genus:
+            return Rank.genus, corrected_name
+        case Group.species:
+            return Rank.species, corrected_name
+        case _:
+            assert_never(group)
+
+
 @LINT.add("mapped_name_matches_other_ces")
 def check_mapped_name_matches_other_ces(
     ce: ClassificationEntry, cfg: LintConfig
@@ -1047,6 +1068,11 @@ def check_mapped_name_matches_other_ces(
         return
     group = ce.get_group()
     corrected_name = ce.get_corrected_name()
+    if corrected_name is None:
+        return
+    ce_key = _get_ce_key(ce)
+    if ce_key is None:
+        return
     others = [
         other_ce
         # static analysis: ignore[incompatible_argument]
@@ -1059,26 +1085,23 @@ def check_mapped_name_matches_other_ces(
         if not LINT.is_ignoring_lint(other_ce, "mapped_name_matches_other_ces")
         and other_ce.mapped_name is not None
         and _resolve_name(other_ce.mapped_name) != _resolve_name(ce.mapped_name)
-        and other_ce.get_group() == group
-        and other_ce.get_corrected_name() == corrected_name
+        and _get_ce_key(other_ce) == ce_key
     ]
     if others:
         yield f"mapped to {ce.mapped_name}, but other names are mapped differently:\n{'\n'.join(f' - {other!r}' for other in others)}"
     if group != ce.mapped_name.group:
-        corrected_name = ce.get_corrected_name()
-        if corrected_name is not None:
-            possibilities = [
-                nam
-                for nam in ce.mapped_name.taxon.get_names()
-                if nam.group == group and nam.corrected_original_name == corrected_name
-            ]
-            if len(possibilities) == 1:
-                message = f"change to map to {possibilities[0]}"
-                if cfg.autofix:
-                    print(f"{ce}: {message}")
-                    ce.mapped_name = possibilities[0]
-                else:
-                    yield message
+        possibilities = [
+            nam
+            for nam in ce.mapped_name.taxon.get_names()
+            if nam.group == group and nam.corrected_original_name == corrected_name
+        ]
+        if len(possibilities) == 1:
+            message = f"change to map to {possibilities[0]}"
+            if cfg.autofix:
+                print(f"{ce}: {message}")
+                ce.mapped_name = possibilities[0]
+            else:
+                yield message
 
 
 def get_applicable_nomenclature_statuses(

@@ -941,10 +941,15 @@ class BaseModel(Model):
 
     @classmethod
     def get_value_for_field_on_class(
-        cls, field: str, default: Any = "", *, callbacks: getinput.CallbackMap = {}
+        cls,
+        field: str,
+        default: Any = "",
+        *,
+        callbacks: getinput.CallbackMap = {},
+        prompt: str | None = None,
     ) -> Any:
         field_obj = getattr(cls, field)
-        prompt = f"{field}> "
+        prompt = f"{field}> " if prompt is None else prompt
         if issubclass(field_obj.type_object, Model):
             return cls.get_value_for_foreign_key_field_on_class(
                 field, callbacks=callbacks

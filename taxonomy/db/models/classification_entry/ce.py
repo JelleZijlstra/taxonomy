@@ -25,6 +25,7 @@ from taxonomy.db.constants import (
     SourceLanguage,
 )
 from taxonomy.db.models.article import Article
+from taxonomy.db.models.article.article import ArticleTag
 from taxonomy.db.models.base import ADTField, BaseModel, LintConfig, TextOrNullField
 
 
@@ -197,12 +198,14 @@ class ClassificationEntry(BaseModel):
         next_page = ""
         next_name = ""
         _parent_stack: list[ClassificationEntry] = []
+        is_genus_only = art.has_tag(ArticleTag.GenusOnlyClassification)
         while True:
             entry = cls.create_one(
                 art,
                 fields,
                 defaults={"page": next_page, "name": next_name},
                 _parent_stack=_parent_stack,
+                is_genus_only=is_genus_only,
             )
             if entry is None:
                 break
@@ -213,7 +216,9 @@ class ClassificationEntry(BaseModel):
                 entry.format(format_mapped=True)
             if entry.page is not None:
                 next_page = entry.page
-            if entry.rank is Rank.genus:
+            if is_genus_only:
+                next_name = ""
+            elif entry.rank is Rank.genus:
                 next_name = entry.name
             elif entry.rank in (Rank.species, Rank.subspecies):
                 next_name = entry.name.split()[0]
@@ -239,6 +244,8 @@ class ClassificationEntry(BaseModel):
         defaults: Mapping[str, str] = MappingProxyType({}),
         _parent_stack: list[ClassificationEntry] = [],
         prefilled_values: Mapping[str, Any] = MappingProxyType({}),
+        *,
+        is_genus_only: bool = False,
     ) -> ClassificationEntry | None:
         fields = [
             ClassificationEntry.name,
@@ -249,6 +256,7 @@ class ClassificationEntry(BaseModel):
         ]
         values: dict[str, Any] = {"article": art}
         ce_name: str | None = None
+        is_syn = "rank" in prefilled_values and prefilled_values["rank"].is_synonym
         for field in fields:
             name = field.name.removesuffix("_id")
             if name in prefilled_values:
@@ -262,7 +270,7 @@ class ClassificationEntry(BaseModel):
             if name == "parent":
                 while _parent_stack and _parent_stack[-1].rank <= values["rank"]:
                     _parent_stack.pop()
-                if ce_name is not None:
+                if ce_name is not None and not is_genus_only:
                     if values["rank"] == Rank.species:
                         genus_name = ce_name.split()[0]
                         if parent_ce := _get_genus_ce(genus_name, art):
@@ -283,11 +291,16 @@ class ClassificationEntry(BaseModel):
                     parent = cls.get_parent_completion(art)
                 values["parent"] = parent
             else:
+                if is_syn:
+                    prompt = f"{name} (synonym)> "
+                else:
+                    prompt = f"{name}> "
                 try:
                     value = cls.get_value_for_field_on_class(
                         name,
                         default=defaults.get(name, ""),
                         callbacks={":clear": _parent_stack.clear},
+                        prompt=prompt,
                     )
                     if value is None and not field.allow_none:
                         return None

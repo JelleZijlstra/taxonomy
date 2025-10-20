@@ -167,6 +167,7 @@ VARIANT_OF_TAGS = (
     NameTag.JustifiedEmendationOf,
     NameTag.NameCombinationOf,
     NameTag.MisidentificationOf,
+    NameTag.RerankingOf,
 )
 HOMONYM_TAGS = (
     NameTag.PreoccupiedBy,
@@ -498,6 +499,7 @@ class FixableDifference:
         return self.hesp_name.nomenclature_status in (
             NomenclatureStatus.name_combination,
             NomenclatureStatus.incorrect_subsequent_spelling,
+            NomenclatureStatus.reranking,
         )
 
     def summary(self) -> str:
@@ -1089,9 +1091,28 @@ def run(
                         *[row.get(column, "") for column in missing_in_hesp[0][2]],
                     ]
                 )
+
+        fixable, unfixable = split_missing(missing_in_hesp)
+
+        allow_autoremove = False
+
+        if fixable:
+            print(f"Trivial missing names: {len(fixable)}")
+            for _, _, row in fixable:
+                print(
+                    row["MDD_original_combination"],
+                    "=",
+                    row.get("MDD_species", row.get("MDD_taxon", "")),
+                )
+            if getinput.yes_no("Remove all?"):
+                allow_autoremove = True
+
         for match_status, row_idx, row in sorted(
             missing_in_hesp, key=lambda triple: triple[1], reverse=True
         ):
+            if allow_autoremove and _is_autoremovable((match_status, row_idx, row)):
+                worksheet.delete_rows(row_idx)
+                continue
             getinput.print_header(
                 f'{row["MDD_original_combination"]} = {row.get("MDD_species", row.get("MDD_taxon", ""))}'
             )
@@ -1103,6 +1124,30 @@ def run(
                 worksheet.delete_rows(row_idx)
 
     print("Done. Data saved at", backup_path)
+
+
+type MissingNames = list[tuple[str, int, dict[str, str]]]
+
+
+def _is_autoremovable(item: tuple[str, int, dict[str, str]]) -> bool:
+    _, _, row = item
+    status = row.get("MDD_nomenclature_status", "")
+    return (
+        "subsequent_usage" in status
+        or "reranking" in status
+        or "incorrect_subsequent_spelling" in status
+    )
+
+
+def split_missing(missing_in_hesp: MissingNames) -> tuple[MissingNames, MissingNames]:
+    fixable: MissingNames = []
+    unfixable: MissingNames = []
+    for item in missing_in_hesp:
+        if _is_autoremovable(item):
+            fixable.append(item)
+        else:
+            unfixable.append(item)
+    return fixable, unfixable
 
 
 def main() -> None:

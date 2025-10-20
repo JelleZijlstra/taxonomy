@@ -10,7 +10,16 @@ import sys
 import time
 from collections import Counter
 from collections.abc import Callable, Iterable, Sequence
-from typing import IO, TYPE_CHECKING, Any, ClassVar, NotRequired, Self, TypeAlias
+from typing import (
+    IO,
+    TYPE_CHECKING,
+    Any,
+    ClassVar,
+    NotRequired,
+    Self,
+    TypeAlias,
+    assert_never,
+)
 
 from clirm import DoesNotExist, Field, Query
 
@@ -392,6 +401,21 @@ class Name(BaseModel):
             return self.root_name
         else:
             return self.root_name.removesuffix(expected_suffix)
+
+    def get_grouped_rank(self) -> Rank:
+        match self.group:
+            case Group.family:
+                return helpers.get_grouped_family_group_rank(
+                    self.original_rank, self.corrected_original_name
+                )
+            case Group.high:
+                return Rank.unranked
+            case Group.genus:
+                return Rank.genus
+            case Group.species:
+                return Rank.species
+            case _:
+                assert_never(self.group)
 
     def get_stem(self) -> str | None:
         if self.group != Group.genus or self.name_complex is None:

@@ -2357,7 +2357,14 @@ def _check_all_tags(
                 return NameTag.NameCombinationOf(tag.name, comment=tag.comment)
             if nam.taxon != tag.name.taxon:
                 yield f"{nam} is not assigned to the same name as {tag.name} and should be marked as a misidentification"
-            if nam.root_name != tag.name.root_name:
+            if nam.group is not tag.name.group:
+                yield f"{nam} is of a different group than its target {tag.name}"
+            if nam.group is Group.family:
+                if nam.corrected_original_name != tag.name.corrected_original_name:
+                    yield f"{nam} is a subsequent usage of {tag.name} but has a different corrected original name"
+                if nam.get_grouped_rank() != tag.name.get_grouped_rank():
+                    yield f"{nam} is a subsequent usage of {tag.name} but has a different original rank"
+            elif nam.root_name != tag.name.root_name:
                 yield f"{nam} is a subsequent usage of {tag.name} but has a different root name"
         case NameTag.VariantOf():
             if nam.original_citation is not None:
@@ -5904,15 +5911,21 @@ def mark_family_group_subsequent_usage(nam: Name, cfg: LintConfig) -> Iterable[s
         return
     if nam.has_name_tag(NameTag.SubsequentUsageOf):
         return
+    resolved_nam = nam.resolve_variant()
     same_name = [
         other_name
         for other_name in nam.taxon.get_names().filter(
             Name.corrected_original_name == nam.corrected_original_name,
-            Name.nomenclature_status == NomenclatureStatus.available,
-            Name.original_rank == nam.original_rank,
             Name.id != nam.id,
+            Name.taxon == nam.taxon,
         )
         if other_name.numeric_year() < nam.numeric_year()
+        and other_name.get_grouped_rank() == nam.get_grouped_rank()
+        and other_name.resolve_variant() == resolved_nam
+        and (
+            other_name.nomenclature_status is NomenclatureStatus.available
+            or other_name.nomenclature_status.is_variant()
+        )
     ]
     if not same_name:
         return
@@ -6499,11 +6512,14 @@ def remove_redundant_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
         # gradually add more here.
         if not has_ces and any(nam.original_citation.get_classification_entries()):
             yield "subsequent usage has no classification entries, but article has some"
-        if (
+        elif (
             nam.numeric_year() > 2000
             or nam.numeric_year() < 1800
             or nam.group is Group.high
+            or nam.id > 100_000
         ):
+            yield "subsequent usage should be replaced"
+        elif cfg.experimental:
             yield "subsequent usage should be replaced"
 
 
