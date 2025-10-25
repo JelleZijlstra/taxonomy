@@ -595,3 +595,4 @@ class CitationGroupTag(adt.ADT):
     # not be exposed on the website.
     BHLYearRange(start=NotRequired[Managed], end=NotRequired[Markdown], tag=30)  # type: ignore[name-defined]
     IgnoreLintCitationGroup(label=Managed, comment=NotRequired[Markdown], tag=31)  # type: ignore[name-defined]
+    ArticleNumberRegex(text=Regex, tag=32)  # type: ignore[name-defined]

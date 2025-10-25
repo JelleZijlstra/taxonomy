@@ -253,7 +253,8 @@ CREATE TABLE `article` (
     `parent_id` INT UNSIGNED DEFAULT NULL,
     `tags` text default null,
     `citation_group_id` INT UNSIGNED DEFAULT NULL,
-    `author_tags` text default null
+    `author_tags` text default null,
+    `article_number` varchar(255) DEFAULT NULL,
     PRIMARY KEY (`name`),
     INDEX(`citation_group_id`)
 );

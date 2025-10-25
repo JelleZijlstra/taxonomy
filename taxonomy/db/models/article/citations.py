@@ -16,7 +16,9 @@ def wikify(s: str) -> str:
 
 def page_range(article: Article, dash: str = "-") -> str:
     # return a string representing the pages of the article
-    if article.start_page:
+    if article.article_number:
+        return article.article_number
+    elif article.start_page:
         if article.end_page:
             if article.start_page == article.end_page:
                 # single page

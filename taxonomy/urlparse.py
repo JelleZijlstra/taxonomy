@@ -228,7 +228,7 @@ def parse_url(url: str) -> ParsedUrl:
                     return BhlPage(int(match.group(2)))
                 case "part" | "partpdf":
                     return BhlPart(int(match.group(2)))
-    elif re.fullmatch(r"books\.google\.[a-z]+", split.netloc):
+    elif re.fullmatch(r"books\.google(\.co)?\.[a-z]+", split.netloc):
         query_dict = urllib.parse.parse_qs(split.query)
         if (
             "id" in query_dict
@@ -241,7 +241,7 @@ def parse_url(url: str) -> ParsedUrl:
             "id" in query_dict and "pg" not in query_dict and len(query_dict["id"]) == 1
         ):
             return GoogleBooksVolume(query_dict["id"][0])
-    elif re.fullmatch(r"(www\.)?google\.[a-z]+", split.netloc):
+    elif re.fullmatch(r"(www\.)?google(\.co)?\.[a-z]+", split.netloc):
         match = re.fullmatch(r"/books/edition/[^/]+/([^/]+)", split.path)
         if match is not None:
             book_id = match.group(1)

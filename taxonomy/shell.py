@@ -3171,6 +3171,11 @@ def edit_ignore_lint_names() -> None:
         nam.edit_until_clean()
 
 
+@command
+def article_by_title() -> Article | None:
+    return Article.getter("title").get_one("title> ")
+
+
 def run_shell() -> None:
     # GC does bad things on my current setup for some reason
     gc.disable()

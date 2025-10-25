@@ -156,6 +156,7 @@ class Article(BaseModel):
     parent = Field[Self | None]("parent_id")
     tags = ADTField["ArticleTag"](is_ordered=False)
     citation_group = Field[CitationGroup | None]("citation_group_id")
+    article_number = Field[str | None]()  # article number (for electronic articles)
 
     folder_tree: ClassVar[FolderTree] = FolderTree()
     save_event.on(folder_tree.add)

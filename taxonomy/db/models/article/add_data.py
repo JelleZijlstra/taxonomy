@@ -231,8 +231,8 @@ def expand_doi_json(doi: str) -> RawData:
                 data["start_page"] = page
         else:
             data["pages"] = page
-    elif article_number := work.get("article-number"):
-        data["start_page"] = article_number
+    if article_number := work.get("article-number"):
+        data["article_number"] = article_number
 
     if isbns := work.get("ISBN"):
         isbn = isbns[0]

@@ -5,13 +5,14 @@ from pyzotero import zotero
 
 from taxonomy.config import get_options
 from taxonomy.db.constants import ArticleType
+from taxonomy.db.models import Taxon
 from taxonomy.db.models.article.article import Article, ArticleTag
 from taxonomy.db.models.citation_group.cg import CitationGroupTag
 from taxonomy.db.models.person import Person
 
 api_key = get_options().zotero_key
 library_type = "group"
-library_id = "5620567"
+library_id = "5435545"  # "5620567"
 
 
 def get_zotero() -> zotero.Zotero:
@@ -221,3 +222,14 @@ def upload_items(arts: Sequence[Article]) -> None:
             continue
         attachment_result = zot.attachment_simple([str(art.get_path())], item_id)
         print(attachment_result)
+
+
+def get_relevant_articles() -> Sequence[Article]:
+    arts = set()
+    arts.update(Article.select_valid().filter(Article.path.startswith("Chiroptera/")))
+
+    taxon = Taxon.select_valid().filter(Taxon.valid_name == "Chiroptera").get()
+    for nam in taxon.all_names_lazy():
+        if nam.original_citation is not None:
+            arts.add(nam.original_citation)
+    return sorted(arts, key=lambda art: art.name)

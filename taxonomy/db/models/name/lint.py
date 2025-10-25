@@ -2245,6 +2245,9 @@ def _check_variant_tag(
         and nam.corrected_original_name == tag.name.corrected_original_name
     ):
         yield f"{nam} has the same corrected original name as {tag.name}, but is marked as {type(tag).__name__}"
+        if cfg.autofix and isinstance(tag, NameTag.NameCombinationOf):
+            print(f"{nam}: changing NameCombinationOf to SubsequentUsageOf")
+            new_tag = NameTag.SubsequentUsageOf(tag.name, comment=tag.comment)
     if not isinstance(
         tag,
         (

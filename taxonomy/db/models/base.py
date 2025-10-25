@@ -580,11 +580,6 @@ class BaseModel(Model):
                 traceback.print_exc()
                 print(f"{field}: could not get value")
 
-    def debug_data(self) -> None:
-        self.full_data()
-        print("Data:", self.__data__)
-        print("Dict:", self.__dict__)
-
     def get_search_dicts(self) -> list[dict[str, Any]]:
         return []
 
@@ -1022,7 +1017,6 @@ class BaseModel(Model):
             "sibling_by_field": self.edit_sibling_by_field,
             "empty": self.empty,
             "full_data": self.full_data,
-            "debug": self.debug_data,
             "call": self.call,
             "lint": self.format,
             "manual_lint": lambda: self.format(manual_mode=True),

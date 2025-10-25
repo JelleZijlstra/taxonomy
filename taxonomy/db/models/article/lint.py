@@ -171,6 +171,21 @@ def check_type_and_kind(art: Article, cfg: LintConfig) -> Iterable[str]:
                     yield "has a BHL URL and should be of kind 'reference'"
 
 
+@LINT.add("article_number")
+def check_article_number(art: Article, cfg: LintConfig) -> Iterable[str]:
+    if not art.article_number:
+        return
+    if art.type is not ArticleType.JOURNAL:
+        yield "only journal articles should have an article number"
+    if art.citation_group is not None:
+        tag = art.citation_group.get_tag(CitationGroupTag.ArticleNumberRegex)
+        if tag is not None:
+            if not re.fullmatch(tag.text, art.article_number):
+                yield f"article number {art.article_number!r} does not match pattern {tag.text!r}"
+        else:
+            yield f"citation group {art.citation_group} has no ArticleNumberRegex tag"
+
+
 SOURCE_PRIORITY = {
     # Without an lsid, online publication doesn't count
     False: [
@@ -697,7 +712,7 @@ def _get_bhl_page_ids_from_names(art: Article) -> set[int]:
     return bhl_page_ids
 
 
-@LINT.add("must_have_bhl_from_names")
+@LINT.add("must_have_bhl_from_names", requires_network=True)
 def must_have_bhl_url_from_names(art: Article, cfg: LintConfig) -> Iterable[str]:
     if not should_look_for_bhl_url(art):
         return
@@ -884,7 +899,7 @@ def has_new_names(art: Article) -> bool:
     return False
 
 
-@LINT.add("must_have_bhl")
+@LINT.add("must_have_bhl", requires_network=True)
 def must_have_bhl_link(art: Article, cfg: LintConfig) -> Iterable[str]:
     if not should_look_for_bhl_url(art):
         return
@@ -1953,6 +1968,7 @@ def data_from_doi(art: Article, cfg: LintConfig) -> Iterable[str]:
     yield from _check_doi_issue(art, data)
     yield from _check_doi_start_page(art, data)
     yield from _check_doi_end_page(art, data)
+    yield from _check_doi_article_number(art, data, cfg)
     yield from _check_doi_isbn(art, data, cfg)
     yield from _check_doi_tags(art, data, cfg)
     yield from _check_doi_authors(art, data, cfg)
@@ -2036,6 +2052,22 @@ def _check_doi_end_page(art: Article, data: dict[str, Any]) -> Iterable[str]:
     yield f"end page mismatch: {data['end_page']} (DOI) vs. {art.end_page} (article)"
 
 
+def _check_doi_article_number(
+    art: Article, data: dict[str, Any], cfg: LintConfig
+) -> Iterable[str]:
+    if not data.get("article_number"):
+        return
+    if art.article_number is None:
+        message = f"adding article number {data['article_number']} from DOI"
+        if cfg.autofix:
+            print(f"{art}: {message}")
+            art.article_number = data["article_number"]
+        else:
+            yield message
+    elif data["article_number"] != art.article_number:
+        yield f"article number mismatch: {data['article_number']} (DOI) vs. {art.article_number} (article)"
+
+
 def _check_doi_isbn(
     art: Article, data: dict[str, Any], cfg: LintConfig
 ) -> Iterable[str]:
@@ -2049,7 +2081,10 @@ def _check_doi_isbn(
             art.add_tag(ArticleTag.ISBN(data["isbn"]))
         else:
             yield message
-    elif existing != data["isbn"]:
+        return
+    existing_cleaned = existing.replace("-", "").replace(" ", "")
+    new_cleaned = data["isbn"].replace("-", "").replace(" ", "")
+    if existing_cleaned != new_cleaned:
         yield f"ISBN mismatch: {data['isbn']} (DOI) vs. {existing} (article)"
 
 
