@@ -2,7 +2,7 @@
 
 import re
 
-from taxonomy.db import helpers
+from taxonomy.db import helpers, models
 from taxonomy.db.constants import ArticleType, NamingConvention
 
 from .article import Article, ArticleTag, register_cite_function
@@ -14,9 +14,19 @@ def wikify(s: str) -> str:
     return re.sub(r"(?<!')<nowiki>'<\/nowiki>(?!')", "'", s)
 
 
+def should_use_article_number(article: Article) -> bool:
+    if article.article_number is None:
+        return False
+    if article.citation_group is not None and article.citation_group.get_tag(
+        models.citation_group.cg.CitationGroupTag.ArticleNumberIsSecondary
+    ):
+        return False
+    return True
+
+
 def page_range(article: Article, dash: str = "-") -> str:
     # return a string representing the pages of the article
-    if article.article_number:
+    if article.article_number and should_use_article_number(article):
         return article.article_number
     elif article.start_page:
         if article.end_page:

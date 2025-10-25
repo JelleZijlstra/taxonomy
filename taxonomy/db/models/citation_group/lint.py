@@ -107,6 +107,7 @@ def check_tags(cg: CitationGroup, cfg: LintConfig) -> Iterable[str]:
             if tag.start_page_regex is not None:
                 if issue := helpers.is_valid_regex(tag.start_page_regex):
                     yield f"invalid start_page_regex in tag {tag}: {issue}"
+                yield "start page regex tag is deprecated"
             if tag.pages_regex is not None:
                 if issue := helpers.is_valid_regex(tag.pages_regex):
                     yield f"invalid pages_regex in tag {tag}: {issue}"

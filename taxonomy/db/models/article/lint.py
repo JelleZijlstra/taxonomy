@@ -182,8 +182,60 @@ def check_article_number(art: Article, cfg: LintConfig) -> Iterable[str]:
         if tag is not None:
             if not re.fullmatch(tag.text, art.article_number):
                 yield f"article number {art.article_number!r} does not match pattern {tag.text!r}"
+
+            # Only do this if there's an ArticleNumberRegex so we know the article number is right
+            if (
+                art.start_page == "1"
+                and art.end_page is not None
+                and not art.citation_group.get_tag(
+                    CitationGroupTag.ArticleNumberIsSecondary
+                )
+            ):
+                message = f"replace start and end page {art.start_page}-{art.end_page}, since there is an article number"
+                if cfg.autofix:
+                    print(f"{art}: {message}")
+                    art.pages = art.end_page
+                    art.start_page = None
+                    art.end_page = None
+                else:
+                    yield message
         else:
             yield f"citation group {art.citation_group} has no ArticleNumberRegex tag"
+        if (
+            art.start_page is not None
+            and art.end_page is None
+            and art.start_page == art.article_number
+        ):
+            message = f"replace start page {art.start_page} with article number {art.article_number}"
+            if cfg.autofix:
+                print(f"{art}: {message}")
+                art.start_page = None
+            else:
+                yield message
+
+
+@LINT.add("transfer_article_number")
+def transfer_article_number(art: Article, cfg: LintConfig) -> Iterable[str]:
+    if (
+        art.article_number is not None
+        or art.start_page is None
+        or art.end_page is not None
+        or art.citation_group is None
+    ):
+        return
+    cg = art.citation_group
+    tag = cg.get_tag(CitationGroupTag.ArticleNumberRegex)
+    if tag is None:
+        return
+    if not re.fullmatch(tag.text, art.start_page):
+        return
+    message = f"transferring start page {art.start_page} to article number"
+    if cfg.autofix:
+        print(f"{art}: {message}")
+        art.article_number = art.start_page
+        art.start_page = None
+    else:
+        yield message
 
 
 SOURCE_PRIORITY = {
@@ -451,7 +503,9 @@ def get_inferred_date_from_position(art: Article) -> tuple[Article, Article] | N
             Article.volume == art.volume,
             Article.year.contains("-"),
         )
-        if art.start_page.isnumeric() and art.has_tag(ArticleTag.PublicationDate)
+        if art.start_page is not None
+        and art.start_page.isnumeric()
+        and art.has_tag(ArticleTag.PublicationDate)
     ]
     if len(siblings) <= 1:
         return None
@@ -1378,19 +1432,23 @@ def journal_specific_cleanup(art: Article, cfg: LintConfig) -> Iterable[str]:
             print(f"{art}: {message}")
         else:
             yield message
-    if (
-        cg.name == "American Museum Novitates"
-        or (
-            cg.name == "Bulletin of the American Museum of Natural History"
-            and art.numeric_year() > 1990
-        )
-    ) and art.issue:
+    if art.issue and should_not_have_issue(art):
         message = f"{cg} article should not have issue {art.issue}"
         if cfg.autofix:
             print(f"{art}: {message}")
             art.issue = None
         else:
             yield message
+
+
+def should_not_have_issue(art: Article) -> bool:
+    cg = art.citation_group
+    if cg is None:
+        return False
+    return cg.name == "American Museum Novitates" or (
+        cg.name == "Bulletin of the American Museum of Natural History"
+        and art.numeric_year() > 1990
+    )
 
 
 @LINT.add("citation_group")
@@ -1506,7 +1564,8 @@ def check_start_end_page(art: Article, cfg: LintConfig) -> Iterable[str]:
     start_page: str | None = art.start_page
     end_page: str | None = art.end_page
     if start_page is None:
-        yield "missing start page"
+        if art.article_number is None:
+            yield "missing start page"
         return
     if art.is_in_press():
         if end_page is not None:
@@ -1922,6 +1981,7 @@ def dupe_journal(art: Article) -> tuple[object, ...] | None:
         art.issue,
         art.start_page,
         art.end_page,
+        art.article_number,
     )
 
 
@@ -1965,7 +2025,7 @@ def data_from_doi(art: Article, cfg: LintConfig) -> Iterable[str]:
         return
     yield from _check_doi_title(art, data)
     yield from _check_doi_volume(art, data)
-    yield from _check_doi_issue(art, data)
+    yield from _check_doi_issue(art, data, cfg)
     yield from _check_doi_start_page(art, data)
     yield from _check_doi_end_page(art, data)
     yield from _check_doi_article_number(art, data, cfg)
@@ -2012,8 +2072,19 @@ def _check_doi_volume(art: Article, data: dict[str, Any]) -> Iterable[str]:
     yield f"volume mismatch: {data['volume']} (DOI) vs. {art.volume} (article)"
 
 
-def _check_doi_issue(art: Article, data: dict[str, Any]) -> Iterable[str]:
-    if not data.get("issue") or art.issue is None:
+def _check_doi_issue(
+    art: Article, data: dict[str, Any], cfg: LintConfig
+) -> Iterable[str]:
+    if not data.get("issue"):
+        return
+    if art.issue is None:
+        if not should_not_have_issue(art):
+            message = f"adding issue {data['issue']} from DOI"
+            if cfg.autofix:
+                print(f"{art}: {message}")
+                art.issue = data["issue"]
+            else:
+                yield message
         return
     doi_issue = data["issue"].replace("/", "-").replace("–", "-")
     if doi_issue == "1":
@@ -2064,7 +2135,9 @@ def _check_doi_article_number(
             art.article_number = data["article_number"]
         else:
             yield message
-    elif data["article_number"] != art.article_number:
+    elif data["article_number"] != art.article_number and not re.fullmatch(
+        rf"(e|[a-z]+\.){re.escape(data["article_number"])}", art.article_number
+    ):
         yield f"article number mismatch: {data['article_number']} (DOI) vs. {art.article_number} (article)"
 
 

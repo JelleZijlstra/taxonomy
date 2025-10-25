@@ -596,3 +596,6 @@ class CitationGroupTag(adt.ADT):
     BHLYearRange(start=NotRequired[Managed], end=NotRequired[Markdown], tag=30)  # type: ignore[name-defined]
     IgnoreLintCitationGroup(label=Managed, comment=NotRequired[Markdown], tag=31)  # type: ignore[name-defined]
     ArticleNumberRegex(text=Regex, tag=32)  # type: ignore[name-defined]
+
+    # DOI data includes an article number but it should not be used as the primary identifier.
+    ArticleNumberIsSecondary(comment=NotRequired[Markdown], tag=33)  # type: ignore[name-defined]

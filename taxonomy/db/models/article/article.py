@@ -1185,8 +1185,14 @@ class Article(BaseModel):
         if not self.doi:
             return
         result = models.article.add_data.get_doi_json(self.doi)
-        if result:
-            pprint.pprint(result)
+        if result and result.get("message"):
+            data = {
+                key: value
+                for key, value in result["message"].items()
+                # Filter out list of references, really long and not that interesting to us
+                if key != "reference"
+            }
+            pprint.pprint(data, sort_dicts=False)
 
     def maybe_remove_corrupt_doi(self) -> None:
         if self.doi is None:
