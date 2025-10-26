@@ -6981,3 +6981,20 @@ def infer_reranking(nam: Name, cfg: LintConfig) -> Iterable[str]:
         nam.add_tag(tag)
     else:
         yield message
+
+
+@LINT.add("must_have")
+def enforce_must_have(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    if nam.citation_group is None:
+        return
+    if nam.original_citation is not None:
+        return
+    cg = nam.citation_group
+    after_tag = cg.get_tag(models.citation_group.CitationGroupTag.MustHaveAfter)
+    if after_tag is None and not cg.has_tag(
+        models.citation_group.CitationGroupTag.MustHave
+    ):
+        return
+    if after_tag is not None and nam.numeric_year() < int(after_tag.year):
+        return
+    yield f"{nam} is in {cg}, but has no original_citation"

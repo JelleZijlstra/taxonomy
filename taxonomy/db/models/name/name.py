@@ -2926,13 +2926,14 @@ class NameTag(adt.ADT):
     )
     SubsequentUsageOf(name=Name, comment=NotRequired[Markdown], tag=15)  # type: ignore[name-defined]
     SelectionOfPriority(  # type: ignore[name-defined]
-        over=Name,
+        over=NotRequired[Name],
         optional_source=NotRequired[Article],
         comment=NotRequired[Markdown],
         page=NotRequired[Managed],
         verbatim_citation=NotRequired[Markdown],
         citation_group=NotRequired[CitationGroup],
         page_link=NotRequired[URL],
+        over_ce=NotRequired[ClassificationEntry],
         tag=16,
     )
     # Priority reversed by ICZN opinion
