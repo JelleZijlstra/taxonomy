@@ -1653,7 +1653,9 @@ class Name(BaseModel):
             authority = f"({authority})"
         return authority
 
-    def resolve_name(self, *, depth: int = 0) -> Name:
+    def resolve_name(
+        self, *, depth: int = 0, exclude: tuple[builtins.type[object], ...] = ()
+    ) -> Name:
         if depth > 10:
             raise ValueError(f"too deep: {self}")
         for tag in self.tags:
@@ -1672,7 +1674,7 @@ class Name(BaseModel):
                     NameTag.NameCombinationOf,
                     NameTag.RerankingOf,
                 ),
-            ):
+            ) and not isinstance(tag, exclude):
                 return tag.name.resolve_name(depth=depth + 1)
         return self
 
