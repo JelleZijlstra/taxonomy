@@ -972,6 +972,28 @@ class Article(BaseModel):
         subprocess.check_call(["pdftotext", self.get_path(), expected_path])
         return expected_path
 
+    def index_pdf_for_search(self, *, force_extract: bool = False) -> int:
+        """Index this article's PDF pages into the search database.
+
+        - Extracts (or reuses) cached PDF text in `pdf_text_path`.
+        - Splits pages on form feed characters and stores them in the search DB.
+
+        Returns the number of pages indexed. Returns 0 if the article is not a PDF
+        or is a redirect.
+        """
+        if not self.ispdf() or self.isredirect():
+            return 0
+        text_path = self.store_pdf_content(force=force_extract)
+        if text_path is None or not text_path.exists():
+            return 0
+        pages = text_path.read_text().split("\x0c")
+        year = self.valid_numeric_year()
+        # Import locally to avoid any potential import cycles
+        from taxonomy import search as _search
+
+        _search.replace_article_pages(self.id, pages=pages, year=year)
+        return len(pages)
+
     # Authors
 
     def get_authors(self) -> list[Person]:
