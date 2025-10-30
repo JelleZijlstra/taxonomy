@@ -46,6 +46,8 @@ def make_app(build_root: str | None = None) -> web.Application:
     else:
         hesperomys_dir = Path(build_root)
     app = web.Application()
+    # Validate schema consistency for frontend queries before serving
+    schema.validate_no_conflicting_model_fields(schema.schema)
     GraphQLView.attach(app, schema=schema.schema, graphiql=True)
     app.router.add_static("/static", hesperomys_dir / "build" / "static")
     app.add_routes([web.get("/favicon.ico", favicon_handler)])

@@ -932,3 +932,75 @@ def get_schema_string(schema: Schema) -> str:
     # as "A, B" instead of "A & B". Hacky workaround (that will work only as long as
     # we have at most two interfaces).
     return re.sub(r" implements ([A-Z][a-z]+), ", r" implements \1 & ", str(schema))
+
+
+def validate_no_conflicting_model_fields(schema: Schema) -> None:
+    """Validate that fields with the same name on types implementing Model have
+    identical GraphQL types (including nullability).
+
+    Uses the SDL string of the schema for portability across Graphene versions.
+    """
+    sdl = get_schema_string(schema)
+
+    # Regex to capture: type <Name> implements <Interfaces> { <body> }
+    type_re = re.compile(
+        r"type\s+([A-Za-z_][A-Za-z0-9_]*)\s+implements\s+([^\{]+)\{(.*?)\}", re.DOTALL
+    )
+
+    def parse_field_line(line: str) -> tuple[str, str] | None:
+        if ":" not in line:
+            return None
+        # Remove directives after type
+        line_no_dir = line.split("@", 1)[0]
+        name_part, type_part = line_no_dir.split(":", 1)
+        name_token = name_part.strip()
+        if "(" in name_token:
+            name_token = name_token.split("(", 1)[0].strip()
+        type_token = type_part.strip()
+        type_token = type_token.split("#", 1)[0].strip()
+        if not name_token or not type_token:
+            return None
+        return name_token, type_token
+
+    # field_name -> { type_name -> type_str }
+    field_matrix: dict[str, dict[str, str]] = {}
+    for m in type_re.finditer(sdl):
+        type_name = m.group(1)
+        interfaces = m.group(2)
+        if "Model" not in interfaces:
+            continue
+        body = m.group(3)
+        for raw_line in body.splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith(("#", "}")):
+                continue
+            parsed = parse_field_line(line)
+            if not parsed:
+                continue
+            fname, ftype = parsed
+            if fname in {
+                "id",
+                "oid",
+                "call_sign",
+                "page_title",
+                "redirect_url",
+                "model_cls",
+            }:
+                continue
+            field_matrix.setdefault(fname, {})[type_name] = ftype
+
+    problems: list[tuple[str, dict[str, str]]] = []
+    for fname, per_type in field_matrix.items():
+        if len(per_type) <= 1:
+            continue
+        if len(set(per_type.values())) > 1:
+            problems.append((fname, per_type))
+
+    if problems:
+        msgs = ["GraphQL schema field type conflicts detected on Model implementers:"]
+        for fname, by_type in sorted(problems, key=lambda p: p[0]):
+            details = ", ".join(
+                f"{t}:{ty}" for t, ty in sorted(by_type.items(), key=lambda p: p[0])
+            )
+            msgs.append(f" - {fname}: {details}")
+        print("WARNING:", "\n".join(msgs))

@@ -2940,7 +2940,7 @@ class NameTag(adt.ADT):
     )
     SubsequentUsageOf(name=Name, comment=NotRequired[Markdown], tag=15)  # type: ignore[name-defined]
     SelectionOfPriority(  # type: ignore[name-defined]
-        over=NotRequired[Name],
+        over_name=NotRequired[Name],
         optional_source=NotRequired[Article],
         comment=NotRequired[Markdown],
         page=NotRequired[Managed],
