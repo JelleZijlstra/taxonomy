@@ -35,6 +35,7 @@ from taxonomy.db.constants import CommentKind
 from taxonomy.db.derived_data import DerivedField
 from taxonomy.db.models import (
     Article,
+    ClassificationEntry,
     Location,
     Name,
     NameComment,
@@ -477,6 +478,21 @@ CUSTOM_FIELDS = {
         "numeric_year": Int(required=False, resolver=numeric_year_resolver_name),
         # Ideally should be a Name field, but that would create a circular dependency
         "variant_base_id": Int(required=True, resolver=variant_base_id_resolver_name),
+        # Classification entries mapped to this Name, ordered by the year of the
+        # corresponding Article (ascending; unknown years last)
+        "ordered_classification_entries": ConnectionField(
+            make_connection(ClassificationEntry),
+            resolver=lambda parent, info, first=10, after=None: ordered_classification_entries_resolver(
+                parent, info, first, after
+            ),
+        ),
+        # Alias for the count of classification entries (same as num_classification_entries)
+        "num_ordered_classification_entries": Int(
+            required=True,
+            resolver=lambda parent, info: num_ordered_classification_entries_resolver(
+                parent, info
+            ),
+        ),
     },
     Article: {
         "numeric_year": Int(required=False, resolver=numeric_year_resolver_article)
@@ -678,6 +694,49 @@ def build_model_field(model_cls: type[BaseModel]) -> tuple[Field, Field | None]:
         by_label_field = List(object_type, label=String(), resolver=by_label_resolver)
 
     return Field(object_type, oid=Int(), resolver=resolver), by_label_field
+
+
+def ordered_classification_entries_resolver(
+    parent: ObjectType, info: ResolveInfo, first: int = 10, after: str | None = None
+) -> list[ObjectType | None]:
+    """Classification entries mapped to a Name, ordered by Article year.
+
+    - Orders ascending by Article.valid_numeric_year(); unknown years last.
+    - Applies Relay-style pagination similar to other resolvers (uses `after`
+      offset convention and returns an extra element for hasNextPage).
+    """
+    name_model = get_model(Name, parent, info)
+    query = name_model.classification_entries
+    query = ClassificationEntry.add_validity_check(query)
+
+    entries = list(query)
+
+    def year_key(ce: ClassificationEntry) -> tuple[int, int]:
+        art_year = ce.article.valid_numeric_year()
+        y = art_year if art_year is not None else 10_000_000
+        return (y, ce.article.id)
+
+    entries.sort(key=year_key)
+
+    offset = _decode_after(after)
+    limit = first + offset + 1
+    sliced = entries[:limit]
+
+    object_type = build_object_type_from_model(ClassificationEntry)
+    cache = info.context["request"]
+    ret: list[ObjectType] = []
+    for ce in sliced:
+        ret.append(object_type(id=ce.id, oid=ce.id))
+        cache[(ClassificationEntry.call_sign, ce.id)] = ce
+    return ret
+
+
+def num_ordered_classification_entries_resolver(
+    parent: ObjectType, info: ResolveInfo
+) -> int:
+    """Alias for num_classification_entries (count of backrefs)."""
+    name_model = get_model(Name, parent, info)
+    return name_model.classification_entries.count()
 
 
 def get_model_resolvers() -> dict[str, Field]:
