@@ -44,7 +44,6 @@ from taxonomy.db.models import (
 )
 from taxonomy.db.models.base import ADTField, BaseModel, TextField, TextOrNullField
 
-from . import search
 from .render import CALL_SIGN_TO_MODEL, DOCS_ROOT, render_markdown, render_plain_text
 
 T = TypeVar("T")
@@ -797,6 +796,23 @@ class SearchResult(ObjectType):
             highlight=" .. ".join(highlights) if highlights else None,
         )
 
+    @classmethod
+    def from_page_hit(
+        cls, article_id: int, page_num: int, snippet: str
+    ) -> SearchResult:
+        object_type = build_object_type_from_model(Article)
+        model = object_type(oid=article_id, id=article_id)
+        return SearchResult(
+            model=model,
+            context=f"Page {page_num}",
+            highlight=_snippet_to_highlight(snippet) if snippet else None,
+        )
+
+
+def _snippet_to_highlight(snippet: str) -> str:
+    # Convert FTS snippet markup <b>...</b> to the frontend's expected **...** style
+    return snippet.replace("<b>", "**").replace("</b>", "**")
+
 
 class SearchResultConnection(Connection):
     class Meta:
@@ -810,13 +826,16 @@ def resolve_search(
     first: int = 10,
     after: str | None = None,
 ) -> list[SearchResult | None]:
-    if after is not None:
-        offset = int(base64.b64decode(after).split(b":")[1]) + 1
-    else:
-        offset = 0
-    # + 1 so Relay can know whether there are additional results
-    result = search.run_query(query, size=first + offset + 1, start=offset)
-    return [None] * offset + [SearchResult.from_hit(hit) for hit in result["hit"]]
+    # Use the local FTS search database (articles-only full text)
+    from taxonomy import search as fts
+
+    offset = _decode_after(after)
+    limit = first + offset + 1  # +1 so Relay can know if more results exist
+    hits = fts.search(query, limit=limit, offset=offset)
+    results = [
+        SearchResult.from_page_hit(h.article_id, h.page_num, h.snippet) for h in hits
+    ]
+    return [None] * offset + results
 
 
 class PossibleHomonym(ObjectType):
