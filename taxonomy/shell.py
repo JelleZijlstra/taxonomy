@@ -46,6 +46,7 @@ from taxonomy.db.models.classification_entry.ce import (
     ClassificationEntry,
     ClassificationEntryTag,
 )
+from taxonomy.search import search as internal_search
 
 from . import getinput, urlparse
 from .command_set import CommandSet
@@ -3174,6 +3175,121 @@ def edit_ignore_lint_names() -> None:
 @command
 def article_by_title() -> Article | None:
     return Article.getter("title").get_one("title> ")
+
+
+def _colorize_snippet(snippet: str) -> str:
+    """Render FTS snippet with terminal colors instead of HTML.
+
+    Replaces <b>…</b> with yellow-colored text for visibility in terminal.
+    """
+    from taxonomy import getinput
+
+    def repl(match: re.Match[str]) -> str:
+        return getinput.yellow(match.group(1))
+
+    return re.sub(r"<b>(.*?)</b>", repl, snippet)
+
+
+def interactive_search(
+    query: str,
+    *,
+    min_year: int | None = None,
+    max_year: int | None = None,
+    page_size: int = 20,
+) -> None:
+    """Interactive FTS search with paging and open-file shortcuts.
+
+    - Prints batches of results with article name, page number, citation, and snippet.
+    - Prompt accepts: "more" to fetch next batch, or any displayed filename to open it.
+    - Press Enter on an empty line to quit.
+    """
+    from taxonomy import getinput
+    from taxonomy.db.models.article.article import Article
+
+    offset = 0
+    while True:
+        hits = internal_search(
+            query, year_min=min_year, year_max=max_year, limit=page_size, offset=offset
+        )
+        if not hits:
+            if offset == 0:
+                print("No results.")
+            else:
+                print("No more results.")
+            return
+
+        # Load articles for current batch
+        articles_by_id: dict[int, Article] = {}
+        for h in hits:
+            try:
+                articles_by_id[h.article_id] = Article.get(id=h.article_id)
+            except Article.DoesNotExist:
+                continue
+
+        # Print results
+        for i, h in enumerate(hits, start=offset + 1):
+            art = articles_by_id.get(h.article_id)
+            if art is None:
+                continue
+            try:
+                citation = art.cite()
+            except Exception:
+                citation = art.concise_citation()
+            num = getinput.blue(f"[{i}]")
+            name = getinput.green(art.name)
+            page = getinput.yellow(f"p. {h.page_num}")
+            header = f"{num} {name} — {page} — {citation}"
+            print(header)
+            print("   " + _colorize_snippet(h.snippet))
+            print()
+
+        # Build choices: more + current batch file names
+        names = sorted({art.name for art in articles_by_id.values()})
+        while True:
+            choice = getinput.get_with_completion(
+                options=["more", *names],
+                message="search> ",
+                disallow_other=True,
+                allow_empty=True,
+                callbacks=models.base.get_static_callbacks(),
+            )
+            if not choice:
+                return
+            if choice == "more":
+                offset += page_size
+                break
+            # Open selected file
+            try:
+                art = Article.get(name=choice)
+            except Article.DoesNotExist:
+                print(f"Not found: {choice}")
+                continue
+            if art is not None:
+                art.edit()
+
+
+def get_int(prompt: str, *, allow_empty: bool = False) -> int | None:
+    while True:
+        line = getinput.get_line(prompt)
+        if not line:
+            if allow_empty:
+                return None
+            else:
+                continue
+        try:
+            return int(line)
+        except ValueError:
+            print("Invalid integer, try again.")
+
+
+@command
+def search() -> None:
+    query = getinput.get_line("query> ")
+    if not query:
+        return
+    min_year = get_int("min year> ", allow_empty=True)
+    max_year = get_int("max year> ", allow_empty=True)
+    interactive_search(query, min_year=min_year, max_year=max_year)
 
 
 def run_shell() -> None:

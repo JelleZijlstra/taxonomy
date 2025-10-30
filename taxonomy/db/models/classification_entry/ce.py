@@ -5,6 +5,7 @@ from __future__ import annotations
 import datetime
 import enum
 import re
+from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
 from types import MappingProxyType
 from typing import Any, ClassVar, NotRequired, Self
@@ -333,6 +334,18 @@ class ClassificationEntry(BaseModel):
             return f"{base} -> {self.mapped_name}"
         return base
 
+    def all_children(self) -> Iterable[ClassificationEntry]:
+        yield self
+        for child in self.get_children():
+            yield from child.all_children()
+
+    def diversity(self) -> None:
+        by_rank: Counter[Rank] = Counter()
+        for child in self.all_children():
+            by_rank[child.rank] += 1
+        for rank, count in by_rank.most_common():
+            print(f"{rank.display_name}: {count}")
+
     def display(
         self,
         *,
@@ -526,6 +539,7 @@ class ClassificationEntry(BaseModel):
             "set_page": self.set_page,
             "merge": self.merge,
             "kerr_subgeneric": self._kerr_subgeneric,
+            "diversity": self.diversity,
         }
 
     def _kerr_subgeneric(self) -> None:

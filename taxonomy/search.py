@@ -133,6 +133,7 @@ def search(
     year_min: int | None = None,
     year_max: int | None = None,
     limit: int = 50,
+    offset: int = 0,
 ) -> list[SearchHit]:
     """Run an FTS search against `pages_fts` and return highlighted snippets.
 
@@ -156,9 +157,10 @@ def search(
         FROM pages_fts
         JOIN pages ON pages_fts.rowid = pages.rowid
         WHERE {where_clause}
-        LIMIT ?
+        ORDER BY bm25(pages_fts)
+        LIMIT ? OFFSET ?
     """
-    args.append(limit)
+    args.extend([limit, offset])
     rows = run_query(sql, tuple(args))
     return [
         SearchHit(int(a), int(p), int(y) if y is not None else None, str(s))

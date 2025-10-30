@@ -875,7 +875,7 @@ def add_data_for_new_file(art: Article) -> None:
     art.store_pdf_content()
     art.add_to_history()
     art.add_to_history("name")
-    getinput.add_to_clipboard(art.name)
     art.edittitle()
+    art.index_pdf_for_search()
     art.edit_until_clean()
     print("Added to catalog!")

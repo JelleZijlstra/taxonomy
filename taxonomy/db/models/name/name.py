@@ -23,6 +23,7 @@ from typing import (
 
 from clirm import DoesNotExist, Field, Query
 
+import taxonomy
 from taxonomy import adt, events, getinput, parsing
 from taxonomy.apis import bhl
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
@@ -700,7 +701,18 @@ class Name(BaseModel):
             "display_usage_list": lambda: print(self.make_usage_list()),
             "set_page_described": self.set_page_described,
             "update_type_designations": self.update_type_designations,
+            "find_older_usages": self.find_older_usages,
+            "find_older_usages_literal": lambda: self.find_older_usages(literal=True),
         }
+
+    def find_older_usages(self, *, literal: bool = False) -> None:
+        if self.corrected_original_name is not None:
+            query = self.corrected_original_name
+        else:
+            query = self.root_name
+        if literal:
+            query = f'"{query}"'
+        taxonomy.shell.interactive_search(query, max_year=self.valid_numeric_year())
 
     def get_classification_entries(self) -> Query[ClassificationEntry]:
         return ClassificationEntry.select_valid().filter(
