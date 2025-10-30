@@ -289,7 +289,7 @@ def _get_locations(
     query = (
         Location.select_valid()
         .filter((Location.min_period == model) | (Location.max_period == model))
-        .order_by(Location.label_field)
+        .order_by(getattr(Location, Location.label_field))
     )
     if after:
         offset = int(base64.b64decode(after).split(b":")[1]) + 1

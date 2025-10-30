@@ -47,6 +47,9 @@ def deploy_data(options: Options) -> None:
     run_ssh(options, f"mkdir -p {STAGING_DIR}")
     run_scp(options, options.db_filename, STAGING_DIR, is_directory=False)
     run_scp(options, options.derived_data_filename, STAGING_DIR, is_directory=False)
+    # Also deploy the full-text search database used by hsweb
+    if options.search_db_filename and options.search_db_filename.exists():
+        run_scp(options, options.search_db_filename, STAGING_DIR, is_directory=False)
 
 
 def validate_version(version: str) -> None:
