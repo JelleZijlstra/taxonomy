@@ -10,6 +10,7 @@ import sys
 import time
 from collections import Counter
 from collections.abc import Callable, Iterable, Sequence
+from dataclasses import dataclass
 from typing import (
     IO,
     TYPE_CHECKING,
@@ -1206,7 +1207,7 @@ class Name(BaseModel):
 
         # Check for explicit priority selection
         for tag in self.tags:
-            if isinstance(tag, NameTag.SelectionOfPriority) and tag.over == nam:
+            if isinstance(tag, NameTag.SelectionOfPriority) and tag.over_name == nam:
                 return True
         return False
 
@@ -1941,7 +1942,7 @@ class Name(BaseModel):
         if self.original_citation is None:
             print("No original citation; cannot set nos")
             return
-        required_derived_tags = list(self.get_required_derived_tags())
+        required_derived_tags = [group for group, _ in self.get_required_derived_tags()]
         for group in self.get_missing_tags(required_derived_tags):
             if len(group) >= 2:
                 tag_cls = group[1]
@@ -1991,7 +1992,7 @@ class Name(BaseModel):
         if missing_details_tags:
             return (NameDataLevel.missing_details_tags, tag_list(missing_details_tags))
 
-        required_derived_tags = list(self.get_required_derived_tags())
+        required_derived_tags = [tags for tags, _ in self.get_required_derived_tags()]
         missing_derived_tags = list(self.get_missing_tags(required_derived_tags))
         if missing_derived_tags:
             return (NameDataLevel.missing_derived_tags, tag_list(missing_derived_tags))
@@ -2002,7 +2003,7 @@ class Name(BaseModel):
         missing_fields = set(self.get_empty_required_fields())
         required_details_tags = list(self.get_required_details_tags())
         missing_details_tags = list(self.get_missing_tags(required_details_tags))
-        required_derived_tags = list(self.get_required_derived_tags())
+        required_derived_tags = [tags for tags, _ in self.get_required_derived_tags()]
         missing_derived_tags = list(self.get_missing_tags(required_derived_tags))
 
         if has_data_from_original(self):
@@ -2075,40 +2076,63 @@ class Name(BaseModel):
 
     def get_required_details_tags(self) -> Iterable[tuple[TypeTagCons, TypeTagCons]]:
         if self.requires_etymology():
-            yield (TypeTag.EtymologyDetail, TypeTag.NoEtymology)
+            yield ETYMOLOGY_TAGS
         if (
             self.group is Group.species
             and self.numeric_year() >= _DATA_CUTOFF
             and self.nomenclature_status.requires_type()
         ):
-            yield (TypeTag.LocationDetail, TypeTag.NoLocation)
-            yield (TypeTag.SpecimenDetail, TypeTag.NoSpecimen)
+            yield LOCATION_TAGS
+            yield SPECIMEN_TAGS
 
-    def get_required_derived_tags(self) -> Iterable[tuple[TypeTagCons, ...]]:
+    def get_required_derived_tags(
+        self,
+    ) -> Iterable[tuple[tuple[TypeTagCons, ...], ExperimentalLintCondition]]:
         if self.group is Group.species:
             if self.collection and self.collection.id == MULTIPLE_COLLECTION:
-                yield (TypeTag.Repository,)
+                yield (TypeTag.Repository,), ExperimentalLintCondition(always=True)
             if (
                 self.type_specimen
                 and self.species_type_kind is not constants.SpeciesGroupType.syntypes
             ):
                 if not self.is_ichno():
-                    yield (TypeTag.Organ, TypeTag.NoOrgan)
+                    yield (TypeTag.Organ, TypeTag.NoOrgan), ExperimentalLintCondition(
+                        only_with_tags_from_original=SPECIMEN_TAGS
+                    )
                 if not self.is_fossil():
-                    yield (TypeTag.Date, TypeTag.NoDate)
-                    yield (TypeTag.CollectedBy, TypeTag.NoCollector, TypeTag.Involved)
-                    yield (TypeTag.Age, TypeTag.NoAge)
-                    yield (TypeTag.Gender, TypeTag.NoGender)
+                    yield (TypeTag.Date, TypeTag.NoDate), ExperimentalLintCondition(
+                        only_with_tags_from_original=SPECIMEN_TAGS
+                    )
+                    yield (
+                        TypeTag.CollectedBy,
+                        TypeTag.NoCollector,
+                        TypeTag.Involved,
+                    ), ExperimentalLintCondition(
+                        only_with_tags_from_original=SPECIMEN_TAGS
+                    )
+                    yield (TypeTag.Age, TypeTag.NoAge), ExperimentalLintCondition(
+                        only_with_tags_from_original=SPECIMEN_TAGS
+                    )
+                    yield (TypeTag.Gender, TypeTag.NoGender), ExperimentalLintCondition(
+                        only_with_tags_from_original=SPECIMEN_TAGS
+                    )
             if self.is_patronym() and not self.nomenclature_status.is_variant():
-                yield (TypeTag.NamedAfter,)
+                yield (TypeTag.NamedAfter,), ExperimentalLintCondition(
+                    only_with_tags_from_original=ETYMOLOGY_TAGS
+                )
             if self.type_specimen and self.species_type_kind and not self.collection:
-                yield (TypeTag.ProbableRepository,)
+                yield (TypeTag.ProbableRepository,), ExperimentalLintCondition(
+                    only_with_tags_from_original=SPECIMEN_TAGS
+                )
         if self.group is Group.genus:
             if self.nomenclature_status.requires_type():
                 if self.genus_type_kind is None or self.genus_type_kind.requires_tag():
-                    yield (TypeTag.IncludedSpecies, TypeTag.GenusCoelebs)
+                    yield (
+                        TypeTag.IncludedSpecies,
+                        TypeTag.GenusCoelebs,
+                    ), ExperimentalLintCondition(always=True)
         if self.original_rank is not None and self.original_rank.needs_textual_rank:
-            yield (TypeTag.TextualOriginalRank,)
+            yield (TypeTag.TextualOriginalRank,), ExperimentalLintCondition(always=True)
 
     def get_missing_tags(
         self, required_tags: Iterable[tuple[TypeTagCons, ...]]
@@ -3248,6 +3272,9 @@ SOURCE_DATA_TAGS = (
     TypeTag.GenusCoelebs,
     TypeTag.TextualOriginalRank,
 )
+ETYMOLOGY_TAGS = (TypeTag.EtymologyDetail, TypeTag.NoEtymology)
+LOCATION_TAGS = (TypeTag.LocationDetail, TypeTag.NoLocation)
+SPECIMEN_TAGS = (TypeTag.SpecimenDetail, TypeTag.NoSpecimen)
 
 if TYPE_CHECKING:
     TypeTagCons: TypeAlias = Any
@@ -3282,3 +3309,49 @@ def write_names(
     else:
         for nam in nams:
             file.write(getinput.indent(write_nam(nam), depth + 8))
+
+
+@dataclass
+class ExperimentalLintCondition:
+    """When to apply an experimental lind check.
+
+    Conditions are positive: they apply e.g. before year 1760 if before_year=1760 is set.
+    """
+
+    always: bool = False
+    before_year: int | None = 1760
+    after_year: int | None = 2020
+    above_name_id: int | None = 100_000
+    above_article_id: int | None = 70_000
+    require_in_groups: Sequence[Group] = ()
+    only_with_tags_from_original: Sequence[TypeTagCons] = ()
+
+    def should_apply(self, nam: Name, cfg: LintConfig) -> bool:
+        if cfg.experimental or self.always:
+            return True
+        if (
+            self.only_with_tags_from_original
+            and nam.original_citation is not None
+            and not any(
+                type(tag) in self.only_with_tags_from_original
+                and hasattr(tag, "source")
+                and tag.source == nam.original_citation
+                for tag in nam.type_tags
+            )
+        ):
+            return False
+        if self.before_year is not None and nam.numeric_year() <= self.before_year:
+            return True
+        if self.after_year is not None and nam.numeric_year() >= self.after_year:
+            return True
+        if self.above_name_id is not None and nam.id >= self.above_name_id:
+            return True
+        if (
+            self.above_article_id is not None
+            and nam.original_citation is not None
+            and nam.original_citation.id >= self.above_article_id
+        ):
+            return True
+        if nam.group in self.require_in_groups:
+            return True
+        return False

@@ -447,15 +447,18 @@ def get_bhl_part_data_from_part_id(part_id: int) -> RawData:
     if authors_raw := metadata.get("Authors"):
         authors = []
         for author in authors_raw:
-            last, first = author["Name"].split(", ", maxsplit=1)
-            given_names = first.strip().strip(",")
-            info = {"family_name": last.strip()}
-            if parsing.matches_grammar(
-                given_names.replace(" ", ""), parsing.initials_pattern
-            ):
-                info["initials"] = given_names.replace(" ", "")
+            if ", " in author["Name"]:
+                last, first = author["Name"].split(", ", maxsplit=1)
+                given_names = first.strip().strip(",")
+                info = {"family_name": last.strip()}
+                if parsing.matches_grammar(
+                    given_names.replace(" ", ""), parsing.initials_pattern
+                ):
+                    info["initials"] = given_names.replace(" ", "")
+                else:
+                    info["given_names"] = re.sub(r"\. ([A-Z]\.)", r".\1", given_names)
             else:
-                info["given_names"] = re.sub(r"\. ([A-Z]\.)", r".\1", given_names)
+                info = {"family_name": author["Name"].strip()}
             authors.append(info)
         data["author_tags"] = authors
     return data

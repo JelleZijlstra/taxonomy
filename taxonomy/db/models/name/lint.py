@@ -87,6 +87,7 @@ from .name import (
     SelectionReason,
     TypeTag,
 )
+from .name import ExperimentalLintCondition as Exp
 from .organ import CHECKED_ORGANS, ParsedOrgan, ParseException, parse_organ_detail
 from .page import check_page, get_unique_page_text, parse_page_text
 from .type_specimen import (
@@ -1618,7 +1619,8 @@ def check_type_locality_strict(nam: Name, cfg: LintConfig) -> Iterable[str]:
         return
     if nam.type_locality is None:
         yield "missing type locality"
-    if not cfg.experimental:
+        return
+    if not Exp().should_apply(nam, cfg):
         return
     original_localities = [
         tag
@@ -1670,10 +1672,10 @@ def check_type_designation_strict(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 yield "missing a reference for neotype designation"
         case None:
             if (
-                cfg.experimental
-                and nam.original_citation is not None
+                nam.original_citation is not None
                 and nam.group is Group.species
                 and "type_specimen" in nam.get_required_fields()
+                and Exp().should_apply(nam, cfg)
             ):
                 yield "missing type specimen"
 
@@ -3495,6 +3497,8 @@ def check_data_level(nam: Name, cfg: LintConfig) -> Iterable[str]:
             ):
                 yield f"has no data from original ({ocdl_reason}), but missing important fields: {ndl_reason}"
         case OriginalCitationDataLevel.some_data:
+            if Exp(above_article_id=55_000).should_apply(nam, cfg):
+                yield f"recent name has incomplete data from original ({ocdl_reason})"
             if ndl is NameDataLevel.missing_crucial_fields:
                 yield f"has some data from original ({ocdl_reason}), but missing crucial data: {ndl_reason}"
         case OriginalCitationDataLevel.all_required_data:
@@ -3800,22 +3804,59 @@ def check_specific_authors(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 )
 
 
+def has_accessible_original_citation(nam: Name) -> bool:
+    return (
+        nam.original_citation is not None
+        and nam.original_citation.kind is not ArticleKind.no_copy
+        and not nam.original_citation.has_tag(ArticleTag.NonOriginal)
+    )
+
+
 @LINT.add("required_fields")
 def check_required_fields(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.verbatim_citation and not nam.citation_group:
         yield "has verbatim citation but no citation group"
-    if (
-        nam.original_citation
-        and not nam.page_described
-        and nam.original_citation.kind is not ArticleKind.no_copy
-        and not nam.original_citation.has_tag(ArticleTag.NonOriginal)
-        and not (
-            nam.nomenclature_status is NomenclatureStatus.name_combination
-            and _is_msw3(nam.original_citation)
-        )
-        and "page_described" in nam.get_required_fields()
-    ):
-        yield "has original citation but no page_described"
+    if has_accessible_original_citation(nam):
+        if (
+            nam.page_described is None
+            and not (
+                nam.nomenclature_status is NomenclatureStatus.name_combination
+                and nam.original_citation is not None
+                and _is_msw3(nam.original_citation)
+            )
+            and "page_described" in nam.get_required_fields()
+        ):
+            yield "has original citation but no page_described"
+        if nam.original_name is None:
+            yield "has original citation but no original_name"
+        if nam.original_rank is None:
+            yield "has original citation but no original_rank"
+        if nam.author_tags is None:
+            message = "has original citation but no author_tags"
+            if cfg.autofix:
+                print(f"{nam}: {message}")
+                nam.copy_authors()
+            else:
+                yield message
+        if nam.year is None:
+            message = "has original citation but no year"
+            if cfg.autofix:
+                print(f"{nam}: {message}")
+                nam.copy_year()
+            else:
+                yield message
+        if (
+            nam.name_complex is None
+            and nam.group is Group.genus
+            and nam.nomenclature_status.requires_name_complex()
+        ):
+            yield "genus-group name with no name complex"
+        if (
+            nam.species_name_complex is None
+            and nam.group is Group.species
+            and nam.nomenclature_status.requires_name_complex()
+        ):
+            yield "species-group name with no species name complex"
     if (
         nam.numeric_year() > 1970
         and not nam.verbatim_citation
@@ -3827,6 +3868,17 @@ def check_required_fields(nam: Name, cfg: LintConfig) -> Iterable[str]:
             yield "has type_specimen but no species_type_kind"
         if nam.has_type_tag(TypeTag.Age) or nam.has_type_tag(TypeTag.Gender):
             yield "has type specimen age or gender but no species_type_kind"
+
+
+@LINT.add("derived_tags")
+def check_required_derived_tags(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    if not has_accessible_original_citation(nam):
+        return
+    for tags, exp in nam.get_required_derived_tags():
+        if not any(nam.has_type_tag(tag) for tag in tags) and exp.should_apply(
+            nam, cfg
+        ):
+            yield f"missing required derived tags {tags}"
 
 
 @LINT.add("synonym_group")
@@ -5624,7 +5676,7 @@ def maybe_take_over_name(
             take_over_name(nam, ce, cfg)
         else:
             yield message
-    elif should_report_unreplaceable_name(nam):
+    elif should_report_unreplaceable_name(nam, cfg):
         yield f"replace name {nam} with {ce}"
 
 
@@ -5780,7 +5832,7 @@ def _infer_name_variants_of_status(
                     if cfg.autofix and can_replace is None:
                         print(f"{duplicate}: {message}")
                         duplicate.merge(existing[0], copy_fields=False)
-                    elif should_report_unreplaceable_name(duplicate):
+                    elif should_report_unreplaceable_name(duplicate, cfg):
                         yield f"{message} (cannot replace because of: {can_replace})"
 
 
@@ -5820,7 +5872,7 @@ def check_duplicate_variants(nam: Name, cfg: LintConfig) -> Iterable[str]:
         if cfg.autofix and can_replace is None:
             print(f"{nam}: {message}")
             nam.merge(earlier[0], copy_fields=False)
-        elif should_report_unreplaceable_name(nam):
+        elif should_report_unreplaceable_name(nam, cfg):
             yield f"{message} (cannot replace because of: {can_replace})"
 
 
@@ -5847,11 +5899,11 @@ def can_replace_name(nam: Name) -> str | None:
     return None
 
 
-def should_report_unreplaceable_name(nam: Name) -> bool:
+def should_report_unreplaceable_name(nam: Name, cfg: LintConfig) -> bool:
     if nam.original_citation is None:
         return False
     return (
-        nam.id > 100_000
+        Exp().should_apply(nam, cfg)
         or nam.nomenclature_status is NomenclatureStatus.name_combination
         or (nam.group is Group.species and nam.numeric_year() > 1950)
     )
@@ -6515,14 +6567,12 @@ def remove_redundant_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
         # gradually add more here.
         if not has_ces and any(nam.original_citation.get_classification_entries()):
             yield "subsequent usage has no classification entries, but article has some"
-        elif (
-            nam.numeric_year() > 2000
-            or nam.numeric_year() < 1800
-            or nam.group is Group.high
-            or nam.id > 100_000
-        ):
-            yield "subsequent usage should be replaced"
-        elif cfg.experimental:
+        elif Exp(
+            before_year=1800,
+            after_year=2000,
+            require_in_groups=(Group.high,),
+            above_name_id=100_000,
+        ).should_apply(nam, cfg):
             yield "subsequent usage should be replaced"
 
 
