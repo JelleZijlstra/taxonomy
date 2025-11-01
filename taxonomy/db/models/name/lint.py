@@ -3497,7 +3497,7 @@ def check_data_level(nam: Name, cfg: LintConfig) -> Iterable[str]:
             ):
                 yield f"has no data from original ({ocdl_reason}), but missing important fields: {ndl_reason}"
         case OriginalCitationDataLevel.some_data:
-            if Exp(above_article_id=55_000).should_apply(nam, cfg):
+            if Exp(above_article_id=69_000).should_apply(nam, cfg):
                 yield f"recent name has incomplete data from original ({ocdl_reason})"
             if ndl is NameDataLevel.missing_crucial_fields:
                 yield f"has some data from original ({ocdl_reason}), but missing crucial data: {ndl_reason}"
