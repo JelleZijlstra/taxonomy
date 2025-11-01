@@ -16,10 +16,12 @@ from typing import Any, TypedDict, TypeVar, cast
 import gspread
 import Levenshtein
 
+from scripts import mdd_refs_match
 from taxonomy import getinput
 from taxonomy.config import get_options
-from taxonomy.db.constants import AgeClass, Rank, Status
+from taxonomy.db.constants import AgeClass, ArticleKind, Rank, Status
 from taxonomy.db.models import Name, Taxon
+from taxonomy.db.models.article import Article
 from taxonomy.db.models.tags import TaxonTag
 
 Syn = dict[str, str]
@@ -1007,6 +1009,96 @@ def lint_species(species: list[MDDSpecies]) -> Iterable[Issue]:
             ignorable_values=("NA", "incertae sedis"),
             fallback_columns=fallback_cols,
         )
+    # Check and suggest canonical formatting for taxonomy/distribution note citations
+    yield from lint_note_citations(species)
+
+
+_AID_SUFFIX_RE = re.compile(r"\s+a#(\d+)\s*$", re.IGNORECASE)
+_DOI_SUFFIX_RE = re.compile(r"\s+doi:(10\.\S+)\s*$", re.IGNORECASE)
+
+
+def _format_citation_with_suffix(article: Article) -> str:
+    # Use the new mdd citation style (no duplicate DOI; suffix appended)
+    return article.cite("mdd")
+
+
+def lint_note_citations(species: list[MDDSpecies]) -> Iterable[Issue]:
+    # Build indexes once for all matching
+    indexes = mdd_refs_match.get_article_indexes()
+    # Collect unmatched refs to update notes/mdd/mdd_refs.txt for future iterations
+    unmatched_refs: set[str] = set()
+    cols = ("taxonomyNotesCitation", "distributionNotesCitation")
+    for sp in species:
+        for col in cols:
+            raw = sp.row.get(col, "")
+            if not raw:
+                continue
+            assert isinstance(raw, str)
+            parts = [p.strip() for p in raw.split("|") if p.strip()]
+            new_parts: list[str] = []
+            changed = False
+            for part in parts:
+                art = None
+                # Handle explicit Article ID suffix
+                m = _AID_SUFFIX_RE.search(part)
+                if m:
+                    try:
+                        art = Article.get(id=int(m.group(1)))
+                    except Article.DoesNotExist:
+                        art = None
+                if art is None:
+                    # Handle explicit DOI suffix
+                    m = _DOI_SUFFIX_RE.search(part)
+                    if m:
+                        doi = m.group(1)
+                        arts = list(
+                            Article.select_valid().filter(
+                                Article.doi == doi,
+                                Article.kind != ArticleKind.alternative_version,
+                            )
+                        )
+                        if len(arts) == 1:
+                            art = arts[0]
+                        elif len(arts) > 1:
+                            yield sp.make_issue(
+                                col,
+                                f"DOI {doi!r} matches multiple articles: {', '.join(str(art) for art in arts)}",
+                            )
+                        elif len(arts) == 0:
+                            yield sp.make_issue(
+                                col,
+                                f"DOI {doi!r} does not match any article in the database",
+                            )
+                if art is None:
+                    # Fallback: run resolver on the part
+                    reason, art_id = mdd_refs_match.resolve_reference(part, indexes)
+                    if art_id is not None:
+                        try:
+                            art = Article.get(id=art_id)
+                        except Exception:
+                            art = None
+                if art is None:
+                    # Keep original part
+                    new_parts.append(part)
+                    unmatched_refs.add(part)
+                    continue
+                formatted = _format_citation_with_suffix(art)
+                new_parts.append(formatted)
+                if formatted != part:
+                    changed = True
+            new_value = "|".join(new_parts)
+            if changed:
+                yield sp.make_issue(
+                    col, "reformat citations to canonical style", new_value
+                )
+
+    # After scanning all species, update notes/mdd/mdd_refs.txt with any unmatched refs
+    if unmatched_refs:
+        # Merge with existing refs file content
+        from scripts.mdd_refs_match import MDD_FILE
+
+        MDD_FILE.parent.mkdir(parents=True, exist_ok=True)
+        MDD_FILE.write_text("\n".join(sorted(unmatched_refs)) + "\n")
 
 
 def maybe_fix_issues(

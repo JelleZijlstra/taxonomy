@@ -250,6 +250,23 @@ def _citenormal(
     return out
 
 
+@register_cite_function("mdd")
+def citemdd(article: Article) -> str:
+    """Citation style for MDD integration.
+
+    - Uses the same base citation as "paper" (no WP markup, no DOI emitted).
+    - Appends either a DOI suffix (doi:...) if present, else an Article id suffix (a#...).
+    """
+    base = _citenormal(
+        article, mw=False, include_url=False, romanize_authors=True, full_date=False
+    )
+    # _citenormal with mw=False already includes URL but not DOI; append preferred suffix
+    if article.doi:
+        return f"{base} doi:{article.doi}"
+    else:
+        return f"{base} a#{article.id}"
+
+
 @register_cite_function("lemurnews")
 def citelemurnews(article: Article) -> str:
     authors = format_authors(article)

@@ -14,15 +14,22 @@ from __future__ import annotations
 import argparse
 import csv
 import re
+import shutil
+import subprocess
 import sys
+import time
+import webbrowser
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import quote_plus
 
 from rapidfuzz import fuzz
 from rapidfuzz.distance import Levenshtein as _Lev
 from unidecode import unidecode
 
+from taxonomy.db.constants import ArticleKind
 from taxonomy.db.models import Article
+from taxonomy.db.models.citation_group.cg import CitationGroup
 
 MDD_FILE = Path("notes/mdd/mdd_refs.txt")
 
@@ -340,20 +347,23 @@ def _norm_alnum(s: str | None) -> str:
     return s2
 
 
-def _build_article_indexes() -> (
-    tuple[
-        dict[str, list[ArticleInfo]],
-        dict[str, list[ArticleInfo]],
-        dict[str, list[ArticleInfo]],
-        list[ArticleInfo],
-    ]
-):
+type ArticleIndexes = tuple[
+    dict[str, list[ArticleInfo]],
+    dict[str, list[ArticleInfo]],
+    dict[str, list[ArticleInfo]],
+    list[ArticleInfo],
+]
+
+
+def _build_article_indexes() -> ArticleIndexes:
     all_infos: list[ArticleInfo] = []
     doi_index: dict[str, list[ArticleInfo]] = {}
     title_index: dict[str, list[ArticleInfo]] = {}
     year_index: dict[str, list[ArticleInfo]] = {}
     try:
-        for a in Article.select_valid():
+        for a in Article.select_valid().filter(
+            Article.kind != ArticleKind.alternative_version
+        ):
             info = ArticleInfo(
                 id=a.id,
                 title=a.title,
@@ -382,6 +392,47 @@ def _build_article_indexes() -> (
     except Exception:
         pass
     return doi_index, title_index, year_index, all_infos
+
+
+# Public API for integration
+def get_article_indexes() -> ArticleIndexes:
+    """Build in-memory indexes over Articles for reuse by callers."""
+    return _build_article_indexes()
+
+
+def parse_ref(raw: str) -> Ref:
+    """Parse a single reference string into a Ref structure."""
+    return Ref(
+        raw=raw,
+        year=extract_year(raw),
+        title=extract_title(raw),
+        journal=extract_journal(raw),
+        doi=extract_doi(raw),
+    )
+
+
+def resolve_reference(
+    raw: str, indexes: ArticleIndexes | None = None
+) -> tuple[str | None, int | None]:
+    """Resolve a reference text to an Article id using this module's heuristics.
+
+    Returns (reason, article_id) or (None, None) if not found.
+    """
+    if indexes is None:
+        doi_index, title_index, year_index, all_infos = _build_article_indexes()
+    else:
+        doi_index, title_index, year_index, all_infos = indexes
+    r = parse_ref(raw)
+    reason, arts = match_article(
+        r,
+        doi_index=doi_index,
+        title_index=title_index,
+        year_index=year_index,
+        all_infos=all_infos,
+    )
+    if reason and arts:
+        return reason, arts[0].id
+    return None, None
 
 
 def match_article(
@@ -474,6 +525,20 @@ def match_article(
                 best = _best_by_journal_or_year(arts_ok)
                 if best is not None:
                     return "title_best", [best]
+            else:
+                # No year-consistent candidates; relax year constraint a bit for exact title equality
+                best = _best_by_journal_or_year(arts)
+                if best is not None:
+                    # Accept if closest year within 2 years when titles are exactly equal
+                    if not r.year:
+                        return "title_relaxed", [best]
+                    try:
+                        ry = int(r.year)
+                        best_years = [int(y) for y in best.years if y.isdigit()]
+                    except Exception:
+                        best_years = []
+                    if best_years and min(abs(ry - y) for y in best_years) <= 2:
+                        return "title_relaxed", [best]
 
         # 2b) Exact title match ignoring punctuation/dash variants (alnum-only)
         ref_alnum = _norm_alnum(r.title)
@@ -486,6 +551,19 @@ def match_article(
                 best = _best_by_journal_or_year(alnum_ok)
                 if best is not None:
                     return "title_alnum_best", [best]
+            else:
+                # Relax for exact alnum equality as well
+                best = _best_by_journal_or_year(alnum_matches)
+                if best is not None:
+                    if not r.year:
+                        return "title_alnum_relaxed", [best]
+                    try:
+                        ry = int(r.year)
+                        best_years = [int(y) for y in best.years if y.isdigit()]
+                    except Exception:
+                        best_years = []
+                    if best_years and min(abs(ry - y) for y in best_years) <= 2:
+                        return "title_alnum_relaxed", [best]
 
         # 3) Year + title probe (in-memory, conservative for short or generic titles)
         if r.year and norm_ref:
@@ -739,6 +817,23 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--show-matches", action="store_true")
     ap.add_argument("--show-unmatched", action="store_true")
     ap.add_argument(
+        "--open-scholar",
+        action="store_true",
+        help="Open Google Scholar searches for up to N unmatched refs (title only)",
+    )
+    ap.add_argument(
+        "--open-scholar-limit",
+        type=int,
+        default=20,
+        help="Maximum number of Scholar searches to open when --open-scholar is set (default: 20)",
+    )
+    ap.add_argument(
+        "--open-scholar-sleep",
+        type=float,
+        default=2.0,
+        help="Seconds to sleep between opening Scholar searches (default: 2.0)",
+    )
+    ap.add_argument(
         "--unmatched-out",
         type=str,
         default="notes/mdd/mdd_refs_unmatched.csv",
@@ -795,6 +890,61 @@ def main(argv: list[str]) -> int:
         for r in unmatched[:20]:
             print(f"- {r.raw}")
             print(f"  year={r.year} title={r.title} journal={r.journal} doi={r.doi}")
+
+    # Optionally open Google Scholar for unmatched refs with valid journals
+    if args.open_scholar and unmatched:
+        # Build normalized set of known citation group names
+        valid_journals: set[str] = set()
+        try:
+            for cg in CitationGroup.select_valid():
+                if cg.name:
+                    v = _normalize_journal_name(cg.name)
+                    if v:
+                        valid_journals.add(v)
+                try:
+                    cn = cg.get_citable_name()
+                except Exception:
+                    cn = None
+                if cn:
+                    v2 = _normalize_journal_name(cn)
+                    if v2:
+                        valid_journals.add(v2)
+        except Exception:
+            pass
+        # Exclude journals we generally can't access
+        excluded = {
+            _normalize_journal_name("Bionomina"),
+            _normalize_journal_name("Zootaxa"),
+        }
+        opener = shutil.which("open")
+        # Build and sort candidate openings by normalized journal, then title
+        candidates: list[tuple[str, Ref]] = []
+        for r in unmatched:
+            if not r.title or not r.journal:
+                continue
+            ref_j = _normalize_journal_name(r.journal)
+            if not ref_j or ref_j not in valid_journals:
+                continue
+            if ref_j in excluded:
+                continue
+            candidates.append((ref_j, r))
+        candidates.sort(key=lambda x: (x[0], (x[1].title or "")))
+
+        opened = 0
+        for _, r in candidates:
+            if opened >= args.open_scholar_limit:
+                break
+            q = quote_plus(f'"{r.title}"')
+            url = f"https://scholar.google.com/scholar?q={q}"
+            if opener:
+                subprocess.run([opener, url], check=False)
+            else:
+                webbrowser.open(url)
+            opened += 1
+            # Sleep between openings to avoid rate limits / captchas
+            if args.open_scholar_sleep > 0:
+                time.sleep(args.open_scholar_sleep)
+        print(f"Opened Scholar searches: {opened} (limit: {args.open_scholar_limit})")
 
     # Write unmatched file (CSV with parsed fields and up to 3 suggested candidates)
     try:
