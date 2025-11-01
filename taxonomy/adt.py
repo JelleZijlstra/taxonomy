@@ -315,7 +315,12 @@ class ADT(_ADTBase, metaclass=_ADTMeta):
                     kwargs[name] = arg_type(serialized)
                 else:
                     kwargs[name] = serialized
-            return member_cls(**kwargs)
+            try:
+                return member_cls(**kwargs)
+            except TypeError as e:
+                raise TypeError(
+                    f"error unserializing {member_cls} with {kwargs}: {e}"
+                ) from e
         else:
             return member_cls  # type: ignore[return-value]
 

@@ -222,6 +222,9 @@ def _citenormal(
         if article.pages:
             out += f", {article.pages} pp"
         out += "."
+    elif article.type == ArticleType.WEB:
+        if article.publisher is not None:
+            out += f" {article.publisher}."
     if child_article is not None:
         return out
     if include_url:

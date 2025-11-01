@@ -27,11 +27,145 @@ from rapidfuzz import fuzz
 from rapidfuzz.distance import Levenshtein as _Lev
 from unidecode import unidecode
 
+from taxonomy import getinput
 from taxonomy.db.constants import ArticleKind
 from taxonomy.db.models import Article
+from taxonomy.db.models.base import get_static_callbacks
 from taxonomy.db.models.citation_group.cg import CitationGroup
 
 MDD_FILE = Path("notes/mdd/mdd_refs.txt")
+OVERRIDES_FILE = Path("notes/mdd/mdd_ref_overrides.csv")
+OVERRIDES_MAP: dict[str, int] = {}
+
+EXCLUDED_JOURNALS = {"Bionomina", "Zootaxa", "Australian Journal of Zoology", "London"}
+HARDCODED = {
+    "Ramírez-Chaves, H. E., & Solari, S. (2014). On the availability of the name Cuniculus hernandezi Castro, López, and Becerra, 2010 (Rodentia: Cuniculidae). Actualidades Biológicas, 36(100), 59-62.": (
+        20872
+    ),
+    "Wilson D.E., Reeder D.M. 2005. Mammal species of the world: a taxonomic and geographic reference, 3rd ed. Baltimore, MD: Johns Hopkins University Press.": (
+        9291
+    ),
+    "Dieterlen, F. (2009). Climbing mice of the genus Dendromus (Nesomyidae, Dendromurinae). Bonner zoologische Beiträge, 56(3), 185-200.": (
+        6690
+    ),
+    "Velazco, P. M., & Gardner, A. L. (2012). A new species of Lophostoma (Chiroptera: Phyllostomidae) from Panama. Journal of Mammalogy, 93(2), 605-614.": (
+        7909
+    ),
+    "Velazco, P. M. (2005). Systematics and phylogenetic relationships of the broad-nosed bats, genus Platyrrhinus (Chiroptera, Phyllostomidae). Fieldiana: Zoology, 105, 1-53.": (
+        1296
+    ),
+    "Shenbrot, G., Feldstein, T., & Meiri, S. (2016). Are cryptic species of the L esser E gyptian Jerboa, J aculus jaculus (Rodentia, Dipodidae), really cryptic? Re‐evaluation of their taxonomic status with new data from I srael and S inai. Journal of Zoological Systematics and Evolutionary Research, 54(2), 148-159.": (
+        72005
+    ),
+    "Moras, L. M., Gregorin, R., Sattler, T., & Tavares, V. D. C. (2017). Uncovering the diversity of dog-faced bats from the genus Cynomops (Chiroptera: Molossidae), with the redescription of C. milleri and the description of two new species. Mammalian Biology.": (
+        34842
+    ),
+    "Fabre, P. H., Miguez, R. P., Holden, M. E., Fitriana, Y. S., Semiadi, G., Musser, G. G., & Helgen, K. M. (2023). A replacement name for the endemic Rattus of Obi. Records of the Australian Museum, 76(2), 131-132.": (
+        66590
+    ),
+    "Gregorin, R. 2006. Taxonomy and geographic variation of species of the genus Alouatta Lacépède (Primates, Atelidae) in Brazil. Revista Brasileira de Zoologia 23(1): 64–144.": (
+        4737
+    ),
+    "Dybas da Natividade, B., & da Cunha Tavares, V. (2024). First records of Anoura cadenai Mantilla-Meluk & Baker, 2006 (Chiroptera: Phyllostomidae) for Venezuela. Mammalia, (0).": (
+        69882
+    ),
+    "Van Elst, T., Sgarlata, G. M., Schüßler, D., Tiley, G. P., Poelstra, J. W., Scheumann, M., ... & Salmona, J. (2024). Integrative taxonomy clarifies the evolution of a cryptic primate clade. Nature Ecology & Evolution, 1-16.": (
+        72020
+    ),
+    "Saikia, U., Csorba, G., & Ruedi, M. (2020). First records of Hypsugo joffrei (Thomas, 1915) and the revision of Philetor brachypterus (Temminck, 1840) specimens (Chiroptera: Vespertilionidae) from the Indian Subcontinent. Revue suisse de Zoologie, 124(1), 83-89.": (
+        34500
+    ),
+    "Pacheco, V., Rengifo, E.M., Vivas, D. 2014. A new species of leaf-eared mouse, genus Phyllotis Waterhouse, 1837 (Rodentia: Cricetidae) from northern Peru. Therya 5(2): 481-508.": (
+        20344
+    ),
+    "Novillo, A., Ojeda, A., & Ojeda, R. (2009). Loxodontomys pikumche (Rodentia, Cricetidae). A new species for Argentina. Mastozoología neotropical, 16(1), 239-242.": (
+        2572
+    ),
+    "Voss, R. S. & Giarla, T. C. (2021) A revision of the didelphid Marsupial genus Marmosa Part 3. A new species from Western Amazonia, with the redescription of M. perplexa Anthony, 1922, and M. germana O. Thomas, 1904. American Museum Novitates, 3969, 1-28.": (
+        51148
+    ),
+    "Gardner, A.L., Carleton, M.D. 2009. Chapter 5. A new species of Reithrodontomys, subgenus Aporodon (Cricetidae: Neotominae), from the Highlands of Costa Rica, with comments on Costa Rican and Panamanian Reithrodontomys. Bulletin of the American Museum of Natural History, 331(1): 157-182.": (
+        2370
+    ),
+    "Gardner, A. L. (2008). Genus Caluromys J. A. Allen, 1900. In: A. L. Gardner, Mammals of South America, Volume 1: Marsupials, Xenarthrans, Shrews, and Bats. University of Chicago Press, Chicago, pp. 3-11.": (
+        24352
+    ),
+    "Patton, J. L., &  Leite, R. N. (2015). Genus Proechimys J. A. Allen, 1899. In Patton, J. L., Pardiñas, U. F. J., & D'Elía, G. (eds.). Mammals of South America, Volume 2: Rodents. University of Chicago Press. pp. 950–989.": (
+        25937
+    ),
+    "Ruedas, L. A., French, J. H., Silva, S. M., Platt, I. I., Nelson, R., Salazar-Bravo, J., ... & Thompson, C. W. (2017). A PROLEGOMENON TO THE SYSTEMATICS OF SOUTH AMERICAN COTTONTAIL RABBITS (MAMMALIA, LAGOMORPHA, LEPORIDAE: SYLVILAGUS): DESIGNATION OF A NEOTYPE FOR S. BRASILIENSIS (LINNAEUS, 1758),": (
+        30268
+    ),
+    "Grubb, P. 2004. Comment on the proposed conservation of Viverra maculata Gray, 1830 (currently Genetta maculata; Mammalia, Carnivora). Bulletin of Zoological Nomenclature 61(2):119-122.": (
+        33937
+    ),
+    "Musser, G. G. (2015). 2. Characterisation of the endemic Sulawesi Lenomys meyeri (Muridae, Murinae) and the description of a new species of Lenomys. Taxonomic Tapestries, 13-50.": (
+        27139
+    ),
+    "Monadjem, A., Taylor, P.J., Denys, C. and Cotterill, F.P.D. 2015. Rodents of Sub-Saharan Africa: A Biogeographic and Taxonomic Synthesis. . De Gruyter, Berlin, Germany.": (
+        58104
+    ),
+    "Monadjem, A., Taylor, P. J., Denys, C., & Cotterill, F. P. (2015). Rodents of Sub-Saharan Africa: A biogeographic and taxonomic synthesis. Walter de Gruyter GmbH & Co KG.": (
+        58104
+    ),
+    "Monadjem, A., Taylor, P. J., Denys, C., & Cotterill, F. P. (2015). Rodents of sub-Saharan Africa: a biogeographic and taxonomic synthesis. Walter de Gruyter GmbH & Co KG.": (
+        58104
+    ),
+    "Balakirev AE, Bui Xuan Phuong, Pham Mai Phuong, Rozhnov VV. (2011) On taxonomic status of Pseudoberylmys muongbangensis new species and genus described from Son La Province, Vietnam. Does it new or pseudo-new species? Proceedings of 4-th national scientific conference on ecology and biological resources. Hanoi, Vietnam, 2011, 11–19.": (
+        11274
+    ),
+    "Dolch, D., Stubbe, M., Gärtner, B., Thiele, K., Ariunbold, J., Batsaikhan, N., Lkhagvasuren, Stubbe, A., & Stenhauser, D. (2021). Phylogenie, morphologie und ökologie mongolischer longorhrfleder-mäuse der gattung Plecotus (Mammalia, Chiroptera, Vespertilionidae). Ergebnisse der Mongolisch-Deutschen Biologischen Expeditionen, 14, 123-185.": (
+        59394
+    ),
+    "Kock, D. 2001. Rousettus aegyptiacus (E. Geoffroy St. Hilaire, 1810) and Pipistrellus anchietae (Seabra, 1900), justified emendations of original spellings. Acta Chiropterologica 3(2):245-256.": (
+        49399
+    ),
+    "Woolley, P. A., Krajewski, C., & Westerman, M. (2020). The endemic New Guinean genus Murexia (Dasyuromorphia: Dasyuridae). How many species? An analysis based on morphological, distributional and molecular data. Australian Journal of Zoology, 67(3), 134-144.": (
+        60289
+    ),
+    "Cerqueira, R., and Tribe, C. J. (2008). Genus Didelphis Linnaeus, 1758. In: A. L. Gardner, Mammals of South America, Volume 1: Marsupials, Xenarthrans, Shrews, and Bats. University of Chicago Press, Chicago, pp. 17-25.": (
+        24356
+    ),
+    "Myers, P., & Patton, J. L. (2008). Genus Lestoros Oehser, 1934. In: A. L. Gardner, Mammals of South America, Volume 1: Marsupials, Xenarthrans, Shrews, and Bats. University of Chicago Press, Chicago, pp. 124-126.": (
+        24360
+    ),
+    "Stein, B. R., and Patton, J. L. (2008). Genus Chironectes Illiger, 1811. In: A. L. Gardner, Mammals of South America, Volume 1: Marsupials, Xenarthrans, Shrews, and Bats. University of Chicago Press, Chicago, pp. 14-17.": (
+        24355
+    ),
+    "Weksler, M. & Bonvicino, C. R. 2015. Genus Oligoryzomys Bangs, 1900, p. 417-437. In: Patton, J.; Pardiñas, U. F. J. & D'Elía, G. (Eds.). Mammals of South America, Volume 2 - Rodents. The University of Chicago Press. 1384 p.": (
+        25336
+    ),
+    "Charlton-Robb, K., L. Gershwin, R. Thompson, J. Austin, K. Owen and S. McKechnie. 2011. A new dolphin species, the Burrunan dolphin Tursiops australis sp. Nov., endemic to southern Australian waters. PLoS ONE 6(0) e24047.": (
+        899
+    ),
+    "Voss, R. S., Fleck, D. W., & Giarla, T. C. (2024). Mammalian Diversity and Matses Ethnomammalogy in Amazonian Peru Part 5. Rodents. Bulletin of the American Museum of Natural History, 2024(446), 1-179.": (
+        66466
+    ),
+    "Voss, R. S., Giarla, T. C., & Jansa, S. A. (2021). A Revision of the Didelphid Marsupial Genus Marmosa Part 4. Species of the Alstoni Group (Subgenus Micoureus). American Museum Novitates, 3983, 1-31.": (
+        56912
+    ),
+    "Patton, J. L., Huckaby, D. G., & Álvarez-Castañeda, S. T. (2007). The evolutionary history and a systematic revision on woodrats of the Neotoma lepida group. University of California Publications, Zoology 135.": (
+        2371
+    ),
+    "Patton, J. L., Pardiñas, U. F., & D'Elía, G. (2015). Mammals of south america, volume 2: Rodents (Vol. 2). University of Chicago Press.": (
+        27628
+    ),
+    "Chemisquy MA, González-Ittig R, Martin GM (2025) Taxonomic novelties in Didelphis albiventris Lund, 1840 and revalidation of Didelphis poecilotis A. Wagner, 1842 (Didelphimorphia, Didelphidae). Mastozoología Neotropical 32(2): e01124.": (
+        69906
+    ),
+    "Voss, R.S. 2011. Revisionary notes on Neotropical porcupines (Rodentia: Erethizontidae). 3. an anno-tated checklist of the species of Coendou lacépède, 1799. american Museum Novitates 3720: 1–36.": (
+        3050
+    ),
+    'Voss, Robert S., et al. "A revision of the didelphid marsupial genus Marmosa. Part 2, Species of the rapposa group (subgenus Micoureus).(Bulletin of the American Museum of Natural History, no. 439)." (2020).': (
+        49807
+    ),
+    "Jacquet, F., Nicolas, V., Colyn, M., Kadjo, B., Hutterer, R., Decher, J., ... & Denys, C. (2014). Forest refugia and riverine barriers promote diversification in the W est A frican pygmy shrew (C rocidura obscurior complex, S oricomorpha). Zoologica scripta, 43(2), 131-148.": (
+        72037
+    ),
+    "Garbino, G. S. T., Lim, B. K., & Tavares, V. da C. (2020). Systematics of big-eyed bats, genus Chiroderma (Chiroptera: Phyllstomidae). Zootaxa, 4846(1), 1-93.": (
+        50311
+    ),
+}
 
 
 @dataclass(frozen=True)
@@ -355,42 +489,53 @@ type ArticleIndexes = tuple[
 ]
 
 
-def _build_article_indexes() -> ArticleIndexes:
+def _build_article_info(art: Article) -> ArticleInfo:
+    return ArticleInfo(
+        id=art.id,
+        title=art.title,
+        year=art.year,
+        doi=art.doi,
+        norm_title=_normalize_title_for_index(art.title),
+        alnum_norm_title=_norm_alnum(art.title),
+        years=_extract_years_from_article(art),
+        cg_name_norm=_normalize_journal_name(
+            getattr(art.get_citation_group(), "name", None)
+        ),
+    )
+
+
+def _build_article_indexes(overrides_file: Path = OVERRIDES_FILE) -> ArticleIndexes:
     all_infos: list[ArticleInfo] = []
     doi_index: dict[str, list[ArticleInfo]] = {}
     title_index: dict[str, list[ArticleInfo]] = {}
     year_index: dict[str, list[ArticleInfo]] = {}
-    try:
-        for a in Article.select_valid().filter(
-            Article.kind != ArticleKind.alternative_version
-        ):
-            info = ArticleInfo(
-                id=a.id,
-                title=a.title,
-                year=a.year,
-                doi=a.doi,
-                norm_title=_normalize_title_for_index(a.title),
-                alnum_norm_title=_norm_alnum(a.title),
-                years=_extract_years_from_article(a),
-                cg_name_norm=_normalize_journal_name(
-                    getattr(a.get_citation_group() or object(), "name", None)
-                ),
-            )
-            all_infos.append(info)
-            # Index DOI(s)
-            if a.doi:
-                for m in _DOI_RE.finditer(a.doi):
-                    doi = normalize_doi(m.group(0))
-                    if doi:
-                        doi_index.setdefault(doi, []).append(info)
-            # Index normalized title
-            if info.norm_title:
-                title_index.setdefault(info.norm_title, []).append(info)
-            # Index by years present in the string
-            for y in info.years:
-                year_index.setdefault(y, []).append(info)
-    except Exception:
-        pass
+    for a in Article.select_valid().filter(
+        Article.kind != ArticleKind.alternative_version
+    ):
+        info = _build_article_info(a)
+        all_infos.append(info)
+        # Index DOI(s)
+        if a.doi:
+            for m in _DOI_RE.finditer(a.doi):
+                doi = normalize_doi(m.group(0))
+                if doi:
+                    doi_index.setdefault(doi, []).append(info)
+        # Index normalized title
+        if info.norm_title:
+            title_index.setdefault(info.norm_title, []).append(info)
+        # Index by years present in the string
+        for y in info.years:
+            year_index.setdefault(y, []).append(info)
+    # Load overrides map
+    OVERRIDES_MAP.clear()
+    if overrides_file.exists():
+        with overrides_file.open() as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                ref_raw = row["ref_raw"].strip()
+                art_id_s = row["article_id"].strip()
+                art_id = int(art_id_s)
+                OVERRIDES_MAP[ref_raw] = art_id
     return doi_index, title_index, year_index, all_infos
 
 
@@ -443,6 +588,15 @@ def match_article(
     year_index: dict[str, list[ArticleInfo]],
     all_infos: list[ArticleInfo],
 ) -> tuple[str | None, list[ArticleInfo]]:
+    # Manual override takes precedence
+    if r.raw in OVERRIDES_MAP:
+        art = Article.get(id=OVERRIDES_MAP[r.raw])
+        ai = _build_article_info(art)
+        return "override", [ai]
+    if r.raw in HARDCODED:
+        article_id = HARDCODED[r.raw]
+        return "hardcoded", [_build_article_info(Article(article_id))]
+
     def _best_by_journal_or_year(candidates: list[ArticleInfo]) -> ArticleInfo | None:
         if not candidates:
             return None
@@ -455,10 +609,7 @@ def match_article(
                     if not ai.cg_name_norm:
                         return 0
                     if fuzz:
-                        try:
-                            return int(fuzz.ratio(ref_j, ai.cg_name_norm))
-                        except Exception:
-                            return 0
+                        return int(fuzz.ratio(ref_j, ai.cg_name_norm))
                     # crude non-fuzzy: exact gets 100, long containment 90, else 0
                     if ref_j == ai.cg_name_norm:
                         return 100
@@ -845,10 +996,24 @@ def main(argv: list[str]) -> int:
         default="notes/mdd/mdd_refs_matches.csv",
         help="Path to write matched references CSV",
     )
+    ap.add_argument(
+        "--overrides-file",
+        type=str,
+        default=str(OVERRIDES_FILE),
+        help="CSV file with manual overrides (ref_raw,article_id)",
+    )
+    ap.add_argument(
+        "--interactive-overrides",
+        action="store_true",
+        help="Prompt for Article IDs for unmatched refs and append to overrides file",
+    )
     args = ap.parse_args(argv)
 
     refs = read_refs(MDD_FILE, limit=args.limit)
-    doi_index, title_index, year_index, all_infos = _build_article_indexes()
+    overrides_path = Path(args.overrides_file)
+    doi_index, title_index, year_index, all_infos = _build_article_indexes(
+        overrides_file=overrides_path
+    )
     total = len(refs)
     matched = 0
     unmatched: list[Ref] = []
@@ -912,10 +1077,7 @@ def main(argv: list[str]) -> int:
         except Exception:
             pass
         # Exclude journals we generally can't access
-        excluded = {
-            _normalize_journal_name("Bionomina"),
-            _normalize_journal_name("Zootaxa"),
-        }
+        excluded = {_normalize_journal_name(j) for j in EXCLUDED_JOURNALS}
         opener = shutil.which("open")
         # Build and sort candidate openings by normalized journal, then title
         candidates: list[tuple[str, Ref]] = []
@@ -995,12 +1157,8 @@ def main(argv: list[str]) -> int:
                 for i in range(3):
                     if i < len(sugg):
                         reason, ai, score = sugg[i]
-                        citation = ""
-                        try:
-                            art = Article.get(id=ai.id)
-                            citation = art.cite()
-                        except Exception:
-                            citation = ""
+                        art = Article(ai.id)
+                        citation = art.cite()
                         row += [
                             reason,
                             str(ai.id),
@@ -1016,6 +1174,44 @@ def main(argv: list[str]) -> int:
         print(f"Wrote unmatched CSV: {unmatched_path} ({len(unmatched)} refs)")
     except Exception as e:
         print(f"Warning: failed to write unmatched list: {e}")
+
+    # Interactive overrides: prompt for Article IDs for unmatched refs and append to overrides file
+    if args.interactive_overrides and unmatched:
+        print("\nEntering interactive overrides mode. Press Enter to skip a ref.")
+        try:
+            overrides_path.parent.mkdir(parents=True, exist_ok=True)
+            if not overrides_path.exists():
+                with overrides_path.open("w") as outf:
+                    cw = csv.writer(outf)
+                    cw.writerow(["ref_raw", "article_id"])
+            for r in unmatched:
+                getinput.print_header(r.raw)
+                print("\nRef:", r.raw)
+                # Use interactive completer for Article.name
+                try:
+                    maybe_art = Article.getter("name").get_one(
+                        "article> ", callbacks=get_static_callbacks()
+                    )
+                except Exception:
+                    print("Selected name did not resolve to an Article; skipping.")
+                    continue
+                if maybe_art is None:
+                    print("Selected name did not resolve to an Article; skipping.")
+                    continue
+                print("Ref:", r.raw)
+                print("Selected:", maybe_art.cite("paper"))
+                confirm = getinput.yes_no("Confirm add override? (y/N)> ")
+                if not confirm:
+                    print("Skipped.")
+                    continue
+                # Append to file immediately for durability
+                with overrides_path.open("a") as outf:
+                    cw = csv.writer(outf)
+                    cw.writerow([r.raw, maybe_art.id])
+                OVERRIDES_MAP[r.raw] = maybe_art.id
+                print("Added override.")
+        finally:
+            print(f"Interactive overrides complete. Overrides file: {overrides_path}")
 
     # Write matches CSV
     try:

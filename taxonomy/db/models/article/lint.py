@@ -144,6 +144,8 @@ def check_type_and_kind(art: Article, cfg: LintConfig) -> Iterable[str]:
     # * type is about what kind of publication it is (journal, book, etc.)
     # Thus redirect should primarily be a *kind*. We have the *type* too for legacy
     # reasons but *kind* should be primary.
+    if art.type is None:
+        yield "type is None"
     if art.type is ArticleType.REDIRECT and art.kind is not ArticleKind.redirect:
         yield "conflicting signals on whether it is a redirect"
     if art.type is ArticleType.ERROR:
@@ -2048,6 +2050,13 @@ def _check_doi_title(art: Article, data: dict[str, Any]) -> Iterable[str]:
         return
     simplified_art = helpers.simplify_string(art.title, clean_words=False).rstrip("*")
     if simplified_doi == simplified_art:
+        return
+    # Red List data puts the authors at the end of the title
+    if (
+        art.doi is not None
+        and art.doi.startswith("10.2305/IUCN.UK")
+        and simplified_doi.startswith(simplified_art)
+    ):
         return
     if not LINT.is_ignoring_lint(art, "data_from_doi"):
         getinput.diff_strings(simplified_doi, simplified_art)

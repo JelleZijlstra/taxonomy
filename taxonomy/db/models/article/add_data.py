@@ -135,6 +135,8 @@ doi_type_to_article_type = {
     "standard_series": ArticleType.MISCELLANEOUS,
     "standard_content": ArticleType.MISCELLANEOUS,
     "book": ArticleType.BOOK,
+    "monograph": ArticleType.BOOK,
+    "edited-book": ArticleType.BOOK,
 }
 for _key, _value in list(doi_type_to_article_type.items()):
     # usage seems to be inconsistent, let's just use both
@@ -299,6 +301,11 @@ def extract_doi(art: Article) -> str | None:
             else:
                 print("Could not find DOI")
                 return None
+        # Red List, something eats the hyphen
+        # 10.2305/IUCN.UK.20162.RLTS.T3126A46364222.en -> 10.2305/IUCN.UK.2016-2.RLTS.T3126A46364222.en
+        doi = re.sub(
+            r"^10\.2305/IUCN\.UK\.(\d{4})(\d)\.", r"10.2305/IUCN.UK.\1-\2.", doi
+        )
         # get rid of false positive DOIs containing only letters or numbers, or containing line breaks
         if doi and not re.search(r"^([a-z\(\)]*|\d*)$", doi) and "\n" not in doi:
             # remove final period

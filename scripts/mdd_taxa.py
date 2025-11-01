@@ -19,7 +19,7 @@ import Levenshtein
 from scripts import mdd_refs_match
 from taxonomy import getinput
 from taxonomy.config import get_options
-from taxonomy.db.constants import AgeClass, ArticleKind, Rank, Status
+from taxonomy.db.constants import AgeClass, ArticleKind, ArticleType, Rank, Status
 from taxonomy.db.models import Name, Taxon
 from taxonomy.db.models.article import Article
 from taxonomy.db.models.tags import TaxonTag
@@ -1022,6 +1022,16 @@ def _format_citation_with_suffix(article: Article) -> str:
     return article.cite("mdd")
 
 
+def _find_article_by_doi(doi: str) -> list[Article]:
+    return list(
+        Article.select_valid().filter(
+            Article.doi == doi,
+            Article.kind != ArticleKind.alternative_version,
+            Article.type != ArticleType.SUPPLEMENT,
+        )
+    )
+
+
 def lint_note_citations(species: list[MDDSpecies]) -> Iterable[Issue]:
     # Build indexes once for all matching
     indexes = mdd_refs_match.get_article_indexes()
@@ -1051,12 +1061,7 @@ def lint_note_citations(species: list[MDDSpecies]) -> Iterable[Issue]:
                     m = _DOI_SUFFIX_RE.search(part)
                     if m:
                         doi = m.group(1)
-                        arts = list(
-                            Article.select_valid().filter(
-                                Article.doi == doi,
-                                Article.kind != ArticleKind.alternative_version,
-                            )
-                        )
+                        arts = _find_article_by_doi(doi)
                         if len(arts) == 1:
                             art = arts[0]
                         elif len(arts) > 1:
@@ -1099,6 +1104,102 @@ def lint_note_citations(species: list[MDDSpecies]) -> Iterable[Issue]:
 
         MDD_FILE.parent.mkdir(parents=True, exist_ok=True)
         MDD_FILE.write_text("\n".join(sorted(unmatched_refs)) + "\n")
+
+
+def export_cited_references_csv(
+    output_path: str | Path | None = None, *, input_csv: str | None = None
+) -> Path:
+    """Produce a CSV summarizing all cited references that map to Articles.
+
+    Aggregates over taxonomyNotesCitation and distributionNotesCitation across the
+    MDD species sheet (or provided CSV). Only includes refs that map to an Article.
+    """
+    species_map = get_mdd_species(input_csv)
+    spp = list(species_map.values())
+
+    # Collect Article id -> set of species sciName
+    cited: dict[int, set[str]] = defaultdict(set)
+    cols = ("taxonomyNotesCitation", "distributionNotesCitation")
+    for sp in spp:
+        for col in cols:
+            raw = sp.row.get(col, "")
+            if not raw:
+                continue
+            assert isinstance(raw, str)
+            parts = [p.strip() for p in raw.split("|") if p.strip()]
+            for part in parts:
+                aid: int | None = None
+                # a#ID suffix
+                m = _AID_SUFFIX_RE.search(part)
+                if m:
+                    try:
+                        aid = int(m.group(1))
+                    except Exception:
+                        aid = None
+                if aid is None:
+                    # doi suffix or general match
+                    m = _DOI_SUFFIX_RE.search(part)
+                    if m is not None:
+                        arts = _find_article_by_doi(m.group(1)) if m else []
+                        if len(arts) == 1:
+                            aid = arts[0].id
+                if aid is not None:
+                    cited[aid].add(sp.row["sciName"])
+
+    # Build rows
+    rows: list[list[str]] = []
+    header = [
+        "article_id",
+        "citation",
+        "species_cited",
+        "title",
+        "year",
+        "doi",
+        "citation_group",
+        "volume",
+        "issue",
+        "start_page",
+        "end_page",
+        "article_number",
+        "type",
+        "kind",
+        "url",
+        "publisher",
+    ]
+    for aid, sci_names in sorted(cited.items(), key=lambda kv: kv[0]):
+        art = Article(aid)
+        cg_name = art.citation_group.get_citable_name() if art.citation_group else ""
+        rows.append(
+            [
+                str(art.id),
+                art.cite("paper"),
+                "|".join(sorted(sci_names)),
+                art.title or "",
+                art.year or "",
+                art.doi or "",
+                cg_name or "",
+                art.volume or "",
+                art.issue or "",
+                art.start_page or "",
+                art.end_page or "",
+                art.article_number or "",
+                art.type.name if art.type is not None else "",
+                art.kind.name,
+                art.url or "",
+                art.publisher or "",
+            ]
+        )
+
+    out_path = (
+        Path(output_path) if output_path else Path("notes/mdd/mdd_cited_refs.csv")
+    )
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with out_path.open("w", newline="", encoding="utf-8") as f:
+        cw = csv.writer(f)
+        cw.writerow(header)
+        cw.writerows(rows)
+    print(f"Wrote cited references to {out_path}")
+    return out_path
 
 
 def maybe_fix_issues(
@@ -1343,6 +1444,7 @@ def run(
         maybe_fix_issues(issues, column_to_idx, dry_run=dry_run)
     else:
         check_common_names(species, backup_path)
+    export_cited_references_csv(input_csv=input_csv)
 
 
 if __name__ == "__main__":
