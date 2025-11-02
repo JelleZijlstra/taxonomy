@@ -17,7 +17,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade uv
-          uv venv .
+          uv venv
           uv sync
 
       - name: Run pre-commit hooks
