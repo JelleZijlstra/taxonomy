@@ -14,10 +14,10 @@ import re
 from collections import defaultdict
 from dataclasses import dataclass
 from functools import cache
+from pathlib import Path
 from typing import TypedDict, cast
 
 import Levenshtein
-from zipp import Path
 
 from taxonomy import getinput
 from taxonomy.db import helpers
