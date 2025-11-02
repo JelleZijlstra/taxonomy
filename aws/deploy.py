@@ -9,7 +9,6 @@ from pathlib import Path
 from taxonomy.config import Options, get_options
 
 STAGING_DIR = "/home/ec2-user/staging/"
-PYTHON = "/usr/local/bin/python3.11"
 
 
 def run_ssh(options: Options, command: str) -> None:
@@ -116,7 +115,7 @@ def restart(options: Options, *, kill: bool = True, port: int = 80) -> None:
     )
     run_ssh(
         options,
-        f"cd taxonomy && /home/ec2-user/run_hsweb.sh {PYTHON} {port} >/home/ec2-user/hesperomys_runner.log 2>&1 &",
+        f"cd taxonomy && /home/ec2-user/run_hsweb.sh {port} >/home/ec2-user/hesperomys_runner.log 2>&1 &",
     )
 
 
