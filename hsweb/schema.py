@@ -801,7 +801,7 @@ def resolve_newest(
 ) -> list[Model]:
     model_cls = get_by_call_sign(parent.call_sign)
     object_type = build_object_type_from_model(model_cls)
-    query = model_cls.select_valid().order_by(model_cls.id.desc())  # type: ignore[attr-defined]
+    query = model_cls.select_valid().order_by(model_cls.id.desc())
     query = query.limit(first + _decode_after(after) + 1)
     ret = []
     cache = info.context["request"]
