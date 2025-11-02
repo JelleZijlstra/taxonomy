@@ -190,7 +190,7 @@ rapidfuzz==3.9.7
     # via levenshtein
 repoguess==0.0.5
     # via taxonomy (pyproject.toml)
-requests==2.32.3
+requests==2.32.4
     # via
     #   taxonomy (pyproject.toml)
     #   pyzotero
