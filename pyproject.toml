@@ -167,6 +167,9 @@ ignore = [
   "TD005",
   "TC006",   # bad idea
   "S608",    # I know what I'm doing
+  "PLC0415", # maybe later
+  "UP047",   # make sure pycroscope supports PEP 695 syntax fully first
+  "UP046",   # same
 ]
 
 [tool.ruff.lint.per-file-ignores]

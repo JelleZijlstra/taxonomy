@@ -16,6 +16,7 @@ from typing import Any, ClassVar, NamedTuple, NotRequired, Self, TypeVar, cast
 from clirm import Field, Query
 
 from taxonomy import adt, config, events, getinput, urlparse
+from taxonomy import search as _search
 from taxonomy.apis import bhl
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
 from taxonomy.db import models
@@ -992,7 +993,6 @@ class Article(BaseModel):
         pages = text_path.read_text().split("\x0c")
         year = self.valid_numeric_year()
         # Import locally to avoid any potential import cycles
-        from taxonomy import search as _search
 
         _search.replace_article_pages(self.id, pages=pages, year=year)
         return len(pages)

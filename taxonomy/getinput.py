@@ -122,7 +122,7 @@ def get_line(
 
 
 def yes_no(
-    prompt: str, default: bool | None = None, callbacks: CallbackMap = {}
+    prompt: str, *, default: bool | None = None, callbacks: CallbackMap = {}
 ) -> bool:
     positive = {"y", "yes"}
     negative = {"n", "no"}

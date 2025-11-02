@@ -3104,7 +3104,6 @@ def _colorize_snippet(snippet: str) -> str:
 
     Replaces <b>…</b> with yellow-colored text for visibility in terminal.
     """
-    from taxonomy import getinput
 
     def repl(match: re.Match[str]) -> str:
         return getinput.yellow(match.group(1))
@@ -3124,10 +3123,8 @@ def interactive_search(
     - Prints batches of results with article name, page number, citation, and snippet.
     - Prompt accepts: "more" to fetch next batch, or any displayed filename to open it.
     - Press Enter on an empty line to quit.
-    """
-    from taxonomy import getinput
-    from taxonomy.db.models.article.article import Article
 
+    """
     offset = 0
     while True:
         hits = internal_search(
