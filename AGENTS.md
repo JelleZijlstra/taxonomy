@@ -14,9 +14,8 @@
 
 ## Setup, Build, and Dev Commands
 
-- Create env: `python3.12 -m venv .venv && source .venv/bin/activate`.
-- Install deps: `uv pip sync -r requirements.txt` (or
-  `pip install -r requirements.txt`).
+- Create env: `python3.14 -m venv .venv && source .venv/bin/activate`.
+- Install deps: `uv sync`.
 - Run CLI shell: `python -m taxonomy.shell`.
 - Run web app: `python -m hsweb`.
 - Lint: `ruff check .` Format: `black .` Type-check: `mypy .`.
@@ -24,7 +23,7 @@
 
 ## Coding Style & Naming
 
-- Python 3.12+, 4-space indent, UTF-8.
+- Python 3.14+, 4-space indent, UTF-8.
 - Formatting: Black; Linting: Ruff (target py312).
 - Prefer type hints; run `mypy` locally.
 - Names: modules/functions/vars snake_case; classes CamelCase; constants UPPER_SNAKE.
