@@ -1,5 +1,6 @@
 import pprint
 from collections.abc import Sequence
+from functools import cache
 
 from pyzotero import zotero
 
@@ -13,10 +14,22 @@ from taxonomy.db.models.person import Person
 api_key = get_options().zotero_key
 library_type = "group"
 library_id = "5435545"  # "5620567"
+ZIJLSTRA_COLLECTION = "J4J8T2B8"
 
 
 def get_zotero() -> zotero.Zotero:
     return zotero.Zotero(library_id, library_type, api_key)
+
+
+@cache
+def get_existing_tags() -> set[str]:
+    zot = get_zotero()
+    tags: set[str] = set()
+    for item in zot.everything(zot.collection_items(ZIJLSTRA_COLLECTION)):
+        for tag in item["data"]["tags"]:
+            if tag["tag"].startswith("https://"):
+                tags.add(tag["tag"])
+    return tags
 
 
 def get_author(pers: Person) -> dict[str, object]:
@@ -31,11 +44,10 @@ def get_common_data(art: Article) -> dict[str, object]:
     data: dict[str, object] = {
         "creators": [get_author(pers) for pers in art.get_authors()],
         "date": art.year,
+        "collections": [ZIJLSTRA_COLLECTION],  # Zijlstra
     }
     if art.title:
         data["title"] = art.title
-    if art.doi:
-        data["DOI"] = art.doi
     elif url := art.geturl():
         data["url"] = url
     tags = [{"tag": art.get_absolute_url()}]
@@ -82,6 +94,8 @@ def get_zotero_item(art: Article) -> dict[str, object]:
                 data["pages"] = f"{art.start_page}-{art.end_page}"
             elif art.start_page:
                 data["pages"] = art.start_page
+            if art.doi:
+                data["DOI"] = art.doi
             return data
 
         case ArticleType.BOOK:
@@ -204,11 +218,20 @@ def get_zotero_item(art: Article) -> dict[str, object]:
     raise NotImplementedError(f"Article type {art.type!r} not implemented")
 
 
-def upload_items(arts: Sequence[Article]) -> None:
+def upload_items(arts: Sequence[Article], *, fast_dupe_check: bool = False) -> None:
     zot = get_zotero()
-    arts = [
-        art for art in arts if art.ispdf() and not zot.items(tag=art.get_absolute_url())
-    ]
+    if fast_dupe_check:
+        tags = get_existing_tags()
+        arts = [art for art in arts if art.get_absolute_url() not in tags]
+    else:
+        arts = [
+            art
+            for art in arts
+            if art.ispdf() and not zot.items(tag=art.get_absolute_url())
+        ]
+    if not arts:
+        return
+    print(f"Uploading {len(arts)} articles to Zotero after filtering")
     item_dicts = [get_zotero_item(art) for art in arts]
     pprint.pp(item_dicts)
     zot.check_items(item_dicts)
@@ -232,4 +255,10 @@ def get_relevant_articles() -> Sequence[Article]:
     for nam in taxon.all_names_lazy():
         if nam.original_citation is not None:
             arts.add(nam.original_citation)
+    print(f"Found {len(arts)} relevant articles")
+    arts = {art for art in arts if not art.has_tag(ArticleTag.BatLit)}
+    print(f"{len(arts)} articles without BatLit tag")
+    arts = {
+        art for art in arts if art.type is not ArticleType.SUPPLEMENT and art.ispdf()
+    }
     return sorted(arts, key=lambda art: art.name)

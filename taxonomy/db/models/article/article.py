@@ -1728,6 +1728,8 @@ class ArticleTag(adt.ADT):
     # Internal: Indicates that the classification in the article doesn't include species.
     GenusOnlyClassification(tag=31)  # type: ignore[name-defined]
 
+    BatLit(zotero_id=str, zenodo_doi=NotRequired[str], tag=32)  # type: ignore[name-defined]
+
 
 @lru_cache
 def _getpdfcontent(path: str) -> str:
