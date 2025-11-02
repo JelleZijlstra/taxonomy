@@ -434,7 +434,7 @@ class Article(BaseModel):
         sort_key: Callable[[Article], Any] | None = None,
         journal: str | None = None,
         **kwargs: Any,
-    ) -> list[Article]:
+    ) -> list[Self]:
         if journal is not None:
             args = (*args, cls.citation_group == CitationGroup.get(name=journal))
         return super().bfind(*args, quiet=quiet, sort_key=sort_key, **kwargs)
@@ -780,12 +780,15 @@ class Article(BaseModel):
         if self.kind == ArticleKind.electronic:
             yield "path"
         yield "name"
-        try:
-            yield from _TYPE_TO_FIELDS[self.type]
-        except KeyError:
-            pass
+        if self.type is not None:
+            try:
+                yield from _TYPE_TO_FIELDS[self.type]
+            except KeyError:
+                pass
 
     def trymanual(self) -> bool:
+        if self.type is None:
+            return False
         try:
             fields = _TYPE_TO_FIELDS[self.type]
         except KeyError:
@@ -1146,19 +1149,12 @@ class Article(BaseModel):
         self,
         *,
         quiet: bool = False,
-        autofix: bool = True,
-        interactive: bool = True,
-        verbose: bool = False,
-        manual_mode: bool = False,
+        cfg: LintConfig = LintConfig(
+            autofix=True, interactive=True, verbose=False, manual_mode=False
+        ),
     ) -> bool:
         self.specify_authors()
-        return super().format(
-            quiet=quiet,
-            autofix=autofix,
-            interactive=interactive,
-            verbose=verbose,
-            manual_mode=manual_mode,
-        )
+        return super().format(quiet=quiet, cfg=cfg)
 
     def lint(self, cfg: LintConfig) -> Iterable[str]:
         yield from models.article.lint.LINT.run(self, cfg)
@@ -1166,6 +1162,12 @@ class Article(BaseModel):
     @classmethod
     def clear_lint_caches(cls) -> None:
         models.article.lint.LINT.clear_caches()
+
+    def lint_all_associated(self, cfg: LintConfig = LintConfig()) -> None:
+        super().lint_all_associated(cfg=cfg)
+        taxa = {nam.taxon for nam in self.get_new_names()}
+        taxon_list = sorted(taxa, key=lambda t: t.valid_name)
+        self.lint_object_list(taxon_list, cfg=cfg)
 
     def cite_interactive(self) -> None:
         citetype = getinput.get_with_completion(
@@ -1397,7 +1399,7 @@ class Article(BaseModel):
         for art in (
             cls.select_valid().filter(cls.doi != None, cls.doi != "").limit(limit)
         ):
-            if art.doi.startswith("10.2307/"):
+            if art.doi is not None and art.doi.startswith("10.2307/"):
                 continue  # JSTOR dois aren't real
             authors = art.get_authors()
             if authors and all(

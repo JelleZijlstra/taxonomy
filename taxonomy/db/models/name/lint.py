@@ -915,10 +915,14 @@ def _check_all_type_tags(
                     yield f"has PhylogeneticDefinition tag but multiple DefinitionDetail tags with the same source ({tag.source}): {matching_defns}"
 
             internal_specifiers = [
-                tag.name for tag in by_type.get(TypeTag.InternalSpecifier, [])
+                tag.name
+                for tag in by_type.get(TypeTag.InternalSpecifier, [])
+                if isinstance(tag, TypeTag.InternalSpecifier)
             ]
             external_specifiers = [
-                tag.name for tag in by_type.get(TypeTag.ExternalSpecifier, [])
+                tag.name
+                for tag in by_type.get(TypeTag.ExternalSpecifier, [])
+                if isinstance(tag, TypeTag.ExternalSpecifier)
             ]
 
             if tag.type is not PhylogeneticDefinitionType.other:
@@ -949,13 +953,19 @@ def _check_all_type_tags(
                 internal_specifiers,
                 external_specifiers,
                 must_not_include=[
-                    tag.name for tag in by_type.get(TypeTag.MustNotInclude, [])
+                    tag.name
+                    for tag in by_type.get(TypeTag.MustNotInclude, [])
+                    if isinstance(tag, TypeTag.MustNotInclude)
                 ],
                 must_be_part_of=[
-                    tag.name for tag in by_type.get(TypeTag.MustBePartOf, [])
+                    tag.name
+                    for tag in by_type.get(TypeTag.MustBePartOf, [])
+                    if isinstance(tag, TypeTag.MustBePartOf)
                 ],
                 must_not_be_part_of=[
-                    tag.name for tag in by_type.get(TypeTag.MustNotBePartOf, [])
+                    tag.name
+                    for tag in by_type.get(TypeTag.MustNotBePartOf, [])
+                    if isinstance(tag, TypeTag.MustNotBePartOf)
                 ],
                 must_be_extinct=bool(by_type.get(TypeTag.MustBeExtinct, [])),
             )
@@ -989,6 +999,7 @@ def _check_all_type_tags(
 
 
 def _is_high_or_invalid_family(nam: Name) -> bool:
+    assert isinstance(nam.group, Group)
     match nam.group:
         case Group.high:
             return True
@@ -1132,6 +1143,7 @@ def _check_phylogenetic_definition(
         # This shouldn't happen but also makes it impossible to narrow
         return result
 
+    new_minimum_taxon = None
     if _is_applicable(
         result.minimum_taxon,
         must_not_include=must_not_include,
@@ -1157,6 +1169,7 @@ def _check_phylogenetic_definition(
                 minimum_taxon=result.minimum_taxon,
                 maximum_taxon=result.maximum_taxon,
             )
+    assert new_minimum_taxon is not None
     new_maximum_taxon = result.maximum_taxon
     last_seen = new_minimum_taxon
     for parent in _iter_parents(new_minimum_taxon):

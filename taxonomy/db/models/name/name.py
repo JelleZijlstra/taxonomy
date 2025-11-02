@@ -541,16 +541,17 @@ class Name(BaseModel):
                         for suffix in helpers.VALID_SUFFIXES
                     ):
                         return f"{stem}idae"
-                if aggressive and self.type.stem is not None:
-                    stem = self.type.stem
-                    for suffix in helpers.VALID_SUFFIXES:
-                        if original_name == f"{stem}{suffix}":
-                            return original_name
-                    if aggressive and not any(
-                        original_name.endswith(suffix)
-                        for suffix in helpers.VALID_SUFFIXES
-                    ):
-                        return f"{stem}idae"
+                if aggressive:
+                    stem = self.type.get_stem()
+                    if stem is not None:
+                        for suffix in helpers.VALID_SUFFIXES:
+                            if original_name == f"{stem}{suffix}":
+                                return original_name
+                        if aggressive and not any(
+                            original_name.endswith(suffix)
+                            for suffix in helpers.VALID_SUFFIXES
+                        ):
+                            return f"{stem}idae"
         else:
             return infer_corrected_original_name(self.original_name, self.group)
         return None
@@ -3327,7 +3328,7 @@ class ExperimentalLintCondition:
     only_with_tags_from_original: Sequence[TypeTagCons] = ()
 
     def should_apply(self, nam: Name, cfg: LintConfig) -> bool:
-        if cfg.experimental or self.always:
+        if self.always:
             return True
         if (
             self.only_with_tags_from_original
@@ -3340,6 +3341,8 @@ class ExperimentalLintCondition:
             )
         ):
             return False
+        if cfg.experimental:
+            return True
         if self.before_year is not None and nam.numeric_year() <= self.before_year:
             return True
         if self.after_year is not None and nam.numeric_year() >= self.after_year:

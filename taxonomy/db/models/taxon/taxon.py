@@ -29,6 +29,7 @@ from taxonomy.db.derived_data import DerivedField, SetLater
 from taxonomy.db.models.article import Article
 from taxonomy.db.models.base import ADTField, BaseModel, LintConfig, TextOrNullField
 from taxonomy.db.models.fill_data import fill_data_for_names
+from taxonomy.db.models.location import LocationStatus
 
 
 class _OccurrenceGetter:
@@ -48,7 +49,7 @@ class _OccurrenceGetter:
         return self(
             models.Location.get(
                 models.Location.name == loc_name.replace("_", " "),
-                models.Location.deleted == False,
+                models.Location.deleted == LocationStatus.valid,
             )
         )
 

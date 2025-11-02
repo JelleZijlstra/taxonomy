@@ -176,58 +176,6 @@ def n(name: str) -> Iterable[Name]:
     )
 
 
-# Maintenance
-_MissingDataProducer = Callable[..., Iterable[tuple[Name, str]]]
-
-
-def _add_missing_data(fn: _MissingDataProducer) -> Callable[..., None]:
-    @functools.wraps(fn)
-    def wrapper(*args: Any, **kwargs: Any) -> None:
-        for nam, message in fn(*args, **kwargs):
-            print(message)
-            nam.open_description()
-            nam.display()
-            nam.fill_required_fields()
-
-    return wrapper
-
-
-@command
-@_add_missing_data
-def add_original_names() -> Iterable[tuple[Name, str]]:
-    for name in (
-        Name.select_valid()
-        .filter(Name.original_citation != None, Name.original_name == None)
-        .order_by(Name.original_name)
-    ):
-        message = (
-            f"Name {name.description()} is missing an original name, but has original"
-            f" citation {{{name.original_citation.name}}}:{name.page_described}"
-        )
-        yield name, message
-
-
-@command
-@_add_missing_data
-def add_page_described() -> Iterable[tuple[Name, str]]:
-    for name in (
-        Name.select_valid()
-        .filter(
-            Name.original_citation != None,
-            Name.page_described == None,
-            Name.year != "in press",
-        )
-        .order_by(Name.original_citation, Name.original_name)
-    ):
-        if name.year in ("2015", "2016"):
-            continue  # recent JVP papers don't have page numbers
-        message = (
-            f"Name {name.description()} is missing page described, but has original"
-            f" citation {{{name.original_citation.name}}}"
-        )
-        yield name, message
-
-
 @command
 def make_county_regions(
     state: models.Region, name: str | None = None, *, dry_run: bool = True
@@ -298,6 +246,8 @@ def add_types() -> None:
         .order_by(Name.original_citation)
     ):
         if "type" not in name.get_required_fields():
+            continue
+        if name.original_citation is None:
             continue
         name.taxon.display(full=True, max_depth=1)
         print(
@@ -407,6 +357,8 @@ def species_root_name_mismatch() -> Iterable[Name]:
         Name.species_name_complex != None,
         Name.corrected_original_name != None,
     ):
+        if nam.corrected_original_name is None or nam.species_name_complex is None:
+            continue
         original_root_name = nam.corrected_original_name.split()[-1]
         if nam.species_name_complex.kind == constants.SpeciesNameKind.adjective:
             try:
@@ -1407,13 +1359,10 @@ def more_precise_periods(
             continue
         getinput.print_header(loc)
         loc.display(full=True)
-        if loc.stratigraphic_unit == period:
+        loc.fill_field("max_period")
+        loc.fill_field("min_period")
+        if set_stratigraphy and loc.stratigraphic_unit is None:
             loc.fill_field("stratigraphic_unit")
-        else:
-            loc.fill_field("max_period")
-            loc.fill_field("min_period")
-            if set_stratigraphy and loc.stratigraphic_unit is None:
-                loc.fill_field("stratigraphic_unit")
 
 
 def _more_precise(
@@ -1855,32 +1804,6 @@ def names_of_author(author: str, *, include_partial: bool) -> list[Name]:
     return [
         nam for person in persons for nam in person.get_sorted_derived_field("names")
     ]
-
-
-@command
-def names_of_authority(author: str, year: int, *, edit: bool = False) -> list[Name]:
-    nams = names_of_author(author, include_partial=False)
-    nams = [nam for nam in nams if nam.year == year]
-
-    def sort_key(nam: Name) -> int:
-        if nam.page_described is None:
-            return -1
-        try:
-            return int(nam.page_described)
-        except ValueError:
-            m = re.match(r"^(\d+)", nam.page_described)
-            if m:
-                return int(m.group(1))
-            else:
-                return -1
-
-    nams = sorted(nams, key=sort_key)
-    print(f"{len(nams)} names")
-    for nam in nams:
-        nam.display()
-        if edit:
-            nam.fill_required_fields()
-    return nams
 
 
 @command
@@ -2569,7 +2492,7 @@ def lint_collections() -> None:
     print(f"{total} total")
     for coll in getinput.print_every_n(
         # static analysis: ignore[undefined_attribute]
-        models.Collection.select_valid().order_by(models.Collection.id.desc()),  # type: ignore[attr-defined]
+        models.Collection.select_valid().order_by(models.Collection.id.desc()),
         n=5,
         label=f"of {total} collections",
     ):
@@ -3001,10 +2924,9 @@ def fill_in_type_localities() -> None:
             continue
         if any(
             (
-                isinstance(tag, TypeTag.LocationDetail)
+                isinstance(tag, (TypeTag.LocationDetail, TypeTag.NoLocation))
                 and tag.source == nam.original_citation
             )
-            or tag is TypeTag.NoLocation
             for tag in nam.type_tags
         ):
             continue
@@ -3280,6 +3202,7 @@ def get_int(prompt: str, *, allow_empty: bool = False) -> int | None:
             return int(line)
         except ValueError:
             print("Invalid integer, try again.")
+    assert False, "unreachable"
 
 
 @command

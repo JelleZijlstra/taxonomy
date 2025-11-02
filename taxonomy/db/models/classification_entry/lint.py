@@ -94,7 +94,7 @@ def check_tags(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
             ):
                 yield "removing redundant ReferencedUsage tag"
             else:
-                if ce.mapped_name is not None:
+                if ce.mapped_name is not None and tag.ce.mapped_name is not None:
                     referenced = tag.ce.mapped_name.resolve_name()
                     mapped = ce.mapped_name.resolve_name()
                     if referenced != mapped:

@@ -262,3 +262,71 @@ def get_relevant_articles() -> Sequence[Article]:
         art for art in arts if art.type is not ArticleType.SUPPLEMENT and art.ispdf()
     }
     return sorted(arts, key=lambda art: art.name)
+
+
+def upload_missing_attachments_in_collection(*, experiment: bool = False) -> None:
+    """Find Zotero items in our collection lacking attachments and upload PDFs.
+
+    - Scans items in ZIJLSTRA_COLLECTION.
+    - Skips any item that already has at least one child attachment.
+    - Looks for a tag like "https://hesperomys.com/a/1234" to find the Article.
+    - If the Article exists and points to a local PDF, uploads it as an attachment.
+    """
+    zot = get_zotero()
+    # Fetch top-level items (prefer collection_items_top if available)
+    try:
+        top_query = zot.collection_items_top(ZIJLSTRA_COLLECTION)
+    except AttributeError:
+        top_query = zot.collection_items(ZIJLSTRA_COLLECTION)
+    items = top_query if experiment else zot.everything(top_query)
+    # Prefetch all attachments in the collection and map to parentItem keys
+    att_query = zot.collection_items(ZIJLSTRA_COLLECTION, itemType="attachment")
+    att_items = att_query if experiment else zot.everything(att_query)
+    parents_with_attachments: set[str] = set()
+    for att in att_items:
+        pdata = att.get("data", {}) or {}
+        parent_key = pdata.get("parentItem")
+        if isinstance(parent_key, str) and parent_key:
+            parents_with_attachments.add(parent_key)
+    uploaded = 0
+    skipped = 0
+    for item in items:
+        key = item.get("key")
+        data = item.get("data", {})
+        if not key or not isinstance(data, dict):
+            continue
+        # Skip child items and check attachments from the prefetched set
+        if data.get("itemType") == "attachment" or data.get("parentItem"):
+            continue
+        print(f"Processing Zotero item {key}")
+        has_attach = key in parents_with_attachments
+        if has_attach:
+            skipped += 1
+            continue
+        # Find our tag with absolute URL to match Article
+        art_id: int | None = None
+        for tag in data.get("tags", []):
+            val = tag.get("tag")
+            if isinstance(val, str) and val.startswith("https://hesperomys.com/a/"):
+                try:
+                    art_id = int(val.rsplit("/", 1)[-1])
+                except Exception:
+                    art_id = None
+                break
+        if art_id is None:
+            continue
+        art = Article(art_id)
+        # Only upload if we have a local PDF path
+        try:
+            path = art.get_path()
+        except Article.DoesNotExist:
+            continue
+        if not art.ispdf():
+            continue
+        try:
+            result = zot.attachment_simple([str(path)], key)
+            print(f"Attached {path} to Zotero item {key}: {result}")
+            uploaded += 1
+        except Exception as e:
+            print(f"Failed to attach {path} to {key}: {e}")
+    print(f"Uploaded: {uploaded}; skipped (had attachment): {skipped}")

@@ -622,34 +622,13 @@ class ClassificationEntry(BaseModel):
         self,
         *,
         quiet: bool = False,
-        autofix: bool = True,
-        interactive: bool = True,
-        verbose: bool = False,
-        manual_mode: bool = False,
+        cfg: LintConfig = LintConfig(),
         format_mapped: bool = True,
     ) -> bool:
-        result = super().format(
-            quiet=quiet,
-            autofix=autofix,
-            interactive=interactive,
-            verbose=verbose,
-            manual_mode=manual_mode,
-        )
+        result = super().format(quiet=quiet, cfg=cfg)
         if format_mapped and self.mapped_name is not None:
-            self.mapped_name.format(
-                quiet=quiet,
-                autofix=autofix,
-                interactive=interactive,
-                verbose=verbose,
-                manual_mode=manual_mode,
-            )
-            return super().format(
-                quiet=quiet,
-                autofix=autofix,
-                interactive=interactive,
-                verbose=verbose,
-                manual_mode=manual_mode,
-            )
+            self.mapped_name.format(quiet=quiet, cfg=cfg)
+            return super().format(quiet=quiet, cfg=cfg)
         return result
 
 

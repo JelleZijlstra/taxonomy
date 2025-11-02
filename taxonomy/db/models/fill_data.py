@@ -305,7 +305,7 @@ def fill_data_reverse_order(
 ) -> None:
     done = 0
     # static analysis: ignore[undefined_attribute]
-    for i, art in enumerate(Article.select_valid().order_by(Article.id.desc())):  # type: ignore[attr-defined]
+    for i, art in enumerate(Article.select_valid().order_by(Article.id.desc())):
         if max_count is not None and i > max_count:
             return
         if i > 0:

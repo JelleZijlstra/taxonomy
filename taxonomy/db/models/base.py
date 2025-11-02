@@ -14,7 +14,7 @@ import typing
 import urllib.parse
 from collections import defaultdict
 from collections.abc import Callable, Collection, Container, Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import partial
 from types import NoneType
 from typing import Any, ClassVar, Generic, Self, TypeVar
@@ -95,7 +95,7 @@ Linter = Callable[[ModelT, LintConfig], Iterable[str]]
 
 
 class BaseModel(Model):
-    id: int
+    id: Any
     label_field: str
     label_field_has_underscores = False
     # If given, lists are separated into groups based on this field.
@@ -177,36 +177,12 @@ class BaseModel(Model):
         cls.clear_lint_caches()
         return bad
 
-    def format(
-        self,
-        *,
-        quiet: bool = False,
-        autofix: bool = True,
-        interactive: bool = True,
-        verbose: bool = False,
-        manual_mode: bool = False,
-    ) -> bool:
+    def format(self, *, quiet: bool = False, cfg: LintConfig = LintConfig()) -> bool:
         # First autofix
-        for _ in self.general_lint(
-            LintConfig(
-                autofix=autofix,
-                interactive=False,
-                verbose=verbose,
-                manual_mode=manual_mode,
-            )
-        ):
+        for _ in self.general_lint(replace(cfg, interactive=False)):
             pass
         # Then allow interactive fixing
-        messages = list(
-            self.general_lint(
-                LintConfig(
-                    autofix=autofix,
-                    interactive=interactive,
-                    verbose=verbose,
-                    manual_mode=manual_mode,
-                )
-            )
-        )
+        messages = list(self.general_lint(cfg))
         if not messages:
             if not quiet:
                 print("Everything clean")
@@ -1019,12 +995,16 @@ class BaseModel(Model):
             "full_data": self.full_data,
             "call": self.call,
             "lint": self.format,
-            "manual_lint": lambda: self.format(manual_mode=True),
-            "verbose_lint": lambda: self.format(verbose=True),
+            "manual_lint": lambda: self.format(cfg=LintConfig(manual_mode=True)),
+            "verbose_lint": lambda: self.format(cfg=LintConfig(verbose=True)),
             "print_character_names": self.print_character_names_for_field,
             "edit_reverse_rel": self.edit_reverse_rel,
             "lint_reverse_rel": self.lint_reverse_rel,
             "lint_and_fix": self.lint_and_fix,
+            "lint_all_associated": self.lint_all_associated,
+            "lint_all_associated_experimental": lambda: self.lint_all_associated(
+                cfg=LintConfig(experimental=True)
+            ),
             "edit_derived_field": self.edit_derived_field,
         }
 
@@ -1108,14 +1088,23 @@ class BaseModel(Model):
             return
         self.lint_object_list(getattr(self, chosen))
 
-    def lint_object_list(self, objs: Sequence[BaseModel]) -> None:
+    def lint_all_associated(self, *, cfg: LintConfig = LintConfig()) -> None:
+        for field in self.clirm_backrefs:
+            if field.related_name is None:
+                continue
+            objs = list(getattr(self, field.related_name))
+            self.lint_object_list(objs, cfg=cfg)
+
+    def lint_object_list(
+        self, objs: Iterable[BaseModel], cfg: LintConfig = LintConfig()
+    ) -> None:
         for obj in objs:
             obj.format(quiet=True)
             if obj.is_lint_clean():
                 continue
             obj.display()
             try:
-                obj.edit_until_clean()
+                obj.edit_until_clean(cfg=cfg)
             except getinput.StopException:
                 return
 
@@ -1208,15 +1197,17 @@ class BaseModel(Model):
             callbacks=self.get_adt_callbacks(),
         )
 
-    def edit_until_clean(self, *, initial_edit: bool = False) -> None:
+    def edit_until_clean(
+        self, *, initial_edit: bool = False, cfg: LintConfig = LintConfig()
+    ) -> None:
         try:
             if initial_edit:
                 self.edit()
-            while not self.is_lint_clean():
+            while not self.is_lint_clean(cfg=cfg):
                 self.display()
                 self.edit()
                 self.reload()
-                self.format()
+                self.format(cfg=cfg)
         except getinput.StopException:
             pass
 

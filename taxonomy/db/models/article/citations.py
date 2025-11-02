@@ -814,9 +814,9 @@ def citemammalia(article: Article) -> str:
                 parts.append(" (Eds.). ")
                 parts.append(f"_{enclosing.get_title()}_")
                 parts.append(". ")
-                parts.append(enclosing.publisher)
                 if not enclosing.publisher:
                     raise ValueError(f"Book citation missing publisher: {article}")
+                parts.append(enclosing.publisher)
                 if enclosing.place_of_publication:
                     parts.append(f", {enclosing.place_of_publication}")
                 parts.append(f", pp. {page_range(article, dash='–')}.")

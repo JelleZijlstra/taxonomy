@@ -19,6 +19,7 @@ from taxonomy import command_set, config, getinput, parsing, uitools, urlparse
 from taxonomy.apis import bhl
 from taxonomy.db.constants import ArticleKind, ArticleType, DateSource
 from taxonomy.db.helpers import clean_string, clean_strings_recursively, trimdoi
+from taxonomy.db.models.base import LintConfig
 from taxonomy.db.models.citation_group import CitationGroup, CitationGroupTag
 from taxonomy.db.models.person import AuthorTag, Person, VirtualPerson
 from taxonomy.db.url_cache import CacheDomain, cached, dirty_cache
@@ -888,4 +889,5 @@ def add_data_for_new_file(art: Article) -> None:
     art.edittitle()
     art.index_pdf_for_search()
     art.edit_until_clean()
+    art.lint_all_associated(cfg=LintConfig(experimental=True))
     print("Added to catalog!")

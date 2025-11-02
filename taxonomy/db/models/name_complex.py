@@ -164,6 +164,8 @@ class SpeciesNameComplex(BaseModel):
         }
 
     def show_similar(self) -> None:
+        if self.stem is None:
+            return
         for sc in SpeciesNameComplex.select_valid().filter(
             SpeciesNameComplex.stem.endswith(self.stem)
         ):
