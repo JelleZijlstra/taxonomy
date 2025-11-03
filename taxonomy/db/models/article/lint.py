@@ -1452,7 +1452,11 @@ def should_not_have_issue(art: Article) -> bool:
     cg = art.citation_group
     if cg is None:
         return False
-    return cg.name == "American Museum Novitates" or (
+    return cg.name in (
+        "American Museum Novitates",
+        "ZooKeys",
+        "European Journal of Taxonomy",
+    ) or (
         cg.name == "Bulletin of the American Museum of Natural History"
         and art.numeric_year() > 1990
     )
@@ -1878,11 +1882,23 @@ def get_cgs_with_dois() -> set[int]:
     clear_caches=get_cgs_with_dois.cache_clear,
 )  # false positives
 def find_doi(art: Article, cfg: LintConfig) -> Iterable[str]:
-    if art.doi is not None or art.has_tag(ArticleTag.JSTOR):
+    if (
+        art.doi is not None
+        or art.has_tag(ArticleTag.JSTOR)
+        or art.type is ArticleType.SUPPLEMENT
+        or art.kind is ArticleKind.alternative_version
+    ):
+        return
+    year = art.numeric_year()
+    if year is None:
         return
     if art.citation_group is None:
         return
-    if art.citation_group.id not in get_cgs_with_dois():
+    # Also try for newly added articles, in case a new journal has DOIs now
+    if not (
+        (year > 2000 and art.id > 72_000)
+        or art.citation_group.may_have_article_identifier(ArticleIdentifier.doi, year)
+    ):
         return
     doi = models.article.api_data.get_doi_from_crossref(art)
     if doi is None:

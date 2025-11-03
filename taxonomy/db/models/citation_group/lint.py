@@ -404,3 +404,54 @@ def add_have_identifier_tags(cg: CitationGroup, cfg: LintConfig) -> Iterable[str
             yield from add_or_expand(
                 CitationGroupTag.MustHaveIdentifier, ident, desired_min, desired_max
             )
+
+
+@LINT.add("identifier_tag_consistency")
+def check_identifier_tag_consistency(
+    cg: CitationGroup, cfg: LintConfig
+) -> Iterable[str]:
+    """Ensure there is at most one MayHaveIdentifier and one MustHaveIdentifier per
+    identifier, and that the May range contains the Must range if both exist.
+    """
+
+    def lower_value(v: int | None) -> int:
+        return -(10**9) if v is None else v
+
+    def upper_value(v: int | None) -> int:
+        return 10**9 if v is None else v
+
+    for ident in constants.ArticleIdentifier:
+        may_tags = [
+            t
+            for t in cg.get_tags(cg.tags, CitationGroupTag.MayHaveIdentifier)
+            if t.identifier == ident
+        ]
+        must_tags = [
+            t
+            for t in cg.get_tags(cg.tags, CitationGroupTag.MustHaveIdentifier)
+            if t.identifier == ident
+        ]
+
+        if len(may_tags) > 1:
+            yield f"multiple MayHaveIdentifier tags for {ident.name}"
+        if len(must_tags) > 1:
+            yield f"multiple MustHaveIdentifier tags for {ident.name}"
+
+        if not may_tags or not must_tags:
+            continue
+
+        # Validate that each Must range is contained in each May range
+        for may in may_tags:
+            may_min = getattr(may, "min_year", None)
+            may_max = getattr(may, "max_year", None)
+            for must in must_tags:
+                must_min = getattr(must, "min_year", None)
+                must_max = getattr(must, "max_year", None)
+                if lower_value(may_min) > lower_value(must_min) or upper_value(
+                    may_max
+                ) < upper_value(must_max):
+                    may_str = f"{may_min or '-inf'}–{may_max or '+inf'}"
+                    must_str = f"{must_min or '-inf'}–{must_max or '+inf'}"
+                    yield (
+                        f"identifier range mismatch for {ident.name}: MayHave {may_str} does not contain MustHave {must_str}"
+                    )

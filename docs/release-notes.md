@@ -4,6 +4,14 @@ Version numbers correspond to Git tags in the
 [backend](https://github.com/JelleZijlstra/taxonomy/) repositories, and to database
 exports released on Zenodo.
 
+# Unreleased
+
+- Database
+  - Add PubMed identifiers to over 4000 articles
+- Backend
+  - Validate data consistency against data from PubMed
+- Frontend
+
 # 25.11.0 (November 2, 2025)
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.17509695.svg)](https://doi.org/10.5281/zenodo.17509695)
