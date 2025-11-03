@@ -3,6 +3,7 @@
 import enum
 import json
 import re
+import time
 import traceback
 import urllib.parse
 from collections.abc import Sequence
@@ -112,6 +113,98 @@ def is_doi_valid(doi: str) -> bool:
             return True
         return False
     return True
+
+
+# -------------------- PubMed (NCBI E-utilities) helpers --------------------
+
+
+@lru_cache
+def get_pubmed_esummary(pmid: str) -> dict[str, Any] | None:
+    try:
+        return json.loads(get_pubmed_esummary_cached(pmid))
+    except Exception:
+        traceback.print_exc()
+        print(f"Could not fetch PubMed summary for PMID {pmid}")
+        return None
+
+
+@cached(CacheDomain.pubmed_esummary)
+def get_pubmed_esummary_cached(pmid: str) -> str:
+    time.sleep(0.5)  # avoid getting rate limited
+    url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi"
+    response = requests.get(
+        url,
+        params={"db": "pubmed", "id": pmid, "retmode": "json"},
+        timeout=20,
+        headers={"User-Agent": "taxonomy-pubmed-lint/1.0"},
+    )
+    response.raise_for_status()
+    return response.text
+
+
+def expand_pubmed_json(pmid: str) -> RawData:
+    """Map PubMed ESummary JSON to our article RawData-like dict.
+
+    Conservative mapping: only fields that are relatively stable.
+    """
+    raw = get_pubmed_esummary(pmid)
+    if not raw:
+        return {}
+    result = raw.get("result") or {}
+    # results include a "uids" list and entries keyed by uid
+    rec = result.get(pmid)
+    if not isinstance(rec, dict):
+        return {}
+
+    data: RawData = {}
+    title = rec.get("title")
+    if isinstance(title, str) and title.strip():
+        data["title"] = clean_string(title)
+
+    journal = rec.get("fulljournalname")
+    if isinstance(journal, str) and journal.strip():
+        data["journal"] = clean_string(journal)
+
+    volume = rec.get("volume")
+    if isinstance(volume, str) and volume.strip():
+        data["volume"] = volume.removeprefix("0")
+
+    issue = rec.get("issue")
+    if isinstance(issue, str) and issue.strip():
+        data["issue"] = issue.removeprefix("0")
+
+    pages = rec.get("pages")
+    if isinstance(pages, str) and pages.strip():
+        m = re.fullmatch(r"^(\w+)[\-–](\w+)$", pages)
+        if m:
+            start_page = m.group(1)
+            end_page = m.group(2)
+            if len(end_page) < len(start_page):
+                # turn e.g. "9967-72" into "9967-9972"
+                end_page = start_page[: len(start_page) - len(end_page)] + end_page
+            data["start_page"] = start_page
+            data["end_page"] = end_page
+        elif pages.isnumeric():
+            data["start_page"] = data["end_page"] = pages
+        else:
+            data["start_page"] = pages
+
+    # Year from pubdate string (e.g., "2021 Jan 15")
+    pubdate = rec.get("pubdate")
+    if isinstance(pubdate, str):
+        m = re.search(r"(19|20)\d{2}", pubdate)
+        if m:
+            data["year"] = m.group(0)
+
+    # DOI from articleids
+    for idrec in rec.get("articleids") or []:
+        if idrec.get("idtype") == "doi" and idrec.get("value"):
+            data["doi"] = trimdoi(str(idrec["value"]))
+            break
+
+    # Always include the PMID as a tag
+    data["tags"] = [ArticleTag.PMID(pmid)]
+    return data
 
 
 # values from http://www.crossref.org/schema/queryResultSchema/crossref_query_output2.0.xsd

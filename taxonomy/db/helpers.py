@@ -598,6 +598,8 @@ def simplify_string(text: str, *, clean_words: bool = True) -> str:
     text = unidecode.unidecode(text)
     text = re.sub(r"[\-—–]+", "-", text).replace(":", "")
     text = clean_string(text).casefold()
+    # Replace dashes again
+    text = re.sub(r"[\-—–]+", "-", text)
     if clean_words:
         text = "".join(_clean_up_word(word) for word in text.split())
     else:

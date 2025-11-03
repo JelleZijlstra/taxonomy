@@ -462,6 +462,7 @@ class Article(BaseModel):
             "recompute_authors_from_doi": self.recompute_authors_from_doi,
             "recompute_authors_from_jstor": self.recompute_authors_from_jstor,
             "print_doi_information": self.print_doi_information,
+            "print_pubmed_esummary": self.print_pubmed_esummary,
             "expand_doi": lambda: self.expand_doi(verbose=True, set_fields=True),
             "expand_doi_force": lambda: self.expand_doi(
                 verbose=True, set_fields=True, clear_cache=True
@@ -1054,6 +1055,10 @@ class Article(BaseModel):
             self.add_tag(ArticleTag.AlternativeURL(self.url))
         self.url = url
 
+    @classmethod
+    def with_tag(cls, tag_cls: ArticleTag._Constructor) -> Query[Self]:  # type: ignore[name-defined]
+        return cls.select_valid().filter(Article.tags.contains(f"[{tag_cls._tag},"))
+
     def has_tag(self, tag_cls: ArticleTag._Constructor) -> bool:  # type: ignore[name-defined]
         tag_id = tag_cls._tag
         return any(tag[0] == tag_id for tag in self.get_raw_tags_field("tags"))
@@ -1217,6 +1222,13 @@ class Article(BaseModel):
                 if key != "reference"
             }
             pprint.pprint(data, sort_dicts=False)
+
+    def print_pubmed_esummary(self) -> None:
+        pmid = self.get_identifier(ArticleTag.PMID)
+        if not pmid:
+            return
+        data = models.article.add_data.get_pubmed_esummary(pmid)
+        pprint.pprint(data, sort_dicts=False)
 
     def maybe_remove_corrupt_doi(self) -> None:
         if self.doi is None:

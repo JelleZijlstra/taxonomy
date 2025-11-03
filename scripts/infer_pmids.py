@@ -147,11 +147,22 @@ class Candidate:
     year: str | None
 
 
-def iter_articles_missing_pmid() -> Iterable[Article]:
+def iter_articles_missing_pmid(*, only_if_existing: bool = False) -> Iterable[Article]:
+    cgs_with_pmids = set()
+    if only_if_existing:
+        arts = Article.select_valid().filter(
+            Article.tags.contains(f"[{ArticleTag.PMID._tag},")
+        )
+        for art in arts:
+            if art.has_tag(ArticleTag.PMID):
+                if art.citation_group:
+                    cgs_with_pmids.add(art.citation_group)
     for art in Article.select_valid().filter(
         Article.type == ArticleType.JOURNAL, Article.year > "1950"
     ):
         if art.get_identifier(ArticleTag.PMID):
+            continue
+        if cgs_with_pmids and art.citation_group not in cgs_with_pmids:
             continue
         yield art
 
@@ -230,13 +241,18 @@ def main(argv: list[str]) -> int:
         action="store_true",
         help="If one article from a journal does not have a PMID, assume others won't either (speeds up processing)",
     )
+    parser.add_argument(
+        "--only-if-existing",
+        action="store_true",
+        help="Only run for articles in journals where we already have a PMID",
+    )
     args = parser.parse_args(argv)
 
     processed = 0
     added = 0
     skipped_journals: set[CitationGroup] = set()
     num_skipped_due_to_journal = 0
-    for art in iter_articles_missing_pmid():
+    for art in iter_articles_missing_pmid(only_if_existing=args.only_if_existing):
         if args.limit is not None and processed >= args.limit:
             break
         processed += 1

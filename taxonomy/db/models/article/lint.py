@@ -2036,6 +2036,99 @@ def data_from_doi(art: Article, cfg: LintConfig) -> Iterable[str]:
     yield from _check_doi_authors(art, data, cfg)
 
 
+@LINT.add("data_from_pubmed", requires_network=True)
+def data_from_pubmed(art: Article, cfg: LintConfig) -> Iterable[str]:
+    """Compare article data against PubMed (via ESummary) when PMID is present.
+
+    Similar spirit to data_from_doi: warn on inconsistencies; autofix missing issue.
+    """
+    pmid = art.get_identifier(ArticleTag.PMID)
+    if not pmid or art.kind is ArticleKind.alternative_version:
+        return
+    data = models.article.add_data.expand_pubmed_json(pmid)
+    if not data:
+        return
+    # Title
+    if data.get("title") and art.title:
+        simplified_src = helpers.simplify_string(
+            data["title"], clean_words=False
+        ).rstrip("*")
+        options = {simplified_src}
+        # Sometimes PubMed prefixes something like "Paleontology:" or "Evolution."
+        for c in ":", ".":
+            if c in data["title"]:
+                alt_simplified_src = helpers.simplify_string(
+                    data["title"].split(c, 1)[1], clean_words=False
+                ).rstrip("*")
+                options.add(alt_simplified_src)
+        simplified_art = helpers.simplify_string(art.title, clean_words=False).rstrip(
+            "*"
+        )
+        if simplified_src and simplified_art not in options:
+            if not LINT.is_ignoring_lint(art, "data_from_pubmed"):
+                getinput.diff_strings(simplified_src, simplified_art)
+            yield f"title mismatch: {data['title']} (PubMed) vs. {art.title} (article)"
+    # Journal
+    if data.get("journal") and art.citation_group is not None:
+        pubmed_journal = data["journal"].casefold()
+        article_journal = art.citation_group.name.casefold()
+        # PubMed tends to give longer journal names, e.g. "Die Naturwissenschaften" vs. "Naturwissenschaften"
+        # and "Proceedings of the National Academy of Sciences of the United States of America" vs. "Proceedings of the National Academy of Sciences"
+        if not pubmed_journal.startswith(
+            article_journal
+        ) and not pubmed_journal.endswith(pubmed_journal):
+            yield f"journal mismatch: {data['journal']} (PubMed) vs. {art.citation_group.name} (article)"
+    # Volume
+    if data.get("volume") and art.volume is not None:
+        if (
+            data["volume"].lstrip("0") != art.volume
+            and data["volume"].isnumeric()
+            and art.volume.isnumeric()
+        ):
+            if abs(int(data["volume"]) - int(art.volume)) <= 1000:
+                yield f"volume mismatch: {data['volume']} (PubMed) vs. {art.volume} (article)"
+    # Issue (autofix if missing and appropriate)
+    if data.get("issue"):
+        if art.issue is None:
+            if not should_not_have_issue(art):
+                message = f"adding issue {data['issue']} from PubMed"
+                if cfg.autofix:
+                    print(f"{art}: {message}")
+                    art.issue = data["issue"]
+                else:
+                    yield message
+        else:
+            src_issue = data["issue"].replace("/", "-").replace("–", "-")
+            if (
+                src_issue != "1"
+                and src_issue.lstrip("0") != art.issue
+                and src_issue.isnumeric()
+                and art.issue.isnumeric()
+            ):
+                if abs(int(src_issue) - int(art.issue)) <= 10:
+                    yield f"issue mismatch: {data['issue']} (PubMed) vs. {art.issue} (article)"
+    # Start page
+    if data.get("start_page") and art.start_page is not None:
+        sp = data["start_page"]
+        if sp.isnumeric() and sp.lstrip("0") != art.start_page:
+            if not (data.get("end_page") == sp and art.start_page != art.end_page):
+                yield f"start page mismatch: {sp} (PubMed) vs. {art.start_page} (article)"
+    # End page
+    if data.get("end_page") and art.end_page is not None:
+        ep = data["end_page"]
+        if ep.isnumeric() and ep != "1" and ep.lstrip("0") != art.end_page:
+            if not (data.get("start_page") == ep and art.start_page != art.end_page):
+                yield f"end page mismatch: {ep} (PubMed) vs. {art.end_page} (article)"
+    # DOI (optional gentle add if missing)
+    if data.get("doi") and not art.doi:
+        message = f"adding DOI {data['doi']} from PubMed"
+        if cfg.autofix:
+            print(f"{art}: {message}")
+            art.doi = data["doi"]
+        else:
+            yield message
+
+
 def _check_doi_title(art: Article, data: dict[str, Any]) -> Iterable[str]:
     if "title" not in data or art.title is None:
         return
