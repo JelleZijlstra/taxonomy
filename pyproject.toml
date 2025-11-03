@@ -53,6 +53,7 @@ dependencies = [
   "botocore",
   "repoguess>=0.0.6",
   "pyzotero",
+  "lxml>=6.0.2",
 ]
 
 [project.urls]
