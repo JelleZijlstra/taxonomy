@@ -2279,6 +2279,92 @@ def data_from_pubmed(art: Article, cfg: LintConfig) -> Iterable[str]:
             yield message
 
 
+@LINT.add("data_from_pmc", requires_network=True)
+def data_from_pmc(art: Article, cfg: LintConfig) -> Iterable[str]:
+    """Compare article data against PMC (via Europe PMC) when PMCID is present."""
+    pmc = art.get_identifier(ArticleTag.PMC)
+    if not pmc or art.kind is ArticleKind.alternative_version:
+        return
+    data = models.article.api_data.expand_pmc_json(pmc)
+    if not data:
+        return
+    # Title
+    if data.get("title") and art.title:
+        simplified_src = helpers.simplify_string(
+            data["title"], clean_words=False
+        ).rstrip("*")
+        simplified_art = helpers.simplify_string(art.title, clean_words=False).rstrip(
+            "*"
+        )
+        if (
+            simplified_src
+            and simplified_src != simplified_art
+            and not LINT.is_ignoring_lint(art, "data_from_pmc")
+        ):
+            getinput.diff_strings(simplified_src, simplified_art)
+            yield f"title mismatch: {data['title']} (PMC) vs. {art.title} (article)"
+    # Skip journal, PMC often shows abbreviated journal names
+    # Volume
+    if data.get("volume") and art.volume is not None:
+        if (
+            data["volume"].lstrip("0") != art.volume
+            and data["volume"].isnumeric()
+            and art.volume.isnumeric()
+        ):
+            if abs(int(data["volume"]) - int(art.volume)) <= 1000:
+                yield f"volume mismatch: {data['volume']} (PMC) vs. {art.volume} (article)"
+    # Issue (autofix if missing and appropriate)
+    if data.get("issue"):
+        if art.issue is None:
+            if not should_not_have_issue(art):
+                message = f"adding issue {data['issue']} from PMC"
+                if cfg.autofix:
+                    print(f"{art}: {message}")
+                    art.issue = data["issue"]
+                else:
+                    yield message
+        else:
+            src_issue = data["issue"].replace("/", "-").replace("–", "-")
+            if (
+                src_issue != "1"
+                and src_issue.lstrip("0") != art.issue
+                and src_issue.isnumeric()
+                and art.issue.isnumeric()
+            ):
+                if abs(int(src_issue) - int(art.issue)) <= 10:
+                    yield f"issue mismatch: {data['issue']} (PMC) vs. {art.issue} (article)"
+    # Start page
+    if data.get("start_page") and art.start_page is not None:
+        sp = data["start_page"]
+        if sp.isnumeric() and sp.lstrip("0") != art.start_page:
+            if not (data.get("end_page") == sp and art.start_page != art.end_page):
+                yield f"start page mismatch: {sp} (PMC) vs. {art.start_page} (article)"
+    # End page
+    if data.get("end_page") and art.end_page is not None:
+        ep = data["end_page"]
+        if ep.isnumeric() and ep != "1" and ep.lstrip("0") != art.end_page:
+            if not (data.get("start_page") == ep and art.start_page != art.end_page):
+                yield f"end page mismatch: {ep} (PMC) vs. {art.end_page} (article)"
+    # DOI (optional gentle add if missing)
+    if data.get("doi") and not art.doi:
+        message = f"adding DOI {data['doi']} from PMC"
+        if cfg.autofix:
+            print(f"{art}: {message}")
+            art.doi = data["doi"]
+        else:
+            yield message
+    # PMID (optional add if present and missing)
+    if not art.get_identifier(ArticleTag.PMID):
+        for tag in data.get("tags", []) or []:
+            if isinstance(tag, ArticleTag.PMID):
+                message = f"adding PMID {tag.text} from PMC"
+                if cfg.autofix:
+                    print(f"{art}: {message}")
+                    art.add_tag(tag)
+                else:
+                    yield message
+
+
 def _check_doi_title(art: Article, data: dict[str, Any]) -> Iterable[str]:
     if "title" not in data or art.title is None:
         return

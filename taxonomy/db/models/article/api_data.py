@@ -214,6 +214,103 @@ def expand_pubmed_json(pmid: str) -> RawData:
     return data
 
 
+# -------------------- Europe PMC helpers (for PMCID lookup) --------------------
+
+EUROPEPMC_SEARCH_URL = "https://www.ebi.ac.uk/europepmc/webservices/rest/search"
+
+
+@cached(CacheDomain.europe_pmc_search)
+def _europe_pmc_cached(params_json: str) -> str:
+    query_dict = json.loads(params_json)
+    response = requests.get(
+        EUROPEPMC_SEARCH_URL,
+        params=query_dict,
+        timeout=20,
+        headers={"User-Agent": "taxonomy-pmc-lint/1.0"},
+    )
+    response.raise_for_status()
+    return response.text
+
+
+def expand_pmc_json(pmcid: str) -> RawData:
+    """Fetch citation metadata for a PMCID using Europe PMC search.
+
+    Returns a RawData dict similar in shape to expand_pubmed_json.
+    """
+    pmcid = pmcid if pmcid.upper().startswith("PMC") else f"PMC{pmcid}"
+    params = {"format": "json", "pageSize": "25", "query": f"PMCID:{pmcid}"}
+    try:
+        text = _europe_pmc_cached(json.dumps(params, sort_keys=True))
+        data = json.loads(text)
+    except Exception:
+        traceback.print_exc()
+        return {}
+    results = (data.get("resultList") or {}).get("result") or []
+    rec: dict[str, Any] | None = None
+    for r in results:
+        if str(r.get("pmcid", "")).upper() == pmcid.upper():
+            rec = r
+            break
+    if rec is None:
+        return {}
+
+    out: RawData = {}
+    title = rec.get("title")
+    if isinstance(title, str) and title.strip():
+        out["title"] = clean_string(title)
+    journal = rec.get("journalTitle") or rec.get("journal")
+    if isinstance(journal, str) and journal.strip():
+        out["journal"] = clean_string(journal)
+    volume = rec.get("volume")
+    if isinstance(volume, str) and volume.strip():
+        out["volume"] = volume.removeprefix("0")
+    issue = rec.get("issue")
+    if isinstance(issue, str) and issue.strip():
+        out["issue"] = issue.removeprefix("0")
+    pages = rec.get("pageInfo") or rec.get("pages")
+    if isinstance(pages, str) and pages.strip():
+        m = re.fullmatch(r"^(\w+)[\-–](\w+)$", pages)
+        if m:
+            start_page = m.group(1)
+            end_page = m.group(2)
+            if len(end_page) < len(start_page):
+                end_page = start_page[: len(start_page) - len(end_page)] + end_page
+            out["start_page"] = start_page
+            out["end_page"] = end_page
+        elif pages.isnumeric():
+            out["start_page"] = out["end_page"] = pages
+        else:
+            out["start_page"] = pages
+    pub_year = rec.get("pubYear") or rec.get("year")
+    if isinstance(pub_year, str) and pub_year.isnumeric():
+        out["year"] = pub_year
+    doi = rec.get("doi")
+    if isinstance(doi, str) and doi:
+        out["doi"] = trimdoi(doi)
+    pmid = rec.get("pmid")
+    if isinstance(pmid, str) and pmid.isnumeric():
+        out.setdefault("tags", [])
+        out["tags"].append(ArticleTag.PMID(pmid))
+    return out
+
+
+def get_europe_pmc_record(pmcid: str) -> dict[str, Any] | None:
+    """Return the raw Europe PMC result dict for an exact PMCID match, if any."""
+    pmcid = pmcid if pmcid.upper().startswith("PMC") else f"PMC{pmcid}"
+    params = {"format": "json", "pageSize": "25", "query": f"PMCID:{pmcid}"}
+    try:
+        text = _europe_pmc_cached(json.dumps(params, sort_keys=True))
+        data = json.loads(text)
+    except Exception:
+        traceback.print_exc()
+        return None
+    results = (data.get("resultList") or {}).get("result") or []
+    for r in results:
+        if str(r.get("pmcid", "")).upper() == pmcid.upper():
+            return r
+    return None
+
+
 # values from http://www.crossref.org/schema/queryResultSchema/crossref_query_output2.0.xsd
 doi_type_to_article_type = {
     "journal_title": ArticleType.JOURNAL,
@@ -377,20 +474,6 @@ def get_container_title(work: dict[str, Any]) -> str | None:
 
 
 IDCONV_URL = "https://www.ncbi.nlm.nih.gov/pmc/utils/idconv/v1.0/"
-EUROPEPMC_SEARCH_URL = "https://www.ebi.ac.uk/europepmc/webservices/rest/search"
-
-
-@cached(CacheDomain.europe_pmc_search)
-def _europe_pmc_cached(params_json: str) -> str:
-    params = json.loads(params_json)
-    resp = requests.get(
-        EUROPEPMC_SEARCH_URL,
-        params=params,
-        timeout=20,
-        headers={"User-Agent": "taxonomy-pmid-infer/1.0"},
-    )
-    resp.raise_for_status()
-    return resp.text
 
 
 @cached(CacheDomain.ncbi_idconv)

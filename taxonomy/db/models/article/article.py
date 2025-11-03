@@ -472,6 +472,8 @@ class Article(BaseModel):
             "recompute_authors_from_doi": self.recompute_authors_from_doi,
             "recompute_authors_from_jstor": self.recompute_authors_from_jstor,
             "print_doi_information": self.print_doi_information,
+            "print_pubmed_information": self.print_pubmed_esummary,
+            "print_pmc_information": self.print_pmc_information,
             "print_pubmed_esummary": self.print_pubmed_esummary,
             "expand_doi": lambda: self.expand_doi(verbose=True, set_fields=True),
             "expand_doi_force": lambda: self.expand_doi(
@@ -1257,6 +1259,16 @@ class Article(BaseModel):
             return
         data = models.article.api_data.get_pubmed_esummary(pmid)
         pprint.pprint(data, sort_dicts=False)
+
+    def print_pmc_information(self) -> None:
+        pmc = self.get_identifier(ArticleTag.PMC)
+        if not pmc:
+            return
+        rec = models.article.api_data.get_europe_pmc_record(pmc)
+        if rec is None:
+            print("No Europe PMC record found for", pmc)
+            return
+        pprint.pprint(rec, sort_dicts=False)
 
     def maybe_remove_corrupt_doi(self) -> None:
         if self.doi is None:
