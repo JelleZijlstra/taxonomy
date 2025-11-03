@@ -10,6 +10,7 @@ from collections import defaultdict
 from collections.abc import Collection, Generator, Hashable, Iterable, Sequence
 from typing import Any
 
+import Levenshtein
 import requests
 
 from taxonomy import getinput, urlparse
@@ -1895,14 +1896,92 @@ def find_doi(art: Article, cfg: LintConfig) -> Iterable[str]:
     doi_title = data.get("title")
     if not doi_title or not art.title:
         return
-    if helpers.simplify_string(doi_title) != helpers.simplify_string(art.title):
+    # Loosen acceptance: compare normalized title distance, year, and authors
+    art_title_s = helpers.simplify_string(art.title)
+    doi_title_s = helpers.simplify_string(doi_title)
+    title_dist = Levenshtein.distance(art_title_s, doi_title_s)
+    norm_title_dist = title_dist / (len(art_title_s) + len(doi_title_s) + 1)
+    is_prefix = (len(art_title_s) > 10 and doi_title_s.startswith(art_title_s)) or (
+        len(doi_title_s) > 10 and art_title_s.startswith(doi_title_s)
+    )
+
+    # Year check
+    doi_year_str = data.get("year")
+    art_year = art.numeric_year() or 0
+    doi_year = (
+        int(doi_year_str)
+        if isinstance(doi_year_str, str) and doi_year_str.isnumeric()
+        else 0
+    )
+    year_ok = art_year and doi_year and abs(art_year - doi_year) <= 1
+
+    # Author overlap (family names)
+    doi_authors = data.get("author_tags") or []
+    doi_author_last = []
+    try:
+        for a in doi_authors:
+            ln = getattr(a, "family_name", None) or (
+                getattr(a, "person", None) and getattr(a.person, "family_name", None)
+            )
+            if isinstance(ln, str) and ln:
+                doi_author_last.append(ln.casefold())
+    except Exception:
+        pass
+    art_author_last = [
+        p.family_name.casefold() for p in art.get_authors() if p.family_name
+    ]
+    author_overlap = (
+        bool(set(doi_author_last) & set(art_author_last))
+        if doi_author_last and art_author_last
+        else False
+    )
+
+    titles_equal = doi_title_s == art_title_s
+    title_similar = titles_equal or is_prefix or norm_title_dist < 0.18
+
+    if not (title_similar and (author_overlap or year_ok or titles_equal)):
         return
-    message = f"found DOI {doi} (title: {data.get('title')!r} vs. {art.title!r})"
+    # Build a concise, verifiable summary of the DOI metadata
+    journal = data.get("journal") or "?"
+    vol = data.get("volume")
+    iss = data.get("issue")
+    sp = data.get("start_page")
+    ep = data.get("end_page")
+    pages = None
+    if sp:
+        pages = sp if not ep or ep == sp else f"{sp}-{ep}"
+    vol_issue = vol or ""
+    if iss:
+        vol_issue = f"{vol_issue}({iss})" if vol_issue else f"({iss})"
+    authors_preview: list[str] = []
+    try:
+        for a in (data.get("author_tags") or [])[:3]:
+            ln = getattr(a, "family_name", None) or (
+                getattr(a, "person", None) and getattr(a.person, "family_name", None)
+            )
+            if isinstance(ln, str) and ln:
+                authors_preview.append(ln)
+    except Exception:
+        pass
+    authors_str = ", ".join(authors_preview) + (
+        "…" if (data.get("author_tags") and len(data["author_tags"]) > 3) else ""
+    )
+    citation_bits = [
+        f"{journal}",
+        vol_issue if vol_issue else None,
+        f": {pages}" if pages else None,
+        f"({doi_year_str})" if doi_year_str else None,
+    ]
+    citation = " ".join(bit for bit in citation_bits if bit)
+    message = f"found DOI {doi}: '{doi_title}' — {citation}"
+    if authors_str:
+        message += f"; authors={authors_str}"
     if cfg.autofix and not LINT.is_ignoring_lint(art, "find_doi"):
         art.doi = doi
         print(f"{art}: {message}")
+        print(repr(art))
     else:
-        yield message
+        yield message + f"\n{art!r}"
 
 
 def has_valid_children(art: Article) -> bool:
@@ -2197,6 +2276,18 @@ def _check_doi_title(art: Article, data: dict[str, Any]) -> Iterable[str]:
     if not simplified_doi:
         return
     simplified_art = helpers.simplify_string(art.title, clean_words=False).rstrip("*")
+
+    # Bulletin of Zoological Nomenclature special handling
+    if (
+        art.citation_group
+        and art.citation_group.name == "Bulletin of Zoological Nomenclature"
+    ):
+        simplified_doi = re.sub(r"zn\(s\)\d+$", "", simplified_doi)
+        simplified_doi = simplified_doi.removeprefix("comments").removeprefix("comment")
+        simplified_art = simplified_art.removeprefix("comments").removeprefix("comment")
+        if simplified_art.startswith("case") and not simplified_doi.startswith("case"):
+            simplified_art = re.sub(r"^case\d+", "", simplified_art).lstrip()
+
     if simplified_doi == simplified_art:
         return
     # Red List data puts the authors at the end of the title
