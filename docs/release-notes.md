@@ -6,6 +6,8 @@ exports released on Zenodo.
 
 # 25.11.0 (November 2, 2025)
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.17509695.svg)](https://doi.org/10.5281/zenodo.17509695)
+
 - Releases
   - Add an export file containing the references in my personal library.
 - Database
