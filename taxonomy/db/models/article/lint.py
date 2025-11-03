@@ -74,6 +74,14 @@ def check_tags(art: Article, cfg: LintConfig) -> Iterable[str]:
             jstor_id = tag.text
             if len(jstor_id) < 4 or not jstor_id.isnumeric():
                 yield f"invalid JSTOR id {jstor_id!r}"
+        elif isinstance(tag, ArticleTag.PMC):
+            pmc_id = tag.text
+            if not re.fullmatch(r"^PMC\d+$", pmc_id):
+                yield f"invalid PMC id {pmc_id!r}"
+        elif isinstance(tag, ArticleTag.PMID):
+            pmid = tag.text
+            if not pmid.isnumeric():
+                yield f"invalid PMID {pmid!r}"
         elif isinstance(tag, ArticleTag.PublicationDate):
             if art.doi is None and tag.source in (
                 DateSource.doi_published,
@@ -664,6 +672,14 @@ def check_url(art: Article, cfg: LintConfig) -> Iterable[str]:
             if cfg.autofix:
                 print(f"{art}: {message}")
                 art.doi = doi
+                art.url = None
+            else:
+                yield message
+        case urlparse.PMCUrl(pmc_id):
+            message = f"inferred PMC id {pmc_id} from url {art.url}"
+            if cfg.autofix:
+                print(f"{art}: {message}")
+                art.add_tag(ArticleTag.PMC(pmc_id))
                 art.url = None
             else:
                 yield message

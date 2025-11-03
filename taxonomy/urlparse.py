@@ -187,6 +187,14 @@ class DOIURL(ParsedUrl):
 
 
 @dataclass
+class PMCUrl(ParsedUrl):
+    pmc_id: str
+
+    def __str__(self) -> str:
+        return f"https://www.ncbi.nlm.nih.gov/pmc/articles/{self.pmc_id}"
+
+
+@dataclass
 class OtherUrl(ParsedUrl):
     split_url: urllib.parse.SplitResult
 
@@ -277,6 +285,10 @@ def parse_url(url: str) -> ParsedUrl:
         else:
             volume_id, *suffixes = text.split(".")
             return GallicaVolume(volume_id, suffixes)
+    elif split.netloc == "www.ncbi.nlm.nih.gov":
+        match = re.fullmatch(r"/pmc/articles/(PMC\d+)/?", split.path)
+        if match is not None:
+            return PMCUrl(match.group(1))
 
     # TODO: other domains for which to consider parsing more specifically:
     # - archive.org
