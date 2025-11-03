@@ -268,6 +268,24 @@ class BaseModel(Model):
                     yield f"{self}: references invalid object {value} in field {field}"
             elif isinstance(field_obj, ADTField):
                 assert isinstance(value, tuple)
+                raw_value = field_obj.get_raw(self)
+                serialized = field_obj.serialize(value)
+                if serialized is None:
+                    if value:
+                        yield f"{self}: field {field}: serialized data is None"
+                elif raw_value != serialized:
+                    getinput.diff_strings(raw_value, serialized)
+                    if len(value) == len(json.loads(serialized)):
+                        print(
+                            f"{self}: field {field}: raw data and serialized data differ"
+                        )
+                        # Force updating the value
+                        setattr(self, field, value)
+                    else:
+                        yield (
+                            f"{self}: field {field}: raw data does not match serialized"
+                            f" data"
+                        )
                 if cfg.autofix:
                     new_tags = []
                     made_change = False

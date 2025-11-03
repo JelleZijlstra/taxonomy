@@ -2153,7 +2153,7 @@ def _check_doi_article_number(
 def _check_doi_isbn(
     art: Article, data: dict[str, Any], cfg: LintConfig
 ) -> Iterable[str]:
-    if "isbn" not in data:
+    if "isbn" not in data or not data["isbn"]:
         return
     existing = art.get_identifier(ArticleTag.ISBN)
     if existing is None:

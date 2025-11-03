@@ -997,7 +997,7 @@ def _set_name_complex_for_names(nams: Sequence[Name]) -> None:
 
 @command
 def set_citation_group_for_matching_citation(
-    *, dry_run: bool = False, fix: bool = False
+    *, dry_run: bool = False, fix: bool = True
 ) -> None:
     cite_to_nams: dict[str, list[Name]] = defaultdict(list)
     cite_to_group: dict[str, set[CitationGroup]] = defaultdict(set)
@@ -1758,26 +1758,31 @@ def resolve_redirects(*, dry_run: bool = False) -> None:
 
 
 @command
-def run_maintenance(*, skip_slow: bool = True) -> dict[Any, Any]:
+def run_maintenance(
+    *, skip_slow: bool = True, interactive: bool = False
+) -> dict[Any, Any]:
     """Runs maintenance checks that are expected to pass for the entire database."""
     fns: list[Callable[[], Any]] = [
-        labeled_authorless_names,
+        # We should aim to replace as many of these as possible with linters
         dup_collections,
         dup_citation_groups,
         # dup_names,
         # dup_genus,
         # dup_taxa,
-        dup_articles,
-        set_citation_group_for_matching_citation,
-        enforce_must_have,
+        lambda: set_citation_group_for_matching_citation(fix=interactive),
         Person.autodelete,
         Person.find_duplicates,
         Person.resolve_redirects,
     ]
     # these each take >60 s
-    slow: list[Callable[[], Any]] = [
-        cls.lint_all for cls in models.BaseModel.__subclasses__()
-    ]
+    slow: list[Callable[[], Any]] = (
+        [
+            functools.partial(run_linter_and_fix, cls)
+            for cls in models.BaseModel.__subclasses__()
+        ]
+        if interactive
+        else [cls.lint_all for cls in models.BaseModel.__subclasses__()]
+    )
     if not skip_slow:
         fns += slow
     out = {}
@@ -1855,6 +1860,7 @@ def author_report(
 
 @generator_command
 def enforce_must_have(*, fix: bool = True) -> Iterator[Name]:
+    # Also enforced by a lint on Name. This function is helpful since it invokes find_potential_citations_for_group.
     for cg in sorted(_must_have_citation_groups(), key=lambda cg: cg.archive or ""):
         after_tag = cg.get_tag(CitationGroupTag.MustHaveAfter)
         found_any = False

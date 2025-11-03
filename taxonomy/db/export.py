@@ -8,13 +8,22 @@ from typing import Protocol, TypedDict
 
 from taxonomy import getinput
 from taxonomy.command_set import CommandSet
+from taxonomy.db.models.article.article import ArticleTag
 from taxonomy.db.models.classification_entry.ce import (
     ClassificationEntry,
     ClassificationEntryTag,
 )
 from taxonomy.db.models.tags import TaxonTag
 
-from .constants import AgeClass, Group, Rank, RegionKind, Status
+from .constants import (
+    AgeClass,
+    ArticleKind,
+    ArticleType,
+    Group,
+    Rank,
+    RegionKind,
+    Status,
+)
 from .models import Article, Collection, Name, Occurrence, Taxon
 from .models.name import TypeTag
 
@@ -910,3 +919,99 @@ def _create_pair(
                 )
             raise ValueError("unexpected name change")
     return old_ce, new_ce, ["name change"]
+
+
+def get_tag_value(art: Article, tag_cls: type[ArticleTag]) -> str:
+    for tag in art.get_tags(art.tags, tag_cls):
+        for attr in ("text", "url"):
+            if hasattr(tag, attr) and getattr(tag, attr):
+                return str(getattr(tag, attr))
+    return ""
+
+
+@CS.register
+def export_articles(filename: str) -> None:
+    """Export Articles to CSV with common fields and identifier tags.
+
+    Adds columns for identifier tags (PMID, PMC, JSTOR, HDL, ISBN, LSID, BatLit) where present.
+    """
+    fields = [
+        "id",
+        "link",
+        "citation",
+        "type",
+        "authors",
+        "year",
+        "date",
+        "title",
+        "citation_group",
+        "series",
+        "volume",
+        "issue",
+        "start_page",
+        "end_page",
+        "article_number",
+        "publisher",
+        "doi",
+        "url",
+        "PMID",
+        "PMC",
+        "JSTOR",
+        "HDL",
+        "ISBN",
+        "LSID",
+        "BatLit_zotero_id",
+        "BatLit_zenodo_doi",
+    ]
+
+    with Path(filename).open("w", newline="", encoding="utf-8") as f:
+        writer: "csv.DictWriter[str]" = csv.DictWriter(f, fields, escapechar="\\")
+        writer.writeheader()
+        arts = Article.select_valid().filter(
+            Article.type != ArticleType.SUPPLEMENT,
+            Article.kind != ArticleKind.alternative_version,
+        )
+        for art in getinput.print_every_n(arts, label="articles"):
+            cg_name = (
+                art.citation_group.get_citable_name() if art.citation_group else ""
+            )
+            numeric_year = art.valid_numeric_year()
+            row = {
+                "id": str(art.id),
+                "link": art.get_absolute_url(),
+                "type": art.type.name.lower() if art.type is not None else "",
+                "citation": art.cite("paper"),
+                "authors": "; ".join(
+                    f"{pers.family_name}, {(pers.given_names or pers.initials or '').strip()}".strip().rstrip(
+                        ","
+                    )
+                    for pers in art.get_authors()
+                ),
+                "title": art.title or "",
+                "year": str(numeric_year) if numeric_year is not None else "",
+                "date": art.year or "",
+                "citation_group": cg_name or "",
+                "series": art.series or "",
+                "volume": art.volume or "",
+                "issue": art.issue or "",
+                "start_page": art.start_page or "",
+                "end_page": art.end_page or "",
+                "article_number": art.article_number or "",
+                "publisher": art.publisher or "",
+                "doi": art.doi or "",
+                "url": art.url or "",
+                "PMID": get_tag_value(art, ArticleTag.PMID),
+                "PMC": get_tag_value(art, ArticleTag.PMC),
+                "JSTOR": get_tag_value(art, ArticleTag.JSTOR),
+                "HDL": get_tag_value(art, ArticleTag.HDL),
+                "ISBN": get_tag_value(art, ArticleTag.ISBN),
+                "LSID": get_tag_value(art, ArticleTag.LSIDArticle),
+                "BatLit_zotero_id": "",
+                "BatLit_zenodo_doi": "",
+            }
+            # BatLit composite tag handling
+            for bl in art.get_tags(art.tags, ArticleTag.BatLit):
+                row["BatLit_zotero_id"] = bl.zotero_id
+                row["BatLit_zenodo_doi"] = bl.zenodo_doi
+                break
+            writer.writerow(row)

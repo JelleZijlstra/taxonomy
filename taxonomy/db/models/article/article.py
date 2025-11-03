@@ -198,7 +198,7 @@ class Article(BaseModel):
             lambda: models.Name,
             "tags",
             lambda: models.NameTag.SelectionOfSpelling,
-            2,
+            1,
         ),
         get_tag_based_derived_field(
             "priority_selections",
