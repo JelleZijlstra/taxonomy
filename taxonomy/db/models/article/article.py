@@ -11,7 +11,16 @@ import time
 from collections.abc import Callable, Iterable
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, ClassVar, NamedTuple, NotRequired, Self, TypeVar, cast
+from typing import (
+    Any,
+    ClassVar,
+    NamedTuple,
+    NotRequired,
+    Self,
+    TypeVar,
+    assert_never,
+    cast,
+)
 
 from clirm import Field, Query
 
@@ -23,6 +32,7 @@ from taxonomy.db import models
 from taxonomy.db.constants import (
     URL,
     ArticleCommentKind,
+    ArticleIdentifier,
     ArticleKind,
     ArticleType,
     DateSource,
@@ -1121,6 +1131,24 @@ class Article(BaseModel):
         for tag in self.get_tags(self.tags, identifier):
             if hasattr(tag, "text"):
                 return tag.text
+        return None
+
+    def get_article_identifier(
+        self, article_identifier: ArticleIdentifier
+    ) -> str | None:
+        match article_identifier:
+            case ArticleIdentifier.doi:
+                return self.doi
+            case ArticleIdentifier.jstor:
+                return self.get_identifier(ArticleTag.JSTOR)
+            case ArticleIdentifier.hdl:
+                return self.get_identifier(ArticleTag.HDL)
+            case ArticleIdentifier.pmid:
+                return self.get_identifier(ArticleTag.PMID)
+            case ArticleIdentifier.pmc:
+                return self.get_identifier(ArticleTag.PMC)
+            case _:
+                assert_never(article_identifier)
         return None
 
     def get_title(self) -> str:

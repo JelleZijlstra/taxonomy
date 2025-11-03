@@ -960,6 +960,14 @@ class ArticleKind(enum.IntEnum):
         return self in (ArticleKind.electronic, ArticleKind.alternative_version)
 
 
+class ArticleIdentifier(enum.IntEnum):
+    doi = 1
+    pmid = 2
+    jstor = 3
+    pmc = 4
+    hdl = 5
+
+
 class ArticleCommentKind(enum.IntEnum):
     dating = 1
     contents = 2

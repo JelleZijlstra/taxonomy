@@ -11,7 +11,7 @@ from taxonomy import adt, events, getinput
 from taxonomy.apis import bhl
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
 from taxonomy.db import constants, helpers, models
-from taxonomy.db.constants import URL, Managed, Markdown, Regex
+from taxonomy.db.constants import URL, ArticleIdentifier, Managed, Markdown, Regex
 from taxonomy.db.derived_data import DerivedField, LazyType
 from taxonomy.db.models.base import ADTField, BaseModel, LintConfig
 from taxonomy.db.models.region import Region
@@ -599,3 +599,6 @@ class CitationGroupTag(adt.ADT):
 
     # DOI data includes an article number but it should not be used as the primary identifier.
     ArticleNumberIsSecondary(comment=NotRequired[Markdown], tag=33)  # type: ignore[name-defined]
+
+    MustHaveIdentifier(identifier=ArticleIdentifier, min_year=NotRequired[int], max_year=NotRequired[int], tag=34)  # type: ignore[name-defined]
+    MayHaveIdentifier(identifier=ArticleIdentifier, min_year=NotRequired[int], max_year=NotRequired[int], tag=35)  # type: ignore[name-defined]

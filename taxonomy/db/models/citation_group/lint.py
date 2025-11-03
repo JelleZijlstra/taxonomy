@@ -284,3 +284,119 @@ def infer_bhl_year_range(cg: CitationGroup, cfg: LintConfig) -> Iterable[str]:
         cg.add_tag(tag)
     else:
         yield message
+
+
+@LINT.add("have_identifier")
+def add_have_identifier_tags(cg: CitationGroup, cfg: LintConfig) -> Iterable[str]:
+    if cg.type is not constants.ArticleType.JOURNAL:
+        return
+    # Gather article years present in this citation group
+    years_all: list[int] = []
+    articles = list(cg.get_articles())
+    for art in articles:
+        year = art.numeric_year()
+        if year:
+            years_all.append(year)
+    if not years_all:
+        return
+    earliest_art_year = min(years_all)
+    latest_art_year = max(years_all)
+
+    def add_or_expand(
+        tag_cls: type[CitationGroupTag],
+        ident: constants.ArticleIdentifier,
+        desired_min: int | None,
+        desired_max: int | None,
+    ) -> Iterable[str]:
+        # Find existing tags of this class for the identifier
+        existing: CitationGroupTag | None = None
+        for tag in cg.get_tags(cg.tags, tag_cls):
+            if tag.identifier == ident:
+                existing = tag
+                break
+        if existing is None:
+            # Add new tag
+            new_tag = tag_cls(ident, min_year=desired_min, max_year=desired_max)
+            message = f"add tag {new_tag}"
+            if cfg.autofix:
+                print(f"{cg}: {message}")
+                cg.add_tag(new_tag)
+            else:
+                yield message
+            return
+        # Expand existing tag if possible
+        existing_min = getattr(existing, "min_year", None)
+        existing_max = getattr(existing, "max_year", None)
+        new_min = existing_min
+        new_max = existing_max
+        if (
+            existing_min is not None
+            and desired_min is not None
+            and desired_min < existing_min
+        ):
+            new_min = None if desired_min == earliest_art_year else desired_min
+        if (
+            existing_max is not None
+            and desired_max is not None
+            and desired_max > existing_max
+        ):
+            new_max = None if desired_max == latest_art_year else desired_max
+        if new_min == existing_min and new_max == existing_max:
+            return
+        updated = tag_cls(ident, min_year=new_min, max_year=new_max)
+        message = f"expand tag {existing} -> {updated}"
+        if cfg.autofix:
+            print(f"{cg}: {message}")
+            tags = list(cg.tags or [])
+            tags = [t for t in tags if t is not existing]
+            tags.append(updated)
+            cg.tags = tags  # type: ignore[assignment]
+        else:
+            yield message
+
+    for ident in constants.ArticleIdentifier:
+        # Count per year and total across group for this identifier
+        per_year: dict[int, int] = defaultdict(int)
+        total = 0
+        for art in articles:
+            year = art.numeric_year()
+            if not year:
+                continue
+            if art.get_article_identifier(ident):
+                per_year[year] += 1
+                total += 1
+        if total == 0:
+            continue
+        present_years = sorted(per_year)
+        min_year_present = present_years[0]
+        max_year_present = present_years[-1]
+        desired_min: int | None = (
+            None if min_year_present == earliest_art_year else min_year_present
+        )
+        desired_max: int | None = (
+            None if max_year_present == latest_art_year else max_year_present
+        )
+
+        # Always manage MayHaveIdentifier over the observed presence range
+        yield from add_or_expand(
+            CitationGroupTag.MayHaveIdentifier, ident, desired_min, desired_max
+        )
+
+        # Independently, add/expand MustHaveIdentifier if coverage threshold is met
+        years_with_at_least_5 = sorted(
+            year for year, count in per_year.items() if count >= 5
+        )
+        if total >= 10 and len(years_with_at_least_5) >= 2:
+            desired_min = (
+                None
+                if years_with_at_least_5[0] == earliest_art_year
+                else years_with_at_least_5[0]
+            )
+            desired_max = (
+                None
+                if years_with_at_least_5[-1] == latest_art_year
+                else years_with_at_least_5[-1]
+            )
+            yield from add_or_expand(
+                CitationGroupTag.MustHaveIdentifier, ident, desired_min, desired_max
+            )
