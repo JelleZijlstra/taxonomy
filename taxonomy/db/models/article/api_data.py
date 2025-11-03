@@ -28,6 +28,19 @@ RawData = dict[str, Any]
 _options = config.get_options()
 
 
+class RateLimiter:
+    def __init__(self, min_interval: float) -> None:
+        self.min_interval = min_interval
+        self.last_time = 0.0
+
+    def wait(self) -> None:
+        elapsed = time.time() - self.last_time
+        wait_time = self.min_interval - elapsed
+        if wait_time > 0:
+            time.sleep(wait_time)
+        self.last_time = time.time()
+
+
 @lru_cache
 def get_doi_json(doi: str) -> dict[str, Any] | None:
     try:
@@ -119,9 +132,12 @@ def get_pubmed_esummary(pmid: str) -> dict[str, Any] | None:
         return None
 
 
+_pubmed_rate_limiter = RateLimiter(min_interval=0.34)
+
+
 @cached(CacheDomain.pubmed_esummary)
 def get_pubmed_esummary_cached(pmid: str) -> str:
-    time.sleep(0.5)  # avoid getting rate limited
+    _pubmed_rate_limiter.wait()
     url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi"
     response = requests.get(
         url,

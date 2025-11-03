@@ -17,7 +17,12 @@ from taxonomy import getinput, urlparse
 from taxonomy.apis import bhl
 from taxonomy.apis.zoobank import clean_lsid, get_zoobank_data_for_act, is_valid_lsid
 from taxonomy.db import helpers, models
-from taxonomy.db.constants import ArticleKind, ArticleType, DateSource
+from taxonomy.db.constants import (
+    ArticleIdentifier,
+    ArticleKind,
+    ArticleType,
+    DateSource,
+)
 from taxonomy.db.models.base import ADTField, BaseModel, LintConfig
 from taxonomy.db.models.citation_group.cg import CitationGroup, CitationGroupTag
 from taxonomy.db.models.citation_group.lint import get_biblio_pages
@@ -2034,6 +2039,36 @@ def data_from_doi(art: Article, cfg: LintConfig) -> Iterable[str]:
     yield from _check_doi_isbn(art, data, cfg)
     yield from _check_doi_tags(art, data, cfg)
     yield from _check_doi_authors(art, data, cfg)
+
+
+@LINT.add("infer_pmid", requires_network=True)
+def infer_pmid(art: Article, cfg: LintConfig) -> Iterable[str]:
+    if (
+        art.has_tag(ArticleTag.PMID)
+        or art.type is ArticleType.SUPPLEMENT
+        or art.kind is ArticleKind.alternative_version
+    ):
+        return
+    year = art.numeric_year()
+    if year is None:
+        return
+    if art.citation_group is None:
+        return
+    # Also try for newly added articles, in case a new journal has PMIDs now
+    if not (
+        (year > 2000 and art.id > 72_000)
+        or art.citation_group.may_have_article_identifier(ArticleIdentifier.pmid, year)
+    ):
+        return
+    pmid = models.article.api_data.infer_pmid_for_article(art)
+    if pmid is None:
+        return
+    message = f"adding PMID {pmid} inferred from DOI"
+    if cfg.autofix:
+        print(f"{art}: {message}")
+        art.add_tag(ArticleTag.PMID(pmid))
+    else:
+        yield message
 
 
 @LINT.add("data_from_pubmed", requires_network=True)

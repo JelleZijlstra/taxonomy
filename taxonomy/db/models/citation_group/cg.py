@@ -511,6 +511,19 @@ class CitationGroup(BaseModel):
             for _ in models.article.lint.infer_bhl_page(art, cfg):
                 pass
 
+    def may_have_article_identifier(
+        self, article_identifier: ArticleIdentifier, year: int
+    ) -> bool:
+        for t in self.tags or ():
+            if (
+                isinstance(t, CitationGroupTag.MayHaveIdentifier)
+                and t.identifier == article_identifier
+                and (t.min_year is None or year >= t.min_year)
+                and (t.max_year is None or year <= t.max_year)
+            ):
+                return True
+        return False
+
     def _display_nams(self, nams: Iterable["models.Name"], depth: int = 0) -> None:
         for nam in sorted(nams, key=lambda nam: nam.sort_key()):
             # Make it easier to see names that don't have a citation yet

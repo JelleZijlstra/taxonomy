@@ -370,11 +370,13 @@ def add_have_identifier_tags(cg: CitationGroup, cfg: LintConfig) -> Iterable[str
         present_years = sorted(per_year)
         min_year_present = present_years[0]
         max_year_present = present_years[-1]
+
+        # For MayHave, add a couple of years at the margins
         desired_min: int | None = (
-            None if min_year_present == earliest_art_year else min_year_present
+            None if min_year_present == earliest_art_year else min_year_present - 2
         )
         desired_max: int | None = (
-            None if max_year_present == latest_art_year else max_year_present
+            None if max_year_present == latest_art_year else max_year_present + 2
         )
 
         # Always manage MayHaveIdentifier over the observed presence range
