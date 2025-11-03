@@ -1,0 +1,359 @@
+"""Get data about an article from an API."""
+
+import json
+import re
+import time
+import traceback
+import urllib.parse
+from functools import lru_cache
+from typing import Any
+
+import clirm
+import httpx
+import requests
+from bs4 import BeautifulSoup
+
+from taxonomy import config, parsing
+from taxonomy.db.constants import ArticleType, DateSource
+from taxonomy.db.helpers import clean_string, trimdoi
+from taxonomy.db.models.citation_group import CitationGroup
+from taxonomy.db.models.person import VirtualPerson
+from taxonomy.db.url_cache import CacheDomain, cached, dirty_cache
+
+from .article import Article, ArticleTag
+from .lint import infer_publication_date_from_tags
+
+RawData = dict[str, Any]
+_options = config.get_options()
+
+
+@lru_cache
+def get_doi_json(doi: str) -> dict[str, Any] | None:
+    try:
+        return json.loads(get_doi_json_cached(doi))
+    except Exception:
+        traceback.print_exc()
+        print(f"Could not resolve DOI {doi}")
+        return None
+
+
+def clear_doi_cache(doi: str) -> None:
+    get_doi_json.cache_clear()
+    dirty_cache(CacheDomain.doi, doi)
+
+
+@cached(CacheDomain.doi)
+def get_doi_json_cached(doi: str) -> str:
+    # "Good manners" section in https://api.crossref.org/swagger-ui/index.html
+    url = f"https://api.crossref.org/works/{urllib.parse.quote(doi)}?mailto=jelle.zijlstra@gmail.com"
+    response = httpx.get(url)
+    if response.status_code == 404:
+        # Cache "null" for missing data
+        return json.dumps(None)
+    response.raise_for_status()
+    return response.text
+
+
+@cached(CacheDomain.crossref_openurl)
+def _get_doi_from_crossref_inner(params: str) -> str:
+    query_dict = json.loads(params)
+    url = "https://www.crossref.org/openurl"
+    response = httpx.get(url, params=query_dict)
+    response.raise_for_status()
+    return response.text
+
+
+@cached(CacheDomain.doi_resolution)
+def get_doi_resolution(doi: str) -> str:
+    url = f"https://doi.org/api/handles/{doi}"
+    response = httpx.get(url)
+    response.raise_for_status()
+    text = response.text
+    data = json.loads(text)
+    if data["responseCode"] == 2:  # error
+        raise ValueError(f"Error resolvoing {doi}: {data}")
+    return text
+
+
+def get_doi_from_crossref(art: Article) -> str | None:
+    if art.citation_group is None or art.volume is None or art.start_page is None:
+        return None
+    query_dict = {
+        "pid": _options.crossrefid,
+        "title": art.citation_group.name,
+        "volume": art.volume,
+        "spage": art.start_page,
+        "noredirect": "true",
+    }
+    data = _get_doi_from_crossref_inner(json.dumps(query_dict))
+    xml = BeautifulSoup(data, features="xml")
+    try:
+        return xml.crossref_result.doi.text
+    except AttributeError:
+        return None
+
+
+def is_doi_valid(doi: str) -> bool:
+    try:
+        get_doi_json_cached(doi)
+    except requests.exceptions.HTTPError as e:
+        if "404 Client Error: Not Found" not in str(e):
+            traceback.print_exc()
+            print("ignoring unexpected error")
+            return True
+        resolution = json.loads(get_doi_resolution(doi))
+        if resolution["responseCode"] == 1:
+            return True
+        return False
+    return True
+
+
+@lru_cache
+def get_pubmed_esummary(pmid: str) -> dict[str, Any] | None:
+    try:
+        return json.loads(get_pubmed_esummary_cached(pmid))
+    except Exception:
+        traceback.print_exc()
+        print(f"Could not fetch PubMed summary for PMID {pmid}")
+        return None
+
+
+@cached(CacheDomain.pubmed_esummary)
+def get_pubmed_esummary_cached(pmid: str) -> str:
+    time.sleep(0.5)  # avoid getting rate limited
+    url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi"
+    response = requests.get(
+        url,
+        params={"db": "pubmed", "id": pmid, "retmode": "json"},
+        timeout=20,
+        headers={"User-Agent": "taxonomy-pubmed-lint/1.0"},
+    )
+    response.raise_for_status()
+    return response.text
+
+
+def expand_pubmed_json(pmid: str) -> RawData:
+    """Map PubMed ESummary JSON to our article RawData-like dict.
+
+    Conservative mapping: only fields that are relatively stable.
+    """
+    raw = get_pubmed_esummary(pmid)
+    if not raw:
+        return {}
+    result = raw.get("result") or {}
+    # results include a "uids" list and entries keyed by uid
+    rec = result.get(pmid)
+    if not isinstance(rec, dict):
+        return {}
+
+    data: RawData = {}
+    title = rec.get("title")
+    if isinstance(title, str) and title.strip():
+        data["title"] = clean_string(title)
+
+    journal = rec.get("fulljournalname")
+    if isinstance(journal, str) and journal.strip():
+        data["journal"] = clean_string(journal)
+
+    volume = rec.get("volume")
+    if isinstance(volume, str) and volume.strip():
+        data["volume"] = volume.removeprefix("0")
+
+    issue = rec.get("issue")
+    if isinstance(issue, str) and issue.strip():
+        data["issue"] = issue.removeprefix("0")
+
+    pages = rec.get("pages")
+    if isinstance(pages, str) and pages.strip():
+        m = re.fullmatch(r"^(\w+)[\-–](\w+)$", pages)
+        if m:
+            start_page = m.group(1)
+            end_page = m.group(2)
+            if len(end_page) < len(start_page):
+                # turn e.g. "9967-72" into "9967-9972"
+                end_page = start_page[: len(start_page) - len(end_page)] + end_page
+            data["start_page"] = start_page
+            data["end_page"] = end_page
+        elif pages.isnumeric():
+            data["start_page"] = data["end_page"] = pages
+        else:
+            data["start_page"] = pages
+
+    # Year from pubdate string (e.g., "2021 Jan 15")
+    pubdate = rec.get("pubdate")
+    if isinstance(pubdate, str):
+        m = re.search(r"(19|20)\d{2}", pubdate)
+        if m:
+            data["year"] = m.group(0)
+
+    # DOI from articleids
+    for idrec in rec.get("articleids") or []:
+        if idrec.get("idtype") == "doi" and idrec.get("value"):
+            data["doi"] = trimdoi(str(idrec["value"]))
+            break
+
+    # Always include the PMID as a tag
+    data["tags"] = [ArticleTag.PMID(pmid)]
+    return data
+
+
+# values from http://www.crossref.org/schema/queryResultSchema/crossref_query_output2.0.xsd
+doi_type_to_article_type = {
+    "journal_title": ArticleType.JOURNAL,
+    "journal_issue": ArticleType.JOURNAL,
+    "journal_volume": ArticleType.JOURNAL,
+    "journal_article": ArticleType.JOURNAL,
+    "conference_paper": ArticleType.CHAPTER,
+    "component": ArticleType.CHAPTER,
+    "book_chapter": ArticleType.CHAPTER,
+    "book_content": ArticleType.CHAPTER,
+    "dissertation": ArticleType.THESIS,
+    "conference_title": ArticleType.BOOK,
+    "conference_series": ArticleType.BOOK,
+    "book_title": ArticleType.BOOK,
+    "book_series": ArticleType.BOOK,
+    "report-paper_title": ArticleType.MISCELLANEOUS,
+    "report-paper_series": ArticleType.MISCELLANEOUS,
+    "report-paper_content": ArticleType.MISCELLANEOUS,
+    "standard_title": ArticleType.MISCELLANEOUS,
+    "standard_series": ArticleType.MISCELLANEOUS,
+    "standard_content": ArticleType.MISCELLANEOUS,
+    "book": ArticleType.BOOK,
+    "monograph": ArticleType.BOOK,
+    "edited-book": ArticleType.BOOK,
+}
+for _key, _value in list(doi_type_to_article_type.items()):
+    # usage seems to be inconsistent, let's just use both
+    doi_type_to_article_type[_key.replace("-", "_")] = _value
+    doi_type_to_article_type[_key.replace("_", "-")] = _value
+
+
+FIELD_TO_DATE_SOURCE = {
+    "published": DateSource.doi_published,
+    "published-print": DateSource.doi_published_print,
+    "published-online": DateSource.doi_published_online,
+    "published-other": DateSource.doi_published_other,
+}
+
+
+def expand_doi_json(doi: str) -> RawData:
+    result = get_doi_json(doi)
+    if result is None:
+        return {}
+    work = result["message"]
+    data: RawData = {"doi": doi}
+    typ = ArticleType.ERROR
+    if work["type"] in doi_type_to_article_type:
+        data["type"] = typ = doi_type_to_article_type[work["type"]]
+
+    if titles := work.get("title"):
+        title = titles[0]
+        if title.isupper():
+            # all uppercase title; let's clean it up a bit
+            # this won't give correct capitalization, but it'll be better than all-uppercase
+            title = title[0] + title[1:].lower()
+        data["title"] = clean_string(title)
+
+    for key in ("author", "editor"):
+        if author_raw := work.get(key):
+            authors = []
+            for author in author_raw:
+                # doi:10.24272/j.issn.2095-8137.2020.132 has some stray authors that look like
+                # they should be affiliations.
+                if "family" not in author:
+                    continue
+                family_name = clean_string(author["family"])
+                if family_name.isupper():
+                    family_name = family_name.title()
+                initials = given_names = None
+                if given := author.get("given"):
+                    given = clean_string(given.title())
+                    if given:
+                        if given[-1].isupper():
+                            given = given + "."
+                        given = re.sub(r"\b([A-Z]) ", r"\1.", given)
+                        if parsing.matches_grammar(
+                            given.replace(" ", ""), parsing.initials_pattern
+                        ):
+                            initials = given.replace(" ", "")
+                        else:
+                            given_names = re.sub(r"\. ([A-Z]\.)", r".\1", given)
+                authors.append(
+                    VirtualPerson(
+                        family_name=family_name,
+                        initials=initials,
+                        given_names=given_names,
+                    )
+                )
+            if authors:
+                data["author_tags"] = authors
+            break
+
+    if volume := work.get("volume"):
+        data["volume"] = volume.removeprefix("0")
+    if issue := work.get("issue"):
+        data["issue"] = issue.removeprefix("0")
+    if publisher := work.get("publisher"):
+        data["publisher"] = clean_string(publisher)
+    if location := work.get("publisher-location"):
+        try:
+            cg = (
+                CitationGroup.select_valid()
+                .filter(CitationGroup.name == location)
+                .get()
+            )
+            data["citation_group"] = cg
+        except clirm.DoesNotExist:
+            pass
+
+    if page := work.get("page"):
+        if typ in (ArticleType.JOURNAL, ArticleType.CHAPTER):
+            if match := re.fullmatch(r"^(\d+)-(\d+)$", page):
+                data["start_page"] = match.group(1)
+                data["end_page"] = match.group(2)
+            elif page.isnumeric():
+                data["start_page"] = data["end_page"] = page
+            else:
+                data["start_page"] = page
+        else:
+            data["pages"] = page
+    if article_number := work.get("article-number"):
+        data["article_number"] = article_number
+
+    if isbns := work.get("ISBN"):
+        isbn = isbns[0]
+    else:
+        isbn = None
+
+    if typ is ArticleType.BOOK:
+        data["isbn"] = isbn
+
+    if container_title := get_container_title(work):
+        if typ is ArticleType.JOURNAL:
+            data["journal"] = container_title
+        elif typ is ArticleType.CHAPTER:
+            data["parent_info"] = {"title": container_title, "isbn": isbn}
+
+    data["tags"] = []
+    for field, date_source in FIELD_TO_DATE_SOURCE.items():
+        if field in work:
+            parts = work[field]["date-parts"][0]
+            pieces = [str(parts[0])]
+            if len(parts) > 1:
+                pieces.append(f"{parts[1]:02}")
+            if len(parts) > 2:
+                pieces.append(f"{parts[2]:02}")
+            data["tags"].append(
+                ArticleTag.PublicationDate(source=date_source, date="-".join(pieces))
+            )
+    year, _ = infer_publication_date_from_tags(data["tags"])
+    if year:
+        data["year"] = year
+    return data
+
+
+def get_container_title(work: dict[str, Any]) -> str | None:
+    if container_title := work.get("container-title"):
+        title = container_title[0]
+        return title.replace("&amp;", "&").replace("’", "'")
+    return None

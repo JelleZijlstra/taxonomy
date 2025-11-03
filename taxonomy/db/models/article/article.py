@@ -1228,7 +1228,7 @@ class Article(BaseModel):
             and self.start_page
         ):
             print(f"Trying to find DOI for file {self.name}... ")
-            doi = models.article.add_data.get_doi_from_crossref(self)
+            doi = models.article.api_data.get_doi_from_crossref(self)
             if doi is None:
                 print("nothing found")
                 return False
@@ -1241,7 +1241,7 @@ class Article(BaseModel):
     def print_doi_information(self) -> None:
         if not self.doi:
             return
-        result = models.article.add_data.get_doi_json(self.doi)
+        result = models.article.api_data.get_doi_json(self.doi)
         if result and result.get("message"):
             data = {
                 key: value
@@ -1255,13 +1255,13 @@ class Article(BaseModel):
         pmid = self.get_identifier(ArticleTag.PMID)
         if not pmid:
             return
-        data = models.article.add_data.get_pubmed_esummary(pmid)
+        data = models.article.api_data.get_pubmed_esummary(pmid)
         pprint.pprint(data, sort_dicts=False)
 
     def maybe_remove_corrupt_doi(self) -> None:
         if self.doi is None:
             return
-        if not models.article.add_data.is_doi_valid(self.doi):
+        if not models.article.api_data.is_doi_valid(self.doi):
             print(f"{self}: remove invalid DOI: {self.doi}")
             self.add_misc_data(f"Removed invalid doi: {self.doi}.")
             self.doi = None
@@ -1277,8 +1277,8 @@ class Article(BaseModel):
         if not self.doi:
             return {}
         if clear_cache:
-            models.article.add_data.clear_doi_cache(self.doi)
-        data = models.article.add_data.expand_doi_json(self.doi)
+            models.article.api_data.clear_doi_cache(self.doi)
+        data = models.article.api_data.expand_doi_json(self.doi)
         if set_fields:
             models.article.add_data.set_multi(
                 self, data, only_new=not overwrite, verbose=verbose
@@ -1416,7 +1416,7 @@ class Article(BaseModel):
             for author in self.get_authors()
         ):
             return
-        data = models.article.add_data.expand_doi_json(self.doi)
+        data = models.article.api_data.expand_doi_json(self.doi)
         self._recompute_authors_from_data(data, confirm=confirm)
 
     def _recompute_authors_from_data(

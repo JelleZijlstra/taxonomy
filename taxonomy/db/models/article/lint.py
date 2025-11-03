@@ -1879,7 +1879,7 @@ def find_doi(art: Article, cfg: LintConfig) -> Iterable[str]:
         return
     if art.citation_group.id not in get_cgs_with_dois():
         return
-    doi = models.article.add_data.get_doi_from_crossref(art)
+    doi = models.article.api_data.get_doi_from_crossref(art)
     if doi is None:
         return
     message = f"found DOI {doi}"
@@ -2022,7 +2022,7 @@ def data_from_doi(art: Article, cfg: LintConfig) -> Iterable[str]:
         or art.has_tag(ArticleTag.GeneralDOI)
     ):
         return
-    data = models.article.add_data.expand_doi_json(art.doi)
+    data = models.article.api_data.expand_doi_json(art.doi)
     if not data:
         return
     yield from _check_doi_title(art, data)
@@ -2045,7 +2045,7 @@ def data_from_pubmed(art: Article, cfg: LintConfig) -> Iterable[str]:
     pmid = art.get_identifier(ArticleTag.PMID)
     if not pmid or art.kind is ArticleKind.alternative_version:
         return
-    data = models.article.add_data.expand_pubmed_json(pmid)
+    data = models.article.api_data.expand_pubmed_json(pmid)
     if not data:
         return
     # Title
