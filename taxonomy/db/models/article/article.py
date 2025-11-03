@@ -1772,6 +1772,9 @@ class ArticleTag(adt.ADT):
 
     BatLit(zotero_id=str, zenodo_doi=NotRequired[str], tag=32)  # type: ignore[name-defined]
 
+    # DOI that doesn't apply to this article
+    RejectedDOI(doi=Managed, tag=33)  # type: ignore[name-defined]
+
 
 @lru_cache
 def _getpdfcontent(path: str) -> str:

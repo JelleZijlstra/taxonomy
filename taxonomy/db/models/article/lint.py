@@ -8,7 +8,6 @@ import unicodedata
 import urllib.parse
 from collections import defaultdict
 from collections.abc import Collection, Generator, Hashable, Iterable, Sequence
-from functools import cache
 from typing import Any
 
 import requests
@@ -1867,20 +1866,7 @@ def specify_authors(art: Article, cfg: LintConfig) -> Iterable[str]:
     yield "has initials-only authors"
 
 
-@cache
-def get_cgs_with_dois() -> set[int]:
-    arts = Article.select_valid().filter(
-        Article.type == ArticleType.JOURNAL, Article.doi != None
-    )
-    return {art.citation_group.id for art in arts if art.citation_group is not None}
-
-
-@LINT.add(
-    "find_doi",
-    disabled=True,
-    requires_network=True,
-    clear_caches=get_cgs_with_dois.cache_clear,
-)  # false positives
+@LINT.add("find_doi", requires_network=True)
 def find_doi(art: Article, cfg: LintConfig) -> Iterable[str]:
     if (
         art.doi is not None
@@ -1903,7 +1889,15 @@ def find_doi(art: Article, cfg: LintConfig) -> Iterable[str]:
     doi = models.article.api_data.get_doi_from_crossref(art)
     if doi is None:
         return
-    message = f"found DOI {doi}"
+    data = models.article.api_data.expand_doi_json(doi)
+    if not data:
+        return
+    doi_title = data.get("title")
+    if not doi_title or not art.title:
+        return
+    if helpers.simplify_string(doi_title) != helpers.simplify_string(art.title):
+        return
+    message = f"found DOI {doi} (title: {data.get('title')!r} vs. {art.title!r})"
     if cfg.autofix and not LINT.is_ignoring_lint(art, "find_doi"):
         art.doi = doi
         print(f"{art}: {message}")
