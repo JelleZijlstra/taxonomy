@@ -883,6 +883,8 @@ def clean_string(text: str, *, clean_whitespace: bool = True) -> str:
     # don't need them.
     if not text.isascii():
         text = unicodedata.normalize("NFC", text)
+        # zero-width no-break space, sometimes at the start of titles
+        text = text.removeprefix("\ufeff")
         text = text.replace("’", "'")
         text = text.replace("′", "'")
         text = text.replace("ʹ", "'")
