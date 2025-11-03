@@ -2085,24 +2085,34 @@ def data_from_pubmed(art: Article, cfg: LintConfig) -> Iterable[str]:
         return
     # Title
     if data.get("title") and art.title:
-        simplified_src = helpers.simplify_string(
-            data["title"], clean_words=False
-        ).rstrip("*")
+        pubmed_title = data["title"]
+        pubmed_title = pubmed_title.replace(" amp; ", " & ")
+        simplified_src = (
+            helpers.simplify_string(pubmed_title, clean_words=False)
+            .rstrip("*")
+            .replace("'", "")
+        )
         options = {simplified_src}
         # Sometimes PubMed prefixes something like "Paleontology:" or "Evolution."
         for c in ":", ".":
-            if c in data["title"]:
-                alt_simplified_src = helpers.simplify_string(
-                    data["title"].split(c, 1)[1], clean_words=False
-                ).rstrip("*")
+            if c in pubmed_title:
+                alt_simplified_src = (
+                    helpers.simplify_string(
+                        pubmed_title.split(c, 1)[1], clean_words=False
+                    )
+                    .rstrip("*")
+                    .replace("'", "")
+                )
                 options.add(alt_simplified_src)
-        simplified_art = helpers.simplify_string(art.title, clean_words=False).rstrip(
-            "*"
+        simplified_art = (
+            helpers.simplify_string(art.title, clean_words=False)
+            .rstrip("*")
+            .replace("'", "")
         )
         if simplified_src and simplified_art not in options:
             if not LINT.is_ignoring_lint(art, "data_from_pubmed"):
                 getinput.diff_strings(simplified_src, simplified_art)
-            yield f"title mismatch: {data['title']} (PubMed) vs. {art.title} (article)"
+            yield f"title mismatch: {pubmed_title} (PubMed) vs. {art.title} (article)"
     # Journal
     if data.get("journal") and art.citation_group is not None:
         pubmed_journal = data["journal"].casefold()

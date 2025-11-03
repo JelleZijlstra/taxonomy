@@ -124,6 +124,8 @@ def format_tags(cg: CitationGroup, cfg: LintConfig) -> Iterable[str]:
             CitationGroupTag.ISSN,
             CitationGroupTag.ISSNOnline,
             CitationGroupTag.BHLBibliography,
+            CitationGroupTag.MayHaveIdentifier,
+            CitationGroupTag.MustHaveIdentifier,
         ):
             yield f"multiple {tag_type} tags"
 
@@ -348,7 +350,7 @@ def add_have_identifier_tags(cg: CitationGroup, cfg: LintConfig) -> Iterable[str
         if cfg.autofix:
             print(f"{cg}: {message}")
             tags = list(cg.tags or [])
-            tags = [t for t in tags if t is not existing]
+            tags = [t for t in tags if t != existing]
             tags.append(updated)
             cg.tags = tags  # type: ignore[assignment]
         else:
