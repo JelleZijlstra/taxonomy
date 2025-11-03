@@ -5,6 +5,7 @@ import re
 import time
 import traceback
 import urllib.parse
+from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any
 
@@ -356,4 +357,181 @@ def get_container_title(work: dict[str, Any]) -> str | None:
     if container_title := work.get("container-title"):
         title = container_title[0]
         return title.replace("&amp;", "&").replace("’", "'")
+    return None
+
+
+IDCONV_URL = "https://www.ncbi.nlm.nih.gov/pmc/utils/idconv/v1.0/"
+EUROPEPMC_SEARCH_URL = "https://www.ebi.ac.uk/europepmc/webservices/rest/search"
+
+
+@cached(CacheDomain.europe_pmc_search)
+def _europe_pmc_cached(params_json: str) -> str:
+    params = json.loads(params_json)
+    resp = requests.get(
+        EUROPEPMC_SEARCH_URL,
+        params=params,
+        timeout=20,
+        headers={"User-Agent": "taxonomy-pmid-infer/1.0"},
+    )
+    resp.raise_for_status()
+    return resp.text
+
+
+@cached(CacheDomain.ncbi_idconv)
+def _idconv_cached(params_json: str) -> str:
+    params = json.loads(params_json)
+    resp = requests.get(
+        IDCONV_URL,
+        params=params,
+        timeout=20,
+        headers={"User-Agent": "taxonomy-pmid-infer/1.0"},
+    )
+    resp.raise_for_status()
+    return resp.text
+
+
+def _http_get_json_europe_pmc(params: dict[str, str]) -> dict[str, Any] | None:
+    try:
+        text = _europe_pmc_cached(json.dumps(params, sort_keys=True))
+        return json.loads(text)
+    except requests.RequestException as e:
+        print(f"HTTP error for Europe PMC: {e}")
+        return None
+
+
+def _http_get_json_idconv(params: dict[str, str]) -> dict[str, Any] | None:
+    try:
+        text = _idconv_cached(json.dumps(params, sort_keys=True))
+        return json.loads(text)
+    except requests.RequestException as e:
+        print(f"HTTP error for NCBI idconv: {e}")
+        return None
+
+
+def lookup_pmid_via_idconv(identifier: str) -> str | None:
+    """Use NCBI idconv to map DOI or PMCID to PMID.
+
+    Accepts either a DOI (e.g., "10.1000/xyz") or a PMCID (e.g., "PMC123456").
+    """
+    params = {"format": "json", "ids": identifier}
+    data = _http_get_json_idconv(params)
+    if not data:
+        return None
+    for rec in data.get("records", []):
+        pmid = rec.get("pmid")
+        if pmid:
+            return str(pmid)
+    return None
+
+
+def lookup_pmid_via_europe_pmc_by_doi(doi: str) -> str | None:
+    params = {"format": "json", "pageSize": "25", "query": f"DOI:{doi}"}
+    data = _http_get_json_europe_pmc(params)
+    if not data:
+        return None
+    results = (data.get("resultList") or {}).get("result") or []
+    for rec in results:
+        # Prefer exact DOI match, and presence of pmid
+        if str(rec.get("doi", "")).lower() == doi.lower():
+            pmid = rec.get("pmid")
+            if pmid:
+                return str(pmid)
+    # fallback: first record with pmid
+    for rec in results:
+        pmid = rec.get("pmid")
+        if pmid:
+            return str(pmid)
+    return None
+
+
+def lookup_pmid_via_europe_pmc_by_metadata(
+    *, title: str | None, journal: str | None, year: str | None
+) -> str | None:
+    # Keep this conservative: title phrase + year; journal if available.
+    if not title:
+        return None
+    q = f'TITLE:"{title}"'
+    if year and year.isdigit():
+        q += f" AND PUB_YEAR:{year}"
+    if journal:
+        q += f' AND JOURNAL:"{journal}"'
+    params = {"format": "json", "pageSize": "25", "query": q}
+    data = _http_get_json_europe_pmc(params)
+    if not data:
+        return None
+    results = (data.get("resultList") or {}).get("result") or []
+    # Try strict normalized title match first
+    norm = lambda s: " ".join(s.lower().split())
+    target_title = norm(title)
+    for rec in results:
+        rec_title = rec.get("title")
+        pmid = rec.get("pmid")
+        if pmid and rec_title and norm(rec_title) == target_title:
+            return str(pmid)
+    # Fallback: first result with pmid
+    for rec in results:
+        pmid = rec.get("pmid")
+        if pmid:
+            return str(pmid)
+    return None
+
+
+@dataclass
+class PMIDCandidate:
+    id: int
+    name: str
+    doi: str | None
+    pmcid: str | None
+    title: str | None
+    journal: str | None
+    year: str | None
+
+
+def get_pmcid_from_tags(art: Article) -> str | None:
+    value = art.get_identifier(ArticleTag.PMC)
+    if not value:
+        return None
+    if value.startswith("PMC"):
+        return value
+    # Europe/NLM sometimes store numeric only; normalize with PMC prefix
+    return f"PMC{value}"
+
+
+def to_pmid_candidate(art: Article) -> PMIDCandidate:
+    return PMIDCandidate(
+        id=art.id,
+        name=art.name,
+        doi=art.doi,
+        pmcid=get_pmcid_from_tags(art),
+        title=art.title,
+        journal=art.citation_group.name if art.citation_group else None,
+        year=art.year,
+    )
+
+
+def infer_pmid_for_article(art: Article, *, allow_metadata: bool = False) -> str | None:
+    cand = to_pmid_candidate(art)
+
+    # 1) If PMCID present, map via idconv
+    if cand.pmcid:
+        pmid = lookup_pmid_via_idconv(cand.pmcid)
+        if pmid:
+            return pmid
+
+    # 2) If DOI present, try idconv and then Europe PMC
+    if cand.doi:
+        pmid = lookup_pmid_via_idconv(cand.doi)
+        if pmid:
+            return pmid
+        pmid = lookup_pmid_via_europe_pmc_by_doi(cand.doi)
+        if pmid:
+            return pmid
+
+    # 3) Conservative metadata search (title + year [+ journal])
+    if allow_metadata:
+        pmid = lookup_pmid_via_europe_pmc_by_metadata(
+            title=cand.title, journal=cand.journal, year=cand.year
+        )
+        if pmid:
+            return pmid
     return None
