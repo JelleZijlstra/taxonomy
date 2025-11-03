@@ -4,6 +4,46 @@ Version numbers correspond to Git tags in the
 [backend](https://github.com/JelleZijlstra/taxonomy/) repositories, and to database
 exports released on Zenodo.
 
+# 25.11.0 (November 2, 2025)
+
+- Releases
+  - Add an export file containing the references in my personal library.
+- Database
+  - Update taxonomy for extant mammals with recent changes.
+  - Add many newly described fossil taxa from 2024 and most of 2025.
+  - Add a bibliographic note on Humboldt and Bonpland's _Recueil d'observations_.
+  - Link about 2700 articles to entries in [BatLit](https://batlit.org/).
+  - Review and add data for many names, focusing on names with lectotypes and neotypes.
+- Backend
+  - Add support for adding phylogenetic definitions as specified by the
+    [PhyloCode](http://phylonames.org/code/). The database now contains facilities for
+    storing phylogenetic definitions and for verifying that names are applied in
+    accordance with their definition. Phylogenetic definitions are also shown on the
+    website.
+  - Add a system for automating the allocation of some junior synonyms at high ranks,
+    based on the allocation of the child taxa in the original description.
+  - Add the "reranking" status for family-group names.
+  - Add support for article numbers as a way to identify journal articles. In recent
+    years, many journals have moved away from classical page numbers in the wake of
+    online-only publishing.
+  - Add publisher to many books that were missing the field.
+  - Remove many "subsequent usage" names.
+  - Validate references to articles in various comment fields.
+  - Add support for page links to many nomenclatural actions (e.g., lectotype
+    designations).
+  - Add support for storing data about additional relevant specimens, such as paratypes,
+    paralectotypes, and non-type specimens that were at one time thought to be types.
+  - Run on Python 3.14.
+- Frontend
+  - Improve styling
+  - Replace search function with a cheaper alternative. Search now only searches the
+    full text of references in my collection.
+  - Add information from a number of data fields that are present in the database but
+    were not exposed on the website.
+  - Order classification entries by year of publication.
+
+Thanks to Connor J. Burgin and many others who supplied relevant literature.
+
 # 25.3.0 (March 15, 2025)
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.15033739.svg)](https://doi.org/10.5281/zenodo.15033739)
