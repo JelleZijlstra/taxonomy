@@ -40,6 +40,8 @@ class CacheDomain(enum.Enum):
     bhl_part = 9  # BHL GetPartMetadata
     doi_resolution = 10  # https://www.doi.org/the-identifier/resources/factsheets/doi-resolution-documentation
     nominatim = 11  # https://nominatim.org/release-docs/latest/api/Reverse/#examples
+    europe_pmc_search = 12  # https://www.ebi.ac.uk/europepmc/webservices/rest/search
+    ncbi_idconv = 13  # https://www.ncbi.nlm.nih.gov/pmc/tools/id-converter-api/
 
 
 KeyT = TypeVar("KeyT")
