@@ -10,7 +10,6 @@ import subprocess
 import sys
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
-from itertools import zip_longest
 from typing import Any, Literal, TypeVar, overload
 
 import prompt_toolkit.completion
@@ -911,15 +910,45 @@ def print_diff(a: Sequence[Any], b: Sequence[Any]) -> None:
 
 
 def diff_strings(a: str, b: str) -> None:
-    diff_line = []
-    for a_c, b_c in zip_longest(a, b, fillvalue=""):
-        if a_c == b_c:
-            diff_line.append(" ")
-        else:
-            diff_line.append("!")
-    print(a)
-    print(b)
-    print("".join(diff_line))
+    """Print a compact, aligned diff between two single-line strings.
+
+    Uses SequenceMatcher opcodes to align inserts/deletes and highlight the
+    differing spans rather than marking every subsequent character as changed.
+    Markers:
+    - ' ' (space): equal
+    - '^': replace
+    - '-': delete (present only in a)
+    - '+': insert (present only in b)
+    """
+    matcher = difflib.SequenceMatcher(a=a, b=b)
+    a_out: list[str] = []
+    b_out: list[str] = []
+    mark: list[str] = []
+    for opcode, a_lo, a_hi, b_lo, b_hi in matcher.get_opcodes():
+        a_seg = a[a_lo:a_hi]
+        b_seg = b[b_lo:b_hi]
+        if opcode == "equal":
+            a_out.append(a_seg)
+            b_out.append(b_seg)
+            mark.append(" " * len(a_seg))
+        elif opcode == "replace":
+            w = max(len(a_seg), len(b_seg))
+            a_out.append(a_seg.ljust(w))
+            b_out.append(b_seg.ljust(w))
+            mark.append("^" * w)
+        elif opcode == "delete":
+            w = len(a_seg)
+            a_out.append(a_seg)
+            b_out.append(" " * w)
+            mark.append("-" * w)
+        elif opcode == "insert":
+            w = len(b_seg)
+            a_out.append(" " * w)
+            b_out.append(b_seg)
+            mark.append("+" * w)
+    print("".join(a_out))
+    print("".join(b_out))
+    print("".join(mark))
 
 
 def print_every_n(it: Iterable[T], *, label: str, n: int = 1000) -> Iterator[T]:
