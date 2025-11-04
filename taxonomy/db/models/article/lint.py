@@ -14,7 +14,7 @@ import Levenshtein
 import requests
 
 from taxonomy import getinput, urlparse
-from taxonomy.apis import bhl
+from taxonomy.apis import bhl, zoobank
 from taxonomy.apis.zoobank import clean_lsid, get_zoobank_data_for_act, is_valid_lsid
 from taxonomy.db import helpers, models
 from taxonomy.db.constants import (
@@ -2628,6 +2628,57 @@ def infer_pmc(art: Article, cfg: LintConfig) -> Iterable[str]:
         art.add_tag(ArticleTag.PMC(pmcid))
     else:
         yield message
+
+
+@LINT.add("data_from_zoobank", requires_network=True)
+def data_from_zoobank(art: Article, cfg: LintConfig) -> Iterable[str]:
+    for tag in art.get_tags(art.tags, ArticleTag.LSIDArticle):
+        lsid = tag.text
+        data = zoobank.get_zoobank_data_for_article(lsid)
+
+        if data.get("year") and data["year"] != str(art.numeric_year()):
+            yield f"year mismatch: {data['year']} (Zoobank) vs. {art.numeric_year()} (article)"
+
+        if data["title"] and art.title:
+            simplified_src = helpers.simplify_string(
+                data["title"], clean_words=False
+            ).rstrip("*")
+            simplified_art = helpers.simplify_string(
+                art.title, clean_words=False
+            ).rstrip("*")
+            if simplified_src and simplified_src != simplified_art:
+                if not LINT.is_ignoring_lint(art, "data_from_zoobank"):
+                    getinput.diff_strings(simplified_src, simplified_art)
+                yield f"title mismatch: {data['title']} (Zoobank) vs. {art.title} (article)"
+
+        if data["volume"] and art.volume:
+            if data["volume"].lstrip("0") != art.volume:
+                yield f"volume mismatch: {data['volume']} (Zoobank) vs. {art.volume} (article)"
+
+        if data["number"] and art.issue:
+            if data["number"].lstrip("0") != art.issue:
+                yield f"issue mismatch: {data['number']} (Zoobank) vs. {art.issue} (article)"
+
+        if data["startpage"] and art.start_page:
+            if data["startpage"].lstrip("0") != art.start_page:
+                yield f"start page mismatch: {data['startpage']} (Zoobank) vs. {art.start_page} (article)"
+        if data["endpage"] and art.end_page:
+            if data["endpage"].lstrip("0") != art.end_page:
+                yield f"end page mismatch: {data['endpage']} (Zoobank) vs. {art.end_page} (article)"
+
+        if data["referencetype"] == "Journal Article":
+            journal_name = data["parentreference"]
+            if journal_name and art.citation_group:
+                simplified_src = helpers.simplify_string(
+                    journal_name, clean_words=False
+                )
+                simplified_art = helpers.simplify_string(
+                    art.citation_group.name, clean_words=False
+                )
+                if simplified_src and simplified_art not in simplified_src:
+                    if not LINT.is_ignoring_lint(art, "data_from_zoobank"):
+                        getinput.diff_strings(simplified_src, simplified_art)
+                    yield f"journal mismatch: {journal_name} (Zoobank) vs. {art.citation_group.name} (article)"
 
 
 @LINT.add("raw_page_regex")

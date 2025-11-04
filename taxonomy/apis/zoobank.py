@@ -7,6 +7,8 @@ import requests
 
 from taxonomy.db.url_cache import CacheDomain, cached
 
+from .util import RateLimiter
+
 
 def clean_lsid(lsid: str) -> str:
     lsid = re.sub(r"\s+", "", lsid.lower())
@@ -29,8 +31,12 @@ def is_valid_lsid(lsid: str) -> bool:
     )
 
 
+rate_limiter = RateLimiter(min_interval=0.5)
+
+
 @cached(CacheDomain.zoobank_act)
 def _get_zoobank_act_data(query: str) -> str:
+    rate_limiter.wait()
     url = f"https://zoobank.org/NomenclaturalActs.json/{query}"
     response = requests.get(url, timeout=1)
     if response.status_code == 404:
@@ -41,6 +47,7 @@ def _get_zoobank_act_data(query: str) -> str:
 
 @cached(CacheDomain.zoobank_publication)
 def _get_zoobank_publication_data(query: str) -> str:
+    rate_limiter.wait()
     url = f"https://zoobank.org/References.json/{query}"
     response = requests.get(url, timeout=1)
     if response.status_code == 404:
@@ -95,4 +102,4 @@ def get_zoobank_data_for_article(lsid: str) -> dict[str, Any]:
     ref_data = json.loads(_get_zoobank_publication_data(clean_lsid(lsid)))
     if len(ref_data) != 1:
         raise ValueError(f"unexpected data for reference {lsid}: {ref_data}")
-    return ref_data
+    return ref_data[0]

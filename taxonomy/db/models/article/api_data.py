@@ -2,7 +2,6 @@
 
 import json
 import re
-import time
 import traceback
 import urllib.parse
 from dataclasses import dataclass
@@ -15,6 +14,7 @@ import requests
 from bs4 import BeautifulSoup
 
 from taxonomy import config, parsing
+from taxonomy.apis.util import RateLimiter
 from taxonomy.db.constants import ArticleType, DateSource
 from taxonomy.db.helpers import clean_string, trimdoi
 from taxonomy.db.models.citation_group import CitationGroup
@@ -26,19 +26,6 @@ from .lint import infer_publication_date_from_tags
 
 RawData = dict[str, Any]
 _options = config.get_options()
-
-
-class RateLimiter:
-    def __init__(self, min_interval: float) -> None:
-        self.min_interval = min_interval
-        self.last_time = 0.0
-
-    def wait(self) -> None:
-        elapsed = time.time() - self.last_time
-        wait_time = self.min_interval - elapsed
-        if wait_time > 0:
-            time.sleep(wait_time)
-        self.last_time = time.time()
 
 
 @lru_cache
