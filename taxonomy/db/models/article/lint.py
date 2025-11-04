@@ -1,6 +1,7 @@
 """Lint steps for Articles."""
 
 import bisect
+import json
 import pprint
 import re
 import subprocess
@@ -2630,16 +2631,34 @@ def infer_pmc(art: Article, cfg: LintConfig) -> Iterable[str]:
         yield message
 
 
+def _check_zoobank_year(art: Article, data: dict[str, Any]) -> Iterable[str]:
+    if not data.get("year"):
+        return
+    zoobank_year = data["year"]
+    if zoobank_year.isnumeric():
+        art_year = art.numeric_year()
+        if abs(int(zoobank_year) - (art_year or 0)) > 1:
+            yield f"year mismatch: {zoobank_year} (Zoobank) vs. {art_year} (article)"
+    elif zoobank_year != str(art.numeric_year()):
+        yield f"year mismatch: {zoobank_year} (Zoobank) vs. {art.numeric_year()} (article)"
+
+
 @LINT.add("data_from_zoobank", requires_network=True)
 def data_from_zoobank(art: Article, cfg: LintConfig) -> Iterable[str]:
+    if art.kind is ArticleKind.alternative_version:
+        return
     for tag in art.get_tags(art.tags, ArticleTag.LSIDArticle):
         lsid = tag.text
-        data = zoobank.get_zoobank_data_for_article(lsid)
+        try:
+            data = zoobank.get_zoobank_data_for_article(lsid)
+        except (requests.exceptions.ReadTimeout, json.JSONDecodeError):
+            # Some LSIDs consistently time out for some reason; skip them
+            # And some produce invalid JSON
+            continue
 
-        if data.get("year") and data["year"] != str(art.numeric_year()):
-            yield f"year mismatch: {data['year']} (Zoobank) vs. {art.numeric_year()} (article)"
+        yield from _check_zoobank_year(art, data)
 
-        if data["title"] and art.title:
+        if data.get("title") and art.title:
             simplified_src = helpers.simplify_string(
                 data["title"], clean_words=False
             ).rstrip("*")
@@ -2651,23 +2670,29 @@ def data_from_zoobank(art: Article, cfg: LintConfig) -> Iterable[str]:
                     getinput.diff_strings(simplified_src, simplified_art)
                 yield f"title mismatch: {data['title']} (Zoobank) vs. {art.title} (article)"
 
-        if data["volume"] and art.volume:
-            if data["volume"].lstrip("0") != art.volume:
+        if data.get("volume") and art.volume:
+            if data["volume"].lstrip("0") != art.volume and not (
+                art.volume.isnumeric() and not data["volume"].isnumeric()
+            ):
                 yield f"volume mismatch: {data['volume']} (Zoobank) vs. {art.volume} (article)"
 
-        if data["number"] and art.issue:
-            if data["number"].lstrip("0") != art.issue:
+        if data.get("number") and art.issue:
+            if (
+                data["number"].lstrip("0") != art.issue
+                and not (art.issue.isnumeric() and not data["number"].isnumeric())
+                and data["number"] != art.article_number
+            ):
                 yield f"issue mismatch: {data['number']} (Zoobank) vs. {art.issue} (article)"
 
-        if data["startpage"] and art.start_page:
+        if data.get("startpage") and art.start_page:
             if data["startpage"].lstrip("0") != art.start_page:
                 yield f"start page mismatch: {data['startpage']} (Zoobank) vs. {art.start_page} (article)"
-        if data["endpage"] and art.end_page:
+        if data.get("endpage") and art.end_page:
             if data["endpage"].lstrip("0") != art.end_page:
                 yield f"end page mismatch: {data['endpage']} (Zoobank) vs. {art.end_page} (article)"
 
-        if data["referencetype"] == "Journal Article":
-            journal_name = data["parentreference"]
+        if data.get("referencetype") == "Journal Article":
+            journal_name = data.get("parentreference")
             if journal_name and art.citation_group:
                 simplified_src = helpers.simplify_string(
                     journal_name, clean_words=False

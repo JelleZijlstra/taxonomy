@@ -678,13 +678,12 @@ def display_tags(
 def _get_adt_member_field(
     *,
     member_cls: type[adt.ADT],
-    existing: ADTOrInstance | None = None,
+    existing_value: Any | None = None,
     completers: CompleterMap = {},
     arg_name: str,
 ) -> Any:
     typ = adt.unwrap_type(member_cls._attributes[arg_name])
     is_required = arg_name in member_cls.__required_attrs__
-    existing_value = getattr(existing, arg_name, None)
     if (member_cls, arg_name) in completers:
         while True:
             value = completers[(member_cls, arg_name)](f"{arg_name}> ", existing_value)
@@ -744,17 +743,18 @@ def get_adt_member(
     if existing is not None:
         for arg_name in member_cls._attributes:
             args[arg_name] = getattr(existing, arg_name)
+    num_optional = len(member_cls.__optional_attrs__)
     for arg_name in member_cls._attributes:
         is_required = arg_name in member_cls.__required_attrs__
-        if not is_required:
+        if not is_required and num_optional > 1:
             continue
         args[arg_name] = _get_adt_member_field(
             member_cls=member_cls,
-            existing=existing,
+            existing_value=args.get(arg_name),
             completers=completers,
             arg_name=arg_name,
         )
-    if member_cls.__optional_attrs__:
+    if num_optional > 1:
         attrs = sorted(member_cls._attributes)
         while True:
             print(f"Optional attributes: {', '.join(attrs)}")
@@ -770,7 +770,7 @@ def get_adt_member(
             if choice in member_cls._attributes:
                 args[choice] = _get_adt_member_field(
                     member_cls=member_cls,
-                    existing=existing,
+                    existing_value=args.get(choice),
                     completers=completers,
                     arg_name=choice,
                 )
