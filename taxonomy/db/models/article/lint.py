@@ -2181,6 +2181,191 @@ def data_from_doi(art: Article, cfg: LintConfig) -> Iterable[str]:
     yield from _check_doi_authors(art, data, cfg)
 
 
+def _check_doi_title(art: Article, data: dict[str, Any]) -> Iterable[str]:
+    if "title" not in data or art.title is None:
+        return
+    title = data["title"]
+    title = re.sub(r"^[IVXCL]+\.\s*[–—\-]?", "", title)
+    title = re.sub(r"Citation for this article.*", "", title)
+    title = re.sub(r"^Chapter \d+\.?\s*", "", title)
+    title = re.sub(r"<sup>\d+</sup>", "", title)
+    title = title.replace(' class="HeadingRunIn"', "")
+    simplified_doi = helpers.simplify_string(title, clean_words=False).rstrip("*")
+    if not simplified_doi:
+        return
+    simplified_art = helpers.simplify_string(art.title, clean_words=False).rstrip("*")
+
+    # Bulletin of Zoological Nomenclature special handling
+    if (
+        art.citation_group
+        and art.citation_group.name == "Bulletin of Zoological Nomenclature"
+    ):
+        simplified_doi = re.sub(r"zn\(s\)\d+$", "", simplified_doi)
+        simplified_doi = simplified_doi.removeprefix("comments").removeprefix("comment")
+        simplified_art = simplified_art.removeprefix("comments").removeprefix("comment")
+        if simplified_art.startswith("case") and not simplified_doi.startswith("case"):
+            simplified_art = re.sub(r"^case\d+", "", simplified_art).lstrip()
+
+    if simplified_doi == simplified_art:
+        return
+    # Red List data puts the authors at the end of the title
+    if (
+        art.doi is not None
+        and art.doi.startswith("10.2305/IUCN.UK")
+        and simplified_doi.startswith(simplified_art)
+    ):
+        return
+    if not LINT.is_ignoring_lint(art, "data_from_doi"):
+        getinput.diff_strings(simplified_doi, simplified_art)
+    yield f"title mismatch: {data['title']} (DOI) vs. {art.title} (article)"
+
+
+def _check_doi_volume(art: Article, data: dict[str, Any]) -> Iterable[str]:
+    if (
+        not data.get("volume")
+        or art.volume is None
+        or data["volume"].lstrip("0") == art.volume
+    ):
+        return
+    # Happens for Am. Mus. Novitates
+    if "issue" in data and data["issue"] == art.volume:
+        return
+    if not data["volume"].isnumeric() or not art.volume.isnumeric():
+        return
+    # Probably a totally different convention
+    if abs(int(data["volume"]) - int(art.volume)) > 1000:
+        return
+    yield f"volume mismatch: {data['volume']} (DOI) vs. {art.volume} (article)"
+
+
+def _check_doi_issue(
+    art: Article, data: dict[str, Any], cfg: LintConfig
+) -> Iterable[str]:
+    if not data.get("issue"):
+        return
+    if art.issue is None:
+        if not should_not_have_issue(art):
+            message = f"adding issue {data['issue']} from DOI"
+            if cfg.autofix:
+                print(f"{art}: {message}")
+                art.issue = data["issue"]
+            else:
+                yield message
+        return
+    doi_issue = data["issue"].replace("/", "-").replace("–", "-")
+    if doi_issue == "1":
+        return
+    if doi_issue.lstrip("0") == art.issue:
+        return
+    if not doi_issue.isnumeric() or not art.issue.isnumeric():
+        return
+    # Probably a totally different convention
+    if abs(int(doi_issue) - int(art.issue)) > 10:
+        return
+    yield f"issue mismatch: {data['issue']} (DOI) vs. {art.issue} (article)"
+
+
+def _check_doi_start_page(art: Article, data: dict[str, Any]) -> Iterable[str]:
+    if not data.get("start_page") or art.start_page is None:
+        return
+    if not data["start_page"].isnumeric():
+        return
+    if data["start_page"].lstrip("0") == art.start_page:
+        return
+    if data["start_page"] == data.get("end_page") and art.start_page != art.end_page:
+        return
+    yield f"start page mismatch: {data['start_page']} (DOI) vs. {art.start_page} (article)"
+
+
+def _check_doi_end_page(art: Article, data: dict[str, Any]) -> Iterable[str]:
+    if not data.get("end_page") or art.start_page is None:
+        return
+    if data["end_page"] == 1 or not data["end_page"].isnumeric():
+        return
+    if data["end_page"].lstrip("0") == art.end_page:
+        return
+    if data.get("start_page") == data["end_page"] and art.start_page != art.end_page:
+        return
+    yield f"end page mismatch: {data['end_page']} (DOI) vs. {art.end_page} (article)"
+
+
+def _check_doi_article_number(
+    art: Article, data: dict[str, Any], cfg: LintConfig
+) -> Iterable[str]:
+    if not data.get("article_number"):
+        return
+    if art.article_number is None:
+        message = f"adding article number {data['article_number']} from DOI"
+        if cfg.autofix:
+            print(f"{art}: {message}")
+            art.article_number = data["article_number"]
+        else:
+            yield message
+    elif data["article_number"] != art.article_number and not re.fullmatch(
+        rf"(e|[a-z]+\.){re.escape(data["article_number"])}", art.article_number
+    ):
+        yield f"article number mismatch: {data['article_number']} (DOI) vs. {art.article_number} (article)"
+
+
+def _check_doi_isbn(
+    art: Article, data: dict[str, Any], cfg: LintConfig
+) -> Iterable[str]:
+    if "isbn" not in data or not data["isbn"]:
+        return
+    existing = art.get_identifier(ArticleTag.ISBN)
+    if existing is None:
+        message = f"adding ISBN {data['isbn']} from DOI"
+        if cfg.autofix:
+            print(f"{art}: {message}")
+            art.add_tag(ArticleTag.ISBN(data["isbn"]))
+        else:
+            yield message
+        return
+    existing_cleaned = existing.replace("-", "").replace(" ", "")
+    new_cleaned = data["isbn"].replace("-", "").replace(" ", "")
+    if existing_cleaned != new_cleaned:
+        yield f"ISBN mismatch: {data['isbn']} (DOI) vs. {existing} (article)"
+
+
+def _check_doi_tags(
+    art: Article, data: dict[str, Any], cfg: LintConfig
+) -> Iterable[str]:
+    for tag in data["tags"]:
+        if tag not in art.tags:
+            message = f"adding tag {tag} from DOI"
+            if cfg.autofix:
+                print(f"{art}: {message}")
+                art.add_tag(tag)
+            else:
+                yield message
+
+
+def _check_doi_authors(
+    art: Article, data: dict[str, Any], cfg: LintConfig
+) -> Iterable[str]:
+    if "author_tags" not in data:
+        return
+    doi_authors = data["author_tags"]
+    if len(doi_authors) != len(art.author_tags):
+        return
+    new_authors = []
+    for doi_author, tag in zip(doi_authors, art.author_tags, strict=True):
+        art_author = tag.person
+        if is_more_specific_than(doi_author, art_author):
+            new_authors.append(AuthorTag.Author(doi_author.create_person()))
+        else:
+            new_authors.append(tag)
+    if new_authors == list(art.author_tags):
+        return
+    message = "updating authors from DOI"
+    getinput.print_diff(art.author_tags, new_authors)
+    if cfg.autofix:
+        print(f"{art}: {message}")
+        art.author_tags = new_authors  # type: ignore[assignment]
+    else:
+        yield message
+
+
 @LINT.add("infer_pmid", requires_network=True)
 def infer_pmid(art: Article, cfg: LintConfig) -> Iterable[str]:
     if (
@@ -2441,191 +2626,6 @@ def infer_pmc(art: Article, cfg: LintConfig) -> Iterable[str]:
     if cfg.autofix:
         print(f"{art}: {message}")
         art.add_tag(ArticleTag.PMC(pmcid))
-    else:
-        yield message
-
-
-def _check_doi_title(art: Article, data: dict[str, Any]) -> Iterable[str]:
-    if "title" not in data or art.title is None:
-        return
-    title = data["title"]
-    title = re.sub(r"^[IVXCL]+\.\s*[–—\-]?", "", title)
-    title = re.sub(r"Citation for this article.*", "", title)
-    title = re.sub(r"^Chapter \d+\.?\s*", "", title)
-    title = re.sub(r"<sup>\d+</sup>", "", title)
-    title = title.replace(' class="HeadingRunIn"', "")
-    simplified_doi = helpers.simplify_string(title, clean_words=False).rstrip("*")
-    if not simplified_doi:
-        return
-    simplified_art = helpers.simplify_string(art.title, clean_words=False).rstrip("*")
-
-    # Bulletin of Zoological Nomenclature special handling
-    if (
-        art.citation_group
-        and art.citation_group.name == "Bulletin of Zoological Nomenclature"
-    ):
-        simplified_doi = re.sub(r"zn\(s\)\d+$", "", simplified_doi)
-        simplified_doi = simplified_doi.removeprefix("comments").removeprefix("comment")
-        simplified_art = simplified_art.removeprefix("comments").removeprefix("comment")
-        if simplified_art.startswith("case") and not simplified_doi.startswith("case"):
-            simplified_art = re.sub(r"^case\d+", "", simplified_art).lstrip()
-
-    if simplified_doi == simplified_art:
-        return
-    # Red List data puts the authors at the end of the title
-    if (
-        art.doi is not None
-        and art.doi.startswith("10.2305/IUCN.UK")
-        and simplified_doi.startswith(simplified_art)
-    ):
-        return
-    if not LINT.is_ignoring_lint(art, "data_from_doi"):
-        getinput.diff_strings(simplified_doi, simplified_art)
-    yield f"title mismatch: {data['title']} (DOI) vs. {art.title} (article)"
-
-
-def _check_doi_volume(art: Article, data: dict[str, Any]) -> Iterable[str]:
-    if (
-        not data.get("volume")
-        or art.volume is None
-        or data["volume"].lstrip("0") == art.volume
-    ):
-        return
-    # Happens for Am. Mus. Novitates
-    if "issue" in data and data["issue"] == art.volume:
-        return
-    if not data["volume"].isnumeric() or not art.volume.isnumeric():
-        return
-    # Probably a totally different convention
-    if abs(int(data["volume"]) - int(art.volume)) > 1000:
-        return
-    yield f"volume mismatch: {data['volume']} (DOI) vs. {art.volume} (article)"
-
-
-def _check_doi_issue(
-    art: Article, data: dict[str, Any], cfg: LintConfig
-) -> Iterable[str]:
-    if not data.get("issue"):
-        return
-    if art.issue is None:
-        if not should_not_have_issue(art):
-            message = f"adding issue {data['issue']} from DOI"
-            if cfg.autofix:
-                print(f"{art}: {message}")
-                art.issue = data["issue"]
-            else:
-                yield message
-        return
-    doi_issue = data["issue"].replace("/", "-").replace("–", "-")
-    if doi_issue == "1":
-        return
-    if doi_issue.lstrip("0") == art.issue:
-        return
-    if not doi_issue.isnumeric() or not art.issue.isnumeric():
-        return
-    # Probably a totally different convention
-    if abs(int(doi_issue) - int(art.issue)) > 10:
-        return
-    yield f"issue mismatch: {data['issue']} (DOI) vs. {art.issue} (article)"
-
-
-def _check_doi_start_page(art: Article, data: dict[str, Any]) -> Iterable[str]:
-    if not data.get("start_page") or art.start_page is None:
-        return
-    if not data["start_page"].isnumeric():
-        return
-    if data["start_page"].lstrip("0") == art.start_page:
-        return
-    if data["start_page"] == data.get("end_page") and art.start_page != art.end_page:
-        return
-    yield f"start page mismatch: {data['start_page']} (DOI) vs. {art.start_page} (article)"
-
-
-def _check_doi_end_page(art: Article, data: dict[str, Any]) -> Iterable[str]:
-    if not data.get("end_page") or art.start_page is None:
-        return
-    if data["end_page"] == 1 or not data["end_page"].isnumeric():
-        return
-    if data["end_page"].lstrip("0") == art.end_page:
-        return
-    if data.get("start_page") == data["end_page"] and art.start_page != art.end_page:
-        return
-    yield f"end page mismatch: {data['end_page']} (DOI) vs. {art.end_page} (article)"
-
-
-def _check_doi_article_number(
-    art: Article, data: dict[str, Any], cfg: LintConfig
-) -> Iterable[str]:
-    if not data.get("article_number"):
-        return
-    if art.article_number is None:
-        message = f"adding article number {data['article_number']} from DOI"
-        if cfg.autofix:
-            print(f"{art}: {message}")
-            art.article_number = data["article_number"]
-        else:
-            yield message
-    elif data["article_number"] != art.article_number and not re.fullmatch(
-        rf"(e|[a-z]+\.){re.escape(data["article_number"])}", art.article_number
-    ):
-        yield f"article number mismatch: {data['article_number']} (DOI) vs. {art.article_number} (article)"
-
-
-def _check_doi_isbn(
-    art: Article, data: dict[str, Any], cfg: LintConfig
-) -> Iterable[str]:
-    if "isbn" not in data or not data["isbn"]:
-        return
-    existing = art.get_identifier(ArticleTag.ISBN)
-    if existing is None:
-        message = f"adding ISBN {data['isbn']} from DOI"
-        if cfg.autofix:
-            print(f"{art}: {message}")
-            art.add_tag(ArticleTag.ISBN(data["isbn"]))
-        else:
-            yield message
-        return
-    existing_cleaned = existing.replace("-", "").replace(" ", "")
-    new_cleaned = data["isbn"].replace("-", "").replace(" ", "")
-    if existing_cleaned != new_cleaned:
-        yield f"ISBN mismatch: {data['isbn']} (DOI) vs. {existing} (article)"
-
-
-def _check_doi_tags(
-    art: Article, data: dict[str, Any], cfg: LintConfig
-) -> Iterable[str]:
-    for tag in data["tags"]:
-        if tag not in art.tags:
-            message = f"adding tag {tag} from DOI"
-            if cfg.autofix:
-                print(f"{art}: {message}")
-                art.add_tag(tag)
-            else:
-                yield message
-
-
-def _check_doi_authors(
-    art: Article, data: dict[str, Any], cfg: LintConfig
-) -> Iterable[str]:
-    if "author_tags" not in data:
-        return
-    doi_authors = data["author_tags"]
-    if len(doi_authors) != len(art.author_tags):
-        return
-    new_authors = []
-    for doi_author, tag in zip(doi_authors, art.author_tags, strict=True):
-        art_author = tag.person
-        if is_more_specific_than(doi_author, art_author):
-            new_authors.append(AuthorTag.Author(doi_author.create_person()))
-        else:
-            new_authors.append(tag)
-    if new_authors == list(art.author_tags):
-        return
-    message = "updating authors from DOI"
-    getinput.print_diff(art.author_tags, new_authors)
-    if cfg.autofix:
-        print(f"{art}: {message}")
-        art.author_tags = new_authors  # type: ignore[assignment]
     else:
         yield message
 

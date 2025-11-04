@@ -4,6 +4,7 @@ import builtins
 import datetime
 import enum
 import json
+import pprint
 import re
 import subprocess
 import sys
@@ -28,7 +29,7 @@ import taxonomy
 from taxonomy import adt, events, getinput, parsing
 from taxonomy.apis import bhl
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
-from taxonomy.apis.zoobank import get_zoobank_data
+from taxonomy.apis.zoobank import get_zoobank_data, get_zoobank_data_for_act
 from taxonomy.db import constants, helpers, models
 from taxonomy.db.constants import (
     URL,
@@ -687,6 +688,7 @@ class Name(BaseModel):
             "edit_comments": self.edit_comments,
             "replace_original_citation": self.replace_original_citation,
             "open_zoobank": self.open_zoobank,
+            "print_zoobank_data": self.print_zoobank_data,
             "open_type_specimen_link": self.open_type_specimen_link,
             "replace_type": self.replace_type,
             "print_type_specimen": self.print_type_specimen,
@@ -2342,6 +2344,12 @@ class Name(BaseModel):
         for lsid in lsids:
             url = f"https://zoobank.org/NomenclaturalActs/{lsid}"
             subprocess.check_call(["open", url])
+
+    def print_zoobank_data(self) -> None:
+        lsids = {tag.text for tag in self.get_tags(self.type_tags, TypeTag.LSIDName)}
+        for lsid in lsids:
+            for data in get_zoobank_data_for_act(lsid):
+                pprint.pprint(data, sort_dicts=False)
 
     def open_description(self) -> bool:
         if self.original_citation is None:

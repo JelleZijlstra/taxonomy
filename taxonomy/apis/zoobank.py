@@ -53,13 +53,16 @@ def _get_zoobank_publication_data(query: str) -> str:
 class ZooBankData:
     name_lsid: str
     citation_lsid: str
+    full_data: dict[str, Any]
 
 
 def get_zoobank_data_for_act(act: str) -> list[ZooBankData]:
     api_response = json.loads(_get_zoobank_act_data(act))
     return [
         ZooBankData(
-            clean_lsid(data["protonymuuid"]), clean_lsid(data["OriginalReferenceUUID"])
+            clean_lsid(data["protonymuuid"]),
+            clean_lsid(data["OriginalReferenceUUID"]),
+            data,
         )
         for data in api_response
     ]
@@ -80,7 +83,9 @@ def get_zoobank_data(original_name: str) -> list[ZooBankData]:
     ]
     return [
         ZooBankData(
-            clean_lsid(data["protonymuuid"]), clean_lsid(data["OriginalReferenceUUID"])
+            clean_lsid(data["protonymuuid"]),
+            clean_lsid(data["OriginalReferenceUUID"]),
+            data,
         )
         for data in api_response
     ]

@@ -26,7 +26,7 @@ from clirm import Field, Query
 
 from taxonomy import adt, config, events, getinput, urlparse
 from taxonomy import search as _search
-from taxonomy.apis import bhl
+from taxonomy.apis import bhl, zoobank
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
 from taxonomy.db import models
 from taxonomy.db.constants import (
@@ -475,6 +475,7 @@ class Article(BaseModel):
             "print_pubmed_information": self.print_pubmed_esummary,
             "print_pmc_information": self.print_pmc_information,
             "print_pubmed_esummary": self.print_pubmed_esummary,
+            "print_zoobank_data": self.print_zoobank_data,
             "expand_doi": lambda: self.expand_doi(verbose=True, set_fields=True),
             "expand_doi_force": lambda: self.expand_doi(
                 verbose=True, set_fields=True, clear_cache=True
@@ -1269,6 +1270,11 @@ class Article(BaseModel):
             print("No Europe PMC record found for", pmc)
             return
         pprint.pprint(rec, sort_dicts=False)
+
+    def print_zoobank_data(self) -> None:
+        for lsid in self.get_tags(self.tags, ArticleTag.LSIDArticle):
+            data = zoobank.get_zoobank_data_for_article(lsid.text)
+            pprint.pprint(data, sort_dicts=False)
 
     def maybe_remove_corrupt_doi(self) -> None:
         if self.doi is None:
