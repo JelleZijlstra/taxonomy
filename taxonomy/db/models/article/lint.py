@@ -2068,6 +2068,41 @@ def dupe_doi(art: Article) -> str | None:
 
 
 @LINT.add_duplicate_finder(
+    "dupe_pmid",
+    query=Article.with_tag(ArticleTag.PMID).filter(
+        Article.type != ArticleType.SUPPLEMENT,
+        Article.kind != ArticleKind.alternative_version,
+    ),
+    fixer=dupe_fixer,
+)
+def dupe_pmid(art: Article) -> str | None:
+    return art.get_identifier(ArticleTag.PMID)
+
+
+@LINT.add_duplicate_finder(
+    "dupe_pmc",
+    query=Article.with_tag(ArticleTag.PMC).filter(
+        Article.type != ArticleType.SUPPLEMENT,
+        Article.kind != ArticleKind.alternative_version,
+    ),
+    fixer=dupe_fixer,
+)
+def dupe_pmc(art: Article) -> str | None:
+    return art.get_identifier(ArticleTag.PMC)
+
+
+@LINT.add_duplicate_finder(
+    "dupe_lsid_article",
+    query=Article.with_tag(ArticleTag.LSIDArticle).filter(
+        Article.kind != ArticleKind.alternative_version
+    ),
+    fixer=dupe_fixer,
+)
+def dupe_lsid_article(art: Article) -> str | None:
+    return art.get_identifier(ArticleTag.LSIDArticle)
+
+
+@LINT.add_duplicate_finder(
     "dupe_journal",
     query=Article.select_valid().filter(
         Article.type == ArticleType.JOURNAL,
@@ -2242,7 +2277,7 @@ def data_from_pubmed(art: Article, cfg: LintConfig) -> Iterable[str]:
         if art.issue is None:
             if not should_not_have_issue(art):
                 message = f"adding issue {data['issue']} from PubMed"
-                if cfg.autofix:
+                if cfg.autofix and not LINT.is_ignoring_lint(art, "data_from_pubmed"):
                     print(f"{art}: {message}")
                     art.issue = data["issue"]
                 else:
