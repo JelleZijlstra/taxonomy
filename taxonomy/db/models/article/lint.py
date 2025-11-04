@@ -2296,12 +2296,9 @@ def data_from_pmc(art: Article, cfg: LintConfig) -> Iterable[str]:
         simplified_art = helpers.simplify_string(art.title, clean_words=False).rstrip(
             "*"
         )
-        if (
-            simplified_src
-            and simplified_src != simplified_art
-            and not LINT.is_ignoring_lint(art, "data_from_pmc")
-        ):
-            getinput.diff_strings(simplified_src, simplified_art)
+        if simplified_src and simplified_src != simplified_art:
+            if not LINT.is_ignoring_lint(art, "data_from_pmc"):
+                getinput.diff_strings(simplified_src, simplified_art)
             yield f"title mismatch: {data['title']} (PMC) vs. {art.title} (article)"
     # Skip journal, PMC often shows abbreviated journal names
     # Volume
@@ -2363,6 +2360,54 @@ def data_from_pmc(art: Article, cfg: LintConfig) -> Iterable[str]:
                     art.add_tag(tag)
                 else:
                     yield message
+
+
+@LINT.add("infer_pmc", requires_network=True)
+def infer_pmc(art: Article, cfg: LintConfig) -> Iterable[str]:
+    """Infer PMCID for articles lacking it, using PMID/DOI or metadata as fallback."""
+    if (
+        art.get_identifier(ArticleTag.PMC)
+        or art.kind is ArticleKind.alternative_version
+        or art.type is ArticleType.SUPPLEMENT
+    ):
+        return
+    year = art.numeric_year()
+    if year is None:
+        return
+    if art.citation_group is None:
+        return
+    # Also try for newly added articles, in case a new journal has PMIDs now
+    if not (
+        (year > 2000 and art.id > 72_000)
+        or art.citation_group.may_have_article_identifier(ArticleIdentifier.pmc, year)
+        or art.has_tag(ArticleTag.PMID)
+    ):
+        return
+
+    pmcid: str | None = None
+    # 1) Prefer mapping from PMID via NCBI idconv
+    pmid = art.get_identifier(ArticleTag.PMID)
+    if pmid:
+        pmcid = models.article.api_data.get_pmcid_from_idconv(pmid)
+    # 2) Else map from DOI
+    if not pmcid and art.doi:
+        pmcid = models.article.api_data.get_pmcid_from_idconv(art.doi)
+        if not pmcid:
+            pmcid = models.article.api_data.get_pmcid_from_doi_via_europe_pmc(art.doi)
+    # 3) Conservative metadata search: exact normalized title match; include year/journal if present
+    if not pmcid and art.title:
+        journal = art.citation_group.name if art.citation_group else None
+        pmcid = models.article.api_data.get_pmcid_from_metadata(
+            title=art.title, year=art.year, journal=journal
+        )
+    if not pmcid:
+        return
+    message = f"adding PMCID {pmcid}"
+    if cfg.autofix:
+        print(f"{art}: {message}")
+        art.add_tag(ArticleTag.PMC(pmcid))
+    else:
+        yield message
 
 
 def _check_doi_title(art: Article, data: dict[str, Any]) -> Iterable[str]:

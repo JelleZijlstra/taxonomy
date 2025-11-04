@@ -1090,7 +1090,7 @@ class Article(BaseModel):
             ArticleTag.JSTOR: "https://www.jstor.org/stable/",
             ArticleTag.HDL: "https://hdl.handle.net/",
             ArticleTag.PMID: "https://www.ncbi.nlm.nih.gov/pubmed/",
-            ArticleTag.PMC: "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC",
+            ArticleTag.PMC: "https://www.ncbi.nlm.nih.gov/pmc/articles/",
         }
         for identifier, url in tries.items():
             value = self.get_identifier(identifier)

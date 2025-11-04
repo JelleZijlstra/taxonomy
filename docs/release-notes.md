@@ -7,9 +7,10 @@ exports released on Zenodo.
 # Unreleased
 
 - Database
-  - Add PubMed identifiers to over 4000 articles
+  - Add PubMed identifiers to over 4000 articles, DOIs to several hundred articles, and
+    PMC identifiers to dozens of articles
 - Backend
-  - Validate data consistency against data from PubMed
+  - Validate data consistency against data from PubMed and PMC
 - Frontend
 
 # 25.11.0 (November 2, 2025)

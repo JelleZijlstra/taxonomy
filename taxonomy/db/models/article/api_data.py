@@ -311,6 +311,98 @@ def get_europe_pmc_record(pmcid: str) -> dict[str, Any] | None:
     return None
 
 
+# -------------------- PMCID inference helpers --------------------
+
+
+@cached(CacheDomain.ncbi_idconv)
+def _idconv_cached(params_json: str) -> str:
+    params = json.loads(params_json)
+    url = "https://www.ncbi.nlm.nih.gov/pmc/utils/idconv/v1.0/"
+    response = requests.get(
+        url, params=params, timeout=20, headers={"User-Agent": "taxonomy-idconv/1.0"}
+    )
+    response.raise_for_status()
+    return response.text
+
+
+def _normalize_pmcid_text(pmc: str | None) -> str | None:
+    if not pmc:
+        return None
+    pmc = pmc.strip()
+    if not pmc:
+        return None
+    return pmc
+
+
+def get_pmcid_from_idconv(identifier: str) -> str | None:
+    """Return PMCID (numeric text) from NCBI idconv given PMID or DOI or PMCID."""
+    params = {"format": "json", "ids": identifier}
+    try:
+        text = _idconv_cached(json.dumps(params, sort_keys=True))
+        data = json.loads(text)
+        for rec in data.get("records", []):
+            pmc = _normalize_pmcid_text(rec.get("pmcid"))
+            if pmc:
+                return pmc
+    except Exception:
+        traceback.print_exc()
+    return None
+
+
+def get_pmcid_from_doi_via_europe_pmc(doi: str) -> str | None:
+    params = {"format": "json", "pageSize": "25", "query": f"DOI:{doi}"}
+    try:
+        text = _europe_pmc_cached(json.dumps(params, sort_keys=True))
+        data = json.loads(text)
+    except Exception:
+        traceback.print_exc()
+        return None
+    results = (data.get("resultList") or {}).get("result") or []
+    for rec in results:
+        if str(rec.get("doi", "")).lower() == doi.lower():
+            pmc = _normalize_pmcid_text(rec.get("pmcid"))
+            if pmc:
+                return pmc
+    for rec in results:
+        pmc = _normalize_pmcid_text(rec.get("pmcid"))
+        if pmc:
+            return pmc
+    return None
+
+
+def get_pmcid_from_metadata(
+    *, title: str | None, year: str | None, journal: str | None
+) -> str | None:
+    if not title:
+        return None
+    q = f'TITLE:"{title}"'
+    if year and year.isdigit():
+        q += f" AND PUB_YEAR:{year}"
+    if journal:
+        q += f' AND JOURNAL:"{journal}"'
+    params = {"format": "json", "pageSize": "25", "query": q}
+    try:
+        text = _europe_pmc_cached(json.dumps(params, sort_keys=True))
+        data = json.loads(text)
+    except Exception:
+        traceback.print_exc()
+        return None
+    results = (data.get("resultList") or {}).get("result") or []
+    norm = lambda s: " ".join(s.lower().split())
+    tgt = norm(title)
+    for rec in results:
+        pmc = _normalize_pmcid_text(rec.get("pmcid"))
+        if not pmc:
+            continue
+        if rec.get("title") and norm(str(rec.get("title"))) == tgt:
+            return pmc
+    for rec in results:
+        pmc = _normalize_pmcid_text(rec.get("pmcid"))
+        if pmc:
+            return pmc
+    return None
+
+
 # values from http://www.crossref.org/schema/queryResultSchema/crossref_query_output2.0.xsd
 doi_type_to_article_type = {
     "journal_title": ArticleType.JOURNAL,
@@ -471,22 +563,6 @@ def get_container_title(work: dict[str, Any]) -> str | None:
         title = container_title[0]
         return title.replace("&amp;", "&").replace("’", "'")
     return None
-
-
-IDCONV_URL = "https://www.ncbi.nlm.nih.gov/pmc/utils/idconv/v1.0/"
-
-
-@cached(CacheDomain.ncbi_idconv)
-def _idconv_cached(params_json: str) -> str:
-    params = json.loads(params_json)
-    resp = requests.get(
-        IDCONV_URL,
-        params=params,
-        timeout=20,
-        headers={"User-Agent": "taxonomy-pmid-infer/1.0"},
-    )
-    resp.raise_for_status()
-    return resp.text
 
 
 def _http_get_json_europe_pmc(params: dict[str, str]) -> dict[str, Any] | None:
