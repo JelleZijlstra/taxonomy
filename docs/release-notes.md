@@ -9,8 +9,12 @@ exports released on Zenodo.
 - Database
   - Add PubMed identifiers to over 4000 articles, DOIs to several hundred articles, and
     PMC identifiers to dozens of articles
+  - Fix names marked as incorrect subsequent spellings that represent a gender form of
+    the original name
+  - Fix some classification entries mapped to the wrong form of a homonymous genus
 - Backend
-  - Validate data consistency against data from PubMed and PMC
+  - Validate data consistency against data from PubMed, PMC, and ZooBank
+  - Improve consistency checks for matching generic names in classification entries
 - Frontend
 
 # 25.11.0 (November 2, 2025)

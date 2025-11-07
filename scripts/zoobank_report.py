@@ -63,7 +63,7 @@ def run_articles(output_f: IO[str]) -> None:
     print("## References", file=output_f)
     print(file=output_f)
     for art in getinput.print_every_n(
-        Article.select_valid().filter(Article.tags != None), label="articles"
+        Article.with_tag(ArticleTag.LSIDArticle), label="articles"
     ):
         tags = list(art.get_tags(art.tags, ArticleTag.LSIDArticle))
         if len(tags) < 2:

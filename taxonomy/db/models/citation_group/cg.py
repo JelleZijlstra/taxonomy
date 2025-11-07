@@ -10,6 +10,7 @@ from clirm import Field, Query
 from taxonomy import adt, events, getinput
 from taxonomy.apis import bhl
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
+from taxonomy.apis.zoobank import article_lsid_has_valid_data
 from taxonomy.db import constants, helpers, models
 from taxonomy.db.constants import URL, ArticleIdentifier, Managed, Markdown, Regex
 from taxonomy.db.derived_data import DerivedField, LazyType
@@ -523,6 +524,12 @@ class CitationGroup(BaseModel):
             ):
                 return True
         return False
+
+    def get_invalid_lsids(self) -> Iterable[tuple[models.Article, str]]:
+        for art in self.get_articles():
+            for tag in art.get_tags(art.tags, models.article.ArticleTag.LSIDArticle):
+                if not article_lsid_has_valid_data(tag.text):
+                    yield art, tag.text
 
     def _display_nams(self, nams: Iterable["models.Name"], depth: int = 0) -> None:
         for nam in sorted(nams, key=lambda nam: nam.sort_key()):

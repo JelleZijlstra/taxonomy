@@ -2403,6 +2403,20 @@ def _check_all_tags(
                         new_target, comment=tag.comment
                     )
                 yield message
+            if nam.corrected_original_name is not None:
+                if (
+                    nam.corrected_original_name.split()[-1]
+                    in tag.name.get_root_name_forms()
+                    and nam.group is not Group.family
+                ):
+                    yield f"{nam} has the same root name as {tag.name}, but is marked as an incorrect subsequent spelling"
+                    if cfg.autofix and nam.group is Group.species:
+                        print(
+                            f"{nam}: changing IncorrectSubsequentSpellingOf to NameCombinationOf"
+                        )
+                        tag = NameTag.NameCombinationOf(
+                            name=tag.name, comment=tag.comment
+                        )
         case NameTag.UnjustifiedEmendationOf():
             if (
                 nam.group is Group.species
@@ -4423,15 +4437,27 @@ def check_original_parent(nam: Name, cfg: LintConfig) -> Iterable[str]:
 
     if nam.group is Group.species and nam.corrected_original_name is not None:
         original_genus, *_ = nam.corrected_original_name.split()
-        # corrected_original_name is for the case where the genus name got a justified emendation
-        if original_genus not in (
-            nam.original_parent.root_name,
-            nam.original_parent.corrected_original_name,
-        ):
+        if original_genus != nam.original_parent.corrected_original_name:
             yield (
                 f"original_parent {nam.original_parent} does not match corrected"
                 f" original name {nam.corrected_original_name}"
             )
+            # This happens if the original parent got a justified emendation.
+            # Change it to the emendation.
+            if original_genus == nam.original_parent.root_name:
+                emended_version = nam.original_parent.get_tag_target(
+                    NameTag.AsEmendedBy
+                )
+                if (
+                    emended_version is not None
+                    and emended_version.root_name == original_genus
+                ):
+                    message = f"original_parent {nam.original_parent} does not match corrected original name {nam.corrected_original_name} (change to {emended_version})"
+                    if cfg.autofix:
+                        print(f"{nam}: {message}")
+                        nam.original_parent = emended_version
+                    else:
+                        yield message
 
 
 @LINT.add("infer_original_parent")
@@ -5928,6 +5954,9 @@ def mark_incorrect_subsequent_spelling_as_name_combination(
 ) -> Iterable[str]:
     if nam.nomenclature_status != NomenclatureStatus.incorrect_subsequent_spelling:
         return
+    if nam.corrected_original_name is None:
+        return
+    original_root_name = nam.corrected_original_name.split()[-1]
     target = nam.get_tag_target(NameTag.IncorrectSubsequentSpellingOf)
     existing = [
         nam
@@ -5937,6 +5966,7 @@ def mark_incorrect_subsequent_spelling_as_name_combination(
             Name.taxon == nam.taxon,
         )
         if nam.get_tag_target(NameTag.IncorrectSubsequentSpellingOf) == target
+        and nam.root_name == original_root_name
     ]
     if not existing:
         return

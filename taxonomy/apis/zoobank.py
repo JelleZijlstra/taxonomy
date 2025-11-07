@@ -103,3 +103,12 @@ def get_zoobank_data_for_article(lsid: str) -> dict[str, Any]:
     if len(ref_data) != 1:
         raise ValueError(f"unexpected data for reference {lsid}: {ref_data}")
     return ref_data[0]
+
+
+def article_lsid_has_valid_data(lsid: str) -> bool:
+    try:
+        data = get_zoobank_data_for_article(lsid)
+    except requests.ConnectionError:
+        return False
+    ref_uuid = data.get("referenceuuid", "")
+    return clean_lsid(lsid) == clean_lsid(ref_uuid)

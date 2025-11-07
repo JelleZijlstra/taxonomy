@@ -262,11 +262,20 @@ def check_mapped_name(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]
         match ce.mapped_name.group:
             case Group.high | Group.genus:
                 # root name and corrected original name are different in the case of justified emendations
-                if corrected_name not in (
-                    ce.mapped_name.root_name,
-                    ce.mapped_name.corrected_original_name,
-                ):
-                    yield f"mapped_name root_name does not match: {corrected_name} vs {ce.mapped_name.root_name}"
+                if corrected_name != ce.mapped_name.corrected_original_name:
+                    yield f"mapped_name corrected_original_name does not match: {corrected_name} (CE) vs {ce.mapped_name.root_name} (name)"
+                    if corrected_name == ce.mapped_name.root_name:
+                        # Justified emendation; replace with emended version
+                        emended_version = ce.mapped_name.get_tag_target(
+                            models.name.NameTag.AsEmendedBy
+                        )
+                        if emended_version is not None:
+                            message = f"mapped_name corrected_original_name does not match; change to emended version {emended_version}"
+                            if cfg.autofix:
+                                print(f"{ce}: {message}")
+                                ce.mapped_name = emended_version
+                            else:
+                                yield message
             case Group.family:
                 if corrected_name != ce.mapped_name.corrected_original_name:
                     yield f"mapped_name original_name does not match: {corrected_name} vs {ce.mapped_name.corrected_original_name}"
@@ -1032,10 +1041,16 @@ def infer_page_from_name(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[s
 _EXCLUDED_RANKS = [Rank.informal, Rank.informal_species, *SYNONYM_RANKS]
 
 
-def _resolve_name(nam: Name) -> Name:
+def _resolve_name(
+    nam: Name,
+    tags: tuple[type[models.name.NameTag], ...] = (
+        models.name.NameTag.UnavailableVersionOf,
+    ),
+) -> Name:
     nam = nam.resolve_redirect()
-    if target := nam.get_tag_target(models.name.NameTag.UnavailableVersionOf):
-        return _resolve_name(target)
+    for tag in tags:
+        if target := nam.get_tag_target(tag):
+            return _resolve_name(target)
     return nam
 
 
@@ -1425,3 +1440,34 @@ def _should_ignore_referenced_usage_check(
     if ce.get_group() is Group.family:
         return True
     return False
+
+
+@LINT.add("original_parent_matches")
+def original_parent_matches(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
+    if ce.mapped_name is None:
+        return
+    if ce.mapped_name.group is not Group.species:
+        return
+    if ce.rank.is_synonym:
+        return
+    corrected_name = ce.get_corrected_name()
+    if corrected_name is None:
+        return
+    mapped_original_parent = ce.mapped_name.original_parent
+    if mapped_original_parent is None:
+        return
+    ce_parent_genus = ce.parent_of_rank(Rank.genus)
+    if ce_parent_genus is None or ce_parent_genus.mapped_name is None:
+        return
+    if corrected_name.split()[0] != ce_parent_genus.name:
+        return
+    tag_classes = (
+        models.name.NameTag.UnavailableVersionOf,
+        models.name.NameTag.MisidentificationOf,
+        models.name.NameTag.SubsequentUsageOf,
+    )
+    if _resolve_name(ce_parent_genus.mapped_name, tag_classes) != _resolve_name(
+        mapped_original_parent, tag_classes
+    ):
+        message = f"original parent genus {mapped_original_parent} does not match CE parent genus {ce_parent_genus.mapped_name}"
+        yield message
