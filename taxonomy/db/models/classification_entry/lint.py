@@ -1450,16 +1450,11 @@ def original_parent_matches(ce: ClassificationEntry, cfg: LintConfig) -> Iterabl
         return
     if ce.rank.is_synonym:
         return
-    corrected_name = ce.get_corrected_name()
-    if corrected_name is None:
-        return
     mapped_original_parent = ce.mapped_name.original_parent
     if mapped_original_parent is None:
         return
-    ce_parent_genus = ce.parent_of_rank(Rank.genus)
+    ce_parent_genus = ce.get_original_parent_ce()
     if ce_parent_genus is None or ce_parent_genus.mapped_name is None:
-        return
-    if corrected_name.split()[0] != ce_parent_genus.name:
         return
     tag_classes = (
         models.name.NameTag.UnavailableVersionOf,

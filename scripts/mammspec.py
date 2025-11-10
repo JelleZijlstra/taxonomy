@@ -77,18 +77,21 @@ def make_entry(
             else:
                 intro = "Name combination and incorrect subsequent spelling of"
             post_text = f"{intro} _{tag_target.root_name}_ {{/a/{tag_target.original_citation.id}}}."
+            references.append(tag_target.original_citation)
     elif NomenclatureStatus.unjustified_emendation in statuses:
         tag_target = nam.get_tag_target(NameTag.UnjustifiedEmendationOf)
         if tag_target is None or tag_target.original_citation is None:
             post_text = "**WARNING: Missing UnjustifiedEmendationOf tag**"
         else:
             post_text = f"Unjustified emendation of _{tag_target.root_name}_ {{/a/{tag_target.original_citation.id}}}."
+            references.append(tag_target.original_citation)
     elif NomenclatureStatus.nomen_novum in statuses:
         tag_target = nam.get_tag_target(NameTag.NomenNovumFor)
         if tag_target is None or tag_target.original_citation is None:
             post_text = "**WARNING: Missing NomenNovumFor tag**"
         else:
             post_text = f"Nomen novum for _{tag_target.root_name}_ {{/a/{tag_target.original_citation.id}}}."
+            references.append(tag_target.original_citation)
     elif NomenclatureStatus.name_combination in statuses:
         colon = True
         if nam.corrected_original_name == taxon.valid_name:

@@ -437,6 +437,34 @@ class Article(BaseModel):
         print("New title:", self.title)
         self.edit_until_clean()
 
+    def edit_all_at_page(self) -> None:
+        page = getinput.get_line("Edit all at page: ")
+        if page is None:
+            return
+        remove_links = getinput.yes_no("Remove all page links? ")
+        for ce in self.get_classification_entries().filter(
+            models.ClassificationEntry.page == page
+        ):
+            if remove_links:
+                ce.tags = [
+                    tag
+                    for tag in ce.tags
+                    if not isinstance(
+                        tag, models.classification_entry.ClassificationEntryTag.PageLink
+                    )
+                ]
+            ce.display()
+            ce.edit()
+        for nam in self.get_new_names().filter(models.Name.page_described == page):
+            if remove_links:
+                nam.type_tags = [
+                    tag
+                    for tag in nam.type_tags
+                    if not isinstance(tag, models.name.TypeTag.AuthorityPageLink)
+                ]
+            nam.display()
+            nam.edit()
+
     @classmethod
     def bfind(
         cls,
@@ -507,6 +535,7 @@ class Article(BaseModel):
                 self
             ),
             "display_raw_pages": self.display_raw_pages,
+            "edit_all_at_page": self.edit_all_at_page,
         }
 
     def ce_edit(self) -> None:

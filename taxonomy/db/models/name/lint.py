@@ -6724,7 +6724,7 @@ def check_matches_mapped_classification_entry(
             ):
                 print(f"{nam}: extended page from {nam.page_described} to {ce.page}")
                 nam.page_described = ce.page
-    yield from _check_matching_original_parent(nam, ce)
+    yield from _check_matching_original_parent(nam, ce, cfg)
     if nam.original_rank is not ce.rank:
         yield f"mapped to {ce}, but {ce.rank=!r} != {nam.original_rank=!r}"
         if nam.original_rank is None or (
@@ -6785,11 +6785,21 @@ def check_matches_mapped_classification_entry(
 
 
 def _check_matching_original_parent(
-    nam: Name, ce: ClassificationEntry
+    nam: Name, ce: ClassificationEntry, cfg: LintConfig
 ) -> Iterable[str]:
-    if nam.original_parent is None or ce.rank.is_synonym:
+    if nam.original_parent is None:
+        ce_parent = ce.get_original_parent_ce()
+        if ce_parent is not None and ce_parent.mapped_name is not None:
+            message = f"inferred original parent {ce_parent.mapped_name} from {ce}"
+            if cfg.autofix:
+                print(f"{nam}: {message}")
+                nam.original_parent = ce_parent.mapped_name
+            else:
+                yield message
         return
-    ce_parent = ce.parent_of_rank(Rank.genus)
+    if ce.rank.is_synonym:
+        return
+    ce_parent = ce.get_original_parent_ce()
     if ce_parent is None or ce_parent.mapped_name is None:
         return
     if ce_parent.mapped_name == nam.original_parent:

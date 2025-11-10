@@ -146,6 +146,20 @@ class ClassificationEntry(BaseModel):
             return corrected_name
         return None
 
+    def get_original_parent_ce(self) -> ClassificationEntry | None:
+        corrected_name = self.get_corrected_name()
+        if corrected_name is None:
+            return None
+        if " " not in corrected_name:
+            return None
+        genus_name, *_ = corrected_name.split()
+        genus_parent = self.parent_of_rank(Rank.genus)
+        if genus_parent is None:
+            return None
+        if genus_parent.get_corrected_name() != genus_name:
+            return None
+        return genus_parent
+
     def get_group(self) -> Group:
         if self.rank is Rank.synonym:
             if self.parent is not None:
