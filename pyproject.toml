@@ -54,6 +54,7 @@ dependencies = [
   "repoguess>=0.0.6",
   "pyzotero",
   "lxml>=6.0.2",
+  "ocrmypdf>=16.11.1",
 ]
 
 [project.urls]

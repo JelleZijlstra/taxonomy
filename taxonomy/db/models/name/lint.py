@@ -6870,6 +6870,19 @@ def check_original_rank(nam: Name, cfg: LintConfig) -> Iterable[str]:
             nam.group = Group.species
         else:
             yield message
+    if (
+        nam.corrected_original_name is not None
+        and nam.nomenclature_status
+        is not NomenclatureStatus.not_intended_as_a_scientific_name
+    ):
+        if nam.original_rank is Rank.species:
+            num_words = len(nam.corrected_original_name.split())
+            if num_words != 2:
+                yield f"original rank {nam.original_rank!r} but corrected original name has {num_words} words"
+        if nam.original_rank is Rank.subspecies:
+            num_words = len(nam.corrected_original_name.split())
+            if num_words != 3:
+                yield f"original rank {nam.original_rank!r} but corrected original name has {num_words} words"
     group = helpers.group_of_rank(nam.original_rank)
     if group is not nam.group:
         yield f"original rank {nam.original_rank!r} is not in group {nam.group!r}"

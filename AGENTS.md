@@ -14,7 +14,7 @@
 
 ## Setup, Build, and Dev Commands
 
-- Create env: `python3.14 -m venv .venv && source .venv/bin/activate`.
+- Use `/Users/jelle/py/venvs/taxonomy314/bin/python` to run Python commands.
 - Install deps: `uv sync`.
 - Run CLI shell: `python -m taxonomy.shell`.
 - Run web app: `python -m hsweb`.
@@ -44,3 +44,12 @@
 - Do not commit secrets. Use env vars for credentials (Google Sheets, AWS, Zotero).
 - Avoid committing large datasets; reference them in `docs/`.
 - Keep local paths/tokens out of VCS.
+
+## Writing data import scripts
+
+- Accuracy is key. Make sure the output of your script matches the classification in the
+  source exactly. Make sure page numbers are correct.
+- Use assertions and helper functions to validate invariants, like making sure every
+  species name matches the genus it's in.
+- If the source book has text with multiple columns per page, use the split_lines()
+  function to fix this.
