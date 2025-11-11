@@ -639,8 +639,47 @@ def check_corrected_name(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[s
         return
     corrected_name = ce.get_corrected_name()
     if corrected_name is None:
+        if not re.search(r"^[A-Z]\. ", ce.name):
+            others = list(
+                ClassificationEntry.select_valid().filter(
+                    ClassificationEntry.name == ce.name,
+                    ClassificationEntry.rank == ce.rank,
+                    ClassificationEntry.id != ce.id,
+                )
+            )
+            if others:
+                corrected_names_list = [other.get_corrected_name() for other in others]
+                corrected_names = {cn for cn in corrected_names_list if cn is not None}
+                if len(corrected_names) == 1:
+                    other_corrected_name = corrected_names.pop()
+                    message = (
+                        f"infer corrected name from other CE: {other_corrected_name}"
+                    )
+                    if cfg.autofix:
+                        print(f"{ce}: {message}")
+                        tag = ClassificationEntryTag.CorrectedName(other_corrected_name)
+                        ce.add_tag(tag)
+                    else:
+                        yield message
+                    return
         yield "cannot infer corrected name; add CorrectedName tag"
-    elif ce.rank is Rank.division:
+        return
+    if ce.get_corrected_name_without_tags() is None and not re.search(
+        r"^[A-Z]\. ", ce.name
+    ):
+        earliest_other = list(
+            ClassificationEntry.select_valid()
+            .filter(
+                ClassificationEntry.name == ce.name, ClassificationEntry.rank == ce.rank
+            )
+            .order_by(ClassificationEntry.id)
+            .limit(1)
+        )
+        if earliest_other and earliest_other[0].id != ce.id:
+            if corrected_name != earliest_other[0].get_corrected_name():
+                yield f"corrected name {corrected_name} differs from earlier CE {earliest_other[0]}: {earliest_other[0].get_corrected_name()}"
+
+    if ce.rank is Rank.division:
         if not re.fullmatch(r"[A-Z][a-z]+ Division", corrected_name):
             yield f"incorrect division name format: {corrected_name}"
     else:

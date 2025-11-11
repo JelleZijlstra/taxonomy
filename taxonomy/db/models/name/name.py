@@ -2891,7 +2891,7 @@ def infer_corrected_original_name(original_name: str, group: Group) -> str | Non
             (
                 r"^(?P<genus>[A-Z][a-z]+)( \([A-Z][a-z]+\))?"
                 r" (?P<species>[A-Z]?[a-z]+)"
-                r"((,? var\.)? (?P<subspecies>[A-Z]?[a-z]+))?$"
+                r"((,? [Vv]ar\.)? (?P<subspecies>[A-Z]?[a-z]+))?$"
                 # We can't support infrasubspecific names here
                 # because then names like "Buffelus indicus Varietas sondaica"
                 # get inferred as infrasubspecific names instead of subspecific names
