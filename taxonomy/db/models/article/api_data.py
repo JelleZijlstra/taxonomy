@@ -4,6 +4,7 @@ import json
 import re
 import traceback
 import urllib.parse
+from collections.abc import Iterable
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any
@@ -86,6 +87,40 @@ def get_doi_from_crossref(art: Article) -> str | None:
         "spage": art.start_page,
         "noredirect": "true",
     }
+    data = _get_doi_from_crossref_inner(json.dumps(query_dict))
+    xml = BeautifulSoup(data, features="xml")
+    try:
+        return xml.crossref_result.doi.text
+    except AttributeError:
+        return None
+
+
+def get_candidate_dois_from_crossref(art: Article) -> Iterable[str]:
+    if art.citation_group is None or art.volume is None or art.start_page is None:
+        return
+    query_dict = {
+        "pid": _options.crossrefid,
+        "title": art.citation_group.name,
+        "volume": art.volume,
+        "spage": art.start_page,
+        "noredirect": "true",
+    }
+    if doi := _try_query(query_dict):
+        yield doi
+
+    for issn in art.citation_group.get_issns():
+        query_dict = {
+            "pid": _options.crossrefid,
+            "issn": issn,
+            "volume": art.volume,
+            "spage": art.start_page,
+            "noredirect": "true",
+        }
+        if doi := _try_query(query_dict):
+            yield doi
+
+
+def _try_query(query_dict: dict[str, str]) -> str | None:
     data = _get_doi_from_crossref_inner(json.dumps(query_dict))
     xml = BeautifulSoup(data, features="xml")
     try:

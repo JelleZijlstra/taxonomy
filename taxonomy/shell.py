@@ -3020,8 +3020,9 @@ def tag_counter() -> None:
                 key=lambda item: item[1],
                 reverse=True,
             )[:5]:
-                percent = f"{count / presence:.2%}"
-                print(f"    {value}: {count} ({percent})")
+                if count > 1:
+                    percent = f"{count / presence:.2%}"
+                    print(f"    {value!r}: {count} ({percent})")
 
 
 @command

@@ -1,6 +1,7 @@
 """Lint steps for Articles."""
 
 import bisect
+import enum
 import json
 import pprint
 import re
@@ -1904,15 +1905,39 @@ def find_doi(art: Article, cfg: LintConfig) -> Iterable[str]:
         or art.citation_group.may_have_article_identifier(ArticleIdentifier.doi, year)
     ):
         return
-    doi = models.article.api_data.get_doi_from_crossref(art)
-    if doi is None:
-        return
+    for doi in models.article.api_data.get_candidate_dois_from_crossref(art):
+        data = models.article.api_data.expand_doi_json(doi)
+        if not data:
+            if cfg.verbose:
+                print(f"{art}: no data for candidate DOI {doi}")
+            continue
+        if not is_candidate_doi_acceptable(art, doi, data, cfg):
+            continue
+        message = build_summary_for_doi_data(doi, data)
+        if cfg.autofix and not LINT.is_ignoring_lint(art, "find_doi"):
+            if art.doi is not None:
+                yield f"has existing DOI {art.doi}, skipping autofix adding DOI {doi}"
+            else:
+                art.doi = doi
+                print(f"{art}: {message}")
+                print(repr(art))
+        else:
+            yield message + f"\n{art!r}"
+
+
+def is_candidate_doi_acceptable(
+    art: Article, doi: str, data: dict[str, Any], cfg: LintConfig
+) -> bool:
     data = models.article.api_data.expand_doi_json(doi)
     if not data:
-        return
+        if cfg.verbose:
+            print(f"{art}: no data for candidate DOI {doi}")
+        return False
     doi_title = data.get("title")
     if not doi_title or not art.title:
-        return
+        if cfg.verbose:
+            print(f"{art}: missing title in data for candidate DOI {doi}")
+        return False
     # Loosen acceptance: compare normalized title distance, year, and authors
     art_title_s = helpers.simplify_string(art.title)
     doi_title_s = helpers.simplify_string(doi_title)
@@ -1935,15 +1960,9 @@ def find_doi(art: Article, cfg: LintConfig) -> Iterable[str]:
     # Author overlap (family names)
     doi_authors = data.get("author_tags") or []
     doi_author_last = []
-    try:
-        for a in doi_authors:
-            ln = getattr(a, "family_name", None) or (
-                getattr(a, "person", None) and getattr(a.person, "family_name", None)
-            )
-            if isinstance(ln, str) and ln:
-                doi_author_last.append(ln.casefold())
-    except Exception:
-        pass
+    for a in doi_authors:
+        if a.family_name:
+            doi_author_last.append(a.family_name.casefold())
     art_author_last = [
         p.family_name.casefold() for p in art.get_authors() if p.family_name
     ]
@@ -1957,7 +1976,17 @@ def find_doi(art: Article, cfg: LintConfig) -> Iterable[str]:
     title_similar = titles_equal or is_prefix or norm_title_dist < 0.18
 
     if not (title_similar and (author_overlap or year_ok or titles_equal)):
-        return
+        if cfg.verbose:
+            print(
+                f"{art}: candidate DOI {doi} rejected: title_dist={title_dist},"
+                f" norm_title_dist={norm_title_dist:.3f}, is_prefix={is_prefix},"
+                f" year_ok={year_ok}, author_overlap={author_overlap}"
+            )
+        return False
+    return True
+
+
+def build_summary_for_doi_data(doi: str, data: dict[str, Any]) -> str:
     # Build a concise, verifiable summary of the DOI metadata
     journal = data.get("journal") or "?"
     vol = data.get("volume")
@@ -1971,18 +2000,13 @@ def find_doi(art: Article, cfg: LintConfig) -> Iterable[str]:
     if iss:
         vol_issue = f"{vol_issue}({iss})" if vol_issue else f"({iss})"
     authors_preview: list[str] = []
-    try:
-        for a in (data.get("author_tags") or [])[:3]:
-            ln = getattr(a, "family_name", None) or (
-                getattr(a, "person", None) and getattr(a.person, "family_name", None)
-            )
-            if isinstance(ln, str) and ln:
-                authors_preview.append(ln)
-    except Exception:
-        pass
+    for a in (data.get("author_tags") or [])[:3]:
+        if a.family_name:
+            authors_preview.append(a.family_name)
     authors_str = ", ".join(authors_preview) + (
         "…" if (data.get("author_tags") and len(data["author_tags"]) > 3) else ""
     )
+    doi_year_str = data.get("year")
     citation_bits = [
         f"{journal}",
         vol_issue if vol_issue else None,
@@ -1990,15 +2014,11 @@ def find_doi(art: Article, cfg: LintConfig) -> Iterable[str]:
         f"({doi_year_str})" if doi_year_str else None,
     ]
     citation = " ".join(bit for bit in citation_bits if bit)
+    doi_title = data.get("title")
     message = f"found DOI {doi}: '{doi_title}' — {citation}"
     if authors_str:
         message += f"; authors={authors_str}"
-    if cfg.autofix and not LINT.is_ignoring_lint(art, "find_doi"):
-        art.doi = doi
-        print(f"{art}: {message}")
-        print(repr(art))
-    else:
-        yield message + f"\n{art!r}"
+    return message
 
 
 def has_valid_children(art: Article) -> bool:
@@ -2787,3 +2807,117 @@ def lint_referenced_text(text: str, prefix: str = "") -> Generator[str, None, st
             if target := art.get_redirect_target():
                 text = text.replace(f"{{{ref}}}", f"{{{target.name}}}")
     return text
+
+
+class ISSNKind(enum.Enum):
+    print = 1
+    electronic = 2
+    other = 3
+
+
+def get_issns(
+    doi: str, *, verbose: bool = False
+) -> tuple[str, list[tuple[ISSNKind, str]]] | None:
+    data = models.article.api_data.get_doi_json(doi)
+    if data is None:
+        if verbose:
+            print(f"{doi}: found no information")
+        return None
+    work = data["message"]
+    journal = models.article.api_data.get_container_title(work)
+    if journal is None:
+        if verbose:
+            print(f"{doi}: no container title")
+        return None
+    raw_issns = work.get("ISSN", [])
+    typed_issns = work.get("issn-type", [])
+
+    pairs = []
+    seen_issns = set()
+    for typed in typed_issns:
+        issn = typed["value"]
+        if typed["type"] == "print":
+            pairs.append((ISSNKind.print, issn))
+        elif typed["type"] == "electronic":
+            pairs.append((ISSNKind.electronic, issn))
+        else:
+            print("unexpected ISSN type:", typed["type"])
+            pairs.append((ISSNKind.other, issn))
+        seen_issns.add(issn)
+    for issn in raw_issns:
+        if issn not in seen_issns:
+            pairs.append((ISSNKind.other, issn))
+    return journal, pairs
+
+
+def get_cg_by_name(name: str) -> CitationGroup | None:
+    try:
+        cg = CitationGroup.select().filter(CitationGroup.name == name).get()
+    except CitationGroup.DoesNotExist:
+        return None
+    if target := cg.get_redirect_target():
+        return target
+    return cg
+
+
+def cg_matches(journal_name: str, cg: CitationGroup) -> bool:
+    if cg.name.casefold() == journal_name.casefold():
+        return True
+    existing_cg = get_cg_by_name(journal_name)
+    if existing_cg is cg:
+        return True
+    return False
+
+
+@LINT.add("infer_issn")
+def infer_issn(art: Article, cfg: LintConfig) -> Iterable[str]:
+    if art.type is not ArticleType.JOURNAL:
+        return
+    if art.doi is None:
+        return
+    cg = art.citation_group
+    if cg is None:
+        return
+    existing_issn = cg.get_tag(CitationGroupTag.ISSN)
+    existing_issn_online = cg.get_tag(CitationGroupTag.ISSNOnline)
+    if existing_issn or existing_issn_online:
+        if cfg.verbose:
+            print(f"{cg}: ignoring because it has an ISSN")
+        return
+    issns = get_issns(art.doi, verbose=cfg.verbose)
+    if issns is None:
+        art.maybe_remove_corrupt_doi()
+        if cfg.verbose:
+            print(f"{art}: ignoring because there was no ISSN information")
+        return
+    if cfg.verbose:
+        print(f"{art}: got ISSN information {issns}")
+    journal_name, pairs = issns
+    if not pairs:
+        if cfg.verbose:
+            print(f"{art}: no ISSNs")
+        return
+    if not cg_matches(journal_name, cg):
+        yield (
+            f"Ignoring ISSNs {pairs} because {journal_name!r} (CrossRef)"
+            f" does not match {cg.name!r} (citation group)."
+        )
+        if cfg.interactive:
+            answer = getinput.yes_no(
+                "Add ISSNs anyway?", default=False, callbacks=art.get_adt_callbacks()
+            )
+            if not answer:
+                return
+        else:
+            return
+    for kind, issn in pairs:
+        if kind is ISSNKind.electronic:
+            tag = CitationGroupTag.ISSNOnline(issn)
+        else:
+            tag = CitationGroupTag.ISSN(issn)
+        if journal_name != cg.name:
+            extra = f" (using name {journal_name})"
+        else:
+            extra = ""
+        print(f"{cg}{extra}: adding tag {tag}")
+        cg.add_tag(tag)

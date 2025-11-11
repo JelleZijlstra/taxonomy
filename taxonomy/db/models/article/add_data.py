@@ -1,6 +1,5 @@
 """Adding data to (usually new) files."""
 
-import enum
 import re
 import traceback
 import urllib.parse
@@ -8,17 +7,15 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-import clirm
-
 from taxonomy import command_set, getinput, parsing, uitools, urlparse
 from taxonomy.apis import bhl
 from taxonomy.db.constants import ArticleKind, ArticleType
 from taxonomy.db.helpers import clean_strings_recursively, trimdoi
 from taxonomy.db.models.base import LintConfig
-from taxonomy.db.models.citation_group import CitationGroup, CitationGroupTag
+from taxonomy.db.models.citation_group import CitationGroup
 from taxonomy.db.models.person import AuthorTag, Person, VirtualPerson
 
-from .api_data import RawData, expand_doi_json, get_container_title, get_doi_json
+from .api_data import RawData, expand_doi_json
 from .article import Article, ArticleTag
 from .lint import is_valid_doi
 
@@ -74,111 +71,6 @@ def get_doi_data(art: Article) -> RawData:
     if doi is not None:
         return expand_doi_json(doi)
     return {}
-
-
-class ISSNKind(enum.Enum):
-    print = 1
-    electronic = 2
-    other = 3
-
-
-def get_issns(
-    doi: str, *, verbose: bool = False
-) -> tuple[str, list[tuple[ISSNKind, str]]] | None:
-    data = get_doi_json(doi)
-    if data is None:
-        if verbose:
-            print(f"{doi}: found no information")
-        return None
-    work = data["message"]
-    journal = get_container_title(work)
-    if journal is None:
-        if verbose:
-            print(f"{doi}: no container title")
-        return None
-    raw_issns = work.get("ISSN", [])
-    typed_issns = work.get("issn-type", [])
-
-    pairs = []
-    seen_issns = set()
-    for typed in typed_issns:
-        issn = typed["value"]
-        if typed["type"] == "print":
-            pairs.append((ISSNKind.print, issn))
-        elif typed["type"] == "electronic":
-            pairs.append((ISSNKind.electronic, issn))
-        else:
-            print("unexpected ISSN type:", typed["type"])
-            pairs.append((ISSNKind.other, issn))
-        seen_issns.add(issn)
-    for issn in raw_issns:
-        if issn not in seen_issns:
-            pairs.append((ISSNKind.other, issn))
-    return journal, pairs
-
-
-def get_cg_by_name(name: str) -> CitationGroup | None:
-    try:
-        cg = CitationGroup.select().filter(CitationGroup.name == name).get()
-    except clirm.DoesNotExist:
-        return None
-    if target := cg.get_redirect_target():
-        return target
-    return cg
-
-
-@CS.register
-def fill_issns(limit: int | None = None, *, verbose: bool = False) -> None:
-    for art in (
-        Article.select_valid()
-        .filter(
-            Article.type == ArticleType.JOURNAL,
-            Article.doi != None,
-            Article.citation_group != None,
-        )
-        .limit(limit)
-    ):
-        cg = art.citation_group
-        existing_issn = cg.get_tag(CitationGroupTag.ISSN)
-        existing_issn_online = cg.get_tag(CitationGroupTag.ISSNOnline)
-        if existing_issn or existing_issn_online:
-            if verbose:
-                print(f"{cg}: ignoring because it has an ISSN")
-            continue
-        issns = get_issns(art.doi, verbose=verbose)
-        if issns is None:
-            art.maybe_remove_corrupt_doi()
-            if verbose:
-                print(f"{art}: ignoring because there was no ISSN information")
-            continue
-        if verbose:
-            print(f"{art}: got ISSN information {issns}")
-        journal_name, pairs = issns
-        if not pairs:
-            if verbose:
-                print(f"{art}: no ISSNs")
-            continue
-        found_cg = get_cg_by_name(journal_name)
-        if found_cg is None:
-            print(
-                f"{art} ({cg.name}): Ignoring ISSNs {pairs} because {journal_name} is"
-                " not a known citation group"
-            )
-            continue
-        if found_cg != cg:
-            print(f"{art}: Ignoring ISSNs {pairs} because {journal_name} != {cg.name}")
-            continue
-        for kind, issn in pairs:
-            if kind is ISSNKind.electronic:
-                tag = CitationGroupTag.ISSNOnline(issn)
-            else:
-                tag = CitationGroupTag.ISSN(issn)
-            if journal_name != cg.name:
-                extra = f" (using name {journal_name})"
-            else:
-                extra = ""
-            print(f"{cg}{extra}: adding tag {tag}")
-            cg.add_tag(tag)
 
 
 _BHL_PART_FIELDS = [

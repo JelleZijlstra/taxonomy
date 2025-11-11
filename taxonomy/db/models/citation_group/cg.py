@@ -466,6 +466,11 @@ class CitationGroup(BaseModel):
         tags = self.get_tags(self.tags, CitationGroupTag.BHLBibliography)
         return [int(tag.text) for tag in tags]
 
+    def get_issns(self) -> Iterable[str]:
+        for tag in self.tags:
+            if isinstance(tag, (CitationGroupTag.ISSN, CitationGroupTag.ISSNOnline)):
+                yield tag.text
+
     def should_have_bhl_link_in_year(self, year: int) -> bool:
         if not self.get_tag(CitationGroupTag.BHLBibliography):
             return False
@@ -518,6 +523,19 @@ class CitationGroup(BaseModel):
         for t in self.tags or ():
             if (
                 isinstance(t, CitationGroupTag.MayHaveIdentifier)
+                and t.identifier == article_identifier
+                and (t.min_year is None or year >= t.min_year)
+                and (t.max_year is None or year <= t.max_year)
+            ):
+                return True
+        return False
+
+    def must_have_article_identifier(
+        self, article_identifier: ArticleIdentifier, year: int
+    ) -> bool:
+        for t in self.tags or ():
+            if (
+                isinstance(t, CitationGroupTag.MustHaveIdentifier)
                 and t.identifier == article_identifier
                 and (t.min_year is None or year >= t.min_year)
                 and (t.max_year is None or year <= t.max_year)
