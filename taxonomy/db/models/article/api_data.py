@@ -16,6 +16,7 @@ from bs4 import BeautifulSoup
 
 from taxonomy import config, parsing
 from taxonomy.apis.util import RateLimiter
+from taxonomy.db import helpers
 from taxonomy.db.constants import ArticleType, DateSource
 from taxonomy.db.helpers import clean_string, trimdoi
 from taxonomy.db.models.citation_group import CitationGroup
@@ -65,6 +66,19 @@ def _get_doi_from_crossref_inner(params: str) -> str:
     return response.text
 
 
+@cached(CacheDomain.crossref_search_by_journal)
+def get_crossref_search_by_journal(data_str: str) -> str:
+    data = json.loads(data_str)
+    issn = data["issn"]
+    params = data["params"]
+    url = f"https://api.crossref.org/journals/{issn}/works"
+    response = httpx.get(url, params=params)
+    if response.status_code == 404:
+        return "{}"
+    response.raise_for_status()
+    return response.text
+
+
 @cached(CacheDomain.doi_resolution)
 def get_doi_resolution(doi: str) -> str:
     url = f"https://doi.org/api/handles/{doi}"
@@ -75,6 +89,22 @@ def get_doi_resolution(doi: str) -> str:
     if data["responseCode"] == 2:  # error
         raise ValueError(f"Error resolvoing {doi}: {data}")
     return text
+
+
+@cached(CacheDomain.is_doi_valid)
+def _is_doi_valid(doi: str) -> str:
+    try:
+        get_doi_resolution(doi)
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 404:
+            return "false"
+        raise
+    return "true"
+
+
+def is_doi_valid(doi: str) -> bool:
+    result = _is_doi_valid(doi)
+    return result == "true"
 
 
 def get_doi_from_crossref(art: Article) -> str | None:
@@ -96,28 +126,58 @@ def get_doi_from_crossref(art: Article) -> str | None:
 
 
 def get_candidate_dois_from_crossref(art: Article) -> Iterable[str]:
-    if art.citation_group is None or art.volume is None or art.start_page is None:
+    if art.citation_group is None or art.volume is None:
         return
-    query_dict = {
-        "pid": _options.crossrefid,
-        "title": art.citation_group.name,
-        "volume": art.volume,
-        "spage": art.start_page,
-        "noredirect": "true",
-    }
-    if doi := _try_query(query_dict):
-        yield doi
-
-    for issn in art.citation_group.get_issns():
+    seen_dois: set[str] = set()
+    if art.start_page is not None:
         query_dict = {
             "pid": _options.crossrefid,
-            "issn": issn,
+            "title": art.citation_group.name,
             "volume": art.volume,
             "spage": art.start_page,
             "noredirect": "true",
         }
         if doi := _try_query(query_dict):
+            seen_dois.add(doi)
             yield doi
+
+        for issn in art.citation_group.get_issns():
+            query_dict = {
+                "pid": _options.crossrefid,
+                "issn": issn,
+                "volume": art.volume,
+                "spage": art.start_page,
+                "noredirect": "true",
+            }
+            if doi := _try_query(query_dict):
+                if doi in seen_dois:
+                    continue
+                seen_dois.add(doi)
+                yield doi
+
+    if art.title:
+        title = helpers.simplify_string(
+            art.title, clean_words=False, keep_whitespace=True
+        )
+        for issn in art.citation_group.get_issns():
+            params = {
+                "query.title": title,
+                "filter": (
+                    f"issn:{issn},from-pub-date:{art.numeric_year() - 2},until-pub-date:{art.numeric_year() + 2}"
+                ),
+                "rows": 5,
+                "select": "DOI",
+            }
+            data = get_crossref_search_by_journal(
+                json.dumps({"issn": issn, "params": params})
+            )
+            result = json.loads(data)
+            if items := result.get("message", {}).get("items"):
+                for item in items:
+                    doi = item.get("DOI")
+                    if doi and doi not in seen_dois:
+                        seen_dois.add(doi)
+                        yield doi
 
 
 def _try_query(query_dict: dict[str, str]) -> str | None:
@@ -127,21 +187,6 @@ def _try_query(query_dict: dict[str, str]) -> str | None:
         return xml.crossref_result.doi.text
     except AttributeError:
         return None
-
-
-def is_doi_valid(doi: str) -> bool:
-    try:
-        get_doi_json_cached(doi)
-    except requests.exceptions.HTTPError as e:
-        if "404 Client Error: Not Found" not in str(e):
-            traceback.print_exc()
-            print("ignoring unexpected error")
-            return True
-        resolution = json.loads(get_doi_resolution(doi))
-        if resolution["responseCode"] == 1:
-            return True
-        return False
-    return True
 
 
 @lru_cache
@@ -200,7 +245,10 @@ def expand_pubmed_json(pmid: str) -> RawData:
 
     issue = rec.get("issue")
     if isinstance(issue, str) and issue.strip():
-        data["issue"] = issue.removeprefix("0")
+        if "volume" in data:
+            data["issue"] = issue.removeprefix("0")
+        else:
+            data["volume"] = issue.removeprefix("0")
 
     pages = rec.get("pages")
     if isinstance(pages, str) and pages.strip():
@@ -520,7 +568,10 @@ def expand_doi_json(doi: str) -> RawData:
     if volume := work.get("volume"):
         data["volume"] = volume.removeprefix("0")
     if issue := work.get("issue"):
-        data["issue"] = issue.removeprefix("0")
+        if "volume" in data:
+            data["issue"] = issue.removeprefix("0")
+        else:
+            data["volume"] = issue.removeprefix("0")
     if publisher := work.get("publisher"):
         data["publisher"] = clean_string(publisher)
     if location := work.get("publisher-location"):

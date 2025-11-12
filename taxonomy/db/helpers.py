@@ -576,7 +576,9 @@ def _clean_up_word(word: str) -> str:
     return word.rstrip("s")
 
 
-def simplify_string(text: str, *, clean_words: bool = True) -> str:
+def simplify_string(
+    text: str, *, clean_words: bool = True, keep_whitespace: bool = False
+) -> str:
     """Simplify a string.
 
     This is intended to remove punctuation, casing, and similar
@@ -601,8 +603,10 @@ def simplify_string(text: str, *, clean_words: bool = True) -> str:
     # Replace dashes again
     text = re.sub(r"[\-—–]+", "-", text)
     if clean_words:
-        text = "".join(_clean_up_word(word) for word in text.split())
-    else:
+        text = (" " if keep_whitespace else "").join(
+            _clean_up_word(word) for word in text.split()
+        )
+    elif not keep_whitespace:
         text = text.replace(" ", "")
     return text
 

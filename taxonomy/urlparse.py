@@ -195,6 +195,14 @@ class PMCUrl(ParsedUrl):
 
 
 @dataclass
+class PubMedUrl(ParsedUrl):
+    pmid: str
+
+    def __str__(self) -> str:
+        return f"https://www.ncbi.nlm.nih.gov/pubmed/{self.pmid}"
+
+
+@dataclass
 class OtherUrl(ParsedUrl):
     split_url: urllib.parse.SplitResult
 
@@ -289,6 +297,9 @@ def parse_url(url: str) -> ParsedUrl:
         match = re.fullmatch(r"/pmc/articles/(PMC\d+)/?", split.path)
         if match is not None:
             return PMCUrl(match.group(1))
+        match = re.fullmatch(r"/pubmed/(\d+)", split.path)
+        if match is not None:
+            return PubMedUrl(match.group(1))
 
     # TODO: other domains for which to consider parsing more specifically:
     # - archive.org

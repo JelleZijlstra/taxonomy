@@ -651,6 +651,19 @@ def check_url(art: Article, cfg: LintConfig) -> Iterable[str]:
     if art.url is None:
         return
     parsed_url = urlparse.parse_url(art.url)
+    if art.doi is None and isinstance(parsed_url, urlparse.BhlPart):
+        part_id = parsed_url.part_id
+        expected_doi = f"10.5962/bhl.part.{part_id}"
+        if models.article.api_data.is_doi_valid(expected_doi):
+            message = f"inferred DOI {expected_doi} from BHL part url {art.url}"
+            if cfg.autofix:
+                print(f"{art}: {message}")
+                art.doi = expected_doi
+                art.url = None
+            else:
+                yield message
+            return
+
     match parsed_url:
         case urlparse.HDLUrl(hdl, query=None):
             message = f"inferred HDL {hdl} from url {art.url}"
@@ -685,6 +698,14 @@ def check_url(art: Article, cfg: LintConfig) -> Iterable[str]:
                 art.url = None
             else:
                 yield message
+        case urlparse.PubMedUrl(pmid):
+            message = f"inferred PMID {pmid} from url {art.url}"
+            if cfg.autofix:
+                print(f"{art}: {message}")
+                art.add_tag(ArticleTag.PMID(pmid))
+                art.url = None
+            else:
+                yield message
         case _:
             stringified = str(parsed_url)
             if stringified != art.url:
@@ -711,16 +732,17 @@ def check_doi(art: Article, cfg: LintConfig) -> Iterable[str]:
         yield f"invalid doi {art.doi!r}"
     if art.doi.startswith(_JSTOR_DOI_PREFIX):
         jstor_id = art.doi.removeprefix(_JSTOR_DOI_PREFIX).removeprefix("/")
-        message = (
-            f"inferred JStor id {jstor_id} from doi {art.doi} (CG"
-            f" {art.citation_group})"
-        )
-        if cfg.autofix:
-            print(f"{art}: {message}")
-            art.add_tag(ArticleTag.JSTOR(jstor_id))
-            art.doi = None
-        else:
-            yield message
+        if jstor_id.isnumeric():
+            message = (
+                f"inferred JStor id {jstor_id} from doi {art.doi} (CG"
+                f" {art.citation_group})"
+            )
+            if cfg.autofix:
+                print(f"{art}: {message}")
+                art.add_tag(ArticleTag.JSTOR(jstor_id))
+                art.doi = None
+            else:
+                yield message
 
 
 @LINT.add("bhl_item_from_bibliography", requires_network=True)
@@ -1890,6 +1912,7 @@ def find_doi(art: Article, cfg: LintConfig) -> Iterable[str]:
     if (
         art.doi is not None
         or art.has_tag(ArticleTag.JSTOR)
+        or has_bhl_url(art)
         or art.type is ArticleType.SUPPLEMENT
         or art.kind is ArticleKind.alternative_version
     ):
@@ -1916,7 +1939,8 @@ def find_doi(art: Article, cfg: LintConfig) -> Iterable[str]:
         message = build_summary_for_doi_data(doi, data)
         if cfg.autofix and not LINT.is_ignoring_lint(art, "find_doi"):
             if art.doi is not None:
-                yield f"has existing DOI {art.doi}, skipping autofix adding DOI {doi}"
+                if art.doi != doi:
+                    yield f"has existing DOI {art.doi}, skipping autofix adding DOI {doi}"
             else:
                 art.doi = doi
                 print(f"{art}: {message}")
@@ -1980,7 +2004,7 @@ def is_candidate_doi_acceptable(
             print(
                 f"{art}: candidate DOI {doi} rejected: title_dist={title_dist},"
                 f" norm_title_dist={norm_title_dist:.3f}, is_prefix={is_prefix},"
-                f" year_ok={year_ok}, author_overlap={author_overlap}"
+                f" year_ok={year_ok}, author_overlap={author_overlap} (title={doi_title!r}, authors={doi_author_last})"
             )
         return False
     return True
@@ -2861,7 +2885,7 @@ def get_cg_by_name(name: str) -> CitationGroup | None:
 
 
 def cg_matches(journal_name: str, cg: CitationGroup) -> bool:
-    if cg.name.casefold() == journal_name.casefold():
+    if cg.name.casefold() == journal_name.casefold().rstrip("."):
         return True
     existing_cg = get_cg_by_name(journal_name)
     if existing_cg is cg:
@@ -2921,3 +2945,23 @@ def infer_issn(art: Article, cfg: LintConfig) -> Iterable[str]:
             extra = ""
         print(f"{cg}{extra}: adding tag {tag}")
         cg.add_tag(tag)
+
+
+@LINT.add("must_have_doi")
+def must_have_doi(art: Article, cfg: LintConfig) -> Iterable[str]:
+    if art.doi is not None:
+        return
+    if (
+        art.citation_group is None
+        or art.type is ArticleType.SUPPLEMENT
+        or art.kind is ArticleKind.alternative_version
+    ):
+        return
+    year = art.numeric_year()
+    if not art.citation_group.must_have_article_identifier(ArticleIdentifier.doi, year):
+        return
+    if art.has_tag(ArticleTag.JSTOR):
+        return
+    if has_bhl_url(art):
+        return
+    yield "missing DOI"

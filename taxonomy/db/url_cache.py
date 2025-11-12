@@ -43,6 +43,8 @@ class CacheDomain(enum.Enum):
     europe_pmc_search = 12  # https://www.ebi.ac.uk/europepmc/webservices/rest/search
     ncbi_idconv = 13  # https://www.ncbi.nlm.nih.gov/pmc/tools/id-converter-api/
     pubmed_esummary = 14  # https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi
+    crossref_search_by_journal = 15  # https://api.crossref.org/swagger-ui/index.html#/Journals/get_journals__issn__works
+    is_doi_valid = 16
 
 
 KeyT = TypeVar("KeyT")
