@@ -76,6 +76,15 @@ def check_tags(art: Article, cfg: LintConfig) -> Iterable[str]:
             jstor_id = tag.text
             if len(jstor_id) < 4 or not jstor_id.isnumeric():
                 yield f"invalid JSTOR id {jstor_id!r}"
+            if art.doi is None:
+                expected_doi = f"10.2307/{jstor_id}"
+                if models.article.api_data.is_doi_valid(expected_doi):
+                    message = f"adding DOI {expected_doi} based on JSTOR id"
+                    if cfg.autofix:
+                        print(f"{art}: {message}")
+                        art.doi = expected_doi
+                    else:
+                        yield message
         elif isinstance(tag, ArticleTag.PMC):
             pmc_id = tag.text
             if not re.fullmatch(r"^PMC\d+$", pmc_id):
@@ -651,19 +660,6 @@ def check_url(art: Article, cfg: LintConfig) -> Iterable[str]:
     if art.url is None:
         return
     parsed_url = urlparse.parse_url(art.url)
-    if art.doi is None and isinstance(parsed_url, urlparse.BhlPart):
-        part_id = parsed_url.part_id
-        expected_doi = f"10.5962/bhl.part.{part_id}"
-        if models.article.api_data.is_doi_valid(expected_doi):
-            message = f"inferred DOI {expected_doi} from BHL part url {art.url}"
-            if cfg.autofix:
-                print(f"{art}: {message}")
-                art.doi = expected_doi
-                art.url = None
-            else:
-                yield message
-            return
-
     match parsed_url:
         case urlparse.HDLUrl(hdl, query=None):
             message = f"inferred HDL {hdl} from url {art.url}"
@@ -706,18 +702,30 @@ def check_url(art: Article, cfg: LintConfig) -> Iterable[str]:
                 art.url = None
             else:
                 yield message
-        case _:
-            stringified = str(parsed_url)
-            if stringified != art.url:
-                message = f"reformatted url to {parsed_url} from {art.url}"
-                if cfg.autofix:
-                    print(f"{art}: {message}")
-                    art.url = stringified
-                else:
-                    yield message
+        case urlparse.BhlPart(part_id):
+            if art.doi is None:
+                expected_doi = f"10.5962/bhl.part.{part_id}"
+                if models.article.api_data.is_doi_valid(expected_doi):
+                    message = f"inferred DOI {expected_doi} from BHL part url {art.url}"
+                    if cfg.autofix:
+                        print(f"{art}: {message}")
+                        art.doi = expected_doi
+                    else:
+                        yield message
+                    return
 
-            for message in parsed_url.lint():
-                yield f"URL {art.url}: {message}"
+    if art.url is not None:
+        stringified = str(parsed_url)
+        if stringified != art.url:
+            message = f"reformatted url to {parsed_url} from {art.url}"
+            if cfg.autofix:
+                print(f"{art}: {message}")
+                art.url = stringified
+            else:
+                yield message
+
+        for message in parsed_url.lint():
+            yield f"URL {art.url}: {message}"
 
 
 @LINT.add("doi")
@@ -730,7 +738,9 @@ def check_doi(art: Article, cfg: LintConfig) -> Iterable[str]:
     yield from _maybe_clean(art, "doi", cleaned, cfg)
     if not is_valid_doi(art.doi):
         yield f"invalid doi {art.doi!r}"
-    if art.doi.startswith(_JSTOR_DOI_PREFIX):
+    if not models.article.api_data.is_doi_valid(art.doi):
+        yield f"DOI {art.doi!r} does not resolve"
+    if art.doi.startswith(_JSTOR_DOI_PREFIX) and not art.has_tag(ArticleTag.JSTOR):
         jstor_id = art.doi.removeprefix(_JSTOR_DOI_PREFIX).removeprefix("/")
         if jstor_id.isnumeric():
             message = (
@@ -740,7 +750,6 @@ def check_doi(art: Article, cfg: LintConfig) -> Iterable[str]:
             if cfg.autofix:
                 print(f"{art}: {message}")
                 art.add_tag(ArticleTag.JSTOR(jstor_id))
-                art.doi = None
             else:
                 yield message
 
@@ -2204,6 +2213,52 @@ def dupe_journal_with_title(art: Article) -> tuple[object, ...] | None:
     )
 
 
+def _standardize_url(url: str) -> str:
+    parsed = urllib.parse.urlsplit(url)
+    parsed = parsed._replace(scheme="https")
+    return urllib.parse.urlunsplit(parsed)
+
+
+def get_url_from_doi(doi: str) -> str | None:
+    doi_data = models.article.api_data.get_doi_json(doi)
+    if doi_data is not None:
+        url = (
+            doi_data.get("message", {})
+            .get("resource", {})
+            .get("primary", {})
+            .get("URL", None)
+        )
+        return url
+    return None
+
+
+@LINT.add("replace_duplicate_url")
+def replace_duplicate_url(art: Article, cfg: LintConfig) -> Iterable[str]:
+    if art.url is None:
+        if art.doi is not None:
+            url = get_url_from_doi(art.doi)
+            if (
+                url is not None
+                and urllib.parse.urlsplit(url).netloc == "www.biodiversitylibrary.org"
+            ):
+                message = f"adding BHL URL {url} from DOI"
+                if cfg.autofix:
+                    print(f"{art}: {message}")
+                    art.url = url
+                else:
+                    yield message
+        return
+    if art.doi is not None and not has_bhl_url(art):
+        url = get_url_from_doi(art.doi)
+        if url is not None and _standardize_url(art.url) == _standardize_url(url):
+            message = f"removing URL {art.url} since it duplicates DOI"
+            if cfg.autofix:
+                print(f"{art}: {message}")
+                art.url = None
+            else:
+                yield message
+
+
 @LINT.add("data_from_doi", requires_network=True)
 def data_from_doi(art: Article, cfg: LintConfig) -> Iterable[str]:
     if (
@@ -2522,20 +2577,24 @@ def data_from_pubmed(art: Article, cfg: LintConfig) -> Iterable[str]:
             ):
                 if abs(int(src_issue) - int(art.issue)) <= 10:
                     yield f"issue mismatch: {data['issue']} (PubMed) vs. {art.issue} (article)"
-    # Start page
+
     if data.get("start_page") and art.start_page is not None:
         sp = data["start_page"]
         if sp.isnumeric() and sp.lstrip("0") != art.start_page:
             if not (data.get("end_page") == sp and art.start_page != art.end_page):
                 yield f"start page mismatch: {sp} (PubMed) vs. {art.start_page} (article)"
-    # End page
+
     if data.get("end_page") and art.end_page is not None:
         ep = data["end_page"]
         if ep.isnumeric() and ep != "1" and ep.lstrip("0") != art.end_page:
             if not (data.get("start_page") == ep and art.start_page != art.end_page):
                 yield f"end page mismatch: {ep} (PubMed) vs. {art.end_page} (article)"
-    # DOI (optional gentle add if missing)
-    if data.get("doi") and not art.doi:
+
+    if (
+        data.get("doi")
+        and not art.doi
+        and models.article.api_data.is_doi_valid(data["doi"])
+    ):
         message = f"adding DOI {data['doi']} from PubMed"
         if cfg.autofix:
             print(f"{art}: {message}")
@@ -2608,7 +2667,11 @@ def data_from_pmc(art: Article, cfg: LintConfig) -> Iterable[str]:
             if not (data.get("start_page") == ep and art.start_page != art.end_page):
                 yield f"end page mismatch: {ep} (PMC) vs. {art.end_page} (article)"
     # DOI (optional gentle add if missing)
-    if data.get("doi") and not art.doi:
+    if (
+        data.get("doi")
+        and not art.doi
+        and models.article.api_data.is_doi_valid(data["doi"])
+    ):
         message = f"adding DOI {data['doi']} from PMC"
         if cfg.autofix:
             print(f"{art}: {message}")

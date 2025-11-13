@@ -103,6 +103,10 @@ def _is_doi_valid(doi: str) -> str:
 
 
 def is_doi_valid(doi: str) -> bool:
+    # Check CrossRef metadata first, as it's often cached already. If it's there, assume the DOI will also resolve.
+    doi_data = get_doi_json(doi)
+    if doi_data is not None:
+        return True
     result = _is_doi_valid(doi)
     return result == "true"
 

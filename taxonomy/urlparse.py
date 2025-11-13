@@ -9,9 +9,22 @@ from dataclasses import dataclass
 BHL_DOMAINS = {"biodiversitylibrary.org", "www.biodiversitylibrary.org"}
 JSTOR_DOMAINS = {"www.jstor.org", "jstor.org"}
 DEPRECATED_DOMAINS = {"biostor.org"}
-# Also consider: www.mapress.com, www.springerlink.com, linkinghub.elsevier.com, link.springer.com,
-# mbe.oxfordjournals.org, www.pnas.org, www.ingentaconnect.com
-SHOULD_HAVE_DOI_DOMAINS = {"www.sciencedirect.com"}
+# not www.ingentaconnect.com, at least some articles (Herpetological Journal) have no DOI
+# not www.publish.csiro.au, books don't have DOIs
+SHOULD_HAVE_DOI_DOMAINS = {
+    "www.sciencedirect.com",
+    "link.springer.com",
+    "www.tandfonline.com",
+    "www.pnas.org",
+    "www.degruyter.com",
+    "linkinghub.elsevier.com",
+    "www.nature.com",
+    "www.ncbi.nlm.nih.gov",
+    "www.springerlink.com",
+    "www.mapress.com",
+    "academic.oup.com",
+}
+SHOULD_HAVE_DOI_TOPLEVEL = {"oxfordjournals.org"}
 GALLICA_DOMAIN = "gallica.bnf.fr"
 
 
@@ -216,10 +229,15 @@ class OtherUrl(ParsedUrl):
             yield f"URL has unknown scheme {self.split_url.scheme}"
         if self.split_url.netloc == "":
             yield "URL has no netloc"
+        elif "." not in self.split_url.netloc:
+            yield f"URL has invalid netloc {self.split_url.netloc!r}"
         if self.split_url.netloc in BHL_DOMAINS:
             yield "invalid BHL URL"
         if self.split_url.netloc in SHOULD_HAVE_DOI_DOMAINS:
             yield "URL should be replaced with a DOI"
+        for toplevel in SHOULD_HAVE_DOI_TOPLEVEL:
+            if self.split_url.netloc.endswith(toplevel):
+                yield "URL should be replaced with a DOI"
         if self.split_url.netloc in DEPRECATED_DOMAINS:
             yield f"URL uses deprecated domain {self.split_url.netloc}"
         if self.split_url.netloc in JSTOR_DOMAINS:

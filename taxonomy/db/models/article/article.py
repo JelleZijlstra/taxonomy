@@ -489,6 +489,8 @@ class Article(BaseModel):
             "cite": self.cite_interactive,
             "ce_add": lambda: models.classification_entry.ce.create_for_article(self),
             "ce_edit": self.ce_edit,
+            "missing_ce_pages": self.missing_ce_pages,
+            "edit_all_at_page": self.edit_all_at_page,
         }
 
     def get_adt_callbacks(self) -> getinput.CallbackMap:
@@ -535,7 +537,6 @@ class Article(BaseModel):
                 self
             ),
             "display_raw_pages": self.display_raw_pages,
-            "edit_all_at_page": self.edit_all_at_page,
         }
 
     def ce_edit(self) -> None:
@@ -546,6 +547,52 @@ class Article(BaseModel):
             if sibling is None:
                 break
             sibling.edit()
+
+    def missing_ce_pages(self) -> None:
+        pages = set()
+        for ce in self.get_classification_entries():
+            if ce.page:
+                for page in models.name.page.parse_page_text(ce.page):
+                    if not page.is_raw and page.text.isnumeric():
+                        pages.add(int(page.text))
+        # Print all ranges that do not have any CEs
+        if not pages:
+            print("No pages with classification entries.")
+            return
+        min_page = min(pages)
+        max_page = max(pages)
+        missing_pages = []
+        for page_num in range(min_page, max_page + 1):
+            if page_num not in pages:
+                missing_pages.append(page_num)
+        if not missing_pages:
+            print("No missing pages.")
+            return
+        # Join missing pages into ranges, so we print "100-110" instead of "100, 101, 102, ..., 110"
+        ranges = []
+        start = missing_pages[0]
+        end = missing_pages[0]
+        for page_num in missing_pages[1:]:
+            if page_num == end + 1:
+                end = page_num
+            else:
+                if start == end:
+                    ranges.append(f"{start}")
+                else:
+                    ranges.append(f"{start}-{end}")
+                start = page_num
+                end = page_num
+        if start == end:
+            ranges.append(f"{start}")
+        else:
+            ranges.append(f"{start}-{end}")
+
+        print("Pages with no classification entries:")
+        if min_page != 1:
+            print(f"    before {min_page}")
+        for page_range in ranges:
+            print(f"    {page_range}")
+        print(f"    after {max_page}")
 
     def open_cg_url(self) -> None:
         cg = self.get_citation_group()
