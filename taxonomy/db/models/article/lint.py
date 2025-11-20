@@ -713,6 +713,14 @@ def check_url(art: Article, cfg: LintConfig) -> Iterable[str]:
                     else:
                         yield message
                     return
+        case urlparse.DeepBlueUrl(handle, _):
+            message = f"inferred HDL {handle} from url {art.url}"
+            if cfg.autofix:
+                print(f"{art}: {message}")
+                art.add_tag(ArticleTag.HDL(handle))
+                art.url = None
+            else:
+                yield message
 
     if art.url is not None:
         stringified = str(parsed_url)

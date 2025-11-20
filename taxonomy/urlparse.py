@@ -9,6 +9,7 @@ from dataclasses import dataclass
 BHL_DOMAINS = {"biodiversitylibrary.org", "www.biodiversitylibrary.org"}
 JSTOR_DOMAINS = {"www.jstor.org", "jstor.org"}
 DEPRECATED_DOMAINS = {"biostor.org"}
+DEPRECATED_TOPLEVEL = {"hul.harvard.edu"}
 # not www.ingentaconnect.com, at least some articles (Herpetological Journal) have no DOI
 # not www.publish.csiro.au, books don't have DOIs
 SHOULD_HAVE_DOI_DOMAINS = {
@@ -23,6 +24,7 @@ SHOULD_HAVE_DOI_DOMAINS = {
     "www.springerlink.com",
     "www.mapress.com",
     "academic.oup.com",
+    "www.checklist.org.br",
 }
 SHOULD_HAVE_DOI_TOPLEVEL = {"oxfordjournals.org"}
 GALLICA_DOMAIN = "gallica.bnf.fr"
@@ -216,6 +218,15 @@ class PubMedUrl(ParsedUrl):
 
 
 @dataclass
+class DeepBlueUrl(ParsedUrl):
+    handle: str
+    suffix: str
+
+    def __str__(self) -> str:
+        return f"https://deepblue.lib.umich.edu/bitstream/{self.handle}/{self.suffix}"
+
+
+@dataclass
 class OtherUrl(ParsedUrl):
     split_url: urllib.parse.SplitResult
 
@@ -240,6 +251,9 @@ class OtherUrl(ParsedUrl):
                 yield "URL should be replaced with a DOI"
         if self.split_url.netloc in DEPRECATED_DOMAINS:
             yield f"URL uses deprecated domain {self.split_url.netloc}"
+        for toplevel in DEPRECATED_TOPLEVEL:
+            if self.split_url.netloc.endswith(toplevel):
+                yield f"URL uses deprecated top-level domain {toplevel}"
         if self.split_url.netloc in JSTOR_DOMAINS:
             yield "invalid JSTOR URL"
         if is_google_domain(self.split_url.netloc):
@@ -292,6 +306,8 @@ def parse_url(url: str) -> ParsedUrl:
     elif split.netloc == "deepblue.lib.umich.edu":
         if match := re.fullmatch(r"/handle/(.+)", split.path):
             return HDLUrl(match.group(1))
+        elif match := re.fullmatch(r"/bitstream/([^/]+/[^/]+)/(.+)", split.path):
+            return DeepBlueUrl(match.group(1), match.group(2))
     elif split.netloc in ("dx.doi.org", "doi.org"):
         return DOIURL(split.path.lstrip("/"))
     elif split.netloc == "www.bioone.org":
