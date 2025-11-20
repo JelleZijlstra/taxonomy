@@ -8,6 +8,7 @@ import re
 import shutil
 import subprocess
 import time
+import urllib.parse
 from collections.abc import Callable, Iterable
 from functools import lru_cache
 from pathlib import Path
@@ -1165,7 +1166,6 @@ class Article(BaseModel):
         # 3. Other identifiers
         tries = {
             ArticleTag.JSTOR: "https://www.jstor.org/stable/",
-            ArticleTag.HDL: "https://hdl.handle.net/",
             ArticleTag.PMID: "https://www.ncbi.nlm.nih.gov/pubmed/",
             ArticleTag.PMC: "https://www.ncbi.nlm.nih.gov/pmc/articles/",
         }
@@ -1173,10 +1173,16 @@ class Article(BaseModel):
             value = self.get_identifier(identifier)
             if value:
                 return url + value
-        # 4. Other URL
+        # 4. HDL
+        for tag in self.get_tags(self.tags, ArticleTag.HDL):
+            url = f"https://hdl.handle.net/{tag.text}"
+            if tag.urlappend:
+                url += f"?urlappend={urllib.parse.quote(tag.urlappend)}"
+            return url
+        # 5. Other URL
         if self.url:
             return self.url
-        # 5. Parent URL
+        # 6. Parent URL
         if self.parent is not None:
             return self.parent.geturl()
         return None
@@ -1792,7 +1798,7 @@ class ArticleTag(adt.ADT):
     # identifiers
     ISBN(text=Managed, tag=1)  # type: ignore[name-defined]
     Eurobats(text=Managed, tag=2)  # type: ignore[name-defined]
-    HDL(text=Managed, tag=3)  # type: ignore[name-defined]
+    HDL(text=Managed, urlappend=NotRequired[Managed], tag=3)  # type: ignore[name-defined]
     JSTOR(text=Managed, tag=4)  # type: ignore[name-defined]
     PMID(text=Managed, tag=5)  # type: ignore[name-defined]
     # TODO: Why does this exist? Should be on the CitationGroup

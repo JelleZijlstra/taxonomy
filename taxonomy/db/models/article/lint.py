@@ -17,6 +17,7 @@ import requests
 
 from taxonomy import getinput, urlparse
 from taxonomy.apis import bhl, zoobank
+from taxonomy.apis.hdl import is_hdl_valid as api_is_hdl_valid
 from taxonomy.apis.zoobank import clean_lsid, get_zoobank_data_for_act, is_valid_lsid
 from taxonomy.db import helpers, models
 from taxonomy.db.constants import (
@@ -72,6 +73,11 @@ def check_tags(art: Article, cfg: LintConfig) -> Iterable[str]:
         elif isinstance(tag, ArticleTag.HDL):
             if not is_valid_hdl(tag.text):
                 yield f"invalid HDL {tag.text!r}"
+            elif not api_is_hdl_valid(tag.text):
+                yield f"HDL {tag.text!r} does not resolve"
+            if "?urlappend=" in tag.text and not tag.urlappend:
+                handle, urlappend = tag.text.split("?urlappend=", maxsplit=1)
+                tag = ArticleTag.HDL(handle, urlappend=urllib.parse.unquote(urlappend))
         elif isinstance(tag, ArticleTag.JSTOR):
             jstor_id = tag.text
             if len(jstor_id) < 4 or not jstor_id.isnumeric():
@@ -663,13 +669,26 @@ def check_url(art: Article, cfg: LintConfig) -> Iterable[str]:
     match parsed_url:
         case urlparse.HDLUrl(hdl, query=None):
             message = f"inferred HDL {hdl} from url {art.url}"
-            if cfg.autofix:
+            if cfg.autofix and api_is_hdl_valid(hdl):
                 print(f"{art}: {message}")
                 art.add_tag(ArticleTag.HDL(hdl))
                 art.url = None
             else:
                 yield message
             return
+        case urlparse.HDLUrl(hdl, query=query):
+            parsed = urllib.parse.parse_qs(query)
+            urlappend_list = parsed.get("urlappend", [])
+            if urlappend_list and len(urlappend_list) == 1:
+                urlappend = urllib.parse.unquote(urlappend_list[0])
+                message = f"inferred HDL {hdl} (with urlappend={urlappend}) from url {art.url}"
+                if cfg.autofix and api_is_hdl_valid(hdl):
+                    print(f"{art}: {message}")
+                    art.add_tag(ArticleTag.HDL(hdl, urlappend=urlappend))
+                    art.url = None
+                else:
+                    yield message
+                return
         case urlparse.JStorUrl(jstor_id):
             message = f"inferred JStor id {jstor_id} from url {art.url}"
             if cfg.autofix:
@@ -715,7 +734,7 @@ def check_url(art: Article, cfg: LintConfig) -> Iterable[str]:
                     return
         case urlparse.DeepBlueUrl(handle, _):
             message = f"inferred HDL {handle} from url {art.url}"
-            if cfg.autofix:
+            if cfg.autofix and api_is_hdl_valid(handle):
                 print(f"{art}: {message}")
                 art.add_tag(ArticleTag.HDL(handle))
                 art.url = None

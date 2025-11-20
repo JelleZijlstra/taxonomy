@@ -45,6 +45,7 @@ class CacheDomain(enum.Enum):
     pubmed_esummary = 14  # https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi
     crossref_search_by_journal = 15  # https://api.crossref.org/swagger-ui/index.html#/Journals/get_journals__issn__works
     is_doi_valid = 16
+    is_hdl_valid = 17
 
 
 KeyT = TypeVar("KeyT")
