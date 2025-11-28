@@ -126,6 +126,7 @@ def format_tags(cg: CitationGroup, cfg: LintConfig) -> Iterable[str]:
             CitationGroupTag.BHLBibliography,
             CitationGroupTag.MayHaveIdentifier,
             CitationGroupTag.MustHaveIdentifier,
+            CitationGroupTag.AlternativeName,
         ):
             yield f"multiple {tag_type} tags"
 

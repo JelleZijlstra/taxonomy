@@ -595,7 +595,7 @@ def simplify_string(
         .replace("&nbsp;", " ")
     )
     text = re.sub(r"^\d+", "", text)
-    text = re.sub(r"</?(b|i|strong|em|sub|sup|p|br ?|scp)/?>", "", text)
+    text = re.sub(r"</?(b|i|italic|strong|em|sub|sup|p|br ?|scp)/?>", "", text)
     text = re.sub(r"[\.,_\\]", "", text)
     text = unidecode.unidecode(text)
     text = re.sub(r"[\-—–]+", "-", text).replace(":", "")

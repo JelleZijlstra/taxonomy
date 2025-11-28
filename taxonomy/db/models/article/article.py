@@ -65,6 +65,7 @@ from taxonomy.db.models.person import (
     get_new_authors_list,
 )
 
+from . import jstor_db
 from .folder_tree import FolderTree
 
 T = TypeVar("T", bound="Article")
@@ -503,6 +504,7 @@ class Article(BaseModel):
             "recompute_authors_from_doi": self.recompute_authors_from_doi,
             "recompute_authors_from_jstor": self.recompute_authors_from_jstor,
             "print_doi_information": self.print_doi_information,
+            "print_jstor_information": self.print_jstor_information,
             "print_pubmed_information": self.print_pubmed_esummary,
             "print_pmc_information": self.print_pmc_information,
             "print_pubmed_esummary": self.print_pubmed_esummary,
@@ -1357,6 +1359,34 @@ class Article(BaseModel):
         for lsid in self.get_tags(self.tags, ArticleTag.LSIDArticle):
             data = zoobank.get_zoobank_data_for_article(lsid.text)
             pprint.pprint(data, sort_dicts=False)
+
+    def print_jstor_information(self) -> None:
+        # Prefer explicit JSTOR tag; fall back to DOI if it's a JSTOR DOI
+        jstor_id = self.get_identifier(ArticleTag.JSTOR)
+        row = None
+        used = None
+        if jstor_id:
+            doi = f"10.2307/{jstor_id}"
+            row = jstor_db.get_by_ithaka_doi(doi)
+            used = doi
+        elif self.doi and self.doi.startswith("10.2307/"):
+            row = jstor_db.get_by_ithaka_doi(self.doi)
+            used = self.doi
+        if row is None and self.citation_group is not None and self.title:
+            cand = jstor_db.find_best_jstor_match(
+                journal_name=self.citation_group.name,
+                volume=self.volume,
+                title=self.title,
+            )
+            if cand is not None:
+                print(f"Best JSTOR candidate (sim={cand.similarity:.2f}):")
+                row = cand.row
+        if row is None:
+            print("No JSTOR information found in local database")
+            return
+        if used:
+            print(f"JSTOR record for {used}:")
+        pprint.pprint(row, sort_dicts=False)
 
     def maybe_remove_corrupt_doi(self) -> None:
         if self.doi is None:

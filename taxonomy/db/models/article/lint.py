@@ -33,6 +33,7 @@ from taxonomy.db.models.issue_date import IssueDate
 from taxonomy.db.models.lint import IgnoreLint, Lint
 from taxonomy.db.models.person import AuthorTag, is_more_specific_than
 
+from . import jstor_db
 from .article import Article, ArticleComment, ArticleTag, PresenceStatus
 from .name_parser import get_name_parser
 
@@ -278,6 +279,7 @@ SOURCE_PRIORITY = {
         DateSource.internal,
         DateSource.doi_published_print,
         DateSource.doi_published,
+        DateSource.jstor,
     ],
     True: [
         DateSource.decision,
@@ -286,6 +288,7 @@ SOURCE_PRIORITY = {
         DateSource.doi_published,
         DateSource.doi_published_online,
         DateSource.doi_published_print,
+        DateSource.jstor,
     ],
 }
 
@@ -1522,6 +1525,141 @@ def journal_specific_cleanup(art: Article, cfg: LintConfig) -> Iterable[str]:
             art.issue = None
         else:
             yield message
+
+
+def _format_issn(issn: str | None) -> str | None:
+    if issn is None:
+        return None
+    issn = issn.strip()
+    if re.fullmatch(r"\d{4}-\d{3}[\dX]", issn):
+        return issn
+    if re.fullmatch(r"\d{7}[\dX]", issn):
+        return f"{issn[:4]}-{issn[4:]}"
+    return None
+
+
+@LINT.add("verify_jstor")
+def verify_jstor(art: Article, cfg: LintConfig) -> Iterable[str]:
+    # Only for journal articles with a JSTOR id
+    tags = list(art.get_tags(art.tags, ArticleTag.JSTOR))
+    if not tags:
+        return
+    jstor_id = tags[0].text
+    row = jstor_db.get_by_ithaka_doi(f"10.2307/{jstor_id}")
+    if row is None:
+        return
+    # Issue/volume
+    vol = row.get("issue_volume")
+    if vol and art.volume and vol.replace("/", "-") != art.volume:
+        yield f"JSTOR volume {vol!r} does not match {art.volume!r}"
+    iss = row.get("issue_number")
+    if iss and art.issue and iss.replace("/", "-") != art.issue:
+        yield f"JSTOR issue {iss!r} does not match {art.issue!r}"
+    # Compare journal metadata if we have a citation group
+    if art.citation_group is not None:
+        cg = art.citation_group
+        journal_name = (row.get("is_part_of") or "").strip()
+        if (
+            row["content_type"] != "book"
+            and journal_name
+            and not cg_matches(journal_name, cg)
+        ):
+            yield (
+                f"JSTOR journal name {journal_name!r} does not match citation group {cg.name!r}"
+            )
+        # ISSNs
+        issn_print = _format_issn(row.get("identifiers_print_issn"))
+        issn_online = _format_issn(row.get("identifiers_online_issn"))
+        if issn_print:
+            tag = CitationGroupTag.ISSN(issn_print)
+            if tag not in cg.tags:
+                msg = f"adding print ISSN {issn_print} from JSTOR"
+                if cfg.autofix:
+                    print(f"{cg}: {msg}")
+                    cg.add_tag(tag)
+                else:
+                    yield msg
+        if issn_online:
+            tag = CitationGroupTag.ISSNOnline(issn_online)
+            if tag not in cg.tags:
+                msg = f"adding online ISSN {issn_online} from JSTOR"
+                if cfg.autofix:
+                    print(f"{cg}: {msg}")
+                    cg.add_tag(tag)
+                else:
+                    yield msg
+    # Title
+    if art.title:
+        jt = (row.get("title") or "").strip()
+        if jt:
+            art_t = art.title.replace('"', "")
+            art_t = helpers.simplify_string(art_t, clean_words=False)
+            jt = jt.split(" / ")[0].replace('"', "")
+            jt_s = helpers.simplify_string(jt, clean_words=False)
+            if art_t and jt_s and art_t != jt_s:
+                dist = Levenshtein.distance(art_t, jt_s)
+                norm = dist / (len(art_t) + len(jt_s) + 1)
+                if not LINT.is_ignoring_lint(art, "verify_jstor"):
+                    getinput.diff_strings(art_t, jt_s)
+                yield f"JSTOR title mismatch (norm_dist={norm:.2f}): {jt!r}"
+    # Published date -> PublicationDate tag
+    pub_date = (row.get("published_date") or "").strip()
+    if pub_date:
+        # ending -0, -1, -2 appears to mean a day starting with that digit
+        pub_date = re.sub(r"-\d$", r"", pub_date)
+        has_same = any(
+            isinstance(t, ArticleTag.PublicationDate)
+            and t.source is DateSource.jstor
+            and t.date == pub_date
+            for t in art.tags
+        )
+        if not has_same:
+            tag = ArticleTag.PublicationDate(DateSource.jstor, pub_date)
+            msg = f"adding PublicationDate {pub_date} from JSTOR"
+            if cfg.autofix:
+                print(f"{art}: {msg}")
+                art.add_tag(tag)
+            else:
+                yield msg
+
+
+@LINT.add("find_jstor")
+def find_jstor(art: Article, cfg: LintConfig) -> Iterable[str]:
+    # Try to infer JSTOR id from local DB by journal+volume+title
+    if art.has_tag(ArticleTag.JSTOR):
+        return
+    if art.type is not ArticleType.JOURNAL:
+        return
+    if art.citation_group is None or not art.title:
+        return
+    # Volume helps substantially; skip if missing
+    volume = art.volume
+    cg = art.citation_group
+    cand = jstor_db.find_best_jstor_match(
+        journal_name=cg.name, volume=volume, title=art.title
+    )
+    if cand is None or cand.similarity < 0.75:
+        return
+    row = cand.row
+    it_doi = row.get("ithaka_doi")
+    if not it_doi or not isinstance(it_doi, str) or not it_doi.startswith("10.2307/"):
+        return
+    jstor_id = it_doi.split("/", 1)[1]
+    # Year sanity check if available
+    pd = (row.get("published_date") or "")[:4]
+    if pd.isdigit() and art.numeric_year():
+        if abs(int(pd) - art.numeric_year()) > 2:
+            if cfg.verbose:
+                print(
+                    f"{art}: JSTOR candidate rejected due to year mismatch: {pd} vs {art.numeric_year()}"
+                )
+            return
+    msg = f"inferred JSTOR id {jstor_id} (sim={cand.similarity:.2f}) via journal/volume/title"
+    if cfg.autofix and not LINT.is_ignoring_lint(art, "find_jstor"):
+        print(f"{art}: {msg}")
+        art.add_tag(ArticleTag.JSTOR(jstor_id))
+    else:
+        yield msg
 
 
 def should_not_have_issue(art: Article) -> bool:
@@ -2975,10 +3113,11 @@ def get_cg_by_name(name: str) -> CitationGroup | None:
 
 
 def cg_matches(journal_name: str, cg: CitationGroup) -> bool:
-    if cg.name.casefold() == journal_name.casefold().rstrip("."):
-        return True
-    existing_cg = get_cg_by_name(journal_name)
-    if existing_cg is cg:
+    for cg_name in cg.get_possible_names():
+        if cg_name.casefold() == journal_name.casefold().rstrip("."):
+            return True
+    cg_by_name = get_cg_by_name(journal_name)
+    if cg_by_name is not None and cg_by_name.id == cg.id:
         return True
     return False
 

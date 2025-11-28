@@ -549,6 +549,12 @@ class CitationGroup(BaseModel):
                 if not article_lsid_has_valid_data(tag.text):
                     yield art, tag.text
 
+    def get_possible_names(self) -> Iterable[str]:
+        yield self.name
+        for tag in self.tags:
+            if isinstance(tag, CitationGroupTag.AlternativeName):
+                yield tag.text
+
     def _display_nams(self, nams: Iterable["models.Name"], depth: int = 0) -> None:
         for nam in sorted(nams, key=lambda nam: nam.sort_key()):
             # Make it easier to see names that don't have a citation yet
@@ -640,3 +646,5 @@ class CitationGroupTag(adt.ADT):
 
     MustHaveIdentifier(identifier=ArticleIdentifier, min_year=NotRequired[int], max_year=NotRequired[int], tag=34)  # type: ignore[name-defined]
     MayHaveIdentifier(identifier=ArticleIdentifier, min_year=NotRequired[int], max_year=NotRequired[int], tag=35)  # type: ignore[name-defined]
+
+    AlternativeName(text=Managed, comment=NotRequired[Markdown], tag=36)  # type: ignore[name-defined]

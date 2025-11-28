@@ -1051,6 +1051,7 @@ class DateSource(enum.IntEnum):
     doi_published_other = 5
     doi_published = 6
     decision = 7  # decision when there are conflicting tags
+    jstor = 8  # JSTOR database
 
 
 class PhylogeneticDefinitionType(enum.IntEnum):
