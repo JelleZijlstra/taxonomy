@@ -9,6 +9,7 @@ from . import schema
 
 HESPEROMYS_ROOT = Path("/Users/jelle/py/hesperomys")
 STATIC_DIR = Path(__file__).parent / "static"
+GAME_DATA_DIR = Path(__file__).parent / "game_data"
 
 
 @lru_cache
@@ -50,6 +51,8 @@ def make_app(build_root: str | None = None) -> web.Application:
     schema.validate_no_conflicting_model_fields(schema.schema)
     GraphQLView.attach(app, schema=schema.schema, graphiql=True)
     app.router.add_static("/static", hesperomys_dir / "build" / "static")
+    # Serve pre-generated game data files
+    app.router.add_static("/games/data", GAME_DATA_DIR)
     app.add_routes([web.get("/favicon.ico", favicon_handler)])
 
     # Delegate everything else to React
