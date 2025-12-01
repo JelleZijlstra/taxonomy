@@ -208,6 +208,29 @@ def choose_one_by_name(
                 return decoded
 
 
+def _matches_prefix_with_nonascii_wildcards(string: str, query: str) -> bool:
+    """Return True if 'string' starts with 'query', where '*' in query matches
+    exactly one non-ASCII character (codepoint >= 128) in string.
+
+    Examples:
+    - query 'C*' matches 'Cæ', 'Cé', but not 'Ca'.
+    - query 'Zo*logy' matches 'Zoölogy', 'Zoölogy', etc.
+
+    """
+    if "*" not in query:
+        return string.startswith(query)
+    if len(string) < len(query):
+        return False
+    for i, qch in enumerate(query):
+        sch = string[i]
+        if qch == "*":
+            if ord(sch) < 128:
+                return False
+        elif sch != qch:
+            return False
+    return True
+
+
 class _Completer(prompt_toolkit.completion.Completer):
     def __init__(self, strings: Iterable[str]) -> None:
         self.strings = sorted(strings)
@@ -220,7 +243,7 @@ class _Completer(prompt_toolkit.completion.Completer):
         # This might be faster with a prefix tree but I'm lazy.
         text = document.text
         for string in self.strings:
-            if string.startswith(text):
+            if _matches_prefix_with_nonascii_wildcards(string, text):
                 yield prompt_toolkit.completion.Completion(string[len(text) :])
 
 
@@ -248,13 +271,13 @@ class _CallbackCompleter(prompt_toolkit.completion.Completer):
     def _get_unsorted_completions(self, query: str) -> Iterable[str]:
         num_yielded = 0
         for string in self.strings:
-            if string.startswith(query):
+            if _matches_prefix_with_nonascii_wildcards(string, query):
                 yield string
                 num_yielded += 1
                 if num_yielded >= self.max_completions:
                     return
         for string in self.lazy_strings():
-            if string.startswith(query):
+            if _matches_prefix_with_nonascii_wildcards(string, query):
                 yield string
                 num_yielded += 1
                 if num_yielded >= self.max_completions:

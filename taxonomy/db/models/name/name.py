@@ -25,7 +25,6 @@ from typing import (
 
 from clirm import DoesNotExist, Field, Query
 
-import taxonomy
 from taxonomy import adt, events, getinput, parsing
 from taxonomy.apis import bhl
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
@@ -716,7 +715,28 @@ class Name(BaseModel):
             query = self.root_name
         if literal:
             query = f'"{query}"'
-        taxonomy.shell.interactive_search(query, max_year=self.valid_numeric_year())
+        from taxonomy.shell import interactive_search
+
+        interactive_search(query, max_year=self.valid_numeric_year())
+
+    def find_older_usages_auto(self) -> None:
+        if self.corrected_original_name is not None:
+            query = f'"{self.corrected_original_name}"'
+        else:
+            query = f'"{self.root_name}"'
+        max_year = self.numeric_year() - 1
+        from taxonomy.search import search
+
+        results = search(query, year_max=max_year)
+        if not results:
+            print(f"{self}: no older usages found")
+            return
+        earliest = min(results, key=lambda hit: hit.year or 100000)
+        article = Article(earliest.article_id)
+        getinput.print_header(self)
+        print(f"{self}: found older usage in {article}: {earliest}")
+        article.display_classification_entries()
+        article.edit()
 
     def get_classification_entries(self) -> Query[ClassificationEntry]:
         return ClassificationEntry.select_valid().filter(

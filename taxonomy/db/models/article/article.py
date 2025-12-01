@@ -493,6 +493,7 @@ class Article(BaseModel):
             "ce_edit": self.ce_edit,
             "missing_ce_pages": self.missing_ce_pages,
             "edit_all_at_page": self.edit_all_at_page,
+            "find_earlier_usages": self.find_earlier_usages,
         }
 
     def get_adt_callbacks(self) -> getinput.CallbackMap:
@@ -1085,10 +1086,14 @@ class Article(BaseModel):
             return 0
         pages = text_path.read_text().split("\x0c")
         year = self.valid_numeric_year()
-        # Import locally to avoid any potential import cycles
-
         _search.replace_article_pages(self.id, pages=pages, year=year)
         return len(pages)
+
+    def find_earlier_usages(self) -> None:
+        for nam in models.name.name.get_ordered_names(self.get_new_names()):
+            if nam.original_citation != self:
+                continue
+            nam.find_older_usages_auto()
 
     # Authors
 
