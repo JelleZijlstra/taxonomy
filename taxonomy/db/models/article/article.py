@@ -493,7 +493,6 @@ class Article(BaseModel):
             "ce_edit": self.ce_edit,
             "missing_ce_pages": self.missing_ce_pages,
             "edit_all_at_page": self.edit_all_at_page,
-            "find_earlier_usages": self.find_earlier_usages,
         }
 
     def get_adt_callbacks(self) -> getinput.CallbackMap:
@@ -541,6 +540,7 @@ class Article(BaseModel):
                 self
             ),
             "display_raw_pages": self.display_raw_pages,
+            "find_earlier_usages": self.find_earlier_usages,
         }
 
     def ce_edit(self) -> None:
