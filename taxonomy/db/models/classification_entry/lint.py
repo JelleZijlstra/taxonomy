@@ -425,7 +425,7 @@ class CandidateName:
             NomenclatureStatus.preoccupied,
         ):
             score += 1
-        if self.name.nomenclature_status is (NomenclatureStatus.misidentification):
+        if self.name.nomenclature_status is NomenclatureStatus.misidentification:
             score += 3
         if self.name.nomenclature_status in (
             NomenclatureStatus.incorrect_subsequent_spelling,

@@ -1132,8 +1132,8 @@ def normalize_root_name_for_homonymy(
     root_name = re.sub(r"iarum$", "arum", root_name)
     # "fasciiventris"/"fasciventris" omitted for now
     # 58.15. presence or absence of -i before a suffix or termination (e.g. timorensis, timoriensis; comstockana, comstockiana)
-    root_name = re.sub(r"iensis$", "ensis", root_name)
-    root_name = re.sub(r"ian(us|a)$", "anus", root_name)
+    root_name = re.sub(r"iens(es|e)$", "ensis", root_name)
+    root_name = re.sub(r"ian(us|um|a)$", "anus", root_name)
     # Adding one: "monticola" vs. "monticolus", where one is interpreted as an
     # adjective and the other as a noun in apposition.
     root_name = re.sub(r"(a|um)$", "us", root_name)
