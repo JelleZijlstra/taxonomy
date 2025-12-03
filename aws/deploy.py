@@ -103,6 +103,21 @@ def deploy_taxonomy(options: Options) -> None:
     )
 
 
+def deploy_game_data(options: Options) -> None:
+    """Upload generated hsweb game_data files to the server.
+
+    Expects locally generated files in `hsweb/game_data/` within the taxonomy repo.
+    """
+    local_dir = options.taxonomy_repo / "hsweb" / "game_data"
+    if not local_dir.exists():
+        print(f"# {local_dir} not found; skipping game_data upload")
+        return
+    # Ensure parent directory exists on the server, then copy the whole directory.
+    run_ssh(options, "mkdir -p /home/ec2-user/taxonomy/hsweb")
+    # Copying the directory into the parent so it lands at hsweb/game_data on the server.
+    run_scp(options, local_dir, "/home/ec2-user/taxonomy/hsweb", is_directory=True)
+
+
 def restart(options: Options, *, kill: bool = True, port: int = 80) -> None:
     if kill:
         run_ssh(options, "sudo pkill -f hsweb")
@@ -131,6 +146,7 @@ def full_deploy(options: Options, version: str) -> None:
     run_ssh(options, "mv /home/ec2-user/staging/* /home/ec2-user/")
     deploy_hesperomys(options)
     deploy_taxonomy(options)
+    deploy_game_data(options)
     restart(options)
 
 
@@ -138,6 +154,7 @@ def update_code(options: Options) -> None:
     build_hesperomys(options)
     deploy_hesperomys(options)
     deploy_taxonomy(options)
+    deploy_game_data(options)
     restart(options)
 
 

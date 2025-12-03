@@ -406,9 +406,8 @@ Within the U.S. there are a few special cases:
   establishment of local governments, so the boroughs are not as good a fit for the
   database as counties are in the rest of the U.S.
 - [Hawaii](/r/Hawaii) is divided into counties, but these are not currently listed as
-  regions in the database. Creating regions for each island would make more sense, but
-  so far this has not been necessary because Hawaii has very few indigenous vertebrates
-  except for birds.
+  regions in the database. Instead, the database divides the state into regions for each
+  major island.
 
 ## [Oceania](/r/Oceania)
 
