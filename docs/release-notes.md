@@ -4,7 +4,9 @@ Version numbers correspond to Git tags in the
 [backend](https://github.com/JelleZijlstra/taxonomy/) repositories, and to database
 exports released on Zenodo.
 
-# Unreleased
+# 25.12.0 (December 3, 2025)
+
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.17806114.svg)](https://doi.org/10.5281/zenodo.17806114)
 
 - Database
   - Add PubMed identifiers, DOIs, PMC identifiers, and JSTOR identifiers to thousands of
