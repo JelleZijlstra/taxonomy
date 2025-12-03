@@ -13,9 +13,11 @@ exports released on Zenodo.
     the original name
   - Fix some classification entries mapped to the wrong form of a homonymous genus
 - Backend
-  - Validate data consistency against data from PubMed, PMC, JSTOR, and ZooBank
+  - Validate data consistency against data from PubMed, PMC, JSTOR, HDL, and ZooBank
   - Improve consistency checks for matching generic names in classification entries
+  - Add numerous new classification entries and earlier usages of name combinations
 - Frontend
+  - Add https://hesperomys.com/games with some fun games about mammal taxonomy
 
 # 25.11.0 (November 2, 2025)
 
