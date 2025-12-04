@@ -4641,7 +4641,7 @@ def _autoset_original_citation_url(nam: Name) -> None:
     nam.original_citation.display()
     nam.open_url()
     url = getinput.get_line(
-        "URL: ", callbacks=nam.original_citation.get_adt_callbacks()
+        "URL: ", callbacks=nam.original_citation.get_wrapped_adt_callbacks()
     )
     if not url:
         return
@@ -4857,7 +4857,9 @@ def infer_bhl_page(
                         break
                     print(page_obj.page_url)
                     subprocess.check_call(["open", page_obj.page_url])
-                    if getinput.yes_no("confirm? ", callbacks=nam.get_adt_callbacks()):
+                    if getinput.yes_no(
+                        "confirm? ", callbacks=nam.get_wrapped_adt_callbacks()
+                    ):
                         yield from _maybe_add_bhl_page(nam, cfg, page_obj)
                         break
 
@@ -5660,7 +5662,7 @@ def _maybe_add_name_variant(
     else:
         should_autofix = getinput.yes_no(
             f"{nam}: add {nomenclature_status!r} based on {ce}? ",
-            callbacks=nam.get_adt_callbacks(),
+            callbacks=nam.get_wrapped_adt_callbacks(),
         )
     if should_autofix:
         print(f"{nam}: {message}")

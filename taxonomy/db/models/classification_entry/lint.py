@@ -825,7 +825,9 @@ def infer_bhl_page(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
                         break
                     print(page_obj.page_url)
                     subprocess.check_call(["open", page_obj.page_url])
-                    if getinput.yes_no("confirm? ", callbacks=ce.get_adt_callbacks()):
+                    if getinput.yes_no(
+                        "confirm? ", callbacks=ce.get_wrapped_adt_callbacks()
+                    ):
                         yield from _maybe_add_bhl_page(ce, cfg, page_obj)
                         break
 

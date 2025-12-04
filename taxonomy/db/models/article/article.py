@@ -431,7 +431,7 @@ class Article(BaseModel):
         new_title = getinput.edit_by_word(
             self.title or "",
             save_handler=save_handler,
-            callbacks=self.get_adt_callbacks(),
+            callbacks=self.get_wrapped_adt_callbacks(),
         )
         self.title = new_title
 

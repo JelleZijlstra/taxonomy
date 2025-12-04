@@ -387,7 +387,9 @@ class ClassificationEntry(BaseModel):
     def ensure_page_set(self) -> None:
         if self.page is None:
             self.display()
-            self.page = getinput.get_line("page> ", callbacks=self.get_adt_callbacks())
+            self.page = getinput.get_line(
+                "page> ", callbacks=self.get_wrapped_adt_callbacks()
+            )
 
     def add_incorrect_subsequent_spelling_for_genus(self) -> models.Name | None:
         name = self.get_corrected_name()
@@ -604,7 +606,7 @@ class ClassificationEntry(BaseModel):
     def edit_parent(self) -> None:
         print(f"Current parent: {self.parent}")
         parent = self.get_parent_completion(
-            self.article, callbacks=self.get_adt_callbacks()
+            self.article, callbacks=self.get_wrapped_adt_callbacks()
         )
         if parent is not None:
             self.parent = parent

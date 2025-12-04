@@ -434,7 +434,7 @@ class Person(BaseModel):
 
             who()
             new_person = self.getter(None).get_one(
-                callbacks={**obj.get_adt_callbacks(), "who": who}
+                callbacks={**obj.get_wrapped_adt_callbacks(), "who": who}
             )
             if new_person is None:
                 return None, None
@@ -897,7 +897,7 @@ class Person(BaseModel):
                 mouse_support=False,
                 history_key="reassign_references",
                 callbacks={
-                    **self.get_adt_callbacks(),
+                    **self.get_wrapped_adt_callbacks(),
                     "p": lambda: print("s = skip, r = soft redirect, d = display"),
                     "e": self.edit,
                 },

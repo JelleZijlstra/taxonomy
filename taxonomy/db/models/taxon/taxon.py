@@ -1203,7 +1203,7 @@ class Taxon(BaseModel):
             choice = getinput.get_with_completion(
                 ["incertae_sedis", "basal"],
                 message="tag to apply> ",
-                callbacks=self.get_adt_callbacks(),
+                callbacks=self.get_wrapped_adt_callbacks(),
             )
             if choice == "incertae_sedis":
                 for child in self.get_children():

@@ -78,7 +78,7 @@ def get_folder_interactively(callbacks: getinput.CallbackMap = {}) -> Sequence[s
 
 def build_path_with_name(art: Article, *, allow_skip: bool = False) -> list[str]:
     """Build a folder path, using full path names from anywhere."""
-    path = get_folder_interactively(art.get_adt_callbacks())
+    path = get_folder_interactively(art.get_wrapped_adt_callbacks())
     if allow_skip and not path:
         return []
     return build_path(art, path)
@@ -95,7 +95,7 @@ def build_path(art: Article, starting_path: Sequence[str] = ()) -> list[str]:
             options=tree.children,
             disallow_other=True,
             history_key=tuple(path),
-            callbacks=art.get_adt_callbacks(),
+            callbacks=art.get_wrapped_adt_callbacks(),
         )
         if not chosen:
             if path:

@@ -359,7 +359,9 @@ class CitationGroup(BaseModel):
             art.display()
             if not bhl.print_data_for_possible_bhl_url(art.url):
                 continue
-            if not getinput.yes_no("Keep URL? ", callbacks=art.get_adt_callbacks()):
+            if not getinput.yes_no(
+                "Keep URL? ", callbacks=art.get_wrapped_adt_callbacks()
+            ):
                 art.url = None
         for nam in self.get_names():
             nam.display()
@@ -368,7 +370,9 @@ class CitationGroup(BaseModel):
             ):
                 if not bhl.print_data_for_possible_bhl_url(tag.url):
                     continue
-                if not getinput.yes_no("Keep URL? ", callbacks=nam.get_adt_callbacks()):
+                if not getinput.yes_no(
+                    "Keep URL? ", callbacks=nam.get_wrapped_adt_callbacks()
+                ):
                     nam.remove_type_tag(tag)
 
     def make_child(self) -> None:

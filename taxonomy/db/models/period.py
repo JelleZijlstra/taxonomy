@@ -343,7 +343,7 @@ class Period(BaseModel):
                 "period",
                 Period,
                 default_obj=self.min_period,
-                callbacks=self.get_adt_callbacks(),
+                callbacks=self.get_wrapped_adt_callbacks(),
             )
             self.set_period(period)
         else:

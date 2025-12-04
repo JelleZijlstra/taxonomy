@@ -232,7 +232,7 @@ class BaseModel(Model):
 
     def _edit_by_word(self, text: str) -> str:
         callbacks: dict[str, Callable[[], object]] = {
-            **self.get_adt_callbacks(),
+            **self.get_wrapped_adt_callbacks(),
             "reload_helpers": lambda: importlib.reload(helpers),
         }
         return getinput.edit_by_word(text, callbacks=callbacks)
@@ -872,7 +872,7 @@ class BaseModel(Model):
         field_obj = getattr(type(self), field)
         prompt = f"{field}> "
         current_value = getattr(self, field)
-        callbacks = self.get_adt_callbacks()
+        callbacks = self.get_wrapped_adt_callbacks()
         if issubclass(field_obj.type_object, Model):
             return self.get_value_for_foreign_key_field(field, callbacks=callbacks)
         elif isinstance(field_obj, ADTField):
@@ -992,6 +992,19 @@ class BaseModel(Model):
     @classmethod
     def get_interactive_creators(cls) -> dict[str, Callable[[], Any]]:
         return {"n": cls.create_interactively}
+
+    def get_wrapped_adt_callbacks(self) -> getinput.CallbackMap:
+        def _wrap(callback: Callable[[], object]) -> Callable[[], object | None]:
+            def wrapped() -> object | None:
+                try:
+                    return callback()
+                except getinput.StopException:
+                    return None
+
+            return wrapped
+
+        callbacks = self.get_adt_callbacks()
+        return {key: _wrap(cb) for key, cb in callbacks.items()}
 
     def get_adt_callbacks(self) -> getinput.CallbackMap:
         def callback(field: str) -> Callable[[], None]:
@@ -1212,7 +1225,7 @@ class BaseModel(Model):
             options=[],
             message=f"{self}> ",
             disallow_other=True,
-            callbacks=self.get_adt_callbacks(),
+            callbacks=self.get_wrapped_adt_callbacks(),
         )
 
     def edit_until_clean(

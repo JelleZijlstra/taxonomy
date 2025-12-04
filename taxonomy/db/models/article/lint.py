@@ -1152,7 +1152,7 @@ def get_inferred_bhl_page(art: Article, cfg: LintConfig) -> bhl.PossiblePage | N
                 print(page)
                 subprocess.check_call(["open", page.page_url])
 
-        callbacks = {**art.get_adt_callbacks(), "u": open_urls}
+        callbacks = {**art.get_wrapped_adt_callbacks(), "u": open_urls}
         url_to_page = {page.page_url: page for page in possible_pages}
         choice = getinput.choose_one_by_name(list(url_to_page), callbacks=callbacks)
         if choice is None:
@@ -2046,7 +2046,9 @@ def get_num_referencing_tags(
             if not interactive:
                 return existing
             model.display()
-            choice = Article.getter(None).get_one(callbacks=model.get_adt_callbacks())
+            choice = Article.getter(None).get_one(
+                callbacks=model.get_wrapped_adt_callbacks()
+            )
             if choice is None:
                 return existing
             return choice
@@ -3157,7 +3159,9 @@ def infer_issn(art: Article, cfg: LintConfig) -> Iterable[str]:
         )
         if cfg.interactive:
             answer = getinput.yes_no(
-                "Add ISSNs anyway?", default=False, callbacks=art.get_adt_callbacks()
+                "Add ISSNs anyway?",
+                default=False,
+                callbacks=art.get_wrapped_adt_callbacks(),
             )
             if not answer:
                 return

@@ -207,7 +207,7 @@ def infer_bhl_biblio(cg: CitationGroup, cfg: LintConfig) -> Iterable[str]:
 
             data = getinput.choose_one(
                 candidates,
-                callbacks={**cg.get_adt_callbacks(), "open_all": open_all},
+                callbacks={**cg.get_wrapped_adt_callbacks(), "open_all": open_all},
                 history_key=(cg, "infer_bhl_biblio"),
             )
             if data is None:
@@ -225,7 +225,7 @@ def infer_bhl_biblio(cg: CitationGroup, cfg: LintConfig) -> Iterable[str]:
                 print(f"{cg}: {message}")
                 subprocess.check_call(["open", data["TitleURL"]])
                 if not getinput.yes_no(
-                    "Accept anyway? ", callbacks=cg.get_adt_callbacks()
+                    "Accept anyway? ", callbacks=cg.get_wrapped_adt_callbacks()
                 ):
                     return
             else:
