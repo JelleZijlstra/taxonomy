@@ -556,6 +556,9 @@ class ClassificationEntry(BaseModel):
             "merge": self.merge,
             "kerr_subgeneric": self._kerr_subgeneric,
             "diversity": self.diversity,
+            "print_candidate_report": lambda: models.classification_entry.lint.print_candidate_report(
+                self
+            ),
         }
 
     def _kerr_subgeneric(self) -> None:
