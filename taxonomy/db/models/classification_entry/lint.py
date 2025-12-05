@@ -456,6 +456,8 @@ class CandidateName:
             score += 20
         if self.name.original_citation != self.ce.article:
             score += 50
+        if self.name.group is not self.ce.get_group():
+            score += 1
         associated_taxa = Taxon.select_valid().filter(Taxon.base_name == self.name)
         if not any(t.valid_name == corrected_name for t in associated_taxa):
             score += 2
@@ -548,6 +550,9 @@ def get_possible_mapped_names(
         yield from Name.select_valid().filter(
             Name.group == Group.high, Name.corrected_original_name == corrected_name
         )
+        yield from Name.select_valid().filter(
+            Name.group == Group.family, Name.corrected_original_name == corrected_name
+        )
     elif group is Group.family:
         options = (ce.name, corrected_name)
         possibilies = Name.select_valid().filter(
@@ -566,6 +571,9 @@ def get_possible_mapped_names(
                 Name.group == Group.family, Name.root_name == root_name
             )
             yield from possibilies
+        yield from Name.select_valid().filter(
+            Name.group == Group.high, Name.corrected_original_name == corrected_name
+        )
     elif group is Group.genus:
         yield from Name.select_valid().filter(
             Name.group == Group.genus, Name.corrected_original_name == corrected_name
