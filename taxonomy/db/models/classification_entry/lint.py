@@ -194,13 +194,25 @@ def must_have_mapped_name(ce: ClassificationEntry) -> bool:
     return True
 
 
+def _expand_candidates(candidates: Iterable[Name]) -> Iterable[Name]:
+    for nam in candidates:
+        yield nam
+        for tag in (
+            models.name.NameTag.UnavailableVersionOf,
+            models.name.NameTag.SubsequentUsageOf,
+        ):
+            target = nam.get_tag_target(tag)
+            if target is not None:
+                yield target
+
+
 @LINT.add("mapped_name_inference")
 def check_mapped_name_inference(
-    ce: ClassificationEntry, cfg: LintConfig
+    ce: ClassificationEntry, cfg: LintConfig, *, conservative: bool = False
 ) -> Iterable[str]:
     if ce.mapped_name is None:
         return
-    if cfg.experimental:
+    if not conservative:
         candidates = list(
             get_filtered_possible_mapped_names(ce, resolve_variants=False)
         )
@@ -212,6 +224,7 @@ def check_mapped_name_inference(
             else:
                 nam = nam_or_pair
             candidates.append(nam)
+    candidates = list(_expand_candidates(candidates))
     if candidates and ce.mapped_name not in candidates:
         yield f"mapped_name {ce.mapped_name} not in inferred candidates {candidates}"
         if ce.rank.is_synonym:
@@ -446,32 +459,63 @@ class CandidateName:
     _score: int | None = field(init=False, default=None)
 
     def get_score(self) -> int:
+        """Possible improvements:
+
+        - Better homonym differentiation. A couple of genera with homonymous names get
+          wrong scores because their parent taxon is informal (e.g., _Spectrum_ and some
+          others in {Mammalia (Daudin 1802)}). We could perhaps look at the species in
+          the genus (though that risks circularity), or at sister genera.
+        - Better handling of cases where the same name is assigned to different authorities.
+          It's a bit questionable what do here anyway. Example: {Carnivora Africa (Setzer 1971).pdf}
+          has "_Vulpes_ Oken, 1816", but we map it to _Vulpes_ Frisch, 1775 (a valid name), not
+          _Vulpes_ Oken, 1816 (which is unavailable). Maybe we should map it to the Oken name anyway?
+        """
         if self._score is not None:
             return self._score
         score = 0
         corrected_name = self.ce.get_corrected_name()
         if corrected_name is None:
             corrected_name = self.ce.name
+        ce_group = self.ce.get_group()
         if self.name.corrected_original_name != corrected_name:
             score += 20
+
         if self.name.original_citation != self.ce.article:
             score += 50
-        if self.name.group is not self.ce.get_group():
-            score += 1
+        else:
+            mapped_ce = self.name.get_mapped_classification_entry()
+            if mapped_ce is not None and mapped_ce != self.ce:
+                score += 50
+
+        if self.name.group is not ce_group:
+            score += 15
         associated_taxa = Taxon.select_valid().filter(Taxon.base_name == self.name)
         if not any(t.valid_name == corrected_name for t in associated_taxa):
             score += 2
-        if self.ce.year is not None and str(self.name.numeric_year()) != self.ce.year:
+        if self.ce.year is not None and self.ce.year not in [
+            str(self.name.numeric_year()),
+            str(self.name.resolve_variant().numeric_year()),
+        ]:
+            score += 5
+        if self.ce.authority is not None and self.ce.authority not in [
+            self.name.taxonomic_authority(),
+            self.name.resolve_variant().taxonomic_authority(),
+        ]:
             score += 5
 
         # Should help distinguish homonyms
-        if self.ce.parent is not None and self.ce.parent.mapped_name is not None:
-            mapped_parent = self.ce.parent.mapped_name.taxon
-            for derived_field in ("class_", "order", "family"):
-                parent_parent = mapped_parent.get_derived_field(derived_field)
-                my_parent = self.name.taxon.get_derived_field(derived_field)
-                if my_parent != parent_parent:
-                    score += 10
+        associated_ces = [
+            _get_parent_with_mapped_name(self.ce),
+            _get_child_with_mapped_name(self.ce),
+        ]
+        for ce in associated_ces:
+            if ce is not None and ce.mapped_name is not None:
+                mapped_parent = ce.mapped_name.taxon
+                for derived_field in ("class_", "order", "family"):
+                    parent_parent = mapped_parent.get_derived_field(derived_field)
+                    my_parent = self.name.taxon.get_derived_field(derived_field)
+                    if my_parent != parent_parent:
+                        score += 5
         if (
             self.name.group is not Group.family
             and self.name.nomenclature_status
@@ -481,28 +525,26 @@ class CandidateName:
             )
             and self.name.get_date_object() > self.ce.article.get_date_object()
         ):
-            score += 5
+            score += 10
         if (
-            self.ce.authority is not None
-            and self.name.taxonomic_authority() != self.ce.authority
+            self.name.group is Group.family
+            and self.name.original_rank is not self.ce.rank
         ):
             score += 5
-        if self.name.nomenclature_status in (
-            NomenclatureStatus.subsequent_usage,
+        if self.name.nomenclature_status is NomenclatureStatus.misidentification:
+            score += 4
+        elif self.name.nomenclature_status is NomenclatureStatus.subsequent_usage:
+            score += 3
+        elif self.name.nomenclature_status in (
             NomenclatureStatus.name_combination,
             NomenclatureStatus.preoccupied,
-        ):
-            score += 1
-        if self.name.nomenclature_status is NomenclatureStatus.misidentification:
-            score += 3
-        if self.name.nomenclature_status in (
             NomenclatureStatus.incorrect_subsequent_spelling,
             NomenclatureStatus.variant,
             NomenclatureStatus.unjustified_emendation,
         ):
             score += 1
-        if not self.name.nomenclature_status.can_preoccupy():
-            score += 1
+        elif not self.name.nomenclature_status.can_preoccupy():
+            score += 2
         if self.name.group is Group.species:
             if " " in corrected_name:
                 genus_name, *_, root_name = corrected_name.split()
@@ -524,8 +566,46 @@ class CandidateName:
             elif self.name.root_name != corrected_name:
                 score += 2
 
+        if ce_group is Group.species and " " not in corrected_name:  # bare synonym
+            if self.ce.parent is not None and self.ce.parent.mapped_name is not None:
+                try:
+                    ce_parent_species = self.ce.parent.mapped_name.taxon.parent_of_rank(
+                        Rank.species
+                    )
+                except ValueError:
+                    ce_parent_species = None
+            else:
+                ce_parent_species = None
+            try:
+                name_species = self.name.taxon.parent_of_rank(Rank.species)
+            except ValueError:
+                name_species = None
+            if ce_parent_species is not None and name_species is not None:
+                if ce_parent_species != name_species:
+                    score += 5
+
         self._score = score
         return score
+
+
+def _get_parent_with_mapped_name(ce: ClassificationEntry) -> ClassificationEntry | None:
+    parent = ce.parent
+    seen = {ce}
+    while parent is not None:
+        if parent in seen:
+            break
+        seen.add(parent)
+        if parent.mapped_name is not None:
+            return parent
+        parent = parent.parent
+    return None
+
+
+def _get_child_with_mapped_name(ce: ClassificationEntry) -> ClassificationEntry | None:
+    for child in ce.get_children():
+        if child.mapped_name is not None:
+            return child
+    return None
 
 
 def yield_family_names(possibilities: Iterable[Name]) -> Iterable[Name]:

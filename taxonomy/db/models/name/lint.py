@@ -7082,7 +7082,7 @@ def infer_reranking(nam: Name, cfg: LintConfig) -> Iterable[str]:
     best_candidate = min(
         candidates,
         key=lambda other_nam: (
-            other_nam.valid_numeric_year(),
+            other_nam.get_date_object(),
             (
                 -other_nam.original_rank.comparison_value
                 if other_nam.original_rank is not None
@@ -7090,7 +7090,7 @@ def infer_reranking(nam: Name, cfg: LintConfig) -> Iterable[str]:
             ),
         ),
     )
-    if best_candidate.valid_numeric_year() >= nam.valid_numeric_year():
+    if best_candidate.get_date_object() >= nam.get_date_object():
         return
     tag = NameTag.RerankingOf(best_candidate)
     message = f"add RerankingOf tag: {tag}"
