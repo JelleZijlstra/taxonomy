@@ -227,7 +227,9 @@ def check_mapped_name_inference(
     candidates = list(_expand_candidates(candidates))
     if candidates and ce.mapped_name not in candidates:
         yield f"mapped_name {ce.mapped_name} not in inferred candidates {candidates}"
-        if ce.rank.is_synonym:
+        if ce.rank.is_synonym and not LINT.is_ignoring_lint(
+            ce, "mapped_name_inference"
+        ):
             filtered_cands = list(
                 get_filtered_possible_mapped_names(ce, resolve_variants=False)
             )
@@ -496,12 +498,12 @@ class CandidateName:
             str(self.name.numeric_year()),
             str(self.name.resolve_variant().numeric_year()),
         ]:
-            score += 5
+            score += 10
         if self.ce.authority is not None and self.ce.authority not in [
             self.name.taxonomic_authority(),
             self.name.resolve_variant().taxonomic_authority(),
         ]:
-            score += 5
+            score += 10
 
         # Should help distinguish homonyms
         associated_ces = [
@@ -532,7 +534,7 @@ class CandidateName:
         ):
             score += 5
         if self.name.nomenclature_status is NomenclatureStatus.misidentification:
-            score += 4
+            score += 5
         elif self.name.nomenclature_status is NomenclatureStatus.subsequent_usage:
             score += 3
         elif self.name.nomenclature_status in (
@@ -563,6 +565,15 @@ class CandidateName:
                 name_genus_name, *_ = self.name.taxon.valid_name.split()
                 if genus_name != name_genus_name:
                     score += 2
+                name_original_parent = self.name.original_parent
+                ce_parent = self.ce.parent_of_rank(Rank.genus)
+                if (
+                    name_original_parent is not None
+                    and ce_parent is not None
+                    and ce_parent.mapped_name is not None
+                ):
+                    if name_original_parent != ce_parent.mapped_name:
+                        score += 10
             elif self.name.root_name != corrected_name:
                 score += 2
 
