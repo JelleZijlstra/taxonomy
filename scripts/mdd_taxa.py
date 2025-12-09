@@ -608,6 +608,21 @@ class MDDSpecies:
                 "does not match name inferred from 'genus' and 'specificEpithet' columns",
                 expected_sci_name,
             )
+        # Alert if the main common name is also listed among other common names
+        main_cn = (self.row.get("mainCommonName") or "").strip()
+        if main_cn:
+            other_raw = self.row.get("otherCommonNames") or ""
+            if other_raw:
+                parts = [p.strip() for p in other_raw.split("|") if p.strip()]
+                if any(p.casefold() == main_cn.casefold() for p in parts):
+                    cleaned = "|".join(
+                        p for p in parts if p.casefold() != main_cn.casefold()
+                    )
+                    yield self.make_issue(
+                        "otherCommonNames",
+                        "contains mainCommonName; should not duplicate the primary name",
+                        cleaned,
+                    )
         yield from self.lint_distribution_standalone()
 
     def get_countries(self) -> set[str]:
