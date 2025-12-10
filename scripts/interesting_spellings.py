@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from taxonomy.db.constants import AgeClass, NomenclatureStatus, Rank, Status
+from taxonomy.db.models.article.article import Article
 from taxonomy.db.models.classification_entry.ce import ClassificationEntry
 from taxonomy.db.models.name.name import Name
 from taxonomy.db.models.taxon.taxon import Taxon
@@ -23,6 +24,10 @@ def get_extant_mammals() -> list[Taxon]:
         if spec.base_name.status is Status.valid
         and spec.get_derived_field("class_").valid_name == "Mammalia"
     ]
+
+
+def is_major(art: Article) -> bool:
+    return "HMW" in art.name or "Red List" in art.name or "MSW" in art.name
 
 
 @dataclass
@@ -46,6 +51,10 @@ class InterestingName:
         spellings.discard(self.taxon.base_name.root_name)
         return spellings
 
+    def get_major_classifications(self) -> list[ClassificationEntry]:
+        ces = get_relevant_ces(self.taxon.base_name)
+        return [ce for ce in ces if is_major(ce.article) and ce.rank is Rank.species]
+
     def to_csv(self) -> dict[str, str]:
         return {
             "valid_name": self.taxon.valid_name,
@@ -61,6 +70,9 @@ class InterestingName:
                 else ""
             ),
             "reason": self.reason,
+            "major_classifications": "; ".join(
+                repr(ce) for ce in self.get_major_classifications()
+            ),
         }
 
 
@@ -144,6 +156,7 @@ def main() -> None:
                     "year",
                     "citation",
                     "reason",
+                    "major_classifications",
                 ],
             )
             writer.writeheader()
