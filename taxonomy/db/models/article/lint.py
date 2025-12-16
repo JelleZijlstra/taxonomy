@@ -2009,10 +2009,13 @@ def check_must_use_children(art: Article, cfg: LintConfig) -> Iterable[str]:
         )
         if cfg.interactive:
             for ref in refs:
-                if not hasattr(ref, field.name):
-                    continue
+                field_name = field.name
+                if not hasattr(ref, field_name):
+                    field_name = field_name.removesuffix("_id")
+                    if not hasattr(ref, field_name):
+                        continue
                 ref.display()
-                ref.fill_field(field.name)
+                ref.fill_field(field_name)
     for field in Article.derived_fields:
         refs = art.get_derived_field(field.name)
         if not refs:

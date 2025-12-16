@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import time
 import urllib.parse
+from collections import Counter
 from collections.abc import Callable, Iterable
 from functools import lru_cache
 from pathlib import Path
@@ -39,6 +40,7 @@ from taxonomy.db.constants import (
     DateSource,
     Managed,
     Markdown,
+    Rank,
     Regex,
     SourceLanguage,
 )
@@ -1584,6 +1586,16 @@ class Article(BaseModel):
                 print(art.get_authors())
                 art.recompute_authors_from_doi(confirm=False)
                 getinput.flush()
+
+    def ce_diversity(self) -> None:
+        by_rank: Counter[tuple[Rank, bool]] = Counter()
+        for ce in self.get_classification_entries():
+            is_dubious = ce.has_tag(
+                models.classification_entry.ClassificationEntryTag.TreatedAsDubious
+            )
+            by_rank[(ce.rank, is_dubious)] += 1
+        for (rank, is_dubious), count in by_rank.most_common():
+            print(f"{rank.display_name}{' (dubious)' if is_dubious else ''}: {count}")
 
     def display(self, *, full: bool = False) -> None:
         print(self.cite())

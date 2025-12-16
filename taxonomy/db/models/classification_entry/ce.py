@@ -354,11 +354,12 @@ class ClassificationEntry(BaseModel):
             yield from child.all_children()
 
     def diversity(self) -> None:
-        by_rank: Counter[Rank] = Counter()
+        by_rank: Counter[tuple[Rank, bool]] = Counter()
         for child in self.all_children():
-            by_rank[child.rank] += 1
-        for rank, count in by_rank.most_common():
-            print(f"{rank.display_name}: {count}")
+            is_dubious = child.has_tag(ClassificationEntryTag.TreatedAsDubious)
+            by_rank[(child.rank, is_dubious)] += 1
+        for (rank, is_dubious), count in by_rank.most_common():
+            print(f"{rank.display_name}{' (dubious)' if is_dubious else ''}: {count}")
 
     def display(
         self,

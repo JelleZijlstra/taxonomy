@@ -3188,6 +3188,10 @@ def check_type(nam: Name, cfg: LintConfig) -> Iterable[str]:
         return
     if not nam.type.taxon.is_child_of(nam.taxon):
         yield f"type {nam.type} is not a child of {nam.taxon}"
+    if nam.type.get_date_object() > nam.get_date_object() and not nam.has_type_tag(
+        TypeTag.GenusCoelebs
+    ):
+        yield f"type {nam.type} ({nam.type.get_date_object()}) is younger than {nam} ({nam.get_date_object()})"
 
     if (
         (target := nam.type.get_tag_target(NameTag.UnavailableVersionOf)) is not None

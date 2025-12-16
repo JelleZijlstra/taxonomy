@@ -31,6 +31,7 @@ SIMPLE_LATITUDE = r"([-−]?[\d\.]+)?"
 LATITUDE = rf"\({SIMPLE_LATITUDE} (to|or) {SIMPLE_LATITUDE}\)|{SIMPLE_LATITUDE}|"
 PERMISSIVE_RANGES = True
 CHECK_GEOGRAPHY = False
+USE_ISO_3166 = False
 
 
 RANKS = [
@@ -154,304 +155,632 @@ REALMS = {
 }
 
 
-class CountryInfo(TypedDict):
+@dataclass
+class CountryInfo:
+    name: str
     continents: set[str]
     realms: set[str]
+    code: str | None = None
+    containing_code: str | None = None
+
+    def __post_init__(self) -> None:
+        if (
+            self.code is None
+            and self.containing_code is None
+            and self.name not in {"Domesticated", "NA"}
+        ):
+            raise ValueError("Either code or containing_code must be set")
 
 
-COUNTRIES: dict[str, CountryInfo] = {
-    # The MDD thinks Alaska is a country
-    "Alaska": {"continents": {"North America"}, "realms": {"Nearctic"}},
-    "Afghanistan": {"continents": {"Asia"}, "realms": {"Palearctic"}},
-    "Albania": {"continents": {"Europe"}, "realms": {"Palearctic"}},
-    "Algeria": {"continents": {"Africa"}, "realms": {"Palearctic"}},
-    "American Samoa": {"continents": {"Oceania"}, "realms": {"Oceania"}},
-    "Andaman and Nicobar Islands": {"continents": {"Asia"}, "realms": {"Indomalaya"}},
-    "Angola": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
-    "Anguilla": {"continents": {"North America"}, "realms": {"Neotropic"}},
-    "Antarctica": {"continents": {"Antarctica"}, "realms": set()},
-    "Antigua and Barbuda": {"continents": {"North America"}, "realms": {"Neotropic"}},
-    "Argentina": {"continents": {"South America"}, "realms": {"Neotropic"}},
-    "Armenia": {"continents": {"Asia"}, "realms": {"Palearctic"}},
-    "Aruba": {"continents": {"South America"}, "realms": {"Neotropic"}},
-    "Ascension": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
-    "Australia": {"continents": {"Oceania"}, "realms": {"Australasia"}},
-    "Austria": {"continents": {"Europe"}, "realms": {"Palearctic"}},
-    "Azerbaijan": {"continents": {"Asia"}, "realms": {"Palearctic"}},
-    "Azores": {"continents": {"Europe"}, "realms": {"Palearctic"}},
-    "Bahamas": {"continents": {"North America"}, "realms": {"Neotropic"}},
-    "Bahrain": {"continents": {"Asia"}, "realms": {"Afrotropic"}},
-    "Bangladesh": {"continents": {"Asia"}, "realms": {"Indomalaya"}},
-    "Barbados": {"continents": {"North America"}, "realms": {"Neotropic"}},
-    "Belarus": {"continents": {"Europe"}, "realms": {"Palearctic"}},
-    "Belgium": {"continents": {"Europe"}, "realms": {"Palearctic"}},
-    "Belize": {"continents": {"North America"}, "realms": {"Neotropic"}},
-    "Benin": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
-    "Bermuda": {"continents": {"North America"}, "realms": {"Neotropic"}},
-    "Bhutan": {"continents": {"Asia"}, "realms": {"Indomalaya"}},
-    "Bolivia": {"continents": {"South America"}, "realms": {"Neotropic"}},
-    "Bonaire": {"continents": {"South America"}, "realms": {"Neotropic"}},
-    "Bosnia and Herzegovina": {"continents": {"Europe"}, "realms": {"Palearctic"}},
-    "Botswana": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
-    "Bouvet Island": {"continents": set(), "realms": set()},
-    "Brazil": {"continents": {"South America"}, "realms": {"Neotropic"}},
-    "British Virgin Islands": {
-        "continents": {"North America"},
-        "realms": {"Neotropic"},
-    },
-    "Brunei": {"continents": {"Asia"}, "realms": {"Indomalaya"}},
-    "Bulgaria": {"continents": {"Europe"}, "realms": {"Palearctic"}},
-    "Burkina Faso": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
-    "Burundi": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
-    "Cape Verde": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
-    "Cambodia": {"continents": {"Asia"}, "realms": {"Indomalaya"}},
-    "Cameroon": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
-    "Canada": {"continents": {"North America"}, "realms": {"Nearctic"}},
-    "Canary Islands": {"continents": {"Africa"}, "realms": {"Palearctic"}},
-    "Cayman Islands": {"continents": {"North America"}, "realms": {"Neotropic"}},
-    "Central African Republic": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
-    "Chad": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
-    "Chile": {"continents": {"South America"}, "realms": {"Neotropic"}},
-    "China": {"continents": {"Asia"}, "realms": {"Palearctic", "Indomalaya"}},
-    "Christmas Island": {"continents": {"Asia"}, "realms": {"Indomalaya"}},
-    "Cocos Islands": {"continents": {"Asia"}, "realms": {"Indomalaya"}},
-    "Colombia": {"continents": {"South America"}, "realms": {"Neotropic"}},
-    "Comoros": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
-    "Cook Islands": {"continents": {"Oceania"}, "realms": {"Oceania"}},
-    "Costa Rica": {"continents": {"North America"}, "realms": {"Neotropic"}},
-    "Croatia": {"continents": {"Europe"}, "realms": {"Palearctic"}},
-    "Cuba": {"continents": {"North America"}, "realms": {"Neotropic"}},
-    "Curaçao": {"continents": {"South America"}, "realms": {"Neotropic"}},
-    "Cyprus": {"continents": {"Asia"}, "realms": {"Palearctic"}},
-    "Czech Republic": {"continents": {"Europe"}, "realms": {"Palearctic"}},
-    "Cote d'Ivoire": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
-    "Democratic Republic of the Congo": {
-        "continents": {"Africa"},
-        "realms": {"Afrotropic"},
-    },
-    "Denmark": {"continents": {"Europe"}, "realms": {"Palearctic"}},
-    "Djibouti": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
-    "Domesticated": {"continents": {"Domesticated"}, "realms": {"Domesticated"}},
-    "Dominica": {"continents": {"North America"}, "realms": {"Neotropic"}},
-    "Dominican Republic": {"continents": {"North America"}, "realms": {"Neotropic"}},
-    "East Timor": {"continents": {"Asia"}, "realms": {"Australasia"}},
-    "Ecuador": {"continents": {"South America"}, "realms": {"Neotropic"}},
-    "Egypt": {"continents": {"Africa", "Asia"}, "realms": {"Palearctic"}},
-    "El Salvador": {"continents": {"North America"}, "realms": {"Neotropic"}},
-    "Equatorial Guinea": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
-    "Eritrea": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
-    "Estonia": {"continents": {"Europe"}, "realms": {"Palearctic"}},
-    "Eswatini": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
-    "Ethiopia": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
-    "Falkland Islands": {"continents": {"South America"}, "realms": {"Neotropic"}},
-    "Faroe": {"continents": {"Europe"}, "realms": {"Palearctic"}},
-    "Fiji": {"continents": {"Oceania"}, "realms": {"Oceania"}},
-    "Finland": {"continents": {"Europe"}, "realms": {"Palearctic"}},
-    "France": {"continents": {"Europe"}, "realms": {"Palearctic"}},
-    "French Guiana": {"continents": {"South America"}, "realms": {"Neotropic"}},
-    "French Polynesia": {"continents": {"Oceania"}, "realms": {"Oceania"}},
-    "Gabon": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
-    "Galápagos Islands": {"continents": {"South America"}, "realms": {"Neotropic"}},
-    "Gambia": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
-    "Georgia": {"continents": {"Asia"}, "realms": {"Palearctic"}},
-    "Germany": {"continents": {"Europe"}, "realms": {"Palearctic"}},
-    "Ghana": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
-    "Greece": {"continents": {"Europe"}, "realms": {"Palearctic"}},
-    "Greenland": {"continents": {"North America"}, "realms": {"Nearctic"}},
-    "Grenada": {"continents": {"North America"}, "realms": {"Neotropic"}},
-    "Guadeloupe": {"continents": {"North America"}, "realms": {"Neotropic"}},
-    "Guam": {"continents": {"Oceania"}, "realms": {"Oceania"}},
-    "Guatemala": {"continents": {"North America"}, "realms": {"Neotropic"}},
-    "Guinea": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
-    "Guinea-Bissau": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
-    "Guyana": {"continents": {"South America"}, "realms": {"Neotropic"}},
-    "Haiti": {"continents": {"North America"}, "realms": {"Neotropic"}},
-    "Hawai'i": {"continents": {"Oceania"}, "realms": {"Oceania"}},
-    "Honduras": {"continents": {"North America"}, "realms": {"Neotropic"}},
-    "Hungary": {"continents": {"Europe"}, "realms": {"Palearctic"}},
-    "Iceland": {"continents": {"Europe"}, "realms": {"Palearctic"}},
-    "India": {"continents": {"Asia"}, "realms": {"Indomalaya"}},
-    "Indonesia": {
-        "continents": {"Asia", "Oceania"},
-        "realms": {"Indomalaya", "Australasia"},
-    },
-    "Iran": {"continents": {"Asia"}, "realms": {"Palearctic"}},
-    "Iraq": {"continents": {"Asia"}, "realms": {"Palearctic"}},
-    "Ireland": {"continents": {"Europe"}, "realms": {"Palearctic"}},
-    "Israel": {"continents": {"Asia"}, "realms": {"Palearctic"}},
-    "Italy": {"continents": {"Europe"}, "realms": {"Palearctic"}},
-    "Jamaica": {"continents": {"North America"}, "realms": {"Neotropic"}},
-    "Japan": {"continents": {"Asia"}, "realms": {"Palearctic"}},
-    "Jordan": {"continents": {"Asia"}, "realms": {"Palearctic"}},
-    "Kazakhstan": {"continents": {"Asia"}, "realms": {"Palearctic"}},
-    "Kenya": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
-    "French Southern and Antarctic Lands": {
-        "continents": {"Antarctica"},
-        "realms": set(),
-    },
-    "Kiribati": {"continents": {"Oceania"}, "realms": {"Oceania"}},
-    "Kosovo": {"continents": {"Europe"}, "realms": {"Palearctic"}},
-    "Kuwait": {"continents": {"Asia"}, "realms": {"Palearctic"}},
-    "Kyrgyzstan": {"continents": {"Asia"}, "realms": {"Palearctic"}},
-    "Laos": {"continents": {"Asia"}, "realms": {"Indomalaya"}},
-    "Latvia": {"continents": {"Europe"}, "realms": {"Palearctic"}},
-    "Lebanon": {"continents": {"Asia"}, "realms": {"Palearctic"}},
-    "Lesotho": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
-    "Liberia": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
-    "Libya": {"continents": {"Africa"}, "realms": {"Palearctic"}},
-    "Liechtenstein": {"continents": {"Europe"}, "realms": {"Palearctic"}},
-    "Lithuania": {"continents": {"Europe"}, "realms": {"Palearctic"}},
-    "Luxembourg": {"continents": {"Europe"}, "realms": {"Palearctic"}},
-    "Madagascar": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
-    "Madeira": {"continents": {"Africa"}, "realms": {"Palearctic"}},
-    "Malawi": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
-    "Malaysia": {"continents": {"Asia"}, "realms": {"Indomalaya"}},
-    "Maldives": {"continents": {"Asia"}, "realms": {"Indomalaya"}},
-    "Mali": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
-    "Malta": {"continents": {"Europe"}, "realms": {"Palearctic"}},
-    "Marshall Islands": {"continents": {"Oceania"}, "realms": {"Oceania"}},
-    "Martinique": {"continents": {"North America"}, "realms": {"Neotropic"}},
-    "Mauritania": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
-    "Mauritius": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
-    "Mayotte": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
-    "Mexico": {"continents": {"North America"}, "realms": {"Nearctic", "Neotropic"}},
-    "Micronesia": {"continents": {"Oceania"}, "realms": {"Oceania"}},
-    "Moldova": {"continents": {"Europe"}, "realms": {"Palearctic"}},
-    "Mongolia": {"continents": {"Asia"}, "realms": {"Palearctic"}},
-    "Montenegro": {"continents": {"Europe"}, "realms": {"Palearctic"}},
-    "Montserrat": {"continents": {"North America"}, "realms": {"Neotropic"}},
-    "Morocco": {"continents": {"Africa"}, "realms": {"Palearctic"}},
-    "Mozambique": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
-    "Myanmar": {"continents": {"Asia"}, "realms": {"Indomalaya"}},
-    "Namibia": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
-    "Nauru": {"continents": {"Oceania"}, "realms": {"Oceania"}},
-    "Nepal": {"continents": {"Asia"}, "realms": {"Indomalaya", "Palearctic"}},
-    "Netherlands": {"continents": {"Europe"}, "realms": {"Palearctic"}},
-    "New Caledonia": {"continents": {"Oceania"}, "realms": {"Australasia"}},
-    "New Zealand": {"continents": {"Oceania"}, "realms": {"Australasia"}},
-    "Nicaragua": {"continents": {"North America"}, "realms": {"Neotropic"}},
-    "Nicobar Islands": {"continents": {"Asia"}, "realms": {"Indomalaya"}},
-    "Niger": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
-    "Nigeria": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
-    "Niue": {"continents": {"Oceania"}, "realms": {"Oceania"}},
-    "Norfolk Island": {"continents": {"Oceania"}, "realms": {"Australasia"}},
-    "North Korea": {"continents": {"Asia"}, "realms": {"Palearctic"}},
-    "North Macedonia": {"continents": {"Europe"}, "realms": {"Palearctic"}},
-    "Northern Marianas": {"continents": {"Oceania"}, "realms": {"Oceania"}},
-    "Norway": {"continents": {"Europe"}, "realms": {"Palearctic"}},
-    "Oman": {"continents": {"Asia"}, "realms": {"Afrotropic"}},
-    "Pakistan": {"continents": {"Asia"}, "realms": {"Indomalaya", "Palearctic"}},
-    "Palau": {"continents": {"Oceania"}, "realms": {"Oceania"}},
-    "Palestine": {"continents": {"Asia"}, "realms": {"Palearctic"}},
-    "Panama": {"continents": {"North America"}, "realms": {"Neotropic"}},
-    "Papua New Guinea": {"continents": {"Oceania"}, "realms": {"Australasia"}},
-    "Paraguay": {"continents": {"South America"}, "realms": {"Neotropic"}},
-    "Peru": {"continents": {"South America"}, "realms": {"Neotropic"}},
-    "Philippines": {"continents": {"Asia"}, "realms": {"Indomalaya"}},
-    "Pitcairn": {"continents": {"Oceania"}, "realms": {"Oceania"}},
-    "Poland": {"continents": {"Europe"}, "realms": {"Palearctic"}},
-    "Portugal": {"continents": {"Europe"}, "realms": {"Palearctic"}},
-    "Prince Edward Islands": {"continents": {"Antarctica"}, "realms": set()},
-    "Puerto Rico": {"continents": {"North America"}, "realms": {"Neotropic"}},
-    "Qatar": {"continents": {"Asia"}, "realms": {"Afrotropic"}},
-    "Republic of the Congo": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
-    "Réunion": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
-    "Romania": {"continents": {"Europe"}, "realms": {"Palearctic"}},
-    "Russia": {"continents": {"Asia", "Europe"}, "realms": {"Palearctic"}},
-    "Rwanda": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
-    "Saba": {"continents": {"North America"}, "realms": {"Neotropic"}},
-    "Saint Barthélemy": {"continents": {"North America"}, "realms": {"Neotropic"}},
-    "Saint Helena": {"continents": set(), "realms": set()},
-    "Saint Kitts and Nevis": {"continents": {"North America"}, "realms": {"Neotropic"}},
-    "Saint Lucia": {"continents": {"North America"}, "realms": {"Neotropic"}},
-    "Saint Martin": {"continents": {"North America"}, "realms": {"Neotropic"}},
-    "Saint Vincent and the Grenadines": {
-        "continents": {"North America"},
-        "realms": {"Neotropic"},
-    },
-    "Samoa": {"continents": {"Oceania"}, "realms": {"Oceania"}},
-    "Saudi Arabia": {"continents": {"Asia"}, "realms": {"Palearctic", "Afrotropic"}},
-    "Senegal": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
-    "Serbia": {"continents": {"Europe"}, "realms": {"Palearctic"}},
-    "Seychelles": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
-    "Sierra Leone": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
-    "Singapore": {"continents": {"Asia"}, "realms": {"Indomalaya"}},
-    "Sint Eustatius": {"continents": {"North America"}, "realms": {"Neotropic"}},
-    "Sint Maarten": {"continents": {"North America"}, "realms": {"Neotropic"}},
-    "Slovakia": {"continents": {"Europe"}, "realms": {"Palearctic"}},
-    "Slovenia": {"continents": {"Europe"}, "realms": {"Palearctic"}},
-    "Solomon Islands": {"continents": {"Oceania"}, "realms": {"Australasia"}},
-    "Somalia": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
-    "South Africa": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
-    "South Georgia and the South Sandwich Islands": {
-        "continents": {"Antarctica"},
-        "realms": set(),
-    },
-    "South Korea": {"continents": {"Asia"}, "realms": {"Palearctic"}},
-    "South Sudan": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
-    "Spain": {"continents": {"Europe"}, "realms": {"Palearctic"}},
-    "Sri Lanka": {"continents": {"Asia"}, "realms": {"Indomalaya"}},
-    "Sudan": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
-    "Suriname": {"continents": {"South America"}, "realms": {"Neotropic"}},
-    "Sweden": {"continents": {"Europe"}, "realms": {"Palearctic"}},
-    "Switzerland": {"continents": {"Europe"}, "realms": {"Palearctic"}},
-    "Syria": {"continents": {"Asia"}, "realms": {"Palearctic"}},
-    "São Tomé and Príncipe": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
-    "Taiwan": {"continents": {"Asia"}, "realms": {"Indomalaya"}},
-    "Tajikistan": {"continents": {"Asia"}, "realms": {"Palearctic"}},
-    "Tanzania": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
-    "Thailand": {"continents": {"Asia"}, "realms": {"Indomalaya"}},
-    "Togo": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
-    "Tokelau": {"continents": {"Oceania"}, "realms": {"Oceania"}},
-    "Tonga": {"continents": {"Oceania"}, "realms": {"Oceania"}},
-    "Trinidad and Tobago": {"continents": {"South America"}, "realms": {"Neotropic"}},
-    "Tunisia": {"continents": {"Africa"}, "realms": {"Palearctic"}},
-    "Turkey": {"continents": {"Asia", "Europe"}, "realms": {"Palearctic"}},
-    "Turkmenistan": {"continents": {"Asia"}, "realms": {"Palearctic"}},
-    "Turks and Caicos Islands": {
-        "continents": {"North America"},
-        "realms": {"Neotropic"},
-    },
-    "Tuvalu": {"continents": {"Oceania"}, "realms": {"Oceania"}},
-    "Uganda": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
-    "Ukraine": {"continents": {"Europe"}, "realms": {"Palearctic"}},
-    "United Arab Emirates": {"continents": {"Asia"}, "realms": {"Afrotropic"}},
-    "United Kingdom": {"continents": {"Europe"}, "realms": {"Palearctic"}},
-    "United States": {"continents": {"North America"}, "realms": {"Nearctic"}},
-    "United States Virgin Islands": {
-        "continents": {"North America"},
-        "realms": {"Neotropic"},
-    },
-    "Uruguay": {"continents": {"South America"}, "realms": {"Neotropic"}},
-    "Uzbekistan": {"continents": {"Asia"}, "realms": {"Palearctic"}},
-    "Vanuatu": {"continents": {"Oceania"}, "realms": {"Australasia"}},
-    "Venezuela": {"continents": {"South America"}, "realms": {"Neotropic"}},
-    "Vietnam": {"continents": {"Asia"}, "realms": {"Indomalaya"}},
-    "Wallis and Futuna": {"continents": {"Oceania"}, "realms": {"Oceania"}},
-    "Yemen": {"continents": {"Asia", "Africa"}, "realms": {"Afrotropic"}},
-    "Zambia": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
-    "Zimbabwe": {"continents": {"Africa"}, "realms": {"Afrotropic"}},
-    "NA": {"continents": {"NA"}, "realms": {"NA"}},
-}
+COUNTRY_LIST = [
+    CountryInfo(
+        "Alaska",
+        continents={"North America"},
+        realms={"Nearctic"},
+        code=None,
+        containing_code="US",
+    ),
+    CountryInfo("Afghanistan", continents={"Asia"}, realms={"Palearctic"}, code="AF"),
+    CountryInfo("Albania", continents={"Europe"}, realms={"Palearctic"}, code="AL"),
+    CountryInfo(
+        "Algeria", continents={"Africa"}, realms={"Afrotropic", "Palearctic"}, code="DZ"
+    ),
+    CountryInfo(
+        "American Samoa", continents={"Oceania"}, realms={"Oceania"}, code="AS"
+    ),
+    CountryInfo(
+        "Andaman and Nicobar Islands",
+        continents={"Asia"},
+        realms={"Indomalaya"},
+        code=None,
+        containing_code="IN",
+    ),
+    CountryInfo("Angola", continents={"Africa"}, realms={"Afrotropic"}, code="AO"),
+    CountryInfo(
+        "Anguilla", continents={"North America"}, realms={"Neotropic"}, code="AI"
+    ),
+    CountryInfo("Antarctica", continents={"Antarctica"}, realms=set(), code="AQ"),
+    CountryInfo(
+        "Antigua and Barbuda",
+        continents={"North America"},
+        realms={"Neotropic"},
+        code="AG",
+    ),
+    CountryInfo(
+        "Argentina", continents={"South America"}, realms={"Neotropic"}, code="AR"
+    ),
+    CountryInfo("Armenia", continents={"Asia"}, realms={"Palearctic"}, code="AM"),
+    CountryInfo("Aruba", continents={"South America"}, realms={"Neotropic"}, code="AW"),
+    CountryInfo(
+        "Ascension",
+        continents={"Africa"},
+        realms={"Afrotropic"},
+        code=None,
+        containing_code="SH",
+    ),
+    CountryInfo("Australia", continents={"Oceania"}, realms={"Australasia"}, code="AU"),
+    CountryInfo("Austria", continents={"Europe"}, realms={"Palearctic"}, code="AT"),
+    CountryInfo("Azerbaijan", continents={"Asia"}, realms={"Palearctic"}, code="AZ"),
+    CountryInfo(
+        "Azores",
+        continents={"Europe"},
+        realms={"Palearctic"},
+        code=None,
+        containing_code="PT",
+    ),
+    CountryInfo(
+        "Bahamas", continents={"North America"}, realms={"Neotropic"}, code="BS"
+    ),
+    CountryInfo("Bahrain", continents={"Asia"}, realms={"Afrotropic"}, code="BH"),
+    CountryInfo("Bangladesh", continents={"Asia"}, realms={"Indomalaya"}, code="BD"),
+    CountryInfo(
+        "Barbados", continents={"North America"}, realms={"Neotropic"}, code="BB"
+    ),
+    CountryInfo("Belarus", continents={"Europe"}, realms={"Palearctic"}, code="BY"),
+    CountryInfo("Belgium", continents={"Europe"}, realms={"Palearctic"}, code="BE"),
+    CountryInfo(
+        "Belize", continents={"North America"}, realms={"Neotropic"}, code="BZ"
+    ),
+    CountryInfo("Benin", continents={"Africa"}, realms={"Afrotropic"}, code="BJ"),
+    CountryInfo(
+        "Bermuda", continents={"North America"}, realms={"Neotropic"}, code="BM"
+    ),
+    CountryInfo(
+        "Bhutan", continents={"Asia"}, realms={"Indomalaya", "Palearctic"}, code="BT"
+    ),
+    CountryInfo(
+        "Bolivia", continents={"South America"}, realms={"Neotropic"}, code="BO"
+    ),
+    CountryInfo(
+        "Bonaire",
+        continents={"South America"},
+        realms={"Neotropic"},
+        code=None,
+        containing_code="BQ",
+    ),
+    CountryInfo(
+        "Bosnia and Herzegovina",
+        continents={"Europe"},
+        realms={"Palearctic"},
+        code="BA",
+    ),
+    CountryInfo("Botswana", continents={"Africa"}, realms={"Afrotropic"}, code="BW"),
+    CountryInfo("Bouvet Island", continents=set(), realms=set(), code="BV"),
+    CountryInfo(
+        "Brazil", continents={"South America"}, realms={"Neotropic"}, code="BR"
+    ),
+    CountryInfo(
+        "British Virgin Islands",
+        continents={"North America"},
+        realms={"Neotropic"},
+        code="VG",
+    ),
+    CountryInfo("Brunei", continents={"Asia"}, realms={"Indomalaya"}, code="BN"),
+    CountryInfo("Bulgaria", continents={"Europe"}, realms={"Palearctic"}, code="BG"),
+    CountryInfo(
+        "Burkina Faso", continents={"Africa"}, realms={"Afrotropic"}, code="BF"
+    ),
+    CountryInfo("Burundi", continents={"Africa"}, realms={"Afrotropic"}, code="BI"),
+    CountryInfo("Cape Verde", continents={"Africa"}, realms={"Afrotropic"}, code="CV"),
+    CountryInfo("Cambodia", continents={"Asia"}, realms={"Indomalaya"}, code="KH"),
+    CountryInfo("Cameroon", continents={"Africa"}, realms={"Afrotropic"}, code="CM"),
+    CountryInfo("Canada", continents={"North America"}, realms={"Nearctic"}, code="CA"),
+    CountryInfo(
+        "Canary Islands",
+        continents={"Africa"},
+        realms={"Palearctic"},
+        code=None,
+        containing_code="ES",
+    ),
+    CountryInfo(
+        "Cayman Islands", continents={"North America"}, realms={"Neotropic"}, code="KY"
+    ),
+    CountryInfo(
+        "Central African Republic",
+        continents={"Africa"},
+        realms={"Afrotropic"},
+        code="CF",
+    ),
+    CountryInfo("Chad", continents={"Africa"}, realms={"Afrotropic"}, code="TD"),
+    CountryInfo("Chile", continents={"South America"}, realms={"Neotropic"}, code="CL"),
+    CountryInfo(
+        "China", continents={"Asia"}, realms={"Indomalaya", "Palearctic"}, code="CN"
+    ),
+    CountryInfo(
+        "Christmas Island", continents={"Asia"}, realms={"Indomalaya"}, code="CX"
+    ),
+    CountryInfo("Cocos Islands", continents={"Asia"}, realms={"Indomalaya"}, code="CC"),
+    CountryInfo(
+        "Colombia", continents={"South America"}, realms={"Neotropic"}, code="CO"
+    ),
+    CountryInfo("Comoros", continents={"Africa"}, realms={"Afrotropic"}, code="KM"),
+    CountryInfo("Cook Islands", continents={"Oceania"}, realms={"Oceania"}, code="CK"),
+    CountryInfo(
+        "Costa Rica", continents={"North America"}, realms={"Neotropic"}, code="CR"
+    ),
+    CountryInfo("Croatia", continents={"Europe"}, realms={"Palearctic"}, code="HR"),
+    CountryInfo("Cuba", continents={"North America"}, realms={"Neotropic"}, code="CU"),
+    CountryInfo(
+        "Curaçao", continents={"South America"}, realms={"Neotropic"}, code="CW"
+    ),
+    CountryInfo("Cyprus", continents={"Asia"}, realms={"Palearctic"}, code="CY"),
+    CountryInfo(
+        "Czech Republic", continents={"Europe"}, realms={"Palearctic"}, code="CZ"
+    ),
+    CountryInfo(
+        "Cote d'Ivoire", continents={"Africa"}, realms={"Afrotropic"}, code="CI"
+    ),
+    CountryInfo(
+        "Democratic Republic of the Congo",
+        continents={"Africa"},
+        realms={"Afrotropic"},
+        code="CD",
+    ),
+    CountryInfo("Denmark", continents={"Europe"}, realms={"Palearctic"}, code="DK"),
+    CountryInfo("Djibouti", continents={"Africa"}, realms={"Afrotropic"}, code="DJ"),
+    CountryInfo(
+        "Domesticated", continents={"Domesticated"}, realms={"Domesticated"}, code=None
+    ),
+    CountryInfo(
+        "Dominica", continents={"North America"}, realms={"Neotropic"}, code="DM"
+    ),
+    CountryInfo(
+        "Dominican Republic",
+        continents={"North America"},
+        realms={"Neotropic"},
+        code="DO",
+    ),
+    CountryInfo("East Timor", continents={"Asia"}, realms={"Australasia"}, code="TL"),
+    CountryInfo(
+        "Ecuador", continents={"South America"}, realms={"Neotropic"}, code="EC"
+    ),
+    CountryInfo(
+        "Egypt",
+        continents={"Asia", "Africa"},
+        realms={"Afrotropic", "Palearctic"},
+        code="EG",
+    ),
+    CountryInfo(
+        "El Salvador", continents={"North America"}, realms={"Neotropic"}, code="SV"
+    ),
+    CountryInfo(
+        "Equatorial Guinea", continents={"Africa"}, realms={"Afrotropic"}, code="GQ"
+    ),
+    CountryInfo("Eritrea", continents={"Africa"}, realms={"Afrotropic"}, code="ER"),
+    CountryInfo("Estonia", continents={"Europe"}, realms={"Palearctic"}, code="EE"),
+    CountryInfo("Eswatini", continents={"Africa"}, realms={"Afrotropic"}, code="SZ"),
+    CountryInfo("Ethiopia", continents={"Africa"}, realms={"Afrotropic"}, code="ET"),
+    CountryInfo(
+        "Falkland Islands",
+        continents={"South America"},
+        realms={"Neotropic"},
+        code="FK",
+    ),
+    CountryInfo("Faroe", continents={"Europe"}, realms={"Palearctic"}, code="FO"),
+    CountryInfo("Fiji", continents={"Oceania"}, realms={"Oceania"}, code="FJ"),
+    CountryInfo("Finland", continents={"Europe"}, realms={"Palearctic"}, code="FI"),
+    CountryInfo("France", continents={"Europe"}, realms={"Palearctic"}, code="FR"),
+    CountryInfo(
+        "French Guiana", continents={"South America"}, realms={"Neotropic"}, code="GF"
+    ),
+    CountryInfo(
+        "French Polynesia", continents={"Oceania"}, realms={"Oceania"}, code="PF"
+    ),
+    CountryInfo("Gabon", continents={"Africa"}, realms={"Afrotropic"}, code="GA"),
+    CountryInfo(
+        "Galápagos Islands",
+        continents={"South America"},
+        realms={"Neotropic"},
+        code=None,
+        containing_code="EC",
+    ),
+    CountryInfo("Gambia", continents={"Africa"}, realms={"Afrotropic"}, code="GM"),
+    CountryInfo("Georgia", continents={"Asia"}, realms={"Palearctic"}, code="GE"),
+    CountryInfo("Germany", continents={"Europe"}, realms={"Palearctic"}, code="DE"),
+    CountryInfo("Ghana", continents={"Africa"}, realms={"Afrotropic"}, code="GH"),
+    CountryInfo("Greece", continents={"Europe"}, realms={"Palearctic"}, code="GR"),
+    CountryInfo(
+        "Greenland", continents={"North America"}, realms={"Nearctic"}, code="GL"
+    ),
+    CountryInfo(
+        "Grenada", continents={"North America"}, realms={"Neotropic"}, code="GD"
+    ),
+    CountryInfo(
+        "Guadeloupe", continents={"North America"}, realms={"Neotropic"}, code="GP"
+    ),
+    CountryInfo("Guam", continents={"Oceania"}, realms={"Oceania"}, code="GU"),
+    CountryInfo(
+        "Guatemala", continents={"North America"}, realms={"Neotropic"}, code="GT"
+    ),
+    CountryInfo("Guinea", continents={"Africa"}, realms={"Afrotropic"}, code="GN"),
+    CountryInfo(
+        "Guinea-Bissau", continents={"Africa"}, realms={"Afrotropic"}, code="GW"
+    ),
+    CountryInfo(
+        "Guyana", continents={"South America"}, realms={"Neotropic"}, code="GY"
+    ),
+    CountryInfo("Haiti", continents={"North America"}, realms={"Neotropic"}, code="HT"),
+    CountryInfo(
+        "Hawai'i",
+        continents={"Oceania"},
+        realms={"Oceania"},
+        code=None,
+        containing_code="US",
+    ),
+    CountryInfo(
+        "Honduras", continents={"North America"}, realms={"Neotropic"}, code="HN"
+    ),
+    CountryInfo("Hungary", continents={"Europe"}, realms={"Palearctic"}, code="HU"),
+    CountryInfo("Iceland", continents={"Europe"}, realms={"Palearctic"}, code="IS"),
+    CountryInfo(
+        "India", continents={"Asia"}, realms={"Indomalaya", "Palearctic"}, code="IN"
+    ),
+    CountryInfo(
+        "Indonesia",
+        continents={"Asia", "Oceania"},
+        realms={"Indomalaya", "Australasia"},
+        code="ID",
+    ),
+    CountryInfo("Iran", continents={"Asia"}, realms={"Palearctic"}, code="IR"),
+    CountryInfo("Iraq", continents={"Asia"}, realms={"Palearctic"}, code="IQ"),
+    CountryInfo("Ireland", continents={"Europe"}, realms={"Palearctic"}, code="IE"),
+    CountryInfo("Israel", continents={"Asia"}, realms={"Palearctic"}, code="IL"),
+    CountryInfo("Italy", continents={"Europe"}, realms={"Palearctic"}, code="IT"),
+    CountryInfo(
+        "Jamaica", continents={"North America"}, realms={"Neotropic"}, code="JM"
+    ),
+    CountryInfo("Japan", continents={"Asia"}, realms={"Palearctic"}, code="JP"),
+    CountryInfo("Jordan", continents={"Asia"}, realms={"Palearctic"}, code="JO"),
+    CountryInfo(
+        "Kazakhstan", continents={"Asia", "Europe"}, realms={"Palearctic"}, code="KZ"
+    ),
+    CountryInfo("Kenya", continents={"Africa"}, realms={"Afrotropic"}, code="KE"),
+    CountryInfo(
+        "French Southern and Antarctic Lands",
+        continents={"Antarctica"},
+        realms=set(),
+        code="TF",
+    ),
+    CountryInfo("Kiribati", continents={"Oceania"}, realms={"Oceania"}, code="KI"),
+    CountryInfo(
+        "Kosovo",
+        continents={"Europe"},
+        realms={"Palearctic"},
+        code=None,
+        containing_code="XK",
+    ),
+    CountryInfo("Kuwait", continents={"Asia"}, realms={"Palearctic"}, code="KW"),
+    CountryInfo("Kyrgyzstan", continents={"Asia"}, realms={"Palearctic"}, code="KG"),
+    CountryInfo("Laos", continents={"Asia"}, realms={"Indomalaya"}, code="LA"),
+    CountryInfo("Latvia", continents={"Europe"}, realms={"Palearctic"}, code="LV"),
+    CountryInfo("Lebanon", continents={"Asia"}, realms={"Palearctic"}, code="LB"),
+    CountryInfo("Lesotho", continents={"Africa"}, realms={"Afrotropic"}, code="LS"),
+    CountryInfo("Liberia", continents={"Africa"}, realms={"Afrotropic"}, code="LR"),
+    CountryInfo("Libya", continents={"Africa"}, realms={"Palearctic"}, code="LY"),
+    CountryInfo(
+        "Liechtenstein", continents={"Europe"}, realms={"Palearctic"}, code="LI"
+    ),
+    CountryInfo("Lithuania", continents={"Europe"}, realms={"Palearctic"}, code="LT"),
+    CountryInfo("Luxembourg", continents={"Europe"}, realms={"Palearctic"}, code="LU"),
+    CountryInfo("Madagascar", continents={"Africa"}, realms={"Afrotropic"}, code="MG"),
+    CountryInfo(
+        "Madeira",
+        continents={"Africa"},
+        realms={"Palearctic"},
+        code=None,
+        containing_code="PT",
+    ),
+    CountryInfo("Malawi", continents={"Africa"}, realms={"Afrotropic"}, code="MW"),
+    CountryInfo("Malaysia", continents={"Asia"}, realms={"Indomalaya"}, code="MY"),
+    CountryInfo("Maldives", continents={"Asia"}, realms={"Indomalaya"}, code="MV"),
+    CountryInfo(
+        "Mali", continents={"Africa"}, realms={"Afrotropic", "Palearctic"}, code="ML"
+    ),
+    CountryInfo("Malta", continents={"Europe"}, realms={"Palearctic"}, code="MT"),
+    CountryInfo(
+        "Marshall Islands", continents={"Oceania"}, realms={"Oceania"}, code="MH"
+    ),
+    CountryInfo(
+        "Martinique", continents={"North America"}, realms={"Neotropic"}, code="MQ"
+    ),
+    CountryInfo(
+        "Mauritania",
+        continents={"Africa"},
+        realms={"Afrotropic", "Palearctic"},
+        code="MR",
+    ),
+    CountryInfo("Mauritius", continents={"Africa"}, realms={"Afrotropic"}, code="MU"),
+    CountryInfo("Mayotte", continents={"Africa"}, realms={"Afrotropic"}, code="YT"),
+    CountryInfo(
+        "Mexico",
+        continents={"North America"},
+        realms={"Nearctic", "Neotropic"},
+        code="MX",
+    ),
+    CountryInfo("Micronesia", continents={"Oceania"}, realms={"Oceania"}, code="FM"),
+    CountryInfo("Moldova", continents={"Europe"}, realms={"Palearctic"}, code="MD"),
+    CountryInfo("Mongolia", continents={"Asia"}, realms={"Palearctic"}, code="MN"),
+    CountryInfo("Montenegro", continents={"Europe"}, realms={"Palearctic"}, code="ME"),
+    CountryInfo(
+        "Montserrat", continents={"North America"}, realms={"Neotropic"}, code="MS"
+    ),
+    CountryInfo(
+        "Morocco", continents={"Africa"}, realms={"Afrotropic", "Palearctic"}, code="MA"
+    ),
+    CountryInfo("Mozambique", continents={"Africa"}, realms={"Afrotropic"}, code="MZ"),
+    CountryInfo(
+        "Myanmar", continents={"Asia"}, realms={"Indomalaya", "Palearctic"}, code="MM"
+    ),
+    CountryInfo("Namibia", continents={"Africa"}, realms={"Afrotropic"}, code="NA"),
+    CountryInfo("Nauru", continents={"Oceania"}, realms={"Oceania"}, code="NR"),
+    CountryInfo(
+        "Nepal", continents={"Asia"}, realms={"Indomalaya", "Palearctic"}, code="NP"
+    ),
+    CountryInfo("Netherlands", continents={"Europe"}, realms={"Palearctic"}, code="NL"),
+    CountryInfo(
+        "New Caledonia", continents={"Oceania"}, realms={"Australasia"}, code="NC"
+    ),
+    CountryInfo(
+        "New Zealand", continents={"Oceania"}, realms={"Australasia"}, code="NZ"
+    ),
+    CountryInfo(
+        "Nicaragua", continents={"North America"}, realms={"Neotropic"}, code="NI"
+    ),
+    CountryInfo(
+        "Niger", continents={"Africa"}, realms={"Afrotropic", "Palearctic"}, code="NE"
+    ),
+    CountryInfo("Nigeria", continents={"Africa"}, realms={"Afrotropic"}, code="NG"),
+    CountryInfo("Niue", continents={"Oceania"}, realms={"Oceania"}, code="NU"),
+    CountryInfo(
+        "Norfolk Island", continents={"Oceania"}, realms={"Australasia"}, code="NF"
+    ),
+    CountryInfo("North Korea", continents={"Asia"}, realms={"Palearctic"}, code="KP"),
+    CountryInfo(
+        "North Macedonia", continents={"Europe"}, realms={"Palearctic"}, code="MK"
+    ),
+    CountryInfo(
+        "Northern Marianas", continents={"Oceania"}, realms={"Oceania"}, code="MP"
+    ),
+    CountryInfo("Norway", continents={"Europe"}, realms={"Palearctic"}, code="NO"),
+    CountryInfo(
+        "Oman", continents={"Asia"}, realms={"Afrotropic", "Palearctic"}, code="OM"
+    ),
+    CountryInfo(
+        "Pakistan", continents={"Asia"}, realms={"Indomalaya", "Palearctic"}, code="PK"
+    ),
+    CountryInfo("Palau", continents={"Oceania"}, realms={"Oceania"}, code="PW"),
+    CountryInfo("Palestine", continents={"Asia"}, realms={"Palearctic"}, code="PS"),
+    CountryInfo(
+        "Panama", continents={"North America"}, realms={"Neotropic"}, code="PA"
+    ),
+    CountryInfo(
+        "Papua New Guinea", continents={"Oceania"}, realms={"Australasia"}, code="PG"
+    ),
+    CountryInfo(
+        "Paraguay", continents={"South America"}, realms={"Neotropic"}, code="PY"
+    ),
+    CountryInfo("Peru", continents={"South America"}, realms={"Neotropic"}, code="PE"),
+    CountryInfo("Philippines", continents={"Asia"}, realms={"Indomalaya"}, code="PH"),
+    CountryInfo("Pitcairn", continents={"Oceania"}, realms={"Oceania"}, code="PN"),
+    CountryInfo("Poland", continents={"Europe"}, realms={"Palearctic"}, code="PL"),
+    CountryInfo("Portugal", continents={"Europe"}, realms={"Palearctic"}, code="PT"),
+    CountryInfo(
+        "Prince Edward Islands",
+        continents={"Antarctica"},
+        realms=set(),
+        code=None,
+        containing_code="ZA",
+    ),
+    CountryInfo(
+        "Puerto Rico", continents={"North America"}, realms={"Neotropic"}, code="PR"
+    ),
+    CountryInfo("Qatar", continents={"Asia"}, realms={"Afrotropic"}, code="QA"),
+    CountryInfo(
+        "Republic of the Congo", continents={"Africa"}, realms={"Afrotropic"}, code="CG"
+    ),
+    CountryInfo("Réunion", continents={"Africa"}, realms={"Afrotropic"}, code="RE"),
+    CountryInfo("Romania", continents={"Europe"}, realms={"Palearctic"}, code="RO"),
+    CountryInfo(
+        "Russia", continents={"Asia", "Europe"}, realms={"Palearctic"}, code="RU"
+    ),
+    CountryInfo("Rwanda", continents={"Africa"}, realms={"Afrotropic"}, code="RW"),
+    CountryInfo(
+        "Saba",
+        continents={"North America"},
+        realms={"Neotropic"},
+        code=None,
+        containing_code="BQ",
+    ),
+    CountryInfo(
+        "Saint Barthélemy",
+        continents={"North America"},
+        realms={"Neotropic"},
+        code="BL",
+    ),
+    CountryInfo("Saint Helena", continents=set(), realms=set(), code="SH"),
+    CountryInfo(
+        "Saint Kitts and Nevis",
+        continents={"North America"},
+        realms={"Neotropic"},
+        code="KN",
+    ),
+    CountryInfo(
+        "Saint Lucia", continents={"North America"}, realms={"Neotropic"}, code="LC"
+    ),
+    CountryInfo(
+        "Saint Martin", continents={"North America"}, realms={"Neotropic"}, code="MF"
+    ),
+    CountryInfo(
+        "Saint Vincent and the Grenadines",
+        continents={"North America"},
+        realms={"Neotropic"},
+        code="VC",
+    ),
+    CountryInfo("Samoa", continents={"Oceania"}, realms={"Oceania"}, code="WS"),
+    CountryInfo(
+        "Saudi Arabia",
+        continents={"Asia"},
+        realms={"Afrotropic", "Palearctic"},
+        code="SA",
+    ),
+    CountryInfo("Senegal", continents={"Africa"}, realms={"Afrotropic"}, code="SN"),
+    CountryInfo("Serbia", continents={"Europe"}, realms={"Palearctic"}, code="RS"),
+    CountryInfo("Seychelles", continents={"Africa"}, realms={"Afrotropic"}, code="SC"),
+    CountryInfo(
+        "Sierra Leone", continents={"Africa"}, realms={"Afrotropic"}, code="SL"
+    ),
+    CountryInfo("Singapore", continents={"Asia"}, realms={"Indomalaya"}, code="SG"),
+    CountryInfo(
+        "Sint Eustatius",
+        continents={"North America"},
+        realms={"Neotropic"},
+        code=None,
+        containing_code="BQ",
+    ),
+    CountryInfo(
+        "Sint Maarten", continents={"North America"}, realms={"Neotropic"}, code="SX"
+    ),
+    CountryInfo("Slovakia", continents={"Europe"}, realms={"Palearctic"}, code="SK"),
+    CountryInfo("Slovenia", continents={"Europe"}, realms={"Palearctic"}, code="SI"),
+    CountryInfo(
+        "Solomon Islands", continents={"Oceania"}, realms={"Australasia"}, code="SB"
+    ),
+    CountryInfo("Somalia", continents={"Africa"}, realms={"Afrotropic"}, code="SO"),
+    CountryInfo(
+        "South Africa", continents={"Africa"}, realms={"Afrotropic"}, code="ZA"
+    ),
+    CountryInfo(
+        "South Georgia and the South Sandwich Islands",
+        continents={"Antarctica"},
+        realms=set(),
+        code="GS",
+    ),
+    CountryInfo("South Korea", continents={"Asia"}, realms={"Palearctic"}, code="KR"),
+    CountryInfo("South Sudan", continents={"Africa"}, realms={"Afrotropic"}, code="SS"),
+    CountryInfo("Spain", continents={"Europe"}, realms={"Palearctic"}, code="ES"),
+    CountryInfo("Sri Lanka", continents={"Asia"}, realms={"Indomalaya"}, code="LK"),
+    CountryInfo("Sudan", continents={"Africa"}, realms={"Afrotropic"}, code="SD"),
+    CountryInfo(
+        "Suriname", continents={"South America"}, realms={"Neotropic"}, code="SR"
+    ),
+    CountryInfo("Sweden", continents={"Europe"}, realms={"Palearctic"}, code="SE"),
+    CountryInfo("Switzerland", continents={"Europe"}, realms={"Palearctic"}, code="CH"),
+    CountryInfo("Syria", continents={"Asia"}, realms={"Palearctic"}, code="SY"),
+    CountryInfo(
+        "São Tomé and Príncipe", continents={"Africa"}, realms={"Afrotropic"}, code="ST"
+    ),
+    CountryInfo(
+        "Taiwan", continents={"Asia"}, realms={"Indomalaya", "Palearctic"}, code="TW"
+    ),
+    CountryInfo("Tajikistan", continents={"Asia"}, realms={"Palearctic"}, code="TJ"),
+    CountryInfo("Tanzania", continents={"Africa"}, realms={"Afrotropic"}, code="TZ"),
+    CountryInfo("Thailand", continents={"Asia"}, realms={"Indomalaya"}, code="TH"),
+    CountryInfo("Togo", continents={"Africa"}, realms={"Afrotropic"}, code="TG"),
+    CountryInfo("Tokelau", continents={"Oceania"}, realms={"Oceania"}, code="TK"),
+    CountryInfo("Tonga", continents={"Oceania"}, realms={"Oceania"}, code="TO"),
+    CountryInfo(
+        "Trinidad and Tobago",
+        continents={"South America"},
+        realms={"Neotropic"},
+        code="TT",
+    ),
+    CountryInfo(
+        "Tunisia", continents={"Africa"}, realms={"Afrotropic", "Palearctic"}, code="TN"
+    ),
+    CountryInfo(
+        "Turkey", continents={"Asia", "Europe"}, realms={"Palearctic"}, code="TR"
+    ),
+    CountryInfo("Turkmenistan", continents={"Asia"}, realms={"Palearctic"}, code="TM"),
+    CountryInfo(
+        "Turks and Caicos Islands",
+        continents={"North America"},
+        realms={"Neotropic"},
+        code="TC",
+    ),
+    CountryInfo("Tuvalu", continents={"Oceania"}, realms={"Oceania"}, code="TV"),
+    CountryInfo("Uganda", continents={"Africa"}, realms={"Afrotropic"}, code="UG"),
+    CountryInfo("Ukraine", continents={"Europe"}, realms={"Palearctic"}, code="UA"),
+    CountryInfo(
+        "United Arab Emirates", continents={"Asia"}, realms={"Afrotropic"}, code="AE"
+    ),
+    CountryInfo(
+        "United Kingdom", continents={"Europe"}, realms={"Palearctic"}, code="GB"
+    ),
+    CountryInfo(
+        "United States",
+        continents={"North America"},
+        realms={"Nearctic", "Neotropic"},
+        code="US",
+    ),
+    CountryInfo(
+        "United States Virgin Islands",
+        continents={"North America"},
+        realms={"Neotropic"},
+        code="VI",
+    ),
+    CountryInfo(
+        "Uruguay", continents={"South America"}, realms={"Neotropic"}, code="UY"
+    ),
+    CountryInfo("Uzbekistan", continents={"Asia"}, realms={"Palearctic"}, code="UZ"),
+    CountryInfo("Vanuatu", continents={"Oceania"}, realms={"Australasia"}, code="VU"),
+    CountryInfo(
+        "Venezuela", continents={"South America"}, realms={"Neotropic"}, code="VE"
+    ),
+    CountryInfo("Vietnam", continents={"Asia"}, realms={"Indomalaya"}, code="VN"),
+    CountryInfo(
+        "Wallis and Futuna", continents={"Oceania"}, realms={"Oceania"}, code="WF"
+    ),
+    CountryInfo(
+        "Yemen",
+        continents={"Asia", "Africa"},
+        realms={"Afrotropic", "Palearctic"},
+        code="YE",
+    ),
+    CountryInfo("Zambia", continents={"Africa"}, realms={"Afrotropic"}, code="ZM"),
+    CountryInfo("Zimbabwe", continents={"Africa"}, realms={"Afrotropic"}, code="ZW"),
+    CountryInfo("NA", continents={"NA"}, realms={"NA"}, code=None),
+]
+COUNTRIES = {c.name: c for c in COUNTRY_LIST}
+
 if PERMISSIVE_RANGES:
-    COUNTRIES["Bhutan"]["realms"].add("Palearctic")
-    COUNTRIES["India"]["realms"].add("Palearctic")
-    COUNTRIES["Egypt"]["realms"].add("Afrotropic")
-    COUNTRIES["Taiwan"]["realms"].add("Palearctic")
-    COUNTRIES["Pakistan"]["realms"].add("Palearctic")
-    COUNTRIES["Nepal"]["realms"].add("Palearctic")
-    COUNTRIES["Myanmar"]["realms"].add("Palearctic")
-    COUNTRIES["Mauritania"]["realms"].add("Palearctic")
-    COUNTRIES["Morocco"]["realms"].add("Afrotropic")
-    COUNTRIES["Tunisia"]["realms"].add("Afrotropic")
-    COUNTRIES["Algeria"]["realms"].add("Afrotropic")
-    COUNTRIES["Mali"]["realms"].add("Palearctic")
-    COUNTRIES["Niger"]["realms"].add("Palearctic")
-    COUNTRIES["Oman"]["realms"].add("Palearctic")
-    COUNTRIES["Yemen"]["realms"].add("Palearctic")
-    COUNTRIES["Saudi Arabia"]["realms"].add("Afrotropic")
-    COUNTRIES["United States"]["realms"].add("Neotropic")
-    COUNTRIES["Kazakhstan"]["continents"].add("Europe")
+    COUNTRIES["Bhutan"].realms.add("Palearctic")
+    COUNTRIES["India"].realms.add("Palearctic")
+    COUNTRIES["Egypt"].realms.add("Afrotropic")
+    COUNTRIES["Taiwan"].realms.add("Palearctic")
+    COUNTRIES["Pakistan"].realms.add("Palearctic")
+    COUNTRIES["Nepal"].realms.add("Palearctic")
+    COUNTRIES["Myanmar"].realms.add("Palearctic")
+    COUNTRIES["Mauritania"].realms.add("Palearctic")
+    COUNTRIES["Morocco"].realms.add("Afrotropic")
+    COUNTRIES["Tunisia"].realms.add("Afrotropic")
+    COUNTRIES["Algeria"].realms.add("Afrotropic")
+    COUNTRIES["Mali"].realms.add("Palearctic")
+    COUNTRIES["Niger"].realms.add("Palearctic")
+    COUNTRIES["Oman"].realms.add("Palearctic")
+    COUNTRIES["Yemen"].realms.add("Palearctic")
+    COUNTRIES["Saudi Arabia"].realms.add("Afrotropic")
+    COUNTRIES["United States"].realms.add("Neotropic")
+    COUNTRIES["Kazakhstan"].continents.add("Europe")
 
 T = TypeVar("T")
 
@@ -639,6 +968,43 @@ class MDDSpecies:
         if not countries:
             yield self.make_issue("countryDistribution", "missing country distribution")
 
+        if USE_ISO_3166:
+            # Suggest converting country names to ISO 3166-1 alpha-2 codes, preserving any
+            # existing 2-letter codes and dropping unrecognized entries.
+            raw = self.row.get("countryDistribution") or ""
+            parts = [p.strip() for p in raw.split("|") if p.strip()]
+            # Build codes: accept existing 2-letter codes; map known names; ignore others.
+            # Preserve uncertainty marker '?' per-part if present in the original.
+            code_to_uncertain: dict[str, bool] = {}
+            unrecognized: list[str] = []
+            for p in parts:
+                uncertain = "?" in p
+                base = p.replace("?", "").strip()
+                code: str | None = None
+                if len(base) == 2 and base.isupper() and base.isalpha():
+                    code = base
+                elif base in COUNTRIES and COUNTRIES[base].code:
+                    code = cast(str, COUNTRIES[base].code)
+                if code is None:
+                    unrecognized.append(p)
+                    continue
+                # Prefer preserving '?' if any occurrence had it
+                code_to_uncertain[code] = (
+                    code_to_uncertain.get(code, False) or uncertain
+                )
+            if code_to_uncertain:
+                items = sorted(code_to_uncertain.items(), key=lambda kv: kv[0])
+                suggested = "|".join(code + ("?" if unc else "") for code, unc in items)
+                # Only suggest if the field is not already exactly these codes
+                # (i.e., if it contains names or differs after normalization)
+                if suggested != raw:
+                    desc = "convert to ISO 3166-1 alpha-2 codes"
+                    if unrecognized:
+                        desc += f"; dropped unrecognized: {', '.join(sorted(set(unrecognized)))}"
+                    yield self.make_issue(
+                        "countryDistribution", desc, suggested_value=suggested
+                    )
+
         if not self.row.get("continentDistribution"):
             yield self.make_issue(
                 "continentDistribution", "missing continent distribution"
@@ -683,16 +1049,16 @@ class MDDSpecies:
                 )
                 continue
             country_data = COUNTRIES[country]
-            if len(country_data["continents"]) == 1:
-                expected_continents.update(country_data["continents"])
-                for cont in country_data["continents"]:
+            if len(country_data.continents) == 1:
+                expected_continents.update(country_data.continents)
+                for cont in country_data.continents:
                     expected_cont_to_countries[cont].add(country)
-            allowed_continents.update(country_data["continents"])
-            if len(country_data["realms"]) == 1:
-                expected_realms.update(country_data["realms"])
-                for realm in country_data["realms"]:
+            allowed_continents.update(country_data.continents)
+            if len(country_data.realms) == 1:
+                expected_realms.update(country_data.realms)
+                for realm in country_data.realms:
                     expected_realm_to_countries[realm].add(country)
-            allowed_realms.update(country_data["realms"])
+            allowed_realms.update(country_data.realms)
 
         if not CHECK_GEOGRAPHY:
             return
