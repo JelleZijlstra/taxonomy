@@ -160,6 +160,14 @@ class ItemFile(BaseModel):
                         itf = cls.create_from_filename(f.name)
                     if itf is not None:
                         print(f"Created {itf}")
+                # Ask whether to move to the "Not to be cataloged" folder
+                elif getinput.yes_no(
+                    'Move to "Not to be cataloged"? ', callbacks=_make_cb_map(full_path)
+                ):
+                    target_dir = options.new_path / "Not to be cataloged"
+                    target_dir.mkdir(parents=True, exist_ok=True)
+                    shutil.move(str(full_path), str(target_dir / f.name))
+                    print(f"Moved {f.name!r} to {target_dir}")
 
     @classmethod
     def _auto_create_from_pdf(
@@ -327,10 +335,7 @@ def _classify_pdf_with_gpt_via_responses(pdf_path: Path, *, api_key: str) -> _Ve
         r.raise_for_status()
         file_id = r.json()["id"]
     finally:
-        try:
-            preview_path.unlink(missing_ok=True)
-        except Exception:
-            pass
+        preview_path.unlink(missing_ok=True)
 
     # 2) Call Responses API
     system_instructions = (
