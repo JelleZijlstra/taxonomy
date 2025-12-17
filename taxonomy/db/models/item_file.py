@@ -112,15 +112,24 @@ class ItemFile(BaseModel):
             item_file.filename: item_file for item_file in ItemFile.select_valid()
         }
 
-        for filename in sorted(existing_on_disk - existing_in_db.keys()):
-            print(f"Found item file on disk that is not in DB: {filename!r}")
-            if getinput.yes_no("Create entry in DB? "):
-                itf = cls.create_from_filename(filename)
-                if itf is not None:
-                    print(f"Created {itf}")
-        for filename in sorted(existing_in_db.keys() - existing_on_disk):
-            print(f"Item file in DB but missing on disk: {filename!r}")
-            existing_in_db[filename].edit()
+        missing_in_db = existing_on_disk - existing_in_db.keys()
+        if missing_in_db:
+            print(f"Found {len(missing_in_db)} item files on disk not in DB")
+            for filename in sorted(missing_in_db):
+                print(f"Found item file on disk that is not in DB: {filename!r}")
+                if getinput.yes_no(
+                    "Create entry in DB? ",
+                    callbacks=_make_cb_map(options.item_file_path / filename),
+                ):
+                    itf = cls.create_from_filename(filename)
+                    if itf is not None:
+                        print(f"Created {itf}")
+        missing_on_disk = existing_in_db.keys() - existing_on_disk
+        if missing_on_disk:
+            print(f"Found {len(missing_on_disk)} item files in DB missing on disk")
+            for filename in sorted(missing_on_disk):
+                print(f"Item file in DB but missing on disk: {filename!r}")
+                existing_in_db[filename].edit()
 
         cls.check_new()
 
@@ -128,7 +137,10 @@ class ItemFile(BaseModel):
     def check_new(cls, *, autonomous: bool = False) -> None:
         options = get_options()
         newpath = options.burst_path / "Old"
-        for f in sorted(newpath.iterdir(), key=lambda f: f.name):
+        new_files = sorted(newpath.iterdir(), key=lambda f: f.name)
+        if new_files:
+            print(f"Found {len(new_files)} new item files in {newpath}")
+        for f in new_files:
             if f.is_file() and f.name != ".DS_Store":
                 full_path = newpath / f.name
                 print(f"Adding item file: {f.name!r}")
