@@ -19,6 +19,8 @@ from taxonomy.apis import bhl
 from taxonomy.config import get_options, is_network_available
 from taxonomy.db import constants as db_constants
 from taxonomy.db.constants import Managed, Markdown
+from taxonomy.db.models.article.check import LsFile as ArticleLsFile
+from taxonomy.db.models.article.check import burst as article_burst
 from taxonomy.db.url_cache import CacheDomain, run_query
 from taxonomy.getinput import CallbackMap
 
@@ -67,6 +69,7 @@ class ItemFile(BaseModel):
             "open": self.open,
             "o": self.open,
             "open_url": self.open_url,
+            "burst": self.burst,
         }
 
     def edit(self) -> None:
@@ -102,6 +105,20 @@ class ItemFile(BaseModel):
         itf.edit()
         return itf
 
+    def burst(self) -> None:
+        """Invoke the article burst workflow for this file's name in the burst folder.
+
+        Expects a file named like this ItemFile to be present in `burst_path`.
+        """
+        options = get_options()
+        full_path = options.item_file_path / self.filename
+        if not full_path.exists():
+            print(f"File not found in burst path: {full_path}")
+            return
+        ls = ArticleLsFile(options.item_file_path, self.filename)
+        # For ItemFiles, do not archive/move the original file after bursting.
+        article_burst(ls, archive_original=False)
+
     @classmethod
     def check(cls) -> None:
         options = get_options()
@@ -117,11 +134,20 @@ class ItemFile(BaseModel):
             print(f"Found {len(missing_in_db)} item files on disk not in DB")
             for filename in sorted(missing_in_db):
                 print(f"Found item file on disk that is not in DB: {filename!r}")
+                full_path = options.item_file_path / filename
                 if getinput.yes_no(
-                    "Create entry in DB? ",
-                    callbacks=_make_cb_map(options.item_file_path / filename),
+                    "Create entry in DB? ", callbacks=_make_cb_map(full_path)
                 ):
-                    itf = cls.create_from_filename(filename)
+                    # Try LLM-based auto classification and creation first
+                    itf: ItemFile | None = None
+                    try:
+                        itf = cls._auto_create_from_pdf(full_path)
+                    except Exception as e:
+                        print(
+                            f"LLM auto-create failed: {e!r}; falling back to manual input"
+                        )
+                    if itf is None:
+                        itf = cls.create_from_filename(filename)
                     if itf is not None:
                         print(f"Created {itf}")
         missing_on_disk = existing_in_db.keys() - existing_on_disk

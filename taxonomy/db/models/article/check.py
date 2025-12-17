@@ -13,6 +13,7 @@ from taxonomy import config, getinput, uitools
 from taxonomy.command_set import CommandSet
 from taxonomy.db.constants import ArticleKind
 from taxonomy.db.models.base import get_static_callbacks
+from taxonomy.db.models.item_file import ItemFile
 
 from .add_data import add_data_for_new_file
 from .article import Article
@@ -298,7 +299,7 @@ def burstcheck(*, dry_run: bool = False) -> bool:
         if dry_run:
             print(file.name)
         else:
-            burst(file)
+            burst(file, archive_original=True)
     print("done")
     return True
 
@@ -356,13 +357,14 @@ def add_new_file(file: LsFile, *, always_rename: bool = False) -> bool:
     print(f"Adding file {file.name!r}")
     selection = getinput.get_line(
         "> ",
-        validate=lambda x: x in ("", "n", "s"),
+        validate=lambda x: x in ("", "n", "s", "i"),
         help={
             "o": "open this file",
             "q": "quit",
             "s": "skip this file",
             "n": 'move this file to "Not to be cataloged"',
             "r": "rename this file",
+            "i": "create an ItemFile and burst it",
             "open_dir": "open a directory",
             "": "add this file to the catalog",
         },
@@ -383,6 +385,24 @@ def add_new_file(file: LsFile, *, always_rename: bool = False) -> bool:
             return False
         case "s":
             return False
+        case "i":
+            # Create an ItemFile instead of an Article, then burst it.
+            target_dir = _options.item_file_path
+            target_dir.mkdir(parents=True, exist_ok=True)
+            src = file.base_path / file.name
+            dst = target_dir / file.name
+            if dst.exists():
+                print(f"Destination already exists: {dst}")
+                if not getinput.yes_no("Overwrite? "):
+                    return False
+                dst.unlink()
+            shutil.move(str(src), str(dst))
+            itf = ItemFile.create_from_filename(file.name)
+            if itf is None:
+                return False
+            print(f"Created {itf}")
+            itf.burst()
+            return True
         case "":
             pass
         case _:
@@ -492,10 +512,12 @@ def check_for_existing_file(lsfile: LsFile) -> str | None:
         return None
 
 
-def burst(lsfile: LsFile) -> bool:
+def burst(lsfile: LsFile, *, archive_original: bool = True) -> bool:
     # bursts a PDF file into several files
     print(f"Bursting file {lsfile.name!r}. Opening file.")
-    full_path = _options.burst_path / lsfile.name
+    # Use the file's base_path, not a fixed folder, so callers can burst from
+    # either the burst folder or other locations (e.g., item_file_path).
+    full_path = lsfile.base_path / lsfile.name
     subprocess.check_call(["open", str(full_path)])
 
     while True:
@@ -504,20 +526,16 @@ def burst(lsfile: LsFile) -> bool:
             case "q" | "quit":
                 raise uitools.EndOfInput("burst")
             case "c" | "continue":
-                if full_path.exists():
+                if archive_original and full_path.exists():
+                    # Move original into an Old/ subfolder under its base path.
+                    base_old = lsfile.base_path / "Old"
+                    base_old.mkdir(parents=True, exist_ok=True)
                     subprocess.check_call(
-                        [
-                            "mv",
-                            "-n",
-                            str(full_path),
-                            str(_options.burst_path / "Old" / lsfile.name),
-                        ]
+                        ["mv", "-n", str(full_path), str(base_old / lsfile.name)]
                     )
                     if full_path.exists():
                         print(f"File still exists: {full_path}")
-                        target = (
-                            _options.burst_path / "Old" / f"{time.time()}{lsfile.name}"
-                        )
+                        target = base_old / f"{time.time()}{lsfile.name}"
                         subprocess.check_call(["mv", "-n", str(full_path), str(target)])
                 break
             case "s" | "skip":
