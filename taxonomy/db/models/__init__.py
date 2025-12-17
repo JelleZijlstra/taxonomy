@@ -12,6 +12,7 @@ __all__ = [
     "Collection",
     "IgnoredDoi",
     "IssueDate",
+    "ItemFile",
     "Location",
     "Name",
     "NameComment",
@@ -44,6 +45,7 @@ from .citation_group import (
 from .classification_entry import ClassificationEntry as ClassificationEntry
 from .ignored_doi import IgnoredDoi as IgnoredDoi
 from .issue_date import IssueDate as IssueDate
+from .item_file import ItemFile as ItemFile
 from .name.name import (
     Name as Name,
     NameComment as NameComment,

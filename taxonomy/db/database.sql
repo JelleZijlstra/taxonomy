@@ -389,3 +389,20 @@ CREATE TABLE `ignored_doi` (
     `reason` integer default null
 );
 CREATE UNIQUE INDEX "idx_doi" on "ignored_doi" (`doi`);
+
+CREATE TABLE `item_file` (
+    `id` integer primary key,
+    `filename` varchar(512) not null,
+    `title` varchar(512) default null,
+    `citation_group_id` integer not null,
+    `series` varchar(255) default null,
+    `volume` varchar(255) default null,
+    `issue` varchar(255) default null,
+    `start_page` varchar(255) default null,
+    `end_page` varchar(255) default null,
+    `url` varchar(1024) default null,
+    `tags` text default null
+);
+CREATE INDEX "idx_cg_file" on "item_file" (`citation_group_id`);
+CREATE UNIQUE INDEX "uniq_file" on "item_file" (`filename`);
+CREATE INDEX "idx_url_file" on "item_file" (`url`);

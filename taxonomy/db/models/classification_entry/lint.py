@@ -418,6 +418,8 @@ def get_filtered_possible_mapped_names(
         candidates.append(CandidateName(ce, nam, metadata))
     if not candidates:
         return []
+    if len(candidates) == 1:
+        return [candidates[0].name]
     candidates = sorted(candidates, key=lambda c: c.get_score())
     best_score = candidates[0].get_score()
     matching = list(takewhile(lambda c: c.get_score() == best_score, candidates))

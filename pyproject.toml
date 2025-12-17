@@ -55,6 +55,8 @@ dependencies = [
   "pyzotero",
   "lxml>=6.0.2",
   "ocrmypdf>=16.11.1",
+  "pymupdf>=1.26.7",
+  "openai>=2.13.0",
 ]
 
 [project.urls]

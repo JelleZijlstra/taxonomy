@@ -46,6 +46,7 @@ class CacheDomain(enum.Enum):
     crossref_search_by_journal = 15  # https://api.crossref.org/swagger-ui/index.html#/Journals/get_journals__issn__works
     is_doi_valid = 16
     is_hdl_valid = 17
+    gpt_item_file_verdict = 18  # mapping from filename -> GPT verdict JSON
 
 
 KeyT = TypeVar("KeyT")
