@@ -543,6 +543,7 @@ class Article(BaseModel):
             ),
             "display_raw_pages": self.display_raw_pages,
             "find_earlier_usages": self.find_earlier_usages,
+            "edit_item_file": self.edit_item_file,
         }
 
     def ce_edit(self) -> None:
@@ -807,6 +808,27 @@ class Article(BaseModel):
         if self.parent is not None:
             return self.parent.get_raw_page_regex()
         return None
+
+    def get_matching_item_files(self) -> Iterable[models.ItemFile]:
+        if self.url is None:
+            return
+        parsed = urlparse.parse_url(self.url)
+        if not isinstance(
+            parsed, (urlparse.BhlPage, urlparse.BhlPart, urlparse.BhlItem)
+        ):
+            return
+        item_id = bhl.get_bhl_item_from_url(self.url)
+        if item_id is None:
+            return
+
+        item_url = f"https://www.biodiversitylibrary.org/item/{item_id}"
+        yield from models.ItemFile.select_valid().filter(
+            models.ItemFile.url == item_url
+        )
+
+    def edit_item_file(self) -> None:
+        for itf in self.get_matching_item_files():
+            itf.edit()
 
     def dump_pdf_text(self) -> None:
         if not self.ispdf():

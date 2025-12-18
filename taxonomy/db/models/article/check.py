@@ -11,9 +11,9 @@ from typing import NamedTuple
 
 from taxonomy import config, getinput, uitools
 from taxonomy.command_set import CommandSet
+from taxonomy.db import models
 from taxonomy.db.constants import ArticleKind
 from taxonomy.db.models.base import get_static_callbacks
-from taxonomy.db.models.item_file import ItemFile
 
 from .add_data import add_data_for_new_file
 from .article import Article
@@ -397,7 +397,7 @@ def add_new_file(file: LsFile, *, always_rename: bool = False) -> bool:
                     return False
                 dst.unlink()
             shutil.move(str(src), str(dst))
-            itf = ItemFile.create_from_filename(file.name)
+            itf = models.ItemFile.create_from_filename(file.name)
             if itf is None:
                 return False
             print(f"Created {itf}")

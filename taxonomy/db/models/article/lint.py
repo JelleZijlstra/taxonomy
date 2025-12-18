@@ -835,6 +835,38 @@ def bhl_part_from_page(art: Article, cfg: LintConfig) -> Iterable[str]:
         yield message
 
 
+@LINT.add("item_file_consistency", requires_network=True)
+def check_item_file_consistency(art: Article, cfg: LintConfig) -> Iterable[str]:
+    """If Article has a BHL URL (page, part, or item), and an ItemFile exists for the
+    same BHL item id, check that citation_group and volume match between them.
+
+    This helps keep Articles and ItemFiles consistent when both reference the
+    same underlying BHL item.
+    """
+    for itf in art.get_matching_item_files():
+        # Compare citation group if both present
+        if art.citation_group is not None and itf.citation_group is not None:
+            if art.citation_group != itf.citation_group:
+                yield (
+                    f"Citation group mismatch between Article "
+                    f"({art.citation_group}) and ItemFile {itf} ({itf.citation_group})"
+                )
+
+        # Compare volume if both present
+        if art.volume is not None:
+            allowed = list(itf.get_allowed_volumes())
+            if art.volume not in allowed:
+                yield (
+                    f"Volume mismatch between Article "
+                    f"({art.volume}) and ItemFile {itf} ({', '.join(allowed) if allowed else 'none'})"
+                )
+        if art.series != itf.series:
+            yield (
+                f"Series mismatch between Article "
+                f"({art.series}) and ItemFile {itf} ({itf.series})"
+            )
+
+
 def _get_bhl_page_ids_from_names(art: Article) -> set[int]:
     new_names = list(art.get_new_names())
     if not new_names:

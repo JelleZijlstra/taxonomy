@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import tempfile
 import traceback
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Literal, NotRequired, Self, TypedDict
 
@@ -13,24 +14,27 @@ import fitz
 import httpx
 from clirm import Field
 
-from taxonomy import getinput
+from taxonomy import getinput, urlparse
 from taxonomy.adt import ADT
 from taxonomy.apis import bhl
 from taxonomy.config import get_options, is_network_available
 from taxonomy.db import constants as db_constants
+from taxonomy.db import helpers
 from taxonomy.db.constants import Managed, Markdown
 from taxonomy.db.models.article.check import LsFile as ArticleLsFile
 from taxonomy.db.models.article.check import burst as article_burst
 from taxonomy.db.url_cache import CacheDomain, run_query
 from taxonomy.getinput import CallbackMap
 
-from .base import ADTField, BaseModel
+from .base import ADTField, BaseModel, LintConfig
 from .citation_group import CitationGroup
+from .lint import IgnoreLint, Lint
 
 
 class ItemFileTag(ADT):
     IFComment(text=Markdown, tag=1)  # type: ignore[name-defined]
     IFAlternativeUrl(url=Managed, tag=2)  # type: ignore[name-defined]
+    IFAdditionalVolume(text=Managed, tag=3)  # type: ignore[name-defined]
 
 
 class ItemFile(BaseModel):
@@ -72,23 +76,39 @@ class ItemFile(BaseModel):
             "burst": self.burst,
         }
 
+    def get_allowed_volumes(self) -> Iterable[str]:
+        if self.volume is not None:
+            yield self.volume
+        for tag in self.tags:
+            if isinstance(tag, ItemFileTag.IFAdditionalVolume):
+                yield tag.text
+
     def edit(self) -> None:
         self.fill_field("tags")
 
     def detect_url(self) -> None:
+        """Set URL based on file content/name, if detectable (eager mode)."""
         if self.url is not None:
             return
+        suggestion = self.detect_url_suggestion()
+        if suggestion:
+            print(f"Detected link: {suggestion}")
+            self.url = suggestion
+
+    def detect_url_suggestion(self) -> str | None:
+        """Return a suggested URL for this ItemFile without mutating it."""
         link = extract_first_page_link(self.get_path())
-        if link is not None and link.startswith("https://books.google.com/"):
-            print(f"Detected Google Books link: {link}")
-            self.url = link
-        elif m := re.fullmatch(r"(\d+)\.pdf", self.filename):
+        if link is not None and link.startswith(
+            ("https://books.google.com/", "https://hdl.handle.net/")
+        ):
+            return link
+        if m := re.fullmatch(r"(\d+)\.pdf", self.filename):
             bhl_item_id = int(m.group(1))
             bhl_url = f"https://www.biodiversitylibrary.org/item/{bhl_item_id}"
             item_metadata = bhl.get_item_metadata(bhl_item_id)
             if item_metadata is not None:
-                print(f"Detected BHL link: {bhl_url}")
-                self.url = bhl_url
+                return bhl_url
+        return None
 
     @classmethod
     def create_from_filename(cls, filename: str) -> Self | None:
@@ -104,6 +124,17 @@ class ItemFile(BaseModel):
         itf.detect_url()
         itf.edit()
         return itf
+
+    def should_exempt_from_string_cleaning(self, field: str) -> bool:
+        """If this returns True, we won't call clean_string() on the field in lint."""
+        return field == "name"
+
+    def lint(self, cfg: LintConfig) -> Iterable[str]:
+        yield from LINT.run(self, cfg)
+
+    @classmethod
+    def clear_lint_caches(cls) -> None:
+        LINT.clear_caches()
 
     def burst(self) -> None:
         """Invoke the article burst workflow for this file's name in the burst folder.
@@ -163,49 +194,51 @@ class ItemFile(BaseModel):
     def check_new(cls, *, autonomous: bool = False) -> None:
         options = get_options()
         newpath = options.burst_path / "Old"
-        new_files = sorted(newpath.iterdir(), key=lambda f: f.name)
+        new_files = sorted(
+            [f for f in newpath.iterdir() if f.is_file() and f.name != ".DS_Store"],
+            key=lambda f: f.name,
+        )
         if new_files:
             print(f"Found {len(new_files)} new item files in {newpath}")
         for f in new_files:
-            if f.is_file() and f.name != ".DS_Store":
-                full_path = newpath / f.name
-                print(f"Adding item file: {f.name!r}")
-                if autonomous:
-                    # Autonomous mode: do not prompt; try LLM auto-create only.
-                    try:
-                        itf = cls._auto_create_from_pdf(
-                            full_path, allow_interactive_cg=False
-                        )
-                    except Exception as e:
-                        print(f"LLM auto-create failed: {e!r}; skipping")
-                        itf = None
-                    if itf is not None:
-                        print(f"Created {itf}")
-                    else:
-                        print("Skipped (no existing CitationGroup or unknown type)")
-                elif getinput.yes_no("Add? ", callbacks=_make_cb_map(full_path)):
-                    # First, try LLM-based auto classification and creation.
+            full_path = newpath / f.name
+            print(f"Adding item file: {f.name!r}")
+            if autonomous:
+                # Autonomous mode: do not prompt; try LLM auto-create only.
+                try:
+                    itf = cls._auto_create_from_pdf(
+                        full_path, allow_interactive_cg=False
+                    )
+                except Exception as e:
+                    print(f"LLM auto-create failed: {e!r}; skipping")
                     itf = None
-                    try:
-                        itf = cls._auto_create_from_pdf(full_path)
-                    except Exception as e:
-                        print(
-                            f"LLM auto-create failed: {e!r}; falling back to manual input"
-                        )
-                    if itf is None:
-                        # Fallback to manual flow
-                        shutil.move(full_path, options.item_file_path / f.name)
-                        itf = cls.create_from_filename(f.name)
-                    if itf is not None:
-                        print(f"Created {itf}")
-                # Ask whether to move to the "Not to be cataloged" folder
-                elif getinput.yes_no(
-                    'Move to "Not to be cataloged"? ', callbacks=_make_cb_map(full_path)
-                ):
-                    target_dir = options.new_path / "Not to be cataloged"
-                    target_dir.mkdir(parents=True, exist_ok=True)
-                    shutil.move(str(full_path), str(target_dir / f.name))
-                    print(f"Moved {f.name!r} to {target_dir}")
+                if itf is not None:
+                    print(f"Created {itf}")
+                else:
+                    print("Skipped (no existing CitationGroup or unknown type)")
+            elif getinput.yes_no("Add? ", callbacks=_make_cb_map(full_path)):
+                # First, try LLM-based auto classification and creation.
+                itf = None
+                try:
+                    itf = cls._auto_create_from_pdf(full_path)
+                except Exception as e:
+                    print(
+                        f"LLM auto-create failed: {e!r}; falling back to manual input"
+                    )
+                if itf is None:
+                    # Fallback to manual flow
+                    shutil.move(full_path, options.item_file_path / f.name)
+                    itf = cls.create_from_filename(f.name)
+                if itf is not None:
+                    print(f"Created {itf}")
+            # Ask whether to move to the "Not to be cataloged" folder
+            elif getinput.yes_no(
+                'Move to "Not to be cataloged"? ', callbacks=_make_cb_map(full_path)
+            ):
+                target_dir = options.new_path / "Not to be cataloged"
+                target_dir.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(full_path), str(target_dir / f.name))
+                print(f"Moved {f.name!r} to {target_dir}")
 
     @classmethod
     def _auto_create_from_pdf(
@@ -301,6 +334,11 @@ def extract_first_page_link(pdf_path: Path) -> str | None:
     uris = [link.get("uri") for link in links if link.get("uri")]
 
     if not uris:
+        text = page.get_text()
+        if isinstance(text, str) and "hathitrust.org" in text:
+            lines = text.splitlines()
+            if len(lines) >= 3:
+                return lines[2]
         return None
     if len(uris) > 1:
         return None
@@ -564,3 +602,75 @@ def _make_informative_preview_pdf(
         return tmp_path
     finally:
         src.close()
+
+
+# Lint infrastructure for ItemFile
+def _get_ignores(_: ItemFile) -> Iterable[IgnoreLint]:
+    # ItemFile has no IgnoreLint tags today; return empty.
+    return ()
+
+
+def _remove_unused_ignores(_: ItemFile, __: Iterable[str]) -> None:
+    # No-op: no IgnoreLint tags in ItemFile.
+    return
+
+
+LINT = Lint(ItemFile, _get_ignores, _remove_unused_ignores)
+
+
+@LINT.add("roman_volume")
+def lint_roman_volume(itf: ItemFile, cfg: LintConfig) -> Iterable[str]:
+    # Normalize Roman numeral volume numbers (e.g., "VI" -> "6").
+    vol = itf.volume
+    if not vol:
+        return
+    s = vol.strip()
+    try:
+        value = helpers.parse_roman_numeral(s)
+    except Exception:
+        return
+    if value <= 0:
+        return
+    new = str(value)
+    if new == vol:
+        return
+    message = f"convert Roman numeral volume {vol!r} -> {new!r}"
+    if cfg.autofix:
+        print(f"{itf}: {message}")
+        itf.volume = new
+    else:
+        yield message
+
+
+@LINT.add("detect_url", requires_network=True)
+def lint_detect_url(itf: ItemFile, cfg: LintConfig) -> Iterable[str]:
+    # Propose and optionally set a URL based on file content/name.
+    if itf.url is not None:
+        return
+    suggestion = itf.detect_url_suggestion()
+    if not suggestion:
+        return
+    message = f"set detected URL to {suggestion}"
+    if cfg.autofix:
+        print(f"{itf}: {message}")
+        itf.url = suggestion
+    else:
+        yield message
+
+
+@LINT.add("url_format")
+def lint_url_format(itf: ItemFile, cfg: LintConfig) -> Iterable[str]:
+    # Reformat URL using taxonomy.urlparse and flag invalid URLs.
+    if itf.url is None:
+        return
+    parsed = urlparse.parse_url(itf.url)
+    stringified = str(parsed)
+    if stringified != itf.url:
+        message = f"reformatted url to {stringified} from {itf.url}"
+        if cfg.autofix:
+            print(f"{itf}: {message}")
+            itf.url = stringified
+        else:
+            yield message
+    for m in parsed.lint():
+        yield f"URL {itf.url}: {m}"
