@@ -23,6 +23,7 @@ from taxonomy.db import helpers
 from taxonomy.db.constants import Managed, Markdown
 from taxonomy.db.models.article.check import LsFile as ArticleLsFile
 from taxonomy.db.models.article.check import burst as article_burst
+from taxonomy.db.models.citation_group import lint as cg_lint
 from taxonomy.db.url_cache import CacheDomain, run_query
 from taxonomy.getinput import CallbackMap
 
@@ -674,3 +675,48 @@ def lint_url_format(itf: ItemFile, cfg: LintConfig) -> Iterable[str]:
             yield message
     for m in parsed.lint():
         yield f"URL {itf.url}: {m}"
+
+
+@LINT.add("cg_fields")
+def lint_citation_group_fields(itf: ItemFile, cfg: LintConfig) -> Iterable[str]:
+    cg = itf.citation_group
+    if cg is None:
+        return
+
+    # Series requirements and validation
+    if itf.series is None and cg_lint.requires_series(cg):
+        yield f"missing a series, but {cg} requires one"
+    if cg.type is db_constants.ArticleType.JOURNAL:
+        series_regex = cg_lint.get_series_regex(cg)
+        if series_regex is not None:
+            if itf.series is not None and not re.fullmatch(series_regex, itf.series):
+                yield (
+                    f"series {itf.series!r} does not match regex {series_regex!r} for {cg}"
+                )
+        elif itf.series is not None:
+            yield f"is in {cg}, which does not support series"
+
+    # Volume validation
+    if itf.volume is not None:
+        rgx = cg_lint.get_volume_regex(cg)
+        rgx = f"({rgx})|(({rgx})–({rgx}))"  # Allow ranges with en-dash
+        if not re.fullmatch(rgx, itf.volume):
+            desc = cg_lint.describe_volume_regex(cg)
+            yield f"volume {itf.volume!r} does not match {desc} (CG {cg})"
+
+    # Issue validation
+    if itf.issue is not None:
+        issue = re.sub(r"_", "-", itf.issue)
+        issue = re.sub(r"^(\d+)/(\d+)$", r"\1–\2", issue)
+        if issue != itf.issue:
+            msg = f"normalize issue formatting {itf.issue!r} -> {issue!r}"
+            if cfg.autofix:
+                print(f"{itf}: {msg}")
+                itf.issue = issue
+            else:
+                yield msg
+        rgx = cg_lint.get_issue_regex(cg)
+        rgx = f"({rgx})|(({rgx})–({rgx}))"  # Allow ranges with en-dash
+        if not re.fullmatch(rgx, itf.issue):
+            desc = cg_lint.describe_issue_regex(cg)
+            yield f"issue {itf.issue!r} does not match {desc} (CG {cg})"

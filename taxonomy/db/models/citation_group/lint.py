@@ -15,6 +15,39 @@ from taxonomy.db.models.lint import IgnoreLint, Lint
 
 from .cg import CitationGroup, CitationGroupStatus, CitationGroupTag
 
+# Shared regex defaults and helper functions for validating volume/issue/series
+DEFAULT_VOLUME_REGEX = r"(Suppl\. )?\d{1,4}"
+DEFAULT_ISSUE_REGEX = r"\d{1,3}|\d{1,2}-\d{1,2}|Suppl\. \d{1,2}"
+
+
+def get_volume_regex(cg: CitationGroup) -> str:
+    tag = cg.get_tag(CitationGroupTag.VolumeRegex)
+    return tag.text if tag is not None else DEFAULT_VOLUME_REGEX
+
+
+def describe_volume_regex(cg: CitationGroup) -> str:
+    tag = cg.get_tag(CitationGroupTag.VolumeRegex)
+    return f"regex {tag.text!r}" if tag is not None else "default volume regex"
+
+
+def get_issue_regex(cg: CitationGroup) -> str:
+    tag = cg.get_tag(CitationGroupTag.IssueRegex)
+    return tag.text if tag is not None else DEFAULT_ISSUE_REGEX
+
+
+def describe_issue_regex(cg: CitationGroup) -> str:
+    tag = cg.get_tag(CitationGroupTag.IssueRegex)
+    return f"regex {tag.text!r}" if tag is not None else "default issue regex"
+
+
+def requires_series(cg: CitationGroup) -> bool:
+    return cg.get_tag(CitationGroupTag.MustHaveSeries) is not None
+
+
+def get_series_regex(cg: CitationGroup) -> str | None:
+    tag = cg.get_tag(CitationGroupTag.SeriesRegex)
+    return tag.text if tag is not None else None
+
 
 def remove_unused_ignores(cg: CitationGroup, unused: Container[str]) -> None:
     new_tags = []

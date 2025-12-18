@@ -27,6 +27,7 @@ from taxonomy.db.constants import (
     DateSource,
 )
 from taxonomy.db.models.base import ADTField, BaseModel, LintConfig
+from taxonomy.db.models.citation_group import lint as cg_lint
 from taxonomy.db.models.citation_group.cg import CitationGroup, CitationGroupTag
 from taxonomy.db.models.citation_group.lint import get_biblio_pages
 from taxonomy.db.models.issue_date import IssueDate
@@ -867,6 +868,37 @@ def check_item_file_consistency(art: Article, cfg: LintConfig) -> Iterable[str]:
             )
 
 
+@LINT.add("infer_item_file_url", requires_network=True)
+def infer_item_file_url(art: Article, cfg: LintConfig) -> Iterable[str]:
+    if art.url is None:
+        return
+    item_id = bhl.get_bhl_item_from_url(art.url)
+    if item_id is None:
+        return
+    item_metadata = bhl.get_item_metadata(item_id)
+    if item_metadata is None:
+        return
+    source_id = item_metadata["SourceIdentifier"]
+    expected_filename = f"{source_id}.pdf"
+    try:
+        itf = (
+            models.ItemFile.select_valid()
+            .filter(models.ItemFile.filename == expected_filename)
+            .get()
+        )
+    except models.ItemFile.DoesNotExist:
+        return
+    expected_url = f"https://www.biodiversitylibrary.org/item/{item_id}"
+    if itf.url is None:
+        if cfg.autofix:
+            print(f"{art}: setting URL to {expected_url} on ItemFile {itf}")
+            itf.url = expected_url
+        else:
+            yield f"setting URL to {expected_url} on ItemFile {itf}"
+    elif itf.url != expected_url:
+        yield f"ItemFile {itf} has URL {itf.url} but expected {expected_url}"
+
+
 def _get_bhl_page_ids_from_names(art: Article) -> set[int]:
     new_names = list(art.get_new_names())
     if not new_names:
@@ -1496,16 +1528,14 @@ def journal_specific_cleanup(art: Article, cfg: LintConfig) -> Iterable[str]:
         return
     if message := cg.is_year_in_range(art.numeric_year()):
         yield message
-    if art.series is None and cg.get_tag(CitationGroupTag.MustHaveSeries):
+    if art.series is None and cg_lint.requires_series(cg):
         yield f"missing a series, but {cg} requires one"
     if cg.type is ArticleType.JOURNAL:
-        if may_have_series := cg.get_tag(CitationGroupTag.SeriesRegex):
-            if art.series is not None and not re.fullmatch(
-                may_have_series.text, art.series
-            ):
+        series_regex = cg_lint.get_series_regex(cg)
+        if series_regex is not None:
+            if art.series is not None and not re.fullmatch(series_regex, art.series):
                 yield (
-                    f"series {art.series} does not match regex"
-                    f" {may_have_series.text} for {cg}"
+                    f"series {art.series} does not match regex {series_regex} for {cg}"
                 )
         elif art.series is not None:
             yield f"is in {cg}, which does not support series"
@@ -1776,10 +1806,6 @@ def check_required_fields(art: Article, cfg: LintConfig) -> Iterable[str]:
         yield "missing author_tags"
 
 
-DEFAULT_VOLUME_REGEX = r"(Suppl\. )?\d{1,4}"
-DEFAULT_ISSUE_REGEX = r"\d{1,3}|\d{1,2}-\d{1,2}|Suppl\. \d{1,2}"
-
-
 @LINT.add("journal")
 def check_journal(art: Article, cfg: LintConfig) -> Iterable[str]:
     if art.type is not ArticleType.JOURNAL:
@@ -1791,10 +1817,9 @@ def check_journal(art: Article, cfg: LintConfig) -> Iterable[str]:
     if art.volume is not None:
         volume = art.volume.replace("–", "-")
         yield from _maybe_clean(art, "volume", volume, cfg)
-        tag = cg.get_tag(CitationGroupTag.VolumeRegex)
-        rgx = tag.text if tag else DEFAULT_VOLUME_REGEX
+        rgx = cg_lint.get_volume_regex(cg)
         if not re.fullmatch(rgx, volume):
-            message = f"regex {tag.text!r}" if tag else "default volume regex"
+            message = cg_lint.describe_volume_regex(cg)
             yield f"volume {volume!r} does not match {message} (CG {cg})"
     elif not art.is_in_press():
         yield "missing volume"
@@ -1802,10 +1827,9 @@ def check_journal(art: Article, cfg: LintConfig) -> Iterable[str]:
         issue = re.sub(r"[–_]", "-", art.issue)
         issue = re.sub(r"^(\d+)/(\d+)$", r"\1–\2", issue)
         yield from _maybe_clean(art, "issue", issue, cfg)
-        tag = cg.get_tag(CitationGroupTag.IssueRegex)
-        rgx = tag.text if tag else DEFAULT_ISSUE_REGEX
+        rgx = cg_lint.get_issue_regex(cg)
         if not re.fullmatch(rgx, issue):
-            message = f"regex {tag.text!r}" if tag else "default issue regex"
+            message = cg_lint.describe_issue_regex(cg)
             yield f"issue {issue!r} does not match {message} (CG {cg})"
 
 
