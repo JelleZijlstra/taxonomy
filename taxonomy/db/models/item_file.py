@@ -138,10 +138,7 @@ class ItemFile(BaseModel):
         LINT.clear_caches()
 
     def burst(self) -> None:
-        """Invoke the article burst workflow for this file's name in the burst folder.
-
-        Expects a file named like this ItemFile to be present in `burst_path`.
-        """
+        """Invoke the article burst workflow for this file's name in the burst folder."""
         options = get_options()
         full_path = options.item_file_path / self.filename
         if not full_path.exists():

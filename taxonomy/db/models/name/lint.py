@@ -64,6 +64,7 @@ from taxonomy.db.models.collection import (
     MULTIPLE_COLLECTION,
     Collection,
 )
+from taxonomy.db.models.item_file import ItemFile
 from taxonomy.db.models.lint import IgnoreLint, Lint
 from taxonomy.db.models.name_complex import (
     NameComplex,
@@ -4698,6 +4699,38 @@ def check_bhl_page(nam: Name, cfg: LintConfig) -> Iterable[str]:
             continue
         yield from _check_bhl_item_matches(nam, tag, cfg)
         yield from _check_bhl_bibliography_matches(nam, tag, cfg)
+
+
+@LINT.add("item_file_for_authority_link", requires_network=True)
+def item_file_for_authority_link(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    """If no original_citation but AuthorityPageLink exists, and that link maps to a
+    BHL item for which we have an ItemFile, report it.
+
+    This helps surface cases where an ItemFile exists that could be used to
+    derive the original citation.
+    """
+    if nam.original_citation is not None:
+        return
+    tags = list(nam.get_tags(nam.type_tags, TypeTag.AuthorityPageLink))
+    if not tags:
+        return
+    seen: set[int] = set()
+    for tag in tags:
+        item_id = bhl.get_bhl_item_from_url(tag.url)
+        if item_id is None or item_id in seen:
+            continue
+        seen.add(item_id)
+        item_url = f"https://www.biodiversitylibrary.org/item/{item_id}"
+        matches = list(ItemFile.select_valid().filter(ItemFile.url == item_url))
+        if not matches:
+            continue
+        # Report each matching ItemFile for visibility
+        for itf in matches:
+            message = f"authority page link points to BHL item {item_id} with existing ItemFile {itf}"
+            yield (message)
+            if cfg.interactive:
+                print(f"{nam}: {message}")
+                itf.burst()
 
 
 def _check_bhl_item_matches(
