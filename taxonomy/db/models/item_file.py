@@ -80,6 +80,10 @@ class ItemFile(BaseModel):
     def get_allowed_volumes(self) -> Iterable[str]:
         if self.volume is not None:
             yield self.volume
+            if re.fullmatch(r"(\d+)–(\d+)", self.volume):
+                start, end = map(int, self.volume.split("–"))
+                for v in range(start, end + 1):
+                    yield str(v)
         for tag in self.tags:
             if isinstance(tag, ItemFileTag.IFAdditionalVolume):
                 yield tag.text
@@ -99,10 +103,13 @@ class ItemFile(BaseModel):
     def detect_url_suggestion(self) -> str | None:
         """Return a suggested URL for this ItemFile without mutating it."""
         link = extract_first_page_link(self.get_path())
-        if link is not None and link.startswith(
-            ("https://books.google.com/", "https://hdl.handle.net/")
-        ):
-            return link
+        if link is not None:
+            parsed = urlparse.parse_url(link)
+            if isinstance(
+                parsed,
+                (urlparse.GoogleBooksPage, urlparse.GoogleBooksVolume, urlparse.HDLUrl),
+            ):
+                return link
         if m := re.fullmatch(r"(\d+)\.pdf", self.filename):
             bhl_item_id = int(m.group(1))
             bhl_url = f"https://www.biodiversitylibrary.org/item/{bhl_item_id}"
@@ -329,15 +336,26 @@ def extract_first_page_link(pdf_path: Path) -> str | None:
 
     links = page.get_links()
     # Each link dict can include 'uri', 'page', 'from', etc.
-    uris = [link.get("uri") for link in links if link.get("uri")]
+    uris = [
+        link.get("uri")
+        for link in links
+        if link.get("uri")
+        and "https://www.hathitrust.org/the-collection" not in link["uri"]
+    ]
 
     if not uris:
         text = page.get_text()
-        if isinstance(text, str) and "hathitrust.org" in text:
+        if isinstance(text, str) and ("hathitrust.org" in text or "HathiTrust" in text):
             lines = text.splitlines()
-            if len(lines) >= 3:
-                return lines[2]
+            for line in lines:
+                if line.startswith("https://hdl.handle.net/"):
+                    return line.strip()
+                if m := re.fullmatch(
+                    r"Find this Book Online: (https://hdl\.handle\.net/.*)", line
+                ):
+                    return m.group(1)
         return None
+
     if len(uris) > 1:
         return None
 
@@ -600,6 +618,21 @@ def _make_informative_preview_pdf(
         return tmp_path
     finally:
         src.close()
+
+
+def get_matching_item_files(url: str) -> Iterable[ItemFile]:
+    parsed = urlparse.parse_url(url)
+    match parsed:
+        case urlparse.BhlPage() | urlparse.BhlPart() | urlparse.BhlItem():
+            item_id = bhl.get_bhl_item_from_url(url)
+            if item_id is None:
+                return
+
+            item_url = f"https://www.biodiversitylibrary.org/item/{item_id}"
+            yield from ItemFile.select_valid().filter(ItemFile.url == item_url)
+        case urlparse.GoogleBooksPage() | urlparse.GoogleBooksVolume():
+            volume_url = urlparse.GoogleBooksVolume(parsed.volume_id)
+            yield from ItemFile.select_valid().filter(ItemFile.url == str(volume_url))
 
 
 # Lint infrastructure for ItemFile

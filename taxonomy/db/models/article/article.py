@@ -810,21 +810,14 @@ class Article(BaseModel):
         return None
 
     def get_matching_item_files(self) -> Iterable[models.ItemFile]:
+        hdl = self.get_identifier(ArticleTag.HDL)
+        if hdl is not None:
+            yield from models.item_file.get_matching_item_files(
+                f"https://hdl.handle.net/{hdl}"
+            )
         if self.url is None:
             return
-        parsed = urlparse.parse_url(self.url)
-        if not isinstance(
-            parsed, (urlparse.BhlPage, urlparse.BhlPart, urlparse.BhlItem)
-        ):
-            return
-        item_id = bhl.get_bhl_item_from_url(self.url)
-        if item_id is None:
-            return
-
-        item_url = f"https://www.biodiversitylibrary.org/item/{item_id}"
-        yield from models.ItemFile.select_valid().filter(
-            models.ItemFile.url == item_url
-        )
+        yield from models.item_file.get_matching_item_files(self.url)
 
     def edit_item_file(self) -> None:
         for itf in self.get_matching_item_files():

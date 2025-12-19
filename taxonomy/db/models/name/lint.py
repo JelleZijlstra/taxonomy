@@ -4714,19 +4714,16 @@ def item_file_for_authority_link(nam: Name, cfg: LintConfig) -> Iterable[str]:
     tags = list(nam.get_tags(nam.type_tags, TypeTag.AuthorityPageLink))
     if not tags:
         return
-    seen: set[int] = set()
+    seen: set[ItemFile] = set()
     for tag in tags:
-        item_id = bhl.get_bhl_item_from_url(tag.url)
-        if item_id is None or item_id in seen:
-            continue
-        seen.add(item_id)
-        item_url = f"https://www.biodiversitylibrary.org/item/{item_id}"
-        matches = list(ItemFile.select_valid().filter(ItemFile.url == item_url))
-        if not matches:
-            continue
-        # Report each matching ItemFile for visibility
+        matches = [
+            itf
+            for itf in models.item_file.get_matching_item_files(tag.url)
+            if itf not in seen
+        ]
+        seen.update(matches)
         for itf in matches:
-            message = f"authority page link points to BHL item {item_id} with existing ItemFile {itf}"
+            message = f"authority page link points to existing ItemFile {itf}"
             yield (message)
             if cfg.interactive:
                 print(f"{nam}: {message}")
