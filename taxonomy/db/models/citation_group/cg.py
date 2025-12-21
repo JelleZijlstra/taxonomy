@@ -103,6 +103,14 @@ class CitationGroup(BaseModel):
             CitationGroupStatus.redirect,
         )
 
+    def must_have(self, year: int) -> bool:
+        if self.has_tag(models.citation_group.CitationGroupTag.MustHave):
+            return True
+        after_tag = self.get_tag(models.citation_group.CitationGroupTag.MustHaveAfter)
+        if after_tag is None:
+            return False
+        return year >= int(after_tag.year)
+
     @classmethod
     def create_interactively(
         cls, name: str | None = None, **kwargs: Any

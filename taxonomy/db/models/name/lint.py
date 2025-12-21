@@ -393,6 +393,12 @@ def check_selection_tag[Tag: SelectionTag](
         yield f"{tag} has verbatim_citation but no citation_group"
     if source is None and tag.verbatim_citation is None:
         yield f"{tag} has no source or verbatim_citation"
+    if (
+        source is None
+        and tag.citation_group is not None
+        and tag.citation_group.must_have(2100)  # no year available, be aggressive
+    ):
+        yield f"{tag} has citation_group {tag.citation_group} but no source"
     return tag
 
 
@@ -4712,8 +4718,6 @@ def item_file_for_authority_link(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.original_citation is not None:
         return
     tags = list(nam.get_tags(nam.type_tags, TypeTag.AuthorityPageLink))
-    if not tags:
-        return
     seen: set[ItemFile] = set()
     for tag in tags:
         matches = [
@@ -4728,6 +4732,55 @@ def item_file_for_authority_link(nam: Name, cfg: LintConfig) -> Iterable[str]:
             if cfg.interactive:
                 print(f"{nam}: {message}")
                 itf.burst()
+
+
+_seen_pages: set[tuple[int, str]] = set()
+
+
+@LINT.add(
+    "unchecked_authority_page_link",
+    requires_network=True,
+    clear_caches=_seen_pages.clear,
+)
+def unchecked_authority_page_link(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    """If no AuthorityPageLink exists but candidate BHL pages do, surface them.
+
+    In interactive mode, open each candidate URL and ask the user to add it as an
+    AuthorityPageLink.
+    """
+    # Skip if we already have an AuthorityPageLink
+    if any(isinstance(tag, TypeTag.AuthorityPageLink) for tag in nam.type_tags):
+        return
+    if not Exp(above_name_id=140_000).should_apply(nam, cfg):
+        return
+    if LINT.is_ignoring_lint(nam, "unchecked_authority_page_link"):
+        return
+    # Compute candidates (same logic used by mdd_names.py via get_candidate_bhl_pages)
+    candidates = list(get_candidate_bhl_pages(nam, verbose=cfg.verbose))
+    if not candidates:
+        return
+    candidates = sorted(candidates, key=lambda page: page.sort_key())
+    urls = [page.page_url for page in candidates]
+    if cfg.interactive:
+        nam.display()
+        if nam.original_citation is not None:
+            nam.original_citation.display()
+        for page in candidates[:2]:
+            if (nam.id, page.page_url) in _seen_pages:
+                continue
+            _seen_pages.add((nam.id, page.page_url))
+            print(page.page_url)
+            subprocess.check_call(["open", page.page_url])
+            if getinput.yes_no(
+                "Add as AuthorityPageLink? ", callbacks=nam.get_wrapped_adt_callbacks()
+            ):
+                tag = TypeTag.AuthorityPageLink(
+                    url=page.page_url, confirmed=True, page=str(page.page_number)
+                )
+                nam.add_type_tag(tag)
+            break
+    max_list = " | ".join(sorted(urls))
+    yield f"possible authority page links: {max_list}"
 
 
 def _check_bhl_item_matches(
@@ -7141,12 +7194,5 @@ def enforce_must_have(nam: Name, cfg: LintConfig) -> Iterable[str]:
         return
     if nam.original_citation is not None:
         return
-    cg = nam.citation_group
-    after_tag = cg.get_tag(models.citation_group.CitationGroupTag.MustHaveAfter)
-    if after_tag is None and not cg.has_tag(
-        models.citation_group.CitationGroupTag.MustHave
-    ):
-        return
-    if after_tag is not None and nam.numeric_year() < int(after_tag.year):
-        return
-    yield f"{nam} is in {cg}, but has no original_citation"
+    if nam.citation_group.must_have(nam.numeric_year()):
+        yield f"{nam} is in {nam.citation_group}, but has no original_citation"
