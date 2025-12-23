@@ -3282,6 +3282,15 @@ class TypeTag(adt.ADT):
     MustNotBePartOf(name=Name, comment=NotRequired[Markdown], tag=73)  # type: ignore[name-defined]
     MustBeExtinct(comment=NotRequired[Markdown], tag=74)  # type: ignore[name-defined]
 
+    StructuredVerbatimCitation(  # type: ignore[name-defined]
+        volume=NotRequired[Managed],
+        issue=NotRequired[Managed],
+        start_page=NotRequired[Managed],
+        end_page=NotRequired[Managed],
+        series=NotRequired[Managed],
+        tag=75,
+    )
+
 
 SOURCE_TAGS = (
     TypeTag.SourceDetail,

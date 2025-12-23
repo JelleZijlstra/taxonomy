@@ -76,6 +76,7 @@ from taxonomy.db.models.name_complex import (
 from taxonomy.db.models.person import AuthorTag, PersonLevel
 from taxonomy.db.models.taxon import Taxon
 
+from . import parse_citations
 from .guess_repository import get_most_likely_repository
 from .name import (
     PREOCCUPIED_TAGS,
@@ -1001,6 +1002,16 @@ def _check_all_type_tags(
         case TypeTag.TreatAsEquivalentTo():
             if not _is_high_or_invalid_family(nam):
                 yield "has TreatAsEquivalentTo tag but is not a high-level or invalid family-group name"
+
+        case TypeTag.StructuredVerbatimCitation():
+            if nam.original_citation is not None:
+                yield "has StructuredVerbatimCitation tag but also has original_citation"
+                return []
+
+        case TypeTag.IgnorePotentialCitationFrom():
+            if nam.original_citation is not None:
+                yield "has IgnorePotentialCitationFrom tag but also has original_citation"
+                return []
 
     return [*tags, tag]
 
@@ -4737,6 +4748,21 @@ def item_file_for_authority_link(nam: Name, cfg: LintConfig) -> Iterable[str]:
 _seen_pages: set[tuple[int, str]] = set()
 
 
+def _should_require_unchecked_page_link(nam: Name, cfg: LintConfig) -> bool:
+    if nam.original_citation is not None:
+        return False
+    if any(isinstance(tag, TypeTag.AuthorityPageLink) for tag in nam.type_tags):
+        return False
+    if Exp(above_name_id=140_000).should_apply(nam, cfg):
+        return True
+    if nam.page_described is None or not nam.page_described.isnumeric():
+        return False
+    structured_cite = nam.get_type_tag(TypeTag.StructuredVerbatimCitation)
+    if structured_cite is not None and structured_cite.volume is not None:
+        return True
+    return False
+
+
 @LINT.add(
     "unchecked_authority_page_link",
     requires_network=True,
@@ -4748,20 +4774,21 @@ def unchecked_authority_page_link(nam: Name, cfg: LintConfig) -> Iterable[str]:
     In interactive mode, open each candidate URL and ask the user to add it as an
     AuthorityPageLink.
     """
-    # Skip if we already have an AuthorityPageLink
-    if any(isinstance(tag, TypeTag.AuthorityPageLink) for tag in nam.type_tags):
-        return
-    if not Exp(above_name_id=140_000).should_apply(nam, cfg):
-        return
-    if LINT.is_ignoring_lint(nam, "unchecked_authority_page_link"):
+    if not _should_require_unchecked_page_link(nam, cfg):
         return
     # Compute candidates (same logic used by mdd_names.py via get_candidate_bhl_pages)
-    candidates = list(get_candidate_bhl_pages(nam, verbose=cfg.verbose))
+    candidates = [
+        cand
+        for cand in get_candidate_bhl_pages(nam, verbose=cfg.verbose)
+        if cand.year_matches
+    ]
     if not candidates:
         return
     candidates = sorted(candidates, key=lambda page: page.sort_key())
     urls = [page.page_url for page in candidates]
-    if cfg.interactive:
+    if cfg.interactive and not LINT.is_ignoring_lint(
+        nam, "unchecked_authority_page_link"
+    ):
         nam.display()
         if nam.original_citation is not None:
             nam.original_citation.display()
@@ -4965,6 +4992,7 @@ def get_candidate_bhl_pages(
         if isinstance((parsed_url := urlparse.parse_url(tag.url)), urlparse.BhlPage)
     ]
     year = nam.numeric_year()
+    structured_cite = nam.get_type_tag(TypeTag.StructuredVerbatimCitation)
     contains_text: list[str] = []
     if nam.original_name is not None:
         contains_text.append(nam.original_name)
@@ -4997,6 +5025,7 @@ def get_candidate_bhl_pages(
                 title_ids,
                 year=year,
                 start_page=page,
+                volume=structured_cite.volume if structured_cite else None,
                 contains_text=contains_text,
                 known_item_id=known_item_id,
             )
@@ -5133,6 +5162,58 @@ def infer_page_from_other_names(nam: Name, cfg: LintConfig) -> Iterable[str]:
             nam.add_type_tag(tag)
         else:
             yield message
+
+
+@LINT.add("structured_verbatim_citation")
+def add_structured_verbatim_citation(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    """Add or update a StructuredVerbatimCitation tag based on verbatim_citation.
+
+    Uses regex heuristics in parse_citations.py to extract series/volume/issue/pages
+    from Name.verbatim_citation. Only emits/updates the tag if at least one field is
+    parsed.
+    """
+    if nam.verbatim_citation is None:
+        return
+    parsed = parse_citations.parse_citation(nam.verbatim_citation)
+    if not any(
+        [parsed.series, parsed.volume, parsed.issue, parsed.start_page, parsed.end_page]
+    ):
+        return
+    new_tag = TypeTag.StructuredVerbatimCitation(
+        series=parsed.series,
+        volume=parsed.volume,
+        issue=parsed.issue,
+        start_page=parsed.start_page,
+        end_page=parsed.end_page,
+    )
+    existing = nam.get_type_tag(TypeTag.StructuredVerbatimCitation)
+
+    if existing is None:
+        msg = f"add StructuredVerbatimCitation from verbatim_citation: {new_tag}"
+        if cfg.autofix:
+            print(f"{nam}: {msg}")
+            nam.add_type_tag(new_tag)
+        else:
+            yield msg
+        return
+    else:
+        merged = TypeTag.StructuredVerbatimCitation(
+            series=existing.series or new_tag.series,
+            volume=existing.volume or new_tag.volume,
+            issue=existing.issue or new_tag.issue,
+            start_page=existing.start_page or new_tag.start_page,
+            end_page=existing.end_page or new_tag.end_page,
+        )
+        if merged != existing:
+            msg = f"update StructuredVerbatimCitation from {existing} to {merged}"
+            if cfg.autofix:
+                print(f"{nam}: {msg}")
+                nam.type_tags = [  # type: ignore[assignment]
+                    (merged if isinstance(t, TypeTag.StructuredVerbatimCitation) else t)
+                    for t in nam.type_tags
+                ]
+            else:
+                yield msg
 
 
 @LINT.add("infer_bhl_page_from_other_names", requires_network=True)

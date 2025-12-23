@@ -342,6 +342,7 @@ class CitationGroup(BaseModel):
             "validate_bhl_urls": self.validate_bhl_urls,
             "open_bhl_pages": self.open_bhl_pages,
             "make_child": self.make_child,
+            "open_url": self.open_url,
         }
 
     def open_url(self) -> None:
