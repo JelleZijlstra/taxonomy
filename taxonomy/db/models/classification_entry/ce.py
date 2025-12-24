@@ -385,6 +385,14 @@ class ClassificationEntry(BaseModel):
     def get_children(self) -> Query[Self]:
         return self.add_validity_check(self.children)
 
+    def is_bare_synonym(self) -> bool:
+        if self.rank is not Rank.synonym_species:
+            return False
+        name = self.get_corrected_name()
+        if name is None:
+            return False
+        return " " not in name
+
     def ensure_page_set(self) -> None:
         if self.page is None:
             self.display()
