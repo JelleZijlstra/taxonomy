@@ -728,6 +728,14 @@ class Name(BaseModel):
         from taxonomy.search import search
 
         results = search(query, year_max=max_year)
+        if results:
+            ignored = {
+                tag.article.id
+                for tag in self.get_tags(
+                    self.type_tags, TypeTag.IgnorePotentialCitationFrom
+                )
+            }
+            results = [hit for hit in results if hit.article_id not in ignored]
         if not results:
             print(f"{self}: no older usages found")
             return
@@ -737,6 +745,10 @@ class Name(BaseModel):
         print(f"{self}: found older usage in {article}: {earliest}")
         article.display_classification_entries()
         article.edit()
+        if self.original_citation != article and getinput.yes_no(
+            "Add IgnorePotentialCitationFrom? "
+        ):
+            self.add_type_tag(TypeTag.IgnorePotentialCitationFrom(article=article))
 
     def get_classification_entries(self) -> Query[ClassificationEntry]:
         return ClassificationEntry.select_valid().filter(

@@ -1008,11 +1008,6 @@ def _check_all_type_tags(
                 yield "has StructuredVerbatimCitation tag but also has original_citation"
                 return []
 
-        case TypeTag.IgnorePotentialCitationFrom():
-            if nam.original_citation is not None:
-                yield "has IgnorePotentialCitationFrom tag but also has original_citation"
-                return []
-
     return [*tags, tag]
 
 
