@@ -325,7 +325,7 @@ def get_hesp_row(
     row["Hesp_citation_kind"] = get_citation_kind(name)
     if authority_link:
         row["Hesp_unchecked_authority_page_link"] = ""
-    else:
+    elif name.original_citation is None:
         # At most 3
         try:
             candidates = models.name.lint.get_candidate_bhl_pages(name)

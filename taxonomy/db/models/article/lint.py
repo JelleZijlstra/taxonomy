@@ -1159,6 +1159,16 @@ def get_inferred_bhl_page(art: Article, cfg: LintConfig) -> bhl.PossiblePage | N
         ):
             return None
         page_metadata = bhl.get_page_metadata(start_pages[0])
+        item_metadata = bhl.get_item_metadata(item_id)
+        if (
+            item_metadata is not None
+            and art.volume is not None
+            and "Volume" in item_metadata
+            and isinstance(item_metadata["Volume"], str)
+        ):
+            vol_match = bhl.volume_matches(art.volume, item_metadata["Volume"])
+        else:
+            vol_match = False
         return bhl.PossiblePage(
             start_pages[0],
             art.start_page,
@@ -1168,6 +1178,7 @@ def get_inferred_bhl_page(art: Article, cfg: LintConfig) -> bhl.PossiblePage | N
             ocr_text=page_metadata.get("OCRText", ""),
             item_id=item_id,
             min_distance=0,
+            volume_matches=vol_match,
         )
     else:
         if cg is None:

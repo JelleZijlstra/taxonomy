@@ -52,6 +52,18 @@ RANKS = [
     "subgenus",
 ]
 RANK_ENUMS = [Rank[rank] for rank in RANKS]
+ALLOWED_EMPTY_COLUMNS = {
+    "otherCommonNames",
+    "distributionNotes",
+    "distributionNotesCitation",
+    "subregionDistribution",
+    "typeVoucherURIs",
+    "typeLocalityLatitude",
+    "typeLocalityLongitude",
+    "authoritySpeciesLink",
+    "typeVoucher",
+    "typeKind",
+}
 
 # Columns that map directly to a column in the synonyms sheet
 SIMPLE_COLUMNS = [
@@ -926,17 +938,23 @@ class MDDSpecies:
         )
 
     def lint_standalone(self) -> Iterable[Issue]:
+        for column_name in MDDSpeciesRow.__annotations__:
+            if column_name not in ALLOWED_EMPTY_COLUMNS and not self.row.get(
+                column_name
+            ):
+                yield self.make_issue(column_name, "missing value")
         for col, rgx in COLUMN_TO_REGEX.items():
             if col in self.row and not re.fullmatch(rgx, self.row[col]):  # type: ignore[literal-required]
                 yield self.make_issue(col, f"does not follow expected format {rgx!r}")
 
-        expected_sci_name = f"{self.row['genus']}_{self.row['specificEpithet']}"
-        if self.row["sciName"] != expected_sci_name:
-            yield self.make_issue(
-                "sciName",
-                "does not match name inferred from 'genus' and 'specificEpithet' columns",
-                expected_sci_name,
-            )
+        if "genus" in self.row and "specificEpithet" in self.row:
+            expected_sci_name = f"{self.row['genus']}_{self.row['specificEpithet']}"
+            if self.row["sciName"] != expected_sci_name:
+                yield self.make_issue(
+                    "sciName",
+                    "does not match name inferred from 'genus' and 'specificEpithet' columns",
+                    expected_sci_name,
+                )
         # Alert if the main common name is also listed among other common names
         main_cn = (self.row.get("mainCommonName") or "").strip()
         if main_cn:

@@ -2162,6 +2162,10 @@ def _sort_key(volume_or_issue: str | None) -> tuple[object, ...]:
         return (float("inf"), volume_or_issue)
 
 
+def _article_sort_key(art: Article) -> tuple[object, ...]:
+    return (art.numeric_start_page(), _sort_key(art.article_number))
+
+
 @command
 def cg_recent_report(
     cg: CitationGroup | None = None, min_year: int | None = None
@@ -2184,9 +2188,7 @@ def cg_recent_report(
         volume_data = arts[volume]
         for issue in sorted(volume_data, key=_sort_key):
             print(f"    === Issue {issue}")
-            for art in sorted(
-                volume_data[issue], key=lambda art: art.numeric_start_page()
-            ):
+            for art in sorted(volume_data[issue], key=_article_sort_key):
                 print(f"         {art!r}")
 
 

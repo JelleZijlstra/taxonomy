@@ -4775,7 +4775,7 @@ def unchecked_authority_page_link(nam: Name, cfg: LintConfig) -> Iterable[str]:
     candidates = [
         cand
         for cand in get_candidate_bhl_pages(nam, verbose=cfg.verbose)
-        if cand.year_matches
+        if cand.volume_matches
     ]
     if not candidates:
         return
@@ -5034,7 +5034,13 @@ def get_candidate_bhl_pages(
                 print(f"Reject for {nam} because no confident pages")
                 for page_obj in possible_pages:
                     print(page_obj.page_url)
-            yield from possible_pages
+            right_volume_pages = [
+                page for page in possible_pages if page.volume_matches
+            ]
+            if right_volume_pages:
+                yield from right_volume_pages
+            else:
+                yield from possible_pages
         else:
             yield from confident_pages
 
