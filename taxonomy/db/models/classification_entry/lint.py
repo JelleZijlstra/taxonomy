@@ -95,8 +95,8 @@ def check_tags(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
                 yield "removing redundant ReferencedUsage tag"
             else:
                 if ce.mapped_name is not None and tag.ce.mapped_name is not None:
-                    referenced = tag.ce.mapped_name.resolve_name()
-                    mapped = ce.mapped_name.resolve_name()
+                    referenced = tag.ce.mapped_name.resolve_variant()
+                    mapped = ce.mapped_name.resolve_variant()
                     if referenced != mapped:
                         yield f"ReferencedUsage tag {tag} (resolving to {referenced}) does not match mapped_name {mapped}"
                 new_tags.append(tag)
@@ -1588,9 +1588,9 @@ def find_referenced_usage(ce: ClassificationEntry) -> ClassificationEntry | None
     if ce.mapped_name is None:
         return None
     possibilities = []
-    resolved_mapped = ce.mapped_name.resolve_name()
+    resolved_mapped = ce.mapped_name.resolve_variant()
     for nam in ce.mapped_name.taxon.get_names():
-        if nam.resolve_name() != resolved_mapped:
+        if nam.resolve_variant() != resolved_mapped:
             continue
         for mapped_ce in nam.get_classification_entries():
             author, year = mapped_ce.article.taxonomic_authority()

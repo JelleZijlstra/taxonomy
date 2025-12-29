@@ -85,7 +85,7 @@ def get_relevant_ces(nam: Name) -> list[ClassificationEntry]:
     root_name = nam.root_name
     ces = []
     for possible_variant in Name.select_valid().filter(Name.taxon == nam.taxon):
-        if possible_variant.resolve_name() == resolved:
+        if possible_variant.resolve_variant() == resolved:
             ces.extend(get_and_filter_ces(possible_variant, root_name))
     return ces
 
@@ -114,7 +114,7 @@ def get_ces_since_2000(nam: Name) -> list[ClassificationEntry]:
     resolved = nam.resolve_variant()
     ces: list[ClassificationEntry] = []
     for possible_variant in Name.select_valid().filter(Name.taxon == nam.taxon):
-        if possible_variant.resolve_name() == resolved:
+        if possible_variant.resolve_variant() == resolved:
             for ce in possible_variant.get_classification_entries():
                 if (not ce.rank.is_synonym) and ce.article.numeric_year() >= 2000:
                     ces.append(ce)

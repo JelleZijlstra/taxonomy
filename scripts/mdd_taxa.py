@@ -814,7 +814,7 @@ def get_text_for_single_subspecies(subspecies: Taxon) -> str:
     parens = []
     if subspecies.age is not AgeClass.extant:
         parens.append(subspecies.age.name.replace("_", " "))
-    nams = {nam.resolve_name() for nam in subspecies.get_names()}
+    nams = {nam.resolve_variant() for nam in subspecies.get_names()}
     nams = {nam for nam in nams if nam != subspecies.base_name}
     if nams:
         nams_str = ", ".join(sorted(format_single_synonym(nam) for nam in nams))
