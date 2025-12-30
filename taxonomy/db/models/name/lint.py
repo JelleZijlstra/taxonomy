@@ -3902,17 +3902,26 @@ def check_required_fields(nam: Name, cfg: LintConfig) -> Iterable[str]:
             and nam.nomenclature_status.requires_name_complex()
         ):
             yield "species-group name with no species name complex"
-    if (
-        nam.numeric_year() > 1970
-        and not nam.verbatim_citation
-        and not nam.original_citation
-    ):
-        yield "recent name must have verbatim citation"
+    must_have_verbatim_reason = must_have_verbatim(nam)
+    if must_have_verbatim_reason is not None:
+        yield f"{must_have_verbatim_reason} must have verbatim citation"
     if nam.species_type_kind is None and nam.nomenclature_status.requires_type():
         if nam.type_specimen is not None:
             yield "has type_specimen but no species_type_kind"
         if nam.has_type_tag(TypeTag.Age) or nam.has_type_tag(TypeTag.Gender):
             yield "has type specimen age or gender but no species_type_kind"
+
+
+def must_have_verbatim(nam: Name) -> str | None:
+    if nam.original_citation is None:
+        return None
+    if nam.verbatim_citation is not None:
+        return None
+    if nam.numeric_year() > 1970:
+        return "recent name"
+    if nam.nomenclature_status is NomenclatureStatus.subsequent_usage:
+        return "subsequent usage"
+    return None
 
 
 @LINT.add("derived_tags")
