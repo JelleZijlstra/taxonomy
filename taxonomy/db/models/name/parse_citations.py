@@ -95,6 +95,13 @@ def parse_citation(citation: str) -> ParsedCitation:
             series = m.group(1)
             volume = _to_roman_or_int(m.group(2))
 
+    # 3b) Parenthesized series immediately followed by volume and colon: "(3)16:204-206"
+    if series is None and volume is None:
+        m = re.search(r"\((\d{1,2})\)\s*([0-9IVXLCDM]{1,8})\s*:\s*\d", text)
+        if m:
+            series = m.group(1)
+            volume = _to_roman_or_int(m.group(2))
+
     # 4) volume(issue) pattern, e.g., "9(2): 186-265"
     if volume is None:
         m = re.search(r"\b(\d{1,4})\s*\((\d{1,3})\)\s*:\s*\d", text)

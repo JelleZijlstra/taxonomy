@@ -1953,15 +1953,7 @@ def find_potential_citations_for_group(
             condition = _author_names(nam) <= _author_names(art)
         else:
             condition = nam.author_set() <= art.author_set()
-        if not condition:
-            return False
-        for tag in nam.type_tags:
-            if (
-                isinstance(tag, TypeTag.IgnorePotentialCitationFrom)
-                and tag.article == art
-            ):
-                return False
-        return True
+        return condition
 
     count = 0
     for nam in cg.get_names():
@@ -1984,15 +1976,28 @@ def find_potential_citations_for_group(
                 svc_series = svc.series
 
                 svc_candidates = [
-                    a
-                    for a in potential_arts
-                    if (svc_volume is None or a.volume == svc_volume)
-                    and (svc_series is None or a.series == svc_series)
-                    and _page_matches_art(svc, page, a)
+                    art
+                    for art in potential_arts
+                    if (svc_volume is None or art.volume == svc_volume)
+                    and (svc_series is None or art.series == svc_series)
+                    and _page_matches_art(svc, page, art)
+                    and abs(art.numeric_year() - nam.numeric_year()) <= 5
                 ]
                 candidates = sorted(
                     set(candidates) | set(svc_candidates), key=lambda a: a.sort_key()
                 )
+
+        candidates = [
+            art
+            for art in candidates
+            if not any(
+                isinstance(tag, TypeTag.IgnorePotentialCitationFrom)
+                and tag.article == art
+                for tag in nam.type_tags
+            )
+            and not art.lacks_full_text()
+        ]
+
         if candidates:
             if count == 0:
                 print(f"Trying {cg}...", flush=True)
