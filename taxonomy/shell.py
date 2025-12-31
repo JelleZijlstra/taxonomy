@@ -1909,6 +1909,25 @@ def _author_names(obj: Article | Name) -> set[str]:
     return {helpers.simplify_string(person.family_name) for person in obj.get_authors()}
 
 
+def _page_matches_art(
+    svc: TypeTag.StructuredVerbatimCitation, page: int, a: Article  # type: ignore[name-defined]
+) -> bool:
+    # Prefer page_described if available
+    if page and a.is_page_in_range(page):
+        return True
+    # Fall back to structured start/end if numeric
+    if (
+        svc.start_page
+        and svc.start_page.isdigit()
+        and a.is_page_in_range(int(svc.start_page))
+    ):
+        if svc.end_page and svc.end_page.isdigit():
+            # If end page present, ensure also in range
+            return a.is_page_in_range(int(svc.end_page))
+        return True
+    return False
+
+
 @command
 def find_potential_citations_for_group(
     cg: CitationGroup | None = None, *, fix: bool = True, aggressive: bool = True
@@ -1955,6 +1974,25 @@ def find_potential_citations_for_group(
         candidates = [
             art for art in potential_arts if is_possible_match(art, nam, page)
         ]
+
+        # Supplement with matches based on StructuredVerbatimCitation, if present
+        svc_tags = list(nam.get_tags(nam.type_tags, TypeTag.StructuredVerbatimCitation))
+        if svc_tags:
+            svc = svc_tags[0]
+            svc_volume = svc.volume
+            if svc_volume is not None:
+                svc_series = svc.series
+
+                svc_candidates = [
+                    a
+                    for a in potential_arts
+                    if (svc_volume is None or a.volume == svc_volume)
+                    and (svc_series is None or a.series == svc_series)
+                    and _page_matches_art(svc, page, a)
+                ]
+                candidates = sorted(
+                    set(candidates) | set(svc_candidates), key=lambda a: a.sort_key()
+                )
         if candidates:
             if count == 0:
                 print(f"Trying {cg}...", flush=True)
