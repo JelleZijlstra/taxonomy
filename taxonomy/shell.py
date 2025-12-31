@@ -79,6 +79,7 @@ from .db.models import (
 )
 from .db.models.base import LintConfig, Linter, ModelT
 from .db.models.ignored_doi import IgnoreReason
+from .db.models.item_file import ItemFile
 from .db.models.person import PersonLevel
 
 T = TypeVar("T")
@@ -2613,13 +2614,40 @@ def download_bhl_items(
             # Line by itself for easier copy-pasting
             print(url)
             response = httpx.get(url, follow_redirects=True)
-            path = options.burst_path / f"{item_id}.pdf"
+            # Save directly under item_file_path so we can create ItemFile immediately
+            filename = f"{item_id}.pdf"
+            target_dir = options.item_file_path
+            target_dir.mkdir(parents=True, exist_ok=True)
+            path = target_dir / filename
             path.write_bytes(response.content)
-            subprocess.check_call(["open", path])
-            if getinput.yes_no("catalog as one item? "):
-                shutil.move(path, options.new_path)
-            print("Adding item for name", nam)
-            models.article.check.check_new()
+
+            # Build ItemFile data from the Name
+            cg = nam.get_citation_group()
+            if cg is None:
+                print(f"Skipping ItemFile creation: {nam} has no citation_group")
+                continue
+            # Extract series and volume from StructuredVerbatimCitation tag if present
+            svc_tags = list(
+                nam.get_tags(nam.type_tags, TypeTag.StructuredVerbatimCitation)
+            )
+            series = None
+            volume = None
+            if svc_tags:
+                svc = svc_tags[0]
+                series = svc.series
+                volume = svc.volume
+
+            # Create ItemFile and allow user to edit
+            item_url = f"https://www.biodiversitylibrary.org/item/{item_id}"
+            itf = ItemFile.create(
+                filename=filename,
+                citation_group=cg,
+                series=series,
+                volume=volume,
+                url=item_url,
+            )
+            print(f"Created {itf}; opening editor to fix fields…")
+            itf.edit()
 
 
 @command

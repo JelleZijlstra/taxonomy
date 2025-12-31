@@ -3913,7 +3913,7 @@ def check_required_fields(nam: Name, cfg: LintConfig) -> Iterable[str]:
 
 
 def must_have_verbatim(nam: Name) -> str | None:
-    if nam.original_citation is None:
+    if nam.original_citation is not None:
         return None
     if nam.verbatim_citation is not None:
         return None
