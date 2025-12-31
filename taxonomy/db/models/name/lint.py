@@ -54,6 +54,7 @@ from taxonomy.db.constants import (
 )
 from taxonomy.db.models.article import Article, ArticleTag, PresenceStatus
 from taxonomy.db.models.base import LintConfig
+from taxonomy.db.models.citation_group import lint as cg_lint
 from taxonomy.db.models.classification_entry.ce import (
     ClassificationEntry,
     ClassificationEntryTag,
@@ -5225,6 +5226,104 @@ def add_structured_verbatim_citation(nam: Name, cfg: LintConfig) -> Iterable[str
                 ]
             else:
                 yield msg
+
+
+@LINT.add("structured_verbatim_citation_fields")
+def check_structured_verbatim_citation_fields(
+    nam: Name, cfg: LintConfig
+) -> Iterable[str]:
+    """Validate StructuredVerbatimCitation fields against CitationGroup rules.
+
+    - Series/volume/issue must match the CitationGroup's regex tags when present;
+      otherwise defaults are used from cg_lint.
+    - If start_page and end_page are both present and numeric, end_page >= start_page.
+    """
+    # Find a citation group to validate against
+    cg = nam.get_citation_group()
+    if cg is None:
+        return
+
+    for tag in nam.get_tags(nam.type_tags, TypeTag.StructuredVerbatimCitation):
+        # series
+        if tag.series is None and cg_lint.requires_series(cg):
+            yield f"missing a series in StructuredVerbatimCitation, but {cg} requires one"
+        series_regex = cg_lint.get_series_regex(cg)
+        if series_regex is not None:
+            if tag.series is not None and not re.fullmatch(series_regex, tag.series):
+                yield (
+                    f"series {tag.series!r} does not match regex {series_regex!r} for {cg}"
+                )
+        elif tag.series is not None and cg.type is ArticleType.JOURNAL:
+            # Only enforced for journals as per Article logic
+            yield f"is in {cg}, which does not support series"
+
+        # volume
+        if tag.volume is not None:
+            normalized_volume = tag.volume.replace("–", "-")
+            if normalized_volume != tag.volume:
+                msg = (
+                    f"normalize SVC volume dash {tag.volume!r} -> {normalized_volume!r}"
+                )
+                if cfg.autofix:
+                    print(f"{nam}: {msg}")
+                    # Replace the tag with a normalized one
+                    new_tag = TypeTag.StructuredVerbatimCitation(
+                        volume=normalized_volume,
+                        issue=tag.issue,
+                        start_page=tag.start_page,
+                        end_page=tag.end_page,
+                        series=tag.series,
+                    )
+                    nam.type_tags = [  # type: ignore[assignment]
+                        (new_tag if t is tag else t) for t in nam.type_tags
+                    ]
+                    tag = new_tag
+                else:
+                    yield msg
+            rgx = cg_lint.get_volume_regex(cg)
+            if not re.fullmatch(rgx, tag.volume):
+                yield (
+                    f"volume {tag.volume!r} does not match {cg_lint.describe_volume_regex(cg)} (CG {cg})"
+                )
+
+        # issue
+        if tag.issue is not None:
+            normalized_issue = re.sub(r"[–_]", "-", tag.issue)
+            normalized_issue = re.sub(r"^(\d+)/(\d+)$", r"\1–\2", normalized_issue)
+            if normalized_issue != tag.issue:
+                msg = f"normalize SVC issue formatting {tag.issue!r} -> {normalized_issue!r}"
+                if cfg.autofix:
+                    print(f"{nam}: {msg}")
+                    new_tag = TypeTag.StructuredVerbatimCitation(
+                        volume=tag.volume,
+                        issue=normalized_issue,
+                        start_page=tag.start_page,
+                        end_page=tag.end_page,
+                        series=tag.series,
+                    )
+                    nam.type_tags = [  # type: ignore[assignment]
+                        (new_tag if t is tag else t) for t in nam.type_tags
+                    ]
+                    tag = new_tag
+                else:
+                    yield msg
+            rgx = cg_lint.get_issue_regex(cg)
+            if not re.fullmatch(rgx, tag.issue):
+                yield (
+                    f"issue {tag.issue!r} does not match {cg_lint.describe_issue_regex(cg)} (CG {cg})"
+                )
+
+        # pages: ensure end >= start if both numeric
+        if (
+            tag.start_page
+            and tag.end_page
+            and tag.start_page.isdigit()
+            and tag.end_page.isdigit()
+        ):
+            if int(tag.end_page) < int(tag.start_page):
+                yield (
+                    f"end_page {tag.end_page!r} is less than start_page {tag.start_page!r} in StructuredVerbatimCitation"
+                )
 
 
 @LINT.add("infer_bhl_page_from_other_names", requires_network=True)
