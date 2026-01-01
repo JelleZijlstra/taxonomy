@@ -5245,8 +5245,6 @@ def check_structured_verbatim_citation_fields(
 
     for tag in nam.get_tags(nam.type_tags, TypeTag.StructuredVerbatimCitation):
         # series
-        if tag.series is None and cg_lint.requires_series(cg):
-            yield f"missing a series in StructuredVerbatimCitation, but {cg} requires one"
         series_regex = cg_lint.get_series_regex(cg)
         if series_regex is not None:
             if tag.series is not None and not re.fullmatch(series_regex, tag.series):
@@ -5275,7 +5273,7 @@ def check_structured_verbatim_citation_fields(
                         series=tag.series,
                     )
                     nam.type_tags = [  # type: ignore[assignment]
-                        (new_tag if t is tag else t) for t in nam.type_tags
+                        (new_tag if t == tag else t) for t in nam.type_tags
                     ]
                     tag = new_tag
                 else:
@@ -5302,7 +5300,7 @@ def check_structured_verbatim_citation_fields(
                         series=tag.series,
                     )
                     nam.type_tags = [  # type: ignore[assignment]
-                        (new_tag if t is tag else t) for t in nam.type_tags
+                        (new_tag if t == tag else t) for t in nam.type_tags
                     ]
                     tag = new_tag
                 else:
@@ -5320,9 +5318,36 @@ def check_structured_verbatim_citation_fields(
             and tag.start_page.isdigit()
             and tag.end_page.isdigit()
         ):
-            if int(tag.end_page) < int(tag.start_page):
+            start_page = tag.start_page
+            end_page = tag.end_page
+            # Autofix shorthand like "452-58" -> "452-458" when it increases end_page beyond start_page
+            if len(end_page) < len(start_page):
+                try:
+                    prefix = start_page[: len(start_page) - len(end_page)]
+                    candidate = prefix + end_page
+                    if int(candidate) > int(start_page):
+                        msg = f"expand SVC end_page {end_page!r} -> {candidate!r}"
+                        if cfg.autofix:
+                            print(f"{nam}: {msg}")
+                            new_tag = TypeTag.StructuredVerbatimCitation(
+                                volume=tag.volume,
+                                issue=tag.issue,
+                                start_page=start_page,
+                                end_page=candidate,
+                                series=tag.series,
+                            )
+                            nam.type_tags = [  # type: ignore[assignment]
+                                (new_tag if t == tag else t) for t in nam.type_tags
+                            ]
+                            tag = new_tag
+                            end_page = candidate
+                        else:
+                            yield msg
+                except ValueError:
+                    pass
+            if int(end_page) < int(start_page):
                 yield (
-                    f"end_page {tag.end_page!r} is less than start_page {tag.start_page!r} in StructuredVerbatimCitation"
+                    f"end_page {end_page!r} is less than start_page {start_page!r} in StructuredVerbatimCitation"
                 )
 
 
