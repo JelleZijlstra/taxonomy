@@ -99,7 +99,7 @@ def check_base_name(taxon: Taxon, cfg: LintConfig) -> Iterable[str]:
         rank = taxon.rank.name
         group = taxon.base_name.group.name
         yield f"group mismatch: rank {rank} but group {group}"
-    resolved = taxon.base_name.resolve_variant()
+    resolved = taxon.base_name.resolve_variant(unavailable_version=False)
     if resolved != taxon.base_name:
         message = f"base name is a variant: {taxon.base_name} -> {resolved}"
         if cfg.autofix:

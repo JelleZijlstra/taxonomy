@@ -3630,10 +3630,6 @@ def infer_page_described(nam: Name, cfg: LintConfig) -> Iterable[str]:
         cite = new_cite
     if match := re.search(r"(?:\bp ?\.|\bS\.|:)\s*(\d{1,4})\.?$", cite):
         page = match.group(1)
-    elif match := re.search(
-        r"(?:\bp\.|pp\.|\bS\.|:|,)\s*(\d{1,4}) ?[-–e] ?(\d{1,4})\.?$", cite
-    ):
-        page = f"{match.group(1)}-{match.group(2)}"
     else:
         return
     message = f"infer page {page!r} from {nam.verbatim_citation!r}"
@@ -5209,8 +5205,20 @@ def add_structured_verbatim_citation(nam: Name, cfg: LintConfig) -> Iterable[str
             yield msg
         return
     else:
+        # Only re-add series if the journal supports it
+        if existing.series:
+            series = existing.series
+        elif (
+            new_tag.series
+            and nam.citation_group
+            and models.citation_group.lint.get_series_regex(nam.citation_group)
+        ):
+            series = new_tag.series
+        else:
+            series = None
+
         merged = TypeTag.StructuredVerbatimCitation(
-            series=existing.series or new_tag.series,
+            series=series,
             volume=existing.volume or new_tag.volume,
             issue=existing.issue or new_tag.issue,
             start_page=existing.start_page or new_tag.start_page,
@@ -6566,12 +6574,10 @@ def _prefer_commented(
 
 @LINT.add("infer_tags_from_mapped_entries")
 def infer_tags_from_mapped_entries(nam: Name, cfg: LintConfig) -> Iterable[str]:
-    # if nam.group is not Group.species:
-    #     return
     ces = list(nam.classification_entries)
     if not ces:
         return
-    tag_name = nam.resolve_variant()
+    tag_name = nam.resolve_variant(unavailable_version=False)
     for ce in ces:
         if nam.group is Group.species:
             location = ce.type_locality

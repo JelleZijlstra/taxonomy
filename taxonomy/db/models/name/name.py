@@ -1290,9 +1290,12 @@ class Name(BaseModel):
         tags: tuple[builtins.type[NameTag], ...] | None = None,
         *,
         misidentification: bool = False,
+        unavailable_version: bool = True,
     ) -> Name:
         if tags is None:
             tags = VARIANT_TAGS
+        if not unavailable_version:
+            tags = tuple(t for t in tags if t is not NameTag.UnavailableVersionOf)
         if misidentification:
             tags = (*tags, NameTag.MisidentificationOf)
         return self._resolve_variant(10, tags)
