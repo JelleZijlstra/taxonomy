@@ -3140,7 +3140,12 @@ class TypeTag(adt.ADT):
         tag=16,
     )
     # more information on the specimen
-    SpecimenDetail(text=Markdown, source=Article, tag=17)  # type: ignore[name-defined]
+    SpecimenDetail(  # type: ignore[name-defined]
+        text=Markdown,
+        source=Article,
+        classification_entry=NotRequired[ClassificationEntry],
+        tag=17,
+    )
     # phrasing of the type locality in a particular source
     LocationDetail(  # type: ignore[name-defined]
         text=Markdown,
@@ -3149,6 +3154,7 @@ class TypeTag(adt.ADT):
         page=NotRequired[Managed],
         translation=NotRequired[Markdown],
         page_link=NotRequired[URL],
+        classification_entry=NotRequired[ClassificationEntry],
         tag=18,
     )
     # an originally included species in a genus without an original type designation

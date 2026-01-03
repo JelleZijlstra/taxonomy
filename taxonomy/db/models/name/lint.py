@@ -723,6 +723,65 @@ def _check_all_type_tags(
                 else:
                     yield message
 
+            if tag.classification_entry is not None:
+                ce = tag.classification_entry
+                if ce.article != tag.source:
+                    yield f"{tag} has classification entry {ce} that does not match source {tag.source}"
+                if ce.mapped_name.resolve_variant() != nam and ce.mapped_name != nam:
+                    yield f"{tag} has classification entry {ce} that does not match name {nam}"
+                if ce.type_locality != tag.text:
+                    yield f"{tag} has classification entry {ce} whose type locality {ce.type_locality!r} does not match text"
+            else:
+                obviating_location_tag: TypeTag.LocationDetail | None = None  # type: ignore[name-defined]
+                for other_tag in by_type[TypeTag.LocationDetail]:
+                    if (
+                        other_tag is not tag
+                        and other_tag.source == tag.source
+                        and other_tag.text == tag.text
+                        and other_tag.comment == tag.comment
+                        and other_tag.page == tag.page
+                        and other_tag.translation == tag.translation
+                        and other_tag.page_link == tag.page_link
+                        and other_tag.classification_entry is not None
+                    ):
+                        obviating_location_tag = other_tag
+                        break
+                if obviating_location_tag is not None:
+                    yield f"remove redundant tag {tag} (obviated by {obviating_location_tag})"
+                    return []
+
+        case TypeTag.SpecimenDetail():
+            if tag.classification_entry is not None:
+                ce = tag.classification_entry
+                if ce.article != tag.source:
+                    yield f"{tag} has classification entry {ce} that does not match source {tag.source}"
+                if ce.mapped_name.resolve_variant() != nam and ce.mapped_name != nam:
+                    yield f"{tag} has classification entry {ce} that does not match name {nam}"
+                type_specimen_datas = [
+                    tag.text
+                    for tag in ce.tags
+                    if isinstance(
+                        tag,
+                        models.classification_entry.ClassificationEntryTag.TypeSpecimenData,
+                    )
+                ]
+                if tag.text not in type_specimen_datas:
+                    yield f"{tag} has classification entry {ce} whose type specimen data {type_specimen_datas} does not match text"
+            else:
+                obviating_specimen_tag: TypeTag.SpecimenDetail | None = None  # type: ignore[name-defined]
+                for other_tag in by_type[TypeTag.SpecimenDetail]:
+                    if (
+                        other_tag is not tag
+                        and other_tag.source == tag.source
+                        and other_tag.text == tag.text
+                        and other_tag.classification_entry is not None
+                    ):
+                        obviating_specimen_tag = other_tag
+                        break
+                if obviating_specimen_tag is not None:
+                    yield f"remove redundant tag {tag} (obviated by {obviating_specimen_tag})"
+                    return []
+
         case TypeTag.DefinitionDetail():
             # Phylonyms book PDF has "Tis" and "Te" for "This" and "The"
             text = re.sub(r"\bT(?=e\b|is\b)", "Th", tag.text)
@@ -6582,10 +6641,12 @@ def infer_tags_from_mapped_entries(nam: Name, cfg: LintConfig) -> Iterable[str]:
         if nam.group is Group.species:
             location = ce.type_locality
             if location and not any(
-                tag.source == ce.article
+                tag.classification_entry == ce
                 for tag in tag_name.get_tags(tag_name.type_tags, TypeTag.LocationDetail)
             ):
-                tag = TypeTag.LocationDetail(location, ce.article)
+                tag = TypeTag.LocationDetail(
+                    location, ce.article, classification_entry=ce
+                )
                 message = f"adding location detail from {ce} to {tag_name}: {tag}"
                 if cfg.autofix:
                     print(f"{tag_name}: {message}")
@@ -6598,10 +6659,12 @@ def infer_tags_from_mapped_entries(nam: Name, cfg: LintConfig) -> Iterable[str]:
                     type_specimen = tag.text
                     break
             if type_specimen is not None and not any(
-                tag.source == ce.article
+                tag.classification_entry == ce
                 for tag in tag_name.get_tags(tag_name.type_tags, TypeTag.SpecimenDetail)
             ):
-                tag = TypeTag.SpecimenDetail(type_specimen, ce.article)
+                tag = TypeTag.SpecimenDetail(
+                    type_specimen, ce.article, classification_entry=ce
+                )
                 message = f"adding specimen detail from {ce} to {tag_name}: {tag}"
                 if cfg.autofix:
                     print(f"{tag_name}: {message}")
