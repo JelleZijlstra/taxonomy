@@ -1430,7 +1430,7 @@ def infer_lsid_from_mapped(ce: ClassificationEntry, cfg: LintConfig) -> Iterable
 
 @LINT.add("from_mapped")
 def infer_data_from_mapped(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
-    if ce.mapped_name is None or ce.mapped_name.original_citation != ce.article:
+    if ce.mapped_name is None or ce.mapped_name.get_mapped_classification_entry() != ce:
         return
     if ce.type_locality is None:
         tags = [

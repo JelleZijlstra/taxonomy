@@ -731,24 +731,60 @@ def _check_all_type_tags(
                     yield f"{tag} has classification entry {ce} that does not match name {nam}"
                 if ce.type_locality != tag.text:
                     yield f"{tag} has classification entry {ce} whose type locality {ce.type_locality!r} does not match text"
-            else:
-                obviating_location_tag: TypeTag.LocationDetail | None = None  # type: ignore[name-defined]
-                for other_tag in by_type[TypeTag.LocationDetail]:
-                    if (
-                        other_tag is not tag
-                        and other_tag.source == tag.source
-                        and other_tag.text == tag.text
-                        and other_tag.comment == tag.comment
-                        and other_tag.page == tag.page
-                        and other_tag.translation == tag.translation
-                        and other_tag.page_link == tag.page_link
-                        and other_tag.classification_entry is not None
-                    ):
-                        obviating_location_tag = other_tag
-                        break
-                if obviating_location_tag is not None:
-                    yield f"remove redundant tag {tag} (obviated by {obviating_location_tag})"
-                    return []
+            elif cfg.experimental and has_classification(
+                tag.source
+            ):  # produces 12k issues, probably not achievable
+                yield f"{tag} has no classification entry, but source {tag.source} has some"
+
+            obviating_location_tag: TypeTag.LocationDetail | None = None  # type: ignore[name-defined]
+            for other_tag in by_type[TypeTag.LocationDetail]:
+                if (
+                    other_tag is not tag
+                    and other_tag.source == tag.source
+                    and other_tag.text == tag.text
+                ):
+                    obviating_location_tag = other_tag
+                    break
+            if obviating_location_tag is not None:
+                yield f"merge tags {tag} and {obviating_location_tag}"
+                return [
+                    TypeTag.LocationDetail(
+                        text=tag.text,
+                        source=tag.source,
+                        comment=(
+                            tag.comment
+                            if tag.comment is not None
+                            else obviating_location_tag.comment
+                        ),
+                        page=(
+                            tag.page
+                            if tag.page is not None
+                            else obviating_location_tag.page
+                        ),
+                        translation=(
+                            tag.translation
+                            if tag.translation is not None
+                            else obviating_location_tag.translation
+                        ),
+                        page_link=(
+                            tag.page_link
+                            if tag.page_link is not None
+                            else obviating_location_tag.page_link
+                        ),
+                        classification_entry=(
+                            tag.classification_entry
+                            if (
+                                tag.classification_entry is not None
+                                and not (
+                                    tag.classification_entry.rank is Rank.subspecies
+                                    and tag.classification_entry.parent
+                                    == obviating_location_tag.classification_entry
+                                )
+                            )
+                            else obviating_location_tag.classification_entry
+                        ),
+                    )
+                ]
 
         case TypeTag.SpecimenDetail():
             if tag.classification_entry is not None:
@@ -6113,7 +6149,7 @@ def name_combination_name_sort_key(nam: Name) -> tuple[bool, date, int, int, int
 def infer_name_variants(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.group is not Group.species:
         return
-    ces: Iterable[ClassificationEntry] = nam.classification_entries
+    ces = nam.get_classification_entries()
     by_name: dict[str, list[ClassificationEntry]] = defaultdict(list)
     syns_by_name: dict[str, list[ClassificationEntry]] = defaultdict(list)
     for ce in ces:
@@ -6633,7 +6669,7 @@ def _prefer_commented(
 
 @LINT.add("infer_tags_from_mapped_entries")
 def infer_tags_from_mapped_entries(nam: Name, cfg: LintConfig) -> Iterable[str]:
-    ces = list(nam.classification_entries)
+    ces = list(nam.get_classification_entries())
     if not ces:
         return
     tag_name = nam.resolve_variant(unavailable_version=False)
