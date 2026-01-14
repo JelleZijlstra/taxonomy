@@ -7,7 +7,7 @@ from taxonomy.db import constants
 from . import lib
 from .lib import DataT
 
-SOURCE = lib.Source("sam.txt", "South America.pdf")
+SOURCE = lib.Source("old/sam.txt", "South America.pdf")
 RefsDictT = dict[tuple[str, str], str]
 
 
@@ -379,7 +379,7 @@ def main() -> None:
     names = lib.associate_types(names, name_config=config)
     names = lib.associate_variants(names, name_config=config)
     names = lib.associate_names(names, config)
-    lib.write_to_db(names, SOURCE, dry_run=False, edit_if_no_holotype=False)
+    # lib.write_to_db(names, SOURCE, dry_run=False, edit_if_no_holotype=False)
     # for name in names:
     #     print(name)
     lib.print_field_counts(names)
