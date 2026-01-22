@@ -58,6 +58,7 @@ dependencies = [
   "pymupdf>=1.26.7",
   "openai>=2.13.0",
   "pypandoc>=1.16.2",
+  "pytest",
 ]
 
 [project.urls]
