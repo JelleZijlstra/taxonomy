@@ -717,7 +717,7 @@ def bare_synonym_mapped_names(
         yield from matching_year_candidates
     else:
         matching_year_candidates = []
-    if direct_candidates or parent_candidates:
+    if direct_candidates or parent_candidates or matching_year_candidates:
         return
     yield from get_candidates_from_names_for_bare_synonym(
         nams, ce, corrected_name, fuzzy=True
