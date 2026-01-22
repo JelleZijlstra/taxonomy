@@ -44,6 +44,7 @@ PRAGMA optimize;
 import functools
 import re
 import sqlite3
+import traceback
 import unicodedata
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
@@ -161,7 +162,12 @@ def search(
         LIMIT ? OFFSET ?
     """
     args.extend([limit, offset])
-    rows = run_query(sql, tuple(args))
+    try:
+        rows = run_query(sql, tuple(args))
+    except sqlite3.OperationalError as e:
+        print("Error during search query:", e)
+        traceback.print_exc()
+        return []
     return [
         SearchHit(int(a), int(p), int(y) if y is not None else None, str(s))
         for a, p, y, s in rows

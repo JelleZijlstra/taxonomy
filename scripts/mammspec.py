@@ -135,6 +135,8 @@ def make_entry(
         post_text = "No type locality given."
     elif nam.nomenclature_status is NomenclatureStatus.available:
         post_text = "**WARNING: Type data missing.**"
+    elif nam.nomenclature_status is NomenclatureStatus.nomen_nudum:
+        post_text = "Nomen nudum."
     else:
         post_text = "**WARNING: Unknown name type**"
     if authority_nam is None:
@@ -266,10 +268,14 @@ if __name__ == "__main__":
     parser.add_argument("taxa", type=str, nargs="+")
     parser.add_argument("--output", type=str)
     args = parser.parse_args()
-    taxa = [
-        Taxon.select_valid().filter(Taxon.valid_name == taxon).get()
-        for taxon in args.taxa
-    ]
+    taxa = []
+    for taxon_name in args.taxa:
+        try:
+            taxon = Taxon.select_valid().filter(Taxon.valid_name == taxon_name).get()
+        except Taxon.DoesNotExist:
+            print(f"Taxon '{taxon_name}' not found")
+        else:
+            taxa.append(taxon)
     syns = make_synonymy(taxa)
     print(syns)
     if args.output is not None:

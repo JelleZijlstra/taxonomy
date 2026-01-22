@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import time
 import urllib.parse
+from collections import Counter
 from collections.abc import Callable, Iterable
 from functools import lru_cache
 from pathlib import Path
@@ -23,6 +24,7 @@ from typing import (
     cast,
 )
 
+import httpx
 from clirm import Field, Query
 
 from taxonomy import adt, config, events, getinput, urlparse
@@ -39,6 +41,7 @@ from taxonomy.db.constants import (
     DateSource,
     Managed,
     Markdown,
+    Rank,
     Regex,
     SourceLanguage,
 )
@@ -431,7 +434,7 @@ class Article(BaseModel):
         new_title = getinput.edit_by_word(
             self.title or "",
             save_handler=save_handler,
-            callbacks=self.get_adt_callbacks(),
+            callbacks=self.get_wrapped_adt_callbacks(),
         )
         self.title = new_title
 
@@ -541,6 +544,9 @@ class Article(BaseModel):
             ),
             "display_raw_pages": self.display_raw_pages,
             "find_earlier_usages": self.find_earlier_usages,
+            "edit_item_file": self.edit_item_file,
+            "open_item_file": self.open_item_file,
+            "auto_download_item_file": self.auto_download_item_file,
         }
 
     def ce_edit(self) -> None:
@@ -805,6 +811,78 @@ class Article(BaseModel):
         if self.parent is not None:
             return self.parent.get_raw_page_regex()
         return None
+
+    def get_matching_item_files(self) -> Iterable[models.ItemFile]:
+        hdl = self.get_identifier(ArticleTag.HDL)
+        if hdl is not None:
+            yield from models.item_file.get_matching_item_files(
+                f"https://hdl.handle.net/{hdl}"
+            )
+        if self.url is None:
+            return
+        yield from models.item_file.get_matching_item_files(self.url)
+
+    def edit_item_file(self) -> None:
+        for itf in self.get_matching_item_files():
+            itf.edit()
+
+    def open_item_file(self) -> None:
+        found_any = False
+        for itf in self.get_matching_item_files():
+            itf.open()
+            found_any = True
+        if not found_any:
+            print("No matching ItemFile found.")
+
+    def auto_download_item_file(self, *, edit: bool = False) -> None:
+        """Download a BHL item PDF and create an ItemFile for this Article.
+
+        - Exits early if a matching ItemFile already exists.
+        - Requires a BHL URL resolvable to an item id; otherwise, does nothing.
+        - Creates the ItemFile using this Article's citation_group, volume, series, and issue.
+        - Opens the ItemFile editor for quick fix-ups.
+        """
+        # If an ItemFile already exists for this Article's URL, do nothing.
+        for _ in self.get_matching_item_files():
+            return
+
+        if self.url is None:
+            return
+        item_id = bhl.get_bhl_item_from_url(self.url)
+        if item_id is None:
+            return
+
+        # Need a citation group to create an ItemFile
+        if self.citation_group is None:
+            print(f"Skipping ItemFile creation: {self} has no citation_group")
+            return
+
+        pdf_url = f"https://www.biodiversitylibrary.org/itempdf/{item_id}"
+        print("Downloading:")
+        print(pdf_url)
+        resp = httpx.get(pdf_url, follow_redirects=True)
+        resp.raise_for_status()
+
+        # Save under item_file_path so we can create ItemFile immediately
+        filename = f"{item_id}.pdf"
+        target_dir = _options.item_file_path
+        target_dir.mkdir(parents=True, exist_ok=True)
+        path = target_dir / filename
+        path.write_bytes(resp.content)
+
+        # Create ItemFile with fields derived from this Article
+        item_url = f"https://www.biodiversitylibrary.org/item/{item_id}"
+        itf = models.ItemFile.create(
+            filename=filename,
+            citation_group=self.citation_group,
+            series=self.series,
+            volume=self.volume,
+            url=item_url,
+        )
+        print(f"Created {itf}")
+        if edit:
+            print("Opening editor to fix fields…")
+            itf.edit()
 
     def dump_pdf_text(self) -> None:
         if not self.ispdf():
@@ -1584,6 +1662,16 @@ class Article(BaseModel):
                 print(art.get_authors())
                 art.recompute_authors_from_doi(confirm=False)
                 getinput.flush()
+
+    def ce_diversity(self) -> None:
+        by_rank: Counter[tuple[Rank, bool]] = Counter()
+        for ce in self.get_classification_entries():
+            is_dubious = ce.has_tag(
+                models.classification_entry.ClassificationEntryTag.TreatedAsDubious
+            )
+            by_rank[(ce.rank, is_dubious)] += 1
+        for (rank, is_dubious), count in by_rank.most_common():
+            print(f"{rank.display_name}{' (dubious)' if is_dubious else ''}: {count}")
 
     def display(self, *, full: bool = False) -> None:
         print(self.cite())

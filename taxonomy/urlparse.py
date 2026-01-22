@@ -302,7 +302,7 @@ def parse_url(url: str) -> ParsedUrl:
         if match := re.fullmatch(r"/stable/(\d+)", split.path):
             return JStorUrl(match.group(1))
     elif split.netloc == "hdl.handle.net":
-        return HDLUrl(split.path.lstrip("/"), split.query)
+        return HDLUrl(split.path.lstrip("/"), split.query if split.query else None)
     elif split.netloc == "deepblue.lib.umich.edu":
         if match := re.fullmatch(r"/handle/(.+)", split.path):
             return HDLUrl(match.group(1))

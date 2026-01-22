@@ -99,7 +99,7 @@ def check_base_name(taxon: Taxon, cfg: LintConfig) -> Iterable[str]:
         rank = taxon.rank.name
         group = taxon.base_name.group.name
         yield f"group mismatch: rank {rank} but group {group}"
-    resolved = taxon.base_name.resolve_variant()
+    resolved = taxon.base_name.resolve_variant(unavailable_version=False)
     if resolved != taxon.base_name:
         message = f"base name is a variant: {taxon.base_name} -> {resolved}"
         if cfg.autofix:
@@ -395,14 +395,20 @@ def get_expected_base_name_report(txn: Taxon) -> BaseNameReport:
     for date_obj in dates:
         names = by_date[date_obj]
         if len(names) > 1:
-            dominant_names = [
-                name for name in names if all(name.dominates(other) for other in names)
+            # Keep undominated names within this date slice: names for which no
+            # other name in the same slice dominates them. This allows multiple
+            # co-maximal names (e.g., 2 dominate the other 2, or 2 dominate the
+            # third but not each other).
+            undominated = [
+                n
+                for n in names
+                if not any(o is not n and o.dominates(n) for o in names)
             ]
-            if dominant_names:
+            if len(undominated) != len(names):
                 comments.append(
-                    f"Dominant name for {date_obj} (among {len(names)} total): {dominant_names}"
+                    f"Undominated for {date_obj} (among {len(names)} total): {undominated}"
                 )
-                names = dominant_names
+                names = undominated
         possible_base_names.extend(names)
         has_later_dominators = any(
             later_name.dominates(our_name)
@@ -415,20 +421,17 @@ def get_expected_base_name_report(txn: Taxon) -> BaseNameReport:
 
     if len(possible_base_names) == 1:
         return BaseNameReport([name.name for name in possible_base_names], comments)
-    dominant_names = [
-        name
-        for name in possible_base_names
-        if all(name.dominates(other) for other in possible_base_names)
+    # Across all accumulated candidates, again keep those not dominated by
+    # any other candidate.
+    undominated_final = [
+        n
+        for n in possible_base_names
+        if not any(o is not n and o.dominates(n) for o in possible_base_names)
     ]
     comments.append(
-        f"Dominant name (among {len(possible_base_names)} total final names): {dominant_names}"
+        f"Undominated among {len(possible_base_names)} final candidates: {undominated_final}"
     )
-    if len(dominant_names) == 1:
-        return BaseNameReport([dominant_names[0].name], comments)
-    elif dominant_names:
-        return BaseNameReport([name.name for name in dominant_names], comments)
-    else:
-        return BaseNameReport([name.name for name in possible_base_names], comments)
+    return BaseNameReport([n.name for n in undominated_final], comments)
 
 
 LIMITATIONS: list[Callable[[models.Name], bool]] = [

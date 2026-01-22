@@ -354,11 +354,12 @@ class ClassificationEntry(BaseModel):
             yield from child.all_children()
 
     def diversity(self) -> None:
-        by_rank: Counter[Rank] = Counter()
+        by_rank: Counter[tuple[Rank, bool]] = Counter()
         for child in self.all_children():
-            by_rank[child.rank] += 1
-        for rank, count in by_rank.most_common():
-            print(f"{rank.display_name}: {count}")
+            is_dubious = child.has_tag(ClassificationEntryTag.TreatedAsDubious)
+            by_rank[(child.rank, is_dubious)] += 1
+        for (rank, is_dubious), count in by_rank.most_common():
+            print(f"{rank.display_name}{' (dubious)' if is_dubious else ''}: {count}")
 
     def display(
         self,
@@ -384,10 +385,20 @@ class ClassificationEntry(BaseModel):
     def get_children(self) -> Query[Self]:
         return self.add_validity_check(self.children)
 
+    def is_bare_synonym(self) -> bool:
+        if self.rank is not Rank.synonym_species:
+            return False
+        name = self.get_corrected_name()
+        if name is None:
+            return False
+        return " " not in name
+
     def ensure_page_set(self) -> None:
         if self.page is None:
             self.display()
-            self.page = getinput.get_line("page> ", callbacks=self.get_adt_callbacks())
+            self.page = getinput.get_line(
+                "page> ", callbacks=self.get_wrapped_adt_callbacks()
+            )
 
     def add_incorrect_subsequent_spelling_for_genus(self) -> models.Name | None:
         name = self.get_corrected_name()
@@ -554,6 +565,9 @@ class ClassificationEntry(BaseModel):
             "merge": self.merge,
             "kerr_subgeneric": self._kerr_subgeneric,
             "diversity": self.diversity,
+            "print_candidate_report": lambda: models.classification_entry.lint.print_candidate_report(
+                self
+            ),
         }
 
     def _kerr_subgeneric(self) -> None:
@@ -604,7 +618,7 @@ class ClassificationEntry(BaseModel):
     def edit_parent(self) -> None:
         print(f"Current parent: {self.parent}")
         parent = self.get_parent_completion(
-            self.article, callbacks=self.get_adt_callbacks()
+            self.article, callbacks=self.get_wrapped_adt_callbacks()
         )
         if parent is not None:
             self.parent = parent

@@ -4,6 +4,14 @@ Version numbers correspond to Git tags in the
 [backend](https://github.com/JelleZijlstra/taxonomy/) repositories, and to database
 exports released on Zenodo.
 
+# Unreleased
+
+- Database
+  - Add the `ItemFile` concept for keeping track of full journal volume PDFs.
+  - Add verified citations to some missed names and type designations.
+- Backend
+- Frontend
+
 # 25.12.0 (December 3, 2025)
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.17806114.svg)](https://doi.org/10.5281/zenodo.17806114)

@@ -103,6 +103,14 @@ class CitationGroup(BaseModel):
             CitationGroupStatus.redirect,
         )
 
+    def must_have(self, year: int) -> bool:
+        if self.has_tag(models.citation_group.CitationGroupTag.MustHave):
+            return True
+        after_tag = self.get_tag(models.citation_group.CitationGroupTag.MustHaveAfter)
+        if after_tag is None:
+            return False
+        return year >= int(after_tag.year)
+
     @classmethod
     def create_interactively(
         cls, name: str | None = None, **kwargs: Any
@@ -334,6 +342,7 @@ class CitationGroup(BaseModel):
             "validate_bhl_urls": self.validate_bhl_urls,
             "open_bhl_pages": self.open_bhl_pages,
             "make_child": self.make_child,
+            "open_url": self.open_url,
         }
 
     def open_url(self) -> None:
@@ -359,7 +368,9 @@ class CitationGroup(BaseModel):
             art.display()
             if not bhl.print_data_for_possible_bhl_url(art.url):
                 continue
-            if not getinput.yes_no("Keep URL? ", callbacks=art.get_adt_callbacks()):
+            if not getinput.yes_no(
+                "Keep URL? ", callbacks=art.get_wrapped_adt_callbacks()
+            ):
                 art.url = None
         for nam in self.get_names():
             nam.display()
@@ -368,7 +379,9 @@ class CitationGroup(BaseModel):
             ):
                 if not bhl.print_data_for_possible_bhl_url(tag.url):
                     continue
-                if not getinput.yes_no("Keep URL? ", callbacks=nam.get_adt_callbacks()):
+                if not getinput.yes_no(
+                    "Keep URL? ", callbacks=nam.get_wrapped_adt_callbacks()
+                ):
                     nam.remove_type_tag(tag)
 
     def make_child(self) -> None:

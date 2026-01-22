@@ -325,7 +325,7 @@ def get_hesp_row(
     row["Hesp_citation_kind"] = get_citation_kind(name)
     if authority_link:
         row["Hesp_unchecked_authority_page_link"] = ""
-    else:
+    elif name.original_citation is None:
         # At most 3
         try:
             candidates = models.name.lint.get_candidate_bhl_pages(name)
@@ -614,7 +614,7 @@ class FixableDifference:
                 )
 
     def get_adt_callbacks(self) -> getinput.CallbackMap:
-        callbacks = {**self.hesp_name.get_adt_callbacks()}
+        callbacks = {**self.hesp_name.get_wrapped_adt_callbacks()}
         if self.mdd_column in ("MDD_authority_link", "MDD_authority_page_link"):
             if self.hesp_value:
                 callbacks["open_hesp"] = functools.partial(_open_urls, self.hesp_value)

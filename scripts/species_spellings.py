@@ -145,7 +145,7 @@ def get_relevant_ces(nam: Name, boundary_year: int | None) -> list[Classificatio
     root_name = nam.root_name
     ces = []
     for possible_variant in Name.select_valid().filter(Name.taxon == nam.taxon):
-        if possible_variant.resolve_name() == resolved:
+        if possible_variant.resolve_variant() == resolved:
             ces.extend(get_and_filter_ces(possible_variant, root_name, boundary_year))
     return ces
 

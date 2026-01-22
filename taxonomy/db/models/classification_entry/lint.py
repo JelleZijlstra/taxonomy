@@ -95,8 +95,10 @@ def check_tags(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
                 yield "removing redundant ReferencedUsage tag"
             else:
                 if ce.mapped_name is not None and tag.ce.mapped_name is not None:
-                    referenced = tag.ce.mapped_name.resolve_name()
-                    mapped = ce.mapped_name.resolve_name()
+                    referenced = tag.ce.mapped_name.resolve_variant(
+                        misidentification=True
+                    )
+                    mapped = ce.mapped_name.resolve_variant(misidentification=True)
                     if referenced != mapped:
                         yield f"ReferencedUsage tag {tag} (resolving to {referenced}) does not match mapped_name {mapped}"
                 new_tags.append(tag)
@@ -192,6 +194,56 @@ def must_have_mapped_name(ce: ClassificationEntry) -> bool:
     if ClassificationEntryTag.Informal in ce.tags:
         return False
     return True
+
+
+def _expand_candidates(candidates: Iterable[Name]) -> Iterable[Name]:
+    for nam in candidates:
+        yield nam
+        for tag in (
+            models.name.NameTag.UnavailableVersionOf,
+            models.name.NameTag.SubsequentUsageOf,
+        ):
+            target = nam.get_tag_target(tag)
+            if target is not None:
+                yield target
+
+
+@LINT.add("mapped_name_inference")
+def check_mapped_name_inference(
+    ce: ClassificationEntry, cfg: LintConfig, *, conservative: bool = False
+) -> Iterable[str]:
+    if ce.mapped_name is None:
+        return
+    if not conservative:
+        candidates = list(
+            get_filtered_possible_mapped_names(ce, resolve_variants=False)
+        )
+    else:
+        candidates = []
+        for nam_or_pair in get_possible_mapped_names(ce):
+            if isinstance(nam_or_pair, tuple):
+                nam, _ = nam_or_pair
+            else:
+                nam = nam_or_pair
+            candidates.append(nam)
+    candidates = list(_expand_candidates(candidates))
+    if candidates and ce.mapped_name not in candidates:
+        yield f"mapped_name {ce.mapped_name} not in inferred candidates {candidates}"
+        if ce.rank.is_synonym and not LINT.is_ignoring_lint(
+            ce, "mapped_name_inference"
+        ):
+            filtered_cands = list(
+                get_filtered_possible_mapped_names(ce, resolve_variants=False)
+            )
+            if len(filtered_cands) == 1:
+                best_cand = filtered_cands[0]
+                if best_cand.resolve_variant() == ce.mapped_name.resolve_variant():
+                    message = f"change mapped_name to inferred candidate {best_cand}"
+                    if cfg.autofix:
+                        print(f"{ce}: {message}")
+                        ce.mapped_name = best_cand
+                    else:
+                        yield message
 
 
 def get_allowed_family_group_names(nam: Name) -> Container[str]:
@@ -351,7 +403,9 @@ def get_genera_with_shared_species(genera: Iterable[Name]) -> Iterable[Taxon]:
     return taxa
 
 
-def get_filtered_possible_mapped_names(ce: ClassificationEntry) -> Iterable[Name]:
+def get_filtered_possible_mapped_names(
+    ce: ClassificationEntry, *, resolve_variants: bool = True
+) -> Iterable[Name]:
     seen_names = set()
     candidates = []
     for nam_or_pair in get_possible_mapped_names(ce):
@@ -366,12 +420,34 @@ def get_filtered_possible_mapped_names(ce: ClassificationEntry) -> Iterable[Name
         candidates.append(CandidateName(ce, nam, metadata))
     if not candidates:
         return []
+    if len(candidates) == 1:
+        return [candidates[0].name]
     candidates = sorted(candidates, key=lambda c: c.get_score())
     best_score = candidates[0].get_score()
     matching = list(takewhile(lambda c: c.get_score() == best_score, candidates))
-    if len(matching) > 1:
+    if len(matching) > 1 and resolve_variants:
         return list({c.name.resolve_variant() for c in matching})
     return [c.name for c in matching]
+
+
+def print_candidate_report(ce: ClassificationEntry) -> None:
+    candidates = []
+    for nam_or_pair in get_possible_mapped_names(ce):
+        if isinstance(nam_or_pair, tuple):
+            nam, metadata = nam_or_pair
+        else:
+            nam = nam_or_pair
+            metadata = CandidateMetadata()
+        candidates.append(CandidateName(ce, nam, metadata))
+    if not candidates:
+        print(f"{ce}: no candidates found")
+        return
+    candidates = sorted(candidates, key=lambda c: c.get_score())
+    print(f"{ce}: candidate mapped names:")
+    for candidate in candidates:
+        print(
+            f"  Score {candidate.get_score():3}: {candidate.name} (metadata: {candidate.metadata})"
+        )
 
 
 @dataclass
@@ -389,21 +465,63 @@ class CandidateName:
     _score: int | None = field(init=False, default=None)
 
     def get_score(self) -> int:
+        """Possible improvements:
+
+        - Better homonym differentiation. A couple of genera with homonymous names get
+          wrong scores because their parent taxon is informal (e.g., _Spectrum_ and some
+          others in {Mammalia (Daudin 1802)}). We could perhaps look at the species in
+          the genus (though that risks circularity), or at sister genera.
+        - Better handling of cases where the same name is assigned to different authorities.
+          It's a bit questionable what do here anyway. Example: {Carnivora Africa (Setzer 1971).pdf}
+          has "_Vulpes_ Oken, 1816", but we map it to _Vulpes_ Frisch, 1775 (a valid name), not
+          _Vulpes_ Oken, 1816 (which is unavailable). Maybe we should map it to the Oken name anyway?
+        """
         if self._score is not None:
             return self._score
         score = 0
         corrected_name = self.ce.get_corrected_name()
         if corrected_name is None:
             corrected_name = self.ce.name
+        ce_group = self.ce.get_group()
         if self.name.corrected_original_name != corrected_name:
-            score += 10
+            score += 20
+
         if self.name.original_citation != self.ce.article:
             score += 50
+        else:
+            mapped_ce = self.name.get_mapped_classification_entry()
+            if mapped_ce is not None and mapped_ce != self.ce:
+                score += 50
+
+        if self.name.group is not ce_group:
+            score += 15
         associated_taxa = Taxon.select_valid().filter(Taxon.base_name == self.name)
         if not any(t.valid_name == corrected_name for t in associated_taxa):
             score += 2
-        if self.ce.year is not None and str(self.name.numeric_year()) != self.ce.year:
-            score += 5
+        if self.ce.year is not None and self.ce.year not in [
+            str(self.name.numeric_year()),
+            str(self.name.resolve_variant().numeric_year()),
+        ]:
+            score += 10
+        if self.ce.authority is not None and self.ce.authority not in [
+            self.name.taxonomic_authority(),
+            self.name.resolve_variant().taxonomic_authority(),
+        ]:
+            score += 10
+
+        # Should help distinguish homonyms
+        associated_ces = [
+            _get_parent_with_mapped_name(self.ce),
+            _get_child_with_mapped_name(self.ce),
+        ]
+        for ce in associated_ces:
+            if ce is not None and ce.mapped_name is not None:
+                mapped_parent = ce.mapped_name.taxon
+                for derived_field in ("class_", "order", "family"):
+                    parent_parent = mapped_parent.get_derived_field(derived_field)
+                    my_parent = self.name.taxon.get_derived_field(derived_field)
+                    if my_parent != parent_parent:
+                        score += 5
         if (
             self.name.group is not Group.family
             and self.name.nomenclature_status
@@ -413,28 +531,26 @@ class CandidateName:
             )
             and self.name.get_date_object() > self.ce.article.get_date_object()
         ):
-            score += 5
+            score += 10
         if (
-            self.ce.authority is not None
-            and self.name.taxonomic_authority() != self.ce.authority
+            self.name.group is Group.family
+            and self.name.original_rank is not self.ce.rank
         ):
             score += 5
-        if self.name.nomenclature_status in (
-            NomenclatureStatus.subsequent_usage,
+        if self.name.nomenclature_status is NomenclatureStatus.misidentification:
+            score += 5
+        elif self.name.nomenclature_status is NomenclatureStatus.subsequent_usage:
+            score += 3
+        elif self.name.nomenclature_status in (
             NomenclatureStatus.name_combination,
             NomenclatureStatus.preoccupied,
-        ):
-            score += 1
-        if self.name.nomenclature_status is NomenclatureStatus.misidentification:
-            score += 3
-        if self.name.nomenclature_status in (
             NomenclatureStatus.incorrect_subsequent_spelling,
             NomenclatureStatus.variant,
             NomenclatureStatus.unjustified_emendation,
         ):
             score += 1
-        if not self.name.nomenclature_status.can_preoccupy():
-            score += 1
+        elif not self.name.nomenclature_status.can_preoccupy():
+            score += 2
         if self.name.group is Group.species:
             if " " in corrected_name:
                 genus_name, *_, root_name = corrected_name.split()
@@ -453,11 +569,58 @@ class CandidateName:
                 name_genus_name, *_ = self.name.taxon.valid_name.split()
                 if genus_name != name_genus_name:
                     score += 2
+                name_original_parent = self.name.original_parent
+                ce_parent = self.ce.parent_of_rank(Rank.genus)
+                if (
+                    name_original_parent is not None
+                    and ce_parent is not None
+                    and ce_parent.mapped_name is not None
+                ):
+                    if name_original_parent != ce_parent.mapped_name:
+                        score += 10
             elif self.name.root_name != corrected_name:
                 score += 2
 
+        if ce_group is Group.species and " " not in corrected_name:  # bare synonym
+            if self.ce.parent is not None and self.ce.parent.mapped_name is not None:
+                try:
+                    ce_parent_species = self.ce.parent.mapped_name.taxon.parent_of_rank(
+                        Rank.species
+                    )
+                except ValueError:
+                    ce_parent_species = None
+            else:
+                ce_parent_species = None
+            try:
+                name_species = self.name.taxon.parent_of_rank(Rank.species)
+            except ValueError:
+                name_species = None
+            if ce_parent_species is not None and name_species is not None:
+                if ce_parent_species != name_species:
+                    score += 5
+
         self._score = score
         return score
+
+
+def _get_parent_with_mapped_name(ce: ClassificationEntry) -> ClassificationEntry | None:
+    parent = ce.parent
+    seen = {ce}
+    while parent is not None:
+        if parent in seen:
+            break
+        seen.add(parent)
+        if parent.mapped_name is not None:
+            return parent
+        parent = parent.parent
+    return None
+
+
+def _get_child_with_mapped_name(ce: ClassificationEntry) -> ClassificationEntry | None:
+    for child in ce.get_children():
+        if child.mapped_name is not None:
+            return child
+    return None
 
 
 def yield_family_names(possibilities: Iterable[Name]) -> Iterable[Name]:
@@ -482,6 +645,9 @@ def get_possible_mapped_names(
         yield from Name.select_valid().filter(
             Name.group == Group.high, Name.corrected_original_name == corrected_name
         )
+        yield from Name.select_valid().filter(
+            Name.group == Group.family, Name.corrected_original_name == corrected_name
+        )
     elif group is Group.family:
         options = (ce.name, corrected_name)
         possibilies = Name.select_valid().filter(
@@ -491,7 +657,7 @@ def get_possible_mapped_names(
                 | Name.corrected_original_name.is_in(options)
             ),
         )
-        names = list(yield_family_names(possibilies))
+        names = list(possibilies)
         if names:
             yield from names
         else:
@@ -499,7 +665,10 @@ def get_possible_mapped_names(
             possibilies = Name.select_valid().filter(
                 Name.group == Group.family, Name.root_name == root_name
             )
-            yield from yield_family_names(possibilies)
+            yield from possibilies
+        yield from Name.select_valid().filter(
+            Name.group == Group.high, Name.corrected_original_name == corrected_name
+        )
     elif group is Group.genus:
         yield from Name.select_valid().filter(
             Name.group == Group.genus, Name.corrected_original_name == corrected_name
@@ -521,22 +690,35 @@ def bare_synonym_mapped_names(
     except ValueError:
         return
     nams = taxon.all_names()
-    candidates = list(
+    direct_candidates = list(
         get_candidates_from_names_for_bare_synonym(
             nams, ce, corrected_name, check_year=False
         )
     )
-    if candidates:
-        yield from candidates
-        return
+    yield from direct_candidates
     if taxon.parent is not None and taxon.parent.parent is not None:
         parent_nams = taxon.parent.parent.all_names()
-        candidates = list(
+        parent_candidates = list(
             get_candidates_from_names_for_bare_synonym(parent_nams, ce, corrected_name)
         )
-        if candidates:
-            yield from candidates
-            return
+        yield from parent_candidates
+    else:
+        parent_candidates = []
+    if ce.year and ce.authority:
+        matching_year_candidates = [
+            nam
+            for nam in Name.select_valid().filter(
+                Name.group == Group.species,
+                Name.root_name == corrected_name,
+                Name.year.startswith(ce.year),
+            )
+            if ce.authority in nam.taxonomic_authority()
+        ]
+        yield from matching_year_candidates
+    else:
+        matching_year_candidates = []
+    if direct_candidates or parent_candidates or matching_year_candidates:
+        return
     yield from get_candidates_from_names_for_bare_synonym(
         nams, ce, corrected_name, fuzzy=True
     )
@@ -568,11 +750,12 @@ def get_candidates_from_names_for_bare_synonym(
             try:
                 ce_year = int(ce.year)
             except ValueError:
-                continue
-            nam_year = nam.numeric_year()
-            nam_origin_year = nam.resolve_variant().numeric_year()
-            if abs(ce_year - nam_year) > 10 or abs(ce_year - nam_origin_year) > 10:
-                continue
+                pass
+            else:
+                nam_year = nam.numeric_year()
+                nam_origin_year = nam.resolve_variant().numeric_year()
+                if abs(ce_year - nam_year) > 10 or abs(ce_year - nam_origin_year) > 10:
+                    continue
         yield nam
 
 
@@ -825,7 +1008,9 @@ def infer_bhl_page(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
                         break
                     print(page_obj.page_url)
                     subprocess.check_call(["open", page_obj.page_url])
-                    if getinput.yes_no("confirm? ", callbacks=ce.get_adt_callbacks()):
+                    if getinput.yes_no(
+                        "confirm? ", callbacks=ce.get_wrapped_adt_callbacks()
+                    ):
                         yield from _maybe_add_bhl_page(ce, cfg, page_obj)
                         break
 
@@ -1247,7 +1432,7 @@ def infer_lsid_from_mapped(ce: ClassificationEntry, cfg: LintConfig) -> Iterable
 
 @LINT.add("from_mapped")
 def infer_data_from_mapped(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
-    if ce.mapped_name is None or ce.mapped_name.original_citation != ce.article:
+    if ce.mapped_name is None or ce.mapped_name.get_mapped_classification_entry() != ce:
         return
     if ce.type_locality is None:
         tags = [
@@ -1405,9 +1590,9 @@ def find_referenced_usage(ce: ClassificationEntry) -> ClassificationEntry | None
     if ce.mapped_name is None:
         return None
     possibilities = []
-    resolved_mapped = ce.mapped_name.resolve_name()
+    resolved_mapped = ce.mapped_name.resolve_variant()
     for nam in ce.mapped_name.taxon.get_names():
-        if nam.resolve_name() != resolved_mapped:
+        if nam.resolve_variant() != resolved_mapped:
             continue
         for mapped_ce in nam.get_classification_entries():
             author, year = mapped_ce.article.taxonomic_authority()

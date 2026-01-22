@@ -728,6 +728,14 @@ class Name(BaseModel):
         from taxonomy.search import search
 
         results = search(query, year_max=max_year)
+        if results:
+            ignored = {
+                tag.article.id
+                for tag in self.get_tags(
+                    self.type_tags, TypeTag.IgnorePotentialCitationFrom
+                )
+            }
+            results = [hit for hit in results if hit.article_id not in ignored]
         if not results:
             print(f"{self}: no older usages found")
             return
@@ -737,6 +745,10 @@ class Name(BaseModel):
         print(f"{self}: found older usage in {article}: {earliest}")
         article.display_classification_entries()
         article.edit()
+        if self.original_citation != article and getinput.yes_no(
+            "Add IgnorePotentialCitationFrom? "
+        ):
+            self.add_type_tag(TypeTag.IgnorePotentialCitationFrom(article=article))
 
     def get_classification_entries(self) -> Query[ClassificationEntry]:
         return ClassificationEntry.select_valid().filter(
@@ -1263,78 +1275,40 @@ class Name(BaseModel):
             return True
         return False
 
-    def get_variant_base_name(self) -> Name | None:
+    def get_variant_base_name(
+        self, tags: tuple[builtins.type[NameTag], ...] | None = None
+    ) -> Name | None:
+        if tags is None:
+            tags = VARIANT_TAGS
         for tag in self.tags:
-            if isinstance(
-                tag,
-                (
-                    NameTag.VariantOf,
-                    NameTag.UnjustifiedEmendationOf,
-                    NameTag.JustifiedEmendationOf,
-                    NameTag.IncorrectOriginalSpellingOf,
-                    NameTag.SubsequentUsageOf,
-                    NameTag.MandatoryChangeOf,
-                    NameTag.IncorrectSubsequentSpellingOf,
-                    NameTag.NameCombinationOf,
-                    NameTag.RerankingOf,
-                ),
-            ):
+            if isinstance(tag, tags):
                 return tag.name
         return None
 
-    def resolve_variant(self) -> Name:
-        return self._resolve_variant(10)
+    def resolve_variant(
+        self,
+        tags: tuple[builtins.type[NameTag], ...] | None = None,
+        *,
+        misidentification: bool = False,
+        unavailable_version: bool = True,
+    ) -> Name:
+        if tags is None:
+            tags = VARIANT_TAGS
+        if not unavailable_version:
+            tags = tuple(t for t in tags if t is not NameTag.UnavailableVersionOf)
+        if misidentification:
+            tags = (*tags, NameTag.MisidentificationOf)
+        return self._resolve_variant(10, tags)
 
-    def _resolve_variant(self, max_depth: int) -> Name:
+    def _resolve_variant(
+        self, max_depth: int, tags: tuple[builtins.type[NameTag], ...]
+    ) -> Name:
         if max_depth == 0:
             raise ValueError(f"too deep for {self}")
-        base_name = self.get_variant_base_name()
+        base_name = self.get_variant_base_name(tags)
         if base_name is None:
             return self
-        return base_name._resolve_variant(max_depth - 1)
-
-    def get_variant_base_name_with_reason(self) -> Iterable[tuple[Name, NameTagCons]]:
-        for tag in self.tags:
-            if isinstance(
-                tag,
-                (
-                    NameTag.VariantOf,
-                    NameTag.UnjustifiedEmendationOf,
-                    NameTag.JustifiedEmendationOf,
-                    NameTag.IncorrectOriginalSpellingOf,
-                    NameTag.SubsequentUsageOf,
-                    NameTag.MandatoryChangeOf,
-                    NameTag.IncorrectSubsequentSpellingOf,
-                    NameTag.NameCombinationOf,
-                    NameTag.RerankingOf,
-                ),
-            ):
-                # static analysis: ignore[incompatible_yield]
-                yield tag.name, type(tag)
-
-    def resolve_variant_with_reason(self) -> tuple[Name, set[NameTagCons]]:
-        return self._resolve_variant_with_reason(10)
-
-    def _resolve_variant_with_reason(
-        self, max_depth: int
-    ) -> tuple[Name, set[NameTagCons]]:
-        if max_depth == 0:
-            raise ValueError(f"too deep for {self}")
-        base_name_reasons = list(self.get_variant_base_name_with_reason())
-        if not base_name_reasons:
-            return self, set()
-        new_bases = set()
-        new_reasons = set()
-        for base_name, reason in base_name_reasons:
-            new_base, extra_reasons = base_name._resolve_variant_with_reason(
-                max_depth - 1
-            )
-            new_bases.add(new_base)
-            new_reasons.add(reason)
-            new_reasons.update(extra_reasons)
-        if len(new_bases) != 1:
-            raise ValueError(f"multiple bases for {self}: {new_bases}")
-        return new_bases.pop(), new_reasons
+        return base_name._resolve_variant(max_depth - 1, tags)
 
     def is_high_mammal(self) -> bool:
         return (
@@ -1679,7 +1653,9 @@ class Name(BaseModel):
         genus = self.taxon.get_current_genus()
         if genus is None:
             return False  # not in any genus, so don't parenthesize
-        return genus.resolve_name() != self.original_parent.resolve_name()
+        return genus.resolve_variant(
+            misidentification=True
+        ) != self.original_parent.resolve_variant(misidentification=True)
 
     def get_full_authority(self) -> str:
         authority = self.taxonomic_authority()
@@ -1688,31 +1664,6 @@ class Name(BaseModel):
         if self.should_parenthesize_authority():
             authority = f"({authority})"
         return authority
-
-    def resolve_name(
-        self, *, depth: int = 0, exclude: tuple[builtins.type[object], ...] = ()
-    ) -> Name:
-        if depth > 10:
-            raise ValueError(f"too deep: {self}")
-        for tag in self.tags:
-            if isinstance(
-                tag,
-                (
-                    NameTag.VariantOf,
-                    NameTag.UnjustifiedEmendationOf,
-                    NameTag.JustifiedEmendationOf,
-                    NameTag.IncorrectOriginalSpellingOf,
-                    NameTag.SubsequentUsageOf,
-                    NameTag.MisidentificationOf,
-                    NameTag.MandatoryChangeOf,
-                    NameTag.IncorrectSubsequentSpellingOf,
-                    NameTag.UnavailableVersionOf,
-                    NameTag.NameCombinationOf,
-                    NameTag.RerankingOf,
-                ),
-            ) and not isinstance(tag, exclude):
-                return tag.name.resolve_name(depth=depth + 1)
-        return self
 
     def copy_year(self, *, quiet: bool = False) -> None:
         citation = self.original_citation
@@ -3069,6 +3020,19 @@ class NameTag(adt.ADT):
     RerankingOf(name=Name, comment=NotRequired[Markdown], tag=37)  # type: ignore[name-defined]
 
 
+VARIANT_TAGS = (
+    NameTag.VariantOf,
+    NameTag.UnjustifiedEmendationOf,
+    NameTag.JustifiedEmendationOf,
+    NameTag.IncorrectOriginalSpellingOf,
+    NameTag.SubsequentUsageOf,
+    NameTag.MandatoryChangeOf,
+    NameTag.IncorrectSubsequentSpellingOf,
+    NameTag.NameCombinationOf,
+    NameTag.RerankingOf,
+    NameTag.UnavailableVersionOf,
+)
+
 CONSTRUCTABLE_STATUS_TO_TAG = {
     NomenclatureStatus.unjustified_emendation: NameTag.UnjustifiedEmendationOf,
     NomenclatureStatus.incorrect_subsequent_spelling: (
@@ -3176,7 +3140,12 @@ class TypeTag(adt.ADT):
         tag=16,
     )
     # more information on the specimen
-    SpecimenDetail(text=Markdown, source=Article, tag=17)  # type: ignore[name-defined]
+    SpecimenDetail(  # type: ignore[name-defined]
+        text=Markdown,
+        source=Article,
+        classification_entry=NotRequired[ClassificationEntry],
+        tag=17,
+    )
     # phrasing of the type locality in a particular source
     LocationDetail(  # type: ignore[name-defined]
         text=Markdown,
@@ -3185,6 +3154,7 @@ class TypeTag(adt.ADT):
         page=NotRequired[Managed],
         translation=NotRequired[Markdown],
         page_link=NotRequired[URL],
+        classification_entry=NotRequired[ClassificationEntry],
         tag=18,
     )
     # an originally included species in a genus without an original type designation
@@ -3281,6 +3251,15 @@ class TypeTag(adt.ADT):
     MustBePartOf(name=Name, comment=NotRequired[Markdown], tag=72)  # type: ignore[name-defined]
     MustNotBePartOf(name=Name, comment=NotRequired[Markdown], tag=73)  # type: ignore[name-defined]
     MustBeExtinct(comment=NotRequired[Markdown], tag=74)  # type: ignore[name-defined]
+
+    StructuredVerbatimCitation(  # type: ignore[name-defined]
+        volume=NotRequired[Managed],
+        issue=NotRequired[Managed],
+        start_page=NotRequired[Managed],
+        end_page=NotRequired[Managed],
+        series=NotRequired[Managed],
+        tag=75,
+    )
 
 
 SOURCE_TAGS = (

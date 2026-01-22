@@ -21,6 +21,7 @@ class Options(NamedTuple):
     jstor_db_filename: Path = Path()
     photos_path: Path = Path()
     pdf_text_path: Path = Path()
+    item_file_path: Path = Path()
 
     db_server: str = ""
     db_username: str = ""
@@ -124,6 +125,7 @@ def parse_config_file(filename: Path) -> Options:
             ),
             photos_path=parse_path(section, "photos_path", base_path),
             pdf_text_path=parse_path(section, "pdf_text_path", base_path),
+            item_file_path=parse_path(section, "item_file_path", base_path),
             db_filename=db_filename,
             urlcache_filename=parse_path(section, "urlcache_filename", base_path),
             search_db_filename=parse_path(section, "search_db_filename", base_path),

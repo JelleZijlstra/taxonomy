@@ -12,7 +12,6 @@ import enum
 import functools
 import itertools
 import json
-import pprint
 import re
 import subprocess
 from collections import defaultdict
@@ -55,6 +54,7 @@ from taxonomy.db.constants import (
 )
 from taxonomy.db.models.article import Article, ArticleTag, PresenceStatus
 from taxonomy.db.models.base import LintConfig
+from taxonomy.db.models.citation_group import lint as cg_lint
 from taxonomy.db.models.classification_entry.ce import (
     ClassificationEntry,
     ClassificationEntryTag,
@@ -64,6 +64,7 @@ from taxonomy.db.models.collection import (
     MULTIPLE_COLLECTION,
     Collection,
 )
+from taxonomy.db.models.item_file import ItemFile
 from taxonomy.db.models.lint import IgnoreLint, Lint
 from taxonomy.db.models.name_complex import (
     NameComplex,
@@ -75,6 +76,7 @@ from taxonomy.db.models.name_complex import (
 from taxonomy.db.models.person import AuthorTag, PersonLevel
 from taxonomy.db.models.taxon import Taxon
 
+from . import parse_citations
 from .guess_repository import get_most_likely_repository
 from .name import (
     PREOCCUPIED_TAGS,
@@ -392,6 +394,12 @@ def check_selection_tag[Tag: SelectionTag](
         yield f"{tag} has verbatim_citation but no citation_group"
     if source is None and tag.verbatim_citation is None:
         yield f"{tag} has no source or verbatim_citation"
+    if (
+        source is None
+        and tag.citation_group is not None
+        and tag.citation_group.must_have(2100)  # no year available, be aggressive
+    ):
+        yield f"{tag} has citation_group {tag.citation_group} but no source"
     return tag
 
 
@@ -715,6 +723,107 @@ def _check_all_type_tags(
                 else:
                     yield message
 
+            if tag.classification_entry is not None:
+                ce = tag.classification_entry
+                if ce.article != tag.source:
+                    yield f"{tag} has classification entry {ce} that does not match source {tag.source}"
+                if ce.mapped_name.resolve_variant() != nam and ce.mapped_name != nam:
+                    yield f"{tag} has classification entry {ce} that does not match name {nam}"
+                if ce.type_locality != tag.text:
+                    yield f"{tag} has classification entry {ce} whose type locality {ce.type_locality!r} does not match text"
+            elif cfg.experimental and has_classification(
+                tag.source
+            ):  # produces 12k issues, probably not achievable
+                yield f"{tag} has no classification entry, but source {tag.source} has some"
+
+            obviating_location_tag: TypeTag.LocationDetail | None = None  # type: ignore[name-defined]
+            for other_tag in by_type[TypeTag.LocationDetail]:
+                if (
+                    isinstance(other_tag, TypeTag.LocationDetail)
+                    and other_tag is not tag
+                    and other_tag.source == tag.source
+                    and other_tag.text == tag.text
+                ):
+                    obviating_location_tag = other_tag
+                    break
+            if obviating_location_tag is not None:
+                yield f"merge tags {tag} and {obviating_location_tag}"
+                return [
+                    TypeTag.LocationDetail(
+                        text=tag.text,
+                        source=tag.source,
+                        comment=(
+                            tag.comment
+                            if tag.comment is not None
+                            else obviating_location_tag.comment
+                        ),
+                        page=(
+                            tag.page
+                            if tag.page is not None
+                            else obviating_location_tag.page
+                        ),
+                        translation=(
+                            tag.translation
+                            if tag.translation is not None
+                            else obviating_location_tag.translation
+                        ),
+                        page_link=(
+                            tag.page_link
+                            if tag.page_link is not None
+                            else obviating_location_tag.page_link
+                        ),
+                        classification_entry=(
+                            tag.classification_entry
+                            if (
+                                tag.classification_entry is not None
+                                and not (
+                                    tag.classification_entry.rank is Rank.subspecies
+                                    and tag.classification_entry.parent
+                                    == obviating_location_tag.classification_entry
+                                )
+                            )
+                            else obviating_location_tag.classification_entry
+                        ),
+                    )
+                ]
+
+        case TypeTag.SpecimenDetail():
+            if tag.classification_entry is not None:
+                ce = tag.classification_entry
+                if ce.article != tag.source:
+                    yield f"{tag} has classification entry {ce} that does not match source {tag.source}"
+                if (
+                    ce.mapped_name is not None
+                    and ce.mapped_name.resolve_variant() != nam
+                    and ce.mapped_name != nam
+                ):
+                    yield f"{tag} has classification entry {ce} that does not match name {nam}"
+                type_specimen_datas = [
+                    tag.text
+                    for tag in ce.tags
+                    if isinstance(
+                        tag,
+                        models.classification_entry.ClassificationEntryTag.TypeSpecimenData,
+                    )
+                ]
+                if tag.text not in type_specimen_datas:
+                    yield f"{tag} has classification entry {ce} whose type specimen data {type_specimen_datas} does not match text"
+            else:
+                obviating_specimen_tag: TypeTag.SpecimenDetail | None = None  # type: ignore[name-defined]
+                for other_tag in by_type[TypeTag.SpecimenDetail]:
+                    if (
+                        isinstance(other_tag, TypeTag.SpecimenDetail)
+                        and other_tag is not tag
+                        and other_tag.source == tag.source
+                        and other_tag.text == tag.text
+                        and other_tag.classification_entry is not None
+                    ):
+                        obviating_specimen_tag = other_tag
+                        break
+                if obviating_specimen_tag is not None:
+                    yield f"remove redundant tag {tag} (obviated by {obviating_specimen_tag})"
+                    return []
+
         case TypeTag.DefinitionDetail():
             # Phylonyms book PDF has "Tis" and "Te" for "This" and "The"
             text = re.sub(r"\bT(?=e\b|is\b)", "Th", tag.text)
@@ -994,6 +1103,11 @@ def _check_all_type_tags(
         case TypeTag.TreatAsEquivalentTo():
             if not _is_high_or_invalid_family(nam):
                 yield "has TreatAsEquivalentTo tag but is not a high-level or invalid family-group name"
+
+        case TypeTag.StructuredVerbatimCitation():
+            if nam.original_citation is not None:
+                yield "has StructuredVerbatimCitation tag but also has original_citation"
+                return []
 
     return [*tags, tag]
 
@@ -2159,11 +2273,13 @@ def _check_preoccupation_tag(
         if nam.original_parent is None:
             my_original = None
         else:
-            my_original = nam.original_parent.resolve_name()
+            my_original = nam.original_parent.resolve_variant(misidentification=True)
         if senior_name.original_parent is None:
             senior_original = None
         else:
-            senior_original = senior_name.original_parent.resolve_name()
+            senior_original = senior_name.original_parent.resolve_variant(
+                misidentification=True
+            )
         if isinstance(tag, NameTag.PrimaryHomonymOf):
             if my_original is None:
                 yield f"{nam} is marked as a primary homonym of {senior_name}, but has no original genus"
@@ -3188,6 +3304,10 @@ def check_type(nam: Name, cfg: LintConfig) -> Iterable[str]:
         return
     if not nam.type.taxon.is_child_of(nam.taxon):
         yield f"type {nam.type} is not a child of {nam.taxon}"
+    if nam.type.get_date_object() > nam.get_date_object() and not nam.has_type_tag(
+        TypeTag.GenusCoelebs
+    ):
+        yield f"type {nam.type} ({nam.type.get_date_object()}) is younger than {nam} ({nam.get_date_object()})"
 
     if (
         (target := nam.type.get_tag_target(NameTag.UnavailableVersionOf)) is not None
@@ -3611,10 +3731,6 @@ def infer_page_described(nam: Name, cfg: LintConfig) -> Iterable[str]:
         cite = new_cite
     if match := re.search(r"(?:\bp ?\.|\bS\.|:)\s*(\d{1,4})\.?$", cite):
         page = match.group(1)
-    elif match := re.search(
-        r"(?:\bp\.|pp\.|\bS\.|:|,)\s*(\d{1,4}) ?[-–e] ?(\d{1,4})\.?$", cite
-    ):
-        page = f"{match.group(1)}-{match.group(2)}"
     else:
         return
     message = f"infer page {page!r} from {nam.verbatim_citation!r}"
@@ -3884,17 +4000,26 @@ def check_required_fields(nam: Name, cfg: LintConfig) -> Iterable[str]:
             and nam.nomenclature_status.requires_name_complex()
         ):
             yield "species-group name with no species name complex"
-    if (
-        nam.numeric_year() > 1970
-        and not nam.verbatim_citation
-        and not nam.original_citation
-    ):
-        yield "recent name must have verbatim citation"
+    must_have_verbatim_reason = must_have_verbatim(nam)
+    if must_have_verbatim_reason is not None:
+        yield f"{must_have_verbatim_reason} must have verbatim citation"
     if nam.species_type_kind is None and nam.nomenclature_status.requires_type():
         if nam.type_specimen is not None:
             yield "has type_specimen but no species_type_kind"
         if nam.has_type_tag(TypeTag.Age) or nam.has_type_tag(TypeTag.Gender):
             yield "has type specimen age or gender but no species_type_kind"
+
+
+def must_have_verbatim(nam: Name) -> str | None:
+    if nam.original_citation is not None:
+        return None
+    if nam.verbatim_citation is not None:
+        return None
+    if nam.numeric_year() > 1970:
+        return "recent name"
+    if nam.nomenclature_status is NomenclatureStatus.subsequent_usage:
+        return "subsequent usage"
+    return None
 
 
 @LINT.add("derived_tags")
@@ -3970,7 +4095,7 @@ def get_possible_homonyms(
     name_dict: dict[Name, PossibleHomonym] = defaultdict(PossibleHomonym)
     normalized_root_name = normalize_root_name_for_homonymy(root_name, sc)
     genera = {
-        genus.resolve_name()
+        genus.resolve_variant(misidentification=True)
         for genus in Name.select_valid().filter(
             Name.group == Group.genus, Name.root_name == genus_name
         )
@@ -4124,7 +4249,7 @@ def _check_species_group_homonyms(
             genus = nam.original_parent
             if genus is None:
                 return
-            genus = genus.resolve_name()
+            genus = genus.resolve_variant(misidentification=True)
             name_dict = _get_primary_names_of_genus_and_variants(genus, fuzzy=fuzzy)
         case SelectionReason.secondary_homonymy:
             genus = _get_parent(nam)
@@ -4135,7 +4260,7 @@ def _check_species_group_homonyms(
             genus = _get_parent(nam)
             if genus is None:
                 return
-            genus = genus.base_name.resolve_name()
+            genus = genus.base_name.resolve_variant(misidentification=True)
             name_dict = _get_primary_names_of_genus_and_variants(genus, fuzzy=fuzzy)
         case SelectionReason.reverse_mixed_homonymy:
             genus = nam.original_parent
@@ -4641,7 +4766,7 @@ def _autoset_original_citation_url(nam: Name) -> None:
     nam.original_citation.display()
     nam.open_url()
     url = getinput.get_line(
-        "URL: ", callbacks=nam.original_citation.get_adt_callbacks()
+        "URL: ", callbacks=nam.original_citation.get_wrapped_adt_callbacks()
     )
     if not url:
         return
@@ -4694,6 +4819,98 @@ def check_bhl_page(nam: Name, cfg: LintConfig) -> Iterable[str]:
             continue
         yield from _check_bhl_item_matches(nam, tag, cfg)
         yield from _check_bhl_bibliography_matches(nam, tag, cfg)
+
+
+@LINT.add("item_file_for_authority_link", requires_network=True)
+def item_file_for_authority_link(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    """If no original_citation but AuthorityPageLink exists, and that link maps to a
+    BHL item for which we have an ItemFile, report it.
+
+    This helps surface cases where an ItemFile exists that could be used to
+    derive the original citation.
+    """
+    if nam.original_citation is not None:
+        return
+    tags = list(nam.get_tags(nam.type_tags, TypeTag.AuthorityPageLink))
+    seen: set[ItemFile] = set()
+    for tag in tags:
+        matches = [
+            itf
+            for itf in models.item_file.get_matching_item_files(tag.url)
+            if itf not in seen
+        ]
+        seen.update(matches)
+        for itf in matches:
+            message = f"authority page link points to existing ItemFile {itf}"
+            yield (message)
+            if cfg.interactive:
+                print(f"{nam}: {message}")
+                itf.burst()
+
+
+_seen_pages: set[tuple[int, str]] = set()
+
+
+def _should_require_unchecked_page_link(nam: Name, cfg: LintConfig) -> bool:
+    if nam.original_citation is not None:
+        return False
+    if any(isinstance(tag, TypeTag.AuthorityPageLink) for tag in nam.type_tags):
+        return False
+    if Exp(above_name_id=140_000).should_apply(nam, cfg):
+        return True
+    if nam.page_described is None or not nam.page_described.isnumeric():
+        return False
+    structured_cite = nam.get_type_tag(TypeTag.StructuredVerbatimCitation)
+    if structured_cite is not None and structured_cite.volume is not None:
+        return True
+    return False
+
+
+@LINT.add(
+    "unchecked_authority_page_link",
+    requires_network=True,
+    clear_caches=_seen_pages.clear,
+)
+def unchecked_authority_page_link(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    """If no AuthorityPageLink exists but candidate BHL pages do, surface them.
+
+    In interactive mode, open each candidate URL and ask the user to add it as an
+    AuthorityPageLink.
+    """
+    if not _should_require_unchecked_page_link(nam, cfg):
+        return
+    # Compute candidates (same logic used by mdd_names.py via get_candidate_bhl_pages)
+    candidates = [
+        cand
+        for cand in get_candidate_bhl_pages(nam, verbose=cfg.verbose)
+        if cand.volume_matches
+    ]
+    if not candidates:
+        return
+    candidates = sorted(candidates, key=lambda page: page.sort_key())
+    urls = [page.page_url for page in candidates]
+    if cfg.interactive and not LINT.is_ignoring_lint(
+        nam, "unchecked_authority_page_link"
+    ):
+        nam.display()
+        if nam.original_citation is not None:
+            nam.original_citation.display()
+        for page in candidates[:2]:
+            if (nam.id, page.page_url) in _seen_pages:
+                continue
+            _seen_pages.add((nam.id, page.page_url))
+            print(page.page_url)
+            subprocess.check_call(["open", page.page_url])
+            if getinput.yes_no(
+                "Add as AuthorityPageLink? ", callbacks=nam.get_wrapped_adt_callbacks()
+            ):
+                tag = TypeTag.AuthorityPageLink(
+                    url=page.page_url, confirmed=True, page=str(page.page_number)
+                )
+                nam.add_type_tag(tag)
+            break
+    max_list = " | ".join(sorted(urls))
+    yield f"possible authority page links: {max_list}"
 
 
 def _check_bhl_item_matches(
@@ -4857,7 +5074,9 @@ def infer_bhl_page(
                         break
                     print(page_obj.page_url)
                     subprocess.check_call(["open", page_obj.page_url])
-                    if getinput.yes_no("confirm? ", callbacks=nam.get_adt_callbacks()):
+                    if getinput.yes_no(
+                        "confirm? ", callbacks=nam.get_wrapped_adt_callbacks()
+                    ):
                         yield from _maybe_add_bhl_page(nam, cfg, page_obj)
                         break
 
@@ -4876,6 +5095,7 @@ def get_candidate_bhl_pages(
         if isinstance((parsed_url := urlparse.parse_url(tag.url)), urlparse.BhlPage)
     ]
     year = nam.numeric_year()
+    structured_cite = nam.get_type_tag(TypeTag.StructuredVerbatimCitation)
     contains_text: list[str] = []
     if nam.original_name is not None:
         contains_text.append(nam.original_name)
@@ -4908,6 +5128,7 @@ def get_candidate_bhl_pages(
                 title_ids,
                 year=year,
                 start_page=page,
+                volume=structured_cite.volume if structured_cite else None,
                 contains_text=contains_text,
                 known_item_id=known_item_id,
             )
@@ -4921,7 +5142,13 @@ def get_candidate_bhl_pages(
                 print(f"Reject for {nam} because no confident pages")
                 for page_obj in possible_pages:
                     print(page_obj.page_url)
-            yield from possible_pages
+            right_volume_pages = [
+                page for page in possible_pages if page.volume_matches
+            ]
+            if right_volume_pages:
+                yield from right_volume_pages
+            else:
+                yield from possible_pages
         else:
             yield from confident_pages
 
@@ -5044,6 +5271,193 @@ def infer_page_from_other_names(nam: Name, cfg: LintConfig) -> Iterable[str]:
             nam.add_type_tag(tag)
         else:
             yield message
+
+
+@LINT.add("structured_verbatim_citation")
+def add_structured_verbatim_citation(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    """Add or update a StructuredVerbatimCitation tag based on verbatim_citation.
+
+    Uses regex heuristics in parse_citations.py to extract series/volume/issue/pages
+    from Name.verbatim_citation. Only emits/updates the tag if at least one field is
+    parsed.
+    """
+    if nam.verbatim_citation is None:
+        return
+    parsed = parse_citations.parse_citation(nam.verbatim_citation)
+    if not any(
+        [parsed.series, parsed.volume, parsed.issue, parsed.start_page, parsed.end_page]
+    ):
+        return
+    new_tag = TypeTag.StructuredVerbatimCitation(
+        series=parsed.series,
+        volume=parsed.volume,
+        issue=parsed.issue,
+        start_page=parsed.start_page,
+        end_page=parsed.end_page,
+    )
+    existing = nam.get_type_tag(TypeTag.StructuredVerbatimCitation)
+
+    if existing is None:
+        msg = f"add StructuredVerbatimCitation from verbatim_citation: {new_tag}"
+        if cfg.autofix:
+            print(f"{nam}: {msg}")
+            nam.add_type_tag(new_tag)
+        else:
+            yield msg
+        return
+    else:
+        # Only re-add series if the journal supports it
+        if existing.series:
+            series = existing.series
+        elif (
+            new_tag.series
+            and nam.citation_group
+            and models.citation_group.lint.get_series_regex(nam.citation_group)
+        ):
+            series = new_tag.series
+        else:
+            series = None
+
+        merged = TypeTag.StructuredVerbatimCitation(
+            series=series,
+            volume=existing.volume or new_tag.volume,
+            issue=existing.issue or new_tag.issue,
+            start_page=existing.start_page or new_tag.start_page,
+            end_page=existing.end_page or new_tag.end_page,
+        )
+        if merged != existing:
+            msg = f"update StructuredVerbatimCitation from {existing} to {merged}"
+            if cfg.autofix:
+                print(f"{nam}: {msg}")
+                nam.type_tags = [  # type: ignore[assignment]
+                    (merged if isinstance(t, TypeTag.StructuredVerbatimCitation) else t)
+                    for t in nam.type_tags
+                ]
+            else:
+                yield msg
+
+
+@LINT.add("structured_verbatim_citation_fields")
+def check_structured_verbatim_citation_fields(
+    nam: Name, cfg: LintConfig
+) -> Iterable[str]:
+    """Validate StructuredVerbatimCitation fields against CitationGroup rules.
+
+    - Series/volume/issue must match the CitationGroup's regex tags when present;
+      otherwise defaults are used from cg_lint.
+    - If start_page and end_page are both present and numeric, end_page >= start_page.
+    """
+    # Find a citation group to validate against
+    cg = nam.get_citation_group()
+    if cg is None:
+        return
+
+    for tag in nam.get_tags(nam.type_tags, TypeTag.StructuredVerbatimCitation):
+        # series
+        series_regex = cg_lint.get_series_regex(cg)
+        if series_regex is not None:
+            if tag.series is not None and not re.fullmatch(series_regex, tag.series):
+                yield (
+                    f"series {tag.series!r} does not match regex {series_regex!r} for {cg}"
+                )
+        elif tag.series is not None and cg.type is ArticleType.JOURNAL:
+            # Only enforced for journals as per Article logic
+            yield f"is in {cg}, which does not support series"
+
+        # volume
+        if tag.volume is not None:
+            normalized_volume = tag.volume.replace("–", "-")
+            if normalized_volume != tag.volume:
+                msg = (
+                    f"normalize SVC volume dash {tag.volume!r} -> {normalized_volume!r}"
+                )
+                if cfg.autofix:
+                    print(f"{nam}: {msg}")
+                    # Replace the tag with a normalized one
+                    new_tag = TypeTag.StructuredVerbatimCitation(
+                        volume=normalized_volume,
+                        issue=tag.issue,
+                        start_page=tag.start_page,
+                        end_page=tag.end_page,
+                        series=tag.series,
+                    )
+                    nam.type_tags = [  # type: ignore[assignment]
+                        (new_tag if t == tag else t) for t in nam.type_tags
+                    ]
+                    tag = new_tag
+                else:
+                    yield msg
+            rgx = cg_lint.get_volume_regex(cg)
+            if not re.fullmatch(rgx, tag.volume):
+                yield (
+                    f"volume {tag.volume!r} does not match {cg_lint.describe_volume_regex(cg)} (CG {cg})"
+                )
+
+        # issue
+        if tag.issue is not None:
+            normalized_issue = re.sub(r"[–_]", "-", tag.issue)
+            normalized_issue = re.sub(r"^(\d+)/(\d+)$", r"\1–\2", normalized_issue)
+            if normalized_issue != tag.issue:
+                msg = f"normalize SVC issue formatting {tag.issue!r} -> {normalized_issue!r}"
+                if cfg.autofix:
+                    print(f"{nam}: {msg}")
+                    new_tag = TypeTag.StructuredVerbatimCitation(
+                        volume=tag.volume,
+                        issue=normalized_issue,
+                        start_page=tag.start_page,
+                        end_page=tag.end_page,
+                        series=tag.series,
+                    )
+                    nam.type_tags = [  # type: ignore[assignment]
+                        (new_tag if t == tag else t) for t in nam.type_tags
+                    ]
+                    tag = new_tag
+                else:
+                    yield msg
+            rgx = cg_lint.get_issue_regex(cg)
+            if not re.fullmatch(rgx, tag.issue):
+                yield (
+                    f"issue {tag.issue!r} does not match {cg_lint.describe_issue_regex(cg)} (CG {cg})"
+                )
+
+        # pages: ensure end >= start if both numeric
+        if (
+            tag.start_page
+            and tag.end_page
+            and tag.start_page.isdigit()
+            and tag.end_page.isdigit()
+        ):
+            start_page = tag.start_page
+            end_page = tag.end_page
+            # Autofix shorthand like "452-58" -> "452-458" when it increases end_page beyond start_page
+            if len(end_page) < len(start_page):
+                try:
+                    prefix = start_page[: len(start_page) - len(end_page)]
+                    candidate = prefix + end_page
+                    if int(candidate) > int(start_page):
+                        msg = f"expand SVC end_page {end_page!r} -> {candidate!r}"
+                        if cfg.autofix:
+                            print(f"{nam}: {msg}")
+                            new_tag = TypeTag.StructuredVerbatimCitation(
+                                volume=tag.volume,
+                                issue=tag.issue,
+                                start_page=start_page,
+                                end_page=candidate,
+                                series=tag.series,
+                            )
+                            nam.type_tags = [  # type: ignore[assignment]
+                                (new_tag if t == tag else t) for t in nam.type_tags
+                            ]
+                            tag = new_tag
+                            end_page = candidate
+                        else:
+                            yield msg
+                except ValueError:
+                    pass
+            if int(end_page) < int(start_page):
+                yield (
+                    f"end_page {end_page!r} is less than start_page {start_page!r} in StructuredVerbatimCitation"
+                )
 
 
 @LINT.add("infer_bhl_page_from_other_names", requires_network=True)
@@ -5660,7 +6074,7 @@ def _maybe_add_name_variant(
     else:
         should_autofix = getinput.yes_no(
             f"{nam}: add {nomenclature_status!r} based on {ce}? ",
-            callbacks=nam.get_adt_callbacks(),
+            callbacks=nam.get_wrapped_adt_callbacks(),
         )
     if should_autofix:
         print(f"{nam}: {message}")
@@ -5741,7 +6155,7 @@ def name_combination_name_sort_key(nam: Name) -> tuple[bool, date, int, int, int
 def infer_name_variants(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.group is not Group.species:
         return
-    ces: Iterable[ClassificationEntry] = nam.classification_entries
+    ces = nam.get_classification_entries()
     by_name: dict[str, list[ClassificationEntry]] = defaultdict(list)
     syns_by_name: dict[str, list[ClassificationEntry]] = defaultdict(list)
     for ce in ces:
@@ -6120,251 +6534,6 @@ def _get_extended_root_name_forms(nam: Name) -> set[str]:
     return root_name_forms
 
 
-# This should replace a number of other linters that manipulate name combinations
-# and misspellings, but it still gets some things wrong and I'm not sure it's possible
-# to get all the edge cases right with this approach.
-@LINT.add("determine_name_variants", disabled=True)
-def determine_name_variants(nam: Name, cfg: LintConfig) -> Iterable[str]:
-    if nam.group is not Group.species:
-        return
-    if nam.resolve_variant() != nam:
-        return
-
-    root_name_forms = _get_extended_root_name_forms(nam)
-    # First find all the names and CEs that are variants of this name
-    nams_with_reasons: list[ExistingVariant] = []
-    ces: list[ClassificationEntry] = []
-    con_to_existing_names: dict[str, list[ExistingVariant]] = defaultdict(list)
-    root_name_to_existing_names: dict[str, ExistingVariant] = {}
-    for syn in nam.taxon.get_names():
-        variant_base, reason = syn.resolve_variant_with_reason()
-        if variant_base != nam:
-            continue
-        simplified_normalized = _get_simplied_normalized_name(syn)
-        has_mapped_ces = syn.get_mapped_classification_entry() is not None
-        syn_ces = list(syn.classification_entries)
-        ev = ExistingVariant(syn, has_mapped_ces, reason, syn_ces)
-        nams_with_reasons.append(ev)
-        ces += syn_ces
-        if simplified_normalized is not None:
-            con_to_existing_names[simplified_normalized].append(ev)
-        for root_name in _get_extended_root_name_forms(syn):
-            if root_name not in root_name_to_existing_names:
-                root_name_to_existing_names[root_name] = ev
-            elif name_combination_name_sort_key(
-                ev.name
-            ) < name_combination_name_sort_key(
-                root_name_to_existing_names[root_name].name
-            ):
-                root_name_to_existing_names[root_name] = ev
-
-    # Then figure out what names should exist based on the CEs
-    ces_by_name: dict[str, list[ClassificationEntry]] = defaultdict(list)
-    ces_by_root_name: dict[str, list[ClassificationEntry]] = defaultdict(list)
-    bare_synonym_ces: dict[str, list[ClassificationEntry]] = defaultdict(list)
-    for ce in ces:
-        corrected_name = ce.get_corrected_name()
-        if corrected_name is None:
-            continue
-        if ce.is_synonym_without_full_name():
-            bare_synonym_ces[corrected_name].append(ce)
-        else:
-            ces_by_name[corrected_name].append(ce)
-        root_name = corrected_name.split()[-1]
-        ces_by_root_name[root_name].append(ce)
-
-    root_name_to_oldest_ce = {
-        root_name: min(ces, key=lambda ce: _name_variant_article_sort_key(ce.article))
-        for root_name, ces in ces_by_root_name.items()
-    }
-
-    con_to_expected_name: dict[str | None, ExpectedName] = {}
-    for con, ce_list in ces_by_name.items():
-        base_ce = min(
-            ce_list, key=lambda ce: _name_variant_article_sort_key(ce.article)
-        )
-        root_name = con.split()[-1]
-        tags = []
-        if root_name not in root_name_forms:
-            tags.append(NameTag.IncorrectSubsequentSpellingOf(nam))
-        if root_name in root_name_to_existing_names:
-            oldest_root = root_name_to_existing_names[root_name]
-            if base_ce.get_corrected_name() != oldest_root.name.corrected_original_name:
-                tags.append(NameTag.NameCombinationOf(oldest_root.name))
-        con_to_expected_name[con] = ExpectedName(
-            original_name=base_ce.name,
-            corrected_original_name=con,
-            root_name=root_name,
-            base_ce=base_ce,
-            ces=list(ce_list),
-            tags=tags,
-        )
-    for root_name, ce_list in bare_synonym_ces.items():
-        base_ce = min(
-            ce_list, key=lambda ce: _name_variant_article_sort_key(ce.article)
-        )
-        if root_name in root_name_forms:
-            if nam.corrected_original_name in con_to_expected_name:
-                con_to_expected_name[nam.corrected_original_name].ces.extend(ce_list)
-            else:
-                con_to_expected_name[nam.corrected_original_name] = ExpectedName(
-                    original_name=nam.original_name,
-                    corrected_original_name=nam.corrected_original_name,
-                    root_name=root_name,
-                    base_ce=base_ce,
-                    ces=list(ce_list),
-                    tags=[],
-                )
-        elif root_name in root_name_to_existing_names and (
-            name_combination_name_sort_key(root_name_to_existing_names[root_name].name)
-            < _name_variant_article_sort_key(base_ce.article)
-            or root_name_to_existing_names[root_name].name.original_citation
-            == base_ce.article
-        ):
-            maybe_con = _get_simplied_normalized_name(
-                root_name_to_existing_names[root_name].name
-            )
-            if maybe_con is None:
-                continue
-            if maybe_con in con_to_expected_name:
-                con_to_expected_name[maybe_con].ces.extend(ce_list)
-            else:
-                con_to_expected_name[maybe_con] = ExpectedName(
-                    original_name=base_ce.name,
-                    corrected_original_name=root_name_to_existing_names[
-                        root_name
-                    ].name.corrected_original_name,
-                    root_name=root_name,
-                    base_ce=base_ce,
-                    ces=list(ce_list),
-                    tags=[NameTag.IncorrectSubsequentSpellingOf(nam)],
-                )
-        elif base_ce == root_name_to_oldest_ce[root_name]:
-            maybe_con = base_ce.get_name_to_use_as_normalized_original_name()
-            if maybe_con is None:
-                continue
-            con_to_expected_name[root_name] = ExpectedName(
-                original_name=base_ce.name,
-                corrected_original_name=maybe_con,
-                root_name=root_name,
-                base_ce=base_ce,
-                ces=list(ce_list),
-                tags=[NameTag.IncorrectSubsequentSpellingOf(nam)],
-            )
-        else:
-            base_con = root_name_to_oldest_ce[
-                root_name
-            ].get_name_to_use_as_normalized_original_name()
-            if base_con is None:
-                continue
-            con_to_expected_name[base_con].ces.extend(ce_list)
-
-    # Then line up the names
-    if cfg.verbose:
-        pprint.pp(con_to_expected_name)
-
-    for maybe_con, expected_name in con_to_expected_name.items():
-        if maybe_con is None:
-            # must be the original name
-            assert expected_name.root_name in root_name_forms, expected_name
-            for ce in expected_name.ces:
-                if ce.mapped_name != nam:
-                    message = f"{ce}: change mapped name from {ce.mapped_name} to {nam}"
-                    if cfg.autofix:
-                        print(f"{nam}: {message}")
-                        ce.mapped_name = nam
-                    else:
-                        yield message
-        elif maybe_con not in con_to_existing_names:
-            yield from _add_name_variant(expected_name, nam, cfg)
-        else:
-            existing = con_to_existing_names[maybe_con]
-            replaceable, others = helpers.sift(
-                existing, lambda en: en.reasons <= REPLACEABLE_TAGS_SET
-            )
-            if replaceable:
-                replaceable = sorted(
-                    replaceable, key=lambda en: name_combination_name_sort_key(en.name)
-                )
-                to_use, *redundant_names = replaceable
-
-                for redundant_name in redundant_names:
-                    message = f"remove redundant name {redundant_name.name}"
-                    cannot_replace_reason = can_replace_name(redundant_name.name)
-                    if cfg.autofix and cannot_replace_reason is None:
-                        print(f"{redundant_name.name}: {message}")
-                        redundant_name.name.redirect(to_use.name)
-                    else:
-                        yield message + f" (cannot replace because of: {cannot_replace_reason})"
-                if to_use.name.original_citation == expected_name.base_ce.article:
-                    new_tags = _update_replaceable_tags(to_use.name.tags, expected_name)
-                    if new_tags is not None:
-                        getinput.print_diff(to_use.name.tags, new_tags)
-                        message = f"update tags of {to_use.name}"
-                        if cfg.autofix:
-                            print(f"{to_use.name}: {message}")
-                            to_use.name.tags = new_tags  # type: ignore[assignment]
-                        else:
-                            yield message
-                elif (
-                    expected_name.base_ce.get_date_object()
-                    < to_use.name.get_date_object()
-                ):
-                    yield from maybe_take_over_name(
-                        to_use.name, expected_name.base_ce, cfg
-                    )
-            else:
-                oldest = min(
-                    others, key=lambda en: name_combination_name_sort_key(en.name)
-                )
-                if (
-                    oldest.name.get_date_object()
-                    <= expected_name.base_ce.get_date_object()
-                ):
-                    for ce in expected_name.ces:
-                        if ce.mapped_name != oldest.name:
-                            message = f"{ce}: change mapped name from {ce.mapped_name} to {oldest.name}"
-                            if cfg.autofix:
-                                print(f"{nam}: {message}")
-                                ce.mapped_name = oldest.name
-                            else:
-                                yield message
-                else:
-                    yield from _add_name_variant(expected_name, nam, cfg)
-
-    # We don't remove additional names and instead rely on
-    # logic to enforce that every name is mapped to a CE if the article
-    # has any CEs.
-
-
-def _add_name_variant(
-    expected_name: ExpectedName, nam: Name, cfg: LintConfig
-) -> Iterable[str]:
-    message = f"add name variant for {expected_name}"
-    if cfg.autofix:
-        print(f"{nam}: {message}")
-        new_name = nam.taxon.syn_from_paper(
-            root_name=expected_name.root_name,
-            paper=expected_name.base_ce.article,
-            page_described=expected_name.base_ce.page,
-            original_name=expected_name.original_name,
-            corrected_original_name=expected_name.corrected_original_name,
-            group=Group.species,
-            interactive=False,
-        )
-        if new_name is not None:
-            new_name.tags = expected_name.tags
-            new_name.original_rank = expected_name.base_ce.rank
-            for ce in expected_name.ces:
-                print(f"{ce}: change mapped name from {ce.mapped_name} to {new_name}")
-                ce.mapped_name = new_name
-            new_name.format()
-            if cfg.interactive:
-                new_name.edit_until_clean()
-    else:
-        yield message
-
-
 @LINT.add("infer_included_species")
 def infer_included_species(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.group is not Group.genus:
@@ -6506,20 +6675,20 @@ def _prefer_commented(
 
 @LINT.add("infer_tags_from_mapped_entries")
 def infer_tags_from_mapped_entries(nam: Name, cfg: LintConfig) -> Iterable[str]:
-    # if nam.group is not Group.species:
-    #     return
-    ces = list(nam.classification_entries)
+    ces = list(nam.get_classification_entries())
     if not ces:
         return
-    tag_name = nam.resolve_variant()
+    tag_name = nam.resolve_variant(unavailable_version=False)
     for ce in ces:
         if nam.group is Group.species:
             location = ce.type_locality
             if location and not any(
-                tag.source == ce.article
+                tag.classification_entry == ce
                 for tag in tag_name.get_tags(tag_name.type_tags, TypeTag.LocationDetail)
             ):
-                tag = TypeTag.LocationDetail(location, ce.article)
+                tag = TypeTag.LocationDetail(
+                    location, ce.article, classification_entry=ce
+                )
                 message = f"adding location detail from {ce} to {tag_name}: {tag}"
                 if cfg.autofix:
                     print(f"{tag_name}: {message}")
@@ -6532,10 +6701,12 @@ def infer_tags_from_mapped_entries(nam: Name, cfg: LintConfig) -> Iterable[str]:
                     type_specimen = tag.text
                     break
             if type_specimen is not None and not any(
-                tag.source == ce.article
+                tag.classification_entry == ce
                 for tag in tag_name.get_tags(tag_name.type_tags, TypeTag.SpecimenDetail)
             ):
-                tag = TypeTag.SpecimenDetail(type_specimen, ce.article)
+                tag = TypeTag.SpecimenDetail(
+                    type_specimen, ce.article, classification_entry=ce
+                )
                 message = f"adding specimen detail from {ce} to {tag_name}: {tag}"
                 if cfg.autofix:
                     print(f"{tag_name}: {message}")
@@ -7065,12 +7236,12 @@ def infer_reranking(nam: Name, cfg: LintConfig) -> Iterable[str]:
         return
     if not nam.can_be_valid_base_name():
         return
-    my_type = nam.type.resolve_name()
+    my_type = nam.type.resolve_variant(misidentification=True)
     candidates = [
         other_nam
         for other_nam in nam.taxon.get_names().filter(Name.group == Group.family)
         if other_nam.type is not None
-        and other_nam.type.resolve_name() == my_type
+        and other_nam.type.resolve_variant(misidentification=True) == my_type
         and other_nam.can_be_valid_base_name()
         and other_nam != nam
         and other_nam.year is not None
@@ -7080,7 +7251,7 @@ def infer_reranking(nam: Name, cfg: LintConfig) -> Iterable[str]:
     best_candidate = min(
         candidates,
         key=lambda other_nam: (
-            other_nam.valid_numeric_year(),
+            other_nam.get_date_object(),
             (
                 -other_nam.original_rank.comparison_value
                 if other_nam.original_rank is not None
@@ -7088,7 +7259,7 @@ def infer_reranking(nam: Name, cfg: LintConfig) -> Iterable[str]:
             ),
         ),
     )
-    if best_candidate.valid_numeric_year() >= nam.valid_numeric_year():
+    if best_candidate.get_date_object() >= nam.get_date_object():
         return
     tag = NameTag.RerankingOf(best_candidate)
     message = f"add RerankingOf tag: {tag}"
@@ -7105,12 +7276,5 @@ def enforce_must_have(nam: Name, cfg: LintConfig) -> Iterable[str]:
         return
     if nam.original_citation is not None:
         return
-    cg = nam.citation_group
-    after_tag = cg.get_tag(models.citation_group.CitationGroupTag.MustHaveAfter)
-    if after_tag is None and not cg.has_tag(
-        models.citation_group.CitationGroupTag.MustHave
-    ):
-        return
-    if after_tag is not None and nam.numeric_year() < int(after_tag.year):
-        return
-    yield f"{nam} is in {cg}, but has no original_citation"
+    if nam.citation_group.must_have(nam.numeric_year()):
+        yield f"{nam} is in {nam.citation_group}, but has no original_citation"

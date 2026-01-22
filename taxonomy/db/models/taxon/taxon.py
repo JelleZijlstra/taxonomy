@@ -303,6 +303,10 @@ class Taxon(BaseModel):
                 ", ".join(f"{age.name}: {count}" for age, count in sorted(sp.items()))
             )
 
+    def find_earlier_usages(self) -> None:
+        for nam in models.name.name.get_ordered_names(self.all_names()):
+            nam.find_older_usages_auto()
+
     def children_of_rank(self, rank: Rank, age: AgeClass | None = None) -> list[Taxon]:
         if self.rank < rank:
             return []
@@ -690,6 +694,7 @@ class Taxon(BaseModel):
             "change_status": self._change_status,
             "lint_all_children": self.lint_all_children,
             "lint_basal_tags": self.lint_basal_tags,
+            "find_earlier_usages": self.find_earlier_usages,
         }
 
     def _change_status(self) -> None:
@@ -1203,7 +1208,7 @@ class Taxon(BaseModel):
             choice = getinput.get_with_completion(
                 ["incertae_sedis", "basal"],
                 message="tag to apply> ",
-                callbacks=self.get_adt_callbacks(),
+                callbacks=self.get_wrapped_adt_callbacks(),
             )
             if choice == "incertae_sedis":
                 for child in self.get_children():

@@ -375,6 +375,7 @@ class PossiblePage:
     contains_text: bool
     contains_end_page: bool
     year_matches: bool
+    volume_matches: bool
     ocr_text: str = field(repr=False)
     item_id: int
     min_distance: int
@@ -391,6 +392,7 @@ class PossiblePage:
         # Best match first
         return (
             not self.contains_text,
+            not self.volume_matches,
             not self.year_matches,
             not self.contains_end_page,
             self.min_distance,
@@ -424,6 +426,14 @@ def find_possible_pages(
             year_matches = int(item_metadata["Year"]) == year
         else:
             year_matches = False
+        # Check if BHL-reported volume matches requested volume
+        vol_match = False
+        if (
+            volume is not None
+            and "Volume" in item_metadata
+            and isinstance(item_metadata["Volume"], str)
+        ):
+            vol_match = volume_matches(volume, item_metadata["Volume"])
         for page_id in get_possible_pages(item, start_page):
             if end_page is None:
                 contains_end_page = True
@@ -437,6 +447,7 @@ def find_possible_pages(
                     contains_text=False,
                     contains_end_page=contains_end_page,
                     year_matches=year_matches,
+                    volume_matches=vol_match,
                     ocr_text="",
                     item_id=item,
                     min_distance=1000,
@@ -454,6 +465,7 @@ def find_possible_pages(
                 contains_text=contains,
                 contains_end_page=contains_end_page,
                 year_matches=year_matches,
+                volume_matches=vol_match,
                 ocr_text=ocr_text,
                 item_id=item,
                 min_distance=min_distance,

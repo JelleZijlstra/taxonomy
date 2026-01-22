@@ -6,7 +6,6 @@ from typing import TypedDict
 from taxonomy import getinput
 from taxonomy.db.constants import AgeClass, Rank, Status
 from taxonomy.db.models import Article, ClassificationEntry, Name, Taxon
-from taxonomy.db.models.name.name import NameTag
 from taxonomy.upsheeter import upsheet
 
 MSW3 = 9291  # article ID
@@ -67,16 +66,12 @@ def _open_batnames() -> list[str]:
     return lines
 
 
-def resolve_name(name: Name) -> Name:
-    return name.resolve_name(exclude=(NameTag.MisidentificationOf,))
-
-
 def compare_genera() -> None:
     msw3_genera_ces = list(taxa_in_msw3(Rank.genus))
     current_genera_taxa = list(taxa_in_current(Rank.genus))
 
     msw3_genera_names = {
-        resolve_name(ce.mapped_name): ce
+        ce.mapped_name.resolve_variant(): ce
         for ce in msw3_genera_ces
         if ce.mapped_name is not None
     }
@@ -85,7 +80,7 @@ def compare_genera() -> None:
     ), "Some MSW3 genera have no mapped name or are duplicates"
 
     current_genera_names = {
-        resolve_name(taxon.base_name): taxon for taxon in current_genera_taxa
+        taxon.base_name.resolve_variant(): taxon for taxon in current_genera_taxa
     }
     assert len(current_genera_names) == len(
         current_genera_taxa
@@ -106,7 +101,7 @@ def compare_species() -> None:
     current_species_taxa = list(taxa_in_current(Rank.species))
 
     msw3_species_names = {
-        resolve_name(ce.mapped_name): ce
+        ce.mapped_name.resolve_variant(): ce
         for ce in msw3_species_ces
         if ce.mapped_name is not None
     }
@@ -115,7 +110,7 @@ def compare_species() -> None:
     ), "Some MSW3 species have no mapped name or are duplicates"
 
     current_species_names = {
-        resolve_name(taxon.base_name): taxon for taxon in current_species_taxa
+        taxon.base_name.resolve_variant(): taxon for taxon in current_species_taxa
     }
     assert len(current_species_names) == len(
         current_species_taxa
@@ -132,9 +127,9 @@ def compare_species() -> None:
             if ce.mapped_name is not None:
                 species_ce = ce.parent_of_rank(Rank.species)
                 if species_ce is not None:
-                    names_to_msw3_species[resolve_name(ce.mapped_name)] = species_ce
+                    names_to_msw3_species[ce.mapped_name.resolve_variant()] = species_ce
                 else:
-                    names_to_msw3_species[resolve_name(ce.mapped_name)] = ce
+                    names_to_msw3_species[ce.mapped_name.resolve_variant()] = ce
 
     new_species_with_msw3_info = new_species & set(names_to_msw3_species.keys())
     # fully_new_species = new_species - new_species_with_msw3_info

@@ -79,6 +79,7 @@ from .db.models import (
 )
 from .db.models.base import LintConfig, Linter, ModelT
 from .db.models.ignored_doi import IgnoreReason
+from .db.models.item_file import ItemFile
 from .db.models.person import PersonLevel
 
 T = TypeVar("T")
@@ -1898,7 +1899,7 @@ def find_potential_citations(
     else:
         cgs = region.all_citation_groups()
     return sum(
-        find_potential_citations_for_group(cg, fix=fix, aggressive=aggressive) or 0
+        find_potential_citations_for_group(cg, fix=fix) or 0
         for cg in cgs
         if not cg.has_tag(CitationGroupTag.IgnorePotentialCitations)
     )
@@ -1908,15 +1909,53 @@ def _author_names(obj: Article | Name) -> set[str]:
     return {helpers.simplify_string(person.family_name) for person in obj.get_authors()}
 
 
+def _page_matches_art(start_page: int | None, end_page: int | None, a: Article) -> bool:
+    if start_page is not None and not a.is_page_in_range(start_page):
+        return False
+    if end_page is not None and not a.is_page_in_range(end_page):
+        return False
+    return True
+
+
+def _page_or_range(nam: Name) -> tuple[int | None, int | None]:
+    if nam.page_described is not None:
+        if nam.page_described.isdigit():
+            page = int(nam.page_described)
+            return page, None
+        elif m := re.fullmatch(r"(\d+)-(\d+)", nam.page_described):
+            start_page = int(m.group(1))
+            end_page: int | None = int(m.group(2))
+            return start_page, end_page
+    for tag in nam.get_tags(nam.type_tags, TypeTag.StructuredVerbatimCitation):
+        if tag.start_page and tag.start_page.isdigit():
+            start_page = int(tag.start_page)
+            end_page = None
+            if tag.end_page and tag.end_page.isdigit():
+                end_page = int(tag.end_page)
+            return start_page, end_page
+    return None, None
+
+
+def is_possible_match(
+    art: Article, nam: Name, start_page: int | None, end_page: int | None
+) -> bool:
+    if nam.numeric_year() != art.numeric_year() or art.lacks_full_text():
+        return False
+    if not _page_matches_art(start_page, end_page, art):
+        return False
+    return _author_names(nam) <= _author_names(art)
+
+
 @command
 def find_potential_citations_for_group(
-    cg: CitationGroup | None = None, *, fix: bool = True, aggressive: bool = True
+    cg: CitationGroup | None = None, *, fix: bool = True
 ) -> int:
     if cg is None:
         cg = CitationGroup.getter(None).get_one()
     if cg is None:
         return 0
-    if not cg.get_names():
+    nams = cg.get_names()
+    if not nams:
         return 0
     potential_arts = Article.bfind(
         Article.kind != constants.ArticleKind.no_copy, citation_group=cg, quiet=True
@@ -1924,36 +1963,51 @@ def find_potential_citations_for_group(
     if not potential_arts:
         return 0
 
-    def is_possible_match(art: Article, nam: Name, page: int) -> bool:
-        if nam.numeric_year() != art.numeric_year() or art.lacks_full_text():
-            return False
-        if not art.is_page_in_range(page):
-            return False
-        if aggressive:
-            condition = _author_names(nam) <= _author_names(art)
-        else:
-            condition = nam.author_set() <= art.author_set()
-        if not condition:
-            return False
-        for tag in nam.type_tags:
-            if (
-                isinstance(tag, TypeTag.IgnorePotentialCitationFrom)
-                and tag.article == art
-            ):
-                return False
-        return True
-
     count = 0
-    for nam in cg.get_names():
+    for nam in nams:
         nam.load()
         if nam.original_citation is not None:
             continue
-        page = nam.extract_page_described()
-        if not page:
+        start_page, end_page = _page_or_range(nam)
+        if start_page is None and end_page is None:
             continue
         candidates = [
-            art for art in potential_arts if is_possible_match(art, nam, page)
+            art
+            for art in potential_arts
+            if is_possible_match(art, nam, start_page, end_page)
         ]
+
+        # Supplement with matches based on StructuredVerbatimCitation, if present
+        svc_tags = list(nam.get_tags(nam.type_tags, TypeTag.StructuredVerbatimCitation))
+        if svc_tags:
+            svc = svc_tags[0]
+            svc_volume = svc.volume
+            if svc_volume is not None:
+                svc_series = svc.series
+
+                svc_candidates = [
+                    art
+                    for art in potential_arts
+                    if (svc_volume is None or art.volume == svc_volume)
+                    and (svc_series is None or art.series == svc_series)
+                    and _page_matches_art(start_page, end_page, art)
+                    and abs(art.numeric_year() - nam.numeric_year()) <= 5
+                ]
+                candidates = sorted(
+                    set(candidates) | set(svc_candidates), key=lambda a: a.sort_key()
+                )
+
+        candidates = [
+            art
+            for art in candidates
+            if not any(
+                isinstance(tag, TypeTag.IgnorePotentialCitationFrom)
+                and tag.article == art
+                for tag in nam.type_tags
+            )
+            and not art.lacks_full_text()
+        ]
+
         if candidates:
             if count == 0:
                 print(f"Trying {cg}...", flush=True)
@@ -2162,6 +2216,10 @@ def _sort_key(volume_or_issue: str | None) -> tuple[object, ...]:
         return (float("inf"), volume_or_issue)
 
 
+def _article_sort_key(art: Article) -> tuple[object, ...]:
+    return (art.numeric_start_page(), _sort_key(art.article_number))
+
+
 @command
 def cg_recent_report(
     cg: CitationGroup | None = None, min_year: int | None = None
@@ -2184,9 +2242,7 @@ def cg_recent_report(
         volume_data = arts[volume]
         for issue in sorted(volume_data, key=_sort_key):
             print(f"    === Issue {issue}")
-            for art in sorted(
-                volume_data[issue], key=lambda art: art.numeric_start_page()
-            ):
+            for art in sorted(volume_data[issue], key=_article_sort_key):
                 print(f"         {art!r}")
 
 
@@ -2611,13 +2667,40 @@ def download_bhl_items(
             # Line by itself for easier copy-pasting
             print(url)
             response = httpx.get(url, follow_redirects=True)
-            path = options.burst_path / f"{item_id}.pdf"
+            # Save directly under item_file_path so we can create ItemFile immediately
+            filename = f"{item_id}.pdf"
+            target_dir = options.item_file_path
+            target_dir.mkdir(parents=True, exist_ok=True)
+            path = target_dir / filename
             path.write_bytes(response.content)
-            subprocess.check_call(["open", path])
-            if getinput.yes_no("catalog as one item? "):
-                shutil.move(path, options.new_path)
-            print("Adding item for name", nam)
-            models.article.check.check_new()
+
+            # Build ItemFile data from the Name
+            cg = nam.get_citation_group()
+            if cg is None:
+                print(f"Skipping ItemFile creation: {nam} has no citation_group")
+                continue
+            # Extract series and volume from StructuredVerbatimCitation tag if present
+            svc_tags = list(
+                nam.get_tags(nam.type_tags, TypeTag.StructuredVerbatimCitation)
+            )
+            series = None
+            volume = None
+            if svc_tags:
+                svc = svc_tags[0]
+                series = svc.series
+                volume = svc.volume
+
+            # Create ItemFile and allow user to edit
+            item_url = f"https://www.biodiversitylibrary.org/item/{item_id}"
+            itf = ItemFile.create(
+                filename=filename,
+                citation_group=cg,
+                series=series,
+                volume=volume,
+                url=item_url,
+            )
+            print(f"Created {itf}; opening editor to fix fields…")
+            itf.edit()
 
 
 @command

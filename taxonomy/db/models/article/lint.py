@@ -27,6 +27,7 @@ from taxonomy.db.constants import (
     DateSource,
 )
 from taxonomy.db.models.base import ADTField, BaseModel, LintConfig
+from taxonomy.db.models.citation_group import lint as cg_lint
 from taxonomy.db.models.citation_group.cg import CitationGroup, CitationGroupTag
 from taxonomy.db.models.citation_group.lint import get_biblio_pages
 from taxonomy.db.models.issue_date import IssueDate
@@ -835,6 +836,69 @@ def bhl_part_from_page(art: Article, cfg: LintConfig) -> Iterable[str]:
         yield message
 
 
+@LINT.add("item_file_consistency", requires_network=True)
+def check_item_file_consistency(art: Article, cfg: LintConfig) -> Iterable[str]:
+    """If Article has a BHL URL (page, part, or item), and an ItemFile exists for the
+    same BHL item id, check that citation_group and volume match between them.
+
+    This helps keep Articles and ItemFiles consistent when both reference the
+    same underlying BHL item.
+    """
+    for itf in art.get_matching_item_files():
+        # Compare citation group if both present
+        if art.citation_group is not None and itf.citation_group is not None:
+            if art.citation_group != itf.citation_group:
+                yield (
+                    f"Citation group mismatch between Article "
+                    f"({art.citation_group}) and ItemFile {itf} ({itf.citation_group})"
+                )
+
+        # Compare volume if both present
+        if art.volume is not None:
+            allowed = list(itf.get_allowed_volumes())
+            if art.volume not in allowed:
+                yield (
+                    f"Volume mismatch between Article "
+                    f"({art.volume}) and ItemFile {itf} ({', '.join(allowed) if allowed else 'none'})"
+                )
+        if art.series != itf.series:
+            yield (
+                f"Series mismatch between Article "
+                f"({art.series}) and ItemFile {itf} ({itf.series})"
+            )
+
+
+@LINT.add("infer_item_file_url", requires_network=True)
+def infer_item_file_url(art: Article, cfg: LintConfig) -> Iterable[str]:
+    if art.url is None:
+        return
+    item_id = bhl.get_bhl_item_from_url(art.url)
+    if item_id is None:
+        return
+    item_metadata = bhl.get_item_metadata(item_id)
+    if item_metadata is None:
+        return
+    source_id = item_metadata["SourceIdentifier"]
+    expected_filename = f"{source_id}.pdf"
+    try:
+        itf = (
+            models.ItemFile.select_valid()
+            .filter(models.ItemFile.filename == expected_filename)
+            .get()
+        )
+    except models.ItemFile.DoesNotExist:
+        return
+    expected_url = f"https://www.biodiversitylibrary.org/item/{item_id}"
+    if itf.url is None:
+        if cfg.autofix:
+            print(f"{art}: setting URL to {expected_url} on ItemFile {itf}")
+            itf.url = expected_url
+        else:
+            yield f"setting URL to {expected_url} on ItemFile {itf}"
+    elif itf.url != expected_url:
+        yield f"ItemFile {itf} has URL {itf.url} but expected {expected_url}"
+
+
 def _get_bhl_page_ids_from_names(art: Article) -> set[int]:
     new_names = list(art.get_new_names())
     if not new_names:
@@ -1095,6 +1159,16 @@ def get_inferred_bhl_page(art: Article, cfg: LintConfig) -> bhl.PossiblePage | N
         ):
             return None
         page_metadata = bhl.get_page_metadata(start_pages[0])
+        item_metadata = bhl.get_item_metadata(item_id)
+        if (
+            item_metadata is not None
+            and art.volume is not None
+            and "Volume" in item_metadata
+            and isinstance(item_metadata["Volume"], str)
+        ):
+            vol_match = bhl.volume_matches(art.volume, item_metadata["Volume"])
+        else:
+            vol_match = False
         return bhl.PossiblePage(
             start_pages[0],
             art.start_page,
@@ -1104,6 +1178,7 @@ def get_inferred_bhl_page(art: Article, cfg: LintConfig) -> bhl.PossiblePage | N
             ocr_text=page_metadata.get("OCRText", ""),
             item_id=item_id,
             min_distance=0,
+            volume_matches=vol_match,
         )
     else:
         if cg is None:
@@ -1152,7 +1227,7 @@ def get_inferred_bhl_page(art: Article, cfg: LintConfig) -> bhl.PossiblePage | N
                 print(page)
                 subprocess.check_call(["open", page.page_url])
 
-        callbacks = {**art.get_adt_callbacks(), "u": open_urls}
+        callbacks = {**art.get_wrapped_adt_callbacks(), "u": open_urls}
         url_to_page = {page.page_url: page for page in possible_pages}
         choice = getinput.choose_one_by_name(list(url_to_page), callbacks=callbacks)
         if choice is None:
@@ -1464,16 +1539,14 @@ def journal_specific_cleanup(art: Article, cfg: LintConfig) -> Iterable[str]:
         return
     if message := cg.is_year_in_range(art.numeric_year()):
         yield message
-    if art.series is None and cg.get_tag(CitationGroupTag.MustHaveSeries):
+    if art.series is None and cg_lint.requires_series(cg):
         yield f"missing a series, but {cg} requires one"
     if cg.type is ArticleType.JOURNAL:
-        if may_have_series := cg.get_tag(CitationGroupTag.SeriesRegex):
-            if art.series is not None and not re.fullmatch(
-                may_have_series.text, art.series
-            ):
+        series_regex = cg_lint.get_series_regex(cg)
+        if series_regex is not None:
+            if art.series is not None and not re.fullmatch(series_regex, art.series):
                 yield (
-                    f"series {art.series} does not match regex"
-                    f" {may_have_series.text} for {cg}"
+                    f"series {art.series} does not match regex {series_regex} for {cg}"
                 )
         elif art.series is not None:
             yield f"is in {cg}, which does not support series"
@@ -1744,10 +1817,6 @@ def check_required_fields(art: Article, cfg: LintConfig) -> Iterable[str]:
         yield "missing author_tags"
 
 
-DEFAULT_VOLUME_REGEX = r"(Suppl\. )?\d{1,4}"
-DEFAULT_ISSUE_REGEX = r"\d{1,3}|\d{1,2}-\d{1,2}|Suppl\. \d{1,2}"
-
-
 @LINT.add("journal")
 def check_journal(art: Article, cfg: LintConfig) -> Iterable[str]:
     if art.type is not ArticleType.JOURNAL:
@@ -1759,10 +1828,9 @@ def check_journal(art: Article, cfg: LintConfig) -> Iterable[str]:
     if art.volume is not None:
         volume = art.volume.replace("–", "-")
         yield from _maybe_clean(art, "volume", volume, cfg)
-        tag = cg.get_tag(CitationGroupTag.VolumeRegex)
-        rgx = tag.text if tag else DEFAULT_VOLUME_REGEX
+        rgx = cg_lint.get_volume_regex(cg)
         if not re.fullmatch(rgx, volume):
-            message = f"regex {tag.text!r}" if tag else "default volume regex"
+            message = cg_lint.describe_volume_regex(cg)
             yield f"volume {volume!r} does not match {message} (CG {cg})"
     elif not art.is_in_press():
         yield "missing volume"
@@ -1770,10 +1838,9 @@ def check_journal(art: Article, cfg: LintConfig) -> Iterable[str]:
         issue = re.sub(r"[–_]", "-", art.issue)
         issue = re.sub(r"^(\d+)/(\d+)$", r"\1–\2", issue)
         yield from _maybe_clean(art, "issue", issue, cfg)
-        tag = cg.get_tag(CitationGroupTag.IssueRegex)
-        rgx = tag.text if tag else DEFAULT_ISSUE_REGEX
+        rgx = cg_lint.get_issue_regex(cg)
         if not re.fullmatch(rgx, issue):
-            message = f"regex {tag.text!r}" if tag else "default issue regex"
+            message = cg_lint.describe_issue_regex(cg)
             yield f"issue {issue!r} does not match {message} (CG {cg})"
 
 
@@ -2009,10 +2076,13 @@ def check_must_use_children(art: Article, cfg: LintConfig) -> Iterable[str]:
         )
         if cfg.interactive:
             for ref in refs:
-                if not hasattr(ref, field.name):
-                    continue
+                field_name = field.name
+                if not hasattr(ref, field_name):
+                    field_name = field_name.removesuffix("_id")
+                    if not hasattr(ref, field_name):
+                        continue
                 ref.display()
-                ref.fill_field(field.name)
+                ref.fill_field(field_name)
     for field in Article.derived_fields:
         refs = art.get_derived_field(field.name)
         if not refs:
@@ -2046,7 +2116,9 @@ def get_num_referencing_tags(
             if not interactive:
                 return existing
             model.display()
-            choice = Article.getter(None).get_one(callbacks=model.get_adt_callbacks())
+            choice = Article.getter(None).get_one(
+                callbacks=model.get_wrapped_adt_callbacks()
+            )
             if choice is None:
                 return existing
             return choice
@@ -2889,9 +2961,8 @@ def infer_pmc(art: Article, cfg: LintConfig) -> Iterable[str]:
             pmcid = models.article.api_data.get_pmcid_from_doi_via_europe_pmc(art.doi)
     # 3) Conservative metadata search: exact normalized title match; include year/journal if present
     if not pmcid and art.title:
-        journal = art.citation_group.name if art.citation_group else None
         pmcid = models.article.api_data.get_pmcid_from_metadata(
-            title=art.title, year=art.year, journal=journal
+            title=art.title, year=art.year, journal=art.citation_group.name
         )
     if not pmcid:
         return
@@ -3157,7 +3228,9 @@ def infer_issn(art: Article, cfg: LintConfig) -> Iterable[str]:
         )
         if cfg.interactive:
             answer = getinput.yes_no(
-                "Add ISSNs anyway?", default=False, callbacks=art.get_adt_callbacks()
+                "Add ISSNs anyway?",
+                default=False,
+                callbacks=art.get_wrapped_adt_callbacks(),
             )
             if not answer:
                 return
