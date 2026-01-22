@@ -2961,9 +2961,8 @@ def infer_pmc(art: Article, cfg: LintConfig) -> Iterable[str]:
             pmcid = models.article.api_data.get_pmcid_from_doi_via_europe_pmc(art.doi)
     # 3) Conservative metadata search: exact normalized title match; include year/journal if present
     if not pmcid and art.title:
-        journal = art.citation_group.name if art.citation_group else None
         pmcid = models.article.api_data.get_pmcid_from_metadata(
-            title=art.title, year=art.year, journal=journal
+            title=art.title, year=art.year, journal=art.citation_group.name
         )
     if not pmcid:
         return
