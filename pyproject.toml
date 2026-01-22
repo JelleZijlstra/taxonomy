@@ -194,5 +194,5 @@ disallow_any_generics = true
 strict_equality = true
 implicit_reexport = false
 [[tool.mypy.overrides]]
-module = ["taxonomy.pycroscope_test"]
+module = ["taxonomy.pycroscope_check"]
 ignore_errors = true
