@@ -135,6 +135,8 @@ def make_entry(
         post_text = "No type locality given."
     elif nam.nomenclature_status is NomenclatureStatus.available:
         post_text = "**WARNING: Type data missing.**"
+    elif nam.nomenclature_status is NomenclatureStatus.nomen_nudum:
+        post_text = "Nomen nudum."
     else:
         post_text = "**WARNING: Unknown name type**"
     if authority_nam is None:

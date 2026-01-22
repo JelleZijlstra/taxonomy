@@ -95,8 +95,10 @@ def check_tags(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
                 yield "removing redundant ReferencedUsage tag"
             else:
                 if ce.mapped_name is not None and tag.ce.mapped_name is not None:
-                    referenced = tag.ce.mapped_name.resolve_variant()
-                    mapped = ce.mapped_name.resolve_variant()
+                    referenced = tag.ce.mapped_name.resolve_variant(
+                        misidentification=True
+                    )
+                    mapped = ce.mapped_name.resolve_variant(misidentification=True)
                     if referenced != mapped:
                         yield f"ReferencedUsage tag {tag} (resolving to {referenced}) does not match mapped_name {mapped}"
                 new_tags.append(tag)
