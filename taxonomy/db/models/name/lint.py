@@ -7162,7 +7162,7 @@ def check_has_parent_species(nam: Name, cfg: LintConfig) -> Iterable[str]:
         or nam.corrected_original_name.count(" ") != 2
     ):
         return
-    gen, sp, ssp = nam.corrected_original_name.split(" ")
+    gen, sp, _ssp = nam.corrected_original_name.split(" ")
     species_name = f"{gen} {sp}"
     # TODO: also check that parent species is older than this subspecies
     existing = (

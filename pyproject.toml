@@ -86,7 +86,6 @@ ignore = [
   "SIM108",  # I don't like ternaries that much
   "E711",    # need "== None" in queries
   "E712",    # need "== True" in queries
-  "UP038",   # no need to "X | Y" in isinstance
   "SIM105",  # I don't like contextlib.suppress
   "E731",    # I'll assign a lambda if I want to
   "SIM114",  # not that worth it
@@ -99,6 +98,7 @@ ignore = [
   "T201",    # print is useful in a command-line app
   "T203",    # so is pprint
   "COM812",  # Black can take care of trailing commas
+  "PYI061",  # nicer the other way around
   "D103",    # I don't want to write docstrings for everything
   "D105",    # more docstring
   "D100",    # more docstring
@@ -168,7 +168,6 @@ ignore = [
   "E501",    # Line too long
   "N815",    # mixed case for TypedDict field
   "TRY301",  # pedantic
-  "PD901",   # not using pandas
   "TD004",
   "TD005",
   "TC006",   # bad idea

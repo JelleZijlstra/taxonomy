@@ -1475,7 +1475,7 @@ def lint_note_citations(species: list[MDDSpecies]) -> Iterable[Issue]:
                             )
                 if art is None:
                     # Fallback: run resolver on the part
-                    reason, art_id = mdd_refs_match.resolve_reference(part, indexes)
+                    _reason, art_id = mdd_refs_match.resolve_reference(part, indexes)
                     if art_id is not None:
                         try:
                             art = Article.get(id=art_id)

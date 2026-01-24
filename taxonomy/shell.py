@@ -580,7 +580,7 @@ class ScoreHolder:
             pair: tuple[Any, dict[str, tuple[float, int, int]]],
         ) -> tuple[Any, ...]:
             _, data = pair
-            percentage, count, required_count = data.get(field, (100, 0, 0))
+            percentage, _count, required_count = data.get(field, (100, 0, 0))
             return (percentage, required_count, data["total"])
 
         sorted_items = sorted(items, key=sort_key)
@@ -2922,7 +2922,7 @@ def add_ces_for_parent_species(up_to: int) -> None:
             or nam.corrected_original_name.count(" ") != 2
         ):
             continue
-        gen, sp, ssp = nam.corrected_original_name.split(" ")
+        gen, sp, _ssp = nam.corrected_original_name.split(" ")
         species_name = f"{gen} {sp}"
         existing = (
             Name.select_valid()
