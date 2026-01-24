@@ -924,7 +924,7 @@ def check_bhl_page(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
 
 def _check_bhl_item_matches(
     ce: ClassificationEntry,
-    tag: ClassificationEntryTag.PageLink,  # type:ignore[name-defined]
+    tag: ClassificationEntryTag.PageLink,  # type: ignore[name-defined]
 ) -> Iterable[str]:
     item_id = bhl.get_bhl_item_from_url(tag.url)
     if item_id is None:
@@ -941,7 +941,7 @@ def _check_bhl_item_matches(
 
 def _check_bhl_bibliography_matches(
     ce: ClassificationEntry,
-    tag: ClassificationEntryTag.PageLink,  # type:ignore[name-defined]
+    tag: ClassificationEntryTag.PageLink,  # type: ignore[name-defined]
 ) -> Iterable[str]:
     bibliography_id = bhl.get_bhl_bibliography_from_url(tag.url)
     if bibliography_id is None:

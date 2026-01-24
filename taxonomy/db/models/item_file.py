@@ -285,7 +285,7 @@ class ItemFile(BaseModel):
 
         match verdict["type"]:
             case "journal":
-                verdict = cast(_JournalVerdict, verdict)
+                verdict = cast(_JournalVerdict, verdict)  # type: ignore[redundant-cast]
                 journal_name = verdict["journal_name"].strip()
                 series = verdict.get("series") or None
                 volume = verdict.get("volume") or None
@@ -306,7 +306,7 @@ class ItemFile(BaseModel):
                 itf.detect_url()
                 return itf
             case "book":
-                verdict = cast(_BookVerdict, verdict)
+                verdict = cast(_BookVerdict, verdict)  # type: ignore[redundant-cast]
                 city = verdict["city"].strip()
                 title = verdict.get("title") or None
                 if allow_interactive_cg:

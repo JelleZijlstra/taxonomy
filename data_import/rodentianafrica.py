@@ -65,7 +65,7 @@ def split_fields(names: DataT) -> DataT:
             name["specimen_detail"] = text
             if text.startswith("Type from"):
                 if "; " in text:
-                    loc, rest = text.split("; ", 1)
+                    loc, _rest = text.split("; ", 1)
                     name["loc"] = loc
                 else:
                     name["loc"] = text

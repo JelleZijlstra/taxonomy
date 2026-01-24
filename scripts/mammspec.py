@@ -167,7 +167,7 @@ def make_entry(
 
 
 def _sort_key(pair: tuple[Name, Name]) -> tuple[object, ...]:
-    actual_nam, authority_nam = pair
+    _actual_nam, authority_nam = pair
     return (
         authority_nam.numeric_year(),
         authority_nam.taxonomic_authority(),

@@ -283,7 +283,7 @@ def check_parents(names: DataT) -> DataT:
     for name in names:
         if name["parent"] is None:
             continue
-        parent_rank, parent_name = name["parent"]
+        _parent_rank, parent_name = name["parent"]
         if parent_name not in name_counter:
             print(f"parent {parent_name} not found for {name['name_line']}")
     return names

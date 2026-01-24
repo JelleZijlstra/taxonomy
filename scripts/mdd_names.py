@@ -1092,7 +1092,7 @@ def run(
                     ]
                 )
 
-        fixable, unfixable = split_missing(missing_in_hesp)
+        fixable, _unfixable = split_missing(missing_in_hesp)
 
         allow_autoremove = False
 

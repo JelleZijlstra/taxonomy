@@ -298,7 +298,7 @@ class Location(BaseModel):
         else:
             obj = cls.make(name=name, region=region, period=period)
             if not (period.name == "Recent" and region.children.count() == 0):
-                obj.tags = [LocationTag.General]
+                obj.tags = [LocationTag.General]  # type: ignore[assignment]
             print(f"Created {obj}")
             return obj
 
