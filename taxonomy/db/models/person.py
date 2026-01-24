@@ -458,7 +458,7 @@ class Person(BaseModel):
         target: Person | None = None,
     ) -> Person | None:
         tags = getattr(obj, field_name)
-        matching_idx, tag = self.find_tag(tags, tag_cls)
+        _matching_idx, tag = self.find_tag(tags, tag_cls)
         if tag is None:
             return None
         obj.display()

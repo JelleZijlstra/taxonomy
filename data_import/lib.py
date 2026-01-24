@@ -1837,7 +1837,7 @@ def insert_genera_and_species(names: Iterable[CEDict]) -> Iterable[CEDict]:
                 seen_names.add(genus_name)
                 yield genus_dict
         if name["rank"] is Rank.subspecies:
-            gen, sp, ssp = name["name"].split()
+            gen, sp, _ssp = name["name"].split()
             species_name = f"{gen} {sp}"
             if species_name not in seen_names:
                 species_dict: CEDict = {

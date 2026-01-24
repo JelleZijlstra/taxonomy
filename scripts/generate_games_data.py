@@ -193,13 +193,13 @@ def generate_family_genera_grouped_data() -> list[dict[str, object]]:
                 "groups": sorted(
                     groups,
                     key=lambda g: (
-                        "" if g["name"] is None else str(g["name"]).casefold()
+                        "" if g["name"] is None else str(g["name"]).casefold()  # type: ignore[index]
                     ),
                 ),
             }
         )
     out.sort(key=lambda r: str(r["family"]).casefold())
-    return out
+    return out  # type: ignore[return-value]
 
 
 if __name__ == "__main__":

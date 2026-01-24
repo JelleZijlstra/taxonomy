@@ -616,7 +616,7 @@ names should have at least one. They fall into several groups:
   - _PhyloCodeNumber_: The number assigned to the name under the PhyloCode. The database
     does not currently aim for full compliance with the PhyloCode, but does include
     information relevant to that code.
-  - _PhylogeneticDefinitionType_: The kind of phylogenetic definition given to this name
+  - _PhylogeneticDefinition_: The kind of phylogenetic definition given to this name
     under the PhyloCode.
   - _InternalSpecifier_: Reference to a name that must be part of the taxon according to
     its definition.
@@ -654,6 +654,9 @@ names should have at least one. They fall into several groups:
   - _TreatAsEquivalentTo_: For obsolete high-ranked names, indicate that they should be
     treated as objective synonyms of another name. This is used, for example, to ensure
     that we put names like "Sphenodontia" and "Sphenodonti" as synonyms.
+  - _StructuredVerbatimCitation_: Structured data about the unverified ("verbatim")
+    original citation for the name. For example, this may include the volume number of
+    the journal article where the name was published.
 
 ## Miscellaneous data
 

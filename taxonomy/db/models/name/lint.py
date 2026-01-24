@@ -739,7 +739,8 @@ def _check_all_type_tags(
             obviating_location_tag: TypeTag.LocationDetail | None = None  # type: ignore[name-defined]
             for other_tag in by_type[TypeTag.LocationDetail]:
                 if (
-                    other_tag is not tag
+                    isinstance(other_tag, TypeTag.LocationDetail)
+                    and other_tag is not tag
                     and other_tag.source == tag.source
                     and other_tag.text == tag.text
                 ):
@@ -791,7 +792,11 @@ def _check_all_type_tags(
                 ce = tag.classification_entry
                 if ce.article != tag.source:
                     yield f"{tag} has classification entry {ce} that does not match source {tag.source}"
-                if ce.mapped_name.resolve_variant() != nam and ce.mapped_name != nam:
+                if (
+                    ce.mapped_name is not None
+                    and ce.mapped_name.resolve_variant() != nam
+                    and ce.mapped_name != nam
+                ):
                     yield f"{tag} has classification entry {ce} that does not match name {nam}"
                 type_specimen_datas = [
                     tag.text
@@ -807,7 +812,8 @@ def _check_all_type_tags(
                 obviating_specimen_tag: TypeTag.SpecimenDetail | None = None  # type: ignore[name-defined]
                 for other_tag in by_type[TypeTag.SpecimenDetail]:
                     if (
-                        other_tag is not tag
+                        isinstance(other_tag, TypeTag.SpecimenDetail)
+                        and other_tag is not tag
                         and other_tag.source == tag.source
                         and other_tag.text == tag.text
                         and other_tag.classification_entry is not None
@@ -7156,7 +7162,7 @@ def check_has_parent_species(nam: Name, cfg: LintConfig) -> Iterable[str]:
         or nam.corrected_original_name.count(" ") != 2
     ):
         return
-    gen, sp, ssp = nam.corrected_original_name.split(" ")
+    gen, sp, _ssp = nam.corrected_original_name.split(" ")
     species_name = f"{gen} {sp}"
     # TODO: also check that parent species is older than this subspecies
     existing = (
