@@ -291,7 +291,7 @@ class BaseModel(Model):
                     made_change = False
                     for tag in value:
                         tag_type = type(tag)
-                        overrides = {}
+                        overrides: dict[str, Any] = {}
                         for attr_name in tag_type._attributes:
                             attr_value = getattr(tag, attr_name)
                             if (

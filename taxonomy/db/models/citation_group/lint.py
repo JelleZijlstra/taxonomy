@@ -347,6 +347,7 @@ def add_have_identifier_tags(cg: CitationGroup, cfg: LintConfig) -> Iterable[str
         # Find existing tags of this class for the identifier
         existing: CitationGroupTag | None = None
         for tag in cg.get_tags(cg.tags, tag_cls):
+            # static analysis: ignore[attribute_is_never_set]
             if tag.identifier == ident:
                 existing = tag
                 break

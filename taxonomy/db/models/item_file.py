@@ -8,7 +8,7 @@ import tempfile
 import traceback
 from collections.abc import Iterable
 from pathlib import Path
-from typing import Literal, NotRequired, Self, TypedDict
+from typing import Literal, NotRequired, Self, TypedDict, cast
 
 import fitz
 import httpx
@@ -285,7 +285,8 @@ class ItemFile(BaseModel):
 
         match verdict["type"]:
             case "journal":
-                journal_name = verdict["journal_name"].strip()  # type: ignore[typeddict-item]
+                verdict = cast(_JournalVerdict, verdict)  # type: ignore[redundant-cast]
+                journal_name = verdict["journal_name"].strip()
                 series = verdict.get("series") or None
                 volume = verdict.get("volume") or None
                 issue = verdict.get("issue") or None
@@ -305,7 +306,8 @@ class ItemFile(BaseModel):
                 itf.detect_url()
                 return itf
             case "book":
-                city = verdict["city"].strip()  # type: ignore[typeddict-item]
+                verdict = cast(_BookVerdict, verdict)  # type: ignore[redundant-cast]
+                city = verdict["city"].strip()
                 title = verdict.get("title") or None
                 if allow_interactive_cg:
                     cg = CitationGroup.get_or_create_city(city)

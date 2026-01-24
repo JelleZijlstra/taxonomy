@@ -717,7 +717,7 @@ def bare_synonym_mapped_names(
         yield from matching_year_candidates
     else:
         matching_year_candidates = []
-    if direct_candidates or parent_candidates:
+    if direct_candidates or parent_candidates or matching_year_candidates:
         return
     yield from get_candidates_from_names_for_bare_synonym(
         nams, ce, corrected_name, fuzzy=True
@@ -924,7 +924,7 @@ def check_bhl_page(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
 
 def _check_bhl_item_matches(
     ce: ClassificationEntry,
-    tag: ClassificationEntryTag.PageLink,  # type:ignore[name-defined]
+    tag: ClassificationEntryTag.PageLink,  # type: ignore[name-defined]
 ) -> Iterable[str]:
     item_id = bhl.get_bhl_item_from_url(tag.url)
     if item_id is None:
@@ -941,7 +941,7 @@ def _check_bhl_item_matches(
 
 def _check_bhl_bibliography_matches(
     ce: ClassificationEntry,
-    tag: ClassificationEntryTag.PageLink,  # type:ignore[name-defined]
+    tag: ClassificationEntryTag.PageLink,  # type: ignore[name-defined]
 ) -> Iterable[str]:
     bibliography_id = bhl.get_bhl_bibliography_from_url(tag.url)
     if bibliography_id is None:

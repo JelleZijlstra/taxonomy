@@ -306,7 +306,7 @@ def run(*, dry_run: bool = True, taxon: Taxon) -> None:
             if not should_add:
                 continue
             row_list = [
-                process_value_for_sheets(row.get(column, "")) for column in headings
+                process_value_for_sheets(row.get(column, "")) for column in headings  # type: ignore[arg-type]
             ]
             if not dry_run:
                 worksheet.append_row(row_list)
