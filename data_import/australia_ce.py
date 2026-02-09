@@ -95,7 +95,7 @@ def classify_lines(pages: Iterable[tuple[int, list[str]]]) -> Iterable[Line]:
     found_references = False
     found_beginning = False
     in_homonyms = False
-    line_kinds: deque[LineKind] = deque([], 5)
+    line_kinds: deque[LineKind] = deque(maxlen=5)
 
     def classify_line(line: str, *, in_homonyms: bool) -> LineKind | None:
         nonlocal found_references

@@ -86,7 +86,7 @@ def get_zoobank_data(original_name: str) -> list[ZooBankData]:
         entry
         for entry in api_response
         if entry["tnuuuid"] == entry["protonymuuid"]
-        and entry["namestring"] == original_name.split()[-1]
+        and entry["namestring"] == original_name.rsplit(maxsplit=1)[-1]
     ]
     return [
         ZooBankData(

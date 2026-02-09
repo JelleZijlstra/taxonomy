@@ -3119,7 +3119,7 @@ def check_root_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
 def _check_rn_matches_original(
     nam: Name, corrected_original_name: str, cfg: LintConfig, reason: str
 ) -> Iterable[str]:
-    con_root = corrected_original_name.split()[-1]
+    con_root = corrected_original_name.rsplit(maxsplit=1)[-1]
     if con_root == nam.root_name:
         return
     message = _make_con_messsage(
