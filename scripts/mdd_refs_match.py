@@ -250,7 +250,7 @@ def _split_after_year(text: str) -> tuple[str | None, str | None]:
             boundary = len(rest)
     title = re.sub(r"\s+", " ", rest[: boundary + 1]).strip()
     trailing = rest[boundary + 1 :]
-    return (title if title else None), trailing
+    return (title or None), trailing
 
 
 def extract_title(text: str) -> str | None:
