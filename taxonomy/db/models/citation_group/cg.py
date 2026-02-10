@@ -153,6 +153,17 @@ class CitationGroup(BaseModel):
     def clear_lint_caches(cls) -> None:
         models.citation_group.lint.LINT.clear_caches()
 
+    def get_abbreviated_title(self) -> str:
+        """Return an abbreviated journal title if available; else the full name.
+
+        For non-journal citation groups, simply returns the full name.
+        """
+        if self.type is constants.ArticleType.JOURNAL:
+            tag = self.get_tag(CitationGroupTag.AbbreviatedTitle)
+            if tag is not None and getattr(tag, "text", None):
+                return tag.text
+        return self.name
+
     def has_tag(self, tag: adt.ADT) -> bool:
         if self.tags is None:
             return False
@@ -661,3 +672,6 @@ class CitationGroupTag(adt.ADT):
     MayHaveIdentifier(identifier=ArticleIdentifier, min_year=NotRequired[int], max_year=NotRequired[int], tag=35)  # type: ignore[name-defined]
 
     AlternativeName(text=Managed, comment=NotRequired[Markdown], tag=36)  # type: ignore[name-defined]
+
+    # Common abbreviated journal title (e.g., Medline TA)
+    AbbreviatedTitle(text=Managed, tag=37)  # type: ignore[name-defined]

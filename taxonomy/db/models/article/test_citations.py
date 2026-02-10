@@ -133,3 +133,14 @@ def test_citewp() -> None:
         " Sigmodontinae) from Bonaire, Netherlands Antilles | journal = Journal of"
         " Mammalogy | volume = 91 | issue = 4}}"
     )
+
+
+def test_cite_jmamm() -> None:
+    article = utils.make_journal_article()
+    assert (
+        citations.cite_jmamm(article)
+        == "Zijlstra JS, Madern PA, Hoek Ostende LW van den. 2010. New genus and two"
+        " new species of Pleistocene oryzomyines (Cricetidae: Sigmodontinae) from"
+        " Bonaire, Netherlands Antilles. Journal of Mammalogy 91(4):860–873."
+        " https://doi.org/10.1644/09-MAMM-A-208.1."
+    )

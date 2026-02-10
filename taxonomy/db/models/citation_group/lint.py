@@ -3,15 +3,20 @@
 import functools
 import re
 import subprocess
+import xml.etree.ElementTree as ET
 from collections import Counter, defaultdict
 from collections.abc import Container, Iterable
 from datetime import UTC, datetime
 
+import httpx
+
 from taxonomy import config, getinput
 from taxonomy.apis import bhl
+from taxonomy.apis.util import RateLimiter
 from taxonomy.db import constants, helpers, models
 from taxonomy.db.models.base import LintConfig
 from taxonomy.db.models.lint import IgnoreLint, Lint
+from taxonomy.db.url_cache import CacheDomain, cached
 
 from .cg import CitationGroup, CitationGroupStatus, CitationGroupTag
 
@@ -281,6 +286,124 @@ def infer_bhl_biblio(cg: CitationGroup, cfg: LintConfig) -> Iterable[str]:
         cg.add_tag(CitationGroupTag.BHLBibliography(text=str(data["TitleID"])))
     else:
         yield message
+
+
+@LINT.add("abbreviated_title", requires_network=True)
+def populate_abbreviated_title(cg: CitationGroup, cfg: LintConfig) -> Iterable[str]:
+    """Populate AbbreviatedTitle for journals from NLM Catalog (PubMed) if missing.
+
+    Uses the MedlineTA field via E-utilities. Best-effort: picks the first match.
+    """
+    if cg.type is not constants.ArticleType.JOURNAL:
+        return
+    # Already present?
+    if cg.get_tag(CitationGroupTag.AbbreviatedTitle) is not None:
+        return
+    # Prefer ISSN-based lookup to avoid title-ambiguity false positives
+    issns = {tag.text for tag in cg.get_tags(cg.tags, CitationGroupTag.ISSN)} | {
+        tag.text for tag in cg.get_tags(cg.tags, CitationGroupTag.ISSNOnline)
+    }
+    abbr = ""
+    for issn in issns:
+        abbr = _get_medline_ta_for_issn(issn)
+        if abbr:
+            break
+    # Fallback to title-based lookup
+    if not abbr:
+        title = cg.name.strip()
+        if not title:
+            return
+        abbr = _get_medline_ta_for_title(title)
+    if not abbr:
+        return
+    msg = f"add AbbreviatedTitle: {abbr}"
+    if cfg.autofix:
+        print(f"{cg}: {msg}")
+        cg.add_tag(CitationGroupTag.AbbreviatedTitle(abbr))
+    else:
+        yield msg
+
+
+@cached(CacheDomain.pubmed_nlmcatalog_abbrev)
+def _get_medline_ta_for_title(title: str) -> str:
+    """Return MedlineTA (abbreviated title) for an exact journal title, or empty string.
+
+    Cached in urlcache to avoid repeated network calls.
+    """
+    # esearch: find a single NLM Catalog record id by title match
+    _PUBMED_RL.wait()
+    esearch = httpx.get(
+        "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi",
+        params={
+            "db": "nlmcatalog",
+            "retmode": "json",
+            "term": f"{title}[Title]",
+            "retmax": 1,
+        },
+        timeout=20.0,
+    )
+    esearch.raise_for_status()
+    data = esearch.json()
+    idlist = data.get("esearchresult", {}).get("idlist", [])
+    if not idlist:
+        return ""
+    nlm_id = idlist[0]
+    # efetch: get record details, parse MedlineTA
+    _PUBMED_RL.wait()
+    efetch = httpx.get(
+        "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi",
+        params={"db": "nlmcatalog", "id": nlm_id, "retmode": "xml"},
+        timeout=20.0,
+    )
+    efetch.raise_for_status()
+    root = ET.fromstring(efetch.text)
+    for el in root.iter():
+        if el.tag.endswith("MedlineTA") and (el.text and el.text.strip()):
+            return el.text.strip()
+    return ""
+
+
+@cached(CacheDomain.pubmed_nlmcatalog_abbrev)
+def _get_medline_ta_for_issn(issn: str) -> str:
+    """Return MedlineTA for an ISSN (print or electronic), or empty string.
+
+    Uses ESearch/EFetch against NLM Catalog with [ISSN] field.
+    """
+    if not issn:
+        return ""
+    _PUBMED_RL.wait()
+    esearch = httpx.get(
+        "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi",
+        params={
+            "db": "nlmcatalog",
+            "retmode": "json",
+            "term": f"{issn}[ISSN]",
+            "retmax": 1,
+        },
+        timeout=20.0,
+    )
+    esearch.raise_for_status()
+    data = esearch.json()
+    idlist = data.get("esearchresult", {}).get("idlist", [])
+    if not idlist:
+        return ""
+    nlm_id = idlist[0]
+    _PUBMED_RL.wait()
+    efetch = httpx.get(
+        "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi",
+        params={"db": "nlmcatalog", "id": nlm_id, "retmode": "xml"},
+        timeout=20.0,
+    )
+    efetch.raise_for_status()
+    root = ET.fromstring(efetch.text)
+    for el in root.iter():
+        if el.tag.endswith("MedlineTA") and (el.text and el.text.strip()):
+            return el.text.strip()
+    return ""
+
+
+# Be polite with E-utilities; allow ~3 requests/second at most
+_PUBMED_RL = RateLimiter(min_interval=0.34)
 
 
 @LINT.add("bhl_year_range")

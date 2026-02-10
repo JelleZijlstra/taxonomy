@@ -4,6 +4,7 @@ import re
 
 from taxonomy.db import helpers, models
 from taxonomy.db.constants import ArticleType, NamingConvention
+from taxonomy.db.models.person import Person
 
 from .article import Article, ArticleTag, register_cite_function
 
@@ -423,6 +424,89 @@ def citejhe(article: Article) -> str:
     return re.sub(r"\s+", " ", re.sub(r"(?<!\.)\.\.(?!\.)", ".", out))
 
 
+@register_cite_function("vertpala")
+def cite_vertpalasiat(article: Article) -> str:
+    """Citation style following Vertebrata PalAsiatica examples.
+
+    Authors, YEAR. Title. AbbrevJournal, Volume: pages
+    For books: Authors, YEAR. Title. Vol. X. City: Publisher. pages
+    """
+
+    def _fmt_person(p: Person) -> str:
+        fam = p.family_name
+        initials = p.get_initials() or ""
+        # VertPala style: no dots, hyphens removed, spaced initials
+        initials = initials.replace(".", "").replace("-", "").upper()
+        if p.tussenvoegsel:
+            # Tussenvoegsel after initials, matching other styles' placement
+            initials = f"{initials} {p.tussenvoegsel}" if initials else p.tussenvoegsel
+        if initials:
+            initials = " ".join(list(initials))
+            return f"{fam} {initials}"
+        return fam
+
+    author_objs = article.get_authors()
+    if len(author_objs) > 3:
+        authors = ", ".join(_fmt_person(p) for p in author_objs[:3]) + " et al."
+    else:
+        authors = ", ".join(_fmt_person(p) for p in author_objs)
+    out = authors
+    out += f", {article.numeric_year()}. "
+    out += f"{article.get_title()}. "
+
+    if article.type == ArticleType.JOURNAL:
+        if article.citation_group is not None:
+            out += f"{article.citation_group.get_abbreviated_title()}, "
+        vol = article.volume or ""
+        out += f"{vol}: "
+        out += page_range(article, dash="–")
+        return out
+
+    if article.type == ArticleType.BOOK:
+        if article.volume:
+            out += f"Vol. {article.volume}. "
+        if article.citation_group is not None:
+            out += f"{article.citation_group.name}: "
+        if article.publisher:
+            out += f"{article.publisher}. "
+        if article.start_page and article.end_page:
+            out += f"{article.start_page}–{article.end_page}"
+        elif article.pages:
+            out += f"{article.pages}"
+        return out.strip()
+
+    if article.type == ArticleType.CHAPTER:
+        # In: Editors ed. Book title. [Edition.] City: Publisher. pages
+        enclosing = article.get_enclosing()
+        if enclosing is None:
+            return _citenormal(article, mw=False)
+        editors = enclosing.get_authors()
+        if editors:
+            editors_str = ", ".join(_fmt_person(p) for p in editors)
+            out += f"In: {editors_str} ed. "
+        else:
+            out += "In: "
+        # Book title and optional edition
+        out += f"{enclosing.get_title()}. "
+        edition = enclosing.get_identifier(ArticleTag.Edition)
+        if edition:
+            out += f"{edition}. "
+        # Location and publisher
+        place = enclosing.place_of_publication
+        publ = enclosing.publisher
+        if place and publ:
+            out += f"{place}: {publ}. "
+        elif publ:
+            out += f"{publ}. "
+        # Pages (no pp.)
+        pages = page_range(article, dash="–")
+        if pages:
+            out += f"{pages}"
+        return out.strip()
+
+    return _citenormal(article, mw=False)
+
+
 @register_cite_function("archnathist")
 def citearchnathist(article: Article) -> str:
     out = []
@@ -834,6 +918,89 @@ def citemammalia(article: Article) -> str:
         case _:
             raise NotImplementedError(repr(article.type))
     return "".join(parts)
+
+
+@register_cite_function("jmamm")
+def cite_jmamm(article: Article) -> str:
+    out = format_authors(
+        article,
+        separator=",",
+        last_separator=",",
+        separator_with_two_authors=",",
+        include_dots=False,
+        before_initials="",
+    )
+    out += f". {article.numeric_year()}. {article.get_title()}."
+    match article.type:
+        case ArticleType.JOURNAL:
+            if article.citation_group:
+                out += f" {article.citation_group.get_citable_name()}"
+            if article.is_in_press():
+                out += " in press."
+            else:
+                if article.series:
+                    out += f" ({article.series})"
+                if article.volume:
+                    out += f" {article.volume}"
+                if article.issue:
+                    out += f"({article.issue})"
+                pages = page_range(article, dash="–")
+                if pages:
+                    out += f":{pages}"
+                out += "."
+        case ArticleType.BOOK:
+            edition = article.get_identifier(ArticleTag.Edition)
+            if edition:
+                out += f" {edition}."
+            if article.series:
+                out += f" {article.series}."
+            if article.place_of_publication and article.publisher:
+                out += f" {article.place_of_publication}: {article.publisher}."
+            elif article.publisher:
+                out += f" {article.publisher}."
+            if article.pages:
+                out += f" {article.pages} pp."
+        case ArticleType.CHAPTER | ArticleType.PART:
+            pages = page_range(article, dash="–")
+            enclosing = article.get_enclosing()
+            if enclosing is not None:
+                out += " In: "
+                editors = format_authors(
+                    enclosing,
+                    separator=",",
+                    last_separator=",",
+                    separator_with_two_authors=",",
+                    include_dots=False,
+                    before_initials="",
+                )
+                if editors:
+                    out += f"{editors} (eds.). "
+                out += f"{enclosing.get_title()}."
+                if enclosing.series:
+                    out += f" {enclosing.series}."
+                if enclosing.place_of_publication and enclosing.publisher:
+                    out += f" {enclosing.place_of_publication}: {enclosing.publisher}."
+                elif enclosing.publisher:
+                    out += f" {enclosing.publisher}."
+            if pages:
+                out += f" {pages}."
+        case ArticleType.THESIS:
+            out += f" {article.thesis_gettype(periods=True)} thesis."
+            if article.institution:
+                out += f" {article.institution}."
+        case ArticleType.WEB | ArticleType.MISCELLANEOUS:
+            if article.series:
+                out += f" {article.series}."
+            if article.place_of_publication and article.publisher:
+                out += f" {article.place_of_publication}: {article.publisher}."
+            elif article.publisher:
+                out += f" {article.publisher}."
+        case _:
+            out += " <!--Unknown citation type; fallback citation-->"
+    url = article.geturl()
+    if url:
+        out += f" {url}."
+    return re.sub(r"\s+", " ", re.sub(r"(?<!\.)\.\.(?!\.)", ".", out)).strip()
 
 
 @register_cite_function("commons")

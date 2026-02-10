@@ -156,6 +156,71 @@ def generator_command(fn: Callable[..., Iterable[T]]) -> Callable[..., list[T]]:
     return wrapper
 
 
+# Utilities
+
+
+@command
+def format_citations_from_names(style: str | None = None) -> None:
+    """Read Article names line-by-line, then output sorted citations.
+
+    - Input: one Article name per line (e.g., "Agathaeromys nov.pdf");
+      end with an empty line.
+    - Param `style`: citation style key (e.g., "paper", "normal", "vertpala").
+    - Resolves each line to an Article (by exact name or numeric id).
+    - Prints informative errors on failures; skips invalid entries.
+    - Deduplicates Articles, formats using the style, sorts by rendered text.
+    """
+    # Ask for style if not provided
+    if not style:
+        style = getinput.get_line("style> ") or "paper"
+
+    print("Paste Article names (one per line). Blank line to finish.")
+    inputs: list[str] = []
+    while True:
+        line = getinput.get_line("name> ")
+        if not line:
+            break
+        inputs += [subline.strip() for subline in line.splitlines() if subline.strip()]
+
+    if not inputs:
+        print("No input provided.")
+        return
+
+    # Resolve lines to Articles; collect unique by id
+    by_id: dict[int, Article] = {}
+    for raw in inputs:
+        raw = raw.strip("{}")
+        if not raw:
+            continue
+        try:
+            if raw.isnumeric():
+                art = Article.get(id=int(raw))
+            else:
+                art = Article.get(name=raw)
+        except Article.DoesNotExist:
+            print(f"Not found: {raw}")
+            continue
+        if art.kind is ArticleKind.removed:
+            print(f"Skipping removed Article: {raw}")
+            continue
+        by_id[art.id] = art
+
+    if not by_id:
+        print("No valid Articles resolved.")
+        return
+
+    # Format citations and sort by rendered text
+    try:
+        rendered = [art.cite(style) for art in by_id.values()]
+    except ValueError as e:
+        # Unknown citation style
+        print(str(e))
+        return
+
+    for text in sorted(set(rendered)):
+        print("*", text)
+
+
 # Lookup
 
 
