@@ -821,7 +821,7 @@ def get_adt_member(
                     print(f"  {attr}: {value!r}")
             else:
                 print(f"invalid choice: {choice!r}")
-    return member_cls(**args)
+    return member_cls(**args)  # static analysis: ignore[incompatible_call]
 
 
 def add_to_clipboard(data: str) -> None:
@@ -987,7 +987,10 @@ def print_table(rows: Sequence[Sequence[str]], *, spacing: int = 2) -> None:
     if not rows:
         return
     num_cols = len(rows[0])
-    col_widths = [0] * num_cols
+    # TODO: better way around invariance
+    col_widths: list[int] = [
+        0
+    ] * num_cols  # static analysis: ignore[incompatible_assignment]
     for row in rows:
         for i, cell in enumerate(row):
             col_widths[i] = max(col_widths[i], len(cell))

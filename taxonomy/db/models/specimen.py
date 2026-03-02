@@ -144,7 +144,7 @@ class Specimen(BaseModel):
 
     @classmethod
     def location_report(cls) -> None:
-        by_loc: dict[str, list[Specimen]] = defaultdict(list)
+        by_loc: dict[Location | None, list[Specimen]] = defaultdict(list)
         for spec in cls.select_valid():
             by_loc[spec.location].append(spec)
         for loc, specs in sorted(by_loc.items(), key=lambda p: len(p[1])):

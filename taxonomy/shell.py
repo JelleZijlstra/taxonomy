@@ -534,13 +534,13 @@ def dup_taxa() -> list[dict[str, list[Taxon]]]:
 def dup_names() -> (
     list[
         dict[
-            tuple[str | None, str | None, constants.NomenclatureStatus, str | None],
+            tuple[str | None, str | None, constants.NomenclatureStatus, Article | None],
             list[Name],
         ]
     ]
 ):
     original_year: dict[
-        tuple[str | None, str | None, constants.NomenclatureStatus, str | None],
+        tuple[str | None, str | None, constants.NomenclatureStatus, Article | None],
         list[Name],
     ] = defaultdict(list)
     for name in getinput.print_every_n(
@@ -2295,7 +2295,9 @@ def cg_recent_report(
         min_year = datetime.datetime.now(tz=datetime.UTC).year - 3
     query = Article.select_valid().filter(Article.citation_group == cg)
     # the format is {volume: {issue: [articles]}}
-    arts: dict[str, dict[str, list[Article]]] = defaultdict(lambda: defaultdict(list))
+    arts: dict[str | None, dict[str | None, list[Article]]] = defaultdict(
+        lambda: defaultdict(list)
+    )
     for art in query:
         if art.kind is ArticleKind.alternative_version:
             continue

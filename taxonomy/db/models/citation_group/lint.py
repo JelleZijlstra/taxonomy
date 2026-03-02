@@ -476,6 +476,7 @@ def add_have_identifier_tags(cg: CitationGroup, cfg: LintConfig) -> Iterable[str
                 break
         if existing is None:
             # Add new tag
+            # static analysis: ignore[incompatible_call]
             new_tag = tag_cls(ident, min_year=desired_min, max_year=desired_max)
             message = f"add tag {new_tag}"
             if cfg.autofix:
@@ -503,6 +504,7 @@ def add_have_identifier_tags(cg: CitationGroup, cfg: LintConfig) -> Iterable[str
             new_max = None if desired_max == latest_art_year else desired_max
         if new_min == existing_min and new_max == existing_max:
             return
+        # static analysis: ignore[incompatible_call]
         updated = tag_cls(ident, min_year=new_min, max_year=new_max)
         message = f"expand tag {existing} -> {updated}"
         if cfg.autofix:

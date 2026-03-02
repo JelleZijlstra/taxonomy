@@ -21,16 +21,7 @@ from taxonomy.db.constants import (
     Status,
 )
 from taxonomy.db.helpers import root_name_of_name
-from taxonomy.db.models import (
-    Article,
-    Book,
-    Location,
-    Name,
-    Period,
-    Person,
-    Region,
-    Taxon,
-)
+from taxonomy.db.models import Article, Book, Name, Person, Region, Taxon
 from taxonomy.db.models.name import TypeTag
 from taxonomy.db.models.person import AuthorTag
 
@@ -50,19 +41,6 @@ def unrecorded_taxa(root: Taxon) -> None:
     else:
         for taxon in root.children:
             unrecorded_taxa(taxon)
-
-
-def move_localities(period: Period) -> None:
-    for location in Location.filter(
-        Location.max_period == period, Location.min_period == period
-    ):
-        location.min_period = location.max_period = None
-        location.stratigraphic_unit = period
-
-
-def move_to_stratigraphy(loc: Location, period: Period) -> None:
-    loc.stratigraphic_unit = period
-    loc.min_period = loc.max_period = None
 
 
 def locless_names(

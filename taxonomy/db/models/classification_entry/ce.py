@@ -298,7 +298,7 @@ class ClassificationEntry(BaseModel):
                             print(f"Inferred parent as species {parent_ce}.")
                             values["parent"] = parent_ce
                             continue
-                parent: ClassificationEntry | None = None
+                parent: ClassificationEntry | None
                 if _parent_stack:
                     print(f"Parent is {_parent_stack[-1]}")
                     parent = _parent_stack[-1]

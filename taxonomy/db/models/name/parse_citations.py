@@ -72,8 +72,6 @@ def parse_citation(citation: str) -> ParsedCitation:
     series: str | None = None
     volume: str | None = None
     issue: str | None = None
-    start_page: str | None = None
-    end_page: str | None = None
 
     # 1) Pages first; helps anchor nearby volume patterns
     start_page, end_page = _extract_pages(text)

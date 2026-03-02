@@ -15,7 +15,15 @@ import json
 import re
 import subprocess
 from collections import defaultdict
-from collections.abc import Callable, Container, Generator, Iterable, Iterator, Sequence
+from collections.abc import (
+    Callable,
+    Container,
+    Generator,
+    Iterable,
+    Iterator,
+    Mapping,
+    Sequence,
+)
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from functools import cache
@@ -502,15 +510,15 @@ def _is_comparable_to_type(specimen_text: str, nam: Name) -> bool:
     return False
 
 
-type TagsByType = dict[type[TypeTag], list[TypeTag]]
+type TagsByType = Mapping[type[TypeTag], Sequence[TypeTag]]
 type TypeTagChecker = Callable[
-    [TypeTag, Name, LintConfig, TagsByType], Generator[str, None, list[TypeTag]]
+    [TypeTag, Name, LintConfig, TagsByType], Generator[str, None, Sequence[TypeTag]]
 ]
 
 
 def _check_links_in_type_tag(
     tag: TypeTag, nam: Name, cfg: LintConfig, tags_by_type: TagsByType
-) -> Generator[str, None, list[TypeTag]]:
+) -> Generator[str, None, Sequence[TypeTag]]:
     for arg_name, art in get_tag_fields_of_type(tag, Article):
         if art.kind is ArticleKind.removed:
             yield f"bad article in tag {tag}"
@@ -529,7 +537,7 @@ def _check_links_in_type_tag(
 
 def _check_detail_type_tag(
     tag: TypeTag, nam: Name, cfg: LintConfig, tags_by_type: TagsByType
-) -> Generator[str, None, list[TypeTag]]:
+) -> Generator[str, None, Sequence[TypeTag]]:
     if (
         isinstance(
             tag,
@@ -555,7 +563,7 @@ def _check_detail_type_tag(
 
 def _check_designation_type_tag(
     tag: TypeTag, nam: Name, cfg: LintConfig, tags_by_type: TagsByType
-) -> Generator[str, None, list[TypeTag]]:
+) -> Generator[str, None, Sequence[TypeTag]]:
     if isinstance(
         tag,
         (
@@ -575,7 +583,7 @@ def _check_designation_type_tag(
 
 def _check_all_type_tags(
     tag: TypeTag, nam: Name, cfg: LintConfig, by_type: TagsByType
-) -> Generator[str, None, list[TypeTag]]:
+) -> Generator[str, None, Sequence[TypeTag]]:
     tags = []
     match tag:
         case (
@@ -1554,7 +1562,7 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
             yield f"has multiple tags of type {tag_type}: {tags_of_type}"
 
     for checker in TYPE_TAG_CHECKERS:
-        new_tags = []
+        new_tags: list[TypeTag] = []
         for tag in tags:
             new_tags += yield from checker(tag, nam, cfg, by_type)
         tags = new_tags
@@ -2847,7 +2855,7 @@ def nomenclature_status_priority(status: NomenclatureStatus) -> int:
 
 def sort_nomenclature_statuses(
     statuses: Iterable[NomenclatureStatus],
-) -> list[NomenclatureStatus]:
+) -> Sequence[NomenclatureStatus]:
     return sorted(statuses, key=lambda status: _priority_map[status])
 
 
@@ -2857,7 +2865,7 @@ def get_applicable_statuses(nam: Name) -> set[NomenclatureStatus]:
     return applicable_from_tags | inherent
 
 
-def get_sorted_applicable_statuses(nam: Name) -> list[NomenclatureStatus]:
+def get_sorted_applicable_statuses(nam: Name) -> Sequence[NomenclatureStatus]:
     return sort_nomenclature_statuses(get_applicable_statuses(nam))
 
 
@@ -4242,8 +4250,6 @@ def _check_species_group_homonyms(
         return
     if not nam.can_preoccupy():
         return
-    # TODO: pyanalyze otherwise thinks it may be uninitialized
-    name_dict: dict[str, list[Name]] = {}
     match reason:
         case SelectionReason.primary_homonymy:
             genus = nam.original_parent
@@ -4617,7 +4623,7 @@ def infer_original_parent(nam: Name, cfg: LintConfig) -> Iterable[str]:
             yield message
 
 
-def _get_inferred_original_parent(nam: Name) -> list[Name]:
+def _get_inferred_original_parent(nam: Name) -> Sequence[Name]:
     if nam.corrected_original_name is None:
         return []
     original_genus, *_ = nam.corrected_original_name.split()
@@ -5823,8 +5829,9 @@ def get_species_name_complex_finder() -> (
     for snc in SpeciesNameComplex.filter(
         SpeciesNameComplex.kind == SpeciesNameKind.adjective
     ):
-        for form in snc.get_forms(snc.stem):
-            full_names[form] = (snc, "matches a form of the stem")
+        if snc.stem is not None:
+            for form in snc.get_forms(snc.stem):
+                full_names[form] = (snc, "matches a form of the stem")
 
     def finder(root_name: str) -> tuple[SpeciesNameComplex, str] | None:
         if root_name in full_names:

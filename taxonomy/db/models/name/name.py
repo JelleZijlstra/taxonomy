@@ -1555,7 +1555,9 @@ class Name(BaseModel):
             return
         if tag is None:
             tag = NameTag.PreoccupiedBy
-        self.add_tag(tag(name, comment=comment or ""))
+        self.add_tag(
+            tag(name, comment=comment or "")
+        )  # static analysis: ignore[incompatible_call]
         if self.nomenclature_status == NomenclatureStatus.available:
             self.nomenclature_status = NomenclatureStatus.preoccupied
         else:

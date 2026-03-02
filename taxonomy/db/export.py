@@ -965,7 +965,7 @@ def export_articles(filename: str) -> None:
     ]
 
     with Path(filename).open("w", newline="", encoding="utf-8") as f:
-        writer: "csv.DictWriter[str]" = csv.DictWriter(f, fields, escapechar="\\")
+        writer = csv.DictWriter(f, fields, escapechar="\\")
         writer.writeheader()
         arts = Article.select_valid().filter(
             Article.type != ArticleType.SUPPLEMENT,

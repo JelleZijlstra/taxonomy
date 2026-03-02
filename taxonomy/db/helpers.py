@@ -7,7 +7,7 @@ import re
 import time
 import types
 import unicodedata
-from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Generator, Iterable, Mapping, Sequence
 from contextlib import contextmanager
 from typing import Annotated, TypeAliasType, TypeVar, cast, get_args, get_origin
 
@@ -488,7 +488,7 @@ class TimeHolder:
 
 
 @contextmanager
-def timer(label: str) -> Iterator[TimeHolder]:
+def timer(label: str) -> Generator[TimeHolder]:
     th = TimeHolder(label)
     start_time = time.time()
     try:

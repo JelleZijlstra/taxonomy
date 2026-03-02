@@ -116,7 +116,8 @@ except ImportError:
             - incorrect * scoring_function.false_positive_cost
             - no_value * scoring_function.false_negative_cost
         )
-        return ScoreInfo(
+        # TODO: this error seems correct, bug in repoguess?
+        return ScoreInfo(  # static analysis: ignore[incompatible_call]
             score=score, correct=correct, incorrect=incorrect, no_value=no_value
         )
 

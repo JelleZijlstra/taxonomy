@@ -104,6 +104,8 @@ class Region(BaseModel):
             new_name = self.getter("name").get_one_key(
                 default=old_name, allow_empty=False
             )
+        if new_name is None:
+            return
 
         for loc in self.get_general_localities():
             if loc.name.endswith(f"({old_name})"):

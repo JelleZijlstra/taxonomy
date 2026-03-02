@@ -79,7 +79,10 @@ class Book(BaseModel):
                 book.edit()
             else:
                 for tag in book.tags:
-                    if tag.language is SourceLanguage.other:
+                    if (
+                        isinstance(tag, BookTag.Language)
+                        and tag.language is SourceLanguage.other
+                    ):
                         print("Set language!", tag)
                         book.edit()
 

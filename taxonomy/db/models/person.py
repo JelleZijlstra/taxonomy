@@ -47,9 +47,9 @@ ALLOWED_TUSSENVOEGSELS = {
     NamingConvention.english_peer: {"de"},
     NamingConvention.spanish: {"de", "de la", "de los", "del"},
 }
-ALLOWED_TUSSENVOEGSELS[NamingConvention.unspecified] = set.union(
-    *ALLOWED_TUSSENVOEGSELS.values()
-) | {"v.d."}
+ALLOWED_TUSSENVOEGSELS[NamingConvention.unspecified] = {
+    tv for group in ALLOWED_TUSSENVOEGSELS.values() for tv in group
+} | {"v.d."}
 ALLOWS_SUFFIXES = {
     NamingConvention.ancient,
     NamingConvention.spanish,
@@ -637,7 +637,11 @@ class Person(BaseModel):
         for person in (
             cls.select_valid().filter(cls.suffix != None).order_by(cls.family_name)
         ):
-            if person.suffix != "Jr." and "." in person.suffix:
+            if (
+                person.suffix is not None
+                and person.suffix != "Jr."
+                and "." in person.suffix
+            ):
                 print(person)
                 person.display(full=True)
                 person.maybe_reassign_references()
