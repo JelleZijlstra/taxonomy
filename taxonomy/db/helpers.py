@@ -146,7 +146,7 @@ def rank_of_string(s: str) -> Rank:
 
 def root_name_of_name(s: str, rank: Rank) -> str:
     if rank in (Rank.species, Rank.subspecies):
-        return s.split()[-1]
+        return s.rsplit(maxsplit=1)[-1]
     elif group_of_rank(rank) == Group.family:
         return strip_rank(s, rank)
     else:
@@ -214,7 +214,7 @@ def is_nominate_subspecies(ssp: str) -> bool:
 def genus_name_of_name(name: str) -> str:
     if name.lower().startswith("cf. "):
         return name.split()[1]
-    return name.split()[0].replace("?", "")
+    return name.split(maxsplit=1)[0].replace("?", "")
 
 
 _T1 = TypeVar("_T1")

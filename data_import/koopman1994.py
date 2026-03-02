@@ -659,7 +659,7 @@ class DentalFormula:
 
         prefix = match.group("prefix").strip()
         return cls(
-            prefix=prefix if prefix else None,
+            prefix=prefix or None,
             upper_i=p(match.group("I")),
             lower_i=p(match.group("i")),
             upper_c=p(match.group("C")),
