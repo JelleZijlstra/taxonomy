@@ -57,8 +57,8 @@ def find_name(original_name: str, authority: str) -> models.Name | None:
             models.Name.authority == authority,
         )
     except models.Name.DoesNotExist:
-        root_name = original_name.split()[-1]
-        possible_genus_names = [original_name.split()[0]]
+        root_name = original_name.rsplit(maxsplit=1)[-1]
+        possible_genus_names = [original_name.split(maxsplit=1)[0]]
         # try subgenus
         match = re.search(r"\(([A-Z][a-z]+)\)", original_name)
         if match:
