@@ -96,13 +96,13 @@ Linter = Callable[[ModelT, LintConfig], Iterable[str]]
 
 class BaseModel(Model):
     id: Any
-    label_field: str
-    label_field_has_underscores = False
+    label_field: ClassVar[str]
+    label_field_has_underscores: ClassVar[bool] = False
     # If given, lists are separated into groups based on this field.
-    grouping_field: str | None = None
-    call_sign: str
-    creation_event: events.Event[Any]
-    save_event: events.Event[Any]
+    grouping_field: ClassVar[str | None] = None
+    call_sign: ClassVar[str]
+    creation_event: ClassVar[events.Event[Any]]
+    save_event: ClassVar[events.Event[Any]]
     field_defaults: ClassVar[dict[str, Any]] = {}
     excluded_fields: ClassVar[set[str]] = set()
     derived_fields: ClassVar[list[derived_data.DerivedField[Any]]] = []
@@ -113,9 +113,9 @@ class BaseModel(Model):
     search_fields: ClassVar[Sequence[SearchField]] = ()
     fields_without_completers: ClassVar[Collection[str]] = set()
 
-    clirm = LazyClirm()
+    clirm: ClassVar[LazyClirm] = LazyClirm()
 
-    e = _FieldEditor()
+    e: ClassVar[_FieldEditor] = _FieldEditor()
 
     def __init_subclass__(cls) -> None:
         super().__init_subclass__()

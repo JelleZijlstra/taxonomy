@@ -9,6 +9,7 @@ from typing import (
     TYPE_CHECKING,
     Annotated,
     Any,
+    ClassVar,
     Literal,
     Self,
     TypeAliasType,
@@ -268,10 +269,12 @@ else:
 
 
 class ADT(_ADTBase, metaclass=_ADTMeta):
-    _attributes: dict[str, Any]
-    _has_args: bool
-    _tag: int
-    _tag_to_member: dict[int, type[Any]]
+    _attributes: ClassVar[dict[str, Any]]
+    _has_args: ClassVar[bool]
+    _tag: ClassVar[int]
+    _tag_to_member: ClassVar[dict[int, type[Any]]]
+    __required_attrs__: ClassVar[set[str]]
+    __optional_attrs__: ClassVar[set[str]]
 
     def _get_attributes(self) -> Iterable[Any]:
         for attr in self._attributes:
