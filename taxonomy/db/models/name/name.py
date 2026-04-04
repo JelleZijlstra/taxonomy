@@ -1087,7 +1087,7 @@ class Name(BaseModel):
                 and set(tag.__dict__) == {"text", "source"}
             ):
                 if tag.source == existing:
-                    return type(tag)(text=tag.text, source=new_citation)
+                    return adt.replace(tag, source=new_citation)
             return tag
 
         self.map_type_tags(map_fn)

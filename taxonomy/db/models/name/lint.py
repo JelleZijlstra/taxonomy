@@ -2363,7 +2363,7 @@ def _check_variant_tag(
             target := tag.name.get_tag_target(NameTag.UnavailableVersionOf)
         ) and nam.year > target.year:
             yield f"tag {tag} should instead point to available name {target}"
-            new_tag = type(tag)(target, comment=tag.comment)
+            new_tag = adt.replace(tag, name=target)
     if (
         nam.taxon != tag.name.taxon
         and not isinstance(tag, NameTag.MisidentificationOf)
@@ -2415,7 +2415,7 @@ def _check_variant_tag(
         new_target = tag.name.get_tag_target(NameTag.NameCombinationOf)
         if new_target is not None:
             message += f" of {new_target}"
-            new_tag = type(tag)(new_target, comment=tag.comment)
+            new_tag = adt.replace(tag, name=new_target)
         yield message
     return new_tag
 
