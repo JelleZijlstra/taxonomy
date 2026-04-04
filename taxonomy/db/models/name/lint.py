@@ -136,8 +136,7 @@ LINT = Lint(Name, get_ignores, remove_unused_ignores)
 
 
 def replace_arg(tag: ADTT, arg: str, val: object) -> ADTT:
-    kwargs = {**tag.__dict__, arg: val}
-    return type(tag)(**kwargs)
+    return adt.replace(tag, **{arg: val})
 
 
 def get_tag_fields_of_type(tag: adt.ADT, typ: type[T]) -> Iterable[tuple[str, T]]:

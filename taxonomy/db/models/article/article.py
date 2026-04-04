@@ -785,6 +785,7 @@ class Article(BaseModel):
             if self.has(newname):
                 print(f"New name already exists: {newname}")
                 newname = None
+        assert newname is not None, "help the type checker"
         oldname = self.name
         if oldname == newname:
             return

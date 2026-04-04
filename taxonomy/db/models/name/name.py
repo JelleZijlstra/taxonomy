@@ -1555,9 +1555,8 @@ class Name(BaseModel):
             return
         if tag is None:
             tag = NameTag.PreoccupiedBy
-        self.add_tag(
-            tag(name, comment=comment or "")
-        )  # static analysis: ignore[incompatible_call]
+        # static analysis: ignore[incompatible_call]
+        self.add_tag(tag(name, comment=comment or ""))
         if self.nomenclature_status == NomenclatureStatus.available:
             self.nomenclature_status = NomenclatureStatus.preoccupied
         else:
@@ -2416,7 +2415,7 @@ class Name(BaseModel):
         *,
         paper: Article | None = None,
         page_described: None | int | str = None,
-        original_name: int | None = None,
+        original_name: str | None = None,
         force: bool = False,
         **kwargs: Any,
     ) -> None:

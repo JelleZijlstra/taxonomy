@@ -226,6 +226,8 @@ class _ADTMeta(type):
                 exec(code, {}, new_ns)
                 init = new_ns["__init__"]
                 init.__annotations__.update(annotations)
+                init.__module__ = new_cls.__module__
+                init.__qualname__ = f"{new_cls.__qualname__}.{member.name}.__init__"
                 member_ns["__init__"] = init
                 member_ns["__match_args__"] = tuple(annotations)
             member_cls: Any = functools.total_ordering(
@@ -354,4 +356,4 @@ def replace(adt: _ADTT, **overrides: Any) -> _ADTT:
         except KeyError:
             val = getattr(adt, arg_name)
         args[arg_name] = val
-    return tag_type(**args)
+    return tag_type(**args)  # static analysis: ignore[incompatible_call]

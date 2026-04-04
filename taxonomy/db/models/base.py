@@ -649,7 +649,7 @@ class BaseModel(Model):
                     new_args[arg_name] = fn(val)
                 else:
                     new_args[arg_name] = val
-            return tag_type(**new_args)
+            return tag_type(**new_args)  # static analysis: ignore[incompatible_call]
 
         self.map_tags_field(field, map_fn, dry_run=dry_run)
 
