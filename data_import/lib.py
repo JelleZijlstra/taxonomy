@@ -1018,7 +1018,7 @@ def find_name(
                 return available_names.get()
 
     # Names without original names, but in the same genus or subgenus
-    root_name = original_name.split()[-1]
+    root_name = original_name.rsplit(maxsplit=1)[-1]
     genus_name = helpers.genus_name_of_name(original_name)
     possible_genus_names = [genus_name]
     # try subgenus

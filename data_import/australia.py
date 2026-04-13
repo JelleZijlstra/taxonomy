@@ -80,7 +80,7 @@ def extract_names(pages: Iterable[tuple[int, list[str]]]) -> DataT:
     current_name: dict[str, Any] = {}
     current_lines: list[str] = []
     current_label = ""
-    line_kinds: deque[LineKind] = deque([], 5)
+    line_kinds: deque[LineKind] = deque(maxlen=5)
 
     def start_label(label: str, line: str) -> None:
         label = re.sub(r"\s+", " ", label.strip())

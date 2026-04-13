@@ -43,7 +43,7 @@ def extract_names(pages: Iterable[tuple[int, list[str]]]) -> DataT:
     current_name: dict[str, Any] = {}
     current_lines: list[str] = []
     last_indent = 0
-    line_kinds: deque[LineKind] = deque([], 5)
+    line_kinds: deque[LineKind] = deque(maxlen=5)
     current_label = ""
 
     def classify_line(line: str, spaces: int, *, is_first: bool) -> LineKind:
