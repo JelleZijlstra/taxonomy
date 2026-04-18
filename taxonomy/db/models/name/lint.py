@@ -136,8 +136,7 @@ LINT = Lint(Name, get_ignores, remove_unused_ignores)
 
 
 def replace_arg(tag: ADTT, arg: str, val: object) -> ADTT:
-    kwargs = {**tag.__dict__, arg: val}
-    return type(tag)(**kwargs)
+    return adt.replace(tag, **{arg: val})
 
 
 def get_tag_fields_of_type(tag: adt.ADT, typ: type[T]) -> Iterable[tuple[str, T]]:
@@ -2364,7 +2363,7 @@ def _check_variant_tag(
             target := tag.name.get_tag_target(NameTag.UnavailableVersionOf)
         ) and nam.year > target.year:
             yield f"tag {tag} should instead point to available name {target}"
-            new_tag = type(tag)(target, comment=tag.comment)
+            new_tag = adt.replace(tag, name=target)
     if (
         nam.taxon != tag.name.taxon
         and not isinstance(tag, NameTag.MisidentificationOf)
@@ -2416,7 +2415,7 @@ def _check_variant_tag(
         new_target = tag.name.get_tag_target(NameTag.NameCombinationOf)
         if new_target is not None:
             message += f" of {new_target}"
-            new_tag = type(tag)(new_target, comment=tag.comment)
+            new_tag = adt.replace(tag, name=new_target)
         yield message
     return new_tag
 
@@ -4331,7 +4330,11 @@ def _check_homonym_list(
         # Allow ignoring preoccupation only for fuzzy matches
         relevant_tags += (NameTag.IgnorePreoccupationBy,)
     already_variant_of = {
-        tag.name for tag in nam.tags if isinstance(tag, relevant_tags)
+        # Types don't communicate that these are all tags that have a name attribute
+        # static analysis: ignore[attribute_is_never_set]
+        tag.name
+        for tag in nam.tags
+        if isinstance(tag, relevant_tags)
     }
 
     for senior_homonym in relevant_names:

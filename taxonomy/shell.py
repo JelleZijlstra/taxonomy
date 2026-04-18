@@ -1741,7 +1741,7 @@ def most_common_mapped(
 @command
 def most_common_citation_groups_after(year: int) -> dict[CitationGroup, int]:
     nams = Name.bfind(Name.citation_group != None, Name.year > year, quiet=True)
-    return Counter(nam.citation_group for nam in nams)
+    return Counter(nam.citation_group for nam in nams if nam.citation_group is not None)
 
 
 @generator_command
