@@ -635,7 +635,11 @@ class Person(BaseModel):
     @classmethod
     def fix_bad_suffixes(cls) -> None:
         for person in (
-            cls.select_valid().filter(cls.suffix != None).order_by(cls.family_name)
+            # https://github.com/JelleZijlstra/clirm/pull/5
+            # static analysis: ignore[incompatible_argument]
+            cls.select_valid()
+            .filter(cls.suffix != None)
+            .order_by(cls.family_name)
         ):
             if (
                 person.suffix is not None
