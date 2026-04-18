@@ -176,6 +176,7 @@ ignore = [
   "UP047",   # make sure pycroscope supports PEP 695 syntax fully first
   "UP046",   # same
   "S314",
+  "PLW0108", # often incorrect
 ]
 
 [tool.ruff.lint.per-file-ignores]

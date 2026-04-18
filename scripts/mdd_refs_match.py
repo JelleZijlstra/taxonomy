@@ -619,7 +619,7 @@ def match_article(
                         return 90
                     return 0
 
-                scored = sorted(candidates, key=lambda ai: jscore(ai), reverse=True)
+                scored = sorted(candidates, key=jscore, reverse=True)
                 top = jscore(scored[0])
                 second = jscore(scored[1]) if len(scored) > 1 else -1
                 if top >= 90 and top - second >= 5:
