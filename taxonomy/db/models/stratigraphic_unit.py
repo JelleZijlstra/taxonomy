@@ -155,13 +155,13 @@ class StratigraphicUnit(BaseModel):
     ) -> StratigraphicUnit:
         if period is not None:
             kwargs["max_period"] = kwargs["min_period"] = period
-        period = cls.create(
+        su = cls.create(
             name=name, rank=rank.value, parent=parent, deleted=False, **kwargs
         )
         if "next" in kwargs:
             next_period = kwargs["next"]
-            next_period.prev = period
-        return period
+            next_period.prev = su
+        return su
 
     def display(
         self,
