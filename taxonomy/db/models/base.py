@@ -754,7 +754,7 @@ class BaseModel(Model):
             ),
         )
 
-    def _merge_fields(self, into: Self, exclude: Container[str] = set()) -> None:
+    def _merge_fields(self, into: "BaseModel", exclude: Container[str] = set()) -> None:
         for field in self.fields():
             if field in exclude:
                 continue

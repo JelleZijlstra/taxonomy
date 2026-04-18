@@ -4330,7 +4330,11 @@ def _check_homonym_list(
         # Allow ignoring preoccupation only for fuzzy matches
         relevant_tags += (NameTag.IgnorePreoccupationBy,)
     already_variant_of = {
-        tag.name for tag in nam.tags if isinstance(tag, relevant_tags)
+        # Types don't communicate that these are all tags that have a name attribute
+        # static analysis: ignore[attribute_is_never_set]
+        tag.name
+        for tag in nam.tags
+        if isinstance(tag, relevant_tags)
     }
 
     for senior_homonym in relevant_names:

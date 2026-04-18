@@ -1714,7 +1714,7 @@ class Article(BaseModel):
                     current_tl = nam.type_locality
                 print(f"{' ' * 8}{nam.get_description()}", end="")
 
-    def get_children(self) -> Query[Self]:
+    def get_children(self) -> "Query[Article]":
         return Article.select_valid().filter(
             Article.parent == self,
             Article.kind != ArticleKind.redirect,
