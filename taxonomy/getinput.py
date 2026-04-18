@@ -988,9 +988,8 @@ def print_table(rows: Sequence[Sequence[str]], *, spacing: int = 2) -> None:
         return
     num_cols = len(rows[0])
     # TODO: better way around invariance
-    col_widths: list[int] = [
-        0
-    ] * num_cols  # static analysis: ignore[incompatible_assignment]
+    # static analysis: ignore[incompatible_assignment]
+    col_widths: list[int] = [0] * num_cols
     for row in rows:
         for i, cell in enumerate(row):
             col_widths[i] = max(col_widths[i], len(cell))
