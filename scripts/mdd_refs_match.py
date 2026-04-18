@@ -250,7 +250,7 @@ def _split_after_year(text: str) -> tuple[str | None, str | None]:
             boundary = len(rest)
     title = re.sub(r"\s+", " ", rest[: boundary + 1]).strip()
     trailing = rest[boundary + 1 :]
-    return (title if title else None), trailing
+    return (title or None), trailing
 
 
 def extract_title(text: str) -> str | None:
@@ -619,7 +619,7 @@ def match_article(
                         return 90
                     return 0
 
-                scored = sorted(candidates, key=lambda ai: jscore(ai), reverse=True)
+                scored = sorted(candidates, key=jscore, reverse=True)
                 top = jscore(scored[0])
                 second = jscore(scored[1]) if len(scored) > 1 else -1
                 if top >= 90 and top - second >= 5:

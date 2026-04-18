@@ -176,7 +176,7 @@ class CitationGroup(BaseModel):
             if isinstance(tag, tag_cls):
                 return tag
             if tag is tag_cls:
-                return tag  # static analysis: ignore[incompatible_return_value]
+                return tag  # type: ignore[return-value]  # static analysis: ignore[incompatible_return_value]
         return None
 
     def add_tag(self, tag: adt.ADT) -> None:

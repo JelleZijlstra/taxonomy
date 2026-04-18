@@ -2279,7 +2279,7 @@ def build_summary_for_doi_data(doi: str, data: dict[str, Any]) -> str:
     doi_year_str = data.get("year")
     citation_bits = [
         f"{journal}",
-        vol_issue if vol_issue else None,
+        vol_issue or None,
         f": {pages}" if pages else None,
         f"({doi_year_str})" if doi_year_str else None,
     ]
