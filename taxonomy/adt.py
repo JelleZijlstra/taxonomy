@@ -9,6 +9,7 @@ from typing import (
     TYPE_CHECKING,
     Annotated,
     Any,
+    ClassVar,
     Literal,
     Self,
     TypeAliasType,
@@ -225,6 +226,8 @@ class _ADTMeta(type):
                 exec(code, {}, new_ns)
                 init = new_ns["__init__"]
                 init.__annotations__.update(annotations)
+                init.__module__ = new_cls.__module__
+                init.__qualname__ = f"{new_cls.__qualname__}.{member.name}.__init__"
                 member_ns["__init__"] = init
                 member_ns["__match_args__"] = tuple(annotations)
             member_cls: Any = functools.total_ordering(
@@ -268,10 +271,12 @@ else:
 
 
 class ADT(_ADTBase, metaclass=_ADTMeta):
-    _attributes: dict[str, Any]
-    _has_args: bool
-    _tag: int
-    _tag_to_member: dict[int, type[Any]]
+    _attributes: ClassVar[dict[str, Any]]
+    _has_args: ClassVar[bool]
+    _tag: ClassVar[int]
+    _tag_to_member: ClassVar[dict[int, type[Any]]]
+    __required_attrs__: ClassVar[set[str]]
+    __optional_attrs__: ClassVar[set[str]]
 
     def _get_attributes(self) -> Iterable[Any]:
         for attr in self._attributes:
@@ -351,4 +356,4 @@ def replace(adt: _ADTT, **overrides: Any) -> _ADTT:
         except KeyError:
             val = getattr(adt, arg_name)
         args[arg_name] = val
-    return tag_type(**args)
+    return tag_type(**args)  # static analysis: ignore[incompatible_call]
