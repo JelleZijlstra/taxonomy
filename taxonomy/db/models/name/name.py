@@ -1040,11 +1040,11 @@ class Name(BaseModel):
         self.type_tags = tuple(t for t in type_tags if t != tag)  # type: ignore[assignment]
 
     @classmethod
-    def with_tag(cls, tag_cls: NameTagCons) -> Query[Name]:
+    def with_tag(cls, tag_cls: NameTagCons) -> Query[Self]:
         return cls.select_valid().filter(Name.tags.contains(f"[{tag_cls._tag},"))
 
     @classmethod
-    def with_type_tag(cls, tag_cls: TypeTagCons) -> Query[Name]:
+    def with_type_tag(cls, tag_cls: TypeTagCons) -> Query[Self]:
         return cls.select_valid().filter(Name.type_tags.contains(f"[{tag_cls._tag},"))
 
     def has_type_tag(self, tag_cls: TypeTagCons) -> bool:
