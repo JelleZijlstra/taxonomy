@@ -731,6 +731,8 @@ def _get_adt_member_field(
                 default="" if existing_value is None else str(existing_value),
                 allow_none=not is_required,
             )
+            if value is None:
+                continue
             try:
                 converted_value = typ(value)
             except Exception:
