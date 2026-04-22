@@ -2065,6 +2065,7 @@ def check_must_use_children(art: Article, cfg: LintConfig) -> Iterable[str]:
             field is Article.parent
             or field is ArticleComment.article
             or field is models.name.NameComment.source
+            or field.related_name is None
         ):
             continue
         refs = [obj for obj in getattr(art, field.related_name) if not obj.is_invalid()]

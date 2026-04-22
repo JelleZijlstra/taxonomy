@@ -47,6 +47,7 @@ EXCLUDED = {
 
 
 def test_docs() -> None:
+    assert taxonomy.__file__ is not None
     docs_root = Path(taxonomy.__file__).parent.parent / "docs"
     name_docs = (docs_root / "name.md").read_text()
 
