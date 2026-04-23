@@ -162,6 +162,21 @@ class MatchSummary:
     bhl_sources: Counter[str] = field(default_factory=Counter)
 
 
+@dataclass(frozen=True)
+class LearnedMappings:
+    citation_group_by_container_key: dict[str, int]
+
+
+@dataclass(frozen=True)
+class RowEvaluation:
+    row_number: int
+    input_row: dict[str, str]
+    status: str
+    match: ScoredCandidate | None
+    scored: tuple[ScoredCandidate, ...]
+    output_row: dict[str, str]
+
+
 class FreshNetworkCall(RuntimeError):
     pass
 
@@ -567,9 +582,39 @@ def row_title(row: dict[str, str]) -> str:
     return row["title"] or row["book_title"]
 
 
-def row_citation_group_ids(row: dict[str, str], index: ArticleIndex) -> set[int]:
-    container = row["container_title"] or row["book_title"] or row["publisher"]
-    return index.citation_group_by_alias.get(normalize_text(container), set())
+def row_container(row: dict[str, str]) -> str:
+    return row["container_title"] or row["book_title"] or row["publisher"]
+
+
+def row_container_key(row: dict[str, str]) -> str:
+    return normalize_text(row_container(row))
+
+
+def learned_citation_group_ids(
+    row: dict[str, str], learned_mappings: LearnedMappings | None
+) -> set[int]:
+    if learned_mappings is None:
+        return set()
+    container_key = row_container_key(row)
+    if not container_key:
+        return set()
+    citation_group_id = learned_mappings.citation_group_by_container_key.get(
+        container_key
+    )
+    if citation_group_id is None:
+        return set()
+    return {citation_group_id}
+
+
+def row_citation_group_ids(
+    row: dict[str, str],
+    index: ArticleIndex,
+    learned_mappings: LearnedMappings | None = None,
+) -> set[int]:
+    exact = index.citation_group_by_alias.get(row_container_key(row), set())
+    if exact:
+        return exact
+    return learned_citation_group_ids(row, learned_mappings)
 
 
 def citation_group_match_score(container: str, alias: str) -> float:
@@ -580,9 +625,11 @@ def citation_group_match_score(container: str, alias: str) -> float:
 
 
 def row_doi_citation_group_ids(
-    row: dict[str, str], index: ArticleIndex
+    row: dict[str, str],
+    index: ArticleIndex,
+    learned_mappings: LearnedMappings | None = None,
 ) -> tuple[int, ...]:
-    exact = row_citation_group_ids(row, index)
+    exact = row_citation_group_ids(row, index, learned_mappings)
     if exact:
         return tuple(sorted(exact))
     container = row["container_title"]
@@ -614,12 +661,16 @@ def row_doi_citation_group_ids(
     return result
 
 
-def row_citation_group_aliases(row: dict[str, str], index: ArticleIndex) -> set[str]:
+def row_citation_group_aliases(
+    row: dict[str, str],
+    index: ArticleIndex,
+    learned_mappings: LearnedMappings | None = None,
+) -> set[str]:
     aliases = set()
-    container = row["container_title"] or row["book_title"] or row["publisher"]
+    container = row_container(row)
     if container:
         aliases.add(container)
-    for citation_group_id in row_citation_group_ids(row, index):
+    for citation_group_id in row_citation_group_ids(row, index, learned_mappings):
         aliases.update(index.citation_group_aliases_by_id.get(citation_group_id, ()))
     return aliases
 
@@ -676,7 +727,11 @@ def original_citation_ids_for_taxon(label: str) -> tuple[int, ...]:
     return tuple(sorted(article_ids))
 
 
-def find_candidates(row: dict[str, str], index: ArticleIndex) -> dict[int, Candidate]:
+def find_candidates(
+    row: dict[str, str],
+    index: ArticleIndex,
+    learned_mappings: LearnedMappings | None = None,
+) -> dict[int, Candidate]:
     candidates: dict[int, Candidate] = {}
     year = numeric_year(row["year"])
     years = row_years(row)
@@ -729,7 +784,7 @@ def find_candidates(row: dict[str, str], index: ArticleIndex) -> dict[int, Candi
                 ):
                     add_candidate(candidates, record, "year_title")
 
-    cg_ids = row_citation_group_ids(row, index)
+    cg_ids = row_citation_group_ids(row, index, learned_mappings)
     row_volume = compact_key(row["volume"])
     row_start_page = first_page(row["pages"])
     for cg_id in cg_ids:
@@ -1096,7 +1151,10 @@ def get_article_batlit(article: Article) -> tuple[str, str, str, str]:
 
 
 def row_batlit_candidates(
-    row: dict[str, str], doi: str, index: ArticleIndex
+    row: dict[str, str],
+    doi: str,
+    index: ArticleIndex,
+    learned_mappings: LearnedMappings | None = None,
 ) -> list[batlit.BatLitRow]:
     batlit_index = batlit.build_batlit_index()
     candidates: list[batlit.BatLitRow] = []
@@ -1106,7 +1164,7 @@ def row_batlit_candidates(
     if title:
         candidates.extend(batlit_index.by_title.get(helpers.simplify_string(title), ()))
     if row["volume"]:
-        for alias in row_citation_group_aliases(row, index):
+        for alias in row_citation_group_aliases(row, index, learned_mappings):
             candidates.extend(
                 batlit_index.by_journal_volume.get(
                     (helpers.simplify_string(alias), row["volume"]), ()
@@ -1170,10 +1228,13 @@ def score_batlit_row(
 
 
 def get_row_batlit(
-    row: dict[str, str], doi: str, index: ArticleIndex
+    row: dict[str, str],
+    doi: str,
+    index: ArticleIndex,
+    learned_mappings: LearnedMappings | None = None,
 ) -> tuple[str, str, str, str, str]:
     scored = []
-    for candidate in row_batlit_candidates(row, doi, index):
+    for candidate in row_batlit_candidates(row, doi, index, learned_mappings):
         score, reasons = score_batlit_row(row, candidate, doi)
         scored.append((score, reasons, candidate))
     scored.sort(key=lambda item: item[0], reverse=True)
@@ -1451,13 +1512,17 @@ def row_matches_doi_data(
 
 
 def row_doi_from_crossref(
-    row: dict[str, str], index: ArticleIndex, *, mode: str
+    row: dict[str, str],
+    index: ArticleIndex,
+    *,
+    mode: str,
+    learned_mappings: LearnedMappings | None = None,
 ) -> tuple[str, str]:
     if mode == "off":
         return "", ""
     if row["reference_type"] not in {"journal_article", "scientific_description"}:
         return "", ""
-    citation_group_ids = row_doi_citation_group_ids(row, index)
+    citation_group_ids = row_doi_citation_group_ids(row, index, learned_mappings)
     citation_group_aliases: set[str] = set()
     seen: set[str] = set()
     for citation_group_id in citation_group_ids:
@@ -1601,6 +1666,238 @@ def print_summary(summary: MatchSummary, total_rows: int) -> None:
         print(f"    {count}: {source}", flush=True)
 
 
+def evaluate_row(
+    row_number: int,
+    row: dict[str, str],
+    index: ArticleIndex,
+    *,
+    doi_mode: str,
+    bhl_mode: str,
+    learned_mappings: LearnedMappings | None = None,
+) -> RowEvaluation:
+    candidates = find_candidates(row, index, learned_mappings)
+    scored = sorted(
+        (score_candidate(row, candidate) for candidate in candidates.values()),
+        key=lambda candidate: candidate.score,
+        reverse=True,
+    )
+    scored = collapse_scored_candidates(scored)
+    status, match = classify_match(row, scored)
+    output_row = {
+        **row,
+        **external_columns(
+            row_number,
+            row,
+            status,
+            match,
+            scored,
+            index,
+            doi_mode=doi_mode,
+            bhl_mode=bhl_mode,
+            learned_mappings=learned_mappings,
+        ),
+    }
+    return RowEvaluation(
+        row_number=row_number,
+        input_row=row,
+        status=status,
+        match=match,
+        scored=tuple(scored),
+        output_row=output_row,
+    )
+
+
+def run_matching_pass(
+    rows: Sequence[dict[str, str]],
+    index: ArticleIndex,
+    *,
+    doi_mode: str,
+    bhl_mode: str,
+    learned_mappings: LearnedMappings | None = None,
+    label: str,
+) -> tuple[list[RowEvaluation], MatchSummary]:
+    print(f"{label}: matching references...", flush=True)
+    evaluations = []
+    summary = MatchSummary()
+    for row_number, row in enumerate(rows, start=1):
+        evaluation = evaluate_row(
+            row_number,
+            row,
+            index,
+            doi_mode=doi_mode,
+            bhl_mode=bhl_mode,
+            learned_mappings=learned_mappings,
+        )
+        evaluations.append(evaluation)
+        update_summary(summary, evaluation.output_row)
+        if row_number % ROW_PROGRESS_EVERY == 0 or row_number == len(rows):
+            print_progress(row_number, len(rows), summary)
+    return evaluations, summary
+
+
+def secure_taxonomy_match(evaluation: RowEvaluation) -> bool:
+    if evaluation.status != "matched" or evaluation.match is None:
+        return False
+    runner_up = evaluation.scored[1] if len(evaluation.scored) > 1 else None
+    gap = (
+        evaluation.match.score - runner_up.score
+        if runner_up is not None
+        else evaluation.match.score
+    )
+    if evaluation.match.score >= 100:
+        return True
+    return evaluation.match.score >= 88 and gap >= 12
+
+
+def infer_citation_group_id_from_journal_name(
+    journal_name: str, index: ArticleIndex
+) -> int | None:
+    exact = index.citation_group_by_alias.get(normalize_text(journal_name), set())
+    if len(exact) == 1:
+        return next(iter(exact))
+    best_id = None
+    best_score = 0.0
+    second_score = 0.0
+    for citation_group_id, aliases in index.citation_group_aliases_by_id.items():
+        score = max(
+            citation_group_match_score(journal_name, alias) for alias in aliases
+        )
+        if score > best_score:
+            second_score = best_score
+            best_score = score
+            best_id = citation_group_id
+        elif score > second_score:
+            second_score = score
+    if best_id is None:
+        return None
+    if best_score >= 0.92 and best_score - second_score >= 0.05:
+        return best_id
+    return None
+
+
+def build_learned_mappings(
+    evaluations: Sequence[RowEvaluation], index: ArticleIndex, *, doi_mode: str
+) -> LearnedMappings:
+    support: defaultdict[str, Counter[int]] = defaultdict(Counter)
+    for evaluation in evaluations:
+        container = evaluation.input_row["container_title"]
+        container_key = normalize_text(container)
+        if not container_key:
+            continue
+        if (
+            secure_taxonomy_match(evaluation)
+            and evaluation.match is not None
+            and evaluation.match.article.citation_group_id is not None
+        ):
+            support[container_key][evaluation.match.article.citation_group_id] += 2
+        doi = evaluation.output_row["doi"]
+        if not doi:
+            continue
+        try:
+            with lookup_mode(doi_mode):
+                data = api_data.expand_doi_json(doi)
+        except (Exception, FreshNetworkCall):  # noqa: S112
+            continue
+        if not data:
+            continue
+        journal_name = data.get("journal")
+        if not isinstance(journal_name, str) or not journal_name:
+            continue
+        citation_group_id = infer_citation_group_id_from_journal_name(
+            journal_name, index
+        )
+        if citation_group_id is not None:
+            support[container_key][citation_group_id] += 1
+    learned = {}
+    for container_key, counter in support.items():
+        top = counter.most_common(2)
+        if not top:
+            continue
+        best_id, best_support = top[0]
+        second_support = top[1][1] if len(top) > 1 else 0
+        if best_support >= 2 and best_support > second_support:
+            learned[container_key] = best_id
+    return LearnedMappings(citation_group_by_container_key=learned)
+
+
+def print_round_gains(
+    first_pass: Sequence[RowEvaluation], final_rows: Sequence[dict[str, str]]
+) -> None:
+    taxonomy_new_matches = 0
+    doi_new_links = 0
+    batlit_new_links = 0
+    bhl_new_links = 0
+    for first, final_row in zip(first_pass, final_rows, strict=True):
+        if (
+            final_row["taxonomy_match_status"] == "matched"
+            and first.output_row["taxonomy_match_status"] != "matched"
+        ):
+            taxonomy_new_matches += 1
+        if final_row["doi"] and not first.output_row["doi"]:
+            doi_new_links += 1
+        if final_row["batlit_id"] and not first.output_row["batlit_id"]:
+            batlit_new_links += 1
+        if final_row["bhl_url"] and not first.output_row["bhl_url"]:
+            bhl_new_links += 1
+    print(
+        f"Round 2 gains: taxonomy_new_matches={taxonomy_new_matches} doi_new_links={doi_new_links} batlit_new_links={batlit_new_links} bhl_new_links={bhl_new_links}",
+        flush=True,
+    )
+
+
+def taxonomy_status_rank(status: str) -> int:
+    return {"matched": 2, "ambiguous": 1, "unmatched": 0}.get(status, -1)
+
+
+def taxonomy_score_from_row(row: dict[str, str]) -> int:
+    score = row["taxonomy_match_score"]
+    return int(score) if score.isdigit() else -1
+
+
+def merge_round_rows(first: RowEvaluation, second: RowEvaluation) -> dict[str, str]:
+    merged = dict(second.output_row)
+    first_row = first.output_row
+    second_row = second.output_row
+    taxonomy_fields = (
+        "taxonomy_match_status",
+        "taxonomy_match_score",
+        "taxonomy_match_method",
+        "taxonomy_match_reasons",
+        "taxonomy_candidate_count",
+        "taxonomy_top_candidates",
+        "taxonomy_article_id",
+        "taxonomy_article_name",
+        "taxonomy_citation",
+    )
+    first_taxonomy = (
+        taxonomy_status_rank(first_row["taxonomy_match_status"]),
+        taxonomy_score_from_row(first_row),
+    )
+    second_taxonomy = (
+        taxonomy_status_rank(second_row["taxonomy_match_status"]),
+        taxonomy_score_from_row(second_row),
+    )
+    if first_taxonomy > second_taxonomy:
+        for field in taxonomy_fields:
+            merged[field] = first_row[field]
+    if not merged["doi"] and first_row["doi"]:
+        for field in ("doi", "doi_source"):
+            merged[field] = first_row[field]
+    if not merged["batlit_id"] and first_row["batlit_id"]:
+        for field in (
+            "batlit_id",
+            "batlit_url",
+            "batlit_zenodo_doi",
+            "batlit_citation",
+            "batlit_source",
+        ):
+            merged[field] = first_row[field]
+    if not merged["bhl_url"] and first_row["bhl_url"]:
+        for field in ("bhl_url", "bhl_source"):
+            merged[field] = first_row[field]
+    return merged
+
+
 def external_columns(
     row_number: int,
     row: dict[str, str],
@@ -1611,6 +1908,7 @@ def external_columns(
     *,
     doi_mode: str,
     bhl_mode: str,
+    learned_mappings: LearnedMappings | None = None,
 ) -> dict[str, str]:
     out = dict.fromkeys(MATCH_FIELDS, "")
     out["source_row"] = str(row_number)
@@ -1644,11 +1942,15 @@ def external_columns(
             out["batlit_citation"] = batlit_citation
             out["batlit_source"] = "taxonomy Article tag/search"
     if not out["doi"] and doi_mode != "off":
-        out["doi"], out["doi_source"] = row_doi_from_crossref(row, index, mode=doi_mode)
+        out["doi"], out["doi_source"] = row_doi_from_crossref(
+            row, index, mode=doi_mode, learned_mappings=learned_mappings
+        )
         doi = out["doi"]
     if not out["batlit_id"]:
         batlit_id, batlit_url, batlit_zenodo_doi, batlit_citation, batlit_source = (
-            get_row_batlit(row, doi or out["doi"], index)
+            get_row_batlit(
+                row, doi or out["doi"], index, learned_mappings=learned_mappings
+            )
         )
         if batlit_id:
             out["batlit_id"] = batlit_id
@@ -1671,33 +1973,6 @@ def external_columns(
         }
     )
     return out
-
-
-def match_rows(
-    rows: Sequence[dict[str, str]], index: ArticleIndex, *, doi_mode: str, bhl_mode: str
-) -> Iterable[dict[str, str]]:
-    for row_number, row in enumerate(rows, start=1):
-        candidates = find_candidates(row, index)
-        scored = sorted(
-            (score_candidate(row, candidate) for candidate in candidates.values()),
-            key=lambda candidate: candidate.score,
-            reverse=True,
-        )
-        scored = collapse_scored_candidates(scored)
-        status, match = classify_match(row, scored)
-        yield {
-            **row,
-            **external_columns(
-                row_number,
-                row,
-                status,
-                match,
-                scored,
-                index,
-                doi_mode=doi_mode,
-                bhl_mode=bhl_mode,
-            ),
-        }
 
 
 def parse_args() -> argparse.Namespace:
@@ -1760,19 +2035,36 @@ def main() -> None:
     index = build_article_index()
     output_fields = [*input_fields, *MATCH_FIELDS]
     args.output.parent.mkdir(parents=True, exist_ok=True)
+    first_pass, _first_summary = run_matching_pass(
+        rows, index, doi_mode=args.doi_mode, bhl_mode=args.bhl_mode, label="Round 1"
+    )
+    learned_mappings = build_learned_mappings(first_pass, index, doi_mode=args.doi_mode)
+    print(
+        f"Learned {len(learned_mappings.citation_group_by_container_key)} citation-group mappings from round 1.",
+        flush=True,
+    )
+    second_pass, _second_summary = run_matching_pass(
+        rows,
+        index,
+        doi_mode=args.doi_mode,
+        bhl_mode=args.bhl_mode,
+        learned_mappings=learned_mappings,
+        label="Round 2",
+    )
+    final_rows = [
+        merge_round_rows(first, second)
+        for first, second in zip(first_pass, second_pass, strict=True)
+    ]
     summary = MatchSummary()
-    print(f"Matching references and writing {args.output}...", flush=True)
+    for row in final_rows:
+        update_summary(summary, row)
+    print_round_gains(first_pass, final_rows)
+    print(f"Writing {args.output}...", flush=True)
     with args.output.open("w", newline="") as f:
         writer = csv.DictWriter(f, output_fields)
         writer.writeheader()
-        for processed, row in enumerate(
-            match_rows(rows, index, doi_mode=args.doi_mode, bhl_mode=args.bhl_mode),
-            start=1,
-        ):
+        for row in final_rows:
             writer.writerow(row)
-            update_summary(summary, row)
-            if processed % ROW_PROGRESS_EVERY == 0 or processed == len(rows):
-                print_progress(processed, len(rows), summary)
     print(f"Wrote taxonomy matches for {len(rows)} references to {args.output}")
     print_summary(summary, len(rows))
 
