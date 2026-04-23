@@ -20,6 +20,34 @@ columns while adding externally derived columns for four targets:
   - score candidates using independent pieces of evidence
   - accept only candidates above threshold with enough separation from runner-up
 - Ambiguous rows are preserved as such instead of forcing a low-confidence match.
+- The pipeline is run in two rounds:
+  - round 1 matches directly from parsed-reference and taxonomy data
+  - round 2 learns conservative container-title to citation-group mappings from secure
+    round-1 matches and reruns unresolved/weak rows with that extra normalization data
+
+## Shared normalization and second-pass learning
+
+Several parts of stage 3 depend on normalizing abbreviated journal titles and author
+names.
+
+Shared normalization includes:
+
+- citation-group alias expansion from taxonomy
+- fuzzy abbreviation-aware journal matching
+- Romanized aliases for Cyrillic taxonomy author names
+- extra first-author aliases for pinyin / Chinese / Vietnamese naming conventions
+
+After round 1, the matcher learns only high-confidence journal/container mappings from
+accepted matches. Those learned mappings are then used in round 2 as additional evidence
+for:
+
+- taxonomy candidate generation by citation group
+- DOI Crossref lookups
+- BatLit journal matching
+- BHL lookup via stronger taxonomy matches
+
+The learned mappings are additive rather than authoritative, so round 2 can improve
+coverage without replacing strong round-1 results with weaker inferred ones.
 
 ## 1. Matching to taxonomy Articles
 
@@ -107,6 +135,7 @@ Journal resolution uses both:
 
 - exact citation-group alias matching
 - fuzzy abbreviation-aware citation-group matching
+- learned round-2 container-title to citation-group mappings
 
 Candidate DOI metadata is then checked against the parsed row using:
 
@@ -152,7 +181,9 @@ The script keeps DOI and BHL network behavior configurable:
 - `cached`
 - `network`
 
-so repeated runs can reuse the project cache instead of re-querying services.
+so repeated runs can reuse the project cache instead of re-querying services. The
+defaults are cache-friendly, and network-enabled runs populate the same cache for later
+offline reuse.
 
 ## Output columns
 

@@ -63,6 +63,7 @@ PLAIN_COLUMN_LEFTS = (36.0, 214.0, 392.0)
 FORMATTED_COLUMN_LEFTS = (55.0, 322.0, 588.0)
 ITALIC_RUN_RE = re.compile(r"<i>.*?</i>(?:\s*<i>.*?</i>)*")
 TAG_RE = re.compile(r"</?i>")
+JOURNAL_ABBREV_TOKEN = "J."  # noqa: S105
 SERIES_RE = re.compile(
     r"^(?P<container>.+?),? (?P<series>(?:\d+(?:st|nd|rd|th|[ae])?) S[ée]r\.)$"
 )
@@ -787,16 +788,22 @@ def set_journal_parts(
 
 
 def looks_like_journal_container(container: str) -> bool:
+    return journal_container_score(container) >= 4
+
+
+def journal_container_score(container: str) -> int:
     tokens = container.split()
+    if not tokens:
+        return 0
     if len(tokens) >= 2 and tokens[0] == "S." and tokens[1] == "Afr.":
-        return True
+        return 8
     if (
         len(tokens) >= 3
         and tokens[0] == "West."
         and tokens[1] == "N."
         and tokens[2] == "Am."
     ):
-        return True
+        return 8
     first_token = tokens[0].rstrip(",")
     first_base = first_token.rstrip(".")
     likely_first_tokens = {
@@ -825,6 +832,7 @@ def looks_like_journal_container(container: str) -> bool:
         "Misc",
         "Mol",
         "Nature",
+        "New",
         "Occ",
         "PLoS",
         "Proc",
@@ -833,14 +841,83 @@ def looks_like_journal_container(container: str) -> bool:
         "Science",
         "Smithson",
         "Spec",
+        "Turk",
         "Vespertilio",
+        "Vestn",
         "Z",
         "Zool",
         "Zootaxa",
         "eLife",
         "eZool",
+        "North-West",
+        "NorthWest",
     }
-    return first_base in likely_first_tokens
+    likely_last_tokens = {
+        "Biol",
+        "Bull",
+        "Conserv",
+        "Ecol",
+        "Entomol",
+        "Hist",
+        "Lett",
+        "Mammal",
+        "Mammalia",
+        "Monit",
+        "Nat",
+        "Proc",
+        "Res",
+        "Rev",
+        "Sci",
+        "Stud",
+        "Theriol",
+        "Z",
+        "Zool",
+    }
+    allowed_lowercase = {
+        "and",
+        "de",
+        "del",
+        "der",
+        "des",
+        "do",
+        "et",
+        "for",
+        "fur",
+        "in",
+        "of",
+        "the",
+        "und",
+        "voor",
+        "y",
+    }
+    score = 0
+    if first_base in likely_first_tokens:
+        score += 4
+    abbreviation_count = 0
+    lowercase_penalty = 0
+    for token in tokens:
+        stripped = token.strip(",;:()[]")
+        if not stripped:
+            continue
+        base = stripped.rstrip(".")
+        if stripped.endswith(".") or (
+            len(base) <= 4 and base and base[0].isupper() and base.isalpha()
+        ):
+            abbreviation_count += 1
+        if stripped[0].islower() and stripped.lower() not in allowed_lowercase:
+            lowercase_penalty += 1
+    score += min(abbreviation_count, 4)
+    if any(token == JOURNAL_ABBREV_TOKEN for token in tokens):
+        score += 2
+    last_base = tokens[-1].strip(",;:()[]").rstrip(".")
+    if last_base in likely_last_tokens:
+        score += 3
+    if len(tokens) >= 2 and tokens[-2] == JOURNAL_ABBREV_TOKEN:
+        score += 1
+    score -= lowercase_penalty * 3
+    if len(tokens) > 8:
+        score -= len(tokens) - 8
+    return score
 
 
 def split_journal_prefix(prefix: str) -> tuple[str, str] | None:
@@ -859,9 +936,17 @@ def split_journal_prefix(prefix: str) -> tuple[str, str] | None:
             continue
         candidates.append((title, container))
     if candidates:
-        for title, container in candidates:
-            if looks_like_journal_container(container):
-                return title, container
+        ranked = sorted(
+            candidates,
+            key=lambda item: (
+                journal_container_score(item[1]),
+                len(item[1].split()),
+                -len(item[0]),
+            ),
+            reverse=True,
+        )
+        if journal_container_score(ranked[0][1]) >= 4:
+            return ranked[0]
         return candidates[0]
     title, separator, container = prefix.rpartition(". ")
     if not separator:
