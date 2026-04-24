@@ -25,6 +25,7 @@ if __package__ is None or __package__ == "":
 lib = importlib.import_module("data_import.lib")
 
 from taxonomy import urlparse
+from taxonomy.apis import bhl
 from taxonomy.db import helpers
 from taxonomy.db.constants import ArticleIdentifier, ArticleType, NamingConvention
 from taxonomy.db.models import Article, CitationGroup, CitationGroupTag, Name, Person
@@ -37,6 +38,7 @@ DEFAULT_OUTPUT = lib.DATA_DIR / "chiroptera-hmw-refs-taxonomy-matches.csv"
 LOOKUP_MODES = ("off", "cached", "network")
 INDEX_PROGRESS_EVERY = 5000
 ROW_PROGRESS_EVERY = 500
+DOI_RE = re.compile(r"10\.\d{4,9}/[^\s<>\"]+", re.IGNORECASE)
 
 MATCH_FIELDS = [
     "source_row",
@@ -92,6 +94,21 @@ STOP_TITLE_WORDS = {
     "to",
     "und",
     "with",
+}
+LOWERCASE_AUTHOR_PARTICLES = {
+    "da",
+    "de",
+    "del",
+    "della",
+    "den",
+    "der",
+    "di",
+    "dos",
+    "du",
+    "la",
+    "le",
+    "van",
+    "von",
 }
 
 
@@ -157,6 +174,9 @@ class ArticleIndex:
 class MatchSummary:
     status_counts: Counter[str] = field(default_factory=Counter)
     link_counts: Counter[str] = field(default_factory=Counter)
+    total_by_type: Counter[str] = field(default_factory=Counter)
+    any_match_by_type: Counter[str] = field(default_factory=Counter)
+    no_match_by_type: Counter[str] = field(default_factory=Counter)
     doi_sources: Counter[str] = field(default_factory=Counter)
     batlit_sources: Counter[str] = field(default_factory=Counter)
     bhl_sources: Counter[str] = field(default_factory=Counter)
@@ -276,11 +296,24 @@ def abbreviation_token_ratio(short: str, long: str) -> float:
     for short_token in short_tokens:
         for index in range(start_at, len(long_tokens)):
             long_token = long_tokens[index]
-            if long_token.startswith(short_token) or short_token.startswith(long_token):
+            if abbreviation_tokens_match(short_token, long_token):
                 matched += 1
                 start_at = index + 1
                 break
     return matched / len(short_tokens)
+
+
+def abbreviation_tokens_match(short_token: str, long_token: str) -> bool:
+    if long_token.startswith(short_token) or short_token.startswith(long_token):
+        return True
+    if len(short_token) < 5:
+        return False
+    common_length = 0
+    for short_char, long_char in zip(short_token, long_token, strict=False):
+        if short_char != long_char:
+            break
+        common_length += 1
+    return common_length >= len(short_token) - 1
 
 
 def normalize_url(url: str) -> str:
@@ -288,6 +321,22 @@ def normalize_url(url: str) -> str:
     url = re.sub(r"^https?://", "", url, flags=re.IGNORECASE)
     url = url.removeprefix("www.")
     return url.rstrip("/").lower()
+
+
+def normalize_doi(doi: str) -> str:
+    doi = re.sub(r"\((?:download|accessed).*$", "", doi, flags=re.IGNORECASE)
+    return doi.strip().rstrip(".,;)").removeprefix("doi:").casefold()
+
+
+def doi_from_text(text: str) -> str:
+    text = re.sub(r"\s+", "", text)
+    if match := DOI_RE.search(text):
+        return normalize_doi(match.group(0))
+    return ""
+
+
+def doi_from_source(row: dict[str, str]) -> str:
+    return doi_from_text(row["url"]) or doi_from_text(row["raw_reference"])
 
 
 def numeric_year(year: str) -> int | None:
@@ -363,12 +412,7 @@ def first_row_author_for_crossref(authors: str) -> str:
             continue
         if re.fullmatch(r"[A-ZÁÉÍÓÚÄÖÜØ](?:\.[A-ZÁÉÍÓÚÄÖÜØ]\.)?", piece):
             continue
-        if "," in piece:
-            return piece.split(",", maxsplit=1)[0].strip()
-        tokens = [token for token in re.split(r"\s+", piece) if token]
-        if len(tokens) >= 2:
-            return tokens[0]
-        return piece
+        return primary_author_text(piece)
     return ""
 
 
@@ -379,19 +423,45 @@ def author_piece_aliases(piece: str) -> set[str]:
     if "," in piece:
         aliases.add(compact_key(piece.split(",", maxsplit=1)[0]))
     elif len(tokens) >= 2:
-        aliases.add(compact_key(tokens[0]))
+        aliases.add(primary_author_key(piece))
         aliases.add(compact_key(tokens[-1]))
     return {alias for alias in aliases if alias}
 
 
-def primary_author_key(piece: str) -> str:
+def primary_author_text(piece: str) -> str:
     piece = piece.strip()
     if "," in piece:
-        return compact_key(piece.split(",", maxsplit=1)[0])
+        return piece.split(",", maxsplit=1)[0].strip()
     tokens = [token for token in re.split(r"\s+", piece) if token]
+    if tokens and tokens[0].casefold().rstrip(".") in LOWERCASE_AUTHOR_PARTICLES:
+        index = 1
+        while (
+            index < len(tokens)
+            and tokens[index].casefold().rstrip(".") in LOWERCASE_AUTHOR_PARTICLES
+        ):
+            index += 1
+        if index < len(tokens):
+            index += 1
+        while (
+            index < len(tokens)
+            and tokens[index].casefold().rstrip(".") in LOWERCASE_AUTHOR_PARTICLES
+        ):
+            index += 1
+            if index < len(tokens):
+                index += 1
+        return " ".join(tokens[:index])
+    if (
+        len(tokens) >= 3
+        and tokens[1].casefold().rstrip(".") in LOWERCASE_AUTHOR_PARTICLES
+    ):
+        return " ".join(tokens[:3])
     if len(tokens) >= 2:
-        return compact_key(tokens[0])
-    return compact_key(piece)
+        return tokens[0]
+    return piece
+
+
+def primary_author_key(piece: str) -> str:
+    return compact_key(primary_author_text(piece))
 
 
 def person_author_aliases(person: Person) -> set[str]:
@@ -509,7 +579,7 @@ def build_article_index() -> ArticleIndex:
                 record.author_aliases[0] if record.author_aliases else ()
             ):
                 by_year_author[(record.year_num, author_alias)].append(record)
-            if token := best_title_token(record.title_tokens):
+            for token in record.title_tokens:
                 by_year_title_token[(record.year_num, token)].append(record)
             if record.citation_group_id is not None:
                 by_cg_year[(record.citation_group_id, record.year_num)].append(record)
@@ -861,11 +931,7 @@ def score_title(row: dict[str, str], article: ArticleRecord) -> tuple[int, list[
     title = row_title(row)
     if not title or not article.title:
         return 0, []
-    title_key = normalize_text(title)
-    title_score = max(
-        ratio(title_key, article.title_key),
-        token_ratio(title_tokens(title), article.title_tokens),
-    )
+    title_score = bibliographic_title_score(row, article)
     if title_score >= 0.96:
         return 25, ["title exact/fuzzy high"]
     if title_score >= 0.85:
@@ -1049,6 +1115,68 @@ def collapse_scored_candidates(
     )
 
 
+def bibliographic_title_score(row: dict[str, str], article: ArticleRecord) -> float:
+    title = row_title(row)
+    if not title or not article.title:
+        return 0.0
+    return max(
+        ratio(normalize_text(title), article.title_key),
+        token_ratio(title_tokens(title), article.title_tokens),
+    )
+
+
+def has_year_anchor(row: dict[str, str], article: ArticleRecord) -> bool:
+    row_year = numeric_year(row["year"])
+    if row_year is None or article.year_num is None:
+        return False
+    return abs(row_year - article.year_num) <= 1
+
+
+def has_page_anchor(row: dict[str, str], article: ArticleRecord) -> bool:
+    row_start = first_page(row["pages"])
+    row_end = last_page(row["pages"])
+    return bool(
+        (row_start and article.start_page and row_start == article.start_page)
+        or (row_end and article.end_page and row_end == article.end_page)
+    )
+
+
+def has_container_or_volume_anchor(row: dict[str, str], article: ArticleRecord) -> bool:
+    if (
+        row["volume"]
+        and article.volume
+        and compact_key(row["volume"]) == compact_key(article.volume)
+    ):
+        return True
+    container = row["container_title"] or row["book_title"] or row["publisher"]
+    if not container or not article.citation_group_aliases:
+        return False
+    return (
+        max(
+            citation_group_match_score(container, alias)
+            for alias in article.citation_group_aliases
+        )
+        >= 0.9
+    )
+
+
+def is_strong_bibliographic_match(
+    row: dict[str, str], candidate: ScoredCandidate
+) -> bool:
+    article = candidate.article
+    if bibliographic_title_score(row, article) < 0.95 or not has_year_anchor(
+        row, article
+    ):
+        return False
+    if row["reference_type"] in {"book", "book_chapter", "report", "thesis"}:
+        return candidate.score >= 53
+    return (
+        candidate.score >= 60
+        and has_page_anchor(row, article)
+        and has_container_or_volume_anchor(row, article)
+    )
+
+
 def classify_match(
     row: dict[str, str], scored: Sequence[ScoredCandidate]
 ) -> tuple[str, ScoredCandidate | None]:
@@ -1060,12 +1188,19 @@ def classify_match(
     if row["reference_type"] in {"book", "book_chapter", "report", "thesis"}:
         if best.score >= 65 and gap >= 12:
             return "matched", best
+    if is_strong_bibliographic_match(row, best):
+        if gap >= 12:
+            return "matched", best
+        return "ambiguous", best
     if best.score >= 88 and gap >= 3:
         return "matched", best
     if best.score >= 72 and gap >= 8:
         return "matched", best
     if best.score >= 72:
         return "ambiguous", best
+    if row["reference_type"] in {"book", "book_chapter", "report", "thesis"}:
+        if best.score >= 65:
+            return "ambiguous", best
     return "unmatched", None
 
 
@@ -1121,6 +1256,199 @@ def infer_bhl_url(article: Article, mode: str) -> str:
                 return f"https://www.biodiversitylibrary.org/page/{page_id}"
     except (Exception, FreshNetworkCall):
         return ""
+    return ""
+
+
+@cache
+def get_citation_group(citation_group_id: int) -> CitationGroup:
+    return CitationGroup.get(id=citation_group_id)
+
+
+def bhl_contains_text(row: dict[str, str]) -> tuple[str, ...]:
+    title = row_title(row)
+    if not title:
+        return ()
+    texts = [title]
+    title_without_brackets = re.sub(r"\s*\[.*?\]\s*", " ", title).strip()
+    if len(title_without_brackets) >= 20 and title_without_brackets != title:
+        texts.append(title_without_brackets)
+    return tuple(dict.fromkeys(texts))
+
+
+def row_bhl_citation_group_ids(
+    row: dict[str, str], index: ArticleIndex, learned_mappings: LearnedMappings | None
+) -> tuple[int, ...]:
+    exact = row_citation_group_ids(row, index, learned_mappings)
+    if exact:
+        return tuple(sorted(exact))
+    return row_doi_citation_group_ids(row, index, learned_mappings)
+
+
+def page_has_bhl_text(
+    page_id: int, contains_text: Sequence[str]
+) -> tuple[bool, str, int]:
+    page_metadata = bhl.get_page_metadata(page_id)
+    ocr_text = str(page_metadata.get("OcrText") or "")
+    if not ocr_text:
+        return False, "", 1000
+    pairs = [
+        bhl.contains_name_with_distance(page_id, text, max_distance=5)
+        for text in contains_text
+    ]
+    min_distance = min(distance for _contains, distance in pairs)
+    if any(contains for contains, _distance in pairs):
+        return True, ocr_text, min_distance
+    # Permit a tiny bit more OCR noise for long bibliographic titles, but only
+    # after BHL year/volume/page constraints have already narrowed the item.
+    return (
+        min_distance <= 4 and any(len(text) >= 40 for text in contains_text),
+        (ocr_text),
+        min_distance,
+    )
+
+
+def is_confident_row_bhl_page(page: bhl.PossiblePage) -> bool:
+    return (
+        bool(page.ocr_text)
+        and page.contains_end_page
+        and (
+            page.contains_text
+            or (page.min_distance <= 4 and (page.volume_matches or page.year_matches))
+        )
+    )
+
+
+def infer_bhl_pages_from_end_page(
+    title_ids: Sequence[int],
+    *,
+    year: int,
+    volume: str | None,
+    start_page: str,
+    end_page: str | None,
+    contains_text: Sequence[str],
+) -> Iterable[bhl.PossiblePage]:
+    if end_page is None or start_page == end_page:
+        return
+    start_num = page_number(start_page)
+    end_num = page_number(end_page)
+    if start_num is None or end_num is None or end_num < start_num:
+        return
+    page_delta = end_num - start_num
+    if page_delta > 200:
+        return
+    possible_items = [
+        item_id
+        for title_id in title_ids
+        for item_id in bhl.get_possible_items(title_id, year, volume)
+    ]
+    for item_id in possible_items:
+        item_metadata = bhl.get_item_metadata(item_id)
+        if item_metadata is None:
+            continue
+        pages = item_metadata.get("Pages")
+        if not isinstance(pages, list):
+            continue
+        page_id_to_index = {
+            int(page["PageID"]): index
+            for index, page in enumerate(pages)
+            if isinstance(page, dict) and "PageID" in page
+        }
+        if "Year" in item_metadata:
+            year_matches = int(item_metadata["Year"]) == year
+        else:
+            year_matches = False
+        volume_matches = False
+        if (
+            volume is not None
+            and "Volume" in item_metadata
+            and isinstance(item_metadata["Volume"], str)
+        ):
+            volume_matches = bhl.volume_matches(volume, item_metadata["Volume"])
+        for end_page_id in bhl.get_possible_pages(item_id, end_page):
+            end_index = page_id_to_index.get(end_page_id)
+            if end_index is None:
+                continue
+            for start_index in {end_index - page_delta, end_index + page_delta}:
+                if start_index < 0 or start_index >= len(pages):
+                    continue
+                start_page_id = int(pages[start_index]["PageID"])
+                contains, ocr_text, min_distance = page_has_bhl_text(
+                    start_page_id, contains_text
+                )
+                if not contains:
+                    continue
+                yield bhl.PossiblePage(
+                    start_page_id,
+                    start_page,
+                    contains_text=True,
+                    contains_end_page=True,
+                    year_matches=year_matches,
+                    volume_matches=volume_matches,
+                    ocr_text=ocr_text,
+                    item_id=item_id,
+                    min_distance=min_distance,
+                )
+
+
+def infer_row_bhl_url(
+    row: dict[str, str],
+    index: ArticleIndex,
+    learned_mappings: LearnedMappings | None,
+    mode: str,
+) -> str:
+    year = numeric_year(row["year"])
+    start_page = first_page(row["pages"])
+    if year is None or not start_page:
+        return ""
+    contains_text = bhl_contains_text(row)
+    if not contains_text:
+        return ""
+    end_page = last_page(row["pages"]) or None
+    volume = row["volume"] or None
+    candidate_pages: dict[str, bhl.PossiblePage] = {}
+    for citation_group_id in row_bhl_citation_group_ids(row, index, learned_mappings):
+        try:
+            citation_group = get_citation_group(citation_group_id)
+        except Exception:  # noqa: S112
+            continue
+        if not citation_group.should_have_bhl_link_in_year(year):
+            continue
+        title_ids = citation_group.get_bhl_title_ids()
+        if not title_ids:
+            continue
+        try:
+            with lookup_mode(mode):
+                possible_pages = sorted(
+                    bhl.find_possible_pages(
+                        title_ids,
+                        year=year,
+                        start_page=start_page,
+                        end_page=end_page,
+                        volume=volume,
+                        contains_text=contains_text,
+                    ),
+                    key=lambda page: page.sort_key(),
+                )
+        except (Exception, FreshNetworkCall):  # noqa: S112
+            continue
+        for page in possible_pages:
+            if is_confident_row_bhl_page(page):
+                candidate_pages[page.page_url] = page
+        try:
+            with lookup_mode(mode):
+                for page in infer_bhl_pages_from_end_page(
+                    title_ids,
+                    year=year,
+                    start_page=start_page,
+                    end_page=end_page,
+                    volume=volume,
+                    contains_text=contains_text,
+                ):
+                    candidate_pages[page.page_url] = page
+        except (Exception, FreshNetworkCall):  # noqa: S112
+            continue
+    if len(candidate_pages) == 1:
+        return next(iter(candidate_pages))
     return ""
 
 
@@ -1627,8 +1955,20 @@ def row_doi_from_crossref(
     return "", ""
 
 
+def has_any_external_match(row: dict[str, str]) -> bool:
+    return bool(
+        row["taxonomy_article_id"] or row["doi"] or row["batlit_id"] or row["bhl_url"]
+    )
+
+
 def update_summary(summary: MatchSummary, row: dict[str, str]) -> None:
     summary.status_counts[row["taxonomy_match_status"]] += 1
+    reference_type = row["reference_type"] or "unknown"
+    summary.total_by_type[reference_type] += 1
+    if has_any_external_match(row):
+        summary.any_match_by_type[reference_type] += 1
+    else:
+        summary.no_match_by_type[reference_type] += 1
     if row["taxonomy_article_id"]:
         summary.link_counts["taxonomy"] += 1
     if row["doi"]:
@@ -1650,7 +1990,17 @@ def print_progress(processed: int, total: int, summary: MatchSummary) -> None:
 
 
 def print_summary(summary: MatchSummary, total_rows: int) -> None:
+    any_match = sum(summary.any_match_by_type.values())
+    no_match = total_rows - any_match
     print("Summary:", flush=True)
+    print(
+        f"  external matches: {any_match} / {total_rows} (without any match={no_match})",
+        flush=True,
+    )
+    print("  without any external match by reference type:", flush=True)
+    for reference_type, count in summary.no_match_by_type.most_common():
+        total = summary.total_by_type[reference_type]
+        print(f"    {count} / {total}: {reference_type}", flush=True)
     print(
         f"  taxonomy matches: {summary.link_counts['taxonomy']} / {total_rows} (matched={summary.status_counts['matched']}, ambiguous={summary.status_counts['ambiguous']}, unmatched={summary.status_counts['unmatched']})",
         flush=True,
@@ -1791,7 +2141,7 @@ def build_learned_mappings(
         ):
             support[container_key][evaluation.match.article.citation_group_id] += 2
         doi = evaluation.output_row["doi"]
-        if not doi:
+        if not doi or evaluation.output_row["doi_source"] == "source DOI URL":
             continue
         try:
             with lookup_mode(doi_mode):
@@ -1915,6 +2265,11 @@ def external_columns(
     out["taxonomy_match_status"] = status
     out["taxonomy_candidate_count"] = str(len(scored))
     out["taxonomy_top_candidates"] = top_candidate_summary(scored)
+    display_candidate = match or (scored[0] if scored else None)
+    if display_candidate is not None:
+        out["taxonomy_match_score"] = str(display_candidate.score)
+        out["taxonomy_match_method"] = " | ".join(display_candidate.methods)
+        out["taxonomy_match_reasons"] = " | ".join(display_candidate.reasons)
     article = (
         get_article(match.article.id)
         if status == "matched" and match is not None
@@ -1941,6 +2296,14 @@ def external_columns(
             out["batlit_zenodo_doi"] = batlit_zenodo_doi
             out["batlit_citation"] = batlit_citation
             out["batlit_source"] = "taxonomy Article tag/search"
+    if not out["bhl_url"] and bhl_mode != "off":
+        if bhl_url := infer_row_bhl_url(row, index, learned_mappings, bhl_mode):
+            out["bhl_url"] = bhl_url
+            out["bhl_source"] = f"BHL inferred from parsed reference ({bhl_mode})"
+    if not out["doi"] and (source_doi := doi_from_source(row)):
+        out["doi"] = source_doi
+        out["doi_source"] = "source DOI URL"
+        doi = out["doi"]
     if not out["doi"] and doi_mode != "off":
         out["doi"], out["doi_source"] = row_doi_from_crossref(
             row, index, mode=doi_mode, learned_mappings=learned_mappings
@@ -1964,9 +2327,6 @@ def external_columns(
     matched_record = match.article
     out.update(
         {
-            "taxonomy_match_score": str(match.score),
-            "taxonomy_match_method": " | ".join(match.methods),
-            "taxonomy_match_reasons": " | ".join(match.reasons),
             "taxonomy_article_id": str(matched_record.id),
             "taxonomy_article_name": matched_record.name,
             "taxonomy_citation": article_citation(get_article(matched_record.id)),
