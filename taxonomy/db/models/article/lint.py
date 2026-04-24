@@ -2171,7 +2171,7 @@ def find_doi(art: Article, cfg: LintConfig) -> Iterable[str]:
         return
     # Also try for newly added articles, in case a new journal has DOIs now
     if not (
-        (year > 2000 and art.id > 72_000)
+        (year > 2000 or art.id > 72_000)
         or art.citation_group.may_have_article_identifier(ArticleIdentifier.doi, year)
     ):
         return

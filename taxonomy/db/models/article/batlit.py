@@ -23,7 +23,7 @@ from taxonomy import getinput
 from taxonomy.db import helpers
 from taxonomy.db.models.article.article import Article, ArticleTag
 
-BATLIT_CSV_ARTICLE_ID = 72150  # Chiroptera-BatLit 0.8 Zenodo refs.csv
+BATLIT_CSV_ARTICLE_ID = 72754  # Chiroptera-BatLit 0.9 Zenodo refs.csv
 
 
 class BatLitRow(TypedDict):
