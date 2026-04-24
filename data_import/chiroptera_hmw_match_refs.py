@@ -2024,6 +2024,8 @@ def evaluate_row(
     doi_mode: str,
     bhl_mode: str,
     learned_mappings: LearnedMappings | None = None,
+    include_slow_links: bool = True,
+    previous_output_row: dict[str, str] | None = None,
 ) -> RowEvaluation:
     candidates = find_candidates(row, index, learned_mappings)
     scored = sorted(
@@ -2045,6 +2047,8 @@ def evaluate_row(
             doi_mode=doi_mode,
             bhl_mode=bhl_mode,
             learned_mappings=learned_mappings,
+            include_slow_links=include_slow_links,
+            previous_output_row=previous_output_row,
         ),
     }
     return RowEvaluation(
@@ -2064,6 +2068,8 @@ def run_matching_pass(
     doi_mode: str,
     bhl_mode: str,
     learned_mappings: LearnedMappings | None = None,
+    include_slow_links: bool = True,
+    previous_pass: Sequence[RowEvaluation] | None = None,
     label: str,
 ) -> tuple[list[RowEvaluation], MatchSummary]:
     print(f"{label}: matching references...", flush=True)
@@ -2077,6 +2083,12 @@ def run_matching_pass(
             doi_mode=doi_mode,
             bhl_mode=bhl_mode,
             learned_mappings=learned_mappings,
+            include_slow_links=include_slow_links,
+            previous_output_row=(
+                previous_pass[row_number - 1].output_row
+                if previous_pass is not None
+                else None
+            ),
         )
         evaluations.append(evaluation)
         update_summary(summary, evaluation.output_row)
@@ -2259,6 +2271,8 @@ def external_columns(
     doi_mode: str,
     bhl_mode: str,
     learned_mappings: LearnedMappings | None = None,
+    include_slow_links: bool = True,
+    previous_output_row: dict[str, str] | None = None,
 ) -> dict[str, str]:
     out = dict.fromkeys(MATCH_FIELDS, "")
     out["source_row"] = str(row_number)
@@ -2276,27 +2290,35 @@ def external_columns(
         else None
     )
     doi = ""
+    previous_doi = previous_output_row["doi"] if previous_output_row else ""
+    previous_doi_source = (
+        previous_output_row["doi_source"] if previous_output_row else ""
+    )
     if article is not None:
-        doi, doi_source = article_doi(article, mode=doi_mode)
+        if previous_doi_source.startswith("Crossref inferred from taxonomy Article"):
+            doi, doi_source = previous_doi, previous_doi_source
+        else:
+            doi, doi_source = article_doi(article, mode=doi_mode)
         out["doi"] = doi
         out["doi_source"] = doi_source
-        bhl_url = get_article_bhl_url(article)
-        if bhl_url:
-            out["bhl_url"] = bhl_url
-            out["bhl_source"] = "taxonomy Article URL"
-        elif bhl_mode != "off" and (bhl_url := infer_bhl_url(article, bhl_mode)):
-            out["bhl_url"] = bhl_url
-            out["bhl_source"] = f"BHL inferred from taxonomy Article ({bhl_mode})"
-        batlit_id, batlit_url, batlit_zenodo_doi, batlit_citation = get_article_batlit(
-            article
-        )
-        if batlit_id:
-            out["batlit_id"] = batlit_id
-            out["batlit_url"] = batlit_url
-            out["batlit_zenodo_doi"] = batlit_zenodo_doi
-            out["batlit_citation"] = batlit_citation
-            out["batlit_source"] = "taxonomy Article tag/search"
-    if not out["bhl_url"] and bhl_mode != "off":
+        if include_slow_links:
+            bhl_url = get_article_bhl_url(article)
+            if bhl_url:
+                out["bhl_url"] = bhl_url
+                out["bhl_source"] = "taxonomy Article URL"
+            elif bhl_mode != "off" and (bhl_url := infer_bhl_url(article, bhl_mode)):
+                out["bhl_url"] = bhl_url
+                out["bhl_source"] = f"BHL inferred from taxonomy Article ({bhl_mode})"
+            batlit_id, batlit_url, batlit_zenodo_doi, batlit_citation = (
+                get_article_batlit(article)
+            )
+            if batlit_id:
+                out["batlit_id"] = batlit_id
+                out["batlit_url"] = batlit_url
+                out["batlit_zenodo_doi"] = batlit_zenodo_doi
+                out["batlit_citation"] = batlit_citation
+                out["batlit_source"] = "taxonomy Article tag/search"
+    if include_slow_links and not out["bhl_url"] and bhl_mode != "off":
         if bhl_url := infer_row_bhl_url(row, index, learned_mappings, bhl_mode):
             out["bhl_url"] = bhl_url
             out["bhl_source"] = f"BHL inferred from parsed reference ({bhl_mode})"
@@ -2304,12 +2326,20 @@ def external_columns(
         out["doi"] = source_doi
         out["doi_source"] = "source DOI URL"
         doi = out["doi"]
+    if (
+        not out["doi"]
+        and previous_doi
+        and previous_doi_source.startswith("Crossref inferred from parsed reference")
+    ):
+        out["doi"] = previous_doi
+        out["doi_source"] = previous_doi_source
+        doi = out["doi"]
     if not out["doi"] and doi_mode != "off":
         out["doi"], out["doi_source"] = row_doi_from_crossref(
             row, index, mode=doi_mode, learned_mappings=learned_mappings
         )
         doi = out["doi"]
-    if not out["batlit_id"]:
+    if include_slow_links and not out["batlit_id"]:
         batlit_id, batlit_url, batlit_zenodo_doi, batlit_citation, batlit_source = (
             get_row_batlit(
                 row, doi or out["doi"], index, learned_mappings=learned_mappings
@@ -2396,7 +2426,12 @@ def main() -> None:
     output_fields = [*input_fields, *MATCH_FIELDS]
     args.output.parent.mkdir(parents=True, exist_ok=True)
     first_pass, _first_summary = run_matching_pass(
-        rows, index, doi_mode=args.doi_mode, bhl_mode=args.bhl_mode, label="Round 1"
+        rows,
+        index,
+        doi_mode=args.doi_mode,
+        bhl_mode=args.bhl_mode,
+        include_slow_links=False,
+        label="Round 1 (learning)",
     )
     learned_mappings = build_learned_mappings(first_pass, index, doi_mode=args.doi_mode)
     print(
@@ -2409,6 +2444,7 @@ def main() -> None:
         doi_mode=args.doi_mode,
         bhl_mode=args.bhl_mode,
         learned_mappings=learned_mappings,
+        previous_pass=first_pass,
         label="Round 2",
     )
     final_rows = [
