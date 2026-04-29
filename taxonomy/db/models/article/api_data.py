@@ -21,7 +21,7 @@ from taxonomy.db.constants import ArticleType, DateSource
 from taxonomy.db.helpers import clean_string, trimdoi
 from taxonomy.db.models.citation_group import CitationGroup
 from taxonomy.db.models.person import VirtualPerson
-from taxonomy.db.url_cache import CacheDomain, cached, dirty_cache
+from taxonomy.db.url_cache import CacheDomain, cached, clear_memory_cache, dirty_cache
 
 from .article import Article, ArticleTag
 from .lint import infer_publication_date_from_tags
@@ -43,6 +43,20 @@ def get_doi_json(doi: str) -> dict[str, Any] | None:
 def clear_doi_cache(doi: str) -> None:
     get_doi_json.cache_clear()
     dirty_cache(CacheDomain.doi, doi)
+
+
+def clear_crossref_memory_caches() -> None:
+    """Drop in-process CrossRef caches without deleting persistent URL-cache rows."""
+    get_doi_json.cache_clear()
+    clear_memory_cache(
+        {
+            CacheDomain.doi,
+            CacheDomain.crossref_openurl,
+            CacheDomain.crossref_search_by_journal,
+            CacheDomain.doi_resolution,
+            CacheDomain.is_doi_valid,
+        }
+    )
 
 
 @cached(CacheDomain.doi)

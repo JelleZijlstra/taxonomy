@@ -17,7 +17,7 @@ import datetime
 import enum
 import functools
 import sqlite3
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from typing import Any, Generic, TypeVar
 
@@ -78,6 +78,14 @@ class LRU(Generic[KeyT, ValueT]):
 
     def dirty(self, key: KeyT) -> None:
         self._cache.pop(key, None)
+
+    def clear(self) -> None:
+        self._cache.clear()
+
+    def clear_matching(self, predicate: Callable[[KeyT], bool]) -> None:
+        for key in list(self._cache):
+            if predicate(key):
+                del self._cache[key]
 
 
 _LOCAL_CACHE: LRU[tuple[CacheDomain, str], str] = LRU(2048)
@@ -142,6 +150,15 @@ def dirty_cache(domain: CacheDomain, key: str) -> None:
         (domain.value, key),
     )
     _LOCAL_CACHE.dirty((domain, key))
+
+
+def clear_memory_cache(domains: Iterable[CacheDomain] | None = None) -> None:
+    """Clear the process-local URL cache while keeping the SQLite cache intact."""
+    if domains is None:
+        _LOCAL_CACHE.clear()
+        return
+    domain_set = set(domains)
+    _LOCAL_CACHE.clear_matching(lambda key: key[0] in domain_set)
 
 
 @cached(CacheDomain.test)

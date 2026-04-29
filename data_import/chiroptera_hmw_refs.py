@@ -16,7 +16,7 @@ if __package__ is None or __package__ == "":
     sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 lib = importlib.import_module("data_import.lib")
-
+refparse = importlib.import_module("taxonomy.refmatch.parse")
 
 SCIENTIFIC_DESCRIPTIONS = "Scientific Descriptions"
 GENERAL_LIST = "General List"
@@ -637,37 +637,7 @@ def write_csv(references: Iterable[Reference], output: Path) -> None:
             )
 
 
-PARSED_FIELDS = [
-    "section",
-    "reference_type",
-    "authors",
-    "author_role",
-    "in_authors",
-    "year",
-    "year_suffix",
-    "title",
-    "container_title",
-    "series",
-    "volume",
-    "issue",
-    "pages",
-    "page_count",
-    "editors",
-    "book_year",
-    "book_title",
-    "publisher",
-    "place",
-    "thesis_type",
-    "institution",
-    "url",
-    "accessed",
-    "language_note",
-    "described_taxa",
-    "citation_detail",
-    "unparsed",
-    "raw_reference",
-    "formatted_reference",
-]
+PARSED_FIELDS = refparse.STAGE2_FIELDS
 
 
 def year_suffix(year: str) -> str:
@@ -1237,12 +1207,9 @@ def parse_reference(reference: Reference) -> dict[str, str]:
 
 
 def write_parsed_csv(references: Iterable[Reference], output: Path) -> None:
-    output.parent.mkdir(parents=True, exist_ok=True)
-    with output.open("w", newline="") as f:
-        writer = csv.DictWriter(f, PARSED_FIELDS)
-        writer.writeheader()
-        for reference in references:
-            writer.writerow(parse_reference(reference))
+    refparse.write_stage2_csv(
+        (parse_reference(reference) for reference in references), output
+    )
 
 
 def parse_args() -> argparse.Namespace:

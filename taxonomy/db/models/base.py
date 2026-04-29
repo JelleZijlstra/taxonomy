@@ -95,7 +95,7 @@ Linter = Callable[[ModelT, LintConfig], Iterable[str]]
 
 
 class BaseModel(Model):
-    id: Any
+    id: ClassVar[Any]
     label_field: ClassVar[str]
     label_field_has_underscores: ClassVar[bool] = False
     # If given, lists are separated into groups based on this field.
@@ -1764,7 +1764,7 @@ def get_completer(
 
 
 def get_str_completer(
-    cls: type[Model], field: str | None
+    cls: type[BaseModel], field: str | None
 ) -> Callable[[str, str | None], str | None]:
     def completer(prompt: str, default: str | None) -> Any:
         return cls.getter(field).get_one_key(prompt, default=default or "")
