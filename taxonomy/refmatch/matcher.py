@@ -4,7 +4,7 @@ import json
 import re
 import unicodedata
 from collections import Counter, defaultdict
-from collections.abc import Callable, Iterable, Iterator, Sequence
+from collections.abc import Callable, Generator, Iterable, Sequence
 from dataclasses import dataclass, field
 from difflib import SequenceMatcher
 from functools import cache
@@ -223,7 +223,7 @@ _FUZZY_CITATION_GROUP_CACHE: dict[str, tuple[int, ...]] = {}
 
 
 @contextlib.contextmanager
-def lookup_mode(mode: str) -> Iterator[None]:
+def lookup_mode(mode: str) -> Generator[None, None, None]:
     if mode != "cached":
         yield
         return
