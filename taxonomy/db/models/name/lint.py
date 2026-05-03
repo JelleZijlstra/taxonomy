@@ -734,7 +734,11 @@ def _check_all_type_tags(
                 ce = tag.classification_entry
                 if ce.article != tag.source:
                     yield f"{tag} has classification entry {ce} that does not match source {tag.source}"
-                if ce.mapped_name.resolve_variant() != nam and ce.mapped_name != nam:
+                if (
+                    ce.mapped_name is not None
+                    and ce.mapped_name.resolve_variant() != nam
+                    and ce.mapped_name != nam
+                ):
                     yield f"{tag} has classification entry {ce} that does not match name {nam}"
                 if ce.type_locality != tag.text:
                     yield f"{tag} has classification entry {ce} whose type locality {ce.type_locality!r} does not match text"
