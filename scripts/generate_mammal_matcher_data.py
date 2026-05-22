@@ -15,7 +15,7 @@ from taxonomy.db.models import Article, Name, Taxon
 from taxonomy.db.nomenclature_book import get_taxa
 
 DEFAULT_MDD_ARTICLE_NAME = "Mammalia-MDD 2_4.csv"
-DEFAULT_OUTPUT = Path("MammalMatcher/mammalmatcher/data/mammal_names.json")
+DEFAULT_OUTPUT = Path("mammal_names.json")
 COVERED_AGES = {AgeClass.extant, AgeClass.recently_extinct}
 BINOMIAL_RE = re.compile(r"^[A-Z][A-Za-z-]+ [a-z][a-z-]+$")
 
@@ -151,9 +151,31 @@ def build_data(root: Taxon, mdd_path: Path) -> dict[str, Any]:
             "name": "MammalMatcher",
             "generated_at": datetime.datetime.now(datetime.UTC).isoformat(),
             "source": "Hesperomys taxonomy database",
+            "source_url": "https://hesperomys.com",
             "common_name_source": mdd_path.name,
+            "common_name_source_url": "https://www.mammaldiversity.org",
+            "generator_url": (
+                "https://github.com/JelleZijlstra/taxonomy/blob/master/"
+                "scripts/generate_mammal_matcher_data.py"
+            ),
             "species_count": len(valid_names),
             "synonym_count": len(synonyms),
+            "references": [
+                {
+                    "citation": (
+                        "Zijlstra, J.S. 2025. Hesperomys Project "
+                        "(Version 25.12.0) [Data set]. Zenodo."
+                    ),
+                    "doi": "10.5281/zenodo.17806114",
+                },
+                {
+                    "citation": (
+                        "Mammal Diversity Database. 2026. Mammal Diversity "
+                        "Database. Version 2.4."
+                    ),
+                    "doi": "10.5281/zenodo.18135819",
+                },
+            ],
         },
         "valid_names": valid_names,
         "synonyms": dict(sorted(synonyms.items())),
