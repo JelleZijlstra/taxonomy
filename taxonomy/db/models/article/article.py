@@ -789,7 +789,10 @@ class Article(BaseModel):
         oldname = self.name
         if oldname == newname:
             return
-        if self.kind is ArticleKind.electronic:
+        if (
+            self.kind is ArticleKind.electronic
+            or self.kind is ArticleKind.alternative_version
+        ):
             oldpath = self.get_path()
             # change the name internally
             self.name = newname

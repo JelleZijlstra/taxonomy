@@ -613,3 +613,18 @@ def rename_regex(pattern: str, replacement: str, *, force: bool = False) -> bool
                 e.move(new_title)
 
     return True
+
+
+@CS.register
+def find_nov_articles_without_new_names() -> None:
+    folder = get_folder_interactively()
+    if not folder:
+        return
+    for art in Article.select_valid().filter(
+        Article.path.startswith("/".join(folder)),
+        Article.name.endswith(" nov.pdf"),
+        Article.kind != ArticleKind.alternative_version,
+    ):
+        if not any(art.get_new_names()) and not any(art.get_classification_entries()):
+            getinput.print_header(art)
+            art.edit()

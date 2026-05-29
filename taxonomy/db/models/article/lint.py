@@ -3268,3 +3268,48 @@ def must_have_doi(art: Article, cfg: LintConfig) -> Iterable[str]:
     if has_bhl_url(art):
         return
     yield "missing DOI"
+
+
+COVERED_FOLDERS = (
+    "Amniota/Araeoscelidia",
+    "Amniota/Choristodera",
+    "Amniota/Drepanosauromorpha",
+    "Amniota/Ichthyosauromorpha",
+    "Artiodactyla",
+    "Carnivora",
+    "Chiroptera",
+    "Chordata/Cephalochordata",
+    "Chordata/Ichnotaxa",
+    "Chordata/Vertebratichnia",
+    "Chordata/Veterovata",
+    "Cricetidae",
+    "Eulipotyphla",
+    "Lissamphibia/Allocaudata",
+    "Lissamphibia/Gymnophiona",
+    "Mammalia",
+    "Muridae",
+    "Perissodactyla",
+    "Primates",
+    "Reptilia",
+    "Rodentia",
+    "Saurischia",
+    "Squamata/Dibamia",
+    "Squamata/Other and indeterminate",
+    "Squamata/Parviraptoridae",
+    "Squamata/Polyglyphanodontia",
+    "Testudinata",
+    # Completely excluded: Anura, Aves, Inter-group, Various
+)
+
+
+@LINT.add("must_have_new_names")
+def must_have_new_names(art: Article, cfg: LintConfig) -> Iterable[str]:
+    if not art.name.endswith(" nov.pdf") or art.kind != ArticleKind.electronic:
+        return
+    if not art.path.startswith(COVERED_FOLDERS):
+        return
+    if any(art.get_new_names()) or any(art.get_classification_entries()):
+        return
+    if art.has_tag(ArticleTag.NonOriginal):
+        return
+    yield "article has no new names"

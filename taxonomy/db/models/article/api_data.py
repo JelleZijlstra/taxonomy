@@ -405,9 +405,13 @@ def get_europe_pmc_record(pmcid: str) -> dict[str, Any] | None:
 @cached(CacheDomain.ncbi_idconv)
 def _idconv_cached(params_json: str) -> str:
     params = json.loads(params_json)
-    url = "https://www.ncbi.nlm.nih.gov/pmc/utils/idconv/v1.0/"
-    response = requests.get(
-        url, params=params, timeout=20, headers={"User-Agent": "taxonomy-idconv/1.0"}
+    params |= {"tool": "taxonomy", "email": "jelle.zijlstra@gmail.com"}
+    url = "https://pmc.ncbi.nlm.nih.gov/tools/idconv/api/v1/articles/"
+    response = httpx.get(
+        url,
+        params=params,
+        timeout=20,
+        headers={"User-Agent": "taxonomy (https://github.com/JelleZijlstra/taxonomy)"},
     )
     response.raise_for_status()
     return response.text
@@ -669,7 +673,7 @@ def _http_get_json_idconv(params: dict[str, str]) -> dict[str, Any] | None:
     try:
         text = _idconv_cached(json.dumps(params, sort_keys=True))
         return json.loads(text)
-    except requests.RequestException as e:
+    except httpx.HTTPError as e:
         print(f"HTTP error for NCBI idconv: {e}")
         return None
 
