@@ -3280,7 +3280,6 @@ COVERED_FOLDERS = (
     "Chiroptera",
     "Chordata/Cephalochordata",
     "Chordata/Ichnotaxa",
-    "Chordata/Vertebratichnia",
     "Chordata/Veterovata",
     "Cricetidae",
     "Eulipotyphla",
