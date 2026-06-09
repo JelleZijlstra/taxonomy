@@ -1155,6 +1155,10 @@ class SpeciesWithSyns:
     base_name: Syn
     syns: list[Syn]
 
+    def get_expected_type_locality(self) -> str:
+        type_locality = self.base_name.get("MDD_original_type_locality", "")
+        return f'"{type_locality}"' if type_locality else ""
+
     def get_expected_nominal_names(self) -> str:
         names = [
             syn
@@ -1231,6 +1235,14 @@ class SpeciesWithSyns:
         }
 
     def compare_against_expected(self) -> Iterable[Issue]:
+        expected_type_locality = self.get_expected_type_locality()
+        if expected_type_locality and not self.species.row.get("typeLocality"):
+            yield self.species.make_issue(
+                "typeLocality",
+                f"Expected {expected_type_locality!r}, found ''",
+                expected_type_locality,
+            )
+
         for mdd_col, expected_val in self.get_expected_row().items():
             try:
                 actual_val = self.species.row[mdd_col]  # type: ignore[literal-required]
