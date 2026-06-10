@@ -307,6 +307,61 @@ class Taxon(BaseModel):
         for nam in models.name.name.get_ordered_names(self.all_names()):
             nam.find_older_usages_auto()
 
+    def find_missing_name_combinations(self) -> list[Taxon]:
+        missing: list[Taxon] = []
+        for taxon in self.children_of_rank(Rank.species) + self.children_of_rank(
+            Rank.subspecies
+        ):
+            if taxon.base_name.status is not Status.valid:
+                continue
+            if taxon.has_name_combination_for_current_name():
+                continue
+            missing.append(taxon)
+
+        for taxon in sorted(missing, key=operator.attrgetter("valid_name")):
+            print(taxon)
+        print(f"Found {len(missing)} taxa missing current name combinations")
+        for taxon in sorted(missing, key=operator.attrgetter("valid_name")):
+            if taxon.has_name_combination_for_current_name():
+                continue
+            taxon.review_missing_name_combination()
+        return missing
+
+    def has_name_combination_for_current_name(self) -> bool:
+        return any(
+            nam.taxon.is_child_of(self)
+            for nam in models.Name.select_valid().filter(
+                models.Name.corrected_original_name == self.valid_name
+            )
+        )
+
+    def review_missing_name_combination(self) -> None:
+        query = f'"{self.valid_name}"'
+        from taxonomy.search import search
+
+        results = search(query)
+        if not results:
+            print(f"{self}: no potential name combination usages found")
+            return
+
+        getinput.print_header(self)
+        self.display()
+        print(f"{self}: found potential name combination usages")
+        seen_article_ids: set[int] = set()
+        for hit in sorted(
+            results, key=lambda hit: (hit.year or 100000, hit.article_id)
+        ):
+            if hit.article_id in seen_article_ids:
+                continue
+            seen_article_ids.add(hit.article_id)
+            article = Article(hit.article_id)
+            print(f"{article}: {hit}")
+            article.display_classification_entries()
+            article.edit()
+            if self.has_name_combination_for_current_name():
+                print(f"{self}: name combination issue resolved")
+                break
+
     def children_of_rank(self, rank: Rank, age: AgeClass | None = None) -> list[Taxon]:
         if self.rank < rank:
             return []
@@ -695,6 +750,7 @@ class Taxon(BaseModel):
             "lint_all_children": self.lint_all_children,
             "lint_basal_tags": self.lint_basal_tags,
             "find_earlier_usages": self.find_earlier_usages,
+            "find_missing_name_combinations": self.find_missing_name_combinations,
         }
 
     def _change_status(self) -> None:

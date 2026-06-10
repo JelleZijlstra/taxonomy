@@ -291,6 +291,10 @@ class TaxonData(TypedDict):
     base_name_link: str
     authority: str
     year: str
+    type_locality: str
+    type_locality_age: str
+    type_locality_country: str
+    citation: str
 
 
 def data_for_taxon(taxon: Taxon) -> TaxonData:
@@ -316,7 +320,31 @@ def data_for_taxon(taxon: Taxon) -> TaxonData:
         "base_name_link": name.get_absolute_url(),
         "authority": name.taxonomic_authority(),
         "year": name.year or "",
+        "type_locality": name.type_locality.name if name.type_locality else "",
+        "type_locality_age": _get_type_locality_age_string(name),
+        "type_locality_country": _get_type_locality_country_string(name),
+        "citation": (
+            name.original_citation.cite("paper") if name.original_citation else ""
+        ),
     }
+
+
+def _get_type_locality_age_string(nam: Name) -> str:
+    if nam.type_locality is None:
+        return ""
+    min_period = nam.type_locality.min_period
+    max_period = nam.type_locality.max_period
+    if min_period == max_period:
+        return min_period.name
+    else:
+        return f"{min_period.name} to {max_period.name}"
+
+
+def _get_type_locality_country_string(nam: Name) -> str:
+    if nam.type_locality is None:
+        return ""
+    country = nam.type_locality.region.parent_of_kind(RegionKind.country)
+    return country.name if country else ""
 
 
 @CS.register
