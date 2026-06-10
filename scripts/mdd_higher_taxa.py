@@ -11,9 +11,10 @@ from collections import defaultdict
 from collections.abc import Generator, Iterable, Sequence
 from dataclasses import dataclass, fields
 from pathlib import Path
-from typing import Any, TypedDict, TypeVar, cast
+from typing import Any, TypeVar, cast
 
 import gspread
+from typing_extensions import TypedDict
 
 from taxonomy import getinput
 from taxonomy.config import get_options
@@ -55,7 +56,7 @@ def batched(iterable: Iterable[T], n: int) -> Iterable[list[T]]:
         yield chunk
 
 
-class MDDHigherTaxonRow(TypedDict):
+class MDDHigherTaxonRow(TypedDict, closed=True):  # type: ignore[call-arg]
     sciName: str
     id: str
     rank: str
@@ -82,21 +83,29 @@ class Issue:
     description: str
     suggested_change: str | None = None
     extra_key: str | None = None
+    suggested_row: dict[str, str] | None = None
 
     def describe(self) -> str:
         text = f"{self.sci_name} ({self.mdd_id or 'no id'}): {self.mdd_column}: {self.mdd_value!r}: {self.description}"
         if self.suggested_change is not None:
             text += f" (suggested fix: {self.suggested_change!r})"
+        if self.suggested_row is not None:
+            nonempty = {
+                key: value for key, value in self.suggested_row.items() if value
+            }
+            text += f" (suggested row: {nonempty!r})"
         return text
 
     def group_description(self) -> str:
+        if self.suggested_row is not None:
+            return f"{self.mdd_column}: add rows to higher taxa sheet"
         match bool(self.mdd_value), bool(self.suggested_change):
             case True, True:
                 return f"{self.mdd_column}: textual differences"
             case True, False:
-                return f"{self.mdd_column}: species sheet unexpectedly has data"
+                return f"{self.mdd_column}: higher taxa sheet unexpectedly has data"
             case _:
-                return f"{self.mdd_column}: add data to species sheet"
+                return f"{self.mdd_column}: add data to higher taxa sheet"
 
 
 @dataclass
@@ -233,6 +242,11 @@ class TaxonWithSyns:
                 description = f"Expected {expected_val!r}, found {actual_val!r}"
                 yield self.taxon.make_issue(mdd_col, description, expected_val)
 
+    def get_expected_new_row(self, headings: Iterable[str]) -> dict[str, str]:
+        row = dict.fromkeys(headings, "")
+        row.update(self.get_expected_row())  # type: ignore[arg-type]
+        return row
+
 
 @functools.cache
 def get_sheet() -> Any:
@@ -246,7 +260,7 @@ def _clean_mdd_taxon(syn: Syn) -> str:
 
 
 def generate_match(
-    taxa: list[MDDHigherTaxon], syns: list[Syn]
+    taxa: list[MDDHigherTaxon], syns: list[Syn], headings: Sequence[str]
 ) -> Generator[Issue, None, list[TaxonWithSyns]]:
     sci_name_to_validity_to_sins: dict[tuple[str, str], list[dict[str, str]]] = (
         defaultdict(list)
@@ -272,22 +286,48 @@ def generate_match(
             yield taxon.make_issue("sciName", description)
             continue
         output.append(TaxonWithSyns(taxon, syns[0]))
-    for sci_name, rank in remaining_sci_names:
+    max_id = max(
+        (
+            int(taxon.row["id"])
+            for taxon in taxa
+            if taxon.row["id"] and taxon.row["id"].isnumeric()
+        ),
+        default=0,
+    )
+    for sci_name, rank in sorted(remaining_sci_names):
+        syns = sci_name_to_validity_to_sins[(sci_name, rank)]
+        if len(syns) != 1:
+            yield Issue(
+                0,
+                "",
+                sci_name,
+                "sciName",
+                "",
+                f"Name {sci_name} (rank {rank}) has {len(syns)} matches in synonyms sheet but is not in higher taxa sheet",
+            )
+            continue
+        max_id += 1
+        row = cast(
+            MDDHigherTaxonRow, {"sciName": sci_name, "id": str(max_id), "rank": rank}
+        )
+        taxon_with_syns = TaxonWithSyns(MDDHigherTaxon(0, row), syns[0])
+        suggested_row = taxon_with_syns.get_expected_new_row(headings)
         yield Issue(
             0,
-            "",
+            str(max_id),
             sci_name,
-            "sciName",
+            "row",
             "",
-            f"Name {sci_name} (rank {rank}) in synonyms sheet but not in species sheet",
+            f"Name {sci_name} (rank {rank}) in synonyms sheet but not in higher taxa sheet",
+            suggested_row=suggested_row,
         )
     return output
 
 
 def check_with_syns_match(
-    species: list[MDDHigherTaxon], syns: list[Syn]
+    species: list[MDDHigherTaxon], syns: list[Syn], headings: Sequence[str]
 ) -> Iterable[Issue]:
-    spp_with_syns = yield from generate_match(species, syns)
+    spp_with_syns = yield from generate_match(species, syns, headings)
     for sp in spp_with_syns:
         yield from sp.compare_against_expected()
 
@@ -318,8 +358,64 @@ def lint_taxa(taxa: list[MDDHigherTaxon]) -> Iterable[Issue]:
     yield from check_id_field(taxa)
 
 
+def maybe_add_rows(
+    issues: list[Issue], headings: Sequence[str], worksheet: Any, *, dry_run: bool
+) -> None:
+    row_issues = [issue for issue in issues if issue.suggested_row is not None]
+    if not row_issues:
+        return
+
+    getinput.print_header(f"Add rows to higher taxa sheet ({len(row_issues)})")
+    for issue in row_issues:
+        print(issue.describe())
+    choice = getinput.choose_one_by_name(
+        ["add", "ask_individually", "skip"],
+        allow_empty=False,
+        history_key="add_rows_choice",
+    )
+    rows_to_add: list[list[str | int]] = []
+    for issue in row_issues:
+        should_add = False
+        match choice:
+            case "add":
+                should_add = True
+            case "ask_individually":
+                print(issue.describe())
+                individual_choice = getinput.choose_one_by_name(
+                    ["add", "skip"],
+                    allow_empty=False,
+                    history_key="individual_add_row_choice",
+                )
+                if individual_choice == "add":
+                    should_add = True
+        if should_add:
+            assert issue.suggested_row is not None
+            rows_to_add.append(
+                [
+                    process_value_for_sheets(issue.suggested_row.get(heading, ""))
+                    for heading in headings
+                ]
+            )
+
+    if dry_run:
+        print("Add rows:", rows_to_add)
+    elif rows_to_add:
+        done = 0
+        print(f"Adding {len(rows_to_add)} rows")
+        for batch in batched(rows_to_add, 500):
+            worksheet.append_rows(batch)
+            done += len(batch)
+            print(f"Done {done}/{len(rows_to_add)}")
+            if len(batch) == 500:
+                time.sleep(30)
+
+
 def maybe_fix_issues(
-    issues: list[Issue], column_to_idx: dict[str, int], *, dry_run: bool
+    issues: list[Issue],
+    column_to_idx: dict[str, int],
+    headings: Sequence[str],
+    *,
+    dry_run: bool,
 ) -> None:
     def _issue_sort_key(issue: Issue) -> tuple[int, bool, bool]:
         return (
@@ -328,9 +424,12 @@ def maybe_fix_issues(
             bool(issue.suggested_change),
         )
 
-    issues = sorted(issues, key=_issue_sort_key)
     sheet = get_sheet()
     worksheet = sheet.get_worksheet_by_id(get_options().mdd_higher_taxa_worksheet_gid)
+    maybe_add_rows(issues, headings, worksheet, dry_run=dry_run)
+
+    issues = [issue for issue in issues if issue.suggested_row is None]
+    issues = sorted(issues, key=_issue_sort_key)
 
     for (_, _, fixable), group_iter in itertools.groupby(issues, _issue_sort_key):
         group = list(group_iter)
@@ -479,11 +578,12 @@ def run(
     else:
         with Path(input_csv).open() as f:
             raw_rows = list(csv.reader(f))
-    headings = raw_rows[0]
-    column_to_idx = {heading: i for i, heading in enumerate(headings, start=1)}
+    sheet_headings = raw_rows[0]
+    column_to_idx = {heading: i for i, heading in enumerate(sheet_headings, start=1)}
     taxa = [
         MDDHigherTaxon(
-            row_idx, cast(MDDHigherTaxonRow, dict(zip(headings, row, strict=False)))
+            row_idx,
+            cast(MDDHigherTaxonRow, dict(zip(sheet_headings, row, strict=False))),
         )
         for row_idx, row in enumerate(raw_rows[1:], start=2)
     ]
@@ -509,23 +609,23 @@ def run(
     syns = [
         dict(zip(syn_sheet_headings, row, strict=False)) for row in syn_sheet_rows[1:]
     ]
-    issues += check_with_syns_match(taxa, syns)
+    issues += check_with_syns_match(taxa, syns, sheet_headings)
     check_species_tags(taxa)
 
     for issue in issues:
         print(issue.describe())
 
     with (backup_path / "differences.csv").open("w") as f:
-        headings = [field.name for field in fields(Issue)]
-        diff_writer = csv.DictWriter(f, headings)
+        issue_headings = [field.name for field in fields(Issue)]
+        diff_writer = csv.DictWriter(f, issue_headings)
         diff_writer.writeheader()
         for issue in issues:
             diff_writer.writerow(
-                {heading: getattr(issue, heading) or "" for heading in headings}
+                {heading: getattr(issue, heading) or "" for heading in issue_headings}
             )
     write_grouped_differences(backup_path, issues)
 
-    maybe_fix_issues(issues, column_to_idx, dry_run=dry_run)
+    maybe_fix_issues(issues, column_to_idx, sheet_headings, dry_run=dry_run)
 
 
 if __name__ == "__main__":

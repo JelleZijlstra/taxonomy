@@ -900,14 +900,22 @@ class Issue:
     description: str
     suggested_change: str | None = None
     extra_key: str | None = None
+    suggested_row: dict[str, str] | None = None
 
     def describe(self) -> str:
         text = f"{self.sci_name} ({self.mdd_id or 'no id'}): {self.mdd_column}: {self.mdd_value!r}: {self.description}"
         if self.suggested_change is not None:
             text += f" (suggested fix: {self.suggested_change!r})"
+        if self.suggested_row is not None:
+            nonempty = {
+                key: value for key, value in self.suggested_row.items() if value
+            }
+            text += f" (suggested row: {nonempty!r})"
         return text
 
     def group_description(self) -> str:
+        if self.suggested_row is not None:
+            return f"{self.mdd_column}: add rows to species sheet"
         match bool(self.mdd_value), bool(self.suggested_change):
             case True, True:
                 return f"{self.mdd_column}: textual differences"
@@ -1188,6 +1196,29 @@ class SpeciesWithSyns:
         )
         return f"{syn['MDD_root_name']} {'(' if parens else ''}{syn['MDD_author']}{year}{')' if parens else ''}{status}"
 
+    def get_hesp_taxon(self) -> Taxon | None:
+        sci_name = self.species.row["sciName"].replace("_", " ")
+        taxa = [
+            t
+            for t in Taxon.select_valid().filter(Taxon.valid_name == sci_name)
+            if t.rank is Rank.species and t.base_name.status is Status.valid
+        ]
+        tagged_taxa = [
+            t
+            for t in taxa
+            if any(
+                isinstance(tag, TaxonTag.MDD) and tag.id == self.species.row["id"]
+                for tag in t.tags
+            )
+        ]
+        if len(tagged_taxa) == 1:
+            return tagged_taxa[0]
+        if len(taxa) == 1:
+            return taxa[0]
+        if tagged_taxa:
+            raise ValueError(f"Multiple taxa found for species: {tagged_taxa}")
+        return None
+
     def get_expected_row(self) -> dict[str, str]:
         simple = {sp_col: self.base_name[syn_col] for sp_col, syn_col in SIMPLE_COLUMNS}
         caps = {
@@ -1206,22 +1237,11 @@ class SpeciesWithSyns:
             citation = self.base_name["MDD_unchecked_authority_citation"]
         else:
             citation = ""
-        sci_name = self.species.row["sciName"].replace("_", " ")
         ranks: dict[str, str] = {}
-        taxa = [
-            t
-            for t in Taxon.select_valid().filter(Taxon.valid_name == sci_name)
-            if any(
-                isinstance(tag, TaxonTag.MDD) and tag.id == self.species.row["id"]
-                for tag in t.tags
-            )
-        ]
-        if not taxa:
+        taxon = self.get_hesp_taxon()
+        if taxon is None:
             subspecies = "NA"
-        elif len(taxa) > 1:
-            raise ValueError(f"Multiple taxa found for species: {taxa}")
         else:
-            taxon = taxa[0]
             subspecies = get_subspecies_text(taxon)
             ranks = get_ranks(taxon)
         return {
@@ -1269,6 +1289,28 @@ class SpeciesWithSyns:
                         f"missing country {syn['MDD_type_country']} (type locality of synonym {self.stringify_syn(syn)})",
                     )
 
+    def get_expected_new_row(self, headings: Iterable[str]) -> dict[str, str]:
+        row = dict.fromkeys(headings, "")
+        row.update(self.get_expected_row())
+        row["sciName"] = self.species.row["sciName"]
+        row["id"] = self.species.row["id"]
+        if expected_type_locality := self.get_expected_type_locality():
+            row["typeLocality"] = expected_type_locality
+        taxon = self.get_hesp_taxon()
+        if taxon is not None:
+            row["extinct"] = "1" if taxon.age is AgeClass.recently_extinct else "0"
+        else:
+            row["extinct"] = "0"
+        row["domestic"] = "0"
+        row["flagged"] = "0"
+        row["iucnStatus"] = "NE"
+        row["CMW_sciName"] = "NA"
+        row["diffSinceCMW"] = "1"
+        row["MSW3_matchtype"] = "NA"
+        row["MSW3_sciName"] = "NA"
+        row["diffSinceMSW3"] = "1"
+        return row
+
 
 @functools.cache
 def get_sheet() -> Any:
@@ -1278,7 +1320,7 @@ def get_sheet() -> Any:
 
 
 def generate_match(
-    species: list[MDDSpecies], syns: list[Syn]
+    species: list[MDDSpecies], syns: list[Syn], headings: Sequence[str]
 ) -> Generator[Issue, None, list[SpeciesWithSyns]]:
     sci_name_to_validity_to_sins: dict[str, dict[str, list[dict[str, str]]]] = (
         defaultdict(lambda: defaultdict(list))
@@ -1307,22 +1349,49 @@ def generate_match(
             continue
         all_names = [syn for group in validity_to_sins.values() for syn in group]
         output.append(SpeciesWithSyns(sp, validity_to_sins["species"][0], all_names))
-    for sci_name in remaining_sci_names:
+    max_id = max(
+        (
+            int(sp.row["id"])
+            for sp in species
+            if sp.row["id"] and sp.row["id"].isnumeric()
+        ),
+        default=0,
+    )
+    for sci_name in sorted(remaining_sci_names):
+        validity_to_sins = sci_name_to_validity_to_sins[sci_name]
+        if len(validity_to_sins["species"]) != 1:
+            yield Issue(
+                0,
+                "",
+                sci_name,
+                "sciName",
+                "",
+                f"Name {sci_name} has {len(validity_to_sins['species'])} names marked as 'species' in synonyms sheet but is not in species sheet",
+            )
+            continue
+        max_id += 1
+        row = cast(MDDSpeciesRow, {"sciName": sci_name, "id": str(max_id)})
+        all_names = [syn for group in validity_to_sins.values() for syn in group]
+        sp_with_syns = SpeciesWithSyns(
+            MDDSpecies(0, row), validity_to_sins["species"][0], all_names
+        )
+        suggested_row = sp_with_syns.get_expected_new_row(headings)
         yield Issue(
             0,
-            "",
+            str(max_id),
             sci_name,
-            "sciName",
+            "row",
             "",
             f"Name {sci_name} in synonyms sheet but not in species sheet",
+            suggested_row=suggested_row,
         )
     return output
 
 
 def check_with_syns_match(
-    species: list[MDDSpecies], syns: list[Syn]
+    species: list[MDDSpecies], syns: list[Syn], headings: Sequence[str]
 ) -> Iterable[Issue]:
-    spp_with_syns = yield from generate_match(species, syns)
+    spp_with_syns = yield from generate_match(species, syns, headings)
     for sp in spp_with_syns:
         yield from sp.compare_against_expected()
 
@@ -1613,8 +1682,64 @@ def export_cited_references_csv(
     return out_path
 
 
+def maybe_add_rows(
+    issues: list[Issue], headings: Sequence[str], worksheet: Any, *, dry_run: bool
+) -> None:
+    row_issues = [issue for issue in issues if issue.suggested_row is not None]
+    if not row_issues:
+        return
+
+    getinput.print_header(f"Add rows to species sheet ({len(row_issues)})")
+    for issue in row_issues:
+        print(issue.describe())
+    choice = getinput.choose_one_by_name(
+        ["add", "ask_individually", "skip"],
+        allow_empty=False,
+        history_key="add_rows_choice",
+    )
+    rows_to_add: list[list[str | int]] = []
+    for issue in row_issues:
+        should_add = False
+        match choice:
+            case "add":
+                should_add = True
+            case "ask_individually":
+                print(issue.describe())
+                individual_choice = getinput.choose_one_by_name(
+                    ["add", "skip"],
+                    allow_empty=False,
+                    history_key="individual_add_row_choice",
+                )
+                if individual_choice == "add":
+                    should_add = True
+        if should_add:
+            assert issue.suggested_row is not None
+            rows_to_add.append(
+                [
+                    process_value_for_sheets(issue.suggested_row.get(heading, ""))
+                    for heading in headings
+                ]
+            )
+
+    if dry_run:
+        print("Add rows:", rows_to_add)
+    elif rows_to_add:
+        done = 0
+        print(f"Adding {len(rows_to_add)} rows")
+        for batch in batched(rows_to_add, 500):
+            worksheet.append_rows(batch)
+            done += len(batch)
+            print(f"Done {done}/{len(rows_to_add)}")
+            if len(batch) == 500:
+                time.sleep(30)
+
+
 def maybe_fix_issues(
-    issues: list[Issue], column_to_idx: dict[str, int], *, dry_run: bool
+    issues: list[Issue],
+    column_to_idx: dict[str, int],
+    headings: Sequence[str],
+    *,
+    dry_run: bool,
 ) -> None:
     def _issue_sort_key(issue: Issue) -> tuple[int, bool, bool]:
         return (
@@ -1623,9 +1748,12 @@ def maybe_fix_issues(
             bool(issue.suggested_change),
         )
 
-    issues = sorted(issues, key=_issue_sort_key)
     sheet = get_sheet()
     worksheet = sheet.get_worksheet_by_id(get_options().mdd_species_worksheet_gid)
+    maybe_add_rows(issues, headings, worksheet, dry_run=dry_run)
+
+    issues = [issue for issue in issues if issue.suggested_row is None]
+    issues = sorted(issues, key=_issue_sort_key)
 
     for (_, _, fixable), group_iter in itertools.groupby(issues, _issue_sort_key):
         group = list(group_iter)
@@ -1806,10 +1934,12 @@ def run(
     else:
         with Path(input_csv).open() as f:
             raw_rows = list(csv.reader(f))
-    headings = raw_rows[0]
-    column_to_idx = {heading: i for i, heading in enumerate(headings, start=1)}
+    sheet_headings = raw_rows[0]
+    column_to_idx = {heading: i for i, heading in enumerate(sheet_headings, start=1)}
     species = [
-        MDDSpecies(row_idx, cast(MDDSpeciesRow, dict(zip(headings, row, strict=False))))
+        MDDSpecies(
+            row_idx, cast(MDDSpeciesRow, dict(zip(sheet_headings, row, strict=False)))
+        )
         for row_idx, row in enumerate(raw_rows[1:], start=2)
     ]
     print(f"done, {len(species)} found")
@@ -1836,23 +1966,26 @@ def run(
             dict(zip(syn_sheet_headings, row, strict=False))
             for row in syn_sheet_rows[1:]
         ]
-        issues += check_with_syns_match(species, syns)
+        issues += check_with_syns_match(species, syns, sheet_headings)
         check_species_tags(species)
 
         for issue in issues:
             print(issue.describe())
 
         with (backup_path / "differences.csv").open("w") as f:
-            headings = [field.name for field in fields(Issue)]
-            diff_writer = csv.DictWriter(f, headings)
+            issue_headings = [field.name for field in fields(Issue)]
+            diff_writer = csv.DictWriter(f, issue_headings)
             diff_writer.writeheader()
             for issue in issues:
                 diff_writer.writerow(
-                    {heading: getattr(issue, heading) or "" for heading in headings}
+                    {
+                        heading: getattr(issue, heading) or ""
+                        for heading in issue_headings
+                    }
                 )
         write_grouped_differences(backup_path, issues)
 
-        maybe_fix_issues(issues, column_to_idx, dry_run=dry_run)
+        maybe_fix_issues(issues, column_to_idx, sheet_headings, dry_run=dry_run)
     else:
         check_common_names(species, backup_path)
     export_cited_references_csv(input_csv=input_csv)
