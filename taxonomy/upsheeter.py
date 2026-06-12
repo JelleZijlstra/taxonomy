@@ -55,12 +55,15 @@ class FixableDifference:
 
 def upsheet(
     *,
-    sheet_name: str,
+    sheet_name: str | None = None,
+    sheet_url: str | None = None,
     worksheet_gid: int,
     data: Sequence[dict[str, str]],
     matching_column: str,
     backup_path_name: str,
 ) -> None:
+    if (sheet_name is None) == (sheet_url is None):
+        raise ValueError("Pass exactly one of sheet_name or sheet_url")
     options = get_options()
     backup_path = (
         options.data_path
@@ -72,27 +75,55 @@ def upsheet(
     print(f"Downloading {backup_path_name} sheet...")
     try:
         gc = gspread.oauth()
-        sheet = gc.open(sheet_name)
+        sheet = (
+            gc.open_by_url(sheet_url) if sheet_url is not None else gc.open(sheet_name)
+        )
     except google.auth.exceptions.RefreshError:
         print("need to refresh token")
         token_path = Path("~/.config/gspread/authorized_user.json").expanduser()
         token_path.unlink(missing_ok=True)
         gc = gspread.oauth()
-        sheet = gc.open(sheet_name)
+        sheet = (
+            gc.open_by_url(sheet_url) if sheet_url is not None else gc.open(sheet_name)
+        )
 
     worksheet = sheet.get_worksheet_by_id(worksheet_gid)
     raw_rows = worksheet.get()
-    headings = raw_rows[0]
-    column_to_idx = {heading: i for i, heading in enumerate(headings, start=1)}
-    rows = [dict(zip(headings, row, strict=False)) for row in raw_rows[1:]]
-    print(f"done, {len(rows)} found")
-
     print(f"backing up {backup_path_name}... ")
     with (backup_path / "data.csv").open("w") as file:
         writer = csv.writer(file)
         for row in raw_rows:
             writer.writerow(row)
     print(f"done, backup at {backup_path}")
+
+    expected_headings = list(data[0]) if data else [matching_column]
+    if not raw_rows or not raw_rows[0]:
+        headings = expected_headings
+        worksheet.update_cells(
+            [
+                gspread.cell.Cell(row=1, col=idx, value=heading)
+                for idx, heading in enumerate(headings, start=1)
+            ]
+        )
+        raw_rows = [headings]
+    else:
+        headings = raw_rows[0]
+        missing_headings = [
+            heading for heading in expected_headings if heading not in headings
+        ]
+        if missing_headings:
+            start_idx = len(headings) + 1
+            worksheet.update_cells(
+                [
+                    gspread.cell.Cell(row=1, col=idx, value=heading)
+                    for idx, heading in enumerate(missing_headings, start=start_idx)
+                ]
+            )
+            headings = [*headings, *missing_headings]
+            raw_rows[0] = headings
+    column_to_idx = {heading: i for i, heading in enumerate(headings, start=1)}
+    rows = [dict(zip(headings, row, strict=False)) for row in raw_rows[1:]]
+    print(f"done, {len(rows)} found")
 
     existing_data = {
         row[matching_column]: (row_idx, row)

@@ -2374,6 +2374,9 @@ def _check_variant_tag(
         and nam.get_tag_target(NameTag.MisidentificationOf) is None
     ):
         yield f"{nam} is not assigned to the same name as {tag.name}"
+        if nam.status is Status.synonym and cfg.autofix:
+            print(f"{nam}: changing taxon to {tag.name.taxon} to match {tag.name}")
+            nam.taxon = tag.name.taxon
     if (
         not isinstance(
             tag,
