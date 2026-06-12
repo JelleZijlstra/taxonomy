@@ -2841,7 +2841,6 @@ def get_inherent_nomenclature_statuses(nam: Name) -> Iterable[NomenclatureStatus
         yield NomenclatureStatus.infrasubspecific
 
 
-@functools.cache
 def get_status_priorities() -> dict[NomenclatureStatus, int]:
     status_to_priority = {}
     i = 0

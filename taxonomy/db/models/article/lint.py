@@ -2,6 +2,7 @@
 
 import bisect
 import enum
+import functools
 import json
 import pprint
 import re
@@ -25,6 +26,8 @@ from taxonomy.db.constants import (
     ArticleKind,
     ArticleType,
     DateSource,
+    Group,
+    Rank,
 )
 from taxonomy.db.models.base import ADTField, BaseModel, LintConfig
 from taxonomy.db.models.citation_group import lint as cg_lint
@@ -759,7 +762,7 @@ def check_url(art: Article, cfg: LintConfig) -> Iterable[str]:
             yield f"URL {art.url}: {message}"
 
 
-@LINT.add("doi")
+@LINT.add("doi", requires_network=True)
 def check_doi(art: Article, cfg: LintConfig) -> Iterable[str]:
     if art.doi is None:
         return
@@ -1438,6 +1441,7 @@ _TITLE_REGEXES = [
     (r",_ ", "_, "),
     (r" _(\()?([A-Za-z]+\??)\)_( |$)", r" \1_\2_)\3"),
     (r" _([A-Za-z ]+)\?_(?= |$)", r" _\1_?"),
+    (r"_'([A-Z][a-z]+)' ([a-z]+)_", r"'_\1_' _\2_"),
 ]
 
 
@@ -3312,3 +3316,122 @@ def must_have_new_names(art: Article, cfg: LintConfig) -> Iterable[str]:
     if art.has_tag(ArticleTag.NonOriginal):
         return
     yield "article has no new names"
+
+
+EXCLUDED_GENERA = {
+    "Patagonia",
+    "Arizona",
+    "Ten",
+    "Hamster",
+    "Laurasia",
+    "Opossum",
+    "Tingamarra",
+    "Carolina",
+    "Tarsier",
+    "Marmot",
+    "Felix",
+    "Margarita",
+    "Pan",
+}
+
+
+def get_snippets_needing_italics(text: str) -> Iterable[str]:
+    # looks like "G. species"
+    for match in re.findall(r"\b([A-Z]\. [a-z]{4,})\b(?!\")", text):
+        yield match
+
+    # looks like "Genus species" and is a known combination
+    known_binomials = get_known_binomials()
+    for match in re.findall(r"\b([A-Z][a-z]+ [a-z]{3,})\b(?!\")", text):
+        if match in known_binomials:
+            # Mammalian Species accounts without italics
+            if match == text:
+                return
+            yield match
+
+    # Looks like a generic name
+    known_genera = get_known_genera()
+    known_higher = get_known_higher_taxa()
+    for match in re.findall(r"(?<!\")\b([A-Z][a-z]+)\b(?!\")", text):
+        if (
+            match in known_genera
+            and match not in known_higher
+            and match not in EXCLUDED_GENERA
+        ):
+            yield match
+
+
+@functools.cache
+def get_known_binomials() -> set[str]:
+    return {
+        nam.corrected_original_name
+        for nam in models.Name.select_valid().filter(
+            models.Name.group == Group.species,
+            models.Name.corrected_original_name != None,
+            models.Name.original_rank == Rank.species,
+        )
+        if nam.corrected_original_name is not None
+    }
+
+
+@functools.cache
+def get_known_genera() -> set[str]:
+    return {
+        nam.corrected_original_name
+        for nam in models.Name.select_valid().filter(
+            models.Name.group == Group.genus,
+            models.Name.corrected_original_name != None,
+        )
+        if nam.corrected_original_name is not None
+    }
+
+
+@functools.cache
+def get_known_higher_taxa() -> set[str]:
+    return {
+        nam.corrected_original_name
+        for nam in models.Name.select_valid().filter(
+            models.Name.group.is_in([Group.family, Group.high]),
+            models.Name.corrected_original_name != None,
+        )
+        if nam.corrected_original_name is not None
+    }
+
+
+def _clear_italics_caches() -> None:
+    get_known_binomials.cache_clear()
+    get_known_genera.cache_clear()
+    get_known_higher_taxa.cache_clear()
+
+
+@LINT.add("must_have_italics", clear_caches=_clear_italics_caches)
+def must_have_italics(art: Article, cfg: LintConfig) -> Iterable[str]:
+    if art.title is None:
+        return
+    for snippet in get_snippets_needing_italics(art.title):
+        message = f"snippet {snippet!r} should probably be italicized"
+        if (
+            cfg.interactive
+            and art.title.count(snippet) == 1
+            and not LINT.is_ignoring_lint(art, "must_have_italics")
+        ):
+            art.display()
+            print(message)
+            print(art.title)
+            new_title = art.title.replace(snippet, f"_{snippet}_")
+            print(new_title)
+            choice = getinput.choose_one_by_name(
+                ["a", "i"],
+                message="Choose (a=accept, i=ignore): ",
+                print_choices=False,
+                callbacks=art.get_adt_callbacks(),
+            )
+            match choice:
+                case "a":
+                    art.title = new_title
+                    continue
+                case "i":
+                    art.add_tag(ArticleTag.IgnoreLint("must_have_italics"))
+                    yield message
+                    return
+        yield message
