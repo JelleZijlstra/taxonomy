@@ -555,8 +555,7 @@ class Phalanx:
                 pos = 0
             case "ungual":
                 pos = float("inf")
-            # https://github.com/python/mypy/issues/16736
-            case pos:  # type: ignore[misc]
+            case pos:
                 pass
         # TODO: pyanalyze bug
         # static analysis: ignore[possibly_undefined_name]
