@@ -66,6 +66,7 @@ Other aspects of the database:
 - [Text conventions](/docs/text)
 - [Finding citations](/docs/finding-citations)
 - [Collection databases](/docs/collection-databases)
+- [Research notes](/docs/research-notes)
 
 Source code:
 
