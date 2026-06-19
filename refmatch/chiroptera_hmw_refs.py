@@ -26,8 +26,9 @@ SECTION_HEADERS = {
 }
 
 DEFAULT_PDF = lib.DATA_DIR / "chiroptera-hmw-refs.pdf"
-DEFAULT_OUTPUT = lib.DATA_DIR / "chiroptera-hmw-refs.csv"
-DEFAULT_PARSED_OUTPUT = lib.DATA_DIR / "chiroptera-hmw-refs-parsed.csv"
+OUTPUT_DIR = Path(__file__).resolve().parent / "output"
+DEFAULT_OUTPUT = OUTPUT_DIR / "chiroptera-hmw-refs.csv"
+DEFAULT_PARSED_OUTPUT = OUTPUT_DIR / "chiroptera-hmw-refs-parsed.csv"
 YEAR_RE = r"\d{4}(?:–\d{4})?[a-z]*"
 AUTHOR_YEAR_RE = re.compile(
     rf"^(?P<authors>.+?) \((?P<year>{YEAR_RE})\)\. (?P<body>.*)$"

@@ -13,8 +13,9 @@ lib = importlib.import_module("data_import.lib")
 from taxonomy.refmatch import matcher
 from taxonomy.refmatch.matcher import *
 
-DEFAULT_INPUT = lib.DATA_DIR / "chiroptera-hmw-refs-parsed.csv"
-DEFAULT_OUTPUT = lib.DATA_DIR / "chiroptera-hmw-refs-taxonomy-matches.csv"
+OUTPUT_DIR = Path(__file__).resolve().parent / "output"
+DEFAULT_INPUT = OUTPUT_DIR / "chiroptera-hmw-refs-parsed.csv"
+DEFAULT_OUTPUT = OUTPUT_DIR / "chiroptera-hmw-refs-taxonomy-matches.csv"
 
 
 def parse_args() -> argparse.Namespace:
