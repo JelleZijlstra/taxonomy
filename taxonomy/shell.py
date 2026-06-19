@@ -17,6 +17,7 @@ import csv
 import datetime
 import functools
 import gc
+import html
 import importlib
 import operator
 import os
@@ -3038,6 +3039,169 @@ def _get_missing_names(nams: list[Name], rank: Rank) -> list[Name]:
             f"Missing {len(missing_nams)}/{len(nams)} ({len(missing_nams) / len(nams):%}) valid {rank.name}"
         )
     return sorted(missing_nams, key=lambda nam: nam.numeric_year())
+
+
+_ITALICIZED_TEXT_RE = re.compile(
+    r"_([^_]+)_|<(?:i|em)>(.*?)</(?:i|em)>", flags=re.IGNORECASE
+)
+_BINOMIAL_OR_TRINOMIAL_RE = re.compile(
+    r"\b(?P<genus>[A-Z][a-z]+)"
+    r"(?: \([A-Z][a-z]+\))?"
+    r" (?P<species>[a-z][a-z-]+)"
+    r"(?: (?P<subspecies>[a-z][a-z-]+))?\b"
+)
+
+
+@dataclass(frozen=True)
+class NameCombinationCandidate:
+    name_combination: str
+    genus_names: tuple[Name, ...]
+    source: str
+    article: Article | None = None
+
+
+@dataclass(frozen=True)
+class MissingNameCombination:
+    name_combination: str
+    genus_names: tuple[Name, ...]
+    sources: tuple[str, ...]
+    articles: tuple[Article, ...] = ()
+
+
+def _iter_italicized_text(text: str) -> Iterable[str]:
+    for match in _ITALICIZED_TEXT_RE.finditer(text):
+        term = match.group(1) or match.group(2)
+        term = html.unescape(term).replace(r"\ ", " ")
+        term = re.sub(r"\s+", " ", term).strip()
+        if term:
+            yield term
+
+
+def _iter_name_combinations_in_italicized_text(text: str) -> Iterable[str]:
+    seen: set[str] = set()
+    for term in _iter_italicized_text(text):
+        for match in _BINOMIAL_OR_TRINOMIAL_RE.finditer(term):
+            pieces = [
+                match.group("genus"),
+                match.group("species").lower(),
+                match.group("subspecies"),
+            ]
+            name_combination = " ".join(piece for piece in pieces if piece)
+            inferred = models.name.name.infer_corrected_original_name(
+                name_combination, Group.species
+            )
+            if inferred is None or inferred in seen:
+                continue
+            seen.add(inferred)
+            yield inferred
+
+
+@functools.cache
+def _mammal_genus_names(genus: str) -> tuple[Name, ...]:
+    resolved_by_id: dict[int, Name] = {}
+    for genus_name in Name.select_valid().filter(
+        Name.group == Group.genus,
+        (Name.root_name == genus) | (Name.corrected_original_name == genus),
+    ):
+        try:
+            resolved = genus_name.resolve_variant()
+            class_ = resolved.taxon.get_derived_field("class_")
+        except ValueError:
+            continue
+        if class_.valid_name == "Mammalia":
+            resolved_by_id[resolved.id] = resolved
+    return tuple(sorted(resolved_by_id.values(), key=lambda name: name.id))
+
+
+def iter_article_title_name_combination_candidates(
+    articles: Iterable[Article] | None = None,
+) -> Iterable[NameCombinationCandidate]:
+    if articles is None:
+        articles = (
+            Article.select_valid().filter(Article.title != None).order_by(Article.id)
+        )
+    for article in articles:
+        title = article.get_title()
+        for name_combination in _iter_name_combinations_in_italicized_text(title):
+            genus = name_combination.split()[0]
+            genus_names = _mammal_genus_names(genus)
+            if not genus_names:
+                continue
+            yield NameCombinationCandidate(
+                name_combination=name_combination,
+                genus_names=genus_names,
+                source=f"Article {article.id}: {article.name}",
+                article=article,
+            )
+
+
+@functools.cache
+def _name_combination_exists(name_combination: str) -> bool:
+    return (
+        Name.select_valid()
+        .filter(
+            Name.group == Group.species,
+            Name.corrected_original_name == name_combination,
+        )
+        .count()
+        > 0
+    )
+
+
+def find_missing_name_combinations(
+    candidates: Iterable[NameCombinationCandidate],
+) -> list[MissingNameCombination]:
+    by_combination: dict[str, list[NameCombinationCandidate]] = defaultdict(list)
+    for candidate in candidates:
+        if _name_combination_exists(candidate.name_combination):
+            continue
+        by_combination[candidate.name_combination].append(candidate)
+
+    missing: list[MissingNameCombination] = []
+    for name_combination, combination_candidates in by_combination.items():
+        genus_names = {
+            genus_name.id: genus_name
+            for candidate in combination_candidates
+            for genus_name in candidate.genus_names
+        }
+        articles = {
+            candidate.article.id: candidate.article
+            for candidate in combination_candidates
+            if candidate.article is not None
+        }
+        sources = sorted({candidate.source for candidate in combination_candidates})
+        missing.append(
+            MissingNameCombination(
+                name_combination=name_combination,
+                genus_names=tuple(
+                    sorted(genus_names.values(), key=lambda genus_name: genus_name.id)
+                ),
+                sources=tuple(sources),
+                articles=tuple(
+                    sorted(articles.values(), key=lambda article: article.id)
+                ),
+            )
+        )
+    return sorted(missing, key=lambda result: result.name_combination)
+
+
+@command
+def missing_name_combinations_from_article_titles(
+    limit: int | None = None,
+) -> list[MissingNameCombination]:
+    """Find missing mammal name combinations from italicized Article titles."""
+    missing = find_missing_name_combinations(
+        iter_article_title_name_combination_candidates()
+    )
+    print(f"Found {len(missing)} missing name combinations")
+    display = missing if limit is None else missing[:limit]
+    for result in display:
+        print(result.name_combination)
+        for article in result.articles:
+            print(f"  - {article}: {article.get_title()}")
+    if limit is not None and len(missing) > limit:
+        print(f"... {len(missing) - limit} more")
+    return missing
 
 
 @command
