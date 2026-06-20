@@ -4,9 +4,9 @@ from pathlib import Path
 import taxonomy
 
 RESEARCH_NOTE_BYLINE_RE = re.compile(
-    r"^\*Jelle S\. Zijlstra, "
+    r"^_Jelle S\. Zijlstra, "
     r"(January|February|March|April|May|June|July|August|September|October|November|December) "
-    r"\d{4}\*$"
+    r"\d{4}_$"
 )
 
 

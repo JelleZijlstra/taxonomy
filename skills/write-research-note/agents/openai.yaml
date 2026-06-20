@@ -1,0 +1,6 @@
+interface:
+  display_name: "Write Research Note"
+  short_description: "Draft source-faithful taxonomy research notes"
+  default_prompt:
+    "Use $write-research-note to draft a concise, source-faithful research note for this
+    taxonomy question."

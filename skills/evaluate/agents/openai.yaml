@@ -1,0 +1,6 @@
+interface:
+  display_name: "Evaluate Taxonomy"
+  short_description: "Assess taxonomic changes and name usage"
+  default_prompt:
+    "Use $evaluate to assess whether this taxonomic change and its name assignments are
+    justified."
