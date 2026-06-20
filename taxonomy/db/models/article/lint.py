@@ -3408,12 +3408,16 @@ def _clear_italics_caches() -> None:
 def must_have_italics(art: Article, cfg: LintConfig) -> Iterable[str]:
     if art.title is None:
         return
+    already_replaced: set[str] = set()
     for snippet in get_snippets_needing_italics(art.title):
         message = f"snippet {snippet!r} should probably be italicized"
         if (
             cfg.interactive
             and art.title.count(snippet) == 1
             and not LINT.is_ignoring_lint(art, "must_have_italics")
+            # Guard against cases where we first replace "Dacnomys millardi" -> "_Dacnomys millardi_"
+            # and then later the code wants us to put more underscores around just the genus name.
+            and not any(existing.startswith(snippet) for existing in already_replaced)
         ):
             art.display()
             print(message)
@@ -3428,6 +3432,7 @@ def must_have_italics(art: Article, cfg: LintConfig) -> Iterable[str]:
             )
             match choice:
                 case "a":
+                    already_replaced.add(snippet)
                     art.title = new_title
                     continue
                 case "i":
