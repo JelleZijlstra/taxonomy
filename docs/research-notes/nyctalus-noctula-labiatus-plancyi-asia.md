@@ -62,10 +62,10 @@ individuals.
 [Benda & Gaisler (2015)](/a/29223) reported the first secure Afghan record of _N.
 noctula_: two males from Meta Khan, 16 km WSW of Khost, Ismael Khel, in 1976 and 1977,
 from a tree hole in a plane grove at about 1330 m. They rejected older uncertain notices
-from Kandahar and from Neronov & Arsen'eva (1982). Biogeographically, they treated the
-Afghan record as continuing the northern Indian-subcontinent range along the southern
-Hindu Kush and Himalayas. They also left open the possibility that stray western/central
-Palearctic _N. noctula_ could occur in northwestern Afghanistan.
+from Kandahar and from a 1982 notice by Neronov & Arsen'eva. Biogeographically, they
+treated the Afghan record as continuing the northern Indian-subcontinent range along the
+southern Hindu Kush and Himalayas. They also left open the possibility that stray
+western/central Palearctic _N. noctula_ could occur in northwestern Afghanistan.
 
 The Afghan material is important because it lies west of the named _labiatus_
 population. Benda & Gaisler found the two Afghan specimens medium-sized: similar to
@@ -110,8 +110,8 @@ including Tamanthe, 60 miles west of the Chin Hills, and Mahtum. They singled ou
 Nagaland and northern Myanmar specimens as darker and most similar to Chinese _plancyi_.
 [Benda & Gaisler (2015)](/a/29223) cited published measurements from Burma/Myanmar among
 the smaller values that resemble Chinese _plancyi_ more than the Afghan specimens; they
-compiled these values from earlier Burma/Myanmar literature such as Sinha (1970) and
-Ghosh (2008), which I have not seen.
+compiled these values from earlier Burma/Myanmar literature by Sinha and Ghosh, which I
+have not seen.
 
 ### Countries without confirmed records in the sources checked
 

@@ -117,13 +117,13 @@ Zoological specimens associated with Boys include:
 ## Zoogeography
 
 Nasirabad, Rajasthan, is located at an elevation of 429 m and is in a dry, partly desert
-region. Saikia et al. (2025) record _Cnephaeus pachyomus_ at 1440 to 1630 m and
-_Submyotodon caliginosus_ at 1500 to 3065 m in Uttarakhand; no elevation was given for
-_Myotis blythii_. All three species otherwise occur only along the southern flank of the
-Himalayas in this region. An occurrence in Rajasthan is perhaps not out of the question,
-especially for _Myotis blythii_, which otherwise has a wide distribution ranging over
-many habitat types in western Eurasia, but for all three it is zoogeographically more
-plausible that the type specimens also came from elsewhere.
+region. [Saikia et al. (2025)](/a/69679) record _Cnephaeus pachyomus_ at 1440 to 1630 m
+and _Submyotodon caliginosus_ at 1500 to 3065 m in Uttarakhand; no elevation was given
+for _Myotis blythii_. All three species otherwise occur only along the southern flank of
+the Himalayas in this region. An occurrence in Rajasthan is perhaps not out of the
+question, especially for _Myotis blythii_, which otherwise has a wide distribution
+ranging over many habitat types in western Eurasia, but for all three it is
+zoogeographically more plausible that the type specimens also came from elsewhere.
 
 ## Assessment
 

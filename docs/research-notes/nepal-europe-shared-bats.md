@@ -123,84 +123,87 @@ and corrected several mapping and identification errors.
 [Saikia et al. (2025)](/a/69679) provide a newer check on several western Himalayan
 records using morphology and mtDNA.
 
-_Rhinolophus hipposideros_ was listed by Bates & Harrison (1997: 64) from Afghanistan,
-Pakistan, and India, with South Asian localities including Gilgit and Kashmir. Benda &
-Gaisler (2015) accepted seven Afghan localities, all in eastern and southeastern
-Afghanistan, and treated Afghanistan as the southeastern margin of the species' range.
-They noted that the range continues east only to Kashmir, with records from Gilgit and
-Burnzov cave. They also discussed molecular evidence separating eastern populations from
-Europe and the Maghreb by about 3.2-3.8% in mitochondrial markers, supporting
-recognition of the eastern subspecies _R. h. midas_. Later,
+_Rhinolophus hipposideros_ was listed by [Bates & Harrison (1997: 64)](/a/27903) from
+Afghanistan, Pakistan, and India, with South Asian localities including Gilgit and
+Kashmir. [Benda & Gaisler (2015)](/a/29223) accepted seven Afghan localities, all in
+eastern and southeastern Afghanistan, and treated Afghanistan as the southeastern margin
+of the species' range. They noted that the range continues east only to Kashmir, with
+records from Gilgit and Burnzov cave. They also discussed molecular evidence separating
+eastern populations from Europe and the Maghreb by about 3.2-3.8% in mitochondrial
+markers, supporting recognition of the eastern subspecies _R. h. midas_. Later,
 [Benda et al. (2022)](/a/59672) listed _midas_ as a distinct species restricted to Oman
 and Iran. They kept Central Asian and Afghan populations in _R. hipposideros_ but did
 not assign them to subspecies. I did not find molecular evidence tying Himalayan
 specimens directly to European _R. hipposideros_ in the sources checked here.
 
-_Rhinolophus blasii_ was listed by Bates & Harrison (1997: 70) from Afghanistan and
-Pakistan. Benda & Gaisler (2015) accepted ten Afghan localities and regarded the Afghan
-range as the easternmost extension of a mainly southwestern Palearctic and African
-species. The Pakistan record is relatively concrete: [Roberts (1977)](/a/72931) reported
-an individual collected in Shalimar Gardens in Lahore on 28 December 1968. Benda &
-Gaisler noted that the only records farther east than Afghanistan were from the Lahore
-area, and treated Afghan material as a distinct eastern morphotype, _R. b. meyeroehmi_,
-whose phylogenetic status still needed molecular testing.
+_Rhinolophus blasii_ was listed by [Bates & Harrison (1997: 70)](/a/27903) from
+Afghanistan and Pakistan. [Benda & Gaisler (2015)](/a/29223) accepted ten Afghan
+localities and regarded the Afghan range as the easternmost extension of a mainly
+southwestern Palearctic and African species. The Pakistan record is relatively concrete:
+[Roberts (1977)](/a/72931) reported an individual collected in Shalimar Gardens in
+Lahore on 28 December 1968. [Benda & Gaisler (2015)](/a/29223) noted that the only
+records farther east than Afghanistan were from the Lahore area, and treated Afghan
+material as a distinct eastern morphotype, _R. b. meyeroehmi_, whose phylogenetic status
+still needed molecular testing.
 
-_Myotis daubentonii_ was treated broadly by Bates & Harrison (1997: 131), including
-records from Kashmir, Afghanistan, Nepal, and Meghalaya. Several South Asian names
-formerly associated with _daubentonii_ are now separate species or species complexes,
-including _M. longipes_ in the western Himalayas and _M. laniger_ farther east. Benda &
-Gaisler (2015) did not accept _M. daubentonii_ as an Afghan species; the Afghan and
-Kashmir trawling bat in their account is _M. longipes_. They also noted that the
-Nepalese material formerly reported as _M. longipes_ had been revised as _M. csorbai_ (a
-possible synonym of _M. longipes_ according to Ruedi et al., 2021), and that the
-Meghalaya material probably belongs there too. The north-eastern Indian and Nepalese
-material is therefore especially unlikely to be European _M. daubentonii_.
+_Myotis daubentonii_ was treated broadly by [Bates & Harrison (1997: 131)](/a/27903),
+including records from Kashmir, Afghanistan, Nepal, and Meghalaya. Several South Asian
+names formerly associated with _daubentonii_ are now separate species or species
+complexes, including _M. longipes_ in the western Himalayas and _M. laniger_ farther
+east. [Benda & Gaisler (2015)](/a/29223) did not accept _M. daubentonii_ as an Afghan
+species; the Afghan and Kashmir trawling bat in their account is _M. longipes_. They
+also noted that the Nepalese material formerly reported as _M. longipes_ had been
+revised as _M. csorbai_ (a possible synonym of _M. longipes_ according to
+[Ruedi et al. (2021)](/a/59200)), and that the Meghalaya material probably belongs there
+too. The north-eastern Indian and Nepalese material is therefore especially unlikely to
+be European _M. daubentonii_.
 
-_Vespertilio murinus_ was listed by Bates & Harrison (1997: 158) from Pakistan and
-Afghanistan, with a Pakistan record from Gilgit. Benda & Gaisler (2015) accepted only
-one verified Afghan record, from Belchiragh in Faryab Province, and pointed out that
-some mapped Afghan records in earlier syntheses were cartographic mistakes derived from
-that single specimen. They regarded Afghanistan as part of the southeastern margin of
-the species' range and treated the Gilgit record as the only possible record farther
-east.
+_Vespertilio murinus_ was listed by [Bates & Harrison (1997: 158)](/a/27903) from
+Pakistan and Afghanistan, with a Pakistan record from Gilgit.
+[Benda & Gaisler (2015)](/a/29223) accepted only one verified Afghan record, from
+Belchiragh in Faryab Province, and pointed out that some mapped Afghan records in
+earlier syntheses were cartographic mistakes derived from that single specimen. They
+regarded Afghanistan as part of the southeastern margin of the species' range and
+treated the Gilgit record as the only possible record farther east.
 
-_Pipistrellus pipistrellus_ was listed by Bates & Harrison (1997: 166) across a wide
-area, including Pakistan, Kashmir, Assam, and northern Myanmar. The eastern records are
-much less convincing than the western ones. Benda & Gaisler (2015) accepted _P.
-pipistrellus_ as the most frequently recorded Afghan bat, with 35 sites, and identified
-many Afghan specimens previously reported as _P. coromandra_ as _P. pipistrellus_. They
-placed the eastern edge of the range at northern Pakistan and western Kashmir, not Assam
-or Myanmar. However, [Bates et al. (2005:220)](/a/1284) reidentified the Myanmar record
-as _P. coromandra_. The Assam record should be treated as doubtful, and molecular
-evidence is needed to confirm the identity of bats from northwestern South Asia.
+_Pipistrellus pipistrellus_ was listed by [Bates & Harrison (1997: 166)](/a/27903)
+across a wide area, including Pakistan, Kashmir, Assam, and northern Myanmar. The
+eastern records are much less convincing than the western ones.
+[Benda & Gaisler (2015)](/a/29223) accepted _P. pipistrellus_ as the most frequently
+recorded Afghan bat, with 35 sites, and identified many Afghan specimens previously
+reported as _P. coromandra_ as _P. pipistrellus_. They placed the eastern edge of the
+range at northern Pakistan and western Kashmir, not Assam or Myanmar. However,
+[Bates et al. (2005:220)](/a/1284) reidentified the Myanmar record as _P. coromandra_.
+The Assam record should be treated as doubtful, and molecular evidence is needed to
+confirm the identity of bats from northwestern South Asia.
 
-_Hypsugo savii_ was listed by Bates & Harrison (1997: 180), as _Pipistrellus savii_,
-from Afghanistan, Meghalaya, and Myanmar. Benda & Gaisler (2015) accepted four Afghan
-localities, all in the northern mountains, and regarded Afghanistan as the southern and
-eastern margin of the known range. They did not accept older records from Ambala,
-Gilgit, or Pune as reliable evidence for the species in the Indian subcontinent, and
-they stressed that the taxonomic position of Central Asian _H. savii_ still required
-range-wide molecular testing. Saikia et al. (2025) added the first authenticated western
-Himalayan and Indian record, from Mandal in Chamoli district, Uttarakhand. Their
-specimen was morphologically close to _H. s. caucasicus_ and its COI sequence belonged
-to a Central Asian _savii_ lineage, but that lineage was more than 7% divergent from
-western Palearctic _H. savii_ lineages.
+_Hypsugo savii_ was listed by [Bates & Harrison (1997: 180)](/a/27903), as _Pipistrellus
+savii_, from Afghanistan, Meghalaya, and Myanmar. [Benda & Gaisler (2015)](/a/29223)
+accepted four Afghan localities, all in the northern mountains, and regarded Afghanistan
+as the southern and eastern margin of the known range. They did not accept older records
+from Ambala, Gilgit, or Pune as reliable evidence for the species in the Indian
+subcontinent, and they stressed that the taxonomic position of Central Asian _H. savii_
+still required range-wide molecular testing. [Saikia et al. (2025)](/a/69679) added the
+first authenticated western Himalayan and Indian record, from Mandal in Chamoli
+district, Uttarakhand. Their specimen was morphologically close to _H. s. caucasicus_
+and its COI sequence belonged to a Central Asian _savii_ lineage, but that lineage was
+more than 7% divergent from western Palearctic _H. savii_ lineages.
 
-_Nyctalus leisleri_ is the strongest context case just outside Nepal. Bates & Harrison
-(1997: 191-192) listed it from Afghanistan through Pakistan, Kashmir, Himachal Pradesh,
-and Uttarakhand. Benda & Gaisler (2015) accepted four Afghan localities and noted that
-Afghanistan had the greatest density of records in the Indian-subcontinent part of the
-range. They interpreted the South Asian range as a continuous belt along the southern
-slopes of the Hindu Kush and Himalayas from eastern Afghanistan to Uttarakhand,
-separated by a gap of more than 1100 km from the main western Palearctic range. They
-found no obvious morphometric separation, but noted that molecular analyses then
-available did not sample the Middle East or Indian subcontinent. Saikia et al. (2025)
-sequenced a Himachal Pradesh specimen and found it very close to _N. leisleri_ from
-Uttarakhand, Pakistan, and western Europe: about 1% K2P in COI and 1.3% in cytb from
-European samples. They also listed multiple Uttarakhand records, including Chamoli and
-Almora districts. I found no Nepalese record in the sources checked here, but
-conspecificity from Europe to the western Himalayas appears much better supported for
-_N. leisleri_ than for most other candidate names.
+_Nyctalus leisleri_ is the strongest context case just outside Nepal.
+[Bates & Harrison (1997: 191-192)](/a/27903) listed it from Afghanistan through
+Pakistan, Kashmir, Himachal Pradesh, and Uttarakhand. [Benda & Gaisler (2015)](/a/29223)
+accepted four Afghan localities and noted that Afghanistan had the greatest density of
+records in the Indian-subcontinent part of the range. They interpreted the South Asian
+range as a continuous belt along the southern slopes of the Hindu Kush and Himalayas
+from eastern Afghanistan to Uttarakhand, separated by a gap of more than 1100 km from
+the main western Palearctic range. They found no obvious morphometric separation, but
+noted that molecular analyses then available did not sample the Middle East or Indian
+subcontinent. [Saikia et al. (2025)](/a/69679) sequenced a Himachal Pradesh specimen and
+found it very close to _N. leisleri_ from Uttarakhand, Pakistan, and western Europe:
+about 1% K2P in COI and 1.3% in cytb from European samples. They also listed multiple
+Uttarakhand records, including Chamoli and Almora districts. I found no Nepalese record
+in the sources checked here, but conspecificity from Europe to the western Himalayas
+appears much better supported for _N. leisleri_ than for most other candidate names.
 
 ## Assessment
 
@@ -216,10 +219,10 @@ _Myotis blythii_ remains the most plausible shared species. However, the molecul
 evidence points to a South Asian/Pakistan/Central Asian lineage that is substantially
 divergent in mtDNA from European _oxygnathus_. Afghanistan confirms that several
 European or western Palearctic names really do reach the northwestern edge of South
-Asia, but Benda & Gaisler (2015) also show that some are eastern subspecies, distinct
-morphotypes, or western-edge records that stop well short of Nepal. Outside Nepal,
-_Nyctalus leisleri_ is a clearer example of a bat shared between Europe and the western
-Himalayas, but the checked records stop short of Nepal.
+Asia, but [Benda & Gaisler (2015)](/a/29223) also show that some are eastern subspecies,
+distinct morphotypes, or western-edge records that stop well short of Nepal. Outside
+Nepal, _Nyctalus leisleri_ is a clearer example of a bat shared between Europe and the
+western Himalayas, but the checked records stop short of Nepal.
 
 ## Sources
 
