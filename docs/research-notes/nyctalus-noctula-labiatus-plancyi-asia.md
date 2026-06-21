@@ -287,7 +287,7 @@ The first option is the most conservative until a more comprehensive revision is
 published.
 
 As for geographic occurrence, I would currently reject the occurrence of the group in
-Malaysia or Singapore. However, a bat of the group almost certainly occurs in Bhutan,
+Malaysia or Singapore. However, a bat of the group would be expected to occur in Bhutan,
 and similar bats should be sought for elsewhere in Southeast Asia.
 
 ## Sources
