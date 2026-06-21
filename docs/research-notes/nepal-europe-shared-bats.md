@@ -152,9 +152,9 @@ including _M. longipes_ in the western Himalayas and _M. laniger_ farther east. 
 Gaisler (2015) did not accept _M. daubentonii_ as an Afghan species; the Afghan and
 Kashmir trawling bat in their account is _M. longipes_. They also noted that the
 Nepalese material formerly reported as _M. longipes_ had been revised as _M. csorbai_ (a
-synonym of _M. longipes_ according to Ruedi et al., 2021), and that the Meghalaya
-material probably belongs there too. The north-eastern Indian and Nepalese material is
-therefore especially unlikely to be European _M. daubentonii_.
+possible synonym of _M. longipes_ according to Ruedi et al., 2021), and that the
+Meghalaya material probably belongs there too. The north-eastern Indian and Nepalese
+material is therefore especially unlikely to be European _M. daubentonii_.
 
 _Vespertilio murinus_ was listed by Bates & Harrison (1997: 158) from Pakistan and
 Afghanistan, with a Pakistan record from Gilgit. Benda & Gaisler (2015) accepted only

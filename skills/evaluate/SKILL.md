@@ -2,10 +2,8 @@
 name: evaluate
 description:
   Evaluate whether a taxonomic proposal is justified from primary literature and the
-  taxonomy database. Use when asked to assess a proposed taxonomic change, synonymy,
-  split, lump, revalidation, new species, name assignment, type-material linkage,
-  genetic/morphological evidence, or whether putative taxa are correctly associated with
-  available names.
+  taxonomy database. Use only when explictly asked to assess a proposed taxonomic
+  change.
 ---
 
 # Evaluate

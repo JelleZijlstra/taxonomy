@@ -54,7 +54,7 @@ and _jumandi_.
 - Brito et al. (2026) reported specimens of _hesperus_ from Amaluza in Azuay, Chivaturco
   in El Oro, and seven localities in Zamora Chinchipe. They also plot a single locality
   in Peru, just south of the border.
-- Llancachahua-Tarqui et al. (2025) report material from about six localities in Peru,
+- Llancachahua-Tarqui et al. (2025) report material from numerous localities in Peru,
   just south of the border with Ecuador. They have a single specimen of
   _huancabambensis_ from Ecuador, in the USNM; it is from Sabanilla, locality 17 of
   Brito et al. (2026).

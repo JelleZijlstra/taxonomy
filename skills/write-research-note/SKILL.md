@@ -2,7 +2,7 @@
 name: write-research-note
 description:
   Write or update brief source-faithful research notes in the taxonomy repository. Use
-  when asked to create, revise, or prepare docs/research-notes/ pages about taxonomic,
+  when asked to write a research note in docs/research-notes/ about taxonomic,
   nomenclatural, bibliographic, specimen-provenance, locality, or literature questions
   that required deeper investigation.
 ---
@@ -64,4 +64,7 @@ research questions. Keep the prose factual, compact, and traceable to sources.
 
 - Use existing docs style: `[Author (year)](/a/<article-id>)` for database articles.
 - Use plain Markdown links for external records.
-- Add a `## Sources` section when it is useful to discuss the sources used.
+- Add a `## Sources` section only when it is useful to discuss the sources used. It does
+  not need to list all sources cited inline and linked to database articles, but the
+  section can discuss sources that are especially significant to the note, or that are
+  not readily available in the database.

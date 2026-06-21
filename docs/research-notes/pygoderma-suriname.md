@@ -12,8 +12,8 @@ question:
   has not been discussed in the peer-reviewed literature.
 
 _Pygoderma_ contains a single recognized species, _Pygoderma bilabiatum_. It otherwise
-occurs in southern and eastern coastal Brazil and inland to Bolivia.
-[Voss & Emmons (1996)](/a/15331) reject its occurrence in Suriname, but
+occurs in southern and eastern coastal Brazil and inland to Bolivia and northern
+Argentina. [Voss & Emmons (1996)](/a/15331) reject its occurrence in Suriname, but
 [Gardner (2008)](/a/5818) believe there is some possibility it really does occur there.
 
 ## ZMB syntypes

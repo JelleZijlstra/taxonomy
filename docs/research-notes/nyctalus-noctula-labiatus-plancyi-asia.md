@@ -78,11 +78,11 @@ with uncertain species limits.
 
 ### Pakistan
 
-There is only a single published record from Pakistan. This record from Kohat, Khyber
-Pakhtunkhwa, was published by Roberts (1977), which I have not seen; the record is
-further discussed by [Bates & Harrison (1997)](/a/27903) and
-[Benda & Gaisler (2015)](/a/29223). Benda & Gaisler cite Roberts (1977) for a 56 mm
-forearm measurement from Pakistan.
+There is only a single published record from Pakistan, given by
+[Roberts (1977)](/a/72931). It is USNM 353138
+([online catalog](http://n2t.net/ark:/65665/3e648ea96-1c7d-4f5c-b303-1862a0f75eeb)),
+collected on 28 August 1964 at Kohat, Khyber Pakhtunkhwa, with a forearm length of 56
+mm.
 
 ### India
 
