@@ -65,4 +65,3 @@ research questions. Keep the prose factual, compact, and traceable to sources.
 - Use existing docs style: `[Author (year)](/a/<article-id>)` for database articles.
 - Use plain Markdown links for external records.
 - Add a `## Sources` section when it is useful to discuss the sources used.
-- Avoid long quotations; summarize, and quote only short phrases needed for evidence.
