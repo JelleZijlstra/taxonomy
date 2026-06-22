@@ -1,6 +1,6 @@
 # Zoologie et Paléontologie Françaises
 
-Gervais published his _Zoologie et paléontologie françaises_ from 1848 to 1852. The work
+Gervais's _Zoologie et paléontologie françaises_ bears the dates 1848–1852, but the work
 is difficult because it lacks a continuous pagination and was published over several
 years. I am not aware of any published work summarizing the publication history of the
 book.
@@ -15,7 +15,7 @@ It consists of three _tomes_, each with a separate title page that repeats the t
 the full work and the dates 1848–1852:
 
 - "Tome I. / Contenant l'énumération méthodique et descriptive des espèces / ainsi que
-  les principles de leur distribution géographique et paléontologique." Consists of
+  les principes de leur distribution géographique et paléontologique." Consists of
   viii + 271 continuously numbered pages.
   - The "Avertissement" starting on p. i lays out the work. Tome I has most of the text.
     Tome II consists of explanations for plates, plus some additional material that came

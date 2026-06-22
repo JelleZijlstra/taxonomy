@@ -63,6 +63,7 @@ research questions. Keep the prose factual, compact, and traceable to sources.
 ## Citation Style
 
 - Use existing docs style: `[Author (year)](/a/<article-id>)` for database articles.
+  Make sure every reference to a source in the database has such a link.
 - Use plain Markdown links for external records.
 - Add a `## Sources` section only when it is useful to discuss the sources used. It does
   not need to list all sources cited inline and linked to database articles, but the

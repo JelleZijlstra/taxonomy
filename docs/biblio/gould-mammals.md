@@ -1,7 +1,7 @@
 # Gould's _Mammals of Australia_
 
 John Gould's _Mammals of Australia_ was published from 1845 to 1863 in 13 parts. The
-librarian F.R. Waterhouse published an admirable volume datailing the publication dates
+librarian F.H. Waterhouse published an admirable volume detailing the publication dates
 of Gould's works {Vertebrata-Gould publication dates.pdf}, and here I provide only a
 brief summary.
 

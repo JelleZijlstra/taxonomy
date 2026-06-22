@@ -9,7 +9,7 @@ R.N., F.R.S., during the years 1839 to 1843_ from 1844 to 1875.
 A few of the confusing aspects are:
 
 - There was about a 30-year gap between the publications of the parts of the treatise on
-  "The seals of the Southen Hemisphere", with pages 1–8 being published in 1844 and
+  "The seals of the Southern Hemisphere", with pages 1–8 being published in 1844 and
   pages 9–12 in 1875. However, some authors cite 1844 for the whole treatise.
 - Similarly, while some of the plates for the work were published in the 1840s, others
   were not published until 1875.
@@ -142,7 +142,7 @@ Among the disagreements are:
   by {Odontoceti-nomenclature (Jefferson 2021).pdf} p. 79, this work contains numerous
   references to events from 1845 and 1846, so it cannot have been published in 1844.
   Evenhuis's claim that parts XIII–XV were a reprint of part IV cannot be verified in
-  the source (see above), as Murquart separately lists parts 12–15 as having been
+  the source (see above), as Muquardt separately lists parts 12–15 as having been
   published by February. It is possible that the parts were reissued during the summer
   of 1847, but there is no conclusive evidence for this.
 - When exactly were parts XIII–XV published? The latest definite date in the work itself

@@ -65,7 +65,7 @@ plates in that volume with their dates of publication. These can be found as fol
 
 - Series 1: PDF p. 23 of vol. 1, comprising livraisons 1 through 20, published in
   1818–1820
-- Series 2: PDF p. 13 of vol. 3, comprising livraisons 20 through 40, published in
+- Series 2: PDF p. 13 of vol. 3, comprising livraisons 21 through 40, published in
   1820–1823
 - Series 3: PDF p. 13 of vol. 5, comprising livraisons 41 through 60, published in
   1824-1829

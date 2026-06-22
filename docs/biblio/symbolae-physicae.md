@@ -30,7 +30,7 @@ The dates at the ends of individual accounts presumably represent the date when
 Ehrenberg wrote the text, not necessarily when they were published. It is clear that the
 cover dates (1828 and 1830) are not correct for the entire contents of the volumes.
 
-There is no pagiation in the work. In the text of the mammal accounts, the footer of
+There is no pagination in the work. In the text of the mammal accounts, the footer of
 every second page contains a small-print signature, ranging from a to z and then further
 from aa, which is conventionally used for citations.
 
