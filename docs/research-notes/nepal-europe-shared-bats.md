@@ -4,11 +4,12 @@ _Jelle S. Zijlstra, June 2026_
 
 Nepal is a long way from Europe, but historically several bat species have been treated
 as occurring in both places. Many such records are now placed in separate species, but
-do any remain? This note reviews the evidence. The likely answer under a critical
-current taxonomy is that no species is securely shared between Nepal and Europe. _Myotis
-blythii_ is the closest candidate, but even there the evidence does not yet strongly
-connect the name-bearing South Asian population with the European _oxygnathus_
-populations.
+do any remain? This note reviews the evidence.
+
+The likely answer under a critical current taxonomy is that no species is securely
+shared between Nepal and Europe. _Myotis blythii_ is the closest candidate, but even
+there the evidence does not yet strongly connect the name-bearing South Asian population
+with the European _oxygnathus_ populations.
 
 The starting point is the Nepalese lists in [Csorba et al. (1999)](/a/1695) and
 [Dahal et al. (2024)](/a/67356). Csorba et al. listed several species or subspecies with
@@ -88,14 +89,12 @@ davidii_. It should not be counted as European _M. mystacinus_.
 
 ### _Tadarida teniotis_
 
-_Tadarida teniotis_ is a recent apparent addition to the Nepal-Europe list rather than
-one of the older Csorba et al. candidates. [Sharma et al. (2021)](/a/72927) recorded _T.
-teniotis_ in Nepal based on acoustic data. [Saikia et al. (2025)](/a/69679) sequenced a
-western Himalayan Indian specimen previously treated as _T. teniotis_ and found it
-strongly divergent from genuine European _T. teniotis_, but close to Asian _T.
-insignis_/_T. latouchei_ sequences. They suggested that the Nepalese record may also
-represent _T. insignis_. The Nepal record should therefore not be counted as secure
-European _T. teniotis_.
+_Tadarida teniotis_ is a recent apparent addition to the Nepal-Europe list.
+[Sharma et al. (2021)](/a/72927) recorded _T. teniotis_ in Nepal based on acoustic data.
+[Saikia et al. (2025)](/a/69679) sequenced a western Himalayan Indian specimen
+previously treated as _T. teniotis_ and found it strongly divergent from genuine
+European _T. teniotis_, but close to Asian _T. insignis_/_T. latouchei_ sequences. They
+suggested that the Nepalese record may also represent _T. insignis_.
 
 ### _Plecotus auritus_ and _Plecotus austriacus_
 
@@ -106,10 +105,10 @@ recognizes _Plecotus homochrous_ and _P. wardi_ as distinct Himalayan/Asian spec
 
 ### _Miniopterus schreibersii_
 
-The older name _Miniopterus schreibersii fuliginosus_ reflects the former broad _M.
-schreibersii_ complex. South Asian material is now treated as _Miniopterus fuliginosus_,
-separate from European _M. schreibersii_ ([Wilson & Mittermeier, 2019](/a/59249);
-[Saikia et al., 2025](/a/69679)).
+The older name _Miniopterus schreibersii fuliginosus_ reflects the former broad
+definition of _M. schreibersii_. South Asian material is now treated as _Miniopterus
+fuliginosus_, separate from European _M. schreibersii_
+([Wilson & Mittermeier, 2019](/a/59249); [Saikia et al., 2025](/a/69679)).
 
 ## South Asian context
 
@@ -139,7 +138,7 @@ specimens directly to European _R. hipposideros_ in the sources checked here.
 _Rhinolophus blasii_ was listed by [Bates & Harrison (1997: 70)](/a/27903) from
 Afghanistan and Pakistan. [Benda & Gaisler (2015)](/a/29223) accepted ten Afghan
 localities and regarded the Afghan range as the easternmost extension of a mainly
-southwestern Palearctic and African species. The Pakistan record is relatively concrete:
+southwestern Palearctic and African species. The Pakistan record is concrete:
 [Roberts (1977)](/a/72931) reported an individual collected in Shalimar Gardens in
 Lahore on 28 December 1968. [Benda & Gaisler (2015)](/a/29223) noted that the only
 records farther east than Afghanistan were from the Lahore area, and treated Afghan
@@ -172,7 +171,7 @@ eastern records are much less convincing than the western ones.
 [Benda & Gaisler (2015)](/a/29223) accepted _P. pipistrellus_ as the most frequently
 recorded Afghan bat, with 35 sites, and identified many Afghan specimens previously
 reported as _P. coromandra_ as _P. pipistrellus_. They placed the eastern edge of the
-range at northern Pakistan and western Kashmir, not Assam or Myanmar. However,
+range at northern Pakistan and western Kashmir, not Assam or Myanmar.
 [Bates et al. (2005:220)](/a/1284) reidentified the Myanmar record as _P. coromandra_.
 The Assam record should be treated as doubtful, and molecular evidence is needed to
 confirm the identity of bats from northwestern South Asia.
@@ -210,7 +209,7 @@ appears much better supported for _N. leisleri_ than for most other candidate na
 Most South Asian populations previously thought to be conspecific with European species
 have now been split out: _Rhinolophus ferrumequinum_ to _R. nippon_, _Eptesicus
 serotinus_ to _Cnephaeus pachyomus_, _Myotis mystacinus_ to _M. nipalensis_, _Plecotus
-auritus_ to _P. homochrous_, _Plecotus austriacus_ to _P. wardi_, and _Miniopterus
+auritus_ to _P. homochrous_, _Plecotus austriacus_ to _P. wardi_, _Miniopterus
 schreibersii_ to _M. fuliginosus_, and _Tadarida teniotis_ to _T. insignis_. South Asian
 _Nyctalus noctula_ may also represent a distinct species, but this has not been
 demonstrated.
@@ -222,7 +221,7 @@ European or western Palearctic names really do reach the northwestern edge of So
 Asia, but [Benda & Gaisler (2015)](/a/29223) also show that some are eastern subspecies,
 distinct morphotypes, or western-edge records that stop well short of Nepal. Outside
 Nepal, _Nyctalus leisleri_ is a clearer example of a bat shared between Europe and the
-western Himalayas, but the checked records stop short of Nepal.
+western Himalayas, but published records stop short of Nepal.
 
 ## Sources
 

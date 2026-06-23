@@ -2,9 +2,9 @@
 
 _Jelle S. Zijlstra, June 2026_
 
-The problem is the identity of the larger noctules reported from the southern Himalayas,
-mainland Southeast Asia, China, Taiwan, and the Philippines: are they _Nyctalus
-noctula_, _N. plancyi_, _N. labiatus_, or some combination of these?
+The problem is the identity of the larger noctule bats reported from the southern
+Himalayas, mainland Southeast Asia, China, Taiwan, and the Philippines: are they
+_Nyctalus noctula_, _N. plancyi_, _N. labiatus_, or some combination of these?
 
 ## Taxonomic context
 
@@ -67,14 +67,13 @@ treated the Afghan record as continuing the northern Indian-subcontinent range a
 southern Hindu Kush and Himalayas. They also left open the possibility that stray
 western/central Palearctic _N. noctula_ could occur in northwestern Afghanistan.
 
-The Afghan material is important because it lies west of the named _labiatus_
-population. Benda & Gaisler found the two Afghan specimens medium-sized: similar to
-European and Middle Eastern _N. noctula_, larger than Chinese _plancyi_, and larger than
-many published measurements of _labiatus_ from Nepal, Darjeeling, and Myanmar. They
-therefore suggested three possibilities: northwestern South Asian large bats could be
-_labiatus_ while smaller eastern bats are _plancyi_; _labiatus_ could instead be the
-senior name for the smaller _plancyi_ group; or there could be a west-to-east size cline
-with uncertain species limits.
+Benda & Gaisler found the two Afghan specimens medium-sized (forearm lengths of 56.6 and
+55.7 mm): similar to European and Middle Eastern _N. noctula_, larger than Chinese
+_plancyi_, and larger than many published measurements of _labiatus_ from Nepal,
+Darjeeling, and Myanmar. They therefore suggested three possibilities: northwestern
+South Asian large bats could be _labiatus_ while smaller eastern bats are _plancyi_;
+_labiatus_ could instead be the senior name for the smaller _plancyi_ group; or there
+could be a west-to-east size cline with uncertain species limits.
 
 ### Pakistan
 
@@ -133,10 +132,11 @@ Earlier regional works had already suggested Vietnamese occurrence.
 Kruskop & Vasenkov noted that this was apparently based on occurrence in nearby China
 rather than a concrete Vietnamese specimen.
 
-The Vietnamese bats were large, externally close to European _N. noctula_, but their
-brown coloration without reddish tones and their morphometric placement were closer to
-the Chinese/South Asian group than to true _N. noctula_. This supports excluding at
-least the Vietnamese population from western/central _N. noctula_.
+The Vietnamese bats were large (forearm lengths of 55.6, 54.1, and 52.1 mm), externally
+close to European _N. noctula_, but their brown coloration without reddish tones and
+their morphometric placement were closer to the Chinese/South Asian group than to true
+_N. noctula_. This supports excluding at least the Vietnamese population from
+western/central _N. noctula_.
 
 ### Malaysia and Singapore
 
@@ -153,19 +153,20 @@ Malaysian records, if any, might be referable to _labiatus_ or _plancyi_.
 
 ### China
 
-China is central to _plancyi_. [Gerbe (1880)](/a/66108) named _plancyi_ from Beijing,
-and the type specimen is BMNH 1882.7.29.2 ([Tate, 1942](/a/11481)). Chinese material has
-been treated both as _N. noctula plancyi_ and as _N. plancyi_.
-[Salgueiro et al. (2007)](/a/72884) found a Chinese _plancyi_ sequence very divergent
-from _N. noctula_, and [Heaney et al. (2012)](/a/12147) compared their Philippine
-specimens with a Sichuan series. [Kruskop & Vasenkov (2016)](/a/28926) compared
-Vietnamese bats with Chinese material and the _plancyi_ holotype.
+[Gerbe (1880)](/a/66108) named _plancyi_ from Beijing, and the type specimen is BMNH
+1882.7.29.2 ([Tate, 1942](/a/11481)). Chinese material has been treated both as _N.
+noctula plancyi_ and as _N. plancyi_. [Salgueiro et al. (2007)](/a/72884) found a
+Chinese _plancyi_ sequence very divergent from _N. noctula_, and
+[Heaney et al. (2012)](/a/12147) compared their Philippine specimens with a Sichuan
+series. [Kruskop & Vasenkov (2016)](/a/28926) compared Vietnamese bats with Chinese
+material and the _plancyi_ holotype.
 
 Some uses of _N. noctula_ in China do appear to refer to true _noctula_.
 [Smith & Xie (2008)](/a/64149) listed _N. noctula_ from Xinjiang, with the Chinese
-subspecies _N. n. mecklenburzevi_, and treated it as widely distributed through Eurasia.
-In the same book they recognized _N. plancyi_ separately, throughout southeastern China
-north to Jilin and on Taiwan, with _plancyi_ and _velutinus_ as Chinese subspecies.
+subspecies given as _N. n. mecklenburzevi_, and treated it as widely distributed through
+Eurasia. In the same book they recognized _N. plancyi_ separately, throughout
+southeastern China north to Jilin and on Taiwan, with _plancyi_ and _velutinus_ as
+Chinese subspecies.
 
 ### Taiwan
 

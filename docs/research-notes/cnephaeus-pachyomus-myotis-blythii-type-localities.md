@@ -5,7 +5,7 @@ _Jelle S. Zijlstra, June 2026_
 Two bat names described by [Tomes (1857)](/a/15050) have been linked to "Nassenabad" or
 Nasirabad/Rajputana: _Scotophilus pachyomus_, now usually placed in _Cnephaeus_, and
 _Vespertilio blythii_, now _Myotis blythii_. The evidence is similar but not identical
-for the two names. _S. pachyomus_ was originally recorded only from "India" and Capt.
+for the two names: _S. pachyomus_ was originally recorded only from "India" and Capt.
 Boys, whereas _V. blythii_ was described from a specimen labelled "India, Nassenabad,
 from Mr. Warwick, 1848" and believed by Tomes to have been collected by Capt. Boys. A
 third bat, _Vespertilio caliginosus_ (currently _Submyotodon caliginosus_), was also
@@ -80,17 +80,10 @@ The 1845 East-India Register lists the 6th Light Cavalry at Loodianah, where it 
 arrived in January 1844. [Anderson (1881)](/a/69773) recorded two skins of _Nyctinomus
 plicatus_ in the Calcutta museum, Blyth's Catalogue numbers 88A and 88B, from "Ludhiána"
 and presented by Captain Boys in 1845. Ludhiána/Loodianah is Ludhiana, in present-day
-Punjab, India, and this record matches the regiment's 1845 station. Later East-India
-Register volumes show the regiment at other stations: in 1846 the 6th Light Cavalry was
-listed at Sinde, and in 1847 at Ferozepore on field service. In both years Boys remained
-listed with the regiment as interpreter and quartermaster.
-
-[Gray (1873)](/a/57431) recorded several Boys or Boyes turtle specimens in the British
-Museum. On pp. 50-51 these include _Kachuga trilineata_ from "Nepaul. Boys", _K.
-trilineata_ from "India, Boys. 48, 2, 1, 35", _K. trilineata_ from "India, Nepaul. Boys.
-48, 2, 1, 29", and _Kachuga dentata_ from "India. Capt. Boys. 48, 2, 1, 37". Others
-appear on pp. 7, 75, 76, 78, 88. Several records are attributed to "Boyes" rather than
-Boys, perhaps a misspelling.
+Punjab, India. Later East-India Register volumes show the regiment at other stations: in
+1846 the 6th Light Cavalry was listed at Sinde, and in 1847 at Ferozepore on field
+service. In both years Boys remained listed with the regiment as interpreter and
+quartermaster.
 
 The East-India Register for 1849 lists Boys as a captain, with captaincy dated 3 April
 1848, and still in the 6th Light Cavalry; the 1854 register still lists him as captain.
@@ -103,7 +96,12 @@ Zoological specimens associated with Boys include:
 - The _Nyctinomus plicatus_ specimens from Ludhiana, Punjab, discussed above
   ([Anderson, 1881](/a/69773)).
 - Various turtles from "India" and "Nepaul", mostly catalogued at the BMNH in 1848
-  ([Gray, 1873](/a/57431); [Boulenger, 1889:265](/a/57440)).
+  ([Gray, 1873](/a/57431); [Boulenger, 1889:265](/a/57440)), some under the name
+  "Boyes", likely a misspelling of Boys. In [Gray (1873)](/a/57431), these include a
+  cluster on pp. 50–51: _Kachuga trilineata_ from "Nepaul. Boys", _K. trilineata_ from
+  "India, Boys. 48, 2, 1, 35", _K. trilineata_ from "India, Nepaul. Boys. 48, 2, 1, 29",
+  and _Kachuga dentata_ from "India. Capt. Boys. 48, 2, 1, 37". Others appear on pp. 7,
+  75, 76, 78, 88.
 - The type specimen of _Felis ornata_ Gray, 1830. The 1830 publication was merely a
   plate, but [Pocock (1951:123)](/a/35408) gives the type as BMNH 48.8.14.3 from
   "Nusserabad, Rajputana (Capt. W. J. E. Boys)". This indicates the specimen was
@@ -123,7 +121,8 @@ for _Myotis blythii_. All three species otherwise occur only along the southern 
 the Himalayas in this region. An occurrence in Rajasthan is perhaps not out of the
 question, especially for _Myotis blythii_, which otherwise has a wide distribution
 ranging over many habitat types in western Eurasia, but for all three it is
-zoogeographically more plausible that the type specimens also came from elsewhere.
+zoogeographically more plausible that the type specimens came from the Himalayan
+foothills.
 
 ## Assessment
 
