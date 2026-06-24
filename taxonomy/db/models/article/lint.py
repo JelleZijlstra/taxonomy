@@ -3309,7 +3309,7 @@ COVERED_FOLDERS = (
 def must_have_new_names(art: Article, cfg: LintConfig) -> Iterable[str]:
     if not art.name.endswith(" nov.pdf") or art.kind != ArticleKind.electronic:
         return
-    if not art.path.startswith(COVERED_FOLDERS):
+    if art.path is None or not art.path.startswith(COVERED_FOLDERS):
         return
     if any(art.get_new_names()) or any(art.get_classification_entries()):
         return
