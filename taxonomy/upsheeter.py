@@ -64,6 +64,13 @@ def upsheet(
 ) -> None:
     if (sheet_name is None) == (sheet_url is None):
         raise ValueError("Pass exactly one of sheet_name or sheet_url")
+    if sheet_url is not None:
+        sheet_target = sheet_url
+        use_sheet_url = True
+    else:
+        assert sheet_name is not None
+        sheet_target = sheet_name
+        use_sheet_url = False
     options = get_options()
     backup_path = (
         options.data_path
@@ -75,17 +82,13 @@ def upsheet(
     print(f"Downloading {backup_path_name} sheet...")
     try:
         gc = gspread.oauth()
-        sheet = (
-            gc.open_by_url(sheet_url) if sheet_url is not None else gc.open(sheet_name)
-        )
+        sheet = gc.open_by_url(sheet_target) if use_sheet_url else gc.open(sheet_target)
     except google.auth.exceptions.RefreshError:
         print("need to refresh token")
         token_path = Path("~/.config/gspread/authorized_user.json").expanduser()
         token_path.unlink(missing_ok=True)
         gc = gspread.oauth()
-        sheet = (
-            gc.open_by_url(sheet_url) if sheet_url is not None else gc.open(sheet_name)
-        )
+        sheet = gc.open_by_url(sheet_target) if use_sheet_url else gc.open(sheet_target)
 
     worksheet = sheet.get_worksheet_by_id(worksheet_gid)
     raw_rows = worksheet.get()

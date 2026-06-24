@@ -334,6 +334,8 @@ def _get_type_locality_age_string(nam: Name) -> str:
         return ""
     min_period = nam.type_locality.min_period
     max_period = nam.type_locality.max_period
+    if min_period is None or max_period is None:
+        return ""
     if min_period == max_period:
         return min_period.name
     else:
