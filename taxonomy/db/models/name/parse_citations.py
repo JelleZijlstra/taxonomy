@@ -171,7 +171,9 @@ def parse_citation(citation: str) -> ParsedCitation:
 
 
 def run_test() -> None:
-    training_data = Path(__file__).parent / "training.txt"
+    training_data = (
+        Path(__file__).parent.parent.parent.parent / "notes/citation_training.txt"
+    )
     lines = training_data.read_text().splitlines()
     series_count = 0
     volume_count = 0

@@ -1,4 +1,5 @@
 *.pyc
+tmp/
 taxonomy/db/settings.py
 .DS_Store
 *.sublime-*
