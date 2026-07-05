@@ -29,7 +29,7 @@ from taxonomy import adt, events, getinput, parsing
 from taxonomy.apis import bhl
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
 from taxonomy.apis.zoobank import get_zoobank_data, get_zoobank_data_for_act
-from taxonomy.db import constants, helpers, models
+from taxonomy.db import constants, coordinate_lint, helpers, models
 from taxonomy.db.constants import (
     URL,
     AgeClass,
@@ -769,7 +769,7 @@ class Name(BaseModel):
 
     def open_coordinates(self) -> None:
         for tag in self.get_tags(self.type_tags, TypeTag.Coordinates):
-            point = models.name.lint.make_point(tag)
+            point = coordinate_lint.make_point(tag.latitude, tag.longitude)
             if point is not None:
                 subprocess.check_call(["open", point.openstreetmap_url])
 

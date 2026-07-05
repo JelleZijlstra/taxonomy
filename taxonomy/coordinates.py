@@ -1,8 +1,10 @@
 # static analysis: ignore[attribute_is_never_set]
 import functools
 import json
+import math
 from dataclasses import dataclass
-from typing import Self
+from pathlib import Path
+from typing import Any, Self
 
 import unidecode
 
@@ -86,14 +88,12 @@ def get_intersection(l1: Line | VerticalLine, l2: Line | VerticalLine) -> Point 
 
 @functools.lru_cache(maxsize=256)
 def get_polygon(path: str) -> list[list[LineSegment]]:
-    base_path = get_options().geojson_path
-    full_path = base_path / (path + ".json")
+    full_path = _get_geojson_file(path)
     with full_path.open() as f:
         data = json.load(f)
     result: list[list[LineSegment]] = []
     for feature in data["features"]:
-        coords_list = feature["geometry"]["coordinates"]
-        for coords in coords_list:
+        for coords in _get_coordinate_rings(feature["geometry"]):
             lines = []
             for i in range(len(coords) - 1):
                 p1 = _make_point(coords[i])
@@ -104,6 +104,16 @@ def get_polygon(path: str) -> list[list[LineSegment]]:
             )
             result.append(lines)
     return result
+
+
+def _get_coordinate_rings(geometry: dict[str, Any]) -> list[list[list[float]]]:
+    match geometry["type"]:
+        case "Polygon":
+            return geometry["coordinates"]
+        case "MultiPolygon":
+            return [ring for polygon in geometry["coordinates"] for ring in polygon]
+        case _:
+            raise ValueError(f"unsupported GeoJSON geometry type {geometry['type']!r}")
 
 
 def _make_point(coords: list[float]) -> Point:
@@ -120,6 +130,44 @@ def is_in_polygon(p: Point, path: str) -> bool:
         if is_in_polygon_single(p, polygon):
             return True
     return False
+
+
+def is_in_bounding_box(p: Point, path: str) -> bool:
+    for polygon in get_polygon(path):
+        latitudes = [line.p1.latitude for line in polygon]
+        longitudes = [line.p1.longitude for line in polygon]
+        if min(latitudes) <= p.latitude <= max(latitudes) and min(
+            longitudes
+        ) <= p.longitude <= max(longitudes):
+            return True
+    return False
+
+
+def get_distance_to_polygon(p: Point, path: str) -> float:
+    distances: list[float] = []
+    for polygon in get_polygon(path):
+        if is_in_polygon_single(p, polygon):
+            return 0
+        distances.extend(get_distance_to_line_segment(p, line) for line in polygon)
+    return min(distances)
+
+
+def get_distance_to_line_segment(p: Point, line: LineSegment) -> float:
+    x = p.longitude
+    y = p.latitude
+    x1 = line.p1.longitude
+    y1 = line.p1.latitude
+    x2 = line.p2.longitude
+    y2 = line.p2.latitude
+    dx = x2 - x1
+    dy = y2 - y1
+    if dx == 0 and dy == 0:
+        return math.hypot(x - x1, y - y1)
+    fraction = ((x - x1) * dx + (y - y1) * dy) / (dx * dx + dy * dy)
+    fraction = max(0, min(1, fraction))
+    projected_x = x1 + fraction * dx
+    projected_y = y1 + fraction * dy
+    return math.hypot(x - projected_x, y - projected_y)
 
 
 def is_in_polygon_single(p: Point, polygon: list[LineSegment]) -> bool:
@@ -160,6 +208,28 @@ COUNTRY_RENAMES = {
     "ascension": "saint_helena_ascension_and_tristan_da_cunha",
     "tristan_da_cunha": "saint_helena_ascension_and_tristan_da_cunha",
 }
+REGION_RENAMES = {
+    "india": {
+        "andaman_and_nicobar_islands": "andaman_nicobar_island",
+        "dadra_and_nagar_haveli": "dadara_nagar_havelli",
+        "daman_and_diu": "daman_diu",
+        "delhi": "nct_of_delhi",
+        "jammu_and_kashmir": "jammu_kashmir",
+        "orissa": "odisha",
+        "pondicherry": "puducherry",
+        "punjab_(india)": "punjab",
+    },
+    "switzerland": {
+        "appenzell_ausserrhoden": "appenzell-ausserrhoden",
+        "appenzell_innerrhoden": "appenzell-innerrhoden",
+        "bern": "berne",
+        "graubunden": "grisons",
+        "jura_(switzerland)": "jura",
+        "luzern": "lucerne",
+        "neuchatel": "neuchâtel",
+        "st._gallen": "st-gallen",
+    },
+}
 IGNORED_COUNTRIES = {
     "Antarctica",
     "Atlantic Ocean",
@@ -171,24 +241,65 @@ IGNORED_COUNTRIES = {
 }
 
 
+def _path_exists(path: str) -> bool:
+    return _get_geojson_file(path).exists()
+
+
+def _get_geojson_file(path: str) -> Path:
+    for base_path in _get_geojson_roots():
+        json_path = base_path / (path + ".json")
+        if json_path.exists():
+            return json_path
+        geojson_path = base_path / (path + ".geojson")
+        if geojson_path.exists():
+            return geojson_path
+    return _get_geojson_roots()[-1] / (path + ".geojson")
+
+
+def _get_geojson_roots() -> list[Path]:
+    options = get_options()
+    paths = []
+    generated_geojson_path = getattr(options, "generated_geojson_path", Path())
+    if generated_geojson_path != Path():
+        paths.append(generated_geojson_path)
+    paths.append(options.geojson_path)
+    return paths
+
+
+def _transform_name(name: str) -> str:
+    transformed_name = name.lower().replace(" ", "_")
+    transformed_name = unidecode.unidecode(transformed_name)
+    return COUNTRY_RENAMES.get(transformed_name, transformed_name)
+
+
 @functools.lru_cache(maxsize=256)
 def get_path(country_name: str) -> str | None:
     if country_name in IGNORED_COUNTRIES:
         return None
-    base_path = get_options().geojson_path
 
-    def path_exists(path: str) -> bool:
-        return (base_path / (path + ".json")).exists()
-
-    transformed_name = country_name.lower().replace(" ", "_")
-    transformed_name = unidecode.unidecode(transformed_name)
-    transformed_name = COUNTRY_RENAMES.get(transformed_name, transformed_name)
-    if path_exists(f"countries/{transformed_name}"):
+    transformed_name = _transform_name(country_name)
+    if _path_exists(f"countries/{transformed_name}"):
         return f"countries/{transformed_name}"
 
-    for directory in (base_path / "areas").iterdir():
-        if directory.is_dir():
-            if path_exists(f"areas/{directory.name}/{transformed_name}"):
-                return f"areas/{directory.name}/{transformed_name}"
+    for base_path in _get_geojson_roots():
+        areas_path = base_path / "areas"
+        if not areas_path.exists():
+            continue
+        for directory in areas_path.iterdir():
+            if directory.is_dir():
+                if _path_exists(f"areas/{directory.name}/{transformed_name}"):
+                    return f"areas/{directory.name}/{transformed_name}"
 
     raise ValueError(f"Country {country_name!r} not found")
+
+
+@functools.lru_cache(maxsize=1024)
+def get_region_path(region_name: str, country_name: str) -> str | None:
+    """Return a GeoJSON path for a subnational region, if available."""
+    if country_name in IGNORED_COUNTRIES:
+        return None
+    country_name = _transform_name(country_name)
+    region_name = _transform_name(region_name)
+    region_name = REGION_RENAMES.get(country_name, {}).get(region_name, region_name)
+    path = f"states/{country_name}/{region_name}"
+    return path if _path_exists(path) else None

@@ -60,6 +60,7 @@ class Options(NamedTuple):
     openai_key: str = ""
 
     geojson_path: Path = Path()
+    generated_geojson_path: Path = Path()
 
     @property
     def burst_path(self) -> Path:
@@ -79,6 +80,12 @@ def parse_path(section: Mapping[str, str], key: str, base_path: Path) -> Path:
         if not path.is_absolute():
             path = base_path / path
         return path
+
+
+def parse_optional_path(section: Mapping[str, str], key: str, base_path: Path) -> Path:
+    if key not in section:
+        return Path()
+    return parse_path(section, key, base_path)
 
 
 _network_available: bool | None = None
@@ -171,6 +178,9 @@ def parse_config_file(filename: Path) -> Options:
             bhl_api_key=section.get("bhl_api_key", ""),
             zotero_key=section.get("zotero_key", ""),
             geojson_path=parse_path(section, "geojson_path", base_path),
+            generated_geojson_path=parse_optional_path(
+                section, "generated_geojson_path", base_path
+            ),
             openai_key=section.get("openai_key", ""),
             book_sheet=section.get("book_sheet", ""),
             book_sheet_gid=int(section.get("book_sheet_gid", "0")),

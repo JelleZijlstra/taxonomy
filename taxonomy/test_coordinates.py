@@ -1,0 +1,197 @@
+import math
+from pathlib import Path
+from types import SimpleNamespace
+from typing import Self, cast
+
+import pytest
+
+from taxonomy import coordinates
+from taxonomy.db import coordinate_lint
+from taxonomy.db.constants import RegionKind
+from taxonomy.db.models.region import Region
+
+
+class FakeRegion:
+    def __init__(self, name: str, parent: Self | None = None) -> None:
+        self.name = name
+        self.parent = parent
+        self.children: list[Self] = []
+        if parent is not None:
+            parent.children.append(self)
+
+    def parent_of_kind(self, kind: RegionKind) -> Self | None:
+        assert kind is RegionKind.country
+        region: Self | None = self
+        while region is not None:
+            if region.parent is None:
+                return region
+            region = region.parent
+        return None
+
+
+def test_get_region_path(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    geojson_path = tmp_path / "geojson"
+    (geojson_path / "states" / "usa").mkdir(parents=True)
+    (geojson_path / "states" / "usa" / "new_york.json").write_text("{}")
+    (geojson_path / "states" / "india").mkdir(parents=True)
+    (geojson_path / "states" / "india" / "odisha.json").write_text("{}")
+    (geojson_path / "states" / "india" / "nct_of_delhi.json").write_text("{}")
+    (geojson_path / "states" / "switzerland").mkdir(parents=True)
+    (geojson_path / "states" / "switzerland" / "grisons.geojson").write_text("{}")
+    (geojson_path / "states" / "switzerland" / "neuchâtel.geojson").write_text("{}")
+    generated_geojson_path = tmp_path / "generated_geojson"
+    (generated_geojson_path / "states" / "germany").mkdir(parents=True)
+    (generated_geojson_path / "states" / "germany" / "bavaria.json").write_text("{}")
+
+    coordinates.get_region_path.cache_clear()
+    monkeypatch.setattr(
+        coordinates,
+        "get_options",
+        lambda: SimpleNamespace(
+            geojson_path=geojson_path, generated_geojson_path=generated_geojson_path
+        ),
+    )
+
+    assert coordinates.get_region_path("Bavaria", "Germany") == (
+        "states/germany/bavaria"
+    )
+    assert coordinates.get_region_path("New York", "United States") == (
+        "states/usa/new_york"
+    )
+    assert coordinates.get_region_path("Orissa", "India") == "states/india/odisha"
+    assert coordinates.get_region_path("Delhi", "India") == "states/india/nct_of_delhi"
+    assert coordinates.get_region_path("Graubünden", "Switzerland") == (
+        "states/switzerland/grisons"
+    )
+    assert coordinates.get_region_path("Neuchâtel", "Switzerland") == (
+        "states/switzerland/neuchâtel"
+    )
+    assert coordinates.get_region_path("Ontario", "United States") is None
+    coordinates.get_region_path.cache_clear()
+
+
+def test_make_point() -> None:
+    assert coordinate_lint.make_point("40°30'N", "74°15'W") == coordinates.Point(
+        -74.25, 40.5
+    )
+    assert coordinate_lint.make_point("40.5", "-74.25") == coordinates.Point(
+        -74.25, 40.5
+    )
+    assert coordinate_lint.make_point("40 30 N", "74 15 W") == coordinates.Point(
+        -74.25, 40.5
+    )
+    assert coordinate_lint.make_point("91", "-74.25") is None
+
+
+def test_standardize_coordinate() -> None:
+    assert coordinate_lint.standardize_coordinate("40.5°N", is_latitude=True) == (
+        "40.5°N",
+        40.5,
+    )
+    assert coordinate_lint.standardize_coordinate("40.5", is_latitude=True) == (
+        "40.5°N",
+        40.5,
+    )
+    assert coordinate_lint.standardize_coordinate("-74.25", is_latitude=False) == (
+        "74.25°W",
+        -74.25,
+    )
+    assert coordinate_lint.standardize_coordinate("40 30 N", is_latitude=True) == (
+        "40°30'N",
+        40.5,
+    )
+
+
+def test_get_distance_to_line_segment() -> None:
+    segment = coordinates.LineSegment.from_points(
+        coordinates.Point(0, 0), coordinates.Point(2, 0)
+    )
+    assert (
+        coordinates.get_distance_to_line_segment(coordinates.Point(1, 3), segment) == 3
+    )
+    assert math.isclose(
+        coordinates.get_distance_to_line_segment(coordinates.Point(3, 4), segment),
+        math.sqrt(17),
+    )
+
+
+def test_check_point_in_region_reports_actual_subnational_region(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    country = FakeRegion("Country")
+    expected = cast(Region, FakeRegion("Expected State", country))
+    FakeRegion("Actual State", country)
+    point = coordinates.Point(1, 1)
+
+    def get_region_path(region_name: str, country_name: str) -> str | None:
+        assert country_name == "Country"
+        return {"Expected State": "expected", "Actual State": "actual"}.get(region_name)
+
+    def is_in_polygon(point: coordinates.Point, path: str) -> bool:
+        return path in {"country", "actual"}
+
+    monkeypatch.setattr(coordinates, "get_path", lambda country_name: "country")
+    monkeypatch.setattr(coordinates, "get_region_path", get_region_path)
+    monkeypatch.setattr(coordinates, "is_in_polygon", is_in_polygon)
+
+    assert list(coordinate_lint.check_point_in_region(point, expected)) == [
+        "coordinates Point(longitude=1, latitude=1) are in Actual State, "
+        "not Expected State"
+    ]
+
+
+def test_check_point_in_region_allows_nearest_expected_region(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    country = FakeRegion("Country")
+    expected = cast(Region, FakeRegion("Expected State", country))
+    FakeRegion("Actual State", country)
+    point = coordinates.Point(1, 1)
+
+    def get_region_path(region_name: str, country_name: str) -> str | None:
+        assert country_name == "Country"
+        return {"Expected State": "expected", "Actual State": "actual"}.get(region_name)
+
+    def is_in_polygon(point: coordinates.Point, path: str) -> bool:
+        return path == "country"
+
+    monkeypatch.setattr(coordinates, "get_path", lambda country_name: "country")
+    monkeypatch.setattr(coordinates, "get_region_path", get_region_path)
+    monkeypatch.setattr(coordinates, "is_in_polygon", is_in_polygon)
+    monkeypatch.setattr(
+        coordinates,
+        "get_distance_to_polygon",
+        lambda point, path: {"expected": 1.0, "actual": 10.0}[path],
+    )
+
+    assert list(coordinate_lint.check_point_in_region(point, expected)) == []
+
+
+def test_check_point_in_region_reports_nearest_subnational_region(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    country = FakeRegion("Country")
+    expected = cast(Region, FakeRegion("Expected State", country))
+    FakeRegion("Actual State", country)
+    point = coordinates.Point(1, 1)
+
+    def get_region_path(region_name: str, country_name: str) -> str | None:
+        assert country_name == "Country"
+        return {"Expected State": "expected", "Actual State": "actual"}.get(region_name)
+
+    def is_in_polygon(point: coordinates.Point, path: str) -> bool:
+        return path == "country"
+
+    monkeypatch.setattr(coordinates, "get_path", lambda country_name: "country")
+    monkeypatch.setattr(coordinates, "get_region_path", get_region_path)
+    monkeypatch.setattr(coordinates, "is_in_polygon", is_in_polygon)
+    monkeypatch.setattr(
+        coordinates,
+        "get_distance_to_polygon",
+        lambda point, path: {"expected": 10.0, "actual": 1.0}[path],
+    )
+
+    assert list(coordinate_lint.check_point_in_region(point, expected)) == [
+        "coordinates Point(longitude=1, latitude=1) are closest to Actual State, "
+        "not Expected State"
+    ]

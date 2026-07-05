@@ -11,7 +11,7 @@ from clirm import Field
 
 from taxonomy import adt, events, getinput
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
-from taxonomy.db import models
+from taxonomy.db import coordinate_lint, helpers, models
 from taxonomy.db.constants import Managed
 
 from .article import Article
@@ -258,6 +258,39 @@ class Location(BaseModel):
             yield f"{self}: missing min_period"
         if self.max_period is None and self.min_period is not None:
             yield f"{self}: missing max_period"
+        if self.latitude is None and self.longitude is None:
+            return
+        if self.latitude is None:
+            yield f"{self}: missing latitude"
+            return
+        if self.longitude is None:
+            yield f"{self}: missing longitude"
+            return
+        try:
+            latitude, _ = coordinate_lint.standardize_coordinate(
+                self.latitude, is_latitude=True
+            )
+            longitude, _ = coordinate_lint.standardize_coordinate(
+                self.longitude, is_latitude=False
+            )
+        except helpers.InvalidCoordinates:
+            yield f"{self}: invalid coordinates {self.latitude}, {self.longitude}"
+            return
+        if (latitude, longitude) != (self.latitude, self.longitude):
+            message = (
+                f"{self}: coordinates should be {latitude}, {longitude}, not "
+                f"{self.latitude}, {self.longitude}"
+            )
+            if cfg.autofix:
+                print(message)
+                self.latitude = latitude
+                self.longitude = longitude
+            else:
+                yield message
+        point = coordinate_lint.make_point(self.latitude, self.longitude)
+        assert point is not None
+        for message in coordinate_lint.check_point_in_region(point, self.region):
+            yield f"{self}: {message}"
 
     def should_be_specified(self) -> bool:
         if self.region.has_children():

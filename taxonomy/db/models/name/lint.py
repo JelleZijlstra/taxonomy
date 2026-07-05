@@ -33,11 +33,11 @@ import clirm
 import Levenshtein
 import requests
 
-from taxonomy import adt, coordinates, getinput, urlparse
-from taxonomy.apis import bhl, nominatim
+from taxonomy import adt, getinput, urlparse
+from taxonomy.apis import bhl
 from taxonomy.apis.zoobank import clean_lsid, get_zoobank_data, is_valid_lsid
 from taxonomy.config import is_network_available
-from taxonomy.db import helpers, models
+from taxonomy.db import coordinate_lint, helpers, models
 from taxonomy.db.constants import (
     AgeClass,
     ArticleKind,
@@ -52,7 +52,6 @@ from taxonomy.db.constants import (
     OriginalCitationDataLevel,
     PhylogeneticDefinitionType,
     Rank,
-    RegionKind,
     SpeciesBasis,
     SpeciesGroupType,
     SpeciesNameKind,
@@ -1704,44 +1703,18 @@ def fix_type_specimen_link(url: str) -> str:
     return url
 
 
-def make_point(tag: TypeTag.Coordinates) -> coordinates.Point | None:  # type: ignore[name-defined]
-    try:
-        _, lat = helpers.standardize_coordinates(tag.latitude, is_latitude=True)
-        _, lon = helpers.standardize_coordinates(tag.longitude, is_latitude=False)
-    except helpers.InvalidCoordinates:
-        return None
-    return coordinates.Point(lon, lat)
-
-
 @LINT.add("coordinates")
 def check_coordinates(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.type_locality is None:
         return
     for tag in nam.get_tags(nam.type_tags, TypeTag.Coordinates):
-        point = make_point(tag)
+        point = coordinate_lint.make_point(tag.latitude, tag.longitude)
         if point is None:
             continue  # reported elsewhere
 
-        tl_region = nam.type_locality.region
-        tl_country = tl_region.parent_of_kind(RegionKind.country)
-        if tl_country is None:
-            continue
-        polygon_path = coordinates.get_path(tl_country.name)
-        if polygon_path is not None and coordinates.is_in_polygon(point, polygon_path):
-            continue
-        osm_country = nominatim.get_openstreetmap_country(point)
-        if osm_country is None:
-            yield f"cannot place coordinates {point} in any country (expected {tl_country.name})"
-            continue
-        our_country = tl_country.name
-        if osm_country == our_country:
-            continue
-        our_country = nominatim.HESP_COUNTRY_TO_OSM_COUNTRY.get(
-            our_country, our_country
+        yield from coordinate_lint.check_point_in_region(
+            point, nam.type_locality.region
         )
-        if our_country == osm_country:
-            continue
-        yield f"coordinates {point} are in {osm_country}, not {tl_country.name}"
 
 
 @LINT.add("type_locality_strict")
@@ -3789,7 +3762,7 @@ def extract_date_from_verbatim(nam: Name, cfg: LintConfig) -> Iterable[str]:
     # regexes above don't match.
     try:
         verbatim = nam.get_data("verbatim_citation")
-    except (KeyError, TypeError, json.JSONDecodeError):
+    except KeyError, TypeError, json.JSONDecodeError:
         return
     if isinstance(verbatim, str):
         verbatim = [verbatim]
