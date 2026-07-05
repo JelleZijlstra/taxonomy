@@ -5,6 +5,10 @@ from aiohttp import web
 
 from . import index
 
+ACCESS_LOG_FORMAT = (
+    '%a %{X-Forwarded-For}i %t "%r" %s %b "%{Referer}i" "%{User-Agent}i"'
+)
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("hsweb")
     parser.add_argument("-p", "--port", type=int)
@@ -17,4 +21,8 @@ if __name__ == "__main__":
         logger = logging.getLogger("peewee")
         logger.setLevel(logging.DEBUG)
 
-    web.run_app(index.make_app(args.build_root), port=args.port)
+    web.run_app(
+        index.make_app(args.build_root),
+        port=args.port,
+        access_log_format=ACCESS_LOG_FORMAT,
+    )

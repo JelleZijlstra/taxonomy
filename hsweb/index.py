@@ -10,6 +10,20 @@ from . import schema
 HESPEROMYS_ROOT = Path("/Users/jelle/py/hesperomys")
 STATIC_DIR = Path(__file__).parent / "static"
 GAME_DATA_DIR = Path(__file__).parent / "game_data"
+ROBOTS_TXT = """\
+User-agent: Baiduspider
+Disallow: /
+
+User-agent: PetalBot
+Disallow: /
+
+User-agent: Applebot
+Disallow: /
+
+User-agent: *
+Disallow: /graphql
+Crawl-delay: 10
+"""
 
 
 @lru_cache
@@ -36,9 +50,24 @@ async def favicon_handler(request: web.Request) -> web.Response:
     )
 
 
+async def robots_handler(request: web.Request) -> web.Response:
+    return web.Response(text=ROBOTS_TXT, content_type="text/plain")
+
+
 async def on_prepare(request: web.Request, response: web.Response) -> None:
     response.headers["Access-Control-Allow-Origin"] = "http://localhost:3000"
     response.headers["Access-Control-Allow-Headers"] = "*"
+
+
+@web.middleware
+async def graphql_compression_middleware(
+    request: web.Request,
+    handler: Callable[[web.Request], Awaitable[web.StreamResponse]],
+) -> web.StreamResponse:
+    response = await handler(request)
+    if request.path == "/graphql":
+        response.enable_compression()
+    return response
 
 
 def make_app(build_root: str | None = None) -> web.Application:
@@ -46,14 +75,19 @@ def make_app(build_root: str | None = None) -> web.Application:
         hesperomys_dir = HESPEROMYS_ROOT
     else:
         hesperomys_dir = Path(build_root)
-    app = web.Application()
+    app = web.Application(middlewares=[graphql_compression_middleware])
     # Validate schema consistency for frontend queries before serving
     schema.validate_no_conflicting_model_fields(schema.schema)
     GraphQLView.attach(app, schema=schema.schema, graphiql=True)
     app.router.add_static("/static", hesperomys_dir / "build" / "static")
     # Serve pre-generated game data files
     app.router.add_static("/games/data", GAME_DATA_DIR)
-    app.add_routes([web.get("/favicon.ico", favicon_handler)])
+    app.add_routes(
+        [
+            web.get("/favicon.ico", favicon_handler),
+            web.get("/robots.txt", robots_handler),
+        ]
+    )
 
     # Delegate everything else to React
     react_handler = make_static_handler("index.html", "text/html", hesperomys_dir)
