@@ -26,7 +26,6 @@
 - Python 3.14+, 4-space indent, UTF-8.
 - Formatting: Black; Linting: Ruff (target py312).
 - Prefer type hints; run `mypy` locally.
-- Names: modules/functions/vars snake_case; classes CamelCase; constants UPPER_SNAKE.
 - Isolate I/O and network; keep core logic in `taxonomy/`.
 
 ## Testing Guidelines
@@ -53,3 +52,13 @@
   species name matches the genus it's in.
 - If the source book has text with multiple columns per page, use the split_lines()
   function to fix this.
+
+## General guidelines
+
+- Do not edit the database unless expressly intructed to do so. By default, leave
+  database changes to humans.
+- When evaluating a taxonomic question, prefer to use articles that are already in the
+  database and library. If you encounter relevant references that are not yet in the
+  database, download a PDF if possible and put it in new_path (as configured in
+  taxonomy.ini); if you are unable to download a PDF, instead include a link to the
+  article when you respond to the user.

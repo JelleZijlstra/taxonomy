@@ -65,7 +65,11 @@ async def graphql_compression_middleware(
     handler: Callable[[web.Request], Awaitable[web.StreamResponse]],
 ) -> web.StreamResponse:
     response = await handler(request)
-    if request.path == "/graphql":
+    if (
+        request.path == "/graphql"
+        and isinstance(response, web.Response)
+        and response.body is not None
+    ):
         response.enable_compression()
     return response
 

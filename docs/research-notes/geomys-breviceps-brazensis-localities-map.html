@@ -1,0 +1,1185 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="referrer" content="no-referrer" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; style-src 'unsafe-inline' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'"
+    />
+    <title>Geomys Localities</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        background: light-dark(rgb(255 255 255), rgb(24 24 24));
+      }
+      html,
+      body {
+        margin: 0;
+      }
+      body {
+        box-sizing: border-box;
+        padding: 1rem;
+        background: inherit;
+      }
+      iframe {
+        display: block;
+        width: 100%;
+        max-width: 736px;
+        height: calc(100vh - 2rem);
+        margin: 0 auto;
+        border: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <iframe
+      sandbox="allow-scripts"
+      referrerpolicy="no-referrer"
+      title="Geomys Localities"
+      srcdoc='&lt;!doctype html&gt;
+&lt;html lang="en"&gt;
+&lt;head&gt;
+&lt;meta charset="utf-8"&gt;
+&lt;meta name="viewport" content="width=device-width, initial-scale=1"&gt;
+&lt;meta name="referrer" content="no-referrer"&gt;
+&lt;meta http-equiv="Content-Security-Policy" content="default-src &#x27;none&#x27;; script-src &#x27;unsafe-inline&#x27; &#x27;unsafe-eval&#x27; &#x27;wasm-unsafe-eval&#x27; blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; style-src &#x27;unsafe-inline&#x27; blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src &#x27;none&#x27;; object-src &#x27;none&#x27;; base-uri &#x27;none&#x27;; form-action &#x27;none&#x27;"&gt;
+&lt;title&gt;Geomys Localities&lt;/title&gt;
+&lt;style&gt;:root {
+  color-scheme: light dark;
+  background-color: var(--background) !important;
+
+  /* Agent-facing contract; keep in sync with SKILL.md. */
+  --background: light-dark(rgb(255 255 255), rgb(24 24 24));
+  --foreground: light-dark(rgb(26 28 31), rgb(255 255 255));
+  --card: color-mix(in oklab, var(--foreground) 5%, transparent);
+  --card-foreground: var(--foreground);
+  --popover: light-dark(rgb(255 255 255), rgb(45 45 45));
+  --popover-foreground: var(--foreground);
+  --primary: light-dark(rgb(51 156 255), rgb(131 195 255));
+  --primary-foreground: light-dark(rgb(255 255 255), rgb(13 13 13));
+  --secondary: light-dark(rgb(255 255 255 / 96%), rgb(54 54 54 / 96%));
+  --secondary-foreground: var(--foreground);
+  --muted: color-mix(in srgb, var(--foreground) 10%, transparent);
+  --muted-foreground: light-dark(
+    rgb(26 28 31 / 49.4%),
+    rgb(255 255 255 / 49.8%)
+  );
+  --accent: light-dark(rgb(229 242 255), rgb(13 39 63));
+  --accent-foreground: var(--primary);
+  --destructive: light-dark(rgb(226 85 7), rgb(255 133 73));
+  --border: light-dark(rgb(26 28 31 / 8%), rgb(255 255 255 / 8.2%));
+  --input: light-dark(
+    rgb(26 28 31 / 11.8%),
+    color-mix(in oklab, rgb(0 0 0) 10%, transparent)
+  );
+  --ring: light-dark(rgb(51 156 255), rgb(131 195 255 / 76%));
+  --font-size-base: 14px;
+  --viz-series-1: var(--primary);
+  --viz-series-2: light-dark(rgb(243 136 59), rgb(245 154 86));
+  --viz-series-3: light-dark(rgb(93 201 119), rgb(116 213 139));
+  --viz-series-4: light-dark(rgb(235 119 177), rgb(240 143 192));
+  --viz-series-5: light-dark(rgb(155 121 236), rgb(170 145 239));
+  --viz-series-6: light-dark(rgb(58 185 177), rgb(90 203 194));
+
+  /* Internal implementation variables; not part of the agent contract. */
+  --font-sans: -apple-system, system-ui, "Segoe UI", sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono",
+    monospace;
+  --font-size-normal: max(11px, var(--font-size-base));
+  --font-size-tooltip: calc(var(--font-size-base) - 1px);
+  --font-size-small: max(11px, calc(var(--font-size-base) - 2px));
+  --font-size-h1: calc(var(--font-size-normal) * 1.7142857143);
+  --font-size-h2: calc(var(--font-size-normal) * 1.4285714286);
+  --font-size-h3: calc(var(--font-size-normal) * 1.2857142857);
+  --font-weight-normal: 430;
+  --font-weight-medium: 500;
+  --line-height-normal: calc(var(--font-size-normal) * 1.5);
+  --line-height-tooltip: calc(var(--font-size-tooltip) * 1.4285714286);
+  --line-height-small: calc(var(--font-size-small) + 4px);
+  --radius: 12.5px;
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-2xl: calc(var(--radius) * 1.6);
+  --radius-full: 9999px;
+  --shadow-sm: 0 1px 2px -1px rgb(0 0 0 / 8%);
+  --checkmark-image: url("data:image/svg+xml,%3Csvg xmlns=&#x27;http://www.w3.org/2000/svg&#x27; viewBox=&#x27;0 0 17 17&#x27;%3E%3Cpath d=&#x27;M12.8961 3.64101C13.1297 3.41418 13.4984 3.37523 13.7779 3.56581C14.0571 3.75635 14.1554 4.11331 14.0299 4.41347L13.9615 4.53847L7.71151 13.7045C7.59411 13.8767 7.4063 13.9877 7.19881 14.0072C6.99136 14.0267 6.78564 13.9533 6.63826 13.806L2.88826 10.056L2.79842 9.9457C2.6192 9.67407 2.64927 9.30496 2.88826 9.06581C3.12738 8.82669 3.49647 8.79676 3.76815 8.97597L3.8785 9.06581L7.03084 12.2182L12.8053 3.74941L12.8961 3.64101Z&#x27;/%3E%3C/svg%3E");
+
+  /* Legacy aliases; not part of the current agent contract. */
+  --viz-bg: transparent;
+  --viz-panel: var(--card);
+  --viz-border: var(--border);
+  --viz-text: var(--foreground);
+  --viz-muted: var(--muted-foreground);
+  --viz-accent: var(--primary);
+  --viz-accent-text: var(--primary-foreground);
+  --viz-accent-bg: var(--accent);
+  --viz-font-size: var(--font-size-base);
+  --viz-warning: var(--destructive);
+  --color-background-primary: var(--background);
+  --color-text-primary: var(--foreground);
+  --color-border-secondary: var(--border);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html &gt; body {
+  margin: 0;
+  padding: 5px;
+  color: var(--foreground);
+  background: transparent !important;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-normal);
+  font-weight: var(--font-weight-normal);
+  line-height: var(--line-height-normal);
+}
+
+a {
+  color: color-mix(in srgb, var(--viz-accent) 80%, var(--viz-text) 20%);
+  cursor: pointer;
+  font-weight: var(--viz-font-weight-medium);
+  text-decoration: none;
+  text-underline-offset: 2px;
+}
+
+a:is(:hover, :focus-visible) {
+  text-decoration-line: underline;
+  text-decoration-style: dashed;
+  text-decoration-thickness: 0.5px;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p {
+  margin-block: 0;
+}
+
+h1 {
+  font-size: var(--font-size-h1);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+h2 {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+h3,
+h4,
+h5,
+h6 {
+  font-size: var(--font-size-h3);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.3;
+}
+
+b,
+strong,
+th {
+  font-weight: var(--font-weight-medium);
+}
+
+code:not(pre code) {
+  display: inline;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  corner-shape: superellipse(1.5);
+  background: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  overflow-wrap: anywhere;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  word-break: break-word;
+}
+
+#widget {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  padding: 0;
+  background: transparent !important;
+}
+
+.card {
+  min-width: 0;
+  padding: 12px;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  border-radius: var(--radius-2xl);
+  corner-shape: superellipse(1.5);
+  color: var(--card-foreground);
+  background: var(--card);
+}
+
+#widget &gt; :not(.card) {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.tooltip {
+  position: fixed;
+  z-index: 50;
+  top: 0;
+  left: 0;
+  width: max-content;
+  max-width: min(
+    20rem,
+    var(--tooltip-available-width, calc(100vw - 10px)),
+    calc(100vw - 10px)
+  );
+  max-height: min(
+    var(--tooltip-available-height, calc(100vh - 10px)),
+    calc(100vh - 10px)
+  );
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--popover-foreground);
+  background: var(--popover);
+  box-shadow: none;
+  font-size: var(--font-size-tooltip);
+  line-height: var(--line-height-tooltip);
+  overflow-wrap: break-word;
+  white-space: normal;
+  pointer-events: none;
+  user-select: none;
+}
+
+.viz-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(max(180px, 24%), 1fr));
+  gap: 10px;
+}
+
+.viz-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.viz-stat-value {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+.viz-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.viz-badge {
+  padding: 3px 8px;
+  border-radius: var(--radius-full);
+  color: var(--accent-foreground);
+  background: var(--accent);
+  font-weight: var(--font-weight-medium);
+}
+
+small,
+.text-small,
+.viz-badge {
+  font-size: var(--font-size-small);
+  line-height: var(--line-height-small);
+}
+
+.text-muted {
+  color: var(--muted-foreground);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.viz-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.viz-controls &gt; .form-label {
+  display: grid;
+  min-width: min(100%, 260px);
+  flex: 1 1 280px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 2px 12px;
+  margin-bottom: 0;
+}
+
+.viz-controls &gt; .form-label &gt; :is(.form-control, .form-range, .form-select) {
+  grid-column: 1 / -1;
+}
+
+.btn,
+.form-check-input,
+.form-control,
+.form-range,
+.form-select {
+  font: inherit;
+}
+
+.btn {
+  appearance: button;
+  display: inline-flex;
+  inline-size: fit-content;
+  max-inline-size: 100%;
+  min-height: 28px;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin: 0;
+  padding: 0 8px;
+  -webkit-app-region: no-drag;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+  cursor: var(--cursor-interaction, pointer);
+  text-align: center;
+  text-decoration: none;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+.btn:is(.btn-block, .viz-tile) {
+  inline-size: 100%;
+}
+
+.btn.viz-tile {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+a.btn {
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.btn:not(:disabled):hover {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.btn-primary {
+  border-color: transparent;
+  color: var(--primary-foreground);
+  background: var(--foreground);
+  background-clip: padding-box;
+}
+
+.btn-primary .text-muted {
+  color: color-mix(in srgb, var(--primary-foreground) 50%, transparent);
+}
+
+.btn-primary:not(:disabled):hover {
+  background: color-mix(in srgb, var(--foreground) 80%, transparent);
+  background-clip: padding-box;
+}
+
+.btn-ghost {
+  border-color: transparent;
+  color: var(--muted-foreground);
+  background: transparent;
+}
+
+.btn-ghost:not(:disabled):hover {
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+[data-lucide] {
+  stroke-width: 1.6;
+}
+
+.form-label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--foreground);
+}
+
+.form-control {
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  padding: 0 8px;
+  outline: none;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--foreground);
+  background: var(--secondary);
+}
+
+.form-control::placeholder {
+  color: var(--muted-foreground);
+}
+
+.form-control[type="file"] {
+  padding: 0;
+  overflow: hidden;
+  cursor: var(--cursor-interaction, pointer);
+}
+
+.form-control[type="file"]::file-selector-button {
+  min-height: 26px;
+  margin-right: 8px;
+  padding: 0 8px;
+  border: 0;
+  border-right: 1px solid var(--input);
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+  cursor: inherit;
+  font: inherit;
+}
+
+.form-control[type="file"]:not(:disabled):hover::file-selector-button {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.form-control-color[type="color"] {
+  width: 40px;
+  height: 28px;
+  padding: 3px;
+  cursor: var(--cursor-interaction, pointer);
+}
+
+.form-control-color[type="color"]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.form-control-color[type="color"]::-webkit-color-swatch {
+  border: 0;
+  border-radius: calc(var(--radius-lg) - 4px);
+  corner-shape: superellipse(1.5);
+}
+
+textarea.form-control {
+  height: auto;
+  min-height: 72px;
+  padding: 8px 10px;
+  resize: vertical;
+}
+
+.form-control:focus-visible {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-control:disabled,
+.form-select:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.form-select {
+  appearance: none;
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  margin: 0;
+  padding: 0 32px 0 8px;
+  outline: none;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--foreground);
+  background-color: var(--secondary);
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted-foreground) 50%),
+    linear-gradient(135deg, var(--muted-foreground) 50%, transparent 50%);
+  background-position:
+    calc(100% - 14px) 50%,
+    calc(100% - 10px) 50%;
+  background-repeat: no-repeat;
+  background-size: 4px 4px;
+  cursor: var(--cursor-interaction, default);
+}
+
+.form-select:not(:disabled):hover {
+  background-color: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.form-select:focus-visible {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-check {
+  display: flex;
+  min-height: 20px;
+  align-items: center;
+  gap: 6px;
+}
+
+.form-check-input {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  margin: 0;
+  border: 1px solid var(--input);
+  color: var(--primary-foreground);
+  background-color: transparent;
+  cursor: var(--cursor-interaction, default);
+  transition:
+    background-color 150ms,
+    border-color 150ms,
+    box-shadow 150ms;
+}
+
+.form-check:not(.form-switch) .form-check-input[type="checkbox"] {
+  border-color: var(--input);
+  border-radius: var(--radius-sm);
+  corner-shape: superellipse(1.5);
+  background-color: var(--secondary);
+  box-shadow: var(--shadow-sm);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input:not(:disabled):not(:checked):hover {
+  background-color: var(--card);
+}
+
+.form-check:not(.form-switch) .form-check-input[type="checkbox"]:checked {
+  border-color: var(--primary);
+  background-color: var(--primary);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input[type="checkbox"]:checked::before {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--primary-foreground);
+  content: "";
+  mask: var(--checkmark-image) center / 12px 12px no-repeat;
+}
+
+.form-check-input[type="radio"] {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-full);
+}
+
+.form-check-input[type="radio"]:checked {
+  border: 2px solid var(--primary);
+  background:
+    radial-gradient(circle, var(--primary-foreground) 0 2.5px, transparent 3px),
+    var(--primary);
+}
+
+.form-check:not(.form-switch) .form-check-input:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled {
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+}
+
+.form-switch .form-check-input:disabled,
+.form-switch .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.form-check-label {
+  color: var(--foreground);
+  cursor: var(--cursor-interaction, default);
+}
+
+.form-switch .form-check-input {
+  position: relative;
+  width: 32px;
+  height: 20px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--muted);
+  box-shadow: none;
+  transition: background-color 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.form-switch .form-check-input::before {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 16px;
+  height: 16px;
+  box-sizing: border-box;
+  border: 1px solid light-dark(var(--primary-foreground), var(--foreground));
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+  box-shadow: var(--shadow-sm);
+  content: "";
+  transform: translate(2px, -50%);
+  transition: transform 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.form-switch .form-check-input:checked {
+  background: var(--primary);
+}
+
+.form-switch .form-check-input:checked::before {
+  transform: translate(14px, -50%);
+}
+
+.form-switch .form-check-input:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.form-range {
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 28px;
+  flex: 1;
+  margin: 0;
+  padding: 0;
+  outline: none;
+  border: 0;
+  accent-color: var(--primary);
+  background: linear-gradient(
+      color-mix(in srgb, var(--foreground) 7%, transparent),
+      color-mix(in srgb, var(--foreground) 7%, transparent)
+    )
+    center / 100% 2px no-repeat;
+}
+
+.form-range::-webkit-slider-runnable-track {
+  height: 28px;
+  background: transparent;
+}
+
+.form-range::-webkit-slider-thumb {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  margin-top: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+}
+
+.form-range:focus-visible::-webkit-slider-thumb {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-range::-moz-range-track {
+  height: 28px;
+  background: transparent;
+}
+
+.form-range::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+}
+
+.form-range:focus-visible::-moz-range-thumb {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-range:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.btn:not(.btn-primary, .viz-tile):is(
+    [aria-pressed="true"],
+    [aria-selected="true"],
+    .is-selected
+  ) {
+  border-color: var(--primary);
+  color: var(--primary-foreground);
+  background: var(--primary);
+}
+
+.btn.viz-tile:is([aria-pressed="true"], [aria-selected="true"], .is-selected) {
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+#widget &gt; svg {
+  width: 100%;
+}
+
+.text-warning,
+.text-destructive {
+  color: var(--destructive);
+}
+
+html&gt;body{padding:0}&lt;/style&gt;
+&lt;/head&gt;
+&lt;body&gt;
+&lt;div id="geomys-localities-map"&gt;
+  &lt;div class="map-wrap" aria-label="Map of type localities and molecular sampling sites for the Geomys breviceps complex"&gt;
+    &lt;svg class="locality-map" viewBox="0 0 900 650" role="img" aria-labelledby="geomys-map-title geomys-map-desc"&gt;
+      &lt;title id="geomys-map-title"&gt;Type localities and molecular sampling sites for the Geomys breviceps complex&lt;/title&gt;
+      &lt;desc id="geomys-map-desc"&gt;County map of Texas, Oklahoma, Arkansas, and Louisiana with seven type localities and thirty-nine molecular samples from Bradley and colleagues 2023 and Halsey and colleagues 2025.&lt;/desc&gt;
+    &lt;/svg&gt;
+    &lt;div class="tooltip" hidden&gt;&lt;/div&gt;
+  &lt;/div&gt;
+  &lt;div class="viz-row legend text-small" aria-label="Map legend"&gt;
+    &lt;span&gt;&lt;i class="legend-star"&gt;★&lt;/i&gt; type locality&lt;/span&gt;
+    &lt;span&gt;&lt;i class="legend-dot clade-i"&gt;&lt;/i&gt; Bradley clade I&lt;/span&gt;
+    &lt;span&gt;&lt;i class="legend-dot clade-ii"&gt;&lt;/i&gt; Bradley clade II&lt;/span&gt;
+    &lt;span&gt;&lt;i class="legend-square halsey"&gt;&lt;/i&gt; Halsey et al. 2025&lt;/span&gt;
+    &lt;span class="text-muted"&gt;Marker labels give individuals at a site when n &amp;gt; 1&lt;/span&gt;
+  &lt;/div&gt;
+  &lt;div class="selected text-small" aria-live="polite"&gt;Bradley et al.: 7 samples in clade I and 14 in clade II. Hover over or select a marker for locality and vouchers.&lt;/div&gt;
+&lt;/div&gt;
+
+&lt;style&gt;
+  #geomys-localities-map { width: 100%; color: var(--foreground); }
+  #geomys-localities-map .map-wrap { position: relative; width: 100%; }
+  #geomys-localities-map .locality-map { display: block; width: 100%; height: auto; }
+  #geomys-localities-map .county { fill: color-mix(in srgb, var(--muted) 48%, transparent); stroke: color-mix(in srgb, var(--border) 58%, transparent); stroke-width: .45; }
+  #geomys-localities-map .state { fill: none; stroke: var(--foreground); stroke-width: 1.4; }
+  #geomys-localities-map .state-label { fill: var(--muted-foreground); font-weight: 500; letter-spacing: .08em; }
+  #geomys-localities-map .type-mark { fill: var(--viz-series-3); stroke: var(--background); stroke-width: 1.6; cursor: pointer; }
+  #geomys-localities-map .clade-i-mark { fill: var(--viz-series-1); stroke: var(--background); stroke-width: 1.4; cursor: pointer; }
+  #geomys-localities-map .clade-ii-mark { fill: var(--viz-series-4); stroke: var(--background); stroke-width: 1.4; cursor: pointer; }
+  #geomys-localities-map .halsey-mark { fill: var(--muted-foreground); stroke: var(--background); stroke-width: 1.4; cursor: pointer; }
+  #geomys-localities-map .count-label { fill: var(--background); font-weight: 500; pointer-events: none; text-anchor: middle; dominant-baseline: central; }
+  #geomys-localities-map .type-label { fill: var(--foreground); font-weight: 500; paint-order: stroke; stroke: var(--background); stroke-width: 3px; stroke-linejoin: round; }
+  #geomys-localities-map .leader { stroke: var(--muted-foreground); stroke-width: 1; fill: none; }
+  #geomys-localities-map .legend { justify-content: flex-start; gap: 1rem; margin-top: .5rem; }
+  #geomys-localities-map .legend span { display: inline-flex; align-items: center; gap: .35rem; }
+  #geomys-localities-map .legend-star { color: var(--viz-series-3); font-style: normal; }
+  #geomys-localities-map .legend-dot, #geomys-localities-map .legend-square { width: .7rem; height: .7rem; display: inline-block; }
+  #geomys-localities-map .legend-dot { border-radius: 50%; }
+  #geomys-localities-map .legend-dot.clade-i { background: var(--viz-series-1); }
+  #geomys-localities-map .legend-dot.clade-ii { background: var(--viz-series-4); }
+  #geomys-localities-map .legend-square.halsey { background: var(--muted-foreground); }
+  #geomys-localities-map .selected { margin-top: .4rem; min-height: 1.5em; color: var(--muted-foreground); }
+  #geomys-localities-map .tooltip { position: absolute; pointer-events: none; max-width: 300px; }
+&lt;/style&gt;
+
+&lt;script type="module"&gt;
+  import * as d3 from "https://cdn.jsdelivr.net/npm/d3@7/+esm";
+  import { feature, mesh } from "https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/+esm";
+  import us from "https://cdn.jsdelivr.net/npm/us-atlas@3/counties-10m.json/+esm";
+
+  const root = document.getElementById("geomys-localities-map");
+  const svg = d3.select(root.querySelector("svg"));
+  const tooltip = root.querySelector(".tooltip");
+  const selected = root.querySelector(".selected");
+  const stateIds = new Set(["05", "22", "40", "48"]);
+  const allStates = feature(us, us.objects.states).features;
+  const states = allStates.filter(d =&gt; stateIds.has(String(d.id).padStart(2, "0")));
+  const stateCollection = { type: "FeatureCollection", features: states };
+  const counties = feature(us, us.objects.counties).features.filter(d =&gt; stateIds.has(String(d.id).padStart(5, "0").slice(0, 2)));
+  const projection = d3.geoAlbers().fitExtent([[36, 28], [864, 620]], stateCollection);
+  const path = d3.geoPath(projection);
+
+  const points = [
+    {kind:"type",study:"type locality",name:"Geomys breviceps",locality:"Prairie Mer Rouge, Morehouse Parish, Louisiana",lat:32.775135,lon:-91.792626,n:1,vouchers:"USNM:MAMM:156",label:"breviceps",dx:-80,dy:-13},
+    {kind:"type",study:"type locality",name:"Geomys breviceps sagittalis",locality:"Clear Creek, Galveston Bay, Texas",lat:29.507454,lon:-95.094930,n:1,vouchers:"USNM:MAMM:32936",label:"sagittalis",dx:-80,dy:38},
+    {kind:"type",study:"type locality",name:"Geomys breviceps brazensis",locality:"5 mi E Kurten, Grimes County, Texas",lat:30.787110,lon:-96.179891,n:1,vouchers:"TCWC:Mamm:537",label:"brazensis",dx:-80,dy:-18},
+    {kind:"type",study:"type locality",name:"Geomys breviceps dutcheri",locality:"Fort Gibson, Muskogee County, Oklahoma",lat:35.797546,lon:-95.250341,n:1,vouchers:"USNM:MAMM:64591",label:"dutcheri",dx:13,dy:-16},
+    {kind:"type",study:"type locality",name:"Geomys breviceps ludemani",locality:"7 mi SW Fannett, Jefferson County, Texas",lat:29.854375,lon:-94.333046,n:1,vouchers:"TCWC:Mamm:1135",label:"ludemani",dx:16,dy:-28},
+    {kind:"type",study:"type locality",name:"Geomys breviceps pratincolus",locality:"2 mi E Liberty, Liberty County, Texas",lat:30.060910,lon:-94.763736,n:1,vouchers:"TCWC:Mamm:1128",label:"pratincolus",dx:18,dy:4},
+    {kind:"type",study:"type locality",name:"Geomys breviceps terricolus",locality:"1 mi N Texas City, Galveston County, Texas",lat:29.410486,lon:-94.917548,n:1,vouchers:"TCWC:Mamm:624",label:"terricolus",dx:18,dy:30},
+    {kind:"sample",study:"Bradley et al. 2023",clade:"II",name:"Geomys breviceps",locality:"3 mi NW Alleene, Little River County, Arkansas",lat:33.802058,lon:-94.298694,n:2,vouchers:"LVT5500, UALR4532"},
+    {kind:"sample",study:"Bradley et al. 2023",clade:"II",name:"Geomys breviceps",locality:"3.1 mi and 5.0 km E Bastrop, Morehouse Parish, Louisiana",lat:32.778129,lon:-91.863972,n:2,vouchers:"LSUMZ31603, Demastes 1994 / L28733"},
+    {kind:"sample",study:"Bradley et al. 2023",clade:"II",name:"Geomys breviceps",locality:"Collinston, Morehouse Parish, Louisiana",lat:32.690970,lon:-91.871794,n:1,vouchers:"Demastes 1994 / L28734"},
+    {kind:"sample",study:"Bradley et al. 2023",clade:"II",name:"Geomys breviceps",locality:"3.5 mi SE Quitman, Wood County, Texas",lat:32.759998,lon:-95.402000,n:1,vouchers:"TTU69299"},
+    {kind:"sample",study:"Bradley et al. 2023",clade:"I",name:"Geomys breviceps brazensis",locality:"5.81 mi E Kurten, Grimes County, Texas",lat:30.815100,lon:-96.170800,n:2,vouchers:"TTU143407, TTU143408"},
+    {kind:"sample",study:"Bradley et al. 2023",clade:"II",name:"Geomys breviceps dutcheri",locality:"Fort Gibson Historic Site, Muskogee County, Oklahoma",lat:35.804300,lon:-95.257800,n:2,vouchers:"TTU143398, TTU143399"},
+    {kind:"sample",study:"Bradley et al. 2023",clade:"I",name:"Geomys breviceps pratincolus",locality:"0.5 mi E Livingston, Polk County, Texas",lat:30.710583,lon:-94.927350,n:1,vouchers:"TTU143428"},
+    {kind:"sample",study:"Bradley et al. 2023",clade:"II",name:"Geomys breviceps sagittalis",locality:"2 mi S, 3 mi W Rosepine, Vernon Parish, Louisiana",lat:30.890181,lon:-93.333003,n:1,vouchers:"LSUMZ30723"},
+    {kind:"sample",study:"Bradley et al. 2023",clade:"II",name:"Geomys breviceps sagittalis",locality:"0.5–0.8 km N Ranger Station, Vernon Parish, Louisiana",lat:30.992078,lon:-93.156999,n:3,vouchers:"LSUMZ29336, LSUMZ29337, Demastes 1994 / L28736"},
+    {kind:"sample",study:"Bradley et al. 2023",clade:"II",name:"Geomys breviceps sagittalis",locality:"1.4 km S Kirbyville, Jasper County, Texas",lat:30.647891,lon:-93.892681,n:1,vouchers:"Demastes 1994 / L28738"},
+    {kind:"sample",study:"Bradley et al. 2023",clade:"II",name:"Geomys breviceps sagittalis",locality:"6.8 km N Lindale, Smith County, Texas",lat:32.576851,lon:-95.409400,n:1,vouchers:"Demastes 1994 / L28737"},
+    {kind:"sample",study:"Bradley et al. 2023",clade:"I",name:"Geomys breviceps sagittalis",locality:"Reagan, Falls County, Texas",lat:31.210471,lon:-96.771250,n:4,vouchers:"TTU119230, TTU155642, TTU155643, TTU119231"},
+    {kind:"sample",study:"Halsey et al. 2025",name:"Geomys bursarius brazensis",locality:"5.81 mi E Kurten, Grimes County, Texas",lat:30.814783,lon:-96.171090,n:7,vouchers:"TK200288–TK200293, TK200443"},
+    {kind:"sample",study:"Halsey et al. 2025",name:"Geomys bursarius brazensis",locality:"7.99 mi SE Kurten, Grimes County, Texas",lat:30.716467,lon:-96.157350,n:1,vouchers:"TK200444"},
+    {kind:"sample",study:"Halsey et al. 2025",name:"Geomys bursarius dutcheri",locality:"Fort Gibson Historic Site, Muskogee County, Oklahoma",lat:35.804300,lon:-95.257800,n:5,vouchers:"TK200185–TK200189"},
+    {kind:"sample",study:"Halsey et al. 2025",name:"Geomys breviceps sagittalis",locality:"1.5 mi W Maysfield, Milam County, Texas",lat:30.922001,lon:-96.844002,n:1,vouchers:"TK24932"},
+    {kind:"sample",study:"Halsey et al. 2025",name:"Geomys breviceps sagittalis",locality:"3.5 mi SE Quitman, Wood County, Texas",lat:32.759998,lon:-95.402000,n:1,vouchers:"TK48934"},
+    {kind:"sample",study:"Halsey et al. 2025",name:"Geomys breviceps sagittalis",locality:"Quitman area, Wood County, Texas (paper and catalogue directions conflict)",lat:32.797001,lon:-95.408997,n:3,vouchers:"TK48935, TK48940, TK48939"}
+  ];
+
+  svg.append("g").selectAll("path").data(counties).join("path").attr("class", "county").attr("d", path);
+  svg.append("path").datum(mesh(us, us.objects.states, (a, b) =&gt; a !== b &amp;&amp; stateIds.has(String(a.id).padStart(2, "0")) &amp;&amp; stateIds.has(String(b.id).padStart(2, "0")))).attr("class", "state").attr("d", path);
+  svg.append("g").selectAll("path").data(states).join("path").attr("class", "state").attr("d", path);
+
+  const stateNames = new Map([["05", "AR"], ["22", "LA"], ["40", "OK"], ["48", "TX"]]);
+  svg.append("g").selectAll("text").data(states).join("text")
+    .attr("class", "state-label text-small")
+    .attr("x", d =&gt; path.centroid(d)[0]).attr("y", d =&gt; path.centroid(d)[1])
+    .attr("text-anchor", "middle").text(d =&gt; stateNames.get(String(d.id).padStart(2, "0")));
+
+  function selectPoint(d) {
+    const clade = d.clade ? `, clade ${d.clade}` : "";
+    selected.textContent = `${d.study}${clade} — ${d.name}; ${d.locality}; ${d.vouchers}${d.n &gt; 1 ? ` (${d.n} individuals)` : ""}.`;
+  }
+
+  function showTip(event, d) {
+    selectPoint(d);
+    tooltip.hidden = false;
+    tooltip.textContent = `${d.locality} · ${d.vouchers}`;
+    const box = root.querySelector(".map-wrap").getBoundingClientRect();
+    const mark = event.currentTarget.getBoundingClientRect();
+    const left = Math.max(8, Math.min(box.width - 308, mark.left - box.left + mark.width / 2 + 10));
+    const top = Math.max(8, mark.top - box.top - 18);
+    tooltip.style.left = `${left}px`;
+    tooltip.style.top = `${top}px`;
+  }
+
+  function hideTip() { tooltip.hidden = true; }
+
+  const samples = points.filter(d =&gt; d.kind === "sample");
+  const sampleGroups = svg.append("g").selectAll("g").data(samples).join("g")
+    .attr("transform", d =&gt; {
+      const [x, y] = projection([d.lon, d.lat]);
+      const shift = d.study.startsWith("Bradley") ? -4 : 4;
+      return `translate(${x + shift},${y})`;
+    });
+
+  sampleGroups.each(function(d) {
+    const g = d3.select(this);
+    const size = 42 + Math.sqrt(d.n) * 26;
+    if (d.study.startsWith("Bradley")) {
+      g.append("path").attr("class", d.clade === "I" ? "clade-i-mark" : "clade-ii-mark").attr("d", d3.symbol().type(d3.symbolCircle).size(size)());
+    } else {
+      g.append("path").attr("class", "halsey-mark").attr("d", d3.symbol().type(d3.symbolSquare).size(size)());
+    }
+    if (d.n &gt; 1) g.append("text").attr("class", "count-label text-small").text(d.n);
+  });
+  sampleGroups.attr("aria-label", d =&gt; `${d.study}${d.clade ? `, clade ${d.clade}` : ""}, ${d.locality}, ${d.n} individuals`)
+    .on("mouseenter", showTip).on("mouseleave", hideTip).on("click", (event, d) =&gt; selectPoint(d));
+
+  const types = points.filter(d =&gt; d.kind === "type");
+  const typeGroups = svg.append("g").selectAll("g").data(types).join("g")
+    .attr("transform", d =&gt; {
+      const [x, y] = projection([d.lon, d.lat]);
+      return `translate(${x},${y})`;
+    });
+  typeGroups.append("path").attr("class", "type-mark").attr("d", d3.symbol().type(d3.symbolStar).size(190)());
+  typeGroups.attr("aria-label", d =&gt; `Type locality of ${d.name}, ${d.locality}`)
+    .on("mouseenter", showTip).on("mouseleave", hideTip).on("click", (event, d) =&gt; selectPoint(d));
+
+  const labels = svg.append("g").selectAll("g").data(types).join("g");
+  labels.append("path").attr("class", "leader").attr("d", d =&gt; {
+    const [x, y] = projection([d.lon, d.lat]);
+    return `M${x},${y}L${x + d.dx * .72},${y + d.dy * .72}`;
+  });
+  labels.append("text").attr("class", "type-label text-small")
+    .attr("x", d =&gt; projection([d.lon, d.lat])[0] + d.dx)
+    .attr("y", d =&gt; projection([d.lon, d.lat])[1] + d.dy)
+    .attr("text-anchor", d =&gt; d.dx &lt; 0 ? "end" : "start")
+    .text(d =&gt; d.label);
+&lt;/script&gt;
+
+&lt;script src="https://unpkg.com/@floating-ui/core@1.7.3/dist/floating-ui.core.umd.min.js"&gt;&lt;/script&gt;
+&lt;script src="https://unpkg.com/@floating-ui/dom@1.7.4/dist/floating-ui.dom.umd.min.js"&gt;&lt;/script&gt;
+&lt;script&gt;
+(() =&gt; {
+  if (window.FloatingUIDOM == null) {
+    return;
+  }
+  const { autoUpdate, computePosition, flip, offset, shift, size } =
+    window.FloatingUIDOM;
+  const tooltipPlacements = new Set(["top", "right", "bottom", "left"]);
+  const tooltipId = `codex-visualization-tooltip-${
+    window.crypto?.randomUUID?.() ?? Date.now().toString(36)
+  }`;
+  const tooltipGap = 5;
+  const hoverDelay = 700;
+  const skipDelay = 300;
+  let activeTrigger = null;
+  let pendingTrigger = null;
+  let tooltip = null;
+  let openTimeout = null;
+  let autoUpdateCleanup = null;
+  let positionRequest = 0;
+  let skipDelayUntil = 0;
+
+  const getTrigger = (target) =&gt;
+    target?.nodeType === Node.ELEMENT_NODE
+      ? target.closest("[data-tooltip]")
+      : null;
+  const containsTarget = (trigger, target) =&gt;
+    target?.nodeType != null &amp;&amp; trigger.contains(target);
+  const getContent = (trigger) =&gt;
+    trigger.getAttribute("data-tooltip")?.trim() ?? "";
+  const getPlacement = (trigger) =&gt; {
+    const placement = trigger.getAttribute("data-tooltip-placement");
+    return tooltipPlacements.has(placement) ? placement : "top";
+  };
+  const getTooltip = () =&gt; {
+    if (tooltip == null) {
+      tooltip = document.createElement("div");
+      tooltip.id = tooltipId;
+      tooltip.className = "tooltip";
+      tooltip.setAttribute("role", "tooltip");
+    }
+    return tooltip;
+  };
+  const setDescribedBy = (trigger, described) =&gt; {
+    const ids = new Set(
+      (trigger.getAttribute("aria-describedby") ?? "")
+        .split(/\s+/)
+        .filter(Boolean),
+    );
+    if (described) {
+      ids.add(tooltipId);
+    } else {
+      ids.delete(tooltipId);
+    }
+    if (ids.size === 0) {
+      trigger.removeAttribute("aria-describedby");
+    } else {
+      trigger.setAttribute("aria-describedby", [...ids].join(" "));
+    }
+  };
+  const clearOpenTimeout = () =&gt; {
+    if (openTimeout != null) {
+      window.clearTimeout(openTimeout);
+      openTimeout = null;
+    }
+    pendingTrigger = null;
+  };
+  const closeTooltip = (activateSkipDelay = true) =&gt; {
+    clearOpenTimeout();
+    positionRequest += 1;
+    autoUpdateCleanup?.();
+    autoUpdateCleanup = null;
+    if (activeTrigger == null) {
+      return;
+    }
+    setDescribedBy(activeTrigger, false);
+    activeTrigger = null;
+    tooltip?.remove();
+    if (activateSkipDelay) {
+      skipDelayUntil = Date.now() + skipDelay;
+    }
+  };
+  const updatePosition = (trigger, floating) =&gt; {
+    const request = ++positionRequest;
+    void computePosition(trigger, floating, {
+      middleware: [
+        offset(tooltipGap),
+        flip({ padding: tooltipGap }),
+        shift({ padding: tooltipGap }),
+        size({
+          padding: tooltipGap,
+          apply({ availableHeight, availableWidth, elements }) {
+            elements.floating.style.setProperty(
+              "--tooltip-available-width",
+              `${Math.max(0, availableWidth)}px`,
+            );
+            elements.floating.style.setProperty(
+              "--tooltip-available-height",
+              `${Math.max(0, availableHeight)}px`,
+            );
+          },
+        }),
+      ],
+      placement: getPlacement(trigger),
+      strategy: "fixed",
+    })
+      .then(({ x, y }) =&gt; {
+        if (activeTrigger !== trigger || request !== positionRequest) {
+          return;
+        }
+        const scale = window.devicePixelRatio || 1;
+        floating.style.transform = `translate(${Math.round(x * scale) / scale}px, ${Math.round(y * scale) / scale}px)`;
+        floating.style.visibility = "visible";
+      })
+      .catch(() =&gt; {
+        if (activeTrigger === trigger &amp;&amp; request === positionRequest) {
+          closeTooltip(false);
+        }
+      });
+  };
+  const openTooltip = (trigger) =&gt; {
+    const content = getContent(trigger);
+    if (!trigger.isConnected || content.length === 0) {
+      return;
+    }
+    clearOpenTimeout();
+    if (activeTrigger === trigger) {
+      return;
+    }
+    closeTooltip();
+    const floating = getTooltip();
+    floating.textContent = content;
+    floating.style.visibility = "hidden";
+    floating.style.transform = "translate(0, 0)";
+    document.body.appendChild(floating);
+    activeTrigger = trigger;
+    setDescribedBy(trigger, true);
+    autoUpdateCleanup = autoUpdate(trigger, floating, () =&gt; {
+      updatePosition(trigger, floating);
+    });
+  };
+  const requestOpen = (trigger, immediate = false) =&gt; {
+    if (
+      getContent(trigger).length === 0 ||
+      activeTrigger === trigger ||
+      pendingTrigger === trigger
+    ) {
+      return;
+    }
+    clearOpenTimeout();
+    pendingTrigger = trigger;
+    const delay =
+      immediate || activeTrigger != null || Date.now() &lt; skipDelayUntil
+        ? 0
+        : hoverDelay;
+    if (delay === 0) {
+      openTooltip(trigger);
+      return;
+    }
+    openTimeout = window.setTimeout(() =&gt; {
+      openTimeout = null;
+      pendingTrigger = null;
+      openTooltip(trigger);
+    }, delay);
+  };
+  const handlePointerOpen = (event) =&gt; {
+    if (event.pointerType === "touch") {
+      return;
+    }
+    const trigger = getTrigger(event.target);
+    if (trigger == null || containsTarget(trigger, event.relatedTarget)) {
+      return;
+    }
+    requestOpen(trigger);
+  };
+  const handleLeave = (event) =&gt; {
+    const trigger = getTrigger(event.target);
+    if (trigger == null || containsTarget(trigger, event.relatedTarget)) {
+      return;
+    }
+    if (activeTrigger === trigger || pendingTrigger === trigger) {
+      closeTooltip();
+    }
+  };
+  const handleFocusIn = (event) =&gt; {
+    const trigger = getTrigger(event.target);
+    if (trigger?.matches(":focus-visible")) {
+      requestOpen(trigger, true);
+    }
+  };
+  const handleKeyDown = (event) =&gt; {
+    if (event.key === "Escape") {
+      closeTooltip();
+    }
+  };
+  const handleContextMenu = (event) =&gt; {
+    const trigger = getTrigger(event.target);
+    if (activeTrigger === trigger || pendingTrigger === trigger) {
+      closeTooltip();
+    }
+  };
+  const destroy = () =&gt; {
+    closeTooltip(false);
+    document.removeEventListener("pointerover", handlePointerOpen);
+    document.removeEventListener("pointerout", handleLeave);
+    document.removeEventListener("focusin", handleFocusIn);
+    document.removeEventListener("focusout", handleLeave);
+    document.removeEventListener("keydown", handleKeyDown);
+    document.removeEventListener("contextmenu", handleContextMenu);
+    tooltip = null;
+  };
+
+  document.addEventListener("pointerover", handlePointerOpen);
+  document.addEventListener("pointerout", handleLeave);
+  document.addEventListener("focusin", handleFocusIn);
+  document.addEventListener("focusout", handleLeave);
+  document.addEventListener("keydown", handleKeyDown);
+  document.addEventListener("contextmenu", handleContextMenu);
+  window.addEventListener("pagehide", destroy, { once: true });
+})();
+&lt;/script&gt;
+&lt;script id="codex-visualization-lucide" async src="https://unpkg.com/lucide@1.17.0/dist/umd/lucide.js"&gt;&lt;/script&gt;
+&lt;script&gt;
+(() =&gt; {
+  const initialize = () =&gt; {
+    globalThis.lucide?.createIcons({ attrs: { width: 16, height: 16 } });
+  };
+  if (globalThis.lucide != null) {
+    initialize();
+    return;
+  }
+  document
+    .getElementById("codex-visualization-lucide")
+    ?.addEventListener("load", initialize, { once: true });
+})();
+&lt;/script&gt;
+
+&lt;/body&gt;
+&lt;/html&gt;
+'
+    ></iframe>
+  </body>
+</html>

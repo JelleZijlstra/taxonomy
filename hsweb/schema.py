@@ -787,6 +787,23 @@ def resolve_autocompletions(
     return model_cls.getter(field).get_all()
 
 
+def resolve_autocomplete(
+    parent: ModelCls,
+    info: ResolveInfo,
+    query: str,
+    field: str | None = None,
+    limit: int = 20,
+) -> list[str]:
+    normalized_query = query.casefold()
+    if not normalized_query:
+        return []
+    return [
+        value
+        for value in resolve_autocompletions(parent, info, field)
+        if normalized_query in value.casefold()
+    ][: min(limit, 50)]
+
+
 def get_by_call_sign(call_sign: str) -> type[BaseModel]:
     return CALL_SIGN_TO_MODEL[call_sign.upper()]
 
@@ -821,6 +838,13 @@ class ModelCls(ObjectType):
         NonNull(List(NonNull(String))),
         field=String(required=False),
         resolver=resolve_autocompletions,
+    )
+    autocomplete = Field(
+        NonNull(List(NonNull(String))),
+        query=String(required=True),
+        field=String(required=False),
+        limit=Int(required=False),
+        resolver=resolve_autocomplete,
     )
     newest = ConnectionField(
         NonNull(ModelConnection),
