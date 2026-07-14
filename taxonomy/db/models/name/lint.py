@@ -7136,15 +7136,22 @@ def should_be_variant(nam: Name, cfg: LintConfig) -> Iterable[str]:
         yield f"should be marked as a variant of one of {candidates}"
 
 
-@LINT.add("has_parent_species", disabled=True)
+@LINT.add("has_parent_species")
 def check_has_parent_species(nam: Name, cfg: LintConfig) -> Iterable[str]:
-    # TODO: check other subspecific ranks
-    if nam.original_rank not in (Rank.subspecies, Rank.variety):
+    # The remaining known gaps are from 1840 through 1950. Apply this lint to
+    # the completed ranges and to newly added names while that interval is
+    # being worked through.
+    if not Exp(before_year=1839, after_year=1935).should_apply(nam, cfg):
         return
-    if nam.nomenclature_status is not NomenclatureStatus.available:
+    if nam.nomenclature_status in (
+        NomenclatureStatus.not_intended_as_a_scientific_name,
+        NomenclatureStatus.inconsistently_binominal,
+    ):
         return
     art = nam.original_citation
     if art is None:
+        return
+    if nam.taxon.age is not AgeClass.extant:
         return
     if (
         nam.corrected_original_name is None
