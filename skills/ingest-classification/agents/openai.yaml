@@ -1,0 +1,6 @@
+interface:
+  display_name: "Ingest Classification"
+  short_description: "Build, validate, and manually import CE files"
+  default_prompt:
+    "Use $ingest-classification to extract a source classification into a validated CE
+    file."
