@@ -157,6 +157,21 @@ CREATE TABLE `occurrence` (
     UNIQUE KEY(`taxon_id`, `location_id`)
 ) ENGINE=INNODB DEFAULT CHARSET=utf8;
 
+CREATE TABLE `occurrence_record` (
+    `id` integer primary key,
+    `classification_entry_id` INT UNSIGNED NOT NULL,
+    `locality_text` VARCHAR(1023) NOT NULL,
+    `page` VARCHAR(255) DEFAULT NULL,
+    `basis` INT UNSIGNED NOT NULL,
+    `raw_data` TEXT DEFAULT NULL,
+    `taxon_id` INT UNSIGNED DEFAULT NULL,
+    `location_id` INT UNSIGNED DEFAULT NULL,
+    `tags` TEXT DEFAULT NULL
+) ENGINE=INNODB DEFAULT CHARSET=utf8;
+CREATE INDEX "idx_occurrence_record" ON "occurrence_record" (`classification_entry_id`);
+CREATE INDEX "idx_occurrence_record_taxon" ON "occurrence_record" (`taxon_id`);
+CREATE INDEX "idx_occurrence_record_location" ON "occurrence_record" (`location_id`);
+
 CREATE TABLE `name_complex` (
     `id` integer primary key,
     `label` varchar(255),

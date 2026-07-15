@@ -95,6 +95,7 @@ COMMAND_SETS = [
     export.CS,
     models.article.add_data.CS,
     models.classification_entry.ce.CS,
+    models.occurrence_record.CS,
     _CS,
 ]
 

@@ -6373,7 +6373,14 @@ def mark_incorrect_subsequent_spelling_as_name_combination(
     ]
     if not existing:
         return
-    existing = sorted(existing, key=lambda nam: (nam.get_date_object(), nam.id))
+    existing = sorted(
+        existing,
+        key=lambda nam: (
+            nam.get_date_object(),
+            -nam.original_rank.value if nam.original_rank is not None else 0,
+            nam.id,
+        ),
+    )
     earliest, *rest = existing
     if not rest:
         return

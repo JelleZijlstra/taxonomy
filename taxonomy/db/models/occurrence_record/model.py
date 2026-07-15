@@ -1,0 +1,148 @@
+from __future__ import annotations
+
+from collections.abc import Iterable
+from typing import Any, ClassVar
+
+from clirm import Field
+
+from taxonomy import events, getinput
+from taxonomy.adt import ADT
+from taxonomy.db import models
+from taxonomy.db.constants import Managed, Markdown, OccurrenceBasis
+from taxonomy.db.constants import ObservationKind as ObservationKindEnum
+from taxonomy.db.models.base import ADTField, BaseModel, LintConfig, TextOrNullField
+from taxonomy.db.models.classification_entry import ClassificationEntry
+from taxonomy.db.models.location import Location
+from taxonomy.db.models.taxon import Taxon
+
+
+class OccurrenceRecord(BaseModel):
+    creation_event = events.Event["OccurrenceRecord"]()
+    save_event = events.Event["OccurrenceRecord"]()
+    call_sign = "OR"
+    label_field = "locality_text"
+    clirm_table_name = "occurrence_record"
+    fields_without_completers: ClassVar[set[str]] = {"raw_data"}
+
+    classification_entry = Field[ClassificationEntry](
+        "classification_entry_id", related_name="occurrence_records"
+    )
+    locality_text = Field[str]()
+    page = Field[str | None]()
+    basis = Field[OccurrenceBasis]()
+    raw_data = TextOrNullField()
+    taxon = Field[Taxon | None]("taxon_id", related_name="occurrence_records")
+    location = Field[Location | None]("location_id", related_name="occurrence_records")
+    tags = ADTField["OccurrenceRecordTag"](is_ordered=False)
+
+    def __repr__(self) -> str:
+        taxon = self.taxon or self.classification_entry.name
+        location = self.location or self.locality_text
+        return f"{taxon} at {location} ({self.basis.name}; {self.classification_entry})"
+
+    def get_page(self) -> str | None:
+        return self.page or self.classification_entry.page
+
+    def edit(self) -> None:
+        self.fill_field("tags")
+
+    def has_tag(self, tag_cls: OccurrenceRecord._Constructors) -> bool:  # type: ignore[name-defined]
+        tag_id = tag_cls._tag
+        return any(tag[0] == tag_id for tag in self.get_raw_tags_field("tags"))
+
+    def add_tag(self, tag: OccurrenceRecordTag) -> None:
+        self.tags = (*self.tags, tag)  # type: ignore[assignment]
+
+    def remove_tags(self, tag_cls: type[ADT]) -> None:
+        self.tags = tuple(tag for tag in self.tags if not isinstance(tag, tag_cls))  # type: ignore[assignment]
+
+    def get_canonical_record(self) -> OccurrenceRecord:
+        split_tags = list(
+            self.get_tags(self.tags, OccurrenceRecordTag.TaxonomicSplitFrom)
+        )
+        if split_tags:
+            return split_tags[0].record
+        return self
+
+    def split_for_taxon(self, taxon: Taxon | None = None) -> OccurrenceRecord | None:
+        if taxon is None:
+            taxon = Taxon.getter(None).get_one("taxon> ")
+        if taxon is None:
+            return None
+        canonical = self.get_canonical_record()
+        new_tags = (
+            *(
+                tag
+                for tag in canonical.tags
+                if not isinstance(tag, OccurrenceRecordTag.TaxonomicSplitFrom)
+            ),
+            OccurrenceRecordTag.TaxonomicSplitFrom(canonical),
+        )
+        return OccurrenceRecord.create(
+            classification_entry=canonical.classification_entry,
+            locality_text=canonical.locality_text,
+            page=canonical.page,
+            basis=canonical.basis,
+            raw_data=canonical.raw_data,
+            taxon=taxon,
+            location=canonical.location,
+            tags=new_tags,
+        )
+
+    @classmethod
+    def create_interactively(
+        cls, classification_entry: ClassificationEntry | None = None, **kwargs: Any
+    ) -> OccurrenceRecord | None:
+        if classification_entry is None:
+            classification_entry = ClassificationEntry.getter(None).get_one(
+                "classification entry> "
+            )
+        if classification_entry is None:
+            return None
+        locality_text = getinput.get_line("locality from source> ")
+        if not locality_text:
+            return None
+        page = getinput.get_line("page> ", default=classification_entry.page or "")
+        basis = getinput.get_enum_member(OccurrenceBasis, prompt="basis> ")
+        if basis is None:
+            return None
+        record = cls.create(
+            classification_entry=classification_entry,
+            locality_text=locality_text,
+            page=page or None,
+            basis=basis,
+            taxon=None,
+            location=None,
+            raw_data=None,
+            tags=(),
+            **kwargs,
+        )
+        record.format(quiet=True)
+        return record
+
+    def get_adt_callbacks(self) -> getinput.CallbackMap:
+        return {**super().get_adt_callbacks(), "split_for_taxon": self.split_for_taxon}
+
+    def lint(self, cfg: LintConfig) -> Iterable[str]:
+        yield from models.occurrence_record.lint.check_taxon(self, cfg)
+        yield from models.occurrence_record.lint.check_location(self, cfg)
+        yield from models.occurrence_record.lint.check_basis_tags(self, cfg)
+        yield from models.occurrence_record.lint.check_split(self, cfg)
+        yield from models.occurrence_record.lint.check_duplicate(self, cfg)
+
+
+class OccurrenceRecordTag(ADT):
+    ObservationKind(kind=ObservationKindEnum, tag=1)  # type: ignore[name-defined]
+    MolecularData(tag=2)  # type: ignore[name-defined]
+    SpecimenDetail(text=Markdown, tag=3)  # type: ignore[name-defined]
+    CommentFromSource(text=Markdown, tag=4)  # type: ignore[name-defined]
+
+    Vagrant(tag=5)  # type: ignore[name-defined]
+    Introduced(tag=6)  # type: ignore[name-defined]
+    Extirpated(tag=7)  # type: ignore[name-defined]
+    OccurrenceDubious(tag=8)  # type: ignore[name-defined]
+    ClassificationDubious(tag=9)  # type: ignore[name-defined]
+    Rejected(tag=10)  # type: ignore[name-defined]
+    CommentFromDatabase(text=Markdown, tag=11)  # type: ignore[name-defined]
+    TaxonomicSplitFrom(record=OccurrenceRecord, tag=12)  # type: ignore[name-defined]
+    LocationHint(name=Managed, tag=13)  # type: ignore[name-defined]

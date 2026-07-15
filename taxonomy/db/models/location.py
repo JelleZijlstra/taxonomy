@@ -157,7 +157,8 @@ class Location(BaseModel):
         )
         if include_occurrences:
             taxa = list(self.taxa)
-            if not taxa:
+            records = list(self.occurrence_records)
+            if not taxa and not records:
                 return
             file.write("{}Occurrences:\n".format(" " * (depth + 8)))
             if organized:
@@ -167,6 +168,14 @@ class Location(BaseModel):
             else:
                 for occurrence in sorted(taxa, key=lambda occ: occ.taxon.valid_name):
                     file.write("{}{}\n".format(" " * (depth + 12), occurrence))
+            for record in sorted(
+                records,
+                key=lambda record: (
+                    record.taxon.valid_name if record.taxon is not None else "",
+                    record.locality_text,
+                ),
+            ):
+                file.write("{}{}\n".format(" " * (depth + 12), record))
 
     def merge(self, other: Location | None = None) -> None:
         if other is None:
@@ -198,6 +207,8 @@ class Location(BaseModel):
             taxon.type_locality = other
         for occ in self.taxa:
             occ.location = other
+        for record in self.occurrence_records:
+            record.location = other
 
     def set_period(self, period: Period | None) -> None:
         self.min_period = self.max_period = period
@@ -241,6 +252,8 @@ class Location(BaseModel):
 
     def is_empty(self) -> bool:
         if self.taxa.count():
+            return False
+        if self.occurrence_records.count():
             return False
         if self.type_localities.count():
             return False

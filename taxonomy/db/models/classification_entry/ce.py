@@ -549,6 +549,13 @@ class ClassificationEntry(BaseModel):
             original_rank=self.rank,
         )
 
+    def add_occurrence_record(self) -> models.OccurrenceRecord | None:
+        return models.OccurrenceRecord.create_interactively(classification_entry=self)
+
+    def display_occurrence_records(self) -> None:
+        for record in self.occurrence_records:
+            print(record)
+
     def get_adt_callbacks(self) -> getinput.CallbackMap:
         article_callbacks = self.article.get_shareable_adt_callbacks()
         return {
@@ -561,6 +568,8 @@ class ClassificationEntry(BaseModel):
             "take_over_mapped_name": self.take_over_mapped_name,
             "add_syns": self.add_syns,
             "add_taxon": self.add_taxon,
+            "add_occurrence_record": self.add_occurrence_record,
+            "display_occurrence_records": self.display_occurrence_records,
             "set_page": self.set_page,
             "merge": self.merge,
             "kerr_subgeneric": self._kerr_subgeneric,

@@ -1,25 +1,28 @@
 from __future__ import annotations
 
+import enum
 import json
 from collections import Counter
 from collections.abc import Iterable, Iterator, Mapping
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, TypeVar, cast
 
 from data_import import lib
 from taxonomy.db import constants, helpers, models
 from taxonomy.db.models.classification_entry.ce import ClassificationEntryTag
+from taxonomy.db.models.occurrence_record import OccurrenceRecordTag
 
 
 class CEFileError(ValueError):
     pass
 
 
-_ENUM_FIELDS: Mapping[str, type[constants.Rank | constants.AgeClass]] = {
+_ENUM_FIELDS: Mapping[str, type[enum.IntEnum]] = {
     "rank": constants.Rank,
     "parent_rank": constants.Rank,
     "age_class": constants.AgeClass,
 }
+E = TypeVar("E", bound=enum.IntEnum)
 _REQUIRED_FIELDS = frozenset({"article", "page", "name", "rank"})
 _KNOWN_FIELDS = frozenset(lib.CEDict.__annotations__)
 
@@ -31,7 +34,24 @@ def _serialize_value(key: str, value: Any) -> Any:
         return value.name
     if key == "tags":
         return [{"kind": type(tag).__name__, "data": tag.serialize()} for tag in value]
+    if key == "occurrences":
+        return [serialize_occurrence(occurrence) for occurrence in value]
     return value
+
+
+def serialize_occurrence(occurrence: lib.CEOccurrenceDict) -> dict[str, Any]:
+    output: dict[str, Any] = {}
+    for key, value in occurrence.items():
+        if key == "basis":
+            output[key] = cast(constants.OccurrenceBasis, value).name
+        elif key == "tags":
+            output[key] = [
+                {"kind": type(tag).__name__, "data": tag.serialize()}
+                for tag in cast(list[OccurrenceRecordTag], value)
+            ]
+        else:
+            output[key] = value
+    return output
 
 
 def serialize_ce(ce: lib.CEDict) -> dict[str, Any]:
@@ -46,9 +66,7 @@ def write_ce_file(path: Path, ces: Iterable[lib.CEDict]) -> None:
             file.write("\n")
 
 
-def _deserialize_enum(
-    enum_type: type[constants.Rank | constants.AgeClass], value: Any, *, field: str
-) -> constants.Rank | constants.AgeClass:
+def _deserialize_enum(enum_type: type[E], value: Any, *, field: str) -> E:
     if not isinstance(value, str):
         raise CEFileError(f"{field} must be an enum name, got {value!r}")
     try:
@@ -58,6 +76,79 @@ def _deserialize_enum(
         raise CEFileError(
             f"unknown {field} {value!r}; expected one of: {choices}"
         ) from None
+
+
+def _deserialize_tags(
+    value: object,
+    *,
+    tag_type: type[ClassificationEntryTag | OccurrenceRecordTag],
+    context: str,
+) -> list[ClassificationEntryTag] | list[OccurrenceRecordTag]:
+    if not isinstance(value, list):
+        raise CEFileError(f"{context}: tags must be a list")
+    tags = []
+    for raw_tag in value:
+        if not isinstance(raw_tag, dict) or set(raw_tag) != {"kind", "data"}:
+            raise CEFileError(f"{context}: invalid tag {raw_tag!r}")
+        tag = tag_type.unserialize(raw_tag["data"])
+        if type(tag).__name__ != raw_tag["kind"]:
+            raise CEFileError(f"{context}: tag kind does not match serialized data")
+        tags.append(tag)
+    return tags
+
+
+def _deserialize_occurrence(
+    data: object, *, line_number: int, occurrence_number: int
+) -> lib.CEOccurrenceDict:
+    context = f"line {line_number}, occurrence {occurrence_number}"
+    if not isinstance(data, dict):
+        raise CEFileError(f"{context}: expected a JSON object")
+    known_fields = frozenset(lib.CEOccurrenceDict.__annotations__)
+    unknown = set(data) - known_fields
+    if unknown:
+        raise CEFileError(f"{context}: unknown fields: {sorted(unknown)}")
+    missing = {"locality", "basis"} - set(data)
+    if missing:
+        raise CEFileError(f"{context}: missing fields: {sorted(missing)}")
+    output = dict(data)
+    locality = output["locality"]
+    if not isinstance(locality, str) or not locality.strip():
+        raise CEFileError(f"{context}: locality must be a nonempty string")
+    try:
+        output["basis"] = _deserialize_enum(
+            constants.OccurrenceBasis, output["basis"], field="basis"
+        )
+    except CEFileError as exc:
+        raise CEFileError(f"{context}: {exc}") from exc
+    for field in ("page", "raw_data", "mapped_location"):
+        if field in output and not isinstance(output[field], str):
+            raise CEFileError(f"{context}: {field} must be a string")
+    if "tags" in output:
+        raw_tags = output["tags"]
+        if isinstance(raw_tags, list) and any(
+            isinstance(raw_tag, dict)
+            and isinstance(raw_tag.get("data"), list)
+            and raw_tag["data"]
+            and raw_tag["data"][0] == OccurrenceRecordTag.TaxonomicSplitFrom._tag
+            for raw_tag in raw_tags
+        ):
+            raise CEFileError(
+                f"{context}: TaxonomicSplitFrom cannot be imported from a CE file"
+            )
+        output["tags"] = _deserialize_tags(
+            output["tags"], tag_type=OccurrenceRecordTag, context=context
+        )
+        tags = cast(list[OccurrenceRecordTag], output["tags"])
+        basis = cast(constants.OccurrenceBasis, output["basis"])
+        if basis is not constants.OccurrenceBasis.observation and any(
+            isinstance(tag, OccurrenceRecordTag.ObservationKind) for tag in tags
+        ):
+            raise CEFileError(f"{context}: ObservationKind requires observation basis")
+        if basis is not constants.OccurrenceBasis.voucher and any(
+            isinstance(tag, OccurrenceRecordTag.SpecimenDetail) for tag in tags
+        ):
+            raise CEFileError(f"{context}: SpecimenDetail requires voucher basis")
+    return cast(lib.CEOccurrenceDict, output)
 
 
 def deserialize_ce(data: object, *, line_number: int) -> lib.CEDict:
@@ -85,20 +176,33 @@ def deserialize_ce(data: object, *, line_number: int) -> lib.CEDict:
         ) from None
 
     if "tags" in output:
-        raw_tags = output["tags"]
-        if not isinstance(raw_tags, list):
-            raise CEFileError(f"line {line_number}: tags must be a list")
-        tags = []
-        for raw_tag in raw_tags:
-            if not isinstance(raw_tag, dict) or set(raw_tag) != {"kind", "data"}:
-                raise CEFileError(f"line {line_number}: invalid tag {raw_tag!r}")
-            tag = ClassificationEntryTag.unserialize(raw_tag["data"])
-            if type(tag).__name__ != raw_tag["kind"]:
+        output["tags"] = _deserialize_tags(
+            output["tags"],
+            tag_type=ClassificationEntryTag,
+            context=f"line {line_number}",
+        )
+    if "occurrences" in output:
+        occurrences = output["occurrences"]
+        if not isinstance(occurrences, list):
+            raise CEFileError(f"line {line_number}: occurrences must be a list")
+        output["occurrences"] = [
+            _deserialize_occurrence(
+                occurrence, line_number=line_number, occurrence_number=occurrence_number
+            )
+            for occurrence_number, occurrence in enumerate(occurrences, 1)
+        ]
+        identities: set[tuple[str, str | None, constants.OccurrenceBasis]] = set()
+        for occurrence in output["occurrences"]:
+            identity = (
+                occurrence["locality"],
+                occurrence.get("page"),
+                occurrence["basis"],
+            )
+            if identity in identities:
                 raise CEFileError(
-                    f"line {line_number}: tag kind does not match serialized data"
+                    f"line {line_number}: duplicate occurrence {identity!r}"
                 )
-            tags.append(tag)
-        output["tags"] = tags
+            identities.add(identity)
     return cast(lib.CEDict, output)
 
 

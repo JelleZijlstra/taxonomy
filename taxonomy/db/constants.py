@@ -652,6 +652,17 @@ class OccurrenceStatus(enum.IntEnum):
     classification_dubious = 6  # dubious that the species is correctly classified
 
 
+class OccurrenceBasis(enum.IntEnum):
+    voucher = 1
+    observation = 2
+    listing = 3
+
+
+class ObservationKind(enum.IntEnum):
+    visual = 1
+    acoustic = 2
+
+
 class SourceLanguage(enum.IntEnum):
     latin = 1
     greek = 2

@@ -168,6 +168,15 @@ class Taxon(BaseModel):
     def sorted_occurrences(self) -> list[models.Occurrence]:
         return sorted(self.occurrences, key=lambda o: o.location.name)
 
+    def sorted_occurrence_records(self) -> list[models.OccurrenceRecord]:
+        return sorted(
+            self.occurrence_records,
+            key=lambda record: (
+                record.location.name if record.location is not None else "",
+                record.locality_text,
+            ),
+        )
+
     def root_name(self) -> str:
         return self.valid_name.split(" ")[-1]
 
@@ -177,6 +186,7 @@ class Taxon(BaseModel):
         print(self.sorted_names())
         print(self.sorted_children())
         print(self.sorted_occurrences())
+        print(self.sorted_occurrence_records())
 
     def full_name(self) -> str:
         if self.parent is None:
@@ -457,6 +467,9 @@ class Taxon(BaseModel):
             for occurrence in self.sorted_occurrences():
                 file.write(" " * ((depth + 1) * 4))
                 file.write(f"{occurrence!r}\n")
+            for record in self.sorted_occurrence_records():
+                file.write(" " * ((depth + 1) * 4))
+                file.write(f"{record!r}\n")
         if self in exclude:
             return
         if max_depth is None or max_depth > 0:
@@ -727,7 +740,11 @@ class Taxon(BaseModel):
             "display_parents": self.display_parents,
             "add_comment": lambda: self.base_name.add_comment(),
             "add_occurrence": self.add_occurrence,
+            "add_occurrence_record": self.add_occurrence_record,
             "edit_occurrence": self.edit_occurrence,
+            "display_occurrence_records": lambda: print(
+                *self.sorted_occurrence_records(), sep="\n"
+            ),
             "display_occurrences": lambda: self.display(
                 full=False, show_occurrences=True
             ),
@@ -888,6 +905,12 @@ class Taxon(BaseModel):
         if occ is None or occ not in occs:
             return
         occs[occ].edit()
+
+    def add_occurrence_record(self) -> models.OccurrenceRecord | None:
+        record = models.OccurrenceRecord.create_interactively()
+        if record is not None:
+            record.taxon = self
+        return record
 
     def syn_from_paper(
         self,
@@ -1156,6 +1179,8 @@ class Taxon(BaseModel):
         for nam in self.get_names():
             if nam != self.base_name:
                 nam.taxon = into
+        for record in self.occurrence_records:
+            record.taxon = into
 
         self._merge_fields(into, exclude={"id", "base_name"})
         self.base_name.merge(into.base_name, allow_valid=True)
@@ -1194,6 +1219,8 @@ class Taxon(BaseModel):
                 if comment is not None:
                     additional_comment += " " + comment
                 existing.add_comment(additional_comment)
+        for record in self.occurrence_records:
+            record.taxon = to_taxon
         to_taxon = to_taxon.reload()
         to_taxon.base_name.status = original_to_status
         self.age = AgeClass.redirect

@@ -20,6 +20,8 @@ __all__ = [
     "NameEnding",
     "NameTag",
     "Occurrence",
+    "OccurrenceRecord",
+    "OccurrenceRecordTag",
     "Period",
     "Person",
     "Region",
@@ -64,7 +66,16 @@ from .period import Period as Period
 from .region import Region as Region
 from .stratigraphic_unit import StratigraphicUnit as StratigraphicUnit
 from .taxon import Taxon as Taxon
+from .occurrence_record import (
+    OccurrenceRecord as OccurrenceRecord,
+    OccurrenceRecordTag as OccurrenceRecordTag,
+)
 from .person import Person as Person
 from .book import Book as Book
 from .specimen import Specimen as Specimen
-from . import fill_data as fill_data, name as name, tags as tags
+from . import (
+    fill_data as fill_data,
+    name as name,
+    occurrence_record as occurrence_record,
+    tags as tags,
+)

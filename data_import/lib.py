@@ -24,6 +24,7 @@ from taxonomy.db.models.classification_entry.ce import (
     ClassificationEntryTag,
 )
 from taxonomy.db.models.name.name import Name
+from taxonomy.db.models.occurrence_record import OccurrenceRecordTag
 
 T = TypeVar("T")
 
@@ -381,7 +382,7 @@ def extract_pages(
                 try:
                     current_page = extractor(line)
                     break
-                except (IndexError, ValueError):
+                except IndexError, ValueError:
                     continue
             else:
                 if permissive:
@@ -1715,6 +1716,15 @@ def get_type_specimens(*colls: models.Collection) -> dict[str, list[models.Name]
     return output
 
 
+class CEOccurrenceDict(TypedDict):
+    locality: str
+    basis: constants.OccurrenceBasis
+    page: NotRequired[str]
+    raw_data: NotRequired[str]
+    mapped_location: NotRequired[str]
+    tags: NotRequired[list[OccurrenceRecordTag]]
+
+
 class CEDict(TypedDict):
     page: str
     name: str
@@ -1737,6 +1747,7 @@ class CEDict(TypedDict):
     extra_fields: NotRequired[dict[str, str]]
     scratch_space: NotRequired[dict[str, str]]
     tags: NotRequired[list[ClassificationEntryTag]]
+    occurrences: NotRequired[list[CEOccurrenceDict]]
 
 
 def create_csv(filename: str, ces: Iterable[CEDict]) -> None:
@@ -2092,7 +2103,11 @@ def add_classification_entries(
             raw_data = name["raw_data"]
         else:
             raw_data = json.dumps(
-                {key: value for key, value in name.items() if key != "article"},
+                {
+                    key: value
+                    for key, value in name.items()
+                    if key not in ("article", "occurrences")
+                },
                 ensure_ascii=False,
                 separators=(",", ":"),
             )
