@@ -17,7 +17,7 @@ from taxonomy.db.constants import SYNONYM_RANKS, Group, NomenclatureStatus, Rank
 from taxonomy.db.models.article.article import Article, ArticleTag
 from taxonomy.db.models.base import LintConfig
 from taxonomy.db.models.lint import IgnoreLint, Lint
-from taxonomy.db.models.name import Name, TypeTag
+from taxonomy.db.models.name import Name, NameTag, TypeTag
 from taxonomy.db.models.name.lint import (
     infer_bhl_page_id,
     maybe_infer_page_from_other_name,
@@ -85,6 +85,10 @@ def check_tags(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
         yield "unnecessary CorrectedName tag"
     if counts[ClassificationEntryTag.ReferencedUsage] > 1:
         yield "multiple ReferencedUsage tags"
+    if counts[ClassificationEntryTag.AuxiliaryName] > 1:
+        yield "multiple AuxiliaryName tags"
+    if counts[ClassificationEntryTag.VerbatimParent] > 1:
+        yield "multiple VerbatimParent tags"
     new_tags = []
     for tag in ce.tags:
         if isinstance(tag, ClassificationEntryTag.ReferencedUsage):
@@ -141,6 +145,115 @@ def check_tags(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
 def check_parent(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
     if ce.parent is not None and not articles_match(ce.article, ce.parent.article):
         yield "parent from different article"
+
+
+@LINT.add("verbatim_parent")
+def check_verbatim_parent(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
+    for tag in ce.get_tags(ce.tags, ClassificationEntryTag.VerbatimParent):
+        if not tag.ce.has_tag(ClassificationEntryTag.AuxiliaryName):
+            yield f"VerbatimParent target {tag.ce} is not an AuxiliaryName CE"
+        if tag.ce.parent != ce.parent:
+            yield f"VerbatimParent target {tag.ce} does not have the same parent"
+
+
+@LINT.add("auxiliary_name")
+def check_auxiliary_name(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
+    if not ce.has_tag(ClassificationEntryTag.AuxiliaryName):
+        return
+    if ce.parent is None:
+        yield "AuxiliaryName CE has no parent"
+        return
+    if ce.parent.rank is not ce.rank:
+        yield f"AuxiliaryName CE has parent of different rank {ce.parent.rank.name}"
+    if ce.mapped_name is None:
+        yield "AuxiliaryName CE has no mapped name"
+        return
+    if ce.parent.mapped_name is None:
+        yield "AuxiliaryName parent has no mapped name"
+        return
+    if ce.mapped_name == ce.parent.mapped_name:
+        yield "AuxiliaryName CE and its parent have the same mapped name"
+    elif not _is_misspelling_of(ce.mapped_name, ce.parent.mapped_name):
+        yield "AuxiliaryName CE does not map to a misspelling of its parent name"
+
+
+MISSPELLING_TAGS = (
+    NameTag.IncorrectOriginalSpellingOf,
+    NameTag.IncorrectSubsequentSpellingOf,
+    NameTag.VariantOf,
+    NameTag.UnjustifiedEmendationOf,
+    NameTag.JustifiedEmendationOf,
+)
+
+
+def _is_misspelling_of(misspelling: Name, correct: Name) -> bool:
+    return any(
+        misspelling.get_tag_target(tag_cls) == correct for tag_cls in MISSPELLING_TAGS
+    )
+
+
+def _get_same_level_ces(ce: ClassificationEntry) -> Iterable[ClassificationEntry]:
+    if ce.parent is not None:
+        yield from ce.parent.get_children()
+    else:
+        yield from ClassificationEntry.select_valid().filter(
+            article=ce.article, parent=None
+        )
+
+
+@LINT.add("needs_auxiliary_name")
+def check_needs_auxiliary_name(
+    ce: ClassificationEntry, cfg: LintConfig
+) -> Iterable[str]:
+    if (
+        ce.mapped_name is None
+        or ce.rank.is_synonym
+        or ce.has_tag(ClassificationEntryTag.AuxiliaryName)
+    ):
+        return
+    correct_ces = [
+        other_ce
+        for other_ce in _get_same_level_ces(ce)
+        if other_ce != ce
+        and other_ce.rank is ce.rank
+        and other_ce.mapped_name is not None
+        and not other_ce.has_tag(ClassificationEntryTag.AuxiliaryName)
+        and _is_misspelling_of(ce.mapped_name, other_ce.mapped_name)
+    ]
+    if not correct_ces:
+        return
+    if len(correct_ces) > 1:
+        yield f"mapped name is a misspelling of multiple sibling CEs: {correct_ces}"
+        return
+
+    correct_ce = correct_ces[0]
+    children = list(ce.get_children())
+    conflicting_children = [
+        child
+        for child in children
+        if any(
+            tag.ce != ce
+            for tag in child.get_tags(child.tags, ClassificationEntryTag.VerbatimParent)
+        )
+    ]
+    if conflicting_children:
+        yield (
+            f"mapped name is a misspelling of sibling CE {correct_ce}, but children "
+            f"have conflicting VerbatimParent tags: {conflicting_children}"
+        )
+        return
+
+    message = f"convert to AuxiliaryName under sibling CE {correct_ce}"
+    yield message
+    if cfg.autofix:
+        print(f"{ce}: {message}")
+        ce.add_tag(ClassificationEntryTag.AuxiliaryName)
+        ce.parent = correct_ce
+        for child in children:
+            new_tag = ClassificationEntryTag.VerbatimParent(ce)
+            print(f"{child}: add tag {new_tag}, set parent to {correct_ce}")
+            child.add_tag(new_tag)
+            child.parent = correct_ce
 
 
 def articles_match(child_art: Article, parent_art: Article) -> bool:
@@ -1560,6 +1673,11 @@ def check_matches_citation(ce: ClassificationEntry, cfg: LintConfig) -> Iterable
 @LINT.add("parent_rank")
 def check_parent_rank(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
     if ce.parent is None:
+        return
+    if ce.has_tag(ClassificationEntryTag.AuxiliaryName):
+        # Auxiliary CEs intentionally use a same-rank parent to point to the
+        # primary CE that the source apparently intended. check_auxiliary_name
+        # validates that relationship.
         return
     match ce.rank:
         case Rank.subspecies | Rank.variety:

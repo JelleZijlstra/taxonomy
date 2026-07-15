@@ -683,6 +683,12 @@ class ClassificationEntryTag(ADT):
 
     ReferencedUsage(ce=ClassificationEntry, comment=NotRequired[Markdown], tag=16)  # type: ignore[name-defined]
     LSIDCE(text=Managed, tag=17)  # type: ignore[name-defined]
+    # A name used by the source only as a mistake for another name. Its parent is the
+    # primary CE that the source apparently intended.
+    AuxiliaryName(tag=18)  # type: ignore[name-defined]
+    # The parent implied by the spelling of this CE, when it differs from the
+    # primary classification represented by parent.
+    VerbatimParent(ce=ClassificationEntry, tag=19)  # type: ignore[name-defined]
 
 
 _NAME_CHARS = r"[a-zæüöïœ]+"
