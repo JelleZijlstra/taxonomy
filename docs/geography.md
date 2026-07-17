@@ -341,7 +341,7 @@ Netherlands ([Aruba](/r/Aruba), [Curaçao](/r/Curaçao), [Bonaire](/r/Bonaire),
 ([Puerto Rico](/r/Puerto_Rico) and the
 [United States Virgin Islands](/r/United_States_Virgin_Islands)).
 
-There is a region of [Hispaniola](/r/Hispaniola) covering the whole islands, so that we
+There is a region of [Hispaniola](/r/Hispaniola) covering the whole island, so that we
 can accommodate records that may come from either [Haiti](/r/Haiti) or the
 [Dominican Republic](/r/Dominican_Republic).
 

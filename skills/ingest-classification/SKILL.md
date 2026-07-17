@@ -50,7 +50,8 @@ non-electronic child Article.
 Read the source closely. Render PDF pages when columns, tables, typography, or page
 numbers matter. Preserve source spelling in `name`, including errors. Store the
 Article's exact `name` in `article` when it is already known, but do not require an
-Article, Name, Taxon, Region, or Location database lookup merely to transcribe a source.
+Article, Name, Taxon, or Location database lookup merely to transcribe a source. Region
+names in Location proposals are the exception; validate them as described below.
 
 Treat `corrected_name` as a legacy name for `normalized_name`. Set it only when the
 source representation does not follow the standard scientific-name format, for example
@@ -111,6 +112,14 @@ existing Location or report unresolved names and conflicts. Propose the most pre
 level supported by the source and gazetteer, and define each proposed canonical Location
 once even if many occurrences use it.
 
+Validate every proposed `region` against the database's Region vocabulary. Do not assume
+that a political subdivision named by the source is a Region in the database. Either
+query `models.Region` directly for the exact name or consult `docs/geography.md`. Use
+the smallest valid Region that contains the locality; when a finer subdivision is not a
+Region, retain it in the Location `name` and `location_detail` and use the enclosing
+valid Region, often the country. This validation is separate from checking whether the
+proposed Location itself already exists.
+
 ## 3. Review the source artifacts
 
 For the normal source-processing workflow, review only what can be established from the
@@ -121,11 +130,13 @@ source and the files themselves:
   source;
 - check source-internal hierarchy and repeated-entry invariants when applicable;
 - ensure any Location proposal is supported by the source or cited gazetteer.
+- verify that every Location proposal uses a valid Region name, using the database or
+  `docs/geography.md`.
 
-Do not require checks against the current database taxonomy or Location table at this
-stage. In particular, do not run `scripts/import_ce_file.py` merely to finish a
-transcription task. Taxon/name matching, Article resolution, and Location reuse are
-questions for the later database-aware phase.
+Other than validating Region names as above, do not require checks against the current
+database taxonomy or Location table at this stage. In particular, do not run
+`scripts/import_ce_file.py` merely to finish a transcription task. Taxon/name matching,
+Article resolution, and Location reuse are questions for the later database-aware phase.
 
 ## 4. Preview against the database when requested
 
