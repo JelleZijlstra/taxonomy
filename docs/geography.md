@@ -142,9 +142,13 @@ No special cases.
 
 ### [Eastern Asia](/r/Eastern_Asia)
 
-- China is divided into regions for each of its provinces, autonomous regions,
-  province-level municipalities, and special administrative regions.
-- [Taiwan](/r/Taiwan) is treated as a country.
+- [China](/r/China) is divided into regions for each of its provinces, autonomous
+  regions, province-level municipalities, and special administrative regions.
+- [Japan](/r/Japan) is divided into regions for the eight traditional
+  [regions](https://en.wikipedia.org/wiki/List_of_regions_of_Japan), which in turn are
+  divided into regions for 46 prefectures (another prefecture, Hokkaido, is coterminous
+  with its region).
+- [Taiwan](/r/Taiwan) is treated as a country, but nested under China.
 - In addition to the regions for [North](/r/North_Korea) and
   [South Korea](/r/South_Korea), there is a region for [Korea](/r/Korea) as a whole, to
   accommodate old type localities that are not specific.
@@ -210,17 +214,19 @@ In more detail:
   [Banda Islands](/r/Banda_Islands).
 - The Indonesian part of New Guinea with associated islands forms the region of
   [Western New Guinea](/r/Western_New_Guinea). It is divided into the provinces of
-  [West Papua](/r/West_Papua), [Papua](/r/Papua), [Central Papua](/r/Central_Papua),
-  [Highland Papua](/r/Highland_Papua), and [South Papua](/r/South_Papua). Among others,
-  the offshore islands of [Biak-Supiori](/r/Biak-Supiori), [Japen](/r/Japen), and
-  [Waigeo](/r/Waigeo) form subregions.
+  [Southwest Papua](/r/Southwest_Papua), [West Papua](/r/West_Papua), [Papua](/r/Papua),
+  [Central Papua](/r/Central_Papua), [Highland Papua](/r/Highland_Papua), and
+  [South Papua](/r/South_Papua). Among others, the offshore islands of
+  [Biak-Supiori](/r/Biak-Supiori), [Japen](/r/Japen), and [Waigeo](/r/Waigeo) form
+  subregions.
 
 ### [Southern Asia](/r/Southern_Asia)
 
-- The Line of Control between [India](/r/India), [Pakistan](/r/Pakistan), and
-  [China](/r/China) in the Kashmir region is treated as the border. Type localities that
-  are given as just "Kashmir" are arbitrarily assigned to the Indian territory of
-  [Jammu and Kashmir](/r/Jammu_and_Kashmir).
+- The de facto border between [India](/r/India), [Pakistan](/r/Pakistan), and
+  [China](/r/China) (called the "Line of Control" between India and Pakistan and "Line
+  of Actual Control" between India and China) in the Kashmir region is treated as the
+  border. Type localities that are given as just "Kashmir" are arbitrarily assigned to
+  the Indian territory of [Jammu and Kashmir](/r/Jammu_and_Kashmir).
 - [India](/r/India) is divided into regions for each of its states and union
   territories.
 - [Pakistan](/r/Pakistan) is divided into regions for its provinces and other
@@ -252,7 +258,7 @@ In more detail:
   either in the Asian part of Russia or in another Asian country should be listed as
   "[Asia](/r/Asia)", and type localities that may be either in European Russia or in an
   adjacent country should be listed as "[Europe](/r/Europe)" or
-  "[Eastern Europe](/r/Eastern_Erurope)" (if the adjacent country is also classed as
+  "[Eastern Europe](/r/Eastern_Europe)" (if the adjacent country is also classed as
   Eastern Europe).
 - [Russia](/r/Russia) is further divided into regions for each of its federal subjects
   (republics, oblasts, krais, etc.).
@@ -262,15 +268,15 @@ In more detail:
 
 ### [Northern Europe](/r/Northern_Europe)
 
-- [Denmark](/r/Denmark) does not include the [Faroe Islands](/r/Faroe_Islands) and
-  Greenland, which are listed as separate countries (in Northern Europe and
+- [Denmark](/r/Denmark) does not include the [Faroe Islands](/r/Faroe) and Greenland,
+  which are listed as separate countries (in Northern Europe and
   [Northern America](/r/Northern_America) respectively).
 - [Svalbard](/r/Svalbard) and [Jan Mayen](/r/Jan_Mayen) are listed as separate regions
   within [Norway](/r/Norway).
 - The [Isle of Man](/r/Isle_of_Man) is listed as a country.
-- [Guernsey](/r/Guernsey) and [Jersey](/r/Jersey) are listed as countries, the latter
-  including its dependent islands of Sark, Herm, and Alderney, which are not themselves
-  treated as regions. They are all grouped in a region called
+- [Guernsey](/r/Guernsey) and [Jersey](/r/Jersey) are listed as countries, the former
+  including the islands of Sark, Herm, and Alderney, which are not themselves treated as
+  regions. They are all grouped in a region called
   "[Channel Islands](/r/Channel_Islands)".
 - The [United Kingdom](/r/United_Kingdom) is divided into regions for each of its four
   constituent countries: [England](/r/England), [Wales](/r/Wales),
@@ -314,8 +320,9 @@ In more detail:
 - Within [Belgium](/r/Belgium), the provinces and the
   [Brussels-Capital Region](/r/Brussels-Capital_Region) are listed as regions.
 - Within [France](/r/France), the departments are listed as regions. The two departments
-  of [Corsica](/r/Corsica) are united into a single region. The various overseas
-  territories and departments are listed under other continents.
+  of [Corsica](/r/Corsica) are grouped into an additional region covering the whole
+  island. The various overseas territories and departments are listed under other
+  continents.
 - Within [Germany](/r/Germany), the states are listed as regions.
 - The Caribbean islands that are part of the Kingdom of the Netherlands are not listed
   as part of the [Netherlands](/r/Netherlands), but as separate countries within the
@@ -329,9 +336,9 @@ In more detail:
 
 In accordance with the UN geoscheme, the Caribbean includes some island groups that are
 technically outside the Caribbean Sea, such as the [Bahamas](/r/Bahamas). In addition to
-a number of independent countries, this region includes dependent territories of the
-Netherlands ([Aruba](/r/Aruba), [Curaçao](/r/Curaçao), [Bonaire](/r/Bonaire),
-[Saba](/r/Saba), [Sint Maarten](/r/Sint_Maarten), and
+a number of independent countries, this region includes territories with constitutional
+ties to the Netherlands ([Aruba](/r/Aruba), [Curaçao](/r/Curaçao),
+[Bonaire](/r/Bonaire), [Saba](/r/Saba), [Sint Maarten](/r/Sint_Maarten), and
 [Sint Eustatius](/r/Sint_Eustatius)), France ([Guadeloupe](/r/Guadeloupe),
 [Martinique](/r/Martinique), [Saint Barthélemy](/r/Saint_Barthélemy), and
 [Saint Martin](/r/Saint_Martin)), the United Kingdom ([Anguilla](/r/Anguilla),
@@ -413,7 +420,7 @@ Within the U.S. there are a few special cases:
 
 We do not currently use the UN geoscheme's division of Oceania into Australia and New
 Zealand, Melanesia, Micronesia, and Polynesia. In addition to independent countries,
-Oceania includes dependent territories of France ([Clipperton](/r/Clipperton),
+Oceania includes territories with ties to France ([Clipperton](/r/Clipperton),
 [Wallis and Futuna](/r/Wallis_and_Futuna), [New Caledonia](/r/New_Caledonia), and
 [French Polynesia](/r/French_Polynesia)), the United Kingdom
 ([Pitcairn Islands](/r/Pitcairn_Islands)), the United States ([Guam](/r/Guam),
@@ -437,7 +444,8 @@ A few countries are divided further:
 - Within [Papua New Guinea](/r/Papua_New_Guinea), there are regions for the 20
   provinces, the [Autonomous Region of Bougainville](/r/Bougainville_Region), and the
   [National Capital District](/r/National_Capital_District). There is another region for
-  the island of [New Britain](/r/New_Britain), which is divided into two provinces.
+  the island of [New Britain](/r/New_Britain), which is divided into two provinces, and
+  another for the island of [Manus](/r/Manus) within Manus Province.
 - Within the [Solomon Islands](/r/Solomon_Islands), there are regions for the major
   islands of [Choiseul](/r/Choiseul), [Santa Isabel](/r/Santa_Isabel),
   [Malaita](/r/Malaita), [Makira](/r/Makira) (San Cristobal),
@@ -460,8 +468,11 @@ A few countries contain further divisions:
   [Distrito Federal](</r/Distrito_Federal_(Brazil)>). Within the state of
   [Pernambuco](/r/Pernambuco), the outlying island of
   [Fernando de Noronha](/r/Fernando_de_Noronha) is a separate region.
+- [Bolivia](/r/Bolivia) is divided into regions for its nine departments.
 - Within [Colombia](/r/Colombia), we recognize regions for each department and for the
   city of [Bogotá](/r/Bogotá).
+- [Peru](/r/Peru) is divided into regions for its 24 departments and the province of
+  Callao.
 - Within [Venezuela](/r/Venezuela), we recognize regions for each state, the
   [Capital District](</r/Capital_District_(Venezuela)>), and the
   [Federal Dependencies](</r/Federal_Dependencies_(Venezuela)>).
@@ -486,3 +497,8 @@ accepted) Southern Ocean and because it defined the oceans as excluding their va
 marginal seas. Therefore, we follow the boundaries set in the draft 4th edition, which
 is available
 [here](http://wiki.geosys.ru/lib/exe/fetch.php/ru/portal/lib/iho/s23.los.ed4draft.2002.pdf).
+
+We recognize five primary oceanic regions: [Arctic](/r/Arctic_Ocean),
+[Atlantic](/r/Atlantic_Ocean), [Indian](/r/Indian_Ocean), [Pacific](/r/Pacific_Ocean),
+and [Southern](/r/Southern_Ocean). The [Mediterranean](/r/Mediterranean_Sea) is also
+included as a child of the Atlantic.

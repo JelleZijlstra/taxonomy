@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import enum
 import re
+import subprocess
 import sys
 from collections import Counter
 from collections.abc import Callable, Iterable, Sequence
@@ -236,6 +237,11 @@ class Location(BaseModel):
             ):
                 file.write("{}{}\n".format(" " * (depth + 12), record))
 
+    def open_coordinates(self) -> None:
+        point = coordinate_lint.make_point(self.latitude, self.longitude)
+        if point is not None:
+            subprocess.check_call(["open", point.openstreetmap_url])
+
     def get_adt_callbacks(self) -> getinput.CallbackMap:
         callbacks = super().get_adt_callbacks()
         return {
@@ -243,6 +249,7 @@ class Location(BaseModel):
             "add_alias": self.add_alias,
             "merge": self.merge,
             "display_occurrences": self.display_occurrences,
+            "open_coordinates": self.open_coordinates,
         }
 
     def edit(self) -> None:

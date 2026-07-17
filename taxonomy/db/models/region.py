@@ -84,7 +84,7 @@ class Region(BaseModel):
             "display_collections": self.display_collections,
             "display_citation_groups": self.display_citation_groups,
             "display_periods": self.display_periods,
-            "display_type_localities": lambda: self.display(full=False, locations=True),
+            "display_type_localities": self.display_type_localities,
         }
 
     def get_general_localities(self) -> list[models.Location]:
@@ -151,9 +151,15 @@ class Region(BaseModel):
                     full=full,
                     depth=depth + 4,
                     file=file,
+                    children=children,
                     skip_empty=skip_empty,
                     locations=locations,
                 )
+
+    def display_type_localities(
+        self, *, depth: int = 0, file: IO[str] = sys.stdout
+    ) -> None:
+        self.display(full=False, depth=depth, file=file, children=True, locations=True)
 
     def display_without_stratigraphy(
         self,
