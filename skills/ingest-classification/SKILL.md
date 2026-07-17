@@ -34,6 +34,19 @@ Never write to the database during transcription. Do not call
 
 ## 2. Transcribe the source
 
+When the user supplies a brace-delimited source such as `{Agathaeromys nov.pdf}`,
+resolve it from the repository root before reading it:
+
+```bash
+/Users/jelle/py/venvs/taxonomy314/bin/python scripts/article_info.py \
+  '{Agathaeromys nov.pdf}'
+```
+
+Use `query_article.name` for the CE `article` field, even when `file.article_name` is a
+parent volume. Read `file.path` or the existing `extracted_text.path`; rerun with
+`--extract` only when cached text is needed. Do not call `get_path()` on a
+non-electronic child Article.
+
 Read the source closely. Render PDF pages when columns, tables, typography, or page
 numbers matter. Preserve source spelling in `name`, including errors. Store the
 Article's exact `name` in `article` when it is already known, but do not require an

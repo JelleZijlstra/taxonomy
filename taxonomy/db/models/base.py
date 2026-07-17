@@ -97,6 +97,9 @@ Linter = Callable[[ModelT, LintConfig], Iterable[str]]
 class BaseModel(Model):
     id: ClassVar[Any]
     label_field: ClassVar[str]
+    # Override this to choose a different getter field for the model's shell alias.
+    # Setting it to None uses the object representation (and URL) as the getter key.
+    call_sign_field: ClassVar[str | None]
     label_field_has_underscores: ClassVar[bool] = False
     # If given, lists are separated into groups based on this field.
     grouping_field: ClassVar[str | None] = None
@@ -861,6 +864,11 @@ class BaseModel(Model):
             getter = _NameGetter(cls, attr)
             _getters[key] = getter
             return getter
+
+    @classmethod
+    def get_call_sign_getter(cls) -> _NameGetter[Self]:
+        field = getattr(cls, "call_sign_field", cls.label_field)
+        return cls.getter(field)
 
     @classmethod
     def get_one_by(

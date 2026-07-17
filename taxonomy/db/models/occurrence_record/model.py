@@ -21,6 +21,7 @@ class OccurrenceRecord(BaseModel):
     save_event = events.Event["OccurrenceRecord"]()
     call_sign = "OR"
     label_field = "locality_text"
+    call_sign_field = None
     clirm_table_name = "occurrence_record"
     fields_without_completers: ClassVar[set[str]] = {"raw_data"}
 

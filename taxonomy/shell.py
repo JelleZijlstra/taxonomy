@@ -128,7 +128,7 @@ for model in models.BaseModel.__subclasses__():
         and hasattr(model, "label_field")
         and model is not Name
     ):
-        ns[model.call_sign] = model.getter(model.label_field)
+        ns[model.call_sign] = model.get_call_sign_getter()
 
 
 CallableT = TypeVar("CallableT", bound=Callable[..., Any])

@@ -550,7 +550,10 @@ class ClassificationEntry(BaseModel):
         )
 
     def add_occurrence_record(self) -> models.OccurrenceRecord | None:
-        return models.OccurrenceRecord.create_interactively(classification_entry=self)
+        record = models.OccurrenceRecord.create_interactively(classification_entry=self)
+        if record is not None:
+            record.edit()
+        return record
 
     def display_occurrence_records(self) -> None:
         for record in self.occurrence_records:

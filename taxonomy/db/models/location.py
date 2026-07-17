@@ -112,6 +112,25 @@ class Location(BaseModel):
         result.fill_required_fields()
         return result
 
+    @classmethod
+    def create_recent_interactively(cls) -> Location | None:
+        recent = Period.filter(Period.name == "Recent").get()
+        name = getinput.get_line("name> ")
+        if name is None:
+            return None
+        region = cls.get_value_for_foreign_key_field_on_class(
+            "region", allow_none=False
+        )
+        assert region is not None
+        latitude = getinput.get_line("latitude> ") or None
+        longitude = getinput.get_line("longitude> ") or None
+        result = cls.make(name=name, region=region, period=recent)
+        result.latitude = latitude
+        result.longitude = longitude
+        result.format()
+        result.edit()
+        return result
+
     def __repr__(self) -> str:
         parts = []
         if self.deleted is LocationStatus.alias:
@@ -399,7 +418,11 @@ class Location(BaseModel):
                 return None
             return cls.get_or_create_general(region, period)
 
-        return {**super().get_interactive_creators(), "u": callback}
+        return {
+            **super().get_interactive_creators(),
+            "r": cls.create_recent_interactively,
+            "u": callback,
+        }
 
     def most_common_words(self) -> Counter[str]:
         words: Counter[str] = Counter()

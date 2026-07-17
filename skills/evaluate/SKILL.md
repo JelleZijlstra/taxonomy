@@ -19,6 +19,28 @@ Use papers in the local taxonomy literature database and files under
 `/Users/jelle/Dropbox/c` unless the user explicitly authorizes another source. Prefer
 the database catalog and article paths over web search.
 
+## Resolve the focal article first
+
+Treat a brace-delimited reference such as `{Agathaeromys nov.pdf}` as an exact
+`Article.name`, not as a filesystem path. From the repository root, run:
+
+```bash
+/Users/jelle/py/venvs/taxonomy314/bin/python scripts/article_info.py \
+  '{Agathaeromys nov.pdf}'
+```
+
+Use `query_article.name` as the database identity. Use `file.path` to read or render the
+physical source and `extracted_text.path` when `extracted_text.exists` is true. If
+cached text is missing, rerun with `--extract`; this writes only the configured PDF-text
+cache, not the database. The resolver follows `part`, redirect, and other parent-backed
+records to the actual electronic Article. Never call `get_path()` directly on a `NOFILE`
+or otherwise non-electronic child record.
+
+The report also provides citation metadata, the parent chain, names established in the
+article, and the number of existing classification entries. If resolution is ambiguous,
+review the reported candidates before continuing. Search the filesystem only if the
+database resolver finds no usable Article.
+
 ## Workflow
 
 1. Identify the proposal.
