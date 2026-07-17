@@ -9,7 +9,7 @@ import re
 import time
 from collections import defaultdict
 from collections.abc import Container, Generator, Iterable, Sequence
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import Any, TypedDict, TypeVar, cast
 
@@ -19,12 +19,23 @@ import Levenshtein
 from scripts import mdd_refs_match
 from taxonomy import getinput
 from taxonomy.config import get_options
-from taxonomy.db.constants import AgeClass, ArticleKind, ArticleType, Rank, Status
+from taxonomy.db.constants import (
+    AgeClass,
+    ArticleKind,
+    ArticleType,
+    OccurrenceStatus,
+    Rank,
+    RegionKind,
+    Status,
+)
 from taxonomy.db.models import Name, Taxon
 from taxonomy.db.models.article import Article
+from taxonomy.db.models.name import TypeTag
+from taxonomy.db.models.occurrence_record import OccurrenceRecordTag
 from taxonomy.db.models.tags import TaxonTag
 
 Syn = dict[str, str]
+_TAXON_NOT_CACHED = object()
 
 RANK_REGEX = r"[A-Z][a-z]+|incertae sedis|NA"
 SIMPLE_LATITUDE = r"([-−]?[\d\.]+)?"
@@ -925,6 +936,162 @@ class Issue:
                 return f"{self.mdd_column}: add data to species sheet"
 
 
+@dataclass(frozen=True)
+class DistributionEvidence:
+    country: str
+    kind: str
+    record: str
+    location: str
+    source: str
+    detail: str
+    link: str = ""
+
+
+@dataclass(frozen=True)
+class DistributionProblem:
+    mdd_id: str
+    species: str
+    taxon_id: int | None
+    country: str
+    mdd_country_distribution: str
+    suggested_country_distribution: str
+    evidence: tuple[DistributionEvidence, ...]
+
+    def to_row(self) -> dict[str, str | int]:
+        return {
+            "mdd_id": self.mdd_id,
+            "species": self.species,
+            "taxon_id": self.taxon_id or "",
+            "missing_country": self.country,
+            "country_known_to_mdd": "yes" if self.country in COUNTRIES else "no",
+            "mdd_country_distribution": self.mdd_country_distribution,
+            "suggested_country_distribution": self.suggested_country_distribution,
+            "evidence_count": len(self.evidence),
+            "evidence_types": "|".join(
+                sorted({evidence.kind for evidence in self.evidence})
+            ),
+            "evidence_records": "|".join(evidence.record for evidence in self.evidence),
+            "evidence_locations": "|".join(
+                dict.fromkeys(evidence.location for evidence in self.evidence)
+            ),
+            "evidence_sources": "|".join(
+                dict.fromkeys(
+                    evidence.source for evidence in self.evidence if evidence.source
+                )
+            ),
+            "evidence_details": " || ".join(
+                evidence.detail for evidence in self.evidence
+            ),
+            "evidence_links": "|".join(
+                evidence.link for evidence in self.evidence if evidence.link
+            ),
+            "review_status": "",
+            "review_comment": "",
+        }
+
+
+DISTRIBUTION_PROBLEM_COLUMNS = [
+    "mdd_id",
+    "species",
+    "taxon_id",
+    "missing_country",
+    "country_known_to_mdd",
+    "mdd_country_distribution",
+    "suggested_country_distribution",
+    "evidence_count",
+    "evidence_types",
+    "evidence_records",
+    "evidence_locations",
+    "evidence_sources",
+    "evidence_details",
+    "evidence_links",
+    "review_status",
+    "review_comment",
+]
+
+
+def _country_for_location(location: Any) -> str | None:
+    country = location.region.parent_of_kind(RegionKind.country)
+    return country.name if country is not None else None
+
+
+def _occurrence_record_is_distribution_evidence(record: Any) -> bool:
+    excluded_tag_ids = {
+        OccurrenceRecordTag.Vagrant._tag,
+        OccurrenceRecordTag.Introduced._tag,
+        OccurrenceRecordTag.OccurrenceDubious._tag,
+        OccurrenceRecordTag.ClassificationDubious._tag,
+        OccurrenceRecordTag.Rejected._tag,
+    }
+    return not any(tag._tag in excluded_tag_ids for tag in record.tags)
+
+
+def get_taxon_distribution_evidence(taxon: Taxon) -> list[DistributionEvidence]:
+    """Return country evidence from source-backed OccurrenceRecords."""
+    evidence = []
+    for record in taxon.occurrence_records:
+        if record.location is None or not _occurrence_record_is_distribution_evidence(
+            record
+        ):
+            continue
+        country = _country_for_location(record.location)
+        if country is None:
+            continue
+        article = record.classification_entry.article
+        page = record.get_page()
+        page_detail = f", p. {page}" if page else ""
+        evidence.append(
+            DistributionEvidence(
+                country=country,
+                kind="OccurrenceRecord",
+                record=f"OR:{record.id}",
+                location=record.location.name,
+                source=article.name,
+                detail=(
+                    f"{record.basis.name} record at {record.locality_text} "
+                    f"from {article.name}{page_detail}"
+                ),
+                link=record.get_absolute_url(),
+            )
+        )
+    return evidence
+
+
+def _get_hesp_name(syn: Syn) -> Name | None:
+    hesp_id = syn.get("Hesp_id", "")
+    if not hesp_id.isdigit():
+        return None
+    try:
+        return Name.get(id=int(hesp_id))
+    except Name.DoesNotExist:
+        return None
+
+
+def _name_type_locality_is_distribution_evidence(name: Name) -> bool:
+    if name.taxon.age not in {
+        AgeClass.extant,
+        AgeClass.holocene,
+        AgeClass.recently_extinct,
+    }:
+        return False
+    location = name.type_locality
+    if location is not None:
+        youngest_age = location.min_age
+        if youngest_age is None and location.min_period is not None:
+            youngest_age = location.min_period.min_age
+        if youngest_age is not None and youngest_age >= 11_700:
+            return False
+    statuses = [
+        tag.status
+        for tag in name.type_tags
+        if isinstance(tag, TypeTag.TypeLocalityStatus)
+    ]
+    return all(
+        status in {OccurrenceStatus.valid, OccurrenceStatus.extirpated}
+        for status in statuses
+    )
+
+
 @dataclass
 class MDDSpecies:
     row_idx: int
@@ -1162,6 +1329,9 @@ class SpeciesWithSyns:
     species: MDDSpecies
     base_name: Syn
     syns: list[Syn]
+    _hesp_taxon_cache: Taxon | None | object = field(
+        default=_TAXON_NOT_CACHED, init=False, repr=False
+    )
 
     def get_expected_type_locality(self) -> str:
         type_locality = self.base_name.get("MDD_original_type_locality", "")
@@ -1197,6 +1367,8 @@ class SpeciesWithSyns:
         return f"{syn['MDD_root_name']} {'(' if parens else ''}{syn['MDD_author']}{year}{')' if parens else ''}{status}"
 
     def get_hesp_taxon(self) -> Taxon | None:
+        if self._hesp_taxon_cache is not _TAXON_NOT_CACHED:
+            return cast(Taxon | None, self._hesp_taxon_cache)
         sci_name = self.species.row["sciName"].replace("_", " ")
         taxa = [
             t
@@ -1212,12 +1384,103 @@ class SpeciesWithSyns:
             )
         ]
         if len(tagged_taxa) == 1:
-            return tagged_taxa[0]
-        if len(taxa) == 1:
-            return taxa[0]
-        if tagged_taxa:
+            result = tagged_taxa[0]
+        elif len(taxa) == 1:
+            result = taxa[0]
+        elif tagged_taxa:
             raise ValueError(f"Multiple taxa found for species: {tagged_taxa}")
-        return None
+        else:
+            result = None
+        self._hesp_taxon_cache = result
+        return result
+
+    def get_distribution_evidence(
+        self, taxon: Taxon | None, mdd_countries: set[str]
+    ) -> list[DistributionEvidence]:
+        evidence = []
+        for syn in self.syns:
+            country = syn.get("MDD_type_country", "")
+            if not country or country not in COUNTRIES:
+                continue
+            mdd_country = country
+            if USE_ISO_3166 and COUNTRIES[country].code:
+                mdd_country = cast(str, COUNTRIES[country].code)
+            if mdd_country in mdd_countries:
+                continue
+            name = _get_hesp_name(syn)
+            if name is not None and not _name_type_locality_is_distribution_evidence(
+                name
+            ):
+                continue
+            syn_id = syn.get("MDD_syn_ID", "")
+            records = []
+            links = []
+            if name is not None:
+                records.append(f"N:{name.id}")
+                links.append(name.get_absolute_url())
+            if syn_id:
+                records.append(f"MDD synonym:{syn_id}")
+            evidence.append(
+                DistributionEvidence(
+                    country=country,
+                    kind="Type locality",
+                    record=" / ".join(records) or "MDD synonym",
+                    location=syn.get("MDD_original_type_locality", ""),
+                    source=syn.get("MDD_authority_citation", ""),
+                    detail=f"type locality of synonym {self.stringify_syn(syn)}",
+                    link="|".join(links),
+                )
+            )
+        if taxon is not None:
+            evidence.extend(
+                item
+                for item in get_taxon_distribution_evidence(taxon)
+                if item.country not in mdd_countries
+            )
+        return evidence
+
+    def get_distribution_problems(self) -> list[DistributionProblem]:
+        mdd_countries = self.species.get_countries()
+        if "Domesticated" in mdd_countries:
+            return []
+        taxon = self.get_hesp_taxon()
+        by_country: dict[str, list[DistributionEvidence]] = defaultdict(list)
+        for evidence in self.get_distribution_evidence(taxon, mdd_countries):
+            by_country[evidence.country].append(evidence)
+        problems = []
+        for country, country_evidence in sorted(by_country.items()):
+            mdd_country = country
+            if USE_ISO_3166 and country in COUNTRIES and COUNTRIES[country].code:
+                mdd_country = cast(str, COUNTRIES[country].code)
+            if mdd_country in mdd_countries:
+                continue
+            current_distribution = self.species.row.get("countryDistribution", "")
+            suggested_distribution = (
+                f"{current_distribution}|{mdd_country}"
+                if current_distribution
+                else mdd_country
+            )
+            problems.append(
+                DistributionProblem(
+                    mdd_id=self.species.row["id"],
+                    species=self.species.row["sciName"],
+                    taxon_id=taxon.id if taxon is not None else None,
+                    country=country,
+                    mdd_country_distribution=current_distribution,
+                    suggested_country_distribution=suggested_distribution,
+                    evidence=tuple(
+                        sorted(
+                            country_evidence,
+                            key=lambda evidence: (
+                                evidence.kind,
+                                evidence.record,
+                                evidence.location,
+                            ),
+                        )
+                    ),
+                )
+            )
+        return problems
 
     def get_expected_row(self) -> dict[str, str]:
         simple = {sp_col: self.base_name[syn_col] for sp_col, syn_col in SIMPLE_COLUMNS}
@@ -1276,18 +1539,13 @@ class SpeciesWithSyns:
 
         if not CHECK_GEOGRAPHY:
             return
-        actual_countries = self.species.get_countries()
-        if "Domesticated" not in actual_countries:
-            for syn in self.syns:
-                if (
-                    syn["MDD_type_country"]
-                    and syn["MDD_type_country"] not in actual_countries
-                    and syn["MDD_type_country"] in COUNTRIES
-                ):
-                    yield self.species.make_issue(
-                        "countryDistribution",
-                        f"missing country {syn['MDD_type_country']} (type locality of synonym {self.stringify_syn(syn)})",
-                    )
+        for problem in self.get_distribution_problems():
+            evidence = "; ".join(item.detail for item in problem.evidence[:3])
+            if len(problem.evidence) > 3:
+                evidence += f"; {len(problem.evidence) - 3} more records"
+            yield self.species.make_issue(
+                "countryDistribution", f"missing country {problem.country} ({evidence})"
+            )
 
     def get_expected_new_row(self, headings: Iterable[str]) -> dict[str, str]:
         row = dict.fromkeys(headings, "")
@@ -1389,9 +1647,15 @@ def generate_match(
 
 
 def check_with_syns_match(
-    species: list[MDDSpecies], syns: list[Syn], headings: Sequence[str]
+    species: list[MDDSpecies],
+    syns: list[Syn],
+    headings: Sequence[str],
+    *,
+    matched_output: list[SpeciesWithSyns] | None = None,
 ) -> Iterable[Issue]:
     spp_with_syns = yield from generate_match(species, syns, headings)
+    if matched_output is not None:
+        matched_output.extend(spp_with_syns)
     for sp in spp_with_syns:
         yield from sp.compare_against_expected()
 
@@ -1913,12 +2177,33 @@ def write_grouped_differences(backup_path: Path, issues: list[Issue]) -> None:
             )
 
 
+def write_distribution_problems(
+    output_path: Path, species: Iterable[SpeciesWithSyns]
+) -> list[DistributionProblem]:
+    problems = sorted(
+        (
+            problem
+            for species_with_syns in species
+            for problem in species_with_syns.get_distribution_problems()
+        ),
+        key=lambda problem: (problem.species, problem.country),
+    )
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w", newline="", encoding="utf-8") as file:
+        writer = csv.DictWriter(file, DISTRIBUTION_PROBLEM_COLUMNS)
+        writer.writeheader()
+        writer.writerows(problem.to_row() for problem in problems)
+    print(f"Wrote {len(problems)} distribution problems to {output_path}")
+    return problems
+
+
 def run(
     *,
     dry_run: bool = True,
     input_csv: str | None = None,
     syn_sheet_csv: str | None = None,
     common_names_only: bool = False,
+    distribution_problems_output: Path | None = None,
 ) -> None:
     options = get_options()
     backup_path = (
@@ -1966,7 +2251,13 @@ def run(
             dict(zip(syn_sheet_headings, row, strict=False))
             for row in syn_sheet_rows[1:]
         ]
-        issues += check_with_syns_match(species, syns, sheet_headings)
+        matched_species: list[SpeciesWithSyns] = []
+        issues += check_with_syns_match(
+            species, syns, sheet_headings, matched_output=matched_species
+        )
+        if distribution_problems_output is None:
+            distribution_problems_output = backup_path / "distribution_problems.csv"
+        write_distribution_problems(distribution_problems_output, matched_species)
         check_species_tags(species)
 
         for issue in issues:
@@ -1997,10 +2288,12 @@ if __name__ == "__main__":
     parser.add_argument("--syn-sheet-csv", type=str, default=None)
     parser.add_argument("--dry-run", action="store_true", default=False)
     parser.add_argument("--common-names-only", action="store_true", default=False)
+    parser.add_argument("--distribution-problems-output", type=Path, default=None)
     args = parser.parse_args()
     run(
         input_csv=args.input_csv,
         dry_run=args.dry_run,
         syn_sheet_csv=args.syn_sheet_csv,
         common_names_only=args.common_names_only,
+        distribution_problems_output=args.distribution_problems_output,
     )

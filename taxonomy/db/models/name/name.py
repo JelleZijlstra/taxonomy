@@ -3262,6 +3262,13 @@ class TypeTag(adt.ADT):
         tag=75,
     )
 
+    # Whether the type locality should count as evidence that the assigned taxon
+    # occurred there. For example, use occurrence_dubious for an apparently authentic
+    # old locality that is far outside the otherwise known range.
+    TypeLocalityStatus(  # type: ignore[name-defined]
+        status=constants.OccurrenceStatus, comment=NotRequired[Markdown], tag=76
+    )
+
 
 SOURCE_TAGS = (
     TypeTag.SourceDetail,

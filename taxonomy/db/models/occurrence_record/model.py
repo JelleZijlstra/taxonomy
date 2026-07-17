@@ -40,6 +40,9 @@ class OccurrenceRecord(BaseModel):
         location = self.location or self.locality_text
         return f"{taxon} at {location} ({self.basis.name}; {self.classification_entry})"
 
+    def __str__(self) -> str:
+        return self.__repr__()
+
     def get_page(self) -> str | None:
         return self.page or self.classification_entry.page
 

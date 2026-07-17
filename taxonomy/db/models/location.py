@@ -194,9 +194,37 @@ class Location(BaseModel):
             parent=self, deleted=LocationStatus.alias, name=name, region=self.region
         )
 
+    def display_occurrences(
+        self, *, depth: int = 0, file: IO[str] = sys.stdout
+    ) -> None:
+        type_localities = list(self.type_localities)
+        records = list(self.occurrence_records)
+        if type_localities:
+            file.write("{}Type localities:\n".format(" " * (depth + 4)))
+            for occurrence in sorted(
+                type_localities, key=lambda occ: occ.taxon.valid_name
+            ):
+                file.write("{}{}\n".format(" " * (depth + 8), occurrence))
+                file.write("{}{}\n".format(" " * (depth + 8), occurrence))
+        if records:
+            file.write("{}Occurrence records:\n".format(" " * (depth + 4)))
+            for record in sorted(
+                records,
+                key=lambda record: (
+                    record.taxon.valid_name if record.taxon is not None else "",
+                    record.locality_text,
+                ),
+            ):
+                file.write("{}{}\n".format(" " * (depth + 12), record))
+
     def get_adt_callbacks(self) -> getinput.CallbackMap:
         callbacks = super().get_adt_callbacks()
-        return {**callbacks, "add_alias": self.add_alias, "merge": self.merge}
+        return {
+            **callbacks,
+            "add_alias": self.add_alias,
+            "merge": self.merge,
+            "display_occurrences": self.display_occurrences,
+        }
 
     def edit(self) -> None:
         self.fill_field("tags")
