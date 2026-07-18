@@ -94,7 +94,7 @@ class Location(BaseModel):
         while True:
             if name is None:
                 name = getinput.get_line("name> ")
-            if name is None:
+            if not name:
                 return None
             try:
                 existing = cls.select().filter(cls.name == name).get()
@@ -361,6 +361,8 @@ class Location(BaseModel):
             return False
         if self.type_localities.count():
             return False
+        if self.specimen_set.count():
+            return False
         return True
 
     def lint_invalid(self, cfg: LintConfig) -> Iterable[str]:
@@ -383,6 +385,9 @@ class Location(BaseModel):
             return
         if self.longitude is None:
             yield f"{self}: missing longitude"
+            return
+        if self.is_general():
+            yield f"{self}: general location should not have coordinates"
             return
         try:
             latitude, _ = coordinate_lint.standardize_coordinate(
@@ -410,11 +415,18 @@ class Location(BaseModel):
         for message in coordinate_lint.check_point_in_region(point, self.region):
             yield f"{self}: {message}"
 
+    def is_general(self) -> bool:
+        return self.has_tag(LocationTag.General) or self.name in (
+            self.region.name,
+            f"{self.region.name} fossil",
+            f"{self.region.name} Pleistocene",
+        )
+
     def lint_missing_coordinates(self, cfg: LintConfig) -> Iterable[str]:
         # General Recent locations such as "Ecuador" are deliberately not points.
         # Avoid loading all their reverse relationships as well as avoiding a noisy
         # and misleading lint.
-        if self.name == self.region.name:
+        if self.is_general():
             return
 
         from .name import TypeTag
@@ -447,8 +459,8 @@ class Location(BaseModel):
             distance = coordinate_lint.distance_km(point, other_point)
             if distance > coordinate_lint.COORDINATE_TOLERANCE_KM:
                 yield (
-                    f"{self}: cannot infer coordinates because {source} and "
-                    f"{other_source} differ by {distance:.1f} km "
+                    f"{self}: cannot infer coordinates because {point} (from {source}) and "
+                    f"{other_point} (from {other_source}) differ by {distance:.1f} km "
                     "[linked_coordinates]"
                 )
                 return
