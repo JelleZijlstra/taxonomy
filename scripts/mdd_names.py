@@ -33,7 +33,7 @@ import subprocess
 import sys
 import time
 from collections import Counter
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -46,7 +46,7 @@ import Levenshtein
 from scripts import mdd_diff
 from taxonomy import getinput
 from taxonomy.config import get_options
-from taxonomy.db import export, helpers, models
+from taxonomy.db import coordinate_lint, export, helpers, models
 from taxonomy.db.constants import (
     AgeClass,
     Group,
@@ -252,6 +252,43 @@ def get_type_specimen(nam: Name) -> str:
     return ""
 
 
+def _parse_type_locality_coordinates(
+    latitude: str, longitude: str
+) -> tuple[str, str] | None:
+    try:
+        _, parsed_latitude = coordinate_lint.standardize_coordinate(
+            latitude, is_latitude=True
+        )
+        _, parsed_longitude = coordinate_lint.standardize_coordinate(
+            longitude, is_latitude=False
+        )
+    except helpers.InvalidCoordinates:
+        return None
+    return str(parsed_latitude), str(parsed_longitude)
+
+
+def get_type_locality_coordinates(
+    names_for_tags: Sequence[Name], name_for_types: Name
+) -> tuple[str, str]:
+    """Return name-level coordinates, falling back to the type-locality Location."""
+    coordinates: tuple[str, str] | None = None
+    for name in names_for_tags:
+        for tag in name.type_tags:
+            if isinstance(tag, TypeTag.Coordinates):
+                parsed = _parse_type_locality_coordinates(tag.latitude, tag.longitude)
+                if parsed is not None:
+                    coordinates = parsed
+    if coordinates is not None:
+        return coordinates
+    location = name_for_types.type_locality
+    if location is None or location.latitude is None or location.longitude is None:
+        return "", ""
+    return _parse_type_locality_coordinates(location.latitude, location.longitude) or (
+        "",
+        "",
+    )
+
+
 OMITTED_COLUMNS = {
     "MDD_old_type_locality",
     "MDD_emended_type_locality",
@@ -354,8 +391,9 @@ def get_hesp_row(
     verbatim_tl = []
     emended_tl = []
     citation_details = []
-    row["Hesp_type_latitude"] = ""
-    row["Hesp_type_longitude"] = ""
+    row["Hesp_type_latitude"], row["Hesp_type_longitude"] = (
+        get_type_locality_coordinates(names_for_tags, name_for_types)
+    )
     for nam in names_for_tags:
         for tag in nam.type_tags:
             if isinstance(tag, TypeTag.LocationDetail):
@@ -368,18 +406,6 @@ def get_hesp_row(
                         ", ".join(tag.source.taxonomic_authority())
                     )
                     emended_tl.append(f'"{tag.text}" ({citation})')
-            elif isinstance(tag, TypeTag.Coordinates):
-                try:
-                    _, lat = helpers.standardize_coordinates(
-                        tag.latitude, is_latitude=True
-                    )
-                    row["Hesp_type_latitude"] = str(lat)
-                    _, long = helpers.standardize_coordinates(
-                        tag.longitude, is_latitude=False
-                    )
-                    row["Hesp_type_longitude"] = str(long)
-                except helpers.InvalidCoordinates:
-                    pass
             elif isinstance(tag, TypeTag.CitationDetail):
                 citation = helpers.romanize_russian(
                     ", ".join(tag.source.taxonomic_authority())

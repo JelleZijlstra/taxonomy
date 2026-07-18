@@ -1,14 +1,20 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from typing import Any, ClassVar
+from typing import Any, ClassVar, NotRequired
 
 from clirm import Field
 
 from taxonomy import events, getinput
 from taxonomy.adt import ADT
 from taxonomy.db import models
-from taxonomy.db.constants import Managed, Markdown, OccurrenceBasis
+from taxonomy.db.constants import (
+    AltitudeUnit,
+    Managed,
+    Markdown,
+    OccurrenceBasis,
+    OccurrenceStatus,
+)
 from taxonomy.db.constants import ObservationKind as ObservationKindEnum
 from taxonomy.db.models.base import ADTField, BaseModel, LintConfig, TextOrNullField
 from taxonomy.db.models.classification_entry import ClassificationEntry
@@ -131,6 +137,9 @@ class OccurrenceRecord(BaseModel):
         yield from models.occurrence_record.lint.check_taxon(self, cfg)
         yield from models.occurrence_record.lint.check_location(self, cfg)
         yield from models.occurrence_record.lint.check_basis_tags(self, cfg)
+        yield from models.occurrence_record.lint.check_source_data_tags(self, cfg)
+        yield from models.occurrence_record.lint.check_coordinate_consistency(self, cfg)
+        yield from models.occurrence_record.lint.check_status_tags(self, cfg)
         yield from models.occurrence_record.lint.check_split(self, cfg)
         yield from models.occurrence_record.lint.check_duplicate(self, cfg)
 
@@ -150,3 +159,24 @@ class OccurrenceRecordTag(ADT):
     CommentFromDatabase(text=Markdown, tag=11)  # type: ignore[name-defined]
     TaxonomicSplitFrom(record=OccurrenceRecord, tag=12)  # type: ignore[name-defined]
     LocationHint(name=Managed, tag=13)  # type: ignore[name-defined]
+
+    # Unlike the legacy status tags above, these tags record whether the status was
+    # stated by the source or is a mutable database assessment. Both are repeatable:
+    # multiple statuses may apply to the same occurrence record.
+    StatusFromSource(  # type: ignore[name-defined]
+        status=OccurrenceStatus, comment=NotRequired[Markdown], tag=14
+    )
+    StatusAssessment(  # type: ignore[name-defined]
+        status=OccurrenceStatus, comment=NotRequired[Markdown], tag=15
+    )
+
+    # Verbatim tags preserve source text. Their normalized counterparts are also
+    # source-derived, but are stored in a form that can be queried and compared with
+    # the mapped Location. Lints infer normalized tags where possible.
+    VerbatimCoordinates(text=Managed, tag=16)  # type: ignore[name-defined]
+    Coordinates(latitude=Managed, longitude=Managed, tag=17)  # type: ignore[name-defined]
+    VerbatimElevation(text=Managed, tag=18)  # type: ignore[name-defined]
+    Elevation(elevation=Managed, unit=AltitudeUnit, tag=19)  # type: ignore[name-defined]
+    CoordinateUncertaintyFromSource(text=Managed, tag=20)  # type: ignore[name-defined]
+    VerbatimDate(text=Managed, tag=21)  # type: ignore[name-defined]
+    Date(date=Managed, tag=22)  # type: ignore[name-defined]

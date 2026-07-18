@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import enum
 import re
+import sqlite3
 import subprocess
 import sys
 from collections import Counter
@@ -89,6 +90,52 @@ class Location(BaseModel):
         )
 
     @classmethod
+    def _get_unique_name(cls, name: str | None = None) -> str | None:
+        while True:
+            if name is None:
+                name = getinput.get_line("name> ")
+            if name is None:
+                return None
+            try:
+                existing = cls.select().filter(cls.name == name).get()
+            except cls.DoesNotExist:
+                return name
+            print(f"A Location named {name!r} already exists; choose a different name.")
+            existing.display()
+            name = None
+
+    @classmethod
+    def _make_with_unique_name(
+        cls,
+        *,
+        name: str,
+        region: Region,
+        period: Period,
+        comment: str | None = None,
+        **kwargs: Any,
+    ) -> Location | None:
+        while True:
+            make_kwargs: dict[str, Any] = {
+                "name": name,
+                "region": region,
+                "period": period,
+                **kwargs,
+            }
+            if comment is not None:
+                make_kwargs["comment"] = comment
+            try:
+                return cls.make(**make_kwargs)
+            except sqlite3.IntegrityError:
+                print(
+                    f"Could not create Location {name!r} because that name is now "
+                    "in use; choose a different name."
+                )
+                maybe_name = cls._get_unique_name()
+                if maybe_name is None:
+                    return None
+                name = maybe_name
+
+    @classmethod
     def create_interactively(
         cls,
         name: str | None = None,
@@ -96,10 +143,10 @@ class Location(BaseModel):
         period: Period | None = None,
         comment: str | None = None,
         **kwargs: Any,
-    ) -> Location:
+    ) -> Location | None:
+        name = cls._get_unique_name(name)
         if name is None:
-            name = getinput.get_line("name> ")
-        assert name is not None
+            return None
         while region is None:
             region = cls.get_value_for_foreign_key_field_on_class(
                 "region", allow_none=False
@@ -107,16 +154,17 @@ class Location(BaseModel):
         assert region is not None
         if period is None:
             period = cls.get_value_for_foreign_key_field_on_class("min_period")
-        result = cls.make(
+        result = cls._make_with_unique_name(
             name=name, region=region, period=period, comment=comment, **kwargs
         )
-        result.fill_required_fields()
+        if result is not None:
+            result.fill_required_fields()
         return result
 
     @classmethod
     def create_recent_interactively(cls) -> Location | None:
         recent = Period.filter(Period.name == "Recent").get()
-        name = getinput.get_line("name> ")
+        name = cls._get_unique_name()
         if name is None:
             return None
         region = cls.get_value_for_foreign_key_field_on_class(
@@ -125,7 +173,9 @@ class Location(BaseModel):
         assert region is not None
         latitude = getinput.get_line("latitude> ") or None
         longitude = getinput.get_line("longitude> ") or None
-        result = cls.make(name=name, region=region, period=recent)
+        result = cls._make_with_unique_name(name=name, region=region, period=recent)
+        if result is None:
+            return None
         result.latitude = latitude
         result.longitude = longitude
         result.format()

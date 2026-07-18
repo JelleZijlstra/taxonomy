@@ -1,14 +1,40 @@
 from __future__ import annotations
 
+import datetime
+import math
+import re
 from collections.abc import Iterable
 
-from taxonomy.db import models
-from taxonomy.db.constants import OccurrenceBasis
+from taxonomy import coordinates
+from taxonomy.db import coordinate_lint, helpers, models
+from taxonomy.db.constants import AltitudeUnit, OccurrenceBasis
 from taxonomy.db.models.base import LintConfig
 from taxonomy.db.models.location import Location, LocationStatus
 from taxonomy.db.models.taxon import Taxon
 
 from .model import OccurrenceRecord, OccurrenceRecordTag
+
+COORDINATE_LOCATION_TOLERANCE_KM = 5
+
+_SIGNED_DECIMAL_COORDINATES = re.compile(
+    r"^\s*(?P<latitude>[+-]?\d+(?:\.\d+)?)\s*[,;/]\s*"
+    r"(?P<longitude>[+-]?\d+(?:\.\d+)?)\s*$"
+)
+_ELEVATION = re.compile(
+    r"^\s*(?:elev(?:ation)?\.?|alt(?:itude)?\.?)?\s*"
+    r"(?P<elevation>-?\d[\d,]*(?:\.\d+)?(?:\s*[-–]\s*\d[\d,]*(?:\.\d+)?)?)"
+    r"\s*(?P<unit>m|met(?:er|re)s?|ft|feet|foot)\.?\s*$",
+    re.IGNORECASE,
+)
+_ISO_DATE = re.compile(r"^(?P<year>\d{4})(?:-(?P<month>\d{2})(?:-(?P<day>\d{2}))?)?$")
+_LEGACY_STATUS_TAGS = (
+    OccurrenceRecordTag.Vagrant,
+    OccurrenceRecordTag.Introduced,
+    OccurrenceRecordTag.Extirpated,
+    OccurrenceRecordTag.OccurrenceDubious,
+    OccurrenceRecordTag.ClassificationDubious,
+    OccurrenceRecordTag.Rejected,
+)
 
 
 def get_inferred_taxon(record: OccurrenceRecord) -> Taxon | None:
@@ -118,6 +144,328 @@ def check_basis_tags(record: OccurrenceRecord, cfg: LintConfig) -> Iterable[str]
         OccurrenceRecordTag.SpecimenDetail
     ):
         yield f"{record}: SpecimenDetail requires voucher basis [basis_tags]"
+
+
+def _replace_tag(
+    record: OccurrenceRecord, old_tag: OccurrenceRecordTag, new_tag: OccurrenceRecordTag
+) -> None:
+    replaced = False
+    new_tags = []
+    for tag in record.tags:
+        if not replaced and tag == old_tag:
+            new_tags.append(new_tag)
+            replaced = True
+        else:
+            new_tags.append(tag)
+    record.tags = tuple(new_tags)  # type: ignore[assignment]
+
+
+def parse_verbatim_coordinates(text: str) -> tuple[str, str] | None:
+    coordinates_from_text = helpers.extract_coordinates(text)
+    if coordinates_from_text is not None:
+        return coordinates_from_text
+    match = _SIGNED_DECIMAL_COORDINATES.fullmatch(text)
+    if match is None:
+        return None
+    try:
+        latitude, _ = coordinate_lint.standardize_coordinate(
+            match.group("latitude"), is_latitude=True
+        )
+        longitude, _ = coordinate_lint.standardize_coordinate(
+            match.group("longitude"), is_latitude=False
+        )
+    except helpers.InvalidCoordinates:
+        return None
+    return latitude, longitude
+
+
+def parse_verbatim_elevation(text: str) -> tuple[str, AltitudeUnit] | None:
+    match = _ELEVATION.fullmatch(text)
+    if match is None:
+        return None
+    elevation = re.sub(r"\s*[-–]\s*", "-", match.group("elevation"))
+    elevation = elevation.replace(",", "")
+    unit_text = match.group("unit").lower()
+    unit = AltitudeUnit.m if unit_text.startswith("m") else AltitudeUnit.ft
+    return elevation, unit
+
+
+def _parse_iso_date(text: str) -> str | None:
+    match = _ISO_DATE.fullmatch(text)
+    if match is None:
+        return None
+    year = int(match.group("year"))
+    month_text = match.group("month")
+    day_text = match.group("day")
+    if month_text is None:
+        return f"{year:04d}"
+    month = int(month_text)
+    if day_text is None:
+        if not 1 <= month <= 12:
+            return None
+        return f"{year:04d}-{month:02d}"
+    day = int(day_text)
+    try:
+        parsed = datetime.date(year, month, day)
+    except ValueError:
+        return None
+    return parsed.isoformat()
+
+
+def parse_verbatim_date(text: str) -> str | None:
+    """Return a source date in a queryable ISO 8601-style representation."""
+    text = text.strip()
+    if parsed := _parse_iso_date(text):
+        return parsed
+    try:
+        standardized = helpers.standardize_date(text)
+    except ValueError:
+        return None
+    if standardized is None:
+        return None
+    before = standardized.startswith("<")
+    standardized = standardized.removeprefix("<")
+    if parsed := _parse_iso_date(standardized):
+        return f"<{parsed}" if before else parsed
+    for fmt, output_fmt in (("%B %Y", "%Y-%m"), ("%d %B %Y", "%Y-%m-%d")):
+        try:
+            parsed_date = datetime.datetime.strptime(standardized, fmt).replace(
+                tzinfo=datetime.UTC
+            )
+        except ValueError:
+            continue
+        output = parsed_date.strftime(output_fmt)
+        return f"<{output}" if before else output
+    return None
+
+
+def _add_inferred_tag(
+    record: OccurrenceRecord,
+    tag: OccurrenceRecordTag,
+    source_tag: OccurrenceRecordTag,
+    cfg: LintConfig,
+) -> Iterable[str]:
+    message = f"{record}: add {tag} inferred from {source_tag} [source_data]"
+    if cfg.autofix:
+        print(message)
+        record.add_tag(tag)
+    else:
+        yield message
+
+
+def _check_verbatim_coordinates(
+    record: OccurrenceRecord, cfg: LintConfig
+) -> Iterable[str]:
+    normalized = list(record.get_tags(record.tags, OccurrenceRecordTag.Coordinates))
+    for tag in record.get_tags(record.tags, OccurrenceRecordTag.VerbatimCoordinates):
+        parsed = parse_verbatim_coordinates(tag.text)
+        if parsed is None:
+            if not normalized:
+                yield (
+                    f"{record}: cannot parse coordinates from {tag.text!r}; add "
+                    "Coordinates manually [source_data]"
+                )
+            continue
+        expected = OccurrenceRecordTag.Coordinates(*parsed)
+        if expected not in normalized:
+            if normalized:
+                yield (
+                    f"{record}: {tag} parses as {expected}, inconsistent with "
+                    f"{normalized} [source_data]"
+                )
+            else:
+                yield from _add_inferred_tag(record, expected, tag, cfg)
+                if cfg.autofix:
+                    normalized.append(expected)
+
+
+def _check_verbatim_elevations(
+    record: OccurrenceRecord, cfg: LintConfig
+) -> Iterable[str]:
+    normalized = list(record.get_tags(record.tags, OccurrenceRecordTag.Elevation))
+    for tag in record.get_tags(record.tags, OccurrenceRecordTag.VerbatimElevation):
+        parsed = parse_verbatim_elevation(tag.text)
+        if parsed is None:
+            if not normalized:
+                yield (
+                    f"{record}: cannot parse elevation from {tag.text!r}; add "
+                    "Elevation manually [source_data]"
+                )
+            continue
+        expected = OccurrenceRecordTag.Elevation(*parsed)
+        if expected not in normalized:
+            if normalized:
+                yield (
+                    f"{record}: {tag} parses as {expected}, inconsistent with "
+                    f"{normalized} [source_data]"
+                )
+            else:
+                yield from _add_inferred_tag(record, expected, tag, cfg)
+                if cfg.autofix:
+                    normalized.append(expected)
+
+
+def _check_verbatim_dates(record: OccurrenceRecord, cfg: LintConfig) -> Iterable[str]:
+    normalized = list(record.get_tags(record.tags, OccurrenceRecordTag.Date))
+    for tag in record.get_tags(record.tags, OccurrenceRecordTag.VerbatimDate):
+        parsed = parse_verbatim_date(tag.text)
+        if parsed is None:
+            if not normalized:
+                yield (
+                    f"{record}: cannot parse date from {tag.text!r}; add Date "
+                    "manually [source_data]"
+                )
+            continue
+        expected = OccurrenceRecordTag.Date(parsed)
+        if expected not in normalized:
+            if normalized:
+                yield (
+                    f"{record}: {tag} parses as {expected}, inconsistent with "
+                    f"{normalized} [source_data]"
+                )
+            else:
+                yield from _add_inferred_tag(record, expected, tag, cfg)
+                if cfg.autofix:
+                    normalized.append(expected)
+
+
+def _standardize_normalized_tags(
+    record: OccurrenceRecord, cfg: LintConfig
+) -> Iterable[str]:
+    for tag in tuple(record.get_tags(record.tags, OccurrenceRecordTag.Coordinates)):
+        try:
+            latitude, _ = coordinate_lint.standardize_coordinate(
+                tag.latitude, is_latitude=True
+            )
+            longitude, _ = coordinate_lint.standardize_coordinate(
+                tag.longitude, is_latitude=False
+            )
+        except helpers.InvalidCoordinates:
+            yield f"{record}: invalid normalized coordinates {tag} [source_data]"
+            continue
+        expected = OccurrenceRecordTag.Coordinates(latitude, longitude)
+        if tag != expected:
+            message = f"{record}: replace {tag} with {expected} [source_data]"
+            if cfg.autofix:
+                print(message)
+                _replace_tag(record, tag, expected)
+            else:
+                yield message
+    for tag in tuple(record.get_tags(record.tags, OccurrenceRecordTag.Elevation)):
+        elevation_parsed = parse_verbatim_elevation(f"{tag.elevation} {tag.unit.name}")
+        if elevation_parsed is None:
+            yield f"{record}: invalid normalized elevation {tag} [source_data]"
+            continue
+        expected = OccurrenceRecordTag.Elevation(*elevation_parsed)
+        if tag != expected:
+            message = f"{record}: replace {tag} with {expected} [source_data]"
+            if cfg.autofix:
+                print(message)
+                _replace_tag(record, tag, expected)
+            else:
+                yield message
+    for tag in tuple(record.get_tags(record.tags, OccurrenceRecordTag.Date)):
+        date_parsed = parse_verbatim_date(tag.date.removeprefix("<"))
+        if date_parsed is None:
+            yield f"{record}: invalid normalized date {tag} [source_data]"
+            continue
+        if tag.date.startswith("<"):
+            date_parsed = f"<{date_parsed}"
+        expected = OccurrenceRecordTag.Date(date_parsed)
+        if tag != expected:
+            message = f"{record}: replace {tag} with {expected} [source_data]"
+            if cfg.autofix:
+                print(message)
+                _replace_tag(record, tag, expected)
+            else:
+                yield message
+
+
+def check_source_data_tags(record: OccurrenceRecord, cfg: LintConfig) -> Iterable[str]:
+    yield from _standardize_normalized_tags(record, cfg)
+    for normalized_type, verbatim_type in (
+        (OccurrenceRecordTag.Coordinates, OccurrenceRecordTag.VerbatimCoordinates),
+        (OccurrenceRecordTag.Elevation, OccurrenceRecordTag.VerbatimElevation),
+        (OccurrenceRecordTag.Date, OccurrenceRecordTag.VerbatimDate),
+    ):
+        if record.has_tag(normalized_type) and not record.has_tag(verbatim_type):
+            yield (
+                f"{record}: {normalized_type.__name__} requires "
+                f"{verbatim_type.__name__} [source_data]"
+            )
+    yield from _check_verbatim_coordinates(record, cfg)
+    yield from _check_verbatim_elevations(record, cfg)
+    yield from _check_verbatim_dates(record, cfg)
+
+
+def _distance_km(first: coordinates.Point, second: coordinates.Point) -> float:
+    """Return the great-circle distance between two points in kilometres."""
+    earth_radius_km = 6371.0088
+    lat1 = math.radians(first.latitude)
+    lat2 = math.radians(second.latitude)
+    delta_lat = lat2 - lat1
+    delta_lon = math.radians(second.longitude - first.longitude)
+    haversine = (
+        math.sin(delta_lat / 2) ** 2
+        + math.cos(lat1) * math.cos(lat2) * math.sin(delta_lon / 2) ** 2
+    )
+    return 2 * earth_radius_km * math.asin(math.sqrt(haversine))
+
+
+def check_coordinate_consistency(
+    record: OccurrenceRecord, cfg: LintConfig
+) -> Iterable[str]:
+    coordinate_tags = list(
+        record.get_tags(record.tags, OccurrenceRecordTag.Coordinates)
+    )
+    if not coordinate_tags or record.location is None:
+        return
+    if record.location.latitude is None or record.location.longitude is None:
+        yield (
+            f"{record}: has source coordinates but Location {record.location} has "
+            "no coordinates [coordinate_location]"
+        )
+        return
+    location_point = coordinate_lint.make_point(
+        record.location.latitude, record.location.longitude
+    )
+    if location_point is None:
+        return
+    for tag in coordinate_tags:
+        occurrence_point = coordinate_lint.make_point(tag.latitude, tag.longitude)
+        if occurrence_point is None:
+            continue
+        distance = _distance_km(occurrence_point, location_point)
+        if distance > COORDINATE_LOCATION_TOLERANCE_KM:
+            yield (
+                f"{record}: source coordinates {tag.latitude}, {tag.longitude} are "
+                f"{distance:.1f} km from Location {record.location} coordinates "
+                f"{record.location.latitude}, {record.location.longitude} "
+                "[coordinate_location]"
+            )
+
+
+def check_status_tags(record: OccurrenceRecord, cfg: LintConfig) -> Iterable[str]:
+    for legacy_tag in _LEGACY_STATUS_TAGS:
+        if record.has_tag(legacy_tag):
+            yield (
+                f"{record}: replace legacy {type(legacy_tag).__name__} with "
+                "StatusFromSource or StatusAssessment [legacy_status]"
+            )
+    for tag_type in (
+        OccurrenceRecordTag.StatusFromSource,
+        OccurrenceRecordTag.StatusAssessment,
+    ):
+        statuses = [tag.status for tag in record.get_tags(record.tags, tag_type)]
+        duplicate_statuses = sorted(
+            {status for status in statuses if statuses.count(status) > 1},
+            key=lambda status: status.value,
+        )
+        for status in duplicate_statuses:
+            yield (
+                f"{record}: has duplicate {tag_type.__name__} for {status.name} "
+                "[status_tags]"
+            )
 
 
 def check_split(record: OccurrenceRecord, cfg: LintConfig) -> Iterable[str]:

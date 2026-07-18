@@ -25,7 +25,6 @@ from taxonomy.db.constants import (
     ArticleType,
     OccurrenceStatus,
     Rank,
-    RegionKind,
     Status,
 )
 from taxonomy.db.models import Name, Taxon
@@ -1011,11 +1010,27 @@ DISTRIBUTION_PROBLEM_COLUMNS = [
 
 
 def _country_for_location(location: Any) -> str | None:
-    country = location.region.parent_of_kind(RegionKind.country)
-    return country.name if country is not None else None
+    for region in itertools.chain([location.region], location.region.all_parents()):
+        if region.name in COUNTRIES:
+            return region.name
+    return None
+
+
+def _mdd_distribution_has_country(country: str, mdd_countries: Container[str]) -> bool:
+    mdd_country = country
+    if USE_ISO_3166 and COUNTRIES[country].code:
+        mdd_country = cast(str, COUNTRIES[country].code)
+    return mdd_country in mdd_countries
 
 
 def _occurrence_record_is_distribution_evidence(record: Any) -> bool:
+    excluded_statuses = {
+        OccurrenceStatus.vagrant,
+        OccurrenceStatus.introduced,
+        OccurrenceStatus.occurrence_dubious,
+        OccurrenceStatus.classification_dubious,
+        OccurrenceStatus.rejected,
+    }
     excluded_tag_ids = {
         OccurrenceRecordTag.Vagrant._tag,
         OccurrenceRecordTag.Introduced._tag,
@@ -1023,7 +1038,21 @@ def _occurrence_record_is_distribution_evidence(record: Any) -> bool:
         OccurrenceRecordTag.ClassificationDubious._tag,
         OccurrenceRecordTag.Rejected._tag,
     }
-    return not any(tag._tag in excluded_tag_ids for tag in record.tags)
+    for tag in record.tags:
+        if tag._tag in excluded_tag_ids:
+            return False
+        if (
+            isinstance(
+                tag,
+                (
+                    OccurrenceRecordTag.StatusFromSource,
+                    OccurrenceRecordTag.StatusAssessment,
+                ),
+            )
+            and tag.status in excluded_statuses
+        ):
+            return False
+    return True
 
 
 def get_taxon_distribution_evidence(taxon: Taxon) -> list[DistributionEvidence]:
@@ -1400,14 +1429,13 @@ class SpeciesWithSyns:
         evidence = []
         for syn in self.syns:
             country = syn.get("MDD_type_country", "")
+            name = _get_hesp_name(syn)
+            if name is not None and name.type_locality is not None:
+                country = _country_for_location(name.type_locality) or country
             if not country or country not in COUNTRIES:
                 continue
-            mdd_country = country
-            if USE_ISO_3166 and COUNTRIES[country].code:
-                mdd_country = cast(str, COUNTRIES[country].code)
-            if mdd_country in mdd_countries:
+            if _mdd_distribution_has_country(country, mdd_countries):
                 continue
-            name = _get_hesp_name(syn)
             if name is not None and not _name_type_locality_is_distribution_evidence(
                 name
             ):
@@ -1435,7 +1463,7 @@ class SpeciesWithSyns:
             evidence.extend(
                 item
                 for item in get_taxon_distribution_evidence(taxon)
-                if item.country not in mdd_countries
+                if not _mdd_distribution_has_country(item.country, mdd_countries)
             )
         return evidence
 
@@ -1449,11 +1477,11 @@ class SpeciesWithSyns:
             by_country[evidence.country].append(evidence)
         problems = []
         for country, country_evidence in sorted(by_country.items()):
+            if _mdd_distribution_has_country(country, mdd_countries):
+                continue
             mdd_country = country
             if USE_ISO_3166 and country in COUNTRIES and COUNTRIES[country].code:
                 mdd_country = cast(str, COUNTRIES[country].code)
-            if mdd_country in mdd_countries:
-                continue
             current_distribution = self.species.row.get("countryDistribution", "")
             suggested_distribution = (
                 f"{current_distribution}|{mdd_country}"
