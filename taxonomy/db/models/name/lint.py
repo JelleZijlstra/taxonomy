@@ -1715,6 +1715,20 @@ def check_coordinates(nam: Name, cfg: LintConfig) -> Iterable[str]:
         yield from coordinate_lint.check_point_in_region(
             point, nam.type_locality.region
         )
+        if nam.type_locality.latitude is None or nam.type_locality.longitude is None:
+            continue
+        location_point = coordinate_lint.make_point(
+            nam.type_locality.latitude, nam.type_locality.longitude
+        )
+        if location_point is None:
+            continue  # reported on the Location
+        distance = coordinate_lint.distance_km(point, location_point)
+        if distance > coordinate_lint.COORDINATE_TOLERANCE_KM:
+            yield (
+                f"type-locality coordinates {tag.latitude}, {tag.longitude} are "
+                f"{distance:.1f} km from Location {nam.type_locality} coordinates "
+                f"{nam.type_locality.latitude}, {nam.type_locality.longitude}"
+            )
 
 
 @LINT.add("type_locality_strict")

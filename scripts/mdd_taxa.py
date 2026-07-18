@@ -1031,16 +1031,7 @@ def _occurrence_record_is_distribution_evidence(record: Any) -> bool:
         OccurrenceStatus.classification_dubious,
         OccurrenceStatus.rejected,
     }
-    excluded_tag_ids = {
-        OccurrenceRecordTag.Vagrant._tag,
-        OccurrenceRecordTag.Introduced._tag,
-        OccurrenceRecordTag.OccurrenceDubious._tag,
-        OccurrenceRecordTag.ClassificationDubious._tag,
-        OccurrenceRecordTag.Rejected._tag,
-    }
     for tag in record.tags:
-        if tag._tag in excluded_tag_ids:
-            return False
         if (
             isinstance(
                 tag,

@@ -102,6 +102,15 @@ def test_standardize_coordinate() -> None:
     )
 
 
+def test_distance_km() -> None:
+    first = coordinates.Point(-74.25, 40.5)
+    nearby = coordinates.Point(-74.25, 40.5167)
+    distant = coordinates.Point(-74.25, 41)
+
+    assert coordinate_lint.distance_km(first, nearby) < 5
+    assert math.isclose(coordinate_lint.distance_km(first, distant), 55.6, abs_tol=0.1)
+
+
 def test_get_distance_to_line_segment() -> None:
     segment = coordinates.LineSegment.from_points(
         coordinates.Point(0, 0), coordinates.Point(2, 0)

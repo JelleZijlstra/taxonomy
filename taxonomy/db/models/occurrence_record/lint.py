@@ -1,11 +1,9 @@
 from __future__ import annotations
 
 import datetime
-import math
 import re
 from collections.abc import Iterable
 
-from taxonomy import coordinates
 from taxonomy.db import coordinate_lint, helpers, models
 from taxonomy.db.constants import AltitudeUnit, OccurrenceBasis
 from taxonomy.db.models.base import LintConfig
@@ -13,8 +11,6 @@ from taxonomy.db.models.location import Location, LocationStatus
 from taxonomy.db.models.taxon import Taxon
 
 from .model import OccurrenceRecord, OccurrenceRecordTag
-
-COORDINATE_LOCATION_TOLERANCE_KM = 5
 
 _SIGNED_DECIMAL_COORDINATES = re.compile(
     r"^\s*(?P<latitude>[+-]?\d+(?:\.\d+)?)\s*[,;/]\s*"
@@ -390,20 +386,6 @@ def check_source_data_tags(record: OccurrenceRecord, cfg: LintConfig) -> Iterabl
     yield from _check_verbatim_dates(record, cfg)
 
 
-def _distance_km(first: coordinates.Point, second: coordinates.Point) -> float:
-    """Return the great-circle distance between two points in kilometres."""
-    earth_radius_km = 6371.0088
-    lat1 = math.radians(first.latitude)
-    lat2 = math.radians(second.latitude)
-    delta_lat = lat2 - lat1
-    delta_lon = math.radians(second.longitude - first.longitude)
-    haversine = (
-        math.sin(delta_lat / 2) ** 2
-        + math.cos(lat1) * math.cos(lat2) * math.sin(delta_lon / 2) ** 2
-    )
-    return 2 * earth_radius_km * math.asin(math.sqrt(haversine))
-
-
 def check_coordinate_consistency(
     record: OccurrenceRecord, cfg: LintConfig
 ) -> Iterable[str]:
@@ -427,8 +409,8 @@ def check_coordinate_consistency(
         occurrence_point = coordinate_lint.make_point(tag.latitude, tag.longitude)
         if occurrence_point is None:
             continue
-        distance = _distance_km(occurrence_point, location_point)
-        if distance > COORDINATE_LOCATION_TOLERANCE_KM:
+        distance = coordinate_lint.distance_km(occurrence_point, location_point)
+        if distance > coordinate_lint.COORDINATE_TOLERANCE_KM:
             yield (
                 f"{record}: source coordinates {tag.latitude}, {tag.longitude} are "
                 f"{distance:.1f} km from Location {record.location} coordinates "

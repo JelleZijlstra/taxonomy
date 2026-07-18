@@ -376,6 +376,7 @@ class Location(BaseModel):
         if self.max_period is None and self.min_period is not None:
             yield f"{self}: missing max_period"
         if self.latitude is None and self.longitude is None:
+            yield from self.lint_missing_coordinates(cfg)
             return
         if self.latitude is None:
             yield f"{self}: missing latitude"
@@ -408,6 +409,60 @@ class Location(BaseModel):
         assert point is not None
         for message in coordinate_lint.check_point_in_region(point, self.region):
             yield f"{self}: {message}"
+
+    def lint_missing_coordinates(self, cfg: LintConfig) -> Iterable[str]:
+        # General Recent locations such as "Ecuador" are deliberately not points.
+        # Avoid loading all their reverse relationships as well as avoiding a noisy
+        # and misleading lint.
+        if self.name == self.region.name:
+            return
+
+        from .name import TypeTag
+        from .occurrence_record import OccurrenceRecordTag
+
+        candidates: list[tuple[str, str, Any, str]] = []
+        for name in self.type_localities:
+            for tag in name.get_tags(name.type_tags, TypeTag.Coordinates):
+                parsed = coordinate_lint.standardize_coordinate_pair(
+                    tag.latitude, tag.longitude
+                )
+                if parsed is not None:
+                    latitude, longitude, point = parsed
+                    candidates.append((latitude, longitude, point, f"Name {name}"))
+        for record in self.occurrence_records:
+            for tag in record.get_tags(record.tags, OccurrenceRecordTag.Coordinates):
+                parsed = coordinate_lint.standardize_coordinate_pair(
+                    tag.latitude, tag.longitude
+                )
+                if parsed is not None:
+                    latitude, longitude, point = parsed
+                    candidates.append(
+                        (latitude, longitude, point, f"OccurrenceRecord {record}")
+                    )
+        if not candidates:
+            return
+
+        latitude, longitude, point, source = candidates[0]
+        for _, _, other_point, other_source in candidates[1:]:
+            distance = coordinate_lint.distance_km(point, other_point)
+            if distance > coordinate_lint.COORDINATE_TOLERANCE_KM:
+                yield (
+                    f"{self}: cannot infer coordinates because {source} and "
+                    f"{other_source} differ by {distance:.1f} km "
+                    "[linked_coordinates]"
+                )
+                return
+
+        message = (
+            f"{self}: coordinates should be {latitude}, {longitude}, inferred from "
+            f"{source} [linked_coordinates]"
+        )
+        if cfg.autofix:
+            print(message)
+            self.latitude = latitude
+            self.longitude = longitude
+        else:
+            yield message
 
     def should_be_specified(self) -> bool:
         if self.region.has_children():

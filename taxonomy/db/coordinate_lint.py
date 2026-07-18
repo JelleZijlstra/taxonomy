@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import re
 from collections.abc import Iterable
 
@@ -13,14 +14,47 @@ DEGREES_MINUTES_RE = re.compile(
     r"^(?P<degrees>\d+(?:\.\d+)?)\s+(?P<minutes>\d+(?:\.\d+)?)\s*(?P<direction>[NSWE])$"
 )
 
+COORDINATE_TOLERANCE_KM = 5
 
-def make_point(latitude: str, longitude: str) -> coordinates.Point | None:
+
+def standardize_coordinate_pair(
+    latitude: str, longitude: str
+) -> tuple[str, str, coordinates.Point] | None:
     try:
-        _, lat = standardize_coordinate(latitude, is_latitude=True)
-        _, lon = standardize_coordinate(longitude, is_latitude=False)
+        standardized_latitude, parsed_latitude = standardize_coordinate(
+            latitude, is_latitude=True
+        )
+        standardized_longitude, parsed_longitude = standardize_coordinate(
+            longitude, is_latitude=False
+        )
     except helpers.InvalidCoordinates:
         return None
-    return coordinates.Point(lon, lat)
+    return (
+        standardized_latitude,
+        standardized_longitude,
+        coordinates.Point(parsed_longitude, parsed_latitude),
+    )
+
+
+def make_point(latitude: str, longitude: str) -> coordinates.Point | None:
+    standardized = standardize_coordinate_pair(latitude, longitude)
+    if standardized is None:
+        return None
+    return standardized[2]
+
+
+def distance_km(first: coordinates.Point, second: coordinates.Point) -> float:
+    """Return the great-circle distance between two points in kilometres."""
+    earth_radius_km = 6371.0088
+    lat1 = math.radians(first.latitude)
+    lat2 = math.radians(second.latitude)
+    delta_lat = lat2 - lat1
+    delta_lon = math.radians(second.longitude - first.longitude)
+    haversine = (
+        math.sin(delta_lat / 2) ** 2
+        + math.cos(lat1) * math.cos(lat2) * math.sin(delta_lon / 2) ** 2
+    )
+    return 2 * earth_radius_km * math.asin(math.sqrt(haversine))
 
 
 def standardize_coordinate(text: str, *, is_latitude: bool) -> tuple[str, float]:
