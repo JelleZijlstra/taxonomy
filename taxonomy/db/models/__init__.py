@@ -33,6 +33,7 @@ __all__ = [
     "TypeTag",
     "fill_data",
     "has_data_from_original",
+    "location",
     "tags",
 ]
 from .base import BaseModel as BaseModel
@@ -75,6 +76,7 @@ from .book import Book as Book
 from .specimen import Specimen as Specimen
 from . import (
     fill_data as fill_data,
+    location as location,
     name as name,
     occurrence_record as occurrence_record,
     tags as tags,

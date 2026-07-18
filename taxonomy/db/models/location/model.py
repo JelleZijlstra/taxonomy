@@ -7,45 +7,25 @@ import subprocess
 import sys
 from collections import Counter
 from collections.abc import Callable, Iterable, Sequence
-from typing import IO, Any, ClassVar, Self
+from typing import IO, Any, ClassVar, NotRequired, Self
 
 from clirm import Field
 
 from taxonomy import adt, events, getinput
-from taxonomy.apis import nominatim
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
-from taxonomy.config import is_network_available
-from taxonomy.db import coordinate_lint, helpers, models
-from taxonomy.db.constants import Managed, RegionKind
-
-from .article import Article
-from .base import ADTField, BaseModel, LintConfig, TextField
-from .period import Period, period_sort_key
-from .region import Region
-from .stratigraphic_unit import StratigraphicUnit
+from taxonomy.db import coordinate_lint, models
+from taxonomy.db.constants import Managed, Markdown
+from taxonomy.db.models.article import Article
+from taxonomy.db.models.base import ADTField, BaseModel, LintConfig, TextField
+from taxonomy.db.models.period import Period, period_sort_key
+from taxonomy.db.models.region import Region
+from taxonomy.db.models.stratigraphic_unit import StratigraphicUnit
 
 
 class LocationStatus(enum.IntEnum):
     valid = 0
     deleted = 1
     alias = 2
-
-
-_GEOCODABLE_OSM_CATEGORIES = {"boundary", "natural", "place", "waterway"}
-_OSM_CATEGORY_PRIORITY = {"place": 0, "natural": 1, "waterway": 2, "boundary": 3}
-_ADDRESS_REGION_KINDS = {
-    RegionKind.country,
-    RegionKind.subnational,
-    RegionKind.county,
-    RegionKind.state,
-    RegionKind.province,
-    RegionKind.department,
-    RegionKind.region,
-    RegionKind.canton,
-    RegionKind.prefecture,
-    RegionKind.territory,
-}
-_SEARCH_REGION_KINDS = _ADDRESS_REGION_KINDS | {RegionKind.other, RegionKind.island}
 
 
 class Location(BaseModel):
@@ -315,11 +295,12 @@ class Location(BaseModel):
         if self.latitude is not None or self.longitude is not None:
             print(f"{self}: already has coordinates")
             return
-        messages = list(
-            self.lint_missing_coordinates(
-                LintConfig(autofix=True, interactive=True, manual_mode=True)
-            )
-        )
+        from . import lint as location_lint
+
+        cfg = LintConfig(autofix=True, interactive=True, manual_mode=True)
+        messages = list(location_lint.check_linked_coordinates(self, cfg))
+        if self.latitude is None and self.longitude is None:
+            messages.extend(location_lint.check_nominatim_coordinates(self, cfg))
         for message in messages:
             print(message)
 
@@ -402,54 +383,20 @@ class Location(BaseModel):
         return True
 
     def lint_invalid(self, cfg: LintConfig) -> Iterable[str]:
-        if self.deleted is LocationStatus.alias:
-            if not self.parent:
-                yield f"{self}: alias location has no parent"
-            if not self.is_empty():
-                yield f"{self}: alias location has references"
+        from . import lint as location_lint
+
+        yield from location_lint.LINT.run(self, cfg)
 
     def lint(self, cfg: LintConfig) -> Iterable[str]:
-        if self.min_period is None and self.max_period is not None:
-            yield f"{self}: missing min_period"
-        if self.max_period is None and self.min_period is not None:
-            yield f"{self}: missing max_period"
-        if self.latitude is None and self.longitude is None:
-            yield from self.lint_missing_coordinates(cfg)
-            return
-        if self.latitude is None:
-            yield f"{self}: missing latitude"
-            return
-        if self.longitude is None:
-            yield f"{self}: missing longitude"
-            return
-        if self.is_general():
-            yield f"{self}: general location should not have coordinates"
-            return
-        try:
-            latitude, _ = coordinate_lint.standardize_coordinate(
-                self.latitude, is_latitude=True
-            )
-            longitude, _ = coordinate_lint.standardize_coordinate(
-                self.longitude, is_latitude=False
-            )
-        except helpers.InvalidCoordinates:
-            yield f"{self}: invalid coordinates {self.latitude}, {self.longitude}"
-            return
-        if (latitude, longitude) != (self.latitude, self.longitude):
-            message = (
-                f"{self}: coordinates should be {latitude}, {longitude}, not "
-                f"{self.latitude}, {self.longitude}"
-            )
-            if cfg.autofix:
-                print(message)
-                self.latitude = latitude
-                self.longitude = longitude
-            else:
-                yield message
-        point = coordinate_lint.make_point(self.latitude, self.longitude)
-        assert point is not None
-        for message in coordinate_lint.check_point_in_region(point, self.region):
-            yield f"{self}: {message}"
+        from . import lint as location_lint
+
+        yield from location_lint.LINT.run(self, cfg)
+
+    @classmethod
+    def clear_lint_caches(cls) -> None:
+        from . import lint as location_lint
+
+        location_lint.LINT.clear_caches()
 
     def is_general(self) -> bool:
         return self.has_tag(LocationTag.General) or self.name in (
@@ -457,170 +404,6 @@ class Location(BaseModel):
             f"{self.region.name} fossil",
             f"{self.region.name} Pleistocene",
         )
-
-    def lint_missing_coordinates(self, cfg: LintConfig) -> Iterable[str]:
-        # General Recent locations such as "Ecuador" are deliberately not points.
-        # Avoid loading all their reverse relationships as well as avoiding a noisy
-        # and misleading lint.
-        if self.is_general():
-            return
-        if self.stratigraphic_unit is not None and re.fullmatch(
-            rf"{self.stratigraphic_unit.name} \(.*\)", self.name
-        ):
-            return
-
-        from .name import TypeTag
-        from .occurrence_record import OccurrenceRecordTag
-
-        candidates: list[tuple[str, str, Any, str]] = []
-        for name in self.type_localities:
-            for tag in name.get_tags(name.type_tags, TypeTag.Coordinates):
-                parsed = coordinate_lint.standardize_coordinate_pair(
-                    tag.latitude, tag.longitude
-                )
-                if parsed is not None:
-                    latitude, longitude, point = parsed
-                    candidates.append((latitude, longitude, point, f"Name {name}"))
-        for record in self.occurrence_records:
-            for tag in record.get_tags(record.tags, OccurrenceRecordTag.Coordinates):
-                parsed = coordinate_lint.standardize_coordinate_pair(
-                    tag.latitude, tag.longitude
-                )
-                if parsed is not None:
-                    latitude, longitude, point = parsed
-                    candidates.append(
-                        (latitude, longitude, point, f"OccurrenceRecord {record}")
-                    )
-        if not candidates:
-            yield from self.lint_nominatim_coordinates(cfg)
-            return
-
-        latitude, longitude, point, source = candidates[0]
-        for _, _, other_point, other_source in candidates[1:]:
-            distance = coordinate_lint.distance_km(point, other_point)
-            if distance > coordinate_lint.COORDINATE_TOLERANCE_KM:
-                yield (
-                    f"{self}: cannot infer coordinates because {point} (from {source}) and "
-                    f"{other_point} (from {other_source}) differ by {distance:.1f} km "
-                    "[linked_coordinates]"
-                )
-                return
-
-        message = (
-            f"{self}: coordinates should be {latitude}, {longitude}, inferred from "
-            f"{source} [linked_coordinates]"
-        )
-        if cfg.autofix:
-            print(message)
-            self.latitude = latitude
-            self.longitude = longitude
-        else:
-            yield message
-
-    def lint_nominatim_coordinates(self, cfg: LintConfig) -> Iterable[str]:
-        """Infer coordinates from an exact, geographically consistent OSM match."""
-        if not is_network_available():
-            return
-
-        query = self.get_nominatim_query()
-        results = nominatim.search(query)
-        candidates: list[tuple[nominatim.SearchResult, tuple[str, str, Any]]] = []
-        for result in results:
-            if not self.is_sane_nominatim_result(result):
-                continue
-            parsed = coordinate_lint.standardize_coordinate_pair(
-                result.latitude, result.longitude
-            )
-            if parsed is not None:
-                candidates.append((result, parsed))
-
-        if not candidates:
-            return
-
-        candidates.sort(
-            key=lambda candidate: _OSM_CATEGORY_PRIORITY[candidate[0].category]
-        )
-        result, (latitude, longitude, point) = candidates[0]
-        has_conflict = any(
-            coordinate_lint.distance_km(point, other_point)
-            > coordinate_lint.COORDINATE_TOLERANCE_KM
-            for _, (_, _, other_point) in candidates[1:]
-        )
-        if has_conflict:
-            matches = "".join(
-                f"- {candidate.display_name!r} "
-                f"({candidate.category}/{candidate.feature_type}, "
-                f"{candidate_latitude}, {candidate_longitude})\n"
-                for candidate, (
-                    candidate_latitude,
-                    candidate_longitude,
-                    _,
-                ) in candidates
-            )
-            yield (
-                f"{self}: Nominatim returned {len(candidates)} conflicting exact "
-                f"matches:\n{matches}[nominatim_coordinates]"
-            )
-            return
-
-        region_issues = list(coordinate_lint.check_point_in_region(point, self.region))
-        if region_issues:
-            yield (
-                f"{self}: Nominatim result {result.display_name!r} failed the region "
-                f"check: {'; '.join(region_issues)} [nominatim_coordinates]"
-            )
-            return
-
-        message = (
-            f"{self}: coordinates should be {latitude}, {longitude}, inferred from "
-            f"OpenStreetMap Nominatim {result.category}/{result.feature_type} result "
-            f"{result.display_name!r} [nominatim_coordinates]"
-        )
-        if cfg.autofix:
-            print(message)
-            self.latitude = latitude
-            self.longitude = longitude
-        else:
-            yield message
-
-    def get_nominatim_query(self) -> str:
-        components = [self.name]
-        seen = {helpers.simplify_string(self.name, clean_words=False)}
-        for region in (self.region, *self.region.all_parents()):
-            if region.kind not in _SEARCH_REGION_KINDS:
-                continue
-            name = _get_unqualified_region_name(region)
-            simplified = helpers.simplify_string(name, clean_words=False)
-            if simplified not in seen:
-                components.append(name)
-                seen.add(simplified)
-        return ", ".join(components)
-
-    def is_sane_nominatim_result(self, result: nominatim.SearchResult) -> bool:
-        if result.category not in _GEOCODABLE_OSM_CATEGORIES:
-            return False
-        if helpers.simplify_string(
-            result.name, clean_words=False
-        ) != helpers.simplify_string(self.name, clean_words=False):
-            return False
-
-        address_names = {
-            helpers.simplify_string(value, clean_words=False)
-            for key, value in result.address.items()
-            if key not in {"country_code", "postcode"} and not key.startswith("ISO3166")
-        }
-        checked_region = False
-        for region in (self.region, *self.region.all_parents()):
-            if region.kind not in _ADDRESS_REGION_KINDS:
-                continue
-            checked_region = True
-            expected_names = {
-                helpers.simplify_string(name, clean_words=False)
-                for name in _get_region_name_aliases(region)
-            }
-            if address_names.isdisjoint(expected_names):
-                return False
-        return checked_region
 
     def should_be_specified(self) -> bool:
         if self.region.has_children():
@@ -735,21 +518,6 @@ class Location(BaseModel):
         return [data]
 
 
-def _get_unqualified_region_name(region: Region) -> str:
-    if region.parent is not None:
-        parent_suffix = f", {region.parent.name}"
-        if region.name.endswith(parent_suffix):
-            return region.name.removesuffix(parent_suffix)
-    return region.name
-
-
-def _get_region_name_aliases(region: Region) -> set[str]:
-    names = {region.name, _get_unqualified_region_name(region)}
-    if region.kind is RegionKind.country:
-        names.add(nominatim.HESP_COUNTRY_TO_OSM_COUNTRY.get(region.name, region.name))
-    return names
-
-
 class LocationTag(adt.ADT):
     # General locality; should be simplified if possible.
     General(tag=1)  # type: ignore[name-defined]
@@ -765,6 +533,10 @@ class LocationTag(adt.ADT):
 
     # Neogene of the Old World database
     NOW(id=Managed, tag=4)  # type: ignore[name-defined]
+
+    IgnoreLintLocation(  # type: ignore[name-defined]
+        label=Managed, comment=NotRequired[Markdown], tag=5
+    )
 
 
 def get_expected_general_name(region: Region, period: Period) -> str:

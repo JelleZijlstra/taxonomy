@@ -21,13 +21,14 @@ from taxonomy.db.models.occurrence_record import (
 from taxonomy.db.models.occurrence_record.lint import (
     check_basis_tags,
     check_coordinate_consistency,
-    check_location,
+    check_missing_location,
+    check_missing_taxon,
     check_source_data_tags,
     check_status_tags,
-    check_taxon,
     parse_verbatim_coordinates,
     parse_verbatim_date,
     parse_verbatim_elevation,
+    remove_unused_ignores,
 )
 from taxonomy.db.models.taxon import Taxon
 
@@ -58,7 +59,7 @@ def test_taxon_lint_autofills_from_classification_entry() -> None:
         taxon=None, classification_entry=SimpleNamespace(mapped_name=mapped_name)
     )
 
-    assert list(check_taxon(record, LintConfig(autofix=True))) == []
+    assert list(check_missing_taxon(record, LintConfig(autofix=True))) == []
     assert record.taxon is taxon
 
 
@@ -89,7 +90,7 @@ def test_location_lint_autofills_from_hint(monkeypatch: pytest.MonkeyPatch) -> N
         lambda name: location if name == "canonical locality" else None,
     )
 
-    assert list(check_location(record, LintConfig(autofix=True))) == []
+    assert list(check_missing_location(record, LintConfig(autofix=True))) == []
     assert record.location is location
     assert record.tags == ()
 
@@ -223,3 +224,41 @@ def test_status_lint_flags_duplicate_status() -> None:
 
     assert len(messages) == 1
     assert "duplicate StatusFromSource for vagrant" in messages[0]
+
+
+def test_occurrence_record_lint_can_be_ignored() -> None:
+    record = _record(
+        basis=OccurrenceBasis.listing,
+        tags=(
+            OccurrenceRecordTag.ObservationKind(ObservationKind.acoustic),
+            OccurrenceRecordTag.IgnoreLintOccurrenceRecord("basis_tags"),
+        ),
+    )
+
+    assert list(check_basis_tags(record, LintConfig())) == []
+
+
+def test_remove_unused_occurrence_record_ignore() -> None:
+    record = _record(
+        tags=(OccurrenceRecordTag.IgnoreLintOccurrenceRecord("basis_tags"),)
+    )
+
+    remove_unused_ignores(record, {"basis_tags"})
+
+    assert record.tags == []
+
+
+def test_occurrence_record_lint_registry_labels() -> None:
+    assert [wrapper.label for wrapper in lint.LINT.linters] == [
+        "missing_taxon",
+        "taxon_mapping",
+        "missing_location",
+        "location_hint",
+        "location_mapping",
+        "basis_tags",
+        "source_data",
+        "coordinate_location",
+        "status_tags",
+        "taxonomic_split",
+        "duplicate",
+    ]

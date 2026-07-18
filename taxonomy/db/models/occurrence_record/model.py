@@ -165,14 +165,11 @@ class OccurrenceRecord(BaseModel):
         }
 
     def lint(self, cfg: LintConfig) -> Iterable[str]:
-        yield from models.occurrence_record.lint.check_taxon(self, cfg)
-        yield from models.occurrence_record.lint.check_location(self, cfg)
-        yield from models.occurrence_record.lint.check_basis_tags(self, cfg)
-        yield from models.occurrence_record.lint.check_source_data_tags(self, cfg)
-        yield from models.occurrence_record.lint.check_coordinate_consistency(self, cfg)
-        yield from models.occurrence_record.lint.check_status_tags(self, cfg)
-        yield from models.occurrence_record.lint.check_split(self, cfg)
-        yield from models.occurrence_record.lint.check_duplicate(self, cfg)
+        yield from models.occurrence_record.lint.LINT.run(self, cfg)
+
+    @classmethod
+    def clear_lint_caches(cls) -> None:
+        models.occurrence_record.lint.LINT.clear_caches()
 
 
 class OccurrenceRecordTag(ADT):
@@ -205,3 +202,6 @@ class OccurrenceRecordTag(ADT):
     CoordinateUncertaintyFromSource(text=Managed, tag=20)  # type: ignore[name-defined]
     VerbatimDate(text=Managed, tag=21)  # type: ignore[name-defined]
     Date(date=Managed, tag=22)  # type: ignore[name-defined]
+    IgnoreLintOccurrenceRecord(  # type: ignore[name-defined]
+        label=Managed, comment=NotRequired[Markdown], tag=23
+    )

@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import datetime
 import re
-from collections.abc import Iterable
+from collections.abc import Collection, Iterable
+from dataclasses import replace
 
 from taxonomy.db import coordinate_lint, helpers, models
 from taxonomy.db.constants import AltitudeUnit, OccurrenceBasis
 from taxonomy.db.models.base import LintConfig
+from taxonomy.db.models.lint import IgnoreLint, Lint
 from taxonomy.db.models.location import Location, LocationStatus
 from taxonomy.db.models.taxon import Taxon
 
@@ -23,6 +25,26 @@ _ELEVATION = re.compile(
     re.IGNORECASE,
 )
 _ISO_DATE = re.compile(r"^(?P<year>\d{4})(?:-(?P<month>\d{2})(?:-(?P<day>\d{2}))?)?$")
+
+
+def remove_unused_ignores(record: OccurrenceRecord, unused: Collection[str]) -> None:
+    new_tags = []
+    for tag in record.tags:
+        if (
+            isinstance(tag, OccurrenceRecordTag.IgnoreLintOccurrenceRecord)
+            and tag.label in unused
+        ):
+            print(f"{record}: removing unused IgnoreLint tag: {tag}")
+        else:
+            new_tags.append(tag)
+    record.tags = new_tags  # type: ignore[assignment]
+
+
+def get_ignores(record: OccurrenceRecord) -> Iterable[IgnoreLint]:
+    return record.get_tags(record.tags, OccurrenceRecordTag.IgnoreLintOccurrenceRecord)
+
+
+LINT = Lint(OccurrenceRecord, get_ignores, remove_unused_ignores)
 
 
 def get_inferred_taxon(record: OccurrenceRecord) -> Taxon | None:
@@ -67,71 +89,92 @@ def get_inferred_location(record: OccurrenceRecord) -> Location | None:
         return None
 
 
-def check_taxon(record: OccurrenceRecord, cfg: LintConfig) -> Iterable[str]:
-    inferred = get_inferred_taxon(record)
-    if record.taxon is None:
-        if inferred is None:
-            yield f"{record}: cannot infer taxon from classification entry [missing_taxon]"
-        else:
-            message = f"{record}: taxon should be {inferred} [missing_taxon]"
-            if cfg.autofix:
-                print(message)
-                record.taxon = inferred
-            else:
-                yield message
+@LINT.add("missing_taxon")
+def check_missing_taxon(record: OccurrenceRecord, cfg: LintConfig) -> Iterable[str]:
+    if record.taxon is not None:
         return
+    inferred = get_inferred_taxon(record)
+    if inferred is None:
+        yield "cannot infer taxon from classification entry"
+    else:
+        message = f"taxon should be {inferred}"
+        if cfg.autofix and not LINT.is_ignoring_lint(record, "missing_taxon"):
+            print(f"{record}: {message}")
+            record.taxon = inferred
+        else:
+            yield message
+
+
+@LINT.add("taxon_mapping")
+def check_taxon_mapping(record: OccurrenceRecord, cfg: LintConfig) -> Iterable[str]:
+    if record.taxon is None:
+        return
+    inferred = get_inferred_taxon(record)
     if inferred is None or record.taxon == inferred:
         return
     if record.has_tag(OccurrenceRecordTag.TaxonomicSplitFrom) or record.has_tag(
         OccurrenceRecordTag.CommentFromDatabase
     ):
         return
-    yield (
-        f"{record}: taxon {record.taxon} differs from classification-entry mapping "
-        f"{inferred} without an explanation [taxon_mapping]"
-    )
+    yield f"taxon {record.taxon} differs from classification-entry mapping {inferred} without an explanation"
 
 
-def check_location(record: OccurrenceRecord, cfg: LintConfig) -> Iterable[str]:
-    hints = list(record.get_tags(record.tags, OccurrenceRecordTag.LocationHint))
-    if record.location is None:
-        inferred = get_inferred_location(record)
-        if inferred is None:
-            yield f"{record}: cannot infer location [missing_location]"
-        else:
-            message = f"{record}: location should be {inferred} [missing_location]"
-            if cfg.autofix:
-                print(message)
-                record.location = inferred
-                record.remove_tags(OccurrenceRecordTag.LocationHint)
-            else:
-                yield message
+@LINT.add("missing_location")
+def check_missing_location(record: OccurrenceRecord, cfg: LintConfig) -> Iterable[str]:
+    if record.location is not None:
         return
     inferred = get_inferred_location(record)
-    if hints and inferred == record.location:
-        message = f"{record}: remove resolved LocationHint [location_hint]"
-        if cfg.autofix:
-            print(message)
+    if inferred is None:
+        yield "cannot infer location"
+    else:
+        message = f"location should be {inferred}"
+        if cfg.autofix and not LINT.is_ignoring_lint(record, "missing_location"):
+            print(f"{record}: {message}")
+            record.location = inferred
             record.remove_tags(OccurrenceRecordTag.LocationHint)
         else:
             yield message
+
+
+@LINT.add("location_hint")
+def check_location_hint(record: OccurrenceRecord, cfg: LintConfig) -> Iterable[str]:
+    if record.location is None:
         return
-    if hints and inferred is not None and inferred != record.location:
-        yield (
-            f"{record}: location {record.location} differs from LocationHint mapping "
-            f"{inferred} [location_mapping]"
-        )
+    hints = list(record.get_tags(record.tags, OccurrenceRecordTag.LocationHint))
+    if not hints:
+        return
+    inferred = get_inferred_location(record)
+    if inferred == record.location:
+        message = "remove resolved LocationHint"
+        if cfg.autofix and not LINT.is_ignoring_lint(record, "location_hint"):
+            print(f"{record}: {message}")
+            record.remove_tags(OccurrenceRecordTag.LocationHint)
+        else:
+            yield message
 
 
+@LINT.add("location_mapping")
+def check_location_mapping(record: OccurrenceRecord, cfg: LintConfig) -> Iterable[str]:
+    if record.location is None:
+        return
+    hints = list(record.get_tags(record.tags, OccurrenceRecordTag.LocationHint))
+    if not hints:
+        return
+    inferred = get_inferred_location(record)
+    if inferred is not None and inferred != record.location:
+        yield f"location {record.location} differs from LocationHint mapping {inferred}"
+
+
+@LINT.add("basis_tags")
 def check_basis_tags(record: OccurrenceRecord, cfg: LintConfig) -> Iterable[str]:
     if record.basis is not OccurrenceBasis.observation and record.has_tag(
         OccurrenceRecordTag.ObservationKind
     ):
-        yield f"{record}: ObservationKind requires observation basis [basis_tags]"
+        yield "ObservationKind requires observation basis"
     if record.basis is not OccurrenceBasis.voucher and record.has_tag(
         OccurrenceRecordTag.SpecimenDetail
     ):
-        yield f"{record}: SpecimenDetail requires voucher basis [basis_tags]"
+        yield "SpecimenDetail requires voucher basis"
 
 
 def _replace_tag(
@@ -233,9 +276,9 @@ def _add_inferred_tag(
     source_tag: OccurrenceRecordTag,
     cfg: LintConfig,
 ) -> Iterable[str]:
-    message = f"{record}: add {tag} inferred from {source_tag} [source_data]"
+    message = f"add {tag} inferred from {source_tag}"
     if cfg.autofix:
-        print(message)
+        print(f"{record}: {message}")
         record.add_tag(tag)
     else:
         yield message
@@ -250,17 +293,14 @@ def _check_verbatim_coordinates(
         if parsed is None:
             if not normalized:
                 yield (
-                    f"{record}: cannot parse coordinates from {tag.text!r}; add "
-                    "Coordinates manually [source_data]"
+                    f"cannot parse coordinates from {tag.text!r}; add Coordinates "
+                    "manually"
                 )
             continue
         expected = OccurrenceRecordTag.Coordinates(*parsed)
         if expected not in normalized:
             if normalized:
-                yield (
-                    f"{record}: {tag} parses as {expected}, inconsistent with "
-                    f"{normalized} [source_data]"
-                )
+                yield (f"{tag} parses as {expected}, inconsistent with {normalized}")
             else:
                 yield from _add_inferred_tag(record, expected, tag, cfg)
                 if cfg.autofix:
@@ -276,17 +316,13 @@ def _check_verbatim_elevations(
         if parsed is None:
             if not normalized:
                 yield (
-                    f"{record}: cannot parse elevation from {tag.text!r}; add "
-                    "Elevation manually [source_data]"
+                    f"cannot parse elevation from {tag.text!r}; add Elevation manually"
                 )
             continue
         expected = OccurrenceRecordTag.Elevation(*parsed)
         if expected not in normalized:
             if normalized:
-                yield (
-                    f"{record}: {tag} parses as {expected}, inconsistent with "
-                    f"{normalized} [source_data]"
-                )
+                yield (f"{tag} parses as {expected}, inconsistent with {normalized}")
             else:
                 yield from _add_inferred_tag(record, expected, tag, cfg)
                 if cfg.autofix:
@@ -299,18 +335,12 @@ def _check_verbatim_dates(record: OccurrenceRecord, cfg: LintConfig) -> Iterable
         parsed = parse_verbatim_date(tag.text)
         if parsed is None:
             if not normalized:
-                yield (
-                    f"{record}: cannot parse date from {tag.text!r}; add Date "
-                    "manually [source_data]"
-                )
+                yield (f"cannot parse date from {tag.text!r}; add Date manually")
             continue
         expected = OccurrenceRecordTag.Date(parsed)
         if expected not in normalized:
             if normalized:
-                yield (
-                    f"{record}: {tag} parses as {expected}, inconsistent with "
-                    f"{normalized} [source_data]"
-                )
+                yield (f"{tag} parses as {expected}, inconsistent with {normalized}")
             else:
                 yield from _add_inferred_tag(record, expected, tag, cfg)
                 if cfg.autofix:
@@ -329,47 +359,50 @@ def _standardize_normalized_tags(
                 tag.longitude, is_latitude=False
             )
         except helpers.InvalidCoordinates:
-            yield f"{record}: invalid normalized coordinates {tag} [source_data]"
+            yield f"invalid normalized coordinates {tag}"
             continue
         expected = OccurrenceRecordTag.Coordinates(latitude, longitude)
         if tag != expected:
-            message = f"{record}: replace {tag} with {expected} [source_data]"
+            message = f"replace {tag} with {expected}"
             if cfg.autofix:
-                print(message)
+                print(f"{record}: {message}")
                 _replace_tag(record, tag, expected)
             else:
                 yield message
     for tag in tuple(record.get_tags(record.tags, OccurrenceRecordTag.Elevation)):
         elevation_parsed = parse_verbatim_elevation(f"{tag.elevation} {tag.unit.name}")
         if elevation_parsed is None:
-            yield f"{record}: invalid normalized elevation {tag} [source_data]"
+            yield f"invalid normalized elevation {tag}"
             continue
         expected = OccurrenceRecordTag.Elevation(*elevation_parsed)
         if tag != expected:
-            message = f"{record}: replace {tag} with {expected} [source_data]"
+            message = f"replace {tag} with {expected}"
             if cfg.autofix:
-                print(message)
+                print(f"{record}: {message}")
                 _replace_tag(record, tag, expected)
             else:
                 yield message
     for tag in tuple(record.get_tags(record.tags, OccurrenceRecordTag.Date)):
         date_parsed = parse_verbatim_date(tag.date.removeprefix("<"))
         if date_parsed is None:
-            yield f"{record}: invalid normalized date {tag} [source_data]"
+            yield f"invalid normalized date {tag}"
             continue
         if tag.date.startswith("<"):
             date_parsed = f"<{date_parsed}"
         expected = OccurrenceRecordTag.Date(date_parsed)
         if tag != expected:
-            message = f"{record}: replace {tag} with {expected} [source_data]"
+            message = f"replace {tag} with {expected}"
             if cfg.autofix:
-                print(message)
+                print(f"{record}: {message}")
                 _replace_tag(record, tag, expected)
             else:
                 yield message
 
 
+@LINT.add("source_data")
 def check_source_data_tags(record: OccurrenceRecord, cfg: LintConfig) -> Iterable[str]:
+    if LINT.is_ignoring_lint(record, "source_data"):
+        cfg = replace(cfg, autofix=False, interactive=False)
     yield from _standardize_normalized_tags(record, cfg)
     for normalized_type, verbatim_type in (
         (OccurrenceRecordTag.Coordinates, OccurrenceRecordTag.VerbatimCoordinates),
@@ -377,15 +410,13 @@ def check_source_data_tags(record: OccurrenceRecord, cfg: LintConfig) -> Iterabl
         (OccurrenceRecordTag.Date, OccurrenceRecordTag.VerbatimDate),
     ):
         if record.has_tag(normalized_type) and not record.has_tag(verbatim_type):
-            yield (
-                f"{record}: {normalized_type.__name__} requires "
-                f"{verbatim_type.__name__} [source_data]"
-            )
+            yield (f"{normalized_type.__name__} requires {verbatim_type.__name__}")
     yield from _check_verbatim_coordinates(record, cfg)
     yield from _check_verbatim_elevations(record, cfg)
     yield from _check_verbatim_dates(record, cfg)
 
 
+@LINT.add("coordinate_location")
 def check_coordinate_consistency(
     record: OccurrenceRecord, cfg: LintConfig
 ) -> Iterable[str]:
@@ -396,8 +427,7 @@ def check_coordinate_consistency(
         return
     if record.location.latitude is None or record.location.longitude is None:
         yield (
-            f"{record}: has source coordinates but Location {record.location} has "
-            "no coordinates [coordinate_location]"
+            f"has source coordinates but Location {record.location} has no coordinates"
         )
         return
     location_point = coordinate_lint.make_point(
@@ -412,13 +442,13 @@ def check_coordinate_consistency(
         distance = coordinate_lint.distance_km(occurrence_point, location_point)
         if distance > coordinate_lint.COORDINATE_TOLERANCE_KM:
             yield (
-                f"{record}: source coordinates {tag.latitude}, {tag.longitude} are "
+                f"source coordinates {tag.latitude}, {tag.longitude} are "
                 f"{distance:.1f} km from Location {record.location} coordinates "
-                f"{record.location.latitude}, {record.location.longitude} "
-                "[coordinate_location]"
+                f"{record.location.latitude}, {record.location.longitude}"
             )
 
 
+@LINT.add("status_tags")
 def check_status_tags(record: OccurrenceRecord, cfg: LintConfig) -> Iterable[str]:
     for tag_type in (
         OccurrenceRecordTag.StatusFromSource,
@@ -430,35 +460,31 @@ def check_status_tags(record: OccurrenceRecord, cfg: LintConfig) -> Iterable[str
             key=lambda status: status.value,
         )
         for status in duplicate_statuses:
-            yield (
-                f"{record}: has duplicate {tag_type.__name__} for {status.name} "
-                "[status_tags]"
-            )
+            yield (f"has duplicate {tag_type.__name__} for {status.name}")
 
 
+@LINT.add("taxonomic_split")
 def check_split(record: OccurrenceRecord, cfg: LintConfig) -> Iterable[str]:
     tags = list(record.get_tags(record.tags, OccurrenceRecordTag.TaxonomicSplitFrom))
     if len(tags) > 1:
-        yield f"{record}: has multiple TaxonomicSplitFrom tags [taxonomic_split]"
+        yield "has multiple TaxonomicSplitFrom tags"
         return
     if not tags:
         return
     canonical = tags[0].record
     if canonical == record:
-        yield f"{record}: TaxonomicSplitFrom points to itself [taxonomic_split]"
+        yield "TaxonomicSplitFrom points to itself"
         return
     if canonical.has_tag(OccurrenceRecordTag.TaxonomicSplitFrom):
-        yield f"{record}: TaxonomicSplitFrom points to a derived record [taxonomic_split]"
+        yield "TaxonomicSplitFrom points to a derived record"
     for field in ("classification_entry", "locality_text", "page", "basis"):
         if getattr(record, field) != getattr(canonical, field):
-            yield (
-                f"{record}: {field} differs from canonical split record {canonical} "
-                "[taxonomic_split]"
-            )
+            yield (f"{field} differs from canonical split record {canonical}")
     if record.taxon is not None and record.taxon == canonical.taxon:
-        yield f"{record}: split record has the same taxon as {canonical} [taxonomic_split]"
+        yield f"split record has the same taxon as {canonical}"
 
 
+@LINT.add("duplicate")
 def check_duplicate(record: OccurrenceRecord, cfg: LintConfig) -> Iterable[str]:
     if record.has_tag(OccurrenceRecordTag.TaxonomicSplitFrom):
         return
@@ -472,4 +498,4 @@ def check_duplicate(record: OccurrenceRecord, cfg: LintConfig) -> Iterable[str]:
         if candidate != record and not candidate.has_tag(
             OccurrenceRecordTag.TaxonomicSplitFrom
         ):
-            yield f"{record}: duplicates primary record {candidate} [duplicate]"
+            yield f"duplicates primary record {candidate}"
