@@ -150,12 +150,6 @@ class OccurrenceRecordTag(ADT):
     SpecimenDetail(text=Markdown, tag=3)  # type: ignore[name-defined]
     CommentFromSource(text=Markdown, tag=4)  # type: ignore[name-defined]
 
-    Vagrant(tag=5)  # type: ignore[name-defined]
-    Introduced(tag=6)  # type: ignore[name-defined]
-    Extirpated(tag=7)  # type: ignore[name-defined]
-    OccurrenceDubious(tag=8)  # type: ignore[name-defined]
-    ClassificationDubious(tag=9)  # type: ignore[name-defined]
-    Rejected(tag=10)  # type: ignore[name-defined]
     CommentFromDatabase(text=Markdown, tag=11)  # type: ignore[name-defined]
     TaxonomicSplitFrom(record=OccurrenceRecord, tag=12)  # type: ignore[name-defined]
     LocationHint(name=Managed, tag=13)  # type: ignore[name-defined]

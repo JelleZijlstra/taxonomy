@@ -27,14 +27,6 @@ _ELEVATION = re.compile(
     re.IGNORECASE,
 )
 _ISO_DATE = re.compile(r"^(?P<year>\d{4})(?:-(?P<month>\d{2})(?:-(?P<day>\d{2}))?)?$")
-_LEGACY_STATUS_TAGS = (
-    OccurrenceRecordTag.Vagrant,
-    OccurrenceRecordTag.Introduced,
-    OccurrenceRecordTag.Extirpated,
-    OccurrenceRecordTag.OccurrenceDubious,
-    OccurrenceRecordTag.ClassificationDubious,
-    OccurrenceRecordTag.Rejected,
-)
 
 
 def get_inferred_taxon(record: OccurrenceRecord) -> Taxon | None:
@@ -446,12 +438,6 @@ def check_coordinate_consistency(
 
 
 def check_status_tags(record: OccurrenceRecord, cfg: LintConfig) -> Iterable[str]:
-    for legacy_tag in _LEGACY_STATUS_TAGS:
-        if record.has_tag(legacy_tag):
-            yield (
-                f"{record}: replace legacy {type(legacy_tag).__name__} with "
-                "StatusFromSource or StatusAssessment [legacy_status]"
-            )
     for tag_type in (
         OccurrenceRecordTag.StatusFromSource,
         OccurrenceRecordTag.StatusAssessment,
