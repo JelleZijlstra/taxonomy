@@ -12,9 +12,11 @@ from typing import IO, Any, ClassVar, Self
 from clirm import Field
 
 from taxonomy import adt, events, getinput
+from taxonomy.apis import nominatim
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
+from taxonomy.config import is_network_available
 from taxonomy.db import coordinate_lint, helpers, models
-from taxonomy.db.constants import Managed
+from taxonomy.db.constants import Managed, RegionKind
 
 from .article import Article
 from .base import ADTField, BaseModel, LintConfig, TextField
@@ -27,6 +29,23 @@ class LocationStatus(enum.IntEnum):
     valid = 0
     deleted = 1
     alias = 2
+
+
+_GEOCODABLE_OSM_CATEGORIES = {"boundary", "natural", "place", "waterway"}
+_OSM_CATEGORY_PRIORITY = {"place": 0, "natural": 1, "waterway": 2, "boundary": 3}
+_ADDRESS_REGION_KINDS = {
+    RegionKind.country,
+    RegionKind.subnational,
+    RegionKind.county,
+    RegionKind.state,
+    RegionKind.province,
+    RegionKind.department,
+    RegionKind.region,
+    RegionKind.canton,
+    RegionKind.prefecture,
+    RegionKind.territory,
+}
+_SEARCH_REGION_KINDS = _ADDRESS_REGION_KINDS | {RegionKind.other, RegionKind.island}
 
 
 class Location(BaseModel):
@@ -292,13 +311,30 @@ class Location(BaseModel):
         if point is not None:
             subprocess.check_call(["open", point.openstreetmap_url])
 
+    def infer_coordinates(self) -> None:
+        if self.latitude is not None or self.longitude is not None:
+            print(f"{self}: already has coordinates")
+            return
+        messages = list(
+            self.lint_missing_coordinates(
+                LintConfig(autofix=True, interactive=True, manual_mode=True)
+            )
+        )
+        for message in messages:
+            print(message)
+
     def get_adt_callbacks(self) -> getinput.CallbackMap:
         callbacks = super().get_adt_callbacks()
+        article_callbacks = (
+            self.source.get_shareable_adt_callbacks() if self.source is not None else {}
+        )
         return {
             **callbacks,
+            **article_callbacks,
             "add_alias": self.add_alias,
             "merge": self.merge,
             "display_occurrences": self.display_occurrences,
+            "infer_coordinates": self.infer_coordinates,
             "open_coordinates": self.open_coordinates,
         }
 
@@ -428,6 +464,10 @@ class Location(BaseModel):
         # and misleading lint.
         if self.is_general():
             return
+        if self.stratigraphic_unit is not None and re.fullmatch(
+            rf"{self.stratigraphic_unit.name} \(.*\)", self.name
+        ):
+            return
 
         from .name import TypeTag
         from .occurrence_record import OccurrenceRecordTag
@@ -452,6 +492,7 @@ class Location(BaseModel):
                         (latitude, longitude, point, f"OccurrenceRecord {record}")
                     )
         if not candidates:
+            yield from self.lint_nominatim_coordinates(cfg)
             return
 
         latitude, longitude, point, source = candidates[0]
@@ -475,6 +516,111 @@ class Location(BaseModel):
             self.longitude = longitude
         else:
             yield message
+
+    def lint_nominatim_coordinates(self, cfg: LintConfig) -> Iterable[str]:
+        """Infer coordinates from an exact, geographically consistent OSM match."""
+        if not is_network_available():
+            return
+
+        query = self.get_nominatim_query()
+        results = nominatim.search(query)
+        candidates: list[tuple[nominatim.SearchResult, tuple[str, str, Any]]] = []
+        for result in results:
+            if not self.is_sane_nominatim_result(result):
+                continue
+            parsed = coordinate_lint.standardize_coordinate_pair(
+                result.latitude, result.longitude
+            )
+            if parsed is not None:
+                candidates.append((result, parsed))
+
+        if not candidates:
+            return
+
+        candidates.sort(
+            key=lambda candidate: _OSM_CATEGORY_PRIORITY[candidate[0].category]
+        )
+        result, (latitude, longitude, point) = candidates[0]
+        has_conflict = any(
+            coordinate_lint.distance_km(point, other_point)
+            > coordinate_lint.COORDINATE_TOLERANCE_KM
+            for _, (_, _, other_point) in candidates[1:]
+        )
+        if has_conflict:
+            matches = "; ".join(
+                f"{candidate.display_name!r} "
+                f"({candidate.category}/{candidate.feature_type}, "
+                f"{candidate_latitude}, {candidate_longitude})"
+                for candidate, (
+                    candidate_latitude,
+                    candidate_longitude,
+                    _,
+                ) in candidates
+            )
+            yield (
+                f"{self}: Nominatim returned {len(candidates)} conflicting exact "
+                f"matches: {matches} [nominatim_coordinates]"
+            )
+            return
+
+        region_issues = list(coordinate_lint.check_point_in_region(point, self.region))
+        if region_issues:
+            yield (
+                f"{self}: Nominatim result {result.display_name!r} failed the region "
+                f"check: {'; '.join(region_issues)} [nominatim_coordinates]"
+            )
+            return
+
+        message = (
+            f"{self}: coordinates should be {latitude}, {longitude}, inferred from "
+            f"OpenStreetMap Nominatim {result.category}/{result.feature_type} result "
+            f"{result.display_name!r} [nominatim_coordinates]"
+        )
+        if cfg.autofix:
+            print(message)
+            self.latitude = latitude
+            self.longitude = longitude
+        else:
+            yield message
+
+    def get_nominatim_query(self) -> str:
+        components = [self.name]
+        seen = {helpers.simplify_string(self.name, clean_words=False)}
+        for region in (self.region, *self.region.all_parents()):
+            if region.kind not in _SEARCH_REGION_KINDS:
+                continue
+            name = _get_unqualified_region_name(region)
+            simplified = helpers.simplify_string(name, clean_words=False)
+            if simplified not in seen:
+                components.append(name)
+                seen.add(simplified)
+        return ", ".join(components)
+
+    def is_sane_nominatim_result(self, result: nominatim.SearchResult) -> bool:
+        if result.category not in _GEOCODABLE_OSM_CATEGORIES:
+            return False
+        if helpers.simplify_string(
+            result.name, clean_words=False
+        ) != helpers.simplify_string(self.name, clean_words=False):
+            return False
+
+        address_names = {
+            helpers.simplify_string(value, clean_words=False)
+            for key, value in result.address.items()
+            if key not in {"country_code", "postcode"} and not key.startswith("ISO3166")
+        }
+        checked_region = False
+        for region in (self.region, *self.region.all_parents()):
+            if region.kind not in _ADDRESS_REGION_KINDS:
+                continue
+            checked_region = True
+            expected_names = {
+                helpers.simplify_string(name, clean_words=False)
+                for name in _get_region_name_aliases(region)
+            }
+            if address_names.isdisjoint(expected_names):
+                return False
+        return checked_region
 
     def should_be_specified(self) -> bool:
         if self.region.has_children():
@@ -587,6 +733,21 @@ class Location(BaseModel):
         if tags:
             data["tags"] = tags
         return [data]
+
+
+def _get_unqualified_region_name(region: Region) -> str:
+    if region.parent is not None:
+        parent_suffix = f", {region.parent.name}"
+        if region.name.endswith(parent_suffix):
+            return region.name.removesuffix(parent_suffix)
+    return region.name
+
+
+def _get_region_name_aliases(region: Region) -> set[str]:
+    names = {region.name, _get_unqualified_region_name(region)}
+    if region.kind is RegionKind.country:
+        names.add(nominatim.HESP_COUNTRY_TO_OSM_COUNTRY.get(region.name, region.name))
+    return names
 
 
 class LocationTag(adt.ADT):

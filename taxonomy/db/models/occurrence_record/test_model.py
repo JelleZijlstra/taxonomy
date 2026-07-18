@@ -26,6 +26,39 @@ def test_call_sign_getter_uses_configured_field() -> None:
     assert Location.get_call_sign_getter() is Location.getter(Location.label_field)
 
 
+def test_open_coordinates_falls_back_to_location() -> None:
+    location = Mock()
+    record = SimpleNamespace(
+        tags=(), location=location, get_tags=lambda values, tag_type: ()
+    )
+
+    OccurrenceRecord.open_coordinates(record)  # type: ignore[arg-type]
+
+    location.open_coordinates.assert_called_once_with()
+
+
+def test_occurrence_record_callbacks_include_article_and_related_objects(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    article_callback = Mock()
+    article = SimpleNamespace(
+        get_shareable_adt_callbacks=Mock(
+            return_value={"article_callback": article_callback}
+        )
+    )
+    monkeypatch.setattr(
+        OccurrenceRecord, "classification_entry", SimpleNamespace(article=article)
+    )
+    record = object.__new__(OccurrenceRecord)
+
+    callbacks = record.get_adt_callbacks()
+
+    assert callbacks["article_callback"] is article_callback
+    assert callbacks["open_coordinates"] == record.open_coordinates
+    assert callbacks["display_location"] == record.display_location
+    assert callbacks["edit_classification_entry"] == record.edit_classification_entry
+
+
 def test_classification_entry_add_occurrence_record_opens_editor(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

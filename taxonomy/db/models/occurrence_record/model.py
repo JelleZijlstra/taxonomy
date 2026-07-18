@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 from collections.abc import Iterable
 from typing import Any, ClassVar, NotRequired
 
@@ -7,7 +8,7 @@ from clirm import Field
 
 from taxonomy import events, getinput
 from taxonomy.adt import ADT
-from taxonomy.db import models
+from taxonomy.db import coordinate_lint, models
 from taxonomy.db.constants import (
     AltitudeUnit,
     Managed,
@@ -99,6 +100,26 @@ class OccurrenceRecord(BaseModel):
             tags=new_tags,
         )
 
+    def open_coordinates(self) -> None:
+        has_source_coordinates = False
+        for tag in self.get_tags(self.tags, OccurrenceRecordTag.Coordinates):
+            point = coordinate_lint.make_point(tag.latitude, tag.longitude)
+            if point is not None:
+                has_source_coordinates = True
+                subprocess.check_call(["open", point.openstreetmap_url])
+        if not has_source_coordinates and self.location is not None:
+            self.location.open_coordinates()
+
+    def display_location(self) -> None:
+        if self.location is None:
+            print("No mapped Location")
+        else:
+            self.location.display()
+
+    def edit_classification_entry(self) -> None:
+        self.classification_entry.display()
+        self.classification_entry.edit()
+
     @classmethod
     def create_interactively(
         cls, classification_entry: ClassificationEntry | None = None, **kwargs: Any
@@ -131,7 +152,17 @@ class OccurrenceRecord(BaseModel):
         return record
 
     def get_adt_callbacks(self) -> getinput.CallbackMap:
-        return {**super().get_adt_callbacks(), "split_for_taxon": self.split_for_taxon}
+        article_callbacks = (
+            self.classification_entry.article.get_shareable_adt_callbacks()
+        )
+        return {
+            **super().get_adt_callbacks(),
+            **article_callbacks,
+            "display_location": self.display_location,
+            "edit_classification_entry": self.edit_classification_entry,
+            "open_coordinates": self.open_coordinates,
+            "split_for_taxon": self.split_for_taxon,
+        }
 
     def lint(self, cfg: LintConfig) -> Iterable[str]:
         yield from models.occurrence_record.lint.check_taxon(self, cfg)
