@@ -577,6 +577,15 @@ class BaseModel(Model):
                 traceback.print_exc()
                 print(f"{field}: could not get value")
 
+    def full_reverse_rel(self) -> None:
+        for field in sorted(field.related_name for field in self.clirm_backrefs):
+            objects = list(getattr(self, field))
+            if not objects:
+                continue
+            print(f"{field}: {len(objects)} objects")
+            for obj in objects:
+                print(f"- {obj}")
+
     def get_search_dicts(self) -> list[dict[str, Any]]:
         return []
 
@@ -1032,6 +1041,7 @@ class BaseModel(Model):
             "sibling_by_field": self.edit_sibling_by_field,
             "empty": self.empty,
             "full_data": self.full_data,
+            "full_reverse_rel": self.full_reverse_rel,
             "call": self.call,
             "lint": self.format,
             "manual_lint": lambda: self.format(cfg=LintConfig(manual_mode=True)),

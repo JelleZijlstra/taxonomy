@@ -547,10 +547,10 @@ class Location(BaseModel):
             for _, (_, _, other_point) in candidates[1:]
         )
         if has_conflict:
-            matches = "; ".join(
-                f"{candidate.display_name!r} "
+            matches = "".join(
+                f"- {candidate.display_name!r} "
                 f"({candidate.category}/{candidate.feature_type}, "
-                f"{candidate_latitude}, {candidate_longitude})"
+                f"{candidate_latitude}, {candidate_longitude})\n"
                 for candidate, (
                     candidate_latitude,
                     candidate_longitude,
@@ -559,7 +559,7 @@ class Location(BaseModel):
             )
             yield (
                 f"{self}: Nominatim returned {len(candidates)} conflicting exact "
-                f"matches: {matches} [nominatim_coordinates]"
+                f"matches:\n{matches}[nominatim_coordinates]"
             )
             return
 
