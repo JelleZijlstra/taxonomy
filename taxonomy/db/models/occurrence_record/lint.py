@@ -44,7 +44,13 @@ def get_ignores(record: OccurrenceRecord) -> Iterable[IgnoreLint]:
     return record.get_tags(record.tags, OccurrenceRecordTag.IgnoreLintOccurrenceRecord)
 
 
-LINT = Lint(OccurrenceRecord, get_ignores, remove_unused_ignores)
+def add_ignore(record: OccurrenceRecord, label: str, comment: str) -> None:
+    record.add_tag(
+        OccurrenceRecordTag.IgnoreLintOccurrenceRecord(label, comment=comment)
+    )
+
+
+LINT = Lint(OccurrenceRecord, get_ignores, remove_unused_ignores, add_ignore)
 
 
 def get_inferred_taxon(record: OccurrenceRecord) -> Taxon | None:

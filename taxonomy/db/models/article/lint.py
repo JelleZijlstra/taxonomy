@@ -56,7 +56,11 @@ def get_ignores(art: Article) -> Iterable[IgnoreLint]:
     return art.get_tags(art.tags, ArticleTag.IgnoreLint)
 
 
-LINT = Lint(Article, get_ignores, remove_unused_ignores)
+def add_ignore(art: Article, label: str, comment: str) -> None:
+    art.add_tag(ArticleTag.IgnoreLint(label, comment=comment))
+
+
+LINT = Lint(Article, get_ignores, remove_unused_ignores, add_ignore)
 
 
 @LINT.add("tags")
@@ -2999,7 +3003,7 @@ def data_from_zoobank(art: Article, cfg: LintConfig) -> Iterable[str]:
         lsid = tag.text
         try:
             data = zoobank.get_zoobank_data_for_article(lsid)
-        except (requests.exceptions.ReadTimeout, json.JSONDecodeError):
+        except requests.exceptions.ReadTimeout, json.JSONDecodeError:
             # Some LSIDs consistently time out for some reason; skip them
             # And some produce invalid JSON
             continue

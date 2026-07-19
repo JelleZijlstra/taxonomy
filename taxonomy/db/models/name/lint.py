@@ -131,7 +131,11 @@ def get_ignores(nam: Name) -> Iterable[IgnoreLint]:
     return nam.get_tags(nam.type_tags, TypeTag.IgnoreLintName)
 
 
-LINT = Lint(Name, get_ignores, remove_unused_ignores)
+def add_ignore(nam: Name, label: str, comment: str) -> None:
+    nam.add_type_tag(TypeTag.IgnoreLintName(label, comment=comment))
+
+
+LINT = Lint(Name, get_ignores, remove_unused_ignores, add_ignore)
 
 
 def replace_arg(tag: ADTT, arg: str, val: object) -> ADTT:

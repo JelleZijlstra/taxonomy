@@ -46,7 +46,11 @@ def get_ignores(location: Location) -> Iterable[IgnoreLint]:
     return location.get_tags(location.tags, LocationTag.IgnoreLintLocation)
 
 
-LINT = Lint(Location, get_ignores, remove_unused_ignores)
+def add_ignore(location: Location, label: str, comment: str) -> None:
+    location.add_tag(LocationTag.IgnoreLintLocation(label, comment=comment))
+
+
+LINT = Lint(Location, get_ignores, remove_unused_ignores, add_ignore)
 
 
 @LINT.add("alias_target")

@@ -74,7 +74,79 @@ def test_open_coordinates_is_adt_callback(monkeypatch: pytest.MonkeyPatch) -> No
 
     assert callbacks["open_coordinates"] == loc.open_coordinates
     assert callbacks["infer_coordinates"] == loc.infer_coordinates
+    assert callbacks["coordinate_evidence"] == loc.coordinate_evidence
     assert callbacks["source_callback"] is source_callback
+
+
+def test_coordinate_evidence_prints_all_sources(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    name = _tagged_object((TypeTag.Coordinates("37.9", "-122.1"),), name_tags=True)
+    name.id = 101
+    record = _tagged_object(
+        (
+            OccurrenceRecordTag.Coordinates("37.8", "-122.2"),
+            OccurrenceRecordTag.VerbatimCoordinates("37.8, -122.2"),
+            OccurrenceRecordTag.CoordinateUncertaintyFromSource("within 1 km"),
+        ),
+        name_tags=False,
+    )
+    record.id = 202
+    loc = _location_without_coordinates(names=(name,), records=(record,))
+    loc.latitude = "37.95°N"
+    loc.longitude = "122.15°W"
+    monkeypatch.setattr(
+        nominatim,
+        "search",
+        Mock(
+            return_value=[
+                nominatim.SearchResult(
+                    latitude="37.9",
+                    longitude="-122.1",
+                    name="Walnut Creek",
+                    display_name="Walnut Creek, California, United States",
+                    category="place",
+                    feature_type="city",
+                    address={
+                        "city": "Walnut Creek",
+                        "state": "California",
+                        "country": "United States",
+                        "country_code": "us",
+                    },
+                ),
+                nominatim.SearchResult(
+                    latitude="40",
+                    longitude="-75",
+                    name="Other place",
+                    display_name="Other place, California, United States",
+                    category="place",
+                    feature_type="village",
+                    address={
+                        "village": "Other place",
+                        "state": "California",
+                        "country": "United States",
+                        "country_code": "us",
+                    },
+                ),
+            ]
+        ),
+    )
+
+    Location.coordinate_evidence(loc)
+
+    output = capsys.readouterr().out
+    assert "Coordinate evidence for" in output
+    assert "Location coordinates: 37.95°N, 122.15°W" in output
+    assert "Nominatim candidates:" in output
+    assert "Query: Walnut Creek, California" in output
+    assert "[accepted] place/city: Walnut Creek" in output
+    assert "[rejected by locality/region checks] place/village: Other place" in output
+    assert "Type-locality Names:" in output
+    assert "Coordinates tag: 37.9°N, 122.1°W" in output
+    assert "OccurrenceRecords:" in output
+    assert "Coordinates tag: 37.8°N, 122.2°W" in output
+    assert "Verbatim coordinates: '37.8, -122.2' -> 37.8°N, 122.2°W" in output
+    assert "Coordinate uncertainty: within 1 km" in output
 
 
 def _tagged_object(tags: tuple[object, ...], *, name_tags: bool) -> SimpleNamespace:

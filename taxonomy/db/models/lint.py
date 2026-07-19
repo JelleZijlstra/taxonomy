@@ -6,8 +6,9 @@ import traceback
 from collections.abc import Callable, Collection, Generator, Hashable, Iterable
 from dataclasses import dataclass, field, replace
 from functools import cache
-from typing import Generic, Protocol, TypeVar
+from typing import Any, ClassVar, Generic, Protocol, TypeVar, cast
 
+from taxonomy import getinput
 from taxonomy.config import is_network_available
 
 from .base import BaseModel, LintConfig
@@ -21,6 +22,20 @@ DuplicateFixer = Callable[[Hashable, list[ModelT], LintConfig], None]
 
 class IgnoreLint(Protocol):
     label: str
+
+
+@dataclass(frozen=True)
+class IgnoreLintTarget(Generic[ModelT]):
+    obj: ModelT
+    issues: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class IgnoreLintPlan(Generic[ModelT]):
+    label: str
+    comment: str
+    targets: tuple[IgnoreLintTarget[ModelT], ...]
+    already_ignored: tuple[IgnoreLintTarget[ModelT], ...]
 
 
 @dataclass
@@ -55,14 +70,114 @@ class Lint(Generic[ModelT]):
     model_cls: type[ModelT]
     get_ignores: Callable[[ModelT], Iterable[IgnoreLint]]
     remove_unused_ignores: Callable[[ModelT, Collection[str]], None]
+    add_ignore: Callable[[ModelT, str, str], None] | None = None
 
     linters: list[LintWrapper[ModelT]] = field(default_factory=list)
     disabled_linters: list[LintWrapper[ModelT]] = field(default_factory=list)
     cache_clearers: list[Callable[[], None]] = field(default_factory=list)
 
+    _by_model: ClassVar[dict[type[BaseModel], Lint[Any]]] = {}
+
+    def __post_init__(self) -> None:
+        self._by_model[self.model_cls] = self
+
+    @classmethod
+    def for_model(cls, model_cls: type[ModelT]) -> Lint[ModelT]:
+        try:
+            return cast(Lint[ModelT], cls._by_model[model_cls])
+        except KeyError as exc:
+            raise ValueError(
+                f"{model_cls.__name__} does not use the lint registry"
+            ) from exc
+
     def clear_caches(self) -> None:
         for clear_cache in self.cache_clearers:
             clear_cache()
+
+    def add_ignore_lint_to_all(
+        self,
+        label: str,
+        comment: str,
+        *,
+        dry_run: bool = True,
+        query: Iterable[ModelT] | None = None,
+    ) -> IgnoreLintPlan[ModelT]:
+        if self.add_ignore is None:
+            raise ValueError(
+                f"{self.model_cls.__name__} does not support IgnoreLint tags"
+            )
+        if not comment.strip():
+            raise ValueError("an IgnoreLint comment is required")
+        matching_linters = [
+            linter
+            for linter in (*self.linters, *self.disabled_linters)
+            if linter.label == label
+        ]
+        if not matching_linters:
+            available = ", ".join(
+                sorted(
+                    linter.label for linter in (*self.linters, *self.disabled_linters)
+                )
+            )
+            raise ValueError(
+                f"unknown {self.model_cls.__name__} lint {label!r}; "
+                f"available lints: {available}"
+            )
+        if len(matching_linters) > 1:
+            raise ValueError(
+                f"{self.model_cls.__name__} has multiple lints labeled {label!r}"
+            )
+        linter = matching_linters[0]
+        if linter.requires_network and not is_network_available():
+            raise RuntimeError(
+                f"cannot evaluate network-required lint {label!r} while network "
+                "linting is unavailable"
+            )
+
+        if query is None:
+            query = self.model_cls.select_valid()
+        cfg = LintConfig(autofix=False, interactive=False, enable_all=linter.disabled)
+        targets: list[IgnoreLintTarget[ModelT]] = []
+        already_ignored: list[IgnoreLintTarget[ModelT]] = []
+        self.clear_caches()
+        try:
+            for obj in getinput.print_every_n(
+                query, label=f"{self.model_cls.__name__}s"
+            ):
+                try:
+                    issues = tuple(linter.linter(obj, cfg))
+                except Exception as exc:
+                    raise RuntimeError(
+                        f"error running {label!r} for {obj}: {exc}"
+                    ) from exc
+                if not issues:
+                    continue
+                target = IgnoreLintTarget(obj, issues)
+                if self.is_ignoring_lint(obj, label):
+                    already_ignored.append(target)
+                else:
+                    targets.append(target)
+        finally:
+            self.clear_caches()
+
+        plan = IgnoreLintPlan(label, comment, tuple(targets), tuple(already_ignored))
+        if not dry_run:
+            for target in plan.targets:
+                self.add_ignore(target.obj, label, comment)
+        for target in plan.targets:
+            prefix = "WOULD_ADD_IGNORE_LINT" if dry_run else "ADD_IGNORE_LINT"
+            print(
+                f"{prefix} object={target.obj!r} lint={label!r} "
+                f"comment={comment!r} issues={' | '.join(target.issues)!r}"
+            )
+        mode = "Dry run" if dry_run else "Applied"
+        print(
+            f"{mode}: {len(plan.targets)} IgnoreLint tag(s) to add, "
+            f"{len(plan.already_ignored)} already present."
+        )
+        if dry_run:
+            print("No database changes made. Pass dry_run=False to add these tags.")
+        return plan
 
     def add(
         self,

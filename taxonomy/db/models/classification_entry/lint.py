@@ -46,7 +46,13 @@ def get_ignores(ce: ClassificationEntry) -> Iterable[IgnoreLint]:
     return ce.get_tags(ce.tags, ClassificationEntryTag.IgnoreLintClassificationEntry)
 
 
-LINT = Lint(ClassificationEntry, get_ignores, remove_unused_ignores)
+def add_ignore(ce: ClassificationEntry, label: str, comment: str) -> None:
+    ce.add_tag(
+        ClassificationEntryTag.IgnoreLintClassificationEntry(label, comment=comment)
+    )
+
+
+LINT = Lint(ClassificationEntry, get_ignores, remove_unused_ignores, add_ignore)
 
 
 @LINT.add("rank")

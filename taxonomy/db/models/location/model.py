@@ -13,7 +13,7 @@ from clirm import Field
 
 from taxonomy import adt, events, getinput
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
-from taxonomy.db import coordinate_lint, models
+from taxonomy.db import coordinate_lint, helpers, models
 from taxonomy.db.constants import Managed, Markdown
 from taxonomy.db.models.article import Article
 from taxonomy.db.models.base import ADTField, BaseModel, LintConfig, TextField
@@ -26,6 +26,24 @@ class LocationStatus(enum.IntEnum):
     valid = 0
     deleted = 1
     alias = 2
+
+
+def _format_coordinate_evidence(
+    latitude: str | None, longitude: str | None, *, reference_point: Any | None = None
+) -> str:
+    if latitude is None or longitude is None:
+        return f"{latitude or '(missing)'}, {longitude or '(missing)'} (incomplete)"
+    parsed = coordinate_lint.standardize_coordinate_pair(latitude, longitude)
+    if parsed is None:
+        return f"{latitude}, {longitude} (invalid)"
+    standardized_latitude, standardized_longitude, point = parsed
+    output = f"{standardized_latitude}, {standardized_longitude}"
+    if (standardized_latitude, standardized_longitude) != (latitude, longitude):
+        output += f" (raw: {latitude!r}, {longitude!r})"
+    if reference_point is not None:
+        distance = coordinate_lint.distance_km(reference_point, point)
+        output += f"; {distance:.1f} km from Location coordinates"
+    return output
 
 
 class Location(BaseModel):
@@ -291,6 +309,137 @@ class Location(BaseModel):
         if point is not None:
             subprocess.check_call(["open", point.openstreetmap_url])
 
+    def coordinate_evidence(self) -> None:
+        from taxonomy.apis import nominatim
+        from taxonomy.db.models.name import TypeTag
+        from taxonomy.db.models.occurrence_record import OccurrenceRecordTag
+        from taxonomy.db.models.occurrence_record.lint import parse_verbatim_coordinates
+
+        from . import lint as location_lint
+
+        print(f"Coordinate evidence for {self}:")
+        location_parsed = None
+        if self.latitude is None and self.longitude is None:
+            print("  Location coordinates: none")
+        else:
+            location_parsed = (
+                coordinate_lint.standardize_coordinate_pair(
+                    self.latitude, self.longitude
+                )
+                if self.latitude is not None and self.longitude is not None
+                else None
+            )
+            print(
+                "  Location coordinates: "
+                + _format_coordinate_evidence(self.latitude, self.longitude)
+            )
+        reference_point = location_parsed[2] if location_parsed is not None else None
+
+        print("\n  Nominatim candidates:")
+        query = location_lint.get_nominatim_query(self)
+        print(f"    Query: {query}")
+        try:
+            nominatim_results = nominatim.search(query)
+        except Exception as exc:
+            print(f"    Lookup failed: {exc}")
+        else:
+            if not nominatim_results:
+                print("    none")
+            for index, result in enumerate(nominatim_results, start=1):
+                status = (
+                    "accepted"
+                    if location_lint.is_sane_nominatim_result(self, result)
+                    else "rejected by locality/region checks"
+                )
+                print(
+                    f"    {index}. [{status}] {result.category}/"
+                    f"{result.feature_type}: {result.display_name}"
+                )
+                print(
+                    "       Coordinates: "
+                    + _format_coordinate_evidence(
+                        result.latitude,
+                        result.longitude,
+                        reference_point=reference_point,
+                    )
+                )
+                address = "; ".join(
+                    f"{key}={value}"
+                    for key, value in result.address.items()
+                    if key != "country_code" and not key.startswith("ISO3166")
+                )
+                if address:
+                    print(f"       Address: {address}")
+
+        print("\n  Type-locality Names:")
+        found_type_locality_evidence = False
+        for name in self.type_localities:
+            coordinates = list(name.get_tags(name.type_tags, TypeTag.Coordinates))
+            location_details = []
+            for tag in name.get_tags(name.type_tags, TypeTag.LocationDetail):
+                extracted = helpers.extract_coordinates(tag.text)
+                if extracted is not None:
+                    location_details.append(tag)
+            if not coordinates and not location_details:
+                continue
+            found_type_locality_evidence = True
+            print(f"    Name {name.id}: {name}")
+            for tag in coordinates:
+                print(
+                    "      Coordinates tag: "
+                    + _format_coordinate_evidence(
+                        tag.latitude, tag.longitude, reference_point=reference_point
+                    )
+                )
+            for tag in location_details:
+                source = f"{tag.source}"
+                if tag.page is not None:
+                    source += f", page {tag.page}"
+                print(f"      LocationDetail: {tag.text} (from {source})")
+        if not found_type_locality_evidence:
+            print("    none")
+
+        print("\n  OccurrenceRecords:")
+        found_occurrence_evidence = False
+        for record in self.occurrence_records:
+            coordinates = list(
+                record.get_tags(record.tags, OccurrenceRecordTag.Coordinates)
+            )
+            verbatim = list(
+                record.get_tags(record.tags, OccurrenceRecordTag.VerbatimCoordinates)
+            )
+            uncertainties = list(
+                record.get_tags(
+                    record.tags, OccurrenceRecordTag.CoordinateUncertaintyFromSource
+                )
+            )
+            if not coordinates and not verbatim and not uncertainties:
+                continue
+            found_occurrence_evidence = True
+            print(f"    OccurrenceRecord {record.id}: {record}")
+            for tag in coordinates:
+                print(
+                    "      Coordinates tag: "
+                    + _format_coordinate_evidence(
+                        tag.latitude, tag.longitude, reference_point=reference_point
+                    )
+                )
+            for tag in verbatim:
+                parsed = parse_verbatim_coordinates(tag.text)
+                if parsed is None:
+                    print(f"      Verbatim coordinates: {tag.text!r} (unparsed)")
+                else:
+                    print(
+                        f"      Verbatim coordinates: {tag.text!r} -> "
+                        + _format_coordinate_evidence(
+                            *parsed, reference_point=reference_point
+                        )
+                    )
+            for tag in uncertainties:
+                print(f"      Coordinate uncertainty: {tag.text}")
+        if not found_occurrence_evidence:
+            print("    none")
+
     def infer_coordinates(self) -> None:
         if self.latitude is not None or self.longitude is not None:
             print(f"{self}: already has coordinates")
@@ -315,6 +464,7 @@ class Location(BaseModel):
             "add_alias": self.add_alias,
             "merge": self.merge,
             "display_occurrences": self.display_occurrences,
+            "coordinate_evidence": self.coordinate_evidence,
             "infer_coordinates": self.infer_coordinates,
             "open_coordinates": self.open_coordinates,
         }

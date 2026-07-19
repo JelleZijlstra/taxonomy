@@ -141,6 +141,22 @@ class BaseModel(Model):
         pass
 
     @classmethod
+    def add_ignore_lint_to_all(
+        cls,
+        label: str,
+        comment: str,
+        *,
+        dry_run: bool = True,
+        query: Iterable[Self] | None = None,
+    ) -> Any:
+        """Add IgnoreLint tags to every valid object failing a registered lint."""
+        cls.clear_lint_caches()
+        from .lint import Lint
+
+        lint = Lint.for_model(cls)
+        return lint.add_ignore_lint_to_all(label, comment, dry_run=dry_run, query=query)
+
+    @classmethod
     def lint_all(
         cls,
         linter: Linter[Self] | None = None,
