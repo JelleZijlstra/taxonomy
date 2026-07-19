@@ -187,22 +187,10 @@ def check_nominatim_coordinates(location: Location, cfg: LintConfig) -> Iterable
     if _get_linked_coordinate_candidates(location):
         return
 
-    query = get_nominatim_query(location)
-    results = nominatim.search(query)
-    candidates: list[tuple[nominatim.SearchResult, tuple[str, str, Any]]] = []
-    for result in results:
-        if not is_sane_nominatim_result(location, result):
-            continue
-        parsed = coordinate_lint.standardize_coordinate_pair(
-            result.latitude, result.longitude
-        )
-        if parsed is not None:
-            candidates.append((result, parsed))
-
+    candidates = _get_nominatim_coordinate_candidates(location)
     if not candidates:
         return
 
-    candidates.sort(key=lambda candidate: _OSM_CATEGORY_PRIORITY[candidate[0].category])
     result, (latitude, longitude, point) = candidates[0]
     has_conflict = any(
         coordinate_lint.distance_km(point, other_point)
@@ -240,6 +228,65 @@ def check_nominatim_coordinates(location: Location, cfg: LintConfig) -> Iterable
         location.longitude = longitude
     else:
         yield message
+
+
+@LINT.add("nominatim_coordinate_consistency", requires_network=True)
+def check_nominatim_coordinate_consistency(
+    location: Location, cfg: LintConfig
+) -> Iterable[str]:
+    if location.latitude is None or location.longitude is None:
+        return
+    if not _should_infer_coordinates(location):
+        return
+    parsed = coordinate_lint.standardize_coordinate_pair(
+        location.latitude, location.longitude
+    )
+    if parsed is None:
+        return
+    _, _, location_point = parsed
+
+    candidates = _get_nominatim_coordinate_candidates(location)
+    if not candidates:
+        return
+    candidates_with_distances = [
+        (result, candidate, coordinate_lint.distance_km(location_point, candidate[2]))
+        for result, candidate in candidates
+    ]
+    if any(
+        distance <= coordinate_lint.COORDINATE_TOLERANCE_KM
+        for _, _, distance in candidates_with_distances
+    ):
+        return
+
+    matches = "".join(
+        f"- {result.display_name!r} "
+        f"({result.category}/{result.feature_type}, {latitude}, {longitude}; "
+        f"{distance:.1f} km away)\n"
+        for result, (latitude, longitude, _), distance in candidates_with_distances
+    )
+    yield (
+        f"coordinates {location.latitude}, {location.longitude} are more than "
+        f"{coordinate_lint.COORDINATE_TOLERANCE_KM} km from all "
+        f"{len(candidates)} exact Nominatim matches:\n{matches}"
+    )
+
+
+def _get_nominatim_coordinate_candidates(
+    location: Location,
+) -> list[tuple[nominatim.SearchResult, tuple[str, str, Any]]]:
+    query = get_nominatim_query(location)
+    results = nominatim.search(query)
+    candidates = []
+    for result in results:
+        if not is_sane_nominatim_result(location, result):
+            continue
+        parsed = coordinate_lint.standardize_coordinate_pair(
+            result.latitude, result.longitude
+        )
+        if parsed is not None:
+            candidates.append((result, parsed))
+    candidates.sort(key=lambda candidate: _OSM_CATEGORY_PRIORITY[candidate[0].category])
+    return candidates
 
 
 def get_nominatim_query(location: Location) -> str:

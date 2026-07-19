@@ -214,6 +214,12 @@ def test_general_location_does_not_load_linked_coordinates(
 
     assert list(location_lint.check_linked_coordinates(loc, LintConfig())) == []
     assert list(location_lint.check_nominatim_coordinates(loc, LintConfig())) == []
+    loc.latitude = "38°N"
+    loc.longitude = "122°W"
+    assert (
+        list(location_lint.check_nominatim_coordinate_consistency(loc, LintConfig()))
+        == []
+    )
     search.assert_not_called()
 
 
@@ -244,6 +250,80 @@ def test_location_infers_coordinates_from_nominatim(
     assert loc.latitude == "38.0615885°N"
     assert loc.longitude == "122.6985975°W"
     search.assert_called_once_with("Nicasio, Marin County, California, United States")
+
+
+def test_location_coordinates_match_nearby_nominatim_candidate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    loc = _location_without_coordinates(name="Nicasio", region=_marin_county())
+    loc.latitude = "38.0616°N"
+    loc.longitude = "122.6986°W"
+    nearby = _nominatim_result(
+        latitude="38.0615885",
+        longitude="-122.6985975",
+        display_name="Nicasio settlement",
+    )
+    distant = _nominatim_result(
+        latitude="38.5",
+        longitude="-122.7",
+        category="natural",
+        feature_type="peak",
+        display_name="Nicasio peak",
+    )
+    search = Mock(return_value=[distant, nearby])
+    monkeypatch.setattr(nominatim, "search", search)
+    monkeypatch.setattr(model_lint, "is_network_available", lambda: True)
+
+    messages = list(
+        location_lint.check_nominatim_coordinate_consistency(loc, LintConfig())
+    )
+
+    assert messages == []
+    search.assert_called_once_with("Nicasio, Marin County, California, United States")
+
+
+def test_location_coordinates_are_far_from_all_nominatim_candidates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    loc = _location_without_coordinates(name="Nicasio", region=_marin_county())
+    loc.latitude = "37.9°N"
+    loc.longitude = "122.5°W"
+    results = [
+        _nominatim_result(
+            latitude="38.0615885",
+            longitude="-122.6985975",
+            display_name="Nicasio settlement",
+        ),
+        _nominatim_result(
+            latitude="38.0601015",
+            longitude="-122.6984323",
+            category="boundary",
+            feature_type="census",
+            display_name="Nicasio census area",
+        ),
+    ]
+    monkeypatch.setattr(nominatim, "search", Mock(return_value=results))
+    monkeypatch.setattr(model_lint, "is_network_available", lambda: True)
+
+    messages = list(
+        location_lint.check_nominatim_coordinate_consistency(loc, LintConfig())
+    )
+
+    assert len(messages) == 1
+    assert "more than 5 km from all 2 exact Nominatim matches" in messages[0]
+    assert all(result.display_name in messages[0] for result in results)
+    assert messages[0].count("km away") == 2
+
+
+def test_nominatim_coordinate_consistency_is_a_normal_network_lint() -> None:
+    wrapper = next(
+        wrapper
+        for wrapper in location_lint.LINT.linters
+        if wrapper.label == "nominatim_coordinate_consistency"
+    )
+
+    assert wrapper.requires_network
+    assert wrapper not in location_lint.LINT.disabled_linters
 
 
 def test_location_rejects_nominatim_result_from_wrong_county(
@@ -322,6 +402,12 @@ def test_location_does_not_query_nominatim_without_network(
     monkeypatch.setattr(model_lint, "is_network_available", lambda: False)
 
     assert list(location_lint.check_nominatim_coordinates(loc, LintConfig())) == []
+    loc.latitude = "38.0616°N"
+    loc.longitude = "122.6986°W"
+    assert (
+        list(location_lint.check_nominatim_coordinate_consistency(loc, LintConfig()))
+        == []
+    )
     search.assert_not_called()
 
 
