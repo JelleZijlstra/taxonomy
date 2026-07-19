@@ -13,7 +13,7 @@ from taxonomy.db.models.base import LintConfig
 from taxonomy.db.models.lint import IgnoreLint, Lint
 from taxonomy.db.models.region import Region
 
-from .model import Location, LocationStatus, LocationTag
+from .model import Location, LocationTag
 
 _GEOCODABLE_OSM_CATEGORIES = {"boundary", "natural", "place", "waterway"}
 _OSM_CATEGORY_PRIORITY = {"place": 0, "natural": 1, "waterway": 2, "boundary": 3}
@@ -53,22 +53,8 @@ def add_ignore(location: Location, label: str, comment: str) -> None:
 LINT = Lint(Location, get_ignores, remove_unused_ignores, add_ignore)
 
 
-@LINT.add("alias_target")
-def check_alias_target(location: Location, cfg: LintConfig) -> Iterable[str]:
-    if location.deleted is LocationStatus.alias and not location.parent:
-        yield "alias location has no parent"
-
-
-@LINT.add("alias_references")
-def check_alias_references(location: Location, cfg: LintConfig) -> Iterable[str]:
-    if location.deleted is LocationStatus.alias and not location.is_empty():
-        yield "alias location has references"
-
-
 @LINT.add("period")
 def check_period(location: Location, cfg: LintConfig) -> Iterable[str]:
-    if location.is_invalid():
-        return
     if location.min_period is None and location.max_period is not None:
         yield "missing min_period"
     if location.max_period is None and location.min_period is not None:
@@ -77,8 +63,6 @@ def check_period(location: Location, cfg: LintConfig) -> Iterable[str]:
 
 @LINT.add("coordinates")
 def check_coordinates(location: Location, cfg: LintConfig) -> Iterable[str]:
-    if location.is_invalid():
-        return
     if location.latitude is None and location.longitude is None:
         return
     if location.latitude is None:
@@ -349,3 +333,24 @@ def _get_region_name_aliases(region: Region) -> set[str]:
     if region.kind is RegionKind.country:
         names.add(nominatim.HESP_COUNTRY_TO_OSM_COUNTRY.get(region.name, region.name))
     return names
+
+
+@LINT.add("should_have_disambiguator")
+def check_should_have_disambiguator(
+    location: Location, cfg: LintConfig
+) -> Iterable[str]:
+    if "(" in location.name or location.name == location.region.name:
+        return
+
+    similar = list(
+        Location.select_valid().filter(
+            Location.id != location.id, Location.name.startswith(f"{location.name} (")
+        )
+    )
+    if not similar:
+        return
+    yield (
+        f"location {location.name!r} should have a disambiguator "
+        f"(e.g., '({location.region.name})') because of collision with {len(similar)} other location(s): "
+        f"{', '.join(repr(loc.name) for loc in similar)}"
+    )

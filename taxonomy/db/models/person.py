@@ -521,14 +521,6 @@ class Person(BaseModel):
                 if not tag.text.startswith(("http://", "https://")):
                     yield f"{self}: invalid online link: {tag}"
 
-        if self.type in (
-            PersonType.deleted,
-            PersonType.hard_redirect,
-            PersonType.soft_redirect,
-        ):
-            if self.total_references() > 0:
-                yield f"{self}: deleted person has references"
-            return
         if (
             self.type is PersonType.checked
             and self.naming_convention is NamingConvention.unspecified

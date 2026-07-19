@@ -13,7 +13,7 @@ from taxonomy.db import coordinate_lint
 from taxonomy.db.constants import RegionKind
 from taxonomy.db.models import lint as model_lint
 from taxonomy.db.models.base import LintConfig
-from taxonomy.db.models.location import Location, LocationTag
+from taxonomy.db.models.location import Location, LocationStatus, LocationTag
 from taxonomy.db.models.location import lint as location_lint
 from taxonomy.db.models.name import TypeTag
 from taxonomy.db.models.occurrence_record import OccurrenceRecordTag
@@ -76,6 +76,17 @@ def test_open_coordinates_is_adt_callback(monkeypatch: pytest.MonkeyPatch) -> No
     assert callbacks["infer_coordinates"] == loc.infer_coordinates
     assert callbacks["coordinate_evidence"] == loc.coordinate_evidence
     assert callbacks["source_callback"] is source_callback
+
+
+def test_alias_requires_target_without_running_regular_lints() -> None:
+    alias = cast(Location, SimpleNamespace(deleted=LocationStatus.alias, parent=None))
+
+    assert list(Location.lint_invalid(alias, LintConfig())) == [
+        "alias location has no parent"
+    ]
+
+    alias.parent = cast(Location, object())
+    assert list(Location.lint_invalid(alias, LintConfig())) == []
 
 
 def test_coordinate_evidence_prints_all_sources(

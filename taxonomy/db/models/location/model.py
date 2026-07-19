@@ -533,9 +533,8 @@ class Location(BaseModel):
         return True
 
     def lint_invalid(self, cfg: LintConfig) -> Iterable[str]:
-        from . import lint as location_lint
-
-        yield from location_lint.LINT.run(self, cfg)
+        if self.deleted is LocationStatus.alias and self.parent is None:
+            yield "alias location has no parent"
 
     def lint(self, cfg: LintConfig) -> Iterable[str]:
         from . import lint as location_lint
