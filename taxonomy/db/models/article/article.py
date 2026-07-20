@@ -537,6 +537,7 @@ class Article(BaseModel):
             "try_to_find_bhl_links": self.try_to_find_bhl_links,
             "remove_all_author_page_links": self.remove_all_author_page_links,
             "clear_bhl_caches": self.clear_bhl_caches,
+            "clear_zoobank_caches": self.clear_zoobank_caches,
             "set_or_replace_url": self.set_or_replace_url,
             "add_bibliography_url": self.add_bibliography_url,
             "classification_entries_for_article": lambda: models.classification_entry.ce.classification_entries_for_article(
@@ -615,6 +616,10 @@ class Article(BaseModel):
         for tag in self.tags:
             if isinstance(tag, ArticleTag.AlternativeURL):
                 bhl.clear_caches_related_to_url(tag.url)
+
+    def clear_zoobank_caches(self) -> None:
+        for tag in self.get_tags(self.tags, ArticleTag.LSIDArticle):
+            zoobank.clear_zoobank_publication_cache(tag.text)
 
     def get_new_names(self) -> Query[models.Name]:
         return models.Name.add_validity_check(self.new_names)

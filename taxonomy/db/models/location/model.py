@@ -29,19 +29,19 @@ class LocationStatus(enum.IntEnum):
 
 
 def _format_coordinate_evidence(
-    latitude: str | None, longitude: str | None, *, reference_point: Any | None = None
+    latitude: str | None, longitude: str | None, *, reference_extent: Any | None = None
 ) -> str:
     if latitude is None or longitude is None:
         return f"{latitude or '(missing)'}, {longitude or '(missing)'} (incomplete)"
     parsed = coordinate_lint.standardize_coordinate_pair(latitude, longitude)
     if parsed is None:
         return f"{latitude}, {longitude} (invalid)"
-    standardized_latitude, standardized_longitude, point = parsed
+    standardized_latitude, standardized_longitude, extent = parsed
     output = f"{standardized_latitude}, {standardized_longitude}"
     if (standardized_latitude, standardized_longitude) != (latitude, longitude):
         output += f" (raw: {latitude!r}, {longitude!r})"
-    if reference_point is not None:
-        distance = coordinate_lint.distance_km(reference_point, point)
+    if reference_extent is not None:
+        distance = coordinate_lint.extent_distance_km(reference_extent, extent)
         output += f"; {distance:.1f} km from Location coordinates"
     return output
 
@@ -305,9 +305,11 @@ class Location(BaseModel):
                 file.write("{}{}\n".format(" " * (depth + 12), record))
 
     def open_coordinates(self) -> None:
-        point = coordinate_lint.make_point(self.latitude, self.longitude)
-        if point is not None:
-            subprocess.check_call(["open", point.openstreetmap_url])
+        if self.latitude is None or self.longitude is None:
+            return
+        extent = coordinate_lint.make_extent(self.latitude, self.longitude)
+        if extent is not None:
+            subprocess.check_call(["open", extent.openstreetmap_url])
 
     def coordinate_evidence(self) -> None:
         from taxonomy.apis import nominatim
@@ -333,7 +335,7 @@ class Location(BaseModel):
                 "  Location coordinates: "
                 + _format_coordinate_evidence(self.latitude, self.longitude)
             )
-        reference_point = location_parsed[2] if location_parsed is not None else None
+        reference_extent = location_parsed[2] if location_parsed is not None else None
 
         print("\n  Nominatim candidates:")
         query = location_lint.get_nominatim_query(self)
@@ -360,7 +362,7 @@ class Location(BaseModel):
                     + _format_coordinate_evidence(
                         result.latitude,
                         result.longitude,
-                        reference_point=reference_point,
+                        reference_extent=reference_extent,
                     )
                 )
                 address = "; ".join(
@@ -388,7 +390,7 @@ class Location(BaseModel):
                 print(
                     "      Coordinates tag: "
                     + _format_coordinate_evidence(
-                        tag.latitude, tag.longitude, reference_point=reference_point
+                        tag.latitude, tag.longitude, reference_extent=reference_extent
                     )
                 )
             for tag in location_details:
@@ -421,7 +423,7 @@ class Location(BaseModel):
                 print(
                     "      Coordinates tag: "
                     + _format_coordinate_evidence(
-                        tag.latitude, tag.longitude, reference_point=reference_point
+                        tag.latitude, tag.longitude, reference_extent=reference_extent
                     )
                 )
             for tag in verbatim:
@@ -432,7 +434,7 @@ class Location(BaseModel):
                     print(
                         f"      Verbatim coordinates: {tag.text!r} -> "
                         + _format_coordinate_evidence(
-                            *parsed, reference_point=reference_point
+                            *parsed, reference_extent=reference_extent
                         )
                     )
             for tag in uncertainties:

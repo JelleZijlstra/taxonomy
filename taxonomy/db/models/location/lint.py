@@ -74,16 +74,13 @@ def check_coordinates(location: Location, cfg: LintConfig) -> Iterable[str]:
     if location.is_general():
         yield "general location should not have coordinates"
         return
-    try:
-        latitude, _ = coordinate_lint.standardize_coordinate(
-            location.latitude, is_latitude=True
-        )
-        longitude, _ = coordinate_lint.standardize_coordinate(
-            location.longitude, is_latitude=False
-        )
-    except helpers.InvalidCoordinates:
+    parsed = coordinate_lint.standardize_coordinate_pair(
+        location.latitude, location.longitude
+    )
+    if parsed is None:
         yield f"invalid coordinates {location.latitude}, {location.longitude}"
         return
+    latitude, longitude, extent = parsed
     if (latitude, longitude) != (location.latitude, location.longitude):
         message = (
             f"coordinates should be {latitude}, {longitude}, not "
@@ -95,9 +92,7 @@ def check_coordinates(location: Location, cfg: LintConfig) -> Iterable[str]:
             location.longitude = longitude
         else:
             yield message
-    point = coordinate_lint.make_point(location.latitude, location.longitude)
-    assert point is not None
-    yield from coordinate_lint.check_point_in_region(point, location.region)
+    yield from coordinate_lint.check_extent_in_region(extent, location.region)
 
 
 def _should_infer_coordinates(location: Location) -> bool:
@@ -122,17 +117,17 @@ def _get_linked_coordinate_candidates(
                 tag.latitude, tag.longitude
             )
             if parsed is not None:
-                latitude, longitude, point = parsed
-                candidates.append((latitude, longitude, point, f"Name {name}"))
+                latitude, longitude, extent = parsed
+                candidates.append((latitude, longitude, extent, f"Name {name}"))
     for record in location.occurrence_records:
         for tag in record.get_tags(record.tags, OccurrenceRecordTag.Coordinates):
             parsed = coordinate_lint.standardize_coordinate_pair(
                 tag.latitude, tag.longitude
             )
             if parsed is not None:
-                latitude, longitude, point = parsed
+                latitude, longitude, extent = parsed
                 candidates.append(
-                    (latitude, longitude, point, f"OccurrenceRecord {record}")
+                    (latitude, longitude, extent, f"OccurrenceRecord {record}")
                 )
     return candidates
 
@@ -147,15 +142,20 @@ def check_linked_coordinates(location: Location, cfg: LintConfig) -> Iterable[st
     if not candidates:
         return
 
-    latitude, longitude, point, source = candidates[0]
-    for _, _, other_point, other_source in candidates[1:]:
-        distance = coordinate_lint.distance_km(point, other_point)
+    latitude, longitude, extent, source = candidates[0]
+    combined_extent = extent
+    for _, _, other_extent, other_source in candidates[1:]:
+        distance = coordinate_lint.extent_distance_km(extent, other_extent)
         if distance > coordinate_lint.COORDINATE_TOLERANCE_KM:
             yield (
-                f"cannot infer coordinates because {point} (from {source}) and "
-                f"{other_point} (from {other_source}) differ by {distance:.1f} km"
+                f"cannot infer coordinates because {extent} (from {source}) and "
+                f"{other_extent} (from {other_source}) differ by {distance:.1f} km"
             )
             return
+        combined_extent = combined_extent.union(other_extent)
+
+    latitude = combined_extent.latitude.standardized_text
+    longitude = combined_extent.longitude.standardized_text
 
     message = f"coordinates should be {latitude}, {longitude}, inferred from {source}"
     if cfg.autofix and not LINT.is_ignoring_lint(location, "linked_coordinates"):
@@ -179,11 +179,11 @@ def check_nominatim_coordinates(location: Location, cfg: LintConfig) -> Iterable
     if not candidates:
         return
 
-    result, (latitude, longitude, point) = candidates[0]
+    result, (latitude, longitude, extent) = candidates[0]
     has_conflict = any(
-        coordinate_lint.distance_km(point, other_point)
+        coordinate_lint.extent_distance_km(extent, other_extent)
         > coordinate_lint.COORDINATE_TOLERANCE_KM
-        for _, (_, _, other_point) in candidates[1:]
+        for _, (_, _, other_extent) in candidates[1:]
     )
     if has_conflict:
         matches = "".join(
@@ -197,7 +197,9 @@ def check_nominatim_coordinates(location: Location, cfg: LintConfig) -> Iterable
         )
         return
 
-    region_issues = list(coordinate_lint.check_point_in_region(point, location.region))
+    region_issues = list(
+        coordinate_lint.check_extent_in_region(extent, location.region)
+    )
     if region_issues:
         yield (
             f"Nominatim result {result.display_name!r} failed the region check: "
@@ -231,13 +233,17 @@ def check_nominatim_coordinate_consistency(
     )
     if parsed is None:
         return
-    _, _, location_point = parsed
+    _, _, location_extent = parsed
 
     candidates = _get_nominatim_coordinate_candidates(location)
     if not candidates:
         return
     candidates_with_distances = [
-        (result, candidate, coordinate_lint.distance_km(location_point, candidate[2]))
+        (
+            result,
+            candidate,
+            coordinate_lint.extent_distance_km(location_extent, candidate[2]),
+        )
         for result, candidate in candidates
     ]
     if any(

@@ -846,12 +846,14 @@ def _check_all_type_tags(
 
         case TypeTag.Coordinates():
             try:
-                lat, _ = helpers.standardize_coordinates(tag.latitude, is_latitude=True)
+                lat, _ = coordinate_lint.standardize_coordinate_interval(
+                    tag.latitude, is_latitude=True
+                )
             except helpers.InvalidCoordinates as e:
                 yield f"invalid latitude {tag.latitude}: {e}"
                 lat = tag.latitude
             try:
-                longitude, _ = helpers.standardize_coordinates(
+                longitude, _ = coordinate_lint.standardize_coordinate_interval(
                     tag.longitude, is_latitude=False
                 )
             except helpers.InvalidCoordinates as e:
@@ -1712,21 +1714,21 @@ def check_coordinates(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.type_locality is None:
         return
     for tag in nam.get_tags(nam.type_tags, TypeTag.Coordinates):
-        point = coordinate_lint.make_point(tag.latitude, tag.longitude)
-        if point is None:
+        extent = coordinate_lint.make_extent(tag.latitude, tag.longitude)
+        if extent is None:
             continue  # reported elsewhere
 
-        yield from coordinate_lint.check_point_in_region(
-            point, nam.type_locality.region
+        yield from coordinate_lint.check_extent_in_region(
+            extent, nam.type_locality.region
         )
         if nam.type_locality.latitude is None or nam.type_locality.longitude is None:
             continue
-        location_point = coordinate_lint.make_point(
+        location_extent = coordinate_lint.make_extent(
             nam.type_locality.latitude, nam.type_locality.longitude
         )
-        if location_point is None:
+        if location_extent is None:
             continue  # reported on the Location
-        distance = coordinate_lint.distance_km(point, location_point)
+        distance = coordinate_lint.extent_distance_km(extent, location_extent)
         if distance > coordinate_lint.COORDINATE_TOLERANCE_KM:
             yield (
                 f"type-locality coordinates {tag.latitude}, {tag.longitude} are "

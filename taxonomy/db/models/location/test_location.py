@@ -270,6 +270,35 @@ def test_location_infers_coordinates_from_occurrence_record() -> None:
     assert "coordinates should be 37.9°N, 122.1°W" in messages[0]
 
 
+def test_location_infers_coordinate_ranges_from_linked_evidence() -> None:
+    name = _tagged_object(
+        (TypeTag.Coordinates("37.8°N-38°N", "122.2°W-122°W"),), name_tags=True
+    )
+    loc = _location_without_coordinates(names=(name,))
+
+    assert (
+        list(location_lint.check_linked_coordinates(loc, LintConfig(autofix=True)))
+        == []
+    )
+    assert loc.latitude == "37.8°N-38°N"
+    assert loc.longitude == "122.2°W-122°W"
+
+
+def test_location_inference_envelopes_compatible_evidence() -> None:
+    name = _tagged_object((TypeTag.Coordinates("37.9°N", "122.1°W"),), name_tags=True)
+    record = _tagged_object(
+        (OccurrenceRecordTag.Coordinates("37.91°N", "122.09°W"),), name_tags=False
+    )
+    loc = _location_without_coordinates(names=(name,), records=(record,))
+
+    assert (
+        list(location_lint.check_linked_coordinates(loc, LintConfig(autofix=True)))
+        == []
+    )
+    assert loc.latitude == "37.9°N-37.91°N"
+    assert loc.longitude == "122.1°W-122.09°W"
+
+
 def test_location_does_not_infer_conflicting_coordinates() -> None:
     name = _tagged_object((TypeTag.Coordinates("40°N", "74°W"),), name_tags=True)
     record = _tagged_object(
@@ -322,7 +351,7 @@ def test_location_infers_coordinates_from_nominatim(
     monkeypatch.setattr(nominatim, "search", search)
     monkeypatch.setattr(model_lint, "is_network_available", lambda: True)
     monkeypatch.setattr(
-        coordinate_lint, "check_point_in_region", lambda point, region: ()
+        coordinate_lint, "check_extent_in_region", lambda extent, region: ()
     )
 
     messages = list(

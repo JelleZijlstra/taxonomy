@@ -3,6 +3,8 @@ from __future__ import annotations
 import math
 import re
 from collections.abc import Iterable
+from dataclasses import dataclass
+from typing import Self
 
 from taxonomy import coordinates
 from taxonomy.apis import nominatim
@@ -17,14 +19,88 @@ DEGREES_MINUTES_RE = re.compile(
 COORDINATE_TOLERANCE_KM = 5
 
 
+@dataclass(frozen=True, slots=True)
+class CoordinateInterval:
+    minimum: float
+    maximum: float
+    minimum_text: str
+    maximum_text: str
+
+    @property
+    def standardized_text(self) -> str:
+        if self.minimum == self.maximum:
+            return self.minimum_text
+        return f"{self.minimum_text}-{self.maximum_text}"
+
+    @property
+    def midpoint(self) -> float:
+        return (self.minimum + self.maximum) / 2
+
+    @property
+    def is_point(self) -> bool:
+        return self.minimum == self.maximum
+
+    def union(self, other: Self) -> Self:
+        if self.minimum <= other.minimum:
+            minimum = self.minimum
+            minimum_text = self.minimum_text
+        else:
+            minimum = other.minimum
+            minimum_text = other.minimum_text
+        if self.maximum >= other.maximum:
+            maximum = self.maximum
+            maximum_text = self.maximum_text
+        else:
+            maximum = other.maximum
+            maximum_text = other.maximum_text
+        return type(self)(minimum, maximum, minimum_text, maximum_text)
+
+
+@dataclass(frozen=True, slots=True)
+class CoordinateExtent:
+    latitude: CoordinateInterval
+    longitude: CoordinateInterval
+
+    @property
+    def point(self) -> coordinates.Point | None:
+        if not self.latitude.is_point or not self.longitude.is_point:
+            return None
+        return coordinates.Point(self.longitude.minimum, self.latitude.minimum)
+
+    @property
+    def center(self) -> coordinates.Point:
+        return coordinates.Point(self.longitude.midpoint, self.latitude.midpoint)
+
+    @property
+    def openstreetmap_url(self) -> str:
+        point = self.point
+        if point is not None:
+            return point.openstreetmap_url
+        latitude_span = self.latitude.maximum - self.latitude.minimum
+        longitude_span = self.longitude.maximum - self.longitude.minimum
+        span = max(latitude_span, longitude_span, 0.01)
+        zoom = max(2, min(12, int(math.log2(360 / span)) - 1))
+        center = self.center
+        return (
+            "https://www.openstreetmap.org/#map="
+            f"{zoom}/{center.latitude}/{center.longitude}"
+        )
+
+    def union(self, other: Self) -> Self:
+        return type(self)(
+            latitude=self.latitude.union(other.latitude),
+            longitude=self.longitude.union(other.longitude),
+        )
+
+
 def standardize_coordinate_pair(
     latitude: str, longitude: str
-) -> tuple[str, str, coordinates.Point] | None:
+) -> tuple[str, str, CoordinateExtent] | None:
     try:
-        standardized_latitude, parsed_latitude = standardize_coordinate(
+        standardized_latitude, parsed_latitude = standardize_coordinate_interval(
             latitude, is_latitude=True
         )
-        standardized_longitude, parsed_longitude = standardize_coordinate(
+        standardized_longitude, parsed_longitude = standardize_coordinate_interval(
             longitude, is_latitude=False
         )
     except helpers.InvalidCoordinates:
@@ -32,15 +108,22 @@ def standardize_coordinate_pair(
     return (
         standardized_latitude,
         standardized_longitude,
-        coordinates.Point(parsed_longitude, parsed_latitude),
+        CoordinateExtent(latitude=parsed_latitude, longitude=parsed_longitude),
     )
 
 
-def make_point(latitude: str, longitude: str) -> coordinates.Point | None:
+def make_extent(latitude: str, longitude: str) -> CoordinateExtent | None:
     standardized = standardize_coordinate_pair(latitude, longitude)
     if standardized is None:
         return None
     return standardized[2]
+
+
+def make_point(latitude: str, longitude: str) -> coordinates.Point | None:
+    extent = make_extent(latitude, longitude)
+    if extent is None:
+        return None
+    return extent.point
 
 
 def distance_km(first: coordinates.Point, second: coordinates.Point) -> float:
@@ -55,6 +138,74 @@ def distance_km(first: coordinates.Point, second: coordinates.Point) -> float:
         + math.cos(lat1) * math.cos(lat2) * math.sin(delta_lon / 2) ** 2
     )
     return 2 * earth_radius_km * math.asin(math.sqrt(haversine))
+
+
+def extent_distance_km(first: CoordinateExtent, second: CoordinateExtent) -> float:
+    """Return the minimum great-circle distance between two coordinate extents."""
+    first_latitude, second_latitude = _closest_interval_values(
+        first.latitude, second.latitude
+    )
+    first_longitude, second_longitude = _closest_interval_values(
+        first.longitude, second.longitude
+    )
+    return distance_km(
+        coordinates.Point(first_longitude, first_latitude),
+        coordinates.Point(second_longitude, second_latitude),
+    )
+
+
+def _closest_interval_values(
+    first: CoordinateInterval, second: CoordinateInterval
+) -> tuple[float, float]:
+    if first.maximum < second.minimum:
+        return first.maximum, second.minimum
+    if second.maximum < first.minimum:
+        return first.minimum, second.maximum
+    overlap = max(first.minimum, second.minimum)
+    return overlap, overlap
+
+
+def standardize_coordinate_interval(
+    text: str, *, is_latitude: bool
+) -> tuple[str, CoordinateInterval]:
+    try:
+        standardized, parsed = standardize_coordinate(text, is_latitude=is_latitude)
+    except helpers.InvalidCoordinates:
+        pass
+    else:
+        interval = CoordinateInterval(parsed, parsed, standardized, standardized)
+        return standardized, interval
+
+    matches: list[CoordinateInterval] = []
+    for start, end in _range_separator_spans(text):
+        try:
+            first_text, first = standardize_coordinate(
+                text[:start].strip(), is_latitude=is_latitude
+            )
+            second_text, second = standardize_coordinate(
+                text[end:].strip(), is_latitude=is_latitude
+            )
+        except helpers.InvalidCoordinates:
+            continue
+        if first <= second:
+            interval = CoordinateInterval(first, second, first_text, second_text)
+        else:
+            interval = CoordinateInterval(second, first, second_text, first_text)
+        if interval not in matches:
+            matches.append(interval)
+    if len(matches) != 1:
+        raise helpers.InvalidCoordinates(
+            f"could not match coordinate interval {text!r}"
+        )
+    interval = matches[0]
+    return interval.standardized_text, interval
+
+
+def _range_separator_spans(text: str) -> Iterable[tuple[int, int]]:
+    for match in re.finditer(r"\bto\b|[-\N{EN DASH}\N{EM DASH}]", text):
+        if match.start() == 0 and match.group() == "-":
+            continue
+        yield match.span()
 
 
 def standardize_coordinate(text: str, *, is_latitude: bool) -> tuple[str, float]:
@@ -114,6 +265,76 @@ def _get_direction(value: float, *, is_latitude: bool) -> str:
     if is_latitude:
         return "S" if value < 0 else "N"
     return "W" if value < 0 else "E"
+
+
+def check_extent_in_region(extent: CoordinateExtent, region: Region) -> Iterable[str]:
+    point = extent.point
+    if point is not None:
+        yield from check_point_in_region(point, region)
+        return
+
+    country = region.parent_of_kind(RegionKind.country)
+    if country is None:
+        return
+    detailed_region_and_path = _get_detailed_region_path(region, country)
+    if detailed_region_and_path is None:
+        yield from check_point_in_region(extent.center, region)
+        return
+    detailed_region, path = detailed_region_and_path
+    if _extent_intersects_path(extent, path):
+        return
+    if detailed_region != country:
+        country_path = coordinates.get_path(country.name)
+        if country_path is not None and _extent_intersects_path(extent, country_path):
+            yield (
+                f"coordinate extent {extent} overlaps {country.name}, "
+                f"but not {detailed_region.name}"
+            )
+            return
+    yield f"coordinate extent {extent} is outside {detailed_region.name}"
+
+
+def _extent_intersects_path(extent: CoordinateExtent, path: str) -> bool:
+    corners = _get_extent_corners(extent)
+    if any(coordinates.is_in_polygon(point, path) for point in corners):
+        return True
+    for polygon in coordinates.get_polygon(path):
+        if any(_extent_contains_point(extent, line.p1) for line in polygon):
+            return True
+        box_edges = (
+            coordinates.LineSegment.from_points(corners[0], corners[1]),
+            coordinates.LineSegment.from_points(corners[1], corners[2]),
+            coordinates.LineSegment.from_points(corners[2], corners[3]),
+            coordinates.LineSegment.from_points(corners[3], corners[0]),
+        )
+        for polygon_edge in polygon:
+            for box_edge in box_edges:
+                intersection = coordinates.get_intersection(
+                    polygon_edge.line, box_edge.line
+                )
+                if (
+                    intersection is not None
+                    and polygon_edge.segment_contains_point_on_line(intersection)
+                    and box_edge.segment_contains_point_on_line(intersection)
+                ):
+                    return True
+    return False
+
+
+def _get_extent_corners(extent: CoordinateExtent) -> tuple[coordinates.Point, ...]:
+    return (
+        coordinates.Point(extent.longitude.minimum, extent.latitude.minimum),
+        coordinates.Point(extent.longitude.maximum, extent.latitude.minimum),
+        coordinates.Point(extent.longitude.maximum, extent.latitude.maximum),
+        coordinates.Point(extent.longitude.minimum, extent.latitude.maximum),
+    )
+
+
+def _extent_contains_point(extent: CoordinateExtent, point: coordinates.Point) -> bool:
+    return (
+        extent.latitude.minimum <= point.latitude <= extent.latitude.maximum
+        and extent.longitude.minimum <= point.longitude <= extent.longitude.maximum
+    )
 
 
 def check_point_in_region(point: coordinates.Point, region: Region) -> Iterable[str]:

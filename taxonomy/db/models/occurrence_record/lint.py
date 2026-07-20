@@ -358,10 +358,10 @@ def _standardize_normalized_tags(
 ) -> Iterable[str]:
     for tag in tuple(record.get_tags(record.tags, OccurrenceRecordTag.Coordinates)):
         try:
-            latitude, _ = coordinate_lint.standardize_coordinate(
+            latitude, _ = coordinate_lint.standardize_coordinate_interval(
                 tag.latitude, is_latitude=True
             )
-            longitude, _ = coordinate_lint.standardize_coordinate(
+            longitude, _ = coordinate_lint.standardize_coordinate_interval(
                 tag.longitude, is_latitude=False
             )
         except helpers.InvalidCoordinates:
@@ -436,16 +436,18 @@ def check_coordinate_consistency(
             f"has source coordinates but Location {record.location} has no coordinates"
         )
         return
-    location_point = coordinate_lint.make_point(
+    location_extent = coordinate_lint.make_extent(
         record.location.latitude, record.location.longitude
     )
-    if location_point is None:
+    if location_extent is None:
         return
     for tag in coordinate_tags:
-        occurrence_point = coordinate_lint.make_point(tag.latitude, tag.longitude)
-        if occurrence_point is None:
+        occurrence_extent = coordinate_lint.make_extent(tag.latitude, tag.longitude)
+        if occurrence_extent is None:
             continue
-        distance = coordinate_lint.distance_km(occurrence_point, location_point)
+        distance = coordinate_lint.extent_distance_km(
+            occurrence_extent, location_extent
+        )
         if distance > coordinate_lint.COORDINATE_TOLERANCE_KM:
             yield (
                 f"source coordinates {tag.latitude}, {tag.longitude} are "

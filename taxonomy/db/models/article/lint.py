@@ -3,7 +3,6 @@
 import bisect
 import enum
 import functools
-import json
 import pprint
 import re
 import subprocess
@@ -1942,7 +1941,7 @@ def infer_lsid_from_names(art: Article, cfg: LintConfig) -> Iterable[str]:
             continue
         try:
             datas = get_zoobank_data_for_act(lsid)
-        except requests.exceptions.HTTPError as e:
+        except (requests.RequestException, zoobank.ZooBankUnavailableError) as e:
             print(f"Error retrieving ZooBank data for {lsid}: {e!r}")
             continue
         for zoobank_data in datas:
@@ -3003,9 +3002,9 @@ def data_from_zoobank(art: Article, cfg: LintConfig) -> Iterable[str]:
         lsid = tag.text
         try:
             data = zoobank.get_zoobank_data_for_article(lsid)
-        except requests.exceptions.ReadTimeout, json.JSONDecodeError:
-            # Some LSIDs consistently time out for some reason; skip them
-            # And some produce invalid JSON
+        except requests.RequestException, zoobank.ZooBankUnavailableError:
+            # ZooBank is intermittently unavailable and may return a crawler-
+            # verification page instead of API data. Skip network failures.
             continue
 
         yield from _check_zoobank_year(art, data)

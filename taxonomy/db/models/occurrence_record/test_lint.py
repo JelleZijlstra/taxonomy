@@ -165,6 +165,18 @@ def test_source_data_lint_allows_manual_normalization() -> None:
     assert record.tags[-1] == coordinates
 
 
+def test_source_data_lint_standardizes_coordinate_ranges() -> None:
+    record = _record(
+        tags=(
+            OccurrenceRecordTag.VerbatimCoordinates("coordinates on map"),
+            OccurrenceRecordTag.Coordinates("41°N-40°N", "73°W-74°W"),
+        )
+    )
+
+    assert list(check_source_data_tags(record, LintConfig(autofix=True))) == []
+    assert OccurrenceRecordTag.Coordinates("40°N-41°N", "74°W-73°W") in record.tags
+
+
 def test_normalized_source_data_requires_verbatim_tag() -> None:
     record = _record(tags=(OccurrenceRecordTag.Date("1992-02-24"),))
 
@@ -196,6 +208,16 @@ def test_coordinate_consistency_flags_distant_location() -> None:
     assert len(messages) == 1
     assert "55.6 km from Location" in messages[0]
     assert messages[0].endswith("[coordinate_location]")
+
+
+def test_coordinate_consistency_allows_point_inside_range() -> None:
+    location = SimpleNamespace(latitude="40.5°N", longitude="74.5°W")
+    record = _record(
+        location=location,
+        tags=(OccurrenceRecordTag.Coordinates("40°N-41°N", "75°W-74°W"),),
+    )
+
+    assert list(check_coordinate_consistency(record, LintConfig())) == []
 
 
 def test_status_tags_are_repeatable() -> None:

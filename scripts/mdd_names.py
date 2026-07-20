@@ -28,7 +28,6 @@ import datetime
 import enum
 import functools
 import itertools
-import re
 import subprocess
 import sys
 import time
@@ -256,15 +255,57 @@ def _parse_type_locality_coordinates(
     latitude: str, longitude: str
 ) -> tuple[str, str] | None:
     try:
-        _, parsed_latitude = coordinate_lint.standardize_coordinate(
+        _, parsed_latitude = coordinate_lint.standardize_coordinate_interval(
             latitude, is_latitude=True
         )
-        _, parsed_longitude = coordinate_lint.standardize_coordinate(
+        _, parsed_longitude = coordinate_lint.standardize_coordinate_interval(
             longitude, is_latitude=False
         )
     except helpers.InvalidCoordinates:
         return None
-    return str(parsed_latitude), str(parsed_longitude)
+    return _format_mdd_coordinate(parsed_latitude), _format_mdd_coordinate(
+        parsed_longitude
+    )
+
+
+def _format_mdd_coordinate(interval: coordinate_lint.CoordinateInterval) -> str:
+    if interval.is_point:
+        return _format_mdd_coordinate_number(interval.minimum)
+    return (
+        f"({_format_mdd_coordinate_number(interval.minimum)} to "
+        f"{_format_mdd_coordinate_number(interval.maximum)})"
+    )
+
+
+def _format_mdd_coordinate_number(value: float) -> str:
+    return f"{value:.6f}".rstrip("0").rstrip(".")
+
+
+def _parse_mdd_coordinate(
+    text: str, *, is_latitude: bool
+) -> tuple[str, coordinate_lint.CoordinateInterval] | None:
+    text = text.strip()
+    if text.startswith("(") and text.endswith(")"):
+        text = text[1:-1]
+    try:
+        return coordinate_lint.standardize_coordinate_interval(
+            text, is_latitude=is_latitude
+        )
+    except helpers.InvalidCoordinates:
+        return None
+
+
+def _mdd_coordinates_match(first: str, second: str, *, is_latitude: bool) -> bool:
+    first_parsed = _parse_mdd_coordinate(first, is_latitude=is_latitude)
+    second_parsed = _parse_mdd_coordinate(second, is_latitude=is_latitude)
+    if first_parsed is None or second_parsed is None:
+        return False
+    first_interval = first_parsed[1]
+    second_interval = second_parsed[1]
+    return (
+        abs(first_interval.minimum - second_interval.minimum) < 0.1
+        and abs(first_interval.maximum - second_interval.maximum) < 0.1
+    )
 
 
 def get_type_locality_coordinates(
@@ -598,27 +639,15 @@ class FixableDifference:
 
             case "MDD_type_latitude":
                 art = Article(MDD_ARTICLE_ID)
-                deg = "°"
-                if (
-                    self.mdd_row["MDD_type_latitude"]
-                    and self.mdd_row["MDD_type_longitude"]
-                    and re.fullmatch(
-                        r"-?\d+(\.\d+)?", self.mdd_row["MDD_type_latitude"]
-                    )
-                    and re.fullmatch(
-                        r"-?\d+(\.\d+)?", self.mdd_row["MDD_type_longitude"]
-                    )
-                ):
-                    latitude = (
-                        f"{self.mdd_row['MDD_type_latitude'][1:]}{deg}S"
-                        if self.mdd_row["MDD_type_latitude"][0] == "-"
-                        else f"{self.mdd_row['MDD_type_latitude']}{deg}N"
-                    )
-                    longitude = (
-                        f"{self.mdd_row['MDD_type_longitude'][1:]}{deg}W"
-                        if self.mdd_row["MDD_type_longitude"][0] == "-"
-                        else f"{self.mdd_row['MDD_type_longitude']}{deg}E"
-                    )
+                parsed_latitude = _parse_mdd_coordinate(
+                    self.mdd_row["MDD_type_latitude"], is_latitude=True
+                )
+                parsed_longitude = _parse_mdd_coordinate(
+                    self.mdd_row["MDD_type_longitude"], is_latitude=False
+                )
+                if parsed_latitude is not None and parsed_longitude is not None:
+                    latitude = parsed_latitude[0]
+                    longitude = parsed_longitude[0]
 
                     tags = [
                         TypeTag.LocationDetail(
@@ -678,13 +707,12 @@ def compare_column(
         case (True, True):
             if hesp_value != mdd_value:
                 if mdd_column in ("MDD_type_latitude", "MDD_type_longitude"):
-                    try:
-                        hesp_float = float(hesp_value)
-                        mdd_float = float(mdd_value)
-                        if abs(hesp_float - mdd_float) < 0.1:
-                            return None
-                    except ValueError:
-                        pass
+                    if _mdd_coordinates_match(
+                        hesp_value,
+                        mdd_value,
+                        is_latitude=mdd_column == "MDD_type_latitude",
+                    ):
+                        return None
                 if (
                     LIMIT_AUTH_LINKS
                     and mdd_column == "MDD_authority_link"

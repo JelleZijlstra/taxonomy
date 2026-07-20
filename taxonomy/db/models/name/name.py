@@ -26,7 +26,7 @@ from typing import (
 from clirm import DoesNotExist, Field, Query
 
 from taxonomy import adt, events, getinput, parsing
-from taxonomy.apis import bhl
+from taxonomy.apis import bhl, zoobank
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
 from taxonomy.apis.zoobank import get_zoobank_data, get_zoobank_data_for_act
 from taxonomy.db import constants, coordinate_lint, helpers, models
@@ -698,6 +698,7 @@ class Name(BaseModel):
             "add_authority_page_link": self.add_authority_page_link,
             "try_to_find_bhl_links": self.try_to_find_bhl_links,
             "clear_bhl_caches": self.clear_bhl_caches,
+            "clear_zoobank_caches": self.clear_zoobank_caches,
             "open_coordinates": self.open_coordinates,
             "edit_mapped_ce": self._edit_mapped_ce,
             "display_classification_entries": self.display_classification_entries,
@@ -769,14 +770,26 @@ class Name(BaseModel):
 
     def open_coordinates(self) -> None:
         for tag in self.get_tags(self.type_tags, TypeTag.Coordinates):
-            point = coordinate_lint.make_point(tag.latitude, tag.longitude)
-            if point is not None:
-                subprocess.check_call(["open", point.openstreetmap_url])
+            extent = coordinate_lint.make_extent(tag.latitude, tag.longitude)
+            if extent is not None:
+                subprocess.check_call(["open", extent.openstreetmap_url])
 
     def clear_bhl_caches(self) -> None:
         for tag in self.type_tags:
             if isinstance(tag, TypeTag.AuthorityPageLink):
                 bhl.clear_caches_related_to_url(tag.url)
+
+    def clear_zoobank_caches(self) -> None:
+        cache_keys: set[str] = set()
+        if self.corrected_original_name is not None:
+            cache_keys.add(self.corrected_original_name.replace(" ", "_"))
+        for tag in self.get_tags(self.type_tags, TypeTag.LSIDName):
+            # Older callers did not normalize act LSIDs before caching them, so
+            # clear the historical forms as well as the canonical current key.
+            cleaned_lsid = zoobank.clean_lsid(tag.text)
+            cache_keys.update((tag.text, cleaned_lsid, cleaned_lsid.casefold()))
+        for key in cache_keys:
+            zoobank.clear_zoobank_act_cache(key)
 
     def add_authority_page_link(self) -> None:
         if self.page_described is None:

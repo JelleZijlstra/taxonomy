@@ -81,6 +81,7 @@ def test_make_point() -> None:
         -74.25, 40.5
     )
     assert coordinate_lint.make_point("91", "-74.25") is None
+    assert coordinate_lint.make_point("40°N-41°N", "74°W") is None
 
 
 def test_standardize_coordinate() -> None:
@@ -102,6 +103,39 @@ def test_standardize_coordinate() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    ("text", "axis", "expected_text", "minimum", "maximum"),
+    [
+        ("1°N-2°N", "latitude", "1°N-2°N", 1, 2),
+        ("2°N to 1°N", "latitude", "1°N-2°N", 1, 2),
+        ("-10.5 to -12", "latitude", "12°S-10.5°S", -12, -10.5),
+        ("10.2167°E–10.2°E", "longitude", "10.2°E-10.2167°E", 10.2, 10.2167),
+        ("-12--10.5", "latitude", "12°S-10.5°S", -12, -10.5),
+    ],
+)
+def test_standardize_coordinate_interval(
+    text: str, axis: str, expected_text: str, minimum: float, maximum: float
+) -> None:
+    standardized, interval = coordinate_lint.standardize_coordinate_interval(
+        text, is_latitude=axis == "latitude"
+    )
+
+    assert standardized == expected_text
+    assert interval.minimum == minimum
+    assert interval.maximum == maximum
+
+
+def test_standardize_coordinate_pair_with_ranges() -> None:
+    parsed = coordinate_lint.standardize_coordinate_pair("12°S-10.5°S", "40°E-41°E")
+
+    assert parsed is not None
+    latitude, longitude, extent = parsed
+    assert latitude == "12°S-10.5°S"
+    assert longitude == "40°E-41°E"
+    assert extent.point is None
+    assert extent.center == coordinates.Point(40.5, -11.25)
+
+
 def test_distance_km() -> None:
     first = coordinates.Point(-74.25, 40.5)
     nearby = coordinates.Point(-74.25, 40.5167)
@@ -109,6 +143,20 @@ def test_distance_km() -> None:
 
     assert coordinate_lint.distance_km(first, nearby) < 5
     assert math.isclose(coordinate_lint.distance_km(first, distant), 55.6, abs_tol=0.1)
+
+
+def test_extent_distance_km() -> None:
+    first = coordinate_lint.make_extent("40°N-41°N", "74°W-73°W")
+    overlapping = coordinate_lint.make_extent("40.5°N", "73.5°W")
+    distant = coordinate_lint.make_extent("42°N", "73.5°W")
+    assert first is not None
+    assert overlapping is not None
+    assert distant is not None
+
+    assert coordinate_lint.extent_distance_km(first, overlapping) == 0
+    assert math.isclose(
+        coordinate_lint.extent_distance_km(first, distant), 111.2, abs_tol=0.2
+    )
 
 
 def test_get_distance_to_line_segment() -> None:
@@ -147,6 +195,27 @@ def test_check_point_in_region_reports_actual_subnational_region(
         "coordinates Point(longitude=1, latitude=1) are in Actual State, "
         "not Expected State"
     ]
+
+
+def test_check_extent_in_region_allows_overlapping_range(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    country = FakeRegion("Country")
+    expected = cast(Region, FakeRegion("Expected State", country))
+    extent = coordinate_lint.make_extent("1°N-2°N", "1°E-2°E")
+    assert extent is not None
+
+    monkeypatch.setattr(coordinates, "get_path", lambda country_name: "country")
+    monkeypatch.setattr(
+        coordinates, "get_region_path", lambda region_name, country_name: "expected"
+    )
+    monkeypatch.setattr(
+        coordinates,
+        "is_in_polygon",
+        lambda point, path: path == "expected" and point == coordinates.Point(2, 2),
+    )
+
+    assert list(coordinate_lint.check_extent_in_region(extent, expected)) == []
 
 
 def test_check_point_in_region_allows_nearest_expected_region(

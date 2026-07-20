@@ -43,16 +43,25 @@ def test_name_coordinates_allow_five_kilometres(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     name = _name_with_coordinates(("40°30'N", "74°15'W"), ("40°31'N", "74°15'W"))
-    monkeypatch.setattr(coordinate_lint, "check_point_in_region", lambda *_: ())
+    monkeypatch.setattr(coordinate_lint, "check_extent_in_region", lambda *_: ())
 
     assert list(check_coordinates(name, LintConfig())) == []
 
 
 def test_name_coordinates_must_match_location(monkeypatch: pytest.MonkeyPatch) -> None:
     name = _name_with_coordinates(("40°30'N", "74°15'W"), ("41°N", "74°15'W"))
-    monkeypatch.setattr(coordinate_lint, "check_point_in_region", lambda *_: ())
+    monkeypatch.setattr(coordinate_lint, "check_extent_in_region", lambda *_: ())
 
     messages = list(check_coordinates(name, LintConfig()))
 
     assert len(messages) == 1
     assert "55.6 km from Location" in messages[0]
+
+
+def test_name_coordinate_range_matches_location(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    name = _name_with_coordinates(("40°N-41°N", "75°W-74°W"), ("40.5°N", "74.5°W"))
+    monkeypatch.setattr(coordinate_lint, "check_extent_in_region", lambda *_: ())
+
+    assert list(check_coordinates(name, LintConfig())) == []

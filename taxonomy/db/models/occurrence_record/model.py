@@ -103,10 +103,10 @@ class OccurrenceRecord(BaseModel):
     def open_coordinates(self) -> None:
         has_source_coordinates = False
         for tag in self.get_tags(self.tags, OccurrenceRecordTag.Coordinates):
-            point = coordinate_lint.make_point(tag.latitude, tag.longitude)
-            if point is not None:
+            extent = coordinate_lint.make_extent(tag.latitude, tag.longitude)
+            if extent is not None:
                 has_source_coordinates = True
-                subprocess.check_call(["open", point.openstreetmap_url])
+                subprocess.check_call(["open", extent.openstreetmap_url])
         if not has_source_coordinates and self.location is not None:
             self.location.open_coordinates()
 

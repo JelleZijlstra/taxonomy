@@ -5,7 +5,7 @@ from typing import Any
 
 import requests
 
-from taxonomy.db.url_cache import CacheDomain, cached
+from taxonomy.db.url_cache import CacheDomain, cached, dirty_cache
 
 from .util import RateLimiter
 
@@ -32,28 +32,58 @@ def is_valid_lsid(lsid: str) -> bool:
 
 
 rate_limiter = RateLimiter(min_interval=0.5)
+REQUEST_TIMEOUT = 10
+
+
+class ZooBankUnavailableError(RuntimeError):
+    """Raised when ZooBank does not return usable API data."""
+
+
+def _get_json_response(url: str, *, expected_count: int | None = None) -> str:
+    response = requests.get(url, timeout=REQUEST_TIMEOUT)
+    if response.status_code == 404:
+        # ZooBank's crawler protection sometimes responds as though valid records do
+        # not exist. Do not cache that response indefinitely.
+        raise ZooBankUnavailableError(f"ZooBank returned 404 for {url}")
+    response.raise_for_status()
+    try:
+        data = json.loads(response.text)
+    except json.JSONDecodeError as exc:
+        # In particular, do not cache the HTML human-verification page.
+        raise ZooBankUnavailableError(
+            f"ZooBank returned non-JSON data for {url}"
+        ) from exc
+    if not isinstance(data, list):
+        raise ZooBankUnavailableError(
+            f"ZooBank returned unexpected data for {url}: {data!r}"
+        )
+    if expected_count is not None and len(data) != expected_count:
+        raise ZooBankUnavailableError(
+            f"ZooBank returned {len(data)} records for {url}; expected {expected_count}"
+        )
+    return response.text
 
 
 @cached(CacheDomain.zoobank_act)
 def _get_zoobank_act_data(query: str) -> str:
     rate_limiter.wait()
     url = f"https://zoobank.org/NomenclaturalActs.json/{query}"
-    response = requests.get(url, timeout=1)
-    if response.status_code == 404:
-        return "[]"
-    response.raise_for_status()
-    return response.text
+    return _get_json_response(url)
 
 
 @cached(CacheDomain.zoobank_publication)
 def _get_zoobank_publication_data(query: str) -> str:
     rate_limiter.wait()
     url = f"https://zoobank.org/References.json/{query}"
-    response = requests.get(url, timeout=1)
-    if response.status_code == 404:
-        return "[]"
-    response.raise_for_status()
-    return response.text
+    return _get_json_response(url, expected_count=1)
+
+
+def clear_zoobank_act_cache(query: str) -> None:
+    dirty_cache(CacheDomain.zoobank_act, query)
+
+
+def clear_zoobank_publication_cache(lsid: str) -> None:
+    dirty_cache(CacheDomain.zoobank_publication, clean_lsid(lsid))
 
 
 @dataclass(frozen=True)
@@ -64,7 +94,14 @@ class ZooBankData:
 
 
 def get_zoobank_data_for_act(act: str) -> list[ZooBankData]:
-    api_response = json.loads(_get_zoobank_act_data(act))
+    act = clean_lsid(act)
+    try:
+        api_response = json.loads(_get_zoobank_act_data(act))
+    except json.JSONDecodeError as exc:
+        # This can occur for an old cached human-verification page.
+        raise ZooBankUnavailableError(
+            f"cached ZooBank data for act {act!r} is not JSON"
+        ) from exc
     return [
         ZooBankData(
             clean_lsid(data["protonymuuid"]),
@@ -80,7 +117,7 @@ def get_zoobank_data(original_name: str) -> list[ZooBankData]:
         api_response = json.loads(
             _get_zoobank_act_data(original_name.replace(" ", "_"))
         )
-    except requests.ConnectionError:
+    except requests.RequestException, ZooBankUnavailableError, json.JSONDecodeError:
         return []
     api_response = [
         entry
@@ -99,16 +136,26 @@ def get_zoobank_data(original_name: str) -> list[ZooBankData]:
 
 
 def get_zoobank_data_for_article(lsid: str) -> dict[str, Any]:
-    ref_data = json.loads(_get_zoobank_publication_data(clean_lsid(lsid)))
+    try:
+        ref_data = json.loads(_get_zoobank_publication_data(clean_lsid(lsid)))
+    except json.JSONDecodeError as exc:
+        # This can occur for an old cached human-verification page.
+        raise ZooBankUnavailableError(
+            f"cached ZooBank data for reference {lsid!r} is not JSON"
+        ) from exc
     if len(ref_data) != 1:
-        raise ValueError(f"unexpected data for reference {lsid}: {ref_data}")
+        # Old 404 responses were cached as empty lists. Treat them as an
+        # unavailable network lookup rather than a malformed Article.
+        raise ZooBankUnavailableError(
+            f"unexpected data for reference {lsid}: {ref_data}"
+        )
     return ref_data[0]
 
 
 def article_lsid_has_valid_data(lsid: str) -> bool:
     try:
         data = get_zoobank_data_for_article(lsid)
-    except requests.ConnectionError:
+    except requests.RequestException, ZooBankUnavailableError:
         return False
     ref_uuid = data.get("referenceuuid", "")
     return clean_lsid(lsid) == clean_lsid(ref_uuid)

@@ -1,9 +1,20 @@
+from collections.abc import Iterable
 from pathlib import Path
+from types import SimpleNamespace
+from typing import cast
+from unittest.mock import Mock, call
+
+import pytest
 
 import taxonomy
+from taxonomy.apis import zoobank
 from taxonomy.db.constants import NomenclatureStatus, Status
 from taxonomy.db.models.name import NameTag, TypeTag
 from taxonomy.db.models.name.name import Name
+
+
+def _get_tags(tags: tuple[object, ...], tag_cls: type[object]) -> Iterable[object]:
+    return (tag for tag in tags if isinstance(tag, tag_cls))
 
 
 def _get_expected(value: str) -> str:
@@ -85,3 +96,44 @@ def test_docs() -> None:
     assert (
         not missing_fields
     ), f"Missing documentation for Name fields: {missing_fields}"
+
+
+def test_clear_zoobank_caches_is_adt_callback(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(Name, "original_citation", None)
+    name = object.__new__(Name)
+
+    callbacks = name.get_adt_callbacks()
+
+    assert callbacks["clear_zoobank_caches"] == name.clear_zoobank_caches
+
+
+def test_clear_zoobank_caches_clears_name_and_act_lsid_queries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clear_cache = Mock()
+    monkeypatch.setattr(zoobank, "clear_zoobank_act_cache", clear_cache)
+    name = cast(
+        Name,
+        SimpleNamespace(
+            corrected_original_name="Pseudovespertiliavus parva",
+            type_tags=(
+                TypeTag.LSIDName(
+                    "urn:lsid:zoobank.org:act:fc07acbe-03f7-414a-bb64-1bb0711766bf"
+                ),
+            ),
+            get_tags=_get_tags,
+        ),
+    )
+
+    Name.clear_zoobank_caches(name)
+
+    assert clear_cache.call_count == 4
+    clear_cache.assert_has_calls(
+        [
+            call("Pseudovespertiliavus_parva"),
+            call("urn:lsid:zoobank.org:act:fc07acbe-03f7-414a-bb64-1bb0711766bf"),
+            call("FC07ACBE-03F7-414A-BB64-1BB0711766BF"),
+            call("fc07acbe-03f7-414a-bb64-1bb0711766bf"),
+        ],
+        any_order=True,
+    )
