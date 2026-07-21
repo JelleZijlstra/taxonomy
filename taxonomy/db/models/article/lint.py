@@ -2999,7 +2999,7 @@ def data_from_zoobank(art: Article, cfg: LintConfig) -> Iterable[str]:
         lsid = tag.text
         try:
             data = zoobank.get_zoobank_data_for_article(lsid)
-        except (requests.exceptions.ReadTimeout, json.JSONDecodeError):
+        except requests.exceptions.ReadTimeout, json.JSONDecodeError:
             # Some LSIDs consistently time out for some reason; skip them
             # And some produce invalid JSON
             continue
