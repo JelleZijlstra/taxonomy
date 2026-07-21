@@ -160,7 +160,7 @@ def load_derived_data() -> DerivedData:
     try:
         with settings.derived_data_filename.open("rb") as f:
             return pickle.load(f)
-    except (FileNotFoundError, EOFError):
+    except FileNotFoundError, EOFError:
         return {}
 
 

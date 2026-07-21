@@ -22,7 +22,7 @@ _finished_papers: set[int] = set()
 def _name_sort_key(nam: models.Name) -> tuple[str, int]:
     try:
         return ("", nam.numeric_page_described())
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return (nam.page_described or "", 0)
 
 
