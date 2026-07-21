@@ -89,6 +89,123 @@ def test_alias_requires_target_without_running_regular_lints() -> None:
     assert list(Location.lint_invalid(alias, LintConfig())) == []
 
 
+def test_likely_synonymous_location_name_comparison() -> None:
+    assert location_lint.are_likely_synonymous_names("Kalipoetjang", "Kaliputjang")
+    assert location_lint.are_likely_synonymous_names(
+        "Waikthlatingwaialwa", "Waikthlatingwayalwa"
+    )
+    assert location_lint.are_likely_synonymous_names("Ipanema", "Ypanema")
+    assert location_lint.are_likely_synonymous_names("St. Louis", "Saint Louis")
+    assert location_lint.are_likely_synonymous_names("Ste. Anne", "Sainte Anne")
+    assert location_lint.are_likely_synonymous_names("Ft. Dauphin", "Fort Dauphin")
+    assert location_lint.are_likely_synonymous_names("Mt. McKinley", "Mount McKinley")
+    assert location_lint.are_likely_synonymous_names(
+        "Mount McKinley", "McKinley Mountain"
+    )
+    assert location_lint.are_likely_synonymous_names("N Fork Creek", "North Fork Creek")
+    assert location_lint.are_likely_synonymous_names("Smith Cr.", "Smith Creek")
+    assert location_lint.are_likely_synonymous_names("Black R.", "Black River")
+    assert location_lint.are_likely_synonymous_names("Lk. George", "Lake George")
+    assert location_lint.are_likely_synonymous_names("Warm Spgs.", "Warm Springs")
+    assert location_lint.are_likely_synonymous_names("Union Stn.", "Union Station")
+    assert location_lint.are_likely_synonymous_names("Road Jct.", "Road Junction")
+    assert location_lint.are_likely_synonymous_names("Main Rd.", "Main Road")
+    assert location_lint.are_likely_synonymous_names("State Rte.", "State Route")
+    assert location_lint.are_likely_synonymous_names("Park Ave.", "Park Avenue")
+    assert location_lint.are_likely_synonymous_names(
+        "Cozumel Island", "Isla de Cozumel"
+    )
+    assert location_lint.are_likely_synonymous_names("Cozumel", "Cozumel Island")
+    assert location_lint.are_likely_synonymous_names("Río Negro", "Negro River")
+    assert location_lint.are_likely_synonymous_names("Lago Victoria", "Lake Victoria")
+    assert location_lint.are_likely_synonymous_names("Cabo Blanco", "Blanco Cape")
+    assert location_lint.are_likely_synonymous_names("Bahía Honda", "Honda Bay")
+    assert location_lint.are_likely_synonymous_names("Puerto Bello", "Bello Port")
+    assert location_lint.are_likely_synonymous_names("Ciudad Juarez", "Juarez City")
+    assert location_lint.are_likely_synonymous_names(
+        "Trinidad Valley", "Valle de la Trinidad"
+    )
+    assert location_lint.are_likely_synonymous_names("Bosque Verde", "Verde Forest")
+    assert location_lint.are_likely_synonymous_names("Cueva Negra", "Negra Cave")
+    assert location_lint.are_likely_synonymous_names("Laguna Azul", "Azul Lagoon")
+    assert location_lint.are_likely_synonymous_names(
+        "Peninsula Blanca", "Blanca Peninsula"
+    )
+    assert location_lint.are_likely_synonymous_names("Catarata Alta", "Alta Falls")
+    assert location_lint.are_likely_synonymous_names("Llano Grande", "Grande Plain")
+    assert location_lint.are_likely_synonymous_names("Cerro Verde", "Verde Hill")
+    assert location_lint.are_likely_synonymous_names("Les Beilleaux", "Beilleaux")
+    assert location_lint.are_likely_synonymous_names("El Chico", "Chico")
+    assert not location_lint.are_likely_synonymous_names(
+        "Cozumel City", "Cozumel Island"
+    )
+    assert not location_lint.are_likely_synonymous_names("Victoria", "Lake Victoria")
+    assert not location_lint.are_likely_synonymous_names("Negro Lake", "Negro River")
+    assert not location_lint.are_likely_synonymous_names(
+        "Trinidad Valley", "Trinidad Hill"
+    )
+    assert not location_lint.are_likely_synonymous_names("Trinidad", "Trinidad Valley")
+    assert not location_lint.are_likely_synonymous_names("Lima", "Loma")
+    assert not location_lint.are_likely_synonymous_names(
+        "San Sebastian (27°10'36.16″S)", "San Sebastian (27°11'03.57″S)"
+    )
+    assert not location_lint.are_likely_synonymous_names(
+        "Lossiemouth East Quarry", "Lossiemouth West Quarry"
+    )
+    assert not location_lint.are_likely_synonymous_names(
+        "Fayum Quarry A", "Fayum Quarry B"
+    )
+    assert not location_lint.are_likely_synonymous_names(
+        "Lissieu (Miocene)", "Lissieu (Eocene)"
+    )
+    assert not location_lint.are_likely_synonymous_names("Coldstream", "Goldstream")
+    assert not location_lint.are_likely_synonymous_names(
+        "Olduvai Bed I", "Olduvai B.K.II"
+    )
+    assert location_lint.are_likely_synonymous_names("Katschemak Bay", "Kachemak Bay")
+
+
+def test_likely_synonym_map_flags_all_but_lowest_id_in_same_region() -> None:
+    java = SimpleNamespace(id=1, name="Java")
+    other_region = SimpleNamespace(id=2, name="Other")
+
+    def make_location(
+        location_id: int,
+        name: str,
+        *,
+        region: SimpleNamespace = java,
+        general: bool = False,
+        period: object | None = None,
+    ) -> Location:
+        return cast(
+            Location,
+            SimpleNamespace(
+                id=location_id,
+                name=name,
+                region=region,
+                min_period=period,
+                max_period=period,
+                stratigraphic_unit=None,
+                is_general=lambda: general,
+            ),
+        )
+
+    lowest = make_location(10, "Kaliputjang")
+    middle = make_location(20, "Kalipoetjang City")
+    highest = make_location(30, "Kalipoetjang")
+    different_region = make_location(40, "Kalipoetjang", region=other_region)
+    different_period = make_location(50, "Kalipoetjang", period=object())
+    general = make_location(5, "Kaliputjang Island", general=True)
+
+    mapping = location_lint._build_likely_synonym_map(
+        [highest, different_region, different_period, general, middle, lowest]
+    )
+
+    assert set(mapping) == {20, 30}
+    assert mapping[20] == (lowest, (lowest, middle, highest))
+    assert mapping[30] == (lowest, (lowest, middle, highest))
+
+
 def test_coordinate_evidence_prints_all_sources(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -362,6 +479,87 @@ def test_location_infers_coordinates_from_nominatim(
     assert loc.latitude == "38.0615885°N"
     assert loc.longitude == "122.6985975°W"
     search.assert_called_once_with("Nicasio, Marin County, California, United States")
+
+
+def test_location_prefers_place_over_administrative_boundaries(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    loc = _location_without_coordinates(name="Nicasio", region=_marin_county())
+    place = _nominatim_result(
+        latitude="38.0615885",
+        longitude="-122.6985975",
+        feature_type="village",
+        display_name="Nicasio village",
+    )
+    boundaries = [
+        _nominatim_result(
+            latitude="38.5",
+            longitude="-122.7",
+            category="boundary",
+            feature_type="administrative",
+            display_name="Nicasio administrative boundary 1",
+        ),
+        _nominatim_result(
+            latitude="38.7",
+            longitude="-122.9",
+            category="boundary",
+            feature_type="administrative",
+            display_name="Nicasio administrative boundary 2",
+        ),
+    ]
+    monkeypatch.setattr(nominatim, "search", Mock(return_value=[*boundaries, place]))
+    monkeypatch.setattr(model_lint, "is_network_available", lambda: True)
+    monkeypatch.setattr(
+        coordinate_lint, "check_extent_in_region", lambda extent, region: ()
+    )
+
+    messages = list(
+        location_lint.check_nominatim_coordinates(loc, LintConfig(autofix=True))
+    )
+
+    assert messages == []
+    assert loc.latitude == "38.0615885°N"
+    assert loc.longitude == "122.6985975°W"
+    assert "preferred over boundary/administrative matches" in capsys.readouterr().out
+
+
+def test_location_does_not_choose_between_multiple_place_candidates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    loc = _location_without_coordinates(name="Nicasio", region=_marin_county())
+    results = [
+        _nominatim_result(
+            latitude="38.0615885",
+            longitude="-122.6985975",
+            feature_type="village",
+            display_name="Nicasio village",
+        ),
+        _nominatim_result(
+            latitude="38.5",
+            longitude="-122.7",
+            feature_type="city",
+            display_name="Nicasio city",
+        ),
+        _nominatim_result(
+            latitude="38.7",
+            longitude="-122.9",
+            category="boundary",
+            feature_type="administrative",
+            display_name="Nicasio administrative boundary",
+        ),
+    ]
+    monkeypatch.setattr(nominatim, "search", Mock(return_value=results))
+    monkeypatch.setattr(model_lint, "is_network_available", lambda: True)
+
+    messages = list(
+        location_lint.check_nominatim_coordinates(loc, LintConfig(autofix=True))
+    )
+
+    assert len(messages) == 1
+    assert "returned 3 conflicting exact matches" in messages[0]
+    assert all(result.display_name in messages[0] for result in results)
+    assert loc.latitude is None
+    assert loc.longitude is None
 
 
 def test_location_coordinates_match_nearby_nominatim_candidate(

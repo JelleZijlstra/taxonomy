@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import re
+from collections import defaultdict
 from collections.abc import Collection, Iterable
+from functools import cache
 from typing import Any
 
 from taxonomy.apis import nominatim
@@ -30,6 +32,178 @@ _ADDRESS_REGION_KINDS = {
     RegionKind.territory,
 }
 _SEARCH_REGION_KINDS = _ADDRESS_REGION_KINDS | {RegionKind.other, RegionKind.island}
+_LOCALITY_FEATURE_PREFIXES = {
+    "city": "city",
+    "cidade": "city",
+    "ciudad": "city",
+    "ville": "city",
+    "bahia": "bay",
+    "baie": "bay",
+    "bay": "bay",
+    "bucht": "bay",
+    "cabo": "cape",
+    "cap": "cape",
+    "cape": "cape",
+    "catarata": "falls",
+    "cave": "cave",
+    "caverna": "cave",
+    "cerro": "hill",
+    "colline": "hill",
+    "creek": "creek",
+    "cueva": "cave",
+    "fall": "falls",
+    "falls": "falls",
+    "forest": "forest",
+    "foret": "forest",
+    "fort": "fort",
+    "grotte": "cave",
+    "harbor": "harbor",
+    "halbinsel": "peninsula",
+    "hill": "hill",
+    "hohle": "cave",
+    "island": "island",
+    "isla": "island",
+    "isle": "island",
+    "ile": "island",
+    "ilha": "island",
+    "insel": "island",
+    "isola": "island",
+    "pulau": "island",
+    "lac": "lake",
+    "lago": "lake",
+    "lagoon": "lagoon",
+    "laguna": "lagoon",
+    "lagune": "lagoon",
+    "lake": "lake",
+    "llano": "plain",
+    "llanos": "plain",
+    "mata": "forest",
+    "see": "lake",
+    "mont": "mountain",
+    "monte": "mountain",
+    "mount": "mountain",
+    "mountain": "mountain",
+    "mountains": "mountain",
+    "peninsula": "peninsula",
+    "plain": "plain",
+    "plains": "plain",
+    "port": "port",
+    "porto": "port",
+    "puerto": "port",
+    "rio": "river",
+    "river": "river",
+    "rivier": "river",
+    "riviere": "river",
+    "spring": "spring",
+    "tal": "valley",
+    "valle": "valley",
+    "vallee": "valley",
+    "valley": "valley",
+    "wald": "forest",
+    "bosque": "forest",
+}
+_LOCALITY_FEATURE_SUFFIXES = {
+    "bay": "bay",
+    "cape": "cape",
+    "city": "city",
+    "cave": "cave",
+    "creek": "creek",
+    "fall": "falls",
+    "falls": "falls",
+    "forest": "forest",
+    "fort": "fort",
+    "harbor": "harbor",
+    "hill": "hill",
+    "island": "island",
+    "isle": "island",
+    "lake": "lake",
+    "lagoon": "lagoon",
+    "mountain": "mountain",
+    "mountains": "mountain",
+    "peninsula": "peninsula",
+    "plain": "plain",
+    "port": "port",
+    "river": "river",
+    "spring": "spring",
+    "valley": "valley",
+}
+_LOCALITY_FEATURE_CONNECTORS = {
+    "de",
+    "del",
+    "el",
+    "la",
+    "las",
+    "le",
+    "les",
+    "los",
+    "of",
+    "the",
+}
+_LOCALITY_LEADING_ARTICLES = {"el", "la", "las", "le", "les", "los", "the"}
+_FEATURES_REQUIRING_EXPLICIT_WORD = {
+    "bay",
+    "cape",
+    "cave",
+    "creek",
+    "falls",
+    "forest",
+    "fort",
+    "harbor",
+    "hill",
+    "lake",
+    "lagoon",
+    "mountain",
+    "peninsula",
+    "plain",
+    "port",
+    "river",
+    "spring",
+    "valley",
+}
+_LOCALITY_WORD_NORMALIZATION = {
+    "ave": "avenue",
+    "e": "east",
+    "eastern": "east",
+    "este": "east",
+    "ft": "fort",
+    "harbour": "harbor",
+    "hwy": "highway",
+    "jct": "junction",
+    "mt": "mount",
+    "mtn": "mountain",
+    "mts": "mountains",
+    "n": "north",
+    "nord": "north",
+    "norte": "north",
+    "northern": "north",
+    "ost": "east",
+    "oeste": "west",
+    "pt": "point",
+    "rd": "road",
+    "rte": "route",
+    "s": "south",
+    "sainte": "saint",
+    "southern": "south",
+    "st": "saint",
+    "ste": "saint",
+    "stn": "station",
+    "springs": "spring",
+    "sud": "south",
+    "sur": "south",
+    "w": "west",
+    "western": "west",
+}
+_LOCALITY_EDGE_ABBREVIATIONS = {
+    "cr": "creek",
+    "hbr": "harbor",
+    "lk": "lake",
+    "r": "river",
+    "riv": "river",
+    "spg": "spring",
+    "spgs": "spring",
+    "spr": "spring",
+}
+_DIRECTION_WORDS = {"east", "north", "south", "west"}
 
 
 def remove_unused_ignores(location: Location, unused: Collection[str]) -> None:
@@ -51,6 +225,203 @@ def add_ignore(location: Location, label: str, comment: str) -> None:
 
 
 LINT = Lint(Location, get_ignores, remove_unused_ignores, add_ignore)
+
+
+def _locality_similarity_key(name: str) -> tuple[str, str | None]:
+    name = re.sub(r"\s*\([^()]*\)", "", name)
+    words = _normalized_locality_words(name)
+    feature: str | None = None
+    if words and words[0] in _LOCALITY_FEATURE_PREFIXES:
+        feature = _LOCALITY_FEATURE_PREFIXES[words.pop(0)]
+        while words and words[0] in _LOCALITY_FEATURE_CONNECTORS:
+            words.pop(0)
+    elif words and words[-1] in _LOCALITY_FEATURE_SUFFIXES:
+        feature = _LOCALITY_FEATURE_SUFFIXES[words.pop()]
+        while words and words[-1] in _LOCALITY_FEATURE_CONNECTORS:
+            words.pop()
+    return "".join(words), feature
+
+
+def _normalized_locality_words(name: str) -> list[str]:
+    words = helpers.simplify_string(
+        name, clean_words=True, keep_whitespace=True
+    ).split()
+    words = [_LOCALITY_WORD_NORMALIZATION.get(word, word) for word in words]
+    if words and words[0] in _LOCALITY_LEADING_ARTICLES:
+        words.pop(0)
+    if words:
+        words[0] = _LOCALITY_EDGE_ABBREVIATIONS.get(words[0], words[0])
+        words[-1] = _LOCALITY_EDGE_ABBREVIATIONS.get(words[-1], words[-1])
+    return words
+
+
+def _has_different_parenthetical_qualifiers(left: str, right: str) -> bool:
+    left_qualifiers = tuple(
+        helpers.simplify_string(item, clean_words=True)
+        for item in re.findall(r"\(([^()]*)\)", left)
+    )
+    right_qualifiers = tuple(
+        helpers.simplify_string(item, clean_words=True)
+        for item in re.findall(r"\(([^()]*)\)", right)
+    )
+    return bool(
+        left_qualifiers and right_qualifiers and left_qualifiers != right_qualifiers
+    )
+
+
+def _has_different_directions(left: str, right: str) -> bool:
+    left_directions = set(_normalized_locality_words(left)) & _DIRECTION_WORDS
+    right_directions = set(_normalized_locality_words(right)) & _DIRECTION_WORDS
+    return left_directions != right_directions and bool(
+        left_directions or right_directions
+    )
+
+
+def _has_distinguishing_short_designator(left: str, right: str) -> bool:
+    left_words = _normalized_locality_words(left)
+    right_words = _normalized_locality_words(right)
+    common_length = 0
+    for left_word, right_word in zip(left_words, right_words, strict=False):
+        if left_word != right_word:
+            break
+        common_length += 1
+    if common_length == 0:
+        return False
+    left_remainder = left_words[common_length:]
+    right_remainder = right_words[common_length:]
+    if not left_remainder and not right_remainder:
+        return False
+    return all(len(word) <= 4 for word in (*left_remainder, *right_remainder))
+
+
+def _edit_distance_at_most(left: str, right: str, maximum: int) -> bool:
+    if abs(len(left) - len(right)) > maximum:
+        return False
+    previous = list(range(len(right) + 1))
+    for left_index, left_character in enumerate(left, start=1):
+        current = [left_index]
+        for right_index, right_character in enumerate(right, start=1):
+            current.append(
+                min(
+                    current[-1] + 1,
+                    previous[right_index] + 1,
+                    previous[right_index - 1] + (left_character != right_character),
+                )
+            )
+        if min(current) > maximum:
+            return False
+        previous = current
+    return previous[-1] <= maximum
+
+
+def are_likely_synonymous_names(left: str, right: str) -> bool:
+    if _has_different_parenthetical_qualifiers(left, right):
+        return False
+    left_base, left_feature = _locality_similarity_key(left)
+    right_base, right_feature = _locality_similarity_key(right)
+    if not left_base or not right_base:
+        return False
+    if left_feature is not None and right_feature is not None:
+        if left_feature != right_feature:
+            return False
+    elif (
+        left_feature in _FEATURES_REQUIRING_EXPLICIT_WORD
+        or right_feature in _FEATURES_REQUIRING_EXPLICIT_WORD
+    ):
+        return False
+    if left_base == right_base:
+        return True
+    if _has_different_directions(left, right):
+        return False
+    if _has_distinguishing_short_designator(left, right):
+        return False
+    if any(character.isdigit() for character in left_base + right_base):
+        return False
+    shorter_length = min(len(left_base), len(right_base))
+    if shorter_length < 5:
+        return False
+    if left_base[0] != right_base[0] and {left_base[0], right_base[0]} != {"i", "y"}:
+        return False
+    maximum_distance = 2 if max(len(left_base), len(right_base)) >= 10 else 1
+    return _edit_distance_at_most(left_base, right_base, maximum_distance)
+
+
+def _find_component(parents: dict[int, int], location_id: int) -> int:
+    while parents[location_id] != location_id:
+        parents[location_id] = parents[parents[location_id]]
+        location_id = parents[location_id]
+    return location_id
+
+
+def _union_components(parents: dict[int, int], left_id: int, right_id: int) -> None:
+    left_root = _find_component(parents, left_id)
+    right_root = _find_component(parents, right_id)
+    if left_root != right_root:
+        parents[right_root] = left_root
+
+
+def _build_likely_synonym_map(
+    locations: Iterable[Location],
+) -> dict[int, tuple[Location, tuple[Location, ...]]]:
+    by_region: dict[int, list[Location]] = defaultdict(list)
+    for location in locations:
+        if not location.is_general():
+            by_region[location.region.id].append(location)
+
+    output: dict[int, tuple[Location, tuple[Location, ...]]] = {}
+    for region_locations in by_region.values():
+        parents = {location.id: location.id for location in region_locations}
+
+        for index, left in enumerate(region_locations):
+            for right in region_locations[index + 1 :]:
+                if (
+                    left.min_period != right.min_period
+                    or left.max_period != right.max_period
+                    or (
+                        left.stratigraphic_unit != right.stratigraphic_unit
+                        and (
+                            left.stratigraphic_unit is not None
+                            or right.stratigraphic_unit is not None
+                        )
+                    )
+                ):
+                    continue
+                if are_likely_synonymous_names(left.name, right.name):
+                    _union_components(parents, left.id, right.id)
+
+        components: dict[int, list[Location]] = defaultdict(list)
+        for location in region_locations:
+            components[_find_component(parents, location.id)].append(location)
+        for component in components.values():
+            if len(component) < 2:
+                continue
+            group = tuple(sorted(component, key=lambda location: location.id))
+            keeper = group[0]
+            for location in group[1:]:
+                output[location.id] = keeper, group
+    return output
+
+
+@cache
+def _get_likely_synonym_map() -> dict[int, tuple[Location, tuple[Location, ...]]]:
+    return _build_likely_synonym_map(Location.select_valid())
+
+
+@LINT.add("likely_synonymous", clear_caches=_get_likely_synonym_map.cache_clear)
+def check_likely_synonymous(location: Location, cfg: LintConfig) -> Iterable[str]:
+    match = _get_likely_synonym_map().get(location.id)
+    if match is None:
+        return
+    keeper, group = match
+    group_refreshed = [item.reload() for item in group]
+    group_refreshed = [item for item in group_refreshed if not item.is_invalid()]
+    if len(group_refreshed) < 2:
+        return
+    group_text = ", ".join(f"{item.id}: {item.name!r}" for item in group_refreshed)
+    yield (
+        f"likely synonymous with lower-ID Location {keeper.id}: {keeper.name!r} "
+        f"in Region {location.region.name!r}; group: {group_text}"
+    )
 
 
 @LINT.add("period")
@@ -185,17 +556,27 @@ def check_nominatim_coordinates(location: Location, cfg: LintConfig) -> Iterable
         > coordinate_lint.COORDINATE_TOLERANCE_KM
         for _, (_, _, other_extent) in candidates[1:]
     )
+    preferred_over_boundaries = False
     if has_conflict:
-        matches = "".join(
-            f"- {candidate.display_name!r} "
-            f"({candidate.category}/{candidate.feature_type}, "
-            f"{candidate_latitude}, {candidate_longitude})\n"
-            for candidate, (candidate_latitude, candidate_longitude, _) in candidates
-        )
-        yield (
-            f"Nominatim returned {len(candidates)} conflicting exact matches:\n{matches}"
-        )
-        return
+        preferred = _get_place_candidate_among_administrative_boundaries(candidates)
+        if preferred is None:
+            matches = "".join(
+                f"- {candidate.display_name!r} "
+                f"({candidate.category}/{candidate.feature_type}, "
+                f"{candidate_latitude}, {candidate_longitude})\n"
+                for candidate, (
+                    candidate_latitude,
+                    candidate_longitude,
+                    _,
+                ) in candidates
+            )
+            yield (
+                f"Nominatim returned {len(candidates)} conflicting exact matches:\n"
+                f"{matches}"
+            )
+            return
+        result, (latitude, longitude, extent) = preferred
+        preferred_over_boundaries = True
 
     region_issues = list(
         coordinate_lint.check_extent_in_region(extent, location.region)
@@ -212,6 +593,8 @@ def check_nominatim_coordinates(location: Location, cfg: LintConfig) -> Iterable
         f"OpenStreetMap Nominatim {result.category}/{result.feature_type} result "
         f"{result.display_name!r}"
     )
+    if preferred_over_boundaries:
+        message += " (preferred over boundary/administrative matches)"
     if cfg.autofix and not LINT.is_ignoring_lint(location, "nominatim_coordinates"):
         print(f"{location}: {message}")
         location.latitude = latitude
@@ -281,6 +664,25 @@ def _get_nominatim_coordinate_candidates(
             candidates.append((result, parsed))
     candidates.sort(key=lambda candidate: _OSM_CATEGORY_PRIORITY[candidate[0].category])
     return candidates
+
+
+def _get_place_candidate_among_administrative_boundaries(
+    candidates: list[tuple[nominatim.SearchResult, tuple[str, str, Any]]],
+) -> tuple[nominatim.SearchResult, tuple[str, str, Any]] | None:
+    place_candidates = [
+        candidate for candidate in candidates if candidate[0].category == "place"
+    ]
+    if len(place_candidates) != 1 or len(candidates) < 2:
+        return None
+    if any(
+        result.category != "place"
+        and not (
+            result.category == "boundary" and result.feature_type == "administrative"
+        )
+        for result, _ in candidates
+    ):
+        return None
+    return place_candidates[0]
 
 
 def get_nominatim_query(location: Location) -> str:
