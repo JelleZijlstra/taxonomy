@@ -343,10 +343,21 @@ class Location(BaseModel):
         print(f"    Query: {query}")
         nominatim_results = None
         if not search_plan.coordinates_can_be_inferred:
-            print(
-                "    Lookup skipped: rename noncanonical offset locality to "
-                f"{search_plan.standardized_name!r} first"
-            )
+            if self.name != search_plan.standardized_name:
+                print(
+                    "    Lookup skipped: rename noncanonical offset locality to "
+                    f"{search_plan.standardized_name!r} first"
+                )
+            elif location_lint._get_coordinate_modifier_plan(self.name) is not None:
+                print(
+                    "    Lookup skipped: modifier supplies explicit locality "
+                    "coordinates"
+                )
+            else:
+                print(
+                    "    Lookup skipped: modifier is not a fully parsed "
+                    "distance offset"
+                )
         else:
             try:
                 nominatim_results = nominatim.search(query)

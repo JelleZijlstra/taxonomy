@@ -1806,7 +1806,7 @@ def validate_ce_parents(
                     f"parent {parent} {parent_rank!r} not found for {full_name} {name['rank']!r}"
                 )
         if name["rank"] is Rank.species:
-            genus_name = name["name"].split()[0]
+            genus_name = full_name.split()[0]
             parent_name = name
             while parent_name["rank"] is not Rank.genus:
                 assert (

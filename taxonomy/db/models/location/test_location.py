@@ -289,6 +289,7 @@ def _tagged_object(tags: tuple[object, ...], *, name_tags: bool) -> SimpleNamesp
 
 def _location_without_coordinates(
     *,
+    id: int = 1,
     name: str = "Walnut Creek",
     region_name: str = "California",
     region: Region | None = None,
@@ -303,6 +304,7 @@ def _location_without_coordinates(
     if region is None:
         region = _make_region(region_name, RegionKind.state)
     loc = SimpleNamespace(
+        id=id,
         name=name,
         region=region,
         latitude=None,
@@ -523,6 +525,7 @@ def test_nominatim_search_removes_location_disambiguator(
     ("name", "base_name", "offsets"),
     [
         ("8 mi E Monterey", "Monterey", ((8 * 1.609344, 90),)),
+        ("Monterey: 8 mi E", "Monterey", ((8 * 1.609344, 90),)),
         ("1.5 km NW Monterey", "Monterey", ((1.5, 315),)),
         ("1 mi W 2 mi S Monterey", "Monterey", ((2 * 1.609344, 180), (1.609344, 270))),
         ("3 mi E of Boise", "Boise", ((3 * 1.609344, 90),)),
@@ -568,18 +571,18 @@ def test_nominatim_offset_parser_leaves_unsupported_names_alone(name: str) -> No
 @pytest.mark.parametrize(
     ("name", "expected"),
     [
-        ("3 mi E of Boise", "3 mi E Boise"),
-        ("10 miles south of Coy Inlet", "10 mi S Coy Inlet"),
-        ("1 kilometer NW Monterey", "1 km NW Monterey"),
-        ("1 mi W 2 mi S Monterey", "2 mi S 1 mi W Monterey"),
-        ("1 mi W, 2 km S of Monterey", "2 km S 1 mi W Monterey"),
+        ("3 mi E of Boise", "Boise: 3 mi E"),
+        ("10 miles south of Coy Inlet", "Coy Inlet: 10 mi S"),
+        ("1 kilometer NW Monterey", "Monterey: 1 km NW"),
+        ("1 mi W 2 mi S Monterey", "Monterey: 2 mi S 1 mi W"),
+        ("1 mi W, 2 km S of Monterey", "Monterey: 2 km S 1 mi W"),
         (
             "8 miles east of Monterey (Monterey County, California)",
-            "8 mi E Monterey (Monterey County, California)",
+            "Monterey (Monterey County, California): 8 mi E",
         ),
-        ("Castle Brace (2 mi. SW)", "2 mi SW Castle Brace"),
-        ("Azua (8.9 mi N, 1.8 mi W)", "8.9 mi N 1.8 mi W Azua"),
-        ("Point Lookout (1/4 mi. NE)", "1/4 mi NE Point Lookout"),
+        ("Castle Brace (2 mi. SW)", "Castle Brace: 2 mi SW"),
+        ("Azua (8.9 mi N, 1.8 mi W)", "Azua: 8.9 mi N 1.8 mi W"),
+        ("Point Lookout (1/4 mi. NE)", "Point Lookout: 1/4 mi NE"),
     ],
 )
 def test_location_offset_name_lint(name: str, expected: str) -> None:
@@ -592,9 +595,37 @@ def test_location_offset_name_lint(name: str, expected: str) -> None:
 
 
 def test_location_offset_name_lint_accepts_canonical_name() -> None:
-    loc = _location_without_coordinates(name="2 mi S 1 mi W Monterey")
+    loc = _location_without_coordinates(name="Monterey: 2 mi S 1 mi W")
 
     assert list(location_lint.check_offset_name(loc, LintConfig())) == []
+
+
+def test_location_name_lint_proposes_canonical_spacing() -> None:
+    loc = _location_without_coordinates(name="Foo River (California) : mouth")
+
+    messages = list(location_lint.check_location_name(loc, LintConfig(autofix=False)))
+
+    assert len(messages) == 1
+    assert "location name should be 'Foo River (California): mouth'" in messages[0]
+
+
+def test_location_name_lint_does_not_autofix_canonical_spacing() -> None:
+    loc = _location_without_coordinates(name="Foo River (California) : mouth")
+
+    messages = list(location_lint.check_location_name(loc, LintConfig(autofix=True)))
+
+    assert len(messages) == 1
+    assert "location name should be 'Foo River (California): mouth'" in messages[0]
+    assert loc.name == "Foo River (California) : mouth"
+
+
+def test_location_name_lint_rejects_multiple_disambiguators() -> None:
+    loc = _location_without_coordinates(name="Site (Recent) (Milne Bay Province)")
+
+    messages = list(location_lint.check_location_name(loc, LintConfig(autofix=False)))
+
+    assert len(messages) == 1
+    assert "may contain only one parenthetical disambiguator" in messages[0]
 
 
 def test_location_offset_name_lint_autofixes_available_name(
@@ -606,7 +637,7 @@ def test_location_offset_name_lint_autofixes_available_name(
     messages = list(location_lint.check_offset_name(loc, LintConfig(autofix=True)))
 
     assert messages == []
-    assert loc.name == "2 mi SW Castle Brace"
+    assert loc.name == "Castle Brace: 2 mi SW"
 
 
 def test_location_offset_name_lint_does_not_autofix_name_collision(
@@ -620,7 +651,7 @@ def test_location_offset_name_lint_does_not_autofix_name_collision(
     assert loc.name == "Castle Brace (2 mi. SW)"
     assert len(messages) == 1
     assert (
-        "distance-offset name should be '2 mi SW Castle Brace'; "
+        "distance-offset name should be 'Castle Brace: 2 mi SW'; "
         "cannot autofix because that name is already in use" in messages[0]
     )
 
@@ -664,7 +695,9 @@ def _period(
         "Site (Milne Bay Province)",
         "Site (Papua New Guinea)",
         "Site (Recent)",
-        "Site (Recent) (Milne Bay Province)",
+        "Saint Martin (island)",
+        "Guinea (region)",
+        "Guinea (Region)",
         "HGSP 81-07(a)",
     ],
 )
@@ -748,24 +781,206 @@ def test_location_disambiguator_lint_accepts_assigned_stratigraphic_unit(
 
 
 @pytest.mark.parametrize(
-    ("name", "disambiguator"),
-    [
-        ("Top Camp (Goodenough Island)", "Goodenough Island"),
-        ("Castle Brace (2 mi. SW)", "2 mi. SW"),
-    ],
+    ("name", "disambiguator"), [("Top Camp (Goodenough Island)", "Goodenough Island")]
 )
 def test_location_disambiguator_lint_rejects_other_qualifiers(
     name: str, disambiguator: str
 ) -> None:
     loc = _location_without_coordinates(name=name)
 
-    messages = list(location_lint.check_disambiguator(loc, LintConfig()))
+    messages = list(location_lint.check_disambiguator(loc, LintConfig(autofix=False)))
 
     assert len(messages) == 1
     assert (
         f"disambiguator {disambiguator!r} is not an enclosing Region, "
         "an assigned Period, or an assigned StratigraphicUnit" in messages[0]
     )
+    assert f"location name should be {f'Top Camp: {disambiguator}'!r}" in messages[0]
+
+
+def test_location_disambiguator_lint_accepts_modifier() -> None:
+    loc = _location_without_coordinates(name="Lomas Cantadas: upper")
+
+    assert list(location_lint.check_disambiguator(loc, LintConfig())) == []
+
+
+def test_location_disambiguator_lint_does_not_autofix_modifier() -> None:
+    loc = _location_without_coordinates(name="Lomas Cantadas (upper)")
+
+    messages = list(location_lint.check_disambiguator(loc, LintConfig(autofix=True)))
+
+    assert len(messages) == 1
+    assert "location name should be 'Lomas Cantadas: upper'" in messages[0]
+    assert loc.name == "Lomas Cantadas (upper)"
+
+
+def test_coordinate_modifier_lint_normalizes_parenthetical_coordinates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    loc = _location_without_coordinates(
+        name="Vilacota, Tacna, Peru (-17.145759, -70.054278)"
+    )
+    loc.latitude = "17.145759°S"
+    loc.longitude = "70.054278°W"
+    monkeypatch.setattr(
+        coordinate_lint, "check_extent_in_region", lambda extent, region: ()
+    )
+    monkeypatch.setattr(location_lint, "_is_location_name_taken", lambda name: False)
+
+    messages = list(
+        location_lint.check_coordinate_modifier(loc, LintConfig(autofix=True))
+    )
+
+    assert messages == []
+    assert loc.name == "Vilacota, Tacna, Peru: 17.145759°S 70.054278°W"
+
+
+def test_coordinate_modifier_lint_preserves_geographic_disambiguator(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    loc = _location_without_coordinates(name="Vilacota (Peru) (-17.145759, -70.054278)")
+    loc.latitude = "-17.145759"
+    loc.longitude = "-70.054278"
+    monkeypatch.setattr(
+        coordinate_lint, "check_extent_in_region", lambda extent, region: ()
+    )
+    monkeypatch.setattr(location_lint, "_is_location_name_taken", lambda name: False)
+
+    messages = list(
+        location_lint.check_coordinate_modifier(loc, LintConfig(autofix=True))
+    )
+
+    assert messages == []
+    assert loc.name == "Vilacota (Peru): 17.145759°S 70.054278°W"
+    assert list(location_lint.check_location_name(loc, LintConfig())) == []
+
+
+def test_coordinate_modifier_lint_detects_location_coordinate_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    loc = _location_without_coordinates(
+        name="Vilacota, Tacna, Peru: 17.145759°S 70.054278°W"
+    )
+    loc.latitude = "17.122149°S"
+    loc.longitude = "70.063451°W"
+    monkeypatch.setattr(
+        coordinate_lint, "check_extent_in_region", lambda extent, region: ()
+    )
+
+    messages = list(location_lint.check_coordinate_modifier(loc, LintConfig()))
+
+    assert len(messages) == 1
+    assert "does not match Location coordinates" in messages[0]
+    assert "km apart" in messages[0]
+
+
+def test_coordinate_modifier_lint_allows_equivalent_coordinate_notation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    loc = _location_without_coordinates(name="Site: 17°30'S 70°W")
+    loc.latitude = "17.5°S"
+    loc.longitude = "-70"
+    monkeypatch.setattr(
+        coordinate_lint, "check_extent_in_region", lambda extent, region: ()
+    )
+
+    assert list(location_lint.check_coordinate_modifier(loc, LintConfig())) == []
+
+
+def test_coordinate_modifier_lint_requires_location_coordinates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    loc = _location_without_coordinates(
+        name="Vilacota, Tacna, Peru: 17.145759°S 70.054278°W"
+    )
+    monkeypatch.setattr(
+        coordinate_lint, "check_extent_in_region", lambda extent, region: ()
+    )
+
+    messages = list(location_lint.check_coordinate_modifier(loc, LintConfig()))
+
+    assert len(messages) == 1
+    assert "Location coordinates are missing or incomplete" in messages[0]
+
+
+def test_coordinate_modifier_lint_rejects_impossible_coordinates() -> None:
+    loc = _location_without_coordinates(name="Site (-117.1, -270.2)")
+
+    messages = list(location_lint.check_coordinate_modifier(loc, LintConfig()))
+
+    assert len(messages) == 1
+    assert "invalid coordinate modifier '-117.1, -270.2'" in messages[0]
+    assert list(location_lint.check_disambiguator(loc, LintConfig())) == []
+
+
+def test_coordinate_modifier_lint_checks_region(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    loc = _location_without_coordinates(name="Site: 17°S 70°W")
+    loc.latitude = "17°S"
+    loc.longitude = "70°W"
+    monkeypatch.setattr(
+        coordinate_lint,
+        "check_extent_in_region",
+        lambda extent, region: ("coordinate extent is outside Test Region",),
+    )
+
+    messages = list(location_lint.check_coordinate_modifier(loc, LintConfig()))
+
+    assert len(messages) == 1
+    assert (
+        "coordinate modifier 17°S 70°W: "
+        "coordinate extent is outside Test Region" in messages[0]
+    )
+
+
+def test_location_modifier_does_not_trigger_coordinate_inference(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    loc = _location_without_coordinates(name="Foo River (California): mouth")
+    search = Mock()
+    monkeypatch.setattr(nominatim, "search", search)
+    monkeypatch.setattr(model_lint, "is_network_available", lambda: True)
+
+    plan = location_lint.get_nominatim_search_plan(loc)
+
+    assert plan.locality_name == "Foo River"
+    assert plan.modifier == "mouth"
+    assert not plan.coordinates_can_be_inferred
+    assert list(location_lint.check_nominatim_coordinates(loc, LintConfig())) == []
+    search.assert_not_called()
+
+
+def test_coordinate_evidence_skips_free_form_modifier(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    loc = _location_without_coordinates(name="Foo River (California): mouth")
+    search = Mock()
+    monkeypatch.setattr(nominatim, "search", search)
+
+    Location.coordinate_evidence(loc)
+
+    assert (
+        "Lookup skipped: modifier is not a fully parsed distance offset"
+        in capsys.readouterr().out
+    )
+    search.assert_not_called()
+
+
+def test_coordinate_evidence_skips_explicit_coordinate_modifier(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    loc = _location_without_coordinates(name="Site: 17°S 70°W")
+    search = Mock()
+    monkeypatch.setattr(nominatim, "search", search)
+
+    Location.coordinate_evidence(loc)
+
+    assert (
+        "Lookup skipped: modifier supplies explicit locality coordinates"
+        in capsys.readouterr().out
+    )
+    search.assert_not_called()
 
 
 def test_parenthetical_offset_does_not_trigger_coordinate_inference(
@@ -780,19 +995,43 @@ def test_parenthetical_offset_does_not_trigger_coordinate_inference(
 
     plan = location_lint.get_nominatim_search_plan(loc)
 
-    assert plan.standardized_name == "2 mi SW Castle Brace"
+    assert plan.standardized_name == "Castle Brace: 2 mi SW"
     assert not plan.coordinates_can_be_inferred
     assert list(location_lint.check_nominatim_coordinates(loc, LintConfig())) == []
     search.assert_not_called()
 
 
 def test_canonicalized_parenthetical_offset_can_infer_coordinates() -> None:
-    loc = _location_without_coordinates(name="2 mi SW Castle Brace")
+    loc = _location_without_coordinates(name="Castle Brace: 2 mi SW")
 
     plan = location_lint.get_nominatim_search_plan(loc)
 
     assert plan.standardized_name == loc.name
     assert plan.coordinates_can_be_inferred
+
+
+def test_location_modifier_keeps_disambiguator_when_required(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    region = _make_region("Dominica", RegionKind.country)
+    loc = _location_without_coordinates(
+        id=1, name="Castle Brace: 2 mi SW", region=region
+    )
+    other = _location_without_coordinates(
+        id=2, name="Castle Brace (Dominica)", region=region
+    )
+    monkeypatch.setattr(
+        location_lint,
+        "_get_base_name_to_locations",
+        lambda: {"Castle Brace": (loc, other)},
+    )
+
+    messages = list(
+        location_lint.check_should_have_disambiguator(loc, LintConfig(autofix=False))
+    )
+
+    assert len(messages) == 1
+    assert "Castle Brace (Dominica): 2 mi SW" in messages[0]
 
 
 @pytest.mark.parametrize(
@@ -816,7 +1055,7 @@ def test_location_applies_nominatim_locality_offset(
     country = _make_region("United States", RegionKind.country)
     state = _make_region("California", RegionKind.state, country)
     county = _make_region("Monterey County, California", RegionKind.county, state)
-    loc = _location_without_coordinates(name="8 mi E Monterey", region=county)
+    loc = _location_without_coordinates(name="Monterey: 8 mi E", region=county)
     base_latitude = "36.600238"
     base_longitude = "-121.894676"
     search = Mock(
@@ -861,7 +1100,7 @@ def test_location_applies_nominatim_locality_offset(
 def test_coordinate_evidence_shows_nominatim_locality_offset(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    loc = _location_without_coordinates(name="8 mi E Nicasio", region=_marin_county())
+    loc = _location_without_coordinates(name="Nicasio: 8 mi E", region=_marin_county())
     monkeypatch.setattr(
         nominatim,
         "search",
@@ -883,7 +1122,7 @@ def test_coordinate_evidence_shows_nominatim_locality_offset(
 def test_nominatim_consistency_uses_offset_coordinates(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    loc = _location_without_coordinates(name="8 mi E Nicasio", region=_marin_county())
+    loc = _location_without_coordinates(name="Nicasio: 8 mi E", region=_marin_county())
     result = _nominatim_result(latitude="38.0615885", longitude="-122.6985975")
     plan = location_lint.get_nominatim_search_plan(loc)
     inferred = location_lint.get_nominatim_result_coordinates(

@@ -18,6 +18,7 @@ from taxonomy.db.models.period import Period
 from taxonomy.db.models.region import Region
 
 from .model import Location, LocationTag
+from .name import ParsedLocationName, split_trailing_parenthetical
 
 _GEOCODABLE_OSM_CATEGORIES = {"boundary", "natural", "place", "waterway"}
 _OSM_CATEGORY_PRIORITY = {"place": 0, "natural": 1, "waterway": 2, "boundary": 3}
@@ -252,7 +253,24 @@ _LOCALITY_OFFSET_COMPONENT = re.compile(
     re.IGNORECASE,
 )
 _OFFSET_SEPARATOR = re.compile(r"^(?:,\s*|and\s+)(?=\d)", re.IGNORECASE)
-_TRAILING_DISAMBIGUATOR = re.compile(r"\s+\((?P<content>[^()]+)\)\s*$")
+_SIGNED_DECIMAL_COORDINATE_PAIR = re.compile(
+    r"^\s*(?P<latitude>[+-]?\d+(?:\.\d+)?)\s*[,;/]\s*"
+    r"(?P<longitude>[+-]?\d+(?:\.\d+)?)\s*$"
+)
+_DIRECTIONAL_COORDINATE_CHARACTERS = r"""0-9.\s°*◦'`ʹ’‘′ ́"”"""
+_DIRECTIONAL_COORDINATE_PAIR = re.compile(
+    rf"^\s*(?P<latitude>[{_DIRECTIONAL_COORDINATE_CHARACTERS}]+[NS])"
+    rf"\s*[,;/]?\s+"
+    rf"(?P<longitude>[{_DIRECTIONAL_COORDINATE_CHARACTERS}]+[EW])\s*$",
+    re.IGNORECASE,
+)
+_DIRECTIONAL_COORDINATE_LIKE = re.compile(
+    rf"^\s*[{_DIRECTIONAL_COORDINATE_CHARACTERS}]+[NSEW]"
+    rf"\s*[,;/]?\s+"
+    rf"[{_DIRECTIONAL_COORDINATE_CHARACTERS}]+[NSEW]\s*$",
+    re.IGNORECASE,
+)
+_ALWAYS_ALLOWED_DISAMBIGUATORS = {"island", "region"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -263,10 +281,27 @@ class LocalityOffset:
 
 
 @dataclass(frozen=True, slots=True)
+class CoordinateModifierPlan:
+    prefix: ParsedLocationName
+    raw_coordinates: str
+    parsed_coordinates: tuple[str, str, coordinate_lint.CoordinateExtent] | None = None
+
+    @property
+    def standardized_name(self) -> str | None:
+        if self.parsed_coordinates is None:
+            return None
+        latitude, longitude, _ = self.parsed_coordinates
+        return ParsedLocationName(
+            self.prefix.base_name, self.prefix.disambiguator, f"{latitude} {longitude}"
+        ).render()
+
+
+@dataclass(frozen=True, slots=True)
 class NominatimSearchPlan:
     locality_name: str
     offsets: tuple[LocalityOffset, ...] = ()
-    disambiguator_suffix: str = ""
+    disambiguator: str | None = None
+    modifier: str | None = None
     coordinates_can_be_inferred: bool = True
 
     @property
@@ -277,10 +312,9 @@ class NominatimSearchPlan:
 
     @property
     def standardized_name(self) -> str:
-        if not self.offsets:
-            return f"{self.locality_name}{self.disambiguator_suffix}"
-        offset_text = " ".join(offset.description for offset in self.offsets)
-        return f"{offset_text} {self.locality_name}{self.disambiguator_suffix}"
+        return ParsedLocationName(
+            self.locality_name, self.disambiguator, self.modifier
+        ).render()
 
 
 def remove_unused_ignores(location: Location, unused: Collection[str]) -> None:
@@ -501,25 +535,160 @@ def check_likely_synonymous(location: Location, cfg: LintConfig) -> Iterable[str
     )
 
 
+def _is_location_name_taken(name: str) -> bool:
+    return Location.select().filter(Location.name == name).count() > 0
+
+
+def _maybe_autofix_name(
+    location: Location,
+    cfg: LintConfig,
+    *,
+    lint_label: str,
+    proposed_name: str,
+    message: str,
+) -> str | None:
+    if not cfg.autofix or LINT.is_ignoring_lint(location, lint_label):
+        return message
+    if _is_location_name_taken(proposed_name):
+        return f"{message}; cannot autofix because that name is already in use"
+    print(f"{location}: {message}")
+    location.name = proposed_name
+    return None
+
+
+@LINT.add("location_name")
+def check_location_name(location: Location, cfg: LintConfig) -> Iterable[str]:
+    parsed_name = ParsedLocationName.parse(location.name)
+    if split_trailing_parenthetical(parsed_name.base_name) is not None and (
+        parsed_name.disambiguator is None
+        or not _looks_like_coordinate_pair(parsed_name.disambiguator)
+    ):
+        yield "location name may contain only one parenthetical disambiguator"
+        return
+    proposed_name = parsed_name.render()
+    if location.name == proposed_name:
+        return
+    yield f"location name should be {proposed_name!r}"
+
+
 @LINT.add("offset_name")
 def check_offset_name(location: Location, cfg: LintConfig) -> Iterable[str]:
     search_plan = get_nominatim_search_plan(location)
-    standardized_name = search_plan.standardized_name
-    if not search_plan.offsets or location.name == standardized_name:
+    proposed_name = search_plan.standardized_name
+    if not search_plan.offsets or location.name == proposed_name:
         return
-    message = f"distance-offset name should be {standardized_name!r}"
-    if cfg.autofix and not LINT.is_ignoring_lint(location, "offset_name"):
-        if _is_location_name_taken(standardized_name):
-            yield f"{message}; cannot autofix because that name is already in use"
-        else:
-            print(f"{location}: {message}")
-            location.name = standardized_name
+    message = f"distance-offset name should be {proposed_name!r}"
+    if issue := _maybe_autofix_name(
+        location,
+        cfg,
+        lint_label="offset_name",
+        proposed_name=proposed_name,
+        message=message,
+    ):
+        yield issue
+
+
+def _looks_like_coordinate_pair(text: str) -> bool:
+    if _SIGNED_DECIMAL_COORDINATE_PAIR.fullmatch(text) is not None:
+        return True
+    return _DIRECTIONAL_COORDINATE_LIKE.fullmatch(text) is not None
+
+
+def _parse_coordinate_pair(
+    text: str,
+) -> tuple[str, str, coordinate_lint.CoordinateExtent] | None:
+    match = _SIGNED_DECIMAL_COORDINATE_PAIR.fullmatch(text)
+    if match is None:
+        match = _DIRECTIONAL_COORDINATE_PAIR.fullmatch(text)
+    if match is None:
+        return None
+    return coordinate_lint.standardize_coordinate_pair(
+        match.group("latitude").upper(), match.group("longitude").upper()
+    )
+
+
+def _get_coordinate_modifier_plan(name: str) -> CoordinateModifierPlan | None:
+    parsed_name = ParsedLocationName.parse(name)
+    if parsed_name.modifier is not None and _looks_like_coordinate_pair(
+        parsed_name.modifier
+    ):
+        raw_coordinates = parsed_name.modifier
+        prefix = ParsedLocationName(parsed_name.base_name, parsed_name.disambiguator)
+    elif (
+        parsed_name.modifier is None
+        and parsed_name.disambiguator is not None
+        and _looks_like_coordinate_pair(parsed_name.disambiguator)
+    ):
+        raw_coordinates = parsed_name.disambiguator
+        prefix = ParsedLocationName.parse(parsed_name.base_name)
     else:
-        yield message
+        return None
+    return CoordinateModifierPlan(
+        prefix, raw_coordinates, _parse_coordinate_pair(raw_coordinates)
+    )
 
 
-def _is_location_name_taken(name: str) -> bool:
-    return Location.select().filter(Location.name == name).count() > 0
+def _coordinate_extents_are_equal(
+    first: coordinate_lint.CoordinateExtent, second: coordinate_lint.CoordinateExtent
+) -> bool:
+    return (
+        first.latitude.minimum == second.latitude.minimum
+        and first.latitude.maximum == second.latitude.maximum
+        and first.longitude.minimum == second.longitude.minimum
+        and first.longitude.maximum == second.longitude.maximum
+    )
+
+
+@LINT.add("coordinate_modifier")
+def check_coordinate_modifier(location: Location, cfg: LintConfig) -> Iterable[str]:
+    plan = _get_coordinate_modifier_plan(location.name)
+    if plan is None:
+        return
+    if plan.parsed_coordinates is None:
+        yield f"invalid coordinate modifier {plan.raw_coordinates!r}"
+        return
+
+    latitude, longitude, extent = plan.parsed_coordinates
+    proposed_name = plan.standardized_name
+    assert proposed_name is not None
+    if location.name != proposed_name:
+        message = f"coordinate-offset name should be {proposed_name!r}"
+        if issue := _maybe_autofix_name(
+            location,
+            cfg,
+            lint_label="coordinate_modifier",
+            proposed_name=proposed_name,
+            message=message,
+        ):
+            yield issue
+
+    for issue in coordinate_lint.check_extent_in_region(extent, location.region):
+        yield f"coordinate modifier {latitude} {longitude}: {issue}"
+
+    if location.latitude is None or location.longitude is None:
+        yield (
+            f"coordinate modifier is {latitude} {longitude}, but Location coordinates "
+            "are missing or incomplete"
+        )
+        return
+    location_coordinates = coordinate_lint.standardize_coordinate_pair(
+        location.latitude, location.longitude
+    )
+    if location_coordinates is None:
+        yield (
+            f"coordinate modifier is {latitude} {longitude}, but Location coordinates "
+            f"{location.latitude}, {location.longitude} are invalid"
+        )
+        return
+    location_latitude, location_longitude, location_extent = location_coordinates
+    if _coordinate_extents_are_equal(extent, location_extent):
+        return
+    distance = coordinate_lint.extent_distance_km(extent, location_extent)
+    yield (
+        f"coordinate modifier {latitude} {longitude} does not match Location "
+        f"coordinates {location_latitude}, {location_longitude} "
+        f"({distance:.1f} km apart)"
+    )
 
 
 @cache
@@ -530,35 +699,9 @@ def _get_periods_by_name() -> dict[str, tuple[Period, ...]]:
     return {name: tuple(periods) for name, periods in periods_by_name.items()}
 
 
-def _split_trailing_parenthetical(name: str) -> tuple[str, str] | None:
-    if not name.endswith(")"):
-        return None
-    depth = 0
-    for index in range(len(name) - 1, -1, -1):
-        character = name[index]
-        if character == ")":
-            depth += 1
-        elif character == "(":
-            depth -= 1
-            if depth == 0:
-                if index == 0 or not name[index - 1].isspace():
-                    return None
-                return name[:index].rstrip(), name[index + 1 : -1]
-    return None
-
-
-def _get_trailing_disambiguators(name: str) -> tuple[str, ...]:
-    disambiguators = []
-    while split := _split_trailing_parenthetical(name):
-        name, disambiguator = split
-        disambiguators.append(disambiguator)
-    disambiguators.reverse()
-    return tuple(disambiguators)
-
-
 def _get_qualified_name_variants(name: str) -> set[str]:
     variants = {name}
-    if split := _split_trailing_parenthetical(name):
+    if split := split_trailing_parenthetical(name):
         base_name, qualifier = split
         variants.add(base_name)
         variants.add(f"{base_name}, {qualifier}")
@@ -622,6 +765,8 @@ def _is_stratigraphic_unit_disambiguator(
 
 
 def _is_sane_disambiguator(location: Location, disambiguator: str) -> bool:
+    if disambiguator.casefold() in _ALWAYS_ALLOWED_DISAMBIGUATORS:
+        return True
     if any(
         disambiguator in _get_qualified_name_variants(region.name)
         for region in (location.region, *location.region.all_parents())
@@ -634,12 +779,29 @@ def _is_sane_disambiguator(location: Location, disambiguator: str) -> bool:
 
 @LINT.add("disambiguator", clear_caches=_get_periods_by_name.cache_clear)
 def check_disambiguator(location: Location, cfg: LintConfig) -> Iterable[str]:
-    for disambiguator in _get_trailing_disambiguators(location.name):
-        if not _is_sane_disambiguator(location, disambiguator):
-            yield (
-                f"disambiguator {disambiguator!r} is not an enclosing Region, "
-                "an assigned Period, or an assigned StratigraphicUnit"
-            )
+    parsed_name = ParsedLocationName.parse(location.name)
+    disambiguator = parsed_name.disambiguator
+    if disambiguator is None or _is_sane_disambiguator(location, disambiguator):
+        return
+    offsets, remainder = _parse_locality_offsets(disambiguator)
+    if offsets and not remainder:
+        # The offset_name lint owns this legacy parenthetical form.
+        return
+    if _looks_like_coordinate_pair(disambiguator):
+        # The coordinate_modifier lint owns this legacy parenthetical form.
+        return
+
+    message = (
+        f"disambiguator {disambiguator!r} is not an enclosing Region, "
+        "an assigned Period, or an assigned StratigraphicUnit"
+    )
+    if parsed_name.modifier is not None:
+        yield message
+        return
+    proposed_name = ParsedLocationName(
+        parsed_name.base_name, modifier=disambiguator
+    ).render()
+    yield message + f"; location name should be {proposed_name!r}"
 
 
 @LINT.add("period")
@@ -915,33 +1077,66 @@ def _get_place_candidate_among_administrative_boundaries(
 
 
 def get_nominatim_search_plan(location: Location) -> NominatimSearchPlan:
-    name = location.name
-    disambiguators: list[str] = []
-    offsets: list[LocalityOffset] = []
-    has_parenthetical_offsets = False
-    while match := _TRAILING_DISAMBIGUATOR.search(name):
-        parenthetical_offsets, remainder = _parse_locality_offsets(
-            match.group("content")
-        )
-        if parenthetical_offsets and not remainder:
-            offsets.extend(parenthetical_offsets)
-            has_parenthetical_offsets = True
+    coordinate_plan = _get_coordinate_modifier_plan(location.name)
+    if coordinate_plan is not None:
+        if coordinate_plan.parsed_coordinates is None:
+            modifier = coordinate_plan.raw_coordinates
         else:
-            disambiguators.insert(0, match.group(0).strip())
-        name = name[: match.start()]
-    disambiguator_suffix = f" {' '.join(disambiguators)}" if disambiguators else ""
+            latitude, longitude, _ = coordinate_plan.parsed_coordinates
+            modifier = f"{latitude} {longitude}"
+        return NominatimSearchPlan(
+            coordinate_plan.prefix.base_name,
+            disambiguator=coordinate_plan.prefix.disambiguator,
+            modifier=modifier,
+            coordinates_can_be_inferred=False,
+        )
 
-    leading_offsets, locality_name = _parse_locality_offsets(name)
-    offsets.extend(leading_offsets)
+    parsed_name = ParsedLocationName.parse(location.name)
+
+    if parsed_name.modifier is not None:
+        offsets, remainder = _parse_locality_offsets(parsed_name.modifier)
+        if offsets and not remainder:
+            offsets.sort(key=_locality_offset_sort_key)
+            return NominatimSearchPlan(
+                parsed_name.base_name,
+                tuple(offsets),
+                parsed_name.disambiguator,
+                _render_offset_modifier(offsets),
+            )
+        return NominatimSearchPlan(
+            parsed_name.base_name,
+            disambiguator=parsed_name.disambiguator,
+            modifier=parsed_name.modifier,
+            coordinates_can_be_inferred=False,
+        )
+
+    if parsed_name.disambiguator is not None:
+        offsets, remainder = _parse_locality_offsets(parsed_name.disambiguator)
+        if offsets and not remainder:
+            offsets.sort(key=_locality_offset_sort_key)
+            return NominatimSearchPlan(
+                parsed_name.base_name,
+                tuple(offsets),
+                modifier=_render_offset_modifier(offsets),
+                coordinates_can_be_inferred=False,
+            )
+
+    offsets, locality_name = _parse_locality_offsets(parsed_name.base_name)
     if offsets and locality_name:
         offsets.sort(key=_locality_offset_sort_key)
         return NominatimSearchPlan(
             locality_name,
             tuple(offsets),
-            disambiguator_suffix,
-            coordinates_can_be_inferred=not has_parenthetical_offsets,
+            parsed_name.disambiguator,
+            _render_offset_modifier(offsets),
         )
-    return NominatimSearchPlan(name, disambiguator_suffix=disambiguator_suffix)
+    return NominatimSearchPlan(
+        parsed_name.base_name, disambiguator=parsed_name.disambiguator
+    )
+
+
+def _render_offset_modifier(offsets: Iterable[LocalityOffset]) -> str:
+    return " ".join(offset.description for offset in offsets)
 
 
 def _parse_locality_offsets(text: str) -> tuple[list[LocalityOffset], str]:
@@ -1091,22 +1286,46 @@ def _get_region_name_aliases(region: Region) -> set[str]:
     return names
 
 
-@LINT.add("should_have_disambiguator")
+@cache
+def _get_base_name_to_locations() -> dict[str, tuple[Location, ...]]:
+    locations_by_base_name: defaultdict[str, list[Location]] = defaultdict(list)
+    for location in Location.select_valid():
+        parsed_name = ParsedLocationName.parse(location.name)
+        locations_by_base_name[parsed_name.base_name].append(location)
+    return {
+        base_name: tuple(locations)
+        for base_name, locations in locations_by_base_name.items()
+    }
+
+
+@LINT.add(
+    "should_have_disambiguator", clear_caches=_get_base_name_to_locations.cache_clear
+)
 def check_should_have_disambiguator(
     location: Location, cfg: LintConfig
 ) -> Iterable[str]:
-    if "(" in location.name or location.name == location.region.name:
+    parsed_name = ParsedLocationName.parse(location.name)
+    if parsed_name.disambiguator is not None or location.name == location.region.name:
         return
 
-    similar = list(
-        Location.select_valid().filter(
-            Location.id != location.id, Location.name.startswith(f"{location.name} (")
+    similar = [
+        other
+        for other in _get_base_name_to_locations().get(parsed_name.base_name, ())
+        if other.id != location.id
+        and (
+            ParsedLocationName.parse(other.name).disambiguator is not None
+            or other.region != location.region
         )
-    )
+    ]
     if not similar:
         return
-    yield (
+    proposed_name = ParsedLocationName(
+        parsed_name.base_name, location.region.name, parsed_name.modifier
+    ).render()
+    message = (
         f"location {location.name!r} should have a disambiguator "
-        f"(e.g., '({location.region.name})') because of collision with {len(similar)} other location(s): "
+        f"and be named {proposed_name!r} because of collision with "
+        f"{len(similar)} other location(s): "
         f"{', '.join(repr(loc.name) for loc in similar)}"
     )
+    yield message

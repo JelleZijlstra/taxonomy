@@ -32,6 +32,23 @@ def test_serialize_ce() -> None:
     }
 
 
+def test_validate_ce_parents_uses_corrected_name_for_genus_check() -> None:
+    article = type("Article", (), {"name": "source.pdf"})()
+    entries: list[lib.CEDict] = [
+        {"page": "7", "name": "Rattus", "rank": Rank.genus, "article": article},
+        {
+            "page": "7",
+            "name": "R. rattus",
+            "rank": Rank.species,
+            "parent": "Rattus",
+            "parent_rank": Rank.genus,
+            "article": article,
+        },
+    ]
+
+    assert list(lib.validate_ce_parents(entries)) == entries
+
+
 def test_serialize_occurrences() -> None:
     article = type("Article", (), {"name": "source.pdf"})()
     ce: lib.CEDict = {

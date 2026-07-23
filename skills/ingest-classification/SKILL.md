@@ -110,7 +110,7 @@ For example:
   "locality": "5 km N of Quito",
   "page": "42",
   "basis": "observation",
-  "mapped_location": "5 km N Quito",
+  "mapped_location": "Quito: 5 km N",
   "tags": [{ "kind": "ObservationKind", "data": [1, 1] }]
 }
 ```
@@ -143,28 +143,34 @@ country. Include that subdivision in the Location `name` only when it is part of
 geographic name or is needed for disambiguation. This validation is separate from
 checking whether the proposed Location itself already exists.
 
-Keep a proposed Location's `name` as short and geographic as possible. Do not append the
-Region merely to make the name globally unique: use `Brimstone Hill`, not
-`Brimstone Hill, Saint Kitts`. Put the containing Region in `region`, and put parish,
-distance, coordinates, elevation, source wording, and other identifying evidence in
-their structured fields or `location_detail`. Add a parenthetical disambiguator such as
+Follow the Location naming convention in `docs/location.md`:
+`Name (disambiguator): modifier`. Keep the base `Name` as short and geographic as
+possible. Do not append the Region merely to make the name globally unique: use
+`Brimstone Hill`, not `Brimstone Hill, Saint Kitts`. Put the containing Region in
+`region`, and put coordinates, elevation, source wording, and other identifying evidence
+in their structured fields or `location_detail`. For a source locality defined by a
+coordinate pair, the standardized coordinates may also be used as the modifier, for
+example `Vilacota, Tacna, Peru: 17.145759°S 70.054278°W`; they must match the proposed
+Location's structured coordinates. Add a parenthetical disambiguator such as
 `Brimstone Hill (Saint Kitts)` only when an actual same-named Location makes it
-necessary. The occurrence's `mapped_location` must exactly match this minimal proposed
-name.
+necessary. Put relative distance, direction, or other distinguishing locality text after
+a colon, as in `Quito: 5 km N` or `Foo River (California): mouth`. The occurrence's
+`mapped_location` must exactly match the proposed canonical name.
 
 When an exact-name Location already exists but is not the intended place because its
 Region or period is incompatible, rename the proposal before handoff. Use a
 parenthetical geographic disambiguator, normally the proposal's Region:
 `La Vega (Dominican Republic)`, not `La Vega, Dominican Republic`. If that Region is too
 broad to distinguish the places, use the smallest stable containing island or
-administrative geography supported by the source and the database. Do not use source
-citations, coordinates, specimen data, or a period as the disambiguator. Apply the
-renamed value consistently to the Location proposal and every occurrence's
-`mapped_location`.
+administrative geography supported by the source and the database. A Period
+disambiguator is appropriate only when it distinguishes Locations with different
+assigned ages. Do not use source citations, coordinates, or specimen data as
+disambiguators. Apply the renamed value consistently to the Location proposal and every
+occurrence's `mapped_location`.
 
 Parenthetical phrases should only be used for disambiguation. If a location is given
-relative to a named place, use a location of the form "5 km N Quito" rather than e.g.
-"Quito (5 km N)".
+relative to a named place, use a location of the form `Quito: 5 km N`, not
+`5 km N Quito` or `Quito (5 km N)`.
 
 ## 3. Review the source artifacts
 
@@ -177,6 +183,7 @@ source and the files themselves:
 - verify that every ClassificationEntry has one page number, never a page range or list;
 - check source-internal hierarchy and repeated-entry invariants when applicable;
 - ensure any Location proposal is supported by the source or cited gazetteer.
+- ensure Location names follow the convention in `docs/location.md`;
 - ensure Location names are minimal and do not repeat their Region unless the mandatory
   collision audit finds a real conflict requiring a parenthetical disambiguator;
 - verify that every Location proposal uses a valid Region name, using the database or
