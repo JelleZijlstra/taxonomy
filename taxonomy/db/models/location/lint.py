@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from collections import defaultdict
 from collections.abc import Collection, Iterable
+from dataclasses import dataclass
 from functools import cache
 from typing import Any
 
@@ -204,6 +205,79 @@ _LOCALITY_EDGE_ABBREVIATIONS = {
     "spr": "spring",
 }
 _DIRECTION_WORDS = {"east", "north", "south", "west"}
+_MILES_TO_KILOMETRES = 1.609344
+_DIRECTION_TO_BEARING = {
+    "n": 0.0,
+    "nne": 22.5,
+    "ne": 45.0,
+    "ene": 67.5,
+    "e": 90.0,
+    "ese": 112.5,
+    "se": 135.0,
+    "sse": 157.5,
+    "s": 180.0,
+    "ssw": 202.5,
+    "sw": 225.0,
+    "wsw": 247.5,
+    "w": 270.0,
+    "wnw": 292.5,
+    "nw": 315.0,
+    "nnw": 337.5,
+    "north": 0.0,
+    "northeast": 45.0,
+    "east": 90.0,
+    "southeast": 135.0,
+    "south": 180.0,
+    "southwest": 225.0,
+    "west": 270.0,
+    "northwest": 315.0,
+}
+_DIRECTION_TO_ABBREVIATION = {
+    "north": "N",
+    "northeast": "NE",
+    "east": "E",
+    "southeast": "SE",
+    "south": "S",
+    "southwest": "SW",
+    "west": "W",
+    "northwest": "NW",
+}
+_DIRECTION_PATTERN = "|".join(sorted(_DIRECTION_TO_BEARING, key=len, reverse=True))
+_LOCALITY_OFFSET_COMPONENT = re.compile(
+    rf"^\s*(?P<distance>\d+(?:\.\d+)?)\s*"
+    rf"(?P<unit>km|kilomet(?:er|re)s?|mi|miles?)\.?\s+"
+    rf"(?P<direction>{_DIRECTION_PATTERN})\b\.?(?:\s+of\b)?\s*",
+    re.IGNORECASE,
+)
+_OFFSET_SEPARATOR = re.compile(r"^(?:,\s*|and\s+)(?=\d)", re.IGNORECASE)
+_TRAILING_DISAMBIGUATOR = re.compile(r"\s+\([^()]+\)\s*$")
+
+
+@dataclass(frozen=True, slots=True)
+class LocalityOffset:
+    distance_km: float
+    bearing_degrees: float
+    description: str
+
+
+@dataclass(frozen=True, slots=True)
+class NominatimSearchPlan:
+    locality_name: str
+    offsets: tuple[LocalityOffset, ...] = ()
+    disambiguator_suffix: str = ""
+
+    @property
+    def offset_description(self) -> str | None:
+        if not self.offsets:
+            return None
+        return " then ".join(offset.description for offset in self.offsets)
+
+    @property
+    def standardized_name(self) -> str:
+        if not self.offsets:
+            return f"{self.locality_name}{self.disambiguator_suffix}"
+        offset_text = " ".join(offset.description for offset in self.offsets)
+        return f"{offset_text} {self.locality_name}{self.disambiguator_suffix}"
 
 
 def remove_unused_ignores(location: Location, unused: Collection[str]) -> None:
@@ -424,6 +498,13 @@ def check_likely_synonymous(location: Location, cfg: LintConfig) -> Iterable[str
     )
 
 
+@LINT.add("offset_name")
+def check_offset_name(location: Location, cfg: LintConfig) -> Iterable[str]:
+    search_plan = get_nominatim_search_plan(location)
+    if search_plan.offsets and location.name != search_plan.standardized_name:
+        yield f"distance-offset name should be {search_plan.standardized_name!r}"
+
+
 @LINT.add("period")
 def check_period(location: Location, cfg: LintConfig) -> Iterable[str]:
     if location.min_period is None and location.max_period is not None:
@@ -588,11 +669,19 @@ def check_nominatim_coordinates(location: Location, cfg: LintConfig) -> Iterable
         )
         return
 
-    message = (
-        f"coordinates should be {latitude}, {longitude}, inferred from "
-        f"OpenStreetMap Nominatim {result.category}/{result.feature_type} result "
-        f"{result.display_name!r}"
-    )
+    search_plan = get_nominatim_search_plan(location)
+    if search_plan.offset_description is None:
+        message = (
+            f"coordinates should be {latitude}, {longitude}, inferred from "
+            f"OpenStreetMap Nominatim {result.category}/{result.feature_type} result "
+            f"{result.display_name!r}"
+        )
+    else:
+        message = (
+            f"coordinates should be {latitude}, {longitude}, inferred by applying "
+            f"{search_plan.offset_description} to OpenStreetMap Nominatim "
+            f"{result.category}/{result.feature_type} result {result.display_name!r}"
+        )
     if preferred_over_boundaries:
         message += " (preferred over boundary/administrative matches)"
     if cfg.autofix and not LINT.is_ignoring_lint(location, "nominatim_coordinates"):
@@ -651,15 +740,16 @@ def check_nominatim_coordinate_consistency(
 def _get_nominatim_coordinate_candidates(
     location: Location,
 ) -> list[tuple[nominatim.SearchResult, tuple[str, str, Any]]]:
+    search_plan = get_nominatim_search_plan(location)
     query = get_nominatim_query(location)
     results = nominatim.search(query)
     candidates = []
     for result in results:
-        if not is_sane_nominatim_result(location, result):
+        if not is_sane_nominatim_result(
+            location, result, expected_name=search_plan.locality_name
+        ):
             continue
-        parsed = coordinate_lint.standardize_coordinate_pair(
-            result.latitude, result.longitude
-        )
+        parsed = get_nominatim_result_coordinates(result, offsets=search_plan.offsets)
         if parsed is not None:
             candidates.append((result, parsed))
     candidates.sort(key=lambda candidate: _OSM_CATEGORY_PRIORITY[candidate[0].category])
@@ -685,9 +775,85 @@ def _get_place_candidate_among_administrative_boundaries(
     return place_candidates[0]
 
 
+def get_nominatim_search_plan(location: Location) -> NominatimSearchPlan:
+    name = location.name
+    disambiguators: list[str] = []
+    while match := _TRAILING_DISAMBIGUATOR.search(name):
+        disambiguators.insert(0, match.group(0).strip())
+        name = name[: match.start()]
+    disambiguator_suffix = f" {' '.join(disambiguators)}" if disambiguators else ""
+
+    remaining = name
+    offsets = []
+    while match := _LOCALITY_OFFSET_COMPONENT.match(remaining):
+        distance_text = match.group("distance")
+        unit = match.group("unit").lower()
+        direction = match.group("direction").lower()
+        distance = float(distance_text)
+        if unit.startswith("mi"):
+            distance_km = distance * _MILES_TO_KILOMETRES
+            display_unit = "mi"
+        else:
+            distance_km = distance
+            display_unit = "km"
+        offsets.append(
+            LocalityOffset(
+                distance_km=distance_km,
+                bearing_degrees=_DIRECTION_TO_BEARING[direction],
+                description=(
+                    f"{distance_text} {display_unit} "
+                    f"{_DIRECTION_TO_ABBREVIATION.get(direction, direction.upper())}"
+                ),
+            )
+        )
+        remaining = remaining[match.end() :]
+        remaining = _OFFSET_SEPARATOR.sub("", remaining)
+
+    locality_name = remaining.strip()
+    if offsets and locality_name:
+        offsets.sort(key=_locality_offset_sort_key)
+        return NominatimSearchPlan(locality_name, tuple(offsets), disambiguator_suffix)
+    return NominatimSearchPlan(name, disambiguator_suffix=disambiguator_suffix)
+
+
+def _locality_offset_sort_key(offset: LocalityOffset) -> tuple[int, float]:
+    if offset.bearing_degrees in {0, 180}:
+        axis_order = 0
+    elif offset.bearing_degrees in {90, 270}:
+        axis_order = 1
+    else:
+        axis_order = 2
+    return axis_order, offset.bearing_degrees
+
+
+def get_nominatim_result_coordinates(
+    result: nominatim.SearchResult, *, offsets: tuple[LocalityOffset, ...] = ()
+) -> tuple[str, str, Any] | None:
+    parsed = coordinate_lint.standardize_coordinate_pair(
+        result.latitude, result.longitude
+    )
+    if parsed is None or not offsets:
+        return parsed
+    point = parsed[2].point
+    if point is None:
+        return None
+    for offset in offsets:
+        point = coordinate_lint.move_point(
+            point, offset.distance_km, offset.bearing_degrees
+        )
+    latitude = _format_inferred_decimal_coordinate(point.latitude)
+    longitude = _format_inferred_decimal_coordinate(point.longitude)
+    return coordinate_lint.standardize_coordinate_pair(latitude, longitude)
+
+
+def _format_inferred_decimal_coordinate(value: float) -> str:
+    return f"{value:.6f}".rstrip("0").rstrip(".")
+
+
 def get_nominatim_query(location: Location) -> str:
-    components = [location.name]
-    seen = {helpers.simplify_string(location.name, clean_words=False)}
+    locality_name = get_nominatim_search_plan(location).locality_name
+    components = [locality_name]
+    seen = {helpers.simplify_string(locality_name, clean_words=False)}
     for region in (location.region, *location.region.all_parents()):
         if region.kind not in _SEARCH_REGION_KINDS:
             continue
@@ -700,13 +866,18 @@ def get_nominatim_query(location: Location) -> str:
 
 
 def is_sane_nominatim_result(
-    location: Location, result: nominatim.SearchResult
+    location: Location,
+    result: nominatim.SearchResult,
+    *,
+    expected_name: str | None = None,
 ) -> bool:
     if result.category not in _GEOCODABLE_OSM_CATEGORIES:
         return False
+    if expected_name is None:
+        expected_name = get_nominatim_search_plan(location).locality_name
     if helpers.simplify_string(
         result.name, clean_words=False
-    ) != helpers.simplify_string(location.name, clean_words=False):
+    ) != helpers.simplify_string(expected_name, clean_words=False):
         return False
 
     address_names = {

@@ -6,9 +6,11 @@ from typing import cast
 import pytest
 
 from taxonomy.db import coordinate_lint
+from taxonomy.db.constants import AgeClass, SpecimenOrgan
 from taxonomy.db.models.base import LintConfig
+from taxonomy.db.models.location import Location
 
-from .lint import check_coordinates, parse_date
+from .lint import check_coordinates, check_type_locality_age, parse_date
 from .name import Name, TypeTag
 
 
@@ -65,3 +67,94 @@ def test_name_coordinate_range_matches_location(
     monkeypatch.setattr(coordinate_lint, "check_extent_in_region", lambda *_: ())
 
     assert list(check_coordinates(name, LintConfig())) == []
+
+
+def _location_with_age(period_name: str, youngest_age: int) -> Location:
+    period = SimpleNamespace(name=period_name, get_min_age=lambda: youngest_age)
+    return cast(
+        Location, SimpleNamespace(min_period=period, max_period=period, min_age=None)
+    )
+
+
+def _name_with_age(
+    taxon_age: AgeClass, location: Location, *, organs: tuple[SpecimenOrgan, ...] = ()
+) -> Name:
+    tags = tuple(TypeTag.Organ(organ) for organ in organs)
+    name = SimpleNamespace(
+        type_locality=location,
+        taxon=SimpleNamespace(age=taxon_age),
+        type_tags=tags,
+        get_tags=lambda tags, tag_type: (
+            tag for tag in tags if isinstance(tag, tag_type)
+        ),
+    )
+    return cast(Name, name)
+
+
+def test_name_recent_type_locality_requires_recent_taxon() -> None:
+    location = _location_with_age("Recent", 0)
+
+    assert (
+        list(
+            check_type_locality_age(
+                _name_with_age(AgeClass.extant, location), LintConfig()
+            )
+        )
+        == []
+    )
+    messages = list(
+        check_type_locality_age(_name_with_age(AgeClass.fossil, location), LintConfig())
+    )
+
+    assert len(messages) == 1
+    assert "is Recent" in messages[0]
+    assert "has age fossil" in messages[0]
+
+
+@pytest.mark.parametrize("organ", [SpecimenOrgan.skin, SpecimenOrgan.in_alcohol])
+def test_name_recent_organ_conflicts_with_fossil_locality(organ: SpecimenOrgan) -> None:
+    name = _name_with_age(
+        AgeClass.extant, _location_with_age("Pleistocene", 11_700), organs=(organ,)
+    )
+
+    messages = list(check_type_locality_age(name, LintConfig()))
+
+    assert len(messages) == 1
+    assert organ.name.replace("_", " ") in messages[0]
+    assert "indicate a Recent type specimen" in messages[0]
+
+
+def test_name_extant_taxon_may_have_pleistocene_type_locality() -> None:
+    name = _name_with_age(AgeClass.extant, _location_with_age("Pleistocene", 11_700))
+
+    assert list(check_type_locality_age(name, LintConfig())) == []
+
+
+def test_name_mixed_recent_fossil_locality_is_left_alone() -> None:
+    recent = SimpleNamespace(name="Recent", get_min_age=lambda: 0)
+    pleistocene = SimpleNamespace(name="Pleistocene", get_min_age=lambda: 11_700)
+    location = cast(
+        Location,
+        SimpleNamespace(min_period=recent, max_period=pleistocene, min_age=None),
+    )
+    name = _name_with_age(AgeClass.extant, location, organs=(SpecimenOrgan.skin,))
+
+    assert list(check_type_locality_age(name, LintConfig())) == []
+
+
+def test_name_extant_taxon_conflicts_with_pre_pleistocene_type_locality() -> None:
+    name = _name_with_age(
+        AgeClass.recently_extinct, _location_with_age("Pliocene", 2_590_000)
+    )
+
+    messages = list(check_type_locality_age(name, LintConfig()))
+
+    assert len(messages) == 1
+    assert "is pre-Pleistocene" in messages[0]
+    assert "recently extinct taxon" in messages[0]
+
+
+def test_name_fossil_taxon_allows_pre_pleistocene_type_locality() -> None:
+    name = _name_with_age(AgeClass.fossil, _location_with_age("Pliocene", 2_590_000))
+
+    assert list(check_type_locality_age(name, LintConfig())) == []

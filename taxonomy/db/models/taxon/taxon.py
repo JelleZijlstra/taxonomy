@@ -7,6 +7,7 @@ import sys
 from collections import Counter, defaultdict
 from collections.abc import Callable, Container, Iterable, Sequence
 from functools import lru_cache
+from pathlib import Path
 from typing import IO, Any, ClassVar, Self, assert_never, cast
 
 import clirm
@@ -30,6 +31,7 @@ from taxonomy.db.models.article import Article
 from taxonomy.db.models.base import ADTField, BaseModel, LintConfig, TextOrNullField
 from taxonomy.db.models.fill_data import fill_data_for_names
 from taxonomy.db.models.location import LocationStatus
+from taxonomy.svg_map import MapPoint
 
 
 class _OccurrenceGetter:
@@ -748,6 +750,8 @@ class Taxon(BaseModel):
             "display_occurrences": lambda: self.display(
                 full=False, show_occurrences=True
             ),
+            "display_coordinates": self.display_coordinates,
+            "plot_coordinates": self.plot_coordinates,
             "add_type_identical": lambda: self.base_name._add_type_identical_callback(),
             "stats": self.stats,
             "fill_citation_group": self.fill_citation_group,
@@ -769,6 +773,26 @@ class Taxon(BaseModel):
             "find_earlier_usages": self.find_earlier_usages,
             "find_missing_name_combinations": self.find_missing_name_combinations,
         }
+
+    def get_coordinates(self) -> list[MapPoint]:
+        from . import coordinates
+
+        return coordinates.get_coordinates(self)
+
+    def display_coordinates(self) -> list[MapPoint]:
+        from . import coordinates
+
+        return coordinates.display_coordinates(self)
+
+    def write_coordinate_map(self, output_path: Path) -> Path:
+        from . import coordinates
+
+        return coordinates.write_map(self, output_path)
+
+    def plot_coordinates(self) -> Path | None:
+        from . import coordinates
+
+        return coordinates.plot_coordinates(self)
 
     def _change_status(self) -> None:
         status = getinput.get_enum_member(Status, "to status> ")

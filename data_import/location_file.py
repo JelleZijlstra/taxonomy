@@ -182,15 +182,23 @@ def iter_mapped_location_names(entries: Iterable[lib.CEDict]) -> Iterable[str]:
                 yield mapped_location
 
 
+def _locations_with_name(name: str) -> list[models.Location]:
+    return list(models.Location.select().filter(models.Location.name == name))
+
+
 def _existing_location(name: str) -> models.Location | None:
-    candidates = list(models.Location.select().filter(models.Location.name == name))
-    if len(candidates) != 1:
-        return None
-    location = candidates[0]
-    if location.deleted is LocationStatus.alias:
-        return location.parent
-    if location.deleted is LocationStatus.valid:
-        return location
+    # Location.format() applies clean_string() after creation. On a retry, look
+    # through that normalization as well as preserving exact-name precedence.
+    lookup_names = dict.fromkeys((name, helpers.clean_string(name)))
+    for lookup_name in lookup_names:
+        candidates = _locations_with_name(lookup_name)
+        if len(candidates) != 1:
+            continue
+        location = candidates[0]
+        if location.deleted is LocationStatus.alias:
+            return location.parent
+        if location.deleted is LocationStatus.valid:
+            return location
     return None
 
 

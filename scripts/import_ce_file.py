@@ -44,16 +44,11 @@ def main() -> None:
         help="write to the database; without this flag, only show a dry run",
     )
     parser.add_argument("--verbose", action="store_true")
-    parser.add_argument(
-        "--allow-imperfect-matches",
-        action="store_true",
-        help="permit ambiguous or unrecognized Name mappings during --apply",
-    )
     args = parser.parse_args()
 
     entries = ce_file.read_ce_file(args.ce_file)
     entries = ce_file.validate_structure(entries)
-    clean = ce_file.print_validation_report(entries)
+    ce_file.print_validation_report(entries)
     location_path = args.location_file or location_file.companion_path(args.ce_file)
     if args.location_file is not None or location_path.exists():
         proposal_report = location_file.read_location_file_report(location_path)
@@ -70,10 +65,6 @@ def main() -> None:
     occurrence_import.print_occurrence_report(entries, location_plan.locations)
     if args.apply and not location_plan.is_clean:
         raise SystemExit("Refusing import: resolve Location proposal conflicts")
-    if args.apply and not clean and not args.allow_imperfect_matches:
-        raise SystemExit(
-            "Refusing import: fix ambiguous or unrecognized names, or explicitly review them and pass --allow-imperfect-matches"
-        )
     if not args.apply:
         print("Dry run only. Re-run with --apply after reviewing this output.")
         list(

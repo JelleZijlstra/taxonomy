@@ -6,6 +6,7 @@ from typing import cast
 import pytest
 
 from taxonomy.db.constants import (
+    AgeClass,
     AltitudeUnit,
     ObservationKind,
     OccurrenceBasis,
@@ -21,6 +22,7 @@ from taxonomy.db.models.occurrence_record import (
 from taxonomy.db.models.occurrence_record.lint import (
     check_basis_tags,
     check_coordinate_consistency,
+    check_location_age,
     check_missing_location,
     check_missing_taxon,
     check_source_data_tags,
@@ -93,6 +95,80 @@ def test_location_lint_autofills_from_hint(monkeypatch: pytest.MonkeyPatch) -> N
     assert list(check_missing_location(record, LintConfig(autofix=True))) == []
     assert record.location is location
     assert record.tags == ()
+
+
+def _location_with_age(period_name: str, youngest_age: int) -> Location:
+    period = SimpleNamespace(name=period_name, get_min_age=lambda: youngest_age)
+    return cast(
+        Location, SimpleNamespace(min_period=period, max_period=period, min_age=None)
+    )
+
+
+def _taxon_with_age(age: AgeClass) -> Taxon:
+    return cast(Taxon, SimpleNamespace(age=age))
+
+
+def test_occurrence_recent_location_requires_recent_taxon() -> None:
+    location = _location_with_age("Recent", 0)
+    record = _record(
+        location=location,
+        taxon=_taxon_with_age(AgeClass.holocene),
+        basis=OccurrenceBasis.voucher,
+    )
+
+    messages = list(check_location_age(record, LintConfig()))
+
+    assert len(messages) == 1
+    assert "is Recent" in messages[0]
+    assert "has age holocene" in messages[0]
+
+
+def test_occurrence_recent_location_allows_recently_extinct_taxon() -> None:
+    record = _record(
+        location=_location_with_age("Recent", 0),
+        taxon=_taxon_with_age(AgeClass.recently_extinct),
+        basis=OccurrenceBasis.voucher,
+    )
+
+    assert list(check_location_age(record, LintConfig())) == []
+
+
+def test_observation_requires_recent_location() -> None:
+    record = _record(
+        location=_location_with_age("Pleistocene", 11_700),
+        taxon=_taxon_with_age(AgeClass.extant),
+        basis=OccurrenceBasis.observation,
+    )
+
+    messages = list(check_location_age(record, LintConfig()))
+
+    assert len(messages) == 1
+    assert "observation" in messages[0]
+    assert "expected to be Recent" in messages[0]
+
+
+def test_extant_voucher_may_come_from_pleistocene_location() -> None:
+    record = _record(
+        location=_location_with_age("Pleistocene", 11_700),
+        taxon=_taxon_with_age(AgeClass.extant),
+        basis=OccurrenceBasis.voucher,
+    )
+
+    assert list(check_location_age(record, LintConfig())) == []
+
+
+def test_extant_occurrence_conflicts_with_pre_pleistocene_location() -> None:
+    record = _record(
+        location=_location_with_age("Pliocene", 2_590_000),
+        taxon=_taxon_with_age(AgeClass.extant),
+        basis=OccurrenceBasis.listing,
+    )
+
+    messages = list(check_location_age(record, LintConfig()))
+
+    assert len(messages) == 1
+    assert "is pre-Pleistocene" in messages[0]
+    assert "extant taxon" in messages[0]
 
 
 @pytest.mark.parametrize(
@@ -277,6 +353,7 @@ def test_occurrence_record_lint_registry_labels() -> None:
         "missing_location",
         "location_hint",
         "location_mapping",
+        "location_age",
         "basis_tags",
         "source_data",
         "coordinate_location",

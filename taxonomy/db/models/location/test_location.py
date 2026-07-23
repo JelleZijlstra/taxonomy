@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import sqlite3
 from types import SimpleNamespace
 from typing import cast
@@ -339,6 +340,7 @@ def _nominatim_result(
     *,
     latitude: str,
     longitude: str,
+    name: str = "Nicasio",
     category: str = "place",
     feature_type: str = "hamlet",
     county: str = "Marin County",
@@ -347,12 +349,12 @@ def _nominatim_result(
     return nominatim.SearchResult(
         latitude=latitude,
         longitude=longitude,
-        name="Nicasio",
+        name=name,
         display_name=display_name,
         category=category,
         feature_type=feature_type,
         address={
-            feature_type: "Nicasio",
+            feature_type: name,
             "county": county,
             "state": "California",
             "country": "United States",
@@ -478,6 +480,208 @@ def test_location_infers_coordinates_from_nominatim(
     assert messages == []
     assert loc.latitude == "38.0615885°N"
     assert loc.longitude == "122.6985975°W"
+    search.assert_called_once_with("Nicasio, Marin County, California, United States")
+
+
+def test_nominatim_search_removes_location_disambiguator(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    loc = _location_without_coordinates(
+        name="Nicasio (Marin County, California)", region=_marin_county()
+    )
+    search = Mock(
+        return_value=[
+            _nominatim_result(latitude="38.0615885", longitude="-122.6985975")
+        ]
+    )
+    monkeypatch.setattr(nominatim, "search", search)
+    monkeypatch.setattr(model_lint, "is_network_available", lambda: True)
+    monkeypatch.setattr(
+        coordinate_lint, "check_extent_in_region", lambda extent, region: ()
+    )
+
+    messages = list(
+        location_lint.check_nominatim_coordinates(loc, LintConfig(autofix=True))
+    )
+
+    assert messages == []
+    assert loc.latitude == "38.0615885°N"
+    assert loc.longitude == "122.6985975°W"
+    search.assert_called_once_with("Nicasio, Marin County, California, United States")
+
+
+@pytest.mark.parametrize(
+    ("name", "base_name", "offsets"),
+    [
+        ("8 mi E Monterey", "Monterey", ((8 * 1.609344, 90),)),
+        ("1.5 km NW Monterey", "Monterey", ((1.5, 315),)),
+        ("1 mi W 2 mi S Monterey", "Monterey", ((2 * 1.609344, 180), (1.609344, 270))),
+        ("3 mi E of Boise", "Boise", ((3 * 1.609344, 90),)),
+        ("10 miles south of Coy Inlet", "Coy Inlet", ((10 * 1.609344, 180),)),
+        (
+            "25 miles northeast of Gur Tung Khara Usu",
+            "Gur Tung Khara Usu",
+            ((25 * 1.609344, 45),),
+        ),
+    ],
+)
+def test_parse_nominatim_locality_offsets(
+    name: str, base_name: str, offsets: tuple[tuple[float, float], ...]
+) -> None:
+    loc = _location_without_coordinates(name=name)
+
+    plan = location_lint.get_nominatim_search_plan(loc)
+
+    assert plan.locality_name == base_name
+    assert (
+        tuple((offset.distance_km, offset.bearing_degrees) for offset in plan.offsets)
+        == offsets
+    )
+
+
+@pytest.mark.parametrize("name", ["15 Mile Creek", "3.7 km from Sina"])
+def test_nominatim_offset_parser_leaves_unsupported_names_alone(name: str) -> None:
+    loc = _location_without_coordinates(name=name)
+
+    plan = location_lint.get_nominatim_search_plan(loc)
+
+    assert plan.locality_name == name
+    assert plan.offsets == ()
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        ("3 mi E of Boise", "3 mi E Boise"),
+        ("10 miles south of Coy Inlet", "10 mi S Coy Inlet"),
+        ("1 kilometer NW Monterey", "1 km NW Monterey"),
+        ("1 mi W 2 mi S Monterey", "2 mi S 1 mi W Monterey"),
+        ("1 mi W, 2 km S of Monterey", "2 km S 1 mi W Monterey"),
+        (
+            "8 miles east of Monterey (Monterey County, California)",
+            "8 mi E Monterey (Monterey County, California)",
+        ),
+    ],
+)
+def test_location_offset_name_lint(name: str, expected: str) -> None:
+    loc = _location_without_coordinates(name=name)
+
+    messages = list(location_lint.check_offset_name(loc, LintConfig()))
+
+    assert len(messages) == 1
+    assert f"distance-offset name should be {expected!r}" in messages[0]
+
+
+def test_location_offset_name_lint_accepts_canonical_name() -> None:
+    loc = _location_without_coordinates(name="2 mi S 1 mi W Monterey")
+
+    assert list(location_lint.check_offset_name(loc, LintConfig())) == []
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "10 mi above lower powerhouse, Big Cottonwood Canyon",
+        "15 Mile Creek",
+        "18 Mile District",
+        "3.7 km from Sina",
+    ],
+)
+def test_location_offset_name_lint_ignores_unsupported_names(name: str) -> None:
+    loc = _location_without_coordinates(name=name)
+
+    assert list(location_lint.check_offset_name(loc, LintConfig())) == []
+
+
+def test_location_applies_nominatim_locality_offset(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    country = _make_region("United States", RegionKind.country)
+    state = _make_region("California", RegionKind.state, country)
+    county = _make_region("Monterey County, California", RegionKind.county, state)
+    loc = _location_without_coordinates(name="8 mi E Monterey", region=county)
+    base_latitude = "36.600238"
+    base_longitude = "-121.894676"
+    search = Mock(
+        return_value=[
+            _nominatim_result(
+                name="Monterey",
+                latitude=base_latitude,
+                longitude=base_longitude,
+                county="Monterey County",
+                feature_type="city",
+                display_name="Monterey, Monterey County, California, United States",
+            )
+        ]
+    )
+    monkeypatch.setattr(nominatim, "search", search)
+    monkeypatch.setattr(model_lint, "is_network_available", lambda: True)
+    monkeypatch.setattr(
+        coordinate_lint, "check_extent_in_region", lambda extent, region: ()
+    )
+
+    messages = list(
+        location_lint.check_nominatim_coordinates(loc, LintConfig(autofix=True))
+    )
+
+    assert messages == []
+    assert loc.latitude is not None
+    assert loc.longitude is not None
+    inferred = coordinate_lint.make_point(loc.latitude, loc.longitude)
+    base = coordinate_lint.make_point(base_latitude, base_longitude)
+    assert inferred is not None
+    assert base is not None
+    assert math.isclose(
+        coordinate_lint.distance_km(base, inferred), 8 * 1.609344, abs_tol=0.001
+    )
+    assert inferred.longitude > base.longitude
+    assert "applying 8 mi E" in capsys.readouterr().out
+    search.assert_called_once_with(
+        "Monterey, Monterey County, California, United States"
+    )
+
+
+def test_coordinate_evidence_shows_nominatim_locality_offset(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    loc = _location_without_coordinates(name="8 mi E Nicasio", region=_marin_county())
+    monkeypatch.setattr(
+        nominatim,
+        "search",
+        Mock(
+            return_value=[
+                _nominatim_result(latitude="38.0615885", longitude="-122.6985975")
+            ]
+        ),
+    )
+
+    Location.coordinate_evidence(loc)
+
+    output = capsys.readouterr().out
+    assert "Query: Nicasio, Marin County, California, United States" in output
+    assert "[accepted] place/hamlet" in output
+    assert "After 8 mi E:" in output
+
+
+def test_nominatim_consistency_uses_offset_coordinates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    loc = _location_without_coordinates(name="8 mi E Nicasio", region=_marin_county())
+    result = _nominatim_result(latitude="38.0615885", longitude="-122.6985975")
+    plan = location_lint.get_nominatim_search_plan(loc)
+    inferred = location_lint.get_nominatim_result_coordinates(
+        result, offsets=plan.offsets
+    )
+    assert inferred is not None
+    loc.latitude, loc.longitude = inferred[:2]
+    search = Mock(return_value=[result])
+    monkeypatch.setattr(nominatim, "search", search)
+    monkeypatch.setattr(model_lint, "is_network_available", lambda: True)
+
+    assert (
+        list(location_lint.check_nominatim_coordinate_consistency(loc, LintConfig()))
+        == []
+    )
     search.assert_called_once_with("Nicasio, Marin County, California, United States")
 
 

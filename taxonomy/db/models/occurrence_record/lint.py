@@ -6,10 +6,15 @@ from collections.abc import Collection, Iterable
 from dataclasses import replace
 
 from taxonomy.db import coordinate_lint, helpers, models
-from taxonomy.db.constants import AltitudeUnit, OccurrenceBasis
+from taxonomy.db.constants import AgeClass, AltitudeUnit, OccurrenceBasis
 from taxonomy.db.models.base import LintConfig
 from taxonomy.db.models.lint import IgnoreLint, Lint
 from taxonomy.db.models.location import Location, LocationStatus
+from taxonomy.db.models.location.age import (
+    is_non_recent_location,
+    is_pre_pleistocene_location,
+    is_recent_location,
+)
 from taxonomy.db.models.taxon import Taxon
 
 from .model import OccurrenceRecord, OccurrenceRecordTag
@@ -25,6 +30,7 @@ _ELEVATION = re.compile(
     re.IGNORECASE,
 )
 _ISO_DATE = re.compile(r"^(?P<year>\d{4})(?:-(?P<month>\d{2})(?:-(?P<day>\d{2}))?)?$")
+_RECENT_TAXON_AGES = frozenset({AgeClass.extant, AgeClass.recently_extinct})
 
 
 def remove_unused_ignores(record: OccurrenceRecord, unused: Collection[str]) -> None:
@@ -169,6 +175,37 @@ def check_location_mapping(record: OccurrenceRecord, cfg: LintConfig) -> Iterabl
     inferred = get_inferred_location(record)
     if inferred is not None and inferred != record.location:
         yield f"location {record.location} differs from LocationHint mapping {inferred}"
+
+
+@LINT.add("location_age")
+def check_location_age(record: OccurrenceRecord, cfg: LintConfig) -> Iterable[str]:
+    if record.location is None or record.taxon is None:
+        return
+
+    if is_recent_location(record.location):
+        if record.taxon.age not in _RECENT_TAXON_AGES:
+            yield (
+                f"location {record.location} is Recent, but taxon {record.taxon} "
+                f"has age {record.taxon.age.name.replace('_', ' ')}"
+            )
+        return
+
+    if record.taxon.age not in _RECENT_TAXON_AGES or not is_non_recent_location(
+        record.location
+    ):
+        return
+
+    if record.basis is OccurrenceBasis.observation:
+        yield (
+            f"location {record.location} is non-Recent, but an observation of "
+            f"{record.taxon} is expected to be Recent"
+        )
+    if is_pre_pleistocene_location(record.location):
+        yield (
+            f"location {record.location} is pre-Pleistocene, but the occurrence "
+            f"is assigned to {record.taxon.age.name.replace('_', ' ')} taxon "
+            f"{record.taxon}"
+        )
 
 
 @LINT.add("basis_tags")

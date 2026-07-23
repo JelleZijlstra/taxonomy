@@ -73,6 +73,11 @@ from taxonomy.db.models.collection import (
 )
 from taxonomy.db.models.item_file import ItemFile
 from taxonomy.db.models.lint import IgnoreLint, Lint
+from taxonomy.db.models.location.age import (
+    is_non_recent_location,
+    is_pre_pleistocene_location,
+    is_recent_location,
+)
 from taxonomy.db.models.name_complex import (
     NameComplex,
     NameEnding,
@@ -115,6 +120,7 @@ from .type_specimen import (
 
 T = TypeVar("T")
 ADTT = TypeVar("ADTT", bound=adt.ADT)
+_RECENT_TAXON_AGES = frozenset({AgeClass.extant, AgeClass.recently_extinct})
 
 
 def remove_unused_ignores(nam: Name, unused: Container[str]) -> None:
@@ -1735,6 +1741,43 @@ def check_coordinates(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 f"{distance:.1f} km from Location {nam.type_locality} coordinates "
                 f"{nam.type_locality.latitude}, {nam.type_locality.longitude}"
             )
+
+
+@LINT.add("type_locality_age")
+def check_type_locality_age(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    location = nam.type_locality
+    if location is None:
+        return
+
+    if is_recent_location(location):
+        if nam.taxon.age not in _RECENT_TAXON_AGES:
+            yield (
+                f"type locality {location} is Recent, but taxon {nam.taxon} "
+                f"has age {nam.taxon.age.name.replace('_', ' ')}"
+            )
+        return
+
+    if nam.taxon.age not in _RECENT_TAXON_AGES or not is_non_recent_location(location):
+        return
+
+    recent_organs = sorted(
+        {
+            tag.organ.name.replace("_", " ")
+            for tag in nam.type_tags
+            if isinstance(tag, TypeTag.Organ)
+            and tag.organ in {SpecimenOrgan.skin, SpecimenOrgan.in_alcohol}
+        }
+    )
+    if recent_organs:
+        yield (
+            f"type locality {location} is non-Recent, but Organ tag(s) "
+            f"{', '.join(recent_organs)} indicate a Recent type specimen"
+        )
+    if is_pre_pleistocene_location(location):
+        yield (
+            f"type locality {location} is pre-Pleistocene, but the name belongs "
+            f"to {nam.taxon.age.name.replace('_', ' ')} taxon {nam.taxon}"
+        )
 
 
 @LINT.add("type_locality_strict")

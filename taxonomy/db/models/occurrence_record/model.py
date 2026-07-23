@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import enum
 import subprocess
 from collections.abc import Iterable
 from typing import Any, ClassVar, NotRequired
@@ -23,6 +24,12 @@ from taxonomy.db.models.location import Location
 from taxonomy.db.models.taxon import Taxon
 
 
+class OccurrenceRecordStatus(enum.IntEnum):
+    valid = 0
+    deleted = 1
+    alias = 2
+
+
 class OccurrenceRecord(BaseModel):
     creation_event = events.Event["OccurrenceRecord"]()
     save_event = events.Event["OccurrenceRecord"]()
@@ -42,6 +49,7 @@ class OccurrenceRecord(BaseModel):
     taxon = Field[Taxon | None]("taxon_id", related_name="occurrence_records")
     location = Field[Location | None]("location_id", related_name="occurrence_records")
     tags = ADTField["OccurrenceRecordTag"](is_ordered=False)
+    status = Field[OccurrenceRecordStatus]()
 
     def __repr__(self) -> str:
         taxon = self.taxon or self.classification_entry.name

@@ -338,6 +338,7 @@ class Location(BaseModel):
         reference_extent = location_parsed[2] if location_parsed is not None else None
 
         print("\n  Nominatim candidates:")
+        search_plan = location_lint.get_nominatim_search_plan(self)
         query = location_lint.get_nominatim_query(self)
         print(f"    Query: {query}")
         try:
@@ -372,6 +373,19 @@ class Location(BaseModel):
                 )
                 if address:
                     print(f"       Address: {address}")
+                if search_plan.offset_description is not None:
+                    offset_coordinates = location_lint.get_nominatim_result_coordinates(
+                        result, offsets=search_plan.offsets
+                    )
+                    if offset_coordinates is not None:
+                        print(
+                            f"       After {search_plan.offset_description}: "
+                            + _format_coordinate_evidence(
+                                offset_coordinates[0],
+                                offset_coordinates[1],
+                                reference_extent=reference_extent,
+                            )
+                        )
 
         print("\n  Type-locality Names:")
         found_type_locality_evidence = False
@@ -455,6 +469,26 @@ class Location(BaseModel):
         for message in messages:
             print(message)
 
+    def edit_imprecise_localities(self) -> None:
+        nams = list(
+            models.Name.add_validity_check(self.type_localities).filter(
+                ~models.Name.type_tags.contains(
+                    f"[{models.name.TypeTag.ImpreciseLocality._tag},"
+                )
+            )
+        )
+        if not nams:
+            print(f"{self}: no type-locality Names to edit")
+            return
+        print(f"{self}: editing {len(nams)} type-locality Names")
+        for nam in nams:
+            if nam.type_locality != self or nam.has_type_tag(
+                models.name.TypeTag.ImpreciseLocality
+            ):
+                continue
+            nam.display()
+            nam.edit()
+
     def get_adt_callbacks(self) -> getinput.CallbackMap:
         callbacks = super().get_adt_callbacks()
         article_callbacks = (
@@ -469,6 +503,7 @@ class Location(BaseModel):
             "coordinate_evidence": self.coordinate_evidence,
             "infer_coordinates": self.infer_coordinates,
             "open_coordinates": self.open_coordinates,
+            "edit_imprecise_localities": self.edit_imprecise_localities,
         }
 
     def edit(self) -> None:
@@ -557,7 +592,7 @@ class Location(BaseModel):
         )
 
     def should_be_specified(self) -> bool:
-        if self.region.has_children():
+        if self.region.has_children() or self.is_general():
             return True
         if (
             self.min_period == self.max_period

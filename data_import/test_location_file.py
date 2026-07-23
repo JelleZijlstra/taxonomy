@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 from typing import cast
 
 import pytest
@@ -8,6 +9,7 @@ import pytest
 from data_import import lib, location_file
 from taxonomy.db.constants import OccurrenceBasis, Rank
 from taxonomy.db.models import Article, Period, Region
+from taxonomy.db.models.location import Location, LocationStatus
 
 
 def test_companion_path() -> None:
@@ -60,6 +62,24 @@ def test_build_plan_reports_missing_proposal(monkeypatch: pytest.MonkeyPatch) ->
     assert plan.statuses == {"Port locality, Ecuador": "unresolved"}
     assert plan.is_clean
     assert len(plan.warnings) == 1
+
+
+def test_existing_location_allows_formatted_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    location = cast(
+        Location, SimpleNamespace(deleted=LocationStatus.valid, parent=None)
+    )
+    calls = []
+
+    def locations_with_name(name: str) -> list[Location]:
+        calls.append(name)
+        return [location] if name == "Mary's Fancy, Sint Maarten" else []
+
+    monkeypatch.setattr(location_file, "_locations_with_name", locations_with_name)
+
+    assert location_file._existing_location("Mary’s Fancy, Sint Maarten") is location
+    assert calls == ["Mary’s Fancy, Sint Maarten", "Mary's Fancy, Sint Maarten"]
 
 
 def test_location_file_report_collects_and_prints_all_errors(

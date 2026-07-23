@@ -9,7 +9,7 @@ from collections import Counter, defaultdict, deque
 from collections.abc import Callable, Collection, Container, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Generic, NamedTuple, NotRequired, Self, TypedDict, TypeVar
+from typing import Any, Generic, NamedTuple, NotRequired, Self, TypedDict, TypeVar, cast
 
 import Levenshtein
 import unidecode
@@ -2050,6 +2050,49 @@ def get_existing(
     return existing[0]
 
 
+def get_existing_for_import(
+    ce_dict: CEDict, *, strict: bool = False
+) -> ClassificationEntry | None:
+    """Find an entry, allowing for normalization or an incomplete earlier import.
+
+    ``format_ces_in_article()`` can replace a source page range with the canonical
+    page of the mapped Name.  A subsequent import still needs to recognize that
+    entry, both to avoid creating a duplicate and to attach occurrence records. An
+    interrupted or older import may also have left source fields null; accept those
+    nulls when every populated identity field remains compatible.
+    """
+    existing = get_existing(ce_dict, strict=strict)
+    if existing is not None or not strict:
+        return existing
+    ce_dict_without_page = cast(
+        CEDict, {key: value for key, value in ce_dict.items() if key != "page"}
+    )
+    if "page" in ce_dict:
+        existing = get_existing(ce_dict_without_page, strict=True)
+        if existing is not None:
+            return existing
+
+    # An interrupted or earlier partial import may have created the right entry
+    # without all of the source fields that strict matching normally checks. Match
+    # one such entry when every populated field is compatible, so the import can
+    # enrich it below. A populated conflict must still remain unmatched.
+    existing = get_existing(ce_dict_without_page, strict=False)
+    if existing is None:
+        return None
+    if "authority" in ce_dict:
+        authority = helpers.clean_string(ce_dict["authority"])
+        if existing.authority is not None and existing.authority != authority:
+            return None
+    if "year" in ce_dict:
+        year = ce_dict["year"]
+        if existing.year is not None and existing.year != year:
+            return None
+    if parent_name := ce_dict.get("parent"):
+        if existing.parent is not None and existing.parent.name != parent_name:
+            return None
+    return existing
+
+
 def get_parent(ce_dict: CEDict, *, dry_run: bool) -> ClassificationEntry | None:
     parent_rank = ce_dict.get("parent_rank")
     parent_name = ce_dict.get("parent")
@@ -2077,6 +2120,27 @@ def get_parent(ce_dict: CEDict, *, dry_run: bool) -> ClassificationEntry | None:
     return None
 
 
+def _serialize_ce_raw_data(ce_dict: CEDict) -> str:
+    """Serialize the fallback raw-data snapshot for a classification entry."""
+
+    def serialize_value(key: str, value: Any) -> Any:
+        if key == "tags":
+            return [
+                {"kind": type(tag).__name__, "data": tag.serialize()} for tag in value
+            ]
+        return value
+
+    return json.dumps(
+        {
+            key: serialize_value(key, value)
+            for key, value in ce_dict.items()
+            if key not in ("article", "occurrences")
+        },
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+
+
 def add_classification_entries(
     names: Iterable[CEDict],
     *,
@@ -2102,15 +2166,7 @@ def add_classification_entries(
         if name.get("raw_data"):
             raw_data = name["raw_data"]
         else:
-            raw_data = json.dumps(
-                {
-                    key: value
-                    for key, value in name.items()
-                    if key not in ("article", "occurrences")
-                },
-                ensure_ascii=False,
-                separators=(",", ":"),
-            )
+            raw_data = _serialize_ce_raw_data(name)
         tags = list(name.get("tags", []))
         if name.get("type_specimen"):
             tags.append(ClassificationEntryTag.TypeSpecimenData(name["type_specimen"]))
@@ -2133,12 +2189,16 @@ def add_classification_entries(
         for key, value in name.get("extra_fields", {}).items():
             value = helpers.interactive_clean_string(value, clean_whitespace=True)
             tags.append(ClassificationEntryTag.StructuredData(key, value))
-        existing = get_existing(name, strict=strict)
+        existing = get_existing_for_import(name, strict=strict)
         parent = get_parent(name, dry_run=dry_run)
         if existing is not None:
             covered_ces.add(existing.id)
             if verbose:
                 print(f"already exists: {existing}")
+            if name.get("raw_data") and not existing.raw_data:
+                print(f"{existing}: adding raw data")
+                if not dry_run:
+                    existing.raw_data = name["raw_data"]  # type: ignore[assignment]
             if page and not existing.page:
                 print(f"{existing}: adding page {page}")
                 if not dry_run:
@@ -2222,10 +2282,10 @@ def add_classification_entries(
     for ce in all_ces:
         if ce.id not in covered_ces:
             print(f"Uncovered: {ce}")
-            if dry_run or not delete_uncovered:
+            if delete_uncovered:
                 print("Delete:", ce)
-            else:
-                ce.delete_instance()
+                if not dry_run:
+                    ce.delete_instance()
 
 
 def flag_unrecognized_names(names: Iterable[CEDict]) -> Iterable[CEDict]:

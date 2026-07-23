@@ -112,7 +112,7 @@ def add_occurrence_records(
 ) -> list[models.OccurrenceRecord]:
     records = []
     for entry, occurrence in iter_occurrences(entries):
-        ce = lib.get_existing(entry, strict=True)
+        ce = lib.get_existing_for_import(entry, strict=True)
         if ce is None:
             raise ValueError(f"ClassificationEntry was not imported: {entry!r}")
         taxon = ce.mapped_name.taxon.resolve_redirect() if ce.mapped_name else None

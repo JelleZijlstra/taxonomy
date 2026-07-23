@@ -1057,8 +1057,16 @@ class Name(BaseModel):
         return cls.select_valid().filter(Name.tags.contains(f"[{tag_cls._tag},"))
 
     @classmethod
+    def without_tag(cls, tag_cls: NameTagCons) -> Query[Self]:
+        return cls.select_valid().filter(~Name.tags.contains(f"[{tag_cls._tag},"))
+
+    @classmethod
     def with_type_tag(cls, tag_cls: TypeTagCons) -> Query[Self]:
         return cls.select_valid().filter(Name.type_tags.contains(f"[{tag_cls._tag},"))
+
+    @classmethod
+    def without_type_tag(cls, tag_cls: TypeTagCons) -> Query[Self]:
+        return cls.select_valid().filter(~Name.type_tags.contains(f"[{tag_cls._tag},"))
 
     def has_type_tag(self, tag_cls: TypeTagCons) -> bool:
         tag_id = tag_cls._tag

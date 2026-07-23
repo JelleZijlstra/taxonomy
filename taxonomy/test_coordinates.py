@@ -145,6 +145,19 @@ def test_distance_km() -> None:
     assert math.isclose(coordinate_lint.distance_km(first, distant), 55.6, abs_tol=0.1)
 
 
+def test_move_point() -> None:
+    origin = coordinates.Point(0, 0)
+    east = coordinate_lint.move_point(origin, 100, 90)
+    north = coordinate_lint.move_point(origin, 100, 0)
+
+    assert math.isclose(coordinate_lint.distance_km(origin, east), 100)
+    assert math.isclose(east.latitude, 0, abs_tol=1e-10)
+    assert east.longitude > 0
+    assert math.isclose(coordinate_lint.distance_km(origin, north), 100)
+    assert math.isclose(north.longitude, 0, abs_tol=1e-10)
+    assert north.latitude > 0
+
+
 def test_extent_distance_km() -> None:
     first = coordinate_lint.make_extent("40°N-41°N", "74°W-73°W")
     overlapping = coordinate_lint.make_extent("40.5°N", "73.5°W")

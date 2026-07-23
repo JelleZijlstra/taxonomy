@@ -1379,7 +1379,7 @@ def fix_general_type_localities_for_region(region: models.Region) -> None:
 def biggest_general_type_localities() -> None:
     counts: Counter[models.Location] = Counter()
     for loc in getinput.print_every_n(
-        models.Location.select_valid(), n=100, label="localities"
+        models.Location.select_valid(), n=1000, label="localities"
     ):
         if not loc.should_be_specified():
             continue

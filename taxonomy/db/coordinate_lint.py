@@ -17,6 +17,7 @@ DEGREES_MINUTES_RE = re.compile(
 )
 
 COORDINATE_TOLERANCE_KM = 5
+EARTH_RADIUS_KM = 6371.0088
 
 
 @dataclass(frozen=True, slots=True)
@@ -128,7 +129,6 @@ def make_point(latitude: str, longitude: str) -> coordinates.Point | None:
 
 def distance_km(first: coordinates.Point, second: coordinates.Point) -> float:
     """Return the great-circle distance between two points in kilometres."""
-    earth_radius_km = 6371.0088
     lat1 = math.radians(first.latitude)
     lat2 = math.radians(second.latitude)
     delta_lat = lat2 - lat1
@@ -137,7 +137,31 @@ def distance_km(first: coordinates.Point, second: coordinates.Point) -> float:
         math.sin(delta_lat / 2) ** 2
         + math.cos(lat1) * math.cos(lat2) * math.sin(delta_lon / 2) ** 2
     )
-    return 2 * earth_radius_km * math.asin(math.sqrt(haversine))
+    return 2 * EARTH_RADIUS_KM * math.asin(math.sqrt(haversine))
+
+
+def move_point(
+    point: coordinates.Point, distance_km: float, bearing_degrees: float
+) -> coordinates.Point:
+    """Move a point along a great-circle path at the given compass bearing."""
+    angular_distance = distance_km / EARTH_RADIUS_KM
+    bearing = math.radians(bearing_degrees)
+    latitude = math.radians(point.latitude)
+    longitude = math.radians(point.longitude)
+
+    destination_latitude = math.asin(
+        math.sin(latitude) * math.cos(angular_distance)
+        + math.cos(latitude) * math.sin(angular_distance) * math.cos(bearing)
+    )
+    destination_longitude = longitude + math.atan2(
+        math.sin(bearing) * math.sin(angular_distance) * math.cos(latitude),
+        math.cos(angular_distance)
+        - math.sin(latitude) * math.sin(destination_latitude),
+    )
+    normalized_longitude = (math.degrees(destination_longitude) + 180) % 360 - 180
+    return coordinates.Point(
+        longitude=normalized_longitude, latitude=math.degrees(destination_latitude)
+    )
 
 
 def extent_distance_km(first: CoordinateExtent, second: CoordinateExtent) -> float:
