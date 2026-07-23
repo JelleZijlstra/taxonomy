@@ -17,7 +17,7 @@ from taxonomy.db.models.location.age import (
 )
 from taxonomy.db.models.taxon import Taxon
 
-from .model import OccurrenceRecord, OccurrenceRecordTag
+from .model import OccurrenceRecord, OccurrenceRecordStatus, OccurrenceRecordTag
 
 _SIGNED_DECIMAL_COORDINATES = re.compile(
     r"^\s*(?P<latitude>[+-]?\d+(?:\.\d+)?)\s*[,;/]\s*"
@@ -25,12 +25,14 @@ _SIGNED_DECIMAL_COORDINATES = re.compile(
 )
 _ELEVATION = re.compile(
     r"^\s*(?:elev(?:ation)?\.?|alt(?:itude)?\.?)?\s*"
+    r"(?P<approximate>~|ca\.?)?\s*"
     r"(?P<elevation>-?\d[\d,]*(?:\.\d+)?(?:\s*[-–]\s*\d[\d,]*(?:\.\d+)?)?)"
     r"\s*(?P<unit>m|met(?:er|re)s?|ft|feet|foot)\.?\s*$",
     re.IGNORECASE,
 )
 _ISO_DATE = re.compile(r"^(?P<year>\d{4})(?:-(?P<month>\d{2})(?:-(?P<day>\d{2}))?)?$")
 _RECENT_TAXON_AGES = frozenset({AgeClass.extant, AgeClass.recently_extinct})
+_SOURCE_COORDINATE_REWRITE_TOLERANCE_KM = 0.001
 
 
 def remove_unused_ignores(record: OccurrenceRecord, unused: Collection[str]) -> None:
@@ -259,6 +261,8 @@ def parse_verbatim_elevation(text: str) -> tuple[str, AltitudeUnit] | None:
         return None
     elevation = re.sub(r"\s*[-–]\s*", "-", match.group("elevation"))
     elevation = elevation.replace(",", "")
+    if match.group("approximate") is not None:
+        elevation = f"~{elevation}"
     unit_text = match.group("unit").lower()
     unit = AltitudeUnit.m if unit_text.startswith("m") else AltitudeUnit.ft
     return elevation, unit
@@ -341,13 +345,61 @@ def _check_verbatim_coordinates(
                 )
             continue
         expected = OccurrenceRecordTag.Coordinates(*parsed)
-        if expected not in normalized:
-            if normalized:
-                yield (f"{tag} parses as {expected}, inconsistent with {normalized}")
+        if expected in normalized:
+            continue
+        if not normalized:
+            yield from _add_inferred_tag(record, expected, tag, cfg)
+            if cfg.autofix:
+                normalized.append(expected)
+            continue
+
+        expected_extent = coordinate_lint.make_extent(*parsed)
+        if expected_extent is None:
+            yield f"cannot parse normalized coordinates from {tag}"
+            continue
+        distances = []
+        for index, normalized_tag in enumerate(normalized):
+            normalized_extent = coordinate_lint.make_extent(
+                normalized_tag.latitude, normalized_tag.longitude
+            )
+            if normalized_extent is not None:
+                distances.append(
+                    (
+                        coordinate_lint.extent_distance_km(
+                            expected_extent, normalized_extent
+                        ),
+                        index,
+                        normalized_tag,
+                        normalized_extent,
+                    )
+                )
+        if not distances:
+            yield f"{tag} parses as {expected}, inconsistent with {normalized}"
+            continue
+        distance, index, closest, closest_extent = min(
+            distances, key=lambda item: item[0]
+        )
+        if distance > coordinate_lint.COORDINATE_TOLERANCE_KM:
+            yield (
+                f"{tag} parses as {expected}, {distance:.1f} km from closest "
+                f"normalized coordinates {closest}"
+            )
+            continue
+        if (
+            distance < _SOURCE_COORDINATE_REWRITE_TOLERANCE_KM
+            and expected_extent.point is not None
+            and closest_extent.point is not None
+        ):
+            message = (
+                f"replace {closest} with {expected} to preserve source coordinate "
+                "format"
+            )
+            if cfg.autofix:
+                print(f"{record}: {message}")
+                _replace_tag(record, closest, expected)
+                normalized[index] = expected
             else:
-                yield from _add_inferred_tag(record, expected, tag, cfg)
-                if cfg.autofix:
-                    normalized.append(expected)
+                yield message
 
 
 def _check_verbatim_elevations(
@@ -363,13 +415,36 @@ def _check_verbatim_elevations(
                 )
             continue
         expected = OccurrenceRecordTag.Elevation(*parsed)
-        if expected not in normalized:
-            if normalized:
-                yield (f"{tag} parses as {expected}, inconsistent with {normalized}")
+        if expected in normalized:
+            continue
+        equivalent = next(
+            (
+                (index, normalized_tag)
+                for index, normalized_tag in enumerate(normalized)
+                if normalized_tag.unit is expected.unit
+                and normalized_tag.elevation.removeprefix("~")
+                == expected.elevation.removeprefix("~")
+            ),
+            None,
+        )
+        if equivalent is not None:
+            index, normalized_tag = equivalent
+            message = (
+                f"replace {normalized_tag} with {expected} to preserve source "
+                "elevation precision"
+            )
+            if cfg.autofix:
+                print(f"{record}: {message}")
+                _replace_tag(record, normalized_tag, expected)
+                normalized[index] = expected
             else:
-                yield from _add_inferred_tag(record, expected, tag, cfg)
-                if cfg.autofix:
-                    normalized.append(expected)
+                yield message
+        elif normalized:
+            yield f"{tag} parses as {expected}, inconsistent with {normalized}"
+        else:
+            yield from _add_inferred_tag(record, expected, tag, cfg)
+            if cfg.autofix:
+                normalized.append(expected)
 
 
 def _check_verbatim_dates(record: OccurrenceRecord, cfg: LintConfig) -> Iterable[str]:
@@ -533,14 +608,30 @@ def check_split(record: OccurrenceRecord, cfg: LintConfig) -> Iterable[str]:
 def check_duplicate(record: OccurrenceRecord, cfg: LintConfig) -> Iterable[str]:
     if record.has_tag(OccurrenceRecordTag.TaxonomicSplitFrom):
         return
-    candidates = OccurrenceRecord.select().filter(
+    candidates = OccurrenceRecord.select_valid().filter(
         OccurrenceRecord.classification_entry == record.classification_entry,
         OccurrenceRecord.locality_text == record.locality_text,
         OccurrenceRecord.page == record.page,
         OccurrenceRecord.basis == record.basis,
     )
-    for candidate in candidates:
-        if candidate != record and not candidate.has_tag(
-            OccurrenceRecordTag.TaxonomicSplitFrom
-        ):
-            yield f"duplicates primary record {candidate}"
+    primary_candidates = [
+        candidate
+        for candidate in candidates
+        if not candidate.has_tag(OccurrenceRecordTag.TaxonomicSplitFrom)
+    ]
+    if not primary_candidates:
+        return
+    primary = min(primary_candidates, key=lambda candidate: candidate.id)
+    if primary.id == record.id:
+        return
+
+    message = f"OR#{record.id} duplicates primary record OR#{primary.id}: {primary}"
+    fields_match = all(
+        getattr(record, field) == getattr(primary, field)
+        for field in OccurrenceRecord.fields()
+    )
+    if fields_match and cfg.autofix and not LINT.is_ignoring_lint(record, "duplicate"):
+        print(f"{record}: {message}; marking OR#{record.id} deleted")
+        record.status = OccurrenceRecordStatus.deleted
+    else:
+        yield message

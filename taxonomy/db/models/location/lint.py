@@ -14,6 +14,7 @@ from taxonomy.db import coordinate_lint, helpers
 from taxonomy.db.constants import RegionKind
 from taxonomy.db.models.base import LintConfig
 from taxonomy.db.models.lint import IgnoreLint, Lint
+from taxonomy.db.models.period import Period
 from taxonomy.db.models.region import Region
 
 from .model import Location, LocationTag
@@ -243,14 +244,15 @@ _DIRECTION_TO_ABBREVIATION = {
     "northwest": "NW",
 }
 _DIRECTION_PATTERN = "|".join(sorted(_DIRECTION_TO_BEARING, key=len, reverse=True))
+_DISTANCE_PATTERN = r"(?:\d+\s+\d+/\d+|\d+/\d+|\d+(?:\.\d+)?)"
 _LOCALITY_OFFSET_COMPONENT = re.compile(
-    rf"^\s*(?P<distance>\d+(?:\.\d+)?)\s*"
+    rf"^\s*(?P<distance>{_DISTANCE_PATTERN})\s*"
     rf"(?P<unit>km|kilomet(?:er|re)s?|mi|miles?)\.?\s+"
     rf"(?P<direction>{_DIRECTION_PATTERN})\b\.?(?:\s+of\b)?\s*",
     re.IGNORECASE,
 )
 _OFFSET_SEPARATOR = re.compile(r"^(?:,\s*|and\s+)(?=\d)", re.IGNORECASE)
-_TRAILING_DISAMBIGUATOR = re.compile(r"\s+\([^()]+\)\s*$")
+_TRAILING_DISAMBIGUATOR = re.compile(r"\s+\((?P<content>[^()]+)\)\s*$")
 
 
 @dataclass(frozen=True, slots=True)
@@ -265,6 +267,7 @@ class NominatimSearchPlan:
     locality_name: str
     offsets: tuple[LocalityOffset, ...] = ()
     disambiguator_suffix: str = ""
+    coordinates_can_be_inferred: bool = True
 
     @property
     def offset_description(self) -> str | None:
@@ -501,8 +504,142 @@ def check_likely_synonymous(location: Location, cfg: LintConfig) -> Iterable[str
 @LINT.add("offset_name")
 def check_offset_name(location: Location, cfg: LintConfig) -> Iterable[str]:
     search_plan = get_nominatim_search_plan(location)
-    if search_plan.offsets and location.name != search_plan.standardized_name:
-        yield f"distance-offset name should be {search_plan.standardized_name!r}"
+    standardized_name = search_plan.standardized_name
+    if not search_plan.offsets or location.name == standardized_name:
+        return
+    message = f"distance-offset name should be {standardized_name!r}"
+    if cfg.autofix and not LINT.is_ignoring_lint(location, "offset_name"):
+        if _is_location_name_taken(standardized_name):
+            yield f"{message}; cannot autofix because that name is already in use"
+        else:
+            print(f"{location}: {message}")
+            location.name = standardized_name
+    else:
+        yield message
+
+
+def _is_location_name_taken(name: str) -> bool:
+    return Location.select().filter(Location.name == name).count() > 0
+
+
+@cache
+def _get_periods_by_name() -> dict[str, tuple[Period, ...]]:
+    periods_by_name: defaultdict[str, list[Period]] = defaultdict(list)
+    for period in Period.select_valid():
+        periods_by_name[period.name].append(period)
+    return {name: tuple(periods) for name, periods in periods_by_name.items()}
+
+
+def _split_trailing_parenthetical(name: str) -> tuple[str, str] | None:
+    if not name.endswith(")"):
+        return None
+    depth = 0
+    for index in range(len(name) - 1, -1, -1):
+        character = name[index]
+        if character == ")":
+            depth += 1
+        elif character == "(":
+            depth -= 1
+            if depth == 0:
+                if index == 0 or not name[index - 1].isspace():
+                    return None
+                return name[:index].rstrip(), name[index + 1 : -1]
+    return None
+
+
+def _get_trailing_disambiguators(name: str) -> tuple[str, ...]:
+    disambiguators = []
+    while split := _split_trailing_parenthetical(name):
+        name, disambiguator = split
+        disambiguators.append(disambiguator)
+    disambiguators.reverse()
+    return tuple(disambiguators)
+
+
+def _get_qualified_name_variants(name: str) -> set[str]:
+    variants = {name}
+    if split := _split_trailing_parenthetical(name):
+        base_name, qualifier = split
+        variants.add(base_name)
+        variants.add(f"{base_name}, {qualifier}")
+    elif ", " in name:
+        base_name, qualifier = name.split(", ", maxsplit=1)
+        variants.add(base_name)
+        variants.add(f"{base_name} ({qualifier})")
+    return variants
+
+
+def _is_period_disambiguator(location: Location, disambiguator: str) -> bool:
+    for assigned_period in (location.min_period, location.max_period):
+        period = assigned_period
+        while period is not None:
+            if period.name == disambiguator:
+                return True
+            period = period.parent
+
+    oldest_age = (
+        location.max_age
+        if location.max_age is not None
+        else (
+            location.max_period.get_max_age()
+            if location.max_period is not None
+            else None
+        )
+    )
+    youngest_age = (
+        location.min_age
+        if location.min_age is not None
+        else (
+            location.min_period.get_min_age()
+            if location.min_period is not None
+            else None
+        )
+    )
+    if oldest_age is None or youngest_age is None:
+        return False
+    for period in _get_periods_by_name().get(disambiguator, ()):
+        period_oldest_age = period.get_max_age()
+        period_youngest_age = period.get_min_age()
+        if (
+            period_oldest_age is not None
+            and period_youngest_age is not None
+            and period_oldest_age >= oldest_age
+            and period_youngest_age <= youngest_age
+        ):
+            return True
+    return False
+
+
+def _is_stratigraphic_unit_disambiguator(
+    location: Location, disambiguator: str
+) -> bool:
+    unit = location.stratigraphic_unit
+    while unit is not None:
+        if disambiguator in _get_qualified_name_variants(unit.name):
+            return True
+        unit = unit.parent
+    return False
+
+
+def _is_sane_disambiguator(location: Location, disambiguator: str) -> bool:
+    if any(
+        disambiguator in _get_qualified_name_variants(region.name)
+        for region in (location.region, *location.region.all_parents())
+    ):
+        return True
+    if _is_period_disambiguator(location, disambiguator):
+        return True
+    return _is_stratigraphic_unit_disambiguator(location, disambiguator)
+
+
+@LINT.add("disambiguator", clear_caches=_get_periods_by_name.cache_clear)
+def check_disambiguator(location: Location, cfg: LintConfig) -> Iterable[str]:
+    for disambiguator in _get_trailing_disambiguators(location.name):
+        if not _is_sane_disambiguator(location, disambiguator):
+            yield (
+                f"disambiguator {disambiguator!r} is not an enclosing Region, "
+                "an assigned Period, or an assigned StratigraphicUnit"
+            )
 
 
 @LINT.add("period")
@@ -741,6 +878,8 @@ def _get_nominatim_coordinate_candidates(
     location: Location,
 ) -> list[tuple[nominatim.SearchResult, tuple[str, str, Any]]]:
     search_plan = get_nominatim_search_plan(location)
+    if not search_plan.coordinates_can_be_inferred:
+        return []
     query = get_nominatim_query(location)
     results = nominatim.search(query)
     candidates = []
@@ -778,42 +917,80 @@ def _get_place_candidate_among_administrative_boundaries(
 def get_nominatim_search_plan(location: Location) -> NominatimSearchPlan:
     name = location.name
     disambiguators: list[str] = []
+    offsets: list[LocalityOffset] = []
+    has_parenthetical_offsets = False
     while match := _TRAILING_DISAMBIGUATOR.search(name):
-        disambiguators.insert(0, match.group(0).strip())
+        parenthetical_offsets, remainder = _parse_locality_offsets(
+            match.group("content")
+        )
+        if parenthetical_offsets and not remainder:
+            offsets.extend(parenthetical_offsets)
+            has_parenthetical_offsets = True
+        else:
+            disambiguators.insert(0, match.group(0).strip())
         name = name[: match.start()]
     disambiguator_suffix = f" {' '.join(disambiguators)}" if disambiguators else ""
 
-    remaining = name
-    offsets = []
-    while match := _LOCALITY_OFFSET_COMPONENT.match(remaining):
-        distance_text = match.group("distance")
-        unit = match.group("unit").lower()
-        direction = match.group("direction").lower()
-        distance = float(distance_text)
-        if unit.startswith("mi"):
-            distance_km = distance * _MILES_TO_KILOMETRES
-            display_unit = "mi"
-        else:
-            distance_km = distance
-            display_unit = "km"
-        offsets.append(
-            LocalityOffset(
-                distance_km=distance_km,
-                bearing_degrees=_DIRECTION_TO_BEARING[direction],
-                description=(
-                    f"{distance_text} {display_unit} "
-                    f"{_DIRECTION_TO_ABBREVIATION.get(direction, direction.upper())}"
-                ),
-            )
-        )
-        remaining = remaining[match.end() :]
-        remaining = _OFFSET_SEPARATOR.sub("", remaining)
-
-    locality_name = remaining.strip()
+    leading_offsets, locality_name = _parse_locality_offsets(name)
+    offsets.extend(leading_offsets)
     if offsets and locality_name:
         offsets.sort(key=_locality_offset_sort_key)
-        return NominatimSearchPlan(locality_name, tuple(offsets), disambiguator_suffix)
+        return NominatimSearchPlan(
+            locality_name,
+            tuple(offsets),
+            disambiguator_suffix,
+            coordinates_can_be_inferred=not has_parenthetical_offsets,
+        )
     return NominatimSearchPlan(name, disambiguator_suffix=disambiguator_suffix)
+
+
+def _parse_locality_offsets(text: str) -> tuple[list[LocalityOffset], str]:
+    remaining = text
+    offsets = []
+    while match := _LOCALITY_OFFSET_COMPONENT.match(remaining):
+        offset = _make_locality_offset(match)
+        if offset is None:
+            break
+        offsets.append(offset)
+        remaining = remaining[match.end() :]
+        remaining = _OFFSET_SEPARATOR.sub("", remaining)
+    return offsets, remaining.strip()
+
+
+def _make_locality_offset(match: re.Match[str]) -> LocalityOffset | None:
+    distance_text = " ".join(match.group("distance").split())
+    distance = _parse_offset_distance(distance_text)
+    if distance is None:
+        return None
+    unit = match.group("unit").lower()
+    direction = match.group("direction").lower()
+    if unit.startswith("mi"):
+        distance_km = distance * _MILES_TO_KILOMETRES
+        display_unit = "mi"
+    else:
+        distance_km = distance
+        display_unit = "km"
+    return LocalityOffset(
+        distance_km=distance_km,
+        bearing_degrees=_DIRECTION_TO_BEARING[direction],
+        description=(
+            f"{distance_text} {display_unit} "
+            f"{_DIRECTION_TO_ABBREVIATION.get(direction, direction.upper())}"
+        ),
+    )
+
+
+def _parse_offset_distance(text: str) -> float | None:
+    if "/" not in text:
+        return float(text)
+    parts = text.split()
+    whole = int(parts[0]) if len(parts) == 2 else 0
+    fraction = parts[-1]
+    numerator_text, denominator_text = fraction.split("/", maxsplit=1)
+    denominator = int(denominator_text)
+    if denominator == 0:
+        return None
+    return whole + int(numerator_text) / denominator
 
 
 def _locality_offset_sort_key(offset: LocalityOffset) -> tuple[int, float]:

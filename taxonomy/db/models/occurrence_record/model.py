@@ -49,7 +49,17 @@ class OccurrenceRecord(BaseModel):
     taxon = Field[Taxon | None]("taxon_id", related_name="occurrence_records")
     location = Field[Location | None]("location_id", related_name="occurrence_records")
     tags = ADTField["OccurrenceRecordTag"](is_ordered=False)
-    status = Field[OccurrenceRecordStatus]()
+    status = Field[OccurrenceRecordStatus](default=OccurrenceRecordStatus.valid)
+
+    @classmethod
+    def add_validity_check(cls, query: Any) -> Any:
+        return query.filter(OccurrenceRecord.status == OccurrenceRecordStatus.valid)
+
+    def is_invalid(self) -> bool:
+        return self.status is not OccurrenceRecordStatus.valid
+
+    def should_skip(self) -> bool:
+        return self.status is not OccurrenceRecordStatus.valid
 
     def __repr__(self) -> str:
         taxon = self.taxon or self.classification_entry.name

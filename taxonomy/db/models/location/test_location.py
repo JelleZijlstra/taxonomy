@@ -292,6 +292,11 @@ def _location_without_coordinates(
     name: str = "Walnut Creek",
     region_name: str = "California",
     region: Region | None = None,
+    min_period: object | None = None,
+    max_period: object | None = None,
+    min_age: int | None = None,
+    max_age: int | None = None,
+    stratigraphic_unit: object | None = None,
     names: tuple[SimpleNamespace, ...] = (),
     records: tuple[SimpleNamespace, ...] = (),
 ) -> Location:
@@ -302,7 +307,11 @@ def _location_without_coordinates(
         region=region,
         latitude=None,
         longitude=None,
-        stratigraphic_unit=None,
+        min_period=min_period,
+        max_period=max_period,
+        min_age=min_age,
+        max_age=max_age,
+        stratigraphic_unit=stratigraphic_unit,
         type_localities=names,
         occurrence_records=records,
         tags=(),
@@ -523,6 +532,13 @@ def test_nominatim_search_removes_location_disambiguator(
             "Gur Tung Khara Usu",
             ((25 * 1.609344, 45),),
         ),
+        ("Castle Brace (2 mi. SW)", "Castle Brace", ((2 * 1.609344, 225),)),
+        (
+            "Azua (8.9 mi N, 1.8 mi W)",
+            "Azua",
+            ((8.9 * 1.609344, 0), (1.8 * 1.609344, 270)),
+        ),
+        ("Point Lookout (1/4 mi. NE)", "Point Lookout", ((0.25 * 1.609344, 45),)),
     ],
 )
 def test_parse_nominatim_locality_offsets(
@@ -561,12 +577,15 @@ def test_nominatim_offset_parser_leaves_unsupported_names_alone(name: str) -> No
             "8 miles east of Monterey (Monterey County, California)",
             "8 mi E Monterey (Monterey County, California)",
         ),
+        ("Castle Brace (2 mi. SW)", "2 mi SW Castle Brace"),
+        ("Azua (8.9 mi N, 1.8 mi W)", "8.9 mi N 1.8 mi W Azua"),
+        ("Point Lookout (1/4 mi. NE)", "1/4 mi NE Point Lookout"),
     ],
 )
 def test_location_offset_name_lint(name: str, expected: str) -> None:
     loc = _location_without_coordinates(name=name)
 
-    messages = list(location_lint.check_offset_name(loc, LintConfig()))
+    messages = list(location_lint.check_offset_name(loc, LintConfig(autofix=False)))
 
     assert len(messages) == 1
     assert f"distance-offset name should be {expected!r}" in messages[0]
@@ -576,6 +595,204 @@ def test_location_offset_name_lint_accepts_canonical_name() -> None:
     loc = _location_without_coordinates(name="2 mi S 1 mi W Monterey")
 
     assert list(location_lint.check_offset_name(loc, LintConfig())) == []
+
+
+def test_location_offset_name_lint_autofixes_available_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    loc = _location_without_coordinates(name="Castle Brace (2 mi. SW)")
+    monkeypatch.setattr(location_lint, "_is_location_name_taken", lambda name: False)
+
+    messages = list(location_lint.check_offset_name(loc, LintConfig(autofix=True)))
+
+    assert messages == []
+    assert loc.name == "2 mi SW Castle Brace"
+
+
+def test_location_offset_name_lint_does_not_autofix_name_collision(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    loc = _location_without_coordinates(name="Castle Brace (2 mi. SW)")
+    monkeypatch.setattr(location_lint, "_is_location_name_taken", lambda name: True)
+
+    messages = list(location_lint.check_offset_name(loc, LintConfig(autofix=True)))
+
+    assert loc.name == "Castle Brace (2 mi. SW)"
+    assert len(messages) == 1
+    assert (
+        "distance-offset name should be '2 mi SW Castle Brace'; "
+        "cannot autofix because that name is already in use" in messages[0]
+    )
+
+
+def test_location_offset_name_lint_respects_ignore_lint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    loc = _location_without_coordinates(name="Castle Brace (2 mi. SW)")
+    name_taken = Mock()
+    monkeypatch.setattr(location_lint, "_is_location_name_taken", name_taken)
+    monkeypatch.setattr(
+        location_lint.LINT, "is_ignoring_lint", lambda location, label: True
+    )
+
+    messages = list(location_lint.check_offset_name(loc, LintConfig(autofix=True)))
+
+    assert loc.name == "Castle Brace (2 mi. SW)"
+    assert len(messages) == 1
+    name_taken.assert_not_called()
+
+
+def _period(
+    name: str,
+    *,
+    oldest_age: int = 10_000_000,
+    youngest_age: int = 1_000_000,
+    parent: object | None = None,
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        name=name,
+        parent=parent,
+        get_max_age=lambda: oldest_age,
+        get_min_age=lambda: youngest_age,
+    )
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "Site",
+        "Site (Milne Bay Province)",
+        "Site (Papua New Guinea)",
+        "Site (Recent)",
+        "Site (Recent) (Milne Bay Province)",
+        "HGSP 81-07(a)",
+    ],
+)
+def test_location_disambiguator_lint_accepts_sane_names(name: str) -> None:
+    country = _make_region("Papua New Guinea", RegionKind.country)
+    province = _make_region("Milne Bay Province", RegionKind.province, country)
+    recent = _period("Recent")
+    loc = _location_without_coordinates(
+        name=name, region=province, min_period=recent, max_period=recent
+    )
+
+    assert list(location_lint.check_disambiguator(loc, LintConfig())) == []
+
+
+def test_location_disambiguator_lint_accepts_nested_region_name() -> None:
+    country = _make_region("Netherlands", RegionKind.country)
+    province = _make_region("Limburg (Netherlands)", RegionKind.province, country)
+    for name in [
+        "Maastricht Formation (Limburg (Netherlands))",
+        "Maastricht Formation (Limburg, Netherlands)",
+        "Maastricht Formation (Limburg)",
+    ]:
+        loc = _location_without_coordinates(name=name, region=province)
+
+        assert list(location_lint.check_disambiguator(loc, LintConfig())) == []
+
+
+def test_location_disambiguator_lint_accepts_comma_qualified_region_name() -> None:
+    country = _make_region("United States", RegionKind.country)
+    state = _make_region("South Carolina", RegionKind.state, country)
+    county = _make_region("Charleston County, South Carolina", RegionKind.county, state)
+    loc = _location_without_coordinates(
+        name="North Charleston (Charleston County)", region=county
+    )
+
+    assert list(location_lint.check_disambiguator(loc, LintConfig())) == []
+
+
+def test_location_disambiguator_lint_accepts_containing_period(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assigned = _period("MN7-8", oldest_age=13_820_000, youngest_age=11_630_000)
+    miocene = _period("Miocene", oldest_age=23_030_000, youngest_age=5_333_000)
+    monkeypatch.setattr(
+        location_lint, "_get_periods_by_name", lambda: {"Miocene": (miocene,)}
+    )
+    loc = _location_without_coordinates(
+        name="Steinheim (Miocene)", min_period=assigned, max_period=assigned
+    )
+
+    assert list(location_lint.check_disambiguator(loc, LintConfig())) == []
+
+
+def test_location_disambiguator_lint_accepts_parent_period() -> None:
+    barstovian = _period("Barstovian", oldest_age=15_900_000, youngest_age=11_500_000)
+    ba1 = _period(
+        "Ba1", oldest_age=15_970_000, youngest_age=13_820_000, parent=barstovian
+    )
+    loc = _location_without_coordinates(
+        name="Eastgate (Barstovian)", min_period=ba1, max_period=ba1
+    )
+
+    assert list(location_lint.check_disambiguator(loc, LintConfig())) == []
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "Site (Las Flores Formation (Chubut))",
+        "Site (Las Flores Formation, Chubut)",
+        "Site (Las Flores Formation)",
+    ],
+)
+def test_location_disambiguator_lint_accepts_assigned_stratigraphic_unit(
+    name: str,
+) -> None:
+    formation = SimpleNamespace(name="Las Flores Formation (Chubut)", parent=None)
+    loc = _location_without_coordinates(name=name, stratigraphic_unit=formation)
+
+    assert list(location_lint.check_disambiguator(loc, LintConfig())) == []
+
+
+@pytest.mark.parametrize(
+    ("name", "disambiguator"),
+    [
+        ("Top Camp (Goodenough Island)", "Goodenough Island"),
+        ("Castle Brace (2 mi. SW)", "2 mi. SW"),
+    ],
+)
+def test_location_disambiguator_lint_rejects_other_qualifiers(
+    name: str, disambiguator: str
+) -> None:
+    loc = _location_without_coordinates(name=name)
+
+    messages = list(location_lint.check_disambiguator(loc, LintConfig()))
+
+    assert len(messages) == 1
+    assert (
+        f"disambiguator {disambiguator!r} is not an enclosing Region, "
+        "an assigned Period, or an assigned StratigraphicUnit" in messages[0]
+    )
+
+
+def test_parenthetical_offset_does_not_trigger_coordinate_inference(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    loc = _location_without_coordinates(
+        name="Castle Brace (2 mi. SW)", region=_marin_county()
+    )
+    search = Mock()
+    monkeypatch.setattr(nominatim, "search", search)
+    monkeypatch.setattr(model_lint, "is_network_available", lambda: True)
+
+    plan = location_lint.get_nominatim_search_plan(loc)
+
+    assert plan.standardized_name == "2 mi SW Castle Brace"
+    assert not plan.coordinates_can_be_inferred
+    assert list(location_lint.check_nominatim_coordinates(loc, LintConfig())) == []
+    search.assert_not_called()
+
+
+def test_canonicalized_parenthetical_offset_can_infer_coordinates() -> None:
+    loc = _location_without_coordinates(name="2 mi SW Castle Brace")
+
+    plan = location_lint.get_nominatim_search_plan(loc)
+
+    assert plan.standardized_name == loc.name
+    assert plan.coordinates_can_be_inferred
 
 
 @pytest.mark.parametrize(

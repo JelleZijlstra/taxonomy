@@ -16,12 +16,14 @@ from taxonomy.db.models.base import LintConfig
 from taxonomy.db.models.location import Location
 from taxonomy.db.models.occurrence_record import (
     OccurrenceRecord,
+    OccurrenceRecordStatus,
     OccurrenceRecordTag,
     lint,
 )
 from taxonomy.db.models.occurrence_record.lint import (
     check_basis_tags,
     check_coordinate_consistency,
+    check_duplicate,
     check_location_age,
     check_missing_location,
     check_missing_taxon,
@@ -51,6 +53,17 @@ def _record(**kwargs: object) -> OccurrenceRecord:
     )
     record.add_tag = lambda tag: setattr(record, "tags", (*record.tags, tag))
     return cast(OccurrenceRecord, record)
+
+
+def _duplicate_record(id: int, **kwargs: object) -> OccurrenceRecord:
+    return _record(
+        id=id,
+        classification_entry=object(),
+        locality_text="locality",
+        page="1",
+        basis=OccurrenceBasis.voucher,
+        **kwargs,
+    )
 
 
 def test_taxon_lint_autofills_from_classification_entry() -> None:
@@ -190,6 +203,9 @@ def test_parse_verbatim_coordinates(
     [
         ("elev. 1,200 m", ("1200", AltitudeUnit.m)),
         ("500-750 feet", ("500-750", AltitudeUnit.ft)),
+        ("~50 ft", ("~50", AltitudeUnit.ft)),
+        ("ca. 50 ft", ("~50", AltitudeUnit.ft)),
+        ("elev. ca. 1,200 m", ("~1200", AltitudeUnit.m)),
         ("below the summit", None),
     ],
 )
@@ -228,6 +244,37 @@ def test_source_data_lint_adds_normalized_tags() -> None:
     assert OccurrenceRecordTag.Date("1992-02-24") in record.tags
 
 
+def test_source_data_lint_translates_approximate_elevation() -> None:
+    exact = OccurrenceRecordTag.Elevation("50", AltitudeUnit.ft)
+    approximate = OccurrenceRecordTag.Elevation("~50", AltitudeUnit.ft)
+    record = _record(tags=(OccurrenceRecordTag.VerbatimElevation("ca. 50 ft"), exact))
+
+    assert list(check_source_data_tags(record, LintConfig(autofix=True))) == []
+    assert approximate in record.tags
+    assert exact not in record.tags
+
+
+def test_source_data_lint_reports_approximate_elevation_without_autofix() -> None:
+    exact = OccurrenceRecordTag.Elevation("50", AltitudeUnit.ft)
+    record = _record(tags=(OccurrenceRecordTag.VerbatimElevation("ca. 50 ft"), exact))
+
+    messages = list(check_source_data_tags(record, LintConfig(autofix=False)))
+
+    assert len(messages) == 1
+    assert "preserve source elevation precision" in messages[0]
+    assert exact in record.tags
+
+
+def test_source_data_lint_accepts_normalized_approximate_elevation() -> None:
+    approximate = OccurrenceRecordTag.Elevation("~50", AltitudeUnit.ft)
+    record = _record(
+        tags=(OccurrenceRecordTag.VerbatimElevation("ca. 50 ft"), approximate)
+    )
+
+    assert list(check_source_data_tags(record, LintConfig(autofix=False))) == []
+    assert approximate in record.tags
+
+
 def test_source_data_lint_allows_manual_normalization() -> None:
     coordinates = OccurrenceRecordTag.Coordinates("40°30'N", "74°15'W")
     record = _record(
@@ -239,6 +286,55 @@ def test_source_data_lint_allows_manual_normalization() -> None:
 
     assert list(check_source_data_tags(record, LintConfig(autofix=False))) == []
     assert record.tags[-1] == coordinates
+
+
+def test_source_data_lint_preserves_source_coordinate_format() -> None:
+    decimal = OccurrenceRecordTag.Coordinates("12.016667°N", "61.716667°W")
+    source_format = OccurrenceRecordTag.Coordinates("12°1'N", "61°43'W")
+    record = _record(
+        tags=(OccurrenceRecordTag.VerbatimCoordinates("12°01'N, 61°43'W"), decimal)
+    )
+
+    assert list(check_source_data_tags(record, LintConfig(autofix=True))) == []
+    assert source_format in record.tags
+    assert decimal not in record.tags
+
+
+def test_source_data_lint_reports_source_format_replacement_without_autofix() -> None:
+    decimal = OccurrenceRecordTag.Coordinates("12.016667°N", "61.716667°W")
+    record = _record(
+        tags=(OccurrenceRecordTag.VerbatimCoordinates("12°01'N, 61°43'W"), decimal)
+    )
+
+    messages = list(check_source_data_tags(record, LintConfig(autofix=False)))
+
+    assert len(messages) == 1
+    assert "preserve source coordinate format" in messages[0]
+    assert decimal in record.tags
+
+
+def test_source_data_lint_allows_coordinates_within_shared_tolerance() -> None:
+    coordinates = OccurrenceRecordTag.Coordinates("40°31'N", "74°15'W")
+    record = _record(
+        tags=(OccurrenceRecordTag.VerbatimCoordinates("40°30'N, 74°15'W"), coordinates)
+    )
+
+    assert list(check_source_data_tags(record, LintConfig(autofix=True))) == []
+    assert coordinates in record.tags
+
+
+def test_source_data_lint_reports_coordinates_beyond_shared_tolerance() -> None:
+    record = _record(
+        tags=(
+            OccurrenceRecordTag.VerbatimCoordinates("40°30'N, 74°15'W"),
+            OccurrenceRecordTag.Coordinates("40°40'N", "74°15'W"),
+        )
+    )
+
+    messages = list(check_source_data_tags(record, LintConfig(autofix=False)))
+
+    assert len(messages) == 1
+    assert "km from closest normalized coordinates" in messages[0]
 
 
 def test_source_data_lint_standardizes_coordinate_ranges() -> None:
@@ -344,6 +440,70 @@ def test_remove_unused_occurrence_record_ignore() -> None:
     remove_unused_ignores(record, {"basis_tags"})
 
     assert record.tags == []
+
+
+def test_duplicate_lint_skips_lower_id_record(monkeypatch: pytest.MonkeyPatch) -> None:
+    record = _duplicate_record(1)
+    higher = _duplicate_record(2)
+    monkeypatch.setattr(
+        OccurrenceRecord,
+        "select_valid",
+        lambda: SimpleNamespace(filter=lambda *conditions: [record, higher]),
+    )
+
+    assert list(check_duplicate(record, LintConfig(autofix=False))) == []
+
+
+def test_duplicate_lint_reports_ids_without_autofix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    primary = _duplicate_record(1)
+    record = _duplicate_record(2)
+    monkeypatch.setattr(
+        OccurrenceRecord,
+        "select_valid",
+        lambda: SimpleNamespace(filter=lambda *conditions: [primary, record]),
+    )
+    monkeypatch.setattr(OccurrenceRecord, "fields", lambda: ())
+
+    messages = list(check_duplicate(record, LintConfig(autofix=False)))
+
+    assert len(messages) == 1
+    assert "OR#2 duplicates primary record OR#1" in messages[0]
+
+
+def test_duplicate_lint_deletes_exact_higher_id_record(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    primary = _duplicate_record(1, value="same", status=OccurrenceRecordStatus.valid)
+    record = _duplicate_record(2, value="same", status=OccurrenceRecordStatus.valid)
+    monkeypatch.setattr(
+        OccurrenceRecord,
+        "select_valid",
+        lambda: SimpleNamespace(filter=lambda *conditions: [primary, record]),
+    )
+    monkeypatch.setattr(OccurrenceRecord, "fields", lambda: ("value", "status"))
+
+    assert list(check_duplicate(record, LintConfig(autofix=True))) == []
+    assert record.status is OccurrenceRecordStatus.deleted
+
+
+def test_duplicate_lint_does_not_delete_records_with_different_fields(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    primary = _duplicate_record(1, value="first", status=OccurrenceRecordStatus.valid)
+    record = _duplicate_record(2, value="second", status=OccurrenceRecordStatus.valid)
+    monkeypatch.setattr(
+        OccurrenceRecord,
+        "select_valid",
+        lambda: SimpleNamespace(filter=lambda *conditions: [primary, record]),
+    )
+    monkeypatch.setattr(OccurrenceRecord, "fields", lambda: ("value", "status"))
+
+    messages = list(check_duplicate(record, LintConfig(autofix=True)))
+
+    assert len(messages) == 1
+    assert record.status is OccurrenceRecordStatus.valid
 
 
 def test_occurrence_record_lint_registry_labels() -> None:

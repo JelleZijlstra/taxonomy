@@ -341,11 +341,18 @@ class Location(BaseModel):
         search_plan = location_lint.get_nominatim_search_plan(self)
         query = location_lint.get_nominatim_query(self)
         print(f"    Query: {query}")
-        try:
-            nominatim_results = nominatim.search(query)
-        except Exception as exc:
-            print(f"    Lookup failed: {exc}")
+        nominatim_results = None
+        if not search_plan.coordinates_can_be_inferred:
+            print(
+                "    Lookup skipped: rename noncanonical offset locality to "
+                f"{search_plan.standardized_name!r} first"
+            )
         else:
+            try:
+                nominatim_results = nominatim.search(query)
+            except Exception as exc:
+                print(f"    Lookup failed: {exc}")
+        if nominatim_results is not None:
             if not nominatim_results:
                 print("    none")
             for index, result in enumerate(nominatim_results, start=1):

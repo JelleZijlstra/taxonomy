@@ -10,7 +10,7 @@ from taxonomy.db import models
 from taxonomy.db.models.classification_entry import ClassificationEntry
 from taxonomy.db.models.location import Location
 
-from .model import OccurrenceRecord
+from .model import OccurrenceRecord, OccurrenceRecordStatus
 
 
 def test_edit_opens_tags_only() -> None:
@@ -24,6 +24,22 @@ def test_edit_opens_tags_only() -> None:
 def test_call_sign_getter_uses_configured_field() -> None:
     assert OccurrenceRecord.get_call_sign_getter() is OccurrenceRecord.getter(None)
     assert Location.get_call_sign_getter() is Location.getter(Location.label_field)
+
+
+@pytest.mark.parametrize(
+    "status",
+    [
+        OccurrenceRecordStatus.valid,
+        OccurrenceRecordStatus.deleted,
+        OccurrenceRecordStatus.alias,
+    ],
+)
+def test_status_controls_validity(status: OccurrenceRecordStatus) -> None:
+    record = SimpleNamespace(status=status)
+    expected = status is not OccurrenceRecordStatus.valid
+
+    assert OccurrenceRecord.is_invalid(record) is expected  # type: ignore[arg-type]
+    assert OccurrenceRecord.should_skip(record) is expected  # type: ignore[arg-type]
 
 
 def test_open_coordinates_falls_back_to_location() -> None:

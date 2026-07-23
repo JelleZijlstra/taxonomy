@@ -85,6 +85,24 @@ external interpretation uses `mapped_location`, containing the intended canonica
 interpretations. Do not put `TaxonomicSplitFrom` in a CE file; create split records
 interactively after import.
 
+For an import-oriented ingestion, every extant occurrence must have a `mapped_location`.
+Map it to the most precise Location justified by the source:
+
+- use the specific collecting locality when the source provides one;
+- use a named parish, province, island, or other geographic region when that is all the
+  source supports;
+- when an island-focused account says only “no specific locality,” “parish unknown,” or
+  equivalent, map it to the island Location because the source still establishes the
+  island;
+- use the existing Location `Unknown (extant)` only when neither the occurrence wording
+  nor the unambiguous source context supplies any geographic evidence.
+
+Do not leave `mapped_location` null merely because the locality is imprecise, and do not
+invent greater precision than the source provides. Preserve the source wording unchanged
+in `locality`. Include each imprecise mapped name in the sibling Location plan so the
+read-only preview can confirm that the intended existing Location is reused or that a
+new imprecise Location is safe to create.
+
 For example:
 
 ```json
@@ -92,7 +110,7 @@ For example:
   "locality": "5 km N of Quito",
   "page": "42",
   "basis": "observation",
-  "mapped_location": "5 km N of Quito",
+  "mapped_location": "5 km N Quito",
   "tags": [{ "kind": "ObservationKind", "data": [1, 1] }]
 }
 ```
@@ -144,6 +162,10 @@ citations, coordinates, specimen data, or a period as the disambiguator. Apply t
 renamed value consistently to the Location proposal and every occurrence's
 `mapped_location`.
 
+Parenthetical phrases should only be used for disambiguation. If a location is given
+relative to a named place, use a location of the form "5 km N Quito" rather than e.g.
+"Quito (5 km N)".
+
 ## 3. Review the source artifacts
 
 For the normal source-processing workflow, review only what can be established from the
@@ -159,6 +181,8 @@ source and the files themselves:
   collision audit finds a real conflict requiring a parenthetical disambiguator;
 - verify that every Location proposal uses a valid Region name, using the database or
   `docs/geography.md`.
+- verify that every extant occurrence has a `mapped_location`, using an imprecise
+  geographic Location or `Unknown (extant)` according to the rules above.
 
 Other than validating Region names and auditing proposed Location names as above, do not
 require reconciliation against the current database at this stage. Taxon/name matching
