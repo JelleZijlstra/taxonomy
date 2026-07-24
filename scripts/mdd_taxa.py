@@ -195,13 +195,6 @@ class CountryInfo:
 
 
 COUNTRY_LIST = [
-    CountryInfo(
-        "Alaska",
-        continents={"North America"},
-        realms={"Nearctic"},
-        code=None,
-        containing_code="US",
-    ),
     CountryInfo("Afghanistan", continents={"Asia"}, realms={"Palearctic"}, code="AF"),
     CountryInfo("Albania", continents={"Europe"}, realms={"Palearctic"}, code="AL"),
     CountryInfo(
@@ -442,13 +435,6 @@ COUNTRY_LIST = [
         "Guyana", continents={"South America"}, realms={"Neotropic"}, code="GY"
     ),
     CountryInfo("Haiti", continents={"North America"}, realms={"Neotropic"}, code="HT"),
-    CountryInfo(
-        "Hawai'i",
-        continents={"Oceania"},
-        realms={"Oceania"},
-        code=None,
-        containing_code="US",
-    ),
     CountryInfo(
         "Honduras", continents={"North America"}, realms={"Neotropic"}, code="HN"
     ),
@@ -1088,28 +1074,22 @@ def _get_hesp_name(syn: Syn) -> Name | None:
 
 
 def _name_type_locality_is_distribution_evidence(name: Name) -> bool:
-    if name.taxon.age not in {
-        AgeClass.extant,
-        AgeClass.holocene,
-        AgeClass.recently_extinct,
-    }:
+    if name.taxon.age not in {AgeClass.extant, AgeClass.holocene}:
         return False
     location = name.type_locality
-    if location is not None:
-        youngest_age = location.min_age
-        if youngest_age is None and location.min_period is not None:
-            youngest_age = location.min_period.min_age
-        if youngest_age is not None and youngest_age >= 11_700:
+    if (
+        location is not None
+        and location.min_period is not None
+        and location.max_period is not None
+    ):
+        if location.min_period.name != "Recent" or location.max_period.name != "Recent":
             return False
     statuses = [
         tag.status
         for tag in name.type_tags
         if isinstance(tag, TypeTag.TypeLocalityStatus)
     ]
-    return all(
-        status in {OccurrenceStatus.valid, OccurrenceStatus.extirpated}
-        for status in statuses
-    )
+    return all(status is OccurrenceStatus.valid for status in statuses)
 
 
 @dataclass
@@ -1176,10 +1156,37 @@ class MDDSpecies:
                 for c in self.row["countryDistribution"].replace("?", "").split("|")
             }
 
+    def lint_distribution_order(self) -> Iterable[Issue]:
+        for column_name in (
+            "countryDistribution",
+            "subregionDistribution",
+            "continentDistribution",
+            "biogeographicRealm",
+        ):
+            raw_countries = self.row.get(column_name)
+            if raw_countries:
+                assert isinstance(raw_countries, str)
+                suggested = "|".join(
+                    sorted(
+                        raw_countries.split("|"),
+                        key=lambda item: (
+                            "?" in item,
+                            item.replace("?", "").strip().casefold(),
+                        ),
+                    )
+                )
+                if suggested != raw_countries:
+                    yield self.make_issue(
+                        column_name,
+                        "list is not sorted alphabetically with uncertain entries last",
+                        suggested,
+                    )
+
     def lint_distribution_standalone(self) -> Iterable[Issue]:
         countries = self.get_countries()
         if not countries:
             yield self.make_issue("countryDistribution", "missing country distribution")
+        yield from self.lint_distribution_order()
 
         if USE_ISO_3166:
             # Suggest converting country names to ISO 3166-1 alpha-2 codes, preserving any
@@ -1206,7 +1213,9 @@ class MDDSpecies:
                     code_to_uncertain.get(code, False) or uncertain
                 )
             if code_to_uncertain:
-                items = sorted(code_to_uncertain.items(), key=lambda kv: kv[0])
+                items = sorted(
+                    code_to_uncertain.items(), key=lambda item: (item[1], item[0])
+                )
                 suggested = "|".join(code + ("?" if unc else "") for code, unc in items)
                 # Only suggest if the field is not already exactly these codes
                 # (i.e., if it contains names or differs after normalization)
