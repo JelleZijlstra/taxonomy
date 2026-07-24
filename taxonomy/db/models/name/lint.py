@@ -49,6 +49,7 @@ from taxonomy.db.constants import (
     NameDataLevel,
     NamingConvention,
     NomenclatureStatus,
+    OccurrenceValidity,
     OriginalCitationDataLevel,
     PhylogeneticDefinitionType,
     Rank,
@@ -7272,6 +7273,39 @@ def check_unique_type_locality(nam: Name, cfg: LintConfig) -> Iterable[str]:
         for tag in original_localities:
             message += f"  {tag.text}\n"
         yield message
+
+
+@LINT.add("type_locality_validity")
+def check_type_locality_validity(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    tags = list(nam.get_tags(nam.type_tags, TypeTag.TypeLocalityValidity))
+    for tag in set(tags):
+        if tags.count(tag) > 1:
+            yield f"has duplicate {tag}"
+    allowed = {
+        OccurrenceValidity.occurrence_dubious,
+        OccurrenceValidity.classification_dubious,
+    }
+    for tag in tags:
+        if tag.validity not in allowed:
+            yield (
+                "TypeLocalityValidity only allows occurrence_dubious or "
+                f"classification_dubious, not {tag.validity.name}"
+            )
+
+
+@LINT.add("type_locality_distribution_rules")
+def check_type_locality_distribution_rules(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    if nam.type_locality is None:
+        return
+    for tag in nam.taxon.get_tags(
+        nam.taxon.tags, models.tags.TaxonTag.RedirectOccurrences
+    ):
+        if models.tags.is_region_within(nam.type_locality.region, tag.region):
+            yield (
+                f"type locality {nam.type_locality} is within {tag.region}, "
+                f"where RedirectOccurrences says {nam.taxon} should be "
+                f"{tag.target} in light of {tag.source}"
+            )
 
 
 def is_valid_mammal(nam: Name) -> bool:

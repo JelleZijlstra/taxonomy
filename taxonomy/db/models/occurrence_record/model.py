@@ -12,12 +12,15 @@ from taxonomy.adt import ADT
 from taxonomy.db import coordinate_lint, models
 from taxonomy.db.constants import (
     AltitudeUnit,
+    DistributionOrigin,
+    DistributionPresence,
     Managed,
     Markdown,
     OccurrenceBasis,
-    OccurrenceStatus,
+    OccurrenceValidity,
 )
 from taxonomy.db.constants import ObservationKind as ObservationKindEnum
+from taxonomy.db.models.article import Article
 from taxonomy.db.models.base import ADTField, BaseModel, LintConfig, TextOrNullField
 from taxonomy.db.models.classification_entry import ClassificationEntry
 from taxonomy.db.models.location import Location
@@ -200,16 +203,6 @@ class OccurrenceRecordTag(ADT):
     TaxonomicSplitFrom(record=OccurrenceRecord, tag=12)  # type: ignore[name-defined]
     LocationHint(name=Managed, tag=13)  # type: ignore[name-defined]
 
-    # Unlike the legacy status tags above, these tags record whether the status was
-    # stated by the source or is a mutable database assessment. Both are repeatable:
-    # multiple statuses may apply to the same occurrence record.
-    StatusFromSource(  # type: ignore[name-defined]
-        status=OccurrenceStatus, comment=NotRequired[Markdown], tag=14
-    )
-    StatusAssessment(  # type: ignore[name-defined]
-        status=OccurrenceStatus, comment=NotRequired[Markdown], tag=15
-    )
-
     # Verbatim tags preserve source text. Their normalized counterparts are also
     # source-derived, but are stored in a form that can be queried and compared with
     # the mapped Location. Lints infer normalized tags where possible.
@@ -222,4 +215,24 @@ class OccurrenceRecordTag(ADT):
     Date(date=Managed, tag=22)  # type: ignore[name-defined]
     IgnoreLintOccurrenceRecord(  # type: ignore[name-defined]
         label=Managed, comment=NotRequired[Markdown], tag=23
+    )
+
+    # Source tags preserve what the publication said. ValidityAssessment records
+    # the database's judgment; database origin and presence live on Taxon.
+    ValidityFromSource(  # type: ignore[name-defined]
+        validity=OccurrenceValidity, comment=NotRequired[Markdown], tag=24
+    )
+    ValidityAssessment(  # type: ignore[name-defined]
+        validity=OccurrenceValidity, comment=NotRequired[Markdown], tag=25
+    )
+    OriginFromSource(  # type: ignore[name-defined]
+        origin=DistributionOrigin, comment=NotRequired[Markdown], tag=26
+    )
+    PresenceFromSource(  # type: ignore[name-defined]
+        presence=DistributionPresence, comment=NotRequired[Markdown], tag=27
+    )
+    # Including the reviewed Taxon prevents a review from silently surviving a
+    # later reassignment of the occurrence record.
+    ReviewedInLightOf(  # type: ignore[name-defined]
+        article=Article, taxon=Taxon, comment=Markdown, tag=28
     )

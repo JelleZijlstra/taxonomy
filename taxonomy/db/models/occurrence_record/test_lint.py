@@ -1,16 +1,20 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
-from typing import cast
+from typing import Any, cast
 
 import pytest
 
+from taxonomy.db import models
 from taxonomy.db.constants import (
     AgeClass,
     AltitudeUnit,
+    DistributionOrigin,
+    DistributionPresence,
     ObservationKind,
     OccurrenceBasis,
-    OccurrenceStatus,
+    OccurrenceValidity,
+    Rank,
 )
 from taxonomy.db.models.base import LintConfig
 from taxonomy.db.models.location import Location
@@ -23,12 +27,14 @@ from taxonomy.db.models.occurrence_record import (
 from taxonomy.db.models.occurrence_record.lint import (
     check_basis_tags,
     check_coordinate_consistency,
+    check_distribution_rules,
     check_duplicate,
     check_location_age,
     check_missing_location,
     check_missing_taxon,
     check_source_data_tags,
     check_status_tags,
+    check_taxon_mapping,
     parse_verbatim_coordinates,
     parse_verbatim_date,
     parse_verbatim_elevation,
@@ -67,15 +73,58 @@ def _duplicate_record(id: int, **kwargs: object) -> OccurrenceRecord:
 
 
 def test_taxon_lint_autofills_from_classification_entry() -> None:
-    taxon = cast(Taxon, SimpleNamespace())
+    taxon = cast(Taxon, SimpleNamespace(rank=Rank.species))
     taxon.resolve_redirect = lambda: taxon  # type: ignore[method-assign]
     mapped_name = SimpleNamespace(taxon=taxon)
     record = _record(
-        taxon=None, classification_entry=SimpleNamespace(mapped_name=mapped_name)
+        taxon=None,
+        classification_entry=SimpleNamespace(
+            mapped_name=mapped_name, rank=Rank.species
+        ),
     )
 
     assert list(check_missing_taxon(record, LintConfig(autofix=True))) == []
     assert record.taxon is taxon
+
+
+def _nominate_subspecies_mapping(
+    classification_entry_rank: Rank,
+) -> tuple[Taxon, Taxon, object]:
+    species = cast(Taxon, SimpleNamespace(rank=Rank.species))
+    subspecies_obj = SimpleNamespace(rank=Rank.subspecies)
+    subspecies_obj.resolve_redirect = lambda: subspecies_obj
+    subspecies_obj.is_nominate_subspecies = lambda: True
+    subspecies_obj.parent_of_rank = lambda rank: (
+        species if rank is Rank.species else None
+    )
+    subspecies = cast(Taxon, subspecies_obj)
+    classification_entry = SimpleNamespace(
+        mapped_name=SimpleNamespace(taxon=subspecies), rank=classification_entry_rank
+    )
+    return species, subspecies, classification_entry
+
+
+def test_taxon_lint_autofills_species_from_implicit_nominate_subspecies() -> None:
+    species, _, classification_entry = _nominate_subspecies_mapping(Rank.species)
+    record = _record(taxon=None, classification_entry=classification_entry)
+
+    assert list(check_missing_taxon(record, LintConfig(autofix=True))) == []
+    assert record.taxon is species
+
+
+def test_taxon_mapping_allows_species_for_implicit_nominate_subspecies() -> None:
+    species, _, classification_entry = _nominate_subspecies_mapping(Rank.species)
+    record = _record(taxon=species, classification_entry=classification_entry, tags=())
+
+    assert list(check_taxon_mapping(record, LintConfig())) == []
+
+
+def test_taxon_lint_keeps_explicit_nominate_subspecies() -> None:
+    _, subspecies, classification_entry = _nominate_subspecies_mapping(Rank.subspecies)
+    record = _record(taxon=None, classification_entry=classification_entry)
+
+    assert list(check_missing_taxon(record, LintConfig(autofix=True))) == []
+    assert record.taxon is subspecies
 
 
 def test_observation_kind_requires_observation_basis() -> None:
@@ -395,9 +444,15 @@ def test_coordinate_consistency_allows_point_inside_range() -> None:
 def test_status_tags_are_repeatable() -> None:
     record = _record(
         tags=(
-            OccurrenceRecordTag.StatusFromSource(OccurrenceStatus.introduced),
-            OccurrenceRecordTag.StatusFromSource(OccurrenceStatus.vagrant),
-            OccurrenceRecordTag.StatusAssessment(OccurrenceStatus.rejected),
+            OccurrenceRecordTag.ValidityFromSource(
+                OccurrenceValidity.occurrence_dubious
+            ),
+            OccurrenceRecordTag.ValidityFromSource(
+                OccurrenceValidity.classification_dubious
+            ),
+            OccurrenceRecordTag.ValidityAssessment(OccurrenceValidity.rejected),
+            OccurrenceRecordTag.OriginFromSource(DistributionOrigin.introduced),
+            OccurrenceRecordTag.PresenceFromSource(DistributionPresence.vagrant),
         )
     )
 
@@ -407,9 +462,9 @@ def test_status_tags_are_repeatable() -> None:
 def test_status_lint_flags_duplicate_status() -> None:
     record = _record(
         tags=(
-            OccurrenceRecordTag.StatusFromSource(OccurrenceStatus.vagrant),
-            OccurrenceRecordTag.StatusFromSource(
-                OccurrenceStatus.vagrant, comment="explicitly stated"
+            OccurrenceRecordTag.PresenceFromSource(DistributionPresence.vagrant),
+            OccurrenceRecordTag.PresenceFromSource(
+                DistributionPresence.vagrant, comment="explicitly stated"
             ),
         )
     )
@@ -417,7 +472,162 @@ def test_status_lint_flags_duplicate_status() -> None:
     messages = list(check_status_tags(record, LintConfig()))
 
     assert len(messages) == 1
-    assert "duplicate StatusFromSource for vagrant" in messages[0]
+    assert "duplicate PresenceFromSource for vagrant" in messages[0]
+
+
+def _region(name: str, parent: Any = None) -> object:
+    region = SimpleNamespace(name=name, parent=parent)
+
+    def all_parents() -> object:
+        current = parent
+        while current is not None:
+            yield current
+            current = current.parent
+
+    region.all_parents = all_parents
+    region.__str__ = lambda: name  # type: ignore[method-assign]
+    return region
+
+
+def _rule_taxon(name: str, tags: tuple[object, ...]) -> Taxon:
+    taxon = SimpleNamespace(valid_name=name, tags=tags)
+    taxon.get_tags = lambda values, tag_type: (
+        tag for tag in values if isinstance(tag, tag_type)
+    )
+    taxon.add_tag = lambda tag: setattr(taxon, "tags", (*taxon.tags, tag))
+    taxon.__str__ = lambda: name  # type: ignore[method-assign]
+    return cast(Taxon, taxon)
+
+
+def _article(name: str, year: int) -> object:
+    return SimpleNamespace(
+        name=name, valid_numeric_year=lambda: year, __str__=lambda: name
+    )
+
+
+def test_reassess_rule_requires_review_for_old_record() -> None:
+    continent = _region("North America")
+    country = _region("Canada", continent)
+    revision = _article("revision", 2020)
+    taxon = _rule_taxon(
+        "Example old",
+        (
+            models.tags.TaxonTag.ReassessOccurrences(
+                continent, revision, comment="split species"
+            ),
+        ),
+    )
+    record = _record(
+        taxon=taxon,
+        location=SimpleNamespace(region=country),
+        classification_entry=SimpleNamespace(article=_article("old", 1990)),
+    )
+
+    messages = list(check_distribution_rules(record, LintConfig(autofix=False)))
+
+    assert len(messages) == 1
+    assert "requires ReviewedInLightOf" in messages[0]
+
+
+def test_reassess_rule_exempts_new_record() -> None:
+    region = _region("Canada")
+    revision = _article("revision", 2020)
+    taxon = _rule_taxon(
+        "Example new", (models.tags.TaxonTag.ReassessOccurrences(region, revision),)
+    )
+    record = _record(
+        taxon=taxon,
+        location=SimpleNamespace(region=region),
+        classification_entry=SimpleNamespace(article=_article("new", 2021)),
+    )
+
+    assert list(check_distribution_rules(record, LintConfig())) == []
+
+
+def test_reassess_rule_requires_review_in_cutoff_year() -> None:
+    region = _region("Canada")
+    revision = _article("revision", 2020)
+    taxon = _rule_taxon(
+        "Example contemporary",
+        (models.tags.TaxonTag.ReassessOccurrences(region, revision),),
+    )
+    record = _record(
+        taxon=taxon,
+        location=SimpleNamespace(region=region),
+        classification_entry=SimpleNamespace(article=_article("contemporary", 2020)),
+    )
+
+    messages = list(check_distribution_rules(record, LintConfig()))
+
+    assert len(messages) == 1
+    assert "requires ReviewedInLightOf" in messages[0]
+
+
+def test_redirect_rule_moves_old_record() -> None:
+    region = _region("South America")
+    revision = _article("revision", 2020)
+    target = _rule_taxon("Artibeus planirostris", ())
+    source = _rule_taxon(
+        "Artibeus jamaicensis",
+        (models.tags.TaxonTag.RedirectOccurrences(region, target, revision),),
+    )
+    record = _record(
+        taxon=source,
+        location=SimpleNamespace(region=region),
+        classification_entry=SimpleNamespace(article=_article("old", 1990)),
+    )
+
+    assert list(check_distribution_rules(record, LintConfig(autofix=True))) == []
+    assert record.taxon is target
+    assert any(
+        isinstance(tag, OccurrenceRecordTag.CommentFromDatabase)
+        and "Reassigned from" in tag.text
+        for tag in record.tags
+    )
+
+
+def test_redirect_rule_preserves_reviewed_old_record() -> None:
+    region = _region("South America")
+    revision = _article("revision", 2020)
+    target = _rule_taxon("Artibeus planirostris", ())
+    source = _rule_taxon(
+        "Artibeus jamaicensis",
+        (models.tags.TaxonTag.RedirectOccurrences(region, target, revision),),
+    )
+    record = _record(
+        taxon=source,
+        location=SimpleNamespace(region=region),
+        classification_entry=SimpleNamespace(article=_article("old", 1990)),
+        tags=(
+            OccurrenceRecordTag.ReviewedInLightOf(
+                revision, source, "confirmed after revision"
+            ),
+        ),
+    )
+
+    assert list(check_distribution_rules(record, LintConfig())) == []
+    assert record.taxon is source
+
+
+def test_redirect_rule_requires_review_for_later_record() -> None:
+    region = _region("South America")
+    revision = _article("revision", 2020)
+    target = _rule_taxon("Artibeus planirostris", ())
+    source = _rule_taxon(
+        "Artibeus jamaicensis",
+        (models.tags.TaxonTag.RedirectOccurrences(region, target, revision),),
+    )
+    record = _record(
+        taxon=source,
+        location=SimpleNamespace(region=region),
+        classification_entry=SimpleNamespace(article=_article("later", 2021)),
+    )
+
+    messages = list(check_distribution_rules(record, LintConfig()))
+
+    assert len(messages) == 1
+    assert "requires ReviewedInLightOf" in messages[0]
+    assert record.taxon is source
 
 
 def test_occurrence_record_lint_can_be_ignored() -> None:
@@ -518,6 +728,7 @@ def test_occurrence_record_lint_registry_labels() -> None:
         "source_data",
         "coordinate_location",
         "status_tags",
+        "distribution_rules",
         "taxonomic_split",
         "duplicate",
     ]

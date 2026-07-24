@@ -23,7 +23,9 @@ from taxonomy.db.constants import (
     AgeClass,
     ArticleKind,
     ArticleType,
-    OccurrenceStatus,
+    DistributionOrigin,
+    DistributionPresence,
+    OccurrenceValidity,
     Rank,
     Status,
 )
@@ -31,7 +33,7 @@ from taxonomy.db.models import Name, Taxon
 from taxonomy.db.models.article import Article
 from taxonomy.db.models.name import TypeTag
 from taxonomy.db.models.occurrence_record import OccurrenceRecordTag
-from taxonomy.db.models.tags import TaxonTag
+from taxonomy.db.models.tags import TaxonTag, get_effective_regional_tag
 
 Syn = dict[str, str]
 _TAXON_NOT_CACHED = object()
@@ -1009,27 +1011,73 @@ def _mdd_distribution_has_country(country: str, mdd_countries: Container[str]) -
     return mdd_country in mdd_countries
 
 
-def _occurrence_record_is_distribution_evidence(record: Any) -> bool:
-    excluded_statuses = {
-        OccurrenceStatus.vagrant,
-        OccurrenceStatus.introduced,
-        OccurrenceStatus.occurrence_dubious,
-        OccurrenceStatus.classification_dubious,
-        OccurrenceStatus.rejected,
+_NON_DISTRIBUTION_VALIDITIES = {
+    OccurrenceValidity.rejected,
+    OccurrenceValidity.occurrence_dubious,
+    OccurrenceValidity.classification_dubious,
+    OccurrenceValidity.incidental,
+}
+_GLOBALLY_EXTINCT_AGES = {AgeClass.recently_extinct, AgeClass.holocene}
+
+
+def _occurrence_record_validities(
+    record: Any, *, assessment: bool
+) -> set[OccurrenceValidity]:
+    tag_type = (
+        OccurrenceRecordTag.ValidityAssessment
+        if assessment
+        else OccurrenceRecordTag.ValidityFromSource
+    )
+    return {tag.validity for tag in record.tags if isinstance(tag, tag_type)}
+
+
+def _occurrence_record_presence(
+    record: Any, taxon: Taxon
+) -> DistributionPresence | None:
+    regional_tag = get_effective_regional_tag(
+        taxon, record.location.region, TaxonTag.RegionalPresence
+    )
+    if regional_tag is not None:
+        return regional_tag.presence
+    source_presences = {
+        tag.presence
+        for tag in record.tags
+        if isinstance(tag, OccurrenceRecordTag.PresenceFromSource)
     }
-    for tag in record.tags:
-        if (
-            isinstance(
-                tag,
-                (
-                    OccurrenceRecordTag.StatusFromSource,
-                    OccurrenceRecordTag.StatusAssessment,
-                ),
-            )
-            and tag.status in excluded_statuses
-        ):
-            return False
+    if DistributionPresence.extirpated in source_presences:
+        return DistributionPresence.extirpated
+    if len(source_presences) == 1:
+        return next(iter(source_presences))
+    return None
+
+
+def _occurrence_record_is_distribution_evidence(record: Any, taxon: Taxon) -> bool:
+    assessments = _occurrence_record_validities(record, assessment=True)
+    validities = assessments or _occurrence_record_validities(record, assessment=False)
+    if validities & _NON_DISTRIBUTION_VALIDITIES:
+        return False
+    presence = _occurrence_record_presence(record, taxon)
+    if (
+        presence is DistributionPresence.extirpated
+        and taxon.age not in _GLOBALLY_EXTINCT_AGES
+    ):
+        return False
     return True
+
+
+def _distribution_status_note(record: Any, taxon: Taxon) -> str:
+    parts = []
+    origin_tag = get_effective_regional_tag(
+        taxon, record.location.region, TaxonTag.RegionalOrigin
+    )
+    if origin_tag is not None and origin_tag.origin is not DistributionOrigin.native:
+        parts.append(origin_tag.origin.name.replace("_", " "))
+    presence = _occurrence_record_presence(record, taxon)
+    if presence is not None and presence is not DistributionPresence.resident:
+        parts.append(presence.name.replace("_", " "))
+    if not parts:
+        return ""
+    return f"; regional status: {', '.join(parts)}"
 
 
 def get_taxon_distribution_evidence(taxon: Taxon) -> list[DistributionEvidence]:
@@ -1037,7 +1085,7 @@ def get_taxon_distribution_evidence(taxon: Taxon) -> list[DistributionEvidence]:
     evidence = []
     for record in taxon.occurrence_records:
         if record.location is None or not _occurrence_record_is_distribution_evidence(
-            record
+            record, taxon
         ):
             continue
         country = _country_for_location(record.location)
@@ -1056,6 +1104,7 @@ def get_taxon_distribution_evidence(taxon: Taxon) -> list[DistributionEvidence]:
                 detail=(
                     f"{record.basis.name} record at {record.locality_text} "
                     f"from {article.name}{page_detail}"
+                    f"{_distribution_status_note(record, taxon)}"
                 ),
                 link=record.get_absolute_url(),
             )
@@ -1074,22 +1123,41 @@ def _get_hesp_name(syn: Syn) -> Name | None:
 
 
 def _name_type_locality_is_distribution_evidence(name: Name) -> bool:
-    if name.taxon.age not in {AgeClass.extant, AgeClass.holocene}:
+    if name.taxon.age not in {
+        AgeClass.extant,
+        AgeClass.recently_extinct,
+        AgeClass.holocene,
+    }:
         return False
     location = name.type_locality
-    if (
-        location is not None
-        and location.min_period is not None
-        and location.max_period is not None
-    ):
-        if location.min_period.name != "Recent" or location.max_period.name != "Recent":
+    if location is not None and location.min_period is not None:
+        max_period = getattr(location, "max_period", location.min_period)
+        min_period_age = getattr(location.min_period, "min_age", None)
+        max_period_age = getattr(max_period, "min_age", None)
+        if (
+            getattr(location.min_period, "name", None) != "Recent"
+            and min_period_age != 0
+        ) or (getattr(max_period, "name", None) != "Recent" and max_period_age != 0):
             return False
-    statuses = [
-        tag.status
+    validities = [
+        tag.validity
         for tag in name.type_tags
-        if isinstance(tag, TypeTag.TypeLocalityStatus)
+        if isinstance(tag, TypeTag.TypeLocalityValidity)
     ]
-    return all(status is OccurrenceStatus.valid for status in statuses)
+    if any(validity is not OccurrenceValidity.valid for validity in validities):
+        return False
+    regional_presence = (
+        get_effective_regional_tag(
+            name.taxon, location.region, TaxonTag.RegionalPresence
+        )
+        if location is not None and hasattr(location, "region")
+        else None
+    )
+    presence = regional_presence.presence if regional_presence is not None else None
+    return not (
+        presence is DistributionPresence.extirpated
+        and name.taxon.age not in _GLOBALLY_EXTINCT_AGES
+    )
 
 
 @dataclass

@@ -652,6 +652,37 @@ class OccurrenceStatus(enum.IntEnum):
     classification_dubious = 6  # dubious that the species is correctly classified
 
 
+class OccurrenceValidity(enum.IntEnum):
+    """Whether an individual occurrence record is acceptable."""
+
+    valid = 0
+    rejected = 1
+    occurrence_dubious = 2
+    classification_dubious = 3
+    # Isolated specimen that was likely introduced or transported to the region,
+    # not a normal part of the fauna.
+    # For example, a specimen bought at a market.
+    incidental = 4
+
+
+class DistributionOrigin(enum.IntEnum):
+    """How a taxon came to occur in a region."""
+
+    native = 0
+    introduced = 1  # human-mediated introduction in or after 1500
+    possibly_introduced = 2
+    ancient_introduction = 3  # human-mediated introduction before 1500
+
+
+class DistributionPresence(enum.IntEnum):
+    """The kind of presence a taxon has in a region."""
+
+    resident = 0
+    vagrant = 1
+    extirpated = 2
+    reintroduced = 3
+
+
 class OccurrenceBasis(enum.IntEnum):
     voucher = 1
     observation = 2

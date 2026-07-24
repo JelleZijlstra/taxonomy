@@ -6,7 +6,13 @@ from collections.abc import Collection, Iterable
 from dataclasses import replace
 
 from taxonomy.db import coordinate_lint, helpers, models
-from taxonomy.db.constants import AgeClass, AltitudeUnit, OccurrenceBasis
+from taxonomy.db.constants import (
+    AgeClass,
+    AltitudeUnit,
+    OccurrenceBasis,
+    OccurrenceValidity,
+    Rank,
+)
 from taxonomy.db.models.base import LintConfig
 from taxonomy.db.models.lint import IgnoreLint, Lint
 from taxonomy.db.models.location import Location, LocationStatus
@@ -65,7 +71,14 @@ def get_inferred_taxon(record: OccurrenceRecord) -> Taxon | None:
     mapped_name = record.classification_entry.mapped_name
     if mapped_name is None:
         return None
-    return mapped_name.taxon.resolve_redirect()
+    taxon = mapped_name.taxon.resolve_redirect()
+    if (
+        taxon.rank is Rank.subspecies
+        and taxon.is_nominate_subspecies()
+        and record.classification_entry.rank is not Rank.subspecies
+    ):
+        return taxon.parent_of_rank(Rank.species)
+    return taxon
 
 
 def _get_location_by_name(name: str) -> Location | None:
@@ -568,19 +581,163 @@ def check_coordinate_consistency(
             )
 
 
+def _yield_duplicate_values(
+    record: OccurrenceRecord, tag_type: type[OccurrenceRecordTag], attribute: str
+) -> Iterable[str]:
+    values = [getattr(tag, attribute) for tag in record.get_tags(record.tags, tag_type)]
+    duplicates = sorted(
+        {value for value in values if values.count(value) > 1},
+        key=lambda value: value.value,
+    )
+    for value in duplicates:
+        yield f"has duplicate {tag_type.__name__} for {value.name}"
+
+
+def _yield_mutually_exclusive_values(
+    record: OccurrenceRecord, tag_type: type[OccurrenceRecordTag], attribute: str
+) -> Iterable[str]:
+    values = {getattr(tag, attribute) for tag in record.get_tags(record.tags, tag_type)}
+    if len(values) > 1:
+        yield (
+            f"has conflicting {tag_type.__name__} values: "
+            f"{', '.join(sorted(value.name for value in values))}"
+        )
+
+
 @LINT.add("status_tags")
 def check_status_tags(record: OccurrenceRecord, cfg: LintConfig) -> Iterable[str]:
     for tag_type in (
-        OccurrenceRecordTag.StatusFromSource,
-        OccurrenceRecordTag.StatusAssessment,
+        OccurrenceRecordTag.ValidityFromSource,
+        OccurrenceRecordTag.ValidityAssessment,
     ):
-        statuses = [tag.status for tag in record.get_tags(record.tags, tag_type)]
-        duplicate_statuses = sorted(
-            {status for status in statuses if statuses.count(status) > 1},
-            key=lambda status: status.value,
+        yield from _yield_duplicate_values(record, tag_type, "validity")
+        validities = {tag.validity for tag in record.get_tags(record.tags, tag_type)}
+        if (
+            OccurrenceValidity.valid in validities
+            or OccurrenceValidity.rejected in validities
+        ) and len(validities) > 1:
+            yield (
+                f"{tag_type.__name__} {', '.join(sorted(v.name for v in validities))} "
+                "cannot be combined"
+            )
+    for tag_type, attribute in (
+        (OccurrenceRecordTag.OriginFromSource, "origin"),
+        (OccurrenceRecordTag.PresenceFromSource, "presence"),
+    ):
+        yield from _yield_duplicate_values(record, tag_type, attribute)
+        yield from _yield_mutually_exclusive_values(record, tag_type, attribute)
+
+    reviews = list(record.get_tags(record.tags, OccurrenceRecordTag.ReviewedInLightOf))
+    review_keys = [(tag.article, tag.taxon) for tag in reviews]
+    for article, taxon in {key for key in review_keys if review_keys.count(key) > 1}:
+        yield f"has duplicate ReviewedInLightOf for {article} and {taxon}"
+    if getattr(record, "taxon", None) is not None:
+        for tag in reviews:
+            if tag.taxon != record.taxon:
+                yield (
+                    f"ReviewedInLightOf for {tag.taxon} does not apply to current "
+                    f"taxon {record.taxon}"
+                )
+
+
+def _tag_cutoff_year(tag: models.tags.TaxonTag) -> int | None:
+    if tag.cutoff_year is not None:
+        return tag.cutoff_year
+    return tag.source.valid_numeric_year()
+
+
+def _record_source_year(record: OccurrenceRecord) -> int | None:
+    return record.classification_entry.article.valid_numeric_year()
+
+
+def _has_review(
+    record: OccurrenceRecord, article: models.Article, taxon: Taxon
+) -> bool:
+    return any(
+        tag.article == article and tag.taxon == taxon
+        for tag in record.get_tags(record.tags, OccurrenceRecordTag.ReviewedInLightOf)
+    )
+
+
+@LINT.add("distribution_rules")
+def check_distribution_rules(
+    record: OccurrenceRecord, cfg: LintConfig
+) -> Iterable[str]:
+    if record.taxon is None or record.location is None:
+        return
+    taxon = record.taxon
+    region = record.location.region
+    record_year = _record_source_year(record)
+    redirect_tags = [
+        tag
+        for tag in taxon.get_tags(taxon.tags, models.tags.TaxonTag.RedirectOccurrences)
+        if models.tags.is_region_within(region, tag.region)
+        and not _has_review(record, tag.source, taxon)
+    ]
+    move_tags = [
+        tag
+        for tag in redirect_tags
+        if (cutoff_year := _tag_cutoff_year(tag)) is not None
+        and record_year is not None
+        and record_year < cutoff_year
+    ]
+    if move_tags:
+        targets = []
+        for tag in move_tags:
+            if tag.target not in targets:
+                targets.append(tag.target)
+        if len(targets) > 1:
+            yield (
+                "matches conflicting RedirectOccurrences rules with targets "
+                f"{', '.join(sorted(str(target) for target in targets))}"
+            )
+            return
+        target = targets[0]
+        sources = ", ".join(sorted({str(tag.source) for tag in move_tags}))
+        message = (
+            f"taxon should be moved from {taxon} to {target} under "
+            f"RedirectOccurrences ({sources})"
         )
-        for status in duplicate_statuses:
-            yield (f"has duplicate {tag_type.__name__} for {status.name}")
+        if cfg.autofix:
+            print(f"{record}: {message}")
+            record.taxon = target
+            comment = (
+                f"Reassigned from {taxon} to {target} under "
+                f"RedirectOccurrences ({sources})."
+            )
+            if not any(
+                isinstance(tag, OccurrenceRecordTag.CommentFromDatabase)
+                and tag.text == comment
+                for tag in record.tags
+            ):
+                record.add_tag(OccurrenceRecordTag.CommentFromDatabase(comment))
+            return
+        yield message
+
+    for tag in redirect_tags:
+        if tag in move_tags:
+            continue
+        yield (
+            f"occurrence in {region} requires ReviewedInLightOf({tag.source}, "
+            f"{taxon}) because of RedirectOccurrences"
+        )
+
+    for tag in taxon.get_tags(taxon.tags, models.tags.TaxonTag.ReassessOccurrences):
+        if not models.tags.is_region_within(region, tag.region):
+            continue
+        if _has_review(record, tag.source, taxon):
+            continue
+        cutoff_year = _tag_cutoff_year(tag)
+        if (
+            cutoff_year is not None
+            and record_year is not None
+            and record_year > cutoff_year
+        ):
+            continue
+        yield (
+            f"occurrence in {region} requires ReviewedInLightOf({tag.source}, "
+            f"{taxon}) because of ReassessOccurrences"
+        )
 
 
 @LINT.add("taxonomic_split")

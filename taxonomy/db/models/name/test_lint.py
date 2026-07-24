@@ -5,12 +5,18 @@ from typing import cast
 
 import pytest
 
-from taxonomy.db import coordinate_lint
-from taxonomy.db.constants import AgeClass, SpecimenOrgan
+from taxonomy.db import coordinate_lint, models
+from taxonomy.db.constants import AgeClass, OccurrenceValidity, SpecimenOrgan
 from taxonomy.db.models.base import LintConfig
 from taxonomy.db.models.location import Location
 
-from .lint import check_coordinates, check_type_locality_age, parse_date
+from .lint import (
+    check_coordinates,
+    check_type_locality_age,
+    check_type_locality_distribution_rules,
+    check_type_locality_validity,
+    parse_date,
+)
 from .name import Name, TypeTag
 
 
@@ -158,3 +164,45 @@ def test_name_fossil_taxon_allows_pre_pleistocene_type_locality() -> None:
     name = _name_with_age(AgeClass.fossil, _location_with_age("Pliocene", 2_590_000))
 
     assert list(check_type_locality_age(name, LintConfig())) == []
+
+
+def _tagged_name(tags: tuple[object, ...]) -> Name:
+    name = SimpleNamespace(type_tags=tags)
+    name.get_tags = lambda values, tag_type: (
+        tag for tag in values if isinstance(tag, tag_type)
+    )
+    return cast(Name, name)
+
+
+def test_type_locality_validity_rejects_valid_tag() -> None:
+    name = _tagged_name((TypeTag.TypeLocalityValidity(OccurrenceValidity.valid),))
+
+    messages = list(check_type_locality_validity(name, LintConfig()))
+
+    assert len(messages) == 1
+    assert "only allows occurrence_dubious or classification_dubious" in messages[0]
+
+
+def test_redirect_rule_flags_name_type_locality() -> None:
+    region = SimpleNamespace()
+    region.all_parents = lambda: iter(())
+    target = SimpleNamespace()
+    source = SimpleNamespace()
+    rule = models.tags.TaxonTag.RedirectOccurrences(region, target, source)
+    taxon = SimpleNamespace(tags=(rule,))
+    taxon.get_tags = lambda values, tag_type: (
+        tag for tag in values if isinstance(tag, tag_type)
+    )
+    name = SimpleNamespace(
+        type_locality=SimpleNamespace(region=region), taxon=taxon, type_tags=()
+    )
+    name.get_tags = lambda values, tag_type: (
+        tag for tag in values if isinstance(tag, tag_type)
+    )
+
+    messages = list(
+        check_type_locality_distribution_rules(cast(Name, name), LintConfig())
+    )
+
+    assert len(messages) == 1
+    assert "where RedirectOccurrences says" in messages[0]

@@ -166,7 +166,8 @@ CREATE TABLE `occurrence_record` (
     `raw_data` TEXT DEFAULT NULL,
     `taxon_id` INT UNSIGNED DEFAULT NULL,
     `location_id` INT UNSIGNED DEFAULT NULL,
-    `tags` TEXT DEFAULT NULL
+    `tags` TEXT DEFAULT NULL,
+    `status` INT UNSIGNED NOT NULL DEFAULT 0
 ) ENGINE=INNODB DEFAULT CHARSET=utf8;
 CREATE INDEX "idx_occurrence_record" ON "occurrence_record" (`classification_entry_id`);
 CREATE INDEX "idx_occurrence_record_taxon" ON "occurrence_record" (`taxon_id`);

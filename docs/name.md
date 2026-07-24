@@ -576,13 +576,13 @@ names should have at least one. They fall into several groups:
   - _Altitude_: Altitude, in meters or feet, at which the type specimen was collected.
   - _Coordinates_: Geographical coordinates (latitude and longitude) at which the type
     specimen was collected.
-  - _TypeLocalityStatus_: Whether the type locality should count as distributional
+  - _TypeLocalityValidity_: Whether the type locality should count as distributional
     evidence for the taxon to which the name is currently assigned. The value is an
-    `OccurrenceStatus`; for example, `occurrence_dubious` marks a well-documented type
-    locality that is implausibly far outside the otherwise known range, and `introduced`
-    can mark an escaped or transported individual. An optional comment records the
-    supporting reasoning. Statuses other than `valid` and `extirpated` are excluded from
-    inferred MDD country distributions.
+    `OccurrenceValidity`; only `occurrence_dubious` and `classification_dubious` are
+    allowed. For example, `occurrence_dubious` marks a well-documented type locality
+    that is implausibly far outside the otherwise known range. An optional comment
+    records the supporting reasoning. Origin and presence assessments belong on the
+    Taxon as regional tags instead.
   - _Repository_: Reference to a [collection](/docs/collection) that holds some of the
     type material. Should be used if and only if the "collection" field is set to the
     special [multiple](/c/multiple) collection. This usually appears when the species

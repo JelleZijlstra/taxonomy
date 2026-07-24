@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections import defaultdict
+import enum
+from collections import Counter, defaultdict
 from collections.abc import Callable, Container, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import date
@@ -198,6 +199,70 @@ def check_age(taxon: Taxon, cfg: LintConfig) -> Iterable[str]:
         children = list(taxon.get_children())
         if children and not any(child.age is AgeClass.extant for child in children):
             yield "extant taxon has no extant children"
+
+
+@LINT.add("regional_distribution_tags")
+def check_regional_distribution_tags(taxon: Taxon, cfg: LintConfig) -> Iterable[str]:
+    for tag_type, status_attribute in (
+        (models.tags.TaxonTag.RegionalOrigin, "origin"),
+        (models.tags.TaxonTag.RegionalPresence, "presence"),
+    ):
+        tags = list(taxon.get_tags(taxon.tags, tag_type))
+        for tag, count in Counter(tags).items():
+            if count > 1:
+                yield f"has duplicate {tag}"
+        by_region: dict[models.Region, set[enum.Enum]] = defaultdict(set)
+        for tag in tags:
+            by_region[tag.region].add(getattr(tag, status_attribute))
+        for region, statuses in by_region.items():
+            if len(statuses) > 1:
+                yield (
+                    f"has conflicting {tag_type.__name__} values for {region}: "
+                    f"{', '.join(sorted(status.name for status in statuses))}"
+                )
+
+
+@LINT.add("occurrence_review_rules")
+def check_occurrence_review_rules(taxon: Taxon, cfg: LintConfig) -> Iterable[str]:
+    reassess_tags = list(
+        taxon.get_tags(taxon.tags, models.tags.TaxonTag.ReassessOccurrences)
+    )
+    reassess_keys = [(tag.region, tag.source, tag.cutoff_year) for tag in reassess_tags]
+    for reassess_key in {key for key in reassess_keys if reassess_keys.count(key) > 1}:
+        yield (
+            "has duplicate ReassessOccurrences rule for "
+            f"{reassess_key[0]}, {reassess_key[1]}, cutoff {reassess_key[2]}"
+        )
+
+    redirect_tags = list(
+        taxon.get_tags(taxon.tags, models.tags.TaxonTag.RedirectOccurrences)
+    )
+    for tag in redirect_tags:
+        if tag.target == taxon:
+            yield f"RedirectOccurrences for {tag.region} points to the same taxon"
+    redirect_keys = [
+        (tag.region, tag.target, tag.source, tag.cutoff_year) for tag in redirect_tags
+    ]
+    for redirect_key in {key for key in redirect_keys if redirect_keys.count(key) > 1}:
+        yield (
+            "has duplicate RedirectOccurrences rule for "
+            f"{redirect_key[0]} to {redirect_key[1]} from "
+            f"{redirect_key[2]}, cutoff {redirect_key[3]}"
+        )
+    for first, second in models.tags.iter_overlapping_region_pairs(redirect_tags):
+        if first.target != second.target:
+            yield (
+                "has overlapping RedirectOccurrences rules with different targets: "
+                f"{first.region} to {first.target}; "
+                f"{second.region} to {second.target}"
+            )
+
+    for tag in (*reassess_tags, *redirect_tags):
+        if tag.cutoff_year is None and tag.source.valid_numeric_year() is None:
+            yield (
+                f"{type(tag).__name__} for {tag.region} needs an explicit "
+                "cutoff_year because its source has no valid year"
+            )
 
 
 @LINT.add("valid_base_name")
