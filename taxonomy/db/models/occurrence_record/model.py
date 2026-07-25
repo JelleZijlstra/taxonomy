@@ -23,6 +23,7 @@ from taxonomy.db.constants import ObservationKind as ObservationKindEnum
 from taxonomy.db.models.article import Article
 from taxonomy.db.models.base import ADTField, BaseModel, LintConfig, TextOrNullField
 from taxonomy.db.models.classification_entry import ClassificationEntry
+from taxonomy.db.models.collection import Collection
 from taxonomy.db.models.location import Location
 from taxonomy.db.models.taxon import Taxon
 
@@ -236,3 +237,4 @@ class OccurrenceRecordTag(ADT):
     ReviewedInLightOf(  # type: ignore[name-defined]
         article=Article, taxon=Taxon, comment=Markdown, tag=28
     )
+    Voucher(text=Managed, collection=Collection, tag=29)  # type: ignore[name-defined]
