@@ -12,6 +12,7 @@ from taxonomy.db.models.location import Location
 
 from .lint import (
     check_coordinates,
+    check_location_detail_coordinates,
     check_type_locality_age,
     check_type_locality_distribution_rules,
     check_type_locality_validity,
@@ -73,6 +74,98 @@ def test_name_coordinate_range_matches_location(
     monkeypatch.setattr(coordinate_lint, "check_extent_in_region", lambda *_: ())
 
     assert list(check_coordinates(name, LintConfig())) == []
+
+
+def _name_with_location_details(
+    texts: tuple[str, ...],
+    *,
+    location_coordinates: tuple[str | None, str | None] | None,
+) -> Name:
+    source = cast(models.Article, object())
+    tags = tuple(TypeTag.LocationDetail(text, source) for text in texts)
+    if location_coordinates is None:
+        location = None
+    else:
+        location = SimpleNamespace(
+            latitude=location_coordinates[0], longitude=location_coordinates[1]
+        )
+    return cast(
+        Name,
+        SimpleNamespace(
+            type_locality=location,
+            type_tags=tags,
+            get_tags=lambda values, tag_type: (
+                tag for tag in values if isinstance(tag, tag_type)
+            ),
+        ),
+    )
+
+
+def test_location_detail_does_not_duplicate_location_coordinates() -> None:
+    name = _name_with_location_details(
+        ("Collected at 40°30'N, 74°15'W.",), location_coordinates=("40.5°N", "74.25°W")
+    )
+
+    assert list(check_location_detail_coordinates(name, LintConfig(autofix=True))) == []
+    assert not any(isinstance(tag, TypeTag.Coordinates) for tag in name.type_tags)
+
+
+def test_location_detail_coordinates_must_match_location() -> None:
+    name = _name_with_location_details(
+        ("Collected at 40°30'N, 74°15'W.",), location_coordinates=("41°N", "74.25°W")
+    )
+
+    messages = list(check_location_detail_coordinates(name, LintConfig()))
+
+    assert len(messages) == 1
+    assert "55.6 km from Location" in messages[0]
+
+
+def test_location_detail_infers_coordinates_when_location_has_none() -> None:
+    name = _name_with_location_details(
+        ("Collected at 40°30'N, 74°15'W.",), location_coordinates=(None, None)
+    )
+
+    assert list(check_location_detail_coordinates(name, LintConfig(autofix=True))) == []
+    assert TypeTag.Coordinates("40°30'N", "74°15'W") in name.type_tags
+
+
+def test_conflicting_location_detail_coordinates_are_not_inferred() -> None:
+    name = _name_with_location_details(
+        ("Collected at 40°30'N, 74°15'W.", "Locality reported as 41°N, 74°15'W."),
+        location_coordinates=(None, None),
+    )
+
+    messages = list(check_location_detail_coordinates(name, LintConfig(autofix=True)))
+
+    assert len(messages) == 1
+    assert "cannot infer Coordinates tag" in messages[0]
+    assert not any(isinstance(tag, TypeTag.Coordinates) for tag in name.type_tags)
+
+
+def test_distinct_nearby_location_detail_coordinates_are_not_combined() -> None:
+    name = _name_with_location_details(
+        ("Collected at 40°30'N, 74°15'W.", "Locality reported as 40°31'N, 74°15'W."),
+        location_coordinates=(None, None),
+    )
+
+    messages = list(check_location_detail_coordinates(name, LintConfig(autofix=True)))
+
+    assert len(messages) == 1
+    assert "multiple coordinate pairs within 5 km" in messages[0]
+    assert not any(isinstance(tag, TypeTag.Coordinates) for tag in name.type_tags)
+
+
+def test_location_detail_coordinates_must_match_existing_tag() -> None:
+    name = _name_with_location_details(
+        ("Collected at 40°30'N, 74°15'W.",), location_coordinates=(None, None)
+    )
+    name.type_tags = [*name.type_tags, TypeTag.Coordinates("41°N", "74°15'W")]  # type: ignore[assignment]
+
+    messages = list(check_location_detail_coordinates(name, LintConfig()))
+
+    assert len(messages) == 1
+    assert "conflict with all Coordinates tags" in messages[0]
 
 
 def _location_with_age(period_name: str, youngest_age: int) -> Location:

@@ -29,6 +29,14 @@ class SearchResult:
     category: str
     feature_type: str
     address: dict[str, str]
+    osm_type: str | None = None
+    bounding_box: tuple[str, str, str, str] | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ReverseResult:
+    display_name: str
+    address: dict[str, str]
 
 
 def search(query: str, *, limit: int = 5) -> list[SearchResult]:
@@ -52,6 +60,42 @@ def search(query: str, *, limit: int = 5) -> list[SearchResult]:
     return [_parse_search_result(row) for row in data]
 
 
+def reverse(point: coordinates.Point, *, zoom: int = 5) -> ReverseResult | None:
+    """Return the nearest Nominatim address for a coordinate."""
+    url = str(
+        httpx.URL(f"{BASE_URL}/reverse").copy_with(
+            params=httpx.QueryParams(
+                {
+                    "lat": str(point.latitude),
+                    "lon": str(point.longitude),
+                    "format": "jsonv2",
+                    "addressdetails": "1",
+                    "layer": "address",
+                    "zoom": str(zoom),
+                    "accept-language": "en",
+                }
+            )
+        )
+    )
+    data = json.loads(get_nominatim_data(url))
+    if not isinstance(data, dict):
+        raise TypeError(data)
+    if data.get("error") == "Unable to geocode":
+        return None
+    try:
+        raw_address = data["address"]
+        if not isinstance(raw_address, dict):
+            raise TypeError
+        address = {
+            str(key): str(value)
+            for key, value in raw_address.items()
+            if isinstance(value, str)
+        }
+        return ReverseResult(display_name=str(data["display_name"]), address=address)
+    except (KeyError, TypeError) as exc:
+        raise ValueError(data) from exc
+
+
 def _parse_search_result(row: Any) -> SearchResult:
     if not isinstance(row, dict):
         raise TypeError(row)
@@ -64,6 +108,25 @@ def _parse_search_result(row: Any) -> SearchResult:
             for key, value in raw_address.items()
             if isinstance(value, str)
         }
+        raw_bounding_box = row.get("boundingbox")
+        if raw_bounding_box is None:
+            bounding_box = None
+        elif (
+            isinstance(raw_bounding_box, list)
+            and len(raw_bounding_box) == 4
+            and all(isinstance(value, (int, float, str)) for value in raw_bounding_box)
+        ):
+            bounding_box = (
+                str(raw_bounding_box[0]),
+                str(raw_bounding_box[1]),
+                str(raw_bounding_box[2]),
+                str(raw_bounding_box[3]),
+            )
+        else:
+            raise TypeError
+        raw_osm_type = row.get("osm_type")
+        if raw_osm_type is not None and not isinstance(raw_osm_type, str):
+            raise TypeError
         return SearchResult(
             latitude=str(row["lat"]),
             longitude=str(row["lon"]),
@@ -72,6 +135,8 @@ def _parse_search_result(row: Any) -> SearchResult:
             category=str(row["category"]),
             feature_type=str(row["type"]),
             address=address,
+            osm_type=raw_osm_type,
+            bounding_box=bounding_box,
         )
     except (KeyError, TypeError) as exc:
         raise ValueError(row) from exc

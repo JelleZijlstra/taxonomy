@@ -17,6 +17,7 @@ from taxonomy.db.models.lint import IgnoreLint, Lint
 from taxonomy.db.models.period import Period
 from taxonomy.db.models.region import Region
 
+from .age import is_recent_location
 from .model import Location, LocationTag
 from .name import ParsedLocationName, split_trailing_parenthetical
 
@@ -35,6 +36,27 @@ _ADDRESS_REGION_KINDS = {
     RegionKind.territory,
 }
 _SEARCH_REGION_KINDS = _ADDRESS_REGION_KINDS | {RegionKind.other, RegionKind.island}
+_SUBNATIONAL_REGION_KINDS = _ADDRESS_REGION_KINDS - {RegionKind.country}
+_REVERSE_REGION_PROBE_DISTANCE_KM = 2
+_REGION_KIND_DESIGNATORS = {
+    RegionKind.canton: "Canton",
+    RegionKind.county: "County",
+    RegionKind.department: "Department",
+    RegionKind.prefecture: "Prefecture",
+    RegionKind.province: "Province",
+    RegionKind.region: "Region",
+    RegionKind.state: "State",
+    RegionKind.territory: "Territory",
+}
+_ADMINISTRATIVE_DESIGNATORS = frozenset(_REGION_KIND_DESIGNATORS.values())
+_REVERSE_ADMINISTRATIVE_ADDRESS_KEYS = (
+    "state",
+    "province",
+    "region",
+    "territory",
+    "state_district",
+    "county",
+)
 _LOCALITY_FEATURE_PREFIXES = {
     "city": "city",
     "cidade": "city",
@@ -535,6 +557,95 @@ def check_likely_synonymous(location: Location, cfg: LintConfig) -> Iterable[str
     )
 
 
+def _coordinate_collision_key(
+    location: Location,
+) -> tuple[float, float, float, float] | None:
+    if (
+        not is_recent_location(location)
+        or location.latitude is None
+        or location.longitude is None
+    ):
+        return None
+    parsed = coordinate_lint.standardize_coordinate_pair(
+        location.latitude, location.longitude
+    )
+    if parsed is None:
+        return None
+    extent = parsed[2]
+    return (
+        extent.latitude.minimum,
+        extent.latitude.maximum,
+        extent.longitude.minimum,
+        extent.longitude.maximum,
+    )
+
+
+def _build_coordinate_collision_map(
+    locations: Iterable[Location],
+) -> dict[int, tuple[Location, ...]]:
+    by_coordinates: defaultdict[tuple[float, float, float, float], list[Location]] = (
+        defaultdict(list)
+    )
+    for location in locations:
+        key = _coordinate_collision_key(location)
+        if key is not None:
+            by_coordinates[key].append(location)
+
+    output: dict[int, tuple[Location, ...]] = {}
+    for group in by_coordinates.values():
+        if len(group) < 2:
+            continue
+        sorted_group = tuple(sorted(group, key=lambda item: item.id))
+        for location in sorted_group:
+            output[location.id] = sorted_group
+    return output
+
+
+@cache
+def _get_coordinate_collision_map() -> dict[int, tuple[Location, ...]]:
+    return _build_coordinate_collision_map(Location.select_valid())
+
+
+@LINT.add(
+    "coordinate_collision", clear_caches=_get_coordinate_collision_map.cache_clear
+)
+def check_coordinate_collision(location: Location, cfg: LintConfig) -> Iterable[str]:
+    group = _get_coordinate_collision_map().get(location.id)
+    if group is None:
+        return
+    # The cached map is only a candidate index. Coordinates may have changed
+    # since it was built, so reload every candidate and verify the collision
+    # against current database values before reporting it.
+    location = location.reload()
+    if location.is_invalid():
+        return
+    coordinate_key = _coordinate_collision_key(location)
+    if coordinate_key is None:
+        return
+    others = [
+        refreshed
+        for item in group
+        if item.id != location.id
+        if not (refreshed := item.reload()).is_invalid()
+        if _coordinate_collision_key(refreshed) == coordinate_key
+    ]
+    if not others:
+        return
+    coordinates = f"{location.latitude}, {location.longitude}"
+    other_text = ", ".join(
+        f"{item.id}: {item.name!r} ({item.region.name})" for item in others
+    )
+    other_regions = {item.region.id for item in others}
+    if location.region.id not in other_regions or len(other_regions) > 1:
+        qualification = " in different Regions"
+    else:
+        qualification = ""
+    yield (
+        f"exact coordinates {coordinates} are shared with Location(s){qualification}: "
+        f"{other_text}"
+    )
+
+
 def _is_location_name_taken(name: str) -> bool:
     return Location.select().filter(Location.name == name).count() > 0
 
@@ -822,9 +933,6 @@ def check_coordinates(location: Location, cfg: LintConfig) -> Iterable[str]:
     if location.longitude is None:
         yield "missing longitude"
         return
-    if location.is_general():
-        yield "general location should not have coordinates"
-        return
     parsed = coordinate_lint.standardize_coordinate_pair(
         location.latitude, location.longitude
     )
@@ -843,6 +951,9 @@ def check_coordinates(location: Location, cfg: LintConfig) -> Iterable[str]:
             location.longitude = longitude
         else:
             yield message
+    if location.is_general() and extent.point is not None:
+        yield "general location should use a coordinate range, not point coordinates"
+        return
     yield from coordinate_lint.check_extent_in_region(extent, location.region)
 
 
@@ -991,6 +1102,92 @@ def check_nominatim_coordinates(location: Location, cfg: LintConfig) -> Iterable
         yield message
 
 
+@LINT.add("nominatim_general_coordinates", requires_network=True)
+def check_nominatim_general_coordinates(
+    location: Location, cfg: LintConfig
+) -> Iterable[str]:
+    if (
+        not location.is_general()
+        or not is_recent_location(location)
+        or location.name == location.region.name
+    ):
+        return
+    has_existing_point = False
+    if location.latitude is not None or location.longitude is not None:
+        if location.latitude is None or location.longitude is None:
+            return
+        existing_extent = coordinate_lint.make_extent(
+            location.latitude, location.longitude
+        )
+        if existing_extent is None or existing_extent.point is None:
+            return
+        has_existing_point = True
+
+    candidates = _get_nominatim_bounding_box_candidates(location)
+    if not candidates:
+        return
+
+    result, (latitude, longitude, extent) = candidates[0]
+    has_conflict = any(
+        not _coordinate_extents_are_equal(extent, other_extent)
+        for _, (_, _, other_extent) in candidates[1:]
+    )
+    preferred_over_boundaries = False
+    if has_conflict:
+        preferred = _get_place_candidate_among_administrative_boundaries(candidates)
+        if preferred is None:
+            matches = "".join(
+                f"- {candidate.display_name!r} "
+                f"({candidate.osm_type} {candidate.category}/"
+                f"{candidate.feature_type}, {candidate_latitude}, "
+                f"{candidate_longitude})\n"
+                for candidate, (
+                    candidate_latitude,
+                    candidate_longitude,
+                    _,
+                ) in candidates
+            )
+            yield (
+                f"Nominatim returned {len(candidates)} conflicting exact-match "
+                f"bounding boxes:\n{matches}"
+            )
+            return
+        result, (latitude, longitude, extent) = preferred
+        preferred_over_boundaries = True
+
+    region_issues = list(
+        coordinate_lint.check_extent_in_region(extent, location.region)
+    )
+    if region_issues:
+        yield (
+            f"Nominatim bounding box for {result.display_name!r} failed the "
+            f"region check: {'; '.join(region_issues)}"
+        )
+        return
+
+    message = (
+        f"coordinate range should be {latitude}, {longitude}, inferred from "
+        f"OpenStreetMap Nominatim bounding box for {result.osm_type} "
+        f"{result.category}/{result.feature_type} result {result.display_name!r}"
+    )
+    if preferred_over_boundaries:
+        message += " (preferred over boundary/administrative matches)"
+    if has_existing_point:
+        yield (
+            f"{message}; replace point coordinates {location.latitude}, "
+            f"{location.longitude} manually"
+        )
+        return
+    if cfg.autofix and not LINT.is_ignoring_lint(
+        location, "nominatim_general_coordinates"
+    ):
+        print(f"{location}: {message}")
+        location.latitude = latitude
+        location.longitude = longitude
+    else:
+        yield message
+
+
 @LINT.add("nominatim_coordinate_consistency", requires_network=True)
 def check_nominatim_coordinate_consistency(
     location: Location, cfg: LintConfig
@@ -1036,6 +1233,132 @@ def check_nominatim_coordinate_consistency(
     )
 
 
+def _get_reverse_region(location: Location) -> tuple[Region, int] | None:
+    for region in (location.region, *location.region.all_parents()):
+        if region.kind in _SUBNATIONAL_REGION_KINDS:
+            # Nominatim's zoom 5 returns only the broad "state" level. This is
+            # insufficient for subdivisions such as French departments and
+            # Spanish provinces, while zoom 8 retains the broader ancestors in
+            # the address alongside the more specific subdivision.
+            return region, 8
+    return None
+
+
+def _get_reverse_address_name_aliases(value: str) -> set[str]:
+    # OSM commonly stores bilingual administrative names in forms such as
+    # "Alacant / Alicante". Either component is sufficient for this lint.
+    return {value, *(part.strip() for part in value.split(" / "))}
+
+
+def _reverse_result_matches_region(
+    result: nominatim.ReverseResult, region: Region
+) -> bool:
+    address_names = {
+        helpers.simplify_string(name, clean_words=False)
+        for key in _REVERSE_ADMINISTRATIVE_ADDRESS_KEYS
+        if (value := result.address.get(key)) is not None
+        for name in _get_reverse_address_name_aliases(value)
+    }
+    expected_names = {
+        helpers.simplify_string(name, clean_words=False)
+        for name in _get_region_name_aliases(region)
+    }
+    return not address_names.isdisjoint(expected_names)
+
+
+def _get_reverse_region_value(result: nominatim.ReverseResult) -> str | None:
+    return next(
+        (
+            result.address[key]
+            for key in _REVERSE_ADMINISTRATIVE_ADDRESS_KEYS
+            if key in result.address
+        ),
+        None,
+    )
+
+
+def _reverse_result_matches_country(
+    result: nominatim.ReverseResult, region: Region
+) -> bool:
+    country = next(
+        (
+            candidate
+            for candidate in (region, *region.all_parents())
+            if candidate.kind is RegionKind.country
+        ),
+        None,
+    )
+    osm_country = result.address.get("country")
+    if country is None or osm_country is None:
+        return False
+    normalized_osm_country = helpers.simplify_string(osm_country, clean_words=False)
+    return normalized_osm_country in {
+        helpers.simplify_string(name, clean_words=False)
+        for name in _get_region_name_aliases(country)
+    }
+
+
+@LINT.add("nominatim_region_consistency", requires_network=True)
+def check_nominatim_region_consistency(
+    location: Location, cfg: LintConfig
+) -> Iterable[str]:
+    if (
+        location.latitude is None
+        or location.longitude is None
+        or location.is_general()
+        or not is_recent_location(location)
+    ):
+        return
+    extent = coordinate_lint.make_extent(location.latitude, location.longitude)
+    if extent is None or extent.point is None:
+        return
+    expected = _get_reverse_region(location)
+    if expected is None:
+        return
+    expected_region, zoom = expected
+
+    center_result = nominatim.reverse(extent.point, zoom=zoom)
+    if center_result is None or not _reverse_result_matches_country(
+        center_result, expected_region
+    ):
+        return
+    if _reverse_result_matches_region(center_result, expected_region):
+        return
+    center_value = _get_reverse_region_value(center_result)
+    if center_value is None:
+        return
+    normalized_center_value = helpers.simplify_string(center_value, clean_words=False)
+
+    # Nominatim returns the address of the nearest suitable mapped object rather
+    # than polygon containment. Require the same mismatch in four nearby probes
+    # so that coordinates near administrative boundaries do not produce a warning.
+    for bearing in (0, 90, 180, 270):
+        probe = coordinate_lint.move_point(
+            extent.point, _REVERSE_REGION_PROBE_DISTANCE_KM, bearing
+        )
+        result = nominatim.reverse(probe, zoom=zoom)
+        if result is None or not _reverse_result_matches_country(
+            result, expected_region
+        ):
+            return
+        if _reverse_result_matches_region(result, expected_region):
+            return
+        value = _get_reverse_region_value(result)
+        if (
+            value is None
+            or helpers.simplify_string(value, clean_words=False)
+            != normalized_center_value
+        ):
+            return
+
+    yield (
+        f"coordinates {location.latitude}, {location.longitude} consistently "
+        f"reverse-geocode to {center_value!r}, not assigned Region "
+        f"{expected_region.name!r} (nearest address "
+        f"{center_result.display_name!r})"
+    )
+
+
 def _get_nominatim_coordinate_candidates(
     location: Location,
 ) -> list[tuple[nominatim.SearchResult, tuple[str, str, Any]]]:
@@ -1055,6 +1378,49 @@ def _get_nominatim_coordinate_candidates(
             candidates.append((result, parsed))
     candidates.sort(key=lambda candidate: _OSM_CATEGORY_PRIORITY[candidate[0].category])
     return candidates
+
+
+def _get_nominatim_bounding_box_candidates(
+    location: Location,
+) -> list[tuple[nominatim.SearchResult, tuple[str, str, Any]]]:
+    search_plan = get_nominatim_search_plan(location)
+    if not search_plan.coordinates_can_be_inferred:
+        return []
+    results = nominatim.search(get_nominatim_query(location))
+    candidates = []
+    for result in results:
+        if result.osm_type not in {"way", "relation"}:
+            continue
+        if not is_sane_nominatim_result(
+            location, result, expected_name=search_plan.locality_name
+        ):
+            continue
+        parsed = get_nominatim_result_bounding_box(result)
+        if parsed is not None:
+            candidates.append((result, parsed))
+    candidates.sort(key=lambda candidate: _OSM_CATEGORY_PRIORITY[candidate[0].category])
+    return candidates
+
+
+def get_nominatim_result_bounding_box(
+    result: nominatim.SearchResult,
+) -> tuple[str, str, coordinate_lint.CoordinateExtent] | None:
+    if result.bounding_box is None:
+        return None
+    try:
+        south, north, west, east = map(float, result.bounding_box)
+    except ValueError:
+        return None
+    if not (-90 <= south <= north <= 90 and -180 <= west <= east <= 180):
+        return None
+    if (south, west) == (north, east):
+        return None
+    if north - south >= 180 or east - west >= 180:
+        return None
+    return coordinate_lint.standardize_coordinate_pair(
+        f"{result.bounding_box[0]} to {result.bounding_box[1]}",
+        f"{result.bounding_box[2]} to {result.bounding_box[3]}",
+    )
 
 
 def _get_place_candidate_among_administrative_boundaries(
@@ -1280,7 +1646,33 @@ def _get_unqualified_region_name(region: Region) -> str:
 
 
 def _get_region_name_aliases(region: Region) -> set[str]:
-    names = {region.name, _get_unqualified_region_name(region)}
+    names = _get_qualified_name_variants(region.name)
+    names.add(_get_unqualified_region_name(region))
+    shortest_name = min(names, key=lambda name: (len(name), name))
+    matching_designators = (
+        _ADMINISTRATIVE_DESIGNATORS
+        if region.kind is RegionKind.subnational
+        else frozenset(
+            designator
+            for kind, designator in _REGION_KIND_DESIGNATORS.items()
+            if region.kind is kind
+        )
+    )
+    found_designator = next(
+        (
+            designator
+            for designator in _ADMINISTRATIVE_DESIGNATORS
+            if shortest_name.casefold().endswith(f" {designator.casefold()}")
+        ),
+        None,
+    )
+    if found_designator in matching_designators:
+        undesignated_name = shortest_name[: -len(found_designator) - 1]
+        names.add(undesignated_name)
+        names.add(f"{found_designator} of {undesignated_name}")
+    elif found_designator is None and len(matching_designators) == 1:
+        designator = next(iter(matching_designators))
+        names.add(f"{shortest_name} {designator}")
     if region.kind is RegionKind.country:
         names.add(nominatim.HESP_COUNTRY_TO_OSM_COUNTRY.get(region.name, region.name))
     return names

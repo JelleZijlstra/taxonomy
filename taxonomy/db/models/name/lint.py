@@ -593,7 +593,7 @@ def _check_designation_type_tag(
 def _check_all_type_tags(
     tag: TypeTag, nam: Name, cfg: LintConfig, by_type: TagsByType
 ) -> Generator[str, None, Sequence[TypeTag]]:
-    tags = []
+    tags: list[TypeTag] = []
     match tag:
         case (
             TypeTag.FormerRepository()
@@ -720,14 +720,6 @@ def _check_all_type_tags(
                 yield f"bad altitude tag {tag}"
 
         case TypeTag.LocationDetail():
-            coords = helpers.extract_coordinates(tag.text)
-            if coords and not any(
-                isinstance(t, TypeTag.Coordinates) for t in nam.type_tags
-            ):
-                tags.append(TypeTag.Coordinates(coords[0], coords[1]))
-                print(
-                    f"{nam}: adding coordinates {tags[-1]} extracted from {tag.text!r}"
-                )
             tag = yield from check_tag_with_page(
                 tag, tag.source, cfg, nam, allow_missing_page=True
             )
@@ -1598,6 +1590,108 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
             getinput.print_diff(sorted(original_tags), tags)
         if cfg.autofix:
             nam.type_tags = tags  # type: ignore[assignment]
+
+
+@LINT.add("location_detail_coordinates")
+def check_location_detail_coordinates(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    extracted: list[  # type: ignore[name-defined]
+        tuple[TypeTag.LocationDetail, str, str, coordinate_lint.CoordinateExtent]
+    ] = []
+    for tag in nam.get_tags(nam.type_tags, TypeTag.LocationDetail):
+        coordinates = helpers.extract_coordinates(tag.text)
+        if coordinates is None:
+            continue
+        parsed = coordinate_lint.standardize_coordinate_pair(*coordinates)
+        if parsed is not None:
+            extracted.append((tag, *parsed))
+    if not extracted:
+        return
+
+    location = nam.type_locality
+    if location is not None and (
+        location.latitude is not None or location.longitude is not None
+    ):
+        if location.latitude is None or location.longitude is None:
+            return
+        location_extent = coordinate_lint.make_extent(
+            location.latitude, location.longitude
+        )
+        if location_extent is None:
+            return
+        for tag, latitude, longitude, extent in extracted:
+            distance = coordinate_lint.extent_distance_km(extent, location_extent)
+            if distance > coordinate_lint.COORDINATE_TOLERANCE_KM:
+                yield (
+                    f"coordinates {latitude}, {longitude} extracted from "
+                    f"LocationDetail {tag.text!r} are {distance:.1f} km from "
+                    f"Location {location} coordinates {location.latitude}, "
+                    f"{location.longitude}"
+                )
+        return
+
+    coordinate_tags: list[  # type: ignore[name-defined]
+        tuple[TypeTag.Coordinates, coordinate_lint.CoordinateExtent]
+    ] = []
+    for tag in nam.get_tags(nam.type_tags, TypeTag.Coordinates):
+        maybe_extent = coordinate_lint.make_extent(tag.latitude, tag.longitude)
+        if maybe_extent is not None:
+            coordinate_tags.append((tag, maybe_extent))
+    if coordinate_tags:
+        for detail, latitude, longitude, extent in extracted:
+            if all(
+                coordinate_lint.extent_distance_km(extent, coordinate_extent)
+                > coordinate_lint.COORDINATE_TOLERANCE_KM
+                for _, coordinate_extent in coordinate_tags
+            ):
+                yield (
+                    f"coordinates {latitude}, {longitude} extracted from "
+                    f"LocationDetail {detail.text!r} conflict with all Coordinates "
+                    f"tags: {[tag for tag, _ in coordinate_tags]}"
+                )
+        return
+
+    for index, (tag, latitude, longitude, extent) in enumerate(extracted):
+        for other_tag, other_latitude, other_longitude, other_extent in extracted[
+            index + 1 :
+        ]:
+            distance = coordinate_lint.extent_distance_km(extent, other_extent)
+            if distance > coordinate_lint.COORDINATE_TOLERANCE_KM:
+                yield (
+                    f"cannot infer Coordinates tag because {latitude}, {longitude} "
+                    f"from LocationDetail {tag.text!r} and {other_latitude}, "
+                    f"{other_longitude} from LocationDetail {other_tag.text!r} "
+                    f"differ by {distance:.1f} km"
+                )
+                return
+
+    distinct_extents = {
+        (
+            extent.latitude.minimum,
+            extent.latitude.maximum,
+            extent.longitude.minimum,
+            extent.longitude.maximum,
+        )
+        for _, _, _, extent in extracted
+    }
+    if len(distinct_extents) > 1:
+        coordinate_text = ", ".join(
+            f"{latitude}, {longitude}" for _, latitude, longitude, _ in extracted
+        )
+        yield (
+            "cannot infer a single Coordinates tag because LocationDetail tags "
+            f"contain multiple coordinate pairs within "
+            f"{coordinate_lint.COORDINATE_TOLERANCE_KM} km: {coordinate_text}"
+        )
+        return
+
+    _, latitude, longitude, _ = extracted[0]
+    expected = TypeTag.Coordinates(latitude, longitude)
+    message = f"add {expected} inferred from LocationDetail"
+    if cfg.autofix and not LINT.is_ignoring_lint(nam, "location_detail_coordinates"):
+        print(f"{nam}: {message}")
+        nam.type_tags = [*nam.type_tags, expected]  # type: ignore[assignment]
+    else:
+        yield message
 
 
 def _smallest_high_group_ancestors(taxon: Taxon) -> Iterable[Taxon]:

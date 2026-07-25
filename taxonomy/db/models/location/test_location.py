@@ -207,6 +207,147 @@ def test_likely_synonym_map_flags_all_but_lowest_id_in_same_region() -> None:
     assert mapping[30] == (lowest, (lowest, middle, highest))
 
 
+def test_coordinate_collision_map_normalizes_equivalent_coordinates() -> None:
+    recent = SimpleNamespace(name="Recent")
+    california = SimpleNamespace(id=1, name="California")
+    nevada = SimpleNamespace(id=2, name="Nevada")
+
+    def make_location(
+        location_id: int,
+        name: str,
+        latitude: str,
+        longitude: str,
+        region: SimpleNamespace,
+    ) -> Location:
+        return cast(
+            Location,
+            SimpleNamespace(
+                id=location_id,
+                name=name,
+                latitude=latitude,
+                longitude=longitude,
+                region=region,
+                min_period=recent,
+                max_period=recent,
+            ),
+        )
+
+    decimal = make_location(10, "Decimal", "40.5°N", "74.25°W", california)
+    degrees_minutes = make_location(20, "Degrees minutes", "40°30'N", "74°15'W", nevada)
+    different = make_location(30, "Different", "40.6°N", "74.25°W", california)
+
+    mapping = location_lint._build_coordinate_collision_map(
+        [decimal, different, degrees_minutes]
+    )
+
+    assert mapping == {10: (decimal, degrees_minutes), 20: (decimal, degrees_minutes)}
+
+
+def test_coordinate_collision_reports_different_regions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recent = SimpleNamespace(name="Recent")
+    california = SimpleNamespace(id=1, name="California")
+    nevada = SimpleNamespace(id=2, name="Nevada")
+    first = cast(
+        Location,
+        SimpleNamespace(
+            id=10,
+            name="First",
+            latitude="40.5°N",
+            longitude="74.25°W",
+            region=california,
+            min_period=recent,
+            max_period=recent,
+            tags=(),
+            get_tags=lambda tags, tag_type: (),
+            reload=lambda: first,  # type: ignore[has-type]
+            is_invalid=lambda: False,
+        ),
+    )
+    second = cast(
+        Location,
+        SimpleNamespace(
+            id=20,
+            name="Second",
+            latitude="40°30'N",
+            longitude="74°15'W",
+            region=nevada,
+            min_period=recent,
+            max_period=recent,
+            tags=(),
+            get_tags=lambda tags, tag_type: (),
+            reload=lambda: second,  # type: ignore[has-type]
+            is_invalid=lambda: False,
+        ),
+    )
+    monkeypatch.setattr(
+        location_lint,
+        "_get_coordinate_collision_map",
+        lambda: {10: (first, second), 20: (first, second)},
+    )
+
+    messages = list(location_lint.check_coordinate_collision(first, LintConfig()))
+
+    assert len(messages) == 1
+    assert "shared with Location(s) in different Regions" in messages[0]
+    assert "20: 'Second' (Nevada)" in messages[0]
+
+
+def test_coordinate_collision_rechecks_cached_candidates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recent = SimpleNamespace(name="Recent")
+    region = SimpleNamespace(id=1, name="Solomon Islands")
+    current = cast(
+        Location,
+        SimpleNamespace(
+            id=10,
+            name="Santa Cruz Islands",
+            latitude="12.3°S-9.7°S",
+            longitude="165.7°E-170.2°E",
+            region=region,
+            min_period=recent,
+            max_period=recent,
+            reload=lambda: current,  # type: ignore[has-type]
+            is_invalid=lambda: False,
+        ),
+    )
+    stale_current = cast(
+        Location,
+        SimpleNamespace(
+            id=10,
+            name="Santa Cruz Islands",
+            latitude="10.7°S",
+            longitude="165.8°E",
+            region=region,
+            min_period=recent,
+            max_period=recent,
+        ),
+    )
+    nendo = cast(
+        Location,
+        SimpleNamespace(
+            id=20,
+            name="Nendö",
+            latitude="10.7°S",
+            longitude="165.8°E",
+            region=region,
+            min_period=recent,
+            max_period=recent,
+            reload=lambda: nendo,  # type: ignore[has-type]
+            is_invalid=lambda: False,
+        ),
+    )
+    monkeypatch.setattr(
+        location_lint,
+        "_get_coordinate_collision_map",
+        lambda: {10: (stale_current, nendo), 20: (stale_current, nendo)},
+    )
+
+    assert list(location_lint.check_coordinate_collision(current, LintConfig())) == []
+
+
 def test_coordinate_evidence_prints_all_sources(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -300,6 +441,7 @@ def _location_without_coordinates(
     stratigraphic_unit: object | None = None,
     names: tuple[SimpleNamespace, ...] = (),
     records: tuple[SimpleNamespace, ...] = (),
+    general: bool | None = None,
 ) -> Location:
     if region is None:
         region = _make_region(region_name, RegionKind.state)
@@ -321,7 +463,7 @@ def _location_without_coordinates(
             tag for tag in tags if isinstance(tag, tag_type)
         ),
         is_invalid=lambda: False,
-        is_general=lambda: name == region.name,
+        is_general=lambda: name == region.name if general is None else general,
     )
     return cast(Location, loc)
 
@@ -355,7 +497,11 @@ def _nominatim_result(
     category: str = "place",
     feature_type: str = "hamlet",
     county: str = "Marin County",
+    state: str = "California",
+    country: str = "United States",
     display_name: str = "Nicasio, Marin County, California, United States",
+    osm_type: str | None = None,
+    bounding_box: tuple[str, str, str, str] | None = None,
 ) -> nominatim.SearchResult:
     return nominatim.SearchResult(
         latitude=latitude,
@@ -364,13 +510,22 @@ def _nominatim_result(
         display_name=display_name,
         category=category,
         feature_type=feature_type,
+        osm_type=osm_type,
+        bounding_box=bounding_box,
         address={
             feature_type: name,
             "county": county,
-            "state": "California",
-            "country": "United States",
+            "state": state,
+            "country": country,
             "country_code": "us",
         },
+    )
+
+
+def _nominatim_reverse_result(state: str) -> nominatim.ReverseResult:
+    return nominatim.ReverseResult(
+        display_name=f"Nearest feature, {state}, United States",
+        address={"state": state, "country": "United States", "country_code": "us"},
     )
 
 
@@ -456,6 +611,9 @@ def test_general_location_does_not_load_linked_coordinates(
 
     assert list(location_lint.check_linked_coordinates(loc, LintConfig())) == []
     assert list(location_lint.check_nominatim_coordinates(loc, LintConfig())) == []
+    assert (
+        list(location_lint.check_nominatim_general_coordinates(loc, LintConfig())) == []
+    )
     loc.latitude = "38°N"
     loc.longitude = "122°W"
     assert (
@@ -463,6 +621,166 @@ def test_general_location_does_not_load_linked_coordinates(
         == []
     )
     search.assert_not_called()
+
+
+def test_general_location_rejects_point_coordinates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    loc = _location_without_coordinates(name="Island group", general=True)
+    loc.latitude = "8°N"
+    loc.longitude = "94°E"
+    check_region = Mock(return_value=())
+    monkeypatch.setattr(coordinate_lint, "check_extent_in_region", check_region)
+
+    messages = list(location_lint.check_coordinates(loc, LintConfig()))
+
+    assert len(messages) == 1
+    assert "should use a coordinate range, not point coordinates" in messages[0]
+    check_region.assert_not_called()
+
+
+def test_general_location_allows_coordinate_range(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    loc = _location_without_coordinates(name="Island group", general=True)
+    loc.latitude = "6.75°N-9.25°N"
+    loc.longitude = "92.7°E-94°E"
+    check_region = Mock(return_value=())
+    monkeypatch.setattr(coordinate_lint, "check_extent_in_region", check_region)
+
+    assert list(location_lint.check_coordinates(loc, LintConfig())) == []
+    check_region.assert_called_once()
+
+
+def test_general_location_infers_nominatim_bounding_box(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    country = _make_region("India", RegionKind.country)
+    state = _make_region("Andaman and Nicobar Islands", RegionKind.state, country)
+    recent = SimpleNamespace(name="Recent")
+    loc = _location_without_coordinates(
+        name="Nicobar Islands",
+        region=state,
+        min_period=recent,
+        max_period=recent,
+        general=True,
+    )
+    result = _nominatim_result(
+        latitude="7.0000167",
+        longitude="93.8110528",
+        name="Nicobar Islands",
+        feature_type="archipelago",
+        county="Great Nicobar",
+        state="Andaman and Nicobar Islands",
+        country="India",
+        display_name="Nicobar Islands, Andaman and Nicobar Islands, India",
+        osm_type="relation",
+        bounding_box=("6.7562674", "9.2562168", "92.7186468", "93.9468357"),
+    )
+    search = Mock(return_value=[result])
+    monkeypatch.setattr(nominatim, "search", search)
+    monkeypatch.setattr(model_lint, "is_network_available", lambda: True)
+    monkeypatch.setattr(
+        coordinate_lint, "check_extent_in_region", lambda extent, region: ()
+    )
+
+    messages = list(
+        location_lint.check_nominatim_general_coordinates(loc, LintConfig(autofix=True))
+    )
+
+    assert messages == []
+    assert loc.latitude == "6.7562674°N-9.2562168°N"
+    assert loc.longitude == "92.7186468°E-93.9468357°E"
+    search.assert_called_once_with(
+        "Nicobar Islands, Andaman and Nicobar Islands, India"
+    )
+
+
+def test_general_location_proposes_replacing_point_with_nominatim_bounding_box(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    country = _make_region("India", RegionKind.country)
+    state = _make_region("Andaman and Nicobar Islands", RegionKind.state, country)
+    recent = SimpleNamespace(name="Recent")
+    loc = _location_without_coordinates(
+        name="Nicobar Islands",
+        region=state,
+        min_period=recent,
+        max_period=recent,
+        general=True,
+    )
+    loc.latitude = "7.0000167°N"
+    loc.longitude = "93.8110528°E"
+    result = _nominatim_result(
+        latitude="7.0000167",
+        longitude="93.8110528",
+        name="Nicobar Islands",
+        feature_type="archipelago",
+        state="Andaman and Nicobar Islands",
+        country="India",
+        osm_type="relation",
+        bounding_box=("6.7562674", "9.2562168", "92.7186468", "93.9468357"),
+    )
+    monkeypatch.setattr(nominatim, "search", Mock(return_value=[result]))
+    monkeypatch.setattr(model_lint, "is_network_available", lambda: True)
+    monkeypatch.setattr(
+        coordinate_lint, "check_extent_in_region", lambda extent, region: ()
+    )
+
+    messages = list(
+        location_lint.check_nominatim_general_coordinates(loc, LintConfig(autofix=True))
+    )
+
+    assert len(messages) == 1
+    assert "coordinate range should be 6.7562674°N-9.2562168°N" in messages[0]
+    assert "replace point coordinates 7.0000167°N, 93.8110528°E manually" in messages[0]
+    assert loc.latitude == "7.0000167°N"
+    assert loc.longitude == "93.8110528°E"
+
+
+def test_general_location_does_not_use_nominatim_node_bounding_box(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    country = _make_region("India", RegionKind.country)
+    state = _make_region("Andaman and Nicobar Islands", RegionKind.state, country)
+    recent = SimpleNamespace(name="Recent")
+    loc = _location_without_coordinates(
+        name="Nicobar Islands",
+        region=state,
+        min_period=recent,
+        max_period=recent,
+        general=True,
+    )
+    result = _nominatim_result(
+        latitude="7",
+        longitude="94",
+        name="Nicobar Islands",
+        feature_type="archipelago",
+        state="Andaman and Nicobar Islands",
+        country="India",
+        osm_type="node",
+        bounding_box=("6.75", "9.25", "92.7", "94"),
+    )
+    search = Mock(return_value=[result])
+    monkeypatch.setattr(nominatim, "search", search)
+    monkeypatch.setattr(model_lint, "is_network_available", lambda: True)
+
+    assert (
+        list(location_lint.check_nominatim_general_coordinates(loc, LintConfig())) == []
+    )
+    assert loc.latitude is None
+    assert loc.longitude is None
+
+
+def test_nominatim_bounding_box_rejects_antimeridian_fallback() -> None:
+    result = _nominatim_result(
+        latitude="0",
+        longitude="180",
+        osm_type="relation",
+        bounding_box=("-10", "10", "-180", "180"),
+    )
+
+    assert location_lint.get_nominatim_result_bounding_box(result) is None
 
 
 def test_location_infers_coordinates_from_nominatim(
@@ -1283,6 +1601,218 @@ def test_location_coordinates_are_far_from_all_nominatim_candidates(
     assert "more than 5 km from all 2 exact Nominatim matches" in messages[0]
     assert all(result.display_name in messages[0] for result in results)
     assert messages[0].count("km away") == 2
+
+
+def test_reverse_geocoding_reports_stable_region_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    country = _make_region("United States", RegionKind.country)
+    state = _make_region("California", RegionKind.state, country)
+    recent = SimpleNamespace(name="Recent")
+    loc = _location_without_coordinates(
+        name="Boundary site", region=state, min_period=recent, max_period=recent
+    )
+    loc.latitude = "39.16°N"
+    loc.longitude = "119.77°W"
+    reverse = Mock(return_value=_nominatim_reverse_result("Nevada"))
+    monkeypatch.setattr(nominatim, "reverse", reverse)
+    monkeypatch.setattr(model_lint, "is_network_available", lambda: True)
+
+    messages = list(location_lint.check_nominatim_region_consistency(loc, LintConfig()))
+
+    assert len(messages) == 1
+    assert "consistently reverse-geocode to 'Nevada'" in messages[0]
+    assert "not assigned Region 'California'" in messages[0]
+    assert reverse.call_count == 5
+    assert all(call.kwargs == {"zoom": 8} for call in reverse.call_args_list)
+
+
+def test_reverse_geocoding_suppresses_boundary_ambiguity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    country = _make_region("United States", RegionKind.country)
+    state = _make_region("California", RegionKind.state, country)
+    recent = SimpleNamespace(name="Recent")
+    loc = _location_without_coordinates(
+        name="Boundary site", region=state, min_period=recent, max_period=recent
+    )
+    loc.latitude = "39.16°N"
+    loc.longitude = "119.77°W"
+    reverse = Mock(
+        side_effect=[
+            _nominatim_reverse_result("Nevada"),
+            _nominatim_reverse_result("California"),
+        ]
+    )
+    monkeypatch.setattr(nominatim, "reverse", reverse)
+    monkeypatch.setattr(model_lint, "is_network_available", lambda: True)
+
+    assert (
+        list(location_lint.check_nominatim_region_consistency(loc, LintConfig())) == []
+    )
+    assert reverse.call_count == 2
+
+
+def test_reverse_geocoding_accepts_unqualified_region_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    country = _make_region("Netherlands", RegionKind.country)
+    province = _make_region("Limburg (Netherlands)", RegionKind.province, country)
+    recent = SimpleNamespace(name="Recent")
+    loc = _location_without_coordinates(
+        name="Site", region=province, min_period=recent, max_period=recent
+    )
+    loc.latitude = "51°N"
+    loc.longitude = "5.8°E"
+    reverse = Mock(
+        return_value=nominatim.ReverseResult(
+            display_name="Site, Limburg, Netherlands",
+            address={"province": "Limburg", "country": "Netherlands"},
+        )
+    )
+    monkeypatch.setattr(nominatim, "reverse", reverse)
+    monkeypatch.setattr(model_lint, "is_network_available", lambda: True)
+
+    assert (
+        list(location_lint.check_nominatim_region_consistency(loc, LintConfig())) == []
+    )
+    reverse.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    ("region_name", "region_kind", "country_name", "address"),
+    [
+        (
+            "Var",
+            RegionKind.department,
+            "France",
+            {
+                "county": "Var",
+                "state": "Provence-Alpes-Côte d'Azur",
+                "country": "France",
+            },
+        ),
+        (
+            "Thessaly",
+            RegionKind.region,
+            "Greece",
+            {
+                "county": "Larisa Regional Unit",
+                "state": "Thessaly",
+                "country": "Greece",
+            },
+        ),
+        (
+            "Alicante",
+            RegionKind.province,
+            "Spain",
+            {
+                "region": "l'Alacantí",
+                "province": "Alacant / Alicante",
+                "state": "Valencian Community",
+                "country": "Spain",
+            },
+        ),
+    ],
+)
+def test_reverse_geocoding_matches_full_administrative_hierarchy(
+    monkeypatch: pytest.MonkeyPatch,
+    region_name: str,
+    region_kind: RegionKind,
+    country_name: str,
+    address: dict[str, str],
+) -> None:
+    country = _make_region(country_name, RegionKind.country)
+    region = _make_region(region_name, region_kind, country)
+    recent = SimpleNamespace(name="Recent")
+    loc = _location_without_coordinates(
+        name="Site", region=region, min_period=recent, max_period=recent
+    )
+    loc.latitude = "10°N"
+    loc.longitude = "10°E"
+    reverse = Mock(
+        return_value=nominatim.ReverseResult(
+            display_name=", ".join(address.values()), address=address
+        )
+    )
+    monkeypatch.setattr(nominatim, "reverse", reverse)
+    monkeypatch.setattr(model_lint, "is_network_available", lambda: True)
+
+    assert (
+        list(location_lint.check_nominatim_region_consistency(loc, LintConfig())) == []
+    )
+    reverse.assert_called_once()
+    assert reverse.call_args.kwargs == {"zoom": 8}
+
+
+@pytest.mark.parametrize(
+    ("region_name", "region_kind", "country_name", "osm_region_name"),
+    [
+        ("Bolívar", RegionKind.state, "Venezuela", "Bolivar State"),
+        ("La Paz Department", RegionKind.subnational, "Bolivia", "La Paz"),
+        ("La Paz Department", RegionKind.department, "Bolivia", "La Paz"),
+        ("Mexico State", RegionKind.state, "Mexico", "State of Mexico"),
+    ],
+)
+def test_reverse_geocoding_accepts_administrative_designator_aliases(
+    monkeypatch: pytest.MonkeyPatch,
+    region_name: str,
+    region_kind: RegionKind,
+    country_name: str,
+    osm_region_name: str,
+) -> None:
+    country = _make_region(country_name, RegionKind.country)
+    region = _make_region(region_name, region_kind, country)
+    recent = SimpleNamespace(name="Recent")
+    loc = _location_without_coordinates(
+        name="Site", region=region, min_period=recent, max_period=recent
+    )
+    loc.latitude = "10°N"
+    loc.longitude = "60°W"
+    reverse = Mock(
+        return_value=nominatim.ReverseResult(
+            display_name=f"{osm_region_name}, {country_name}",
+            address={"state": osm_region_name, "country": country_name},
+        )
+    )
+    monkeypatch.setattr(nominatim, "reverse", reverse)
+    monkeypatch.setattr(model_lint, "is_network_available", lambda: True)
+
+    assert (
+        list(location_lint.check_nominatim_region_consistency(loc, LintConfig())) == []
+    )
+    reverse.assert_called_once()
+
+
+def test_reverse_geocoding_only_matches_administrative_address_fields(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    country = _make_region("United States", RegionKind.country)
+    state = _make_region("California", RegionKind.state, country)
+    recent = SimpleNamespace(name="Recent")
+    loc = _location_without_coordinates(
+        name="Site", region=state, min_period=recent, max_period=recent
+    )
+    loc.latitude = "39°N"
+    loc.longitude = "119°W"
+    reverse = Mock(
+        return_value=nominatim.ReverseResult(
+            display_name="California settlement, Nevada, United States",
+            address={
+                "city": "California",
+                "state": "Nevada",
+                "country": "United States",
+            },
+        )
+    )
+    monkeypatch.setattr(nominatim, "reverse", reverse)
+    monkeypatch.setattr(model_lint, "is_network_available", lambda: True)
+
+    messages = list(location_lint.check_nominatim_region_consistency(loc, LintConfig()))
+
+    assert len(messages) == 1
+    assert "reverse-geocode to 'Nevada'" in messages[0]
+    assert reverse.call_count == 5
 
 
 def test_nominatim_coordinate_consistency_is_a_normal_network_lint() -> None:
