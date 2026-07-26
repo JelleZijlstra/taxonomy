@@ -312,7 +312,7 @@ class Location(BaseModel):
             subprocess.check_call(["open", extent.openstreetmap_url])
 
     def coordinate_evidence(self) -> None:
-        from taxonomy.apis import nominatim
+        from taxonomy.apis import geonames, nominatim
         from taxonomy.db.models.name import TypeTag
         from taxonomy.db.models.occurrence_record import OccurrenceRecordTag
         from taxonomy.db.models.occurrence_record.lint import parse_verbatim_coordinates
@@ -405,6 +405,73 @@ class Location(BaseModel):
                             )
                         )
 
+        print("\n  GeoNames candidates:")
+        geonames_country = location_lint._get_region_country_name(self.region)
+        geonames_country_code = (
+            None
+            if geonames_country is None
+            else location_lint._get_geonames_country_code(geonames_country)
+        )
+        print(
+            f"    Exact-name query: {search_plan.locality_name!r}; "
+            f"country={geonames_country_code or '(unresolved)'}"
+        )
+        geonames_candidates = location_lint._get_geonames_coordinate_matches(self)
+        if not geonames_candidates:
+            print("    none")
+        for index, candidate in enumerate(geonames_candidates, start=1):
+            if not candidate.is_accepted:
+                status = "rejected by region checks"
+            elif location_lint._is_geonames_point_candidate(candidate):
+                status = "accepted for point-coordinate checks"
+            else:
+                status = "evidence only; feature is not point-like"
+            record = candidate.match.record
+            matched_as = (
+                ""
+                if candidate.match.match_kind == "name"
+                else f"; matched {candidate.match.match_kind.replace('_', ' ')} "
+                f"{candidate.match.matched_name!r}"
+            )
+            print(
+                f"    {index}. [{status}] {record.feature_class}/"
+                f"{record.feature_code}: {record.name} "
+                f"(GeoNames ID {record.geoname_id}{matched_as})"
+            )
+            print(
+                "       Coordinates: "
+                + _format_coordinate_evidence(
+                    candidate.latitude,
+                    candidate.longitude,
+                    reference_extent=reference_extent,
+                )
+            )
+            administrative_codes = "; ".join(
+                f"{label}={value}"
+                for label, value in (
+                    ("country", record.country_code),
+                    ("admin1", record.admin1_code),
+                    ("admin2", record.admin2_code),
+                    ("admin3", record.admin3_code),
+                    ("admin4", record.admin4_code),
+                )
+                if value
+            )
+            if administrative_codes:
+                print(f"       Administrative codes: {administrative_codes}")
+            try:
+                administrative_hierarchy = geonames.get_administrative_hierarchy(record)
+            except RuntimeError:
+                administrative_hierarchy = []
+            if administrative_hierarchy:
+                hierarchy = "; ".join(
+                    f"{item.feature_code}={item.name}"
+                    for item in administrative_hierarchy
+                )
+                print(f"       Administrative hierarchy: {hierarchy}")
+            if candidate.region_issues:
+                print(f"       Region issues: {'; '.join(candidate.region_issues)}")
+
         print("\n  Type-locality Names:")
         found_type_locality_evidence = False
         for name in self.type_localities:
@@ -483,9 +550,28 @@ class Location(BaseModel):
         cfg = LintConfig(autofix=True, interactive=True, manual_mode=True)
         messages = list(location_lint.check_linked_coordinates(self, cfg))
         if self.latitude is None and self.longitude is None:
-            messages.extend(location_lint.check_nominatim_coordinates(self, cfg))
+            geonames_messages = list(
+                location_lint.check_geonames_coordinates(self, cfg)
+            )
+            messages.extend(geonames_messages)
+            if (
+                not geonames_messages
+                and self.latitude is None
+                and self.longitude is None
+            ):
+                messages.extend(location_lint.check_nominatim_coordinates(self, cfg))
         for message in messages:
             print(message)
+
+    def generalize(self) -> None:
+        if not self.has_tag(LocationTag.General):
+            self.add_tag(LocationTag.General)
+        if self.latitude is not None and self.longitude is not None:
+            extent = coordinate_lint.make_extent(self.latitude, self.longitude)
+            if extent is not None and extent.point is not None:
+                self.latitude = None
+                self.longitude = None
+        self.format()
 
     def edit_imprecise_localities(self) -> None:
         nams = list(
@@ -520,6 +606,7 @@ class Location(BaseModel):
             "display_occurrences": self.display_occurrences,
             "coordinate_evidence": self.coordinate_evidence,
             "infer_coordinates": self.infer_coordinates,
+            "generalize": self.generalize,
             "open_coordinates": self.open_coordinates,
             "edit_imprecise_localities": self.edit_imprecise_localities,
         }

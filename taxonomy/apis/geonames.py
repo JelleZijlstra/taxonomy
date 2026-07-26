@@ -118,6 +118,58 @@ def get_by_id(geoname_id: int, *, db_path: Path | None = None) -> GeoNamesRecord
     return _record_from_row(rows[0])
 
 
+def get_administrative_hierarchy(
+    record: GeoNamesRecord, *, db_path: Path | None = None
+) -> list[GeoNamesRecord]:
+    """Return the ADM1-ADM4 records identified by a feature's admin codes."""
+    path = _get_database_path(db_path)
+    return list(
+        _get_administrative_hierarchy(
+            path,
+            record.country_code,
+            record.admin1_code,
+            record.admin2_code,
+            record.admin3_code,
+            record.admin4_code,
+        )
+    )
+
+
+@functools.cache
+def _get_administrative_hierarchy(
+    path: Path,
+    country_code: str,
+    admin1_code: str,
+    admin2_code: str,
+    admin3_code: str,
+    admin4_code: str,
+) -> tuple[GeoNamesRecord, ...]:
+    conditions = []
+    args: list[object] = [country_code]
+    codes = (admin1_code, admin2_code, admin3_code, admin4_code)
+    for level, code in enumerate(codes, start=1):
+        if not code:
+            break
+        conditions.append(
+            "(feature_code = ? AND "
+            + " AND ".join(f"admin{index}_code = ?" for index in range(1, level + 1))
+            + ")"
+        )
+        args.extend((f"ADM{level}", *codes[:level]))
+    if not conditions or not country_code:
+        return ()
+    rows = _query(
+        f"""
+        SELECT * FROM geonames
+        WHERE country_code = ? AND ({' OR '.join(conditions)})
+        ORDER BY feature_code, population DESC, geoname_id
+        """,
+        tuple(args),
+        db_path=path,
+    )
+    return tuple(_record_from_row(row) for row in rows)
+
+
 def _fts_phrase(text: str) -> str:
     return f'"{text.replace(chr(34), chr(34) * 2)}"'
 

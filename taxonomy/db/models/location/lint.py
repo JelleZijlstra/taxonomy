@@ -9,7 +9,8 @@ from dataclasses import dataclass
 from functools import cache
 from typing import Any
 
-from taxonomy.apis import nominatim
+from taxonomy import coordinates
+from taxonomy.apis import geonames, nominatim
 from taxonomy.db import coordinate_lint, helpers
 from taxonomy.db.constants import RegionKind
 from taxonomy.db.models.base import LintConfig
@@ -17,12 +18,150 @@ from taxonomy.db.models.lint import IgnoreLint, Lint
 from taxonomy.db.models.period import Period
 from taxonomy.db.models.region import Region
 
-from .age import is_recent_location
+from .age import is_non_recent_location, is_recent_location
 from .model import Location, LocationTag
 from .name import ParsedLocationName, split_trailing_parenthetical
 
 _GEOCODABLE_OSM_CATEGORIES = {"boundary", "natural", "place", "waterway"}
 _OSM_CATEGORY_PRIORITY = {"place": 0, "natural": 1, "waterway": 2, "boundary": 3}
+_POSSIBLE_GENERAL_NOMINATIM_FEATURES = {
+    "boundary": frozenset({"protected_area"}),
+    "natural": frozenset(
+        {
+            "bay",
+            "fell",
+            "glacier",
+            "grassland",
+            "heath",
+            "mountain_range",
+            "peninsula",
+            "plateau",
+            "reef",
+            "ridge",
+            "scrub",
+            "strait",
+            "valley",
+            "water",
+            "wetland",
+            "wood",
+        }
+    ),
+    "place": frozenset({"archipelago", "atoll", "island", "islet", "region"}),
+    "waterway": frozenset({"flowline", "river", "stream", "tidal_channel"}),
+}
+_POSSIBLE_GENERAL_ADMINISTRATIVE_FEATURES = frozenset(
+    {"administrative", "historic:administrative", "political"}
+)
+_POSSIBLE_GENERAL_GEOGRAPHIC_NAME_WORDS = frozenset(
+    {
+        "archipelago",
+        "atoll",
+        "basin",
+        "bay",
+        "coast",
+        "desert",
+        "forest",
+        "gulf",
+        "highlands",
+        "island",
+        "islands",
+        "lowlands",
+        "mountains",
+        "peninsula",
+        "plain",
+        "plains",
+        "plateau",
+        "range",
+        "ridge",
+        "river",
+        "stream",
+        "valley",
+        "watershed",
+    }
+)
+_POSSIBLE_GENERAL_ADMINISTRATIVE_NAME_WORDS = frozenset(
+    {
+        "canton",
+        "county",
+        "department",
+        "district",
+        "municipality",
+        "oblast",
+        "parish",
+        "prefecture",
+        "province",
+        "region",
+        "state",
+        "territory",
+    }
+)
+_NOMINATIM_SETTLEMENT_FEATURES = frozenset(
+    {
+        "city",
+        "hamlet",
+        "locality",
+        "neighbourhood",
+        "quarter",
+        "suburb",
+        "town",
+        "village",
+    }
+)
+_POSSIBLE_GENERAL_MINIMUM_RADIUS_KM = 10
+_GEONAMES_COUNTRY_FEATURE_CODES = {"PCLI", "PCLD", "PCLF", "PCLIX", "PCLS", "TERR"}
+_GEONAMES_ADMIN_FEATURE_CODES = {"ADM1", "ADM2", "ADM3", "ADM4"}
+_GEONAMES_SEARCH_LIMIT = 100
+# GeoNames stores a representative point even for linear and areal features. Only
+# feature types whose point has a reasonably unambiguous locality meaning may set
+# or challenge a Location point. Other matches remain visible as coordinate
+# evidence. See https://download.geonames.org/export/dump/featureCodes_en.txt.
+_GEONAMES_POINT_FEATURE_CLASSES = frozenset({"P", "S"})
+_GEONAMES_POINT_FEATURE_CODES = frozenset(
+    {
+        # Hydrographic points.
+        ("H", "CNFL"),
+        ("H", "FLLS"),
+        ("H", "GYSR"),
+        ("H", "SPNG"),
+        ("H", "SPNS"),
+        ("H", "SPNT"),
+        ("H", "STMB"),
+        ("H", "STMM"),
+        ("H", "WADB"),
+        ("H", "WADJ"),
+        ("H", "WADM"),
+        ("H", "WHRL"),
+        ("H", "WLL"),
+        ("H", "WLLQ"),
+        ("H", "WTRH"),
+        # Road and railroad junctions or bends.
+        ("R", "RDB"),
+        ("R", "RDJCT"),
+        ("R", "RJCT"),
+        # Landform points with a reasonably well-defined center, summit, or tip.
+        ("T", "BLHL"),
+        ("T", "BUTE"),
+        ("T", "CAPE"),
+        ("T", "CONE"),
+        ("T", "CRTR"),
+        ("T", "FORD"),
+        ("T", "GAP"),
+        ("T", "HDLD"),
+        ("T", "HLL"),
+        ("T", "HMCK"),
+        ("T", "MESA"),
+        ("T", "MND"),
+        ("T", "MT"),
+        ("T", "NTK"),
+        ("T", "PASS"),
+        ("T", "PK"),
+        ("T", "PROM"),
+        ("T", "PT"),
+        ("T", "RK"),
+        ("T", "SINK"),
+        ("T", "VLC"),
+    }
+)
 _ADDRESS_REGION_KINDS = {
     RegionKind.country,
     RegionKind.subnational,
@@ -360,6 +499,19 @@ class NominatimSearchPlan:
         return ParsedLocationName(
             self.locality_name, self.disambiguator, self.modifier
         ).render()
+
+
+@dataclass(frozen=True, slots=True)
+class GeoNamesCoordinateCandidate:
+    match: geonames.GeoNamesMatch
+    latitude: str
+    longitude: str
+    extent: coordinate_lint.CoordinateExtent
+    region_issues: tuple[str, ...]
+
+    @property
+    def is_accepted(self) -> bool:
+        return not self.region_issues
 
 
 def remove_unused_ignores(location: Location, unused: Collection[str]) -> None:
@@ -1188,6 +1340,387 @@ def check_linked_coordinates(location: Location, cfg: LintConfig) -> Iterable[st
         yield message
 
 
+@cache
+def _get_geonames_country_code(country_name: str) -> str | None:
+    query_names = (
+        country_name,
+        nominatim.HESP_COUNTRY_TO_OSM_COUNTRY.get(country_name, country_name),
+    )
+    try:
+        for query_name in dict.fromkeys(query_names):
+            matches = geonames.search_name(
+                query_name,
+                feature_classes=("A",),
+                feature_codes=_GEONAMES_COUNTRY_FEATURE_CODES,
+                limit=10,
+            )
+            codes: set[str] = {
+                match.record.country_code
+                for match in matches
+                if match.record.country_code
+            }
+            if len(codes) == 1:
+                return codes.pop()
+            if len(codes) > 1:
+                return None
+    except RuntimeError:
+        # GeoNames is an optional local data source. An unset or missing database
+        # should not make every Location lint fail.
+        return None
+    return None
+
+
+def _get_geonames_coordinate_matches(
+    location: Location,
+) -> list[GeoNamesCoordinateCandidate]:
+    search_plan = get_nominatim_search_plan(location)
+    if not search_plan.coordinates_can_be_inferred:
+        return []
+    country_name = _get_region_country_name(location.region)
+    if country_name is None:
+        return []
+    country_code = _get_geonames_country_code(country_name)
+    if country_code is None:
+        return []
+    try:
+        matches = geonames.search_name(
+            search_plan.locality_name,
+            country_code=country_code,
+            limit=_GEONAMES_SEARCH_LIMIT,
+        )
+    except RuntimeError:
+        return []
+
+    expected_region = next(
+        (
+            region
+            for region in (location.region, *location.region.all_parents())
+            if region.kind in _SUBNATIONAL_REGION_KINDS
+        ),
+        None,
+    )
+    expected_region_codes = (
+        frozenset()
+        if expected_region is None
+        else _get_geonames_region_code_prefixes(
+            country_code, tuple(sorted(_get_region_name_aliases(expected_region)))
+        )
+    )
+    candidates = []
+    for match in matches:
+        parsed = _get_coordinates_with_offsets(
+            str(match.record.latitude),
+            str(match.record.longitude),
+            offsets=search_plan.offsets,
+        )
+        if parsed is None:
+            continue
+        latitude, longitude, extent = parsed
+        region_issues = _get_geonames_region_issues(
+            location, extent, match.record, expected_region, expected_region_codes
+        )
+        candidates.append(
+            GeoNamesCoordinateCandidate(
+                match, latitude, longitude, extent, region_issues
+            )
+        )
+    return candidates
+
+
+def _get_record_admin_code_prefixes(
+    record: geonames.GeoNamesRecord,
+) -> frozenset[tuple[str, ...]]:
+    codes = (
+        record.admin1_code,
+        record.admin2_code,
+        record.admin3_code,
+        record.admin4_code,
+    )
+    return frozenset(
+        (f"ADM{level}", *codes[:level])
+        for level, code in enumerate(codes, start=1)
+        if code and all(codes[:level])
+    )
+
+
+@cache
+def _get_geonames_region_code_prefixes(
+    country_code: str, region_names: tuple[str, ...]
+) -> frozenset[tuple[str, ...]]:
+    # Prefer a qualified alias (for example "Marin County" or "La Paz
+    # Department") when GeoNames recognizes one. Bare names are more likely to
+    # collide with a lower-level administrative unit elsewhere in the country.
+    for region_name in sorted(set(region_names), key=lambda name: (-len(name), name)):
+        try:
+            matches = geonames.search_name(
+                region_name,
+                country_code=country_code,
+                feature_classes=("A",),
+                feature_codes=_GEONAMES_ADMIN_FEATURE_CODES,
+                limit=_GEONAMES_SEARCH_LIMIT,
+            )
+        except RuntimeError:
+            return frozenset()
+        prefixes = frozenset(
+            prefix
+            for match in matches
+            for prefix in _get_record_admin_code_prefixes(match.record)
+            if prefix[0] == match.record.feature_code
+        )
+        if prefixes:
+            return prefixes
+    return frozenset()
+
+
+def _get_geonames_region_issues(
+    location: Location,
+    extent: coordinate_lint.CoordinateExtent,
+    record: geonames.GeoNamesRecord,
+    expected_region: Region | None,
+    expected_region_codes: frozenset[tuple[str, ...]],
+) -> tuple[str, ...]:
+    if expected_region is None:
+        # The GeoNames country code was already matched before this point.
+        return ()
+    if not expected_region_codes:
+        country = next(
+            (
+                region
+                for region in (location.region, *location.region.all_parents())
+                if region.kind is RegionKind.country
+            ),
+            None,
+        )
+        detailed_region_and_path = (
+            None
+            if country is None
+            else coordinate_lint._get_detailed_region_path(location.region, country)
+        )
+        if detailed_region_and_path is None or detailed_region_and_path[0] == country:
+            return (
+                f"cannot validate assigned Region {expected_region.name!r}: no "
+                "matching GeoNames administrative unit or detailed region polygon",
+            )
+        return tuple(coordinate_lint.check_extent_in_region(extent, location.region))
+
+    record_codes = _get_record_admin_code_prefixes(record)
+    if not record_codes.isdisjoint(expected_region_codes):
+        return ()
+    actual_codes = ", ".join(".".join(prefix) for prefix in sorted(record_codes))
+    expected_codes = ", ".join(
+        ".".join(prefix) for prefix in sorted(expected_region_codes)
+    )
+    return (
+        f"GeoNames administrative codes {actual_codes or '(none)'} do not match "
+        f"assigned Region {expected_region.name!r} ({expected_codes})",
+    )
+
+
+def _clear_geonames_lint_caches() -> None:
+    _get_geonames_country_code.cache_clear()
+    _get_geonames_region_code_prefixes.cache_clear()
+
+
+def _get_accepted_geonames_coordinate_candidates(
+    location: Location,
+) -> list[GeoNamesCoordinateCandidate]:
+    return [
+        candidate
+        for candidate in _get_geonames_coordinate_matches(location)
+        if candidate.is_accepted
+    ]
+
+
+def _is_geonames_point_candidate(candidate: GeoNamesCoordinateCandidate) -> bool:
+    record = candidate.match.record
+    return (
+        record.feature_class in _GEONAMES_POINT_FEATURE_CLASSES
+        or (record.feature_class, record.feature_code) in _GEONAMES_POINT_FEATURE_CODES
+    )
+
+
+def _get_usable_geonames_coordinate_candidates(
+    location: Location,
+) -> list[GeoNamesCoordinateCandidate]:
+    return [
+        candidate
+        for candidate in _get_accepted_geonames_coordinate_candidates(location)
+        if _is_geonames_point_candidate(candidate)
+    ]
+
+
+def _extents_form_single_coordinate_cluster(
+    extents: Collection[coordinate_lint.CoordinateExtent],
+) -> bool:
+    extents = tuple(extents)
+    return all(
+        coordinate_lint.extent_distance_km(extent, other_extent)
+        <= coordinate_lint.COORDINATE_TOLERANCE_KM
+        for index, extent in enumerate(extents)
+        for other_extent in extents[index + 1 :]
+    )
+
+
+def _describe_geonames_match(match: geonames.GeoNamesMatch) -> str:
+    record = match.record
+    matched_as = (
+        ""
+        if match.match_kind == "name"
+        else f", matched {match.match_kind.replace('_', ' ')} {match.matched_name!r}"
+    )
+    return (
+        f"GeoNames {record.feature_class}/{record.feature_code} "
+        f"{record.name!r} (ID {record.geoname_id}{matched_as})"
+    )
+
+
+@LINT.add(
+    "geonames_coordinates",
+    requires_network=True,
+    clear_caches=_clear_geonames_lint_caches,
+)
+def check_geonames_coordinates(location: Location, cfg: LintConfig) -> Iterable[str]:
+    if location.latitude is not None or location.longitude is not None:
+        return
+    if not _should_infer_coordinates(location):
+        return
+    if is_non_recent_location(location):
+        return
+    if _get_linked_coordinate_candidates(location):
+        return
+
+    geonames_candidates = _get_usable_geonames_coordinate_candidates(location)
+    if not geonames_candidates:
+        return
+    if not _extents_form_single_coordinate_cluster(
+        [candidate.extent for candidate in geonames_candidates]
+    ):
+        matches = "".join(
+            f"- {_describe_geonames_match(candidate.match)}, "
+            f"{candidate.latitude}, {candidate.longitude}\n"
+            for candidate in geonames_candidates
+        )
+        yield (
+            f"GeoNames returned {len(geonames_candidates)} conflicting usable "
+            f"exact matches in the assigned Region:\n{matches}"
+        )
+        return
+
+    nominatim_candidates = _get_nominatim_coordinate_candidates(location)
+    if nominatim_candidates:
+        if not _extents_form_single_coordinate_cluster(
+            [parsed[2] for _, parsed in nominatim_candidates]
+        ):
+            matches = "".join(
+                f"- {candidate.display_name!r} "
+                f"({candidate.category}/{candidate.feature_type}, "
+                f"{latitude}, {longitude})\n"
+                for candidate, (latitude, longitude, _) in nominatim_candidates
+            )
+            yield (
+                f"GeoNames resolves to one coordinate cluster, but Nominatim "
+                f"returned {len(nominatim_candidates)} conflicting exact matches; "
+                f"coordinates cannot be inferred:\n{matches}"
+            )
+            return
+        combined_extents = [
+            *(candidate.extent for candidate in geonames_candidates),
+            *(parsed[2] for _, parsed in nominatim_candidates),
+        ]
+        if not _extents_form_single_coordinate_cluster(combined_extents):
+            geonames_match = geonames_candidates[0]
+            nominatim_result, (nominatim_latitude, nominatim_longitude, _) = (
+                nominatim_candidates[0]
+            )
+            yield (
+                f"GeoNames and Nominatim resolve to incompatible coordinate "
+                f"clusters: {_describe_geonames_match(geonames_match.match)} at "
+                f"{geonames_match.latitude}, {geonames_match.longitude}; "
+                f"Nominatim {nominatim_result.category}/"
+                f"{nominatim_result.feature_type} result "
+                f"{nominatim_result.display_name!r} at {nominatim_latitude}, "
+                f"{nominatim_longitude}"
+            )
+            return
+        result, (latitude, longitude, extent) = nominatim_candidates[0]
+        region_issues = list(
+            coordinate_lint.check_extent_in_region(extent, location.region)
+        )
+        if region_issues:
+            yield (
+                f"Nominatim result {result.display_name!r} failed the region check: "
+                f"{'; '.join(region_issues)}"
+            )
+            return
+        message = (
+            f"coordinates should be {latitude}, {longitude}, inferred from "
+            f"OpenStreetMap Nominatim {result.category}/{result.feature_type} "
+            f"result {result.display_name!r}, confirmed by "
+            f"{len(geonames_candidates)} compatible GeoNames exact "
+            f"match{'es' if len(geonames_candidates) != 1 else ''}"
+        )
+    else:
+        reference = geonames_candidates[0]
+        latitude = reference.latitude
+        longitude = reference.longitude
+        message = (
+            f"coordinates should be {latitude}, {longitude}, inferred from "
+            f"{_describe_geonames_match(reference.match)}; Nominatim returned "
+            "no usable exact match"
+        )
+    if cfg.autofix and not LINT.is_ignoring_lint(location, "geonames_coordinates"):
+        print(f"{location}: {message}")
+        location.latitude = latitude
+        location.longitude = longitude
+    else:
+        yield message
+
+
+@LINT.add("geonames_coordinate_consistency")
+def check_geonames_coordinate_consistency(
+    location: Location, cfg: LintConfig
+) -> Iterable[str]:
+    if location.latitude is None or location.longitude is None:
+        return
+    if not _should_infer_coordinates(location):
+        return
+    if is_non_recent_location(location):
+        return
+    parsed = coordinate_lint.standardize_coordinate_pair(
+        location.latitude, location.longitude
+    )
+    if parsed is None:
+        return
+    _, _, location_extent = parsed
+
+    candidates = _get_usable_geonames_coordinate_candidates(location)
+    if not candidates:
+        return
+    candidates_with_distances = [
+        (
+            candidate,
+            coordinate_lint.extent_distance_km(location_extent, candidate.extent),
+        )
+        for candidate in candidates
+    ]
+    if any(
+        distance <= coordinate_lint.COORDINATE_TOLERANCE_KM
+        for _, distance in candidates_with_distances
+    ):
+        return
+
+    matches = "".join(
+        f"- {_describe_geonames_match(candidate.match)}, "
+        f"{candidate.latitude}, {candidate.longitude}; {distance:.1f} km away\n"
+        for candidate, distance in candidates_with_distances
+    )
+    yield (
+        f"coordinates {location.latitude}, {location.longitude} are more than "
+        f"{coordinate_lint.COORDINATE_TOLERANCE_KM} km from all "
+        f"{len(candidates)} exact GeoNames matches in the assigned Region:\n{matches}"
+    )
+
+
 @LINT.add("nominatim_coordinates", requires_network=True)
 def check_nominatim_coordinates(location: Location, cfg: LintConfig) -> Iterable[str]:
     if location.latitude is not None or location.longitude is not None:
@@ -1196,38 +1729,31 @@ def check_nominatim_coordinates(location: Location, cfg: LintConfig) -> Iterable
         return
     if _get_linked_coordinate_candidates(location):
         return
+    # GeoNames inference is the cross-source coordinator whenever GeoNames has
+    # an accepted point-like candidate. Do not let lint order choose a source.
+    if _get_usable_geonames_coordinate_candidates(location):
+        return
 
     candidates = _get_nominatim_coordinate_candidates(location)
     if not candidates:
         return
 
     result, (latitude, longitude, extent) = candidates[0]
-    has_conflict = any(
-        coordinate_lint.extent_distance_km(extent, other_extent)
-        > coordinate_lint.COORDINATE_TOLERANCE_KM
-        for _, (_, _, other_extent) in candidates[1:]
+    has_conflict = not _extents_form_single_coordinate_cluster(
+        [parsed[2] for _, parsed in candidates]
     )
-    preferred_over_boundaries = False
     if has_conflict:
-        preferred = _get_place_candidate_among_administrative_boundaries(candidates)
-        if preferred is None:
-            matches = "".join(
-                f"- {candidate.display_name!r} "
-                f"({candidate.category}/{candidate.feature_type}, "
-                f"{candidate_latitude}, {candidate_longitude})\n"
-                for candidate, (
-                    candidate_latitude,
-                    candidate_longitude,
-                    _,
-                ) in candidates
-            )
-            yield (
-                f"Nominatim returned {len(candidates)} conflicting exact matches:\n"
-                f"{matches}"
-            )
-            return
-        result, (latitude, longitude, extent) = preferred
-        preferred_over_boundaries = True
+        matches = "".join(
+            f"- {candidate.display_name!r} "
+            f"({candidate.category}/{candidate.feature_type}, "
+            f"{candidate_latitude}, {candidate_longitude})\n"
+            for candidate, (candidate_latitude, candidate_longitude, _) in candidates
+        )
+        yield (
+            f"Nominatim returned {len(candidates)} conflicting exact matches:\n"
+            f"{matches}"
+        )
+        return
 
     region_issues = list(
         coordinate_lint.check_extent_in_region(extent, location.region)
@@ -1252,8 +1778,6 @@ def check_nominatim_coordinates(location: Location, cfg: LintConfig) -> Iterable
             f"{search_plan.offset_description} to OpenStreetMap Nominatim "
             f"{result.category}/{result.feature_type} result {result.display_name!r}"
         )
-    if preferred_over_boundaries:
-        message += " (preferred over boundary/administrative matches)"
     if cfg.autofix and not LINT.is_ignoring_lint(location, "nominatim_coordinates"):
         print(f"{location}: {message}")
         location.latitude = latitude
@@ -1283,37 +1807,63 @@ def check_nominatim_general_coordinates(
             return
         has_existing_point = True
 
-    candidates = _get_nominatim_bounding_box_candidates(location)
+    all_candidates = _get_nominatim_bounding_box_candidates(location)
+    possible_general_candidates = _get_possible_general_nominatim_candidates(
+        location, bounding_box_candidates=all_candidates
+    )
+    candidates = [
+        (result, (latitude, longitude, extent))
+        for result, latitude, longitude, extent, _ in possible_general_candidates
+    ]
     if not candidates:
         return
 
     result, (latitude, longitude, extent) = candidates[0]
     has_conflict = any(
         not _coordinate_extents_are_equal(extent, other_extent)
-        for _, (_, _, other_extent) in candidates[1:]
+        for _, (_, _, other_extent) in all_candidates
     )
     preferred_over_boundaries = False
+    preferred_over_contained_matches = False
     if has_conflict:
-        preferred = _get_place_candidate_among_administrative_boundaries(candidates)
+        encompassing = _get_encompassing_general_candidate(
+            possible_general_candidates, all_candidates
+        )
+        if encompassing is not None:
+            result, latitude, longitude, extent, _ = encompassing
+            preferred_over_contained_matches = True
+            preferred = None
+        else:
+            preferred = _get_place_candidate_among_administrative_boundaries(
+                all_candidates
+            )
+            if preferred is not None and not any(
+                preferred[0] is candidate[0]
+                and _coordinate_extents_are_equal(preferred[1][2], candidate[3])
+                for candidate in possible_general_candidates
+            ):
+                preferred = None
         if preferred is None:
-            matches = "".join(
-                f"- {candidate.display_name!r} "
-                f"({candidate.osm_type} {candidate.category}/"
-                f"{candidate.feature_type}, {candidate_latitude}, "
-                f"{candidate_longitude})\n"
-                for candidate, (
-                    candidate_latitude,
-                    candidate_longitude,
-                    _,
-                ) in candidates
-            )
-            yield (
-                f"Nominatim returned {len(candidates)} conflicting exact-match "
-                f"bounding boxes:\n{matches}"
-            )
-            return
-        result, (latitude, longitude, extent) = preferred
-        preferred_over_boundaries = True
+            if not preferred_over_contained_matches:
+                matches = "".join(
+                    f"- {candidate.display_name!r} "
+                    f"({candidate.osm_type} {candidate.category}/"
+                    f"{candidate.feature_type}, {candidate_latitude}, "
+                    f"{candidate_longitude})\n"
+                    for candidate, (
+                        candidate_latitude,
+                        candidate_longitude,
+                        _,
+                    ) in all_candidates
+                )
+                yield (
+                    f"Nominatim returned {len(all_candidates)} conflicting "
+                    f"exact-match bounding boxes:\n{matches}"
+                )
+                return
+        else:
+            result, (latitude, longitude, extent) = preferred
+            preferred_over_boundaries = True
 
     region_issues = list(
         coordinate_lint.check_extent_in_region(extent, location.region)
@@ -1332,6 +1882,8 @@ def check_nominatim_general_coordinates(
     )
     if preferred_over_boundaries:
         message += " (preferred over boundary/administrative matches)"
+    elif preferred_over_contained_matches:
+        message += " (preferred because it contains all other exact-match bounds)"
     if has_existing_point:
         yield (
             f"{message}; replace point coordinates {location.latitude}, "
@@ -1346,6 +1898,177 @@ def check_nominatim_general_coordinates(
         location.longitude = longitude
     else:
         yield message
+
+
+def _get_nominatim_bounding_box_radius_km(
+    result: nominatim.SearchResult,
+) -> float | None:
+    if result.bounding_box is None:
+        return None
+    try:
+        south, north, west, east = map(float, result.bounding_box)
+    except ValueError:
+        return None
+    center = coordinates.Point((west + east) / 2, (south + north) / 2)
+    return max(
+        coordinate_lint.distance_km(center, coordinates.Point(longitude, latitude))
+        for longitude in (west, east)
+        for latitude in (south, north)
+    )
+
+
+def _coordinate_extent_contains(
+    outer: coordinate_lint.CoordinateExtent, inner: coordinate_lint.CoordinateExtent
+) -> bool:
+    return (
+        outer.latitude.minimum <= inner.latitude.minimum
+        and outer.latitude.maximum >= inner.latitude.maximum
+        and outer.longitude.minimum <= inner.longitude.minimum
+        and outer.longitude.maximum >= inner.longitude.maximum
+    )
+
+
+def _get_encompassing_general_candidate(
+    general_candidates: list[tuple[nominatim.SearchResult, str, str, Any, float]],
+    all_candidates: list[tuple[nominatim.SearchResult, tuple[str, str, Any]]],
+) -> tuple[nominatim.SearchResult, str, str, Any, float] | None:
+    encompassing = [
+        candidate
+        for candidate in general_candidates
+        if all(
+            _coordinate_extent_contains(candidate[3], other_extent)
+            for _, (_, _, other_extent) in all_candidates
+        )
+    ]
+    if not encompassing:
+        return None
+    return min(encompassing, key=lambda candidate: candidate[4])
+
+
+def _get_possible_general_nominatim_candidates(
+    location: Location,
+    *,
+    bounding_box_candidates: (
+        list[tuple[nominatim.SearchResult, tuple[str, str, Any]]] | None
+    ) = None,
+) -> list[tuple[nominatim.SearchResult, str, str, Any, float]]:
+    search_plan = get_nominatim_search_plan(location)
+    if (
+        not search_plan.coordinates_can_be_inferred
+        or search_plan.offsets
+        or search_plan.modifier is not None
+    ):
+        return []
+    name_words = set(re.findall(r"[a-z]+", search_plan.locality_name.casefold()))
+    has_geographic_name = not name_words.isdisjoint(
+        _POSSIBLE_GENERAL_GEOGRAPHIC_NAME_WORDS
+    )
+    has_administrative_name = not name_words.isdisjoint(
+        _POSSIBLE_GENERAL_ADMINISTRATIVE_NAME_WORDS
+    )
+    location_extent = (
+        coordinate_lint.make_extent(location.latitude, location.longitude)
+        if location.latitude is not None and location.longitude is not None
+        else None
+    )
+    has_settlement_match: bool | None = None
+    candidates = []
+    seen = set()
+    if bounding_box_candidates is None:
+        bounding_box_candidates = _get_nominatim_bounding_box_candidates(location)
+    for result, (latitude, longitude, extent) in bounding_box_candidates:
+        radius_km = _get_nominatim_bounding_box_radius_km(result)
+        if radius_km is None:
+            continue
+        if (
+            location_extent is not None
+            and coordinate_lint.extent_distance_km(location_extent, extent)
+            > coordinate_lint.COORDINATE_TOLERANCE_KM
+        ):
+            continue
+        accepted_features = _POSSIBLE_GENERAL_NOMINATIM_FEATURES.get(
+            result.category, frozenset()
+        )
+        is_broad_feature = (
+            result.feature_type in accepted_features
+            and radius_km > _POSSIBLE_GENERAL_MINIMUM_RADIUS_KM
+        )
+        is_named_administrative_feature = (
+            result.category == "boundary"
+            and result.feature_type in _POSSIBLE_GENERAL_ADMINISTRATIVE_FEATURES
+            and radius_km > _POSSIBLE_GENERAL_MINIMUM_RADIUS_KM
+            and (has_geographic_name or has_administrative_name)
+        )
+        if (
+            is_named_administrative_feature
+            and has_administrative_name
+            and not has_geographic_name
+        ):
+            if has_settlement_match is None:
+                has_settlement_match = any(
+                    candidate.category == "place"
+                    and candidate.feature_type in _NOMINATIM_SETTLEMENT_FEATURES
+                    for candidate, _ in _get_nominatim_coordinate_candidates(location)
+                )
+            if has_settlement_match:
+                is_named_administrative_feature = False
+        if not is_broad_feature and not is_named_administrative_feature:
+            continue
+        key = (
+            result.category,
+            result.feature_type,
+            result.osm_type,
+            result.bounding_box,
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        candidates.append((result, latitude, longitude, extent, radius_km))
+    candidates.sort(key=lambda candidate: -candidate[4])
+    return candidates
+
+
+def _get_maximum_linked_coordinate_spread(
+    location: Location,
+) -> tuple[float, str, str] | None:
+    linked = _get_linked_coordinate_candidates(location)
+    maximum: tuple[float, str, str] | None = None
+    for index, (_, _, extent, source) in enumerate(linked):
+        for _, _, other_extent, other_source in linked[index + 1 :]:
+            distance = coordinate_lint.extent_distance_km(extent, other_extent)
+            if maximum is None or distance > maximum[0]:
+                maximum = distance, source, other_source
+    return maximum
+
+
+@LINT.add("possible_general_location", requires_network=True)
+def check_possible_general_location(
+    location: Location, cfg: LintConfig
+) -> Iterable[str]:
+    if location.is_general() or not is_recent_location(location):
+        return
+    candidates = _get_possible_general_nominatim_candidates(location)
+    if not candidates:
+        return
+
+    matches = "".join(
+        f"- {result.osm_type} {result.category}/{result.feature_type} "
+        f"{result.display_name!r}: {radius_km:.1f} km bounding-box radius, "
+        f"{latitude}, {longitude}\n"
+        for result, latitude, longitude, _, radius_km in candidates
+    )
+    message = (
+        "may represent a broad feature or political area and should be reviewed "
+        f"for the General tag; exact Nominatim matches:\n{matches}"
+    )
+    spread = _get_maximum_linked_coordinate_spread(location)
+    if spread is not None and spread[0] > coordinate_lint.COORDINATE_TOLERANCE_KM:
+        distance, source, other_source = spread
+        message += (
+            f"Linked coordinate evidence also spans {distance:.1f} km between "
+            f"{source} and {other_source}."
+        )
+    yield message
 
 
 @LINT.add("nominatim_coordinate_consistency", requires_network=True)
@@ -1758,9 +2481,15 @@ def _locality_offset_sort_key(offset: LocalityOffset) -> tuple[int, float]:
 def get_nominatim_result_coordinates(
     result: nominatim.SearchResult, *, offsets: tuple[LocalityOffset, ...] = ()
 ) -> tuple[str, str, Any] | None:
-    parsed = coordinate_lint.standardize_coordinate_pair(
-        result.latitude, result.longitude
+    return _get_coordinates_with_offsets(
+        result.latitude, result.longitude, offsets=offsets
     )
+
+
+def _get_coordinates_with_offsets(
+    latitude: str, longitude: str, *, offsets: tuple[LocalityOffset, ...] = ()
+) -> tuple[str, str, coordinate_lint.CoordinateExtent] | None:
+    parsed = coordinate_lint.standardize_coordinate_pair(latitude, longitude)
     if parsed is None or not offsets:
         return parsed
     point = parsed[2].point

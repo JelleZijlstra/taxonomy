@@ -19,7 +19,8 @@ but more recently we have started using more specific locations.
 
 Mark a Location with the _General_ tag when it intentionally represents a broad or
 imprecise area rather than a single locality. A general Location should be replaced or
-split only when source evidence supports a more precise assignment.
+split only when source evidence supports a more precise assignment. Locations should be
+considered general if they represent an area with a larger radius than about 10 km.
 
 ## Naming convention
 

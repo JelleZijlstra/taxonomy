@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import math
 import sqlite3
 from types import SimpleNamespace
@@ -9,7 +10,7 @@ from unittest.mock import Mock, call
 import pytest
 
 from taxonomy import getinput
-from taxonomy.apis import nominatim
+from taxonomy.apis import geonames, nominatim
 from taxonomy.db import coordinate_lint, models
 from taxonomy.db.constants import RegionKind
 from taxonomy.db.models import lint as model_lint
@@ -20,6 +21,16 @@ from taxonomy.db.models.name import TypeTag
 from taxonomy.db.models.occurrence_record import OccurrenceRecordTag
 from taxonomy.db.models.period import Period
 from taxonomy.db.models.region import Region
+
+_REAL_GET_GEONAMES_COORDINATE_MATCHES = location_lint._get_geonames_coordinate_matches
+
+
+@pytest.fixture(autouse=True)
+def _disable_live_geonames_lookup(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        location_lint, "_get_geonames_coordinate_matches", Mock(return_value=[])
+    )
+    monkeypatch.setattr(geonames, "get_administrative_hierarchy", Mock(return_value=[]))
 
 
 def _mock_location_name_lookup(
@@ -75,8 +86,69 @@ def test_open_coordinates_is_adt_callback(monkeypatch: pytest.MonkeyPatch) -> No
 
     assert callbacks["open_coordinates"] == loc.open_coordinates
     assert callbacks["infer_coordinates"] == loc.infer_coordinates
+    assert callbacks["generalize"] == loc.generalize
     assert callbacks["coordinate_evidence"] == loc.coordinate_evidence
     assert callbacks["source_callback"] is source_callback
+
+
+@pytest.mark.parametrize(
+    ("latitude", "longitude", "expected_latitude", "expected_longitude"),
+    [
+        ("38°N", "122°W", None, None),
+        ("37°N-39°N", "123°W-121°W", "37°N-39°N", "123°W-121°W"),
+        ("invalid", "122°W", "invalid", "122°W"),
+    ],
+)
+def test_generalize_adds_tag_removes_only_point_coordinates_and_formats(
+    latitude: str,
+    longitude: str,
+    expected_latitude: str | None,
+    expected_longitude: str | None,
+) -> None:
+    tags: list[object] = []
+    format_location = Mock()
+
+    def add_tag(tag: object) -> None:
+        tags.append(tag)
+
+    loc = cast(
+        Location,
+        SimpleNamespace(
+            latitude=latitude,
+            longitude=longitude,
+            has_tag=lambda tag_cls: bool(tags),
+            add_tag=add_tag,
+            format=format_location,
+        ),
+    )
+
+    Location.generalize(loc)
+
+    assert len(tags) == 1
+    assert tags[0] is LocationTag.General
+    assert loc.latitude == expected_latitude
+    assert loc.longitude == expected_longitude
+    format_location.assert_called_once_with()
+
+
+def test_generalize_does_not_duplicate_general_tag() -> None:
+    add_tag = Mock()
+    format_location = Mock()
+    loc = cast(
+        Location,
+        SimpleNamespace(
+            latitude=None,
+            longitude=None,
+            has_tag=lambda tag_cls: True,
+            add_tag=add_tag,
+            format=format_location,
+        ),
+    )
+
+    Location.generalize(loc)
+
+    add_tag.assert_not_called()
+    format_location.assert_called_once_with()
 
 
 def test_alias_requires_target_without_running_regular_lints() -> None:
@@ -501,6 +573,31 @@ def test_coordinate_evidence_prints_all_sources(
             ]
         ),
     )
+    monkeypatch.setattr(
+        location_lint,
+        "_get_geonames_coordinate_matches",
+        Mock(
+            return_value=[
+                _geonames_candidate(
+                    geoname_id=5376890,
+                    name="Nicasio",
+                    matched_name="Walnut Creek",
+                    match_kind="alternate_name",
+                    latitude=37.91,
+                    longitude=-122.11,
+                ),
+                _geonames_candidate(
+                    geoname_id=2,
+                    name="Other place",
+                    latitude=40,
+                    longitude=-75,
+                    feature_class="T",
+                    feature_code="MT",
+                    region_issues=("coordinates are outside California",),
+                ),
+            ]
+        ),
+    )
 
     Location.coordinate_evidence(loc)
 
@@ -511,6 +608,15 @@ def test_coordinate_evidence_prints_all_sources(
     assert "Query: Walnut Creek, California" in output
     assert "[accepted] place/city: Walnut Creek" in output
     assert "[rejected by locality/region checks] place/village: Other place" in output
+    assert "GeoNames candidates:" in output
+    assert "Exact-name query: 'Walnut Creek'; country=(unresolved)" in output
+    assert (
+        "[accepted for point-coordinate checks] P/PPL: Nicasio "
+        "(GeoNames ID 5376890" in output
+    )
+    assert "matched alternate name 'Walnut Creek'" in output
+    assert "[rejected by region checks] T/MT: Other place" in output
+    assert "Region issues: coordinates are outside California" in output
     assert "Type-locality Names:" in output
     assert "Coordinates tag: 37.9°N, 122.1°W" in output
     assert "OccurrenceRecords:" in output
@@ -622,6 +728,50 @@ def _nominatim_result(
     )
 
 
+def _geonames_candidate(
+    *,
+    geoname_id: int = 1,
+    name: str = "Nicasio",
+    latitude: float = 38.0615885,
+    longitude: float = -122.6985975,
+    matched_name: str | None = None,
+    match_kind: geonames.MatchKind = "name",
+    feature_class: str = "P",
+    feature_code: str = "PPL",
+    region_issues: tuple[str, ...] = (),
+) -> location_lint.GeoNamesCoordinateCandidate:
+    record = geonames.GeoNamesRecord(
+        geoname_id=geoname_id,
+        name=name,
+        ascii_name=name,
+        alternate_names="",
+        latitude=latitude,
+        longitude=longitude,
+        feature_class=feature_class,
+        feature_code=feature_code,
+        country_code="US",
+        alternate_country_codes="",
+        admin1_code="CA",
+        admin2_code="041",
+        admin3_code="",
+        admin4_code="",
+        population=0,
+        elevation=None,
+        dem=None,
+        timezone="America/Los_Angeles",
+        modification_date="2026-01-01",
+    )
+    match = geonames.GeoNamesMatch(
+        record, matched_name if matched_name is not None else name, match_kind
+    )
+    parsed = coordinate_lint.standardize_coordinate_pair(str(latitude), str(longitude))
+    assert parsed is not None
+    standardized_latitude, standardized_longitude, extent = parsed
+    return location_lint.GeoNamesCoordinateCandidate(
+        match, standardized_latitude, standardized_longitude, extent, region_issues
+    )
+
+
 def _nominatim_reverse_result(state: str) -> nominatim.ReverseResult:
     return nominatim.ReverseResult(
         display_name=f"Nearest feature, {state}, United States",
@@ -701,6 +851,450 @@ def test_location_does_not_infer_conflicting_coordinates() -> None:
     assert loc.longitude is None
 
 
+def test_location_infers_coordinates_from_geonames(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    loc = _location_without_coordinates(name="Nicasio", region=_marin_county())
+    candidate = _geonames_candidate(geoname_id=5376890)
+    monkeypatch.setattr(
+        location_lint,
+        "_get_geonames_coordinate_matches",
+        Mock(return_value=[candidate]),
+    )
+    monkeypatch.setattr(nominatim, "search", Mock(return_value=[]))
+    monkeypatch.setattr(model_lint, "is_network_available", lambda: True)
+
+    messages = list(
+        location_lint.check_geonames_coordinates(loc, LintConfig(autofix=True))
+    )
+
+    assert messages == []
+    assert loc.latitude == "38.0615885°N"
+    assert loc.longitude == "122.6985975°W"
+
+
+def test_location_does_not_infer_conflicting_geonames_coordinates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    loc = _location_without_coordinates(name="Springfield", region=_marin_county())
+    candidates = [
+        _geonames_candidate(
+            geoname_id=1, name="Springfield", latitude=38, longitude=-122
+        ),
+        _geonames_candidate(
+            geoname_id=2, name="Springfield", latitude=39, longitude=-122
+        ),
+    ]
+    monkeypatch.setattr(
+        location_lint, "_get_geonames_coordinate_matches", Mock(return_value=candidates)
+    )
+    monkeypatch.setattr(model_lint, "is_network_available", lambda: True)
+
+    messages = list(
+        location_lint.check_geonames_coordinates(loc, LintConfig(autofix=True))
+    )
+
+    assert len(messages) == 1
+    assert "2 conflicting usable exact matches in the assigned Region" in messages[0]
+    assert "ID 1" in messages[0]
+    assert "ID 2" in messages[0]
+    assert loc.latitude is None
+    assert loc.longitude is None
+
+
+def test_geonames_inference_rejects_candidate_outside_region(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    loc = _location_without_coordinates(name="Nicasio", region=_marin_county())
+    candidate = _geonames_candidate(
+        region_issues=("coordinates are outside Marin County",)
+    )
+    monkeypatch.setattr(
+        location_lint,
+        "_get_geonames_coordinate_matches",
+        Mock(return_value=[candidate]),
+    )
+    monkeypatch.setattr(model_lint, "is_network_available", lambda: True)
+
+    assert (
+        list(location_lint.check_geonames_coordinates(loc, LintConfig(autofix=True)))
+        == []
+    )
+    assert loc.latitude is None
+    assert loc.longitude is None
+
+
+@pytest.mark.parametrize(
+    ("feature_class", "feature_code", "expected"),
+    [
+        ("P", "PPL", 1),
+        ("S", "CAVE", 1),
+        ("H", "SPNG", 1),
+        ("H", "STM", 0),
+        ("T", "MT", 1),
+        ("T", "ISL", 0),
+        ("R", "RDJCT", 1),
+        ("R", "RD", 0),
+        ("A", "ADM2", 0),
+        ("L", "PRK", 0),
+    ],
+)
+def test_geonames_point_feature_restriction(
+    feature_class: str, feature_code: str, expected: int
+) -> None:
+    candidate = _geonames_candidate(
+        feature_class=feature_class, feature_code=feature_code
+    )
+
+    assert location_lint._is_geonames_point_candidate(candidate) is bool(expected)
+
+
+def test_nonpoint_geonames_feature_does_not_infer_or_check_coordinates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    loc = _location_without_coordinates(name="Nicasio", region=_marin_county())
+    loc.latitude = "37.9°N"
+    loc.longitude = "122.5°W"
+    stream = _geonames_candidate(feature_class="H", feature_code="STM")
+    monkeypatch.setattr(
+        location_lint, "_get_geonames_coordinate_matches", Mock(return_value=[stream])
+    )
+
+    assert (
+        list(location_lint.check_geonames_coordinate_consistency(loc, LintConfig()))
+        == []
+    )
+
+
+def test_coordinate_evidence_marks_nonpoint_geonames_feature_as_evidence_only(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    loc = _location_without_coordinates(name="Nicasio", region=_marin_county())
+    monkeypatch.setattr(nominatim, "search", Mock(return_value=[]))
+    monkeypatch.setattr(
+        location_lint,
+        "_get_geonames_coordinate_matches",
+        Mock(return_value=[_geonames_candidate(feature_class="H", feature_code="STM")]),
+    )
+
+    Location.coordinate_evidence(loc)
+
+    assert "[evidence only; feature is not point-like] H/STM" in capsys.readouterr().out
+
+
+def test_geonames_and_nominatim_compatible_coordinates_are_inferred(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    loc = _location_without_coordinates(name="Nicasio", region=_marin_county())
+    monkeypatch.setattr(
+        location_lint,
+        "_get_geonames_coordinate_matches",
+        Mock(return_value=[_geonames_candidate(latitude=38.061, longitude=-122.699)]),
+    )
+    monkeypatch.setattr(
+        nominatim,
+        "search",
+        Mock(
+            return_value=[
+                _nominatim_result(latitude="38.0615885", longitude="-122.6985975")
+            ]
+        ),
+    )
+    monkeypatch.setattr(model_lint, "is_network_available", lambda: True)
+    monkeypatch.setattr(
+        coordinate_lint, "check_extent_in_region", lambda extent, region: ()
+    )
+
+    messages = list(
+        location_lint.check_geonames_coordinates(loc, LintConfig(autofix=True))
+    )
+
+    assert messages == []
+    assert loc.latitude == "38.0615885°N"
+    assert loc.longitude == "122.6985975°W"
+
+
+def test_geonames_does_not_override_ambiguous_nominatim_results(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    loc = _location_without_coordinates(name="Nicasio", region=_marin_county())
+    monkeypatch.setattr(
+        location_lint,
+        "_get_geonames_coordinate_matches",
+        Mock(return_value=[_geonames_candidate()]),
+    )
+    results = [
+        _nominatim_result(latitude="38.0615885", longitude="-122.6985975"),
+        _nominatim_result(
+            latitude="38.5",
+            longitude="-122.7",
+            feature_type="village",
+            display_name="Other Nicasio",
+        ),
+    ]
+    monkeypatch.setattr(nominatim, "search", Mock(return_value=results))
+    monkeypatch.setattr(model_lint, "is_network_available", lambda: True)
+
+    messages = list(
+        location_lint.check_geonames_coordinates(loc, LintConfig(autofix=True))
+    )
+
+    assert len(messages) == 1
+    assert "Nominatim returned 2 conflicting exact matches" in messages[0]
+    assert loc.latitude is None
+    assert loc.longitude is None
+
+
+def test_geonames_and_nominatim_incompatible_coordinates_are_not_inferred(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    loc = _location_without_coordinates(name="Nicasio", region=_marin_county())
+    monkeypatch.setattr(
+        location_lint,
+        "_get_geonames_coordinate_matches",
+        Mock(return_value=[_geonames_candidate()]),
+    )
+    monkeypatch.setattr(
+        nominatim,
+        "search",
+        Mock(return_value=[_nominatim_result(latitude="38.5", longitude="-122.7")]),
+    )
+    monkeypatch.setattr(model_lint, "is_network_available", lambda: True)
+
+    messages = list(
+        location_lint.check_geonames_coordinates(loc, LintConfig(autofix=True))
+    )
+
+    assert len(messages) == 1
+    assert "resolve to incompatible coordinate clusters" in messages[0]
+    assert loc.latitude is None
+    assert loc.longitude is None
+
+
+def test_nonpoint_geonames_feature_does_not_block_nominatim_inference(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    loc = _location_without_coordinates(name="Nicasio", region=_marin_county())
+    monkeypatch.setattr(
+        location_lint,
+        "_get_geonames_coordinate_matches",
+        Mock(return_value=[_geonames_candidate(feature_class="H", feature_code="STM")]),
+    )
+    monkeypatch.setattr(
+        nominatim,
+        "search",
+        Mock(
+            return_value=[
+                _nominatim_result(latitude="38.0615885", longitude="-122.6985975")
+            ]
+        ),
+    )
+    monkeypatch.setattr(model_lint, "is_network_available", lambda: True)
+    monkeypatch.setattr(
+        coordinate_lint, "check_extent_in_region", lambda extent, region: ()
+    )
+
+    messages = list(
+        location_lint.check_nominatim_coordinates(loc, LintConfig(autofix=True))
+    )
+
+    assert messages == []
+    assert loc.latitude == "38.0615885°N"
+    assert loc.longitude == "122.6985975°W"
+
+
+def test_geonames_administrative_codes_validate_assigned_region() -> None:
+    loc = _location_without_coordinates(name="Nicasio", region=_marin_county())
+    extent = _geonames_candidate().extent
+    record = _geonames_candidate().match.record
+    expected_codes = frozenset({("ADM2", "CA", "041")})
+
+    assert (
+        location_lint._get_geonames_region_issues(
+            loc, extent, record, loc.region, expected_codes
+        )
+        == ()
+    )
+
+
+def test_geonames_administrative_codes_reject_wrong_region() -> None:
+    loc = _location_without_coordinates(name="Nicasio", region=_marin_county())
+    extent = _geonames_candidate().extent
+    record = dataclasses.replace(_geonames_candidate().match.record, admin2_code="097")
+    expected_codes = frozenset({("ADM2", "CA", "041")})
+
+    issues = location_lint._get_geonames_region_issues(
+        loc, extent, record, loc.region, expected_codes
+    )
+
+    assert len(issues) == 1
+    assert "ADM2.CA.097" in issues[0]
+    assert "assigned Region 'Marin County, California' (ADM2.CA.041)" in issues[0]
+
+
+def test_geonames_candidate_is_rejected_without_subnational_validation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    country = _make_region("Exampleland", RegionKind.country)
+    state = _make_region("Example State", RegionKind.state, country)
+    loc = _location_without_coordinates(name="Example", region=state)
+    candidate = _geonames_candidate()
+    check_extent = Mock()
+    monkeypatch.setattr(
+        coordinate_lint,
+        "_get_detailed_region_path",
+        lambda region, found_country: (country, "country.json"),
+    )
+    monkeypatch.setattr(coordinate_lint, "check_extent_in_region", check_extent)
+
+    issues = location_lint._get_geonames_region_issues(
+        loc, candidate.extent, candidate.match.record, state, frozenset()
+    )
+
+    assert len(issues) == 1
+    assert (
+        "no matching GeoNames administrative unit or detailed region polygon"
+        in issues[0]
+    )
+    check_extent.assert_not_called()
+
+
+def test_location_coordinates_match_geonames_candidate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    loc = _location_without_coordinates(name="Nicasio", region=_marin_county())
+    loc.latitude = "38.0616°N"
+    loc.longitude = "122.6986°W"
+    monkeypatch.setattr(
+        location_lint,
+        "_get_geonames_coordinate_matches",
+        Mock(return_value=[_geonames_candidate(geoname_id=5376890)]),
+    )
+
+    assert (
+        list(location_lint.check_geonames_coordinate_consistency(loc, LintConfig()))
+        == []
+    )
+
+
+def test_location_coordinates_are_far_from_all_geonames_candidates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    loc = _location_without_coordinates(name="Nicasio", region=_marin_county())
+    loc.latitude = "37.9°N"
+    loc.longitude = "122.5°W"
+    candidates = [
+        _geonames_candidate(geoname_id=5376890),
+        _geonames_candidate(
+            geoname_id=2,
+            latitude=38.0601015,
+            longitude=-122.6984323,
+            feature_class="P",
+            feature_code="PPLX",
+        ),
+    ]
+    monkeypatch.setattr(
+        location_lint, "_get_geonames_coordinate_matches", Mock(return_value=candidates)
+    )
+
+    messages = list(
+        location_lint.check_geonames_coordinate_consistency(loc, LintConfig())
+    )
+
+    assert len(messages) == 1
+    assert "more than 5 km from all 2 exact GeoNames matches" in messages[0]
+    assert "ID 5376890" in messages[0]
+    assert "ID 2" in messages[0]
+    assert messages[0].count("km away") == 2
+
+
+def test_geonames_search_uses_country_and_applies_locality_offset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    loc = _location_without_coordinates(name="Nicasio: 2 km N", region=_marin_county())
+    match = _geonames_candidate(geoname_id=5376890).match
+    search = Mock(return_value=[match])
+    monkeypatch.setattr(
+        location_lint,
+        "_get_geonames_coordinate_matches",
+        _REAL_GET_GEONAMES_COORDINATE_MATCHES,
+    )
+    monkeypatch.setattr(location_lint, "_get_geonames_country_code", lambda _: "US")
+    monkeypatch.setattr(
+        location_lint,
+        "_get_geonames_region_code_prefixes",
+        lambda country_code, region_names: frozenset({("ADM2", "CA", "041")}),
+    )
+    monkeypatch.setattr(geonames, "search_name", search)
+    monkeypatch.setattr(
+        coordinate_lint, "check_extent_in_region", Mock(return_value=())
+    )
+
+    candidates = location_lint._get_geonames_coordinate_matches(loc)
+
+    assert len(candidates) == 1
+    assert candidates[0].is_accepted
+    assert candidates[0].latitude != "38.0615885°N"
+    assert coordinate_lint.extent_distance_km(
+        candidates[0].extent, _geonames_candidate().extent
+    ) == pytest.approx(2, rel=0.01)
+    search.assert_called_once_with("Nicasio", country_code="US", limit=100)
+
+
+def test_geonames_country_code_prefers_direct_country_match(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    match = _geonames_candidate(
+        name="Martinique", feature_class="A", feature_code="PCLD"
+    ).match
+    match = geonames.GeoNamesMatch(
+        dataclasses.replace(match.record, country_code="MQ"),
+        match.matched_name,
+        match.match_kind,
+    )
+    search = Mock(return_value=[match])
+    monkeypatch.setattr(geonames, "search_name", search)
+    location_lint._get_geonames_country_code.cache_clear()
+
+    assert location_lint._get_geonames_country_code("Martinique") == "MQ"
+    search.assert_called_once_with(
+        "Martinique",
+        feature_classes=("A",),
+        feature_codes=location_lint._GEONAMES_COUNTRY_FEATURE_CODES,
+        limit=10,
+    )
+    location_lint._get_geonames_country_code.cache_clear()
+
+
+def test_geonames_region_codes_prefer_qualified_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    match = _geonames_candidate(
+        name="Marin County", feature_class="A", feature_code="ADM2"
+    ).match
+    search = Mock(
+        side_effect=lambda name, **kwargs: [match] if name == "Marin County" else []
+    )
+    monkeypatch.setattr(geonames, "search_name", search)
+    location_lint._get_geonames_region_code_prefixes.cache_clear()
+
+    codes = location_lint._get_geonames_region_code_prefixes(
+        "US", ("Marin", "Marin County")
+    )
+
+    assert codes == frozenset({("ADM2", "CA", "041")})
+    assert search.call_args_list == [
+        call(
+            "Marin County",
+            country_code="US",
+            feature_classes=("A",),
+            feature_codes=location_lint._GEONAMES_ADMIN_FEATURE_CODES,
+            limit=100,
+        )
+    ]
+    location_lint._get_geonames_region_code_prefixes.cache_clear()
+
+
 def test_general_location_does_not_load_linked_coordinates(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -710,6 +1304,7 @@ def test_general_location_does_not_load_linked_coordinates(
     monkeypatch.setattr(model_lint, "is_network_available", lambda: True)
 
     assert list(location_lint.check_linked_coordinates(loc, LintConfig())) == []
+    assert list(location_lint.check_geonames_coordinates(loc, LintConfig())) == []
     assert list(location_lint.check_nominatim_coordinates(loc, LintConfig())) == []
     assert (
         list(location_lint.check_nominatim_general_coordinates(loc, LintConfig())) == []
@@ -717,10 +1312,34 @@ def test_general_location_does_not_load_linked_coordinates(
     loc.latitude = "38°N"
     loc.longitude = "122°W"
     assert (
+        list(location_lint.check_geonames_coordinate_consistency(loc, LintConfig()))
+        == []
+    )
+    assert (
         list(location_lint.check_nominatim_coordinate_consistency(loc, LintConfig()))
         == []
     )
     search.assert_not_called()
+
+
+def test_non_recent_location_does_not_query_geonames(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    oligocene = SimpleNamespace(name="Oligocene")
+    loc = _location_without_coordinates(
+        name="Fossil site", min_period=oligocene, max_period=oligocene
+    )
+    matches = Mock()
+    monkeypatch.setattr(location_lint, "_get_geonames_coordinate_matches", matches)
+
+    assert list(location_lint.check_geonames_coordinates(loc, LintConfig())) == []
+    loc.latitude = "40°N"
+    loc.longitude = "100°W"
+    assert (
+        list(location_lint.check_geonames_coordinate_consistency(loc, LintConfig()))
+        == []
+    )
+    matches.assert_not_called()
 
 
 def test_general_location_rejects_point_coordinates(
@@ -794,6 +1413,90 @@ def test_general_location_infers_nominatim_bounding_box(
     search.assert_called_once_with(
         "Nicobar Islands, Andaman and Nicobar Islands, India"
     )
+
+
+def test_general_location_prefers_bbox_containing_all_exact_matches(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    recent = SimpleNamespace(name="Recent")
+    loc = _location_without_coordinates(
+        name="Example River", min_period=recent, max_period=recent, general=True
+    )
+    broad_river = _nominatim_result(
+        latitude="0.5",
+        longitude="0.5",
+        name="Example River",
+        category="waterway",
+        feature_type="river",
+        display_name="Example River relation",
+        osm_type="relation",
+        bounding_box=("0", "1", "0", "1"),
+    )
+    small_river = _nominatim_result(
+        latitude="0.35",
+        longitude="0.35",
+        name="Example River",
+        category="waterway",
+        feature_type="river",
+        display_name="Example River way",
+        osm_type="way",
+        bounding_box=("0.2", "0.5", "0.2", "0.5"),
+    )
+    small_islet = _nominatim_result(
+        latitude="0.305",
+        longitude="0.305",
+        name="Example River",
+        category="place",
+        feature_type="islet",
+        display_name="Example River islet",
+        osm_type="way",
+        bounding_box=("0.3", "0.31", "0.3", "0.31"),
+    )
+    monkeypatch.setattr(
+        nominatim, "search", Mock(return_value=[small_islet, broad_river, small_river])
+    )
+    monkeypatch.setattr(
+        coordinate_lint, "check_extent_in_region", Mock(return_value=())
+    )
+
+    messages = list(
+        location_lint.check_nominatim_general_coordinates(loc, LintConfig(autofix=True))
+    )
+
+    assert messages == []
+    assert loc.latitude == "0°N-1°N"
+    assert loc.longitude == "0°E-1°E"
+    assert "contains all other exact-match bounds" in capsys.readouterr().out
+
+
+def test_general_location_retains_conflicting_broad_river_matches(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recent = SimpleNamespace(name="Recent")
+    loc = _location_without_coordinates(
+        name="Example River", min_period=recent, max_period=recent, general=True
+    )
+    results = [
+        _nominatim_result(
+            latitude=str(offset + 0.5),
+            longitude=str(offset + 0.5),
+            name="Example River",
+            category="waterway",
+            feature_type="river",
+            display_name=f"Example River relation {offset}",
+            osm_type="relation",
+            bounding_box=(str(offset), str(offset + 1), str(offset), str(offset + 1)),
+        )
+        for offset in (0, 2)
+    ]
+    monkeypatch.setattr(nominatim, "search", Mock(return_value=results))
+
+    messages = list(
+        location_lint.check_nominatim_general_coordinates(loc, LintConfig())
+    )
+
+    assert len(messages) == 1
+    assert "2 conflicting exact-match bounding boxes" in messages[0]
 
 
 def test_general_location_proposes_replacing_point_with_nominatim_bounding_box(
@@ -870,6 +1573,242 @@ def test_general_location_does_not_use_nominatim_node_bounding_box(
     )
     assert loc.latitude is None
     assert loc.longitude is None
+
+
+def test_possible_general_location_reports_broad_nominatim_feature(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recent = SimpleNamespace(name="Recent")
+    loc = _location_without_coordinates(
+        name="Example River", min_period=recent, max_period=recent
+    )
+    result = _nominatim_result(
+        latitude="0.5",
+        longitude="0.5",
+        name="Example River",
+        category="waterway",
+        feature_type="river",
+        display_name="Example River, California, United States",
+        osm_type="relation",
+        bounding_box=("0", "1", "0", "1"),
+    )
+    parsed = location_lint.get_nominatim_result_bounding_box(result)
+    assert parsed is not None
+    monkeypatch.setattr(
+        location_lint,
+        "_get_nominatim_bounding_box_candidates",
+        Mock(return_value=[(result, parsed)]),
+    )
+
+    messages = list(
+        location_lint.check_possible_general_location(loc, LintConfig(autofix=True))
+    )
+
+    assert len(messages) == 1
+    assert "should be reviewed for the General tag" in messages[0]
+    assert "relation waterway/river" in messages[0]
+    assert "78.6 km bounding-box radius" in messages[0]
+    assert loc.tags == ()
+
+
+@pytest.mark.parametrize(
+    ("latitude", "longitude", "expected_count"),
+    [("0.5°N", "0.5°E", 1), ("10°N", "10°E", 0)],
+)
+def test_possible_general_location_matches_existing_coordinates(
+    monkeypatch: pytest.MonkeyPatch, latitude: str, longitude: str, expected_count: int
+) -> None:
+    recent = SimpleNamespace(name="Recent")
+    loc = _location_without_coordinates(
+        name="Example River", min_period=recent, max_period=recent
+    )
+    loc.latitude = latitude
+    loc.longitude = longitude
+    result = _nominatim_result(
+        latitude="0.5",
+        longitude="0.5",
+        name="Example River",
+        category="waterway",
+        feature_type="river",
+        display_name="Example River, California, United States",
+        osm_type="relation",
+        bounding_box=("0", "1", "0", "1"),
+    )
+    parsed = location_lint.get_nominatim_result_bounding_box(result)
+    assert parsed is not None
+    monkeypatch.setattr(
+        location_lint,
+        "_get_nominatim_bounding_box_candidates",
+        Mock(return_value=[(result, parsed)]),
+    )
+
+    messages = list(location_lint.check_possible_general_location(loc, LintConfig()))
+
+    assert len(messages) == expected_count
+
+
+def test_possible_general_location_accepts_named_administrative_area(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recent = SimpleNamespace(name="Recent")
+    loc = _location_without_coordinates(
+        name="Example State", min_period=recent, max_period=recent
+    )
+    result = _nominatim_result(
+        latitude="0.5",
+        longitude="0.5",
+        name="Example State",
+        category="boundary",
+        feature_type="administrative",
+        display_name="Example State, United States",
+        osm_type="relation",
+        bounding_box=("0", "1", "0", "1"),
+    )
+    parsed = location_lint.get_nominatim_result_bounding_box(result)
+    assert parsed is not None
+    monkeypatch.setattr(
+        location_lint,
+        "_get_nominatim_bounding_box_candidates",
+        Mock(return_value=[(result, parsed)]),
+    )
+    monkeypatch.setattr(
+        location_lint, "_get_nominatim_coordinate_candidates", Mock(return_value=[])
+    )
+
+    messages = list(location_lint.check_possible_general_location(loc, LintConfig()))
+
+    assert len(messages) == 1
+    assert "boundary/administrative" in messages[0]
+
+
+def test_possible_general_location_rejects_settlement_administrative_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recent = SimpleNamespace(name="Recent")
+    loc = _location_without_coordinates(
+        name="Example State", min_period=recent, max_period=recent
+    )
+    boundary = _nominatim_result(
+        latitude="0.5",
+        longitude="0.5",
+        name="Example State",
+        category="boundary",
+        feature_type="administrative",
+        display_name="Example State boundary, United States",
+        osm_type="relation",
+        bounding_box=("0", "1", "0", "1"),
+    )
+    settlement = _nominatim_result(
+        latitude="0.5",
+        longitude="0.5",
+        name="Example State",
+        category="place",
+        feature_type="town",
+        display_name="Example State town, United States",
+        osm_type="node",
+    )
+    parsed = location_lint.get_nominatim_result_bounding_box(boundary)
+    assert parsed is not None
+    settlement_coordinates = location_lint.get_nominatim_result_coordinates(settlement)
+    assert settlement_coordinates is not None
+    monkeypatch.setattr(
+        location_lint,
+        "_get_nominatim_bounding_box_candidates",
+        Mock(return_value=[(boundary, parsed)]),
+    )
+    monkeypatch.setattr(
+        location_lint,
+        "_get_nominatim_coordinate_candidates",
+        Mock(return_value=[(settlement, settlement_coordinates)]),
+    )
+
+    assert list(location_lint.check_possible_general_location(loc, LintConfig())) == []
+
+
+@pytest.mark.parametrize(
+    ("name", "category", "feature_type", "bounding_box"),
+    [
+        ("Nicasio", "boundary", "administrative", ("0", "1", "0", "1")),
+        ("Tiny Island", "place", "island", ("0", "0.01", "0", "0.01")),
+        ("Small Island", "place", "island", ("0", "0.12", "0", "0.12")),
+    ],
+)
+def test_possible_general_location_rejects_weak_nominatim_candidates(
+    monkeypatch: pytest.MonkeyPatch,
+    name: str,
+    category: str,
+    feature_type: str,
+    bounding_box: tuple[str, str, str, str],
+) -> None:
+    recent = SimpleNamespace(name="Recent")
+    loc = _location_without_coordinates(name=name, min_period=recent, max_period=recent)
+    result = _nominatim_result(
+        latitude="0",
+        longitude="0",
+        name=name,
+        category=category,
+        feature_type=feature_type,
+        display_name=f"{name}, California, United States",
+        osm_type="relation",
+        bounding_box=bounding_box,
+    )
+    parsed = location_lint.get_nominatim_result_bounding_box(result)
+    assert parsed is not None
+    monkeypatch.setattr(
+        location_lint,
+        "_get_nominatim_bounding_box_candidates",
+        Mock(return_value=[(result, parsed)]),
+    )
+
+    assert list(location_lint.check_possible_general_location(loc, LintConfig())) == []
+
+
+def test_possible_general_location_skips_offset_locality(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recent = SimpleNamespace(name="Recent")
+    loc = _location_without_coordinates(
+        name="Example River: 2 km N", min_period=recent, max_period=recent
+    )
+    search = Mock()
+    monkeypatch.setattr(location_lint, "_get_nominatim_bounding_box_candidates", search)
+
+    assert list(location_lint.check_possible_general_location(loc, LintConfig())) == []
+    search.assert_not_called()
+
+
+def test_possible_general_location_reports_linked_coordinate_spread(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recent = SimpleNamespace(name="Recent")
+    names = (
+        _tagged_object((TypeTag.Coordinates("0°N", "0°E"),), name_tags=True),
+        _tagged_object((TypeTag.Coordinates("1°N", "0°E"),), name_tags=True),
+    )
+    loc = _location_without_coordinates(
+        name="Example Island", min_period=recent, max_period=recent, names=names
+    )
+    result = _nominatim_result(
+        latitude="0.5",
+        longitude="0.5",
+        name="Example Island",
+        feature_type="island",
+        display_name="Example Island, California, United States",
+        osm_type="relation",
+        bounding_box=("0", "1", "0", "1"),
+    )
+    parsed = location_lint.get_nominatim_result_bounding_box(result)
+    assert parsed is not None
+    monkeypatch.setattr(
+        location_lint,
+        "_get_nominatim_bounding_box_candidates",
+        Mock(return_value=[(result, parsed)]),
+    )
+
+    messages = list(location_lint.check_possible_general_location(loc, LintConfig()))
+
+    assert len(messages) == 1
+    assert "Linked coordinate evidence also spans 111.2 km" in messages[0]
 
 
 def test_nominatim_bounding_box_rejects_antimeridian_fallback() -> None:
@@ -1659,8 +2598,8 @@ def test_nominatim_consistency_uses_offset_coordinates(
     search.assert_called_once_with("Nicasio, Marin County, California, United States")
 
 
-def test_location_prefers_place_over_administrative_boundaries(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+def test_location_does_not_choose_place_over_distant_administrative_boundaries(
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     loc = _location_without_coordinates(name="Nicasio", region=_marin_county())
     place = _nominatim_result(
@@ -1695,10 +2634,10 @@ def test_location_prefers_place_over_administrative_boundaries(
         location_lint.check_nominatim_coordinates(loc, LintConfig(autofix=True))
     )
 
-    assert messages == []
-    assert loc.latitude == "38.0615885°N"
-    assert loc.longitude == "122.6985975°W"
-    assert "preferred over boundary/administrative matches" in capsys.readouterr().out
+    assert len(messages) == 1
+    assert "returned 3 conflicting exact matches" in messages[0]
+    assert loc.latitude is None
+    assert loc.longitude is None
 
 
 def test_location_does_not_choose_between_multiple_place_candidates(
@@ -2095,14 +3034,32 @@ def test_reverse_geocoding_only_matches_administrative_address_fields(
     assert reverse.call_count == 5
 
 
-def test_nominatim_coordinate_consistency_is_a_normal_network_lint() -> None:
+@pytest.mark.parametrize(
+    "label",
+    [
+        "geonames_coordinates",
+        "nominatim_coordinates",
+        "nominatim_coordinate_consistency",
+        "possible_general_location",
+    ],
+)
+def test_coordinate_lints_are_normal_network_lints(label: str) -> None:
     wrapper = next(
-        wrapper
-        for wrapper in location_lint.LINT.linters
-        if wrapper.label == "nominatim_coordinate_consistency"
+        wrapper for wrapper in location_lint.LINT.linters if wrapper.label == label
     )
 
     assert wrapper.requires_network
+    assert wrapper not in location_lint.LINT.disabled_linters
+
+
+def test_geonames_consistency_lint_is_a_normal_offline_lint() -> None:
+    wrapper = next(
+        wrapper
+        for wrapper in location_lint.LINT.linters
+        if wrapper.label == "geonames_coordinate_consistency"
+    )
+
+    assert not wrapper.requires_network
     assert wrapper not in location_lint.LINT.disabled_linters
 
 
