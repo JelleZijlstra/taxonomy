@@ -10,7 +10,7 @@ import pytest
 
 from taxonomy import getinput
 from taxonomy.apis import nominatim
-from taxonomy.db import coordinate_lint
+from taxonomy.db import coordinate_lint, models
 from taxonomy.db.constants import RegionKind
 from taxonomy.db.models import lint as model_lint
 from taxonomy.db.models.base import LintConfig
@@ -205,6 +205,106 @@ def test_likely_synonym_map_flags_all_but_lowest_id_in_same_region() -> None:
     assert set(mapping) == {20, 30}
     assert mapping[20] == (lowest, (lowest, middle, highest))
     assert mapping[30] == (lowest, (lowest, middle, highest))
+
+
+def test_extract_bracketed_location_equivalences() -> None:
+    assert location_lint.extract_bracketed_location_equivalences(
+        "Toeare [= Tuare]; Tlalpam [Tlalpan]; [map](https://example.com)"
+    ) == ("Tuare", "Tlalpan")
+
+
+def test_explicit_location_equivalence_lint_rechecks_same_region_candidate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    region = SimpleNamespace(id=1, name="Central Sulawesi")
+    other_region = SimpleNamespace(id=2, name="Elsewhere")
+    source = cast(models.Article, object())
+    detail = TypeTag.LocationDetail("Toeare [= Tuare], Bada", source)
+    contextual_detail = TypeTag.LocationDetail(
+        "Toeare, near Mount Kenia [= Mount Kenya]", source
+    )
+    administrative_detail = TypeTag.LocationDetail(
+        "Toeare, [Toware], Central Sulawesi", source
+    )
+    name = _tagged_object(
+        (detail, contextual_detail, administrative_detail), name_tags=True
+    )
+    name.id = 101
+
+    current = _location_without_coordinates(
+        id=10, name="Toeare", region=cast(Region, region), names=(name,)
+    )
+    matching = _location_without_coordinates(
+        id=20, name="Toware", region=cast(Region, region)
+    )
+    matching.reload = lambda: matching  # type: ignore[method-assign]
+    wrong_region = _location_without_coordinates(
+        id=30, name="Tuare", region=cast(Region, other_region)
+    )
+    wrong_region.reload = lambda: wrong_region  # type: ignore[method-assign]
+    contextual_match = _location_without_coordinates(
+        id=40, name="Mount Kenya", region=cast(Region, region)
+    )
+    contextual_match.reload = lambda: contextual_match  # type: ignore[method-assign]
+    monkeypatch.setattr(
+        location_lint,
+        "_get_locations_by_region",
+        lambda: {region.id: (current, matching, wrong_region, contextual_match)},
+    )
+
+    messages = list(
+        location_lint.check_explicit_location_equivalence(current, LintConfig())
+    )
+
+    assert len(messages) == 1
+    assert "bracketed equivalent 'Tuare'" in messages[0]
+    assert "valid Location 20: 'Toware'" in messages[0]
+    assert "Region 'Central Sulawesi'" in messages[0]
+    assert "Location 30" not in messages[0]
+    assert "Location 40" not in messages[0]
+
+
+def test_explicit_location_equivalence_lint_rechecks_cached_candidate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    region = SimpleNamespace(id=1, name="Distrito Federal (Mexico)")
+    detail = TypeTag.LocationDetail("Tlalpam [Tlalpan]", cast(models.Article, object()))
+    name = _tagged_object((detail,), name_tags=True)
+    name.id = 102
+    current = _location_without_coordinates(
+        id=10, name="Tlalpam", region=cast(Region, region), names=(name,)
+    )
+    matching = _location_without_coordinates(
+        id=20, name="Tlalpan", region=cast(Region, region)
+    )
+    matching.reload = lambda: matching  # type: ignore[method-assign]
+    monkeypatch.setattr(
+        location_lint,
+        "_get_locations_by_region",
+        lambda: {region.id: (current, matching)},
+    )
+    messages = list(
+        location_lint.check_explicit_location_equivalence(current, LintConfig())
+    )
+    assert len(messages) == 1
+    assert "bracketed equivalent 'Tlalpan'" in messages[0]
+    assert "valid Location 20: 'Tlalpan'" in messages[0]
+
+    stale = _location_without_coordinates(
+        id=20, name="Tlalpan", region=cast(Region, region)
+    )
+    refreshed = _location_without_coordinates(
+        id=20, name="Different place", region=cast(Region, region)
+    )
+    stale.reload = lambda: refreshed  # type: ignore[method-assign]
+    monkeypatch.setattr(
+        location_lint, "_get_locations_by_region", lambda: {region.id: (current, stale)}
+    )
+
+    assert (
+        list(location_lint.check_explicit_location_equivalence(current, LintConfig()))
+        == []
+    )
 
 
 def test_coordinate_collision_map_normalizes_equivalent_coordinates() -> None:

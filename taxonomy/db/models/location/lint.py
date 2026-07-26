@@ -314,6 +314,7 @@ _DIRECTIONAL_COORDINATE_LIKE = re.compile(
     rf"[{_DIRECTIONAL_COORDINATE_CHARACTERS}]+[NSEW]\s*$",
     re.IGNORECASE,
 )
+_BRACKETED_LOCATION_EQUIVALENCE = re.compile(r"\[([^\[\]]+)\](?![\[(])")
 _ALWAYS_ALLOWED_DISAMBIGUATORS = {"island", "region"}
 
 
@@ -515,6 +516,15 @@ def _union_components(parents: dict[int, int], left_id: int, right_id: int) -> N
         parents[right_root] = left_root
 
 
+def _locations_have_matching_context(left: Location, right: Location) -> bool:
+    return (
+        left.region.id == right.region.id
+        and left.min_period == right.min_period
+        and left.max_period == right.max_period
+        and left.stratigraphic_unit == right.stratigraphic_unit
+    )
+
+
 def _build_likely_synonym_map(
     locations: Iterable[Location],
 ) -> dict[int, tuple[Location, tuple[Location, ...]]]:
@@ -529,17 +539,7 @@ def _build_likely_synonym_map(
 
         for index, left in enumerate(region_locations):
             for right in region_locations[index + 1 :]:
-                if (
-                    left.min_period != right.min_period
-                    or left.max_period != right.max_period
-                    or (
-                        left.stratigraphic_unit != right.stratigraphic_unit
-                        and (
-                            left.stratigraphic_unit is not None
-                            or right.stratigraphic_unit is not None
-                        )
-                    )
-                ):
+                if not _locations_have_matching_context(left, right):
                     continue
                 if are_likely_synonymous_names(left.name, right.name):
                     _union_components(parents, left.id, right.id)
@@ -577,6 +577,144 @@ def check_likely_synonymous(location: Location, cfg: LintConfig) -> Iterable[str
         f"likely synonymous with lower-ID Location {keeper.id}: {keeper.name!r} "
         f"in Region {location.region.name!r}; group: {group_text}"
     )
+
+
+def _iter_bracketed_location_equivalences(text: str) -> Iterable[tuple[str, bool, int]]:
+    for match in _BRACKETED_LOCATION_EQUIVALENCE.finditer(text):
+        content = match.group(1).strip()
+        explicitly_marked = content.startswith("=")
+        equivalent = re.sub(r"^=\s*", "", content).strip()
+        if equivalent:
+            yield equivalent, explicitly_marked, match.start()
+
+
+def extract_bracketed_location_equivalences(text: str) -> tuple[str, ...]:
+    """Extract editorial locality equivalents, excluding Markdown link labels."""
+    return tuple(
+        equivalent for equivalent, _, _ in _iter_bracketed_location_equivalences(text)
+    )
+
+
+def _bracket_follows_location_name(
+    text: str, start: int, location: Location, *, explicitly_marked: bool
+) -> bool:
+    prefix = text[:start].rstrip()
+    if not explicitly_marked and prefix.endswith((",", ";", ":")):
+        return False
+    base_name = ParsedLocationName.parse(location.name).base_name
+    normalized_name = helpers.simplify_string(base_name, clean_words=False)
+    normalized_prefix = helpers.simplify_string(prefix, clean_words=False)
+    return bool(normalized_name) and normalized_prefix.endswith(normalized_name)
+
+
+def _equivalence_matches_location(
+    current: Location, equivalent: str, candidate: Location, *, explicitly_marked: bool
+) -> bool:
+    if are_likely_synonymous_names(equivalent, candidate.name):
+        return True
+    if not explicitly_marked:
+        return False
+
+    # An explicit "[= ...]" is stronger evidence than an unmarked editorial
+    # bracket, so permit one additional edit without weakening the general
+    # likely-synonym comparison. This covers chains such as Tuare/Toware.
+    equivalent_base, equivalent_feature = _locality_similarity_key(equivalent)
+    candidate_base, candidate_feature = _locality_similarity_key(candidate.name)
+    if not equivalent_base or not candidate_base:
+        return False
+    if equivalent_feature != candidate_feature and (
+        equivalent_feature is not None or candidate_feature is not None
+    ):
+        return False
+    if min(len(equivalent_base), len(candidate_base)) < 5:
+        return False
+    if any(character.isdigit() for character in equivalent_base + candidate_base):
+        return False
+    if equivalent_base[0] != candidate_base[0]:
+        return False
+    return are_likely_synonymous_names(
+        current.name, candidate.name
+    ) and _edit_distance_at_most(equivalent_base, candidate_base, 2)
+
+
+def _build_locations_by_region(
+    locations: Iterable[Location],
+) -> dict[int, tuple[Location, ...]]:
+    by_region: dict[int, list[Location]] = defaultdict(list)
+    for location in locations:
+        if not location.is_general():
+            by_region[location.region.id].append(location)
+    return {
+        region_id: tuple(region_locations)
+        for region_id, region_locations in by_region.items()
+    }
+
+
+@cache
+def _get_locations_by_region() -> dict[int, tuple[Location, ...]]:
+    return _build_locations_by_region(Location.select_valid())
+
+
+@LINT.add(
+    "explicit_location_equivalence", clear_caches=_get_locations_by_region.cache_clear
+)
+def check_explicit_location_equivalence(
+    location: Location, cfg: LintConfig
+) -> Iterable[str]:
+    from taxonomy.db.models.name import TypeTag
+
+    if location.is_general():
+        return
+    candidates = _get_locations_by_region().get(location.region.id, ())
+    reported: set[tuple[str, int]] = set()
+    for name in location.type_localities:
+        for tag in name.get_tags(name.type_tags, TypeTag.LocationDetail):
+            for (
+                equivalent,
+                explicitly_marked,
+                start,
+            ) in _iter_bracketed_location_equivalences(tag.text):
+                if not _bracket_follows_location_name(
+                    tag.text, start, location, explicitly_marked=explicitly_marked
+                ):
+                    continue
+                for candidate in candidates:
+                    if candidate.id == location.id:
+                        continue
+                    if not _locations_have_matching_context(location, candidate):
+                        continue
+                    if not _equivalence_matches_location(
+                        location,
+                        equivalent,
+                        candidate,
+                        explicitly_marked=explicitly_marked,
+                    ):
+                        continue
+
+                    # The cached Region map is only a candidate index. Confirm that
+                    # the record remains valid and still matches before reporting it.
+                    candidate = candidate.reload()
+                    if candidate.is_invalid() or candidate.id == location.id:
+                        continue
+                    if not _locations_have_matching_context(location, candidate):
+                        continue
+                    if not _equivalence_matches_location(
+                        location,
+                        equivalent,
+                        candidate,
+                        explicitly_marked=explicitly_marked,
+                    ):
+                        continue
+                    key = (helpers.simplify_string(equivalent), candidate.id)
+                    if key in reported:
+                        continue
+                    reported.add(key)
+                    yield (
+                        f"LocationDetail on Name {name.id} contains bracketed "
+                        f"equivalent {equivalent!r}, matching valid Location "
+                        f"{candidate.id}: {candidate.name!r} in Region "
+                        f"{location.region.name!r}: {tag.text!r}"
+                    )
 
 
 def _coordinate_collision_key(
