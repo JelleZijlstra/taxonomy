@@ -1684,6 +1684,9 @@ def check_location_detail_coordinates(nam: Name, cfg: LintConfig) -> Iterable[st
         )
         return
 
+    if nam.type_locality is None:
+        return
+
     _, latitude, longitude, _ = extracted[0]
     expected = TypeTag.Coordinates(latitude, longitude)
     message = f"add {expected} inferred from LocationDetail"
@@ -7378,6 +7381,7 @@ def check_type_locality_validity(nam: Name, cfg: LintConfig) -> Iterable[str]:
     allowed = {
         OccurrenceValidity.occurrence_dubious,
         OccurrenceValidity.classification_dubious,
+        OccurrenceValidity.incidental,
     }
     for tag in tags:
         if tag.validity not in allowed:

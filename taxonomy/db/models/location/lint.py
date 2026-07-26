@@ -49,6 +49,28 @@ _REGION_KIND_DESIGNATORS = {
     RegionKind.territory: "Territory",
 }
 _ADMINISTRATIVE_DESIGNATORS = frozenset(_REGION_KIND_DESIGNATORS.values())
+_OSM_QUERY_OMITTED_DESIGNATORS = {"Department"}
+# Context-specific equivalents observed in current English-language Nominatim
+# results. The key is (taxonomy Region name, country), and the first value is
+# the preferred spelling for forward queries. Keep only names for the same
+# administrative entity here; geographic mismatches must remain lint issues.
+_OSM_REGION_NAME_TRANSLATIONS = {
+    ("Alpes-Maritimes", "France"): ("Maritime Alps",),
+    ("Basque Country", "Spain"): ("Autonomous Community of the Basque Country",),
+    ("Bougainville Region", "Papua New Guinea"): ("Autonomous Region of Bougainville",),
+    ("Castilla-La Mancha", "Spain"): ("Castile-La Mancha",),
+    ("Distrito Federal (Brazil)", "Brazil"): ("Federal District",),
+    ("Distrito Federal (Mexico)", "Mexico"): ("Mexico City",),
+    ("Graubünden", "Switzerland"): ("Grisons",),
+    ("Haute-Corse", "France"): ("Upper Corsica",),
+    ("Haute-Savoie", "France"): ("Upper Savoy",),
+    ("La Guaira", "Venezuela"): ("Vargas State",),
+    ("Madrid", "Spain"): ("Community of Madrid", "Autonomous Community of Madrid"),
+    ("North Aegean", "Greece"): ("Northern Aegean",),
+    ("North Ossetia", "Russia"): ("Republic of North Ossetia – Alania",),
+    ("Orissa", "India"): ("Odisha",),
+    ("Tibet", "China"): ("Xizang",),
+}
 _REVERSE_ADMINISTRATIVE_ADDRESS_KEYS = (
     "state",
     "province",
@@ -1244,23 +1266,54 @@ def _get_reverse_region(location: Location) -> tuple[Region, int] | None:
     return None
 
 
-def _get_reverse_address_name_aliases(value: str) -> set[str]:
+def _get_nominatim_address_name_aliases(value: str) -> set[str]:
     # OSM commonly stores bilingual administrative names in forms such as
-    # "Alacant / Alicante". Either component is sufficient for this lint.
-    return {value, *(part.strip() for part in value.split(" / "))}
+    # "Alacant / Alicante". It also renders equivalent designators in several
+    # forms, such as "Community of Madrid", "Bolivar State", and
+    # "Autonomous Region of Bougainville". Match their meaningful name parts
+    # while retaining the full value.
+    names = {value, *(part.strip() for part in re.split(r"\s*/\s*", value))}
+    output = set(names)
+    prefix_designators = {
+        *_ADMINISTRATIVE_DESIGNATORS,
+        "Autonomous Community",
+        "Autonomous Region",
+        "Community",
+        "Republic",
+    }
+    suffix_designators = {*_ADMINISTRATIVE_DESIGNATORS, "Republic"}
+    for name in names:
+        for designator in prefix_designators:
+            prefix = f"{designator} of "
+            if name.casefold().startswith(prefix.casefold()):
+                stripped = name[len(prefix) :]
+                if stripped.casefold().startswith("the "):
+                    stripped = stripped[4:]
+                output.add(stripped)
+        for designator in suffix_designators:
+            suffix = f" {designator}"
+            if name.casefold().endswith(suffix.casefold()):
+                output.add(name[: -len(suffix)])
+    return output
+
+
+def _normalize_nominatim_region_name(value: str) -> str:
+    # Hyphens and spaces vary freely in administrative names (for example,
+    # Khyber-Pakhtunkhwa and Khyber Pakhtunkhwa).
+    return helpers.simplify_string(value, clean_words=False).replace("-", "")
 
 
 def _reverse_result_matches_region(
     result: nominatim.ReverseResult, region: Region
 ) -> bool:
     address_names = {
-        helpers.simplify_string(name, clean_words=False)
+        _normalize_nominatim_region_name(name)
         for key in _REVERSE_ADMINISTRATIVE_ADDRESS_KEYS
         if (value := result.address.get(key)) is not None
-        for name in _get_reverse_address_name_aliases(value)
+        for name in _get_nominatim_address_name_aliases(value)
     }
     expected_names = {
-        helpers.simplify_string(name, clean_words=False)
+        _normalize_nominatim_region_name(name)
         for name in _get_region_name_aliases(region)
     }
     return not address_names.isdisjoint(expected_names)
@@ -1291,9 +1344,9 @@ def _reverse_result_matches_country(
     osm_country = result.address.get("country")
     if country is None or osm_country is None:
         return False
-    normalized_osm_country = helpers.simplify_string(osm_country, clean_words=False)
+    normalized_osm_country = _normalize_nominatim_region_name(osm_country)
     return normalized_osm_country in {
-        helpers.simplify_string(name, clean_words=False)
+        _normalize_nominatim_region_name(name)
         for name in _get_region_name_aliases(country)
     }
 
@@ -1595,7 +1648,7 @@ def get_nominatim_query(location: Location) -> str:
     for region in (location.region, *location.region.all_parents()):
         if region.kind not in _SEARCH_REGION_KINDS:
             continue
-        name = _get_unqualified_region_name(region)
+        name = _get_nominatim_region_query_name(region)
         simplified = helpers.simplify_string(name, clean_words=False)
         if simplified not in seen:
             components.append(name)
@@ -1619,9 +1672,10 @@ def is_sane_nominatim_result(
         return False
 
     address_names = {
-        helpers.simplify_string(value, clean_words=False)
+        _normalize_nominatim_region_name(name)
         for key, value in result.address.items()
         if key not in {"country_code", "postcode"} and not key.startswith("ISO3166")
+        for name in _get_nominatim_address_name_aliases(value)
     }
     checked_region = False
     for region in (location.region, *location.region.all_parents()):
@@ -1629,7 +1683,7 @@ def is_sane_nominatim_result(
             continue
         checked_region = True
         expected_names = {
-            helpers.simplify_string(name, clean_words=False)
+            _normalize_nominatim_region_name(name)
             for name in _get_region_name_aliases(region)
         }
         if address_names.isdisjoint(expected_names):
@@ -1638,6 +1692,10 @@ def is_sane_nominatim_result(
 
 
 def _get_unqualified_region_name(region: Region) -> str:
+    if split := split_trailing_parenthetical(region.name):
+        base_name, qualifier = split
+        if qualifier in {parent.name for parent in region.all_parents()}:
+            return base_name
     if region.parent is not None:
         parent_suffix = f", {region.parent.name}"
         if region.name.endswith(parent_suffix):
@@ -1645,10 +1703,25 @@ def _get_unqualified_region_name(region: Region) -> str:
     return region.name
 
 
-def _get_region_name_aliases(region: Region) -> set[str]:
-    names = _get_qualified_name_variants(region.name)
-    names.add(_get_unqualified_region_name(region))
-    shortest_name = min(names, key=lambda name: (len(name), name))
+def _get_region_country_name(region: Region) -> str | None:
+    return next(
+        (
+            candidate.name
+            for candidate in (region, *region.all_parents())
+            if candidate.kind is RegionKind.country
+        ),
+        None,
+    )
+
+
+def _get_osm_region_name_translations(region: Region) -> tuple[str, ...]:
+    country_name = _get_region_country_name(region)
+    if country_name is None:
+        return ()
+    return _OSM_REGION_NAME_TRANSLATIONS.get((region.name, country_name), ())
+
+
+def _get_undesignated_region_name(region: Region, name: str) -> str | None:
     matching_designators = (
         _ADMINISTRATIVE_DESIGNATORS
         if region.kind is RegionKind.subnational
@@ -1662,15 +1735,50 @@ def _get_region_name_aliases(region: Region) -> set[str]:
         (
             designator
             for designator in _ADMINISTRATIVE_DESIGNATORS
-            if shortest_name.casefold().endswith(f" {designator.casefold()}")
+            if name.casefold().endswith(f" {designator.casefold()}")
         ),
         None,
     )
-    if found_designator in matching_designators:
-        undesignated_name = shortest_name[: -len(found_designator) - 1]
+    if found_designator not in matching_designators:
+        return None
+    return name[: -len(found_designator) - 1]
+
+
+def _get_nominatim_region_query_name(region: Region) -> str:
+    translations = _get_osm_region_name_translations(region)
+    if translations:
+        return translations[0]
+    name = _get_unqualified_region_name(region)
+    undesignated_name = _get_undesignated_region_name(region, name)
+    if undesignated_name is not None and any(
+        name.casefold().endswith(f" {designator.casefold()}")
+        for designator in _OSM_QUERY_OMITTED_DESIGNATORS
+    ):
+        return undesignated_name
+    return name
+
+
+def _get_region_name_aliases(region: Region) -> set[str]:
+    names = _get_qualified_name_variants(region.name)
+    names.add(_get_unqualified_region_name(region))
+    names.update(_get_osm_region_name_translations(region))
+    shortest_name = min(names, key=lambda name: (len(name), name))
+    undesignated_name = _get_undesignated_region_name(region, shortest_name)
+    if undesignated_name is not None:
+        found_designator = shortest_name[len(undesignated_name) + 1 :]
         names.add(undesignated_name)
         names.add(f"{found_designator} of {undesignated_name}")
-    elif found_designator is None and len(matching_designators) == 1:
+    else:
+        matching_designators = (
+            _ADMINISTRATIVE_DESIGNATORS
+            if region.kind is RegionKind.subnational
+            else frozenset(
+                designator
+                for kind, designator in _REGION_KIND_DESIGNATORS.items()
+                if region.kind is kind
+            )
+        )
+    if undesignated_name is None and len(matching_designators) == 1:
         designator = next(iter(matching_designators))
         names.add(f"{shortest_name} {designator}")
     if region.kind is RegionKind.country:

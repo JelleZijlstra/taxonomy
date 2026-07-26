@@ -840,6 +840,106 @@ def test_nominatim_search_removes_location_disambiguator(
 
 
 @pytest.mark.parametrize(
+    ("locality_name", "region_name", "region_kind", "country_name", "query"),
+    [
+        (
+            "Valdivia",
+            "Antioquia Department",
+            RegionKind.department,
+            "Colombia",
+            "Valdivia, Antioquia, Colombia",
+        ),
+        (
+            "Chachapoyas",
+            "Amazonas Department (Peru)",
+            RegionKind.subnational,
+            "Peru",
+            "Chachapoyas, Amazonas, Peru",
+        ),
+        (
+            "Lahore",
+            "Punjab (Pakistan)",
+            RegionKind.province,
+            "Pakistan",
+            "Lahore, Punjab, Pakistan",
+        ),
+        (
+            "Tlalpan",
+            "Distrito Federal (Mexico)",
+            RegionKind.subnational,
+            "Mexico",
+            "Tlalpan, Mexico City, Mexico",
+        ),
+        (
+            "Brasília",
+            "Distrito Federal (Brazil)",
+            RegionKind.subnational,
+            "Brazil",
+            "Brasília, Federal District, Brazil",
+        ),
+        (
+            "El Pardo",
+            "Madrid",
+            RegionKind.subnational,
+            "Spain",
+            "El Pardo, Community of Madrid, Spain",
+        ),
+        (
+            "Buin",
+            "Bougainville Region",
+            RegionKind.region,
+            "Papua New Guinea",
+            "Buin, Autonomous Region of Bougainville, Papua New Guinea",
+        ),
+    ],
+)
+def test_nominatim_query_uses_osm_region_names(
+    locality_name: str,
+    region_name: str,
+    region_kind: RegionKind,
+    country_name: str,
+    query: str,
+) -> None:
+    country = _make_region(country_name, RegionKind.country)
+    region = _make_region(region_name, region_kind, country)
+    location = _location_without_coordinates(name=locality_name, region=region)
+
+    assert location_lint.get_nominatim_query(location) == query
+
+
+@pytest.mark.parametrize(
+    ("region_name", "region_kind", "country_name", "osm_region_name"),
+    [
+        ("Madrid", RegionKind.subnational, "Spain", "Community of Madrid"),
+        (
+            "Bougainville Region",
+            RegionKind.region,
+            "Papua New Guinea",
+            "Autonomous Region of Bougainville",
+        ),
+        ("Castellón", RegionKind.province, "Spain", "Castelló / Castellón"),
+    ],
+)
+def test_forward_geocoding_accepts_osm_region_name_variants(
+    region_name: str, region_kind: RegionKind, country_name: str, osm_region_name: str
+) -> None:
+    country = _make_region(country_name, RegionKind.country)
+    region = _make_region(region_name, region_kind, country)
+    location = _location_without_coordinates(name="Site", region=region)
+    result = nominatim.SearchResult(
+        latitude="10",
+        longitude="10",
+        name="Site",
+        display_name=f"Site, {osm_region_name}, {country_name}",
+        category="place",
+        feature_type="village",
+        address={"village": "Site", "state": osm_region_name, "country": country_name},
+    )
+
+    assert location_lint.is_sane_nominatim_result(location, result)
+
+
+@pytest.mark.parametrize(
     ("name", "base_name", "offsets"),
     [
         ("8 mi E Monterey", "Monterey", ((8 * 1.609344, 90),)),
@@ -1780,6 +1880,86 @@ def test_reverse_geocoding_accepts_administrative_designator_aliases(
 
     assert (
         list(location_lint.check_nominatim_region_consistency(loc, LintConfig())) == []
+    )
+    reverse.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    ("region_name", "region_kind", "country_name", "osm_region_name"),
+    [
+        ("Alpes-Maritimes", RegionKind.department, "France", "Maritime Alps"),
+        (
+            "Basque Country",
+            RegionKind.subnational,
+            "Spain",
+            "Autonomous Community of the Basque Country",
+        ),
+        (
+            "Bougainville Region",
+            RegionKind.region,
+            "Papua New Guinea",
+            "Autonomous Region of Bougainville",
+        ),
+        ("Castilla-La Mancha", RegionKind.subnational, "Spain", "Castile-La Mancha"),
+        (
+            "Distrito Federal (Brazil)",
+            RegionKind.subnational,
+            "Brazil",
+            "Federal District",
+        ),
+        ("Distrito Federal (Mexico)", RegionKind.subnational, "Mexico", "Mexico City"),
+        ("Graubünden", RegionKind.canton, "Switzerland", "Grisons"),
+        ("Haute-Corse", RegionKind.department, "France", "Upper Corsica"),
+        ("Haute-Savoie", RegionKind.department, "France", "Upper Savoy"),
+        ("La Guaira", RegionKind.state, "Venezuela", "Vargas State"),
+        ("Madrid", RegionKind.subnational, "Spain", "Community of Madrid"),
+        ("North Aegean", RegionKind.region, "Greece", "Northern Aegean"),
+        (
+            "North Ossetia",
+            RegionKind.subnational,
+            "Russia",
+            "Republic of North Ossetia – Alania",
+        ),
+        ("Orissa", RegionKind.state, "India", "Odisha"),
+        ("Tibet", RegionKind.subnational, "China", "Xizang"),
+        ("Khyber-Pakhtunkhwa", RegionKind.province, "Pakistan", "Khyber Pakhtunkhwa"),
+        ("Sakha", RegionKind.subnational, "Russia", "Sakha Republic"),
+        (
+            "Trentino-Alto Adige",
+            RegionKind.region,
+            "Italy",
+            "Trentino – Alto Adige/Südtirol",
+        ),
+        ("Castellón", RegionKind.province, "Spain", "Castelló / Castellón"),
+    ],
+)
+def test_reverse_geocoding_accepts_osm_region_name_variants(
+    monkeypatch: pytest.MonkeyPatch,
+    region_name: str,
+    region_kind: RegionKind,
+    country_name: str,
+    osm_region_name: str,
+) -> None:
+    country = _make_region(country_name, RegionKind.country)
+    region = _make_region(region_name, region_kind, country)
+    recent = SimpleNamespace(name="Recent")
+    location = _location_without_coordinates(
+        name="Site", region=region, min_period=recent, max_period=recent
+    )
+    location.latitude = "10°N"
+    location.longitude = "10°E"
+    reverse = Mock(
+        return_value=nominatim.ReverseResult(
+            display_name=f"{osm_region_name}, {country_name}",
+            address={"state": osm_region_name, "country": country_name},
+        )
+    )
+    monkeypatch.setattr(nominatim, "reverse", reverse)
+    monkeypatch.setattr(model_lint, "is_network_available", lambda: True)
+
+    assert (
+        list(location_lint.check_nominatim_region_consistency(location, LintConfig()))
+        == []
     )
     reverse.assert_called_once()
 
