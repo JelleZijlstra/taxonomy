@@ -1266,6 +1266,9 @@ def check_coordinates(location: Location, cfg: LintConfig) -> Iterable[str]:
     if location.is_general() and extent.point is not None:
         yield "general location should use a coordinate range, not point coordinates"
         return
+    if location.has_tag(LocationTag.Unplaced) and extent.point is not None:
+        yield "unplaced location should use a coordinate range, not point coordinates"
+        return
     yield from coordinate_lint.check_extent_in_region(extent, location.region)
 
 

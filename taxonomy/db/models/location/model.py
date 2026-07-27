@@ -829,6 +829,9 @@ class LocationTag(adt.ADT):
         label=Managed, comment=NotRequired[Markdown], tag=5
     )
 
+    # Indicate that after some research, it is unclear where this place is
+    Unplaced(comment=NotRequired[Markdown], tag=6)  # type: ignore[name-defined]
+
 
 def get_expected_general_name(region: Region, period: Period) -> str:
     if period.name == "Recent":

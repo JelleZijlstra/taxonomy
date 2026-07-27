@@ -97,12 +97,12 @@ Locations have the following fields:
   GTS units or biostratigraphic zones.
 - _stratigraphic unit_: The stratigraphic unit, such as a formation, that the location
   derives from. This is also a [period](period).
-- _tags_: Various extra information about the location. Current tags include _General_,
-  which indicates that the Location intentionally represents a broad or imprecise area
-  rather than a single locality, and three tags indicating that the location corresponds
-  to a location in another database: _PBDB_ for the
-  [Paleobiology Database](https://paleobiodb.org/#/), _NOW_ for the
-  [New and Old Worlds](https://nowdatabase.org/) database, and _ETMNA_ for
-  [Appendix I to Janis et al. (2008)](/a/North_America_Tertiary-localities.pdf).
+- _tags_: Various extra information about the location. Current tags include:
+  - _General_, which indicates that the Location intentionally represents a broad or
+    imprecise area rather than a single locality
+  - Three tags indicating that the location corresponds to a location in another
+    database: _PBDB_ for the [Paleobiology Database](https://paleobiodb.org/#/), _NOW_
+    for the [New and Old Worlds](https://nowdatabase.org/) database, and _ETMNA_ for
+    [Appendix I to Janis et al. (2008)](/a/North_America_Tertiary-localities.pdf).
 
 There are a few other fields, but these are currently not widely used.
