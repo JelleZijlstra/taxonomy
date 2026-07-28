@@ -7,6 +7,7 @@ import subprocess
 import sys
 from collections import Counter
 from collections.abc import Callable, Iterable, Sequence
+from dataclasses import dataclass
 from typing import IO, Any, ClassVar, NotRequired, Self
 
 from clirm import Field
@@ -44,6 +45,17 @@ def _format_coordinate_evidence(
         distance = coordinate_lint.extent_distance_km(reference_extent, extent)
         output += f"; {distance:.1f} km from Location coordinates"
     return output
+
+
+@dataclass(slots=True)
+class _CoordinateChoice:
+    latitude: str
+    longitude: str
+    extent: coordinate_lint.CoordinateExtent
+    sources: list[str]
+
+    def describe(self) -> str:
+        return f"{self.latitude}, {self.longitude} — {'; '.join(self.sources)}"
 
 
 class Location(BaseModel):
@@ -242,7 +254,7 @@ class Location(BaseModel):
         models.name.name.write_names(
             type_locs, depth=depth, full=full, organized=organized, file=file
         )
-        if include_occurrences:
+        if include_occurrences or full:
             taxa = list(self.taxa)
             records = list(self.occurrence_records)
             if not taxa and not records:
@@ -309,7 +321,7 @@ class Location(BaseModel):
             return
         extent = coordinate_lint.make_extent(self.latitude, self.longitude)
         if extent is not None:
-            subprocess.check_call(["open", extent.openstreetmap_url])
+            subprocess.check_call(["open", *extent.openstreetmap_urls])
 
     def coordinate_evidence(self) -> None:
         from taxonomy.apis import geonames, nominatim
@@ -367,15 +379,20 @@ class Location(BaseModel):
             if not nominatim_results:
                 print("    none")
             for index, result in enumerate(nominatim_results, start=1):
-                status = (
-                    "accepted"
-                    if location_lint.is_sane_nominatim_result(self, result)
-                    else "rejected by locality/region checks"
-                )
+                assessment = location_lint.assess_nominatim_result(self, result)
+                status = "accepted" if assessment.is_accepted else "rejected"
                 print(
                     f"    {index}. [{status}] {result.category}/"
                     f"{result.feature_type}: {result.display_name}"
                 )
+                if assessment.issues:
+                    print("       Rejection reasons:")
+                    for issue in assessment.issues:
+                        print(f"         - {issue}")
+                if assessment.notes:
+                    print("       Match notes:")
+                    for note in assessment.notes:
+                        print(f"         - {note}")
                 print(
                     "       Coordinates: "
                     + _format_coordinate_evidence(
@@ -541,6 +558,128 @@ class Location(BaseModel):
         if not found_occurrence_evidence:
             print("    none")
 
+    def _get_coordinate_choices(self) -> list[_CoordinateChoice]:
+        from taxonomy.db.models.name import TypeTag
+        from taxonomy.db.models.occurrence_record import OccurrenceRecordTag
+        from taxonomy.db.models.occurrence_record.lint import parse_verbatim_coordinates
+
+        from . import lint as location_lint
+
+        choices: dict[tuple[str, str], _CoordinateChoice] = {}
+
+        def add_choice(latitude: str, longitude: str, source: str) -> None:
+            parsed = coordinate_lint.standardize_coordinate_pair(latitude, longitude)
+            if parsed is None:
+                return
+            standardized_latitude, standardized_longitude, extent = parsed
+            key = (standardized_latitude, standardized_longitude)
+            if key in choices:
+                choices[key].sources.append(source)
+            else:
+                choices[key] = _CoordinateChoice(
+                    standardized_latitude, standardized_longitude, extent, [source]
+                )
+
+        for (
+            latitude,
+            longitude,
+            _,
+            source,
+        ) in location_lint._get_linked_coordinate_candidates(self):
+            add_choice(latitude, longitude, source)
+
+        for name in self.type_localities:
+            for tag in name.get_tags(name.type_tags, TypeTag.LocationDetail):
+                extracted = helpers.extract_coordinates(tag.text)
+                if extracted is not None:
+                    add_choice(
+                        *extracted, f"Name {name.id} LocationDetail from {tag.source}"
+                    )
+
+        for record in self.occurrence_records:
+            for tag in record.get_tags(
+                record.tags, OccurrenceRecordTag.VerbatimCoordinates
+            ):
+                parsed = parse_verbatim_coordinates(tag.text)
+                if parsed is not None:
+                    add_choice(
+                        *parsed, f"OccurrenceRecord {record.id} verbatim coordinates"
+                    )
+
+        for candidate in location_lint._get_accepted_geonames_coordinate_candidates(
+            self
+        ):
+            add_choice(
+                candidate.latitude,
+                candidate.longitude,
+                location_lint._describe_geonames_match(candidate.match),
+            )
+
+        try:
+            if self.is_general():
+                nominatim_candidates = (
+                    location_lint._get_nominatim_bounding_box_candidates(self)
+                )
+                nominatim_source_type = "bounding box"
+            else:
+                nominatim_candidates = (
+                    location_lint._get_nominatim_coordinate_candidates(self)
+                )
+                nominatim_source_type = "coordinates"
+        except Exception as exc:
+            print(f"Nominatim lookup failed: {exc}")
+        else:
+            for result, (latitude, longitude, _) in nominatim_candidates:
+                add_choice(
+                    latitude,
+                    longitude,
+                    f"Nominatim {result.category}/{result.feature_type} "
+                    f"{nominatim_source_type} for {result.display_name!r}",
+                )
+
+        return list(choices.values())
+
+    def pick_coordinates(self) -> None:
+        if self.latitude is not None or self.longitude is not None:
+            print(
+                "Existing Location coordinates: "
+                + _format_coordinate_evidence(self.latitude, self.longitude)
+            )
+
+        choices = self._get_coordinate_choices()
+        if not choices:
+            print("No coordinate choices found")
+            return
+
+        class CoordinatesCombined(Exception):
+            pass
+
+        def combine() -> None:
+            combined_extent = choices[0].extent
+            for choice in choices[1:]:
+                combined_extent = combined_extent.union(choice.extent)
+            self.latitude = combined_extent.latitude.standardized_text
+            self.longitude = combined_extent.longitude.standardized_text
+            print(f"Combined coordinates: {self.latitude}, {self.longitude}")
+            raise CoordinatesCombined
+
+        print("Type 'combine' to use a range encompassing every option.")
+        try:
+            choice = getinput.choose_one(
+                choices,
+                message="Pick coordinates (Enter to cancel)> ",
+                display_fn=_CoordinateChoice.describe,
+                history_key=("Location.pick_coordinates", self.id),
+                callbacks={"combine": combine},
+            )
+        except CoordinatesCombined:
+            return
+        if choice is None:
+            return
+        self.latitude = choice.latitude
+        self.longitude = choice.longitude
+        print(f"Selected coordinates: {self.latitude}, {self.longitude}")
+
     def infer_coordinates(self) -> None:
         if self.latitude is not None or self.longitude is not None:
             print(f"{self}: already has coordinates")
@@ -569,6 +708,9 @@ class Location(BaseModel):
         if self.latitude is not None and self.longitude is not None:
             extent = coordinate_lint.make_extent(self.latitude, self.longitude)
             if extent is not None and extent.point is not None:
+                print(
+                    f"Removing exact coordinates from general Location: {self.latitude} {self.longitude}"
+                )
                 self.latitude = None
                 self.longitude = None
         self.format()
@@ -605,6 +747,7 @@ class Location(BaseModel):
             "merge": self.merge,
             "display_occurrences": self.display_occurrences,
             "coordinate_evidence": self.coordinate_evidence,
+            "pick_coordinates": self.pick_coordinates,
             "infer_coordinates": self.infer_coordinates,
             "generalize": self.generalize,
             "open_coordinates": self.open_coordinates,

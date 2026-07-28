@@ -772,7 +772,7 @@ class Name(BaseModel):
         for tag in self.get_tags(self.type_tags, TypeTag.Coordinates):
             extent = coordinate_lint.make_extent(tag.latitude, tag.longitude)
             if extent is not None:
-                subprocess.check_call(["open", extent.openstreetmap_url])
+                subprocess.check_call(["open", *extent.openstreetmap_urls])
 
     def clear_bhl_caches(self) -> None:
         for tag in self.type_tags:

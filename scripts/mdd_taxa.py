@@ -1160,6 +1160,20 @@ def _name_type_locality_is_distribution_evidence(name: Name) -> bool:
     )
 
 
+def _distribution_sort_key(item: str) -> tuple[bool, str]:
+    return "?" in item, item.replace("?", "").strip().casefold()
+
+
+def _sort_subregions(item: str) -> str:
+    match = re.fullmatch(
+        r"(?P<country>[^()]*)\((?P<subregions>[^()]*)\)(?P<suffix>\??)", item
+    )
+    if match is None:
+        return item
+    subregions = sorted(match["subregions"].split(","), key=_distribution_sort_key)
+    return f"{match['country']}({','.join(subregions)}){match['suffix']}"
+
+
 @dataclass
 class MDDSpecies:
     row_idx: int
@@ -1234,15 +1248,10 @@ class MDDSpecies:
             raw_countries = self.row.get(column_name)
             if raw_countries:
                 assert isinstance(raw_countries, str)
-                suggested = "|".join(
-                    sorted(
-                        raw_countries.split("|"),
-                        key=lambda item: (
-                            "?" in item,
-                            item.replace("?", "").strip().casefold(),
-                        ),
-                    )
-                )
+                items = raw_countries.split("|")
+                if column_name == "subregionDistribution":
+                    items = [_sort_subregions(item) for item in items]
+                suggested = "|".join(sorted(items, key=_distribution_sort_key))
                 if suggested != raw_countries:
                     yield self.make_issue(
                         column_name,

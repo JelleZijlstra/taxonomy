@@ -1817,18 +1817,30 @@ def fix_type_specimen_link(url: str) -> str:
 def check_coordinates(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.type_locality is None:
         return
+    location = nam.type_locality
+    redundant_tags: list[TypeTag.Coordinates] = []  # type: ignore[name-defined]
     for tag in nam.get_tags(nam.type_tags, TypeTag.Coordinates):
+        if (tag.latitude, tag.longitude) == (location.latitude, location.longitude):
+            message = (
+                f"remove redundant {tag}: coordinates exactly match Location "
+                f"{location}"
+            )
+            if cfg.autofix and not LINT.is_ignoring_lint(nam, "coordinates"):
+                print(f"{nam}: {message}")
+                redundant_tags.append(tag)
+            else:
+                yield message
+            continue
+
         extent = coordinate_lint.make_extent(tag.latitude, tag.longitude)
         if extent is None:
             continue  # reported elsewhere
 
-        yield from coordinate_lint.check_extent_in_region(
-            extent, nam.type_locality.region
-        )
-        if nam.type_locality.latitude is None or nam.type_locality.longitude is None:
+        yield from coordinate_lint.check_extent_in_region(extent, location.region)
+        if location.latitude is None or location.longitude is None:
             continue
         location_extent = coordinate_lint.make_extent(
-            nam.type_locality.latitude, nam.type_locality.longitude
+            location.latitude, location.longitude
         )
         if location_extent is None:
             continue  # reported on the Location
@@ -1836,9 +1848,11 @@ def check_coordinates(nam: Name, cfg: LintConfig) -> Iterable[str]:
         if distance > coordinate_lint.COORDINATE_TOLERANCE_KM:
             yield (
                 f"type-locality coordinates {tag.latitude}, {tag.longitude} are "
-                f"{distance:.1f} km from Location {nam.type_locality} coordinates "
-                f"{nam.type_locality.latitude}, {nam.type_locality.longitude}"
+                f"{distance:.1f} km from Location {location} coordinates "
+                f"{location.latitude}, {location.longitude}"
             )
+    if redundant_tags:
+        nam.type_tags = [tag for tag in nam.type_tags if tag not in redundant_tags]  # type: ignore[assignment]
 
 
 @LINT.add("type_locality_age")
@@ -6700,19 +6714,28 @@ def infer_included_species(nam: Name, cfg: LintConfig) -> Iterable[str]:
     ce = nam.get_mapped_classification_entry()
     if ce is None or ce.rank.is_synonym:
         return
-    current_included_species_with_ces = {
-        tag.name: tag.classification_entry
+    current_included_species_with_ces = [
+        tag
         for tag in nam.type_tags
         if isinstance(tag, TypeTag.IncludedSpecies) and tag.classification_entry
-    }
+    ]
     included = ce.get_children_of_rank(Rank.species)
     for child_ce in included:
         if child_ce.mapped_name is None:
             continue
-        if (
-            child_ce.mapped_name in current_included_species_with_ces
-            and current_included_species_with_ces[child_ce.mapped_name] == child_ce
+        if any(
+            tag.name == child_ce.mapped_name and tag.classification_entry == child_ce
+            for tag in current_included_species_with_ces
         ):
+            continue
+        child_key = _included_species_key(child_ce.mapped_name)
+        if child_key == child_ce.mapped_name and any(
+            _included_species_key(tag.name) == child_key
+            and _included_species_key(tag.name) != tag.name
+            for tag in current_included_species_with_ces
+        ):
+            # The duplicate lint prefers a name combination or subsequent usage over
+            # the original name. Do not repeatedly infer the tag that it would remove.
             continue
         if child_ce.parent is None:
             continue
@@ -6747,13 +6770,7 @@ def check_duplicate_included_species(nam: Name, cfg: LintConfig) -> Iterable[str
     ] = defaultdict(lambda: ([], []))
     for tag in nam.type_tags:
         if isinstance(tag, TypeTag.IncludedSpecies):
-            key_name = tag.name
-            tag_target = key_name.get_tag_target(NameTag.NameCombinationOf)
-            if tag_target is not None:
-                key_name = tag_target
-            tag_target = key_name.get_tag_target(NameTag.SubsequentUsageOf)
-            if tag_target is not None:
-                key_name = tag_target
+            key_name = _included_species_key(tag.name)
             if key_name == tag.name:
                 all_included[key_name][1].append(tag)
             else:
@@ -6785,6 +6802,16 @@ def check_duplicate_included_species(nam: Name, cfg: LintConfig) -> Iterable[str
             nam.type_tags = [tag for tag in nam.type_tags if tag not in tags_to_remove]  # type: ignore[assignment]
         else:
             yield message
+
+
+def _included_species_key(nam: Name) -> Name:
+    tag_target = nam.get_tag_target(NameTag.NameCombinationOf)
+    if tag_target is not None:
+        nam = tag_target
+    tag_target = nam.get_tag_target(NameTag.SubsequentUsageOf)
+    if tag_target is not None:
+        nam = tag_target
+    return nam
 
 
 def _prefer_commented(
@@ -6830,6 +6857,19 @@ def _prefer_commented(
     return to_remove, message
 
 
+def _location_detail_covers_classification_entry(
+    tag: TypeTag.LocationDetail, ce: ClassificationEntry  # type: ignore[name-defined]
+) -> bool:
+    if tag.classification_entry == ce:
+        return True
+    return (
+        ce.rank is Rank.subspecies
+        and ce.parent == tag.classification_entry
+        and tag.source == ce.article
+        and tag.text == ce.type_locality
+    )
+
+
 @LINT.add("infer_tags_from_mapped_entries")
 def infer_tags_from_mapped_entries(nam: Name, cfg: LintConfig) -> Iterable[str]:
     ces = list(nam.get_classification_entries())
@@ -6840,7 +6880,7 @@ def infer_tags_from_mapped_entries(nam: Name, cfg: LintConfig) -> Iterable[str]:
         if nam.group is Group.species:
             location = ce.type_locality
             if location and not any(
-                tag.classification_entry == ce
+                _location_detail_covers_classification_entry(tag, ce)
                 for tag in tag_name.get_tags(tag_name.type_tags, TypeTag.LocationDetail)
             ):
                 tag = TypeTag.LocationDetail(

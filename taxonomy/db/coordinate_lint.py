@@ -27,6 +27,9 @@ class CoordinateInterval:
     minimum_text: str
     maximum_text: str
 
+    def __repr__(self) -> str:
+        return self.standardized_text
+
     @property
     def standardized_text(self) -> str:
         if self.minimum == self.maximum:
@@ -74,17 +77,23 @@ class CoordinateExtent:
 
     @property
     def openstreetmap_url(self) -> str:
+        return self.openstreetmap_urls[0]
+
+    @property
+    def openstreetmap_urls(self) -> tuple[str, ...]:
         point = self.point
         if point is not None:
-            return point.openstreetmap_url
-        latitude_span = self.latitude.maximum - self.latitude.minimum
-        longitude_span = self.longitude.maximum - self.longitude.minimum
-        span = max(latitude_span, longitude_span, 0.01)
-        zoom = max(2, min(12, int(math.log2(360 / span)) - 1))
-        center = self.center
-        return (
-            "https://www.openstreetmap.org/#map="
-            f"{zoom}/{center.latitude}/{center.longitude}"
+            return (point.openstreetmap_url,)
+        west = self.longitude.minimum
+        east = self.longitude.maximum
+        south = self.latitude.minimum
+        north = self.latitude.maximum
+        bounds = f"minlon={west}&minlat={south}&maxlon={east}&maxlat={north}"
+        corners = ((north, west), (south, east))
+        return tuple(
+            f"https://www.openstreetmap.org/?{bounds}&mlat={latitude}"
+            f"&mlon={longitude}"
+            for latitude, longitude in corners
         )
 
     def union(self, other: Self) -> Self:
@@ -291,7 +300,9 @@ def _get_direction(value: float, *, is_latitude: bool) -> str:
     return "W" if value < 0 else "E"
 
 
-def check_extent_in_region(extent: CoordinateExtent, region: Region) -> Iterable[str]:
+def check_extent_in_region(
+    extent: CoordinateExtent, region: Region, *, require_full_containment: bool = False
+) -> Iterable[str]:
     point = extent.point
     if point is not None:
         yield from check_point_in_region(point, region)
@@ -306,6 +317,8 @@ def check_extent_in_region(extent: CoordinateExtent, region: Region) -> Iterable
         return
     detailed_region, path = detailed_region_and_path
     if _extent_intersects_path(extent, path):
+        if require_full_containment and not _extent_is_contained_in_path(extent, path):
+            yield f"coordinate extent {extent} extends outside {detailed_region.name}"
         return
     if detailed_region != country:
         country_path = coordinates.get_path(country.name)
@@ -343,6 +356,23 @@ def _extent_intersects_path(extent: CoordinateExtent, path: str) -> bool:
                 ):
                     return True
     return False
+
+
+def _extent_is_contained_in_path(extent: CoordinateExtent, path: str) -> bool:
+    # This is intentionally a conservative bounding-box test. It is used for
+    # non-General Locations, whose range expresses uncertainty around a specific
+    # locality. General islands, rivers, and other areal features legitimately
+    # have bounding-box corners outside their land or river polygon.
+    return all(
+        coordinates.is_in_polygon(point, path) for point in _get_extent_corners(extent)
+    )
+
+
+def extent_radius_km(extent: CoordinateExtent) -> float:
+    """Return the maximum center-to-corner distance of an extent."""
+    return max(
+        distance_km(extent.center, point) for point in _get_extent_corners(extent)
+    )
 
 
 def _get_extent_corners(extent: CoordinateExtent) -> tuple[coordinates.Point, ...]:

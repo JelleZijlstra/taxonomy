@@ -123,6 +123,7 @@ def test_standardize_coordinate_interval(
     assert standardized == expected_text
     assert interval.minimum == minimum
     assert interval.maximum == maximum
+    assert repr(interval) == expected_text
 
 
 def test_standardize_coordinate_pair_with_ranges() -> None:
@@ -134,6 +135,34 @@ def test_standardize_coordinate_pair_with_ranges() -> None:
     assert longitude == "40°E-41°E"
     assert extent.point is None
     assert extent.center == coordinates.Point(40.5, -11.25)
+
+
+def test_coordinate_extent_map_urls_mark_opposite_range_corners() -> None:
+    extent = coordinate_lint.make_extent(
+        "25.3329597°N-25.7789852°N", "79.3146515°W-79.1791883°W"
+    )
+
+    assert extent is not None
+    prefix = (
+        "https://www.openstreetmap.org/?minlon=-79.3146515&minlat=25.3329597"
+        "&maxlon=-79.1791883&maxlat=25.7789852"
+    )
+    assert extent.openstreetmap_urls == (
+        f"{prefix}&mlat=25.7789852&mlon=-79.3146515",
+        f"{prefix}&mlat=25.3329597&mlon=-79.1791883",
+    )
+    assert extent.openstreetmap_url == extent.openstreetmap_urls[0]
+
+
+def test_coordinate_extent_map_url_keeps_openstreetmap_for_point() -> None:
+    extent = coordinate_lint.make_extent("25.5°N", "79.25°W")
+
+    assert extent is not None
+    assert (
+        extent.openstreetmap_url
+        == "https://www.openstreetmap.org/?mlat=25.5&mlon=-79.25&zoom=12"
+    )
+    assert extent.openstreetmap_urls == (extent.openstreetmap_url,)
 
 
 def test_distance_km() -> None:
@@ -229,6 +258,34 @@ def test_check_extent_in_region_allows_overlapping_range(
     )
 
     assert list(coordinate_lint.check_extent_in_region(extent, expected)) == []
+
+
+def test_check_extent_in_region_can_require_full_containment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    country = FakeRegion("Country")
+    expected = cast(Region, FakeRegion("Expected State", country))
+    extent = coordinate_lint.make_extent("1°N-2°N", "1°E-2°E")
+    assert extent is not None
+
+    monkeypatch.setattr(coordinates, "get_path", lambda country_name: "country")
+    monkeypatch.setattr(
+        coordinates, "get_region_path", lambda region_name, country_name: "expected"
+    )
+    monkeypatch.setattr(
+        coordinates,
+        "is_in_polygon",
+        lambda point, path: path == "expected" and point == coordinates.Point(2, 2),
+    )
+
+    assert list(
+        coordinate_lint.check_extent_in_region(
+            extent, expected, require_full_containment=True
+        )
+    ) == [
+        "coordinate extent CoordinateExtent(latitude=1°N-2°N, "
+        "longitude=1°E-2°E) extends outside Expected State"
+    ]
 
 
 def test_check_point_in_region_allows_nearest_expected_region(

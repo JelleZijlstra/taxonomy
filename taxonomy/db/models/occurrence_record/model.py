@@ -128,7 +128,7 @@ class OccurrenceRecord(BaseModel):
             extent = coordinate_lint.make_extent(tag.latitude, tag.longitude)
             if extent is not None:
                 has_source_coordinates = True
-                subprocess.check_call(["open", extent.openstreetmap_url])
+                subprocess.check_call(["open", *extent.openstreetmap_urls])
         if not has_source_coordinates and self.location is not None:
             self.location.open_coordinates()
 

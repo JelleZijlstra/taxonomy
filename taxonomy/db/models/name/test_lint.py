@@ -6,7 +6,13 @@ from typing import cast
 import pytest
 
 from taxonomy.db import coordinate_lint, models
-from taxonomy.db.constants import AgeClass, OccurrenceValidity, SpecimenOrgan
+from taxonomy.db.constants import (
+    AgeClass,
+    Group,
+    OccurrenceValidity,
+    Rank,
+    SpecimenOrgan,
+)
 from taxonomy.db.models.base import LintConfig
 from taxonomy.db.models.location import Location
 
@@ -16,9 +22,11 @@ from .lint import (
     check_type_locality_age,
     check_type_locality_distribution_rules,
     check_type_locality_validity,
+    infer_included_species,
+    infer_tags_from_mapped_entries,
     parse_date,
 )
-from .name import Name, TypeTag
+from .name import Name, NameTag, TypeTag
 
 
 def test_parse_date() -> None:
@@ -74,6 +82,45 @@ def test_name_coordinate_range_matches_location(
     monkeypatch.setattr(coordinate_lint, "check_extent_in_region", lambda *_: ())
 
     assert list(check_coordinates(name, LintConfig())) == []
+
+
+def test_name_coordinates_report_exact_location_duplicate() -> None:
+    name = _name_with_coordinates(("40.5°N", "74.25°W"), ("40.5°N", "74.25°W"))
+
+    messages = list(check_coordinates(name, LintConfig(autofix=False)))
+
+    assert len(messages) == 1
+    assert "coordinates exactly match Location" in messages[0]
+    assert TypeTag.Coordinates("40.5°N", "74.25°W") in name.type_tags
+
+
+def test_name_coordinates_drop_exact_location_duplicate() -> None:
+    name = _name_with_coordinates(("40.5°N", "74.25°W"), ("40.5°N", "74.25°W"))
+
+    assert list(check_coordinates(name, LintConfig(autofix=True))) == []
+    assert not any(isinstance(tag, TypeTag.Coordinates) for tag in name.type_tags)
+
+
+def test_name_coordinates_respect_ignore_lint_during_autofix() -> None:
+    name = _name_with_coordinates(("40.5°N", "74.25°W"), ("40.5°N", "74.25°W"))
+    coordinates = name.type_tags[0]
+    name.type_tags = (  # type: ignore[assignment]
+        coordinates,
+        TypeTag.IgnoreLintName("coordinates", comment="retain source coordinates"),
+    )
+
+    assert list(check_coordinates(name, LintConfig(autofix=True))) == []
+    assert coordinates in name.type_tags
+
+
+def test_name_coordinates_keep_equivalent_different_representation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    name = _name_with_coordinates(("40°30'N", "74°15'W"), ("40.5°N", "74.25°W"))
+    monkeypatch.setattr(coordinate_lint, "check_extent_in_region", lambda *_: ())
+
+    assert list(check_coordinates(name, LintConfig(autofix=True))) == []
+    assert TypeTag.Coordinates("40°30'N", "74°15'W") in name.type_tags
 
 
 def _name_with_location_details(
@@ -166,6 +213,83 @@ def test_location_detail_coordinates_must_match_existing_tag() -> None:
 
     assert len(messages) == 1
     assert "conflict with all Coordinates tags" in messages[0]
+
+
+def test_nominate_subspecies_does_not_readd_merged_location_detail() -> None:
+    source = cast(models.Article, object())
+    parent_ce = cast(models.ClassificationEntry, object())
+    child_ce = cast(
+        models.ClassificationEntry,
+        SimpleNamespace(
+            rank=Rank.subspecies,
+            parent=parent_ce,
+            article=source,
+            type_locality="Pantar",
+            tags=(),
+            citation=None,
+        ),
+    )
+    location_tag = TypeTag.LocationDetail(
+        "Pantar", source, classification_entry=parent_ce
+    )
+    tag_name = SimpleNamespace(
+        type_tags=(location_tag,),
+        original_citation=None,
+        get_tags=lambda values, tag_type: (
+            tag for tag in values if isinstance(tag, tag_type)
+        ),
+    )
+    combination_name = SimpleNamespace(
+        group=Group.species,
+        get_classification_entries=lambda: [child_ce],
+        resolve_variant=lambda **_: tag_name,
+        get_mapped_classification_entry=lambda: None,
+    )
+
+    messages = list(
+        infer_tags_from_mapped_entries(
+            cast(Name, combination_name), LintConfig(autofix=False)
+        )
+    )
+
+    assert messages == []
+
+
+class _VariantName:
+    def __init__(self, combination_of: Name | None = None) -> None:
+        self.combination_of = combination_of
+
+    def get_tag_target(self, tag_type: object) -> Name | None:
+        if tag_type is NameTag.NameCombinationOf:
+            return self.combination_of
+        return None
+
+
+def test_included_species_does_not_readd_original_preempted_by_combination() -> None:
+    original_name = cast(Name, _VariantName())
+    combination_name = cast(Name, _VariantName(original_name))
+    combination_ce = cast(models.ClassificationEntry, object())
+    existing_tag = TypeTag.IncludedSpecies(
+        combination_name, classification_entry=combination_ce
+    )
+    genus_ce = SimpleNamespace(rank=Rank.genus)
+    child_ce = cast(
+        models.ClassificationEntry,
+        SimpleNamespace(mapped_name=original_name, parent=genus_ce, page="28"),
+    )
+    genus_ce.get_children_of_rank = lambda rank: [child_ce]
+    genus_name = SimpleNamespace(
+        group=Group.genus,
+        original_citation=object(),
+        type_tags=(existing_tag,),
+        get_mapped_classification_entry=lambda: genus_ce,
+    )
+
+    messages = list(
+        infer_included_species(cast(Name, genus_name), LintConfig(autofix=False))
+    )
+
+    assert messages == []
 
 
 def _location_with_age(period_name: str, youngest_age: int) -> Location:

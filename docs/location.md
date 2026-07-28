@@ -76,6 +76,13 @@ Castle Brace (Dominica): 1 mi N
 Castle Brace (Dominica): 2 mi SW
 ```
 
+When a Location combines two or more parallel geographic components with _and_, put the
+components in alphabetical order. This gives equivalent source phrasings one canonical
+name: use `Bengal and Sri Lanka`, not `Sri Lanka and Bengal`, and
+`Carinthia, Carniola, Styria, and Tyrol`, not an order copied from one particular
+source. Alphabetize by the geographic component itself, ignoring relational words such
+as `near`.
+
 Except for coordinate-defined localities described above, coordinates, elevations,
 source wording, and other evidence do not belong in the modifier merely to make a name
 unique. Store them in their structured fields or in `location_detail`. Some numbered

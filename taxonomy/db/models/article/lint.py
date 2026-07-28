@@ -2753,6 +2753,9 @@ def data_from_pubmed(art: Article, cfg: LintConfig) -> Iterable[str]:
     data = models.article.api_data.expand_pubmed_json(pmid)
     if not data:
         return
+    if data.get("doi") and art.doi and data["doi"].casefold() != art.doi.casefold():
+        yield f"DOI mismatch: {data['doi']} (PubMed) vs. {art.doi} (article)"
+        return
     # Title
     if data.get("title") and art.title:
         pubmed_title = data["title"]
@@ -2857,6 +2860,9 @@ def data_from_pmc(art: Article, cfg: LintConfig) -> Iterable[str]:
     data = models.article.api_data.expand_pmc_json(pmc)
     if not data:
         return
+    if data.get("doi") and art.doi and data["doi"].casefold() != art.doi.casefold():
+        yield f"DOI mismatch: {data['doi']} (PMC) vs. {art.doi} (article)"
+        return
     # Title
     if data.get("title") and art.title:
         simplified_src = helpers.simplify_string(
@@ -2957,21 +2963,21 @@ def infer_pmc(art: Article, cfg: LintConfig) -> Iterable[str]:
     ):
         return
 
-    pmcid: str | None = None
-    # 1) Prefer mapping from PMID via NCBI idconv
-    pmid = art.get_identifier(ArticleTag.PMID)
-    if pmid:
-        pmcid = models.article.api_data.get_pmcid_from_idconv(pmid)
-    # 2) Else map from DOI
-    if not pmcid and art.doi:
+    # An exact DOI is stronger evidence than an existing PMID. If it does not map
+    # to a PMCID, do not fall back through a possibly incorrect PMID or metadata
+    # search.
+    if art.doi:
         pmcid = models.article.api_data.get_pmcid_from_idconv(art.doi)
         if not pmcid:
             pmcid = models.article.api_data.get_pmcid_from_doi_via_europe_pmc(art.doi)
-    # 3) Conservative metadata search: exact normalized title match; include year/journal if present
-    if not pmcid and art.title:
+    elif pmid := art.get_identifier(ArticleTag.PMID):
+        pmcid = models.article.api_data.get_pmcid_from_idconv(pmid)
+    elif art.title:
         pmcid = models.article.api_data.get_pmcid_from_metadata(
-            title=art.title, year=art.year, journal=art.citation_group.name
+            title=art.title, year=str(year), journal=art.citation_group.name
         )
+    else:
+        pmcid = None
     if not pmcid:
         return
     message = f"adding PMCID {pmcid}"

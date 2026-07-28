@@ -78,12 +78,23 @@ required occurrence fields are:
 - `basis`: one of `voucher`, `observation`, or `listing`.
 
 Optional internal fields are `page`, `raw_data`, and source-evidence tags such as
-`ObservationKind`, `MolecularData`, `SpecimenDetail`, or `CommentFromSource`. Optional
-external interpretation uses `mapped_location`, containing the intended canonical
-`Location.name`. Status tags such as `Vagrant`, `Introduced`, `Extirpated`,
+`ObservationKind`, `MolecularData`, `Voucher`, `SpecimenDetail`, or `CommentFromSource`.
+Optional external interpretation uses `mapped_location`, containing the intended
+canonical `Location.name`. Status tags such as `Vagrant`, `Introduced`, `Extirpated`,
 `OccurrenceDubious`, `ClassificationDubious`, and `Rejected` are also external
 interpretations. Do not put `TaxonomicSplitFrom` in a CE file; create split records
 interactively after import.
+
+When a source identifies catalogued specimens for a voucher occurrence, add one
+`Voucher` tag per specimen. Preserve the catalogue string given by the source in the
+tag's `text` field and resolve its repository to the corresponding database
+`Collection`; do not combine multiple catalogue numbers into one tag. In an extraction
+script, for example, use
+`OccurrenceRecordTag.Voucher("MUSM 19358", models.Collection.by_label("MUSM"))` and let
+`write_ce_file()` serialize it. The `Voucher` tag complements `basis: "voucher"`, which
+records the evidence class but not the specimen identity. Use `SpecimenDetail` for
+additional source-backed specimen information that is not captured by the catalogue
+string and collection.
 
 For an import-oriented ingestion, every extant occurrence must have a `mapped_location`.
 Map it to the most precise Location justified by the source:

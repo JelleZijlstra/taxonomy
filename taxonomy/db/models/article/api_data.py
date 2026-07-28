@@ -455,11 +455,40 @@ def get_pmcid_from_doi_via_europe_pmc(doi: str) -> str | None:
             pmc = _normalize_pmcid_text(rec.get("pmcid"))
             if pmc:
                 return pmc
-    for rec in results:
-        pmc = _normalize_pmcid_text(rec.get("pmcid"))
-        if pmc:
-            return pmc
     return None
+
+
+def _numeric_year(year: str | None) -> str | None:
+    if year is None:
+        return None
+    match = re.match(r"^(\d{4})", year)
+    if match is None:
+        return None
+    return match.group(1)
+
+
+def _normalized_title(title: object) -> str:
+    return " ".join(str(title).casefold().split())
+
+
+def _get_unique_metadata_match(
+    results: Iterable[dict[str, Any]], *, title: str, year: str | None
+) -> dict[str, Any] | None:
+    target_title = _normalized_title(title)
+    numeric_year = _numeric_year(year)
+    matches = []
+    for rec in results:
+        rec_title = rec.get("title")
+        if not rec_title or _normalized_title(rec_title) != target_title:
+            continue
+        if numeric_year is not None:
+            rec_year = rec.get("pubYear") or rec.get("year")
+            if str(rec_year) != numeric_year:
+                continue
+        matches.append(rec)
+    if len(matches) != 1:
+        return None
+    return matches[0]
 
 
 def get_pmcid_from_metadata(
@@ -468,8 +497,8 @@ def get_pmcid_from_metadata(
     if not title:
         return None
     q = f'TITLE:"{title}"'
-    if year and year.isdigit():
-        q += f" AND PUB_YEAR:{year}"
+    if numeric_year := _numeric_year(year):
+        q += f" AND PUB_YEAR:{numeric_year}"
     if journal:
         q += f' AND JOURNAL:"{journal}"'
     params = {"format": "json", "pageSize": "25", "query": q}
@@ -480,19 +509,10 @@ def get_pmcid_from_metadata(
         traceback.print_exc()
         return None
     results = (data.get("resultList") or {}).get("result") or []
-    norm = lambda s: " ".join(s.lower().split())
-    tgt = norm(title)
-    for rec in results:
-        pmc = _normalize_pmcid_text(rec.get("pmcid"))
-        if not pmc:
-            continue
-        if rec.get("title") and norm(str(rec.get("title"))) == tgt:
-            return pmc
-    for rec in results:
-        pmc = _normalize_pmcid_text(rec.get("pmcid"))
-        if pmc:
-            return pmc
-    return None
+    match = _get_unique_metadata_match(results, title=title, year=year)
+    if match is None:
+        return None
+    return _normalize_pmcid_text(match.get("pmcid"))
 
 
 # values from http://www.crossref.org/schema/queryResultSchema/crossref_query_output2.0.xsd
@@ -706,11 +726,6 @@ def lookup_pmid_via_europe_pmc_by_doi(doi: str) -> str | None:
             pmid = rec.get("pmid")
             if pmid:
                 return str(pmid)
-    # fallback: first record with pmid
-    for rec in results:
-        pmid = rec.get("pmid")
-        if pmid:
-            return str(pmid)
     return None
 
 
@@ -721,8 +736,8 @@ def lookup_pmid_via_europe_pmc_by_metadata(
     if not title:
         return None
     q = f'TITLE:"{title}"'
-    if year and year.isdigit():
-        q += f" AND PUB_YEAR:{year}"
+    if numeric_year := _numeric_year(year):
+        q += f" AND PUB_YEAR:{numeric_year}"
     if journal:
         q += f' AND JOURNAL:"{journal}"'
     params = {"format": "json", "pageSize": "25", "query": q}
@@ -730,20 +745,10 @@ def lookup_pmid_via_europe_pmc_by_metadata(
     if not data:
         return None
     results = (data.get("resultList") or {}).get("result") or []
-    # Try strict normalized title match first
-    norm = lambda s: " ".join(s.lower().split())
-    target_title = norm(title)
-    for rec in results:
-        rec_title = rec.get("title")
-        pmid = rec.get("pmid")
-        if pmid and rec_title and norm(rec_title) == target_title:
-            return str(pmid)
-    # Fallback: first result with pmid
-    for rec in results:
-        pmid = rec.get("pmid")
-        if pmid:
-            return str(pmid)
-    return None
+    match = _get_unique_metadata_match(results, title=title, year=year)
+    if match is None or not (pmid := match.get("pmid")):
+        return None
+    return str(pmid)
 
 
 @dataclass
@@ -782,22 +787,20 @@ def to_pmid_candidate(art: Article) -> PMIDCandidate:
 def infer_pmid_for_article(art: Article, *, allow_metadata: bool = False) -> str | None:
     cand = to_pmid_candidate(art)
 
-    # 1) If PMCID present, map via idconv
-    if cand.pmcid:
-        pmid = lookup_pmid_via_idconv(cand.pmcid)
-        if pmid:
-            return pmid
-
-    # 2) If DOI present, try idconv and then Europe PMC
+    # An exact DOI is stronger evidence than an existing PMCID. If the DOI does not
+    # map to a PMID, do not fall back through a possibly incorrect PMCID or metadata
+    # search.
     if cand.doi:
         pmid = lookup_pmid_via_idconv(cand.doi)
         if pmid:
             return pmid
-        pmid = lookup_pmid_via_europe_pmc_by_doi(cand.doi)
-        if pmid:
-            return pmid
+        return lookup_pmid_via_europe_pmc_by_doi(cand.doi)
 
-    # 3) Conservative metadata search (title + year [+ journal])
+    # If no DOI is available, map an existing PMCID via idconv.
+    if cand.pmcid:
+        return lookup_pmid_via_idconv(cand.pmcid)
+
+    # Last resort: a unique exact metadata match.
     if allow_metadata:
         pmid = lookup_pmid_via_europe_pmc_by_metadata(
             title=cand.title, journal=cand.journal, year=cand.year
