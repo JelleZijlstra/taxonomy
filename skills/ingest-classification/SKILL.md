@@ -57,7 +57,11 @@ Read the source closely. Render PDF pages when columns, tables, typography, or p
 numbers matter. Preserve source spelling in `name`, including errors. Store the
 Article's exact `name` in `article` when it is already known, but do not require an
 Article, Name, Taxon, or Location database lookup merely to transcribe a source. Region
-names in Location proposals are the exception; validate them as described below.
+names in Location proposals are the exception; validate them as described below. Create
+ClassificationEntry proposals for every species name present in the article's
+classification. It is OK to omit some names that are merely mentioned incidentally.
+Never include any names as ClassificationEntry proposals that are not present in the
+text.
 
 Treat `corrected_name` as a legacy name for `normalized_name`. Set it only when the
 source representation does not follow the standard scientific-name format, for example
@@ -65,10 +69,13 @@ source representation does not follow the standard scientific-name format, for e
 emendation, modernize a combination, or resolve a synonym. A normally formatted but
 misspelled name such as `Rattus norvegecus` must remain unaltered for later review.
 
-Include the relevant classification hierarchy even for a short source: add the family
-and genus entries needed to place a species, order parents before children, and include
-both `parent` and `parent_rank`. Writing the JSONL directly changes only how the
-artifact is produced; it does not reduce the classification represented in it.
+Include only scientific names actually present in the source. Never add a family, order,
+or other higher taxon merely to complete a familiar taxonomic hierarchy. A genus name
+printed as the genus component of a binomial is present and may be represented as a
+genus CE, but an unprinted higher taxon is an inference and must be omitted. Add
+`parent` and `parent_rank` only when the source itself supports that placement;
+otherwise leave the entry unparented in the source-local classification. Order
+source-supported parents before their children.
 
 Every ClassificationEntry `page` must be a single page number. Do not use a range,
 comma-separated list, or compound value such as `755-756` or `755–756`. When an account
@@ -197,6 +204,8 @@ source and the files themselves:
 - verify that every nonblank line is valid JSON and uses the expected field shapes;
 - compare names, ranks, pages, locality wording, evidence basis, and quotations with the
   source;
+- verify that every CE name occurs in the source and that no parent assignment supplies
+  an unprinted or otherwise unsupported hierarchy;
 - verify that every ClassificationEntry has one page number, never a page range or list;
 - check source-internal hierarchy and repeated-entry invariants when applicable;
 - ensure any Location proposal is supported by the source or cited gazetteer.

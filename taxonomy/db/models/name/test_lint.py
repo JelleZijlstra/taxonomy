@@ -17,6 +17,7 @@ from taxonomy.db.models.base import LintConfig
 from taxonomy.db.models.location import Location
 
 from .lint import (
+    check_collector_lifespan,
     check_coordinates,
     check_location_detail_coordinates,
     check_type_locality_age,
@@ -35,6 +36,65 @@ def test_parse_date() -> None:
     assert parse_date("23 Feb 2013") == "2013-02-23"
     assert parse_date("July 2013") == "2013-07"
     assert parse_date("7 July 2013") == "2013-07-07"
+
+
+def _name_with_collector_dates(
+    *, death: str | None, dates: tuple[str, ...], additional_collector: bool = False
+) -> Name:
+    person = SimpleNamespace(death=death)
+    tags = (
+        TypeTag.CollectedBy(cast(models.Person, person)),
+        *(
+            (TypeTag.CollectedBy(cast(models.Person, SimpleNamespace(death=None))),)
+            if additional_collector
+            else ()
+        ),
+        *(TypeTag.Date(date) for date in dates),
+    )
+    return cast(
+        Name,
+        SimpleNamespace(
+            type_tags=tags,
+            get_tags=lambda values, tag_type: (
+                tag for tag in values if isinstance(tag, tag_type)
+            ),
+        ),
+    )
+
+
+def test_collector_lifespan_flags_collection_after_death() -> None:
+    name = _name_with_collector_dates(death="1900", dates=("2 January 1901",))
+
+    messages = list(check_collector_lifespan(name, LintConfig()))
+
+    assert len(messages) == 1
+    assert (
+        "collector namespace(death='1900') died in 1900, before collection date 2 January 1901"
+        in messages[0]
+    )
+
+
+@pytest.mark.parametrize(
+    "date", ["2 January 1899", "2 January 1900", "<2 January 1901"]
+)
+def test_collector_lifespan_allows_possible_lifetime_dates(date: str) -> None:
+    name = _name_with_collector_dates(death="1900", dates=(date,))
+
+    assert list(check_collector_lifespan(name, LintConfig())) == []
+
+
+def test_collector_lifespan_requires_known_death() -> None:
+    name = _name_with_collector_dates(death=None, dates=("2 January 1901",))
+
+    assert list(check_collector_lifespan(name, LintConfig())) == []
+
+
+def test_collector_lifespan_checks_all_collectors() -> None:
+    name = _name_with_collector_dates(
+        death="1900", dates=("2 January 1901",), additional_collector=True
+    )
+
+    assert len(list(check_collector_lifespan(name, LintConfig()))) == 1
 
 
 def _name_with_coordinates(

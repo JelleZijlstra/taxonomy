@@ -1592,6 +1592,42 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
             nam.type_tags = tags  # type: ignore[assignment]
 
 
+def _get_collection_year(date_text: str) -> int | None:
+    try:
+        standardized = helpers.standardize_date(date_text)
+    except ValueError:
+        return None
+    if standardized is None or standardized.startswith("<"):
+        return None
+    match = re.search(r"\b(\d{4})$", standardized)
+    if match is None:
+        return None
+    return int(match.group(1))
+
+
+@LINT.add("collector_lifespan")
+def check_collector_lifespan(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    date_tags = list(nam.get_tags(nam.type_tags, TypeTag.Date))
+    collector_tags = list(nam.get_tags(nam.type_tags, TypeTag.CollectedBy))
+    if not date_tags or not collector_tags:
+        return
+    for collector_tag in collector_tags:
+        death = collector_tag.person.death
+        if death is None:
+            continue
+        try:
+            death_year = int(death)
+        except ValueError:
+            continue
+        for date_tag in date_tags:
+            collection_year = _get_collection_year(date_tag.date)
+            if collection_year is not None and collection_year > death_year:
+                yield (
+                    f"collector {collector_tag.person} died in {death}, before collection"
+                    f" date {date_tag.date}"
+                )
+
+
 @LINT.add("location_detail_coordinates")
 def check_location_detail_coordinates(nam: Name, cfg: LintConfig) -> Iterable[str]:
     extracted: list[  # type: ignore[name-defined]
