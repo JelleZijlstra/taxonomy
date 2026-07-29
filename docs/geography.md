@@ -225,8 +225,8 @@ In more detail:
 - The de facto border between [India](/r/India), [Pakistan](/r/Pakistan), and
   [China](/r/China) (called the "Line of Control" between India and Pakistan and "Line
   of Actual Control" between India and China) in the Kashmir region is treated as the
-  border. Type localities that are given as just "Kashmir" are arbitrarily assigned to
-  the Indian territory of [Jammu and Kashmir](/r/Jammu_and_Kashmir).
+  border. Type localities that are given as just "Kashmir" should be assigned to a
+  _General_ location named "Kashmir (region)".
 - [India](/r/India) is divided into regions for each of its states and union
   territories.
 - [Pakistan](/r/Pakistan) is divided into regions for its provinces and other
@@ -246,8 +246,9 @@ In more detail:
 - For the purposes of the database, "[Israel](/r/Israel)" includes land within the
   pre-1967 borders of the State of Israel, "[Palestine](/r/Palestine)" comprises the
   West Bank and Gaza Strip, and the Golan Heights are part of [Syria](/r/Syria).
-  However, sources are often not precise in this contentious region, so perhaps an
-  alternative subdivision system should be used.
+  Historical sources that use "Palestine" for the broader geographic area encompassing
+  modern Israel and Palestine should use a _General_ Location named `Palestine (region)`
+  directly under Western Asia.
 
 ## [Europe](/r/Europe)
 
@@ -290,8 +291,8 @@ In more detail:
   Scotland and Ireland.
 - The UK's overseas territories are listed as separate countries in other continents
   (or, in the case of [Gibraltar](/r/Gibraltar), in another part of Europe).
-- Type localities that are given as "Ireland" are listed under the country of
-  [Ireland](/r/Ireland), even if technically they may have come from Northern Ireland.
+- Type localities that are given as "Ireland" should be listed under a location "Ireland
+  (island)".
 
 ### [Southern Europe](/r/Southern_Europe)
 

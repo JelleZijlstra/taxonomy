@@ -22,6 +22,12 @@ imprecise area rather than a single locality. A general Location should be repla
 split only when source evidence supports a more precise assignment. Locations should be
 considered general if they represent an area with a larger radius than about 10 km.
 
+Use the _Unplaced_ tag instead when the source identifies a particular locality, but
+that locality has not yet been securely placed in the Region hierarchy. _General_ and
+_Unplaced_ should normally be mutually exclusive: _General_ describes the precision of
+the source evidence, whereas _Unplaced_ records incomplete geographic interpretation of
+a specific place.
+
 ## Naming convention
 
 Location names have up to three parts:
@@ -33,6 +39,16 @@ Name (disambiguator): modifier
 The _name_ is preferably a geographic feature such as a town, river, mountain, cave, or
 collecting site. The _disambiguator_ and _modifier_ are optional. Parentheses are
 reserved for disambiguators, and modifiers follow a colon and a space.
+
+Use a modern, neutral geographic name when an obsolete source-era name has a clear
+modern equivalent. Preserve the historical wording in `location_detail`, not in the
+canonical Location name. In particular, do not perpetuate historical names now widely
+regarded as slurs. If the old term had variable boundaries and no exact modern
+equivalent, choose a conservative modern description, mark it _General_, and explain the
+correspondence in the evidence or comment. If no modern description can preserve the
+historical extent without falsely equating it with one present-day unit, retain the old
+name only with an explicit `(historical region)` disambiguator; for example,
+`Prussia (historical region)`, not bare `Prussia`.
 
 For example:
 
@@ -88,6 +104,28 @@ source wording, and other evidence do not belong in the modifier merely to make 
 unique. Store them in their structured fields or in `location_detail`. Some numbered
 sites, quarries, camps, and similar localities have no useful geographic anchor; they
 may use their established site name as the base name.
+
+### Coasts and offshore localities
+
+Distinguish terrestrial coastal areas from adjacent marine waters. Use _coast_ for a
+shoreline or coastal strip on land and place the Location in the corresponding land
+Region, as in `Gulf of Guinea coast`. Use the modifier _coastal waters_ for a marine
+locality associated with a named land area and place it in the appropriate ocean Region,
+as in `Japan: coastal waters`. A named sea may be retained as the base feature, as in
+`North Sea: Yorkshire coastal waters`.
+
+Treat source phrases such as _offshore_, _off the coast of_, and _coastal waters_ as the
+same kind of marine locality and prefer _coastal waters_ in the canonical Location name.
+_Offshore_ may remain when it is part of a quantified locality description, as in
+`Petit Manan Lighthouse: 40 mi offshore`; there it expresses the recorded offset, not a
+separate category of marine Location.
+
+The word _coast_ in a source does not by itself decide between these interpretations.
+Use the description of the occurrence or specimen to distinguish an animal inhabiting a
+coastal strip from one taken in nearby water; an explicitly stranded or beached marine
+animal is terrestrial for this purpose. If the evidence still does not resolve the
+distinction, use a _General_ Location under the lowest Region that contains both
+possibilities rather than silently choosing land or water.
 
 ## Fields
 
