@@ -171,7 +171,8 @@ def get_jstor_data(art: Article) -> RawData:
     data["title"] = head[0]
     # multiplied by 4 because capturing groups also go into the output of re.split
     url = head[4 * 4]
-    data["doi"] = "10.2307/" + url.split()[0].split("/")[-1]
+    jstor_id = url.split()[0].split("/")[-1]
+    data["tags"] = [ArticleTag.JSTOR(jstor_id)]
     # problem sometimes
     if not re.search(r"(, Vol\. |, No\. | \(|\), pp?\. )", head[2 * 4]):
         print("Unable to process data")
@@ -215,7 +216,7 @@ def get_jstor_data(art: Article) -> RawData:
             print("unable to process data")
             return {}
     data["year"] = re.sub(r"^.*,\s", "", year)
-    first_last = pages.split("-")
+    first_last = [page.rstrip(" .") for page in pages.split("-")]
     data["start_page"] = first_last[0]
     data["end_page"] = first_last[1] if len(first_last) > 1 else first_last[0]
     # Process authors field

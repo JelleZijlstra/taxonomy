@@ -1,12 +1,12 @@
 ---
 name: ingest-classification
 description:
-  Transcribe a taxonomic classification from a source into a reviewable JSONL CE file,
-  optionally including source-backed occurrence claims and Location proposals, and
-  prepare it for a later human-controlled database import. Use for ClassificationEntry
-  ingestion, classification tables or checklists, CEDict transcription, occurrence
-  extraction, CE-file review, and dry-run or manual classification imports in the
-  taxonomy repository.
+  Transcribe a taxonomic classification from one or more sources into a reviewable JSONL
+  CE file, optionally including source-backed occurrence claims and Location proposals,
+  and prepare it for a later human-controlled database import. Use for
+  ClassificationEntry ingestion, classification tables or checklists, CEDict
+  transcription, occurrence extraction, CE-file review, and dry-run or manual
+  classification imports in the taxonomy repository.
 ---
 
 # Ingest a classification
@@ -28,6 +28,12 @@ files with `data_import.ce_file.write_ce_file()`.
 Put CE files ending in `.ce.jsonl` in `data_import/ce_files/`. Each line is one JSON
 object representing a `data_import.lib.CEDict`. For direct JSONL, use enum member names
 such as `species` and serialize tags as objects with `kind` and `data` keys.
+
+A CE file may combine entries from multiple Articles. Keep each row's exact source in
+its `article` field and include a complete source-local hierarchy for every Article;
+parent validation, uncovered-entry reporting, and CE formatting are performed
+independently for each Article. This is useful for a species-focused ingestion assembled
+from several papers while retaining record-level provenance.
 
 Never write to the database during transcription. Do not call
 `add_classification_entries(..., dry_run=False)` from a source-specific script.
@@ -219,8 +225,9 @@ Without `--apply`, this command is read-only. It resolves the Article; validates
 fields, enums, and source hierarchy; reports exact, normalized, ambiguous, and
 unrecognized matches against existing `Name` records; validates occurrence claims; reads
 the sibling Location file when present; and previews changes through
-`add_classification_entries(..., dry_run=True)`. It reports Locations that already
-exist, would be created, remain unresolved, or conflict.
+`add_classification_entries(..., dry_run=True)`. It lists every mapped Location with its
+status and reports Locations that already exist, would be restored or created, remain
+unresolved, or conflict.
 
 Treat every exact-name Location conflict as an artifact defect to resolve before
 handoff. If the existing Location has an incompatible Region or period and is not the
@@ -243,9 +250,11 @@ Only a human may run the database-writing form:
 ```
 
 The apply path is idempotent for the same CE file. It first creates reviewed missing
-Locations, then matches or adds CEs, calls `format_ces_in_article()`, and finally
-matches or adds OccurrenceRecords. It fills null external taxon and location mappings
-but does not overwrite differing mappings or internal source data. An unresolved
+Locations, then matches or adds CEs independently for each Article, and finally matches
+or adds OccurrenceRecords. It formats and runs the full model lint cycle on created or
+updated Locations and OccurrenceRecords, and calls `format_ces_in_article()` for every
+Article represented in the file. It fills null external taxon and location mappings but
+does not overwrite differing mappings or internal source data. An unresolved
 `mapped_location` remains a `LocationHint` tag and a null location so the lint remains
 visible. Existing Location conflicts block apply.
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -80,6 +81,150 @@ def test_existing_location_allows_formatted_name(
 
     assert location_file._existing_location("Mary’s Fancy, Sint Maarten") is location
     assert calls == ["Mary’s Fancy, Sint Maarten", "Mary's Fancy, Sint Maarten"]
+
+
+def test_build_plan_restores_deleted_general_location(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    article = cast(Article, object())
+    region = cast(Region, SimpleNamespace(name="Carbon County, Montana"))
+    period = cast(Period, SimpleNamespace(name="Recent"))
+    deleted = cast(
+        Location,
+        SimpleNamespace(
+            name="Carbon County, Montana",
+            deleted=LocationStatus.deleted,
+            region=region,
+            min_period=period,
+            max_period=period,
+            latitude=None,
+            longitude=None,
+        ),
+    )
+    entries: list[lib.CEDict] = [
+        {
+            "article": article,
+            "page": "1",
+            "name": "Rattus rattus",
+            "rank": Rank.species,
+            "occurrences": [
+                {
+                    "locality": "Carbon County, Montana",
+                    "mapped_location": "Carbon County, Montana",
+                    "basis": OccurrenceBasis.voucher,
+                }
+            ],
+        }
+    ]
+    proposal: location_file.LocationDict = {
+        "name": "Carbon County, Montana",
+        "region": region,
+        "period": period,
+    }
+    monkeypatch.setattr(location_file, "_existing_location", lambda name: None)
+    monkeypatch.setattr(
+        location_file, "_restorable_deleted_location", lambda name, candidate: deleted
+    )
+
+    plan = location_file.build_plan(entries, [proposal])
+
+    assert plan.statuses == {"Carbon County, Montana": "restore"}
+    assert plan.locations == {"Carbon County, Montana": deleted}
+    assert plan.is_clean
+
+
+def test_apply_plan_restores_deleted_location() -> None:
+    article = cast(Article, object())
+    region = cast(Region, SimpleNamespace(name="Carbon County, Montana"))
+    period = cast(Period, SimpleNamespace(name="Recent"))
+    format_location = MagicMock()
+    edit_until_clean = MagicMock()
+    deleted = cast(
+        Location,
+        SimpleNamespace(
+            deleted=LocationStatus.deleted,
+            region=region,
+            min_period=period,
+            max_period=period,
+            latitude=None,
+            longitude=None,
+            comment=None,
+            source=None,
+            location_detail=None,
+            tags=(),
+            format=format_location,
+            edit_until_clean=edit_until_clean,
+        ),
+    )
+    proposal: location_file.LocationDict = {
+        "name": "Carbon County, Montana",
+        "region": region,
+        "period": period,
+        "source": article,
+        "location_detail": "Source locality detail.",
+    }
+    plan = location_file.LocationPlan(
+        used_names={"Carbon County, Montana"},
+        locations={"Carbon County, Montana": deleted},
+        proposals={"Carbon County, Montana": proposal},
+        statuses={"Carbon County, Montana": "restore"},
+        errors=[],
+        warnings=[],
+    )
+
+    locations = location_file.apply_plan(plan)
+
+    assert deleted.deleted is LocationStatus.valid
+    assert deleted.source is article
+    assert deleted.location_detail == "Source locality detail."
+    assert locations == {"Carbon County, Montana": deleted}
+    assert plan.statuses == {"Carbon County, Montana": "existing"}
+    format_location.assert_called_once_with(quiet=True)
+    edit_until_clean.assert_called_once_with()
+
+
+def test_print_plan_lists_each_location(capsys: pytest.CaptureFixture[str]) -> None:
+    region = cast(Region, SimpleNamespace(name="Ecuador"))
+    period = cast(Period, SimpleNamespace(name="Recent"))
+    existing = cast(
+        Location,
+        SimpleNamespace(
+            id=42,
+            name="Port locality",
+            region=region,
+            min_period=period,
+            max_period=period,
+        ),
+    )
+    plan = location_file.LocationPlan(
+        used_names={"Old port name", "New site", "Unknown site"},
+        locations={"Old port name": existing, "New site": None, "Unknown site": None},
+        proposals={
+            "New site": {
+                "name": "New site",
+                "region": region,
+                "period": period,
+                "latitude": "1.0°S",
+                "longitude": "80.0°W",
+            }
+        },
+        statuses={
+            "Old port name": "existing",
+            "New site": "create",
+            "Unknown site": "unresolved",
+        },
+        errors=[],
+        warnings=[],
+    )
+
+    location_file.print_plan(plan)
+
+    assert capsys.readouterr().out.splitlines() == [
+        "Occurrence locations: existing=1, restore=0, create=1, unresolved=1",
+        "  [create] New site; Ecuador; Recent; 1.0°S 80.0°W",
+        "  [existing] Old port name -> Port locality (#42); Ecuador; Recent",
+        "  [unresolved] Unknown site",
+    ]
 
 
 def test_location_file_report_collects_and_prints_all_errors(

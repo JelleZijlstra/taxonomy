@@ -8,7 +8,11 @@ from typing import Any, NotRequired, TypedDict, cast
 
 from data_import import lib
 from taxonomy.db import coordinate_lint, helpers, models
-from taxonomy.db.models.location import LocationStatus, LocationTag
+from taxonomy.db.models.location import (
+    LocationStatus,
+    LocationTag,
+    get_expected_general_name,
+)
 
 
 class LocationFileError(ValueError):
@@ -202,6 +206,21 @@ def _existing_location(name: str) -> models.Location | None:
     return None
 
 
+def _restorable_deleted_location(
+    name: str, proposal: LocationDict
+) -> models.Location | None:
+    if name != get_expected_general_name(proposal["region"], proposal["period"]):
+        return None
+    candidates = [
+        location
+        for location in _locations_with_name(name)
+        if location.deleted is LocationStatus.deleted
+    ]
+    if len(candidates) == 1:
+        return candidates[0]
+    return None
+
+
 def _proposal_conflicts(existing: models.Location, proposal: LocationDict) -> list[str]:
     conflicts = []
     if existing.region != proposal["region"]:
@@ -261,7 +280,14 @@ def build_plan(
                     errors.append(f"{name!r}: existing Location conflict: {conflict}")
             continue
         if proposal is not None:
-            statuses[name] = "create"
+            deleted = _restorable_deleted_location(name, proposal)
+            if deleted is not None:
+                locations[name] = deleted
+                statuses[name] = "restore"
+                for conflict in _proposal_conflicts(deleted, proposal):
+                    errors.append(f"{name!r}: deleted Location conflict: {conflict}")
+            else:
+                statuses[name] = "create"
         else:
             statuses[name] = "unresolved"
             warnings.append(
@@ -277,12 +303,48 @@ def build_plan(
 def print_plan(plan: LocationPlan) -> None:
     counts = {
         status: sum(value == status for value in plan.statuses.values())
-        for status in ("existing", "create", "unresolved")
+        for status in ("existing", "restore", "create", "unresolved")
     }
     print(
         "Occurrence locations:",
         ", ".join(f"{status}={counts[status]}" for status in counts),
     )
+    for name in sorted(plan.used_names):
+        status = plan.statuses[name]
+        location = plan.locations[name]
+        if location is not None:
+            target_name = getattr(location, "name", name)
+            identifier = getattr(location, "id", None)
+            target = target_name
+            if identifier is not None:
+                target += f" (#{identifier})"
+            if target_name != name:
+                target = f"{name} -> {target}"
+            region = location.region.name
+            if location.min_period is None and location.max_period is None:
+                period = "period unset"
+            elif location.min_period is None:
+                assert location.max_period is not None
+                period = location.max_period.name
+            elif (
+                location.max_period is None
+                or location.min_period == location.max_period
+            ):
+                period = location.min_period.name
+            else:
+                period = f"{location.min_period.name}–{location.max_period.name}"
+            print(f"  [{status}] {target}; {region}; {period}")
+        elif status == "create":
+            proposal = plan.proposals[name]
+            coordinates = ""
+            if "latitude" in proposal:
+                coordinates = f"; {proposal['latitude']} {proposal['longitude']}"
+            print(
+                f"  [create] {name}; {proposal['region'].name}; "
+                f"{proposal['period'].name}{coordinates}"
+            )
+        else:
+            print(f"  [{status}] {name}")
     for error in plan.errors:
         print(f"[error] {error}")
     for warning in plan.warnings:
@@ -293,23 +355,45 @@ def apply_plan(plan: LocationPlan) -> dict[str, models.Location | None]:
     if plan.errors:
         raise LocationFileError("cannot apply a location plan with conflicts")
     for name in sorted(plan.used_names):
-        if plan.statuses[name] != "create":
+        status = plan.statuses[name]
+        if status not in {"create", "restore"}:
             continue
         proposal = plan.proposals[name]
-        location = models.Location.make(
-            name,
-            proposal["region"],
-            proposal["period"],
-            comment=proposal.get("comment"),
-        )
-        location.latitude = proposal.get("latitude")
-        location.longitude = proposal.get("longitude")
-        location.source = proposal.get("source")
-        if "location_detail" in proposal:
-            location.location_detail = proposal["location_detail"]  # type: ignore[assignment]
-        location.tags = tuple(proposal.get("tags", []))  # type: ignore[assignment]
+        if status == "restore":
+            location = plan.locations[name]
+            assert location is not None
+            assert location.deleted is LocationStatus.deleted
+            location.deleted = LocationStatus.valid
+            if location.comment is None and proposal.get("comment") is not None:
+                location.comment = proposal["comment"]
+            if location.source is None and proposal.get("source") is not None:
+                location.source = proposal["source"]
+            if (
+                not location.location_detail
+                and proposal.get("location_detail") is not None
+            ):
+                location.location_detail = proposal["location_detail"]  # type: ignore[assignment]
+            existing_tags = list(location.tags)
+            location.tags = (  # type: ignore[assignment]
+                *existing_tags,
+                *(tag for tag in proposal.get("tags", []) if tag not in existing_tags),
+            )
+        else:
+            location = models.Location.make(
+                name,
+                proposal["region"],
+                proposal["period"],
+                comment=proposal.get("comment"),
+            )
+            location.latitude = proposal.get("latitude")
+            location.longitude = proposal.get("longitude")
+            location.source = proposal.get("source")
+            if "location_detail" in proposal:
+                location.location_detail = proposal["location_detail"]  # type: ignore[assignment]
+            location.tags = tuple(proposal.get("tags", []))  # type: ignore[assignment]
         location.format(quiet=True)
+        location.edit_until_clean()
         plan.locations[name] = location
         plan.statuses[name] = "existing"
-        print(f"created Location: {location}")
+        print(f"{status}d Location: {location}")
     return plan.locations

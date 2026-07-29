@@ -5,6 +5,7 @@ from collections.abc import Iterable, Mapping
 
 from data_import import lib
 from taxonomy.db import models
+from taxonomy.db.models.location import LocationStatus
 from taxonomy.db.models.occurrence_record import OccurrenceRecordTag
 
 
@@ -21,15 +22,19 @@ def print_occurrence_report(
 ) -> None:
     occurrences = list(iter_occurrences(entries))
     bases = Counter(occurrence["basis"] for _, occurrence in occurrences)
+
+    def is_resolved(mapped_name: str) -> bool:
+        location = locations.get(mapped_name)
+        return location is not None and location.deleted is LocationStatus.valid
+
     mapped_locations = sum(
-        occurrence.get("mapped_location") in locations
-        and locations[occurrence["mapped_location"]] is not None
+        is_resolved(occurrence["mapped_location"])
         for _, occurrence in occurrences
         if occurrence.get("mapped_location") is not None
     )
     unresolved_locations = sum(
         occurrence.get("mapped_location") is not None
-        and locations.get(occurrence["mapped_location"]) is None
+        and not is_resolved(occurrence["mapped_location"])
         for _, occurrence in occurrences
     )
     print(f"Occurrence records: {len(occurrences)}")
@@ -153,5 +158,6 @@ def add_occurrence_records(
             _merge_tags(record, tags)
             print(f"already exists: {record}")
         record.format(quiet=True)
+        record.edit_until_clean()
         records.append(record)
     return records

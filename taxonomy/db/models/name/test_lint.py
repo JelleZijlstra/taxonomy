@@ -38,14 +38,17 @@ def test_parse_date() -> None:
 
 
 def _name_with_coordinates(
-    name_coordinates: tuple[str, str], location_coordinates: tuple[str, str]
+    name_coordinates: tuple[str, str], location_coordinates: tuple[str, str] | None
 ) -> Name:
     tag = TypeTag.Coordinates(*name_coordinates)
-    location = SimpleNamespace(
-        latitude=location_coordinates[0],
-        longitude=location_coordinates[1],
-        region=object(),
-    )
+    if location_coordinates is None:
+        location = None
+    else:
+        location = SimpleNamespace(
+            latitude=location_coordinates[0],
+            longitude=location_coordinates[1],
+            region=object(),
+        )
     name = SimpleNamespace(
         type_locality=location,
         type_tags=(tag,),
@@ -54,6 +57,16 @@ def _name_with_coordinates(
         ),
     )
     return cast(Name, name)
+
+
+def test_name_coordinates_require_type_locality() -> None:
+    name = _name_with_coordinates(("40.5°N", "74.25°W"), None)
+
+    messages = list(check_coordinates(name, LintConfig()))
+
+    assert len(messages) == 1
+    assert "Coordinates('40.5°N', '74.25°W') is present" in messages[0]
+    assert "type locality is not set" in messages[0]
 
 
 def test_name_coordinates_allow_five_kilometres(

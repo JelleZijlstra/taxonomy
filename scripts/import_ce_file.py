@@ -6,22 +6,32 @@ from pathlib import Path
 from data_import import ce_file, lib, location_file, occurrence_import
 
 
+def _import_classification_entries(
+    entries: list[lib.CEDict], *, dry_run: bool, verbose: bool
+) -> None:
+    groups = ce_file.group_entries_by_article(entries)
+    for article, article_entries in groups:
+        if len(groups) > 1:
+            print(f"Classification entries for {article.name}:")
+        list(
+            lib.add_classification_entries(
+                article_entries, dry_run=dry_run, strict=True, verbose=verbose
+            )
+        )
+
+
 def import_and_lint(
     entries: list[lib.CEDict],
     *,
     verbose: bool,
     location_plan: location_file.LocationPlan | None = None,
 ) -> None:
-    article = entries[0]["article"]
     if location_plan is None:
         location_plan = location_file.build_plan(entries, [])
     locations = location_file.apply_plan(location_plan)
-    list(
-        lib.add_classification_entries(
-            entries, dry_run=False, strict=True, verbose=verbose
-        )
-    )
-    lib.format_ces_in_article(article)
+    _import_classification_entries(entries, dry_run=False, verbose=verbose)
+    for article, _article_entries in ce_file.group_entries_by_article(entries):
+        lib.format_ces_in_article(article)
     occurrence_import.add_occurrence_records(entries, locations)
 
 
@@ -67,11 +77,7 @@ def main() -> None:
         raise SystemExit("Refusing import: resolve Location proposal conflicts")
     if not args.apply:
         print("Dry run only. Re-run with --apply after reviewing this output.")
-        list(
-            lib.add_classification_entries(
-                entries, dry_run=True, strict=True, verbose=args.verbose
-            )
-        )
+        _import_classification_entries(entries, dry_run=True, verbose=args.verbose)
     else:
         import_and_lint(entries, verbose=args.verbose, location_plan=location_plan)
 

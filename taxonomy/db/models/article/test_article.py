@@ -26,6 +26,25 @@ def test_clear_zoobank_caches_is_adt_callback() -> None:
     assert callbacks["clear_zoobank_caches"] == article.clear_zoobank_caches
 
 
+def test_title_lint_merges_adjacent_italics() -> None:
+    article = cast(
+        Article,
+        SimpleNamespace(
+            title="The status of _Nycticebus coucang_ _brachycephalus_ Sody"
+        ),
+    )
+
+    assert (
+        list(
+            article_lint.check_title.linter(
+                article, LintConfig(autofix=True, interactive=False)
+            )
+        )
+        == []
+    )
+    assert article.title == "The status of _Nycticebus coucang brachycephalus_ Sody"
+
+
 def test_clear_zoobank_caches_clears_article_lsids(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

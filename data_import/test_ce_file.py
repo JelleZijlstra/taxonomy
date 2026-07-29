@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
+from types import SimpleNamespace
+from typing import cast
 
 import pytest
 
 from data_import import ce_file, lib
+from taxonomy.db import models
 from taxonomy.db.constants import ObservationKind, OccurrenceBasis, Rank
 from taxonomy.db.models.classification_entry.ce import ClassificationEntryTag
 from taxonomy.db.models.occurrence_record import OccurrenceRecordTag
@@ -32,6 +36,24 @@ def test_serialize_ce() -> None:
     }
 
 
+def test_read_ce_file_allows_multiple_articles(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "combined.ce.jsonl"
+    path.write_text('{"source": "first"}\n{"source": "second"}\n')
+    first = SimpleNamespace(id=1)
+    second = SimpleNamespace(id=2)
+    entries: list[lib.CEDict] = [
+        {"article": first},  # type: ignore[typeddict-item]
+        {"article": second},  # type: ignore[typeddict-item]
+    ]
+    monkeypatch.setattr(
+        ce_file, "deserialize_ce", lambda data, line_number: entries[line_number - 1]
+    )
+
+    assert ce_file.read_ce_file(path) == entries
+
+
 def test_validate_ce_parents_uses_corrected_name_for_genus_check() -> None:
     article = type("Article", (), {"name": "source.pdf"})()
     entries: list[lib.CEDict] = [
@@ -39,6 +61,7 @@ def test_validate_ce_parents_uses_corrected_name_for_genus_check() -> None:
         {
             "page": "7",
             "name": "R. rattus",
+            "corrected_name": "Rattus rattus",
             "rank": Rank.species,
             "parent": "Rattus",
             "parent_rank": Rank.genus,
@@ -226,7 +249,7 @@ def test_deserialize_occurrence_rejects_incompatible_basis_tag() -> None:
 
 
 def test_validate_structure() -> None:
-    article = type("Article", (), {})()
+    article = type("Article", (), {"id": 1})()
     entries: list[lib.CEDict] = [
         {"article": article, "page": "7", "name": "Rattus", "rank": Rank.genus},
         {
@@ -239,3 +262,49 @@ def test_validate_structure() -> None:
         },
     ]
     assert ce_file.validate_structure(entries) == entries
+
+
+def test_validate_structure_scopes_hierarchies_to_article() -> None:
+    first = cast(models.Article, SimpleNamespace(id=1))
+    second = cast(models.Article, SimpleNamespace(id=2))
+    entries: list[lib.CEDict] = [
+        {"article": first, "page": "1", "name": "Rattus", "rank": Rank.genus},
+        {"article": second, "page": "2", "name": "Rattus", "rank": Rank.genus},
+        {
+            "article": first,
+            "page": "1",
+            "name": "Rattus rattus",
+            "rank": Rank.species,
+            "parent": "Rattus",
+            "parent_rank": Rank.genus,
+        },
+        {
+            "article": second,
+            "page": "2",
+            "name": "Rattus norvegicus",
+            "rank": Rank.species,
+            "parent": "Rattus",
+            "parent_rank": Rank.genus,
+        },
+    ]
+
+    assert ce_file.validate_structure(entries) == entries
+
+
+def test_validate_structure_does_not_share_parents_between_articles() -> None:
+    first = cast(models.Article, SimpleNamespace(id=1))
+    second = cast(models.Article, SimpleNamespace(id=2))
+    entries: list[lib.CEDict] = [
+        {"article": first, "page": "1", "name": "Rattus", "rank": Rank.genus},
+        {
+            "article": second,
+            "page": "2",
+            "name": "Rattus rattus",
+            "rank": Rank.species,
+            "parent": "Rattus",
+            "parent_rank": Rank.genus,
+        },
+    ]
+
+    with pytest.raises(ValueError, match="parent Rattus"):
+        ce_file.validate_structure(entries)

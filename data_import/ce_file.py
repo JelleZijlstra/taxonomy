@@ -219,15 +219,27 @@ def read_ce_file(path: Path) -> list[lib.CEDict]:
             ces.append(deserialize_ce(data, line_number=line_number))
     if not ces:
         raise CEFileError("CE file is empty")
-    article_ids = {ce["article"].id for ce in ces}
-    if len(article_ids) != 1:
-        raise CEFileError("all entries in a CE file must use the same article")
     return ces
+
+
+def group_entries_by_article(
+    ces: Iterable[lib.CEDict],
+) -> list[tuple[models.Article, list[lib.CEDict]]]:
+    """Group CE rows by source while preserving source and row order."""
+    groups: dict[int, tuple[models.Article, list[lib.CEDict]]] = {}
+    for ce in ces:
+        article = ce["article"]
+        if article.id not in groups:
+            groups[article.id] = (article, [])
+        groups[article.id][1].append(ce)
+    return list(groups.values())
 
 
 def validate_structure(ces: Iterable[lib.CEDict]) -> list[lib.CEDict]:
     entries = list(ces)
-    return list(lib.validate_ce_parents(entries))
+    for _article, article_entries in group_entries_by_article(entries):
+        list(lib.validate_ce_parents(article_entries))
+    return entries
 
 
 def _matching_names(ce: lib.CEDict, name: str) -> list[models.Name]:

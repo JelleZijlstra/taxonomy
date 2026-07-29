@@ -461,7 +461,9 @@ _DIRECTIONAL_COORDINATE_LIKE = re.compile(
     rf"[{_DIRECTIONAL_COORDINATE_CHARACTERS}]+[NSEW]\s*$",
     re.IGNORECASE,
 )
-_BRACKETED_LOCATION_EQUIVALENCE = re.compile(r"\[([^\[\]]+)\](?![\[(])")
+_EDITORIAL_LOCATION_EQUIVALENCE = re.compile(
+    r"\[(?P<bracketed>[^\[\]]+)\](?![\[(])|\(\s*=\s*(?P<parenthetical>[^()]+?)\s*\)"
+)
 _ALWAYS_ALLOWED_DISAMBIGUATORS = {"island", "region"}
 
 
@@ -739,20 +741,23 @@ def check_likely_synonymous(location: Location, cfg: LintConfig) -> Iterable[str
     )
 
 
-def _iter_bracketed_location_equivalences(text: str) -> Iterable[tuple[str, bool, int]]:
-    for match in _BRACKETED_LOCATION_EQUIVALENCE.finditer(text):
-        content = match.group(1).strip()
-        explicitly_marked = content.startswith("=")
+def _iter_location_equivalences(text: str) -> Iterable[tuple[str, bool, int]]:
+    for match in _EDITORIAL_LOCATION_EQUIVALENCE.finditer(text):
+        parenthetical = match.group("parenthetical")
+        if parenthetical is not None:
+            content = parenthetical.strip()
+            explicitly_marked = True
+        else:
+            content = match.group("bracketed").strip()
+            explicitly_marked = content.startswith("=")
         equivalent = re.sub(r"^=\s*", "", content).strip()
         if equivalent:
             yield equivalent, explicitly_marked, match.start()
 
 
 def extract_bracketed_location_equivalences(text: str) -> tuple[str, ...]:
-    """Extract editorial locality equivalents, excluding Markdown link labels."""
-    return tuple(
-        equivalent for equivalent, _, _ in _iter_bracketed_location_equivalences(text)
-    )
+    """Extract bracketed and explicitly parenthesized locality equivalents."""
+    return tuple(equivalent for equivalent, _, _ in _iter_location_equivalences(text))
 
 
 def _bracket_follows_location_name(
@@ -829,11 +834,9 @@ def check_explicit_location_equivalence(
     reported: set[tuple[str, int]] = set()
     for name in location.type_localities:
         for tag in name.get_tags(name.type_tags, TypeTag.LocationDetail):
-            for (
-                equivalent,
-                explicitly_marked,
-                start,
-            ) in _iter_bracketed_location_equivalences(tag.text):
+            for equivalent, explicitly_marked, start in _iter_location_equivalences(
+                tag.text
+            ):
                 if not _bracket_follows_location_name(
                     tag.text, start, location, explicitly_marked=explicitly_marked
                 ):

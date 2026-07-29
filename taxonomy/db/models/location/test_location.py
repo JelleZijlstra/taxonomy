@@ -437,8 +437,41 @@ def test_likely_synonym_map_flags_all_but_lowest_id_in_same_region() -> None:
 
 def test_extract_bracketed_location_equivalences() -> None:
     assert location_lint.extract_bracketed_location_equivalences(
-        "Toeare [= Tuare]; Tlalpam [Tlalpan]; [map](https://example.com)"
-    ) == ("Tuare", "Tlalpan")
+        "Toeare [= Tuare]; Umpata (= Humpata); Tlalpam [Tlalpan]; "
+        "Umpata (Humpata); [map](https://example.com)"
+    ) == ("Tuare", "Humpata", "Tlalpan")
+
+
+def test_explicit_location_equivalence_lint_accepts_parenthetical_marker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    region = SimpleNamespace(id=1, name="Angola")
+    detail = TypeTag.LocationDetail(
+        "Umpata (= Humpata)", cast(models.Article, object())
+    )
+    name = _tagged_object((detail,), name_tags=True)
+    name.id = 100
+    current = _location_without_coordinates(
+        id=10, name="Umpata", region=cast(Region, region), names=(name,)
+    )
+    matching = _location_without_coordinates(
+        id=20, name="Humpata", region=cast(Region, region)
+    )
+    matching.reload = lambda: matching  # type: ignore[method-assign]
+    monkeypatch.setattr(
+        location_lint,
+        "_get_locations_by_region",
+        lambda: {region.id: (current, matching)},
+    )
+
+    messages = list(
+        location_lint.check_explicit_location_equivalence(current, LintConfig())
+    )
+
+    assert len(messages) == 1
+    assert "bracketed equivalent 'Humpata'" in messages[0]
+    assert "valid Location 20: 'Humpata'" in messages[0]
+    assert "Region 'Angola'" in messages[0]
 
 
 def test_explicit_location_equivalence_lint_rechecks_same_region_candidate(

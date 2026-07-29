@@ -1815,11 +1815,14 @@ def fix_type_specimen_link(url: str) -> str:
 
 @LINT.add("coordinates")
 def check_coordinates(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    coordinate_tags = list(nam.get_tags(nam.type_tags, TypeTag.Coordinates))
     if nam.type_locality is None:
+        for tag in coordinate_tags:
+            yield f"{tag} is present, but type locality is not set"
         return
     location = nam.type_locality
     redundant_tags: list[TypeTag.Coordinates] = []  # type: ignore[name-defined]
-    for tag in nam.get_tags(nam.type_tags, TypeTag.Coordinates):
+    for tag in coordinate_tags:
         if (tag.latitude, tag.longitude) == (location.latitude, location.longitude):
             message = (
                 f"remove redundant {tag}: coordinates exactly match Location "
