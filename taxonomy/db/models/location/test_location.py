@@ -23,7 +23,7 @@ from taxonomy.db.models.location import model as location_model
 from taxonomy.db.models.name import TypeTag
 from taxonomy.db.models.occurrence_record import OccurrenceRecordTag
 from taxonomy.db.models.period import Period
-from taxonomy.db.models.region import Region
+from taxonomy.db.models.region import Region, RegionTag
 
 _REAL_GET_GEONAMES_COORDINATE_MATCHES = location_lint._get_geonames_coordinate_matches
 
@@ -316,6 +316,121 @@ def test_alias_requires_target_without_running_regular_lints() -> None:
 
     alias.parent = cast(Location, object())
     assert list(Location.lint_invalid(alias, LintConfig())) == []
+
+
+def test_fully_divided_region_lint_reports_direct_location() -> None:
+    region = SimpleNamespace(
+        name="Example Region",
+        has_children=Mock(return_value=True),
+        has_tag=Mock(return_value=False),
+    )
+    location = SimpleNamespace(
+        region=region,
+        is_general=Mock(return_value=False),
+        has_tag=Mock(return_value=False),
+    )
+
+    assert list(
+        location_lint.check_fully_divided_region.linter(
+            cast(Location, location), LintConfig()
+        )
+    ) == [
+        "is directly assigned to fully divided Region 'Example Region'; move it to "
+        "a child Region or add the General or Unplaced tag"
+    ]
+    region.has_tag.assert_called_once_with(RegionTag.IncompletelyDivided)
+
+
+def test_fully_divided_region_lint_allows_general_location() -> None:
+    region = SimpleNamespace(
+        name="Example Region",
+        has_children=Mock(return_value=True),
+        has_tag=Mock(return_value=False),
+    )
+    location = SimpleNamespace(
+        region=region,
+        is_general=Mock(return_value=True),
+        has_tag=Mock(return_value=False),
+    )
+
+    assert (
+        list(
+            location_lint.check_fully_divided_region.linter(
+                cast(Location, location), LintConfig()
+            )
+        )
+        == []
+    )
+    region.has_children.assert_not_called()
+
+
+def test_fully_divided_region_lint_allows_unplaced_location() -> None:
+    region = SimpleNamespace(
+        name="Example Region",
+        has_children=Mock(return_value=True),
+        has_tag=Mock(return_value=False),
+    )
+    location = SimpleNamespace(
+        region=region,
+        is_general=Mock(return_value=False),
+        has_tag=Mock(return_value=True),
+    )
+
+    assert (
+        list(
+            location_lint.check_fully_divided_region.linter(
+                cast(Location, location), LintConfig()
+            )
+        )
+        == []
+    )
+    region.has_children.assert_not_called()
+
+
+def test_fully_divided_region_lint_allows_incomplete_division() -> None:
+    region = SimpleNamespace(
+        name="Example Region",
+        has_children=Mock(return_value=True),
+        has_tag=Mock(return_value=True),
+    )
+    location = SimpleNamespace(
+        region=region,
+        is_general=Mock(return_value=False),
+        has_tag=Mock(return_value=False),
+    )
+
+    assert (
+        list(
+            location_lint.check_fully_divided_region.linter(
+                cast(Location, location), LintConfig()
+            )
+        )
+        == []
+    )
+    region.has_tag.assert_called_once_with(RegionTag.IncompletelyDivided)
+
+
+def test_fully_divided_region_lint_allows_undivided_region() -> None:
+    region = SimpleNamespace(
+        name="Example Region",
+        has_children=Mock(return_value=False),
+        has_tag=Mock(return_value=False),
+    )
+    location = SimpleNamespace(
+        region=region,
+        is_general=Mock(return_value=False),
+        has_tag=Mock(return_value=False),
+    )
+
+    assert (
+        list(
+            location_lint.check_fully_divided_region.linter(
+                cast(Location, location), LintConfig()
+            )
+        )
+        == []
+    )
+    region.has_tag.assert_not_called()
 
 
 def test_likely_synonymous_location_name_comparison() -> None:

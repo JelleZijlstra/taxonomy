@@ -25,6 +25,7 @@ __all__ = [
     "Period",
     "Person",
     "Region",
+    "RegionTag",
     "SpeciesNameComplex",
     "SpeciesNameEnding",
     "Specimen",
@@ -64,7 +65,7 @@ from .name_complex import (
 )
 from .occurrence import Occurrence as Occurrence
 from .period import Period as Period
-from .region import Region as Region
+from .region import Region as Region, RegionTag as RegionTag
 from .stratigraphic_unit import StratigraphicUnit as StratigraphicUnit
 from .taxon import Taxon as Taxon
 from .occurrence_record import (

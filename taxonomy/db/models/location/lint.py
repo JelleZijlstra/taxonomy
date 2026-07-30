@@ -16,7 +16,7 @@ from taxonomy.db.constants import RegionKind
 from taxonomy.db.models.base import LintConfig
 from taxonomy.db.models.lint import IgnoreLint, Lint
 from taxonomy.db.models.period import Period
-from taxonomy.db.models.region import Region
+from taxonomy.db.models.region import Region, RegionTag
 
 from .age import is_non_recent_location, is_recent_location
 from .model import Location, LocationTag
@@ -543,6 +543,19 @@ def add_ignore(location: Location, label: str, comment: str) -> None:
 
 
 LINT = Lint(Location, get_ignores, remove_unused_ignores, add_ignore)
+
+
+@LINT.add("fully_divided_region")
+def check_fully_divided_region(location: Location, cfg: LintConfig) -> Iterable[str]:
+    if location.is_general() or location.has_tag(LocationTag.Unplaced):
+        return
+    region = location.region
+    if not region.has_children() or region.has_tag(RegionTag.IncompletelyDivided):
+        return
+    yield (
+        f"is directly assigned to fully divided Region {region.name!r}; move it to "
+        "a child Region or add the General or Unplaced tag"
+    )
 
 
 def _locality_similarity_key(name: str) -> tuple[str, str | None]:

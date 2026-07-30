@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from typing import cast
 from unittest.mock import Mock
 
-from taxonomy.db.models.region import Region
+from taxonomy.db.models.region import Region, RegionTag
 
 
 def test_display_type_localities_uses_concise_recursive_display() -> None:
@@ -46,3 +46,9 @@ def test_display_type_localities_is_adt_callback() -> None:
     callbacks = region.get_adt_callbacks()
 
     assert callbacks["display_type_localities"] == region.display_type_localities
+
+
+def test_region_has_tag() -> None:
+    region = cast(Region, SimpleNamespace(tags=(RegionTag.IncompletelyDivided,)))
+
+    assert Region.has_tag(region, RegionTag.IncompletelyDivided)

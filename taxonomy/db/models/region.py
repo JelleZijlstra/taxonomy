@@ -7,12 +7,12 @@ from typing import IO, Any, ClassVar, Self
 
 from clirm import Field
 
-from taxonomy import events, getinput
+from taxonomy import adt, events, getinput
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
 from taxonomy.db import constants, models
 from taxonomy.db.derived_data import DerivedField
 
-from .base import BaseModel, get_tag_based_derived_field
+from .base import ADTField, BaseModel, get_tag_based_derived_field
 
 
 class Region(BaseModel):
@@ -26,6 +26,7 @@ class Region(BaseModel):
     comment = Field[str | None]()
     parent = Field[Self | None]("parent_id", related_name="children")
     kind = Field[constants.RegionKind]()
+    tags = ADTField["RegionTag"](is_ordered=False)
 
     derived_fields: ClassVar[list[DerivedField[Any]]] = [
         DerivedField("has_collections", bool, lambda region: region.has_collections()),
@@ -191,6 +192,10 @@ class Region(BaseModel):
             return True
         return False
 
+    def has_tag(self, tag_cls: adt.ADT | type[adt.ADT]) -> bool:
+        tag_id = tag_cls._tag
+        return any(tag._tag == tag_id for tag in self.tags)
+
     def sorted_children(self) -> list[Region]:
         return sorted(self.children, key=lambda c: c.name)
 
@@ -337,3 +342,8 @@ class Region(BaseModel):
             return False
         else:
             return self.parent.has_parent(parent)
+
+
+class RegionTag(adt.ADT):
+    # The Region's children cover only part of its geographic extent.
+    IncompletelyDivided(tag=1)  # type: ignore[name-defined]

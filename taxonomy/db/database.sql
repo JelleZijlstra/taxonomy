@@ -78,6 +78,7 @@ CREATE TABLE `region` (
     `comment` VARCHAR(65535) DEFAULT NULL,
     `parent_id` INT UNSIGNED,
     `kind` INT UNSIGNED,  # continent, country, subnational
+    `tags` TEXT DEFAULT NULL,
     PRIMARY KEY(`id`),
     INDEX(`name`),
     UNIQUE KEY(`name`)
